@@ -1,14 +1,28 @@
-use std::io::{stdout, Write};
+use std::{
+    io::{stdout, Write},
+    iter,
+};
 
 use crossterm::{
-    cursor, queue,
-    style::{Print, ResetColor, SetForegroundColor},
-    terminal::{self, Clear, ClearType},
+    cursor,
+    handle_command,
+    style::{Print, ResetColor, SetBackgroundColor, SetForegroundColor},
+    // terminal::{self, Clear, ClearType},
     Result,
 };
 
 use ropey;
 use syntect::{easy, highlighting, parsing};
+
+mod buffer;
+
+fn to_crossterm_color(c: highlighting::Color) -> crossterm::style::Color {
+    crossterm::style::Color::Rgb {
+        r: c.r,
+        g: c.g,
+        b: c.b,
+    }
+}
 
 fn main() -> Result<()> {
     crossterm::terminal::enable_raw_mode()?;
@@ -22,18 +36,46 @@ fn main() -> Result<()> {
     let syntax_set = parsing::SyntaxSet::load_defaults_newlines();
     let theme_set = highlighting::ThemeSet::load_defaults();
     let syntax = syntax_set.find_syntax_by_extension("rs").unwrap();
-    let mut h = easy::HighlightLines::new(syntax, &theme_set.themes["base16-ocean.dark"]);
+	let mut h = easy::HighlightLines::new(syntax, &theme_set.themes["base16-ocean.dark"]);
 
-    queue!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
+	let mut highlighter = 
 
     for line in rope.lines() {
-        let ranges: Vec<(highlighting::Style, &str)> =
-            h.highlight(line.as_str().unwrap_or(""), &syntax_set);
-        let escaped = syntect::util::as_24_bit_terminal_escaped(&ranges[..], true);
-        queue!(stdout, Print(escaped))?;
+        let line_str = line
+            .chars()
+            // .flat_map(|c| {
+            //     if c == '\t' {
+            //         iter::repeat(' ').take(4)
+            //     } else if c == '\n' {
+            //         iter::repeat(' ').take(1)
+            //     } else {
+            //         iter::repeat(c).take(1)
+            //     }
+            // })
+            // .chain(iter::once('\n'))
+            .collect::<String>();
+
+        let ranges: Vec<(highlighting::Style, &str)> = h.highlight(&line_str, &syntax_set);
+        for (style, slice) in ranges {
+            handle_command!(
+                stdout,
+                SetForegroundColor(to_crossterm_color(style.foreground))
+            )?;
+            handle_command!(
+                stdout,
+                SetBackgroundColor(to_crossterm_color(style.background))
+            )?;
+            handle_command!(stdout, Print(slice))?;
+        }
+        handle_command!(stdout, cursor::MoveToNextLine(1))?;
+
+        // handle_command!(stdout, Print(line_str))?;
+        // handle_command!(stdout, cursor::MoveToNextLine(1))?;
     }
 
-    queue!(stdout, ResetColor)?;
+    handle_command!(stdout, ResetColor)?;
+    handle_command!(stdout, cursor::MoveToNextLine(1))?;
+    stdout.flush()?;
     crossterm::terminal::disable_raw_mode()?;
     Ok(())
 }
