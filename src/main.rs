@@ -42,10 +42,11 @@ impl<'a> HighlightLines<'a> {
 }
 
 fn main() -> Result<()> {
-    crossterm::terminal::enable_raw_mode()?;
+    terminal::enable_raw_mode()?;
 
     let stdout = stdout();
     let mut stdout = stdout.lock();
+    let terminal_size = terminal::size()?;
 
     let src = include_str!("main.rs");
     let rope = ropey::Rope::from_str(src);
@@ -62,6 +63,8 @@ fn main() -> Result<()> {
         let line: String = line.chars().collect();
         let mut highlighted_line = String::new();
 
+        // handle_command!(highlighted_line, Print('~'))?;
+
         let ops = h.parse_state.parse_line(&line[..], &syntax_set);
         for (style, slice) in
             HighlightIterator::new(&mut h.highlight_state, &ops[..], &line[..], &h.highlighter)
@@ -75,19 +78,24 @@ fn main() -> Result<()> {
                 SetBackgroundColor(to_crossterm_color(style.background))
             )?;
             handle_command!(highlighted_line, Print(slice))?;
+
+            // for line in slice.lines() {
+            //     handle_command!(highlighted_line, Print(line))?;
+            //     handle_command!(highlighted_line, Clear(ClearType::UntilNewLine))?;
+            //     // handle_command!(highlighted_line, cursor::MoveToNextLine(1))?;
+            //     handle_command!(highlighted_line, Print('\n'))?;
+            // }
         }
         highlighted_lines.push(highlighted_line);
     }
 
     for line in &highlighted_lines {
         handle_command!(stdout, Print(line))?;
-        handle_command!(stdout, Clear(ClearType::UntilNewLine))?;
-        // handle_command!(stdout, cursor::MoveToNextLine(1))?;
     }
 
     handle_command!(stdout, ResetColor)?;
     handle_command!(stdout, cursor::MoveToNextLine(1))?;
     stdout.flush()?;
-    crossterm::terminal::disable_raw_mode()?;
+    terminal::disable_raw_mode()?;
     Ok(())
 }
