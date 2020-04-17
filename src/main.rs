@@ -5,6 +5,8 @@ mod buffer;
 mod terminal_view;
 
 fn main() -> Result<()> {
+    ctrlc::set_handler(|| {}).unwrap();
+
     let stdout = stdout();
     let stdout = stdout.lock();
 

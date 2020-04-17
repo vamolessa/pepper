@@ -25,6 +25,7 @@ impl<'a> TerminalView<'a> {
         };
 
         handle_command!(s.stdout, terminal::EnterAlternateScreen)?;
+        s.stdout.flush()?;
         handle_command!(s.stdout, cursor::Hide)?;
         s.stdout.flush()?;
 
