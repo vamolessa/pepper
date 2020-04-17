@@ -4,7 +4,6 @@ version = "0.1.0"
 authors = ["Matheus Lessa <matheus@fastmail.com>"]
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 crossterm = "0.17.1"
+ctrlc = "3.1.4"
