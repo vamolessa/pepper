@@ -1,4 +1,7 @@
-use std::io::{StdoutLock, Write};
+use std::{
+    io::{StdoutLock, Write},
+    iter,
+};
 
 use crossterm::{
     cursor, handle_command,
@@ -12,7 +15,7 @@ use crate::theme::Theme;
 
 pub struct TerminalView<'a> {
     stdout: StdoutLock<'a>,
-    size: (u16, u16),
+    window_size: (u16, u16),
 
     buffer: Buffer,
     theme: Theme,
@@ -22,7 +25,7 @@ impl<'a> TerminalView<'a> {
     pub fn new(stdout: StdoutLock<'a>, buffer: Buffer) -> Result<Self> {
         let mut s = Self {
             stdout,
-            size: (0, 0),
+            window_size: (0, 0),
             buffer,
             theme: Theme {
                 foreground: Color::White,
@@ -41,23 +44,31 @@ impl<'a> TerminalView<'a> {
     }
 
     pub fn query_size(&mut self) {
-        self.size = terminal::size().unwrap_or((0, 0));
+        self.window_size = terminal::size().unwrap_or((0, 0));
     }
 
     pub fn move_cursor_left(&mut self) {
-        self.buffer.cursor.column_index -= 1;
+        if self.buffer.cursor.column_index > 0 {
+            self.buffer.cursor.column_index -= 1;
+        }
     }
 
     pub fn move_cursor_down(&mut self) {
-        self.buffer.cursor.line_index += 1;
+        if self.buffer.cursor.line_index < self.buffer.lines.len() + 1 {
+            self.buffer.cursor.line_index += 1;
+        }
     }
 
     pub fn move_cursor_up(&mut self) {
-        self.buffer.cursor.line_index -= 1;
+        if self.buffer.cursor.line_index > 0 {
+            self.buffer.cursor.line_index -= 1;
+        }
     }
 
     pub fn move_cursor_right(&mut self) {
+        if true {
         self.buffer.cursor.column_index += 1;
+        }
     }
 
     pub fn print(&mut self) -> Result<()> {
@@ -65,43 +76,38 @@ impl<'a> TerminalView<'a> {
 
         handle_command!(self.stdout, SetForegroundColor(self.theme.foreground))?;
         handle_command!(self.stdout, SetBackgroundColor(self.theme.background))?;
-        for (i, line) in self.buffer.lines.iter().enumerate() {
-            if i == self.buffer.cursor.line_index {
-                let mut line_chars = line.chars();
-                let mut before_cursor_count = 0;
 
-                while before_cursor_count < self.buffer.cursor.column_index {
-                    if let Some(c) = line_chars.next() {
-                        before_cursor_count += 1;
-                        handle_command!(self.stdout, Print(c))?;
+        let mut was_inside_selection = false;
+        for (y, line) in self.buffer.lines.iter().enumerate() {
+            for (x, c) in line.chars().chain(iter::once(' ')).enumerate() {
+                let inside_selection =
+                    x == self.buffer.cursor.column_index && y == self.buffer.cursor.line_index;
+                if was_inside_selection != inside_selection {
+                    was_inside_selection = inside_selection;
+                    if inside_selection {
+                        handle_command!(self.stdout, SetForegroundColor(self.theme.background))?;
+                        handle_command!(self.stdout, SetBackgroundColor(self.theme.foreground))?;
                     } else {
-                        break;
+                        handle_command!(self.stdout, SetForegroundColor(self.theme.foreground))?;
+                        handle_command!(self.stdout, SetBackgroundColor(self.theme.background))?;
                     }
                 }
 
-                handle_command!(self.stdout, SetForegroundColor(self.theme.background))?;
-                handle_command!(self.stdout, SetBackgroundColor(self.theme.foreground))?;
-                if let Some(c) = &mut line_chars.next() {
-                    handle_command!(self.stdout, Print(*c))?;
-                } else {
-                    handle_command!(self.stdout, Print(' '))?;
+                match c {
+                    '\t' => handle_command!(self.stdout, Print("    "))?,
+                    _ => handle_command!(self.stdout, Print(c))?,
                 }
-
-                handle_command!(self.stdout, SetForegroundColor(self.theme.foreground))?;
-                handle_command!(self.stdout, SetBackgroundColor(self.theme.background))?;
-                for c in &mut line_chars {
-                    handle_command!(self.stdout, Print(c))?;
-                }
-                handle_command!(self.stdout, Clear(ClearType::UntilNewLine))?;
-                handle_command!(self.stdout, cursor::MoveToNextLine(1))?;
-            } else {
-                handle_command!(self.stdout, Print(line))?;
-                handle_command!(self.stdout, Clear(ClearType::UntilNewLine))?;
-                handle_command!(self.stdout, cursor::MoveToNextLine(1))?;
             }
+
+            handle_command!(self.stdout, SetForegroundColor(self.theme.foreground))?;
+            handle_command!(self.stdout, SetBackgroundColor(self.theme.background))?;
+            handle_command!(self.stdout, Clear(ClearType::UntilNewLine))?;
+            handle_command!(self.stdout, cursor::MoveToNextLine(1))?;
         }
 
-        for _ in self.buffer.lines.len()..self.size.1 as usize {
+        handle_command!(self.stdout, SetForegroundColor(self.theme.foreground))?;
+        handle_command!(self.stdout, SetBackgroundColor(self.theme.background))?;
+        for _ in self.buffer.lines.len()..self.window_size.1 as usize {
             handle_command!(self.stdout, Print('~'))?;
             handle_command!(self.stdout, Clear(ClearType::UntilNewLine))?;
             handle_command!(self.stdout, cursor::MoveToNextLine(1))?;
