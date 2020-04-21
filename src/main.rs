@@ -25,28 +25,28 @@ fn main() -> Result<()> {
                 code: event::KeyCode::Char('h'),
                 ..
             }) => {
-                view.move_cursor_left();
+                view.buffer.move_cursor_left();
                 view.print()?;
             }
             event::Event::Key(event::KeyEvent {
                 code: event::KeyCode::Char('j'),
                 ..
             }) => {
-                view.move_cursor_down();
+                view.buffer.move_cursor_down();
                 view.print()?;
             }
             event::Event::Key(event::KeyEvent {
                 code: event::KeyCode::Char('k'),
                 ..
             }) => {
-                view.move_cursor_up();
+                view.buffer.move_cursor_up();
                 view.print()?;
             }
             event::Event::Key(event::KeyEvent {
                 code: event::KeyCode::Char('l'),
                 ..
             }) => {
-                view.move_cursor_right();
+                view.buffer.move_cursor_right();
                 view.print()?;
             }
             _ => (),

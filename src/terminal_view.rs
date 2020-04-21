@@ -17,7 +17,7 @@ pub struct TerminalView<'a> {
     stdout: StdoutLock<'a>,
     window_size: (u16, u16),
 
-    buffer: Buffer,
+    pub buffer: Buffer,
     theme: Theme,
 }
 
@@ -45,41 +45,6 @@ impl<'a> TerminalView<'a> {
 
     pub fn query_size(&mut self) {
         self.window_size = terminal::size().unwrap_or((0, 0));
-    }
-
-    pub fn move_cursor_left(&mut self) {
-        if self.buffer.cursor.column_index > 0 {
-            self.buffer.cursor.column_index -= 1;
-        }
-    }
-
-    pub fn move_cursor_down(&mut self) {
-        if self.buffer.cursor.line_index < self.buffer.lines.len() - 1 {
-            self.buffer.cursor.line_index += 1;
-            let line_len = self.buffer.lines[self.buffer.cursor.line_index]
-                .chars()
-                .count();
-            self.buffer.cursor.column_index = self.buffer.cursor.column_index.min(line_len);
-        }
-    }
-
-    pub fn move_cursor_up(&mut self) {
-        if self.buffer.cursor.line_index > 0 {
-            self.buffer.cursor.line_index -= 1;
-            let line_len = self.buffer.lines[self.buffer.cursor.line_index]
-                .chars()
-                .count();
-            self.buffer.cursor.column_index = self.buffer.cursor.column_index.min(line_len);
-        }
-    }
-
-    pub fn move_cursor_right(&mut self) {
-        let line_len = self.buffer.lines[self.buffer.cursor.line_index]
-            .chars()
-            .count();
-        if self.buffer.cursor.column_index < line_len {
-            self.buffer.cursor.column_index += 1;
-        }
     }
 
     pub fn print(&mut self) -> Result<()> {
