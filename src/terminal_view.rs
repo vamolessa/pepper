@@ -54,20 +54,31 @@ impl<'a> TerminalView<'a> {
     }
 
     pub fn move_cursor_down(&mut self) {
-        if self.buffer.cursor.line_index < self.buffer.lines.len() + 1 {
+        if self.buffer.cursor.line_index < self.buffer.lines.len() - 1 {
             self.buffer.cursor.line_index += 1;
+            let line_len = self.buffer.lines[self.buffer.cursor.line_index]
+                .chars()
+                .count();
+            self.buffer.cursor.column_index = self.buffer.cursor.column_index.min(line_len);
         }
     }
 
     pub fn move_cursor_up(&mut self) {
         if self.buffer.cursor.line_index > 0 {
             self.buffer.cursor.line_index -= 1;
+            let line_len = self.buffer.lines[self.buffer.cursor.line_index]
+                .chars()
+                .count();
+            self.buffer.cursor.column_index = self.buffer.cursor.column_index.min(line_len);
         }
     }
 
     pub fn move_cursor_right(&mut self) {
-        if true {
-        self.buffer.cursor.column_index += 1;
+        let line_len = self.buffer.lines[self.buffer.cursor.line_index]
+            .chars()
+            .count();
+        if self.buffer.cursor.column_index < line_len {
+            self.buffer.cursor.column_index += 1;
         }
     }
 
