@@ -16,12 +16,13 @@ fn main() -> Result<()> {
     let handle = view
         .buffers
         .add(buffer::Buffer::from_str(include_str!("main.rs")));
-    view.buffer_views.push(buffer_view::BufferView::with_handle(handle));
+    view.buffer_views
+        .push(buffer_view::BufferView::with_handle(handle));
     view.print(0)?;
 
     loop {
         let bv = &mut view.buffer_views[0];
-        let bs =&view.buffers;
+        let bs = &view.buffers;
         match event::read()? {
             event::Event::Key(event::KeyEvent {
                 code: event::KeyCode::Char('q'),
