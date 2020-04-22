@@ -3,6 +3,18 @@ name = "pepper"
 version = "0.1.0"
 authors = ["Matheus Lessa <matheus@fastmail.com>"]
 edition = "2018"
+description = "Experimental code editor"
+license = "MIT"
+
+documentation = "https://github.com/matheuslessarodrigues/pepper"
+homepage = "https://github.com/matheuslessarodrigues/pepper"
+repository = "https://github.com/matheuslessarodrigues/pepper"
+readme = "README.md"
+categories = ["command-line-utilities"]
+
+[[bin]]
+name = "pepper"
+path = "src/main.rs"
 
 [dependencies]
 crossterm = "0.17.1"
