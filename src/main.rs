@@ -33,28 +33,28 @@ fn main() -> Result<()> {
                 code: event::KeyCode::Char('h'),
                 ..
             }) => {
-                bv.move_cursor_left();
+                bv.move_cursor(bs, (-1,0));
                 view.print(0)?;
             }
             event::Event::Key(event::KeyEvent {
                 code: event::KeyCode::Char('j'),
                 ..
             }) => {
-                bv.move_cursor_down(bs);
+                bv.move_cursor(bs, (0, 1));
                 view.print(0)?;
             }
             event::Event::Key(event::KeyEvent {
                 code: event::KeyCode::Char('k'),
                 ..
             }) => {
-                bv.move_cursor_up(bs);
+                bv.move_cursor(bs, (0, -1));
                 view.print(0)?;
             }
             event::Event::Key(event::KeyEvent {
                 code: event::KeyCode::Char('l'),
                 ..
             }) => {
-                bv.move_cursor_right(bs);
+                bv.move_cursor(bs, (1, 0));
                 view.print(0)?;
             }
             _ => (),

@@ -2,8 +2,8 @@ use crate::buffer::{Buffer, BufferCollection, BufferHandle};
 
 #[derive(Default, Copy, Clone)]
 pub struct Cursor {
-    pub line_index: u16,
     pub column_index: u16,
+    pub line_index: u16,
 }
 
 pub struct BufferView {
@@ -27,45 +27,22 @@ impl BufferView {
         &buffers[self.buffer_handle]
     }
 
-    pub fn move_cursor_left(&mut self) {
-        if self.cursor.column_index > 0 {
-            self.cursor.column_index -= 1;
-        }
-    }
-
-    pub fn move_cursor_down(&mut self, buffers: &BufferCollection) {
+    pub fn move_cursor(&mut self, buffers: &BufferCollection, offset: (i16, i16)) {
         let buffer = self.buffer(buffers);
-        if (self.cursor.line_index as usize) < buffer.lines.len() - 1 {
-            self.cursor.line_index += 1;
-            let line_len = buffer.lines[self.cursor.line_index as usize]
-                .chars()
-                .count();
-            self.cursor.column_index = self.cursor.column_index.min(line_len as u16);
-            self.frame_cursor(self.cursor);
-        }
-    }
+        let cursor = &mut self.cursor;
 
-    pub fn move_cursor_up(&mut self, buffers: &BufferCollection) {
-        if self.cursor.line_index > 0 {
-            self.cursor.line_index -= 1;
-            let line_len = self.buffer(buffers).lines[self.cursor.line_index as usize]
-                .chars()
-                .count();
-            self.cursor.column_index = self.cursor.column_index.min(line_len as u16);
-            self.frame_cursor(self.cursor);
-        }
-    }
+        let mut target = (
+            cursor.column_index as i16 + offset.0,
+            cursor.line_index as i16 + offset.1,
+        );
 
-    pub fn move_cursor_right(&mut self, buffers: &BufferCollection) {
-        let line_index = self.cursor.line_index as usize;
-        let line_len = self.buffer(buffers).lines[line_index].chars().count();
-        if line_index < line_len {
-            self.cursor.column_index += 1;
-            self.frame_cursor(self.cursor);
-        }
-    }
+        target.1 = target.1.min(buffer.lines.len() as i16 - 1).max(0);
+        let target_line_len = buffer.lines[target.1 as usize].chars().count();
+        target.0 = target.0.min(target_line_len as i16).max(0);
 
-    fn frame_cursor(&mut self, cursor: Cursor) {
+        cursor.column_index = target.0 as u16;
+        cursor.line_index = target.1 as u16;
+
         if cursor.line_index < self.scroll {
             self.scroll = cursor.line_index;
         } else if cursor.line_index >= self.scroll + self.size.1 {
