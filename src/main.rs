@@ -2,6 +2,7 @@ use crossterm::{event, Result};
 use std::io::stdout;
 
 mod buffer;
+mod buffer_view;
 mod terminal_view;
 mod theme;
 
@@ -11,11 +12,16 @@ fn main() -> Result<()> {
     let stdout = stdout();
     let stdout = stdout.lock();
 
-    let buffer = buffer::Buffer::from_str(include_str!("main.rs"));
-    let mut view = terminal_view::TerminalView::new(stdout, buffer)?;
-    view.print()?;
+    let mut view = terminal_view::TerminalView::new(stdout)?;
+    let handle = view
+        .buffers
+        .add(buffer::Buffer::from_str(include_str!("main.rs")));
+    view.buffer_views.push(buffer_view::BufferView::with_handle(handle));
+    view.print(0)?;
 
     loop {
+        let bv = &mut view.buffer_views[0];
+        let bs =&view.buffers;
         match event::read()? {
             event::Event::Key(event::KeyEvent {
                 code: event::KeyCode::Char('q'),
@@ -25,29 +31,29 @@ fn main() -> Result<()> {
                 code: event::KeyCode::Char('h'),
                 ..
             }) => {
-                view.buffer.move_cursor_left();
-                view.print()?;
+                bv.move_cursor_left();
+                view.print(0)?;
             }
             event::Event::Key(event::KeyEvent {
                 code: event::KeyCode::Char('j'),
                 ..
             }) => {
-                view.buffer.move_cursor_down();
-                view.print()?;
+                bv.move_cursor_down(bs);
+                view.print(0)?;
             }
             event::Event::Key(event::KeyEvent {
                 code: event::KeyCode::Char('k'),
                 ..
             }) => {
-                view.buffer.move_cursor_up();
-                view.print()?;
+                bv.move_cursor_up(bs);
+                view.print(0)?;
             }
             event::Event::Key(event::KeyEvent {
                 code: event::KeyCode::Char('l'),
                 ..
             }) => {
-                view.buffer.move_cursor_right();
-                view.print()?;
+                bv.move_cursor_right(bs);
+                view.print(0)?;
             }
             _ => (),
         }

@@ -10,23 +10,22 @@ use crossterm::{
     Result,
 };
 
-use crate::buffer::Buffer;
-use crate::theme::Theme;
+use crate::{buffer::BufferCollection, buffer_view::BufferView, theme::Theme};
 
 pub struct TerminalView<'a> {
     stdout: StdoutLock<'a>,
-    window_size: (u16, u16),
 
-    pub buffer: Buffer,
+    pub buffers: BufferCollection,
+    pub buffer_views: Vec<BufferView>,
     theme: Theme,
 }
 
 impl<'a> TerminalView<'a> {
-    pub fn new(stdout: StdoutLock<'a>, buffer: Buffer) -> Result<Self> {
+    pub fn new(stdout: StdoutLock<'a>) -> Result<Self> {
         let mut s = Self {
             stdout,
-            window_size: (0, 0),
-            buffer,
+            buffers: Default::default(),
+            buffer_views: Default::default(),
             theme: Theme {
                 foreground: Color::White,
                 background: Color::Black,
@@ -39,25 +38,31 @@ impl<'a> TerminalView<'a> {
         s.stdout.flush()?;
 
         terminal::enable_raw_mode()?;
-        s.query_size();
+        s.update_buffer_views_size();
         Ok(s)
     }
 
-    pub fn query_size(&mut self) {
-        self.window_size = terminal::size().unwrap_or((0, 0));
+    pub fn update_buffer_views_size(&mut self) {
+        let size = terminal::size().unwrap_or((0, 0));
+        for view in &mut self.buffer_views {
+            view.size = size;
+        }
     }
 
-    pub fn print(&mut self) -> Result<()> {
+    pub fn print(&mut self, view_index: usize) -> Result<()> {
+        let buffer_view = &self.buffer_views[view_index];
+        let buffer = &self.buffers[buffer_view.buffer_handle];
+
         handle_command!(self.stdout, cursor::MoveTo(0, 0))?;
 
         handle_command!(self.stdout, SetForegroundColor(self.theme.foreground))?;
         handle_command!(self.stdout, SetBackgroundColor(self.theme.background))?;
 
         let mut was_inside_selection = false;
-        for (y, line) in self.buffer.lines.iter().enumerate() {
+        for (y, line) in buffer.lines.iter().enumerate() {
             for (x, c) in line.chars().chain(iter::once(' ')).enumerate() {
                 let inside_selection =
-                    x == self.buffer.cursor.column_index && y == self.buffer.cursor.line_index;
+                    x == buffer_view.cursor.column_index && y == buffer_view.cursor.line_index;
                 if was_inside_selection != inside_selection {
                     was_inside_selection = inside_selection;
                     if inside_selection {
@@ -83,7 +88,7 @@ impl<'a> TerminalView<'a> {
 
         handle_command!(self.stdout, SetForegroundColor(self.theme.foreground))?;
         handle_command!(self.stdout, SetBackgroundColor(self.theme.background))?;
-        for _ in self.buffer.lines.len()..self.window_size.1 as usize {
+        for _ in buffer.lines.len()..buffer_view.size.1 as usize {
             handle_command!(self.stdout, Print('~'))?;
             handle_command!(self.stdout, Clear(ClearType::UntilNewLine))?;
             handle_command!(self.stdout, cursor::MoveToNextLine(1))?;
