@@ -3,7 +3,7 @@ use std::io::stdout;
 
 mod buffer;
 mod buffer_view;
-mod terminal_view;
+mod terminal_ui;
 mod theme;
 
 fn main() -> Result<()> {
@@ -12,12 +12,13 @@ fn main() -> Result<()> {
     let stdout = stdout();
     let stdout = stdout.lock();
 
-    let mut view = terminal_view::TerminalView::new(stdout)?;
+    let mut view = terminal_ui::TerminalUi::new(stdout)?;
     let handle = view
         .buffers
         .add(buffer::Buffer::from_str(include_str!("main.rs")));
     view.buffer_views
         .push(buffer_view::BufferView::with_handle(handle));
+    view.update_buffer_views_size();
     view.print(0)?;
 
     loop {

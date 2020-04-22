@@ -12,7 +12,7 @@ use crossterm::{
 
 use crate::{buffer::BufferCollection, buffer_view::BufferView, theme::Theme};
 
-pub struct TerminalView<'a> {
+pub struct TerminalUi<'a> {
     stdout: StdoutLock<'a>,
 
     pub buffers: BufferCollection,
@@ -20,7 +20,7 @@ pub struct TerminalView<'a> {
     theme: Theme,
 }
 
-impl<'a> TerminalView<'a> {
+impl<'a> TerminalUi<'a> {
     pub fn new(stdout: StdoutLock<'a>) -> Result<Self> {
         let mut s = Self {
             stdout,
@@ -38,7 +38,6 @@ impl<'a> TerminalView<'a> {
         s.stdout.flush()?;
 
         terminal::enable_raw_mode()?;
-        s.update_buffer_views_size();
         Ok(s)
     }
 
@@ -54,12 +53,19 @@ impl<'a> TerminalView<'a> {
         let buffer = &self.buffers[buffer_view.buffer_handle];
 
         handle_command!(self.stdout, cursor::MoveTo(0, 0))?;
+        handle_command!(self.stdout, cursor::Hide)?;
 
         handle_command!(self.stdout, SetForegroundColor(self.theme.foreground))?;
         handle_command!(self.stdout, SetBackgroundColor(self.theme.background))?;
 
         let mut was_inside_selection = false;
-        for (y, line) in buffer.lines.iter().enumerate() {
+        for (y, line) in buffer
+            .lines
+            .iter()
+            .skip(buffer_view.scroll as usize)
+            .take(buffer_view.size.1 as usize)
+            .enumerate()
+        {
             for (x, c) in line.chars().chain(iter::once(' ')).enumerate() {
                 let inside_selection =
                     x == buffer_view.cursor.column_index && y == buffer_view.cursor.line_index;
@@ -100,7 +106,7 @@ impl<'a> TerminalView<'a> {
     }
 }
 
-impl<'a> Drop for TerminalView<'a> {
+impl<'a> Drop for TerminalUi<'a> {
     fn drop(&mut self) {
         handle_command!(self.stdout, terminal::LeaveAlternateScreen).unwrap();
         handle_command!(self.stdout, cursor::Show).unwrap();

@@ -10,6 +10,7 @@ pub struct BufferView {
     pub buffer_handle: BufferHandle,
     pub cursor: Cursor,
     pub size: (u16, u16),
+    pub scroll: u16
 }
 
 impl BufferView {
@@ -18,6 +19,7 @@ impl BufferView {
             buffer_handle,
             cursor: Default::default(),
             size: Default::default(),
+            scroll: 0,
         }
     }
 
