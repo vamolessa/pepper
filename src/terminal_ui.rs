@@ -1,116 +1,167 @@
-use std::{
-    io::{StdoutLock, Write},
-    iter,
-};
+use std::{io::Write, iter};
 
 use crossterm::{
-    cursor, handle_command,
+    cursor, event, handle_command,
     style::{Color, Print, ResetColor, SetBackgroundColor, SetForegroundColor},
     terminal::{self, Clear, ClearType},
     Result,
 };
 
-use crate::{buffer::BufferCollection, buffer_view::BufferView, theme::Theme};
+use crate::{editor::Editor, theme};
 
-pub struct TerminalUi<'a> {
-    stdout: StdoutLock<'a>,
-
-    pub buffers: BufferCollection,
-    pub buffer_views: Vec<BufferView>,
-    theme: Theme,
+pub fn to_terminal_color(color: theme::Color) -> Color {
+    Color::Rgb {
+        r: color.0,
+        g: color.1,
+        b: color.2,
+    }
 }
 
-impl<'a> TerminalUi<'a> {
-    pub fn new(stdout: StdoutLock<'a>) -> Result<Self> {
-        let mut s = Self {
-            stdout,
-            buffers: Default::default(),
-            buffer_views: Default::default(),
-            theme: Theme {
-                foreground: Color::White,
-                background: Color::Black,
-            },
-        };
+fn update_buffer_views_size(editor: &mut Editor) {
+    let size = terminal::size().unwrap_or((0, 0));
+    editor.set_view_size(size);
+}
 
-        handle_command!(s.stdout, terminal::EnterAlternateScreen)?;
-        s.stdout.flush()?;
-        handle_command!(s.stdout, cursor::Hide)?;
-        s.stdout.flush()?;
+pub fn show<W>(mut write: W, mut editor: Editor) -> Result<()>
+where
+    W: Write,
+{
+    handle_command!(write, terminal::EnterAlternateScreen)?;
+    write.flush()?;
+    handle_command!(write, cursor::Hide)?;
+    write.flush()?;
+    terminal::enable_raw_mode()?;
 
-        terminal::enable_raw_mode()?;
-        Ok(s)
-    }
+    update_buffer_views_size(&mut editor);
+    draw(&mut write, &editor, 0)?;
 
-    pub fn update_buffer_views_size(&mut self) {
-        let size = terminal::size().unwrap_or((0, 0));
-        for view in &mut self.buffer_views {
-            view.size = size;
+    loop {
+        let bv = &mut editor.buffer_views[0];
+        let bs = &editor.buffers;
+        match event::read()? {
+            event::Event::Key(event::KeyEvent {
+                code: event::KeyCode::Char('q'),
+                ..
+            }) => break,
+            event::Event::Key(event::KeyEvent {
+                code: event::KeyCode::Char('h'),
+                ..
+            }) => bv.move_cursor(bs, (-1, 0)),
+            event::Event::Key(event::KeyEvent {
+                code: event::KeyCode::Char('j'),
+                ..
+            }) => bv.move_cursor(bs, (0, 1)),
+            event::Event::Key(event::KeyEvent {
+                code: event::KeyCode::Char('k'),
+                ..
+            }) => bv.move_cursor(bs, (0, -1)),
+            event::Event::Key(event::KeyEvent {
+                code: event::KeyCode::Char('l'),
+                ..
+            }) => bv.move_cursor(bs, (1, 0)),
+            _ => (),
         }
+        draw(&mut write, &editor, 0)?;
     }
 
-    pub fn print(&mut self, view_index: usize) -> Result<()> {
-        let buffer_view = &self.buffer_views[view_index];
-        let buffer = &self.buffers[buffer_view.buffer_handle];
+    handle_command!(write, terminal::LeaveAlternateScreen)?;
+    handle_command!(write, cursor::Show)?;
+    terminal::disable_raw_mode().unwrap();
 
-        handle_command!(self.stdout, cursor::MoveTo(0, 0))?;
-        handle_command!(self.stdout, cursor::Hide)?;
+    Ok(())
+}
 
-        handle_command!(self.stdout, SetForegroundColor(self.theme.foreground))?;
-        handle_command!(self.stdout, SetBackgroundColor(self.theme.background))?;
+fn draw<W>(write: &mut W, editor: &Editor, view_index: usize) -> Result<()>
+where
+    W: Write,
+{
+    let buffer_view = &editor.buffer_views[view_index];
+    let buffer = &editor.buffers[buffer_view.buffer_handle];
 
-        let mut was_inside_selection = false;
-        for (y, line) in buffer
-            .lines
-            .iter()
-            .skip(buffer_view.scroll as usize)
-            .take(buffer_view.size.1 as usize)
-            .enumerate()
-        {
-            let y = y + buffer_view.scroll as usize;
-            for (x, c) in line.chars().chain(iter::once(' ')).enumerate() {
-                let inside_selection = x == buffer_view.cursor.column_index as usize
-                    && y == buffer_view.cursor.line_index as usize;
-                if was_inside_selection != inside_selection {
-                    was_inside_selection = inside_selection;
-                    if inside_selection {
-                        handle_command!(self.stdout, SetForegroundColor(self.theme.background))?;
-                        handle_command!(self.stdout, SetBackgroundColor(self.theme.foreground))?;
-                    } else {
-                        handle_command!(self.stdout, SetForegroundColor(self.theme.foreground))?;
-                        handle_command!(self.stdout, SetBackgroundColor(self.theme.background))?;
-                    }
-                }
+    handle_command!(write, cursor::MoveTo(0, 0))?;
+    handle_command!(write, cursor::Hide)?;
 
-                match c {
-                    '\t' => handle_command!(self.stdout, Print("    "))?,
-                    _ => handle_command!(self.stdout, Print(c))?,
+    handle_command!(
+        write,
+        SetForegroundColor(to_terminal_color(editor.theme.foreground))
+    )?;
+    handle_command!(
+        write,
+        SetBackgroundColor(to_terminal_color(editor.theme.background))
+    )?;
+
+    let mut was_inside_selection = false;
+    for (y, line) in buffer
+        .lines
+        .iter()
+        .skip(buffer_view.scroll as usize)
+        .take(buffer_view.size.1 as usize)
+        .enumerate()
+    {
+        let y = y + buffer_view.scroll as usize;
+        for (x, c) in line.chars().chain(iter::once(' ')).enumerate() {
+            let inside_selection = x == buffer_view.cursor.column_index as usize
+                && y == buffer_view.cursor.line_index as usize;
+            if was_inside_selection != inside_selection {
+                was_inside_selection = inside_selection;
+                if inside_selection {
+                    handle_command!(
+                        write,
+                        SetForegroundColor(to_terminal_color(editor.theme.background))
+                    )?;
+                    handle_command!(
+                        write,
+                        SetBackgroundColor(to_terminal_color(editor.theme.foreground))
+                    )?;
+                } else {
+                    handle_command!(
+                        write,
+                        SetForegroundColor(to_terminal_color(editor.theme.foreground))
+                    )?;
+                    handle_command!(
+                        write,
+                        SetBackgroundColor(to_terminal_color(editor.theme.background))
+                    )?;
                 }
             }
 
-            handle_command!(self.stdout, SetForegroundColor(self.theme.foreground))?;
-            handle_command!(self.stdout, SetBackgroundColor(self.theme.background))?;
-            handle_command!(self.stdout, Clear(ClearType::UntilNewLine))?;
-            handle_command!(self.stdout, cursor::MoveToNextLine(1))?;
+            match c {
+                '\t' => {
+                    for _ in 0..editor.config.tab_size {
+                        handle_command!(write, Print(' '))?
+                    }
+                }
+                _ => handle_command!(write, Print(c))?,
+            }
         }
 
-        handle_command!(self.stdout, SetForegroundColor(self.theme.foreground))?;
-        handle_command!(self.stdout, SetBackgroundColor(self.theme.background))?;
-        for _ in buffer.lines.len()..buffer_view.size.1 as usize {
-            handle_command!(self.stdout, Print('~'))?;
-            handle_command!(self.stdout, Clear(ClearType::UntilNewLine))?;
-            handle_command!(self.stdout, cursor::MoveToNextLine(1))?;
-        }
-
-        handle_command!(self.stdout, ResetColor)?;
-        self.stdout.flush()?;
-        Ok(())
+        handle_command!(
+            write,
+            SetForegroundColor(to_terminal_color(editor.theme.foreground))
+        )?;
+        handle_command!(
+            write,
+            SetBackgroundColor(to_terminal_color(editor.theme.background))
+        )?;
+        handle_command!(write, Clear(ClearType::UntilNewLine))?;
+        handle_command!(write, cursor::MoveToNextLine(1))?;
     }
-}
 
-impl<'a> Drop for TerminalUi<'a> {
-    fn drop(&mut self) {
-        handle_command!(self.stdout, terminal::LeaveAlternateScreen).unwrap();
-        handle_command!(self.stdout, cursor::Show).unwrap();
-        terminal::disable_raw_mode().unwrap();
+    handle_command!(
+        write,
+        SetForegroundColor(to_terminal_color(editor.theme.foreground))
+    )?;
+    handle_command!(
+        write,
+        SetBackgroundColor(to_terminal_color(editor.theme.background))
+    )?;
+    for _ in buffer.lines.len()..buffer_view.size.1 as usize {
+        handle_command!(write, Print('~'))?;
+        handle_command!(write, Clear(ClearType::UntilNewLine))?;
+        handle_command!(write, cursor::MoveToNextLine(1))?;
     }
+
+    handle_command!(write, ResetColor)?;
+    write.flush()?;
+    Ok(())
 }
