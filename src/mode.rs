@@ -30,6 +30,7 @@ impl Mode for Normal {
     ) -> Transition {
         match event {
             Event::Key(KeyEvent::Char('q')) => return Transition::Exit,
+            Event::Key(KeyEvent::Char('Q')) => return Transition::Exit,
             Event::Key(KeyEvent::Char('h')) => buffer_view.move_cursor(buffers, (-1, 0)),
             Event::Key(KeyEvent::Char('j')) => buffer_view.move_cursor(buffers, (0, 1)),
             Event::Key(KeyEvent::Char('k')) => buffer_view.move_cursor(buffers, (0, -1)),
