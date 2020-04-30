@@ -36,30 +36,9 @@ where
     draw(&mut write, &editor, 0)?;
 
     loop {
-        let bv = &mut editor.buffer_views[0];
-        let bs = &editor.buffers;
-        match event::read()? {
-            event::Event::Key(event::KeyEvent {
-                code: event::KeyCode::Char('q'),
-                ..
-            }) => break,
-            event::Event::Key(event::KeyEvent {
-                code: event::KeyCode::Char('h'),
-                ..
-            }) => bv.move_cursor(bs, (-1, 0)),
-            event::Event::Key(event::KeyEvent {
-                code: event::KeyCode::Char('j'),
-                ..
-            }) => bv.move_cursor(bs, (0, 1)),
-            event::Event::Key(event::KeyEvent {
-                code: event::KeyCode::Char('k'),
-                ..
-            }) => bv.move_cursor(bs, (0, -1)),
-            event::Event::Key(event::KeyEvent {
-                code: event::KeyCode::Char('l'),
-                ..
-            }) => bv.move_cursor(bs, (1, 0)),
-            _ => (),
+        let event = event::read()?;
+        if editor.on_event(&event) {
+            break;
         }
         draw(&mut write, &editor, 0)?;
     }
