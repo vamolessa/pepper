@@ -7,9 +7,44 @@ use crossterm::{
     Result,
 };
 
-use crate::{editor::Editor, theme};
+use crate::{
+    editor::Editor,
+    event::{Event, KeyEvent},
+    theme,
+};
 
-pub fn to_terminal_color(color: theme::Color) -> Color {
+pub fn convert_event(event: event::Event) -> Event {
+    match event {
+        event::Event::Key(e) => match e.code {
+            event::KeyCode::Backspace => Event::Key(KeyEvent::Backspace),
+            event::KeyCode::Enter => Event::Key(KeyEvent::Enter),
+            event::KeyCode::Left => Event::Key(KeyEvent::Left),
+            event::KeyCode::Right => Event::Key(KeyEvent::Right),
+            event::KeyCode::Up => Event::Key(KeyEvent::Up),
+            event::KeyCode::Down => Event::Key(KeyEvent::Down),
+            event::KeyCode::Home => Event::Key(KeyEvent::Home),
+            event::KeyCode::End => Event::Key(KeyEvent::End),
+            event::KeyCode::PageUp => Event::Key(KeyEvent::PageUp),
+            event::KeyCode::PageDown => Event::Key(KeyEvent::PageDown),
+            event::KeyCode::Tab => Event::Key(KeyEvent::Tab),
+            event::KeyCode::BackTab => Event::Key(KeyEvent::BackTab),
+            event::KeyCode::Delete => Event::Key(KeyEvent::Delete),
+            event::KeyCode::Insert => Event::Key(KeyEvent::Insert),
+            event::KeyCode::F(f) => Event::Key(KeyEvent::F(f)),
+            event::KeyCode::Char(c) => match e.modifiers {
+                event::KeyModifiers::CONTROL => Event::Key(KeyEvent::Ctrl(c)),
+                event::KeyModifiers::ALT => Event::Key(KeyEvent::Alt(c)),
+                _ => Event::Key(KeyEvent::Char(c)),
+            },
+            event::KeyCode::Null => Event::Key(KeyEvent::Null),
+            event::KeyCode::Esc => Event::Key(KeyEvent::Esc),
+        },
+        event::Event::Resize(w, h) => Event::Resize(w, h),
+        _ => Event::None,
+    }
+}
+
+pub fn convert_color(color: theme::Color) -> Color {
     Color::Rgb {
         r: color.0,
         g: color.1,
@@ -36,7 +71,7 @@ where
     draw(&mut write, &editor, 0)?;
 
     loop {
-        let event = event::read()?;
+        let event = convert_event(event::read()?);
         if editor.on_event(&event) {
             break;
         }
@@ -62,11 +97,11 @@ where
 
     handle_command!(
         write,
-        SetForegroundColor(to_terminal_color(editor.theme.foreground))
+        SetForegroundColor(convert_color(editor.theme.foreground))
     )?;
     handle_command!(
         write,
-        SetBackgroundColor(to_terminal_color(editor.theme.background))
+        SetBackgroundColor(convert_color(editor.theme.background))
     )?;
 
     let mut was_inside_selection = false;
@@ -86,20 +121,20 @@ where
                 if inside_selection {
                     handle_command!(
                         write,
-                        SetForegroundColor(to_terminal_color(editor.theme.background))
+                        SetForegroundColor(convert_color(editor.theme.background))
                     )?;
                     handle_command!(
                         write,
-                        SetBackgroundColor(to_terminal_color(editor.theme.foreground))
+                        SetBackgroundColor(convert_color(editor.theme.foreground))
                     )?;
                 } else {
                     handle_command!(
                         write,
-                        SetForegroundColor(to_terminal_color(editor.theme.foreground))
+                        SetForegroundColor(convert_color(editor.theme.foreground))
                     )?;
                     handle_command!(
                         write,
-                        SetBackgroundColor(to_terminal_color(editor.theme.background))
+                        SetBackgroundColor(convert_color(editor.theme.background))
                     )?;
                 }
             }
@@ -116,11 +151,11 @@ where
 
         handle_command!(
             write,
-            SetForegroundColor(to_terminal_color(editor.theme.foreground))
+            SetForegroundColor(convert_color(editor.theme.foreground))
         )?;
         handle_command!(
             write,
-            SetBackgroundColor(to_terminal_color(editor.theme.background))
+            SetBackgroundColor(convert_color(editor.theme.background))
         )?;
         handle_command!(write, Clear(ClearType::UntilNewLine))?;
         handle_command!(write, cursor::MoveToNextLine(1))?;
@@ -128,11 +163,11 @@ where
 
     handle_command!(
         write,
-        SetForegroundColor(to_terminal_color(editor.theme.foreground))
+        SetForegroundColor(convert_color(editor.theme.foreground))
     )?;
     handle_command!(
         write,
-        SetBackgroundColor(to_terminal_color(editor.theme.background))
+        SetBackgroundColor(convert_color(editor.theme.background))
     )?;
     for _ in buffer.lines.len()..buffer_view.size.1 as usize {
         handle_command!(write, Print('~'))?;

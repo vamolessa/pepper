@@ -1,5 +1,29 @@
-pub mod event {
-    pub type Event = crossterm::event::Event;
-    pub type KeyCode = crossterm::event::KeyCode;
-    pub type KeyEvent = crossterm::event::KeyEvent;
+pub enum Event {
+    None,
+    Key(KeyEvent),
+    Resize(u16, u16),
 }
+
+pub enum KeyEvent {
+    Backspace,
+    Enter,
+    Left,
+    Right,
+    Up,
+    Down,
+    Home,
+    End,
+    PageUp,
+    PageDown,
+    Tab,
+    BackTab,
+    Delete,
+    Insert,
+    F(u8),
+    Char(char),
+    Ctrl(char),
+    Alt(char),
+    Null,
+    Esc,
+}
+

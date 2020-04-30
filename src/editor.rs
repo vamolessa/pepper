@@ -3,7 +3,7 @@ use crate::{
     buffer_view::BufferView,
     config::Config,
     event::Event,
-    modes::{Mode, Normal, Transition},
+    mode::{Mode, Normal, Transition},
     theme::{Color, Theme},
 };
 
@@ -44,7 +44,7 @@ impl Editor {
         let buffer_view = &mut self.buffer_views[self.current_buffer_view];
         let buffers = &mut self.buffers;
         match self.mode.on_event(buffer_view, buffers, event) {
-            Transition::Stay => (),
+            Transition::None => (),
             Transition::MoveToMode(mode) => self.mode = mode,
             Transition::Exit => return true,
         }

@@ -1,11 +1,11 @@
 use crate::{
     buffer::BufferCollection,
     buffer_view::BufferView,
-    event::{Event, KeyCode, KeyEvent},
+    event::{Event, KeyEvent},
 };
 
 pub enum Transition {
-    Stay,
+    None,
     MoveToMode(Box<dyn Mode>),
     Exit,
 }
@@ -29,29 +29,14 @@ impl Mode for Normal {
         event: &Event,
     ) -> Transition {
         match event {
-            Event::Key(KeyEvent {
-                code: KeyCode::Char('q'),
-                ..
-            }) => return Transition::Exit,
-            Event::Key(KeyEvent {
-                code: KeyCode::Char('h'),
-                ..
-            }) => buffer_view.move_cursor(buffers, (-1, 0)),
-            Event::Key(KeyEvent {
-                code: KeyCode::Char('j'),
-                ..
-            }) => buffer_view.move_cursor(buffers, (0, 1)),
-            Event::Key(KeyEvent {
-                code: KeyCode::Char('k'),
-                ..
-            }) => buffer_view.move_cursor(buffers, (0, -1)),
-            Event::Key(KeyEvent {
-                code: KeyCode::Char('l'),
-                ..
-            }) => buffer_view.move_cursor(buffers, (1, 0)),
+            Event::Key(KeyEvent::Char('q')) => return Transition::Exit,
+            Event::Key(KeyEvent::Char('h')) => buffer_view.move_cursor(buffers, (-1, 0)),
+            Event::Key(KeyEvent::Char('j')) => buffer_view.move_cursor(buffers, (0, 1)),
+            Event::Key(KeyEvent::Char('k')) => buffer_view.move_cursor(buffers, (0, -1)),
+            Event::Key(KeyEvent::Char('l')) => buffer_view.move_cursor(buffers, (1, 0)),
             _ => (),
         }
 
-        Transition::Stay
+        Transition::None
     }
 }
