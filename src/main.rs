@@ -1,16 +1,11 @@
 use std::io::stdout;
 
-pub mod event {
-    pub type Event = crossterm::event::Event;
-    pub type KeyCode = crossterm::event::KeyCode;
-    pub type KeyEvent = crossterm::event::KeyEvent;
-}
-
 mod buffer;
 mod buffer_view;
 mod config;
 mod editor;
-mod modes;
+mod event;
+mod mode;
 mod terminal_ui;
 mod theme;
 
