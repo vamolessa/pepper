@@ -6,7 +6,7 @@ mod config;
 mod editor;
 mod event;
 mod mode;
-mod terminal_ui;
+mod tui;
 mod theme;
 
 fn main() {
@@ -23,5 +23,5 @@ fn main() {
         .buffer_views
         .push(buffer_view::BufferView::with_handle(handle));
 
-    terminal_ui::show(stdout, editor).unwrap();
+    tui::show(stdout, editor).unwrap();
 }
