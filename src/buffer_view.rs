@@ -1,4 +1,4 @@
-use crate::buffer::{Buffer, BufferCollection, BufferHandle};
+use crate::buffer::{BufferCollection, BufferHandle};
 
 #[derive(Default, Copy, Clone)]
 pub struct Cursor {
@@ -23,12 +23,8 @@ impl BufferView {
         }
     }
 
-    pub fn buffer<'a>(&self, buffers: &'a BufferCollection) -> &'a Buffer {
-        &buffers[self.buffer_handle]
-    }
-
     pub fn move_cursor(&mut self, buffers: &BufferCollection, offset: (i16, i16)) {
-        let buffer = self.buffer(buffers);
+        let buffer = &buffers[self.buffer_handle];
         let cursor = &mut self.cursor;
 
         let mut target = (
@@ -48,5 +44,25 @@ impl BufferView {
         } else if cursor.line_index >= self.scroll + self.size.1 {
             self.scroll = cursor.line_index - self.size.1 + 1;
         }
+    }
+
+    pub fn break_line(&mut self, buffers: &mut BufferCollection) {
+        let buffer = &mut buffers[self.buffer_handle];
+        let cursor = &mut self.cursor;
+
+        let line = &mut buffer.lines[cursor.line_index as usize];
+        let new_line = line.split_off(cursor.column_index as usize);
+        buffer.lines.insert(cursor.line_index as usize + 1, new_line);
+        cursor.line_index += 1;
+        cursor.column_index = 0;
+    }
+
+    pub fn insert_text(&mut self, buffers: &mut BufferCollection, text: &str) {
+        let buffer = &mut buffers[self.buffer_handle];
+        let cursor = &mut self.cursor;
+
+        let line = &mut buffer.lines[cursor.line_index as usize];
+        line.insert_str(cursor.column_index as usize, text);
+        cursor.column_index += text.chars().count() as u16;
     }
 }

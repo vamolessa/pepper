@@ -1,13 +1,10 @@
-use crate::{
-    buffer::BufferCollection,
-    buffer_view::BufferView,
-    event::{Event, KeyEvent},
-};
+use crate::{buffer::BufferCollection, buffer_view::BufferView, event::Key};
 
 pub enum Transition {
     None,
-    MoveToMode(Box<dyn Mode>),
     Exit,
+    Waiting,
+    EnterMode(Box<dyn Mode>),
 }
 
 pub trait Mode {
@@ -15,26 +12,58 @@ pub trait Mode {
         &mut self,
         buffer_view: &mut BufferView,
         buffers: &mut BufferCollection,
-        event: &Event,
+        keys: &[Key],
     ) -> Transition;
 }
 
-pub struct Normal {}
+pub fn initial_mode() -> Box<dyn Mode> {
+    Box::new(Normal)
+}
+
+pub struct Normal;
 
 impl Mode for Normal {
     fn on_event(
         &mut self,
         buffer_view: &mut BufferView,
         buffers: &mut BufferCollection,
-        event: &Event,
+        keys: &[Key],
     ) -> Transition {
-        match event {
-            Event::Key(KeyEvent::Char('q')) => return Transition::Exit,
-            Event::Key(KeyEvent::Char('Q')) => return Transition::Exit,
-            Event::Key(KeyEvent::Char('h')) => buffer_view.move_cursor(buffers, (-1, 0)),
-            Event::Key(KeyEvent::Char('j')) => buffer_view.move_cursor(buffers, (0, 1)),
-            Event::Key(KeyEvent::Char('k')) => buffer_view.move_cursor(buffers, (0, -1)),
-            Event::Key(KeyEvent::Char('l')) => buffer_view.move_cursor(buffers, (1, 0)),
+        match keys {
+            [Key::Char('q')] => return Transition::Waiting,
+            [Key::Char('q'), Key::Char('q')] => return Transition::Exit,
+            [Key::Char('h')] => buffer_view.move_cursor(buffers, (-1, 0)),
+            [Key::Char('j')] => buffer_view.move_cursor(buffers, (0, 1)),
+            [Key::Char('k')] => buffer_view.move_cursor(buffers, (0, -1)),
+            [Key::Char('l')] => buffer_view.move_cursor(buffers, (1, 0)),
+            [Key::Char('i')] => return Transition::EnterMode(Box::new(Insert)),
+            _ => (),
+        }
+
+        Transition::None
+    }
+}
+
+struct Insert;
+
+impl Mode for Insert {
+    fn on_event(
+        &mut self,
+        buffer_view: &mut BufferView,
+        buffers: &mut BufferCollection,
+        keys: &[Key],
+    ) -> Transition {
+        match keys {
+            [Key::Esc] | [Key::Ctrl('c')] => return Transition::EnterMode(Box::new(Normal)),
+            [Key::Tab] => {
+                buffer_view.insert_text(buffers, "    ");
+            }
+            [Key::Enter] => {
+                buffer_view.break_line(buffers);
+            }
+            [Key::Char(c)] => {
+                buffer_view.insert_text(buffers, c.encode_utf8(&mut [0 as u8; 4]));
+            }
             _ => (),
         }
 

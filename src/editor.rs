@@ -2,15 +2,17 @@ use crate::{
     buffer::BufferCollection,
     buffer_view::BufferView,
     config::Config,
-    event::Event,
-    mode::{Mode, Normal, Transition},
+    event::{Event, Key},
+    mode::{initial_mode, Mode, Transition},
     theme::{Color, Theme},
 };
 
 pub struct Editor {
     pub config: Config,
     pub theme: Theme,
+
     pub mode: Box<dyn Mode>,
+    pub buffered_keys: Vec<Key>,
 
     pub buffers: BufferCollection,
     pub buffer_views: Vec<BufferView>,
@@ -25,7 +27,8 @@ impl Default for Editor {
                 foreground: Color(255, 255, 255),
                 background: Color(0, 0, 0),
             },
-            mode: Box::new(Normal {}),
+            mode: initial_mode(),
+            buffered_keys: Vec::new(),
             buffers: Default::default(),
             buffer_views: Default::default(),
             current_buffer_view: 0,
@@ -43,10 +46,24 @@ impl Editor {
     pub fn on_event(&mut self, event: &Event) -> bool {
         let buffer_view = &mut self.buffer_views[self.current_buffer_view];
         let buffers = &mut self.buffers;
-        match self.mode.on_event(buffer_view, buffers, event) {
-            Transition::None => (),
-            Transition::MoveToMode(mode) => self.mode = mode,
-            Transition::Exit => return true,
+        match event {
+            Event::None => (),
+            Event::Resize(_w, _h) => (),
+            Event::Key(key) => {
+                self.buffered_keys.push(*key);
+                match self
+                    .mode
+                    .on_event(buffer_view, buffers, &self.buffered_keys[..])
+                {
+                    Transition::None => self.buffered_keys.clear(),
+                    Transition::Waiting => (),
+                    Transition::Exit => return true,
+                    Transition::EnterMode(mode) => {
+                        self.buffered_keys.clear();
+                        self.mode = mode;
+                    }
+                }
+            }
         }
 
         false

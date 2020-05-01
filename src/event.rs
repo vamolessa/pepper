@@ -1,10 +1,12 @@
+#[derive(Debug, Clone, Copy)]
 pub enum Event {
     None,
-    Key(KeyEvent),
+    Key(Key),
     Resize(u16, u16),
 }
 
-pub enum KeyEvent {
+#[derive(Debug, Clone, Copy)]
+pub enum Key {
     Backspace,
     Enter,
     Left,
