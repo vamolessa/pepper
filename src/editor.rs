@@ -2,8 +2,8 @@ use crate::{
     buffer::BufferCollection,
     buffer_view::BufferView,
     config::Config,
-    event::Event,
-    mode::{Modes, ModeTransition},
+    event::{Event, Key},
+    mode::{initial_mode, ModeTrait, Transition},
     theme::{Color, Theme},
 };
 
@@ -11,7 +11,8 @@ pub struct Editor {
     pub config: Config,
     pub theme: Theme,
 
-    pub modes: Modes,
+    pub mode: Box<dyn ModeTrait>,
+    pub buffered_keys: Vec<Key>,
 
     pub buffers: BufferCollection,
     pub buffer_views: Vec<BufferView>,
@@ -26,7 +27,8 @@ impl Default for Editor {
                 foreground: Color(255, 255, 255),
                 background: Color(0, 0, 0),
             },
-            modes: Modes::default(),
+            mode: initial_mode(),
+            buffered_keys: Vec::new(),
             buffers: Default::default(),
             buffer_views: Default::default(),
             current_buffer_view: 0,
@@ -48,9 +50,18 @@ impl Editor {
             Event::None => (),
             Event::Resize(_w, _h) => (),
             Event::Key(key) => {
-                match self.modes.on_key(buffer_view, buffers, *key) {
-                    ModeTransition::None => (),
-                    ModeTransition::Exit => return true
+                self.buffered_keys.push(*key);
+                match self
+                    .mode
+                    .on_event(buffer_view, buffers, &self.buffered_keys[..])
+                {
+                    Transition::None => self.buffered_keys.clear(),
+                    Transition::Waiting => (),
+                    Transition::Exit => return true,
+                    Transition::EnterMode(mode) => {
+                        self.buffered_keys.clear();
+                        self.mode = mode;
+                    }
                 }
             }
         }
