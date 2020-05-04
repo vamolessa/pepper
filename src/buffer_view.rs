@@ -1,10 +1,4 @@
-use crate::buffer::{BufferCollection, BufferHandle};
-
-#[derive(Default, Copy, Clone)]
-pub struct Cursor {
-    pub column_index: u16,
-    pub line_index: u16,
-}
+use crate::buffer::{BufferCollection, BufferHandle, Cursor};
 
 pub struct BufferView {
     pub buffer_handle: BufferHandle,
@@ -32,8 +26,8 @@ impl BufferView {
             cursor.line_index as i16 + offset.1,
         );
 
-        target.1 = target.1.min(buffer.lines.len() as i16 - 1).max(0);
-        let target_line_len = buffer.lines[target.1 as usize].chars().count();
+        target.1 = target.1.min(buffer.line_count() as i16 - 1).max(0);
+        let target_line_len = buffer.line(target.1 as usize).chars().count();
         target.0 = target.0.min(target_line_len as i16).max(0);
 
         cursor.column_index = target.0 as u16;
@@ -50,9 +44,7 @@ impl BufferView {
         let buffer = &mut buffers[self.buffer_handle];
         let cursor = &mut self.cursor;
 
-        let line = &mut buffer.lines[cursor.line_index as usize];
-        let new_line = line.split_off(cursor.column_index as usize);
-        buffer.lines.insert(cursor.line_index as usize + 1, new_line);
+        buffer.break_line(*cursor);
         cursor.line_index += 1;
         cursor.column_index = 0;
     }
@@ -61,8 +53,7 @@ impl BufferView {
         let buffer = &mut buffers[self.buffer_handle];
         let cursor = &mut self.cursor;
 
-        let line = &mut buffer.lines[cursor.line_index as usize];
-        line.insert_str(cursor.column_index as usize, text);
+        buffer.insert_text(*cursor, text);
         cursor.column_index += text.chars().count() as u16;
     }
 }

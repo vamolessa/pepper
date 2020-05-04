@@ -1,8 +1,14 @@
 use std::ops::{Index, IndexMut};
 
+#[derive(Default, Copy, Clone)]
+pub struct Cursor {
+    pub column_index: u16,
+    pub line_index: u16,
+}
+
 #[derive(Default)]
 pub struct Buffer {
-    pub lines: Vec<String>,
+    lines: Vec<String>,
 }
 
 impl Buffer {
@@ -10,6 +16,28 @@ impl Buffer {
         Self {
             lines: text.lines().map(Into::into).collect(),
         }
+    }
+
+    pub fn line_count(&self) -> usize {
+        self.lines.len()
+    }
+
+    pub fn lines(&self) -> impl Iterator<Item = &String> {
+        self.lines.iter()
+    }
+
+    pub fn line(&self, index: usize) -> &String {
+        &self.lines[index]
+    }
+
+    pub fn break_line(&mut self, cursor: Cursor) {
+        let line = &mut self.lines[cursor.line_index as usize];
+        let new_line = line.split_off(cursor.column_index as usize);
+        self.lines.insert(cursor.line_index as usize + 1, new_line);
+    }
+
+    pub fn insert_text(&mut self, cursor: Cursor, text: &str) {
+        self.lines[cursor.line_index as usize].insert_str(cursor.column_index as usize, text);
     }
 }
 

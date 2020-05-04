@@ -106,8 +106,7 @@ where
 
     let mut was_inside_selection = false;
     for (y, line) in buffer
-        .lines
-        .iter()
+        .lines()
         .skip(buffer_view.scroll as usize)
         .take(buffer_view.size.1 as usize)
         .enumerate()
@@ -169,7 +168,7 @@ where
         write,
         SetBackgroundColor(convert_color(editor.theme.background))
     )?;
-    for _ in buffer.lines.len()..buffer_view.size.1 as usize {
+    for _ in buffer.line_count()..buffer_view.size.1 as usize {
         handle_command!(write, Print('~'))?;
         handle_command!(write, Clear(ClearType::UntilNewLine))?;
         handle_command!(write, cursor::MoveToNextLine(1))?;
