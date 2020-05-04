@@ -5,7 +5,7 @@ pub enum Event {
     Resize(u16, u16),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Key {
     Backspace,
     Enter,

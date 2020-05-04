@@ -3,7 +3,7 @@ use crate::{
     buffer_view::BufferView,
     config::Config,
     event::{Event, Key},
-    mode::{initial_mode, Mode, Transition},
+    mode::{initial_mode, ModeTrait, Transition},
     theme::{Color, Theme},
 };
 
@@ -11,7 +11,7 @@ pub struct Editor {
     pub config: Config,
     pub theme: Theme,
 
-    pub mode: Box<dyn Mode>,
+    pub mode: Box<dyn ModeTrait>,
     pub buffered_keys: Vec<Key>,
 
     pub buffers: BufferCollection,
@@ -21,6 +21,8 @@ pub struct Editor {
 
 impl Default for Editor {
     fn default() -> Self {
+        crate::mode::new_normal_mode().unwrap();
+
         Self {
             config: Default::default(),
             theme: Theme {
