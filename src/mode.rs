@@ -86,22 +86,24 @@ impl Command for MoveCursorCommand {
 
 pub fn new_normal_mode() -> Result<Mode, ()> {
     let mut mode = Mode::default();
-    let it = [Key::Char('q'), Key::Char('q')].into_iter();
-    mode.register(it, Box::new(ExitCommand))?;
     mode.register(
-        std::iter::once(Key::Char('h')),
+        [Key::Char('q'), Key::Char('q')].iter().cloned(),
+        Box::new(ExitCommand),
+    )?;
+    mode.register(
+        [Key::Char('h')].iter().cloned(),
         Box::new(MoveCursorCommand(-1, 0)),
     )?;
     mode.register(
-        std::iter::once(Key::Char('j')),
+        [Key::Char('j')].iter().cloned(),
         Box::new(MoveCursorCommand(0, 1)),
     )?;
     mode.register(
-        std::iter::once(Key::Char('k')),
-        Box::new(MoveCursorCommand(0, -1)),
+        [Key::Char('k')].iter().cloned(),
+        Box::new(MoveCursorCommand(-1, -1)),
     )?;
     mode.register(
-        std::iter::once(Key::Char('l')),
+        [Key::Char('l')].iter().cloned(),
         Box::new(MoveCursorCommand(1, 0)),
     )?;
 
