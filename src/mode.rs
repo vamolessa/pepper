@@ -2,16 +2,22 @@ use std::collections::{hash_map::Entry, HashMap};
 
 use crate::{buffer::BufferCollection, buffer_view::BufferView, event::Key};
 
-pub enum Keybind {
+#[derive(Debug, Clone, Copy)]
+pub enum Mode {
+    Normal,
+    Insert,
+}
+
+enum Keybind {
     Partial(usize),
     Command(Box<dyn Command>),
 }
 
-pub struct Mode {
-    pub keybindings: Vec<HashMap<Key, Keybind>>,
+pub struct ModeData {
+    keybindings: Vec<HashMap<Key, Keybind>>,
 }
 
-impl Default for Mode {
+impl Default for ModeData {
     fn default() -> Self {
         Self {
             keybindings: vec![HashMap::default()],
@@ -19,8 +25,12 @@ impl Default for Mode {
     }
 }
 
-impl Mode {
-    pub fn register<I>(&mut self, mut key_iterator: I, command: Box<dyn Command>) -> Result<(), ()>
+impl ModeData {
+    fn register_keybinding<I>(
+        &mut self,
+        mut key_iterator: I,
+        command: Box<dyn Command>,
+    ) -> Result<(), ()>
     where
         I: Iterator<Item = Key>,
     {
@@ -58,120 +68,159 @@ impl Mode {
     }
 }
 
-pub enum Transition {
+pub enum ModeTransition {
+    None,
+    Exit
+}
+
+pub struct Modes {
+    pub current_mode: Mode,
+    key_context: usize,
+    normal_mode_data: ModeData,
+    insert_mode_data: ModeData,
+}
+
+impl Default for Modes {
+    fn default() -> Self {
+        Self {
+            current_mode: Mode::Normal,
+            key_context: 0,
+            normal_mode_data: normal_mode_data().unwrap(),
+            insert_mode_data: insert_mode_data().unwrap(),
+        }
+    }
+}
+
+impl Modes {
+    pub fn on_key(&mut self, buffer_view: &mut BufferView, buffers: &mut BufferCollection, key: Key) -> ModeTransition {
+        let key_context = self.key_context;
+        match self.current_mode_data_mut().keybindings[key_context].get(&key) {
+            Some(Keybind::Partial(next)) => self.key_context = *next,
+            Some(Keybind::Command(command)) => {
+                match command.run(buffer_view, buffers) {
+                    CommandTransition::None => (),
+                    CommandTransition::Exit => return ModeTransition::Exit,
+                    CommandTransition::EnterMode(mode) => self.current_mode = mode
+                }
+                self.key_context = 0;
+            }
+            None => self.key_context = 0,
+        }
+
+        ModeTransition::None
+    }
+
+    fn current_mode_data_mut(&mut self) -> &mut ModeData {
+        match self.current_mode {
+            Mode::Normal => &mut self.normal_mode_data,
+            Mode::Insert => &mut self.insert_mode_data,
+        }
+    }
+}
+
+enum CommandTransition {
     None,
     Exit,
-    Waiting,
-    EnterMode(Box<dyn ModeTrait>),
+    EnterMode(Mode),
 }
 
-pub trait Command {
-    fn run(&self, buffer_view: &mut BufferView, buffers: &mut BufferCollection) -> Transition;
+trait Command {
+    fn run(&self, buffer_view: &mut BufferView, buffers: &mut BufferCollection) -> CommandTransition;
 }
 
-pub struct ExitCommand;
+struct ExitCommand;
 impl Command for ExitCommand {
-    fn run(&self, _buffer_view: &mut BufferView, _buffers: &mut BufferCollection) -> Transition {
-        Transition::Exit
+    fn run(&self, _buffer_view: &mut BufferView, _buffers: &mut BufferCollection) -> CommandTransition {
+        CommandTransition::Exit
     }
 }
 
-pub struct MoveCursorCommand(pub i16, pub i16);
+struct EnterModeCommand(pub Mode);
+impl Command for EnterModeCommand {
+    fn run(&self, _buffer_view: &mut BufferView, _buffers: &mut BufferCollection) -> CommandTransition {
+        CommandTransition::EnterMode(self.0)
+    }
+}
+
+struct MoveCursorCommand(pub i16, pub i16);
 impl Command for MoveCursorCommand {
-    fn run(&self, buffer_view: &mut BufferView, buffers: &mut BufferCollection) -> Transition {
+    fn run(&self, buffer_view: &mut BufferView, buffers: &mut BufferCollection) -> CommandTransition {
         buffer_view.move_cursor(buffers, (self.0, self.1));
-        Transition::None
+        CommandTransition::None
     }
 }
 
-pub fn new_normal_mode() -> Result<Mode, ()> {
-    let mut mode = Mode::default();
-    mode.register(
+struct InsertTextCommand(pub String);
+impl Command for InsertTextCommand {
+    fn run(&self, buffer_view: &mut BufferView, buffers: &mut BufferCollection) -> CommandTransition {
+        buffer_view.insert_text(buffers, &self.0);
+        CommandTransition::None
+    }
+}
+
+struct BreakLineCommand;
+impl Command for BreakLineCommand {
+    fn run(&self, buffer_view: &mut BufferView, buffers: &mut BufferCollection) -> CommandTransition {
+        buffer_view.break_line(buffers);
+        CommandTransition::None
+    }
+}
+
+fn normal_mode_data() -> Result<ModeData, ()> {
+    let mut mode = ModeData::default();
+    mode.register_keybinding(
         [Key::Char('q'), Key::Char('q')].iter().cloned(),
         Box::new(ExitCommand),
     )?;
-    mode.register(
+    mode.register_keybinding(
         [Key::Char('h')].iter().cloned(),
         Box::new(MoveCursorCommand(-1, 0)),
     )?;
-    mode.register(
+    mode.register_keybinding(
         [Key::Char('j')].iter().cloned(),
         Box::new(MoveCursorCommand(0, 1)),
     )?;
-    mode.register(
+    mode.register_keybinding(
         [Key::Char('k')].iter().cloned(),
         Box::new(MoveCursorCommand(-1, -1)),
     )?;
-    mode.register(
+    mode.register_keybinding(
         [Key::Char('l')].iter().cloned(),
         Box::new(MoveCursorCommand(1, 0)),
+    )?;
+    mode.register_keybinding(
+        [Key::Char('i')].iter().cloned(),
+        Box::new(EnterModeCommand(Mode::Insert)),
     )?;
 
     Ok(mode)
 }
 
-//--------------------------------------------------
+fn insert_mode_data() -> Result<ModeData, ()> {
+    let mut mode = ModeData::default();
+    mode.register_keybinding(
+        [Key::Esc].iter().cloned(),
+        Box::new(EnterModeCommand(Mode::Normal)),
+    )?;
+    mode.register_keybinding(
+        [Key::Ctrl('c')].iter().cloned(),
+        Box::new(EnterModeCommand(Mode::Normal)),
+    )?;
+    mode.register_keybinding(
+        [Key::Tab].iter().cloned(),
+        Box::new(InsertTextCommand("    ".into())),
+    )?;
+    mode.register_keybinding([Key::Enter].iter().cloned(), Box::new(BreakLineCommand))?;
 
-pub trait ModeTrait {
-    fn on_event(
-        &mut self,
-        buffer_view: &mut BufferView,
-        buffers: &mut BufferCollection,
-        keys: &[Key],
-    ) -> Transition;
-}
-
-pub fn initial_mode() -> Box<dyn ModeTrait> {
-    Box::new(Normal)
-}
-
-pub struct Normal;
-
-impl ModeTrait for Normal {
-    fn on_event(
-        &mut self,
-        buffer_view: &mut BufferView,
-        buffers: &mut BufferCollection,
-        keys: &[Key],
-    ) -> Transition {
-        match keys {
-            [Key::Char('q')] => return Transition::Waiting,
-            [Key::Char('q'), Key::Char('q')] => return Transition::Exit,
-            [Key::Char('h')] => buffer_view.move_cursor(buffers, (-1, 0)),
-            [Key::Char('j')] => buffer_view.move_cursor(buffers, (0, 1)),
-            [Key::Char('k')] => buffer_view.move_cursor(buffers, (0, -1)),
-            [Key::Char('l')] => buffer_view.move_cursor(buffers, (1, 0)),
-            [Key::Char('i')] => return Transition::EnterMode(Box::new(Insert)),
-            _ => (),
-        }
-
-        Transition::None
+    for c in (b'a'..=b'z').chain(b'A'..=b'Z') {
+        let c = c as char;
+        let mut text = String::with_capacity(1);
+        text.push(c);
+        mode.register_keybinding(
+            [Key::Char(c)].iter().cloned(),
+            Box::new(InsertTextCommand(text)),
+        )?;
     }
-}
 
-struct Insert;
-
-impl ModeTrait for Insert {
-    fn on_event(
-        &mut self,
-        buffer_view: &mut BufferView,
-        buffers: &mut BufferCollection,
-        keys: &[Key],
-    ) -> Transition {
-        match keys {
-            [Key::Esc] | [Key::Ctrl('c')] => return Transition::EnterMode(Box::new(Normal)),
-            [Key::Tab] => {
-                buffer_view.insert_text(buffers, "    ");
-            }
-            [Key::Enter] => {
-                buffer_view.break_line(buffers);
-            }
-            [Key::Char(c)] => {
-                buffer_view.insert_text(buffers, c.encode_utf8(&mut [0 as u8; 4]));
-            }
-            _ => (),
-        }
-
-        Transition::None
-    }
+    Ok(mode)
 }
