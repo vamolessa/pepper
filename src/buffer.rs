@@ -1,7 +1,7 @@
 use std::ops::{Index, IndexMut};
 
 #[derive(Default, Copy, Clone)]
-pub struct Cursor {
+pub struct BufferPosition {
     pub column_index: u16,
     pub line_index: u16,
 }
@@ -30,14 +30,15 @@ impl Buffer {
         &self.lines[index]
     }
 
-    pub fn break_line(&mut self, cursor: Cursor) {
-        let line = &mut self.lines[cursor.line_index as usize];
-        let new_line = line.split_off(cursor.column_index as usize);
-        self.lines.insert(cursor.line_index as usize + 1, new_line);
+    pub fn break_line(&mut self, position: BufferPosition) {
+        let line = &mut self.lines[position.line_index as usize];
+        let new_line = line.split_off(position.column_index as usize);
+        self.lines
+            .insert(position.line_index as usize + 1, new_line);
     }
 
-    pub fn insert_text(&mut self, cursor: Cursor, text: &str) {
-        self.lines[cursor.line_index as usize].insert_str(cursor.column_index as usize, text);
+    pub fn insert_text(&mut self, position: BufferPosition, text: &str) {
+        self.lines[position.line_index as usize].insert_str(position.column_index as usize, text);
     }
 }
 

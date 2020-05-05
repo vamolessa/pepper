@@ -4,10 +4,10 @@ pub enum Transition {
     None,
     Waiting,
     Exit,
-    EnterMode(Box<dyn ModeTrait>)
+    EnterMode(Box<dyn Mode>)
 }
 
-pub trait ModeTrait {
+pub trait Mode {
     fn on_event(
         &mut self,
         buffer_view: &mut BufferView,
@@ -16,13 +16,13 @@ pub trait ModeTrait {
     ) -> Transition;
 }
 
-pub fn initial_mode() -> Box<dyn ModeTrait> {
+pub fn initial_mode() -> Box<dyn Mode> {
     Box::new(Normal)
 }
 
 pub struct Normal;
 
-impl ModeTrait for Normal {
+impl Mode for Normal {
     fn on_event(
         &mut self,
         buffer_view: &mut BufferView,
@@ -46,7 +46,7 @@ impl ModeTrait for Normal {
 
 struct Insert;
 
-impl ModeTrait for Insert {
+impl Mode for Insert {
     fn on_event(
         &mut self,
         buffer_view: &mut BufferView,

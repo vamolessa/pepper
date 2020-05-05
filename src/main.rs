@@ -2,12 +2,13 @@ use std::io::stdout;
 
 mod buffer;
 mod buffer_view;
+mod command;
 mod config;
 mod editor;
 mod event;
 mod mode;
-mod tui;
 mod theme;
+mod tui;
 
 fn main() {
     ctrlc::set_handler(|| {}).unwrap();

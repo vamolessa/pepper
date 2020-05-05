@@ -1,8 +1,8 @@
-use crate::buffer::{BufferCollection, BufferHandle, Cursor};
+use crate::buffer::{BufferCollection, BufferHandle, BufferPosition};
 
 pub struct BufferView {
     pub buffer_handle: BufferHandle,
-    pub cursor: Cursor,
+    pub cursor: BufferPosition,
     pub size: (u16, u16),
     pub scroll: u16,
 }

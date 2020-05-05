@@ -11,3 +11,4 @@ Experimental code editor
 - status bar (buffer name, buffer position)
 - syntax highlighting
 - multiple panes
+- MORE!
