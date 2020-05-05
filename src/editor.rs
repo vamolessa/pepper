@@ -4,7 +4,7 @@ use crate::{
     config::Config,
     event::{Event, Key},
     mode::{initial_mode, ModeTrait, Transition},
-    theme::{Color, Theme},
+    theme::Theme,
 };
 
 pub struct Editor {
@@ -23,10 +23,7 @@ impl Default for Editor {
     fn default() -> Self {
         Self {
             config: Default::default(),
-            theme: Theme {
-                foreground: Color(255, 255, 255),
-                background: Color(0, 0, 0),
-            },
+            theme: Theme::default(),
             mode: initial_mode(),
             buffered_keys: Vec::new(),
             buffers: Default::default(),
@@ -43,21 +40,21 @@ impl Editor {
         }
     }
 
-    pub fn on_event(&mut self, event: &Event) -> bool {
+    pub fn on_event(&mut self, event: Event) -> bool {
         let buffer_view = &mut self.buffer_views[self.current_buffer_view];
         let buffers = &mut self.buffers;
         match event {
             Event::None => (),
             Event::Resize(_w, _h) => (),
             Event::Key(key) => {
-                self.buffered_keys.push(*key);
+                self.buffered_keys.push(key);
                 match self
                     .mode
                     .on_event(buffer_view, buffers, &self.buffered_keys[..])
                 {
                     Transition::None => self.buffered_keys.clear(),
                     Transition::Waiting => (),
-                    Transition::Exit => return true,
+                    Transition::Exit => return false,
                     Transition::EnterMode(mode) => {
                         self.buffered_keys.clear();
                         self.mode = mode;
@@ -66,6 +63,6 @@ impl Editor {
             }
         }
 
-        false
+        true
     }
 }

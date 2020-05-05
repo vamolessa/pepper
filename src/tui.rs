@@ -70,11 +70,7 @@ where
     update_buffer_views_size(&mut editor);
     draw(&mut write, &editor, 0)?;
 
-    loop {
-        let event = convert_event(event::read()?);
-        if editor.on_event(&event) {
-            break;
-        }
+    while editor.on_event(convert_event(event::read()?)) {
         draw(&mut write, &editor, 0)?;
     }
 
