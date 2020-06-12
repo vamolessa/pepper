@@ -1,4 +1,4 @@
-use crate::buffer::{BufferCollection, BufferHandle, BufferPosition};
+use crate::buffer::{BufferCollection, BufferHandle, BufferPosition, BufferRange};
 
 pub struct BufferView {
     pub buffer_handle: BufferHandle,
@@ -51,9 +51,15 @@ impl BufferView {
         let buffer = &mut buffers[self.buffer_handle];
         let cursor = &mut self.cursor;
 
+        let cursor_line_size = buffer.line(cursor.line_index).chars().count();
         let mut selection_end = *cursor;
-        selection_end.column_index += 1;
+        if selection_end.column_index < cursor_line_size {
+            selection_end.column_index += 1;
+        } else {
+            selection_end.line_index += 1;
+            selection_end.column_index = 0;
+        }
 
-        buffer.delete_range(*cursor..selection_end);
+        buffer.delete_range(BufferRange::new(*cursor, selection_end));
     }
 }
