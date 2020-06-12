@@ -1,6 +1,6 @@
 use std::{
-    cmp::{Ord, PartialOrd, Ordering},
-    ops::{Index, IndexMut, Range}
+    cmp::{Ord, Ordering, PartialOrd},
+    ops::{Index, IndexMut, Range},
 };
 
 #[derive(Default, Copy, Clone, PartialEq, Eq)]
@@ -73,7 +73,8 @@ impl Buffer {
 
     pub fn delete_range(&mut self, range: Range<BufferPosition>) {
         if range.start.line_index == range.end.line_index {
-            self.lines[range.start.line_index].drain(range.start.column_index..range.end.column_index);
+            self.lines[range.start.line_index]
+                .drain(range.start.column_index..range.end.column_index);
         } else {
             self.lines[range.start.line_index].truncate(range.start.column_index);
             let lines_range = (range.start.line_index + 1)..(range.end.line_index - 1);

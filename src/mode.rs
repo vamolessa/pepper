@@ -4,7 +4,7 @@ pub enum Transition {
     None,
     Waiting,
     Exit,
-    EnterMode(Box<dyn Mode>)
+    EnterMode(Box<dyn Mode>),
 }
 
 pub trait Mode {

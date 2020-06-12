@@ -1,8 +1,6 @@
 use crate::{buffer::BufferPosition, mode::Mode};
 
-pub struct Undo {
-
-}
+pub struct Undo {}
 
 pub enum Text {
     Char(char),

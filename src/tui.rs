@@ -109,8 +109,8 @@ where
     {
         let y = y + buffer_view.scroll;
         for (x, c) in line.chars().chain(iter::once(' ')).enumerate() {
-            let inside_selection = x == buffer_view.cursor.column_index
-                && y == buffer_view.cursor.line_index;
+            let inside_selection =
+                x == buffer_view.cursor.column_index && y == buffer_view.cursor.line_index;
             if was_inside_selection != inside_selection {
                 was_inside_selection = inside_selection;
                 if inside_selection {

@@ -4,8 +4,6 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
-        Self {
-            tab_size: 4
-        }
+        Self { tab_size: 4 }
     }
 }
