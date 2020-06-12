@@ -46,4 +46,14 @@ impl BufferView {
 
         *cursor = buffer.insert_text(*cursor, text);
     }
+
+    pub fn delete_selection(&mut self, buffers: &mut BufferCollection) {
+        let buffer = &mut buffers[self.buffer_handle];
+        let cursor = &mut self.cursor;
+
+        let mut selection_end = *cursor;
+        selection_end.column_index += 1;
+
+        buffer.delete_range(*cursor..selection_end);
+    }
 }

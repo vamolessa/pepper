@@ -1,9 +1,25 @@
-use std::ops::{Index, IndexMut};
+use std::{
+    cmp::{Ord, PartialOrd, Ordering},
+    ops::{Index, IndexMut, Range}
+};
 
-#[derive(Default, Copy, Clone)]
+#[derive(Default, Copy, Clone, PartialEq, Eq)]
 pub struct BufferPosition {
     pub column_index: usize,
     pub line_index: usize,
+}
+impl Ord for BufferPosition {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match self.line_index.cmp(&other.line_index) {
+            Ordering::Equal => self.column_index.cmp(&other.column_index),
+            ordering => ordering,
+        }
+    }
+}
+impl PartialOrd for BufferPosition {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 #[derive(Default)]
@@ -53,6 +69,19 @@ impl Buffer {
         }
 
         position
+    }
+
+    pub fn delete_range(&mut self, range: Range<BufferPosition>) {
+        if range.start.line_index == range.end.line_index {
+            self.lines[range.start.line_index].drain(range.start.column_index..range.end.column_index);
+        } else {
+            self.lines[range.start.line_index].truncate(range.start.column_index);
+            let lines_range = (range.start.line_index + 1)..(range.end.line_index - 1);
+            if lines_range.start >= lines_range.end {
+                self.lines.drain(lines_range);
+            }
+            self.lines[range.start.line_index + 1].drain(..range.end.column_index);
+        }
     }
 }
 

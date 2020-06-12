@@ -4,14 +4,12 @@ pub struct Undo {
 
 }
 
-pub enum ImmediateCommand {
-    None,
-    Exit,
-    EnterMode(Box<dyn Mode>),
-    MoveCursors(u16, u16),
+pub enum Text {
+    Char(char),
+    String(String),
 }
 
 pub enum UndoCommand {
-    InsertChar(char, Vec<BufferPosition>),
-    BreakLine(Vec<BufferPosition>),
+    Insert(Text, Vec<BufferPosition>),
+    Delete(Vec<(BufferPosition, BufferPosition)>),
 }

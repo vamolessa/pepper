@@ -21,7 +21,6 @@ pub fn initial_mode() -> Box<dyn Mode> {
 }
 
 pub struct Normal;
-
 impl Mode for Normal {
     fn on_event(
         &mut self,
@@ -45,7 +44,6 @@ impl Mode for Normal {
 }
 
 struct Insert;
-
 impl Mode for Insert {
     fn on_event(
         &mut self,
@@ -63,6 +61,9 @@ impl Mode for Insert {
             }
             [Key::Char(c)] => {
                 buffer_view.insert_text(buffers, c.encode_utf8(&mut [0 as u8; 4]));
+            }
+            [Key::Delete] => {
+                buffer_view.delete_selection(buffers);
             }
             _ => (),
         }
