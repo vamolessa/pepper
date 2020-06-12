@@ -59,7 +59,7 @@ impl Mode for Insert {
                 buffer_view.insert_text(buffers, "    ");
             }
             [Key::Enter] => {
-                buffer_view.break_line(buffers);
+                buffer_view.insert_text(buffers, "\n");
             }
             [Key::Char(c)] => {
                 buffer_view.insert_text(buffers, c.encode_utf8(&mut [0 as u8; 4]));

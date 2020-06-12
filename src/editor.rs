@@ -34,7 +34,7 @@ impl Default for Editor {
 }
 
 impl Editor {
-    pub fn set_view_size(&mut self, size: (u16, u16)) {
+    pub fn set_view_size(&mut self, size: (usize, usize)) {
         for view in &mut self.buffer_views {
             view.size = size;
         }

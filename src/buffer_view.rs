@@ -3,8 +3,8 @@ use crate::buffer::{BufferCollection, BufferHandle, BufferPosition};
 pub struct BufferView {
     pub buffer_handle: BufferHandle,
     pub cursor: BufferPosition,
-    pub size: (u16, u16),
-    pub scroll: u16,
+    pub size: (usize, usize),
+    pub scroll: usize,
 }
 
 impl BufferView {
@@ -30,8 +30,8 @@ impl BufferView {
         let target_line_len = buffer.line(target.1 as usize).chars().count();
         target.0 = target.0.min(target_line_len as i16).max(0);
 
-        cursor.column_index = target.0 as u16;
-        cursor.line_index = target.1 as u16;
+        cursor.column_index = target.0 as _;
+        cursor.line_index = target.1 as _;
 
         if cursor.line_index < self.scroll {
             self.scroll = cursor.line_index;
@@ -40,20 +40,10 @@ impl BufferView {
         }
     }
 
-    pub fn break_line(&mut self, buffers: &mut BufferCollection) {
-        let buffer = &mut buffers[self.buffer_handle];
-        let cursor = &mut self.cursor;
-
-        buffer.break_line(*cursor);
-        cursor.line_index += 1;
-        cursor.column_index = 0;
-    }
-
     pub fn insert_text(&mut self, buffers: &mut BufferCollection, text: &str) {
         let buffer = &mut buffers[self.buffer_handle];
         let cursor = &mut self.cursor;
 
-        buffer.insert_text(*cursor, text);
-        cursor.column_index += text.chars().count() as u16;
+        *cursor = buffer.insert_text(*cursor, text);
     }
 }

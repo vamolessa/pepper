@@ -2,8 +2,8 @@ use std::ops::{Index, IndexMut};
 
 #[derive(Default, Copy, Clone)]
 pub struct BufferPosition {
-    pub column_index: u16,
-    pub line_index: u16,
+    pub column_index: usize,
+    pub line_index: usize,
 }
 
 #[derive(Default)]
@@ -30,15 +30,29 @@ impl Buffer {
         &self.lines[index]
     }
 
-    pub fn break_line(&mut self, position: BufferPosition) {
-        let line = &mut self.lines[position.line_index as usize];
-        let new_line = line.split_off(position.column_index as usize);
-        self.lines
-            .insert(position.line_index as usize + 1, new_line);
-    }
+    pub fn insert_text(&mut self, mut position: BufferPosition, text: &str) -> BufferPosition {
+        let split_line = self.lines[position.line_index].split_off(position.column_index);
 
-    pub fn insert_text(&mut self, position: BufferPosition, text: &str) {
-        self.lines[position.line_index as usize].insert_str(position.column_index as usize, text);
+        let mut lines = text.lines();
+        if let Some(line) = lines.next() {
+            self.lines[position.line_index].push_str(line);
+        }
+        for line in lines {
+            position.line_index += 1;
+            self.lines.insert(position.line_index, line.into());
+        }
+
+        if text.ends_with('\n') {
+            position.column_index = 0;
+            position.line_index += 1;
+            self.lines.insert(position.line_index, split_line);
+        } else {
+            let line = &mut self.lines[position.line_index];
+            position.column_index = line.len();
+            line.push_str(&split_line[..]);
+        }
+
+        position
     }
 }
 

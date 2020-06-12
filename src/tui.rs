@@ -54,7 +54,7 @@ pub fn convert_color(color: theme::Color) -> Color {
 
 fn update_buffer_views_size(editor: &mut Editor) {
     let size = terminal::size().unwrap_or((0, 0));
-    editor.set_view_size(size);
+    editor.set_view_size((size.0 as _, size.1 as _));
 }
 
 pub fn show<W>(mut write: W, mut editor: Editor) -> Result<()>
@@ -68,10 +68,10 @@ where
     terminal::enable_raw_mode()?;
 
     update_buffer_views_size(&mut editor);
-    draw(&mut write, &editor, 0)?;
+    draw_view(&mut write, &editor, 0)?;
 
     while editor.on_event(convert_event(event::read()?)) {
-        draw(&mut write, &editor, 0)?;
+        draw_view(&mut write, &editor, 0)?;
     }
 
     handle_command!(write, terminal::LeaveAlternateScreen)?;
@@ -81,7 +81,7 @@ where
     Ok(())
 }
 
-fn draw<W>(write: &mut W, editor: &Editor, view_index: usize) -> Result<()>
+fn draw_view<W>(write: &mut W, editor: &Editor, view_index: usize) -> Result<()>
 where
     W: Write,
 {
@@ -103,14 +103,14 @@ where
     let mut was_inside_selection = false;
     for (y, line) in buffer
         .lines()
-        .skip(buffer_view.scroll as usize)
-        .take(buffer_view.size.1 as usize)
+        .skip(buffer_view.scroll)
+        .take(buffer_view.size.1)
         .enumerate()
     {
-        let y = y + buffer_view.scroll as usize;
+        let y = y + buffer_view.scroll;
         for (x, c) in line.chars().chain(iter::once(' ')).enumerate() {
-            let inside_selection = x == buffer_view.cursor.column_index as usize
-                && y == buffer_view.cursor.line_index as usize;
+            let inside_selection = x == buffer_view.cursor.column_index
+                && y == buffer_view.cursor.line_index;
             if was_inside_selection != inside_selection {
                 was_inside_selection = inside_selection;
                 if inside_selection {
@@ -164,7 +164,7 @@ where
         write,
         SetBackgroundColor(convert_color(editor.theme.background))
     )?;
-    for _ in buffer.line_count()..buffer_view.size.1 as usize {
+    for _ in buffer.line_count()..buffer_view.size.1 {
         handle_command!(write, Print('~'))?;
         handle_command!(write, Clear(ClearType::UntilNewLine))?;
         handle_command!(write, cursor::MoveToNextLine(1))?;
