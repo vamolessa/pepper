@@ -27,7 +27,7 @@ impl BufferView {
         );
 
         target.1 = target.1.min(buffer.line_count() as i16 - 1).max(0);
-        let target_line_len = buffer.line(target.1 as usize).chars().count();
+        let target_line_len = buffer.line(target.1 as usize).char_count();
         target.0 = target.0.min(target_line_len as i16).max(0);
 
         cursor.column_index = target.0 as _;
@@ -51,7 +51,7 @@ impl BufferView {
         let buffer = &mut buffers[self.buffer_handle];
         let cursor = &mut self.cursor;
 
-        let cursor_line_size = buffer.line(cursor.line_index).chars().count();
+        let cursor_line_size = buffer.line(cursor.line_index).char_count();
         let mut selection_end = *cursor;
         if selection_end.column_index < cursor_line_size {
             selection_end.column_index += 1;
