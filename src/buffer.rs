@@ -32,6 +32,37 @@ impl BufferRange {
 
         Self { from, to, __: () }
     }
+
+    pub fn from_str_position(position: BufferPosition, text: &str) -> Self {
+        let mut line_count = 0;
+        let mut last_line_char_count = 0;
+        for line in text.lines() {
+            line_count += 1;
+            last_line_char_count = line.chars().count();
+        }
+        if text.ends_with('\n') {
+            line_count += 1;
+            last_line_char_count = 0;
+        }
+
+        let to = if line_count > 1 {
+            BufferPosition {
+                line_index: position.line_index + line_count,
+                column_index: last_line_char_count,
+            }
+        } else {
+            BufferPosition {
+                line_index: position.line_index,
+                column_index: position.column_index + last_line_char_count,
+            }
+        };
+
+        Self {
+            from: position,
+            to,
+            __: ()
+        }
+    }
 }
 
 pub struct BufferLine {

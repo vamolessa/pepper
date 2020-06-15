@@ -1,13 +1,38 @@
-use crate::buffer::BufferPosition;
+use crate::buffer::{Buffer, BufferPosition, BufferRange};
 
 pub enum Text {
     Char(char),
     String(String),
 }
 
-pub enum Edit {
-    Insert(Text, BufferPosition),
-    Delete(BufferPosition, BufferPosition),
+pub enum EditKind {
+    Insert,
+    Delete,
+}
+
+pub struct Edit {
+    pub kind: EditKind,
+    pub text: Text,
+    pub range: BufferRange,
+}
+
+impl Edit {
+    pub fn new(kind: EditKind, text: Text, position: BufferPosition) -> Self {
+        let range = match &text {
+            Text::Char(c) => {
+                let mut buf = [0 as u8; 4];
+                let s = c.encode_utf8(&mut buf);
+                BufferRange::from_str_position(position, s)
+            }
+            Text::String(s) => BufferRange::from_str_position(position, &s[..]),
+        };
+
+        Self { kind, text, range }
+    }
+    
+    pub fn appply(&self, buffer: &mut Buffer) {
+
+    }
 }
 
 pub struct Undo {
