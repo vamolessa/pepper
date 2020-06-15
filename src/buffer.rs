@@ -1,11 +1,20 @@
-use std::ops::{Index, IndexMut};
+use std::{cmp::{Ord, Ordering}, ops::{ Index, IndexMut}};
 
 use crate::undo::Undo;
 
-#[derive(Default, Copy, Clone)]
+#[derive(Default, Copy, Clone, PartialEq, Eq, PartialOrd)]
 pub struct BufferPosition {
     pub column_index: usize,
     pub line_index: usize,
+}
+
+impl Ord for BufferPosition {
+    fn cmp(&self, other: &BufferPosition) -> Ordering {
+        match self.line_index.cmp(&other.line_index) {
+            Ordering::Equal => self.column_index.cmp(&other.column_index),
+            ordering => ordering,
+        }
+    }
 }
 
 pub struct BufferRange {
@@ -15,13 +24,10 @@ pub struct BufferRange {
 }
 
 impl BufferRange {
-    pub fn new(from: BufferPosition, mut to: BufferPosition) -> Self {
-        to = if (to.line_index > from.line_index)
-            || (to.line_index == from.line_index && to.column_index >= from.column_index)
-        {
-            to
-        } else {
-            from
+    pub fn between(from: BufferPosition, to: BufferPosition) -> Self {
+        let (from, to) = match from.cmp(&to) {
+            Ordering::Less | Ordering::Equal => (from, to),
+            Ordering::Greater => (to, from),
         };
 
         Self { from, to, __: () }
@@ -42,7 +48,6 @@ impl BufferLine {
     }
 }
 
-#[derive(Default)]
 pub struct Buffer {
     lines: Vec<BufferLine>,
     undo: Undo,
@@ -52,7 +57,7 @@ impl Buffer {
     pub fn from_str(text: &str) -> Self {
         Self {
             lines: text.lines().map(|l| BufferLine::new(l.into())).collect(),
-            undo: Default::default(),
+            undo: Undo::new(),
         }
     }
 

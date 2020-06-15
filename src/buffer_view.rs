@@ -60,6 +60,6 @@ impl BufferView {
             selection_end.column_index = 0;
         }
 
-        buffer.delete_range(BufferRange::new(*cursor, selection_end));
+        buffer.delete_range(BufferRange::between(*cursor, selection_end));
     }
 }

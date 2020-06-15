@@ -10,49 +10,53 @@ pub enum Edit {
     Delete(BufferPosition, BufferPosition),
 }
 
-#[derive(Default)]
 pub struct Undo {
-    history: Vec<(Edit, usize)>,
-    current_history_index: usize,
-    current_edit_group_id: usize,
+    history: Vec<Edit>,
+    group_end_indexes: Vec<usize>,
+    current_group_index: usize,
 }
 
 impl Undo {
+    pub fn new() -> Self {
+        Self {
+            history: Vec::new(),
+            group_end_indexes: vec![0, 0],
+            current_group_index: 1,
+        }
+    }
+
     pub fn push_edit(&mut self, edit: Edit) {
-        self.current_history_index += 1;
-        self.history.truncate(self.current_history_index);
-        self.history.push((edit, self.current_edit_group_id));
+        self.history
+            .truncate(self.group_end_indexes[self.current_group_index]);
+        self.group_end_indexes
+            .truncate(self.current_group_index + 1);
+
+        self.history.push(edit);
+        self.group_end_indexes[self.current_group_index] += 1;
     }
 
     pub fn commit_edits(&mut self) {
-        self.current_edit_group_id += 1;
-    }
-
-    pub fn undo(&mut self) -> Option<&Edit> {
-        self.commit_edits();
-
-        if self.current_history_index > 0 {
-            self.current_history_index -= 1;
-        }
-
-        if self.current_history_index < self.history.len() {
-            Some(&self.history[self.current_history_index].0)
-        } else {
-            None
+        let current_group_size = self.group_end_indexes[self.current_group_index]
+            - self.group_end_indexes[self.current_group_index - 1];
+        if current_group_size > 0 {
+            self.current_group_index = self.group_end_indexes.len();
+            self.group_end_indexes.push(self.history.len());
         }
     }
 
-    pub fn redo(&mut self) -> Option<&Edit> {
+    pub fn undo(&mut self) -> impl Iterator<Item = &Edit> {
         self.commit_edits();
 
-        if self.current_history_index < self.history.len() - 1 {
-            self.current_history_index += 1;
-        }
+        let start = self.group_end_indexes[self.current_group_index - 1];
+        let end = self.group_end_indexes[self.current_group_index];
+        self.history[start..end].iter().rev()
+    }
 
-        if self.current_history_index < self.history.len() {
-            Some(&self.history[self.current_history_index].0)
-        } else {
-            None
-        }
+    pub fn redo(&mut self) -> impl Iterator<Item = &Edit> {
+        self.commit_edits();
+
+        let start = self.group_end_indexes[self.current_group_index - 1];
+        let end = self.group_end_indexes[self.current_group_index];
+        self.history[start..end].iter()
     }
 }
