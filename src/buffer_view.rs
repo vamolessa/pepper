@@ -62,4 +62,10 @@ impl BufferView {
 
         buffer.delete_range(BufferRange::between(*cursor, selection_end));
     }
+
+    pub fn undo(&mut self, buffers: &mut BufferCollection) {
+    }
+
+    pub fn redo(&mut self, buffers: &mut BufferCollection) {
+    }
 }

@@ -1,10 +1,35 @@
 use crate::buffer::{Buffer, BufferPosition, BufferRange};
 
 pub enum Text {
-    Char(char),
+    Char([u8; 4], u8),
     String(String),
 }
 
+impl Text {
+    pub fn from_str(text: &str) -> Self {
+        let mut chars = text.chars();
+        match (chars.next(), chars.next()) {
+            (None, None) => Self::Char([0 as _; 4], 0),
+            (Some(c), None) => Self::from_char(c),
+            _ => Self::String(text.into()),
+        }
+    }
+
+    pub fn from_char(c: char) -> Self {
+        let mut buf = [0 as u8; 4];
+        let len = c.encode_utf8(&mut buf).len();
+        Self::Char(buf, len as _)
+    }
+
+    pub fn as_str(&self) -> &str {
+        match self {
+            Text::Char(buf, len) => std::str::from_utf8(&buf[..*len as _]).unwrap(),
+            Text::String(string) => &string[..],
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
 pub enum EditKind {
     Insert,
     Delete,
@@ -12,26 +37,36 @@ pub enum EditKind {
 
 pub struct Edit {
     pub kind: EditKind,
-    pub text: Text,
     pub range: BufferRange,
+    pub text: Text,
 }
 
 impl Edit {
-    pub fn new(kind: EditKind, text: Text, position: BufferPosition) -> Self {
-        let range = match &text {
-            Text::Char(c) => {
-                let mut buf = [0 as u8; 4];
-                let s = c.encode_utf8(&mut buf);
-                BufferRange::from_str_position(position, s)
-            }
-            Text::String(s) => BufferRange::from_str_position(position, &s[..]),
-        };
-
+    pub fn new(kind: EditKind, position: BufferPosition, text: Text) -> Self {
+        let range = BufferRange::from_str_position(position, text.as_str());
         Self { kind, text, range }
     }
-    
-    pub fn appply(&self, buffer: &mut Buffer) {
 
+    pub fn apply(&self, buffer: &mut Buffer) {
+        match self.kind {
+            EditKind::Insert => {
+                buffer.insert_text(self.range.from, self.text.as_str());
+            }
+            EditKind::Delete => {
+                buffer.delete_range(self.range);
+            }
+        }
+    }
+
+    pub fn revert(&self, buffer: &mut Buffer) {
+        match self.kind {
+            EditKind::Delete => {
+                buffer.insert_text(self.range.from, self.text.as_str());
+            }
+            EditKind::Insert => {
+                buffer.delete_range(self.range);
+            }
+        }
     }
 }
 

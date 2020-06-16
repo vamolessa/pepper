@@ -1,6 +1,9 @@
-use std::{cmp::{Ord, Ordering}, ops::{ Index, IndexMut}};
+use std::{
+    cmp::{Ord, Ordering},
+    ops::{Index, IndexMut},
+};
 
-use crate::undo::Undo;
+use crate::undo::{Edit, EditKind, Text, Undo};
 
 #[derive(Default, Copy, Clone, PartialEq, Eq, PartialOrd)]
 pub struct BufferPosition {
@@ -17,6 +20,7 @@ impl Ord for BufferPosition {
     }
 }
 
+#[derive(Default, Copy, Clone)]
 pub struct BufferRange {
     pub from: BufferPosition,
     pub to: BufferPosition,
@@ -60,7 +64,7 @@ impl BufferRange {
         Self {
             from: position,
             to,
-            __: ()
+            __: (),
         }
     }
 }
@@ -130,6 +134,9 @@ impl Buffer {
             line.text.push_str(&split_line[..]);
         }
 
+        self.undo
+            .push_edit(Edit::new(EditKind::Insert, position, Text::from_str(text)));
+
         position
     }
 
@@ -138,6 +145,8 @@ impl Buffer {
             self.lines[range.from.line_index]
                 .text
                 .drain(range.from.column_index..range.to.column_index);
+            self.undo
+                .push_edit(Edit::new(EditKind::Delete, range.from, Text::from_str("")));
         } else {
             self.lines[range.from.line_index]
                 .text
