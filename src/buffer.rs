@@ -1,7 +1,7 @@
 use std::ops::{Index, IndexMut};
 
 use crate::{
-    buffer_position::{BufferMovement,BufferOffset, BufferPosition, BufferRange},
+    buffer_position::{BufferMovement, BufferPosition, BufferRange},
     undo::{Edit, EditKind, Undo},
 };
 
