@@ -1,4 +1,6 @@
-use crate::{buffer::BufferCollection, buffer_view::BufferView, event::Key};
+use crate::{
+    buffer::BufferCollection, buffer_position::BufferOffset, buffer_view::BufferView, event::Key,
+};
 
 pub enum Transition {
     None,
@@ -31,10 +33,34 @@ impl Mode for Normal {
         match keys {
             [Key::Char('q')] => return Transition::Waiting,
             [Key::Char('q'), Key::Char('q')] => return Transition::Exit,
-            [Key::Char('h')] => buffer_view.move_cursor(buffers, (-1, 0)),
-            [Key::Char('j')] => buffer_view.move_cursor(buffers, (0, 1)),
-            [Key::Char('k')] => buffer_view.move_cursor(buffers, (0, -1)),
-            [Key::Char('l')] => buffer_view.move_cursor(buffers, (1, 0)),
+            [Key::Char('h')] => buffer_view.move_cursor(
+                buffers,
+                BufferOffset {
+                    column_offset: -1,
+                    line_offset: 0,
+                },
+            ),
+            [Key::Char('j')] => buffer_view.move_cursor(
+                buffers,
+                BufferOffset {
+                    column_offset: 0,
+                    line_offset: 1,
+                },
+            ),
+            [Key::Char('k')] => buffer_view.move_cursor(
+                buffers,
+                BufferOffset {
+                    column_offset: 0,
+                    line_offset: -1,
+                },
+            ),
+            [Key::Char('l')] => buffer_view.move_cursor(
+                buffers,
+                BufferOffset {
+                    column_offset: 1,
+                    line_offset: 0,
+                },
+            ),
             [Key::Char('i')] => return Transition::EnterMode(Box::new(Insert)),
             _ => (),
         }

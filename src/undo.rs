@@ -1,4 +1,7 @@
-use crate::buffer::{Buffer, BufferPosition, BufferRange};
+use crate::{
+    buffer::Buffer,
+    buffer_position::{BufferPosition, BufferRange},
+};
 
 pub enum Text {
     Char([u8; 4], u8),

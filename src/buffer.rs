@@ -1,73 +1,9 @@
-use std::{
-    cmp::{Ord, Ordering},
-    ops::{Index, IndexMut},
+use std::ops::{Index, IndexMut};
+
+use crate::{
+    buffer_position::{BufferPosition, BufferRange},
+    undo::{Edit, EditKind, Text, Undo},
 };
-
-use crate::undo::{Edit, EditKind, Text, Undo};
-
-#[derive(Default, Copy, Clone, PartialEq, Eq, PartialOrd)]
-pub struct BufferPosition {
-    pub column_index: usize,
-    pub line_index: usize,
-}
-
-impl Ord for BufferPosition {
-    fn cmp(&self, other: &BufferPosition) -> Ordering {
-        match self.line_index.cmp(&other.line_index) {
-            Ordering::Equal => self.column_index.cmp(&other.column_index),
-            ordering => ordering,
-        }
-    }
-}
-
-#[derive(Default, Copy, Clone)]
-pub struct BufferRange {
-    pub from: BufferPosition,
-    pub to: BufferPosition,
-    __: (),
-}
-
-impl BufferRange {
-    pub fn between(from: BufferPosition, to: BufferPosition) -> Self {
-        let (from, to) = match from.cmp(&to) {
-            Ordering::Less | Ordering::Equal => (from, to),
-            Ordering::Greater => (to, from),
-        };
-
-        Self { from, to, __: () }
-    }
-
-    pub fn from_str_position(position: BufferPosition, text: &str) -> Self {
-        let mut line_count = 0;
-        let mut last_line_char_count = 0;
-        for line in text.lines() {
-            line_count += 1;
-            last_line_char_count = line.chars().count();
-        }
-        if text.ends_with('\n') {
-            line_count += 1;
-            last_line_char_count = 0;
-        }
-
-        let to = if line_count > 1 {
-            BufferPosition {
-                line_index: position.line_index + line_count,
-                column_index: last_line_char_count,
-            }
-        } else {
-            BufferPosition {
-                line_index: position.line_index,
-                column_index: position.column_index + last_line_char_count,
-            }
-        };
-
-        Self {
-            from: position,
-            to,
-            __: (),
-        }
-    }
-}
 
 pub struct BufferLine {
     pub text: String,

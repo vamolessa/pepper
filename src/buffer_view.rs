@@ -1,4 +1,7 @@
-use crate::buffer::{BufferCollection, BufferHandle, BufferPosition, BufferRange};
+use crate::{
+    buffer::{BufferCollection, BufferHandle},
+    buffer_position::{BufferOffset, BufferPosition, BufferRange},
+};
 
 pub struct BufferView {
     pub buffer_handle: BufferHandle,
@@ -17,21 +20,17 @@ impl BufferView {
         }
     }
 
-    pub fn move_cursor(&mut self, buffers: &BufferCollection, offset: (i16, i16)) {
+    pub fn move_cursor(&mut self, buffers: &BufferCollection, offset: BufferOffset) {
         let buffer = &buffers[self.buffer_handle];
         let cursor = &mut self.cursor;
 
-        let mut target = (
-            cursor.column_index as i16 + offset.0,
-            cursor.line_index as i16 + offset.1,
-        );
+        let mut target = BufferOffset::from(*cursor) + offset;
 
-        target.1 = target.1.min(buffer.line_count() as i16 - 1).max(0);
-        let target_line_len = buffer.line(target.1 as usize).char_count();
-        target.0 = target.0.min(target_line_len as i16).max(0);
+        target.line_offset = target.line_offset.min(buffer.line_count() as isize - 1).max(0);
+        let target_line_len = buffer.line(target.line_offset as _).char_count();
+        target.column_offset = target.column_offset.min(target_line_len as _).max(0);
 
-        cursor.column_index = target.0 as _;
-        cursor.line_index = target.1 as _;
+        *cursor = target.into();
 
         if cursor.line_index < self.scroll {
             self.scroll = cursor.line_index;
@@ -63,9 +62,7 @@ impl BufferView {
         buffer.delete_range(BufferRange::between(*cursor, selection_end));
     }
 
-    pub fn undo(&mut self, buffers: &mut BufferCollection) {
-    }
+    pub fn undo(&mut self, buffers: &mut BufferCollection) {}
 
-    pub fn redo(&mut self, buffers: &mut BufferCollection) {
-    }
+    pub fn redo(&mut self, buffers: &mut BufferCollection) {}
 }
