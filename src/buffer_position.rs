@@ -17,17 +17,12 @@ impl BufferPosition {
         }
     }
 
-    pub fn move_by(self, movement: BufferMovement) -> Self {
-        match movement {
-            BufferMovement::ColumnOffset(column_offset) => Self {
-                column_index: (self.column_index as isize + column_offset) as _,
-                line_index: self.line_index,
-            },
-            BufferMovement::LineOffsetColumnPosition(line_offset, column_index) => Self {
-                column_index,
-                line_index: (self.line_index as isize + line_offset) as _,
-            },
-        }
+    pub fn insert(self, range: BufferRange) -> Self {
+        self
+    }
+
+    pub fn remove(self, range: BufferRange) -> Self {
+        self
     }
 }
 
@@ -92,11 +87,6 @@ impl Neg for BufferOffset {
             line_offset: -self.line_offset,
         }
     }
-}
-
-pub enum BufferMovement {
-    ColumnOffset(isize),
-    LineOffsetColumnPosition(isize, usize),
 }
 
 #[derive(Default, Copy, Clone)]

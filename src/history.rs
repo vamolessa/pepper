@@ -1,5 +1,7 @@
+use std::ops::Range;
+
 use crate::{
-    buffer::{Buffer, Text},
+    buffer::Text,
     buffer_position::{BufferOffset, BufferPosition, BufferRange},
 };
 
@@ -29,52 +31,30 @@ impl Edit {
         };
         Self { kind, text, range }
     }
-
-    pub fn apply(&self, buffer: &mut Buffer) {
-        match self.kind {
-            EditKind::Insert => {
-                buffer.insert_text(self.range.from, self.text.as_text_ref());
-            }
-            EditKind::Delete => {
-                buffer.delete_range(self.range);
-            }
-        }
-    }
-
-    pub fn revert(&self, buffer: &mut Buffer) {
-        match self.kind {
-            EditKind::Delete => {
-                buffer.insert_text(self.range.from, self.text.as_text_ref());
-            }
-            EditKind::Insert => {
-                buffer.delete_range(self.range);
-            }
-        }
-    }
 }
 
-pub struct Undo {
-    history: Vec<Edit>,
+pub struct History {
+    edits: Vec<Edit>,
     group_end_indexes: Vec<usize>,
     current_group_index: usize,
 }
 
-impl Undo {
+impl History {
     pub fn new() -> Self {
         Self {
-            history: Vec::new(),
+            edits: Vec::new(),
             group_end_indexes: vec![0, 0],
             current_group_index: 1,
         }
     }
 
     pub fn push_edit(&mut self, edit: Edit) {
-        self.history
+        self.edits
             .truncate(self.group_end_indexes[self.current_group_index]);
         self.group_end_indexes
             .truncate(self.current_group_index + 1);
 
-        self.history.push(edit);
+        self.edits.push(edit);
         self.group_end_indexes[self.current_group_index] += 1;
     }
 
@@ -83,23 +63,38 @@ impl Undo {
             - self.group_end_indexes[self.current_group_index - 1];
         if current_group_size > 0 {
             self.current_group_index = self.group_end_indexes.len();
-            self.group_end_indexes.push(self.history.len());
+            self.group_end_indexes.push(self.edits.len());
         }
     }
 
-    pub fn undo(&mut self) -> impl Iterator<Item = &Edit> {
+    pub fn undo_edits(&mut self) -> impl Iterator<Item = &Edit> {
         self.commit_edits();
 
-        let start = self.group_end_indexes[self.current_group_index - 1];
-        let end = self.group_end_indexes[self.current_group_index];
-        self.history[start..end].iter().rev()
+        let range = self.get_current_group_edit_range();
+        self.current_group_index = 1.max(self.current_group_index - 1);
+        self.edits[range].iter_mut().rev().map(|e| {
+            e.kind = match e.kind {
+                EditKind::Insert => EditKind::Delete,
+                EditKind::Delete => EditKind::Insert,
+            };
+            e as &_
+        })
     }
 
-    pub fn redo(&mut self) -> impl Iterator<Item = &Edit> {
+    pub fn redo_edits(&mut self) -> impl Iterator<Item = &Edit> {
         self.commit_edits();
 
+        let range = self.get_current_group_edit_range();
+        self.current_group_index = self
+            .group_end_indexes
+            .len()
+            .min(self.current_group_index + 1);
+        self.edits[range].iter()
+    }
+
+    fn get_current_group_edit_range(&self) -> Range<usize> {
         let start = self.group_end_indexes[self.current_group_index - 1];
         let end = self.group_end_indexes[self.current_group_index];
-        self.history[start..end].iter()
+        start..end
     }
 }

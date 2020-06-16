@@ -1,6 +1,7 @@
 use crate::{
     buffer::{BufferCollection, BufferHandle, TextRef},
     buffer_position::{BufferOffset, BufferPosition, BufferRange},
+    history::EditKind,
 };
 
 pub struct BufferView {
@@ -46,8 +47,8 @@ impl BufferView {
         let buffer = &mut buffers[self.buffer_handle];
         let cursor = &mut self.cursor;
 
-        let movement = buffer.insert_text(*cursor, text);
-        *cursor = cursor.move_by(movement);
+        let range = buffer.insert_text(*cursor, text);
+        *cursor = cursor.insert(range);
     }
 
     pub fn delete_selection(&mut self, buffers: &mut BufferCollection) {
@@ -66,7 +67,28 @@ impl BufferView {
         buffer.delete_range(BufferRange::between(*cursor, selection_end));
     }
 
-    pub fn undo(&mut self, buffers: &mut BufferCollection) {}
+    pub fn commit_edits(&mut self, buffers: &mut BufferCollection) {
+        buffers[self.buffer_handle].commit_edits();
+    }
 
-    pub fn redo(&mut self, buffers: &mut BufferCollection) {}
+    pub fn undo(&mut self, buffers: &mut BufferCollection) {
+        let buffer = &mut buffers[self.buffer_handle];
+
+        for edit in buffer.undo_edits() {
+            match edit.kind {
+                EditKind::Insert => {
+                    //buffer.insert_text(edit.range.from, edit.text.as_text_ref());
+                }
+                EditKind::Delete => {
+                    //buffer.delete_range(edit.range);
+                }
+            }
+        }
+    }
+
+    pub fn redo(&mut self, buffers: &mut BufferCollection) {
+        let buffer = &mut buffers[self.buffer_handle];
+
+        for edit in buffer.redo_edits() {}
+    }
 }

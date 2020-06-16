@@ -1,22 +1,13 @@
 use std::ops::{Index, IndexMut};
 
 use crate::{
-    buffer_position::{BufferMovement, BufferPosition, BufferRange},
-    undo::{Edit, EditKind, Undo},
+    buffer_position::{BufferPosition, BufferRange},
+    history::{Edit, EditKind, History},
 };
 
 pub enum Text {
     Char(char),
     String(String),
-}
-
-impl Text {
-    pub fn as_text_ref<'a>(&'a self) -> TextRef<'a> {
-        match self {
-            Text::Char(c) => TextRef::Char(*c),
-            Text::String(s) => TextRef::Str(&s[..]),
-        }
-    }
 }
 
 pub enum TextRef<'a> {
@@ -49,14 +40,14 @@ impl BufferLine {
 
 pub struct Buffer {
     lines: Vec<BufferLine>,
-    undo: Undo,
+    history: History,
 }
 
 impl Buffer {
     pub fn from_str(text: &str) -> Self {
         Self {
             lines: text.lines().map(|l| BufferLine::new(l.into())).collect(),
-            undo: Undo::new(),
+            history: History::new(),
         }
     }
 
@@ -72,13 +63,17 @@ impl Buffer {
         &self.lines[index]
     }
 
-    pub fn insert_text(&mut self, position: BufferPosition, text: TextRef) -> BufferMovement {
-        let movement = match text {
+    pub fn insert_text(&mut self, position: BufferPosition, text: TextRef) -> BufferRange {
+        let end_position = match text {
             TextRef::Char(c) => {
                 self.lines[position.line_index]
                     .text
                     .insert(position.column_index, c);
-                BufferMovement::ColumnOffset(1)
+
+                BufferPosition {
+                    column_index: position.column_index + 1,
+                    line_index: position.line_index,
+                }
             }
             TextRef::Str(text) => {
                 let split_line = self.lines[position.line_index]
@@ -100,19 +95,27 @@ impl Buffer {
                     line_count += 1;
                     self.lines
                         .insert(position.line_index, BufferLine::new(split_line));
-                    BufferMovement::LineOffsetColumnPosition(line_count, 0)
+
+                    BufferPosition {
+                        column_index: 0,
+                        line_index: position.line_index + line_count
+                    }
                 } else {
                     let line = &mut self.lines[position.line_index];
                     let column_index = line.char_count();
                     line.text.push_str(&split_line[..]);
-                    BufferMovement::LineOffsetColumnPosition(line_count, column_index)
+
+                    BufferPosition {
+                        column_index,
+                        line_index: position.line_index + line_count
+                    }
                 }
             }
         };
 
-        self.undo
+        self.history
             .push_edit(Edit::new(EditKind::Insert, position, text.to_text()));
-        movement
+        BufferRange::between(position, end_position)
     }
 
     pub fn delete_range(&mut self, range: BufferRange) {
@@ -145,8 +148,20 @@ impl Buffer {
             }
         }
 
-        self.undo
+        self.history
             .push_edit(Edit::new(EditKind::Delete, range.from, Text::String(text)));
+    }
+
+    pub fn commit_edits(&mut self) {
+        self.history.commit_edits();
+    }
+
+    pub fn undo_edits(&mut self) -> impl Iterator<Item = &Edit> {
+        self.history.undo_edits()
+    }
+
+    pub fn redo_edits(&mut self) -> impl Iterator<Item = &Edit> {
+        self.history.redo_edits()
     }
 }
 

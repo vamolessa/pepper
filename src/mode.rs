@@ -65,6 +65,8 @@ impl Mode for Normal {
                 },
             ),
             [Key::Char('i')] => return Transition::EnterMode(Box::new(Insert)),
+            [Key::Char('u')] => buffer_view.undo(buffers),
+            [Key::Char('U')] => buffer_view.redo(buffers),
             _ => (),
         }
 
@@ -81,7 +83,10 @@ impl Mode for Insert {
         keys: &[Key],
     ) -> Transition {
         match keys {
-            [Key::Esc] | [Key::Ctrl('c')] => return Transition::EnterMode(Box::new(Normal)),
+            [Key::Esc] | [Key::Ctrl('c')] => {
+                buffer_view.commit_edits(buffers);
+                return Transition::EnterMode(Box::new(Normal))
+            }
             [Key::Tab] => {
                 buffer_view.insert_text(buffers, TextRef::Str("    "));
             }

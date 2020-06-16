@@ -9,7 +9,7 @@ mod event;
 mod mode;
 mod theme;
 mod tui;
-mod undo;
+mod history;
 
 fn main() {
     ctrlc::set_handler(|| {}).unwrap();
