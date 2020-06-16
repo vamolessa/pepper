@@ -1,5 +1,5 @@
 use crate::{
-    buffer::{BufferCollection, BufferHandle},
+    buffer::{BufferCollection, BufferHandle, TextRef},
     buffer_position::{BufferOffset, BufferPosition, BufferRange},
 };
 
@@ -26,7 +26,10 @@ impl BufferView {
 
         let mut target = BufferOffset::from(*cursor) + offset;
 
-        target.line_offset = target.line_offset.min(buffer.line_count() as isize - 1).max(0);
+        target.line_offset = target
+            .line_offset
+            .min(buffer.line_count() as isize - 1)
+            .max(0);
         let target_line_len = buffer.line(target.line_offset as _).char_count();
         target.column_offset = target.column_offset.min(target_line_len as _).max(0);
 
@@ -39,11 +42,12 @@ impl BufferView {
         }
     }
 
-    pub fn insert_text(&mut self, buffers: &mut BufferCollection, text: &str) {
+    pub fn insert_text(&mut self, buffers: &mut BufferCollection, text: TextRef) {
         let buffer = &mut buffers[self.buffer_handle];
         let cursor = &mut self.cursor;
 
-        *cursor = buffer.insert_text(*cursor, text);
+        let movement = buffer.insert_text(*cursor, text);
+        *cursor = cursor.move_by(movement);
     }
 
     pub fn delete_selection(&mut self, buffers: &mut BufferCollection) {

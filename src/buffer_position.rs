@@ -9,6 +9,28 @@ pub struct BufferPosition {
     pub line_index: usize,
 }
 
+impl BufferPosition {
+    pub fn offset_by(self, offset: BufferOffset) -> Self {
+        Self {
+            column_index: (self.column_index as isize + offset.column_offset) as _,
+            line_index: (self.line_index as isize + offset.line_offset) as _,
+        }
+    }
+
+    pub fn move_by(self, movement: BufferMovement) -> Self {
+        match movement {
+            BufferMovement::ColumnOffset(column_offset) => Self {
+                column_index: (self.column_index as isize + column_offset) as _,
+                line_index: self.line_index,
+            },
+            BufferMovement::LineOffsetColumnPosition(line_offset, column_index) => Self {
+                column_index,
+                line_index: (self.line_index as isize + line_offset) as _,
+            },
+        }
+    }
+}
+
 impl From<BufferOffset> for BufferPosition {
     fn from(other: BufferOffset) -> Self {
         Self {
@@ -70,6 +92,11 @@ impl Neg for BufferOffset {
             line_offset: -self.line_offset,
         }
     }
+}
+
+pub enum BufferMovement {
+    ColumnOffset(isize),
+    LineOffsetColumnPosition(isize, usize),
 }
 
 #[derive(Default, Copy, Clone)]

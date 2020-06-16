@@ -1,9 +1,37 @@
 use std::ops::{Index, IndexMut};
 
 use crate::{
-    buffer_position::{BufferPosition, BufferRange},
-    undo::{Edit, EditKind, Text, Undo},
+    buffer_position::{BufferMovement,BufferOffset, BufferPosition, BufferRange},
+    undo::{Edit, EditKind, Undo},
 };
+
+pub enum Text {
+    Char(char),
+    String(String),
+}
+
+impl Text {
+    pub fn as_text_ref<'a>(&'a self) -> TextRef<'a> {
+        match self {
+            Text::Char(c) => TextRef::Char(*c),
+            Text::String(s) => TextRef::Str(&s[..]),
+        }
+    }
+}
+
+pub enum TextRef<'a> {
+    Char(char),
+    Str(&'a str),
+}
+
+impl<'a> TextRef<'a> {
+    pub fn to_text(&self) -> Text {
+        match self {
+            TextRef::Char(c) => Text::Char(*c),
+            TextRef::Str(s) => Text::String(s.to_string()),
+        }
+    }
+}
 
 pub struct BufferLine {
     pub text: String,
@@ -44,52 +72,68 @@ impl Buffer {
         &self.lines[index]
     }
 
-    pub fn insert_text(&mut self, mut position: BufferPosition, text: &str) -> BufferPosition {
-        let split_line = self.lines[position.line_index]
-            .text
-            .split_off(position.column_index);
+    pub fn insert_text(&mut self, position: BufferPosition, text: TextRef) -> BufferMovement {
+        let movement = match text {
+            TextRef::Char(c) => {
+                self.lines[position.line_index]
+                    .text
+                    .insert(position.column_index, c);
+                BufferMovement::ColumnOffset(1)
+            }
+            TextRef::Str(text) => {
+                let split_line = self.lines[position.line_index]
+                    .text
+                    .split_off(position.column_index);
 
-        let mut lines = text.lines();
-        if let Some(line) = lines.next() {
-            self.lines[position.line_index].text.push_str(&line[..]);
-        }
-        for line in lines {
-            position.line_index += 1;
-            self.lines
-                .insert(position.line_index, BufferLine::new(line.into()));
-        }
+                let mut line_count = 0;
+                let mut lines = text.lines();
+                if let Some(line) = lines.next() {
+                    self.lines[position.line_index].text.push_str(&line[..]);
+                }
+                for line in lines {
+                    line_count += 1;
+                    self.lines
+                        .insert(position.line_index, BufferLine::new(line.into()));
+                }
 
-        if text.ends_with('\n') {
-            position.column_index = 0;
-            position.line_index += 1;
-            self.lines
-                .insert(position.line_index, BufferLine::new(split_line));
-        } else {
-            let line = &mut self.lines[position.line_index];
-            position.column_index = line.char_count();
-            line.text.push_str(&split_line[..]);
-        }
+                if text.ends_with('\n') {
+                    line_count += 1;
+                    self.lines
+                        .insert(position.line_index, BufferLine::new(split_line));
+                    BufferMovement::LineOffsetColumnPosition(line_count, 0)
+                } else {
+                    let line = &mut self.lines[position.line_index];
+                    let column_index = line.char_count();
+                    line.text.push_str(&split_line[..]);
+                    BufferMovement::LineOffsetColumnPosition(line_count, column_index)
+                }
+            }
+        };
 
         self.undo
-            .push_edit(Edit::new(EditKind::Insert, position, Text::from_str(text)));
-
-        position
+            .push_edit(Edit::new(EditKind::Insert, position, text.to_text()));
+        movement
     }
 
     pub fn delete_range(&mut self, range: BufferRange) {
+        let mut text = String::new();
         if range.from.line_index == range.to.line_index {
-            self.lines[range.from.line_index]
-                .text
-                .drain(range.from.column_index..range.to.column_index);
-            self.undo
-                .push_edit(Edit::new(EditKind::Delete, range.from, Text::from_str("")));
+            text.extend(
+                self.lines[range.from.line_index]
+                    .text
+                    .drain(range.from.column_index..range.to.column_index),
+            );
         } else {
-            self.lines[range.from.line_index]
-                .text
-                .truncate(range.from.column_index);
+            text.extend(
+                self.lines[range.from.line_index]
+                    .text
+                    .drain(range.from.column_index..),
+            );
             let lines_range = (range.from.line_index + 1)..range.to.line_index;
             if lines_range.start >= lines_range.end {
-                self.lines.drain(lines_range);
+                for line in self.lines.drain(lines_range) {
+                    text.push_str(&line.text[..]);
+                }
             }
             let to_line_index = range.from.line_index + 1;
             if to_line_index < self.lines.len() {
@@ -97,8 +141,12 @@ impl Buffer {
                 self.lines[range.from.line_index]
                     .text
                     .push_str(&to_line.text[range.to.column_index..]);
+                text.push_str(&to_line.text[..range.to.column_index]);
             }
         }
+
+        self.undo
+            .push_edit(Edit::new(EditKind::Delete, range.from, Text::String(text)));
     }
 }
 

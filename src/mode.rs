@@ -1,5 +1,8 @@
 use crate::{
-    buffer::BufferCollection, buffer_position::BufferOffset, buffer_view::BufferView, event::Key,
+    buffer::{BufferCollection, TextRef},
+    buffer_position::BufferOffset,
+    buffer_view::BufferView,
+    event::Key,
 };
 
 pub enum Transition {
@@ -80,13 +83,13 @@ impl Mode for Insert {
         match keys {
             [Key::Esc] | [Key::Ctrl('c')] => return Transition::EnterMode(Box::new(Normal)),
             [Key::Tab] => {
-                buffer_view.insert_text(buffers, "    ");
+                buffer_view.insert_text(buffers, TextRef::Str("    "));
             }
             [Key::Enter] => {
-                buffer_view.insert_text(buffers, "\n");
+                buffer_view.insert_text(buffers, TextRef::Char('\n'));
             }
             [Key::Char(c)] => {
-                buffer_view.insert_text(buffers, c.encode_utf8(&mut [0 as u8; 4]));
+                buffer_view.insert_text(buffers, TextRef::Char(*c));
             }
             [Key::Delete] => {
                 buffer_view.delete_selection(buffers);
