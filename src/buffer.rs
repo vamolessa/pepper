@@ -98,7 +98,7 @@ impl Buffer {
 
                     BufferPosition {
                         column_index: 0,
-                        line_index: position.line_index + line_count
+                        line_index: position.line_index + line_count,
                     }
                 } else {
                     let line = &mut self.lines[position.line_index];
@@ -107,27 +107,31 @@ impl Buffer {
 
                     BufferPosition {
                         column_index,
-                        line_index: position.line_index + line_count
+                        line_index: position.line_index + line_count,
                     }
                 }
             }
         };
 
-        self.history
-            .push_edit(Edit::new(EditKind::Insert, position, text.to_text()));
-        BufferRange::between(position, end_position)
+        let range = BufferRange::between(position, end_position);
+        self.history.push_edit(Edit {
+            kind: EditKind::Insert,
+            range,
+            text: text.to_text(),
+        });
+        range
     }
 
     pub fn delete_range(&mut self, range: BufferRange) {
-        let mut text = String::new();
+        let mut deleted_text = String::new();
         if range.from.line_index == range.to.line_index {
-            text.extend(
+            deleted_text.extend(
                 self.lines[range.from.line_index]
                     .text
                     .drain(range.from.column_index..range.to.column_index),
             );
         } else {
-            text.extend(
+            deleted_text.extend(
                 self.lines[range.from.line_index]
                     .text
                     .drain(range.from.column_index..),
@@ -135,7 +139,7 @@ impl Buffer {
             let lines_range = (range.from.line_index + 1)..range.to.line_index;
             if lines_range.start >= lines_range.end {
                 for line in self.lines.drain(lines_range) {
-                    text.push_str(&line.text[..]);
+                    deleted_text.push_str(&line.text[..]);
                 }
             }
             let to_line_index = range.from.line_index + 1;
@@ -144,12 +148,15 @@ impl Buffer {
                 self.lines[range.from.line_index]
                     .text
                     .push_str(&to_line.text[range.to.column_index..]);
-                text.push_str(&to_line.text[..range.to.column_index]);
+                deleted_text.push_str(&to_line.text[..range.to.column_index]);
             }
         }
 
-        self.history
-            .push_edit(Edit::new(EditKind::Delete, range.from, Text::String(text)));
+        self.history.push_edit(Edit {
+            kind: EditKind::Delete,
+            range,
+            text: Text::String(deleted_text),
+        });
     }
 
     pub fn commit_edits(&mut self) {

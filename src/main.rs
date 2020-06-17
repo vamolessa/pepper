@@ -6,10 +6,10 @@ mod buffer_view;
 mod config;
 mod editor;
 mod event;
+mod history;
 mod mode;
 mod theme;
 mod tui;
-mod history;
 
 fn main() {
     ctrlc::set_handler(|| {}).unwrap();

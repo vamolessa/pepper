@@ -17,22 +17,6 @@ pub struct Edit {
     pub text: Text,
 }
 
-impl Edit {
-    pub fn new(kind: EditKind, position: BufferPosition, text: Text) -> Self {
-        let range = match &text {
-            Text::Char(_c) => BufferRange::between(
-                position,
-                position.offset_by(BufferOffset {
-                    column_offset: 1,
-                    line_offset: 0,
-                }),
-            ),
-            Text::String(s) => BufferRange::from_str_position(position, &s[..]),
-        };
-        Self { kind, text, range }
-    }
-}
-
 pub struct History {
     edits: Vec<Edit>,
     group_end_indexes: Vec<usize>,

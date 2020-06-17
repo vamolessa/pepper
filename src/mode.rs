@@ -85,7 +85,7 @@ impl Mode for Insert {
         match keys {
             [Key::Esc] | [Key::Ctrl('c')] => {
                 buffer_view.commit_edits(buffers);
-                return Transition::EnterMode(Box::new(Normal))
+                return Transition::EnterMode(Box::new(Normal));
             }
             [Key::Tab] => {
                 buffer_view.insert_text(buffers, TextRef::Str("    "));
