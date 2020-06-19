@@ -85,7 +85,7 @@ impl BufferView {
 
     pub fn redo(&mut self, buffers: &mut BufferCollection) {
         let buffer = &mut buffers[self.buffer_handle];
-        for (kind, range) in buffer.undo() {
+        for (kind, range) in buffer.redo() {
             match kind {
                 EditKind::Insert => self.cursor.insert(range),
                 EditKind::Delete => self.cursor.remove(range),

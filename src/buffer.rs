@@ -229,7 +229,7 @@ impl Buffer {
     }
 
     pub fn redo<'a>(&'a mut self) -> impl 'a + Iterator<Item = (EditKind, BufferRange)> {
-        self.contents.apply_edits(self.history.undo_edits())
+        self.contents.apply_edits(self.history.redo_edits())
     }
 }
 

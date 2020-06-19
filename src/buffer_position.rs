@@ -1,4 +1,5 @@
 use std::{
+    cmp::{Ord, Ordering, PartialOrd},
     convert::From,
     ops::{Add, Neg, Sub},
 };
@@ -11,9 +12,15 @@ pub struct BufferPosition {
 
 impl BufferPosition {
     pub fn insert(&mut self, range: BufferRange) {
+        if *self < range.from {
+            return;
+        }
     }
 
     pub fn remove(&mut self, range: BufferRange) {
+        if *self < range.from {
+            return;
+        }
     }
 }
 
@@ -31,6 +38,28 @@ impl Sub for BufferPosition {
 
     fn sub(self, other: Self) -> Self::Output {
         BufferOffset::from(self) - BufferOffset::from(other)
+    }
+}
+
+impl Ord for BufferPosition {
+    fn cmp(&self, other: &Self) -> Ordering {
+        if self.line_index < other.line_index {
+            Ordering::Less
+        } else if self.line_index > other.line_index {
+            Ordering::Greater
+        } else if self.column_index < other.column_index {
+            Ordering::Less
+        } else if self.column_index > other.column_index {
+            Ordering::Greater
+        } else {
+            Ordering::Equal
+        }
+    }
+}
+
+impl PartialOrd for BufferPosition {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
 
