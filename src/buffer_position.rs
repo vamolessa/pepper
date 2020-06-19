@@ -10,19 +10,10 @@ pub struct BufferPosition {
 }
 
 impl BufferPosition {
-    pub fn offset_by(self, offset: BufferOffset) -> Self {
-        Self {
-            column_index: (self.column_index as isize + offset.column_offset) as _,
-            line_index: (self.line_index as isize + offset.line_offset) as _,
-        }
+    pub fn insert(&mut self, range: BufferRange) {
     }
 
-    pub fn insert(self, range: BufferRange) -> Self {
-        self
-    }
-
-    pub fn remove(self, range: BufferRange) -> Self {
-        self
+    pub fn remove(&mut self, range: BufferRange) {
     }
 }
 

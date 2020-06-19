@@ -175,18 +175,18 @@ impl BufferContents {
         }
     }
 
-    fn apply_edits<'a, I: 'a>(&'a mut self, edits: I) -> impl 'a + Iterator<Item = BufferRange>
+    fn apply_edits<'a, I: 'a>(&'a mut self, edits: I) -> impl 'a + Iterator<Item = (EditKind, BufferRange)>
     where
         I: Iterator<Item = &'a Edit>,
     {
         edits.map(move |e| match e.kind {
             EditKind::Insert => {
                 self.insert_text(e.range.from, e.text.as_text_ref());
-                e.range
+                (e.kind, e.range)
             }
             EditKind::Delete => {
                 self.delete_range(e.range);
-                e.range
+                (e.kind, e.range)
             }
         })
     }
@@ -224,11 +224,11 @@ impl Buffer {
         });
     }
 
-    pub fn undo<'a>(&'a mut self) -> impl 'a + Iterator<Item = BufferRange> {
+    pub fn undo<'a>(&'a mut self) -> impl 'a + Iterator<Item = (EditKind, BufferRange)> {
         self.contents.apply_edits(self.history.undo_edits())
     }
 
-    pub fn redo<'a>(&'a mut self) -> impl 'a + Iterator<Item = BufferRange> {
+    pub fn redo<'a>(&'a mut self) -> impl 'a + Iterator<Item = (EditKind, BufferRange)> {
         self.contents.apply_edits(self.history.undo_edits())
     }
 }

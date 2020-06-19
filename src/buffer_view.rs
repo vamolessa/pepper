@@ -1,6 +1,7 @@
 use crate::{
     buffer::{BufferCollection, BufferHandle, TextRef},
     buffer_position::{BufferOffset, BufferPosition, BufferRange},
+    history::EditKind,
 };
 
 pub struct BufferView {
@@ -47,7 +48,7 @@ impl BufferView {
         let cursor = &mut self.cursor;
 
         let range = buffer.insert_text(*cursor, text);
-        *cursor = cursor.insert(range);
+        cursor.insert(range);
     }
 
     pub fn delete_selection(&mut self, buffers: &mut BufferCollection) {
@@ -65,6 +66,7 @@ impl BufferView {
         let range = BufferRange::between(*cursor, selection_end);
 
         buffer.delete_range(range);
+        cursor.remove(range);
     }
 
     pub fn commit_edits(&mut self, buffers: &mut BufferCollection) {
@@ -73,11 +75,21 @@ impl BufferView {
 
     pub fn undo(&mut self, buffers: &mut BufferCollection) {
         let buffer = &mut buffers[self.buffer_handle];
-        for _ in buffer.undo() {}
+        for (kind, range) in buffer.undo() {
+            match kind {
+                EditKind::Insert => self.cursor.insert(range),
+                EditKind::Delete => self.cursor.remove(range),
+            }
+        }
     }
 
     pub fn redo(&mut self, buffers: &mut BufferCollection) {
         let buffer = &mut buffers[self.buffer_handle];
-        for _ in buffer.redo() {}
+        for (kind, range) in buffer.undo() {
+            match kind {
+                EditKind::Insert => self.cursor.insert(range),
+                EditKind::Delete => self.cursor.remove(range),
+            }
+        }
     }
 }
