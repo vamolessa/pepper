@@ -12,8 +12,10 @@ pub struct BufferPosition {
 
 impl BufferPosition {
     pub fn insert(&mut self, range: BufferRange) {
-        if *self < range.from {
-            return;
+        match (*self).cmp(&range.from) {
+            Ordering::Less => (),
+            Ordering::Equal | Ordering::Greater => {
+            }
         }
     }
 
