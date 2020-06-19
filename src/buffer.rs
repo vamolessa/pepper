@@ -10,6 +10,35 @@ pub enum Text {
     String(String),
 }
 
+impl Text {
+    pub fn from_chars<I>(mut chars: I) -> Self
+    where
+        I: Iterator<Item = char>,
+    {
+        if let Some(first_char) = chars.next() {
+            if let Some(second_char) = chars.next() {
+                let mut text = String::new();
+                text.push(first_char);
+                text.push(second_char);
+                text.extend(chars);
+                Text::String(text)
+            } else {
+                Text::Char(first_char)
+            }
+        } else {
+            Text::String(String::new())
+        }
+    }
+
+    pub fn as_text_ref<'a>(&'a self) -> TextRef<'a> {
+        match self {
+            Text::Char(c) => TextRef::Char(*c),
+            Text::String(s) => TextRef::Str(&s[..]),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
 pub enum TextRef<'a> {
     Char(char),
     Str(&'a str),
@@ -38,16 +67,14 @@ impl BufferLine {
     }
 }
 
-pub struct Buffer {
+pub struct BufferContents {
     lines: Vec<BufferLine>,
-    history: History,
 }
 
-impl Buffer {
+impl BufferContents {
     pub fn from_str(text: &str) -> Self {
         Self {
             lines: text.lines().map(|l| BufferLine::new(l.into())).collect(),
-            history: History::new(),
         }
     }
 
@@ -63,7 +90,7 @@ impl Buffer {
         &self.lines[index]
     }
 
-    pub fn insert_text(&mut self, position: BufferPosition, text: TextRef) -> BufferRange {
+    fn insert_text(&mut self, position: BufferPosition, text: TextRef) -> BufferRange {
         let end_position = match text {
             TextRef::Char(c) => {
                 self.lines[position.line_index]
@@ -113,24 +140,17 @@ impl Buffer {
             }
         };
 
-        let range = BufferRange::between(position, end_position);
-        self.history.push_edit(Edit {
-            kind: EditKind::Insert,
-            range,
-            text: text.to_text(),
-        });
-        range
+        BufferRange::between(position, end_position)
     }
 
-    pub fn delete_range(&mut self, range: BufferRange) {
-        let mut deleted_text = String::new();
+    fn delete_range(&mut self, range: BufferRange) -> Text {
         if range.from.line_index == range.to.line_index {
-            deleted_text.extend(
-                self.lines[range.from.line_index]
-                    .text
-                    .drain(range.from.column_index..range.to.column_index),
-            );
+            let deleted_chars = self.lines[range.from.line_index]
+                .text
+                .drain(range.from.column_index..range.to.column_index);
+            Text::from_chars(deleted_chars)
         } else {
+            let mut deleted_text = String::new();
             deleted_text.extend(
                 self.lines[range.from.line_index]
                     .text
@@ -150,25 +170,66 @@ impl Buffer {
                     .push_str(&to_line.text[range.to.column_index..]);
                 deleted_text.push_str(&to_line.text[..range.to.column_index]);
             }
-        }
 
+            Text::String(deleted_text)
+        }
+    }
+
+    fn apply_edits<'a, I: 'a>(&'a mut self, edits: I) -> impl 'a + Iterator<Item = BufferRange>
+    where
+        I: Iterator<Item = &'a Edit>,
+    {
+        edits.map(move |e| match e.kind {
+            EditKind::Insert => {
+                self.insert_text(e.range.from, e.text.as_text_ref());
+                e.range
+            }
+            EditKind::Delete => {
+                self.delete_range(e.range);
+                e.range
+            }
+        })
+    }
+}
+
+pub struct Buffer {
+    pub contents: BufferContents,
+    pub history: History,
+}
+
+impl Buffer {
+    pub fn with_contents(contents: BufferContents) -> Self {
+        Self {
+            contents,
+            history: History::new(),
+        }
+    }
+
+    pub fn insert_text(&mut self, position: BufferPosition, text: TextRef) -> BufferRange {
+        let range = self.contents.insert_text(position, text);
+        self.history.push_edit(Edit {
+            kind: EditKind::Insert,
+            range,
+            text: text.to_text(),
+        });
+        range
+    }
+
+    pub fn delete_range(&mut self, range: BufferRange) {
+        let deleted_text = self.contents.delete_range(range);
         self.history.push_edit(Edit {
             kind: EditKind::Delete,
             range,
-            text: Text::String(deleted_text),
+            text: deleted_text,
         });
     }
 
-    pub fn commit_edits(&mut self) {
-        self.history.commit_edits();
+    pub fn undo<'a>(&'a mut self) -> impl 'a + Iterator<Item = BufferRange> {
+        self.contents.apply_edits(self.history.undo_edits())
     }
 
-    pub fn undo_edits(&mut self) -> impl Iterator<Item = &Edit> {
-        self.history.undo_edits()
-    }
-
-    pub fn redo_edits(&mut self) -> impl Iterator<Item = &Edit> {
-        self.history.redo_edits()
+    pub fn redo<'a>(&'a mut self) -> impl 'a + Iterator<Item = BufferRange> {
+        self.contents.apply_edits(self.history.undo_edits())
     }
 }
 

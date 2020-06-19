@@ -1,7 +1,6 @@
 use crate::{
     buffer::{BufferCollection, BufferHandle, TextRef},
     buffer_position::{BufferOffset, BufferPosition, BufferRange},
-    history::EditKind,
 };
 
 pub struct BufferView {
@@ -29,9 +28,9 @@ impl BufferView {
 
         target.line_offset = target
             .line_offset
-            .min(buffer.line_count() as isize - 1)
+            .min(buffer.contents.line_count() as isize - 1)
             .max(0);
-        let target_line_len = buffer.line(target.line_offset as _).char_count();
+        let target_line_len = buffer.contents.line(target.line_offset as _).char_count();
         target.column_offset = target.column_offset.min(target_line_len as _).max(0);
 
         *cursor = target.into();
@@ -55,7 +54,7 @@ impl BufferView {
         let buffer = &mut buffers[self.buffer_handle];
         let cursor = &mut self.cursor;
 
-        let cursor_line_size = buffer.line(cursor.line_index).char_count();
+        let cursor_line_size = buffer.contents.line(cursor.line_index).char_count();
         let mut selection_end = *cursor;
         if selection_end.column_index < cursor_line_size {
             selection_end.column_index += 1;
@@ -63,32 +62,22 @@ impl BufferView {
             selection_end.line_index += 1;
             selection_end.column_index = 0;
         }
+        let range = BufferRange::between(*cursor, selection_end);
 
-        buffer.delete_range(BufferRange::between(*cursor, selection_end));
+        buffer.delete_range(range);
     }
 
     pub fn commit_edits(&mut self, buffers: &mut BufferCollection) {
-        buffers[self.buffer_handle].commit_edits();
+        buffers[self.buffer_handle].history.commit_edits();
     }
 
     pub fn undo(&mut self, buffers: &mut BufferCollection) {
         let buffer = &mut buffers[self.buffer_handle];
-
-        for edit in buffer.undo_edits() {
-            match edit.kind {
-                EditKind::Insert => {
-                    //buffer.insert_text(edit.range.from, edit.text.as_text_ref());
-                }
-                EditKind::Delete => {
-                    //buffer.delete_range(edit.range);
-                }
-            }
-        }
+        for _ in buffer.undo() {}
     }
 
     pub fn redo(&mut self, buffers: &mut BufferCollection) {
         let buffer = &mut buffers[self.buffer_handle];
-
-        for edit in buffer.redo_edits() {}
+        for _ in buffer.redo() {}
     }
 }

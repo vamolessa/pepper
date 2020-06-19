@@ -1,9 +1,6 @@
 use std::ops::Range;
 
-use crate::{
-    buffer::Text,
-    buffer_position::{BufferOffset, BufferPosition, BufferRange},
-};
+use crate::{buffer::Text, buffer_position::BufferRange};
 
 #[derive(Clone, Copy)]
 pub enum EditKind {
