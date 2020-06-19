@@ -28,8 +28,28 @@ impl BufferPosition {
         }
     }
 
-    pub fn remove(self, _range: BufferRange) -> Self {
-        self
+    pub fn remove(self, range: BufferRange) -> Self {
+        if self.line_index < range.from.line_index {
+            self
+        } else if self.line_index > range.to.line_index {
+            Self {
+                column_index: self.column_index,
+                line_index: self.line_index - (range.to.line_index - range.from.line_index),
+            }
+        } else if self.line_index == range.from.line_index
+            && self.column_index < range.from.column_index
+        {
+            self
+        } else if self.line_index == range.to.line_index
+            && self.column_index > range.to.column_index
+        {
+            Self {
+                column_index: range.from.column_index + self.column_index - range.to.column_index,
+                line_index: range.from.line_index,
+            }
+        } else {
+            range.from
+        }
     }
 }
 
@@ -136,6 +156,7 @@ mod tests {
         let pos33 = make_pos(3, 3);
         let pos36 = make_pos(3, 6);
         let pos42 = make_pos(4, 2);
+        let pos53 = make_pos(5, 3);
         let pos66 = make_pos(6, 6);
         let range31_33 = BufferRange::between(make_pos(3, 1), make_pos(3, 3));
         let range33_51 = BufferRange::between(make_pos(3, 3), make_pos(5, 1));
@@ -150,6 +171,35 @@ mod tests {
         assert_eq!(make_pos(5, 1), pos33.insert(range33_51));
         assert_eq!(make_pos(5, 4), pos36.insert(range33_51));
         assert_eq!(make_pos(6, 2), pos42.insert(range33_51));
+        assert_eq!(make_pos(7, 3), pos53.insert(range33_51));
         assert_eq!(make_pos(8, 6), pos66.insert(range33_51));
+    }
+
+    #[test]
+    fn buffer_position_remove() {
+        let pos12 = make_pos(1, 2);
+        let pos31 = make_pos(3, 1);
+        let pos32 = make_pos(3, 2);
+        let pos33 = make_pos(3, 3);
+        let pos36 = make_pos(3, 6);
+        let pos42 = make_pos(4, 2);
+        let pos53 = make_pos(5, 3);
+        let pos66 = make_pos(6, 6);
+        let range31_33 = BufferRange::between(make_pos(3, 1), make_pos(3, 3));
+        let range33_51 = BufferRange::between(make_pos(3, 3), make_pos(5, 1));
+
+        assert_eq!(pos12, pos12.remove(range31_33));
+        assert_eq!(make_pos(3, 1), pos31.remove(range31_33));
+        assert_eq!(make_pos(3, 1), pos32.remove(range31_33));
+        assert_eq!(make_pos(3, 1), pos33.remove(range31_33));
+        assert_eq!(pos42, pos42.remove(range31_33));
+        assert_eq!(pos53, pos53.remove(range31_33));
+
+        assert_eq!(pos12, pos12.remove(range33_51));
+        assert_eq!(make_pos(3, 3), pos33.remove(range33_51));
+        assert_eq!(make_pos(3, 3), pos36.remove(range33_51));
+        assert_eq!(make_pos(3, 3), pos42.remove(range33_51));
+        assert_eq!(make_pos(3, 5), pos53.remove(range33_51));
+        assert_eq!(make_pos(4, 6), pos66.remove(range33_51));
     }
 }
