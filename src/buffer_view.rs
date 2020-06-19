@@ -48,7 +48,7 @@ impl BufferView {
         let cursor = &mut self.cursor;
 
         let range = buffer.insert_text(*cursor, text);
-        cursor.insert(range);
+        *cursor = cursor.insert(range);
     }
 
     pub fn delete_selection(&mut self, buffers: &mut BufferCollection) {
@@ -66,7 +66,7 @@ impl BufferView {
         let range = BufferRange::between(*cursor, selection_end);
 
         buffer.delete_range(range);
-        cursor.remove(range);
+        *cursor = cursor.remove(range);
     }
 
     pub fn commit_edits(&mut self, buffers: &mut BufferCollection) {
@@ -77,8 +77,8 @@ impl BufferView {
         let buffer = &mut buffers[self.buffer_handle];
         for (kind, range) in buffer.undo() {
             match kind {
-                EditKind::Insert => self.cursor.insert(range),
-                EditKind::Delete => self.cursor.remove(range),
+                EditKind::Insert => self.cursor = self.cursor.insert(range),
+                EditKind::Delete => self.cursor = self.cursor.remove(range),
             }
         }
     }
@@ -87,8 +87,8 @@ impl BufferView {
         let buffer = &mut buffers[self.buffer_handle];
         for (kind, range) in buffer.redo() {
             match kind {
-                EditKind::Insert => self.cursor.insert(range),
-                EditKind::Delete => self.cursor.remove(range),
+                EditKind::Insert => self.cursor = self.cursor.insert(range),
+                EditKind::Delete => self.cursor = self.cursor.remove(range),
             }
         }
     }
