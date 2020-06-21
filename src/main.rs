@@ -19,7 +19,7 @@ fn main() {
 
     let mut editor = editor::Editor::default();
     let handle = editor.buffers.add(buffer::Buffer::with_contents(
-        buffer::BufferContents::from_str(include_str!("main.rs")),
+        buffer::BufferContent::from_str(include_str!("main.rs")),
     ));
     editor
         .buffer_views

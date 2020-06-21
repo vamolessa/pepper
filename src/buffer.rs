@@ -70,11 +70,11 @@ impl BufferLine {
     }
 }
 
-pub struct BufferContents {
+pub struct BufferContent {
     lines: Vec<BufferLine>,
 }
 
-impl BufferContents {
+impl BufferContent {
     pub fn from_str(text: &str) -> Self {
         let mut this = Self { lines: Vec::new() };
         this.lines.push(BufferLine::new(String::new()));
@@ -230,20 +230,20 @@ impl BufferContents {
 }
 
 pub struct Buffer {
-    pub contents: BufferContents,
+    pub content: BufferContent,
     pub history: History,
 }
 
 impl Buffer {
-    pub fn with_contents(contents: BufferContents) -> Self {
+    pub fn with_contents(contents: BufferContent) -> Self {
         Self {
-            contents,
+            content: contents,
             history: History::new(),
         }
     }
 
     pub fn insert_text(&mut self, position: BufferPosition, text: TextRef) -> BufferRange {
-        let range = self.contents.insert_text(position, text);
+        let range = self.content.insert_text(position, text);
         self.history.push_edit(Edit {
             kind: EditKind::Insert,
             range,
@@ -253,7 +253,7 @@ impl Buffer {
     }
 
     pub fn delete_range(&mut self, range: BufferRange) {
-        let deleted_text = self.contents.delete_range(range);
+        let deleted_text = self.content.delete_range(range);
         self.history.push_edit(Edit {
             kind: EditKind::Delete,
             range,
@@ -262,11 +262,11 @@ impl Buffer {
     }
 
     pub fn undo<'a>(&'a mut self) -> impl 'a + Iterator<Item = (EditKind, BufferRange)> {
-        self.contents.apply_edits(self.history.undo_edits())
+        self.content.apply_edits(self.history.undo_edits())
     }
 
     pub fn redo<'a>(&'a mut self) -> impl 'a + Iterator<Item = (EditKind, BufferRange)> {
-        self.contents.apply_edits(self.history.redo_edits())
+        self.content.apply_edits(self.history.redo_edits())
     }
 }
 
@@ -312,7 +312,7 @@ mod tests {
 
     #[test]
     fn buffer_contents_initial_content() {
-        let mut buffer = BufferContents::from_str("");
+        let mut buffer = BufferContent::from_str("");
         assert_eq!(1, buffer.line_count());
         let mut buf = Vec::new();
         buffer.write(&mut buf).unwrap();
@@ -321,7 +321,7 @@ mod tests {
 
     #[test]
     fn buffer_contents_insert_text() {
-        let mut buffer = BufferContents::from_str("");
+        let mut buffer = BufferContent::from_str("");
         let mut buf = Vec::new();
 
         buffer.insert_text(
@@ -365,6 +365,6 @@ mod tests {
 
     #[test]
     fn buffer_contents_delete_range() {
-        let mut buffer = BufferContents::from_str("this is the initial\ncontent of the buffer");
+        let mut buffer = BufferContent::from_str("this is the initial\ncontent of the buffer");
     }
 }
