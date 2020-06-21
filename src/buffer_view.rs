@@ -111,8 +111,30 @@ impl<'a> BufferViews<'a> {
         }
     }
 
-    pub fn get_buffer_view(&mut self) -> &mut BufferView {
+    pub fn current_buffer_view_mut(&mut self) -> &mut BufferView {
         let viewport = &mut self.viewports[self.viewport_index];
         viewport.current_buffer_view_mut()
+    }
+
+    pub fn current_buffer_views_iter_mut(
+        &'a mut self,
+    ) -> (&'a mut BufferView, impl Iterator<Item = &'a mut BufferView>) {
+        let (before, after) = self.viewports.slice_mut().split_at_mut(self.viewport_index);
+        let (current, after) = after.split_at_mut(1);
+        let current_buffer_view = current[0].current_buffer_view_mut();
+        let current_buffer_handle = current_buffer_view.buffer_handle;
+
+        let iter = before
+            .iter_mut()
+            .flat_map(move |v| {
+                v.buffer_views_mut()
+                    .filter(move |b| b.buffer_handle == current_buffer_handle)
+            })
+            .chain(after.iter_mut().flat_map(move |v| {
+                v.buffer_views_mut()
+                    .filter(move |b| b.buffer_handle == current_buffer_handle)
+            }));
+
+        (current_buffer_view, iter)
     }
 }

@@ -18,6 +18,10 @@ impl ViewportCollection {
             viewport.set_size(size);
         }
     }
+
+    pub fn slice_mut(&mut self) -> &mut [Viewport] {
+        &mut self.viewports[..]
+    }
 }
 
 impl Index<usize> for ViewportCollection {
@@ -57,5 +61,9 @@ impl Viewport {
 
     pub fn current_buffer_view_mut(&mut self) -> &mut BufferView {
         &mut self.buffer_views[self.current_buffer_view]
+    }
+
+    pub fn buffer_views_mut<'a>(&'a mut self) -> impl Iterator<Item = &'a mut BufferView> {
+        self.buffer_views.iter_mut()
     }
 }

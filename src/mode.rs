@@ -36,28 +36,28 @@ impl Mode for Normal {
         match keys {
             [Key::Char('q')] => return Transition::Waiting,
             [Key::Char('q'), Key::Char('q')] => return Transition::Exit,
-            [Key::Char('h')] => buffer_views.get_buffer_view().move_cursor(
+            [Key::Char('h')] => buffer_views.current_buffer_view_mut().move_cursor(
                 buffers,
                 BufferOffset {
                     column_offset: -1,
                     line_offset: 0,
                 },
             ),
-            [Key::Char('j')] => buffer_views.get_buffer_view().move_cursor(
+            [Key::Char('j')] => buffer_views.current_buffer_view_mut().move_cursor(
                 buffers,
                 BufferOffset {
                     column_offset: 0,
                     line_offset: 1,
                 },
             ),
-            [Key::Char('k')] => buffer_views.get_buffer_view().move_cursor(
+            [Key::Char('k')] => buffer_views.current_buffer_view_mut().move_cursor(
                 buffers,
                 BufferOffset {
                     column_offset: 0,
                     line_offset: -1,
                 },
             ),
-            [Key::Char('l')] => buffer_views.get_buffer_view().move_cursor(
+            [Key::Char('l')] => buffer_views.current_buffer_view_mut().move_cursor(
                 buffers,
                 BufferOffset {
                     column_offset: 1,
@@ -65,10 +65,10 @@ impl Mode for Normal {
                 },
             ),
             [Key::Char('i')] => return Transition::EnterMode(Box::new(Insert)),
-            [Key::Char('u')] => buffer_views.get_buffer_view().undo(buffers),
-            [Key::Char('U')] => buffer_views.get_buffer_view().redo(buffers),
+            [Key::Char('u')] => buffer_views.current_buffer_view_mut().undo(buffers),
+            [Key::Char('U')] => buffer_views.current_buffer_view_mut().redo(buffers),
             [Key::Ctrl('s')] => {
-                let handle = buffer_views.get_buffer_view().buffer_handle;
+                let handle = buffer_views.current_buffer_view_mut().buffer_handle;
                 let mut file = std::fs::File::create("buffer_content.txt").unwrap();
                 buffers[handle].content.write(&mut file).unwrap();
             }
@@ -89,26 +89,26 @@ impl Mode for Insert {
     ) -> Transition {
         match keys {
             [Key::Esc] | [Key::Ctrl('c')] => {
-                buffer_views.get_buffer_view().commit_edits(buffers);
+                buffer_views.current_buffer_view_mut().commit_edits(buffers);
                 return Transition::EnterMode(Box::new(Normal));
             }
             [Key::Tab] => {
                 buffer_views
-                    .get_buffer_view()
+                    .current_buffer_view_mut()
                     .insert_text(buffers, TextRef::Str("    "));
             }
             [Key::Enter] | [Key::Ctrl('m')] => {
                 buffer_views
-                    .get_buffer_view()
+                    .current_buffer_view_mut()
                     .insert_text(buffers, TextRef::Char('\n'));
             }
             [Key::Char(c)] => {
                 buffer_views
-                    .get_buffer_view()
+                    .current_buffer_view_mut()
                     .insert_text(buffers, TextRef::Char(*c));
             }
             [Key::Delete] => {
-                buffer_views.get_buffer_view().delete_selection(buffers);
+                buffer_views.current_buffer_view_mut().delete_selection(buffers);
             }
             _ => (),
         }

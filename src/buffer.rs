@@ -298,7 +298,7 @@ impl Buffer {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub struct BufferHandle(usize);
 
 #[derive(Default)]
