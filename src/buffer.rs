@@ -2,7 +2,7 @@ use std::ops::{Index, IndexMut};
 
 use crate::{
     buffer_position::{BufferPosition, BufferRange},
-    history::{Edit, EditKind, History},
+    history::{Edit, EditKind, EditRef, History},
 };
 
 pub enum Text {
@@ -175,13 +175,16 @@ impl BufferContents {
         }
     }
 
-    fn apply_edits<'a, I: 'a>(&'a mut self, edits: I) -> impl 'a + Iterator<Item = (EditKind, BufferRange)>
+    fn apply_edits<'a, I: 'a>(
+        &'a mut self,
+        edits: I,
+    ) -> impl 'a + Iterator<Item = (EditKind, BufferRange)>
     where
-        I: Iterator<Item = &'a Edit>,
+        I: Iterator<Item = EditRef<'a>>,
     {
         edits.map(move |e| match e.kind {
             EditKind::Insert => {
-                self.insert_text(e.range.from, e.text.as_text_ref());
+                self.insert_text(e.range.from, e.text);
                 (e.kind, e.range)
             }
             EditKind::Delete => {
