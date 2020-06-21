@@ -43,11 +43,11 @@ impl Editor {
                 self.buffered_keys.push(key);
 
                 let buffers = &mut self.buffers;
-                let buffer_views =
-                    BufferViews::from_viewports(&mut self.viewports, self.current_viewport);
+                let mut buffer_views =
+                    BufferViews::from_viewports(self.viewports.slice_mut(), self.current_viewport);
                 match self
                     .mode
-                    .on_event(buffer_views, buffers, &self.buffered_keys[..])
+                    .on_event(&mut buffer_views, buffers, &self.buffered_keys[..])
                 {
                     Transition::None => self.buffered_keys.clear(),
                     Transition::Waiting => (),

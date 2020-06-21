@@ -15,7 +15,7 @@ pub enum Transition {
 pub trait Mode {
     fn on_event(
         &mut self,
-        buffer_views: BufferViews,
+        buffer_views: &mut BufferViews,
         buffers: &mut BufferCollection,
         keys: &[Key],
     ) -> Transition;
@@ -29,7 +29,7 @@ pub struct Normal;
 impl Mode for Normal {
     fn on_event(
         &mut self,
-        mut buffer_views: BufferViews,
+        buffer_views: &mut BufferViews,
         buffers: &mut BufferCollection,
         keys: &[Key],
     ) -> Transition {
@@ -65,8 +65,8 @@ impl Mode for Normal {
                 },
             ),
             [Key::Char('i')] => return Transition::EnterMode(Box::new(Insert)),
-            [Key::Char('u')] => buffer_views.current_buffer_view_mut().undo(buffers),
-            [Key::Char('U')] => buffer_views.current_buffer_view_mut().redo(buffers),
+            [Key::Char('u')] => (), //buffer_views.undo(buffers),
+            [Key::Char('U')] => (), //buffer_views.redo(buffers),
             [Key::Ctrl('s')] => {
                 let handle = buffer_views.current_buffer_view_mut().buffer_handle;
                 let mut file = std::fs::File::create("buffer_content.txt").unwrap();
@@ -83,7 +83,7 @@ struct Insert;
 impl Mode for Insert {
     fn on_event(
         &mut self,
-        mut buffer_views: BufferViews,
+        buffer_views: &mut BufferViews,
         buffers: &mut BufferCollection,
         keys: &[Key],
     ) -> Transition {
@@ -93,22 +93,16 @@ impl Mode for Insert {
                 return Transition::EnterMode(Box::new(Normal));
             }
             [Key::Tab] => {
-                buffer_views
-                    .current_buffer_view_mut()
-                    .insert_text(buffers, TextRef::Str("    "));
+                //buffer_views.insert_text(buffers, TextRef::Str("    "));
             }
             [Key::Enter] | [Key::Ctrl('m')] => {
-                buffer_views
-                    .current_buffer_view_mut()
-                    .insert_text(buffers, TextRef::Char('\n'));
+                //buffer_views.insert_text(buffers, TextRef::Char('\n'));
             }
             [Key::Char(c)] => {
-                buffer_views
-                    .current_buffer_view_mut()
-                    .insert_text(buffers, TextRef::Char(*c));
+                buffer_views.insert_text(buffers, TextRef::Char(*c));
             }
             [Key::Delete] => {
-                buffer_views.current_buffer_view_mut().delete_selection(buffers);
+                //buffer_views.delete_selection(buffers);
             }
             _ => (),
         }
