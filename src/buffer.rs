@@ -76,11 +76,16 @@ pub struct BufferContents {
 
 impl BufferContents {
     pub fn from_str(text: &str) -> Self {
-        let mut lines: Vec<_> = text.lines().map(|l| BufferLine::new(l.into())).collect();
-        if lines.len() == 0 {
-            lines.push(BufferLine::new("".into()));
-        }
-        Self { lines }
+        let mut this = Self { lines: Vec::new() };
+        this.lines.push(BufferLine::new(String::new()));
+        this.insert_text(
+            BufferPosition {
+                line_index: 0,
+                column_index: 0,
+            },
+            TextRef::Str(text),
+        );
+        this
     }
 
     pub fn line_count(&self) -> usize {
@@ -99,9 +104,10 @@ impl BufferContents {
     where
         W: io::Write,
     {
-        for line in &self.lines {
+        for line in &self.lines[..self.lines.len() - 1] {
             writeln!(write, "{}", line.text)?;
         }
+        write!(write, "{}", self.lines[self.lines.len() - 1].text)?;
         Ok(())
     }
 
@@ -301,15 +307,23 @@ impl IndexMut<BufferHandle> for BufferCollection {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Write;
-
     use super::*;
     use crate::buffer_position::BufferPosition;
 
     #[test]
-    fn buffer_contents_insert_text() {
+    fn buffer_contents_initial_content() {
         let mut buffer = BufferContents::from_str("");
         assert_eq!(1, buffer.line_count());
+        let mut buf = Vec::new();
+        buffer.write(&mut buf).unwrap();
+        assert_eq!("", std::str::from_utf8(&buf[..]).unwrap());
+    }
+
+    #[test]
+    fn buffer_contents_insert_text() {
+        let mut buffer = BufferContents::from_str("");
+        let mut buf = Vec::new();
+
         buffer.insert_text(
             BufferPosition {
                 line_index: 0,
@@ -331,10 +345,10 @@ mod tests {
             },
             TextRef::Str("ello w"),
         );
-        let mut buf = Vec::new();
-        buffer.write(&mut buf).unwrap();
         assert_eq!(1, buffer.line_count());
-        assert_eq!("hello world\n", std::str::from_utf8(&buf[..]).unwrap());
+        buf.clear();
+        buffer.write(&mut buf).unwrap();
+        assert_eq!("hello world", std::str::from_utf8(&buf[..]).unwrap());
 
         buffer.insert_text(
             BufferPosition {
@@ -346,6 +360,11 @@ mod tests {
         assert_eq!(2, buffer.line_count());
         buf.clear();
         buffer.write(&mut buf).unwrap();
-        assert_eq!("hello\n world\n", std::str::from_utf8(&buf[..]).unwrap());
+        assert_eq!("hello\n world", std::str::from_utf8(&buf[..]).unwrap());
+    }
+
+    #[test]
+    fn buffer_contents_delete_range() {
+        let mut buffer = BufferContents::from_str("this is the initial\ncontent of the buffer");
     }
 }
