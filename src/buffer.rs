@@ -8,6 +8,7 @@ use crate::{
     history::{Edit, EditKind, EditRef, History},
 };
 
+#[derive(Debug)]
 pub enum Text {
     Char(char),
     String(String),
@@ -41,7 +42,7 @@ impl Text {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum TextRef<'a> {
     Char(char),
     Str(&'a str),

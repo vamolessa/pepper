@@ -33,46 +33,86 @@ pub struct EditRef<'a> {
     pub text: TextRef<'a>,
 }
 
+enum HistoryState {
+    IterStart,
+    IterIndex(usize),
+    IterEnd,
+    InsertGroup(Range<usize>),
+}
+
 pub struct History {
     edits: Vec<Edit>,
     group_ranges: Vec<Range<usize>>,
-    current_group_index: usize,
+    state: HistoryState,
 }
 
 impl History {
     pub fn new() -> Self {
         Self {
             edits: Vec::new(),
-            group_ranges: vec![0..0],
-            current_group_index: 0,
+            group_ranges: Vec::new(),
+            state: HistoryState::IterEnd,
         }
     }
 
     pub fn push_edit(&mut self, edit: Edit) {
-        self.edits
-            .truncate(self.group_ranges[self.current_group_index].end);
-        self.group_ranges.truncate(self.current_group_index + 1);
+        match self.state {
+            HistoryState::IterStart => {
+                self.edits.clear();
+                self.group_ranges.clear();
+                self.state = HistoryState::InsertGroup(0..1);
+            }
+            HistoryState::IterIndex(index) => {
+                let range = &self.group_ranges[index];
+                self.edits.truncate(range.start);
+                self.state = HistoryState::InsertGroup(range.start..range.start + 1);
+                self.group_ranges.truncate(index);
+            }
+            HistoryState::IterEnd => {
+                let edit_count = self.edits.len();
+                self.state = HistoryState::InsertGroup(edit_count..edit_count + 1);
+            }
+            HistoryState::InsertGroup(ref mut range) => {
+                range.end = self.edits.len() + 1;
+            }
+        }
 
         self.edits.push(edit);
-        self.group_ranges[self.current_group_index].end += 1;
     }
 
     pub fn commit_edits(&mut self) {
-        let range = &self.group_ranges[self.current_group_index];
-        if range.end - range.start > 0 {
-            self.current_group_index = self.group_ranges.len();
-            let edits_end_index = self.edits.len();
-            self.group_ranges.push(edits_end_index..edits_end_index);
+        if let HistoryState::InsertGroup(range) = &self.state {
+            self.group_ranges.push(range.clone());
+            self.state = HistoryState::IterEnd;
         }
     }
 
     pub fn undo_edits<'a>(&'a mut self) -> impl Iterator<Item = EditRef<'a>> {
         self.commit_edits();
 
-        let range = self.get_current_group_edit_range();
-        if self.current_group_index > 0 {
-            self.current_group_index -= 1;
-        }
+        let range = match self.state {
+            HistoryState::IterStart => 0..0,
+            HistoryState::IterIndex(ref mut index) => {
+                if *index > 0 {
+                    *index -= 1;
+                    self.group_ranges[*index].clone()
+                } else {
+                    self.state = HistoryState::IterStart;
+                    0..0
+                }
+            }
+            HistoryState::IterEnd => {
+                let group_count = self.group_ranges.len();
+                if group_count > 0 {
+                    self.state = HistoryState::IterIndex(group_count - 1);
+                    self.group_ranges[group_count - 1].clone()
+                } else {
+                    self.state = HistoryState::IterStart;
+                    0..0
+                }
+            }
+            HistoryState::InsertGroup(_) => unreachable!(),
+        };
 
         self.edits[range].iter().rev().map(|e| {
             let mut edit = e.as_edit_ref();
@@ -87,21 +127,30 @@ impl History {
     pub fn redo_edits<'a>(&'a mut self) -> impl Iterator<Item = EditRef<'a>> {
         self.commit_edits();
 
-        let range = self.get_current_group_edit_range();
-        if self.current_group_index < self.group_ranges.len() - 1 {
-            self.current_group_index += 1;
-        }
+        let range = match self.state {
+            HistoryState::IterStart => {
+                if self.group_ranges.len() > 0 {
+                    self.state = HistoryState::IterIndex(0);
+                    self.group_ranges[0].clone()
+                } else {
+                    self.state = HistoryState::IterEnd;
+                    0..0
+                }
+            }
+            HistoryState::IterIndex(ref mut index) => {
+                *index += 1;
+                if *index < self.group_ranges.len() {
+                    self.group_ranges[*index].clone()
+                } else {
+                    self.state = HistoryState::IterEnd;
+                    0..0
+                }
+            }
+            HistoryState::IterEnd => 0..0,
+            HistoryState::InsertGroup(_) => unreachable!(),
+        };
 
         self.edits[range].iter().map(|e| e.as_edit_ref())
-    }
-
-    fn get_current_group_edit_range(&self) -> Range<usize> {
-        let range = &self.group_ranges[self.current_group_index];
-        if range.start == 0 || range.end - range.start > 0 {
-            range.clone()
-        } else {
-            self.group_ranges[self.current_group_index - 1].clone()
-        }
     }
 }
 
