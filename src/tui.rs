@@ -53,7 +53,7 @@ pub fn convert_color(color: theme::Color) -> Color {
     }
 }
 
-fn update_buffer_views_size(editor: &mut Editor) {
+fn update_viewpoers_size(editor: &mut Editor) {
     let size = terminal::size().unwrap_or((0, 0));
     editor.viewports.set_view_size((size.0 as _, size.1 as _));
 }
@@ -68,7 +68,7 @@ where
     write.flush()?;
     terminal::enable_raw_mode()?;
 
-    update_buffer_views_size(&mut editor);
+    update_viewpoers_size(&mut editor);
     draw(&mut write, &editor)?;
 
     while editor.on_event(convert_event(event::read()?)) {

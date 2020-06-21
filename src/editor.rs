@@ -1,6 +1,6 @@
 use crate::{
     buffer::BufferCollection,
-    buffer_view::BufferViews,
+    buffer_view::BufferViewCollection,
     config::Config,
     event::{Event, Key},
     mode::{initial_mode, Mode, Transition},
@@ -16,6 +16,7 @@ pub struct Editor {
     pub buffered_keys: Vec<Key>,
 
     pub buffers: BufferCollection,
+    pub buffer_views: BufferViewCollection,
     pub viewports: ViewportCollection,
     pub current_viewport: usize,
 }
@@ -28,6 +29,7 @@ impl Default for Editor {
             mode: initial_mode(),
             buffered_keys: Vec::new(),
             buffers: Default::default(),
+            buffer_views: BufferViewCollection::default(),
             viewports: ViewportCollection::new(),
             current_viewport: 0,
         }
@@ -42,13 +44,14 @@ impl Editor {
             Event::Key(key) => {
                 self.buffered_keys.push(key);
 
-                let buffers = &mut self.buffers;
-                let mut buffer_views =
-                    BufferViews::from_viewports(self.viewports.slice_mut(), self.current_viewport);
-                match self
-                    .mode
-                    .on_event(&mut buffer_views, buffers, &self.buffered_keys[..])
-                {
+                let current_buffer_view =
+                    self.viewports.as_slice()[self.current_viewport].buffer_view_index;
+                match self.mode.on_event(
+                    &mut self.buffers,
+                    &mut self.buffer_views,
+                    current_buffer_view,
+                    &self.buffered_keys[..],
+                ) {
                     Transition::None => self.buffered_keys.clear(),
                     Transition::Waiting => (),
                     Transition::Exit => return false,

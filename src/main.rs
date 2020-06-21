@@ -22,7 +22,7 @@ fn main() {
     let handle = editor.buffers.add(buffer::Buffer::with_contents(
         buffer::BufferContent::from_str(include_str!("main.rs")),
     ));
-    editor.viewports[0].add_buffer_view(buffer_view::BufferView::with_handle(handle));
+    editor.viewports.as_slice_mut()[0].buffer_view_index = Some(0);
 
     tui::show(stdout, editor).unwrap();
 }

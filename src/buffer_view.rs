@@ -1,8 +1,7 @@
 use crate::{
-    buffer::{BufferCollection, BufferHandle, TextRef},
+    buffer::{Buffer, BufferCollection, BufferHandle, TextRef},
     buffer_position::{BufferOffset, BufferPosition, BufferRange},
     history::EditKind,
-    viewport::Viewport,
 };
 
 pub struct BufferView {
@@ -22,7 +21,11 @@ impl BufferView {
         }
     }
 
-    pub fn move_cursor(&mut self, buffers: &BufferCollection, offset: BufferOffset) {
+    pub fn buffer_mut<'a>(&mut self, buffers: &'a mut BufferCollection) -> Option<&'a mut Buffer> {
+        Some(&mut buffers[self.buffer_handle])
+    }
+
+    fn move_cursor(&mut self, buffers: &BufferCollection, offset: BufferOffset) {
         let buffer = &buffers[self.buffer_handle];
         let cursor = &mut self.cursor;
 
@@ -44,7 +47,7 @@ impl BufferView {
         }
     }
 
-    pub fn commit_edits(&mut self, buffers: &mut BufferCollection) {
+    fn commit_edits(&mut self, buffers: &mut BufferCollection) {
         buffers[self.buffer_handle].history.commit_edits();
     }
 
@@ -77,112 +80,126 @@ impl BufferView {
     }
 }
 
-pub struct BufferViews<'viewports> {
-    viewports: &'viewports mut [Viewport],
-    viewport_index: usize,
+#[derive(Default)]
+pub struct BufferViewCollection {
+    buffer_views: Vec<BufferView>,
 }
 
-impl<'viewports> BufferViews<'viewports> {
-    pub fn from_viewports(
-        viewports: &'viewports mut [Viewport],
-        current_viewport_index: usize,
-    ) -> Self {
-        Self {
-            viewports,
-            viewport_index: current_viewport_index,
-        }
+impl BufferViewCollection {
+    pub fn get_mut(&mut self, index: Option<usize>) -> Option<&mut BufferView> {
+        Some(&mut self.buffer_views[index?])
     }
 
-    pub fn current_buffer_view_mut(&mut self) -> &mut BufferView {
-        self.viewports[self.viewport_index].current_buffer_view_mut()
+    fn current_and_other_buffer_views_mut<'a>(
+        &'a mut self,
+        index: usize,
+    ) -> (&'a mut BufferView, impl Iterator<Item = &'a mut BufferView>) {
+        let (before, after) = self.buffer_views.split_at_mut(index);
+        let (current, after) = after.split_at_mut(1);
+        let current = &mut current[0];
+        let current_buffer_handle = current.buffer_handle;
+
+        let iter = before
+            .iter_mut()
+            .filter(move |v| v.buffer_handle == current_buffer_handle)
+            .chain(
+                after
+                    .iter_mut()
+                    .filter(move |v| v.buffer_handle == current_buffer_handle),
+            );
+
+        (current, iter)
     }
 
-    pub fn insert_text<'this: 'viewports>(
-        &'this mut self,
+    pub fn move_cursors(
+        &mut self,
         buffers: &mut BufferCollection,
+        index: Option<usize>,
+        offset: BufferOffset,
+    ) -> Option<()> {
+        self.buffer_views[index?].move_cursor(buffers, offset);
+        None
+    }
+
+    pub fn commit_edits(
+        &mut self,
+        buffers: &mut BufferCollection,
+        index: Option<usize>,
+    ) -> Option<()> {
+        self.buffer_views[index?].commit_edits(buffers);
+        None
+    }
+
+    pub fn insert_text(
+        &mut self,
+        buffers: &mut BufferCollection,
+        index: Option<usize>,
         text: TextRef,
-    ) {
-        let (current_view, other_views) = self.current_buffer_views_mut();
+    ) -> Option<()> {
+        let (current_view, other_views) = self.current_and_other_buffer_views_mut(index?);
         let range = current_view.insert_text(buffers, text);
         for view in other_views {
             view.cursor = view.cursor.insert(range);
         }
+        None
     }
 
-    pub fn delete_selection<'this: 'viewports>(&'this mut self, buffers: &mut BufferCollection) {
-        let (current_view, other_views) = self.current_buffer_views_mut();
+    pub fn delete_selection(
+        &mut self,
+        buffers: &mut BufferCollection,
+        index: Option<usize>,
+    ) -> Option<()> {
+        let (current_view, other_views) = self.current_and_other_buffer_views_mut(index?);
         let range = current_view.delete_selection(buffers);
-        //for view in &mut other_views {
-        //    view.cursor = view.cursor.remove(range);
-        //}
+        for view in &mut other_views {
+            view.cursor = view.cursor.remove(range);
+        }
+        None
     }
 
-    pub fn undo<'this: 'viewports>(&'this mut self, buffers: &mut BufferCollection) {
-        let (current_view, other_views) = self.current_buffer_views_mut();
+    pub fn undo(&mut self, buffers: &mut BufferCollection, index: Option<usize>) -> Option<()> {
+        let (current_view, other_views) = self.current_and_other_buffer_views_mut(index?);
 
         let buffer = &mut buffers[current_view.buffer_handle];
         for (kind, range) in buffer.undo() {
             match kind {
                 EditKind::Insert => {
                     current_view.cursor = range.to;
-                    //for view in &mut other_views {
-                    //    view.cursor = view.cursor.insert(range);
-                    //}
+                    for view in &mut other_views {
+                        view.cursor = view.cursor.insert(range);
+                    }
                 }
                 EditKind::Delete => {
                     current_view.cursor = range.from;
-                    //for view in &mut other_views {
-                    //    view.cursor = view.cursor.remove(range);
-                    //}
+                    for view in &mut other_views {
+                        view.cursor = view.cursor.remove(range);
+                    }
                 }
             }
         }
+        None
     }
 
-    pub fn redo<'this: 'viewports>(&'this mut self, buffers: &mut BufferCollection) {
-        let (current_view, other_views) = self.current_buffer_views_mut();
+    pub fn redo(&mut self, buffers: &mut BufferCollection, index: Option<usize>) -> Option<()> {
+        let (current_view, other_views) = self.current_and_other_buffer_views_mut(index?);
 
         let buffer = &mut buffers[current_view.buffer_handle];
         for (kind, range) in buffer.redo() {
             match kind {
                 EditKind::Insert => {
                     current_view.cursor = range.to;
-                    //for view in &mut other_views {
-                    //    view.cursor = view.cursor.insert(range);
-                    //}
+                    for view in &mut other_views {
+                        view.cursor = view.cursor.insert(range);
+                    }
                 }
                 EditKind::Delete => {
                     current_view.cursor = range.from;
-                    //for view in &mut other_views {
-                    //    view.cursor = view.cursor.remove(range);
-                    //}
+                    for view in &mut other_views {
+                        view.cursor = view.cursor.remove(range);
+                    }
                 }
             }
         }
-    }
-
-    fn current_buffer_views_mut<'this: 'viewports>(
-        &'this mut self,
-    ) -> (
-        &'viewports mut BufferView,
-        impl Iterator<Item = &'viewports mut BufferView>,
-    ) {
-        let (before, after) = self.viewports.split_at_mut(self.viewport_index);
-        let (current, after) = after.split_at_mut(1);
-        let current_buffer_view = current[0].current_buffer_view_mut();
-        let current_buffer_handle = current_buffer_view.buffer_handle;
-
-        let iter = before
-            .iter_mut()
-            .flat_map(move |v| {
-                v.buffer_views_mut()
-                    .filter(move |b| b.buffer_handle == current_buffer_handle)
-            })
-            .chain(after.iter_mut().flat_map(move |v| {
-                v.buffer_views_mut()
-                    .filter(move |b| b.buffer_handle == current_buffer_handle)
-            }));
-
-        (current_buffer_view, iter)
+        None
     }
 }
