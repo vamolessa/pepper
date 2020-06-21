@@ -104,10 +104,11 @@ impl BufferContent {
     where
         W: io::Write,
     {
-        for line in &self.lines[..self.lines.len() - 1] {
+        let last_index = self.lines.len() - 1;
+        for line in &self.lines[..last_index] {
             writeln!(write, "{}", line.text)?;
         }
-        write!(write, "{}", self.lines[self.lines.len() - 1].text)?;
+        write!(write, "{}", self.lines[last_index].text)?;
         Ok(())
     }
 
@@ -148,14 +149,18 @@ impl BufferContent {
                 }
                 for line in lines {
                     line_count += 1;
-                    self.lines
-                        .insert(position.line_index, BufferLine::new(line.into()));
+                    self.lines.insert(
+                        position.line_index + line_count,
+                        BufferLine::new(line.into()),
+                    );
                 }
 
                 if text.ends_with('\n') {
                     line_count += 1;
-                    self.lines
-                        .insert(position.line_index, BufferLine::new(split_line));
+                    self.lines.insert(
+                        position.line_index + line_count,
+                        BufferLine::new(split_line),
+                    );
 
                     BufferPosition {
                         column_index: 0,
@@ -179,6 +184,11 @@ impl BufferContent {
 
     fn delete_range(&mut self, range: BufferRange) -> Text {
         if range.from.line_index == range.to.line_index {
+            eprintln!(
+                "TESTE TESTE '{}' len: {}",
+                &self.lines[range.from.line_index].text,
+                &self.lines[range.from.line_index].text.len()
+            );
             let deleted_chars = self.lines[range.from.line_index]
                 .text
                 .drain(range.from.column_index..range.to.column_index);
@@ -310,19 +320,18 @@ mod tests {
     use super::*;
     use crate::buffer_position::BufferPosition;
 
-    #[test]
-    fn buffer_contents_initial_content() {
-        let mut buffer = BufferContent::from_str("");
-        assert_eq!(1, buffer.line_count());
+    fn buffer_to_string(buffer: &BufferContent) -> String {
         let mut buf = Vec::new();
         buffer.write(&mut buf).unwrap();
-        assert_eq!("", std::str::from_utf8(&buf[..]).unwrap());
+        String::from_utf8(buf).unwrap()
     }
 
     #[test]
     fn buffer_contents_insert_text() {
         let mut buffer = BufferContent::from_str("");
-        let mut buf = Vec::new();
+
+        assert_eq!(1, buffer.line_count());
+        assert_eq!("", buffer_to_string(&buffer));
 
         buffer.insert_text(
             BufferPosition {
@@ -346,9 +355,7 @@ mod tests {
             TextRef::Str("ello w"),
         );
         assert_eq!(1, buffer.line_count());
-        buf.clear();
-        buffer.write(&mut buf).unwrap();
-        assert_eq!("hello world", std::str::from_utf8(&buf[..]).unwrap());
+        assert_eq!("hello world", buffer_to_string(&buffer));
 
         buffer.insert_text(
             BufferPosition {
@@ -357,14 +364,76 @@ mod tests {
             },
             TextRef::Char('\n'),
         );
-        assert_eq!(2, buffer.line_count());
-        buf.clear();
-        buffer.write(&mut buf).unwrap();
-        assert_eq!("hello\n world", std::str::from_utf8(&buf[..]).unwrap());
+        buffer.insert_text(
+            BufferPosition {
+                line_index: 1,
+                column_index: 6,
+            },
+            TextRef::Str(" appending more\nlines"),
+        );
+        assert_eq!(3, buffer.line_count());
+        assert_eq!(
+            "hello\n world appending more\nlines",
+            buffer_to_string(&buffer)
+        );
     }
 
     #[test]
     fn buffer_contents_delete_range() {
         let mut buffer = BufferContent::from_str("this is the initial\ncontent of the buffer");
+
+        assert_eq!(2, buffer.line_count());
+        assert_eq!(
+            "this is the initial\ncontent of the buffer",
+            buffer_to_string(&buffer)
+        );
+
+        buffer.delete_range(BufferRange::between(
+            BufferPosition {
+                line_index: 0,
+                column_index: 0,
+            },
+            BufferPosition {
+                line_index: 0,
+                column_index: 0,
+            },
+        ));
+
+        assert_eq!(2, buffer.line_count());
+        assert_eq!(
+            "this is the initial\ncontent of the buffer",
+            buffer_to_string(&buffer)
+        );
+
+        buffer.delete_range(BufferRange::between(
+            BufferPosition {
+                line_index: 0,
+                column_index: 11,
+            },
+            BufferPosition {
+                line_index: 0,
+                column_index: 19,
+            },
+        ));
+
+        assert_eq!(2, buffer.line_count());
+        assert_eq!(
+            "this is the\ncontent of the buffer",
+            buffer_to_string(&buffer)
+        );
+
+        buffer.delete_range(BufferRange::between(
+            BufferPosition {
+                line_index: 0,
+                column_index: 8,
+            },
+            BufferPosition {
+                line_index: 1,
+                column_index: 15,
+            },
+        ));
+
+        assert_eq!(1, buffer.line_count());
+        assert_eq!("this is buffer", buffer_to_string(&buffer));
     }
 }
