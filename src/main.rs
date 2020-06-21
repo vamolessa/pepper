@@ -10,6 +10,7 @@ mod history;
 mod mode;
 mod theme;
 mod tui;
+mod viewport;
 
 fn main() {
     ctrlc::set_handler(|| {}).unwrap();
@@ -22,8 +23,9 @@ fn main() {
         buffer::BufferContent::from_str(include_str!("main.rs")),
     ));
     editor
-        .buffer_views
-        .push(buffer_view::BufferView::with_handle(handle));
+        .viewports
+        .get_singleton_viewport_mut()
+        .add_buffer_view(buffer_view::BufferView::with_handle(handle));
 
     tui::show(stdout, editor).unwrap();
 }

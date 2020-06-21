@@ -11,6 +11,7 @@ use crate::{
     editor::Editor,
     event::{Event, Key},
     theme,
+    viewport::Viewport,
 };
 
 pub fn convert_event(event: event::Event) -> Event {
@@ -54,7 +55,7 @@ pub fn convert_color(color: theme::Color) -> Color {
 
 fn update_buffer_views_size(editor: &mut Editor) {
     let size = terminal::size().unwrap_or((0, 0));
-    editor.set_view_size((size.0 as _, size.1 as _));
+    editor.viewports.set_view_size((size.0 as _, size.1 as _));
 }
 
 pub fn show<W>(mut write: W, mut editor: Editor) -> Result<()>
@@ -68,10 +69,10 @@ where
     terminal::enable_raw_mode()?;
 
     update_buffer_views_size(&mut editor);
-    draw_view(&mut write, &editor, 0)?;
+    draw(&mut write, &editor)?;
 
     while editor.on_event(convert_event(event::read()?)) {
-        draw_view(&mut write, &editor, 0)?;
+        draw(&mut write, &editor)?;
     }
 
     handle_command!(write, terminal::LeaveAlternateScreen)?;
@@ -81,11 +82,18 @@ where
     Ok(())
 }
 
-fn draw_view<W>(write: &mut W, editor: &Editor, view_index: usize) -> Result<()>
+fn draw<W>(write: &mut W, editor: &Editor) -> Result<()>
 where
     W: Write,
 {
-    let buffer_view = &editor.buffer_views[view_index];
+    draw_viewport(write, editor, editor.viewports.get_singleton_viewport())
+}
+
+fn draw_viewport<W>(write: &mut W, editor: &Editor, viewport: &Viewport) -> Result<()>
+where
+    W: Write,
+{
+    let buffer_view = &viewport.current_buffer_view();
     let buffer = &editor.buffers[buffer_view.buffer_handle];
 
     handle_command!(write, cursor::MoveTo(0, 0))?;

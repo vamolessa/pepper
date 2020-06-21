@@ -1,10 +1,10 @@
 use crate::{
     buffer::BufferCollection,
-    buffer_view::BufferView,
     config::Config,
     event::{Event, Key},
     mode::{initial_mode, Mode, Transition},
     theme::Theme,
+    viewport::ViewportCollection,
 };
 
 pub struct Editor {
@@ -15,8 +15,8 @@ pub struct Editor {
     pub buffered_keys: Vec<Key>,
 
     pub buffers: BufferCollection,
-    pub buffer_views: Vec<BufferView>,
-    pub current_buffer_view: usize,
+    pub viewports: ViewportCollection,
+    pub current_viewport: usize,
 }
 
 impl Default for Editor {
@@ -27,27 +27,23 @@ impl Default for Editor {
             mode: initial_mode(),
             buffered_keys: Vec::new(),
             buffers: Default::default(),
-            buffer_views: Default::default(),
-            current_buffer_view: 0,
+            viewports: ViewportCollection::new(),
+            current_viewport: 0,
         }
     }
 }
 
 impl Editor {
-    pub fn set_view_size(&mut self, size: (usize, usize)) {
-        for view in &mut self.buffer_views {
-            view.size = size;
-        }
-    }
-
     pub fn on_event(&mut self, event: Event) -> bool {
-        let buffer_view = &mut self.buffer_views[self.current_buffer_view];
-        let buffers = &mut self.buffers;
         match event {
             Event::None => (),
             Event::Resize(_w, _h) => (),
             Event::Key(key) => {
                 self.buffered_keys.push(key);
+
+                let buffers = &mut self.buffers;
+                let viewport = self.viewports.get_singleton_viewport_mut();
+                let buffer_view = &mut viewport.current_buffer_view_mut();
                 match self
                     .mode
                     .on_event(buffer_view, buffers, &self.buffered_keys[..])
