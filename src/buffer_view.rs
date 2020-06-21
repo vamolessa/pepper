@@ -2,6 +2,7 @@ use crate::{
     buffer::{BufferCollection, BufferHandle, TextRef},
     buffer_position::{BufferOffset, BufferPosition, BufferRange},
     history::EditKind,
+    viewport::ViewportCollection,
 };
 
 pub struct BufferView {
@@ -91,5 +92,27 @@ impl BufferView {
                 EditKind::Delete => self.cursor = range.from,
             }
         }
+    }
+}
+
+pub struct BufferViews<'a> {
+    viewports: &'a mut ViewportCollection,
+    viewport_index: usize,
+}
+
+impl<'a> BufferViews<'a> {
+    pub fn from_viewports(
+        viewports: &'a mut ViewportCollection,
+        current_viewport_index: usize,
+    ) -> Self {
+        Self {
+            viewports,
+            viewport_index: current_viewport_index,
+        }
+    }
+
+    pub fn get_buffer_view(&mut self) -> &mut BufferView {
+        let viewport = &mut self.viewports[self.viewport_index];
+        viewport.current_buffer_view_mut()
     }
 }

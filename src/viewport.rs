@@ -1,3 +1,5 @@
+use std::ops::{Index, IndexMut};
+
 use crate::buffer_view::BufferView;
 
 pub struct ViewportCollection {
@@ -16,13 +18,18 @@ impl ViewportCollection {
             viewport.set_size(size);
         }
     }
+}
 
-    pub fn get_singleton_viewport(&self) -> &Viewport {
-        &self.viewports[0]
+impl Index<usize> for ViewportCollection {
+    type Output = Viewport;
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.viewports[index]
     }
+}
 
-    pub fn get_singleton_viewport_mut(&mut self) -> &mut Viewport {
-        &mut self.viewports[0]
+impl IndexMut<usize> for ViewportCollection {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.viewports[index]
     }
 }
 

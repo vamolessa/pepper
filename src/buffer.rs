@@ -113,7 +113,21 @@ impl BufferContent {
         Ok(())
     }
 
-    fn insert_text(&mut self, position: BufferPosition, text: TextRef) -> BufferRange {
+    fn clamp_position(&self, position: &mut BufferPosition) {
+        let line_count = self.line_count();
+        if position.line_index >= line_count {
+            position.line_index = line_count - 1;
+        }
+
+        let char_count = self.lines[position.line_index].char_count();
+        if position.column_index > char_count {
+            position.column_index = char_count;
+        }
+    }
+
+    fn insert_text(&mut self, mut position: BufferPosition, text: TextRef) -> BufferRange {
+        self.clamp_position(&mut position);
+
         let end_position = match text {
             TextRef::Char(c) => {
                 if c == '\n' {
@@ -183,7 +197,10 @@ impl BufferContent {
         BufferRange::between(position, end_position)
     }
 
-    fn delete_range(&mut self, range: BufferRange) -> Text {
+    fn delete_range(&mut self, mut range: BufferRange) -> Text {
+        self.clamp_position(&mut range.from);
+        self.clamp_position(&mut range.to);
+
         if range.from.line_index == range.to.line_index {
             eprintln!(
                 "TESTE TESTE '{}' len: {}",

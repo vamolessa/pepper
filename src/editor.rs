@@ -1,5 +1,6 @@
 use crate::{
     buffer::BufferCollection,
+    buffer_view::BufferViews,
     config::Config,
     event::{Event, Key},
     mode::{initial_mode, Mode, Transition},
@@ -42,11 +43,11 @@ impl Editor {
                 self.buffered_keys.push(key);
 
                 let buffers = &mut self.buffers;
-                let viewport = self.viewports.get_singleton_viewport_mut();
-                let buffer_view = &mut viewport.current_buffer_view_mut();
+                let buffer_views =
+                    BufferViews::from_viewports(&mut self.viewports, self.current_viewport);
                 match self
                     .mode
-                    .on_event(buffer_view, buffers, &self.buffered_keys[..])
+                    .on_event(buffer_views, buffers, &self.buffered_keys[..])
                 {
                     Transition::None => self.buffered_keys.clear(),
                     Transition::Waiting => (),
