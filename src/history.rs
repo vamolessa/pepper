@@ -5,12 +5,13 @@ use crate::{
     buffer_position::BufferRange,
 };
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum EditKind {
     Insert,
     Delete,
 }
 
+#[derive(Debug)]
 pub struct Edit {
     pub kind: EditKind,
     pub range: BufferRange,
@@ -33,13 +34,13 @@ pub struct EditRef<'a> {
     pub text: TextRef<'a>,
 }
 
+#[derive(Debug)]
 enum HistoryState {
-    IterStart,
     IterIndex(usize),
-    IterEnd,
     InsertGroup(Range<usize>),
 }
 
+#[derive(Debug)]
 pub struct History {
     edits: Vec<Edit>,
     group_ranges: Vec<Range<usize>>,
@@ -51,26 +52,21 @@ impl History {
         Self {
             edits: Vec::new(),
             group_ranges: Vec::new(),
-            state: HistoryState::IterEnd,
+            state: HistoryState::IterIndex(0),
         }
     }
 
     pub fn push_edit(&mut self, edit: Edit) {
         match self.state {
-            HistoryState::IterStart => {
-                self.edits.clear();
-                self.group_ranges.clear();
-                self.state = HistoryState::InsertGroup(0..1);
-            }
             HistoryState::IterIndex(index) => {
-                let range = &self.group_ranges[index];
-                self.edits.truncate(range.start);
-                self.state = HistoryState::InsertGroup(range.start..range.start + 1);
+                let edit_index = if index < self.group_ranges.len() {
+                    self.group_ranges[index].start
+                } else {
+                    self.edits.len()
+                };
+                self.edits.truncate(edit_index);
+                self.state = HistoryState::InsertGroup(edit_index..edit_index + 1);
                 self.group_ranges.truncate(index);
-            }
-            HistoryState::IterEnd => {
-                let edit_count = self.edits.len();
-                self.state = HistoryState::InsertGroup(edit_count..edit_count + 1);
             }
             HistoryState::InsertGroup(ref mut range) => {
                 range.end = self.edits.len() + 1;
@@ -83,7 +79,7 @@ impl History {
     pub fn commit_edits(&mut self) {
         if let HistoryState::InsertGroup(range) = &self.state {
             self.group_ranges.push(range.clone());
-            self.state = HistoryState::IterEnd;
+            self.state = HistoryState::IterIndex(self.group_ranges.len());
         }
     }
 
@@ -91,27 +87,15 @@ impl History {
         self.commit_edits();
 
         let range = match self.state {
-            HistoryState::IterStart => 0..0,
             HistoryState::IterIndex(ref mut index) => {
                 if *index > 0 {
                     *index -= 1;
                     self.group_ranges[*index].clone()
                 } else {
-                    self.state = HistoryState::IterStart;
                     0..0
                 }
             }
-            HistoryState::IterEnd => {
-                let group_count = self.group_ranges.len();
-                if group_count > 0 {
-                    self.state = HistoryState::IterIndex(group_count - 1);
-                    self.group_ranges[group_count - 1].clone()
-                } else {
-                    self.state = HistoryState::IterStart;
-                    0..0
-                }
-            }
-            HistoryState::InsertGroup(_) => unreachable!(),
+            _ => unreachable!(),
         };
 
         self.edits[range].iter().rev().map(|e| {
@@ -128,26 +112,16 @@ impl History {
         self.commit_edits();
 
         let range = match self.state {
-            HistoryState::IterStart => {
-                if self.group_ranges.len() > 0 {
-                    self.state = HistoryState::IterIndex(0);
-                    self.group_ranges[0].clone()
-                } else {
-                    self.state = HistoryState::IterEnd;
-                    0..0
-                }
-            }
             HistoryState::IterIndex(ref mut index) => {
-                *index += 1;
                 if *index < self.group_ranges.len() {
-                    self.group_ranges[*index].clone()
+                    let range = self.group_ranges[*index].clone();
+                    *index += 1;
+                    range
                 } else {
-                    self.state = HistoryState::IterEnd;
                     0..0
                 }
             }
-            HistoryState::IterEnd => 0..0,
-            HistoryState::InsertGroup(_) => unreachable!(),
+            _ => unreachable!(),
         };
 
         self.edits[range].iter().map(|e| e.as_edit_ref())
@@ -228,7 +202,18 @@ mod tests {
         history.push_edit(Edit {
             kind: EditKind::Insert,
             range: BufferRange::default(),
-            text: Text::Char('a'),
+            text: Text::Char('c'),
         });
+
+        assert_eq!(0, history.redo_edits().count());
+
+        let mut edit_iter = history.undo_edits();
+        let edit = edit_iter.next().unwrap();
+        assert!(matches!(edit.kind, EditKind::Delete));
+        assert!(matches!(edit.text, TextRef::Char('c')));
+        assert!(edit_iter.next().is_none());
+        drop(edit_iter);
+
+        assert_eq!(0, history.undo_edits().count());
     }
 }
