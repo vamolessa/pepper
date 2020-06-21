@@ -90,7 +90,7 @@ impl Mode for Insert {
             [Key::Tab] => {
                 buffer_view.insert_text(buffers, TextRef::Str("    "));
             }
-            [Key::Enter] => {
+            [Key::Enter] | [Key::Ctrl('m')] => {
                 buffer_view.insert_text(buffers, TextRef::Char('\n'));
             }
             [Key::Char(c)] => {
