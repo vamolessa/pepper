@@ -86,7 +86,7 @@ fn draw<W>(write: &mut W, editor: &Editor) -> Result<()>
 where
     W: Write,
 {
-    draw_viewport(write, editor, &editor.viewports[editor.current_viewport])
+    draw_viewport(write, editor, &editor.viewports.as_slice()[editor.current_viewport])
 }
 
 fn draw_viewport<W>(write: &mut W, editor: &Editor, viewport: &Viewport) -> Result<()>

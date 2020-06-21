@@ -86,6 +86,7 @@ pub struct BufferViewCollection {
 }
 
 impl BufferViewCollection {
+
     pub fn get_mut(&mut self, index: Option<usize>) -> Option<&mut BufferView> {
         Some(&mut self.buffer_views[index?])
     }
