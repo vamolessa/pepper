@@ -1,5 +1,7 @@
 use std::ops::{Index, IndexMut};
 
+use crate::buffer_position::BufferPosition;
+
 pub struct ViewportCollection {
     viewports: Vec<Viewport>,
 }
@@ -33,7 +35,26 @@ impl IndexMut<usize> for ViewportCollection {
 
 #[derive(Default)]
 pub struct Viewport {
-    pub buffer_view_index: Option<usize>,
+    buffer_view_index: Option<usize>,
     pub size: (usize, usize),
     pub scroll: usize,
+}
+
+impl Viewport {
+    pub fn buffer_view_index(&self) -> Option<usize> {
+        self.buffer_view_index
+    }
+
+    pub fn set_buffer_view(&mut self, index: Option<usize>) {
+        self.buffer_view_index = index;
+        self.scroll = 0;
+    }
+
+    pub fn scroll_to_cursor(&mut self, cursor: BufferPosition) {
+        if cursor.line_index < self.scroll {
+            self.scroll = cursor.line_index;
+        } else if cursor.line_index >= self.scroll + self.size.1 {
+            self.scroll = cursor.line_index - self.size.1 + 1;
+        }
+    }
 }

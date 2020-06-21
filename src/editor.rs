@@ -39,7 +39,7 @@ impl Default for Editor {
 impl Editor {
     pub fn new_buffer_from_content(&mut self, content: BufferContent) {
         let buffer_handle = self.buffers.add(Buffer::with_contents(content));
-        self.viewports[self.current_viewport].buffer_view_index = Some(self.buffer_views.len());
+        self.viewports[self.current_viewport].set_buffer_view(Some(self.buffer_views.len()));
         self.buffer_views
             .push(BufferView::with_handle(buffer_handle));
     }
@@ -51,11 +51,10 @@ impl Editor {
             Event::Key(key) => {
                 self.buffered_keys.push(key);
 
-                let current_buffer_view = self.viewports[self.current_viewport].buffer_view_index;
                 match self.mode.on_event(
                     &mut self.buffers,
                     &mut self.buffer_views,
-                    current_buffer_view,
+                    self.viewports[self.current_viewport].buffer_view_index(),
                     &self.buffered_keys[..],
                 ) {
                     Transition::None => self.buffered_keys.clear(),
@@ -65,6 +64,10 @@ impl Editor {
                         self.buffered_keys.clear();
                         self.mode = mode;
                     }
+                }
+                if let Some(index) = self.viewports[self.current_viewport].buffer_view_index() {
+                    let buffer_view = &self.buffer_views[index];
+                    self.viewports[self.current_viewport].scroll_to_cursor(buffer_view.cursor);
                 }
             }
         }

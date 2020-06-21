@@ -75,7 +75,7 @@ impl Mode for Normal {
             [Key::Char('U')] => buffer_views.redo(buffers, current_buffer_view),
             [Key::Ctrl('s')] => {
                 if let Some(index) = current_buffer_view {
-                    let buffer = buffer_views.get_mut(index).buffer_mut(buffers);
+                    let buffer = buffer_views[index].buffer_mut(buffers);
                     let mut file = std::fs::File::create("buffer_content.txt").unwrap();
                     buffer.content.write(&mut file).unwrap();
                 }

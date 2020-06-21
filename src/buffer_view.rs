@@ -1,3 +1,5 @@
+use std::ops::{Index, IndexMut};
+
 use crate::{
     buffer::{Buffer, BufferCollection, BufferHandle, TextRef},
     buffer_position::{BufferOffset, BufferPosition, BufferRange},
@@ -7,8 +9,6 @@ use crate::{
 pub struct BufferView {
     pub buffer_handle: BufferHandle,
     pub cursor: BufferPosition,
-    pub size: (usize, usize),
-    pub scroll: usize,
 }
 
 impl BufferView {
@@ -16,8 +16,6 @@ impl BufferView {
         Self {
             buffer_handle,
             cursor: Default::default(),
-            size: Default::default(),
-            scroll: 0,
         }
     }
 
@@ -39,12 +37,6 @@ impl BufferView {
         target.column_offset = target.column_offset.min(target_line_len as _).max(0);
 
         *cursor = target.into();
-
-        if cursor.line_index < self.scroll {
-            self.scroll = cursor.line_index;
-        } else if cursor.line_index >= self.scroll + self.size.1 {
-            self.scroll = cursor.line_index - self.size.1 + 1;
-        }
     }
 
     fn commit_edits(&mut self, buffers: &mut BufferCollection) {
@@ -88,14 +80,6 @@ pub struct BufferViewCollection {
 impl BufferViewCollection {
     pub fn len(&self) -> usize {
         self.buffer_views.len()
-    }
-
-    pub fn get(&self, index: usize) -> &BufferView {
-        &self.buffer_views[index]
-    }
-
-    pub fn get_mut(&mut self, index: usize) -> &mut BufferView {
-        &mut self.buffer_views[index]
     }
 
     pub fn push(&mut self, buffer_view: BufferView) {
@@ -221,5 +205,18 @@ impl BufferViewCollection {
                 }
             }
         }
+    }
+}
+
+impl Index<usize> for BufferViewCollection {
+    type Output = BufferView;
+    fn index(&self, index: usize) -> &BufferView {
+        &self.buffer_views[index]
+    }
+}
+
+impl IndexMut<usize> for BufferViewCollection {
+    fn index_mut(&mut self, index: usize) -> &mut BufferView {
+        &mut self.buffer_views[index]
     }
 }

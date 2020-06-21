@@ -93,8 +93,8 @@ fn draw_viewport<W>(write: &mut W, editor: &Editor, viewport: &Viewport) -> Resu
 where
     W: Write,
 {
-    let buffer_view = match viewport.buffer_view_index {
-        Some(index) => editor.buffer_views.get(index),
+    let buffer_view = match viewport.buffer_view_index() {
+        Some(index) => &editor.buffer_views[index],
         None => return Ok(()),
     };
     let buffer = &editor.buffers[buffer_view.buffer_handle];
@@ -115,11 +115,11 @@ where
     for (y, line) in buffer
         .content
         .lines()
-        .skip(buffer_view.scroll)
-        .take(buffer_view.size.1)
+        .skip(viewport.scroll)
+        .take(viewport.size.1)
         .enumerate()
     {
-        let y = y + buffer_view.scroll;
+        let y = y + viewport.scroll;
         for (x, c) in line.text.chars().chain(iter::once(' ')).enumerate() {
             let inside_selection =
                 x == buffer_view.cursor.column_index && y == buffer_view.cursor.line_index;
@@ -176,7 +176,7 @@ where
         write,
         SetBackgroundColor(convert_color(editor.theme.background))
     )?;
-    for _ in buffer.content.line_count()..buffer_view.size.1 {
+    for _ in buffer.content.line_count()..viewport.size.1 {
         handle_command!(write, Print('~'))?;
         handle_command!(write, Clear(ClearType::UntilNewLine))?;
         handle_command!(write, cursor::MoveToNextLine(1))?;
