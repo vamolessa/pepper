@@ -1,4 +1,7 @@
-use std::ops::{Index, IndexMut};
+use std::{
+    io,
+    ops::{Index, IndexMut},
+};
 
 use crate::{
     buffer_position::{BufferPosition, BufferRange},
@@ -73,9 +76,11 @@ pub struct BufferContents {
 
 impl BufferContents {
     pub fn from_str(text: &str) -> Self {
-        Self {
-            lines: text.lines().map(|l| BufferLine::new(l.into())).collect(),
+        let mut lines: Vec<_> = text.lines().map(|l| BufferLine::new(l.into())).collect();
+        if lines.len() == 0 {
+            lines.push(BufferLine::new("".into()));
         }
+        Self { lines }
     }
 
     pub fn line_count(&self) -> usize {
@@ -90,16 +95,39 @@ impl BufferContents {
         &self.lines[index]
     }
 
+    pub fn write<W>(&self, write: &mut W) -> io::Result<()>
+    where
+        W: io::Write,
+    {
+        for line in &self.lines {
+            writeln!(write, "{}", line.text)?;
+        }
+        Ok(())
+    }
+
     fn insert_text(&mut self, position: BufferPosition, text: TextRef) -> BufferRange {
         let end_position = match text {
             TextRef::Char(c) => {
-                self.lines[position.line_index]
-                    .text
-                    .insert(position.column_index, c);
+                if c == '\n' {
+                    let split_line = self.lines[position.line_index]
+                        .text
+                        .split_off(position.column_index);
+                    self.lines
+                        .insert(position.line_index + 1, BufferLine::new(split_line.into()));
 
-                BufferPosition {
-                    column_index: position.column_index + 1,
-                    line_index: position.line_index,
+                    BufferPosition {
+                        column_index: 0,
+                        line_index: position.line_index + 1,
+                    }
+                } else {
+                    self.lines[position.line_index]
+                        .text
+                        .insert(position.column_index, c);
+
+                    BufferPosition {
+                        column_index: position.column_index + 1,
+                        line_index: position.line_index,
+                    }
                 }
             }
             TextRef::Str(text) => {
@@ -268,5 +296,56 @@ impl Index<BufferHandle> for BufferCollection {
 impl IndexMut<BufferHandle> for BufferCollection {
     fn index_mut(&mut self, handle: BufferHandle) -> &mut Self::Output {
         &mut self.buffers[handle.0]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Write;
+
+    use super::*;
+    use crate::buffer_position::BufferPosition;
+
+    #[test]
+    fn buffer_contents_insert_text() {
+        let mut buffer = BufferContents::from_str("");
+        assert_eq!(1, buffer.line_count());
+        buffer.insert_text(
+            BufferPosition {
+                line_index: 0,
+                column_index: 0,
+            },
+            TextRef::Str("hold"),
+        );
+        buffer.insert_text(
+            BufferPosition {
+                line_index: 0,
+                column_index: 2,
+            },
+            TextRef::Char('r'),
+        );
+        buffer.insert_text(
+            BufferPosition {
+                line_index: 0,
+                column_index: 1,
+            },
+            TextRef::Str("ello w"),
+        );
+        let mut buf = Vec::new();
+        buffer.write(&mut buf).unwrap();
+        assert_eq!(1, buffer.line_count());
+        assert_eq!("hello world\n", std::str::from_utf8(&buf[..]).unwrap());
+
+        buffer.insert_text(
+            BufferPosition {
+                line_index: 0,
+                column_index: 5,
+            },
+            TextRef::Char('\n'),
+        );
+        assert_eq!(2, buffer.line_count());
+        buf.clear();
+        buffer.write(&mut buf).unwrap();
+        assert_eq!("hello\n world\n", std::str::from_utf8(&buf[..]).unwrap());
     }
 }
