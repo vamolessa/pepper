@@ -77,8 +77,8 @@ impl BufferView {
         let buffer = &mut buffers[self.buffer_handle];
         for (kind, range) in buffer.undo() {
             match kind {
-                EditKind::Insert => self.cursor = self.cursor.insert(range),
-                EditKind::Delete => self.cursor = self.cursor.remove(range),
+                EditKind::Insert => self.cursor = range.to,
+                EditKind::Delete => self.cursor = range.from,
             }
         }
     }
@@ -87,8 +87,8 @@ impl BufferView {
         let buffer = &mut buffers[self.buffer_handle];
         for (kind, range) in buffer.redo() {
             match kind {
-                EditKind::Insert => self.cursor = self.cursor.insert(range),
-                EditKind::Delete => self.cursor = self.cursor.remove(range),
+                EditKind::Insert => self.cursor = range.to,
+                EditKind::Delete => self.cursor = range.from,
             }
         }
     }

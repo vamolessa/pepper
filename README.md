@@ -2,7 +2,6 @@
 Experimental code editor
 
 # todo
-- undo
 - modes should deal with all buffer views
 - movements (skip word, home/end, find char)
 - selection
