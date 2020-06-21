@@ -21,8 +21,8 @@ impl BufferView {
         }
     }
 
-    pub fn buffer_mut<'a>(&mut self, buffers: &'a mut BufferCollection) -> Option<&'a mut Buffer> {
-        Some(&mut buffers[self.buffer_handle])
+    pub fn buffer_mut<'a>(&mut self, buffers: &'a mut BufferCollection) -> &'a mut Buffer {
+        &mut buffers[self.buffer_handle]
     }
 
     fn move_cursor(&mut self, buffers: &BufferCollection, offset: BufferOffset) {
@@ -86,9 +86,20 @@ pub struct BufferViewCollection {
 }
 
 impl BufferViewCollection {
+    pub fn len(&self) -> usize {
+        self.buffer_views.len()
+    }
 
-    pub fn get_mut(&mut self, index: Option<usize>) -> Option<&mut BufferView> {
-        Some(&mut self.buffer_views[index?])
+    pub fn get(&self, index: usize) -> &BufferView {
+        &self.buffer_views[index]
+    }
+
+    pub fn get_mut(&mut self, index: usize) -> &mut BufferView {
+        &mut self.buffer_views[index]
+    }
+
+    pub fn push(&mut self, buffer_view: BufferView) {
+        self.buffer_views.push(buffer_view);
     }
 
     fn current_and_other_buffer_views_mut<'a>(
@@ -117,18 +128,16 @@ impl BufferViewCollection {
         buffers: &mut BufferCollection,
         index: Option<usize>,
         offset: BufferOffset,
-    ) -> Option<()> {
-        self.buffer_views[index?].move_cursor(buffers, offset);
-        None
+    ) {
+        if let Some(index) = index {
+            self.buffer_views[index].move_cursor(buffers, offset);
+        }
     }
 
-    pub fn commit_edits(
-        &mut self,
-        buffers: &mut BufferCollection,
-        index: Option<usize>,
-    ) -> Option<()> {
-        self.buffer_views[index?].commit_edits(buffers);
-        None
+    pub fn commit_edits(&mut self, buffers: &mut BufferCollection, index: Option<usize>) {
+        if let Some(index) = index {
+            self.buffer_views[index].commit_edits(buffers);
+        }
     }
 
     pub fn insert_text(
@@ -136,71 +145,81 @@ impl BufferViewCollection {
         buffers: &mut BufferCollection,
         index: Option<usize>,
         text: TextRef,
-    ) -> Option<()> {
-        let (current_view, other_views) = self.current_and_other_buffer_views_mut(index?);
+    ) {
+        let index = match index {
+            Some(index) => index,
+            None => return,
+        };
+
+        let (current_view, other_views) = self.current_and_other_buffer_views_mut(index);
         let range = current_view.insert_text(buffers, text);
         for view in other_views {
             view.cursor = view.cursor.insert(range);
         }
-        None
     }
 
-    pub fn delete_selection(
-        &mut self,
-        buffers: &mut BufferCollection,
-        index: Option<usize>,
-    ) -> Option<()> {
-        let (current_view, other_views) = self.current_and_other_buffer_views_mut(index?);
+    pub fn delete_selection(&mut self, buffers: &mut BufferCollection, index: Option<usize>) {
+        let index = match index {
+            Some(index) => index,
+            None => return,
+        };
+
+        let (current_view, other_views) = self.current_and_other_buffer_views_mut(index);
         let range = current_view.delete_selection(buffers);
-        for view in &mut other_views {
+        for view in other_views {
             view.cursor = view.cursor.remove(range);
         }
-        None
     }
 
-    pub fn undo(&mut self, buffers: &mut BufferCollection, index: Option<usize>) -> Option<()> {
-        let (current_view, other_views) = self.current_and_other_buffer_views_mut(index?);
+    pub fn undo(&mut self, buffers: &mut BufferCollection, index: Option<usize>) {
+        let index = match index {
+            Some(index) => index,
+            None => return,
+        };
 
-        let buffer = &mut buffers[current_view.buffer_handle];
+        let buffer = &mut buffers[self.buffer_views[index].buffer_handle];
         for (kind, range) in buffer.undo() {
+            let (current_view, other_views) = self.current_and_other_buffer_views_mut(index);
             match kind {
                 EditKind::Insert => {
                     current_view.cursor = range.to;
-                    for view in &mut other_views {
+                    for view in other_views {
                         view.cursor = view.cursor.insert(range);
                     }
                 }
                 EditKind::Delete => {
                     current_view.cursor = range.from;
-                    for view in &mut other_views {
+                    for view in other_views {
                         view.cursor = view.cursor.remove(range);
                     }
                 }
             }
         }
-        None
     }
 
-    pub fn redo(&mut self, buffers: &mut BufferCollection, index: Option<usize>) -> Option<()> {
-        let (current_view, other_views) = self.current_and_other_buffer_views_mut(index?);
+    pub fn redo(&mut self, buffers: &mut BufferCollection, index: Option<usize>) {
+        let index = match index {
+            Some(index) => index,
+            None => return,
+        };
 
-        let buffer = &mut buffers[current_view.buffer_handle];
+        let buffer = &mut buffers[self.buffer_views[index].buffer_handle];
         for (kind, range) in buffer.redo() {
+            let (current_view, other_views) = self.current_and_other_buffer_views_mut(index);
             match kind {
                 EditKind::Insert => {
                     current_view.cursor = range.to;
-                    for view in &mut other_views {
+                    for view in other_views {
                         view.cursor = view.cursor.insert(range);
                     }
                 }
                 EditKind::Delete => {
                     current_view.cursor = range.from;
-                    for view in &mut other_views {
+                    for view in other_views {
                         view.cursor = view.cursor.remove(range);
                     }
                 }
             }
         }
-        None
     }
 }

@@ -1,6 +1,6 @@
 use crate::{
-    buffer::BufferCollection,
-    buffer_view::BufferViewCollection,
+    buffer::{Buffer, BufferCollection, BufferContent},
+    buffer_view::{BufferView, BufferViewCollection},
     config::Config,
     event::{Event, Key},
     mode::{initial_mode, Mode, Transition},
@@ -37,6 +37,13 @@ impl Default for Editor {
 }
 
 impl Editor {
+    pub fn new_buffer_from_content(&mut self, content: BufferContent) {
+        let buffer_handle = self.buffers.add(Buffer::with_contents(content));
+        self.viewports[self.current_viewport].buffer_view_index = Some(self.buffer_views.len());
+        self.buffer_views
+            .push(BufferView::with_handle(buffer_handle));
+    }
+
     pub fn on_event(&mut self, event: Event) -> bool {
         match event {
             Event::None => (),
@@ -44,8 +51,7 @@ impl Editor {
             Event::Key(key) => {
                 self.buffered_keys.push(key);
 
-                let current_buffer_view =
-                    self.viewports.as_slice()[self.current_viewport].buffer_view_index;
+                let current_buffer_view = self.viewports[self.current_viewport].buffer_view_index;
                 match self.mode.on_event(
                     &mut self.buffers,
                     &mut self.buffer_views,

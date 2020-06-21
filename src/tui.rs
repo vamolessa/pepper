@@ -86,14 +86,17 @@ fn draw<W>(write: &mut W, editor: &Editor) -> Result<()>
 where
     W: Write,
 {
-    draw_viewport(write, editor, &editor.viewports.as_slice()[editor.current_viewport])
+    draw_viewport(write, editor, &editor.viewports[editor.current_viewport])
 }
 
 fn draw_viewport<W>(write: &mut W, editor: &Editor, viewport: &Viewport) -> Result<()>
 where
     W: Write,
 {
-    let buffer_view = &viewport.current_buffer_view();
+    let buffer_view = match viewport.buffer_view_index {
+        Some(index) => editor.buffer_views.get(index),
+        None => return Ok(()),
+    };
     let buffer = &editor.buffers[buffer_view.buffer_handle];
 
     handle_command!(write, cursor::MoveTo(0, 0))?;

@@ -35,7 +35,7 @@ impl Mode for Normal {
         current_buffer_view: Option<usize>,
         keys: &[Key],
     ) -> Transition {
-        let _ = match keys {
+        match keys {
             [Key::Char('q')] => return Transition::Waiting,
             [Key::Char('q'), Key::Char('q')] => return Transition::Exit,
             [Key::Char('h')] => buffer_views.move_cursors(
@@ -73,15 +73,14 @@ impl Mode for Normal {
             [Key::Char('i')] => return Transition::EnterMode(Box::new(Insert)),
             [Key::Char('u')] => buffer_views.undo(buffers, current_buffer_view),
             [Key::Char('U')] => buffer_views.redo(buffers, current_buffer_view),
-            [Key::Ctrl('s')] => buffer_views
-                .get_mut(current_buffer_view)
-                .and_then(|v| v.buffer_mut(buffers))
-                .and_then(|b| {
+            [Key::Ctrl('s')] => {
+                if let Some(index) = current_buffer_view {
+                    let buffer = buffer_views.get_mut(index).buffer_mut(buffers);
                     let mut file = std::fs::File::create("buffer_content.txt").unwrap();
-                    b.content.write(&mut file).unwrap();
-                    None
-                }),
-            _ => None,
+                    buffer.content.write(&mut file).unwrap();
+                }
+            }
+            _ => (),
         };
 
         Transition::None
@@ -97,7 +96,7 @@ impl Mode for Insert {
         current_buffer_view: Option<usize>,
         keys: &[Key],
     ) -> Transition {
-        let _ = match keys {
+        match keys {
             [Key::Esc] | [Key::Ctrl('c')] => {
                 buffer_views.commit_edits(buffers, current_buffer_view);
                 return Transition::EnterMode(Box::new(Normal));
@@ -112,8 +111,8 @@ impl Mode for Insert {
                 buffer_views.insert_text(buffers, current_buffer_view, TextRef::Char(*c))
             }
             [Key::Delete] => buffer_views.delete_selection(buffers, current_buffer_view),
-            _ => None,
-        };
+            _ => (),
+        }
 
         Transition::None
     }

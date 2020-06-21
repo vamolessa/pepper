@@ -1,3 +1,5 @@
+use std::ops::{Index, IndexMut};
+
 pub struct ViewportCollection {
     viewports: Vec<Viewport>,
 }
@@ -14,13 +16,18 @@ impl ViewportCollection {
             viewport.size = size;
         }
     }
+}
 
-    pub fn as_slice(&self) -> &[Viewport] {
-        &self.viewports[..]
+impl Index<usize> for ViewportCollection {
+    type Output = Viewport;
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.viewports[index]
     }
+}
 
-    pub fn as_slice_mut(&mut self) -> &mut [Viewport] {
-        &mut self.viewports[..]
+impl IndexMut<usize> for ViewportCollection {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.viewports[index]
     }
 }
 
