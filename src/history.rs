@@ -35,7 +35,7 @@ pub struct EditRef<'a> {
 
 pub struct History {
     edits: Vec<Edit>,
-    group_end_indexes: Vec<usize>,
+    group_ranges: Vec<Range<usize>>,
     current_group_index: usize,
 }
 
@@ -43,27 +43,26 @@ impl History {
     pub fn new() -> Self {
         Self {
             edits: Vec::new(),
-            group_end_indexes: vec![0, 0],
-            current_group_index: 1,
+            group_ranges: vec![0..0],
+            current_group_index: 0,
         }
     }
 
     pub fn push_edit(&mut self, edit: Edit) {
         self.edits
-            .truncate(self.group_end_indexes[self.current_group_index]);
-        self.group_end_indexes
-            .truncate(self.current_group_index + 1);
+            .truncate(self.group_ranges[self.current_group_index].end);
+        self.group_ranges.truncate(self.current_group_index + 1);
 
         self.edits.push(edit);
-        self.group_end_indexes[self.current_group_index] += 1;
+        self.group_ranges[self.current_group_index].end += 1;
     }
 
     pub fn commit_edits(&mut self) {
-        let current_group_size = self.group_end_indexes[self.current_group_index]
-            - self.group_end_indexes[self.current_group_index - 1];
-        if current_group_size > 0 {
-            self.current_group_index = self.group_end_indexes.len();
-            self.group_end_indexes.push(self.edits.len());
+        let range = &self.group_ranges[self.current_group_index];
+        if range.end - range.start > 0 {
+            self.current_group_index = self.group_ranges.len();
+            let edits_end_index = self.edits.len();
+            self.group_ranges.push(edits_end_index..edits_end_index);
         }
     }
 
@@ -71,8 +70,10 @@ impl History {
         self.commit_edits();
 
         let range = self.get_current_group_edit_range();
-        self.current_group_index -= 1;
-        self.current_group_index = self.current_group_index.max(1);
+        if self.current_group_index > 0 {
+            self.current_group_index -= 1;
+        }
+
         self.edits[range].iter().rev().map(|e| {
             let mut edit = e.as_edit_ref();
             edit.kind = match edit.kind {
@@ -87,20 +88,19 @@ impl History {
         self.commit_edits();
 
         let range = self.get_current_group_edit_range();
-        self.current_group_index += 1;
-        self.current_group_index = self
-            .current_group_index
-            .min(self.group_end_indexes.len() - 1);
+        if self.current_group_index < self.group_ranges.len() - 1 {
+            self.current_group_index += 1;
+        }
+
         self.edits[range].iter().map(|e| e.as_edit_ref())
     }
 
     fn get_current_group_edit_range(&self) -> Range<usize> {
-        let start = self.group_end_indexes[self.current_group_index - 1];
-        let end = self.group_end_indexes[self.current_group_index];
-        if start == 0 || end - start > 0 {
-            start..end
+        let range = &self.group_ranges[self.current_group_index];
+        if range.start == 0 || range.end - range.start > 0 {
+            range.clone()
         } else {
-            self.group_end_indexes[self.current_group_index - 2]..start
+            self.group_ranges[self.current_group_index - 1].clone()
         }
     }
 }
@@ -141,6 +141,9 @@ mod tests {
             range: BufferRange::default(),
             text: Text::Char('b'),
         });
+
+        assert_eq!(0, history.redo_edits().count());
+
         let mut edit_iter = history.undo_edits();
         let edit = edit_iter.next().unwrap();
         assert!(matches!(edit.kind, EditKind::Insert));
@@ -149,5 +152,34 @@ mod tests {
         assert!(matches!(edit.kind, EditKind::Delete));
         assert!(matches!(edit.text, TextRef::Char('a')));
         assert!(edit_iter.next().is_none());
+        drop(edit_iter);
+
+        let mut edit_iter = history.redo_edits();
+        let edit = edit_iter.next().unwrap();
+        assert!(matches!(edit.kind, EditKind::Insert));
+        assert!(matches!(edit.text, TextRef::Char('a')));
+        let edit = edit_iter.next().unwrap();
+        assert!(matches!(edit.kind, EditKind::Delete));
+        assert!(matches!(edit.text, TextRef::Char('b')));
+        assert!(edit_iter.next().is_none());
+        drop(edit_iter);
+
+        assert_eq!(0, history.redo_edits().count());
+
+        let mut edit_iter = history.undo_edits();
+        let edit = edit_iter.next().unwrap();
+        assert!(matches!(edit.kind, EditKind::Insert));
+        assert!(matches!(edit.text, TextRef::Char('b')));
+        let edit = edit_iter.next().unwrap();
+        assert!(matches!(edit.kind, EditKind::Delete));
+        assert!(matches!(edit.text, TextRef::Char('a')));
+        assert!(edit_iter.next().is_none());
+        drop(edit_iter);
+
+        history.push_edit(Edit {
+            kind: EditKind::Insert,
+            range: BufferRange::default(),
+            text: Text::Char('a'),
+        });
     }
 }
