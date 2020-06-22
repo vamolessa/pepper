@@ -43,14 +43,17 @@ impl BufferView {
         buffers[self.buffer_handle].history.commit_edits();
     }
 
-    fn insert_text(&mut self, buffers: &mut BufferCollection, text: TextRef) -> BufferRange {
+    fn insert_text<'a>(
+        &'a mut self,
+        buffers: &'a mut BufferCollection,
+        text: TextRef<'a>,
+    ) -> impl 'a + Iterator<Item = BufferRange> {
         let buffer = &mut buffers[self.buffer_handle];
-        for cursor in &mut self.cursors {
+        self.cursors.iter_mut().map(move |cursor| {
             let range = buffer.insert_text(*cursor, text);
             *cursor = cursor.insert(range);
-            //range
-        }
-        BufferRange::between(BufferPosition::default(), BufferPosition::default())
+            range
+        })
     }
 
     fn delete_selection(&mut self, buffers: &mut BufferCollection) -> BufferRange {
@@ -138,10 +141,12 @@ impl BufferViewCollection {
         };
 
         let (current_view, other_views) = self.current_and_other_buffer_views_mut(index);
-        let range = current_view.insert_text(buffers, text);
-        for view in other_views {
-            for cursor in &mut view.cursors {
-                *cursor = cursor.insert(range);
+        let ranges = current_view.insert_text(buffers, text);
+        for range in ranges {
+            for view in other_views {
+                for cursor in &mut view.cursors {
+                    *cursor = cursor.insert(range);
+                }
             }
         }
     }
@@ -170,7 +175,7 @@ impl BufferViewCollection {
         let buffer = &mut buffers[self.buffer_views[index].buffer_handle];
         self.apply_edits(index, buffer.undo());
     }
-    
+
     pub fn redo(&mut self, buffers: &mut BufferCollection, index: Option<usize>) {
         let index = match index {
             Some(index) => index,
