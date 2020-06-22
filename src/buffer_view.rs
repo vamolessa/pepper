@@ -8,14 +8,14 @@ use crate::{
 
 pub struct BufferView {
     pub buffer_handle: BufferHandle,
-    pub cursor: BufferPosition,
+    pub cursors: Vec<BufferPosition>,
 }
 
 impl BufferView {
     pub fn with_handle(buffer_handle: BufferHandle) -> Self {
         Self {
             buffer_handle,
-            cursor: Default::default(),
+            cursors: vec![BufferPosition::default()],
         }
     }
 
@@ -25,18 +25,18 @@ impl BufferView {
 
     fn move_cursor(&mut self, buffers: &BufferCollection, offset: BufferOffset) {
         let buffer = &buffers[self.buffer_handle];
-        let cursor = &mut self.cursor;
+        for cursor in &mut self.cursors {
+            let mut target = BufferOffset::from(*cursor) + offset;
 
-        let mut target = BufferOffset::from(*cursor) + offset;
+            target.line_offset = target
+                .line_offset
+                .min(buffer.content.line_count() as isize - 1)
+                .max(0);
+            let target_line_len = buffer.content.line(target.line_offset as _).char_count();
+            target.column_offset = target.column_offset.min(target_line_len as _).max(0);
 
-        target.line_offset = target
-            .line_offset
-            .min(buffer.content.line_count() as isize - 1)
-            .max(0);
-        let target_line_len = buffer.content.line(target.line_offset as _).char_count();
-        target.column_offset = target.column_offset.min(target_line_len as _).max(0);
-
-        *cursor = target.into();
+            *cursor = target.into();
+        }
     }
 
     fn commit_edits(&mut self, buffers: &mut BufferCollection) {
@@ -45,30 +45,32 @@ impl BufferView {
 
     fn insert_text(&mut self, buffers: &mut BufferCollection, text: TextRef) -> BufferRange {
         let buffer = &mut buffers[self.buffer_handle];
-        let cursor = &mut self.cursor;
-
-        let range = buffer.insert_text(*cursor, text);
-        *cursor = cursor.insert(range);
-        range
+        for cursor in &mut self.cursors {
+            let range = buffer.insert_text(*cursor, text);
+            *cursor = cursor.insert(range);
+            //range
+        }
+        BufferRange::between(BufferPosition::default(), BufferPosition::default())
     }
 
     fn delete_selection(&mut self, buffers: &mut BufferCollection) -> BufferRange {
         let buffer = &mut buffers[self.buffer_handle];
-        let cursor = &mut self.cursor;
+        for cursor in &mut self.cursors {
+            let cursor_line_size = buffer.content.line(cursor.line_index).char_count();
+            let mut selection_end = *cursor;
+            if selection_end.column_index < cursor_line_size {
+                selection_end.column_index += 1;
+            } else {
+                selection_end.line_index += 1;
+                selection_end.column_index = 0;
+            }
+            let range = BufferRange::between(*cursor, selection_end);
 
-        let cursor_line_size = buffer.content.line(cursor.line_index).char_count();
-        let mut selection_end = *cursor;
-        if selection_end.column_index < cursor_line_size {
-            selection_end.column_index += 1;
-        } else {
-            selection_end.line_index += 1;
-            selection_end.column_index = 0;
+            buffer.delete_range(range);
+            *cursor = cursor.remove(range);
+            //range
         }
-        let range = BufferRange::between(*cursor, selection_end);
-
-        buffer.delete_range(range);
-        *cursor = cursor.remove(range);
-        range
+        BufferRange::between(BufferPosition::default(), BufferPosition::default())
     }
 }
 
@@ -138,7 +140,9 @@ impl BufferViewCollection {
         let (current_view, other_views) = self.current_and_other_buffer_views_mut(index);
         let range = current_view.insert_text(buffers, text);
         for view in other_views {
-            view.cursor = view.cursor.insert(range);
+            for cursor in &mut view.cursors {
+                *cursor = cursor.insert(range);
+            }
         }
     }
 
@@ -151,7 +155,9 @@ impl BufferViewCollection {
         let (current_view, other_views) = self.current_and_other_buffer_views_mut(index);
         let range = current_view.delete_selection(buffers);
         for view in other_views {
-            view.cursor = view.cursor.remove(range);
+            for cursor in &mut view.cursors {
+                *cursor = cursor.remove(range);
+            }
         }
     }
 
@@ -162,25 +168,9 @@ impl BufferViewCollection {
         };
 
         let buffer = &mut buffers[self.buffer_views[index].buffer_handle];
-        for (kind, range) in buffer.undo() {
-            let (current_view, other_views) = self.current_and_other_buffer_views_mut(index);
-            match kind {
-                EditKind::Insert => {
-                    current_view.cursor = range.to;
-                    for view in other_views {
-                        view.cursor = view.cursor.insert(range);
-                    }
-                }
-                EditKind::Delete => {
-                    current_view.cursor = range.from;
-                    for view in other_views {
-                        view.cursor = view.cursor.remove(range);
-                    }
-                }
-            }
-        }
+        self.apply_edits(index, buffer.undo());
     }
-
+    
     pub fn redo(&mut self, buffers: &mut BufferCollection, index: Option<usize>) {
         let index = match index {
             Some(index) => index,
@@ -188,19 +178,35 @@ impl BufferViewCollection {
         };
 
         let buffer = &mut buffers[self.buffer_views[index].buffer_handle];
-        for (kind, range) in buffer.redo() {
+        self.apply_edits(index, buffer.redo());
+    }
+
+    pub fn apply_edits(
+        &mut self,
+        index: usize,
+        edits: impl Iterator<Item = (EditKind, BufferRange)>,
+    ) {
+        for (kind, range) in edits {
             let (current_view, other_views) = self.current_and_other_buffer_views_mut(index);
             match kind {
                 EditKind::Insert => {
-                    current_view.cursor = range.to;
+                    for cursor in &mut current_view.cursors {
+                        *cursor = range.to;
+                    }
                     for view in other_views {
-                        view.cursor = view.cursor.insert(range);
+                        for cursor in &mut view.cursors {
+                            *cursor = cursor.insert(range);
+                        }
                     }
                 }
                 EditKind::Delete => {
-                    current_view.cursor = range.from;
+                    for cursor in &mut current_view.cursors {
+                        *cursor = range.from;
+                    }
                     for view in other_views {
-                        view.cursor = view.cursor.remove(range);
+                        for cursor in &mut view.cursors {
+                            *cursor = cursor.remove(range);
+                        }
                     }
                 }
             }
