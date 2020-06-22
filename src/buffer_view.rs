@@ -50,6 +50,7 @@ impl BufferView {
         ranges: &mut Vec<BufferRange>,
     ) {
         let buffer = &mut buffers[self.buffer_handle];
+        ranges.clear();
         for cursor in &mut self.cursors {
             let range = buffer.insert_text(*cursor, text);
             *cursor = cursor.insert(range);
@@ -59,6 +60,7 @@ impl BufferView {
 
     fn delete_selection(&mut self, buffers: &mut BufferCollection, ranges: &mut Vec<BufferRange>) {
         let buffer = &mut buffers[self.buffer_handle];
+        ranges.clear();
         for cursor in &mut self.cursors {
             let cursor_line_size = buffer.content.line(cursor.line_index).char_count();
             let mut selection_end = *cursor;
