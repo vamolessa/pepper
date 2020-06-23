@@ -67,7 +67,8 @@ impl Editor {
                 }
                 if let Some(index) = self.viewports[self.current_viewport].buffer_view_index() {
                     let buffer_view = &self.buffer_views[index];
-                    self.viewports[self.current_viewport].scroll_to_cursor(buffer_view.cursors[0]);
+                    self.viewports[self.current_viewport]
+                        .scroll_to_cursor(buffer_view.cursors.main_cursor().position);
                 }
             }
         }

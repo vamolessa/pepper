@@ -3,19 +3,20 @@ use std::ops::{Index, IndexMut};
 use crate::{
     buffer::{Buffer, BufferCollection, BufferHandle, TextRef},
     buffer_position::{BufferOffset, BufferPosition, BufferRange},
+    cursor::CursorCollection,
     history::EditKind,
 };
 
 pub struct BufferView {
     pub buffer_handle: BufferHandle,
-    pub cursors: Vec<BufferPosition>,
+    pub cursors: CursorCollection,
 }
 
 impl BufferView {
     pub fn with_handle(buffer_handle: BufferHandle) -> Self {
         Self {
             buffer_handle,
-            cursors: vec![BufferPosition::default()],
+            cursors: CursorCollection::new(),
         }
     }
 
@@ -25,18 +26,17 @@ impl BufferView {
 
     fn move_cursor(&mut self, buffers: &BufferCollection, offset: BufferOffset) {
         let buffer = &buffers[self.buffer_handle];
-        for cursor in &mut self.cursors {
-            let mut target = BufferOffset::from(*cursor) + offset;
+        self.cursors.change_all(|cursor| {
+            let mut target = BufferOffset::from(cursor.position) + offset;
 
             target.line_offset = target
                 .line_offset
-                .min(buffer.content.line_count() as isize - 1)
-                .max(0);
+                .min(buffer.content.line_count() as isize - 1);
             let target_line_len = buffer.content.line(target.line_offset as _).char_count();
-            target.column_offset = target.column_offset.min(target_line_len as _).max(0);
+            target.column_offset = target.column_offset.min(target_line_len as _);
 
-            *cursor = target.into();
-        }
+            cursor.position = target.into();
+        });
     }
 
     fn commit_edits(&mut self, buffers: &mut BufferCollection) {
@@ -51,31 +51,31 @@ impl BufferView {
     ) {
         let buffer = &mut buffers[self.buffer_handle];
         ranges.clear();
-        for cursor in &mut self.cursors {
-            let range = buffer.insert_text(*cursor, text);
-            *cursor = cursor.insert(range);
+        self.cursors.change_all(|cursor| {
+            let range = buffer.insert_text(cursor.position, text);
+            cursor.position = cursor.position.insert(range);
             ranges.push(range);
-        }
+        });
     }
 
     fn delete_selection(&mut self, buffers: &mut BufferCollection, ranges: &mut Vec<BufferRange>) {
         let buffer = &mut buffers[self.buffer_handle];
         ranges.clear();
-        for cursor in &mut self.cursors {
-            let cursor_line_size = buffer.content.line(cursor.line_index).char_count();
-            let mut selection_end = *cursor;
+        self.cursors.change_all(|cursor| {
+            let cursor_line_size = buffer.content.line(cursor.position.line_index).char_count();
+            let mut selection_end = cursor.position;
             if selection_end.column_index < cursor_line_size {
                 selection_end.column_index += 1;
             } else {
                 selection_end.line_index += 1;
                 selection_end.column_index = 0;
             }
-            let range = BufferRange::between(*cursor, selection_end);
+            let range = BufferRange::between(cursor.position, selection_end);
 
             buffer.delete_range(range);
-            *cursor = cursor.remove(range);
+            cursor.position = cursor.position.remove(range);
             ranges.push(range);
-        }
+        });
     }
 }
 
@@ -152,11 +152,11 @@ impl BufferViewCollection {
         current_view.insert_text(buffers, text, temp_ranges);
 
         for view in other_views {
-            for cursor in &mut view.cursors {
+            view.cursors.change_all(|cursor| {
                 for range in temp_ranges.iter() {
-                    *cursor = cursor.insert(*range);
+                    cursor.position = cursor.position.insert(*range);
                 }
-            }
+            });
         }
     }
 
@@ -170,11 +170,11 @@ impl BufferViewCollection {
             self.current_and_other_buffer_views_mut(index);
         current_view.delete_selection(buffers, temp_ranges);
         for view in other_views {
-            for cursor in &mut view.cursors {
+            view.cursors.change_all(|cursor| {
                 for range in temp_ranges.iter() {
-                    *cursor = cursor.remove(*range);
+                    cursor.position = cursor.position.remove(*range);
                 }
-            }
+            });
         }
     }
 
@@ -207,23 +207,19 @@ impl BufferViewCollection {
             let (current_view, other_views, _) = self.current_and_other_buffer_views_mut(index);
             match kind {
                 EditKind::Insert => {
-                    for cursor in &mut current_view.cursors {
-                        *cursor = range.to;
-                    }
+                    current_view.cursors.change_all(|c| c.position = range.to);
                     for view in other_views {
-                        for cursor in &mut view.cursors {
-                            *cursor = cursor.insert(range);
-                        }
+                        current_view
+                            .cursors
+                            .change_all(|c| c.position = c.position.insert(range));
                     }
                 }
                 EditKind::Delete => {
-                    for cursor in &mut current_view.cursors {
-                        *cursor = range.from;
-                    }
+                    current_view.cursors.change_all(|c| c.position = range.from);
                     for view in other_views {
-                        for cursor in &mut view.cursors {
-                            *cursor = cursor.remove(range);
-                        }
+                        current_view
+                            .cursors
+                            .change_all(|c| c.position = c.position.remove(range));
                     }
                 }
             }

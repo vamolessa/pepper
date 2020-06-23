@@ -124,7 +124,7 @@ where
             let inside_selection = buffer_view
                 .cursors
                 .iter()
-                .any(|c| x == c.column_index && y == c.line_index);
+                .any(|c| x == c.position.column_index && y == c.position.line_index);
             if was_inside_selection != inside_selection {
                 was_inside_selection = inside_selection;
                 if inside_selection {
