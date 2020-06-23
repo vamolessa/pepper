@@ -1,4 +1,5 @@
 use std::{
+    cmp::{Ord, Ordering, PartialOrd},
     convert::From,
     ops::{Add, Neg, Sub},
 };
@@ -59,6 +60,21 @@ impl From<BufferOffset> for BufferPosition {
             column_index: other.column_offset.max(0) as _,
             line_index: other.line_offset.max(0) as _,
         }
+    }
+}
+
+impl Ord for BufferPosition {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match self.line_index.cmp(&other.line_index) {
+            Ordering::Equal => self.column_index.cmp(&other.column_index),
+            ordering => ordering,
+        }
+    }
+}
+
+impl PartialOrd for BufferPosition {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -125,15 +141,12 @@ pub struct BufferRange {
 
 impl BufferRange {
     pub fn between(from: BufferPosition, to: BufferPosition) -> Self {
-        let (from, to) = if from.line_index > to.line_index
-            || from.line_index == to.line_index && from.column_index > to.column_index
-        {
-            (to, from)
-        } else {
-            (from, to)
-        };
-
+        let (from, to) = if from < to { (from, to) } else { (to, from) };
         Self { from, to, __: () }
+    }
+
+    pub fn contains(&self, position: BufferPosition) -> bool {
+        self.from <= position && position <= self.to
     }
 }
 

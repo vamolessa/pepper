@@ -1,6 +1,7 @@
 use std::io::stdout;
 
 mod buffer;
+mod cursor;
 mod buffer_position;
 mod buffer_view;
 mod config;
