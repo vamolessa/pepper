@@ -65,9 +65,16 @@ impl From<BufferOffset> for BufferPosition {
 
 impl Ord for BufferPosition {
     fn cmp(&self, other: &Self) -> Ordering {
-        match self.line_index.cmp(&other.line_index) {
-            Ordering::Equal => self.column_index.cmp(&other.column_index),
-            ordering => ordering,
+        if self.line_index < other.line_index {
+            Ordering::Less
+        } else if self.line_index > other.line_index {
+            Ordering::Greater
+        } else if self.column_index < other.line_index {
+            Ordering::Less
+        } else if self.column_index > other.column_index {
+            Ordering::Greater
+        } else {
+            Ordering::Equal
         }
     }
 }
@@ -141,7 +148,7 @@ pub struct BufferRange {
 
 impl BufferRange {
     pub fn between(from: BufferPosition, to: BufferPosition) -> Self {
-        let (from, to) = if from < to { (from, to) } else { (to, from) };
+        let (from, to) = if from <= to { (from, to) } else { (to, from) };
         Self { from, to, __: () }
     }
 

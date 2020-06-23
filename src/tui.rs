@@ -8,6 +8,7 @@ use crossterm::{
 };
 
 use crate::{
+    buffer_position::BufferPosition,
     editor::Editor,
     event::{Event, Key},
     theme,
@@ -121,10 +122,17 @@ where
     {
         let y = y + viewport.scroll;
         for (x, c) in line.text.chars().chain(iter::once(' ')).enumerate() {
+            let char_position = BufferPosition {
+                line_index: y,
+                column_index: x,
+            };
             let inside_selection = buffer_view
                 .cursors
                 .iter()
-                .any(|c| x == c.position.column_index && y == c.position.line_index);
+                //.any(|c| c.range().contains(char_position));
+                //.any(|c| c.position == char_position);
+                .any(|c| c.position < char_position);
+
             if was_inside_selection != inside_selection {
                 was_inside_selection = inside_selection;
                 if inside_selection {

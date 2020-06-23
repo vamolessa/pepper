@@ -102,7 +102,7 @@ impl Mode for Insert {
                 return Transition::EnterMode(Box::new(Normal));
             }
             [Key::Tab] => {
-                buffer_views.insert_text(buffers, current_buffer_view, TextRef::Str("    "))
+                buffer_views.insert_text(buffers, current_buffer_view, TextRef::Char('\t'))
             }
             [Key::Enter] | [Key::Ctrl('m')] => {
                 buffer_views.insert_text(buffers, current_buffer_view, TextRef::Char('\n'))
