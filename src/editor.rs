@@ -38,7 +38,7 @@ impl Default for Editor {
 
 impl Editor {
     pub fn new_buffer_from_content(&mut self, content: BufferContent) {
-        let buffer_handle = self.buffers.add(Buffer::with_contents(content));
+        let buffer_handle = self.buffers.add(Buffer::with_content(content));
         self.viewports[self.current_viewport].set_buffer_view(Some(self.buffer_views.len()));
         self.buffer_views
             .push(BufferView::with_handle(buffer_handle));

@@ -79,12 +79,7 @@ impl BufferView {
         let buffer = &mut buffers[self.buffer_handle];
         ranges.clear();
         self.cursors.change_all(|cursor| {
-            let mut range = cursor.range();
-            range.to.column_index = buffer
-                .content
-                .line(range.to.line_index)
-                .char_count()
-                .min(range.to.column_index + 1);
+            let range = cursor.range();
             buffer.remove_range(range);
             cursor.remove(range);
             ranges.push(range);

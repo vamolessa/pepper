@@ -242,9 +242,9 @@ pub struct Buffer {
 }
 
 impl Buffer {
-    pub fn with_contents(contents: BufferContent) -> Self {
+    pub fn with_content(content: BufferContent) -> Self {
         Self {
-            content: contents,
+            content,
             history: History::new(),
         }
     }
@@ -324,7 +324,7 @@ mod tests {
     }
 
     #[test]
-    fn buffer_contents_insert_text() {
+    fn buffer_content_insert_text() {
         let mut buffer = BufferContent::from_str("");
 
         assert_eq!(1, buffer.line_count());
@@ -361,11 +361,14 @@ mod tests {
             TextRef::Str("some\nmore\nextensive\nmultiline "),
         );
         assert_eq!(4, buffer.line_count());
-        assert_eq!("this is some\nmore\nextensive\nmultiline content", buffer_to_string(&buffer));
+        assert_eq!(
+            "this is some\nmore\nextensive\nmultiline content",
+            buffer_to_string(&buffer)
+        );
     }
 
     #[test]
-    fn buffer_contents_delete_range() {
+    fn buffer_content_delete_range() {
         let mut buffer = BufferContent::from_str("this is the initial\ncontent of the buffer");
 
         assert_eq!(2, buffer.line_count());
@@ -414,7 +417,6 @@ mod tests {
         }
 
         let mut buffer = BufferContent::from_str("this\nbuffer\ncontains\nmultiple\nlines\nyes");
-
         assert_eq!(6, buffer.line_count());
         let deleted_text = buffer.delete_range(BufferRange::between(
             BufferPosition::line_col(1, 4),
@@ -428,8 +430,35 @@ mod tests {
     }
 
     #[test]
+    fn buffer_content_delete_lines() {
+        let mut buffer = BufferContent::from_str("first line\nsecond line\nthird line");
+        assert_eq!(3, buffer.line_count());
+        let deleted_text = buffer.delete_range(BufferRange::between(
+            BufferPosition::line_col(1, 0),
+            BufferPosition::line_col(2, 0),
+        ));
+        assert_eq!("first line\nthird line", buffer_to_string(&buffer));
+        match deleted_text {
+            Text::String(s) => assert_eq!("second line\n", s),
+            Text::Char(_c) => unreachable!(),
+        }
+
+        let mut buffer = BufferContent::from_str("first line\nsecond line\nthird line");
+        assert_eq!(3, buffer.line_count());
+        let deleted_text = buffer.delete_range(BufferRange::between(
+            BufferPosition::line_col(1, 0),
+            BufferPosition::line_col(1, 11),
+        ));
+        assert_eq!("first line\n\nthird line", buffer_to_string(&buffer));
+        match deleted_text {
+            Text::String(s) => assert_eq!("second line", s),
+            Text::Char(_c) => unreachable!(),
+        }
+    }
+
+    #[test]
     fn buffer_remove_undo_redo_single_line() {
-        let mut buffer = Buffer::with_contents(BufferContent::from_str("single line content"));
+        let mut buffer = Buffer::with_content(BufferContent::from_str("single line content"));
         let range = BufferRange::between(
             BufferPosition::line_col(0, 7),
             BufferPosition::line_col(0, 12),
@@ -449,7 +478,7 @@ mod tests {
 
     #[test]
     fn buffer_remove_undo_redo_multi_line() {
-        let mut buffer = Buffer::with_contents(BufferContent::from_str("multi\nline\ncontent"));
+        let mut buffer = Buffer::with_content(BufferContent::from_str("multi\nline\ncontent"));
         let range = BufferRange::between(
             BufferPosition::line_col(0, 1),
             BufferPosition::line_col(1, 3),
