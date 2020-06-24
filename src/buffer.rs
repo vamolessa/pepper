@@ -167,7 +167,7 @@ impl BufferContent {
 
                     BufferPosition::line_col(position.line_index + line_count, 0)
                 } else {
-                    let line = &mut self.lines[position.line_index];
+                    let line = &mut self.lines[position.line_index + line_count];
                     let column_index = line.char_count();
                     line.text.push_str(&split_line[..]);
 
@@ -354,6 +354,14 @@ mod tests {
         );
         assert_eq!(2, buffer.line_count());
         assert_eq!("this is some\nmultiline content", buffer_to_string(&buffer));
+
+        let mut buffer = BufferContent::from_str("this is content");
+        buffer.insert_text(
+            BufferPosition::line_col(0, 8),
+            TextRef::Str("some\nmore\nextensive\nmultiline "),
+        );
+        assert_eq!(4, buffer.line_count());
+        assert_eq!("this is some\nmore\nextensive\nmultiline content", buffer_to_string(&buffer));
     }
 
     #[test]
