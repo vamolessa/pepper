@@ -123,12 +123,25 @@ where
         let y = y + viewport.scroll;
         for (x, c) in line.text.chars().chain(iter::once(' ')).enumerate() {
             let char_position = BufferPosition::line_col(y, x);
-            let inside_selection = buffer_view
+            let on_cursor = buffer_view
                 .cursors
                 .iter()
-                .any(|c| c.range().contains(char_position));
+                .any(|c| char_position == c.position);
+            let inside_selection = if on_cursor {
+                false
+            } else {
+                buffer_view
+                    .cursors
+                    .iter()
+                    .any(|c| c.range().contains(char_position))
+            };
 
-            if was_inside_selection != inside_selection {
+            if on_cursor {
+                handle_command!(
+                    write,
+                    SetBackgroundColor(convert_color(editor.theme.cursor))
+                )?;
+            } else if was_inside_selection != inside_selection {
                 was_inside_selection = inside_selection;
                 if inside_selection {
                     handle_command!(
@@ -158,6 +171,13 @@ where
                     }
                 }
                 _ => handle_command!(write, Print(c))?,
+            }
+
+            if on_cursor {
+                handle_command!(
+                    write,
+                    SetBackgroundColor(convert_color(editor.theme.background))
+                )?;
             }
         }
 
