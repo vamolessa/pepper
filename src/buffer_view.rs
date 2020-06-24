@@ -75,16 +75,7 @@ impl BufferView {
         let buffer = &mut buffers[self.buffer_handle];
         ranges.clear();
         self.cursors.change_all(|cursor| {
-            let cursor_line_size = buffer.content.line(cursor.position.line_index).char_count();
-            let mut selection_end = cursor.position;
-            if selection_end.column_index < cursor_line_size {
-                selection_end.column_index += 1;
-            } else {
-                selection_end.line_index += 1;
-                selection_end.column_index = 0;
-            }
-            let range = BufferRange::between(cursor.position, selection_end);
-
+            let range = cursor.range();
             buffer.delete_range(range);
             cursor.position = cursor.position.remove(range);
             ranges.push(range);
@@ -179,7 +170,7 @@ impl BufferViewCollection {
         for view in other_views {
             view.cursors.change_all(|cursor| {
                 for range in temp_ranges.iter() {
-                    cursor.position = cursor.position.insert(*range);
+                    cursor.insert(*range);
                 }
             });
         }
@@ -197,7 +188,7 @@ impl BufferViewCollection {
         for view in other_views {
             view.cursors.change_all(|cursor| {
                 for range in temp_ranges.iter() {
-                    cursor.position = cursor.position.remove(*range);
+                    cursor.remove(*range);
                 }
             });
         }

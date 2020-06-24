@@ -10,6 +10,16 @@ impl Cursor {
     pub fn range(&self) -> BufferRange {
         BufferRange::between(self.anchor, self.position)
     }
+
+    pub fn insert(&mut self, range: BufferRange) {
+        self.position = self.position.insert(range);
+        self.anchor = self.anchor.insert(range);
+    }
+
+    pub fn remove(&mut self, range: BufferRange) {
+        self.position = self.position.remove(range);
+        self.anchor = self.anchor.remove(range);
+    }
 }
 
 pub struct CursorCollection {

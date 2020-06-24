@@ -184,11 +184,6 @@ impl BufferContent {
         self.clamp_position(&mut range.to);
 
         if range.from.line_index == range.to.line_index {
-            eprintln!(
-                "TESTE TESTE '{}' len: {}",
-                &self.lines[range.from.line_index].text,
-                &self.lines[range.from.line_index].text.len()
-            );
             let deleted_chars = self.lines[range.from.line_index]
                 .text
                 .drain(range.from.column_index..range.to.column_index);

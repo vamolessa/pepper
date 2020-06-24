@@ -36,10 +36,8 @@ impl Mode for Normal {
         keys: &[Key],
     ) -> Transition {
         match keys {
-            [Key::Esc] | [Key::Ctrl('c')] => {
-                buffer_views.commit_edits(buffers, current_buffer_view_index);
-                return Transition::EnterMode(Box::new(Normal));
-            }
+            [Key::Char('q')] => return Transition::Waiting,
+            [Key::Char('q'), Key::Char('q')] => return Transition::Exit,
             [Key::Char('h')] => {
                 buffer_views.move_cursors(
                     buffers,
@@ -73,6 +71,7 @@ impl Mode for Normal {
                 buffer_views.collapse_cursor_anchors(current_buffer_view_index);
             }
             [Key::Char('i')] => return Transition::EnterMode(Box::new(Insert)),
+            [Key::Char('v')] => return Transition::EnterMode(Box::new(Selection)),
             [Key::Char('u')] => buffer_views.undo(buffers, current_buffer_view_index),
             [Key::Char('U')] => buffer_views.redo(buffers, current_buffer_view_index),
             [Key::Ctrl('s')] => {
@@ -99,8 +98,11 @@ impl Mode for Selection {
         keys: &[Key],
     ) -> Transition {
         match keys {
-            [Key::Char('q')] => return Transition::Waiting,
-            [Key::Char('q'), Key::Char('q')] => return Transition::Exit,
+            [Key::Esc] | [Key::Ctrl('c')] => {
+                buffer_views.commit_edits(buffers, current_buffer_view_index);
+                buffer_views.collapse_cursor_anchors(current_buffer_view_index);
+                return Transition::EnterMode(Box::new(Normal));
+            }
             [Key::Char('h')] => {
                 buffer_views.move_cursors(
                     buffers,
@@ -131,10 +133,6 @@ impl Mode for Selection {
             }
             [Key::Char('o')] => {
                 buffer_views.swap_cursor_position_and_anchor(current_buffer_view_index)
-            }
-            [Key::Char('i')] => {
-                buffer_views.delete_selection(buffers, current_buffer_view_index);
-                return Transition::EnterMode(Box::new(Insert));
             }
             [Key::Char('d')] => {
                 buffer_views.delete_selection(buffers, current_buffer_view_index);
