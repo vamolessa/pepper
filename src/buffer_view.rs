@@ -66,7 +66,7 @@ impl BufferView {
         ranges.clear();
         self.cursors.change_all(|cursor| {
             let range = buffer.insert_text(cursor.position, text);
-            cursor.position = cursor.position.insert(range);
+            cursor.insert(range);
             ranges.push(range);
         });
     }
@@ -77,7 +77,7 @@ impl BufferView {
         self.cursors.change_all(|cursor| {
             let range = cursor.range();
             buffer.delete_range(range);
-            cursor.position = cursor.position.remove(range);
+            cursor.remove(range);
             ranges.push(range);
         });
     }
@@ -219,17 +219,21 @@ impl BufferViewCollection {
             let (current_view, other_views, _) = self.current_and_other_buffer_views_mut(index);
             match kind {
                 EditKind::Insert => {
-                    current_view.cursors.change_all(|c| c.position = range.to);
+                    current_view.cursors.change_all(|c| {
+                        c.position = range.to;
+                        c.anchor = range.to;
+                    });
                     for view in other_views {
-                        view.cursors
-                            .change_all(|c| c.position = c.position.insert(range));
+                        view.cursors.change_all(|c| c.insert(range));
                     }
                 }
                 EditKind::Delete => {
-                    current_view.cursors.change_all(|c| c.position = range.from);
+                    current_view.cursors.change_all(|c| {
+                        c.position = range.from;
+                        c.anchor = range.from;
+                    });
                     for view in other_views {
-                        view.cursors
-                            .change_all(|c| c.position = c.position.remove(range));
+                        view.cursors.change_all(|c| c.remove(range));
                     }
                 }
             }

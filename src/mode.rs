@@ -135,6 +135,11 @@ impl Mode for Selection {
                 buffer_views.swap_cursor_position_and_anchor(current_buffer_view_index)
             }
             [Key::Char('d')] => {
+                buffer_views.move_cursors(
+                    buffers,
+                    current_buffer_view_index,
+                    BufferOffset::line_col(0, 1),
+                );
                 buffer_views.delete_selection(buffers, current_buffer_view_index);
                 return Transition::EnterMode(Box::new(Normal));
             }
@@ -156,7 +161,6 @@ impl Mode for Insert {
     ) -> Transition {
         match keys {
             [Key::Esc] | [Key::Ctrl('c')] => {
-                buffer_views.collapse_cursor_anchors(current_buffer_view_index);
                 buffer_views.commit_edits(buffers, current_buffer_view_index);
                 return Transition::EnterMode(Box::new(Normal));
             }
@@ -169,7 +173,22 @@ impl Mode for Insert {
             [Key::Char(c)] => {
                 buffer_views.insert_text(buffers, current_buffer_view_index, TextRef::Char(*c))
             }
-            [Key::Delete] => buffer_views.delete_selection(buffers, current_buffer_view_index),
+            [Key::Backspace] => {
+                buffer_views.move_cursors(
+                    buffers,
+                    current_buffer_view_index,
+                    BufferOffset::line_col(0, -1),
+                );
+                buffer_views.delete_selection(buffers, current_buffer_view_index);
+            }
+            [Key::Delete] => {
+                buffer_views.move_cursors(
+                    buffers,
+                    current_buffer_view_index,
+                    BufferOffset::line_col(0, 1),
+                );
+                buffer_views.delete_selection(buffers, current_buffer_view_index);
+            }
             _ => (),
         }
 
