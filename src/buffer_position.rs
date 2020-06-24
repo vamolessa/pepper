@@ -155,7 +155,7 @@ impl Neg for BufferOffset {
     }
 }
 
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
 pub struct BufferRange {
     pub from: BufferPosition,
     pub to: BufferPosition,

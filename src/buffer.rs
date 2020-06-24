@@ -228,7 +228,7 @@ impl BufferContent {
                 self.insert_text(e.range.from, e.text);
                 (e.kind, e.range)
             }
-            EditKind::Delete => {
+            EditKind::Remove => {
                 self.delete_range(e.range);
                 (e.kind, e.range)
             }
@@ -262,7 +262,7 @@ impl Buffer {
     pub fn remove_range(&mut self, range: BufferRange) {
         let deleted_text = self.content.delete_range(range);
         self.history.push_edit(Edit {
-            kind: EditKind::Delete,
+            kind: EditKind::Remove,
             range,
             text: deleted_text,
         });
@@ -346,6 +346,14 @@ mod tests {
             "hello\n world appending more\nand more\nand even more\nlines",
             buffer_to_string(&buffer)
         );
+
+        let mut buffer = BufferContent::from_str("this is content");
+        buffer.insert_text(
+            BufferPosition::line_col(0, 8),
+            TextRef::Str("some\nmultiline "),
+        );
+        assert_eq!(2, buffer.line_count());
+        assert_eq!("this is some\nmultiline content", buffer_to_string(&buffer));
     }
 
     #[test]
@@ -412,11 +420,42 @@ mod tests {
     }
 
     #[test]
-    fn buffer_undo_redo_single_line() {
+    fn buffer_remove_undo_redo_single_line() {
         let mut buffer = Buffer::with_contents(BufferContent::from_str("single line content"));
-        buffer.remove_range(BufferRange::between(
+        let range = BufferRange::between(
             BufferPosition::line_col(0, 7),
             BufferPosition::line_col(0, 12),
-        ));
+        );
+        buffer.remove_range(range);
+
+        assert_eq!("single content", buffer_to_string(&buffer.content));
+        {
+            let mut ranges = buffer.undo();
+            assert_eq!(range, ranges.next().unwrap().1);
+            assert!(ranges.next().is_none());
+        }
+        assert_eq!("single line content", buffer_to_string(&buffer.content));
+        for _ in buffer.redo() {}
+        assert_eq!("single content", buffer_to_string(&buffer.content));
+    }
+
+    #[test]
+    fn buffer_remove_undo_redo_multi_line() {
+        let mut buffer = Buffer::with_contents(BufferContent::from_str("multi\nline\ncontent"));
+        let range = BufferRange::between(
+            BufferPosition::line_col(0, 1),
+            BufferPosition::line_col(1, 3),
+        );
+        buffer.remove_range(range);
+
+        assert_eq!("me\ncontent", buffer_to_string(&buffer.content));
+        {
+            let mut ranges = buffer.undo();
+            assert_eq!(range, ranges.next().unwrap().1);
+            assert!(ranges.next().is_none());
+        }
+        assert_eq!("multi\nline\ncontent", buffer_to_string(&buffer.content));
+        for _ in buffer.redo() {}
+        assert_eq!("me\ncontent", buffer_to_string(&buffer.content));
     }
 }

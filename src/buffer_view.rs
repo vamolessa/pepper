@@ -227,7 +227,7 @@ impl BufferViewCollection {
                         view.cursors.change_all(|c| c.insert(range));
                     }
                 }
-                EditKind::Delete => {
+                EditKind::Remove => {
                     current_view.cursors.change_all(|c| {
                         c.position = range.from;
                         c.anchor = range.from;

@@ -8,7 +8,7 @@ use crate::{
 #[derive(Debug, Clone, Copy)]
 pub enum EditKind {
     Insert,
-    Delete,
+    Remove,
 }
 
 #[derive(Debug)]
@@ -101,8 +101,8 @@ impl History {
         self.edits[range].iter().rev().map(|e| {
             let mut edit = e.as_edit_ref();
             edit.kind = match edit.kind {
-                EditKind::Insert => EditKind::Delete,
-                EditKind::Delete => EditKind::Insert,
+                EditKind::Insert => EditKind::Remove,
+                EditKind::Remove => EditKind::Insert,
             };
             edit
         })
@@ -160,7 +160,7 @@ mod tests {
             text: Text::Char('a'),
         });
         history.push_edit(Edit {
-            kind: EditKind::Delete,
+            kind: EditKind::Remove,
             range: BufferRange::default(),
             text: Text::Char('b'),
         });
@@ -172,7 +172,7 @@ mod tests {
         assert!(matches!(edit.kind, EditKind::Insert));
         assert!(matches!(edit.text, TextRef::Char('b')));
         let edit = edit_iter.next().unwrap();
-        assert!(matches!(edit.kind, EditKind::Delete));
+        assert!(matches!(edit.kind, EditKind::Remove));
         assert!(matches!(edit.text, TextRef::Char('a')));
         assert!(edit_iter.next().is_none());
         drop(edit_iter);
@@ -182,7 +182,7 @@ mod tests {
         assert!(matches!(edit.kind, EditKind::Insert));
         assert!(matches!(edit.text, TextRef::Char('a')));
         let edit = edit_iter.next().unwrap();
-        assert!(matches!(edit.kind, EditKind::Delete));
+        assert!(matches!(edit.kind, EditKind::Remove));
         assert!(matches!(edit.text, TextRef::Char('b')));
         assert!(edit_iter.next().is_none());
         drop(edit_iter);
@@ -194,7 +194,7 @@ mod tests {
         assert!(matches!(edit.kind, EditKind::Insert));
         assert!(matches!(edit.text, TextRef::Char('b')));
         let edit = edit_iter.next().unwrap();
-        assert!(matches!(edit.kind, EditKind::Delete));
+        assert!(matches!(edit.kind, EditKind::Remove));
         assert!(matches!(edit.text, TextRef::Char('a')));
         assert!(edit_iter.next().is_none());
         drop(edit_iter);
@@ -209,7 +209,7 @@ mod tests {
 
         let mut edit_iter = history.undo_edits();
         let edit = edit_iter.next().unwrap();
-        assert!(matches!(edit.kind, EditKind::Delete));
+        assert!(matches!(edit.kind, EditKind::Remove));
         assert!(matches!(edit.text, TextRef::Char('c')));
         assert!(edit_iter.next().is_none());
         drop(edit_iter);
