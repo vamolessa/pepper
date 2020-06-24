@@ -71,12 +71,12 @@ impl BufferView {
         });
     }
 
-    fn delete_selection(&mut self, buffers: &mut BufferCollection, ranges: &mut Vec<BufferRange>) {
+    fn remove_in_selection(&mut self, buffers: &mut BufferCollection, ranges: &mut Vec<BufferRange>) {
         let buffer = &mut buffers[self.buffer_handle];
         ranges.clear();
         self.cursors.change_all(|cursor| {
             let range = cursor.range();
-            buffer.delete_range(range);
+            buffer.remove_range(range);
             cursor.remove(range);
             ranges.push(range);
         });
@@ -176,7 +176,7 @@ impl BufferViewCollection {
         }
     }
 
-    pub fn delete_selection(&mut self, buffers: &mut BufferCollection, index: Option<usize>) {
+    pub fn remove_in_selection(&mut self, buffers: &mut BufferCollection, index: Option<usize>) {
         let index = match index {
             Some(index) => index,
             None => return,
@@ -184,7 +184,7 @@ impl BufferViewCollection {
 
         let (current_view, other_views, temp_ranges) =
             self.current_and_other_buffer_views_mut(index);
-        current_view.delete_selection(buffers, temp_ranges);
+        current_view.remove_in_selection(buffers, temp_ranges);
         for view in other_views {
             view.cursors.change_all(|cursor| {
                 for range in temp_ranges.iter() {

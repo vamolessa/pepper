@@ -140,7 +140,7 @@ impl Mode for Selection {
                     current_buffer_view_index,
                     BufferOffset::line_col(0, 1),
                 );
-                buffer_views.delete_selection(buffers, current_buffer_view_index);
+                buffer_views.remove_in_selection(buffers, current_buffer_view_index);
                 return Transition::EnterMode(Box::new(Normal));
             }
             _ => (),
@@ -179,7 +179,7 @@ impl Mode for Insert {
                     current_buffer_view_index,
                     BufferOffset::line_col(0, -1),
                 );
-                buffer_views.delete_selection(buffers, current_buffer_view_index);
+                buffer_views.remove_in_selection(buffers, current_buffer_view_index);
             }
             [Key::Delete] => {
                 buffer_views.move_cursors(
@@ -187,7 +187,7 @@ impl Mode for Insert {
                     current_buffer_view_index,
                     BufferOffset::line_col(0, 1),
                 );
-                buffer_views.delete_selection(buffers, current_buffer_view_index);
+                buffer_views.remove_in_selection(buffers, current_buffer_view_index);
             }
             _ => (),
         }

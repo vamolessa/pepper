@@ -259,7 +259,7 @@ impl Buffer {
         range
     }
 
-    pub fn delete_range(&mut self, range: BufferRange) {
+    pub fn remove_range(&mut self, range: BufferRange) {
         let deleted_text = self.content.delete_range(range);
         self.history.push_edit(Edit {
             kind: EditKind::Delete,
@@ -409,5 +409,14 @@ mod tests {
             Text::String(s) => assert_eq!("er\ncontains\nmultiple\nl", s),
             Text::Char(_c) => unreachable!(),
         }
+    }
+
+    #[test]
+    fn buffer_undo_redo_single_line() {
+        let mut buffer = Buffer::with_contents(BufferContent::from_str("single line content"));
+        buffer.remove_range(BufferRange::between(
+            BufferPosition::line_col(0, 7),
+            BufferPosition::line_col(0, 12),
+        ));
     }
 }
