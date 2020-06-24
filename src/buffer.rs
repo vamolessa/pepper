@@ -196,8 +196,9 @@ impl BufferContent {
                     .drain(range.from.column_index..),
             );
             let lines_range = (range.from.line_index + 1)..range.to.line_index;
-            if lines_range.start >= lines_range.end {
+            if lines_range.start < lines_range.end {
                 for line in self.lines.drain(lines_range) {
+                    deleted_text.push('\n');
                     deleted_text.push_str(&line.text[..]);
                 }
             }
@@ -207,6 +208,7 @@ impl BufferContent {
                 self.lines[range.from.line_index]
                     .text
                     .push_str(&to_line.text[range.to.column_index..]);
+                deleted_text.push('\n');
                 deleted_text.push_str(&to_line.text[..range.to.column_index]);
             }
 
@@ -337,11 +339,11 @@ mod tests {
         buffer.insert_text(BufferPosition::line_col(0, 5), TextRef::Char('\n'));
         buffer.insert_text(
             BufferPosition::line_col(1, 6),
-            TextRef::Str(" appending more\nlines"),
+            TextRef::Str(" appending more\nand more\nand even more\nlines"),
         );
-        assert_eq!(3, buffer.line_count());
+        assert_eq!(5, buffer.line_count());
         assert_eq!(
-            "hello\n world appending more\nlines",
+            "hello\n world appending more\nand more\nand even more\nlines",
             buffer_to_string(&buffer)
         );
     }
@@ -356,34 +358,56 @@ mod tests {
             buffer_to_string(&buffer)
         );
 
-        buffer.delete_range(BufferRange::between(
+        let deleted_text = buffer.delete_range(BufferRange::between(
             BufferPosition::line_col(0, 0),
             BufferPosition::line_col(0, 0),
         ));
-
         assert_eq!(2, buffer.line_count());
         assert_eq!(
             "this is the initial\ncontent of the buffer",
             buffer_to_string(&buffer)
         );
+        match deleted_text {
+            Text::String(s) => assert_eq!("", s),
+            Text::Char(_c) => unreachable!(),
+        }
 
-        buffer.delete_range(BufferRange::between(
+        let deleted_text = buffer.delete_range(BufferRange::between(
             BufferPosition::line_col(0, 11),
             BufferPosition::line_col(0, 19),
         ));
-
         assert_eq!(2, buffer.line_count());
         assert_eq!(
             "this is the\ncontent of the buffer",
             buffer_to_string(&buffer)
         );
+        match deleted_text {
+            Text::String(s) => assert_eq!(" initial", s),
+            Text::Char(_c) => unreachable!(),
+        }
 
-        buffer.delete_range(BufferRange::between(
+        let deleted_text = buffer.delete_range(BufferRange::between(
             BufferPosition::line_col(0, 8),
             BufferPosition::line_col(1, 15),
         ));
-
         assert_eq!(1, buffer.line_count());
         assert_eq!("this is buffer", buffer_to_string(&buffer));
+        match deleted_text {
+            Text::String(s) => assert_eq!("the\ncontent of the ", s),
+            Text::Char(_c) => unreachable!(),
+        }
+
+        let mut buffer = BufferContent::from_str("this\nbuffer\ncontains\nmultiple\nlines\nyes");
+
+        assert_eq!(6, buffer.line_count());
+        let deleted_text = buffer.delete_range(BufferRange::between(
+            BufferPosition::line_col(1, 4),
+            BufferPosition::line_col(4, 1),
+        ));
+        assert_eq!("this\nbuffines\nyes", buffer_to_string(&buffer));
+        match deleted_text {
+            Text::String(s) => assert_eq!("er\ncontains\nmultiple\nl", s),
+            Text::Char(_c) => unreachable!(),
+        }
     }
 }
