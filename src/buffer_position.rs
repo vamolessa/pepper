@@ -11,6 +11,13 @@ pub struct BufferPosition {
 }
 
 impl BufferPosition {
+    pub fn line_col(line_index: usize, column_index: usize) -> Self {
+        Self {
+            line_index,
+            column_index,
+        }
+    }
+
     pub fn insert(self, range: BufferRange) -> Self {
         if self.line_index < range.from.line_index {
             self
@@ -97,6 +104,15 @@ impl Sub for BufferPosition {
 pub struct BufferOffset {
     pub line_offset: isize,
     pub column_offset: isize,
+}
+
+impl BufferOffset {
+    pub fn line_col(line_offset: isize, column_offset: isize) -> Self {
+        Self {
+            line_offset,
+            column_offset,
+        }
+    }
 }
 
 impl From<BufferPosition> for BufferOffset {
@@ -221,5 +237,23 @@ mod tests {
         assert_eq!(make_pos(3, 3), pos42.remove(range33_51));
         assert_eq!(make_pos(3, 5), pos53.remove(range33_51));
         assert_eq!(make_pos(4, 6), pos66.remove(range33_51));
+    }
+
+    #[test]
+    fn buffer_range_contains() {
+        let range = BufferRange::between(make_pos(3, 3), make_pos(5, 5));
+
+        assert_eq!(false, range.contains(make_pos(1, 4)));
+        assert_eq!(false, range.contains(make_pos(3, 2)));
+
+        assert_eq!(true, range.contains(make_pos(3, 3)));
+        assert_eq!(true, range.contains(make_pos(3, 7)));
+        assert_eq!(true, range.contains(make_pos(4, 1)));
+        assert_eq!(true, range.contains(make_pos(4, 7)));
+        assert_eq!(true, range.contains(make_pos(5, 1)));
+        assert_eq!(true, range.contains(make_pos(5, 5)));
+
+        assert_eq!(false, range.contains(make_pos(5, 6)));
+        assert_eq!(false, range.contains(make_pos(7, 2)));
     }
 }

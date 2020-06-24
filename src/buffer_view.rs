@@ -2,7 +2,7 @@ use std::ops::{Index, IndexMut};
 
 use crate::{
     buffer::{Buffer, BufferCollection, BufferHandle, TextRef},
-    buffer_position::{BufferOffset, BufferPosition, BufferRange},
+    buffer_position::{BufferOffset, BufferRange},
     cursor::CursorCollection,
     history::EditKind,
 };
@@ -199,7 +199,7 @@ impl BufferViewCollection {
         self.apply_edits(index, buffer.redo());
     }
 
-    pub fn apply_edits(
+    fn apply_edits(
         &mut self,
         index: usize,
         edits: impl Iterator<Item = (EditKind, BufferRange)>,
@@ -210,16 +210,14 @@ impl BufferViewCollection {
                 EditKind::Insert => {
                     current_view.cursors.change_all(|c| c.position = range.to);
                     for view in other_views {
-                        current_view
-                            .cursors
+                        view.cursors
                             .change_all(|c| c.position = c.position.insert(range));
                     }
                 }
                 EditKind::Delete => {
                     current_view.cursors.change_all(|c| c.position = range.from);
                     for view in other_views {
-                        current_view
-                            .cursors
+                        view.cursors
                             .change_all(|c| c.position = c.position.remove(range));
                     }
                 }

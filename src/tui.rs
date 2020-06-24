@@ -122,16 +122,13 @@ where
     {
         let y = y + viewport.scroll;
         for (x, c) in line.text.chars().chain(iter::once(' ')).enumerate() {
-            let char_position = BufferPosition {
-                line_index: y,
-                column_index: x,
-            };
+            let char_position = BufferPosition::line_col(y, x);
             let inside_selection = buffer_view
                 .cursors
                 .iter()
-                //.any(|c| c.range().contains(char_position));
-                //.any(|c| c.position == char_position);
-                .any(|c| c.position < char_position);
+                .any(|c| c.range().contains(char_position));
+            //.any(|c| c.position == char_position);
+            //.any(|c| c.position > char_position);
 
             if was_inside_selection != inside_selection {
                 was_inside_selection = inside_selection;
@@ -155,6 +152,8 @@ where
                     )?;
                 }
             }
+
+            handle_command!(write, Print(if inside_selection { '+' } else { '-' }))?;
 
             match c {
                 '\t' => {

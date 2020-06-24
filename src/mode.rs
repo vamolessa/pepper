@@ -41,34 +41,22 @@ impl Mode for Normal {
             [Key::Char('h')] => buffer_views.move_cursors(
                 buffers,
                 current_buffer_view,
-                BufferOffset {
-                    column_offset: -1,
-                    line_offset: 0,
-                },
+                BufferOffset::line_col(0, -1),
             ),
             [Key::Char('j')] => buffer_views.move_cursors(
                 buffers,
                 current_buffer_view,
-                BufferOffset {
-                    column_offset: 0,
-                    line_offset: 1,
-                },
+                BufferOffset::line_col(1, 0),
             ),
             [Key::Char('k')] => buffer_views.move_cursors(
                 buffers,
                 current_buffer_view,
-                BufferOffset {
-                    column_offset: 0,
-                    line_offset: -1,
-                },
+                BufferOffset::line_col(0, -1),
             ),
             [Key::Char('l')] => buffer_views.move_cursors(
                 buffers,
                 current_buffer_view,
-                BufferOffset {
-                    column_offset: 1,
-                    line_offset: 0,
-                },
+                BufferOffset::line_col(0, 1),
             ),
             [Key::Char('i')] => return Transition::EnterMode(Box::new(Insert)),
             [Key::Char('u')] => buffer_views.undo(buffers, current_buffer_view),

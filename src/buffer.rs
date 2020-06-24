@@ -79,13 +79,7 @@ impl BufferContent {
     pub fn from_str(text: &str) -> Self {
         let mut this = Self { lines: Vec::new() };
         this.lines.push(BufferLine::new(String::new()));
-        this.insert_text(
-            BufferPosition {
-                line_index: 0,
-                column_index: 0,
-            },
-            TextRef::Str(text),
-        );
+        this.insert_text(BufferPosition::line_col(0, 0), TextRef::Str(text));
         this
     }
 
@@ -137,19 +131,13 @@ impl BufferContent {
                     self.lines
                         .insert(position.line_index + 1, BufferLine::new(split_line.into()));
 
-                    BufferPosition {
-                        column_index: 0,
-                        line_index: position.line_index + 1,
-                    }
+                    BufferPosition::line_col(position.line_index + 1, 0)
                 } else {
                     self.lines[position.line_index]
                         .text
                         .insert(position.column_index, c);
 
-                    BufferPosition {
-                        column_index: position.column_index + 1,
-                        line_index: position.line_index,
-                    }
+                    BufferPosition::line_col(position.line_index, position.column_index + 1)
                 }
             }
             TextRef::Str(text) => {
@@ -177,19 +165,13 @@ impl BufferContent {
                         BufferLine::new(split_line),
                     );
 
-                    BufferPosition {
-                        column_index: 0,
-                        line_index: position.line_index + line_count,
-                    }
+                    BufferPosition::line_col(position.line_index + line_count, 0)
                 } else {
                     let line = &mut self.lines[position.line_index];
                     let column_index = line.char_count();
                     line.text.push_str(&split_line[..]);
 
-                    BufferPosition {
-                        column_index,
-                        line_index: position.line_index + line_count,
-                    }
+                    BufferPosition::line_col(position.line_index + line_count, column_index)
                 }
             }
         };
@@ -351,42 +333,15 @@ mod tests {
         assert_eq!(1, buffer.line_count());
         assert_eq!("", buffer_to_string(&buffer));
 
-        buffer.insert_text(
-            BufferPosition {
-                line_index: 0,
-                column_index: 0,
-            },
-            TextRef::Str("hold"),
-        );
-        buffer.insert_text(
-            BufferPosition {
-                line_index: 0,
-                column_index: 2,
-            },
-            TextRef::Char('r'),
-        );
-        buffer.insert_text(
-            BufferPosition {
-                line_index: 0,
-                column_index: 1,
-            },
-            TextRef::Str("ello w"),
-        );
+        buffer.insert_text(BufferPosition::line_col(0, 0), TextRef::Str("hold"));
+        buffer.insert_text(BufferPosition::line_col(0, 2), TextRef::Char('r'));
+        buffer.insert_text(BufferPosition::line_col(0, 1), TextRef::Str("ello w"));
         assert_eq!(1, buffer.line_count());
         assert_eq!("hello world", buffer_to_string(&buffer));
 
+        buffer.insert_text(BufferPosition::line_col(0, 5), TextRef::Char('\n'));
         buffer.insert_text(
-            BufferPosition {
-                line_index: 0,
-                column_index: 5,
-            },
-            TextRef::Char('\n'),
-        );
-        buffer.insert_text(
-            BufferPosition {
-                line_index: 1,
-                column_index: 6,
-            },
+            BufferPosition::line_col(1, 6),
             TextRef::Str(" appending more\nlines"),
         );
         assert_eq!(3, buffer.line_count());
@@ -407,14 +362,8 @@ mod tests {
         );
 
         buffer.delete_range(BufferRange::between(
-            BufferPosition {
-                line_index: 0,
-                column_index: 0,
-            },
-            BufferPosition {
-                line_index: 0,
-                column_index: 0,
-            },
+            BufferPosition::line_col(0, 0),
+            BufferPosition::line_col(0, 0),
         ));
 
         assert_eq!(2, buffer.line_count());
@@ -424,14 +373,8 @@ mod tests {
         );
 
         buffer.delete_range(BufferRange::between(
-            BufferPosition {
-                line_index: 0,
-                column_index: 11,
-            },
-            BufferPosition {
-                line_index: 0,
-                column_index: 19,
-            },
+            BufferPosition::line_col(0, 11),
+            BufferPosition::line_col(0, 19),
         ));
 
         assert_eq!(2, buffer.line_count());
@@ -441,14 +384,8 @@ mod tests {
         );
 
         buffer.delete_range(BufferRange::between(
-            BufferPosition {
-                line_index: 0,
-                column_index: 8,
-            },
-            BufferPosition {
-                line_index: 1,
-                column_index: 15,
-            },
+            BufferPosition::line_col(0, 8),
+            BufferPosition::line_col(1, 15),
         ));
 
         assert_eq!(1, buffer.line_count());
