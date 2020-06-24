@@ -71,11 +71,20 @@ impl BufferView {
         });
     }
 
-    fn remove_in_selection(&mut self, buffers: &mut BufferCollection, ranges: &mut Vec<BufferRange>) {
+    fn remove_in_selection(
+        &mut self,
+        buffers: &mut BufferCollection,
+        ranges: &mut Vec<BufferRange>,
+    ) {
         let buffer = &mut buffers[self.buffer_handle];
         ranges.clear();
         self.cursors.change_all(|cursor| {
-            let range = cursor.range();
+            let mut range = cursor.range();
+            range.to.column_index = buffer
+                .content
+                .line(range.to.line_index)
+                .char_count()
+                .min(range.to.column_index + 1);
             buffer.remove_range(range);
             cursor.remove(range);
             ranges.push(range);
