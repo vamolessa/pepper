@@ -24,7 +24,7 @@ impl BufferView {
         &mut buffers[self.buffer_handle]
     }
 
-    fn move_cursor(&mut self, buffers: &BufferCollection, offset: BufferOffset) {
+    pub fn move_cursors(&mut self, buffers: &BufferCollection, offset: BufferOffset) {
         let buffer = &buffers[self.buffer_handle];
         self.cursors.change_all(|cursor| {
             let mut target = BufferOffset::from(cursor.position) + offset;
@@ -37,6 +37,18 @@ impl BufferView {
             target.column_offset = target.column_offset.min(target_line_len as _);
 
             cursor.position = target.into();
+        });
+    }
+
+    pub fn collapse_cursor_anchors(&mut self) {
+        self.cursors.change_all(|cursor| {
+            cursor.anchor = cursor.position;
+        });
+    }
+
+    pub fn swap_cursor_position_and_anchor(&mut self) {
+        self.cursors.change_all(|cursor| {
+            std::mem::swap(&mut cursor.position, &mut cursor.anchor);
         });
     }
 
@@ -127,7 +139,19 @@ impl BufferViewCollection {
         offset: BufferOffset,
     ) {
         if let Some(index) = index {
-            self.buffer_views[index].move_cursor(buffers, offset);
+            self.buffer_views[index].move_cursors(buffers, offset);
+        }
+    }
+
+    pub fn collapse_cursor_anchors(&mut self, index: Option<usize>) {
+        if let Some(index) = index {
+            self.buffer_views[index].collapse_cursor_anchors();
+        }
+    }
+
+    pub fn swap_cursor_position_and_anchor(&mut self, index: Option<usize>) {
+        if let Some(index) = index {
+            self.buffer_views[index].swap_cursor_position_and_anchor();
         }
     }
 
@@ -199,11 +223,7 @@ impl BufferViewCollection {
         self.apply_edits(index, buffer.redo());
     }
 
-    fn apply_edits(
-        &mut self,
-        index: usize,
-        edits: impl Iterator<Item = (EditKind, BufferRange)>,
-    ) {
+    fn apply_edits(&mut self, index: usize, edits: impl Iterator<Item = (EditKind, BufferRange)>) {
         for (kind, range) in edits {
             let (current_view, other_views, _) = self.current_and_other_buffer_views_mut(index);
             match kind {

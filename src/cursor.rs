@@ -7,10 +7,6 @@ pub struct Cursor {
 }
 
 impl Cursor {
-    pub fn has_selection(&self) -> bool {
-        false
-    }
-
     pub fn range(&self) -> BufferRange {
         BufferRange::between(self.anchor, self.position)
     }

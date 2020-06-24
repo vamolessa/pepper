@@ -112,7 +112,6 @@ where
         SetBackgroundColor(convert_color(editor.theme.background))
     )?;
 
-    let mut was_inside_selection = false;
     for (y, line) in buffer
         .content
         .lines()
@@ -120,6 +119,7 @@ where
         .take(viewport.size.1)
         .enumerate()
     {
+        let mut was_inside_selection = false;
         let y = y + viewport.scroll;
         for (x, c) in line.text.chars().chain(iter::once(' ')).enumerate() {
             let char_position = BufferPosition::line_col(y, x);
@@ -127,8 +127,6 @@ where
                 .cursors
                 .iter()
                 .any(|c| c.range().contains(char_position));
-            //.any(|c| c.position == char_position);
-            //.any(|c| c.position > char_position);
 
             if was_inside_selection != inside_selection {
                 was_inside_selection = inside_selection;
@@ -152,8 +150,6 @@ where
                     )?;
                 }
             }
-
-            handle_command!(write, Print(if inside_selection { '+' } else { '-' }))?;
 
             match c {
                 '\t' => {

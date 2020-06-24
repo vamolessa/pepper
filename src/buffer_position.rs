@@ -76,7 +76,7 @@ impl Ord for BufferPosition {
             Ordering::Less
         } else if self.line_index > other.line_index {
             Ordering::Greater
-        } else if self.column_index < other.line_index {
+        } else if self.column_index < other.column_index {
             Ordering::Less
         } else if self.column_index > other.column_index {
             Ordering::Greater
@@ -177,83 +177,87 @@ impl BufferRange {
 mod tests {
     use super::*;
 
-    fn make_pos(line_index: usize, column_index: usize) -> BufferPosition {
-        BufferPosition {
-            line_index,
-            column_index,
-        }
+    fn pos(line_index: usize, column_index: usize) -> BufferPosition {
+        BufferPosition::line_col(line_index, column_index)
     }
 
     #[test]
     fn buffer_position_insert() {
-        let pos12 = make_pos(1, 2);
-        let pos31 = make_pos(3, 1);
-        let pos32 = make_pos(3, 2);
-        let pos33 = make_pos(3, 3);
-        let pos36 = make_pos(3, 6);
-        let pos42 = make_pos(4, 2);
-        let pos53 = make_pos(5, 3);
-        let pos66 = make_pos(6, 6);
-        let range31_33 = BufferRange::between(make_pos(3, 1), make_pos(3, 3));
-        let range33_51 = BufferRange::between(make_pos(3, 3), make_pos(5, 1));
+        let pos12 = pos(1, 2);
+        let pos31 = pos(3, 1);
+        let pos32 = pos(3, 2);
+        let pos33 = pos(3, 3);
+        let pos36 = pos(3, 6);
+        let pos42 = pos(4, 2);
+        let pos53 = pos(5, 3);
+        let pos66 = pos(6, 6);
+        let range31_33 = BufferRange::between(pos(3, 1), pos(3, 3));
+        let range33_51 = BufferRange::between(pos(3, 3), pos(5, 1));
 
         assert_eq!(pos12, pos12.insert(range31_33));
-        assert_eq!(make_pos(3, 3), pos31.insert(range31_33));
-        assert_eq!(make_pos(3, 4), pos32.insert(range31_33));
-        assert_eq!(make_pos(3, 5), pos33.insert(range31_33));
+        assert_eq!(pos(3, 3), pos31.insert(range31_33));
+        assert_eq!(pos(3, 4), pos32.insert(range31_33));
+        assert_eq!(pos(3, 5), pos33.insert(range31_33));
         assert_eq!(pos42, pos42.insert(range31_33));
 
         assert_eq!(pos12, pos12.insert(range33_51));
-        assert_eq!(make_pos(5, 1), pos33.insert(range33_51));
-        assert_eq!(make_pos(5, 4), pos36.insert(range33_51));
-        assert_eq!(make_pos(6, 2), pos42.insert(range33_51));
-        assert_eq!(make_pos(7, 3), pos53.insert(range33_51));
-        assert_eq!(make_pos(8, 6), pos66.insert(range33_51));
+        assert_eq!(pos(5, 1), pos33.insert(range33_51));
+        assert_eq!(pos(5, 4), pos36.insert(range33_51));
+        assert_eq!(pos(6, 2), pos42.insert(range33_51));
+        assert_eq!(pos(7, 3), pos53.insert(range33_51));
+        assert_eq!(pos(8, 6), pos66.insert(range33_51));
     }
 
     #[test]
     fn buffer_position_remove() {
-        let pos12 = make_pos(1, 2);
-        let pos31 = make_pos(3, 1);
-        let pos32 = make_pos(3, 2);
-        let pos33 = make_pos(3, 3);
-        let pos36 = make_pos(3, 6);
-        let pos42 = make_pos(4, 2);
-        let pos53 = make_pos(5, 3);
-        let pos66 = make_pos(6, 6);
-        let range31_33 = BufferRange::between(make_pos(3, 1), make_pos(3, 3));
-        let range33_51 = BufferRange::between(make_pos(3, 3), make_pos(5, 1));
+        let pos12 = pos(1, 2);
+        let pos31 = pos(3, 1);
+        let pos32 = pos(3, 2);
+        let pos33 = pos(3, 3);
+        let pos36 = pos(3, 6);
+        let pos42 = pos(4, 2);
+        let pos53 = pos(5, 3);
+        let pos66 = pos(6, 6);
+        let range31_33 = BufferRange::between(pos(3, 1), pos(3, 3));
+        let range33_51 = BufferRange::between(pos(3, 3), pos(5, 1));
 
         assert_eq!(pos12, pos12.remove(range31_33));
-        assert_eq!(make_pos(3, 1), pos31.remove(range31_33));
-        assert_eq!(make_pos(3, 1), pos32.remove(range31_33));
-        assert_eq!(make_pos(3, 1), pos33.remove(range31_33));
+        assert_eq!(pos(3, 1), pos31.remove(range31_33));
+        assert_eq!(pos(3, 1), pos32.remove(range31_33));
+        assert_eq!(pos(3, 1), pos33.remove(range31_33));
         assert_eq!(pos42, pos42.remove(range31_33));
         assert_eq!(pos53, pos53.remove(range31_33));
 
         assert_eq!(pos12, pos12.remove(range33_51));
-        assert_eq!(make_pos(3, 3), pos33.remove(range33_51));
-        assert_eq!(make_pos(3, 3), pos36.remove(range33_51));
-        assert_eq!(make_pos(3, 3), pos42.remove(range33_51));
-        assert_eq!(make_pos(3, 5), pos53.remove(range33_51));
-        assert_eq!(make_pos(4, 6), pos66.remove(range33_51));
+        assert_eq!(pos(3, 3), pos33.remove(range33_51));
+        assert_eq!(pos(3, 3), pos36.remove(range33_51));
+        assert_eq!(pos(3, 3), pos42.remove(range33_51));
+        assert_eq!(pos(3, 5), pos53.remove(range33_51));
+        assert_eq!(pos(4, 6), pos66.remove(range33_51));
     }
 
     #[test]
     fn buffer_range_contains() {
-        let range = BufferRange::between(make_pos(3, 3), make_pos(5, 5));
+        let range = BufferRange::between(pos(3, 3), pos(5, 5));
+        assert_eq!(false, range.contains(pos(1, 4)));
+        assert_eq!(false, range.contains(pos(3, 2)));
 
-        assert_eq!(false, range.contains(make_pos(1, 4)));
-        assert_eq!(false, range.contains(make_pos(3, 2)));
+        assert_eq!(true, range.contains(pos(3, 3)));
+        assert_eq!(true, range.contains(pos(3, 7)));
+        assert_eq!(true, range.contains(pos(4, 1)));
+        assert_eq!(true, range.contains(pos(4, 7)));
+        assert_eq!(true, range.contains(pos(5, 1)));
+        assert_eq!(true, range.contains(pos(5, 5)));
 
-        assert_eq!(true, range.contains(make_pos(3, 3)));
-        assert_eq!(true, range.contains(make_pos(3, 7)));
-        assert_eq!(true, range.contains(make_pos(4, 1)));
-        assert_eq!(true, range.contains(make_pos(4, 7)));
-        assert_eq!(true, range.contains(make_pos(5, 1)));
-        assert_eq!(true, range.contains(make_pos(5, 5)));
+        assert_eq!(false, range.contains(pos(5, 6)));
+        assert_eq!(false, range.contains(pos(7, 2)));
 
-        assert_eq!(false, range.contains(make_pos(5, 6)));
-        assert_eq!(false, range.contains(make_pos(7, 2)));
+        let range = BufferRange::between(pos(2, 0), pos(2, 0));
+        assert_eq!(true, range.contains(pos(2, 0)));
+        assert_eq!(false, range.contains(pos(2, 1)));
+
+        let range = BufferRange::between(pos(2, 1), pos(2, 1));
+        assert_eq!(false, range.contains(pos(2, 0)));
+        assert_eq!(true, range.contains(pos(2, 1)));
     }
 }
