@@ -42,7 +42,7 @@ impl CursorCollection {
     pub fn add_cursor(&mut self, cursor: Cursor) {
         self.main_cursor_index = self.cursors.len();
         self.cursors.push(cursor);
-        self.sort_and_dedup();
+        self.sort_and_merge();
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &Cursor> {
@@ -69,10 +69,10 @@ impl CursorCollection {
             callback(cursor);
         }
 
-        self.sort_and_dedup();
+        self.sort_and_merge();
     }
 
-    fn sort_and_dedup(&mut self) {
+    fn sort_and_merge(&mut self) {
         let main_cursor = self.cursors[self.main_cursor_index];
         self.cursors.sort_by_key(|c| c.position);
         self.main_cursor_index = self

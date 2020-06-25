@@ -53,7 +53,10 @@ impl Mode for Normal {
         };
 
         match keys {
-            [Key::Char('h')] => {}
+            [Key::Char('h')] => {
+                buffer_views[index].move_cursors(buffers, BufferOffset::line_col(0, -1));
+                buffer_views[index].cursors.collapse_anchors();
+            }
             [Key::Char('j')] => {
                 buffer_views[index].move_cursors(buffers, BufferOffset::line_col(1, 0));
                 buffer_views[index].cursors.collapse_anchors();
