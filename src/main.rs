@@ -20,8 +20,10 @@ fn main() {
     let stdout = stdout.lock();
 
     //let text = include_str!("main.rs");
-    let text = r#"this is a test text
-lets go over a few things:
+    let text = r#"banana
+banana
+
+
 
 banana
 apple

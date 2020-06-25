@@ -26,7 +26,7 @@ impl BufferView {
 
     pub fn move_cursors(&mut self, buffers: &BufferCollection, offset: BufferOffset) {
         let buffer = &buffers[self.buffer_handle];
-        self.cursors.change_all(|cursor| {
+        self.cursors.change_all_from(0, |cursor| {
             let mut target = BufferOffset::from(cursor.position) + offset;
 
             target.line_offset = target
@@ -40,23 +40,8 @@ impl BufferView {
         });
     }
 
-    pub fn commit_edits(&mut self, buffers: &mut BufferCollection) {
+    pub fn commit_edits(&self, buffers: &mut BufferCollection) {
         buffers[self.buffer_handle].history.commit_edits();
-    }
-
-    fn insert_text(
-        &mut self,
-        buffers: &mut BufferCollection,
-        text: TextRef,
-        ranges: &mut Vec<BufferRange>,
-    ) {
-        let buffer = &mut buffers[self.buffer_handle];
-        ranges.clear();
-        self.cursors.change_all(|cursor| {
-            let range = buffer.insert_text(cursor.position, text);
-            cursor.insert(range);
-            ranges.push(range);
-        });
     }
 
     fn remove_in_selection(
@@ -66,7 +51,7 @@ impl BufferView {
     ) {
         let buffer = &mut buffers[self.buffer_handle];
         ranges.clear();
-        self.cursors.change_all(|cursor| {
+        self.cursors.change_all_from(0, |cursor| {
             let range = cursor.range();
             buffer.remove_range(range);
             cursor.remove(range);
@@ -118,10 +103,23 @@ impl BufferViewCollection {
     pub fn insert_text(&mut self, buffers: &mut BufferCollection, index: usize, text: TextRef) {
         let (current_view, other_views, temp_ranges) =
             self.current_and_other_buffer_views_mut(index);
-        current_view.insert_text(buffers, text, temp_ranges);
+        let buffer = &mut buffers[current_view.buffer_handle];
+
+        temp_ranges.clear();
+        for cursor in current_view.cursors.iter() {
+            temp_ranges.push(cursor.range())
+        }
+
+        for i in 0..temp_ranges.len() {
+            let range = buffer.insert_text(temp_ranges[i].from, text);
+            current_view.cursors.change_all_from(i, |cursor| {
+                cursor.insert(range);
+            });
+            temp_ranges[i] = range;
+        }
 
         for view in other_views {
-            view.cursors.change_all(|cursor| {
+            view.cursors.change_all_from(0, |cursor| {
                 for range in temp_ranges.iter() {
                     cursor.insert(*range);
                 }
@@ -134,7 +132,7 @@ impl BufferViewCollection {
             self.current_and_other_buffer_views_mut(index);
         current_view.remove_in_selection(buffers, temp_ranges);
         for view in other_views {
-            view.cursors.change_all(|cursor| {
+            view.cursors.change_all_from(0, |cursor| {
                 for range in temp_ranges.iter() {
                     cursor.remove(*range);
                 }
@@ -157,21 +155,21 @@ impl BufferViewCollection {
             let (current_view, other_views, _) = self.current_and_other_buffer_views_mut(index);
             match kind {
                 EditKind::Insert => {
-                    current_view.cursors.change_all(|c| {
+                    current_view.cursors.change_all_from(0, |c| {
                         c.position = range.to;
                         c.anchor = range.to;
                     });
                     for view in other_views {
-                        view.cursors.change_all(|c| c.insert(range));
+                        view.cursors.change_all_from(0, |c| c.insert(range));
                     }
                 }
                 EditKind::Remove => {
-                    current_view.cursors.change_all(|c| {
+                    current_view.cursors.change_all_from(0, |c| {
                         c.position = range.from;
                         c.anchor = range.from;
                     });
                     for view in other_views {
-                        view.cursors.change_all(|c| c.remove(range));
+                        view.cursors.change_all_from(0, |c| c.remove(range));
                     }
                 }
             }

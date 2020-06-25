@@ -61,11 +61,11 @@ impl CursorCollection {
         }
     }
 
-    pub fn change_all<F>(&mut self, mut callback: F)
+    pub fn change_all_from<F>(&mut self, from_index: usize, mut callback: F)
     where
         F: FnMut(&mut Cursor),
     {
-        for cursor in &mut self.cursors {
+        for cursor in &mut self.cursors[from_index..] {
             callback(cursor);
         }
 
