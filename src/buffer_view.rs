@@ -20,8 +20,8 @@ impl BufferView {
         }
     }
 
-    pub fn buffer_mut<'a>(&mut self, buffers: &'a mut BufferCollection) -> &'a mut Buffer {
-        &mut buffers[self.buffer_handle]
+    pub fn buffer<'a>(&self, buffers: &'a BufferCollection) -> &'a Buffer {
+        &buffers[self.buffer_handle]
     }
 
     pub fn move_cursors(&mut self, buffers: &BufferCollection, offset: BufferOffset) {
@@ -40,19 +40,7 @@ impl BufferView {
         });
     }
 
-    pub fn collapse_cursor_anchors(&mut self) {
-        self.cursors.change_all(|cursor| {
-            cursor.anchor = cursor.position;
-        });
-    }
-
-    pub fn swap_cursor_position_and_anchor(&mut self) {
-        self.cursors.change_all(|cursor| {
-            std::mem::swap(&mut cursor.position, &mut cursor.anchor);
-        });
-    }
-
-    fn commit_edits(&mut self, buffers: &mut BufferCollection) {
+    pub fn commit_edits(&mut self, buffers: &mut BufferCollection) {
         buffers[self.buffer_handle].history.commit_edits();
     }
 
@@ -127,46 +115,7 @@ impl BufferViewCollection {
         (current, iter, &mut self.temp_ranges)
     }
 
-    pub fn move_cursors(
-        &mut self,
-        buffers: &mut BufferCollection,
-        index: Option<usize>,
-        offset: BufferOffset,
-    ) {
-        if let Some(index) = index {
-            self.buffer_views[index].move_cursors(buffers, offset);
-        }
-    }
-
-    pub fn collapse_cursor_anchors(&mut self, index: Option<usize>) {
-        if let Some(index) = index {
-            self.buffer_views[index].collapse_cursor_anchors();
-        }
-    }
-
-    pub fn swap_cursor_position_and_anchor(&mut self, index: Option<usize>) {
-        if let Some(index) = index {
-            self.buffer_views[index].swap_cursor_position_and_anchor();
-        }
-    }
-
-    pub fn commit_edits(&mut self, buffers: &mut BufferCollection, index: Option<usize>) {
-        if let Some(index) = index {
-            self.buffer_views[index].commit_edits(buffers);
-        }
-    }
-
-    pub fn insert_text(
-        &mut self,
-        buffers: &mut BufferCollection,
-        index: Option<usize>,
-        text: TextRef,
-    ) {
-        let index = match index {
-            Some(index) => index,
-            None => return,
-        };
-
+    pub fn insert_text(&mut self, buffers: &mut BufferCollection, index: usize, text: TextRef) {
         let (current_view, other_views, temp_ranges) =
             self.current_and_other_buffer_views_mut(index);
         current_view.insert_text(buffers, text, temp_ranges);
@@ -180,12 +129,7 @@ impl BufferViewCollection {
         }
     }
 
-    pub fn remove_in_selection(&mut self, buffers: &mut BufferCollection, index: Option<usize>) {
-        let index = match index {
-            Some(index) => index,
-            None => return,
-        };
-
+    pub fn remove_in_selection(&mut self, buffers: &mut BufferCollection, index: usize) {
         let (current_view, other_views, temp_ranges) =
             self.current_and_other_buffer_views_mut(index);
         current_view.remove_in_selection(buffers, temp_ranges);
@@ -198,22 +142,12 @@ impl BufferViewCollection {
         }
     }
 
-    pub fn undo(&mut self, buffers: &mut BufferCollection, index: Option<usize>) {
-        let index = match index {
-            Some(index) => index,
-            None => return,
-        };
-
+    pub fn undo(&mut self, buffers: &mut BufferCollection, index: usize) {
         let buffer = &mut buffers[self.buffer_views[index].buffer_handle];
         self.apply_edits(index, buffer.undo());
     }
 
-    pub fn redo(&mut self, buffers: &mut BufferCollection, index: Option<usize>) {
-        let index = match index {
-            Some(index) => index,
-            None => return,
-        };
-
+    pub fn redo(&mut self, buffers: &mut BufferCollection, index: usize) {
         let buffer = &mut buffers[self.buffer_views[index].buffer_handle];
         self.apply_edits(index, buffer.redo());
     }

@@ -39,8 +39,26 @@ impl CursorCollection {
         &self.cursors[self.main_cursor_index]
     }
 
+    pub fn add_cursor(&mut self, cursor: Cursor) {
+        self.main_cursor_index = self.cursors.len();
+        self.cursors.push(cursor);
+        self.sort_and_dedup();
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = &Cursor> {
         self.cursors.iter()
+    }
+
+    pub fn collapse_anchors(&mut self) {
+        for cursor in &mut self.cursors {
+            cursor.anchor = cursor.position;
+        }
+    }
+
+    pub fn swap_positions_and_anchors(&mut self) {
+        for cursor in &mut self.cursors {
+            std::mem::swap(&mut cursor.anchor, &mut cursor.position);
+        }
     }
 
     pub fn change_all<F>(&mut self, mut callback: F)
@@ -51,10 +69,10 @@ impl CursorCollection {
             callback(cursor);
         }
 
-        self.sort_and_collapse();
+        self.sort_and_dedup();
     }
 
-    fn sort_and_collapse(&mut self) {
+    fn sort_and_dedup(&mut self) {
         let main_cursor = self.cursors[self.main_cursor_index];
         self.cursors.sort_by_key(|c| c.position);
         self.main_cursor_index = self
