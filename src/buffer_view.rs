@@ -124,7 +124,7 @@ impl BufferViewCollection {
                     self.buffer_views[index].cursors.change_all(|cs| {
                         for c in cs {
                             c.position = range.to;
-                            c.anchor = range.from;
+                            c.anchor = range.to;
                         }
                     });
                     for (i, view) in self.buffer_views.iter_mut().enumerate() {
