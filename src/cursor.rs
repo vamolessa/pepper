@@ -70,6 +70,48 @@ impl CursorCollection {
     }
 
     fn sort_and_merge(&mut self) {
+        {
+            let mut i = 0;
+            while i < self.cursors.len() {
+                let mut range = self.cursors[i].range();
+                for j in (0..self.cursors.len()).rev() {
+                    if j == i {
+                        continue;
+                    }
+
+                    let other_range = self.cursors[j].range();
+
+                    if range.contains(other_range.from) {
+                        range.to = range.to.max(other_range.to);
+                    } else if range.contains(other_range.to) {
+                        range.from = range.from.max(other_range.from);
+                    } else {
+                        continue;
+                    }
+
+                    if self.main_cursor_index == j {
+                        self.main_cursor_index = i;
+                    }
+
+                    self.cursors.remove(j);
+                }
+
+                self.cursors[i] = if self.cursors[i].position < self.cursors[i].anchor {
+                    Cursor {
+                        position: range.from,
+                        anchor: range.to,
+                    }
+                } else {
+                    Cursor {
+                        position: range.to,
+                        anchor: range.from,
+                    }
+                };
+
+                i += 1;
+            }
+        }
+
         let main_cursor = self.cursors[self.main_cursor_index];
         self.cursors.sort_by_key(|c| c.position);
         self.main_cursor_index = self
