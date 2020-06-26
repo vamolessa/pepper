@@ -1,6 +1,6 @@
 use crate::buffer_position::{BufferPosition, BufferRange};
 
-#[derive(Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct Cursor {
     pub position: BufferPosition,
     pub anchor: BufferPosition,
@@ -45,7 +45,7 @@ impl CursorCollection {
         self.sort_and_merge();
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &Cursor> {
+    pub fn iter(&self) -> impl DoubleEndedIterator<Item = &Cursor> {
         self.cursors.iter()
     }
 
@@ -61,11 +61,11 @@ impl CursorCollection {
         }
     }
 
-    pub fn change_all_from<F>(&mut self, from_index: usize, mut callback: F)
+    pub fn change_all<F>(&mut self, mut callback: F)
     where
         F: FnMut(&mut Cursor),
     {
-        for cursor in &mut self.cursors[from_index..] {
+        for cursor in &mut self.cursors[..] {
             callback(cursor);
         }
 
