@@ -60,51 +60,20 @@ impl BufferViewCollection {
         self.buffer_views.push(buffer_view);
     }
 
-    fn current_and_other_buffer_views_mut<'a>(
-        &'a mut self,
-        index: usize,
-    ) -> (
-        &'a mut BufferView,
-        impl Iterator<Item = &'a mut BufferView>,
-        &mut Vec<BufferRange>,
-    ) {
-        let (before, after) = self.buffer_views.split_at_mut(index);
-        let (current, after) = after.split_at_mut(1);
-        let current = &mut current[0];
-        let current_buffer_handle = current.buffer_handle;
-
-        let iter = before
-            .iter_mut()
-            .filter(move |v| v.buffer_handle == current_buffer_handle)
-            .chain(
-                after
-                    .iter_mut()
-                    .filter(move |v| v.buffer_handle == current_buffer_handle),
-            );
-
-        (current, iter, &mut self.temp_ranges)
-    }
-
     pub fn insert_text(&mut self, buffers: &mut BufferCollection, index: usize, text: TextRef) {
-        let (current_view, other_views, temp_ranges) =
-            self.current_and_other_buffer_views_mut(index);
+        let current_view = &mut self.buffer_views[index];
         let buffer = &mut buffers[current_view.buffer_handle];
 
-        temp_ranges.clear();
+        self.temp_ranges.clear();
         for cursor in current_view.cursors.iter().rev() {
             let range = buffer.insert_text(cursor.position, text);
-            temp_ranges.push(range);
+            self.temp_ranges.push(range);
         }
 
-        current_view.cursors.change_all(|cursor| {
-            for range in temp_ranges.iter() {
-                cursor.insert(*range);
-            }
-        });
-
-        for view in other_views {
+        for view in &mut self.buffer_views {
+            let ranges = &self.temp_ranges;
             view.cursors.change_all(|cursor| {
-                for range in temp_ranges.iter() {
+                for range in ranges.iter() {
                     cursor.insert(*range);
                 }
             });
@@ -112,26 +81,20 @@ impl BufferViewCollection {
     }
 
     pub fn remove_in_selection(&mut self, buffers: &mut BufferCollection, index: usize) {
-        let (current_view, other_views, temp_ranges) =
-            self.current_and_other_buffer_views_mut(index);
+        let current_view = &mut self.buffer_views[index];
         let buffer = &mut buffers[current_view.buffer_handle];
 
-        temp_ranges.clear();
+        self.temp_ranges.clear();
         for cursor in current_view.cursors.iter().rev() {
             let range = cursor.range();
             buffer.remove_range(range);
-            temp_ranges.push(range);
+            self.temp_ranges.push(range);
         }
 
-        current_view.cursors.change_all(|cursor| {
-            for range in temp_ranges.iter() {
-                cursor.remove(*range);
-            }
-        });
-
-        for view in other_views {
+        for view in &mut self.buffer_views {
+            let ranges = &self.temp_ranges;
             view.cursors.change_all(|cursor| {
-                for range in temp_ranges.iter() {
+                for range in ranges.iter() {
                     cursor.remove(*range);
                 }
             });
@@ -150,24 +113,27 @@ impl BufferViewCollection {
 
     fn apply_edits(&mut self, index: usize, edits: impl Iterator<Item = (EditKind, BufferRange)>) {
         for (kind, range) in edits {
-            let (current_view, other_views, _) = self.current_and_other_buffer_views_mut(index);
             match kind {
                 EditKind::Insert => {
-                    current_view.cursors.change_all(|c| {
+                    self.buffer_views[index].cursors.change_all(|c| {
                         c.position = range.to;
                         c.anchor = range.to;
                     });
-                    for view in other_views {
-                        view.cursors.change_all(|c| c.insert(range));
+                    for (i, view) in self.buffer_views.iter_mut().enumerate() {
+                        if i != index {
+                            view.cursors.change_all(|c| c.insert(range));
+                        }
                     }
                 }
                 EditKind::Remove => {
-                    current_view.cursors.change_all(|c| {
+                    self.buffer_views[index].cursors.change_all(|c| {
                         c.position = range.from;
                         c.anchor = range.from;
                     });
-                    for view in other_views {
-                        view.cursors.change_all(|c| c.remove(range));
+                    for (i, view) in self.buffer_views.iter_mut().enumerate() {
+                        if i != index {
+                            view.cursors.change_all(|c| c.remove(range));
+                        }
                     }
                 }
             }
