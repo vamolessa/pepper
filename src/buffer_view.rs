@@ -117,7 +117,7 @@ impl BufferViewCollection {
                 EditKind::Insert => {
                     self.buffer_views[index].cursors.change_all(|c| {
                         c.position = range.to;
-                        c.anchor = range.to;
+                        c.anchor = range.from;
                     });
                     for (i, view) in self.buffer_views.iter_mut().enumerate() {
                         if i != index {
