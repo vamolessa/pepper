@@ -61,14 +61,11 @@ impl CursorCollection {
         }
     }
 
-    pub fn change_all<F>(&mut self, mut callback: F)
+    pub fn change_all<F>(&mut self, callback: F)
     where
-        F: FnMut(&mut Cursor),
+        F: FnOnce(&mut [Cursor]),
     {
-        for cursor in &mut self.cursors[..] {
-            callback(cursor);
-        }
-
+        callback(&mut self.cursors[..]);
         self.sort_and_merge();
     }
 

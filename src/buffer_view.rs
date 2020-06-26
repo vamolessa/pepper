@@ -26,17 +26,19 @@ impl BufferView {
 
     pub fn move_cursors(&mut self, buffers: &BufferCollection, offset: BufferOffset) {
         let buffer = &buffers[self.buffer_handle];
-        self.cursors.change_all(|cursor| {
-            let mut target = BufferOffset::from(cursor.position) + offset;
+        self.cursors.change_all(|cs| {
+            for c in cs {
+                let mut target = BufferOffset::from(c.position) + offset;
 
-            target.line_offset = target
-                .line_offset
-                .min(buffer.content.line_count() as isize - 1)
-                .max(0);
-            let target_line_len = buffer.content.line(target.line_offset as _).char_count();
-            target.column_offset = target.column_offset.min(target_line_len as _);
+                target.line_offset = target
+                    .line_offset
+                    .min(buffer.content.line_count() as isize - 1)
+                    .max(0);
+                let target_line_len = buffer.content.line(target.line_offset as _).char_count();
+                target.column_offset = target.column_offset.min(target_line_len as _);
 
-            cursor.position = target.into();
+                c.position = target.into();
+            }
         });
     }
 
@@ -72,9 +74,11 @@ impl BufferViewCollection {
 
         for view in &mut self.buffer_views {
             let ranges = &self.temp_ranges;
-            view.cursors.change_all(|cursor| {
-                for range in ranges.iter() {
-                    cursor.insert(*range);
+            view.cursors.change_all(|cs| {
+                for c in cs {
+                    for range in ranges.iter() {
+                        c.insert(*range);
+                    }
                 }
             });
         }
@@ -93,9 +97,11 @@ impl BufferViewCollection {
 
         for view in &mut self.buffer_views {
             let ranges = &self.temp_ranges;
-            view.cursors.change_all(|cursor| {
-                for range in ranges.iter() {
-                    cursor.remove(*range);
+            view.cursors.change_all(|cs| {
+                for c in cs {
+                    for range in ranges.iter() {
+                        c.remove(*range);
+                    }
                 }
             });
         }
@@ -115,24 +121,36 @@ impl BufferViewCollection {
         for (kind, range) in edits {
             match kind {
                 EditKind::Insert => {
-                    self.buffer_views[index].cursors.change_all(|c| {
-                        c.position = range.to;
-                        c.anchor = range.from;
+                    self.buffer_views[index].cursors.change_all(|cs| {
+                        for c in cs {
+                            c.position = range.to;
+                            c.anchor = range.from;
+                        }
                     });
                     for (i, view) in self.buffer_views.iter_mut().enumerate() {
                         if i != index {
-                            view.cursors.change_all(|c| c.insert(range));
+                            view.cursors.change_all(|cs| {
+                                for c in cs {
+                                    c.insert(range);
+                                }
+                            });
                         }
                     }
                 }
                 EditKind::Remove => {
-                    self.buffer_views[index].cursors.change_all(|c| {
-                        c.position = range.from;
-                        c.anchor = range.from;
+                    self.buffer_views[index].cursors.change_all(|cs| {
+                        for c in cs {
+                            c.position = range.from;
+                            c.anchor = range.from;
+                        }
                     });
                     for (i, view) in self.buffer_views.iter_mut().enumerate() {
                         if i != index {
-                            view.cursors.change_all(|c| c.remove(range));
+                            view.cursors.change_all(|cs| {
+                                for c in cs {
+                                    c.remove(range);
+                                }
+                            });
                         }
                     }
                 }
