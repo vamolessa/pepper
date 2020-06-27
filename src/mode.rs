@@ -129,6 +129,7 @@ impl Mode for Selection {
             [Key::Char('o')] => buffer_views[index].cursors.swap_positions_and_anchors(),
             [Key::Char('d')] => {
                 buffer_views.remove_in_selection(buffers, index);
+                buffer_views[index].commit_edits(buffers);
                 return Transition::EnterMode(Box::new(Normal));
             }
             _ => (),
