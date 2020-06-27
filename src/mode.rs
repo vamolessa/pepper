@@ -69,7 +69,7 @@ impl Mode for Normal {
                 buffer_views[index].move_cursors(buffers, BufferOffset::line_col(0, 1));
                 buffer_views[index].cursors.collapse_anchors();
             }
-            [Key::Char('K')] => {
+            [Key::Char('J')] => {
                 let buffer = buffer_views[index].buffer(buffers);
                 let mut cursor = *buffer_views[index].cursors.main_cursor();
                 cursor.position.column_index = 0;

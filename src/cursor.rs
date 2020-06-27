@@ -2,8 +2,8 @@ use crate::buffer_position::{BufferPosition, BufferRange};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Cursor {
-    pub position: BufferPosition,
     pub anchor: BufferPosition,
+    pub position: BufferPosition,
 }
 
 impl Cursor {
@@ -12,13 +12,13 @@ impl Cursor {
     }
 
     pub fn insert(&mut self, range: BufferRange) {
-        self.position = self.position.insert(range);
         self.anchor = self.anchor.insert(range);
+        self.position = self.position.insert(range);
     }
 
     pub fn remove(&mut self, range: BufferRange) {
-        self.position = self.position.remove(range);
         self.anchor = self.anchor.remove(range);
+        self.position = self.position.remove(range);
     }
 }
 
@@ -74,17 +74,15 @@ impl CursorCollection {
             let mut i = 0;
             while i < self.cursors.len() {
                 let mut range = self.cursors[i].range();
-                for j in (0..self.cursors.len()).rev() {
-                    if j == i {
-                        continue;
-                    }
-
+                for j in ((i + 1)..self.cursors.len()).rev() {
                     let other_range = self.cursors[j].range();
 
                     if range.contains(other_range.from) {
                         range.to = range.to.max(other_range.to);
                     } else if range.contains(other_range.to) {
                         range.from = range.from.max(other_range.from);
+                    } else if other_range.contains(range.from) && other_range.contains(range.to) {
+                        range = other_range;
                     } else {
                         continue;
                     }
@@ -96,15 +94,15 @@ impl CursorCollection {
                     self.cursors.remove(j);
                 }
 
-                self.cursors[i] = if self.cursors[i].position < self.cursors[i].anchor {
+                self.cursors[i] = if self.cursors[i].anchor <= self.cursors[i].position {
                     Cursor {
-                        position: range.from,
-                        anchor: range.to,
+                        anchor: range.from,
+                        position: range.to,
                     }
                 } else {
                     Cursor {
-                        position: range.to,
-                        anchor: range.from,
+                        anchor: range.to,
+                        position: range.from,
                     }
                 };
 
@@ -118,5 +116,40 @@ impl CursorCollection {
             .cursors
             .binary_search_by(|c| c.position.cmp(&main_cursor.position))
             .unwrap_or(0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn merge_cursor_positions() {
+        let mut cursors = CursorCollection::new();
+        assert_eq!(1, cursors.iter().count());
+        cursors.add_cursor(*cursors.main_cursor());
+        assert_eq!(1, cursors.iter().count());
+        let mut cursors = cursors.iter();
+        let cursor = *cursors.next().unwrap();
+        assert_eq!(BufferPosition::line_col(0, 0), cursor.position);
+        assert_eq!(BufferPosition::line_col(0, 0), cursor.anchor);
+        assert!(cursors.next().is_none());
+
+        let mut cursors = CursorCollection::new();
+        cursors.change_all(|cs| {
+            cs[0].anchor = BufferPosition::line_col(2, 3);
+            cs[0].position = cs[0].anchor;
+        });
+        assert_eq!(1, cursors.iter().count());
+        cursors.add_cursor(Cursor {
+            anchor: BufferPosition::line_col(2, 2),
+            position: BufferPosition::line_col(2, 4),
+        });
+        assert_eq!(1, cursors.iter().count());
+        let mut cursors = cursors.iter();
+        let cursor = *cursors.next().unwrap();
+        assert_eq!(BufferPosition::line_col(2, 2), cursor.anchor);
+        assert_eq!(BufferPosition::line_col(2, 4), cursor.position);
+        assert!(cursors.next().is_none());
     }
 }

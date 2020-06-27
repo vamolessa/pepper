@@ -123,8 +123,8 @@ impl BufferViewCollection {
                 EditKind::Insert => {
                     self.buffer_views[index].cursors.change_all(|cs| {
                         for c in cs {
-                            c.position = range.to;
                             c.anchor = range.to;
+                            c.position = range.to;
                         }
                     });
                     for (i, view) in self.buffer_views.iter_mut().enumerate() {
@@ -140,8 +140,8 @@ impl BufferViewCollection {
                 EditKind::Remove => {
                     self.buffer_views[index].cursors.change_all(|cs| {
                         for c in cs {
-                            c.position = range.from;
                             c.anchor = range.from;
+                            c.position = range.from;
                         }
                     });
                     for (i, view) in self.buffer_views.iter_mut().enumerate() {
