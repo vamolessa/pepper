@@ -100,7 +100,7 @@ impl Sub for BufferPosition {
     }
 }
 
-#[derive(Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone)]
 pub struct BufferOffset {
     pub line_offset: isize,
     pub column_offset: isize,

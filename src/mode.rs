@@ -54,20 +54,16 @@ impl Mode for Normal {
 
         match keys {
             [Key::Char('h')] => {
-                buffer_views[index].move_cursors(buffers, BufferOffset::line_col(0, -1));
-                buffer_views[index].cursors.collapse_anchors();
+                buffer_views[index].move_cursors(buffers, BufferOffset::line_col(0, -1), true);
             }
             [Key::Char('j')] => {
-                buffer_views[index].move_cursors(buffers, BufferOffset::line_col(1, 0));
-                buffer_views[index].cursors.collapse_anchors();
+                buffer_views[index].move_cursors(buffers, BufferOffset::line_col(1, 0), true);
             }
             [Key::Char('k')] => {
-                buffer_views[index].move_cursors(buffers, BufferOffset::line_col(-1, 0));
-                buffer_views[index].cursors.collapse_anchors();
+                buffer_views[index].move_cursors(buffers, BufferOffset::line_col(-1, 0), true);
             }
             [Key::Char('l')] => {
-                buffer_views[index].move_cursors(buffers, BufferOffset::line_col(0, 1));
-                buffer_views[index].cursors.collapse_anchors();
+                buffer_views[index].move_cursors(buffers, BufferOffset::line_col(0, 1), true);
             }
             [Key::Char('J')] => {
                 let buffer = buffer_views[index].buffer(buffers);
@@ -119,16 +115,16 @@ impl Mode for Selection {
                 return Transition::EnterMode(Box::new(Normal));
             }
             [Key::Char('h')] => {
-                buffer_views[index].move_cursors(buffers, BufferOffset::line_col(0, -1));
+                buffer_views[index].move_cursors(buffers, BufferOffset::line_col(0, -1), false);
             }
             [Key::Char('j')] => {
-                buffer_views[index].move_cursors(buffers, BufferOffset::line_col(1, 0));
+                buffer_views[index].move_cursors(buffers, BufferOffset::line_col(1, 0), false);
             }
             [Key::Char('k')] => {
-                buffer_views[index].move_cursors(buffers, BufferOffset::line_col(-1, 0));
+                buffer_views[index].move_cursors(buffers, BufferOffset::line_col(-1, 0), false);
             }
             [Key::Char('l')] => {
-                buffer_views[index].move_cursors(buffers, BufferOffset::line_col(0, 1));
+                buffer_views[index].move_cursors(buffers, BufferOffset::line_col(0, 1), false);
             }
             [Key::Char('o')] => buffer_views[index].cursors.swap_positions_and_anchors(),
             [Key::Char('d')] => {
@@ -168,11 +164,11 @@ impl Mode for Insert {
             }
             [Key::Char(c)] => buffer_views.insert_text(buffers, index, TextRef::Char(*c)),
             [Key::Backspace] => {
-                buffer_views[index].move_cursors(buffers, BufferOffset::line_col(0, -1));
+                buffer_views[index].move_cursors(buffers, BufferOffset::line_col(0, -1), false);
                 buffer_views.remove_in_selection(buffers, index);
             }
             [Key::Delete] => {
-                buffer_views[index].move_cursors(buffers, BufferOffset::line_col(0, 1));
+                buffer_views[index].move_cursors(buffers, BufferOffset::line_col(0, 1), false);
                 buffer_views.remove_in_selection(buffers, index);
             }
             _ => (),

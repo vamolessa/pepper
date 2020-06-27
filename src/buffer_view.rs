@@ -24,7 +24,7 @@ impl BufferView {
         &buffers[self.buffer_handle]
     }
 
-    pub fn move_cursors(&mut self, buffers: &BufferCollection, offset: BufferOffset) {
+    pub fn move_cursors(&mut self, buffers: &BufferCollection, offset: BufferOffset, collapse_anchors: bool) {
         let buffer = &buffers[self.buffer_handle];
         self.cursors.change_all(|cs| {
             for c in cs {
@@ -38,6 +38,9 @@ impl BufferView {
                 target.column_offset = target.column_offset.min(target_line_len as _);
 
                 c.position = target.into();
+                if collapse_anchors {
+                    c.anchor = c.position;
+                }
             }
         });
     }

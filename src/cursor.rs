@@ -185,4 +185,43 @@ mod tests {
         assert_eq!(BufferPosition::line_col(2, 2), cursor.position);
         assert!(cursors.next().is_none());
     }
+
+    #[test]
+    fn no_merge_cursor_positions() {
+        let mut cursors = CursorCollection::new();
+        cursors.change_all(|cs| {
+            cs[0].anchor = BufferPosition::line_col(1, 0);
+            cs[0].position = BufferPosition::line_col(1, 0);
+        });
+        cursors.add_cursor(Cursor {
+            anchor: BufferPosition::line_col(2, 0),
+            position: BufferPosition::line_col(2, 0),
+        });
+        let mut cursors = cursors.iter();
+        let cursor = *cursors.next().unwrap();
+        assert_eq!(BufferPosition::line_col(1, 0), cursor.anchor);
+        assert_eq!(BufferPosition::line_col(1, 0), cursor.position);
+        let cursor = *cursors.next().unwrap();
+        assert_eq!(BufferPosition::line_col(2, 0), cursor.anchor);
+        assert_eq!(BufferPosition::line_col(2, 0), cursor.position);
+        assert!(cursors.next().is_none());
+
+        let mut cursors = CursorCollection::new();
+        cursors.change_all(|cs| {
+            cs[0].anchor = BufferPosition::line_col(3, 2);
+            cs[0].position = BufferPosition::line_col(3, 2);
+        });
+        cursors.add_cursor(Cursor {
+            anchor: BufferPosition::line_col(2, 2),
+            position: BufferPosition::line_col(2, 2),
+        });
+        let mut cursors = cursors.iter();
+        let cursor = *cursors.next().unwrap();
+        assert_eq!(BufferPosition::line_col(2, 2), cursor.anchor);
+        assert_eq!(BufferPosition::line_col(2, 2), cursor.position);
+        let cursor = *cursors.next().unwrap();
+        assert_eq!(BufferPosition::line_col(3, 2), cursor.anchor);
+        assert_eq!(BufferPosition::line_col(3, 2), cursor.position);
+        assert!(cursors.next().is_none());
+    }
 }
