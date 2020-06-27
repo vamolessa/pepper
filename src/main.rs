@@ -19,20 +19,7 @@ fn main() {
     let stdout = stdout();
     let stdout = stdout.lock();
 
-    //let text = include_str!("main.rs");
-    let text = r#"banana
-banana
-
-
-
-banana
-apple
-pencil
-zebra
-yellow
-
-hope everything works fine! :')
-"#;
+    let text = include_str!("main.rs");
     let content = buffer::BufferContent::from_str(text);
 
     let mut editor = editor::Editor::default();
