@@ -5,7 +5,7 @@ Experimental code editor
 - ~~undo~~
 - ~~modes should deal with all buffer views~~
 - ~~selection~~
-- multiple cursors
+- ~~multiple cursors~~
 - multiple viewports (multiple views, same buffer)
 - search
 - operations (delete, copy, paste)
