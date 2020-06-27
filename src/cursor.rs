@@ -70,52 +70,42 @@ impl CursorCollection {
     }
 
     fn sort_and_merge(&mut self) {
-        {
-            let mut i = 0;
-            while i < self.cursors.len() {
-                let mut range = self.cursors[i].range();
-                for j in ((i + 1)..self.cursors.len()).rev() {
-                    let other_range = self.cursors[j].range();
-
-                    if range.contains(other_range.from) {
-                        range.to = range.to.max(other_range.to);
-                    } else if range.contains(other_range.to) {
-                        range.from = range.from.max(other_range.from);
-                    } else if other_range.contains(range.from) && other_range.contains(range.to) {
-                        range = other_range;
-                    } else {
-                        continue;
-                    }
-
-                    if self.main_cursor_index == j {
-                        self.main_cursor_index = i;
-                    }
-
-                    self.cursors.remove(j);
-                }
-
-                self.cursors[i] = if self.cursors[i].anchor <= self.cursors[i].position {
-                    Cursor {
-                        anchor: range.from,
-                        position: range.to,
-                    }
-                } else {
-                    Cursor {
-                        anchor: range.to,
-                        position: range.from,
-                    }
-                };
-
-                i += 1;
-            }
-        }
-
         let main_cursor = self.cursors[self.main_cursor_index];
-        self.cursors.sort_by_key(|c| c.position);
+        self.cursors.sort_by_key(|c| c.range().from);
         self.main_cursor_index = self
             .cursors
             .binary_search_by(|c| c.position.cmp(&main_cursor.position))
             .unwrap_or(0);
+
+        let mut i = 0;
+        while i < self.cursors.len() {
+            let mut range = self.cursors[i].range();
+            for j in ((i + 1)..self.cursors.len()).rev() {
+                let other_range = self.cursors[j].range();
+                if range.contains(other_range.from) {
+                    range.to = range.to.max(other_range.to);
+                    self.cursors.remove(j);
+
+                    if self.main_cursor_index == j {
+                        self.main_cursor_index = i;
+                    }
+                }
+            }
+
+            self.cursors[i] = if self.cursors[i].anchor <= self.cursors[i].position {
+                Cursor {
+                    anchor: range.from,
+                    position: range.to,
+                }
+            } else {
+                Cursor {
+                    anchor: range.to,
+                    position: range.from,
+                }
+            };
+
+            i += 1;
+        }
     }
 }
 
@@ -128,7 +118,6 @@ mod tests {
         let mut cursors = CursorCollection::new();
         assert_eq!(1, cursors.iter().count());
         cursors.add_cursor(*cursors.main_cursor());
-        assert_eq!(1, cursors.iter().count());
         let mut cursors = cursors.iter();
         let cursor = *cursors.next().unwrap();
         assert_eq!(BufferPosition::line_col(0, 0), cursor.position);
@@ -145,11 +134,55 @@ mod tests {
             anchor: BufferPosition::line_col(2, 2),
             position: BufferPosition::line_col(2, 4),
         });
-        assert_eq!(1, cursors.iter().count());
         let mut cursors = cursors.iter();
         let cursor = *cursors.next().unwrap();
         assert_eq!(BufferPosition::line_col(2, 2), cursor.anchor);
         assert_eq!(BufferPosition::line_col(2, 4), cursor.position);
+        assert!(cursors.next().is_none());
+
+        let mut cursors = CursorCollection::new();
+        cursors.change_all(|cs| {
+            cs[0].anchor = BufferPosition::line_col(2, 2);
+            cs[0].position = BufferPosition::line_col(2, 4);
+        });
+        cursors.add_cursor(Cursor {
+            anchor: BufferPosition::line_col(2, 2),
+            position: BufferPosition::line_col(2, 2),
+        });
+        let mut cursors = cursors.iter();
+        let cursor = *cursors.next().unwrap();
+        assert_eq!(BufferPosition::line_col(2, 2), cursor.anchor);
+        assert_eq!(BufferPosition::line_col(2, 4), cursor.position);
+        assert!(cursors.next().is_none());
+
+        let mut cursors = CursorCollection::new();
+        cursors.change_all(|cs| {
+            cs[0].anchor = BufferPosition::line_col(2, 2);
+            cs[0].position = BufferPosition::line_col(2, 3);
+        });
+        cursors.add_cursor(Cursor {
+            anchor: BufferPosition::line_col(2, 4),
+            position: BufferPosition::line_col(2, 3),
+        });
+        let mut cursors = cursors.iter();
+        let cursor = *cursors.next().unwrap();
+        assert_eq!(BufferPosition::line_col(2, 2), cursor.anchor);
+        assert_eq!(BufferPosition::line_col(2, 4), cursor.position);
+        assert!(cursors.next().is_none());
+
+        let mut cursors = CursorCollection::new();
+        cursors.change_all(|cs| {
+            cs[0].anchor = BufferPosition::line_col(2, 4);
+            cs[0].position = BufferPosition::line_col(2, 3);
+        });
+        cursors.add_cursor(Cursor {
+            anchor: BufferPosition::line_col(2, 3),
+            position: BufferPosition::line_col(2, 2),
+        });
+        let mut cursors = cursors.iter();
+        let cursor = *cursors.next().unwrap();
+        assert_eq!(BufferPosition::line_col(2, 4), cursor.anchor);
+        assert_eq!(BufferPosition::line_col(2, 2), cursor.position);
         assert!(cursors.next().is_none());
     }
 }
