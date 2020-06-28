@@ -15,8 +15,8 @@ impl ViewportCollection {
         }
     }
 
-    pub fn set_view_size(&mut self, size: (usize, usize)) {
-        self.available_size = size;
+    pub fn set_view_size(&mut self, width: usize, height: usize) {
+        self.available_size = (width, height);
         self.update_viewports_positions();
     }
 
@@ -52,7 +52,7 @@ impl ViewportCollection {
             self.current_viewport_index = 0;
             self.viewports.push(Viewport::default());
         } else if self.current_viewport_index > 0 {
-                self.current_viewport_index -= 1;
+            self.current_viewport_index -= 1;
         }
 
         self.update_viewports_positions();

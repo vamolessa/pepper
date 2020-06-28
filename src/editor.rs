@@ -48,7 +48,9 @@ impl Editor {
     pub fn on_event(&mut self, event: Event) -> bool {
         match event {
             Event::None => (),
-            Event::Resize(_w, _h) => (),
+            Event::Resize(w, h) => {
+                self.viewports.set_view_size(w as _, h as _);
+            }
             Event::Key(key) => {
                 self.buffered_keys.push(key);
 
@@ -58,17 +60,16 @@ impl Editor {
                     self.viewports.current_viewport().buffer_view_index(),
                     &self.buffered_keys[..],
                 ) {
-                    Operation::None => self.buffered_keys.clear(),
-                    Operation::Waiting => (),
+                    Operation::None => (),
+                    Operation::Waiting => return true,
                     Operation::Exit => return false,
                     Operation::EnterMode(mode) => {
-                        self.buffered_keys.clear();
                         self.mode = mode;
                     }
                     Operation::NextViewport => self.viewports.next_viewport(),
-                    Operation::SplitViewport => {
-                        self.viewports.split_current_viewport(&mut self.buffer_views)
-                    }
+                    Operation::SplitViewport => self
+                        .viewports
+                        .split_current_viewport(&mut self.buffer_views),
                     Operation::CloseViewport => self.viewports.close_current_viewport(),
                 }
                 if let Some(index) = self.viewports.current_viewport().buffer_view_index() {
@@ -77,6 +78,8 @@ impl Editor {
                         .current_viewport_mut()
                         .scroll_to_cursor(buffer_view.cursors.main_cursor().position);
                 }
+
+                self.buffered_keys.clear();
             }
         }
 

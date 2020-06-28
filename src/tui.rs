@@ -56,7 +56,7 @@ pub fn convert_color(color: theme::Color) -> Color {
 
 fn update_viewports_size(editor: &mut Editor) {
     let size = terminal::size().unwrap_or((0, 0));
-    editor.viewports.set_view_size((size.0 as _, size.1 as _));
+    editor.viewports.set_view_size(size.0 as _, size.1 as _);
 }
 
 pub fn show<W>(mut write: W, mut editor: Editor) -> Result<()>
