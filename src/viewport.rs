@@ -8,6 +8,7 @@ pub enum ViewportOperation {
 pub struct ViewportCollection {
     viewports: Vec<Viewport>,
     current_viewport_index: usize,
+    available_size: (usize, usize),
 }
 
 impl ViewportCollection {
@@ -15,19 +16,29 @@ impl ViewportCollection {
         Self {
             viewports: vec![Viewport::default()],
             current_viewport_index: 0,
+            available_size: (0, 0),
         }
     }
 
     pub fn set_view_size(&mut self, size: (usize, usize)) {
-        for viewport in &mut self.viewports {
-            viewport.size = size;
-        }
+        self.available_size = size;
     }
 
     pub fn handle_operation(&mut self, operation: ViewportOperation) {
         match operation {
-            ViewportOperation::NextViewport => (),
-            ViewportOperation::SplitVertical => (),
+            ViewportOperation::NextViewport => {
+                self.current_viewport_index =
+                    (self.current_viewport_index + 1) % self.viewports.len();
+            }
+            ViewportOperation::SplitVertical => {
+                let current_viewport = self.current_viewport();
+                let new_viewport = Viewport {
+                    buffer_view_index: current_viewport.buffer_view_index,
+                    scroll: current_viewport.scroll,
+                    ..Default::default()
+                };
+                self.viewports.push(new_viewport);
+            }
         }
     }
 
@@ -47,6 +58,7 @@ impl ViewportCollection {
 #[derive(Default)]
 pub struct Viewport {
     buffer_view_index: Option<usize>,
+    pub position: (usize, usize),
     pub size: (usize, usize),
     pub scroll: usize,
 }
