@@ -3,7 +3,7 @@ use crate::{
     buffer_view::{BufferView, BufferViewCollection},
     config::Config,
     event::{Event, Key},
-    mode::{initial_mode, Mode, Transition},
+    mode::{initial_mode, Mode, Operation},
     theme::Theme,
     viewport::ViewportCollection,
 };
@@ -18,7 +18,6 @@ pub struct Editor {
     pub buffers: BufferCollection,
     pub buffer_views: BufferViewCollection,
     pub viewports: ViewportCollection,
-    pub current_viewport: usize,
 }
 
 impl Default for Editor {
@@ -31,7 +30,6 @@ impl Default for Editor {
             buffers: Default::default(),
             buffer_views: BufferViewCollection::default(),
             viewports: ViewportCollection::new(),
-            current_viewport: 0,
         }
     }
 }
@@ -39,7 +37,9 @@ impl Default for Editor {
 impl Editor {
     pub fn new_buffer_from_content(&mut self, content: BufferContent) {
         let buffer_handle = self.buffers.add(Buffer::with_content(content));
-        self.viewports[self.current_viewport].set_buffer_view(Some(self.buffer_views.len()));
+        self.viewports
+            .current_viewport_mut()
+            .set_buffer_view(Some(self.buffer_views.len()));
         self.buffer_views
             .push(BufferView::with_handle(buffer_handle));
     }
@@ -54,20 +54,22 @@ impl Editor {
                 match self.mode.on_event(
                     &mut self.buffers,
                     &mut self.buffer_views,
-                    self.viewports[self.current_viewport].buffer_view_index(),
+                    self.viewports.current_viewport().buffer_view_index(),
                     &self.buffered_keys[..],
                 ) {
-                    Transition::None => self.buffered_keys.clear(),
-                    Transition::Waiting => (),
-                    Transition::Exit => return false,
-                    Transition::EnterMode(mode) => {
+                    Operation::None => self.buffered_keys.clear(),
+                    Operation::Waiting => (),
+                    Operation::Exit => return false,
+                    Operation::EnterMode(mode) => {
                         self.buffered_keys.clear();
                         self.mode = mode;
                     }
+                    Operation::ViewportOperation(op) => self.viewports.handle_operation(op),
                 }
-                if let Some(index) = self.viewports[self.current_viewport].buffer_view_index() {
+                if let Some(index) = self.viewports.current_viewport().buffer_view_index() {
                     let buffer_view = &self.buffer_views[index];
-                    self.viewports[self.current_viewport]
+                    self.viewports
+                        .current_viewport_mut()
                         .scroll_to_cursor(buffer_view.cursors.main_cursor().position);
                 }
             }

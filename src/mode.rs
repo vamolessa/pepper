@@ -3,12 +3,14 @@ use crate::{
     buffer_position::BufferOffset,
     buffer_view::BufferViewCollection,
     event::Key,
+    viewport::ViewportOperation,
 };
 
-pub enum Transition {
+pub enum Operation {
     None,
     Waiting,
     Exit,
+    ViewportOperation(ViewportOperation),
     EnterMode(Box<dyn Mode>),
 }
 
@@ -19,7 +21,7 @@ pub trait Mode {
         buffer_views: &mut BufferViewCollection,
         current_buffer_view_index: Option<usize>,
         keys: &[Key],
-    ) -> Transition;
+    ) -> Operation;
 }
 
 pub fn initial_mode() -> Box<dyn Mode> {
@@ -28,14 +30,14 @@ pub fn initial_mode() -> Box<dyn Mode> {
 
 pub struct Normal;
 impl Normal {
-    fn handle_no_buffer_events(&mut self, keys: &[Key]) -> Transition {
+    fn handle_no_buffer_events(&mut self, keys: &[Key]) -> Operation {
         match keys {
-            [Key::Char('q')] => return Transition::Waiting,
-            [Key::Char('q'), Key::Char('q')] => return Transition::Exit,
+            [Key::Char('q')] => return Operation::Waiting,
+            [Key::Char('q'), Key::Char('q')] => return Operation::Exit,
             _ => (),
         }
 
-        Transition::None
+        Operation::None
     }
 }
 impl Mode for Normal {
@@ -45,7 +47,7 @@ impl Mode for Normal {
         buffer_views: &mut BufferViewCollection,
         current_buffer_view_index: Option<usize>,
         keys: &[Key],
-    ) -> Transition {
+    ) -> Operation {
         let index = if let Some(index) = current_buffer_view_index {
             index
         } else {
@@ -77,8 +79,8 @@ impl Mode for Normal {
                 cursor.anchor = cursor.position;
                 buffer_views[index].cursors.add_cursor(cursor);
             }
-            [Key::Char('i')] => return Transition::EnterMode(Box::new(Insert)),
-            [Key::Char('v')] => return Transition::EnterMode(Box::new(Selection)),
+            [Key::Char('i')] => return Operation::EnterMode(Box::new(Insert)),
+            [Key::Char('v')] => return Operation::EnterMode(Box::new(Selection)),
             [Key::Char('u')] => buffer_views.undo(buffers, index),
             [Key::Char('U')] => buffer_views.redo(buffers, index),
             [Key::Ctrl('s')] => {
@@ -89,7 +91,7 @@ impl Mode for Normal {
             _ => return self.handle_no_buffer_events(keys),
         };
 
-        Transition::None
+        Operation::None
     }
 }
 
@@ -101,18 +103,18 @@ impl Mode for Selection {
         buffer_views: &mut BufferViewCollection,
         current_buffer_view_index: Option<usize>,
         keys: &[Key],
-    ) -> Transition {
+    ) -> Operation {
         let index = if let Some(index) = current_buffer_view_index {
             index
         } else {
-            return Transition::EnterMode(Box::new(Normal));
+            return Operation::EnterMode(Box::new(Normal));
         };
 
         match keys {
             [Key::Esc] | [Key::Ctrl('c')] => {
                 buffer_views[index].commit_edits(buffers);
                 buffer_views[index].cursors.collapse_anchors();
-                return Transition::EnterMode(Box::new(Normal));
+                return Operation::EnterMode(Box::new(Normal));
             }
             [Key::Char('h')] => {
                 buffer_views[index].move_cursors(buffers, BufferOffset::line_col(0, -1), false);
@@ -130,12 +132,12 @@ impl Mode for Selection {
             [Key::Char('d')] => {
                 buffer_views.remove_in_selection(buffers, index);
                 buffer_views[index].commit_edits(buffers);
-                return Transition::EnterMode(Box::new(Normal));
+                return Operation::EnterMode(Box::new(Normal));
             }
             _ => (),
         };
 
-        Transition::None
+        Operation::None
     }
 }
 
@@ -147,17 +149,17 @@ impl Mode for Insert {
         buffer_views: &mut BufferViewCollection,
         current_buffer_view_index: Option<usize>,
         keys: &[Key],
-    ) -> Transition {
+    ) -> Operation {
         let index = if let Some(index) = current_buffer_view_index {
             index
         } else {
-            return Transition::EnterMode(Box::new(Normal));
+            return Operation::EnterMode(Box::new(Normal));
         };
 
         match keys {
             [Key::Esc] | [Key::Ctrl('c')] => {
                 buffer_views[index].commit_edits(buffers);
-                return Transition::EnterMode(Box::new(Normal));
+                return Operation::EnterMode(Box::new(Normal));
             }
             [Key::Tab] => buffer_views.insert_text(buffers, index, TextRef::Char('\t')),
             [Key::Enter] | [Key::Ctrl('m')] => {
@@ -175,6 +177,6 @@ impl Mode for Insert {
             _ => (),
         }
 
-        Transition::None
+        Operation::None
     }
 }
