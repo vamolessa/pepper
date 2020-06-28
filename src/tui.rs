@@ -87,6 +87,7 @@ fn draw<W>(write: &mut W, editor: &Editor) -> Result<()>
 where
     W: Write,
 {
+    handle_command!(write, cursor::Hide)?;
     for viewport in editor.viewports.iter() {
         draw_viewport(write, editor, viewport)?;
     }
@@ -107,8 +108,6 @@ where
         write,
         cursor::MoveTo(viewport.position.0 as _, viewport.position.1 as _)
     )?;
-    handle_command!(write, cursor::Hide)?;
-
     handle_command!(
         write,
         SetForegroundColor(convert_color(editor.theme.foreground))
@@ -130,7 +129,7 @@ where
         for (x, c) in line
             .text
             .chars()
-            .take(viewport.size.0 - 1)
+            .take(viewport.size.0 - 2)
             .chain(iter::once(' '))
             .enumerate()
         {
