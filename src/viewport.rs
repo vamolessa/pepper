@@ -49,6 +49,8 @@ impl ViewportCollection {
             self.current_viewport_index = 0;
             self.viewports.push(Viewport::default());
         }
+
+        self.update_viewports_positions();
     }
 
     pub fn current_viewport(&self) -> &Viewport {

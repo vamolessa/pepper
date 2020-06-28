@@ -127,7 +127,13 @@ where
     {
         let mut was_inside_selection = false;
         let y = y + viewport.scroll;
-        for (x, c) in line.text.chars().chain(iter::once(' ')).enumerate() {
+        for (x, c) in line
+            .text
+            .chars()
+            .take(viewport.size.0 - 1)
+            .chain(iter::once(' '))
+            .enumerate()
+        {
             let char_position = BufferPosition::line_col(y, x);
             let on_cursor = buffer_view
                 .cursors
