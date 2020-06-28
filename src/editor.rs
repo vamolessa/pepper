@@ -64,7 +64,9 @@ impl Editor {
                         self.buffered_keys.clear();
                         self.mode = mode;
                     }
-                    Operation::ViewportOperation(op) => self.viewports.handle_operation(op),
+                    Operation::NextViewport => self.viewports.next_viewport(),
+                    Operation::SplitViewport => self.viewports.split_current_viewport(),
+                    Operation::CloseViewport => self.viewports.close_current_viewport(),
                 }
                 if let Some(index) = self.viewports.current_viewport().buffer_view_index() {
                     let buffer_view = &self.buffer_views[index];

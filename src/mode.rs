@@ -3,14 +3,15 @@ use crate::{
     buffer_position::BufferOffset,
     buffer_view::BufferViewCollection,
     event::Key,
-    viewport::ViewportOperation,
 };
 
 pub enum Operation {
     None,
     Waiting,
     Exit,
-    ViewportOperation(ViewportOperation),
+    NextViewport,
+    SplitViewport,
+    CloseViewport,
     EnterMode(Box<dyn Mode>),
 }
 
@@ -88,11 +89,10 @@ impl Mode for Normal {
                 let mut file = std::fs::File::create("buffer_content.txt").unwrap();
                 buffer.content.write(&mut file).unwrap();
             }
-            [Key::Tab] => return Operation::ViewportOperation(ViewportOperation::NextViewport),
+            [Key::Tab] => return Operation::NextViewport,
             [Key::Ctrl('w')] => return Operation::Waiting,
-            [Key::Ctrl('w'), Key::Ctrl('w')] => {
-                return Operation::ViewportOperation(ViewportOperation::Split)
-            }
+            [Key::Ctrl('w'), Key::Ctrl('w')] => return Operation::SplitViewport,
+            [Key::Ctrl('w'), Key::Ctrl('c')] => return Operation::CloseViewport,
             _ => return self.handle_no_buffer_events(keys),
         };
 

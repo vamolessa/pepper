@@ -197,6 +197,7 @@ where
         )?;
         handle_command!(write, Clear(ClearType::UntilNewLine))?;
         handle_command!(write, cursor::MoveToNextLine(1))?;
+        handle_command!(write, cursor::MoveToColumn(viewport.position.0 as _))?;
     }
 
     handle_command!(
@@ -211,6 +212,7 @@ where
         handle_command!(write, Print('~'))?;
         handle_command!(write, Clear(ClearType::UntilNewLine))?;
         handle_command!(write, cursor::MoveToNextLine(1))?;
+        handle_command!(write, cursor::MoveToColumn(viewport.position.0 as _))?;
     }
 
     handle_command!(write, ResetColor)?;

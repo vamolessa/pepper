@@ -1,10 +1,5 @@
 use crate::buffer_position::BufferPosition;
 
-pub enum ViewportOperation {
-    NextViewport,
-    Split,
-}
-
 pub struct ViewportCollection {
     viewports: Vec<Viewport>,
     current_viewport_index: usize,
@@ -25,25 +20,34 @@ impl ViewportCollection {
         self.update_viewports_positions();
     }
 
-    pub fn handle_operation(&mut self, operation: ViewportOperation) {
-        match operation {
-            ViewportOperation::NextViewport => {
-                self.current_viewport_index =
-                    (self.current_viewport_index + 1) % self.viewports.len();
-            }
-            ViewportOperation::Split => {
-                if self.viewports.len() < 4 {
-                    let current_viewport = self.current_viewport();
-                    let new_viewport = Viewport {
-                        buffer_view_index: current_viewport.buffer_view_index,
-                        scroll: current_viewport.scroll,
-                        ..Default::default()
-                    };
-                    self.current_viewport_index = self.viewports.len();
-                    self.viewports.push(new_viewport);
-                    self.update_viewports_positions();
-                }
-            }
+    pub fn next_viewport(&mut self) {
+        self.current_viewport_index = (self.current_viewport_index + 1) % self.viewports.len();
+    }
+
+    pub fn split_current_viewport(&mut self) {
+        if self.viewports.len() >= 4 {
+            return;
+        }
+
+        let current_viewport = self.current_viewport();
+        let new_viewport = Viewport {
+            buffer_view_index: current_viewport.buffer_view_index,
+            scroll: current_viewport.scroll,
+            ..Default::default()
+        };
+        self.current_viewport_index = self.viewports.len();
+        self.viewports.push(new_viewport);
+        self.update_viewports_positions();
+    }
+
+    pub fn close_current_viewport(&mut self) {
+        self.viewports.remove(self.current_viewport_index);
+
+        if self.viewports.len() > 0 {
+            self.current_viewport_index -= 1;
+        } else {
+            self.current_viewport_index = 0;
+            self.viewports.push(Viewport::default());
         }
     }
 
