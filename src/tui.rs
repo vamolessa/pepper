@@ -104,10 +104,8 @@ where
     };
     let buffer = &editor.buffers[buffer_view.buffer_handle];
 
-    handle_command!(
-        write,
-        cursor::MoveTo(viewport.position.0 as _, viewport.position.1 as _)
-    )?;
+    handle_command!(write, cursor::MoveTo(0, viewport.position.1 as _))?;
+    handle_command!(write, cursor::MoveToColumn(viewport.position.0 as _))?;
     handle_command!(
         write,
         SetForegroundColor(convert_color(editor.theme.foreground))
@@ -126,12 +124,12 @@ where
     {
         let mut was_inside_selection = false;
         let y = y + viewport.scroll;
-        for (x, c) in line
+        let mut x = 0;
+        for c in line
             .text
             .chars()
             .take(viewport.size.0 - 2)
             .chain(iter::once(' '))
-            .enumerate()
         {
             let char_position = BufferPosition::line_col(y, x);
             let on_cursor = buffer_view
@@ -190,6 +188,8 @@ where
                     SetBackgroundColor(convert_color(editor.theme.background))
                 )?;
             }
+
+            x += 1;
         }
 
         handle_command!(
@@ -200,7 +200,10 @@ where
             write,
             SetBackgroundColor(convert_color(editor.theme.background))
         )?;
-        handle_command!(write, Clear(ClearType::UntilNewLine))?;
+        //handle_command!(write, Clear(ClearType::UntilNewLine))?;
+        for _ in x..(viewport.size.0 - 1) {
+            handle_command!(write, Print(' '))?;
+        }
         handle_command!(write, cursor::MoveToNextLine(1))?;
         handle_command!(write, cursor::MoveToColumn(viewport.position.0 as _))?;
     }
