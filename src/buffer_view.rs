@@ -7,6 +7,7 @@ use crate::{
     history::EditKind,
 };
 
+#[derive(Clone)]
 pub struct BufferView {
     pub buffer_handle: BufferHandle,
     pub cursors: CursorCollection,
@@ -24,7 +25,12 @@ impl BufferView {
         &buffers[self.buffer_handle]
     }
 
-    pub fn move_cursors(&mut self, buffers: &BufferCollection, offset: BufferOffset, collapse_anchors: bool) {
+    pub fn move_cursors(
+        &mut self,
+        buffers: &BufferCollection,
+        offset: BufferOffset,
+        collapse_anchors: bool,
+    ) {
         let buffer = &buffers[self.buffer_handle];
         self.cursors.change_all(|cs| {
             for c in cs {
@@ -57,12 +63,10 @@ pub struct BufferViewCollection {
 }
 
 impl BufferViewCollection {
-    pub fn len(&self) -> usize {
-        self.buffer_views.len()
-    }
-
-    pub fn push(&mut self, buffer_view: BufferView) {
+    pub fn add(&mut self, buffer_view: BufferView) -> usize {
+        let index = self.buffer_views.len();
         self.buffer_views.push(buffer_view);
+        index
     }
 
     pub fn insert_text(&mut self, buffers: &mut BufferCollection, index: usize, text: TextRef) {

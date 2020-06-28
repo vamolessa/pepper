@@ -37,11 +37,12 @@ impl Default for Editor {
 impl Editor {
     pub fn new_buffer_from_content(&mut self, content: BufferContent) {
         let buffer_handle = self.buffers.add(Buffer::with_content(content));
+        let buffer_view_index = self
+            .buffer_views
+            .add(BufferView::with_handle(buffer_handle));
         self.viewports
             .current_viewport_mut()
-            .set_buffer_view(Some(self.buffer_views.len()));
-        self.buffer_views
-            .push(BufferView::with_handle(buffer_handle));
+            .set_buffer_view(Some(buffer_view_index));
     }
 
     pub fn on_event(&mut self, event: Event) -> bool {
@@ -65,7 +66,9 @@ impl Editor {
                         self.mode = mode;
                     }
                     Operation::NextViewport => self.viewports.next_viewport(),
-                    Operation::SplitViewport => self.viewports.split_current_viewport(),
+                    Operation::SplitViewport => {
+                        self.viewports.split_current_viewport(&mut self.buffer_views)
+                    }
                     Operation::CloseViewport => self.viewports.close_current_viewport(),
                 }
                 if let Some(index) = self.viewports.current_viewport().buffer_view_index() {

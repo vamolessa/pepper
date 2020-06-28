@@ -22,6 +22,7 @@ impl Cursor {
     }
 }
 
+#[derive(Clone)]
 pub struct CursorCollection {
     cursors: Vec<Cursor>,
     main_cursor_index: usize,

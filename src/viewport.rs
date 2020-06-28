@@ -1,4 +1,4 @@
-use crate::buffer_position::BufferPosition;
+use crate::{buffer_position::BufferPosition, buffer_view::BufferViewCollection};
 
 pub struct ViewportCollection {
     viewports: Vec<Viewport>,
@@ -24,14 +24,19 @@ impl ViewportCollection {
         self.current_viewport_index = (self.current_viewport_index + 1) % self.viewports.len();
     }
 
-    pub fn split_current_viewport(&mut self) {
+    pub fn split_current_viewport(&mut self, buffer_views: &mut BufferViewCollection) {
         if self.viewports.len() >= 4 {
             return;
         }
 
         let current_viewport = self.current_viewport();
+        let new_buffer_view_index = current_viewport.buffer_view_index.map(|index| {
+            let new_buffer_view = buffer_views[index].clone();
+            buffer_views.add(new_buffer_view)
+        });
+
         let new_viewport = Viewport {
-            buffer_view_index: current_viewport.buffer_view_index,
+            buffer_view_index: new_buffer_view_index,
             scroll: current_viewport.scroll,
             ..Default::default()
         };
