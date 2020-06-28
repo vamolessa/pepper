@@ -59,10 +59,7 @@ fn update_viewports_size(editor: &mut Editor) {
     editor.viewports.set_view_size((size.0 as _, size.1 as _));
 }
 
-pub fn show<W>(
-    mut write: W,
-    mut editor: Editor,
-) -> Result<std::collections::VecDeque<std::time::Duration>>
+pub fn show<W>(mut write: W, mut editor: Editor) -> Result<()>
 where
     W: Write,
 {
@@ -75,26 +72,15 @@ where
     update_viewports_size(&mut editor);
     draw(&mut write, &editor)?;
 
-    let mut frame_durations = std::collections::VecDeque::with_capacity(1024);
-    let mut last_frame_instant = std::time::Instant::now();
-
     while editor.on_event(convert_event(event::read()?)) {
         draw(&mut write, &editor)?;
-
-        let frame_instant = std::time::Instant::now();
-        let frame_duration = frame_instant - last_frame_instant;
-        last_frame_instant = frame_instant;
-        if frame_durations.len() == frame_durations.capacity() {
-            frame_durations.pop_front();
-        }
-        frame_durations.push_back(frame_duration);
     }
 
     handle_command!(write, terminal::LeaveAlternateScreen)?;
     handle_command!(write, cursor::Show)?;
     terminal::disable_raw_mode().unwrap();
 
-    Ok(frame_durations)
+    Ok(())
 }
 
 fn draw<W>(write: &mut W, editor: &Editor) -> Result<()>
@@ -105,6 +91,7 @@ where
     for viewport in editor.viewports.iter() {
         draw_viewport(write, editor, viewport)?;
     }
+    write.flush()?;
     Ok(())
 }
 
@@ -238,6 +225,5 @@ where
     }
 
     handle_command!(write, ResetColor)?;
-    write.flush()?;
     Ok(())
 }

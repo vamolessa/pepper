@@ -48,11 +48,11 @@ impl ViewportCollection {
     pub fn close_current_viewport(&mut self) {
         self.viewports.remove(self.current_viewport_index);
 
-        if self.viewports.len() > 0 {
-            self.current_viewport_index -= 1;
-        } else {
+        if self.viewports.len() == 0 {
             self.current_viewport_index = 0;
             self.viewports.push(Viewport::default());
+        } else if self.current_viewport_index > 0 {
+                self.current_viewport_index -= 1;
         }
 
         self.update_viewports_positions();
