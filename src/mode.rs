@@ -88,6 +88,11 @@ impl Mode for Normal {
                 let mut file = std::fs::File::create("buffer_content.txt").unwrap();
                 buffer.content.write(&mut file).unwrap();
             }
+            [Key::Tab] => return Operation::ViewportOperation(ViewportOperation::NextViewport),
+            [Key::Ctrl('w')] => return Operation::Waiting,
+            [Key::Ctrl('w'), Key::Ctrl('v')] => {
+                return Operation::ViewportOperation(ViewportOperation::SplitVertical)
+            }
             _ => return self.handle_no_buffer_events(keys),
         };
 
