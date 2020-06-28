@@ -54,7 +54,7 @@ pub fn convert_color(color: theme::Color) -> Color {
     }
 }
 
-fn update_viewpoers_size(editor: &mut Editor) {
+fn update_viewports_size(editor: &mut Editor) {
     let size = terminal::size().unwrap_or((0, 0));
     editor.viewports.set_view_size((size.0 as _, size.1 as _));
 }
@@ -69,7 +69,7 @@ where
     write.flush()?;
     terminal::enable_raw_mode()?;
 
-    update_viewpoers_size(&mut editor);
+    update_viewports_size(&mut editor);
     draw(&mut write, &editor)?;
 
     while editor.on_event(convert_event(event::read()?)) {
@@ -103,7 +103,10 @@ where
     };
     let buffer = &editor.buffers[buffer_view.buffer_handle];
 
-    handle_command!(write, cursor::MoveTo(0, 0))?;
+    handle_command!(
+        write,
+        cursor::MoveTo(viewport.position.0 as _, viewport.position.1 as _)
+    )?;
     handle_command!(write, cursor::Hide)?;
 
     handle_command!(

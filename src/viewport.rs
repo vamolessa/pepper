@@ -2,7 +2,7 @@ use crate::buffer_position::BufferPosition;
 
 pub enum ViewportOperation {
     NextViewport,
-    SplitVertical,
+    Split,
 }
 
 pub struct ViewportCollection {
@@ -22,6 +22,7 @@ impl ViewportCollection {
 
     pub fn set_view_size(&mut self, size: (usize, usize)) {
         self.available_size = size;
+        self.update_viewports_positions();
     }
 
     pub fn handle_operation(&mut self, operation: ViewportOperation) {
@@ -30,14 +31,18 @@ impl ViewportCollection {
                 self.current_viewport_index =
                     (self.current_viewport_index + 1) % self.viewports.len();
             }
-            ViewportOperation::SplitVertical => {
-                let current_viewport = self.current_viewport();
-                let new_viewport = Viewport {
-                    buffer_view_index: current_viewport.buffer_view_index,
-                    scroll: current_viewport.scroll,
-                    ..Default::default()
-                };
-                self.viewports.push(new_viewport);
+            ViewportOperation::Split => {
+                if self.viewports.len() < 4 {
+                    let current_viewport = self.current_viewport();
+                    let new_viewport = Viewport {
+                        buffer_view_index: current_viewport.buffer_view_index,
+                        scroll: current_viewport.scroll,
+                        ..Default::default()
+                    };
+                    self.current_viewport_index = self.viewports.len();
+                    self.viewports.push(new_viewport);
+                    self.update_viewports_positions();
+                }
             }
         }
     }
@@ -52,6 +57,49 @@ impl ViewportCollection {
 
     pub fn iter(&self) -> impl Iterator<Item = &Viewport> {
         self.viewports.iter()
+    }
+
+    fn update_viewports_positions(&mut self) {
+        self.viewports.truncate(4);
+        match self.viewports.len() {
+            1 => {
+                self.viewports[0].position = (0, 0);
+                self.viewports[0].size = self.available_size;
+            }
+            2 => {
+                let half_width = self.available_size.0 / 2;
+
+                self.viewports[0].position = (0, 0);
+                self.viewports[0].size = (half_width, self.available_size.1);
+                self.viewports[1].position = (half_width, 0);
+                self.viewports[1].size = (half_width, self.available_size.1);
+            }
+            3 => {
+                let half_width = self.available_size.0 / 2;
+                let half_height = self.available_size.1 / 2;
+
+                self.viewports[0].position = (0, 0);
+                self.viewports[0].size = (half_width, self.available_size.1);
+                self.viewports[1].position = (half_width, 0);
+                self.viewports[1].size = (half_width, half_height);
+                self.viewports[2].position = (half_width, half_height);
+                self.viewports[2].size = (half_width, half_height);
+            }
+            4 => {
+                let half_width = self.available_size.0 / 2;
+                let half_height = self.available_size.1 / 2;
+
+                self.viewports[0].position = (0, 0);
+                self.viewports[0].size = (half_width, half_height);
+                self.viewports[1].position = (half_width, 0);
+                self.viewports[1].size = (half_width, half_height);
+                self.viewports[2].position = (0, half_height);
+                self.viewports[2].size = (half_width, half_height);
+                self.viewports[3].position = (half_width, half_height);
+                self.viewports[3].size = (half_width, half_height);
+            }
+            _ => (),
+        }
     }
 }
 

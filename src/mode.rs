@@ -90,8 +90,8 @@ impl Mode for Normal {
             }
             [Key::Tab] => return Operation::ViewportOperation(ViewportOperation::NextViewport),
             [Key::Ctrl('w')] => return Operation::Waiting,
-            [Key::Ctrl('w'), Key::Ctrl('v')] => {
-                return Operation::ViewportOperation(ViewportOperation::SplitVertical)
+            [Key::Ctrl('w'), Key::Ctrl('w')] => {
+                return Operation::ViewportOperation(ViewportOperation::Split)
             }
             _ => return self.handle_no_buffer_events(keys),
         };
