@@ -53,7 +53,10 @@ impl ViewportCollection {
     }
 
     pub fn close_current_viewport(&mut self, buffer_views: &mut BufferViewCollection) {
-        self.viewports.remove(self.current_viewport_index);
+        let closed_viewport = self.viewports.remove(self.current_viewport_index);
+        for handle in closed_viewport.buffer_view_handles {
+            buffer_views.remove(handle);
+        }
 
         if self.viewports.len() == 0 {
             self.current_viewport_index = 0;
