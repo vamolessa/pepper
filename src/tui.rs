@@ -3,8 +3,7 @@ use std::{io::Write, iter};
 use crossterm::{
     cursor, event, handle_command,
     style::{Color, Print, ResetColor, SetBackgroundColor, SetForegroundColor},
-    terminal::{self, Clear, ClearType},
-    Result,
+    terminal, Result,
 };
 
 use crate::{
@@ -87,6 +86,9 @@ fn draw<W>(write: &mut W, editor: &Editor) -> Result<()>
 where
     W: Write,
 {
+    //handle_command!(write, SetBackgroundColor(Color::Rgb { r: 255, g: 0, b: 0 }))?;
+    //handle_command!(write, terminal::Clear(terminal::ClearType::All))?;
+
     handle_command!(write, cursor::Hide)?;
     for viewport in editor.viewports.iter() {
         draw_viewport(write, editor, viewport)?;
@@ -99,9 +101,10 @@ fn draw_viewport<W>(write: &mut W, editor: &Editor, viewport: &Viewport) -> Resu
 where
     W: Write,
 {
-    handle_command!(write, cursor::MoveTo(0, viewport.position.1 as _))?;
-    handle_command!(write, cursor::MoveToColumn(viewport.position.0 as _))?;
-
+    handle_command!(
+        write,
+        cursor::MoveTo(viewport.position.0 as _, viewport.position.1 as _)
+    )?;
     handle_command!(
         write,
         SetForegroundColor(convert_color(editor.theme.foreground))
@@ -119,11 +122,12 @@ where
         Some((buffer_view, buffer)) => (buffer_view, buffer),
         None => {
             for _ in 0..viewport.size.1 {
-                for _ in 0..(viewport.size.0 - 2) {
+                handle_command!(write, Print('~'))?;
+                for _ in 0..viewport.size.0 - 1 {
                     handle_command!(write, Print(' '))?;
                 }
                 handle_command!(write, cursor::MoveToNextLine(1))?;
-                handle_command!(write, cursor::MoveToColumn(viewport.position.0 as _))?;
+                handle_command!(write, cursor::MoveToColumn((viewport.position.0 + 1) as _))?;
             }
             return Ok(());
         }
@@ -214,12 +218,11 @@ where
             write,
             SetBackgroundColor(convert_color(editor.theme.background))
         )?;
-        //handle_command!(write, Clear(ClearType::UntilNewLine))?;
-        for _ in x..(viewport.size.0 - 1) {
+        for _ in x..viewport.size.0 {
             handle_command!(write, Print(' '))?;
         }
         handle_command!(write, cursor::MoveToNextLine(1))?;
-        handle_command!(write, cursor::MoveToColumn(viewport.position.0 as _))?;
+        handle_command!(write, cursor::MoveToColumn((viewport.position.0 + 1) as _))?;
     }
 
     handle_command!(
@@ -232,9 +235,11 @@ where
     )?;
     for _ in buffer.content.line_count()..viewport.size.1 {
         handle_command!(write, Print('~'))?;
-        handle_command!(write, Clear(ClearType::UntilNewLine))?;
+        for _ in 0..(viewport.size.0 - 1) {
+            handle_command!(write, Print(' '))?;
+        }
         handle_command!(write, cursor::MoveToNextLine(1))?;
-        handle_command!(write, cursor::MoveToColumn(viewport.position.0 as _))?;
+        handle_command!(write, cursor::MoveToColumn((viewport.position.0 + 1) as _))?;
     }
 
     handle_command!(write, ResetColor)?;
