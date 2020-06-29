@@ -12,6 +12,8 @@ enum LayoutElement {
 pub struct ViewportCollection {
     layout: Vec<LayoutElement>,
     current_viewport_index: usize,
+    available_width: usize,
+    available_height: usize,
     max_depth: u8,
 }
 
@@ -20,14 +22,63 @@ impl ViewportCollection {
         let mut this = Self {
             layout: Vec::new(),
             max_depth,
-            current_viewport_index: 1,
+            current_viewport_index: 0,
+            available_width: 0,
+            available_height: 0,
         };
         this.close_all_viewports();
         this
     }
 
     pub fn set_view_size(&mut self, width: usize, height: usize) {
-        //
+        fn traverse(
+            layout: &mut [LayoutElement],
+            index: usize,
+            x: usize,
+            y: usize,
+            width: usize,
+            height: usize,
+        ) -> usize {
+            match layout[index] {
+                LayoutElement::VerticalSplit => {
+                    let half_width = width / 2;
+                    let index = traverse(layout, index + 1, x, y, half_width, height);
+                    let index = traverse(
+                        layout,
+                        index + 1,
+                        x + half_width,
+                        y,
+                        width - half_width,
+                        height,
+                    );
+                    index
+                }
+                LayoutElement::HorizontalSplit => {
+                    let half_height = height / 2;
+                    let index = traverse(layout, index + 1, x, y, width, half_height);
+                    let index = traverse(
+                        layout,
+                        index + 1,
+                        x,
+                        y + half_height,
+                        width,
+                        height - half_height,
+                    );
+                    index
+                }
+                LayoutElement::Leaf(ref mut viewport) => {
+                    viewport.x = x;
+                    viewport.y = y;
+                    viewport.width = width;
+                    viewport.height = height;
+                    index
+                }
+            }
+        }
+
+        self.available_width = width;
+        self.available_height = height;
+        traverse(&mut self.layout[..], 0, 0, 0, width, height);
     }
 
     pub fn next_viewport(&mut self) {
@@ -51,6 +102,8 @@ impl ViewportCollection {
     pub fn close_all_viewports(&mut self) {
         self.layout.clear();
         self.layout.push(LayoutElement::Leaf(Viewport::default()));
+        self.current_viewport_index = 0;
+        self.set_view_size(self.available_height, self.available_width);
     }
 
     pub fn split_current_viewport(&mut self, buffer_views: &mut BufferViewCollection) {
@@ -76,7 +129,7 @@ impl ViewportCollection {
                 }
             }
 
-            traverse(layout, index, 0, 0).unwrap()
+            traverse(layout, index, 0, 0).unwrap_or(0)
         }
 
         if find_element_depth(&self.layout[..], self.current_viewport_index) >= self.max_depth {
@@ -101,7 +154,7 @@ impl ViewportCollection {
         let mut width = current_viewport.width;
         let mut height = current_viewport.height;
 
-        let split = if current_viewport.width > current_viewport.height {
+        let split = if width > height * 2 {
             width /= 2;
             current_viewport.width -= width;
             x += current_viewport.width;
@@ -124,8 +177,9 @@ impl ViewportCollection {
 
         drop(current_viewport);
         self.layout.insert(self.current_viewport_index, split);
+        self.current_viewport_index += 2;
         self.layout.insert(
-            self.current_viewport_index + 2,
+            self.current_viewport_index,
             LayoutElement::Leaf(new_viewport),
         );
     }
@@ -180,7 +234,13 @@ impl ViewportCollection {
             }
         }
 
-        self.current_viewport_index = parent_index;
+        self.current_viewport_index = if parent_index > 0 {
+            parent_index - 1
+        } else {
+            parent_index
+        };
+        self.next_viewport();
+        self.set_view_size(self.available_width, self.available_height);
     }
 
     pub fn current_viewport(&self) -> &Viewport {
