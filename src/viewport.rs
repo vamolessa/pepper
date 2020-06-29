@@ -4,20 +4,19 @@ use crate::{
 };
 
 enum LayoutElement {
-    Root,
-    VerticalSplit(usize),
-    HorizontalSplit(usize),
-    Leaf(usize, Viewport),
+    VerticalSplit,
+    HorizontalSplit,
+    Leaf(Viewport),
 }
 
 pub struct ViewportCollection {
     layout: Vec<LayoutElement>,
     current_viewport_index: usize,
-    max_depth: usize,
+    max_depth: u8,
 }
 
 impl ViewportCollection {
-    pub fn with_max_depth(max_depth: usize) -> Self {
+    pub fn with_max_depth(max_depth: u8) -> Self {
         let mut this = Self {
             layout: Vec::new(),
             max_depth,
@@ -32,41 +31,60 @@ impl ViewportCollection {
     }
 
     pub fn next_viewport(&mut self) {
-        self.current_viewport_index = (self.current_viewport_index + 1) % self.layout.len();
-    }
-
-    pub fn close_all_viewports(&mut self) {
-        self.layout.clear();
-        self.layout.push(LayoutElement::Root);
-        self.layout
-            .push(LayoutElement::Leaf(0, Viewport::default()));
-    }
-
-    pub fn split_current_viewport(&mut self, buffer_views: &mut BufferViewCollection) {
-        {
-            let mut depth = 0;
-            let mut index = self.current_viewport_index;
-            loop {
-                match self.layout[index] {
-                    LayoutElement::Root => break,
-                    LayoutElement::VerticalSplit(parent_index) => index = parent_index,
-                    LayoutElement::HorizontalSplit(parent_index) => index = parent_index,
-                    LayoutElement::Leaf(parent_index, _) => index = parent_index,
-                }
-                depth += 1;
+        self.current_viewport_index += 1;
+        for i in self.current_viewport_index..self.layout.len() {
+            if let LayoutElement::Leaf(_) = &self.layout[i] {
+                self.current_viewport_index = i;
+                return;
             }
-            if depth >= self.max_depth {
+        }
+        for i in 0..self.current_viewport_index {
+            if let LayoutElement::Leaf(_) = &self.layout[i] {
+                self.current_viewport_index = i;
                 return;
             }
         }
 
-        let mut current_viewport = LayoutElement::Root;
-        std::mem::swap(
-            &mut current_viewport,
-            &mut self.layout[self.current_viewport_index],
-        );
-        let (parent_index, mut current_viewport) = match current_viewport {
-            LayoutElement::Leaf(parent_index, viewport) => (parent_index, viewport),
+        unreachable!();
+    }
+
+    pub fn close_all_viewports(&mut self) {
+        self.layout.clear();
+        self.layout.push(LayoutElement::Leaf(Viewport::default()));
+    }
+
+    pub fn split_current_viewport(&mut self, buffer_views: &mut BufferViewCollection) {
+        fn find_element_depth(layout: &[LayoutElement], index: usize) -> u8 {
+            fn traverse(
+                layout: &[LayoutElement],
+                target_index: usize,
+                index: usize,
+                depth: u8,
+            ) -> Option<u8> {
+                if index == target_index {
+                    return Some(depth);
+                }
+
+                match layout[index] {
+                    LayoutElement::HorizontalSplit | LayoutElement::VerticalSplit => {
+                        match traverse(layout, target_index, index + 1, depth + 1) {
+                            Some(depth) => Some(depth),
+                            None => traverse(layout, target_index, index + 1, depth + 1),
+                        }
+                    }
+                    LayoutElement::Leaf(_) => None,
+                }
+            }
+
+            traverse(layout, index, 0, 0).unwrap()
+        }
+
+        if find_element_depth(&self.layout[..], self.current_viewport_index) >= self.max_depth {
+            return;
+        }
+
+        let current_viewport = match self.layout[self.current_viewport_index] {
+            LayoutElement::Leaf(ref mut viewport) => viewport,
             _ => unreachable!(),
         };
 
@@ -83,121 +101,105 @@ impl ViewportCollection {
         let mut width = current_viewport.width;
         let mut height = current_viewport.height;
 
-        if current_viewport.width > current_viewport.height {
+        let split = if current_viewport.width > current_viewport.height {
             width /= 2;
             current_viewport.width -= width;
             x += current_viewport.width;
-
-            self.layout.push(LayoutElement::VerticalSplit(parent_index));
+            LayoutElement::VerticalSplit
         } else {
             height = current_viewport.height / 2;
             current_viewport.height -= height;
             y += current_viewport.height;
+            LayoutElement::HorizontalSplit
+        };
 
-            self.layout
-                .push(LayoutElement::HorizontalSplit(parent_index));
-        }
+        let new_viewport = Viewport {
+            buffer_view_handles,
+            scroll: current_viewport.scroll,
+            x,
+            y,
+            width,
+            height,
+        };
 
-        let parent_index = self.current_viewport_index;
-        self.current_viewport_index = self.layout.len();
-
-        self.layout.push(LayoutElement::Leaf(
-            parent_index,
-            Viewport {
-                buffer_view_handles,
-                scroll: current_viewport.scroll,
-                x,
-                y,
-                width,
-                height,
-            },
-        ));
-        self.layout
-            .push(LayoutElement::Leaf(parent_index, current_viewport));
+        drop(current_viewport);
+        self.layout.insert(self.current_viewport_index, split);
+        self.layout.insert(
+            self.current_viewport_index + 2,
+            LayoutElement::Leaf(new_viewport),
+        );
     }
 
     pub fn close_current_viewport(&mut self, buffer_views: &mut BufferViewCollection) {
-        let (current_parent_index, current_viewport) =
-            match self.layout.remove(self.current_viewport_index) {
-                LayoutElement::Leaf(parent_index, viewport) => (parent_index, viewport),
+        fn find_element_parent_index(layout: &[LayoutElement], index: usize) -> usize {
+            enum FindResult {
+                Leaf(usize),
+                Parent(usize),
+            }
+            fn traverse(
+                layout: &[LayoutElement],
+                target_index: usize,
+                current_index: usize,
+                parent_index: usize,
+            ) -> FindResult {
+                if current_index == target_index {
+                    return FindResult::Parent(parent_index);
+                }
+
+                match layout[current_index] {
+                    LayoutElement::HorizontalSplit | LayoutElement::VerticalSplit => {
+                        match traverse(layout, target_index, current_index + 1, current_index) {
+                            FindResult::Leaf(index) => {
+                                traverse(layout, target_index, index + 1, current_index)
+                            }
+                            FindResult::Parent(index) => FindResult::Parent(index),
+                        }
+                    }
+                    LayoutElement::Leaf(_) => FindResult::Leaf(current_index),
+                }
+            }
+
+            match traverse(layout, index, 0, 0) {
+                FindResult::Parent(index) => index,
                 _ => unreachable!(),
-            };
-
-        for handle in current_viewport.buffer_view_handles {
-            buffer_views.remove(handle);
-        }
-
-        let mut sibling_index = None;
-        for (i, element) in self.layout.iter_mut().enumerate() {
-            let parent_index = match element {
-                LayoutElement::Root => continue,
-                LayoutElement::VerticalSplit(parent_index) => parent_index,
-                LayoutElement::HorizontalSplit(parent_index) => parent_index,
-                LayoutElement::Leaf(parent_index, _) => parent_index,
-            };
-
-            if *parent_index == current_parent_index {
-                sibling_index = Some(i);
-            }
-
-            if *parent_index > self.current_viewport_index {
-                *parent_index -= 1;
             }
         }
 
-        let sibling_index = match sibling_index {
-            Some(index) => index,
-            None => {
-                self.close_all_viewports();
-                return;
-            }
-        };
+        if self.current_viewport_index == 0 {
+            self.close_all_viewports();
+            return;
+        }
 
-        let sibling_viewport = match self.layout.remove(sibling_index) {
-            LayoutElement::Leaf(_, viewport) => viewport,
-            _ => unreachable!(),
-        };
+        let parent_index = find_element_parent_index(&self.layout[..], self.current_viewport_index);
+        let previous_viewport = self.layout.remove(self.current_viewport_index);
+        self.layout.remove(parent_index);
 
-        for element in self.layout.iter_mut() {
-            let parent_index = match element {
-                LayoutElement::Root => continue,
-                LayoutElement::VerticalSplit(parent_index) => parent_index,
-                LayoutElement::HorizontalSplit(parent_index) => parent_index,
-                LayoutElement::Leaf(parent_index, _) => parent_index,
-            };
-
-            if *parent_index > sibling_index {
-                *parent_index -= 1;
+        if let LayoutElement::Leaf(viewport) = previous_viewport {
+            for handle in viewport.buffer_view_handles {
+                buffer_views.remove(handle);
             }
         }
 
-        let parent_index = match self.layout[current_parent_index] {
-            LayoutElement::HorizontalSplit(parent_index) => parent_index,
-            LayoutElement::VerticalSplit(parent_index) => parent_index,
-            _ => unreachable!(),
-        };
-
-        self.layout[current_parent_index] = LayoutElement::Leaf(parent_index, sibling_viewport);
-        self.current_viewport_index = current_parent_index;
+        self.current_viewport_index = parent_index;
     }
 
     pub fn current_viewport(&self) -> &Viewport {
         match self.layout[self.current_viewport_index] {
-            LayoutElement::Leaf(_, ref viewport) => viewport,
+            LayoutElement::Leaf(ref viewport) => viewport,
             _ => unreachable!(),
         }
     }
 
     pub fn current_viewport_mut(&mut self) -> &mut Viewport {
         match self.layout[self.current_viewport_index] {
-            LayoutElement::Leaf(_, ref mut viewport) => viewport,
+            LayoutElement::Leaf(ref mut viewport) => viewport,
             _ => unreachable!(),
         }
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &Viewport> {
         self.layout.iter().filter_map(|e| match e {
-            LayoutElement::Leaf(_, viewport) => Some(viewport),
+            LayoutElement::Leaf(viewport) => Some(viewport),
             _ => None,
         })
     }
