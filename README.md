@@ -17,7 +17,7 @@ Experimental code editor
 	- ~~multiple buffer views~~
 	- ~~same buffer different views~~
 	- ~~split and copy current view~~
-	- remove unused buffer views when closing viewport
+	- ~~remove unused buffer views when closing viewport~~
 - long lines
 - search
 - operations

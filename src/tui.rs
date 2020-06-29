@@ -99,17 +99,9 @@ fn draw_viewport<W>(write: &mut W, editor: &Editor, viewport: &Viewport) -> Resu
 where
     W: Write,
 {
-    let buffer_view = match viewport.current_buffer_view_handle() {
-        Some(handle) => editor.buffer_views.get(handle),
-        None => return Ok(()),
-    };
-    let buffer = match editor.buffers.get(buffer_view.buffer_handle) {
-        Some(buffer) => buffer,
-        None => return Ok(()),
-    };
-
     handle_command!(write, cursor::MoveTo(0, viewport.position.1 as _))?;
     handle_command!(write, cursor::MoveToColumn(viewport.position.0 as _))?;
+
     handle_command!(
         write,
         SetForegroundColor(convert_color(editor.theme.foreground))
@@ -118,6 +110,24 @@ where
         write,
         SetBackgroundColor(convert_color(editor.theme.background))
     )?;
+
+    let (buffer_view, buffer) = match viewport
+        .current_buffer_view_handle()
+        .map(|h| editor.buffer_views.get(h))
+        .and_then(|bv| editor.buffers.get(bv.buffer_handle).map(|b| (bv, b)))
+    {
+        Some((buffer_view, buffer)) => (buffer_view, buffer),
+        None => {
+            for _ in 0..viewport.size.1 {
+                for _ in 0..(viewport.size.0 - 2) {
+                    handle_command!(write, Print(' '))?;
+                }
+                handle_command!(write, cursor::MoveToNextLine(1))?;
+                handle_command!(write, cursor::MoveToColumn(viewport.position.0 as _))?;
+            }
+            return Ok(());
+        }
+    };
 
     for (y, line) in buffer
         .content
