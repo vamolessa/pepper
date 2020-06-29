@@ -42,7 +42,7 @@ impl Editor {
             .add(BufferView::with_handle(buffer_handle));
         self.viewports
             .current_viewport_mut()
-            .set_buffer_view(Some(buffer_view_index));
+            .set_current_buffer_view_handle(buffer_view_index);
     }
 
     pub fn on_event(&mut self, event: Event) -> bool {
@@ -57,7 +57,9 @@ impl Editor {
                 match self.mode.on_event(
                     &mut self.buffers,
                     &mut self.buffer_views,
-                    self.viewports.current_viewport().buffer_view_index(),
+                    self.viewports
+                        .current_viewport()
+                        .current_buffer_view_handle(),
                     &self.buffered_keys[..],
                 ) {
                     Operation::None => (),
@@ -70,10 +72,17 @@ impl Editor {
                     Operation::SplitViewport => self
                         .viewports
                         .split_current_viewport(&mut self.buffer_views),
-                    Operation::CloseViewport => self.viewports.close_current_viewport(),
+                    Operation::CloseViewport => self
+                        .viewports
+                        .close_current_viewport(&mut self.buffer_views),
                 }
-                if let Some(index) = self.viewports.current_viewport().buffer_view_index() {
-                    let buffer_view = &self.buffer_views[index];
+
+                if let Some(handle) = self
+                    .viewports
+                    .current_viewport()
+                    .current_buffer_view_handle()
+                {
+                    let buffer_view = &self.buffer_views.get(handle);
                     self.viewports
                         .current_viewport_mut()
                         .scroll_to_cursor(buffer_view.cursors.main_cursor().position);

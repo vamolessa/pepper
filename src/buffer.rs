@@ -1,7 +1,4 @@
-use std::{
-    io,
-    ops::{Index, IndexMut},
-};
+use std::io;
 
 use crate::{
     buffer_position::{BufferPosition, BufferRange},
@@ -297,18 +294,13 @@ impl BufferCollection {
             BufferHandle(index)
         }
     }
-}
 
-impl Index<BufferHandle> for BufferCollection {
-    type Output = Buffer;
-    fn index(&self, handle: BufferHandle) -> &Self::Output {
-        &self.buffers[handle.0]
+    pub fn get(&self, handle: BufferHandle) -> Option<&Buffer> {
+        Some(&self.buffers[handle.0])
     }
-}
 
-impl IndexMut<BufferHandle> for BufferCollection {
-    fn index_mut(&mut self, handle: BufferHandle) -> &mut Self::Output {
-        &mut self.buffers[handle.0]
+    pub fn get_mut(&mut self, handle: BufferHandle) -> Option<&mut Buffer> {
+        Some(&mut self.buffers[handle.0])
     }
 }
 

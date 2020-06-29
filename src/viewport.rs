@@ -1,4 +1,7 @@
-use crate::{buffer_position::BufferPosition, buffer_view::BufferViewCollection};
+use crate::{
+    buffer_position::BufferPosition,
+    buffer_view::{BufferViewCollection, BufferViewHandle},
+};
 
 pub struct ViewportCollection {
     viewports: Vec<Viewport>,
@@ -30,13 +33,17 @@ impl ViewportCollection {
         }
 
         let current_viewport = self.current_viewport();
-        let new_buffer_view_index = current_viewport.buffer_view_index.map(|index| {
-            let new_buffer_view = buffer_views[index].clone();
-            buffer_views.add(new_buffer_view)
-        });
+        let new_buffer_view_handles =
+            match current_viewport.current_buffer_view_handle().map(|handle| {
+                let new_buffer_view = buffer_views.get(handle).clone();
+                buffer_views.add(new_buffer_view)
+            }) {
+                Some(index) => vec![index],
+                None => Vec::new(),
+            };
 
         let new_viewport = Viewport {
-            buffer_view_index: new_buffer_view_index,
+            buffer_view_handles: new_buffer_view_handles,
             scroll: current_viewport.scroll,
             ..Default::default()
         };
@@ -45,7 +52,7 @@ impl ViewportCollection {
         self.update_viewports_positions();
     }
 
-    pub fn close_current_viewport(&mut self) {
+    pub fn close_current_viewport(&mut self, buffer_views: &mut BufferViewCollection) {
         self.viewports.remove(self.current_viewport_index);
 
         if self.viewports.len() == 0 {
@@ -116,19 +123,26 @@ impl ViewportCollection {
 
 #[derive(Default)]
 pub struct Viewport {
-    buffer_view_index: Option<usize>,
+    buffer_view_handles: Vec<BufferViewHandle>,
     pub position: (usize, usize),
     pub size: (usize, usize),
     pub scroll: usize,
 }
 
 impl Viewport {
-    pub fn buffer_view_index(&self) -> Option<usize> {
-        self.buffer_view_index
+    pub fn current_buffer_view_handle(&self) -> Option<&BufferViewHandle> {
+        self.buffer_view_handles.first()
     }
 
-    pub fn set_buffer_view(&mut self, index: Option<usize>) {
-        self.buffer_view_index = index;
+    pub fn set_current_buffer_view_handle(&mut self, handle: BufferViewHandle) {
+        if let Some(index_position) = self.buffer_view_handles.iter().position(|h| *h == handle) {
+            self.buffer_view_handles.swap(0, index_position);
+        } else {
+            let last_index = self.buffer_view_handles.len();
+            self.buffer_view_handles.push(handle);
+            self.buffer_view_handles.swap(0, last_index);
+        }
+
         self.scroll = 0;
     }
 

@@ -99,11 +99,14 @@ fn draw_viewport<W>(write: &mut W, editor: &Editor, viewport: &Viewport) -> Resu
 where
     W: Write,
 {
-    let buffer_view = match viewport.buffer_view_index() {
-        Some(index) => &editor.buffer_views[index],
+    let buffer_view = match viewport.current_buffer_view_handle() {
+        Some(handle) => editor.buffer_views.get(handle),
         None => return Ok(()),
     };
-    let buffer = &editor.buffers[buffer_view.buffer_handle];
+    let buffer = match editor.buffers.get(buffer_view.buffer_handle) {
+        Some(buffer) => buffer,
+        None => return Ok(()),
+    };
 
     handle_command!(write, cursor::MoveTo(0, viewport.position.1 as _))?;
     handle_command!(write, cursor::MoveToColumn(viewport.position.0 as _))?;
