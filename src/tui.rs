@@ -100,7 +100,7 @@ where
 {
     handle_command!(
         write,
-        cursor::MoveTo(viewport.position.0 as _, viewport.position.1 as _)
+        cursor::MoveTo(viewport.x as _, viewport.y as _)
     )?;
     handle_command!(
         write,
@@ -118,13 +118,13 @@ where
     {
         Some((buffer_view, buffer)) => (buffer_view, buffer),
         None => {
-            for _ in 0..viewport.size.1 {
+            for _ in 0..viewport.height {
                 handle_command!(write, Print('~'))?;
-                for _ in 0..viewport.size.0 - 1 {
+                for _ in 0..viewport.width - 1 {
                     handle_command!(write, Print(' '))?;
                 }
                 handle_command!(write, cursor::MoveToNextLine(1))?;
-                handle_command!(write, cursor::MoveToColumn((viewport.position.0 + 1) as _))?;
+                handle_command!(write, cursor::MoveToColumn((viewport.x + 1) as _))?;
             }
             return Ok(());
         }
@@ -134,7 +134,7 @@ where
         .content
         .lines()
         .skip(viewport.scroll)
-        .take(viewport.size.1)
+        .take(viewport.height)
         .enumerate()
     {
         let mut was_inside_selection = false;
@@ -143,7 +143,7 @@ where
         for c in line
             .text
             .chars()
-            .take(viewport.size.0 - 2)
+            .take(viewport.width - 2)
             .chain(iter::once(' '))
         {
             let char_position = BufferPosition::line_col(y, x);
@@ -215,11 +215,11 @@ where
             write,
             SetBackgroundColor(convert_color(editor.theme.background))
         )?;
-        for _ in x..viewport.size.0 {
+        for _ in x..viewport.width {
             handle_command!(write, Print(' '))?;
         }
         handle_command!(write, cursor::MoveToNextLine(1))?;
-        handle_command!(write, cursor::MoveToColumn((viewport.position.0 + 1) as _))?;
+        handle_command!(write, cursor::MoveToColumn((viewport.x + 1) as _))?;
     }
 
     handle_command!(
@@ -230,13 +230,13 @@ where
         write,
         SetBackgroundColor(convert_color(editor.theme.background))
     )?;
-    for _ in buffer.content.line_count()..viewport.size.1 {
+    for _ in buffer.content.line_count()..viewport.height {
         handle_command!(write, Print('~'))?;
-        for _ in 0..(viewport.size.0 - 1) {
+        for _ in 0..(viewport.width - 1) {
             handle_command!(write, Print(' '))?;
         }
         handle_command!(write, cursor::MoveToNextLine(1))?;
-        handle_command!(write, cursor::MoveToColumn((viewport.position.0 + 1) as _))?;
+        handle_command!(write, cursor::MoveToColumn((viewport.x + 1) as _))?;
     }
 
     handle_command!(write, ResetColor)?;

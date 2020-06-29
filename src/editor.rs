@@ -29,7 +29,7 @@ impl Default for Editor {
             buffered_keys: Vec::new(),
             buffers: Default::default(),
             buffer_views: BufferViewCollection::default(),
-            viewports: ViewportCollection::new(),
+            viewports: ViewportCollection::with_max_depth(3),
         }
     }
 }
