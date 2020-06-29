@@ -89,35 +89,40 @@ impl ViewportCollection {
             }
             2 => {
                 let half_width = self.available_size.0 / 2;
+                let width_rest = self.available_size.0 - half_width * 2;
 
                 self.viewports[0].position = (0, 0);
                 self.viewports[0].size = (half_width, self.available_size.1);
                 self.viewports[1].position = (half_width, 0);
-                self.viewports[1].size = (half_width, self.available_size.1);
+                self.viewports[1].size = (half_width + width_rest, self.available_size.1);
             }
             3 => {
                 let half_width = self.available_size.0 / 2;
                 let half_height = self.available_size.1 / 2;
+                let width_rest = self.available_size.0 - half_width * 2;
+                let height_rest = self.available_size.1 - half_height * 2;
 
                 self.viewports[0].position = (0, 0);
                 self.viewports[0].size = (half_width, self.available_size.1);
                 self.viewports[1].position = (half_width, 0);
-                self.viewports[1].size = (half_width, half_height);
+                self.viewports[1].size = (half_width + width_rest, half_height);
                 self.viewports[2].position = (half_width, half_height);
-                self.viewports[2].size = (half_width, half_height);
+                self.viewports[2].size = (half_width + width_rest, half_height + height_rest);
             }
             4 => {
                 let half_width = self.available_size.0 / 2;
                 let half_height = self.available_size.1 / 2;
+                let width_rest = self.available_size.0 - half_width * 2;
+                let height_rest = self.available_size.1 - half_height * 2;
 
                 self.viewports[0].position = (0, 0);
                 self.viewports[0].size = (half_width, half_height);
                 self.viewports[1].position = (half_width, 0);
-                self.viewports[1].size = (half_width, half_height);
+                self.viewports[1].size = (half_width + width_rest, half_height);
                 self.viewports[2].position = (0, half_height);
-                self.viewports[2].size = (half_width, half_height);
+                self.viewports[2].size = (half_width, half_height + height_rest);
                 self.viewports[3].position = (half_width, half_height);
-                self.viewports[3].size = (half_width, half_height);
+                self.viewports[3].size = (half_width + width_rest, half_height + height_rest);
             }
             _ => (),
         }

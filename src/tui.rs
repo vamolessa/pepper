@@ -86,9 +86,6 @@ fn draw<W>(write: &mut W, editor: &Editor) -> Result<()>
 where
     W: Write,
 {
-    //handle_command!(write, SetBackgroundColor(Color::Rgb { r: 255, g: 0, b: 0 }))?;
-    //handle_command!(write, terminal::Clear(terminal::ClearType::All))?;
-
     handle_command!(write, cursor::Hide)?;
     for viewport in editor.viewports.iter() {
         draw_viewport(write, editor, viewport)?;
