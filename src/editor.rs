@@ -29,7 +29,7 @@ impl Default for Editor {
             buffered_keys: Vec::new(),
             buffers: Default::default(),
             buffer_views: BufferViewCollection::default(),
-            viewports: ViewportCollection::with_max_depth(3),
+            viewports: ViewportCollection::new(),
         }
     }
 }
@@ -68,13 +68,7 @@ impl Editor {
                     Operation::EnterMode(mode) => {
                         self.mode = mode;
                     }
-                    Operation::NextViewport => self.viewports.next_viewport(),
-                    Operation::SplitViewport => self
-                        .viewports
-                        .split_current_viewport(&mut self.buffer_views),
-                    Operation::CloseViewport => self
-                        .viewports
-                        .close_current_viewport(&mut self.buffer_views),
+                    Operation::NextViewport => self.viewports.next_viewport(&mut self.buffer_views),
                 }
 
                 if let Some(handle) = self

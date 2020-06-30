@@ -10,8 +10,6 @@ pub enum Operation {
     Waiting,
     Exit,
     NextViewport,
-    SplitViewport,
-    CloseViewport,
     EnterMode(Box<dyn Mode>),
 }
 
@@ -108,9 +106,6 @@ impl Mode for Normal {
                 }
             }
             [Key::Tab] => return Operation::NextViewport,
-            [Key::Ctrl('w')] => return Operation::Waiting,
-            [Key::Ctrl('w'), Key::Ctrl('w')] => return Operation::SplitViewport,
-            [Key::Ctrl('w'), Key::Ctrl('c')] => return Operation::CloseViewport,
             _ => return self.handle_no_buffer_events(keys),
         };
 
