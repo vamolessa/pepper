@@ -5,47 +5,40 @@ use crate::{
 
 pub struct ViewportCollection {
     viewports: [Viewport; 2],
-    viewport_count: usize,
+    is_split: bool,
 
     current_viewport_index: usize,
-    available_width: usize,
-    available_height: usize,
 }
 
 impl ViewportCollection {
     pub fn new() -> Self {
         Self {
             viewports: [Viewport::default(), Viewport::default()],
-            viewport_count: 1,
+            is_split: false,
             current_viewport_index: 0,
-            available_width: 0,
-            available_height: 0,
         }
     }
 
     pub fn set_view_size(&mut self, width: usize, height: usize) {
-        self.available_width = width;
-        self.available_height = height;
+        self.viewports[0].height = height;
+        self.viewports[1].height = height;
 
-        if self.viewport_count > 1 {
+        if self.is_split {
             let half_width = width / 2;
 
             self.viewports[0].width = half_width;
-            self.viewports[0].height = height;
 
             self.viewports[1].x = half_width;
             self.viewports[1].width = width - half_width;
-            self.viewports[1].height = height;
         } else {
             self.viewports[0].width = width;
-            self.viewports[0].height = height;
         }
     }
 
     pub fn next_viewport(&mut self, buffer_views: &mut BufferViewCollection) {
-        if self.viewport_count == 1 {
-            self.viewport_count = 2;
-            self.set_view_size(self.available_width, self.available_height);
+        if !self.is_split {
+            self.is_split = true;
+            self.set_view_size(self.viewports[0].width, self.viewports[0].height);
 
             if let Some(buffer_handle) = self.viewports[0].current_buffer_view_handle().map(|h| {
                 let buffer_view = buffer_views.get(h).clone();
@@ -56,7 +49,7 @@ impl ViewportCollection {
         }
 
         self.current_viewport_index += 1;
-        self.current_viewport_index %= self.viewport_count;
+        self.current_viewport_index %= self.viewports.len();
     }
 
     pub fn current_viewport(&self) -> &Viewport {
@@ -68,7 +61,11 @@ impl ViewportCollection {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &Viewport> {
-        self.viewports.iter()
+        if self.is_split {
+            self.viewports[..].iter()
+        } else {
+            self.viewports[..1].iter()
+        }
     }
 }
 
@@ -78,7 +75,6 @@ pub struct Viewport {
     pub scroll: usize,
 
     pub x: usize,
-    pub y: usize,
     pub width: usize,
     pub height: usize,
 }

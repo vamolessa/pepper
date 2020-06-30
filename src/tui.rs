@@ -100,7 +100,7 @@ where
 {
     handle_command!(
         write,
-        cursor::MoveTo(viewport.x as _, viewport.y as _)
+        cursor::MoveTo(viewport.x as _, 0)
     )?;
     handle_command!(
         write,
