@@ -6,17 +6,16 @@ use crate::{
 pub struct ViewportCollection {
     viewports: [Viewport; 2],
     is_split: bool,
-
-    current_viewport_index: usize,
 }
 
 impl ViewportCollection {
     pub fn new() -> Self {
-        Self {
+        let mut this = Self {
             viewports: Default::default(),
             is_split: false,
-            current_viewport_index: 0,
-        }
+        };
+        this.viewports[0].is_current = true;
+        this
     }
 
     pub fn set_view_size(&mut self, width: usize, height: usize) {
@@ -48,16 +47,25 @@ impl ViewportCollection {
             }
         }
 
-        self.current_viewport_index += 1;
-        self.current_viewport_index %= self.viewports.len();
+        for viewport in &mut self.viewports {
+            viewport.is_current = !viewport.is_current;
+        }
     }
 
     pub fn current_viewport(&self) -> &Viewport {
-        &self.viewports[self.current_viewport_index]
+        if self.viewports[0].is_current {
+            &self.viewports[0]
+        } else {
+            &self.viewports[1]
+        }
     }
 
     pub fn current_viewport_mut(&mut self) -> &mut Viewport {
-        &mut self.viewports[self.current_viewport_index]
+        if self.viewports[0].is_current {
+            &mut self.viewports[0]
+        } else {
+            &mut self.viewports[1]
+        }
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &Viewport> {
@@ -71,6 +79,7 @@ impl ViewportCollection {
 
 #[derive(Default)]
 pub struct Viewport {
+    pub is_current: bool,
     buffer_view_handles: Vec<BufferViewHandle>,
     pub scroll: usize,
 
