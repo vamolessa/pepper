@@ -84,8 +84,8 @@ impl BufferContent {
         self.lines.len()
     }
 
-    pub fn lines(&self) -> impl Iterator<Item = &BufferLine> {
-        self.lines.iter()
+    pub fn lines_from(&self, start_index: usize) -> impl Iterator<Item = &BufferLine> {
+        self.lines[start_index..].iter()
     }
 
     pub fn line(&self, index: usize) -> &BufferLine {

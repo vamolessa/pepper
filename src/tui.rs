@@ -151,23 +151,29 @@ where
         }
     };
 
-    for (y, line) in buffer
-        .content
-        .lines()
-        .skip(viewport.scroll)
-        .take(viewport.height)
-        .enumerate()
-    {
+    let mut line_index = viewport.scroll;
+    let mut drawn_line_count = 0;
+
+    'lines_loop: for line in buffer.content.lines_from(viewport.scroll) {
         let mut was_inside_selection = false;
-        let y = y + viewport.scroll;
+        let mut column_index = 0;
         let mut x = 0;
-        for c in line
-            .text
-            .chars()
-            .take(viewport.width - 2)
-            .chain(iter::once(' '))
-        {
-            let char_position = BufferPosition::line_col(y, x);
+
+        for c in line.text.chars().chain(iter::once(' ')) {
+            if x >= viewport.width {
+                was_inside_selection = false;
+                drawn_line_count += 1;
+                x = 0;
+
+                handle_command!(write, cursor::MoveToNextLine(1))?;
+                handle_command!(write, cursor::MoveToColumn((viewport.x + 1) as _))?;
+                
+                if drawn_line_count >= viewport.height {
+                    break 'lines_loop;
+                }
+            }
+
+            let char_position = BufferPosition::line_col(line_index, column_index);
             let on_cursor = buffer_view
                 .cursors
                 .iter()
@@ -214,10 +220,12 @@ where
                     for _ in 0..editor.config.tab_size {
                         handle_command!(write, Print(' '))?
                     }
+                    column_index += editor.config.tab_size;
                     x += editor.config.tab_size;
                 }
                 _ => {
                     handle_command!(write, Print(c))?;
+                    column_index += 1;
                     x += 1;
                 }
             }
@@ -243,6 +251,13 @@ where
         }
         handle_command!(write, cursor::MoveToNextLine(1))?;
         handle_command!(write, cursor::MoveToColumn((viewport.x + 1) as _))?;
+
+        line_index += 1;
+        drawn_line_count += 1;
+
+        if drawn_line_count >= viewport.height {
+            break;
+        }
     }
 
     handle_command!(
@@ -253,7 +268,7 @@ where
         write,
         SetBackgroundColor(convert_color(editor.theme.background))
     )?;
-    for _ in buffer.content.line_count()..viewport.height {
+    for _ in drawn_line_count..viewport.height {
         handle_command!(write, Print('~'))?;
         for _ in 0..(viewport.width - 1) {
             handle_command!(write, Print(' '))?;
