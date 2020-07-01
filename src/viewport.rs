@@ -3,6 +3,8 @@ use crate::{
     buffer_view::{BufferViewCollection, BufferViewHandle},
 };
 
+const VERTICAL_MARGIN: usize = 2;
+
 pub struct ViewportCollection {
     viewports: [Viewport; 2],
     is_split: bool,
@@ -19,8 +21,8 @@ impl ViewportCollection {
     }
 
     pub fn set_view_size(&mut self, width: usize, height: usize) {
-        self.viewports[0].height = height;
-        self.viewports[1].height = height;
+        self.viewports[0].height = height - VERTICAL_MARGIN;
+        self.viewports[1].height = height - VERTICAL_MARGIN;
 
         if self.is_split {
             let half_width = width / 2;
@@ -37,7 +39,10 @@ impl ViewportCollection {
     pub fn next_viewport(&mut self, buffer_views: &mut BufferViewCollection) {
         if !self.is_split {
             self.is_split = true;
-            self.set_view_size(self.viewports[0].width, self.viewports[0].height);
+            self.set_view_size(
+                self.viewports[0].width,
+                self.viewports[0].height + VERTICAL_MARGIN,
+            );
 
             if let Some(buffer_handle) = self.viewports[0].current_buffer_view_handle().map(|h| {
                 let buffer_view = buffer_views.get(h).clone();

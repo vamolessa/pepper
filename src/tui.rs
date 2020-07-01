@@ -1,5 +1,7 @@
 use std::{io::Write, iter};
 
+use futures::{future::FutureExt, StreamExt};
+
 use crossterm::{
     cursor, event, handle_command,
     style::{Color, Print, ResetColor, SetBackgroundColor, SetForegroundColor},
@@ -53,11 +55,6 @@ pub const fn convert_color(color: theme::Color) -> Color {
     }
 }
 
-fn update_viewports_size(editor: &mut Editor) {
-    let size = terminal::size().unwrap_or((0, 0));
-    editor.viewports.set_view_size(size.0 as _, size.1 as _);
-}
-
 pub fn show<W>(mut write: W, mut editor: Editor) -> Result<()>
 where
     W: Write,
@@ -68,17 +65,35 @@ where
     write.flush()?;
     terminal::enable_raw_mode()?;
 
-    update_viewports_size(&mut editor);
-    draw(&mut write, &editor)?;
+    let available_size = terminal::size()?;
+    editor
+        .viewports
+        .set_view_size(available_size.0 as _, available_size.1 as _);
 
-    while editor.on_event(convert_event(event::read()?)) {
-        draw(&mut write, &editor)?;
-    }
+    draw(&mut write, &editor)?;
+    smol::run(main_loop(&mut write, &mut editor))?;
 
     handle_command!(write, terminal::LeaveAlternateScreen)?;
     handle_command!(write, cursor::Show)?;
     terminal::disable_raw_mode().unwrap();
 
+    Ok(())
+}
+
+async fn main_loop<W>(write: &mut W, editor: &mut Editor) -> Result<()>
+where
+    W: Write,
+{
+    let mut event_stream = event::EventStream::new();
+    loop {
+        let event = event_stream.next().fuse().await;
+        if let Some(event) = event {
+            if !editor.on_event(convert_event(event?)) {
+                break;
+            }
+        }
+        draw(write, &editor)?;
+    }
     Ok(())
 }
 
@@ -93,6 +108,12 @@ where
     for viewport in editor.viewports.iter() {
         draw_viewport(write, editor, viewport)?;
     }
+    handle_command!(write, cursor::MoveToNextLine(1))?;
+    handle_command!(
+        write,
+        SetBackgroundColor(convert_color(editor.theme.background))
+    )?;
+    handle_command!(write, terminal::Clear(terminal::ClearType::CurrentLine))?;
     write.flush()?;
     Ok(())
 }
@@ -108,7 +129,7 @@ where
     )?;
     handle_command!(
         write,
-        SetBackgroundColor(convert_color(editor.theme.text_background))
+        SetBackgroundColor(convert_color(editor.theme.background))
     )?;
 
     let (buffer_view, buffer) = match viewport
@@ -170,7 +191,7 @@ where
                 if inside_selection {
                     handle_command!(
                         write,
-                        SetForegroundColor(convert_color(editor.theme.text_background))
+                        SetForegroundColor(convert_color(editor.theme.background))
                     )?;
                     handle_command!(
                         write,
@@ -183,7 +204,7 @@ where
                     )?;
                     handle_command!(
                         write,
-                        SetBackgroundColor(convert_color(editor.theme.text_background))
+                        SetBackgroundColor(convert_color(editor.theme.background))
                     )?;
                 }
             }
@@ -200,7 +221,7 @@ where
             if on_cursor {
                 handle_command!(
                     write,
-                    SetBackgroundColor(convert_color(editor.theme.text_background))
+                    SetBackgroundColor(convert_color(editor.theme.background))
                 )?;
             }
 
@@ -213,7 +234,7 @@ where
         )?;
         handle_command!(
             write,
-            SetBackgroundColor(convert_color(editor.theme.text_background))
+            SetBackgroundColor(convert_color(editor.theme.background))
         )?;
         for _ in x..viewport.width {
             handle_command!(write, Print(' '))?;
@@ -228,9 +249,9 @@ where
     )?;
     handle_command!(
         write,
-        SetBackgroundColor(convert_color(editor.theme.text_background))
+        SetBackgroundColor(convert_color(editor.theme.background))
     )?;
-    for _ in buffer.content.line_count()..(viewport.height - 2) {
+    for _ in buffer.content.line_count()..viewport.height {
         handle_command!(write, Print('~'))?;
         for _ in 0..(viewport.width - 1) {
             handle_command!(write, Print(' '))?;
@@ -242,20 +263,20 @@ where
     if viewport.is_current {
         handle_command!(
             write,
-            SetBackgroundColor(convert_color(editor.theme.toolbar_active_background))
+            SetBackgroundColor(convert_color(editor.theme.text_foreground))
         )?;
         handle_command!(
             write,
-            SetForegroundColor(convert_color(editor.theme.toolbar_active_foreground))
+            SetForegroundColor(convert_color(editor.theme.background))
         )?;
     } else {
         handle_command!(
             write,
-            SetBackgroundColor(convert_color(editor.theme.toolbar_inactive_background))
+            SetBackgroundColor(convert_color(editor.theme.background))
         )?;
         handle_command!(
             write,
-            SetForegroundColor(convert_color(editor.theme.toolbar_inactive_foreground))
+            SetForegroundColor(convert_color(editor.theme.text_foreground))
         )?;
     }
     let buffer_name = "the buffer name";
