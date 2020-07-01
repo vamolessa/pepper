@@ -161,14 +161,14 @@ where
 
         for c in line.text.chars().chain(iter::once(' ')) {
             if x >= viewport.width {
+                handle_command!(write, cursor::MoveToNextLine(1))?;
+                handle_command!(write, cursor::MoveToColumn((viewport.x + 1) as _))?;
+
                 was_inside_selection = false;
                 drawn_line_count += 1;
                 x = 0;
-
-                handle_command!(write, cursor::MoveToNextLine(1))?;
-                handle_command!(write, cursor::MoveToColumn((viewport.x + 1) as _))?;
                 
-                if drawn_line_count >= viewport.height {
+                if drawn_line_count == viewport.height {
                     break 'lines_loop;
                 }
             }
@@ -255,7 +255,7 @@ where
         line_index += 1;
         drawn_line_count += 1;
 
-        if drawn_line_count >= viewport.height {
+        if drawn_line_count == viewport.height {
             break;
         }
     }
