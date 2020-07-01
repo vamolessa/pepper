@@ -45,7 +45,7 @@ pub fn convert_event(event: event::Event) -> Event {
     }
 }
 
-pub fn convert_color(color: theme::Color) -> Color {
+pub const fn convert_color(color: theme::Color) -> Color {
     Color::Rgb {
         r: color.0,
         g: color.1,
@@ -86,6 +86,9 @@ fn draw<W>(write: &mut W, editor: &Editor) -> Result<()>
 where
     W: Write,
 {
+    //handle_command!(write, SetBackgroundColor(Color::Red))?;
+    //handle_command!(write, terminal::Clear(terminal::ClearType::All))?;
+
     handle_command!(write, cursor::Hide)?;
     for viewport in editor.viewports.iter() {
         draw_viewport(write, editor, viewport)?;
@@ -98,17 +101,14 @@ fn draw_viewport<W>(write: &mut W, editor: &Editor, viewport: &Viewport) -> Resu
 where
     W: Write,
 {
+    handle_command!(write, cursor::MoveTo(viewport.x as _, 0))?;
     handle_command!(
         write,
-        cursor::MoveTo(viewport.x as _, 0)
+        SetForegroundColor(convert_color(editor.theme.text_foreground))
     )?;
     handle_command!(
         write,
-        SetForegroundColor(convert_color(editor.theme.foreground))
-    )?;
-    handle_command!(
-        write,
-        SetBackgroundColor(convert_color(editor.theme.background))
+        SetBackgroundColor(convert_color(editor.theme.text_background))
     )?;
 
     let (buffer_view, buffer) = match viewport
@@ -170,20 +170,20 @@ where
                 if inside_selection {
                     handle_command!(
                         write,
-                        SetForegroundColor(convert_color(editor.theme.background))
+                        SetForegroundColor(convert_color(editor.theme.text_background))
                     )?;
                     handle_command!(
                         write,
-                        SetBackgroundColor(convert_color(editor.theme.foreground))
+                        SetBackgroundColor(convert_color(editor.theme.text_foreground))
                     )?;
                 } else {
                     handle_command!(
                         write,
-                        SetForegroundColor(convert_color(editor.theme.foreground))
+                        SetForegroundColor(convert_color(editor.theme.text_foreground))
                     )?;
                     handle_command!(
                         write,
-                        SetBackgroundColor(convert_color(editor.theme.background))
+                        SetBackgroundColor(convert_color(editor.theme.text_background))
                     )?;
                 }
             }
@@ -200,7 +200,7 @@ where
             if on_cursor {
                 handle_command!(
                     write,
-                    SetBackgroundColor(convert_color(editor.theme.background))
+                    SetBackgroundColor(convert_color(editor.theme.text_background))
                 )?;
             }
 
@@ -209,11 +209,11 @@ where
 
         handle_command!(
             write,
-            SetForegroundColor(convert_color(editor.theme.foreground))
+            SetForegroundColor(convert_color(editor.theme.text_foreground))
         )?;
         handle_command!(
             write,
-            SetBackgroundColor(convert_color(editor.theme.background))
+            SetBackgroundColor(convert_color(editor.theme.text_background))
         )?;
         for _ in x..viewport.width {
             handle_command!(write, Print(' '))?;
@@ -224,19 +224,44 @@ where
 
     handle_command!(
         write,
-        SetForegroundColor(convert_color(editor.theme.foreground))
+        SetForegroundColor(convert_color(editor.theme.text_foreground))
     )?;
     handle_command!(
         write,
-        SetBackgroundColor(convert_color(editor.theme.background))
+        SetBackgroundColor(convert_color(editor.theme.text_background))
     )?;
-    for _ in buffer.content.line_count()..viewport.height {
+    for _ in buffer.content.line_count()..(viewport.height - 2) {
         handle_command!(write, Print('~'))?;
         for _ in 0..(viewport.width - 1) {
             handle_command!(write, Print(' '))?;
         }
         handle_command!(write, cursor::MoveToNextLine(1))?;
         handle_command!(write, cursor::MoveToColumn((viewport.x + 1) as _))?;
+    }
+
+    if viewport.is_current {
+        handle_command!(
+            write,
+            SetBackgroundColor(convert_color(editor.theme.toolbar_active_background))
+        )?;
+        handle_command!(
+            write,
+            SetForegroundColor(convert_color(editor.theme.toolbar_active_foreground))
+        )?;
+    } else {
+        handle_command!(
+            write,
+            SetBackgroundColor(convert_color(editor.theme.toolbar_inactive_background))
+        )?;
+        handle_command!(
+            write,
+            SetForegroundColor(convert_color(editor.theme.toolbar_inactive_foreground))
+        )?;
+    }
+    let buffer_name = "the buffer name";
+    handle_command!(write, Print(buffer_name))?;
+    for _ in buffer_name.len()..(viewport.width - 1) {
+        handle_command!(write, Print(' '))?;
     }
 
     handle_command!(write, ResetColor)?;
