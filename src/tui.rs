@@ -214,8 +214,12 @@ where
                     for _ in 0..editor.config.tab_size {
                         handle_command!(write, Print(' '))?
                     }
+                    x += editor.config.tab_size;
                 }
-                _ => handle_command!(write, Print(c))?,
+                _ => {
+                    handle_command!(write, Print(c))?;
+                    x += 1;
+                }
             }
 
             if on_cursor {
@@ -224,8 +228,6 @@ where
                     SetBackgroundColor(convert_color(editor.theme.background))
                 )?;
             }
-
-            x += 1;
         }
 
         handle_command!(

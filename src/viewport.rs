@@ -36,7 +36,7 @@ impl ViewportCollection {
         }
     }
 
-    pub fn next_viewport(&mut self, buffer_views: &mut BufferViewCollection) {
+    pub fn focus_next_viewport(&mut self, buffer_views: &mut BufferViewCollection) {
         if !self.is_split {
             self.is_split = true;
             self.set_view_size(
