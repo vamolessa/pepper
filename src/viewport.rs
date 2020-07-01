@@ -13,7 +13,7 @@ pub struct ViewportCollection {
 impl ViewportCollection {
     pub fn new() -> Self {
         Self {
-            viewports: [Viewport::default(), Viewport::default()],
+            viewports: Default::default(),
             is_split: false,
             current_viewport_index: 0,
         }
