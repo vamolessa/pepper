@@ -51,7 +51,7 @@ pub struct Theme {
     pub cursor: Color,
     pub background: Color,
 
-    pub text_foreground: Color,
+    pub text_normal: Color,
 
     pub toolbar_background: Color,
     pub toolbar_foreground: Color,
@@ -63,7 +63,7 @@ impl Default for Theme {
             cursor: PICO8_COLORS[8],
 
             background: PICO8_COLORS[0],
-            text_foreground: PICO8_COLORS[15],
+            text_normal: PICO8_COLORS[15],
 
             toolbar_background: PICO8_COLORS[8],
             toolbar_foreground: PICO8_COLORS[6],

@@ -3,7 +3,7 @@ use crate::{
     buffer_view::{BufferView, BufferViewCollection},
     config::Config,
     event::{Event, Key},
-    mode::{initial_mode, Mode, Operation},
+    mode::{Mode, Operation},
     theme::Theme,
     viewport::ViewportCollection,
 };
@@ -12,7 +12,7 @@ pub struct Editor {
     pub config: Config,
     pub theme: Theme,
 
-    pub mode: Box<dyn Mode>,
+    pub mode: Mode,
     pub buffered_keys: Vec<Key>,
 
     pub buffers: BufferCollection,
@@ -20,21 +20,19 @@ pub struct Editor {
     pub viewports: ViewportCollection,
 }
 
-impl Default for Editor {
-    fn default() -> Self {
+impl Editor {
+    pub fn new() -> Self {
         Self {
             config: Default::default(),
             theme: Theme::default(),
-            mode: initial_mode(),
+            mode: Mode::default(),
             buffered_keys: Vec::new(),
             buffers: Default::default(),
             buffer_views: BufferViewCollection::default(),
             viewports: ViewportCollection::new(),
         }
     }
-}
 
-impl Editor {
     pub fn new_buffer_from_content(&mut self, content: BufferContent) {
         let buffer_handle = self.buffers.add(Buffer::with_content(content));
         let buffer_view_index = self

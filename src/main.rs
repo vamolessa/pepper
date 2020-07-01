@@ -20,7 +20,7 @@ fn main() {
     let text = include_str!("main.rs");
     let content = buffer::BufferContent::from_str(text);
 
-    let mut editor = editor::Editor::default();
+    let mut editor = editor::Editor::new();
     editor.new_buffer_from_content(content);
 
     tui::show(stdout, editor).unwrap();

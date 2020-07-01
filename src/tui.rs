@@ -12,6 +12,7 @@ use crate::{
     buffer_position::BufferPosition,
     editor::Editor,
     event::{Event, Key},
+    mode::Mode,
     theme,
     viewport::Viewport,
 };
@@ -108,12 +109,10 @@ where
     for viewport in editor.viewports.iter() {
         draw_viewport(write, editor, viewport)?;
     }
+
     handle_command!(write, cursor::MoveToNextLine(1))?;
-    handle_command!(
-        write,
-        SetBackgroundColor(convert_color(editor.theme.background))
-    )?;
-    handle_command!(write, terminal::Clear(terminal::ClearType::CurrentLine))?;
+    draw_statusbar(write, editor)?;
+
     write.flush()?;
     Ok(())
 }
@@ -125,7 +124,7 @@ where
     handle_command!(write, cursor::MoveTo(viewport.x as _, 0))?;
     handle_command!(
         write,
-        SetForegroundColor(convert_color(editor.theme.text_foreground))
+        SetForegroundColor(convert_color(editor.theme.text_normal))
     )?;
     handle_command!(
         write,
@@ -201,12 +200,12 @@ where
                     )?;
                     handle_command!(
                         write,
-                        SetBackgroundColor(convert_color(editor.theme.text_foreground))
+                        SetBackgroundColor(convert_color(editor.theme.text_normal))
                     )?;
                 } else {
                     handle_command!(
                         write,
-                        SetForegroundColor(convert_color(editor.theme.text_foreground))
+                        SetForegroundColor(convert_color(editor.theme.text_normal))
                     )?;
                     handle_command!(
                         write,
@@ -240,7 +239,7 @@ where
 
         handle_command!(
             write,
-            SetForegroundColor(convert_color(editor.theme.text_foreground))
+            SetForegroundColor(convert_color(editor.theme.text_normal))
         )?;
         handle_command!(
             write,
@@ -262,7 +261,7 @@ where
 
     handle_command!(
         write,
-        SetForegroundColor(convert_color(editor.theme.text_foreground))
+        SetForegroundColor(convert_color(editor.theme.text_normal))
     )?;
     handle_command!(
         write,
@@ -280,7 +279,7 @@ where
     if viewport.is_current {
         handle_command!(
             write,
-            SetBackgroundColor(convert_color(editor.theme.text_foreground))
+            SetBackgroundColor(convert_color(editor.theme.text_normal))
         )?;
         handle_command!(
             write,
@@ -293,7 +292,7 @@ where
         )?;
         handle_command!(
             write,
-            SetForegroundColor(convert_color(editor.theme.text_foreground))
+            SetForegroundColor(convert_color(editor.theme.text_normal))
         )?;
     }
     let buffer_name = "the buffer name";
@@ -303,5 +302,30 @@ where
     }
 
     handle_command!(write, ResetColor)?;
+    Ok(())
+}
+
+fn draw_statusbar<W>(write: &mut W, editor: &Editor) -> Result<()>
+where
+    W: Write,
+{
+    handle_command!(
+        write,
+        SetBackgroundColor(convert_color(editor.theme.background))
+    )?;
+    handle_command!(
+        write,
+        SetForegroundColor(convert_color(editor.theme.text_normal))
+    )?;
+
+    let mode_name = match editor.mode {
+        Mode::Select => "-- SELECT --",
+        Mode::Insert => "-- INSERT --",
+        _ => "",
+    };
+
+    handle_command!(write, Print(mode_name))?;
+    handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
+
     Ok(())
 }
