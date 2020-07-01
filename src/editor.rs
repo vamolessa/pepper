@@ -68,7 +68,9 @@ impl Editor {
                     Operation::EnterMode(mode) => {
                         self.mode = mode;
                     }
-                    Operation::NextViewport => self.viewports.focus_next_viewport(&mut self.buffer_views),
+                    Operation::NextViewport => {
+                        self.viewports.focus_next_viewport(&mut self.buffer_views)
+                    }
                 }
 
                 if let Some(handle) = self

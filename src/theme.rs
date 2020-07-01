@@ -27,24 +27,24 @@ pub const PICO8_COLORS: &[Color] = &[
     color_hex(0xff77a8), // 14 pink
     color_hex(0xffccaa), // 15 peach
 
-    /*
-    color_hex(0x291814), //  0 cocoa
-    color_hex(0x111d35), //  1 midnight
-    color_hex(0x422136), //  2 port
-    color_hex(0x125359), //  3 sea
-    color_hex(0x742f29), //  4 leather
-    color_hex(0x49333b), //  5 charcoal
-    color_hex(0xa28879), //  6 olive
-    color_hex(0xf3ef7d), //  7 sand
-    color_hex(0xbe1250), //  8 crimson
-    color_hex(0xff6c24), //  9 amber
-    color_hex(0xa8e72e), // 10 tea
-    color_hex(0x00b543), // 11 jade
-    color_hex(0x065ab5), // 12 denim
-    color_hex(0x754665), // 13 aubergine
-    color_hex(0xff6e59), // 14 salmon
-    color_hex(0xff9d81), // 15 coral
-    */
+                         /*
+                         color_hex(0x291814), //  0 cocoa
+                         color_hex(0x111d35), //  1 midnight
+                         color_hex(0x422136), //  2 port
+                         color_hex(0x125359), //  3 sea
+                         color_hex(0x742f29), //  4 leather
+                         color_hex(0x49333b), //  5 charcoal
+                         color_hex(0xa28879), //  6 olive
+                         color_hex(0xf3ef7d), //  7 sand
+                         color_hex(0xbe1250), //  8 crimson
+                         color_hex(0xff6c24), //  9 amber
+                         color_hex(0xa8e72e), // 10 tea
+                         color_hex(0x00b543), // 11 jade
+                         color_hex(0x065ab5), // 12 denim
+                         color_hex(0x754665), // 13 aubergine
+                         color_hex(0xff6e59), // 14 salmon
+                         color_hex(0xff9d81), // 15 coral
+                         */
 ];
 
 pub struct Theme {

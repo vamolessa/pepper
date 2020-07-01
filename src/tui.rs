@@ -167,7 +167,7 @@ where
                 was_inside_selection = false;
                 drawn_line_count += 1;
                 x = 0;
-                
+
                 if drawn_line_count == viewport.height {
                     break 'lines_loop;
                 }
