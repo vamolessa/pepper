@@ -20,6 +20,8 @@ Experimental code editor
 	- ~~remove unused buffer views when closing viewport~~
 - ~~long lines~~
 - search
+	- ~~highlight search matches~~
+	- navigate between search matches
 - operations
 	- ~~delete~~
 	- copy
