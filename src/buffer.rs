@@ -104,14 +104,17 @@ impl BufferContent {
         Ok(())
     }
 
-    fn push_search_ranges(&self, text: &str, ranges: &mut Vec<BufferRange>) {
+    fn find_search_ranges(&self, text: &str, ranges: &mut Vec<BufferRange>) {
         let char_count = text.chars().count();
+        if char_count == 0 {
+            return;
+        }
 
         for (i, line) in self.lines.iter().enumerate() {
             for (j, _) in line.text.match_indices(text) {
                 ranges.push(BufferRange::between(
                     BufferPosition::line_col(i, j),
-                    BufferPosition::line_col(i, j + char_count),
+                    BufferPosition::line_col(i, j + char_count - 1),
                 ));
             }
         }
@@ -288,10 +291,10 @@ impl Buffer {
         self.content.apply_edits(self.history.redo_edits())
     }
 
-    pub fn search(&mut self, text: &str) {
+    pub fn set_search(&mut self, text: &str) {
         self.search_ranges.clear();
         self.content
-            .push_search_ranges(text, &mut self.search_ranges);
+            .find_search_ranges(text, &mut self.search_ranges);
     }
 
     pub fn search_ranges(&self) -> &[BufferRange] {

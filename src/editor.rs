@@ -3,7 +3,7 @@ use crate::{
     buffer_view::{BufferView, BufferViewCollection},
     config::Config,
     event::{Event, Key},
-    mode::{Mode, Operation},
+    mode::{Mode, ModeContext, Operation},
     theme::Theme,
     viewport::ViewportCollection,
 };
@@ -14,6 +14,7 @@ pub struct Editor {
 
     pub mode: Mode,
     pub buffered_keys: Vec<Key>,
+    pub input: String,
 
     pub buffers: BufferCollection,
     pub buffer_views: BufferViewCollection,
@@ -27,6 +28,7 @@ impl Editor {
             theme: Theme::default(),
             mode: Mode::default(),
             buffered_keys: Vec::new(),
+            input: String::new(),
             buffers: Default::default(),
             buffer_views: BufferViewCollection::default(),
             viewports: ViewportCollection::new(),
@@ -52,14 +54,16 @@ impl Editor {
             Event::Key(key) => {
                 self.buffered_keys.push(key);
 
-                match self.mode.on_event(
-                    &mut self.buffers,
-                    &mut self.buffer_views,
-                    self.viewports
+                match self.mode.on_event(ModeContext {
+                    buffers: &mut self.buffers,
+                    buffer_views: &mut self.buffer_views,
+                    current_buffer_view_handle: self
+                        .viewports
                         .current_viewport()
                         .current_buffer_view_handle(),
-                    &self.buffered_keys[..],
-                ) {
+                    keys: &self.buffered_keys[..],
+                    input: &mut self.input,
+                }) {
                     Operation::None => (),
                     Operation::Waiting => return true,
                     Operation::Exit => return false,

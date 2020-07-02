@@ -56,8 +56,7 @@ pub struct Theme {
 
     pub text_normal: Color,
 
-    pub toolbar_background: Color,
-    pub toolbar_foreground: Color,
+    pub highlight: Color,
 }
 
 impl Default for Theme {
@@ -71,8 +70,7 @@ impl Default for Theme {
 
             text_normal: PICO8_COLORS[15],
 
-            toolbar_background: PICO8_COLORS[8],
-            toolbar_foreground: PICO8_COLORS[6],
+            highlight: PICO8_COLORS[3],
         }
     }
 }

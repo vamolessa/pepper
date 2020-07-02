@@ -124,12 +124,12 @@ where
     enum DrawState {
         Normal,
         Selection,
-        //Highlight,
+        Highlight,
         Cursor,
     }
 
     let cursor_color = match editor.mode {
-        Mode::Normal => convert_color(editor.theme.cursor_normal),
+        Mode::Normal | Mode::Search => convert_color(editor.theme.cursor_normal),
         Mode::Select => convert_color(editor.theme.cursor_select),
         Mode::Insert => convert_color(editor.theme.cursor_insert),
     };
@@ -137,11 +137,11 @@ where
     handle_command!(write, cursor::MoveTo(viewport.x as _, 0))?;
     handle_command!(
         write,
-        SetForegroundColor(convert_color(editor.theme.text_normal))
+        SetBackgroundColor(convert_color(editor.theme.background))
     )?;
     handle_command!(
         write,
-        SetBackgroundColor(convert_color(editor.theme.background))
+        SetForegroundColor(convert_color(editor.theme.text_normal))
     )?;
 
     let (buffer_view, buffer) = match viewport
@@ -194,6 +194,10 @@ where
                 if !matches!(draw_state, DrawState::Cursor) {
                     draw_state = DrawState::Cursor;
                     handle_command!(write, SetBackgroundColor(cursor_color))?;
+                    handle_command!(
+                        write,
+                        SetForegroundColor(convert_color(editor.theme.text_normal))
+                    )?;
                 }
             } else if buffer_view
                 .cursors
@@ -204,11 +208,27 @@ where
                     draw_state = DrawState::Selection;
                     handle_command!(
                         write,
-                        SetForegroundColor(convert_color(editor.theme.background))
+                        SetBackgroundColor(convert_color(editor.theme.text_normal))
                     )?;
                     handle_command!(
                         write,
-                        SetBackgroundColor(convert_color(editor.theme.text_normal))
+                        SetForegroundColor(convert_color(editor.theme.background))
+                    )?;
+                }
+            } else if buffer
+                .search_ranges()
+                .iter()
+                .any(|r| r.contains(char_position))
+            {
+                if !matches!(draw_state, DrawState::Highlight) {
+                    draw_state = DrawState::Highlight;
+                    handle_command!(
+                        write,
+                        SetBackgroundColor(convert_color(editor.theme.highlight))
+                    )?;
+                    handle_command!(
+                        write,
+                        SetForegroundColor(convert_color(editor.theme.text_normal))
                     )?;
                 }
             } else {
@@ -216,11 +236,11 @@ where
                     draw_state = DrawState::Normal;
                     handle_command!(
                         write,
-                        SetForegroundColor(convert_color(editor.theme.text_normal))
+                        SetBackgroundColor(convert_color(editor.theme.background))
                     )?;
                     handle_command!(
                         write,
-                        SetBackgroundColor(convert_color(editor.theme.background))
+                        SetForegroundColor(convert_color(editor.theme.text_normal))
                     )?;
                 }
             }
@@ -243,11 +263,11 @@ where
 
         handle_command!(
             write,
-            SetForegroundColor(convert_color(editor.theme.text_normal))
+            SetBackgroundColor(convert_color(editor.theme.background))
         )?;
         handle_command!(
             write,
-            SetBackgroundColor(convert_color(editor.theme.background))
+            SetForegroundColor(convert_color(editor.theme.text_normal))
         )?;
         for _ in x..viewport.width {
             handle_command!(write, Print(' '))?;
@@ -265,11 +285,11 @@ where
 
     handle_command!(
         write,
-        SetForegroundColor(convert_color(editor.theme.text_normal))
+        SetBackgroundColor(convert_color(editor.theme.background))
     )?;
     handle_command!(
         write,
-        SetBackgroundColor(convert_color(editor.theme.background))
+        SetForegroundColor(convert_color(editor.theme.text_normal))
     )?;
     for _ in drawn_line_count..viewport.height {
         handle_command!(write, Print('~'))?;
@@ -322,13 +342,16 @@ where
         SetForegroundColor(convert_color(editor.theme.text_normal))
     )?;
 
-    let mode_name = match editor.mode {
-        Mode::Select => "-- SELECT --",
-        Mode::Insert => "-- INSERT --",
-        _ => "",
+    match editor.mode {
+        Mode::Select => handle_command!(write, Print("-- SELECT --"))?,
+        Mode::Insert => handle_command!(write, Print("-- INSERT --"))?,
+        Mode::Search => {
+            handle_command!(write, Print("search: "))?;
+            handle_command!(write, Print(&editor.input[..]))?;
+        }
+        _ => (),
     };
 
-    handle_command!(write, Print(mode_name))?;
     handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
 
     Ok(())
