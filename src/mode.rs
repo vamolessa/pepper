@@ -105,6 +105,7 @@ fn on_event_normal(
         }
         [Key::Char('i')] => return Operation::EnterMode(Mode::Insert),
         [Key::Char('v')] => return Operation::EnterMode(Mode::Select),
+        [Key::Char('s')] => return Operation::None,
         [Key::Char('u')] => buffer_views.undo(buffers, handle),
         [Key::Char('U')] => buffer_views.redo(buffers, handle),
         [Key::Ctrl('s')] => {
