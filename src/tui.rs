@@ -121,6 +121,19 @@ fn draw_viewport<W>(write: &mut W, editor: &Editor, viewport: &Viewport) -> Resu
 where
     W: Write,
 {
+    enum DrawState {
+        Normal,
+        Selection,
+        //Highlight,
+        Cursor,
+    }
+
+    let cursor_color = match editor.mode {
+        Mode::Normal => convert_color(editor.theme.cursor_normal),
+        Mode::Select => convert_color(editor.theme.cursor_select),
+        Mode::Insert => convert_color(editor.theme.cursor_insert),
+    };
+
     handle_command!(write, cursor::MoveTo(viewport.x as _, 0))?;
     handle_command!(
         write,
@@ -154,7 +167,7 @@ where
     let mut drawn_line_count = 0;
 
     'lines_loop: for line in buffer.content.lines_from(viewport.scroll) {
-        let mut was_inside_selection = false;
+        let mut draw_state = DrawState::Normal;
         let mut column_index = 0;
         let mut x = 0;
 
@@ -163,7 +176,7 @@ where
                 handle_command!(write, cursor::MoveToNextLine(1))?;
                 handle_command!(write, cursor::MoveToColumn((viewport.x + 1) as _))?;
 
-                was_inside_selection = false;
+                draw_state = DrawState::Normal;
                 drawn_line_count += 1;
                 x = 0;
 
@@ -173,27 +186,22 @@ where
             }
 
             let char_position = BufferPosition::line_col(line_index, column_index);
-            let on_cursor = buffer_view
+            if buffer_view
                 .cursors
                 .iter()
-                .any(|c| char_position == c.position);
-            let inside_selection = if on_cursor {
-                false
-            } else {
-                buffer_view
-                    .cursors
-                    .iter()
-                    .any(|c| c.range().contains(char_position))
-            };
-
-            if on_cursor {
-                handle_command!(
-                    write,
-                    SetBackgroundColor(convert_color(editor.theme.cursor))
-                )?;
-            } else if was_inside_selection != inside_selection {
-                was_inside_selection = inside_selection;
-                if inside_selection {
+                .any(|c| char_position == c.position)
+            {
+                if !matches!(draw_state, DrawState::Cursor) {
+                    draw_state = DrawState::Cursor;
+                    handle_command!(write, SetBackgroundColor(cursor_color))?;
+                }
+            } else if buffer_view
+                .cursors
+                .iter()
+                .any(|c| c.range().contains(char_position))
+            {
+                if !matches!(draw_state, DrawState::Selection) {
+                    draw_state = DrawState::Selection;
                     handle_command!(
                         write,
                         SetForegroundColor(convert_color(editor.theme.background))
@@ -202,7 +210,10 @@ where
                         write,
                         SetBackgroundColor(convert_color(editor.theme.text_normal))
                     )?;
-                } else {
+                }
+            } else {
+                if !matches!(draw_state, DrawState::Normal) {
+                    draw_state = DrawState::Normal;
                     handle_command!(
                         write,
                         SetForegroundColor(convert_color(editor.theme.text_normal))
@@ -227,13 +238,6 @@ where
                     column_index += 1;
                     x += 1;
                 }
-            }
-
-            if on_cursor {
-                handle_command!(
-                    write,
-                    SetBackgroundColor(convert_color(editor.theme.background))
-                )?;
             }
         }
 

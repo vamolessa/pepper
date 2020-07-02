@@ -48,8 +48,11 @@ pub const PICO8_COLORS: &[Color] = &[
 ];
 
 pub struct Theme {
-    pub cursor: Color,
     pub background: Color,
+
+    pub cursor_normal: Color,
+    pub cursor_select: Color,
+    pub cursor_insert: Color,
 
     pub text_normal: Color,
 
@@ -60,9 +63,12 @@ pub struct Theme {
 impl Default for Theme {
     fn default() -> Self {
         Self {
-            cursor: PICO8_COLORS[8],
-
             background: PICO8_COLORS[0],
+
+            cursor_normal: PICO8_COLORS[8],
+            cursor_select: PICO8_COLORS[12],
+            cursor_insert: PICO8_COLORS[11],
+
             text_normal: PICO8_COLORS[15],
 
             toolbar_background: PICO8_COLORS[8],
