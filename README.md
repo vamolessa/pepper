@@ -26,14 +26,14 @@ Experimental code editor
 	- ~~delete~~
 	- copy
 	- paste
+- file operations
+	- open
+	- save
+	- create
 - movements
 	- skip word
 	- home/end
 	- find char
-- file operations
-	- edit
-	- save
-	- create
 - syntax highlighting
 - status bar
 	- buffer name
