@@ -7,10 +7,9 @@ use crate::{
 };
 
 pub fn on_enter(_ctx: ModeContext) {}
-pub fn on_leave(_ctx: ModeContext) {}
 
 pub fn on_event(ctx: ModeContext) -> Operation {
-    let handle = if let Some(handle) = ctx.current_buffer_view_handle {
+    let handle = if let Some(handle) = ctx.current_buffer_view_handle() {
         handle
     } else {
         return Operation::EnterMode(Mode::Normal);

@@ -13,6 +13,7 @@ pub struct Editor {
     pub theme: Theme,
 
     pub mode: Mode,
+    previous_mode: Mode,
     pub buffered_keys: Vec<Key>,
     pub input: String,
 
@@ -27,6 +28,7 @@ impl Editor {
             config: Default::default(),
             theme: Theme::default(),
             mode: Mode::default(),
+            previous_mode: Mode::default(),
             buffered_keys: Vec::new(),
             input: String::new(),
             buffers: Default::default(),
@@ -54,41 +56,17 @@ impl Editor {
             Event::Key(key) => {
                 self.buffered_keys.push(key);
 
-                match self.mode.on_event(ModeContext {
-                    buffers: &mut self.buffers,
-                    buffer_views: &mut self.buffer_views,
-                    current_buffer_view_handle: self
-                        .viewports
-                        .current_viewport()
-                        .current_buffer_view_handle(),
-                    keys: &self.buffered_keys[..],
-                    input: &mut self.input,
-                }) {
+                let (mode, ctx) = self.get_mode_and_context();
+                match mode.on_event(ctx) {
                     Operation::None => (),
                     Operation::Waiting => return true,
                     Operation::Exit => return false,
-                    Operation::EnterMode(mode) => {
-                        self.mode.on_leave(ModeContext {
-                            buffers: &mut self.buffers,
-                            buffer_views: &mut self.buffer_views,
-                            current_buffer_view_handle: self
-                                .viewports
-                                .current_viewport()
-                                .current_buffer_view_handle(),
-                            keys: &self.buffered_keys[..],
-                            input: &mut self.input,
-                        });
-                        self.mode = mode;
-                        self.mode.on_enter(ModeContext {
-                            buffers: &mut self.buffers,
-                            buffer_views: &mut self.buffer_views,
-                            current_buffer_view_handle: self
-                                .viewports
-                                .current_viewport()
-                                .current_buffer_view_handle(),
-                            keys: &self.buffered_keys[..],
-                            input: &mut self.input,
-                        });
+                    Operation::EnterMode(next_mode) => {
+                        self.previous_mode = self.mode;
+                        self.mode = next_mode;
+
+                        let (mode, ctx) = self.get_mode_and_context();
+                        mode.on_enter(ctx);
                     }
                     Operation::NextViewport => {
                         self.viewports.focus_next_viewport(&mut self.buffer_views)
@@ -111,5 +89,19 @@ impl Editor {
         }
 
         true
+    }
+
+    fn get_mode_and_context<'a>(&'a mut self) -> (&'a mut Mode, ModeContext<'a>) {
+        (
+            &mut self.mode,
+            ModeContext {
+                previous_mode: self.previous_mode,
+                buffers: &mut self.buffers,
+                buffer_views: &mut self.buffer_views,
+                viewports: &self.viewports,
+                keys: &self.buffered_keys[..],
+                input: &mut self.input,
+            },
+        )
     }
 }

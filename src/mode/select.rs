@@ -6,10 +6,9 @@ use crate::{
 };
 
 pub fn on_enter(_ctx: ModeContext) {}
-pub fn on_leave(_ctx: ModeContext) {}
 
 pub fn on_event(ctx: ModeContext) -> Operation {
-    let handle = if let Some(handle) = ctx.current_buffer_view_handle {
+    let handle = if let Some(handle) = ctx.current_buffer_view_handle() {
         handle
     } else {
         return Operation::EnterMode(Mode::Normal);
@@ -54,6 +53,7 @@ pub fn on_event(ctx: ModeContext) -> Operation {
             .get_mut(handle)
             .cursors
             .swap_positions_and_anchors(),
+        [Key::Char('s')] => return Operation::EnterMode(Mode::Search),
         [Key::Char('d')] => {
             ctx.buffer_views.remove_in_selection(ctx.buffers, handle);
             ctx.buffer_views.get_mut(handle).commit_edits(ctx.buffers);

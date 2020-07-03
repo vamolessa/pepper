@@ -16,10 +16,9 @@ fn on_event_no_buffer(ctx: ModeContext) -> Operation {
 }
 
 pub fn on_enter(_ctx: ModeContext) {}
-pub fn on_leave(_ctx: ModeContext) {}
 
 pub fn on_event(ctx: ModeContext) -> Operation {
-    let handle = if let Some(handle) = ctx.current_buffer_view_handle {
+    let handle = if let Some(handle) = ctx.current_buffer_view_handle() {
         handle
     } else {
         return on_event_no_buffer(ctx);
@@ -55,29 +54,23 @@ pub fn on_event(ctx: ModeContext) -> Operation {
             );
         }
         [Key::Char('J')] => {
-            let buffer_handle = ctx.buffer_views.get(handle).buffer_handle;
+            let buffer_view = ctx.buffer_views.get_mut(handle);
+            let buffer_handle = buffer_view.buffer_handle;
             let buffer_line_count = ctx
                 .buffers
                 .get(buffer_handle)
                 .map(|b| b.content.line_count())
                 .unwrap_or(0);
-            let mut cursor = *ctx.buffer_views.get(handle).cursors.main_cursor();
+            let mut cursor = *buffer_view.cursors.main_cursor();
             cursor.position.column_index = 0;
             cursor.position.line_index += 1;
             cursor.position.line_index = cursor.position.line_index.min(buffer_line_count - 1);
             cursor.anchor = cursor.position;
-            ctx.buffer_views.get_mut(handle).cursors.add_cursor(cursor);
+            buffer_view.cursors.add_cursor(cursor);
         }
         [Key::Char('i')] => return Operation::EnterMode(Mode::Insert),
         [Key::Char('v')] => return Operation::EnterMode(Mode::Select),
-        [Key::Char('s')] => {
-            ctx.input.clear();
-            let buffer_handle = ctx.buffer_views.get(handle).buffer_handle;
-            if let Some(buffer) = ctx.buffers.get_mut(buffer_handle) {
-                buffer.set_search(&ctx.input[..]);
-            }
-            return Operation::EnterMode(Mode::Search);
-        }
+        [Key::Char('s')] => return Operation::EnterMode(Mode::Search),
         [Key::Char('n')] => {
             ctx.buffer_views
                 .get_mut(handle)
@@ -91,7 +84,8 @@ pub fn on_event(ctx: ModeContext) -> Operation {
         [Key::Char('u')] => ctx.buffer_views.undo(ctx.buffers, handle),
         [Key::Char('U')] => ctx.buffer_views.redo(ctx.buffers, handle),
         [Key::Ctrl('s')] => {
-            if let Some(buffer) = ctx.buffers.get(ctx.buffer_views.get(handle).buffer_handle) {
+            let buffer_handle = ctx.buffer_views.get(handle).buffer_handle;
+            if let Some(buffer) = ctx.buffers.get(buffer_handle) {
                 let mut file = std::fs::File::create("buffer_content.txt").unwrap();
                 buffer.content.write(&mut file).unwrap();
             }

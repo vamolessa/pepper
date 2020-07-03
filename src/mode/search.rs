@@ -1,10 +1,12 @@
 use crate::{
     event::Key,
-    mode::{Mode, ModeContext, Operation},
+    mode::{ModeContext, Operation},
 };
 
-pub fn on_enter(_ctx: ModeContext) {}
-pub fn on_leave(_ctx: ModeContext) {}
+pub fn on_enter(ctx: ModeContext) {
+    ctx.input.clear();
+    update_search(ctx);
+}
 
 pub fn on_event(ctx: ModeContext) -> Operation {
     let mut operation = Operation::None;
@@ -12,10 +14,10 @@ pub fn on_event(ctx: ModeContext) -> Operation {
     match ctx.keys {
         [Key::Esc] | [Key::Ctrl('c')] => {
             ctx.input.clear();
-            operation = Operation::EnterMode(Mode::Normal);
+            operation = Operation::EnterMode(ctx.previous_mode);
         }
         [Key::Ctrl('m')] => {
-            operation = Operation::EnterMode(Mode::Normal);
+            operation = Operation::EnterMode(ctx.previous_mode);
         }
         [Key::Ctrl('w')] => {
             ctx.input.clear();
@@ -31,12 +33,17 @@ pub fn on_event(ctx: ModeContext) -> Operation {
         _ => (),
     }
 
-    if let Some(handle) = ctx.current_buffer_view_handle {
-        let buffer_view = ctx.buffer_views.get(handle);
-        if let Some(buffer) = ctx.buffers.get_mut(buffer_view.buffer_handle) {
-            buffer.set_search(&ctx.input[..]);
-        }
-    }
-
+    update_search(ctx);
     operation
+}
+
+pub fn update_search(ctx: ModeContext) {
+    for viewport in ctx.viewports.iter() {
+        if let Some(handle) = viewport.current_buffer_view_handle() {
+            let buffer_handle = ctx.buffer_views.get(handle).buffer_handle;
+            if let Some(buffer) = ctx.buffers.get_mut(buffer_handle) {
+                buffer.set_search(&ctx.input[..]);
+            }
+        };
+    }
 }
