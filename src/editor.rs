@@ -68,7 +68,27 @@ impl Editor {
                     Operation::Waiting => return true,
                     Operation::Exit => return false,
                     Operation::EnterMode(mode) => {
+                        self.mode.on_leave(ModeContext {
+                            buffers: &mut self.buffers,
+                            buffer_views: &mut self.buffer_views,
+                            current_buffer_view_handle: self
+                                .viewports
+                                .current_viewport()
+                                .current_buffer_view_handle(),
+                            keys: &self.buffered_keys[..],
+                            input: &mut self.input,
+                        });
                         self.mode = mode;
+                        self.mode.on_enter(ModeContext {
+                            buffers: &mut self.buffers,
+                            buffer_views: &mut self.buffer_views,
+                            current_buffer_view_handle: self
+                                .viewports
+                                .current_viewport()
+                                .current_buffer_view_handle(),
+                            keys: &self.buffered_keys[..],
+                            input: &mut self.input,
+                        });
                     }
                     Operation::NextViewport => {
                         self.viewports.focus_next_viewport(&mut self.buffer_views)

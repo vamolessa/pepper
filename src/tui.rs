@@ -67,9 +67,7 @@ where
     terminal::enable_raw_mode()?;
 
     let available_size = terminal::size()?;
-    editor
-        .viewports
-        .set_view_size(available_size.0 as _, available_size.1 as _);
+    editor.on_event(Event::Resize(available_size.0 as _, available_size.1 as _));
 
     draw(&mut write, &editor)?;
     smol::run(main_loop(&mut write, &mut editor))?;

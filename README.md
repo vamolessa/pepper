@@ -19,7 +19,7 @@ Experimental code editor
 	- ~~split and copy current view~~
 	- ~~remove unused buffer views when closing viewport~~
 - ~~long lines~~
-- search
+- ~~search~~
 	- ~~highlight search matches~~
 	- ~~navigate between search matches~~
 - operations
