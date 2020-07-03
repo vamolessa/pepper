@@ -107,7 +107,7 @@ impl BufferViewCollection {
         };
 
         self.temp_ranges.clear();
-        for cursor in current_view.cursors.iter().rev() {
+        for cursor in current_view.cursors[..].iter().rev() {
             let range = buffer.insert_text(cursor.position, text);
             self.temp_ranges.push(range);
         }
@@ -139,7 +139,7 @@ impl BufferViewCollection {
         };
 
         self.temp_ranges.clear();
-        for cursor in current_view.cursors.iter().rev() {
+        for cursor in current_view.cursors[..].iter().rev() {
             let range = cursor.range();
             buffer.remove_range(range);
             self.temp_ranges.push(range);

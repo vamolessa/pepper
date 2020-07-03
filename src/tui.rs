@@ -186,8 +186,7 @@ where
             }
 
             let char_position = BufferPosition::line_col(line_index, column_index);
-            if buffer_view
-                .cursors
+            if buffer_view.cursors[..]
                 .iter()
                 .any(|c| char_position == c.position)
             {
@@ -199,8 +198,7 @@ where
                         SetForegroundColor(convert_color(editor.theme.text_normal))
                     )?;
                 }
-            } else if buffer_view
-                .cursors
+            } else if buffer_view.cursors[..]
                 .iter()
                 .any(|c| c.range().contains(char_position))
             {

@@ -1,3 +1,5 @@
+use std::{ops::Index, slice::SliceIndex};
+
 use crate::buffer_position::{BufferPosition, BufferRange};
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -44,10 +46,6 @@ impl CursorCollection {
         self.main_cursor_index = self.cursors.len();
         self.cursors.push(cursor);
         self.sort_and_merge();
-    }
-
-    pub fn iter(&self) -> impl DoubleEndedIterator<Item = &Cursor> {
-        self.cursors.iter()
     }
 
     pub fn collapse_anchors(&mut self) {
@@ -109,6 +107,17 @@ impl CursorCollection {
     }
 }
 
+impl<Idx> Index<Idx> for CursorCollection
+where
+    Idx: SliceIndex<[Cursor]>,
+{
+    type Output = Idx::Output;
+
+    fn index(&self, index: Idx) -> &Self::Output {
+        &self.cursors[index]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -116,9 +125,9 @@ mod tests {
     #[test]
     fn merge_cursor() {
         let mut cursors = CursorCollection::new();
-        assert_eq!(1, cursors.iter().count());
+        assert_eq!(1, cursors[..].len());
         cursors.add_cursor(*cursors.main_cursor());
-        let mut cursors = cursors.iter();
+        let mut cursors = cursors[..].iter();
         let cursor = cursors.next().unwrap();
         assert_eq!(BufferPosition::line_col(0, 0), cursor.position);
         assert_eq!(BufferPosition::line_col(0, 0), cursor.anchor);
@@ -129,12 +138,12 @@ mod tests {
             cs[0].anchor = BufferPosition::line_col(2, 3);
             cs[0].position = cs[0].anchor;
         });
-        assert_eq!(1, cursors.iter().count());
+        assert_eq!(1, cursors[..].len());
         cursors.add_cursor(Cursor {
             anchor: BufferPosition::line_col(2, 2),
             position: BufferPosition::line_col(2, 4),
         });
-        let mut cursors = cursors.iter();
+        let mut cursors = cursors[..].iter();
         let cursor = cursors.next().unwrap();
         assert_eq!(BufferPosition::line_col(2, 2), cursor.anchor);
         assert_eq!(BufferPosition::line_col(2, 4), cursor.position);
@@ -149,7 +158,7 @@ mod tests {
             anchor: BufferPosition::line_col(2, 2),
             position: BufferPosition::line_col(2, 2),
         });
-        let mut cursors = cursors.iter();
+        let mut cursors = cursors[..].iter();
         let cursor = cursors.next().unwrap();
         assert_eq!(BufferPosition::line_col(2, 2), cursor.anchor);
         assert_eq!(BufferPosition::line_col(2, 4), cursor.position);
@@ -164,7 +173,7 @@ mod tests {
             anchor: BufferPosition::line_col(2, 4),
             position: BufferPosition::line_col(2, 3),
         });
-        let mut cursors = cursors.iter();
+        let mut cursors = cursors[..].iter();
         let cursor = cursors.next().unwrap();
         assert_eq!(BufferPosition::line_col(2, 2), cursor.anchor);
         assert_eq!(BufferPosition::line_col(2, 4), cursor.position);
@@ -179,7 +188,7 @@ mod tests {
             anchor: BufferPosition::line_col(2, 3),
             position: BufferPosition::line_col(2, 2),
         });
-        let mut cursors = cursors.iter();
+        let mut cursors = cursors[..].iter();
         let cursor = cursors.next().unwrap();
         assert_eq!(BufferPosition::line_col(2, 4), cursor.anchor);
         assert_eq!(BufferPosition::line_col(2, 2), cursor.position);
@@ -197,7 +206,7 @@ mod tests {
             anchor: BufferPosition::line_col(2, 0),
             position: BufferPosition::line_col(2, 0),
         });
-        let mut cursors = cursors.iter();
+        let mut cursors = cursors[..].iter();
         let cursor = cursors.next().unwrap();
         assert_eq!(BufferPosition::line_col(1, 0), cursor.anchor);
         assert_eq!(BufferPosition::line_col(1, 0), cursor.position);
@@ -215,7 +224,7 @@ mod tests {
             anchor: BufferPosition::line_col(2, 2),
             position: BufferPosition::line_col(2, 2),
         });
-        let mut cursors = cursors.iter();
+        let mut cursors = cursors[..].iter();
         let cursor = cursors.next().unwrap();
         assert_eq!(BufferPosition::line_col(2, 2), cursor.anchor);
         assert_eq!(BufferPosition::line_col(2, 2), cursor.position);
@@ -240,7 +249,7 @@ mod tests {
             anchor: BufferPosition::line_col(2, 0),
             position: BufferPosition::line_col(2, 0),
         });
-        assert_eq!(3, cursors.iter().count());
+        assert_eq!(3, cursors[..].len());
         cursors.change_all(|cs| {
             for c in cs {
                 if c.position.line_index > 0 {
@@ -252,7 +261,7 @@ mod tests {
         let cursor = cursors.main_cursor();
         assert_eq!(BufferPosition::line_col(1, 0), cursor.anchor);
         assert_eq!(BufferPosition::line_col(1, 0), cursor.position);
-        let mut cursors = cursors.iter();
+        let mut cursors = cursors[..].iter();
         let cursor = cursors.next().unwrap();
         assert_eq!(BufferPosition::line_col(0, 0), cursor.anchor);
         assert_eq!(BufferPosition::line_col(0, 0), cursor.position);
