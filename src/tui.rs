@@ -1,4 +1,4 @@
-use std::{io::Write, iter};
+use std::{cmp::Ordering, io::Write, iter};
 
 use futures::{future::FutureExt, StreamExt};
 
@@ -187,8 +187,8 @@ where
 
             let char_position = BufferPosition::line_col(line_index, column_index);
             if buffer_view.cursors[..]
-                .iter()
-                .any(|c| char_position == c.position)
+                .binary_search_by_key(&char_position, |c| c.position)
+                .is_ok()
             {
                 if !matches!(draw_state, DrawState::Cursor) {
                     draw_state = DrawState::Cursor;
@@ -199,8 +199,17 @@ where
                     )?;
                 }
             } else if buffer_view.cursors[..]
-                .iter()
-                .any(|c| c.range().contains(char_position))
+                .binary_search_by(|c| {
+                    let range = c.range();
+                    if range.to < char_position {
+                        Ordering::Less
+                    } else if range.from > char_position {
+                        Ordering::Greater
+                    } else {
+                        Ordering::Equal
+                    }
+                })
+                .is_ok()
             {
                 if !matches!(draw_state, DrawState::Selection) {
                     draw_state = DrawState::Selection;
@@ -215,8 +224,16 @@ where
                 }
             } else if buffer
                 .search_ranges()
-                .iter()
-                .any(|r| r.contains(char_position))
+                .binary_search_by(|r| {
+                    if r.to < char_position {
+                        Ordering::Less
+                    } else if r.from > char_position {
+                        Ordering::Greater
+                    } else {
+                        Ordering::Equal
+                    }
+                })
+                .is_ok()
             {
                 if !matches!(draw_state, DrawState::Highlight) {
                     draw_state = DrawState::Highlight;
