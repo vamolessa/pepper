@@ -5,6 +5,11 @@ use crate::{
     history::EditKind,
 };
 
+pub enum MovementKind {
+    PositionWithAnchor,
+    PositionOnly,
+}
+
 #[derive(Clone)]
 pub struct BufferView {
     pub buffer_handle: BufferHandle,
@@ -23,7 +28,7 @@ impl BufferView {
         &mut self,
         buffers: &BufferCollection,
         offset: BufferOffset,
-        collapse_anchors: bool,
+        movement_kind: MovementKind,
     ) {
         let buffer = match buffers.get(self.buffer_handle) {
             Some(buffer) => buffer,
@@ -42,7 +47,70 @@ impl BufferView {
                 target.column_offset = target.column_offset.min(target_line_len as _);
 
                 c.position = target.into();
-                if collapse_anchors {
+                if let MovementKind::PositionWithAnchor = movement_kind {
+                    c.anchor = c.position;
+                }
+            }
+        });
+    }
+
+    pub fn move_to_next_search_match(
+        &mut self,
+        buffers: &BufferCollection,
+        movement_kind: MovementKind,
+    ) {
+        self.move_to_search_match(buffers, movement_kind, |result, len| {
+            let next_index = match result {
+                Ok(index) => index + 1,
+                Err(index) => index,
+            };
+            next_index % len
+        });
+    }
+
+    pub fn move_to_previous_search_match(
+        &mut self,
+        buffers: &BufferCollection,
+        movement_kind: MovementKind,
+    ) {
+        self.move_to_search_match(buffers, movement_kind, |result, len| {
+            let next_index = match result {
+                Ok(index) => index,
+                Err(index) => index,
+            };
+            (next_index + len - 1) % len
+        });
+    }
+
+    fn move_to_search_match<F>(
+        &mut self,
+        buffers: &BufferCollection,
+        movement_kind: MovementKind,
+        index_selector: F,
+    ) where
+        F: FnOnce(Result<usize, usize>, usize) -> usize,
+    {
+        let buffer = match buffers.get(self.buffer_handle) {
+            Some(buffer) => buffer,
+            None => return,
+        };
+
+        let main_position = self.cursors.main_cursor().position;
+        let search_ranges = buffer.search_ranges();
+        if search_ranges.len() == 0 {
+            return;
+        }
+
+        let search_result = search_ranges.binary_search_by_key(&main_position, |r| r.from);
+        let next_index = index_selector(search_result, search_ranges.len());
+
+        self.cursors.change_all(|cs| {
+            for c in cs.iter_mut() {
+                c.position = search_ranges[next_index].from;
+            }
+
+            if let MovementKind::PositionWithAnchor = movement_kind {
+                for c in cs.iter_mut() {
                     c.anchor = c.position;
                 }
             }

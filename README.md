@@ -21,7 +21,7 @@ Experimental code editor
 - ~~long lines~~
 - search
 	- ~~highlight search matches~~
-	- navigate between search matches
+	- ~~navigate between search matches~~
 - operations
 	- ~~delete~~
 	- copy

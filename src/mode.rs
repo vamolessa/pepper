@@ -1,7 +1,7 @@
 use crate::{
     buffer::{BufferCollection, TextRef},
     buffer_position::BufferOffset,
-    buffer_view::{BufferViewCollection, BufferViewHandle},
+    buffer_view::{BufferViewCollection, BufferViewHandle, MovementKind},
     event::Key,
 };
 
@@ -67,28 +67,28 @@ fn on_event_normal(ctx: ModeContext) -> Operation {
             ctx.buffer_views.get_mut(handle).move_cursors(
                 ctx.buffers,
                 BufferOffset::line_col(0, -1),
-                true,
+                MovementKind::PositionWithAnchor,
             );
         }
         [Key::Char('j')] => {
             ctx.buffer_views.get_mut(handle).move_cursors(
                 ctx.buffers,
                 BufferOffset::line_col(1, 0),
-                true,
+                MovementKind::PositionWithAnchor,
             );
         }
         [Key::Char('k')] => {
             ctx.buffer_views.get_mut(handle).move_cursors(
                 ctx.buffers,
                 BufferOffset::line_col(-1, 0),
-                true,
+                MovementKind::PositionWithAnchor,
             );
         }
         [Key::Char('l')] => {
             ctx.buffer_views.get_mut(handle).move_cursors(
                 ctx.buffers,
                 BufferOffset::line_col(0, 1),
-                true,
+                MovementKind::PositionWithAnchor,
             );
         }
         [Key::Char('J')] => {
@@ -114,6 +114,16 @@ fn on_event_normal(ctx: ModeContext) -> Operation {
                 buffer.set_search(&ctx.input[..]);
             }
             return Operation::EnterMode(Mode::Search);
+        }
+        [Key::Char('n')] => {
+            ctx.buffer_views
+                .get_mut(handle)
+                .move_to_next_search_match(ctx.buffers, MovementKind::PositionWithAnchor);
+        }
+        [Key::Char('N')] => {
+            ctx.buffer_views
+                .get_mut(handle)
+                .move_to_previous_search_match(ctx.buffers, MovementKind::PositionWithAnchor);
         }
         [Key::Char('u')] => ctx.buffer_views.undo(ctx.buffers, handle),
         [Key::Char('U')] => ctx.buffer_views.redo(ctx.buffers, handle),
@@ -147,28 +157,28 @@ fn on_event_select(ctx: ModeContext) -> Operation {
             ctx.buffer_views.get_mut(handle).move_cursors(
                 ctx.buffers,
                 BufferOffset::line_col(0, -1),
-                false,
+                MovementKind::PositionOnly,
             );
         }
         [Key::Char('j')] => {
             ctx.buffer_views.get_mut(handle).move_cursors(
                 ctx.buffers,
                 BufferOffset::line_col(1, 0),
-                false,
+                MovementKind::PositionOnly,
             );
         }
         [Key::Char('k')] => {
             ctx.buffer_views.get_mut(handle).move_cursors(
                 ctx.buffers,
                 BufferOffset::line_col(-1, 0),
-                false,
+                MovementKind::PositionOnly,
             );
         }
         [Key::Char('l')] => {
             ctx.buffer_views.get_mut(handle).move_cursors(
                 ctx.buffers,
                 BufferOffset::line_col(0, 1),
-                false,
+                MovementKind::PositionOnly,
             );
         }
         [Key::Char('o')] => ctx
@@ -180,6 +190,16 @@ fn on_event_select(ctx: ModeContext) -> Operation {
             ctx.buffer_views.remove_in_selection(ctx.buffers, handle);
             ctx.buffer_views.get_mut(handle).commit_edits(ctx.buffers);
             return Operation::EnterMode(Mode::Normal);
+        }
+        [Key::Char('n')] => {
+            ctx.buffer_views
+                .get_mut(handle)
+                .move_to_next_search_match(ctx.buffers, MovementKind::PositionOnly);
+        }
+        [Key::Char('N')] => {
+            ctx.buffer_views
+                .get_mut(handle)
+                .move_to_previous_search_match(ctx.buffers, MovementKind::PositionOnly);
         }
         _ => (),
     };
@@ -212,7 +232,7 @@ fn on_event_insert(ctx: ModeContext) -> Operation {
             ctx.buffer_views.get_mut(handle).move_cursors(
                 ctx.buffers,
                 BufferOffset::line_col(0, -1),
-                false,
+                MovementKind::PositionOnly,
             );
             ctx.buffer_views.remove_in_selection(ctx.buffers, handle);
         }
@@ -220,7 +240,7 @@ fn on_event_insert(ctx: ModeContext) -> Operation {
             ctx.buffer_views.get_mut(handle).move_cursors(
                 ctx.buffers,
                 BufferOffset::line_col(0, 1),
-                false,
+                MovementKind::PositionOnly,
             );
             ctx.buffer_views.remove_in_selection(ctx.buffers, handle);
         }
