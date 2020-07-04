@@ -74,7 +74,7 @@ where
 
     handle_command!(write, terminal::LeaveAlternateScreen)?;
     handle_command!(write, cursor::Show)?;
-    terminal::disable_raw_mode().unwrap();
+    terminal::disable_raw_mode()?;
 
     Ok(())
 }

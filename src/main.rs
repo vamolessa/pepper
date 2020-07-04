@@ -15,7 +15,7 @@ fn main() {
     ctrlc::set_handler(|| {}).unwrap();
 
     let stdout = std::io::stdout();
-    let stdout = stdout.lock();
+    //let stdout = stdout.lock();
 
     let text = include_str!("main.rs");
     let content = buffer::BufferContent::from_str(text);

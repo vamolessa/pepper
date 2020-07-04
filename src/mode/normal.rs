@@ -85,8 +85,13 @@ pub fn on_event(ctx: ModeContext) -> Operation {
         [Key::Char('u')] => ctx.buffer_views.undo(ctx.buffers, handle),
         [Key::Char('U')] => ctx.buffer_views.redo(ctx.buffers, handle),
         [Key::Ctrl('p')] => {
+            use std::io::Write;
+            let mut stdout = std::io::stdout();
+            crossterm::handle_command!(stdout, crossterm::terminal::LeaveAlternateScreen).unwrap();
+            stdout.flush().unwrap();
             let mut child = std::process::Command::new("fzf").spawn().unwrap();
             child.wait().unwrap();
+            crossterm::handle_command!(stdout, crossterm::terminal::EnterAlternateScreen).unwrap();
         }
         [Key::Ctrl('s')] => {
             let buffer_handle = ctx.buffer_views.get(handle).buffer_handle;
