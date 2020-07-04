@@ -84,6 +84,10 @@ pub fn on_event(ctx: ModeContext) -> Operation {
         [Key::Char(':')] => return Operation::EnterMode(Mode::Command),
         [Key::Char('u')] => ctx.buffer_views.undo(ctx.buffers, handle),
         [Key::Char('U')] => ctx.buffer_views.redo(ctx.buffers, handle),
+        [Key::Ctrl('p')] => {
+            let mut child = std::process::Command::new("fzf").spawn().unwrap();
+            child.wait().unwrap();
+        }
         [Key::Ctrl('s')] => {
             let buffer_handle = ctx.buffer_views.get(handle).buffer_handle;
             if let Some(buffer) = ctx.buffers.get(buffer_handle) {
