@@ -90,6 +90,25 @@ pub fn poll_input(ctx: &mut ModeContext) -> InputResult {
             ctx.input.clear();
             InputResult::Pending
         }
+        [Key::Ctrl('w')] => {
+            let mut found_space = false;
+            let mut last_index = 0;
+            for (i, c) in ctx.input.char_indices().rev() {
+                if found_space {
+                    if c != ' ' {
+                        break;
+                    }
+                } else {
+                    if c == ' ' {
+                        found_space = true;
+                    }
+                }
+                last_index = i;
+            }
+
+            ctx.input.drain(last_index..);
+            InputResult::Pending
+        }
         [Key::Ctrl('h')] => {
             if let Some((last_char_index, _)) = ctx.input.char_indices().rev().next() {
                 ctx.input.drain(last_char_index..);
