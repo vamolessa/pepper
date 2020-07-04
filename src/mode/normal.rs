@@ -7,7 +7,7 @@ use crate::{
 
 fn on_event_no_buffer(ctx: ModeContext) -> Operation {
     match ctx.keys {
-        [Key::Char('q')] => return Operation::Waiting,
+        [Key::Char('q')] => return Operation::Pending,
         [Key::Char('q'), Key::Char('q')] => return Operation::Exit,
         _ => (),
     }
@@ -81,6 +81,7 @@ pub fn on_event(ctx: ModeContext) -> Operation {
                 .get_mut(handle)
                 .move_to_previous_search_match(ctx.buffers, MovementKind::PositionWithAnchor);
         }
+        [Key::Char(':')] => return Operation::EnterMode(Mode::Command),
         [Key::Char('u')] => ctx.buffer_views.undo(ctx.buffers, handle),
         [Key::Char('U')] => ctx.buffer_views.redo(ctx.buffers, handle),
         [Key::Ctrl('s')] => {

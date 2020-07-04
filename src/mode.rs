@@ -5,6 +5,7 @@ use crate::{
     viewport::ViewportCollection,
 };
 
+mod command;
 mod insert;
 mod normal;
 mod search;
@@ -12,7 +13,7 @@ mod select;
 
 pub enum Operation {
     None,
-    Waiting,
+    Pending,
     Exit,
     NextViewport,
     EnterMode(Mode),
@@ -24,6 +25,7 @@ pub enum Mode {
     Select,
     Insert,
     Search,
+    Command,
 }
 
 pub struct ModeContext<'a> {
@@ -50,6 +52,7 @@ impl Mode {
             Mode::Select => select::on_enter(context),
             Mode::Insert => insert::on_enter(context),
             Mode::Search => search::on_enter(context),
+            Mode::Command => command::on_enter(context),
         }
     }
 
@@ -59,6 +62,7 @@ impl Mode {
             Mode::Select => select::on_event(context),
             Mode::Insert => insert::on_event(context),
             Mode::Search => search::on_event(context),
+            Mode::Command => command::on_event(context),
         }
     }
 }
@@ -66,5 +70,36 @@ impl Mode {
 impl Default for Mode {
     fn default() -> Self {
         Mode::Normal
+    }
+}
+
+pub enum InputResult {
+    Pending,
+    Submited,
+    Canceled,
+}
+
+pub fn poll_input(ctx: &mut ModeContext) -> InputResult {
+    match ctx.keys {
+        [Key::Esc] | [Key::Ctrl('c')] => {
+            ctx.input.clear();
+            InputResult::Canceled
+        }
+        [Key::Ctrl('m')] => InputResult::Submited,
+        [Key::Ctrl('u')] => {
+            ctx.input.clear();
+            InputResult::Pending
+        }
+        [Key::Ctrl('h')] => {
+            if let Some((last_char_index, _)) = ctx.input.char_indices().rev().next() {
+                ctx.input.drain(last_char_index..);
+            }
+            InputResult::Pending
+        }
+        [Key::Char(c)] => {
+            ctx.input.push(*c);
+            InputResult::Pending
+        }
+        _ => InputResult::Pending,
     }
 }

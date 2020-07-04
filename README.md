@@ -13,7 +13,7 @@ Experimental code editor
 	- ~~selection merging~~
 - ~~multiple cursors~~
 	- ~~merge cursors~~
-- multiple viewports
+- ~~multiple viewports~~
 	- ~~multiple buffer views~~
 	- ~~same buffer different views~~
 	- ~~split and copy current view~~
@@ -30,8 +30,6 @@ Experimental code editor
 	- open
 	- save
 	- create
-- movements
-	- skip word
 	- home/end
 	- find char
 - syntax highlighting

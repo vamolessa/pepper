@@ -59,7 +59,7 @@ impl Editor {
                 let (mode, ctx) = self.get_mode_and_context();
                 match mode.on_event(ctx) {
                     Operation::None => (),
-                    Operation::Waiting => return true,
+                    Operation::Pending => return true,
                     Operation::Exit => return false,
                     Operation::EnterMode(next_mode) => {
                         self.previous_mode = self.mode;

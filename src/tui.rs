@@ -127,9 +127,9 @@ where
     }
 
     let cursor_color = match editor.mode {
-        Mode::Normal | Mode::Search => convert_color(editor.theme.cursor_normal),
         Mode::Select => convert_color(editor.theme.cursor_select),
         Mode::Insert => convert_color(editor.theme.cursor_insert),
+        _ => convert_color(editor.theme.cursor_normal),
     };
 
     handle_command!(write, cursor::MoveTo(viewport.x as _, 0))?;
@@ -346,6 +346,24 @@ fn draw_statusbar<W>(write: &mut W, editor: &Editor) -> Result<()>
 where
     W: Write,
 {
+    fn draw_input<W>(write: &mut W, prefix: &str, editor: &Editor) -> Result<()>
+    where
+        W: Write,
+    {
+        handle_command!(write, Print(prefix))?;
+        handle_command!(write, Print(&editor.input[..]))?;
+        handle_command!(
+            write,
+            SetBackgroundColor(convert_color(editor.theme.cursor_normal))
+        )?;
+        handle_command!(write, Print(' '))?;
+        handle_command!(
+            write,
+            SetBackgroundColor(convert_color(editor.theme.background))
+        )?;
+        Ok(())
+    }
+
     handle_command!(
         write,
         SetBackgroundColor(convert_color(editor.theme.background))
@@ -358,14 +376,11 @@ where
     match editor.mode {
         Mode::Select => handle_command!(write, Print("-- SELECT --"))?,
         Mode::Insert => handle_command!(write, Print("-- INSERT --"))?,
-        Mode::Search => {
-            handle_command!(write, Print("search: "))?;
-            handle_command!(write, Print(&editor.input[..]))?;
-        }
+        Mode::Search => draw_input(write, "search: ", editor)?,
+        Mode::Command => draw_input(write, "command: ", editor)?,
         _ => (),
     };
 
     handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
-
     Ok(())
 }
