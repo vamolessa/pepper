@@ -25,7 +25,7 @@ Experimental code editor
 - operations
 	- ~~delete~~
 	- copy
-	- paste
+	- ~~paste~~
 - file operations
 	- open
 	- save

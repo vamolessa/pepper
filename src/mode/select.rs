@@ -1,4 +1,7 @@
+use copypasta::{ClipboardContext, ClipboardProvider};
+
 use crate::{
+    buffer::TextRef,
     buffer_position::BufferOffset,
     buffer_view::MovementKind,
     event::Key,
@@ -56,6 +59,15 @@ pub fn on_event(ctx: ModeContext) -> Operation {
         [Key::Char('s')] => return Operation::EnterMode(Mode::Search),
         [Key::Char('d')] => {
             ctx.buffer_views.remove_in_selection(ctx.buffers, handle);
+            ctx.buffer_views.get_mut(handle).commit_edits(ctx.buffers);
+            return Operation::LeaveMode;
+        }
+        [Key::Char('p')] => {
+            ctx.buffer_views.remove_in_selection(ctx.buffers, handle);
+            if let Ok(text) = ClipboardContext::new().and_then(|mut c| c.get_contents()) {
+                ctx.buffer_views
+                    .insert_text(ctx.buffers, handle, TextRef::Str(&text[..]));
+            }
             ctx.buffer_views.get_mut(handle).commit_edits(ctx.buffers);
             return Operation::LeaveMode;
         }
