@@ -14,17 +14,31 @@ mod select;
 pub enum Operation {
     None,
     Pending,
+    Quit,
     NextViewport,
     EnterMode(Mode),
-    LeaveMode,
+}
+
+pub enum FromMode {
+    Normal,
+    Select,
+}
+
+impl FromMode {
+    pub fn as_mode(&self) -> Mode {
+        match self {
+            FromMode::Normal => Mode::Normal,
+            FromMode::Select => Mode::Select,
+        }
+    }
 }
 
 pub enum Mode {
     Normal,
     Select,
     Insert,
-    Search,
-    Command,
+    Search(FromMode),
+    Command(FromMode),
 }
 
 pub struct ModeContext<'a> {
@@ -49,8 +63,8 @@ impl Mode {
             Mode::Normal => normal::on_enter(context),
             Mode::Select => select::on_enter(context),
             Mode::Insert => insert::on_enter(context),
-            Mode::Search => search::on_enter(context),
-            Mode::Command => command::on_enter(context),
+            Mode::Search(_) => search::on_enter(context),
+            Mode::Command(_) => command::on_enter(context),
         }
     }
 
@@ -59,8 +73,8 @@ impl Mode {
             Mode::Normal => normal::on_event(context),
             Mode::Select => select::on_event(context),
             Mode::Insert => insert::on_event(context),
-            Mode::Search => search::on_event(context),
-            Mode::Command => command::on_event(context),
+            Mode::Search(from_mode) => search::on_event(context, from_mode),
+            Mode::Command(from_mode) => command::on_event(context, from_mode),
         }
     }
 }
