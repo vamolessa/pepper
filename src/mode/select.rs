@@ -5,7 +5,7 @@ use crate::{
     buffer_position::BufferOffset,
     buffer_view::MovementKind,
     event::Key,
-    mode::{ModeOperation, FromMode, Mode, ModeContext},
+    mode::{FromMode, Mode, ModeContext, ModeOperation},
 };
 
 pub fn on_enter(_ctx: ModeContext) {}
