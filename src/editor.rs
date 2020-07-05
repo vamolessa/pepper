@@ -1,12 +1,19 @@
 use crate::{
+    command::CommandCollection,
     buffer::{Buffer, BufferCollection, BufferContent},
     buffer_view::{BufferView, BufferViewCollection},
     config::Config,
     event::{Event, Key},
-    mode::{Mode, ModeContext, Operation},
+    mode::{Mode, ModeContext, ModeOperation},
     theme::Theme,
     viewport::ViewportCollection,
 };
+
+pub enum EditorPollResult {
+    Pending,
+    Quit,
+    Error(String),
+}
 
 pub struct Editor {
     pub config: Config,
@@ -15,6 +22,7 @@ pub struct Editor {
     pub mode: Mode,
     pub buffered_keys: Vec<Key>,
     pub input: String,
+    pub commands: CommandCollection,
 
     pub buffers: BufferCollection,
     pub buffer_views: BufferViewCollection,
@@ -26,9 +34,12 @@ impl Editor {
         Self {
             config: Default::default(),
             theme: Theme::default(),
+
             mode: Mode::default(),
             buffered_keys: Vec::new(),
             input: String::new(),
+            commands: CommandCollection::default(),
+
             buffers: Default::default(),
             buffer_views: BufferViewCollection::default(),
             viewports: ViewportCollection::new(),
@@ -45,7 +56,7 @@ impl Editor {
             .set_current_buffer_view_handle(buffer_view_index);
     }
 
-    pub fn on_event(&mut self, event: Event) -> bool {
+    pub fn on_event(&mut self, event: Event) -> EditorPollResult {
         match event {
             Event::None => (),
             Event::Resize(w, h) => {
@@ -56,16 +67,22 @@ impl Editor {
 
                 let (mode, mode_context) = self.get_mode_and_context();
                 match mode.on_event(mode_context) {
-                    Operation::None => (),
-                    Operation::Pending => return true,
-                    Operation::Quit => return false,
-                    Operation::NextViewport => {
-                        self.viewports.focus_next_viewport(&mut self.buffer_views)
-                    }
-                    Operation::EnterMode(next_mode) => {
+                    ModeOperation::None => (),
+                    ModeOperation::Pending => return EditorPollResult::Pending,
+                    ModeOperation::Quit => return EditorPollResult::Quit,
+                    ModeOperation::EnterMode(next_mode) => {
                         self.mode = next_mode;
                         let (mode, mode_context) = self.get_mode_and_context();
                         mode.on_enter(mode_context);
+                    }
+                    ModeOperation::Error(error) => {
+                        self.buffered_keys.clear();
+
+                        self.mode = Mode::Normal;
+                        let (mode, mode_context) = self.get_mode_and_context();
+                        mode.on_enter(mode_context);
+
+                        return EditorPollResult::Error(error);
                     }
                 }
 
@@ -84,16 +101,17 @@ impl Editor {
             }
         }
 
-        true
+        EditorPollResult::Pending
     }
 
     fn get_mode_and_context<'a>(&'a mut self) -> (&'a mut Mode, ModeContext<'a>) {
         (
             &mut self.mode,
             ModeContext {
+                commands: &self.commands,
                 buffers: &mut self.buffers,
                 buffer_views: &mut self.buffer_views,
-                viewports: &self.viewports,
+                viewports: &mut self.viewports,
                 keys: &self.buffered_keys[..],
                 input: &mut self.input,
             },

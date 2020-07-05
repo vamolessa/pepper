@@ -1,6 +1,7 @@
 mod buffer;
 mod buffer_position;
 mod buffer_view;
+mod command;
 mod config;
 mod cursor;
 mod editor;

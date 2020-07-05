@@ -1,8 +1,6 @@
 use crate::{
-    buffer::BufferCollection,
-    buffer_view::{BufferViewCollection, BufferViewHandle},
-    event::Key,
-    viewport::ViewportCollection,
+    buffer::BufferCollection, buffer_view::BufferViewCollection, command::CommandCollection,
+    event::Key, viewport::ViewportCollection,
 };
 
 mod command;
@@ -11,12 +9,21 @@ mod normal;
 mod search;
 mod select;
 
-pub enum Operation {
+pub struct ModeContext<'a> {
+    pub commands: &'a CommandCollection,
+    pub buffers: &'a mut BufferCollection,
+    pub buffer_views: &'a mut BufferViewCollection,
+    pub viewports: &'a mut ViewportCollection,
+    pub keys: &'a [Key],
+    pub input: &'a mut String,
+}
+
+pub enum ModeOperation {
     None,
     Pending,
     Quit,
-    NextViewport,
     EnterMode(Mode),
+    Error(String),
 }
 
 pub enum FromMode {
@@ -41,22 +48,6 @@ pub enum Mode {
     Command(FromMode),
 }
 
-pub struct ModeContext<'a> {
-    pub buffers: &'a mut BufferCollection,
-    pub buffer_views: &'a mut BufferViewCollection,
-    pub viewports: &'a ViewportCollection,
-    pub keys: &'a [Key],
-    pub input: &'a mut String,
-}
-
-impl<'a> ModeContext<'a> {
-    pub fn current_buffer_view_handle(&self) -> Option<&'a BufferViewHandle> {
-        self.viewports
-            .current_viewport()
-            .current_buffer_view_handle()
-    }
-}
-
 impl Mode {
     pub fn on_enter(&mut self, context: ModeContext) {
         match self {
@@ -68,7 +59,7 @@ impl Mode {
         }
     }
 
-    pub fn on_event(&mut self, context: ModeContext) -> Operation {
+    pub fn on_event(&mut self, context: ModeContext) -> ModeOperation {
         match self {
             Mode::Normal => normal::on_event(context),
             Mode::Select => select::on_event(context),

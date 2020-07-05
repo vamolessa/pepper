@@ -10,7 +10,7 @@ use crossterm::{
 
 use crate::{
     buffer_position::BufferPosition,
-    editor::Editor,
+    editor::{Editor, EditorPollResult},
     event::{Event, Key},
     mode::Mode,
     theme,
@@ -69,7 +69,7 @@ where
     let available_size = terminal::size()?;
     editor.on_event(Event::Resize(available_size.0 as _, available_size.1 as _));
 
-    draw(&mut write, &editor)?;
+    draw(&mut write, &editor, None)?;
     smol::run(main_loop(&mut write, &mut editor))?;
 
     handle_command!(write, terminal::LeaveAlternateScreen)?;
@@ -86,17 +86,20 @@ where
     let mut event_stream = event::EventStream::new();
     loop {
         let event = event_stream.next().fuse().await;
+        let mut error = None;
         if let Some(event) = event {
-            if !editor.on_event(convert_event(event?)) {
-                break;
+            match editor.on_event(convert_event(event?)) {
+                EditorPollResult::Pending => (),
+                EditorPollResult::Quit => break,
+                EditorPollResult::Error(e) => error = Some(e),
             }
         }
-        draw(write, &editor)?;
+        draw(write, &editor, error)?;
     }
     Ok(())
 }
 
-fn draw<W>(write: &mut W, editor: &Editor) -> Result<()>
+fn draw<W>(write: &mut W, editor: &Editor, error: Option<String>) -> Result<()>
 where
     W: Write,
 {
@@ -109,7 +112,7 @@ where
     }
 
     handle_command!(write, cursor::MoveToNextLine(1))?;
-    draw_statusbar(write, editor)?;
+    draw_statusbar(write, editor, error)?;
 
     write.flush()?;
     Ok(())
@@ -342,7 +345,7 @@ where
     Ok(())
 }
 
-fn draw_statusbar<W>(write: &mut W, editor: &Editor) -> Result<()>
+fn draw_statusbar<W>(write: &mut W, editor: &Editor, error: Option<String>) -> Result<()>
 where
     W: Write,
 {
@@ -373,13 +376,18 @@ where
         SetForegroundColor(convert_color(editor.theme.text_normal))
     )?;
 
-    match editor.mode {
-        Mode::Select => handle_command!(write, Print("-- SELECT --"))?,
-        Mode::Insert => handle_command!(write, Print("-- INSERT --"))?,
-        Mode::Search(_) => draw_input(write, "search: ", editor)?,
-        Mode::Command(_) => draw_input(write, "command: ", editor)?,
-        _ => (),
-    };
+    if let Some(error) = error {
+        handle_command!(write, Print("error: "))?;
+        handle_command!(write, Print(error))?;
+    } else {
+        match editor.mode {
+            Mode::Select => handle_command!(write, Print("-- SELECT --"))?,
+            Mode::Insert => handle_command!(write, Print("-- INSERT --"))?,
+            Mode::Search(_) => draw_input(write, "search: ", editor)?,
+            Mode::Command(_) => draw_input(write, "command: ", editor)?,
+            _ => (),
+        };
+    }
 
     handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
     Ok(())
