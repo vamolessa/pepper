@@ -104,6 +104,32 @@ impl BufferContent {
         Ok(())
     }
 
+    pub fn append_range_to_string(&self, mut range: BufferRange, text: &mut String) {
+        self.clamp_position(&mut range.from);
+        self.clamp_position(&mut range.to);
+
+        if range.from.line_index == range.to.line_index {
+            let range_text = &self.lines[range.from.line_index].text
+                [range.from.column_index..range.to.column_index];
+            text.push_str(range_text);
+        } else {
+            text.push_str(&self.lines[range.from.line_index].text[range.from.column_index..]);
+            let lines_range = (range.from.line_index + 1)..range.to.line_index;
+            if lines_range.start < lines_range.end {
+                for line in &self.lines[lines_range] {
+                    text.push('\n');
+                    text.push_str(&line.text[..]);
+                }
+            }
+            let to_line_index = range.from.line_index + 1;
+            if to_line_index < self.lines.len() {
+                let to_line = &self.lines[to_line_index];
+                text.push('\n');
+                text.push_str(&to_line.text[..range.to.column_index]);
+            }
+        }
+    }
+
     fn find_search_ranges(&self, text: &str, ranges: &mut Vec<BufferRange>) {
         let char_count = text.chars().count();
         if char_count == 0 {

@@ -62,6 +62,15 @@ pub fn on_event(ctx: ModeContext) -> Operation {
             ctx.buffer_views.get_mut(handle).commit_edits(ctx.buffers);
             return Operation::LeaveMode;
         }
+        [Key::Char('y')] => {
+            if let Ok(mut clipboard) = ClipboardContext::new() {
+                let buffer_view = ctx.buffer_views.get(handle);
+                let text = buffer_view.get_selection_text(ctx.buffers);
+                match clipboard.set_contents(text) {
+                    _ => (),
+                }
+            }
+        }
         [Key::Char('p')] => {
             ctx.buffer_views.remove_in_selection(ctx.buffers, handle);
             if let Ok(text) = ClipboardContext::new().and_then(|mut c| c.get_contents()) {

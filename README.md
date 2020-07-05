@@ -24,7 +24,7 @@ Experimental code editor
 	- ~~navigate between search matches~~
 - operations
 	- ~~delete~~
-	- copy
+	- ~~copy~~
 	- ~~paste~~
 - file operations
 	- open
