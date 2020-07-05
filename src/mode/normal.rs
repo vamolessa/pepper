@@ -5,23 +5,22 @@ use crate::{
     buffer_position::BufferOffset,
     buffer_view::MovementKind,
     event::Key,
-    mode::{FromMode, Mode, ModeContext},
-    editor::Operation,
+    mode::{ModeOperation, FromMode, Mode, ModeContext},
 };
 
-fn on_event_no_buffer(ctx: ModeContext) -> Operation {
+fn on_event_no_buffer(ctx: ModeContext) -> ModeOperation {
     match ctx.keys {
-        [Key::Char('q')] => return Operation::Pending,
-        [Key::Char('q'), Key::Char('q')] => return Operation::Quit,
+        [Key::Char('q')] => return ModeOperation::Pending,
+        [Key::Char('q'), Key::Char('q')] => return ModeOperation::Quit,
         _ => (),
     }
 
-    Operation::None
+    ModeOperation::None
 }
 
 pub fn on_enter(_ctx: ModeContext) {}
 
-pub fn on_event(ctx: ModeContext) -> Operation {
+pub fn on_event(ctx: ModeContext) -> ModeOperation {
     let handle = if let Some(handle) = ctx
         .viewports
         .current_viewport()
@@ -76,9 +75,9 @@ pub fn on_event(ctx: ModeContext) -> Operation {
             cursor.anchor = cursor.position;
             buffer_view.cursors.add_cursor(cursor);
         }
-        [Key::Char('i')] => return Operation::EnterMode(Mode::Insert),
-        [Key::Char('v')] => return Operation::EnterMode(Mode::Select),
-        [Key::Char('s')] => return Operation::EnterMode(Mode::Search(FromMode::Normal)),
+        [Key::Char('i')] => return ModeOperation::EnterMode(Mode::Insert),
+        [Key::Char('v')] => return ModeOperation::EnterMode(Mode::Select),
+        [Key::Char('s')] => return ModeOperation::EnterMode(Mode::Search(FromMode::Normal)),
         [Key::Char('p')] => {
             if let Ok(text) = ClipboardContext::new().and_then(|mut c| c.get_contents()) {
                 ctx.buffer_views
@@ -96,7 +95,7 @@ pub fn on_event(ctx: ModeContext) -> Operation {
                 .get_mut(handle)
                 .move_to_previous_search_match(ctx.buffers, MovementKind::PositionWithAnchor);
         }
-        [Key::Char(':')] => return Operation::EnterMode(Mode::Command(FromMode::Normal)),
+        [Key::Char(':')] => return ModeOperation::EnterMode(Mode::Command(FromMode::Normal)),
         [Key::Char('u')] => ctx.buffer_views.undo(ctx.buffers, handle),
         [Key::Char('U')] => ctx.buffer_views.redo(ctx.buffers, handle),
         [Key::Ctrl('p')] => {
@@ -114,5 +113,5 @@ pub fn on_event(ctx: ModeContext) -> Operation {
         _ => return on_event_no_buffer(ctx),
     };
 
-    Operation::None
+    ModeOperation::None
 }

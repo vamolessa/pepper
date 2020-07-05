@@ -4,18 +4,10 @@ use crate::{
     command::CommandCollection,
     config::Config,
     event::{Event, Key},
-    mode::{Mode, ModeContext},
+    mode::{Mode, ModeContext, ModeOperation},
     theme::Theme,
     viewport::ViewportCollection,
 };
-
-pub enum Operation {
-    None,
-    Pending,
-    Quit,
-    EnterMode(Mode),
-    Error(String),
-}
 
 pub enum EditorPollResult {
     Pending,
@@ -65,15 +57,15 @@ impl Editor {
 
                 let (mode, mode_context) = self.get_mode_and_context();
                 match mode.on_event(mode_context) {
-                    Operation::None => (),
-                    Operation::Pending => return EditorPollResult::Pending,
-                    Operation::Quit => return EditorPollResult::Quit,
-                    Operation::EnterMode(next_mode) => {
+                    ModeOperation::None => (),
+                    ModeOperation::Pending => return EditorPollResult::Pending,
+                    ModeOperation::Quit => return EditorPollResult::Quit,
+                    ModeOperation::EnterMode(next_mode) => {
                         self.mode = next_mode;
                         let (mode, mode_context) = self.get_mode_and_context();
                         mode.on_enter(mode_context);
                     }
-                    Operation::Error(error) => {
+                    ModeOperation::Error(error) => {
                         self.buffered_keys.clear();
 
                         self.mode = Mode::Normal;

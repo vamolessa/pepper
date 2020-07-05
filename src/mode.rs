@@ -1,5 +1,4 @@
 use crate::{
-    editor::Operation,
     buffer::BufferCollection, buffer_view::BufferViewCollection, command::CommandCollection,
     event::Key, viewport::ViewportCollection,
 };
@@ -9,6 +8,14 @@ mod insert;
 mod normal;
 mod search;
 mod select;
+
+pub enum ModeOperation {
+    None,
+    Pending,
+    Quit,
+    EnterMode(Mode),
+    Error(String),
+}
 
 pub struct ModeContext<'a> {
     pub commands: &'a CommandCollection,
@@ -52,7 +59,7 @@ impl Mode {
         }
     }
 
-    pub fn on_event(&mut self, context: ModeContext) -> Operation {
+    pub fn on_event(&mut self, context: ModeContext) -> ModeOperation {
         match self {
             Mode::Normal => normal::on_event(context),
             Mode::Select => select::on_event(context),

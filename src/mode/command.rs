@@ -1,16 +1,15 @@
 use crate::{
-    command::CommandContext,
-    editor::Operation,
-    mode::{poll_input, FromMode, InputResult, ModeContext},
+    command::{CommandContext, CommandOperation},
+    mode::{poll_input, FromMode, InputResult, ModeContext, ModeOperation},
 };
 
 pub fn on_enter(ctx: ModeContext) {
     ctx.input.clear();
 }
 
-pub fn on_event(mut ctx: ModeContext, from_mode: &FromMode) -> Operation {
+pub fn on_event(mut ctx: ModeContext, from_mode: &FromMode) -> ModeOperation {
     match poll_input(&mut ctx) {
-        InputResult::Canceled => Operation::EnterMode(from_mode.as_mode()),
+        InputResult::Canceled => ModeOperation::EnterMode(from_mode.as_mode()),
         InputResult::Submited => {
             let command_name;
             let command_args;
@@ -28,9 +27,15 @@ pub fn on_event(mut ctx: ModeContext, from_mode: &FromMode) -> Operation {
                 viewports: ctx.viewports,
             };
 
-            ctx.commands
+            match ctx
+                .commands
                 .execute(command_name, command_context, command_args)
+            {
+                CommandOperation::Done => ModeOperation::EnterMode(from_mode.as_mode()),
+                CommandOperation::Quit => ModeOperation::Quit,
+                CommandOperation::Error(error) => ModeOperation::Error(error),
+            }
         }
-        InputResult::Pending => Operation::None,
+        InputResult::Pending => ModeOperation::None,
     }
 }

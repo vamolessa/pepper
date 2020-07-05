@@ -3,10 +3,14 @@ use std::{collections::HashMap, fs::File, io::Read, path::PathBuf};
 use crate::{
     buffer::{Buffer, BufferCollection, BufferContent},
     buffer_view::{BufferView, BufferViewCollection},
-    editor::Operation,
-    mode::Mode,
     viewport::ViewportCollection,
 };
+
+pub enum CommandOperation {
+    Done,
+    Quit,
+    Error(String),
+}
 
 pub struct CommandContext<'a> {
     pub buffers: &'a mut BufferCollection,
@@ -14,7 +18,7 @@ pub struct CommandContext<'a> {
     pub viewports: &'a mut ViewportCollection,
 }
 
-type CommandBody = fn(CommandContext, &str) -> Operation;
+type CommandBody = fn(CommandContext, &str) -> CommandOperation;
 
 pub struct CommandCollection {
     commands: HashMap<String, CommandBody>,
@@ -38,11 +42,11 @@ impl CommandCollection {
         self.commands.insert(name, body);
     }
 
-    pub fn execute(&self, name: &str, ctx: CommandContext, args: &str) -> Operation {
+    pub fn execute(&self, name: &str, ctx: CommandContext, args: &str) -> CommandOperation {
         if let Some(command) = self.commands.get(name) {
             command(ctx, args)
         } else {
-            Operation::Error("no such command".into())
+            CommandOperation::Error("no such command".into())
         }
     }
 }
@@ -72,14 +76,14 @@ fn new_buffer_from_file(ctx: &mut CommandContext, path: PathBuf) -> Result<(), S
 mod commands {
     use super::*;
 
-    pub fn quit(_ctx: CommandContext, _args: &str) -> Operation {
-        Operation::Quit
+    pub fn quit(_ctx: CommandContext, _args: &str) -> CommandOperation {
+        CommandOperation::Quit
     }
 
-    pub fn edit(mut ctx: CommandContext, args: &str) -> Operation {
+    pub fn edit(mut ctx: CommandContext, args: &str) -> CommandOperation {
         match new_buffer_from_file(&mut ctx, args.into()) {
-            Ok(()) => Operation::EnterMode(Mode::Normal),
-            Err(error) => Operation::Error(error),
+            Ok(()) => CommandOperation::Done,
+            Err(error) => CommandOperation::Error(error),
         }
     }
 }
