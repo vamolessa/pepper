@@ -22,14 +22,18 @@ Experimental code editor
 - ~~search~~
 	- ~~highlight search matches~~
 	- ~~navigate between search matches~~
-- operations
+- ~~operations~~
 	- ~~delete~~
 	- ~~copy~~
 	- ~~paste~~
+- command mode
+	- ~~basic command mode~~
+	- command parsing
+	- command register
 - file operations
-	- open
+	- edit (command to open/create file?)
 	- save
-	- create
+- code navigation
 	- home/end
 	- find char
 - syntax highlighting
