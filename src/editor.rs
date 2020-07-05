@@ -12,8 +12,7 @@ pub struct Editor {
     pub config: Config,
     pub theme: Theme,
 
-    pub mode: Mode,
-    previous_mode: Mode,
+    mode_stack: Vec<Mode>,
     pub buffered_keys: Vec<Key>,
     pub input: String,
 
@@ -27,14 +26,17 @@ impl Editor {
         Self {
             config: Default::default(),
             theme: Theme::default(),
-            mode: Mode::default(),
-            previous_mode: Mode::default(),
+            mode_stack: vec![Mode::default()],
             buffered_keys: Vec::new(),
             input: String::new(),
             buffers: Default::default(),
             buffer_views: BufferViewCollection::default(),
             viewports: ViewportCollection::new(),
         }
+    }
+
+    pub fn mode(&self) -> &Mode {
+        self.mode_stack.last().unwrap()
     }
 
     pub fn new_buffer_from_content(&mut self, content: BufferContent) {
@@ -60,16 +62,19 @@ impl Editor {
                 match mode.on_event(ctx) {
                     Operation::None => (),
                     Operation::Pending => return true,
-                    Operation::Exit => return false,
+                    Operation::NextViewport => {
+                        self.viewports.focus_next_viewport(&mut self.buffer_views)
+                    }
                     Operation::EnterMode(next_mode) => {
-                        self.previous_mode = self.mode;
-                        self.mode = next_mode;
-
+                        self.mode_stack.push(next_mode);
                         let (mode, ctx) = self.get_mode_and_context();
                         mode.on_enter(ctx);
                     }
-                    Operation::NextViewport => {
-                        self.viewports.focus_next_viewport(&mut self.buffer_views)
+                    Operation::LeaveMode => {
+                        self.mode_stack.pop();
+                        if self.mode_stack.len() == 0 {
+                            return false;
+                        }
                     }
                 }
 
@@ -93,9 +98,8 @@ impl Editor {
 
     fn get_mode_and_context<'a>(&'a mut self) -> (&'a mut Mode, ModeContext<'a>) {
         (
-            &mut self.mode,
+            self.mode_stack.last_mut().unwrap(),
             ModeContext {
-                previous_mode: self.previous_mode,
                 buffers: &mut self.buffers,
                 buffer_views: &mut self.buffer_views,
                 viewports: &self.viewports,

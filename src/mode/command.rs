@@ -6,10 +6,10 @@ pub fn on_enter(ctx: ModeContext) {
 
 pub fn on_event(mut ctx: ModeContext) -> Operation {
     match poll_input(&mut ctx) {
-        InputResult::Canceled => Operation::EnterMode(ctx.previous_mode),
+        InputResult::Canceled => Operation::LeaveMode,
         InputResult::Submited => {
             // handle command here
-            Operation::EnterMode(ctx.previous_mode)
+            Operation::LeaveMode
         }
         InputResult::Pending => Operation::None,
     }

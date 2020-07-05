@@ -8,7 +8,7 @@ use crate::{
 fn on_event_no_buffer(ctx: ModeContext) -> Operation {
     match ctx.keys {
         [Key::Char('q')] => return Operation::Pending,
-        [Key::Char('q'), Key::Char('q')] => return Operation::Exit,
+        [Key::Char('q'), Key::Char('q')] => return Operation::LeaveMode,
         _ => (),
     }
 

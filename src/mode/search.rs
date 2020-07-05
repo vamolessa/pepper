@@ -7,8 +7,8 @@ pub fn on_enter(ctx: ModeContext) {
 
 pub fn on_event(mut ctx: ModeContext) -> Operation {
     let operation = match poll_input(&mut ctx) {
-        InputResult::Canceled => Operation::EnterMode(ctx.previous_mode),
-        InputResult::Submited => Operation::EnterMode(ctx.previous_mode),
+        InputResult::Canceled => Operation::LeaveMode,
+        InputResult::Submited => Operation::LeaveMode,
         InputResult::Pending => Operation::None,
     };
 

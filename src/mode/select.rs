@@ -11,14 +11,14 @@ pub fn on_event(ctx: ModeContext) -> Operation {
     let handle = if let Some(handle) = ctx.current_buffer_view_handle() {
         handle
     } else {
-        return Operation::EnterMode(Mode::Normal);
+        return Operation::LeaveMode;
     };
 
     match ctx.keys {
         [Key::Esc] | [Key::Ctrl('c')] => {
             ctx.buffer_views.get_mut(handle).commit_edits(ctx.buffers);
             ctx.buffer_views.get_mut(handle).cursors.collapse_anchors();
-            return Operation::EnterMode(Mode::Normal);
+            return Operation::LeaveMode;
         }
         [Key::Char('h')] => {
             ctx.buffer_views.get_mut(handle).move_cursors(
@@ -57,7 +57,7 @@ pub fn on_event(ctx: ModeContext) -> Operation {
         [Key::Char('d')] => {
             ctx.buffer_views.remove_in_selection(ctx.buffers, handle);
             ctx.buffer_views.get_mut(handle).commit_edits(ctx.buffers);
-            return Operation::EnterMode(Mode::Normal);
+            return Operation::LeaveMode;
         }
         [Key::Char('n')] => {
             ctx.buffer_views

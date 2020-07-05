@@ -14,12 +14,11 @@ mod select;
 pub enum Operation {
     None,
     Pending,
-    Exit,
     NextViewport,
     EnterMode(Mode),
+    LeaveMode,
 }
 
-#[derive(Clone, Copy)]
 pub enum Mode {
     Normal,
     Select,
@@ -29,7 +28,6 @@ pub enum Mode {
 }
 
 pub struct ModeContext<'a> {
-    pub previous_mode: Mode,
     pub buffers: &'a mut BufferCollection,
     pub buffer_views: &'a mut BufferViewCollection,
     pub viewports: &'a ViewportCollection,
