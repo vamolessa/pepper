@@ -2,13 +2,14 @@ use crate::{
     buffer::TextRef,
     buffer_position::BufferOffset,
     buffer_view::MovementKind,
+    editor::Operation,
     event::Key,
-    mode::{Mode, ModeContext, ModeOperation},
+    mode::{Mode, ModeContext},
 };
 
 pub fn on_enter(_ctx: ModeContext) {}
 
-pub fn on_event(ctx: ModeContext) -> ModeOperation {
+pub fn on_event(ctx: ModeContext) -> Operation {
     let handle = if let Some(handle) = ctx
         .viewports
         .current_viewport()
@@ -16,13 +17,13 @@ pub fn on_event(ctx: ModeContext) -> ModeOperation {
     {
         handle
     } else {
-        return ModeOperation::EnterMode(Mode::Normal);
+        return Operation::EnterMode(Mode::Normal);
     };
 
     match ctx.keys {
         [Key::Esc] | [Key::Ctrl('c')] => {
             ctx.buffer_views.get_mut(handle).commit_edits(ctx.buffers);
-            return ModeOperation::EnterMode(Mode::Normal);
+            return Operation::EnterMode(Mode::Normal);
         }
         [Key::Tab] => ctx
             .buffer_views
@@ -52,5 +53,5 @@ pub fn on_event(ctx: ModeContext) -> ModeOperation {
         _ => (),
     }
 
-    ModeOperation::None
+    Operation::None
 }

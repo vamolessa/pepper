@@ -1,7 +1,11 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fs::File, io::Read, path::PathBuf};
 
 use crate::{
-    buffer::BufferCollection, buffer_view::BufferViewCollection, viewport::ViewportCollection,
+    buffer::{Buffer, BufferCollection, BufferContent},
+    buffer_view::{BufferView, BufferViewCollection},
+    editor::Operation,
+    mode::Mode,
+    viewport::ViewportCollection,
 };
 
 pub struct CommandContext<'a> {
@@ -10,13 +14,7 @@ pub struct CommandContext<'a> {
     pub viewports: &'a mut ViewportCollection,
 }
 
-pub enum CommandOperation {
-    None,
-    Quit,
-    Error(String),
-}
-
-type CommandBody = fn(CommandContext, &str) -> CommandOperation;
+type CommandBody = fn(CommandContext, &str) -> Operation;
 
 pub struct CommandCollection {
     commands: HashMap<String, CommandBody>,
@@ -40,27 +38,48 @@ impl CommandCollection {
         self.commands.insert(name, body);
     }
 
-    pub fn execute(&self, name: &str, ctx: CommandContext, args: &str) -> CommandOperation {
+    pub fn execute(&self, name: &str, ctx: CommandContext, args: &str) -> Operation {
         if let Some(command) = self.commands.get(name) {
             command(ctx, args)
         } else {
-            CommandOperation::Error("no such command".into())
+            Operation::Error("no such command".into())
         }
     }
+}
+
+fn new_buffer_from_content(
+    ctx: &mut CommandContext,
+    path: Option<PathBuf>,
+    content: BufferContent,
+) {
+    let buffer_handle = ctx.buffers.add(Buffer::new(path, content));
+    let buffer_view_index = ctx.buffer_views.add(BufferView::with_handle(buffer_handle));
+    ctx.viewports
+        .current_viewport_mut()
+        .set_current_buffer_view_handle(buffer_view_index);
+}
+
+fn new_buffer_from_file(ctx: &mut CommandContext, path: PathBuf) -> Result<(), String> {
+    let mut file =
+        File::open(&path).map_err(|e| format!("could not open file {:?}: {:?}", path, e))?;
+    let mut content = String::new();
+    file.read_to_string(&mut content)
+        .map_err(|e| format!("could not read contents from file {:?}: {:?}", path, e))?;
+    new_buffer_from_content(ctx, Some(path), BufferContent::from_str(&content[..]));
+    Ok(())
 }
 
 mod commands {
     use super::*;
 
-    pub fn quit(_ctx: CommandContext, _args: &str) -> CommandOperation {
-        CommandOperation::Quit
+    pub fn quit(_ctx: CommandContext, _args: &str) -> Operation {
+        Operation::Quit
     }
 
-    pub fn edit(_ctx: CommandContext, args: &str) -> CommandOperation {
-        if args.len() > 0 {
-            CommandOperation::None
-        } else {
-            CommandOperation::Error("no file supplied".into())
+    pub fn edit(mut ctx: CommandContext, args: &str) -> Operation {
+        match new_buffer_from_file(&mut ctx, args.into()) {
+            Ok(()) => Operation::EnterMode(Mode::Normal),
+            Err(error) => Operation::Error(error),
         }
     }
 }

@@ -1,15 +1,15 @@
-use crate::mode::{poll_input, FromMode, InputResult, Mode, ModeContext, ModeOperation};
+use crate::{editor::Operation, mode::{poll_input, FromMode, InputResult, Mode, ModeContext}};
 
 pub fn on_enter(ctx: ModeContext) {
     ctx.input.clear();
     update_search(ctx);
 }
 
-pub fn on_event(mut ctx: ModeContext, from_mode: &FromMode) -> ModeOperation {
+pub fn on_event(mut ctx: ModeContext, from_mode: &FromMode) -> Operation {
     let operation = match poll_input(&mut ctx) {
-        InputResult::Canceled => ModeOperation::EnterMode(from_mode.as_mode()),
-        InputResult::Submited => ModeOperation::EnterMode(Mode::Normal),
-        InputResult::Pending => ModeOperation::None,
+        InputResult::Canceled => Operation::EnterMode(from_mode.as_mode()),
+        InputResult::Submited => Operation::EnterMode(Mode::Normal),
+        InputResult::Pending => Operation::None,
     };
 
     update_search(ctx);

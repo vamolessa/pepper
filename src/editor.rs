@@ -1,13 +1,21 @@
 use crate::{
+    buffer::BufferCollection,
+    buffer_view::BufferViewCollection,
     command::CommandCollection,
-    buffer::{Buffer, BufferCollection, BufferContent},
-    buffer_view::{BufferView, BufferViewCollection},
     config::Config,
     event::{Event, Key},
-    mode::{Mode, ModeContext, ModeOperation},
+    mode::{Mode, ModeContext},
     theme::Theme,
     viewport::ViewportCollection,
 };
+
+pub enum Operation {
+    None,
+    Pending,
+    Quit,
+    EnterMode(Mode),
+    Error(String),
+}
 
 pub enum EditorPollResult {
     Pending,
@@ -46,16 +54,6 @@ impl Editor {
         }
     }
 
-    pub fn new_buffer_from_content(&mut self, content: BufferContent) {
-        let buffer_handle = self.buffers.add(Buffer::with_content(content));
-        let buffer_view_index = self
-            .buffer_views
-            .add(BufferView::with_handle(buffer_handle));
-        self.viewports
-            .current_viewport_mut()
-            .set_current_buffer_view_handle(buffer_view_index);
-    }
-
     pub fn on_event(&mut self, event: Event) -> EditorPollResult {
         match event {
             Event::None => (),
@@ -67,15 +65,15 @@ impl Editor {
 
                 let (mode, mode_context) = self.get_mode_and_context();
                 match mode.on_event(mode_context) {
-                    ModeOperation::None => (),
-                    ModeOperation::Pending => return EditorPollResult::Pending,
-                    ModeOperation::Quit => return EditorPollResult::Quit,
-                    ModeOperation::EnterMode(next_mode) => {
+                    Operation::None => (),
+                    Operation::Pending => return EditorPollResult::Pending,
+                    Operation::Quit => return EditorPollResult::Quit,
+                    Operation::EnterMode(next_mode) => {
                         self.mode = next_mode;
                         let (mode, mode_context) = self.get_mode_and_context();
                         mode.on_enter(mode_context);
                     }
-                    ModeOperation::Error(error) => {
+                    Operation::Error(error) => {
                         self.buffered_keys.clear();
 
                         self.mode = Mode::Normal;

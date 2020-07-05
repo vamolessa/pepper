@@ -1,4 +1,5 @@
 use crate::{
+    editor::Operation,
     buffer::BufferCollection, buffer_view::BufferViewCollection, command::CommandCollection,
     event::Key, viewport::ViewportCollection,
 };
@@ -16,14 +17,6 @@ pub struct ModeContext<'a> {
     pub viewports: &'a mut ViewportCollection,
     pub keys: &'a [Key],
     pub input: &'a mut String,
-}
-
-pub enum ModeOperation {
-    None,
-    Pending,
-    Quit,
-    EnterMode(Mode),
-    Error(String),
 }
 
 pub enum FromMode {
@@ -59,7 +52,7 @@ impl Mode {
         }
     }
 
-    pub fn on_event(&mut self, context: ModeContext) -> ModeOperation {
+    pub fn on_event(&mut self, context: ModeContext) -> Operation {
         match self {
             Mode::Normal => normal::on_event(context),
             Mode::Select => select::on_event(context),

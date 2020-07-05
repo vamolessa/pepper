@@ -1,4 +1,4 @@
-use std::io;
+use std::{io, path::PathBuf};
 
 use crate::{
     buffer_position::{BufferPosition, BufferRange},
@@ -276,14 +276,16 @@ impl BufferContent {
 }
 
 pub struct Buffer {
+    pub path: Option<PathBuf>,
     pub content: BufferContent,
     pub history: History,
     search_ranges: Vec<BufferRange>,
 }
 
 impl Buffer {
-    pub fn with_content(content: BufferContent) -> Self {
+    pub fn new(path: Option<PathBuf>, content: BufferContent) -> Self {
         Self {
+            path,
             content,
             history: History::new(),
             search_ranges: Vec::new(),
@@ -504,7 +506,7 @@ mod tests {
 
     #[test]
     fn buffer_remove_undo_redo_single_line() {
-        let mut buffer = Buffer::with_content(BufferContent::from_str("single line content"));
+        let mut buffer = Buffer::new(None, BufferContent::from_str("single line content"));
         let range = BufferRange::between(
             BufferPosition::line_col(0, 7),
             BufferPosition::line_col(0, 12),
@@ -524,7 +526,7 @@ mod tests {
 
     #[test]
     fn buffer_remove_undo_redo_multi_line() {
-        let mut buffer = Buffer::with_content(BufferContent::from_str("multi\nline\ncontent"));
+        let mut buffer = Buffer::new(None, BufferContent::from_str("multi\nline\ncontent"));
         let range = BufferRange::between(
             BufferPosition::line_col(0, 1),
             BufferPosition::line_col(1, 3),

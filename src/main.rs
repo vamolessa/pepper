@@ -22,7 +22,14 @@ fn main() {
     let content = buffer::BufferContent::from_str(text);
 
     let mut editor = editor::Editor::new();
-    editor.new_buffer_from_content(content);
+    let buffer_handle = editor.buffers.add(buffer::Buffer::new(None, content));
+    let buffer_view_index = editor
+        .buffer_views
+        .add(buffer_view::BufferView::with_handle(buffer_handle));
+    editor
+        .viewports
+        .current_viewport_mut()
+        .set_current_buffer_view_handle(buffer_view_index);
 
     tui::show(stdout, editor).unwrap();
 }
