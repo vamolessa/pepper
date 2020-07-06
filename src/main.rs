@@ -23,7 +23,7 @@ fn main() {
     let content = buffer::BufferContent::from_str(text);
 
     let mut editor = editor::Editor::new();
-    editor.keymaps.parse_map(mode::Mode::Normal.discriminant(), "dd", "vjd").unwrap();
+    editor.keymaps.parse_map(mode::Mode::Normal.discriminant(), "edit", "i").unwrap();
 
     let buffer_handle = editor.buffers.add(buffer::Buffer::new(None, content));
     let buffer_view_index = editor
