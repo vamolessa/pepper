@@ -1,3 +1,5 @@
+use std::mem::Discriminant;
+
 use crate::{
     buffer::BufferCollection, buffer_view::BufferViewCollection, command::CommandCollection,
     event::Key, viewport::ViewportCollection,
@@ -49,6 +51,10 @@ pub enum Mode {
 }
 
 impl Mode {
+    pub fn discriminant(&self) -> Discriminant<Self> {
+        std::mem::discriminant(self)
+    }
+
     pub fn on_enter(&mut self, context: ModeContext) {
         match self {
             Mode::Normal => normal::on_enter(context),

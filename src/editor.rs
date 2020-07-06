@@ -1,10 +1,10 @@
 use crate::{
-    keymap::KeyMapCollection,
     buffer::BufferCollection,
     buffer_view::BufferViewCollection,
     command::CommandCollection,
     config::Config,
     event::{Event, Key},
+    keymap::{KeyMapCollection, MatchResult},
     mode::{Mode, ModeContext, ModeOperation},
     theme::Theme,
     viewport::ViewportCollection,
@@ -57,6 +57,14 @@ impl Editor {
             }
             Event::Key(key) => {
                 self.buffered_keys.push(key);
+                match self.keymaps.matches(self.mode.discriminant(), &self.buffered_keys[..]) {
+                    MatchResult::None => (),
+                    MatchResult::Prefix => return EditorPollResult::Pending,
+                    MatchResult::Replace(replaced_keys) => {
+                        self.buffered_keys.clear();
+                        self.buffered_keys.extend_from_slice(replaced_keys);
+                    }
+                }
 
                 let (mode, mode_context) = self.get_mode_and_context();
                 match mode.on_event(mode_context) {
