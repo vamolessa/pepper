@@ -12,6 +12,7 @@ fn on_event_no_buffer(ctx: ModeContext) -> ModeOperation {
     match ctx.keys {
         [Key::Char('q')] => return ModeOperation::Pending,
         [Key::Char('q'), Key::Char('q')] => return ModeOperation::Quit,
+        [Key::Char(':')] => return ModeOperation::EnterMode(Mode::Command(FromMode::Normal)),
         _ => (),
     }
 
@@ -95,19 +96,11 @@ pub fn on_event(ctx: ModeContext) -> ModeOperation {
                 .get_mut(handle)
                 .move_to_previous_search_match(ctx.buffers, MovementKind::PositionWithAnchor);
         }
-        [Key::Char(':')] => return ModeOperation::EnterMode(Mode::Command(FromMode::Normal)),
         [Key::Char('u')] => ctx.buffer_views.undo(ctx.buffers, handle),
         [Key::Char('U')] => ctx.buffer_views.redo(ctx.buffers, handle),
         [Key::Ctrl('p')] => {
             let mut child = std::process::Command::new("fzf").spawn().unwrap();
             child.wait().unwrap();
-        }
-        [Key::Ctrl('s')] => {
-            let buffer_handle = ctx.buffer_views.get(handle).buffer_handle;
-            if let Some(buffer) = ctx.buffers.get(buffer_handle) {
-                let mut file = std::fs::File::create("buffer_content.txt").unwrap();
-                buffer.content.write(&mut file).unwrap();
-            }
         }
         [Key::Tab] => ctx.viewports.focus_next_viewport(ctx.buffer_views),
         _ => return on_event_no_buffer(ctx),

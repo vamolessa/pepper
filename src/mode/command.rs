@@ -31,7 +31,7 @@ pub fn on_event(mut ctx: ModeContext, from_mode: &FromMode) -> ModeOperation {
                 .commands
                 .execute(command_name, command_context, command_args)
             {
-                CommandOperation::Done => ModeOperation::EnterMode(from_mode.as_mode()),
+                CommandOperation::Complete => ModeOperation::EnterMode(from_mode.as_mode()),
                 CommandOperation::Quit => ModeOperation::Quit,
                 CommandOperation::Error(error) => ModeOperation::Error(error),
             }

@@ -7,7 +7,7 @@ use crate::{
 };
 
 pub enum CommandOperation {
-    Done,
+    Complete,
     Quit,
     Error(String),
 }
@@ -32,6 +32,7 @@ impl Default for CommandCollection {
 
         this.register("quit".into(), commands::quit);
         this.register("edit".into(), commands::edit);
+        this.register("write".into(), commands::write);
 
         this
     }
@@ -64,26 +65,96 @@ fn new_buffer_from_content(
 }
 
 fn new_buffer_from_file(ctx: &mut CommandContext, path: PathBuf) -> Result<(), String> {
-    let mut file =
-        File::open(&path).map_err(|e| format!("could not open file {:?}: {:?}", path, e))?;
-    let mut content = String::new();
-    file.read_to_string(&mut content)
-        .map_err(|e| format!("could not read contents from file {:?}: {:?}", path, e))?;
-    new_buffer_from_content(ctx, Some(path), BufferContent::from_str(&content[..]));
+    let content = match File::open(&path) {
+        Ok(mut file) => {
+            let mut content = String::new();
+            match file.read_to_string(&mut content) {
+                Ok(_) => (),
+                Err(error) => {
+                    return Err(format!(
+                        "could not read contents from file {:?}: {:?}",
+                        path, error
+                    ))
+                }
+            }
+            BufferContent::from_str(&content[..])
+        }
+        Err(_) => BufferContent::from_str(""),
+    };
+
+    new_buffer_from_content(ctx, Some(path), content);
     Ok(())
 }
 
 mod commands {
     use super::*;
 
-    pub fn quit(_ctx: CommandContext, _args: &str) -> CommandOperation {
+    macro_rules! assert_empty {
+        ($args:ident) => {
+            if $args.trim().len() > 0 {
+                return CommandOperation::Error(format!("invalid command arguments '{}'", $args));
+            }
+        };
+    }
+
+    pub fn quit(_ctx: CommandContext, args: &str) -> CommandOperation {
+        assert_empty!(args);
         CommandOperation::Quit
     }
 
     pub fn edit(mut ctx: CommandContext, args: &str) -> CommandOperation {
         match new_buffer_from_file(&mut ctx, args.into()) {
-            Ok(()) => CommandOperation::Done,
+            Ok(()) => CommandOperation::Complete,
             Err(error) => CommandOperation::Error(error),
+        }
+    }
+
+    pub fn write(ctx: CommandContext, args: &str) -> CommandOperation {
+        let handle = match ctx
+            .viewports
+            .current_viewport()
+            .current_buffer_view_handle()
+        {
+            Some(handle) => handle,
+            None => return CommandOperation::Error("no buffer opened".into()),
+        };
+
+        let buffer = match ctx
+            .buffers
+            .get_mut(ctx.buffer_views.get(handle).buffer_handle)
+        {
+            Some(buffer) => buffer,
+            None => return CommandOperation::Error("no buffer opened".into()),
+        };
+
+        let path_arg = args.trim();
+        if path_arg.len() > 0 {
+            buffer.path = Some(path_arg.into());
+        }
+
+        let path = match &buffer.path {
+            Some(path) => path,
+            None => return CommandOperation::Error("buffer has no path".into()),
+        };
+
+        let mut file = match File::create(path) {
+            Ok(file) => file,
+            Err(error) => {
+                return CommandOperation::Error(format!(
+                    "could not create file {:?}: {:?}",
+                    path, error
+                ))
+            }
+        };
+
+        match buffer.content.write(&mut file) {
+            Ok(()) => CommandOperation::Complete,
+            Err(error) => {
+                return CommandOperation::Error(format!(
+                    "could not write to file {:?}: {:?}",
+                    path, error
+                ))
+            }
         }
     }
 }

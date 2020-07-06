@@ -26,13 +26,20 @@ Experimental code editor
 	- ~~delete~~
 	- ~~copy~~
 	- ~~paste~~
+- config file
+	- load config file at startup
+	- reload config file when changed??
+- custom bindings
+	- custom bindings expand to builtin bindings
+	- custom bindings take precedence
+	- define custom bindings in config file
 - command mode
 	- ~~basic command mode~~
-	- command parsing
-	- command register
-- file operations
-	- edit (command to open/create file?)
-	- save
+	- ~~default commands~~
+	- define custom commands in config file
+- ~~file operations~~
+	- ~~edit (command to open/create file?)~~
+	- ~~save~~
 - code navigation
 	- home/end
 	- find char
