@@ -1,4 +1,5 @@
 use crate::{
+    keymap::KeyMapCollection,
     buffer::BufferCollection,
     buffer_view::BufferViewCollection,
     command::CommandCollection,
@@ -20,6 +21,7 @@ pub struct Editor {
     pub theme: Theme,
 
     pub mode: Mode,
+    pub keymaps: KeyMapCollection,
     pub buffered_keys: Vec<Key>,
     pub input: String,
     pub commands: CommandCollection,
@@ -36,6 +38,7 @@ impl Editor {
             theme: Theme::default(),
 
             mode: Mode::default(),
+            keymaps: KeyMapCollection::default(),
             buffered_keys: Vec::new(),
             input: String::new(),
             commands: CommandCollection::default(),

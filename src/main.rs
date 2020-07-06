@@ -7,6 +7,7 @@ mod cursor;
 mod editor;
 mod event;
 mod history;
+mod keymap;
 mod mode;
 mod theme;
 mod tui;
