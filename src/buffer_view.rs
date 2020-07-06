@@ -204,7 +204,12 @@ impl BufferViewCollection {
             self.temp_ranges.push(range);
         }
 
+        let current_buffer_handle = current_view.buffer_handle;
         for view in self.buffer_views.iter_mut().flatten() {
+            if view.buffer_handle != current_buffer_handle {
+                continue;
+            }
+
             let ranges = &self.temp_ranges;
             view.cursors.change_all(|cs| {
                 for c in cs {
@@ -237,7 +242,12 @@ impl BufferViewCollection {
             self.temp_ranges.push(range);
         }
 
+        let current_buffer_handle = current_view.buffer_handle;
         for view in self.buffer_views.iter_mut().flatten() {
+            if view.buffer_handle != current_buffer_handle {
+                continue;
+            }
+
             let ranges = &self.temp_ranges;
             view.cursors.change_all(|cs| {
                 for c in cs {
