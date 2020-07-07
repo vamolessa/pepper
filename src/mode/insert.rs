@@ -50,7 +50,7 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
             );
             ctx.buffer_views.remove_in_selection(ctx.buffers, handle);
         }
-        _ => return ModeOperation::NoMatch,
+        _ => (),
     }
 
     ModeOperation::None

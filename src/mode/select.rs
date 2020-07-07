@@ -96,7 +96,7 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
                 .move_to_previous_search_match(ctx.buffers, MovementKind::PositionOnly);
         }
         Key::Char(':') => return ModeOperation::EnterMode(Mode::Command(FromMode::Select)),
-        _ => return ModeOperation::NoMatch,
+        _ => (),
     };
 
     ModeOperation::None

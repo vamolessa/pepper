@@ -92,7 +92,7 @@ impl Editor {
                 {
                     MatchResult::None => (),
                     MatchResult::Prefix => return EditorPollResult::Pending,
-                    MatchResult::Replace(replaced_keys) => {
+                    MatchResult::ReplaceWith(replaced_keys) => {
                         self.buffered_keys.clear();
                         self.buffered_keys.extend_from_slice(replaced_keys);
                     }
@@ -100,6 +100,10 @@ impl Editor {
 
                 let mut keys = KeysIterator::new(&self.buffered_keys);
                 let result = loop {
+                    if keys.index >= self.buffered_keys.len() {
+                        break EditorPollResult::Pending;
+                    }
+
                     let mut mode_context = ModeContext {
                         commands: &self.commands,
                         buffers: &mut self.buffers,
@@ -109,25 +113,17 @@ impl Editor {
                     };
 
                     match self.mode.on_event(&mut mode_context, &mut keys) {
-                        ModeOperation::NoMatch => {
-                            self.buffered_keys.clear();
-                            break EditorPollResult::Pending;
-                        }
-                        ModeOperation::Pending => break EditorPollResult::Pending,
+                        ModeOperation::Pending => return EditorPollResult::Pending,
                         ModeOperation::None => (),
-                        ModeOperation::Quit => {
-                            self.buffered_keys.clear();
-                            break EditorPollResult::Quit;
-                        }
+                        ModeOperation::Quit => return EditorPollResult::Quit,
                         ModeOperation::EnterMode(next_mode) => {
                             self.mode = next_mode;
                             self.mode.on_enter(&mut mode_context);
                         }
                         ModeOperation::Error(error) => {
-                            self.mode = Mode::Normal;
+                            self.mode = Mode::default();
                             self.mode.on_enter(&mut mode_context);
 
-                            self.buffered_keys.clear();
                             break EditorPollResult::Error(error);
                         }
                     }
@@ -144,6 +140,7 @@ impl Editor {
                         .scroll_to_cursor(buffer_view.cursors.main_cursor().position);
                 }
 
+                self.buffered_keys.clear();
                 result
             }
         }

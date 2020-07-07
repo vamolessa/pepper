@@ -8,7 +8,7 @@ use crate::{
 pub enum MatchResult<'a> {
     None,
     Prefix,
-    Replace(&'a [Key]),
+    ReplaceWith(&'a [Key]),
 }
 
 struct KeyMap {
@@ -59,7 +59,7 @@ impl KeyMapCollection {
             if map.from.iter().zip(keys.iter()).all(|(a, b)| a == b) {
                 has_prefix = true;
                 if map.from.len() == keys.len() {
-                    return MatchResult::Replace(&map.to[..]);
+                    return MatchResult::ReplaceWith(&map.to[..]);
                 }
             }
         }

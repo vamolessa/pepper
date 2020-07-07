@@ -12,7 +12,6 @@ mod search;
 mod select;
 
 pub enum ModeOperation {
-    NoMatch,
     Pending,
     None,
     Quit,
@@ -87,7 +86,6 @@ impl Default for Mode {
 }
 
 pub enum InputPollResult {
-    NoMatch,
     Pending,
     Submited,
     Canceled,
@@ -133,9 +131,6 @@ pub fn poll_input(ctx: &mut ModeContext, keys: &mut KeysIterator) -> InputPollRe
             ctx.input.push(c);
             InputPollResult::Pending
         }
-        _ => {
-            keys.put_back();
-            InputPollResult::NoMatch
-        }
+        _ => InputPollResult::Pending,
     }
 }

@@ -14,7 +14,6 @@ pub fn on_event(
     from_mode: &FromMode,
 ) -> ModeOperation {
     match poll_input(&mut ctx, keys) {
-        InputPollResult::NoMatch => ModeOperation::NoMatch,
         InputPollResult::Pending => ModeOperation::None,
         InputPollResult::Canceled => ModeOperation::EnterMode(from_mode.as_mode()),
         InputPollResult::Submited => {

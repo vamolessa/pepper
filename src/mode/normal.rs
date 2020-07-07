@@ -14,10 +14,10 @@ fn on_event_no_buffer(_ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOp
         Key::Char('q') => match keys.next() {
             Key::Char('q') => ModeOperation::Quit,
             Key::None => ModeOperation::Pending,
-            _ => ModeOperation::NoMatch,
+            _ => ModeOperation::None,
         },
         Key::Char(':') => ModeOperation::EnterMode(Mode::Command(FromMode::Normal)),
-        _ => ModeOperation::NoMatch,
+        _ => ModeOperation::None,
     }
 }
 
