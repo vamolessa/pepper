@@ -362,6 +362,13 @@ impl BufferCollection {
     pub fn iter(&self) -> impl Iterator<Item = &Buffer> {
         self.buffers.iter().filter_map(|b| b.as_ref())
     }
+
+    pub fn iter_with_handles(&self) -> impl Iterator<Item = (BufferHandle, &Buffer)> {
+        self.buffers.iter().enumerate().filter_map(|(i, b)| match b {
+            Some(b) => Some((BufferHandle(i), b)),
+            None => None
+        })
+    }
 }
 
 #[cfg(test)]

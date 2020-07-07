@@ -58,48 +58,64 @@ impl CommandCollection {
     }
 }
 
-fn new_buffer_from_content(
-    ctx: &mut CommandContext,
-    path: Option<PathBuf>,
-    content: BufferContent,
-) {
-    let buffer_handle = ctx.buffers.add(Buffer::new(path, content));
-    let buffer_view_index = ctx.buffer_views.add(BufferView::with_handle(buffer_handle));
-    ctx.viewports
-        .current_viewport_mut()
-        .set_current_buffer_view_handle(buffer_view_index);
-}
+mod helper {
+    use super::*;
 
-fn new_buffer_from_file(ctx: &mut CommandContext, path: PathBuf) -> Result<(), String> {
-    let content = match File::open(&path) {
-        Ok(mut file) => {
-            let mut content = String::new();
-            match file.read_to_string(&mut content) {
-                Ok(_) => (),
-                Err(error) => {
-                    return Err(format!(
-                        "could not read contents from file {:?}: {:?}",
-                        path, error
-                    ))
+    pub fn new_buffer_from_content(
+        ctx: &mut CommandContext,
+        path: Option<PathBuf>,
+        content: BufferContent,
+    ) {
+        let buffer_handle = ctx.buffers.add(Buffer::new(path, content));
+        let buffer_view_index = ctx.buffer_views.add(BufferView::with_handle(buffer_handle));
+        ctx.viewports
+            .current_viewport_mut()
+            .set_current_buffer_view_handle(buffer_view_index);
+    }
+
+    pub fn new_buffer_from_file(ctx: &mut CommandContext, path: &Path) -> Result<(), String> {
+        for (handle, buffer) in ctx.buffers.iter_with_handles() {
+            if let Some(buffer_path) = &buffer.path {
+                if buffer_path == path {
+                    let view_handle = ctx.buffer_views.add(BufferView::with_handle(handle));
+                    ctx.viewports
+                        .current_viewport_mut()
+                        .set_current_buffer_view_handle(view_handle);
+                    return Ok(());
                 }
             }
-            BufferContent::from_str(&content[..])
         }
-        Err(_) => BufferContent::from_str(""),
-    };
 
-    new_buffer_from_content(ctx, Some(path), content);
-    Ok(())
-}
+        let content = match File::open(&path) {
+            Ok(mut file) => {
+                let mut content = String::new();
+                match file.read_to_string(&mut content) {
+                    Ok(_) => (),
+                    Err(error) => {
+                        return Err(format!(
+                            "could not read contents from file {:?}: {:?}",
+                            path, error
+                        ))
+                    }
+                }
+                BufferContent::from_str(&content[..])
+            }
+            Err(_) => BufferContent::from_str(""),
+        };
 
-fn write_buffer_to_file(buffer: &Buffer, path: &Path) -> Result<(), String> {
-    let mut file =
-        File::create(path).map_err(|e| format!("could not create file {:?}: {:?}", path, e))?;
+        new_buffer_from_content(ctx, Some(path.into()), content);
+        Ok(())
+    }
 
-    buffer
-        .content
-        .write(&mut file)
-        .map_err(|e| format!("could not write to file {:?}: {:?}", path, e))
+    pub fn write_buffer_to_file(buffer: &Buffer, path: &Path) -> Result<(), String> {
+        let mut file =
+            File::create(path).map_err(|e| format!("could not create file {:?}: {:?}", path, e))?;
+
+        buffer
+            .content
+            .write(&mut file)
+            .map_err(|e| format!("could not write to file {:?}: {:?}", path, e))
+    }
 }
 
 mod commands {
@@ -119,7 +135,7 @@ mod commands {
     }
 
     pub fn edit(mut ctx: CommandContext, args: &str) -> CommandOperation {
-        match new_buffer_from_file(&mut ctx, args.into()) {
+        match helper::new_buffer_from_file(&mut ctx, Path::new(args)) {
             Ok(()) => CommandOperation::Complete,
             Err(error) => CommandOperation::Error(error),
         }
@@ -149,13 +165,13 @@ mod commands {
                 Some(path) => path,
                 None => return CommandOperation::Error("buffer has no path".into()),
             };
-            match write_buffer_to_file(buffer, &path) {
+            match helper::write_buffer_to_file(buffer, &path) {
                 Ok(()) => CommandOperation::Complete,
                 Err(error) => CommandOperation::Error(error),
             }
         } else {
             let path = PathBuf::from(path_arg);
-            match write_buffer_to_file(buffer, &path) {
+            match helper::write_buffer_to_file(buffer, &path) {
                 Ok(()) => {
                     buffer.path = Some(path);
                     CommandOperation::Complete
@@ -169,7 +185,7 @@ mod commands {
         assert_empty!(args);
         for buffer in ctx.buffers.iter() {
             if let Some(ref path) = buffer.path {
-                match write_buffer_to_file(buffer, path) {
+                match helper::write_buffer_to_file(buffer, path) {
                     Ok(()) => (),
                     Err(error) => return CommandOperation::Error(error),
                 }
