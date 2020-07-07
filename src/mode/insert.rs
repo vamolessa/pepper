@@ -2,13 +2,14 @@ use crate::{
     buffer::TextRef,
     buffer_position::BufferOffset,
     buffer_view::MovementKind,
+    editor::KeysIterator,
     event::Key,
     mode::{Mode, ModeContext, ModeOperation},
 };
 
-pub fn on_enter(_ctx: ModeContext) {}
+pub fn on_enter(_ctx: &mut ModeContext) {}
 
-pub fn on_event(ctx: ModeContext) -> ModeOperation {
+pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
     let handle = if let Some(handle) = ctx
         .viewports
         .current_viewport()
@@ -19,21 +20,21 @@ pub fn on_event(ctx: ModeContext) -> ModeOperation {
         return ModeOperation::EnterMode(Mode::Normal);
     };
 
-    match ctx.keys {
-        [Key::Esc] | [Key::Ctrl('c')] => {
+    match keys.next() {
+        Key::Esc | Key::Ctrl('c') => {
             ctx.buffer_views.get_mut(handle).commit_edits(ctx.buffers);
             return ModeOperation::EnterMode(Mode::Normal);
         }
-        [Key::Tab] => ctx
+        Key::Tab => ctx
             .buffer_views
             .insert_text(ctx.buffers, handle, TextRef::Char('\t')),
-        [Key::Ctrl('m')] => ctx
+        Key::Ctrl('m') => ctx
             .buffer_views
             .insert_text(ctx.buffers, handle, TextRef::Char('\n')),
-        [Key::Char(c)] => ctx
+        Key::Char(c) => ctx
             .buffer_views
-            .insert_text(ctx.buffers, handle, TextRef::Char(*c)),
-        [Key::Ctrl('h')] => {
+            .insert_text(ctx.buffers, handle, TextRef::Char(c)),
+        Key::Ctrl('h') => {
             ctx.buffer_views.get_mut(handle).move_cursors(
                 ctx.buffers,
                 BufferOffset::line_col(0, -1),
@@ -41,7 +42,7 @@ pub fn on_event(ctx: ModeContext) -> ModeOperation {
             );
             ctx.buffer_views.remove_in_selection(ctx.buffers, handle);
         }
-        [Key::Delete] => {
+        Key::Delete => {
             ctx.buffer_views.get_mut(handle).move_cursors(
                 ctx.buffers,
                 BufferOffset::line_col(0, 1),
@@ -49,7 +50,7 @@ pub fn on_event(ctx: ModeContext) -> ModeOperation {
             );
             ctx.buffer_views.remove_in_selection(ctx.buffers, handle);
         }
-        _ => (),
+        _ => return ModeOperation::NoMatch,
     }
 
     ModeOperation::None

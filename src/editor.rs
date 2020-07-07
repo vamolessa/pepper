@@ -16,6 +16,33 @@ pub enum EditorPollResult {
     Error(String),
 }
 
+pub struct KeysIterator<'a> {
+    keys: &'a [Key],
+    index: usize,
+}
+
+impl<'a> KeysIterator<'a> {
+    fn new(keys: &'a [Key]) -> Self {
+        Self { keys, index: 0 }
+    }
+
+    pub fn next(&mut self) -> Key {
+        if self.index < self.keys.len() {
+            let next = self.keys[self.index];
+            self.index += 1;
+            next
+        } else {
+            Key::None
+        }
+    }
+
+    pub fn put_back(&mut self) {
+        if self.index > 0 {
+            self.index -= 1;
+        }
+    }
+}
+
 pub struct Editor {
     pub config: Config,
     pub theme: Theme,
@@ -51,13 +78,18 @@ impl Editor {
 
     pub fn on_event(&mut self, event: Event) -> EditorPollResult {
         match event {
-            Event::None => (),
+            Event::None => EditorPollResult::Pending,
             Event::Resize(w, h) => {
                 self.viewports.set_view_size(w as _, h as _);
+                EditorPollResult::Pending
             }
             Event::Key(key) => {
                 self.buffered_keys.push(key);
-                match self.keymaps.matches(self.mode.discriminant(), &self.buffered_keys[..]) {
+
+                match self
+                    .keymaps
+                    .matches(self.mode.discriminant(), &self.buffered_keys[..])
+                {
                     MatchResult::None => (),
                     MatchResult::Prefix => return EditorPollResult::Pending,
                     MatchResult::Replace(replaced_keys) => {
@@ -66,26 +98,40 @@ impl Editor {
                     }
                 }
 
-                let (mode, mode_context) = self.get_mode_and_context();
-                match mode.on_event(mode_context) {
-                    ModeOperation::None => (),
-                    ModeOperation::Pending => return EditorPollResult::Pending,
-                    ModeOperation::Quit => return EditorPollResult::Quit,
-                    ModeOperation::EnterMode(next_mode) => {
-                        self.mode = next_mode;
-                        let (mode, mode_context) = self.get_mode_and_context();
-                        mode.on_enter(mode_context);
-                    }
-                    ModeOperation::Error(error) => {
-                        self.buffered_keys.clear();
+                let mut keys = KeysIterator::new(&self.buffered_keys);
+                let result = loop {
+                    let mut mode_context = ModeContext {
+                        commands: &self.commands,
+                        buffers: &mut self.buffers,
+                        buffer_views: &mut self.buffer_views,
+                        viewports: &mut self.viewports,
+                        input: &mut self.input,
+                    };
 
-                        self.mode = Mode::Normal;
-                        let (mode, mode_context) = self.get_mode_and_context();
-                        mode.on_enter(mode_context);
+                    match self.mode.on_event(&mut mode_context, &mut keys) {
+                        ModeOperation::NoMatch => {
+                            self.buffered_keys.clear();
+                            break EditorPollResult::Pending;
+                        }
+                        ModeOperation::Pending => break EditorPollResult::Pending,
+                        ModeOperation::None => (),
+                        ModeOperation::Quit => {
+                            self.buffered_keys.clear();
+                            break EditorPollResult::Quit;
+                        }
+                        ModeOperation::EnterMode(next_mode) => {
+                            self.mode = next_mode;
+                            self.mode.on_enter(&mut mode_context);
+                        }
+                        ModeOperation::Error(error) => {
+                            self.mode = Mode::Normal;
+                            self.mode.on_enter(&mut mode_context);
 
-                        return EditorPollResult::Error(error);
+                            self.buffered_keys.clear();
+                            break EditorPollResult::Error(error);
+                        }
                     }
-                }
+                };
 
                 if let Some(handle) = self
                     .viewports
@@ -98,24 +144,8 @@ impl Editor {
                         .scroll_to_cursor(buffer_view.cursors.main_cursor().position);
                 }
 
-                self.buffered_keys.clear();
+                result
             }
         }
-
-        EditorPollResult::Pending
-    }
-
-    fn get_mode_and_context<'a>(&'a mut self) -> (&'a mut Mode, ModeContext<'a>) {
-        (
-            &mut self.mode,
-            ModeContext {
-                commands: &self.commands,
-                buffers: &mut self.buffers,
-                buffer_views: &mut self.buffer_views,
-                viewports: &mut self.viewports,
-                keys: &self.buffered_keys[..],
-                input: &mut self.input,
-            },
-        )
     }
 }

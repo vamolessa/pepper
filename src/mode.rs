@@ -2,7 +2,7 @@ use std::mem::Discriminant;
 
 use crate::{
     buffer::BufferCollection, buffer_view::BufferViewCollection, command::CommandCollection,
-    event::Key, viewport::ViewportCollection,
+    editor::KeysIterator, event::Key, viewport::ViewportCollection,
 };
 
 mod command;
@@ -12,8 +12,9 @@ mod search;
 mod select;
 
 pub enum ModeOperation {
-    None,
+    NoMatch,
     Pending,
+    None,
     Quit,
     EnterMode(Mode),
     Error(String),
@@ -24,7 +25,6 @@ pub struct ModeContext<'a> {
     pub buffers: &'a mut BufferCollection,
     pub buffer_views: &'a mut BufferViewCollection,
     pub viewports: &'a mut ViewportCollection,
-    pub keys: &'a [Key],
     pub input: &'a mut String,
 }
 
@@ -55,7 +55,7 @@ impl Mode {
         std::mem::discriminant(self)
     }
 
-    pub fn on_enter(&mut self, context: ModeContext) {
+    pub fn on_enter(&mut self, context: &mut ModeContext) {
         match self {
             Mode::Normal => normal::on_enter(context),
             Mode::Select => select::on_enter(context),
@@ -65,13 +65,17 @@ impl Mode {
         }
     }
 
-    pub fn on_event(&mut self, context: ModeContext) -> ModeOperation {
+    pub fn on_event(
+        &mut self,
+        context: &mut ModeContext,
+        keys: &mut KeysIterator,
+    ) -> ModeOperation {
         match self {
-            Mode::Normal => normal::on_event(context),
-            Mode::Select => select::on_event(context),
-            Mode::Insert => insert::on_event(context),
-            Mode::Search(from_mode) => search::on_event(context, from_mode),
-            Mode::Command(from_mode) => command::on_event(context, from_mode),
+            Mode::Normal => normal::on_event(context, keys),
+            Mode::Select => select::on_event(context, keys),
+            Mode::Insert => insert::on_event(context, keys),
+            Mode::Search(from_mode) => search::on_event(context, keys, from_mode),
+            Mode::Command(from_mode) => command::on_event(context, keys, from_mode),
         }
     }
 }
@@ -82,24 +86,25 @@ impl Default for Mode {
     }
 }
 
-pub enum InputResult {
+pub enum InputPollResult {
+    NoMatch,
     Pending,
     Submited,
     Canceled,
 }
 
-pub fn poll_input(ctx: &mut ModeContext) -> InputResult {
-    match ctx.keys {
-        [Key::Esc] | [Key::Ctrl('c')] => {
+pub fn poll_input(ctx: &mut ModeContext, keys: &mut KeysIterator) -> InputPollResult {
+    match keys.next() {
+        Key::Esc | Key::Ctrl('c') => {
             ctx.input.clear();
-            InputResult::Canceled
+            InputPollResult::Canceled
         }
-        [Key::Ctrl('m')] => InputResult::Submited,
-        [Key::Ctrl('u')] => {
+        Key::Ctrl('m') => InputPollResult::Submited,
+        Key::Ctrl('u') => {
             ctx.input.clear();
-            InputResult::Pending
+            InputPollResult::Pending
         }
-        [Key::Ctrl('w')] => {
+        Key::Ctrl('w') => {
             let mut found_space = false;
             let mut last_index = 0;
             for (i, c) in ctx.input.char_indices().rev() {
@@ -116,18 +121,21 @@ pub fn poll_input(ctx: &mut ModeContext) -> InputResult {
             }
 
             ctx.input.drain(last_index..);
-            InputResult::Pending
+            InputPollResult::Pending
         }
-        [Key::Ctrl('h')] => {
+        Key::Ctrl('h') => {
             if let Some((last_char_index, _)) = ctx.input.char_indices().rev().next() {
                 ctx.input.drain(last_char_index..);
             }
-            InputResult::Pending
+            InputPollResult::Pending
         }
-        [Key::Char(c)] => {
-            ctx.input.push(*c);
-            InputResult::Pending
+        Key::Char(c) => {
+            ctx.input.push(c);
+            InputPollResult::Pending
         }
-        _ => InputResult::Pending,
+        _ => {
+            keys.put_back();
+            InputPollResult::NoMatch
+        }
     }
 }

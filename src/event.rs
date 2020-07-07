@@ -7,6 +7,7 @@ pub enum Event {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Key {
+    None,
     Backspace,
     Enter,
     Left,

@@ -1,16 +1,23 @@
 use crate::{
     command::{CommandContext, CommandOperation},
-    mode::{poll_input, FromMode, InputResult, ModeContext, ModeOperation},
+    editor::KeysIterator,
+    mode::{poll_input, FromMode, InputPollResult, ModeContext, ModeOperation},
 };
 
-pub fn on_enter(ctx: ModeContext) {
+pub fn on_enter(ctx: &mut ModeContext) {
     ctx.input.clear();
 }
 
-pub fn on_event(mut ctx: ModeContext, from_mode: &FromMode) -> ModeOperation {
-    match poll_input(&mut ctx) {
-        InputResult::Canceled => ModeOperation::EnterMode(from_mode.as_mode()),
-        InputResult::Submited => {
+pub fn on_event(
+    mut ctx: &mut ModeContext,
+    keys: &mut KeysIterator,
+    from_mode: &FromMode,
+) -> ModeOperation {
+    match poll_input(&mut ctx, keys) {
+        InputPollResult::NoMatch => ModeOperation::NoMatch,
+        InputPollResult::Pending => ModeOperation::None,
+        InputPollResult::Canceled => ModeOperation::EnterMode(from_mode.as_mode()),
+        InputPollResult::Submited => {
             let command_name;
             let command_args;
             if let Some(index) = ctx.input.find(' ') {
@@ -36,6 +43,5 @@ pub fn on_event(mut ctx: ModeContext, from_mode: &FromMode) -> ModeOperation {
                 CommandOperation::Error(error) => ModeOperation::Error(error),
             }
         }
-        InputResult::Pending => ModeOperation::None,
     }
 }

@@ -4,24 +4,26 @@ use crate::{
     buffer::TextRef,
     buffer_position::BufferOffset,
     buffer_view::MovementKind,
+    editor::KeysIterator,
     event::Key,
     mode::{FromMode, Mode, ModeContext, ModeOperation},
 };
 
-fn on_event_no_buffer(ctx: ModeContext) -> ModeOperation {
-    match ctx.keys {
-        [Key::Char('q')] => return ModeOperation::Pending,
-        [Key::Char('q'), Key::Char('q')] => return ModeOperation::Quit,
-        [Key::Char(':')] => return ModeOperation::EnterMode(Mode::Command(FromMode::Normal)),
-        _ => (),
+fn on_event_no_buffer(_ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
+    match keys.next() {
+        Key::Char('q') => match keys.next() {
+            Key::Char('q') => ModeOperation::Quit,
+            Key::None => ModeOperation::Pending,
+            _ => ModeOperation::NoMatch,
+        },
+        Key::Char(':') => ModeOperation::EnterMode(Mode::Command(FromMode::Normal)),
+        _ => ModeOperation::NoMatch,
     }
-
-    ModeOperation::None
 }
 
-pub fn on_enter(_ctx: ModeContext) {}
+pub fn on_enter(_ctx: &mut ModeContext) {}
 
-pub fn on_event(ctx: ModeContext) -> ModeOperation {
+pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
     let handle = if let Some(handle) = ctx
         .viewports
         .current_viewport()
@@ -29,39 +31,39 @@ pub fn on_event(ctx: ModeContext) -> ModeOperation {
     {
         handle
     } else {
-        return on_event_no_buffer(ctx);
+        return on_event_no_buffer(ctx, keys);
     };
 
-    match ctx.keys {
-        [Key::Char('h'), ..] => {
+    match keys.next() {
+        Key::Char('h') => {
             ctx.buffer_views.get_mut(handle).move_cursors(
                 ctx.buffers,
                 BufferOffset::line_col(0, -1),
                 MovementKind::PositionWithAnchor,
             );
         }
-        [Key::Char('j')] => {
+        Key::Char('j') => {
             ctx.buffer_views.get_mut(handle).move_cursors(
                 ctx.buffers,
                 BufferOffset::line_col(1, 0),
                 MovementKind::PositionWithAnchor,
             );
         }
-        [Key::Char('k')] => {
+        Key::Char('k') => {
             ctx.buffer_views.get_mut(handle).move_cursors(
                 ctx.buffers,
                 BufferOffset::line_col(-1, 0),
                 MovementKind::PositionWithAnchor,
             );
         }
-        [Key::Char('l')] => {
+        Key::Char('l') => {
             ctx.buffer_views.get_mut(handle).move_cursors(
                 ctx.buffers,
                 BufferOffset::line_col(0, 1),
                 MovementKind::PositionWithAnchor,
             );
         }
-        [Key::Char('J')] => {
+        Key::Char('J') => {
             let buffer_view = ctx.buffer_views.get_mut(handle);
             let buffer_handle = buffer_view.buffer_handle;
             let buffer_line_count = ctx
@@ -76,34 +78,37 @@ pub fn on_event(ctx: ModeContext) -> ModeOperation {
             cursor.anchor = cursor.position;
             buffer_view.cursors.add_cursor(cursor);
         }
-        [Key::Char('i')] => return ModeOperation::EnterMode(Mode::Insert),
-        [Key::Char('v')] => return ModeOperation::EnterMode(Mode::Select),
-        [Key::Char('s')] => return ModeOperation::EnterMode(Mode::Search(FromMode::Normal)),
-        [Key::Char('p')] => {
+        Key::Char('i') => return ModeOperation::EnterMode(Mode::Insert),
+        Key::Char('v') => return ModeOperation::EnterMode(Mode::Select),
+        Key::Char('s') => return ModeOperation::EnterMode(Mode::Search(FromMode::Normal)),
+        Key::Char('p') => {
             if let Ok(text) = ClipboardContext::new().and_then(|mut c| c.get_contents()) {
                 ctx.buffer_views
                     .insert_text(ctx.buffers, handle, TextRef::Str(&text[..]));
                 ctx.buffer_views.get_mut(handle).commit_edits(ctx.buffers);
             }
         }
-        [Key::Char('n')] => {
+        Key::Char('n') => {
             ctx.buffer_views
                 .get_mut(handle)
                 .move_to_next_search_match(ctx.buffers, MovementKind::PositionWithAnchor);
         }
-        [Key::Char('N')] => {
+        Key::Char('N') => {
             ctx.buffer_views
                 .get_mut(handle)
                 .move_to_previous_search_match(ctx.buffers, MovementKind::PositionWithAnchor);
         }
-        [Key::Char('u')] => ctx.buffer_views.undo(ctx.buffers, handle),
-        [Key::Char('U')] => ctx.buffer_views.redo(ctx.buffers, handle),
-        [Key::Ctrl('p')] => {
+        Key::Char('u') => ctx.buffer_views.undo(ctx.buffers, handle),
+        Key::Char('U') => ctx.buffer_views.redo(ctx.buffers, handle),
+        Key::Ctrl('p') => {
             let mut child = std::process::Command::new("fzf").spawn().unwrap();
             child.wait().unwrap();
         }
-        [Key::Tab] => ctx.viewports.focus_next_viewport(ctx.buffer_views),
-        _ => return on_event_no_buffer(ctx),
+        Key::Tab => ctx.viewports.focus_next_viewport(ctx.buffer_views),
+        _ => {
+            keys.put_back();
+            return on_event_no_buffer(ctx, keys);
+        }
     };
 
     ModeOperation::None
