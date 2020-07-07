@@ -29,11 +29,11 @@ impl KeyMapCollection {
         to: &str,
     ) -> Result<(), KeyParseError> {
         fn parse_keys(text: &str) -> Result<Vec<Key>, KeyParseError> {
-            let mut index = 0;
             let mut keys = Vec::new();
 
-            while index < text.len() {
-                keys.push(Key::parse(text, &mut index)?);
+            let mut chars = text.chars().peekable();
+            while chars.peek().is_some() {
+                keys.push(Key::parse(&mut chars)?);
             }
 
             Ok(keys)

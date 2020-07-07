@@ -33,7 +33,7 @@ pub fn on_event(ctx: ModeContext) -> ModeOperation {
     };
 
     match ctx.keys {
-        [Key::Char('h')] => {
+        [Key::Char('h'), ..] => {
             ctx.buffer_views.get_mut(handle).move_cursors(
                 ctx.buffers,
                 BufferOffset::line_col(0, -1),

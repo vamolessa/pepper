@@ -28,23 +28,17 @@ pub enum Key {
 
 #[derive(Debug)]
 pub enum KeyParseError {
-    UnexpectedEndOfText,
+    UnexpectedEnd,
     InvalidCharacter(char),
 }
 
 impl Key {
-    pub fn parse(text: &str, index: &mut usize) -> Result<Self, KeyParseError> {
-        let text = &text[*index..];
-        let mut chars = text.chars();
-
+    pub fn parse(chars: &mut impl Iterator<Item = char>) -> Result<Self, KeyParseError> {
         macro_rules! next {
             () => {
                 match chars.next() {
-                    Some(element) => {
-                        *index += 1;
-                        element
-                    }
-                    None => return Err(KeyParseError::UnexpectedEndOfText),
+                    Some(element) => element,
+                    None => return Err(KeyParseError::UnexpectedEnd),
                 }
             };
         }
@@ -215,77 +209,47 @@ mod tests {
 
     #[test]
     fn parse_key() {
-        let mut index = 0;
         assert_eq!(
             Key::Backspace,
-            Key::parse("<backspace>", &mut index).unwrap()
+            Key::parse(&mut "<backspace>".chars()).unwrap()
         );
-        index = 0;
-        assert_eq!(Key::Char(' '), Key::parse("<space>", &mut index).unwrap());
-        index = 0;
-        assert_eq!(Key::Enter, Key::parse("<enter>", &mut index).unwrap());
-        index = 0;
-        assert_eq!(Key::Left, Key::parse("<left>", &mut index).unwrap());
-        index = 0;
-        assert_eq!(Key::Right, Key::parse("<right>", &mut index).unwrap());
-        index = 0;
-        assert_eq!(Key::Up, Key::parse("<up>", &mut index).unwrap());
-        index = 0;
-        assert_eq!(Key::Down, Key::parse("<down>", &mut index).unwrap());
-        index = 0;
-        assert_eq!(Key::Home, Key::parse("<home>", &mut index).unwrap());
-        index = 0;
-        assert_eq!(Key::End, Key::parse("<end>", &mut index).unwrap());
-        index = 0;
-        assert_eq!(Key::PageUp, Key::parse("<pageup>", &mut index).unwrap());
-        index = 0;
-        assert_eq!(Key::PageDown, Key::parse("<pagedown>", &mut index).unwrap());
-        index = 0;
-        assert_eq!(Key::Tab, Key::parse("<tab>", &mut index).unwrap());
-        index = 0;
-        assert_eq!(Key::Delete, Key::parse("<delete>", &mut index).unwrap());
-        index = 0;
-        assert_eq!(Key::Esc, Key::parse("<esc>", &mut index).unwrap());
+        assert_eq!(Key::Char(' '), Key::parse(&mut "<space>".chars()).unwrap());
+        assert_eq!(Key::Enter, Key::parse(&mut "<enter>".chars()).unwrap());
+        assert_eq!(Key::Left, Key::parse(&mut "<left>".chars()).unwrap());
+        assert_eq!(Key::Right, Key::parse(&mut "<right>".chars()).unwrap());
+        assert_eq!(Key::Up, Key::parse(&mut "<up>".chars()).unwrap());
+        assert_eq!(Key::Down, Key::parse(&mut "<down>".chars()).unwrap());
+        assert_eq!(Key::Home, Key::parse(&mut "<home>".chars()).unwrap());
+        assert_eq!(Key::End, Key::parse(&mut "<end>".chars()).unwrap());
+        assert_eq!(Key::PageUp, Key::parse(&mut "<pageup>".chars()).unwrap());
+        assert_eq!(
+            Key::PageDown,
+            Key::parse(&mut "<pagedown>".chars()).unwrap()
+        );
+        assert_eq!(Key::Tab, Key::parse(&mut "<tab>".chars()).unwrap());
+        assert_eq!(Key::Delete, Key::parse(&mut "<delete>".chars()).unwrap());
+        assert_eq!(Key::Esc, Key::parse(&mut "<esc>".chars()).unwrap());
 
         for n in 1..=12 {
-            index = 0;
-            assert_eq!(
-                Key::F(n as _),
-                Key::parse(&format!("<f{}>", n)[..], &mut index).unwrap()
-            );
+            let s = format!("<f{}>", n);
+            assert_eq!(Key::F(n as _), Key::parse(&mut s.chars()).unwrap());
         }
 
-        index = 0;
-        assert_eq!(Key::Ctrl('a'), Key::parse("<c-a>", &mut index).unwrap());
-        index = 0;
-        assert_eq!(Key::Ctrl('z'), Key::parse("<c-z>", &mut index).unwrap());
-        index = 0;
-        assert_eq!(Key::Ctrl('0'), Key::parse("<c-0>", &mut index).unwrap());
-        index = 0;
-        assert_eq!(Key::Ctrl('9'), Key::parse("<c-9>", &mut index).unwrap());
+        assert_eq!(Key::Ctrl('z'), Key::parse(&mut "<c-z>".chars()).unwrap());
+        assert_eq!(Key::Ctrl('0'), Key::parse(&mut "<c-0>".chars()).unwrap());
+        assert_eq!(Key::Ctrl('9'), Key::parse(&mut "<c-9>".chars()).unwrap());
 
-        index = 0;
-        assert_eq!(Key::Alt('a'), Key::parse("<a-a>", &mut index).unwrap());
-        index = 0;
-        assert_eq!(Key::Alt('z'), Key::parse("<a-z>", &mut index).unwrap());
-        index = 0;
-        assert_eq!(Key::Alt('0'), Key::parse("<a-0>", &mut index).unwrap());
-        index = 0;
-        assert_eq!(Key::Alt('9'), Key::parse("<a-9>", &mut index).unwrap());
+        assert_eq!(Key::Alt('a'), Key::parse(&mut "<a-a>".chars()).unwrap());
+        assert_eq!(Key::Alt('z'), Key::parse(&mut "<a-z>".chars()).unwrap());
+        assert_eq!(Key::Alt('0'), Key::parse(&mut "<a-0>".chars()).unwrap());
+        assert_eq!(Key::Alt('9'), Key::parse(&mut "<a-9>".chars()).unwrap());
 
-        index = 0;
-        assert_eq!(Key::Char('a'), Key::parse("a", &mut index).unwrap());
-        index = 0;
-        assert_eq!(Key::Char('z'), Key::parse("z", &mut index).unwrap());
-        index = 0;
-        assert_eq!(Key::Char('0'), Key::parse("0", &mut index).unwrap());
-        index = 0;
-        assert_eq!(Key::Char('9'), Key::parse("9", &mut index).unwrap());
-        index = 0;
-        assert_eq!(Key::Char('_'), Key::parse("_", &mut index).unwrap());
-        index = 0;
-        assert_eq!(Key::Char('<'), Key::parse("\\<", &mut index).unwrap());
-        index = 0;
-        assert_eq!(Key::Char('\\'), Key::parse("\\\\", &mut index).unwrap());
+        assert_eq!(Key::Char('a'), Key::parse(&mut "a".chars()).unwrap());
+        assert_eq!(Key::Char('z'), Key::parse(&mut "z".chars()).unwrap());
+        assert_eq!(Key::Char('0'), Key::parse(&mut "0".chars()).unwrap());
+        assert_eq!(Key::Char('9'), Key::parse(&mut "9".chars()).unwrap());
+        assert_eq!(Key::Char('_'), Key::parse(&mut "_".chars()).unwrap());
+        assert_eq!(Key::Char('<'), Key::parse(&mut "\\<".chars()).unwrap());
+        assert_eq!(Key::Char('\\'), Key::parse(&mut "\\\\".chars()).unwrap());
     }
 }
