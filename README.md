@@ -27,8 +27,8 @@ Experimental code editor
 	- ~~copy~~
 	- ~~paste~~
 - custom bindings
-	- custom bindings expand to builtin bindings
-	- custom bindings take precedence
+	- ~~custom bindings expand to builtin bindings~~
+	- ~~custom bindings take precedence~~
 	- define custom bindings in config file
 - config file
 	- load config file at startup
@@ -36,7 +36,7 @@ Experimental code editor
 - command mode
 	- ~~basic command mode~~
 	- ~~default commands~~
-	- define custom commands in config file
+	- define custom commands in config file?? (or just aliases??)
 - file operations
 	- ~~edit (command to open/create file?)~~
 	- ~~save~~

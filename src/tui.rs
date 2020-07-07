@@ -127,7 +127,7 @@ where
         Cursor,
     }
 
-    let cursor_color = match editor.mode {
+    let cursor_color = match editor.mode() {
         Mode::Select => convert_color(editor.theme.cursor_select),
         Mode::Insert => convert_color(editor.theme.cursor_insert),
         _ => convert_color(editor.theme.cursor_normal),
@@ -352,7 +352,7 @@ where
         W: Write,
     {
         handle_command!(write, Print(prefix))?;
-        handle_command!(write, Print(&editor.input[..]))?;
+        handle_command!(write, Print(editor.input()))?;
         handle_command!(
             write,
             SetBackgroundColor(convert_color(editor.theme.cursor_normal))
@@ -378,7 +378,7 @@ where
         handle_command!(write, Print("error: "))?;
         handle_command!(write, Print(error))?;
     } else {
-        match editor.mode {
+        match editor.mode() {
             Mode::Select => handle_command!(write, Print("-- SELECT --"))?,
             Mode::Insert => handle_command!(write, Print("-- INSERT --"))?,
             Mode::Search(_) => draw_input(write, "search: ", editor)?,

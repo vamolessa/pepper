@@ -47,10 +47,10 @@ pub struct Editor {
     pub config: Config,
     pub theme: Theme,
 
-    pub mode: Mode,
+    mode: Mode,
     pub keymaps: KeyMapCollection,
-    pub buffered_keys: Vec<Key>,
-    pub input: String,
+    buffered_keys: Vec<Key>,
+    input: String,
     pub commands: CommandCollection,
 
     pub buffers: BufferCollection,
@@ -74,6 +74,14 @@ impl Editor {
             buffer_views: BufferViewCollection::default(),
             viewports: ViewportCollection::new(),
         }
+    }
+
+    pub fn mode(&self) -> &Mode {
+        &self.mode
+    }
+
+    pub fn input(&self) -> &str {
+        &self.input[..]
     }
 
     pub fn on_event(&mut self, event: Event) -> EditorPollResult {
