@@ -23,10 +23,26 @@ fn main() {
     let content = buffer::BufferContent::from_str(text);
 
     let mut editor = editor::Editor::new();
-    editor.keymaps.parse_map(mode::Mode::Normal.discriminant(), "edit", "i").unwrap();
-    editor.keymaps.parse_map(mode::Mode::Normal.discriminant(), "dl", "vld").unwrap();
-    editor.keymaps.parse_map(mode::Mode::Normal.discriminant(), "dh", "vvhd").unwrap();
-    editor.keymaps.parse_map(mode::Mode::Normal.discriminant(), "<c-f>", ":find-command<c-m>").unwrap();
+    editor
+        .keymaps
+        .parse_map(mode::Mode::Normal.discriminant(), "edit", "i")
+        .unwrap();
+    editor
+        .keymaps
+        .parse_map(mode::Mode::Normal.discriminant(), "dl", "vld")
+        .unwrap();
+    editor
+        .keymaps
+        .parse_map(mode::Mode::Normal.discriminant(), "dh", "vvhd")
+        .unwrap();
+    editor
+        .keymaps
+        .parse_map(
+            mode::Mode::Normal.discriminant(),
+            "<c-f>",
+            ":find-command<c-m>",
+        )
+        .unwrap();
 
     let buffer_handle = editor.buffers.add(buffer::Buffer::new(None, content));
     let buffer_view_index = editor

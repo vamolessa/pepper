@@ -8,7 +8,11 @@ pub fn on_enter(ctx: &mut ModeContext) {
     update_search(ctx);
 }
 
-pub fn on_event(mut ctx: &mut ModeContext, keys: &mut KeysIterator, from_mode: &FromMode) -> ModeOperation {
+pub fn on_event(
+    mut ctx: &mut ModeContext,
+    keys: &mut KeysIterator,
+    from_mode: &FromMode,
+) -> ModeOperation {
     let operation = match poll_input(&mut ctx, keys) {
         InputPollResult::Pending => ModeOperation::None,
         InputPollResult::Canceled => ModeOperation::EnterMode(from_mode.as_mode()),
