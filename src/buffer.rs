@@ -335,28 +335,32 @@ pub struct BufferHandle(usize);
 
 #[derive(Default)]
 pub struct BufferCollection {
-    buffers: Vec<Buffer>,
+    buffers: Vec<Option<Buffer>>,
     free_slots: Vec<BufferHandle>,
 }
 
 impl BufferCollection {
     pub fn add(&mut self, buffer: Buffer) -> BufferHandle {
         if let Some(handle) = self.free_slots.pop() {
-            self.buffers[handle.0] = buffer;
+            self.buffers[handle.0] = Some(buffer);
             handle
         } else {
             let index = self.buffers.len();
-            self.buffers.push(buffer);
+            self.buffers.push(Some(buffer));
             BufferHandle(index)
         }
     }
 
     pub fn get(&self, handle: BufferHandle) -> Option<&Buffer> {
-        Some(&self.buffers[handle.0])
+        self.buffers[handle.0].as_ref()
     }
 
     pub fn get_mut(&mut self, handle: BufferHandle) -> Option<&mut Buffer> {
-        Some(&mut self.buffers[handle.0])
+        self.buffers[handle.0].as_mut()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Buffer> {
+        self.buffers.iter().filter_map(|b| b.as_ref())
     }
 }
 

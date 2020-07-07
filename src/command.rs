@@ -1,4 +1,9 @@
-use std::{collections::HashMap, fs::File, io::Read, path::PathBuf};
+use std::{
+    collections::HashMap,
+    fs::File,
+    io::Read,
+    path::{Path, PathBuf},
+};
 
 use crate::{
     buffer::{Buffer, BufferCollection, BufferContent},
@@ -33,6 +38,7 @@ impl Default for CommandCollection {
         this.register("quit".into(), commands::quit);
         this.register("edit".into(), commands::edit);
         this.register("write".into(), commands::write);
+        this.register("write-all".into(), commands::write_all);
 
         this
     }
@@ -86,6 +92,16 @@ fn new_buffer_from_file(ctx: &mut CommandContext, path: PathBuf) -> Result<(), S
     Ok(())
 }
 
+fn write_buffer_to_file(buffer: &Buffer, path: &Path) -> Result<(), String> {
+    let mut file =
+        File::create(path).map_err(|e| format!("could not create file {:?}: {:?}", path, e))?;
+
+    buffer
+        .content
+        .write(&mut file)
+        .map_err(|e| format!("could not write to file {:?}: {:?}", path, e))
+}
+
 mod commands {
     use super::*;
 
@@ -128,33 +144,38 @@ mod commands {
         };
 
         let path_arg = args.trim();
-        if path_arg.len() > 0 {
-            buffer.path = Some(path_arg.into());
-        }
-
-        let path = match &buffer.path {
-            Some(path) => path,
-            None => return CommandOperation::Error("buffer has no path".into()),
-        };
-
-        let mut file = match File::create(path) {
-            Ok(file) => file,
-            Err(error) => {
-                return CommandOperation::Error(format!(
-                    "could not create file {:?}: {:?}",
-                    path, error
-                ))
+        if path_arg.is_empty() {
+            let path = match &buffer.path {
+                Some(path) => path,
+                None => return CommandOperation::Error("buffer has no path".into()),
+            };
+            match write_buffer_to_file(buffer, &path) {
+                Ok(()) => CommandOperation::Complete,
+                Err(error) => CommandOperation::Error(error),
             }
-        };
-
-        match buffer.content.write(&mut file) {
-            Ok(()) => CommandOperation::Complete,
-            Err(error) => {
-                return CommandOperation::Error(format!(
-                    "could not write to file {:?}: {:?}",
-                    path, error
-                ))
+        } else {
+            let path = PathBuf::from(path_arg);
+            match write_buffer_to_file(buffer, &path) {
+                Ok(()) => {
+                    buffer.path = Some(path);
+                    CommandOperation::Complete
+                }
+                Err(error) => CommandOperation::Error(error),
             }
         }
+    }
+
+    pub fn write_all(ctx: CommandContext, args: &str) -> CommandOperation {
+        assert_empty!(args);
+        for buffer in ctx.buffers.iter() {
+            if let Some(ref path) = buffer.path {
+                match write_buffer_to_file(buffer, path) {
+                    Ok(()) => (),
+                    Err(error) => return CommandOperation::Error(error),
+                }
+            }
+        }
+
+        CommandOperation::Complete
     }
 }
