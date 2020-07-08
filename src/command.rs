@@ -37,6 +37,7 @@ impl Default for CommandCollection {
 
         this.register("quit".into(), commands::quit);
         this.register("edit".into(), commands::edit);
+        this.register("close".into(), commands::close);
         this.register("write".into(), commands::write);
         this.register("write-all".into(), commands::write_all);
 
@@ -139,6 +140,19 @@ mod commands {
             Ok(()) => CommandOperation::Complete,
             Err(error) => CommandOperation::Error(error),
         }
+    }
+
+    pub fn close(ctx: CommandContext, args: &str) -> CommandOperation {
+        assert_empty!(args);
+        if let Some(handle) = ctx
+            .viewports
+            .current_viewport_mut()
+            .close_current_buffer_view()
+        {
+            ctx.buffer_views.remove(handle);
+        }
+
+        CommandOperation::Complete
     }
 
     pub fn write(ctx: CommandContext, args: &str) -> CommandOperation {

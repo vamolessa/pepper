@@ -110,6 +110,14 @@ impl Viewport {
         self.scroll = 0;
     }
 
+    pub fn close_current_buffer_view(&mut self) -> Option<BufferViewHandle> {
+        if self.buffer_view_handles.is_empty() {
+            None
+        } else {
+            Some(self.buffer_view_handles.swap_remove(0))
+        }
+    }
+
     pub fn scroll_to_cursor(&mut self, cursor: BufferPosition) {
         if cursor.line_index < self.scroll {
             self.scroll = cursor.line_index;

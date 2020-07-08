@@ -170,7 +170,7 @@ impl BufferViewCollection {
         }
     }
 
-    pub fn _remove(&mut self, handle: BufferViewHandle) {
+    pub fn remove(&mut self, handle: BufferViewHandle) {
         self.buffer_views[handle.0] = None;
         self.free_slots.push(handle);
     }
