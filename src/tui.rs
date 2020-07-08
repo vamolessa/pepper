@@ -245,18 +245,16 @@ where
                         SetForegroundColor(convert_color(editor.theme.text_normal))
                     )?;
                 }
-            } else {
-                if !matches!(draw_state, DrawState::Normal) {
-                    draw_state = DrawState::Normal;
-                    handle_command!(
-                        write,
-                        SetBackgroundColor(convert_color(editor.theme.background))
-                    )?;
-                    handle_command!(
-                        write,
-                        SetForegroundColor(convert_color(editor.theme.text_normal))
-                    )?;
-                }
+            } else if !matches!(draw_state, DrawState::Normal) {
+                draw_state = DrawState::Normal;
+                handle_command!(
+                    write,
+                    SetBackgroundColor(convert_color(editor.theme.background))
+                )?;
+                handle_command!(
+                    write,
+                    SetForegroundColor(convert_color(editor.theme.text_normal))
+                )?;
             }
 
             match c {

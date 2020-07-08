@@ -97,7 +97,7 @@ impl BufferView {
 
         let main_position = self.cursors.main_cursor().position;
         let search_ranges = buffer.search_ranges();
-        if search_ranges.len() == 0 {
+        if search_ranges.is_empty() {
             return;
         }
 

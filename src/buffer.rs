@@ -31,7 +31,7 @@ impl Text {
         }
     }
 
-    pub fn as_text_ref<'a>(&'a self) -> TextRef<'a> {
+    pub fn as_text_ref(&self) -> TextRef {
         match self {
             Text::Char(c) => TextRef::Char(*c),
             Text::String(s) => TextRef::Str(&s[..]),
@@ -168,7 +168,7 @@ impl BufferContent {
                         .text
                         .split_off(position.column_index);
                     self.lines
-                        .insert(position.line_index + 1, BufferLine::new(split_line.into()));
+                        .insert(position.line_index + 1, BufferLine::new(split_line));
 
                     BufferPosition::line_col(position.line_index + 1, 0)
                 } else {
@@ -364,10 +364,13 @@ impl BufferCollection {
     }
 
     pub fn iter_with_handles(&self) -> impl Iterator<Item = (BufferHandle, &Buffer)> {
-        self.buffers.iter().enumerate().filter_map(|(i, b)| match b {
-            Some(b) => Some((BufferHandle(i), b)),
-            None => None
-        })
+        self.buffers
+            .iter()
+            .enumerate()
+            .filter_map(|(i, b)| match b {
+                Some(b) => Some((BufferHandle(i), b)),
+                None => None,
+            })
     }
 }
 

@@ -110,10 +110,8 @@ pub fn poll_input(ctx: &mut ModeContext, keys: &mut KeysIterator) -> InputPollRe
                     if c != ' ' {
                         break;
                     }
-                } else {
-                    if c == ' ' {
-                        found_space = true;
-                    }
+                } else if c == ' ' {
+                    found_space = true;
                 }
                 last_index = i;
             }

@@ -44,7 +44,7 @@ impl KeyMapCollection {
             to: parse_keys(to)?,
         };
 
-        self.maps.entry(mode).or_insert(Vec::new()).push(map);
+        self.maps.entry(mode).or_insert_with(Vec::new).push(map);
         Ok(())
     }
 

@@ -19,7 +19,7 @@ pub struct Edit {
 }
 
 impl Edit {
-    pub fn as_edit_ref<'a>(&'a self) -> EditRef<'a> {
+    pub fn as_edit_ref(&self) -> EditRef {
         EditRef {
             kind: self.kind,
             range: self.range,
@@ -83,7 +83,7 @@ impl History {
         }
     }
 
-    pub fn undo_edits<'a>(&'a mut self) -> impl Iterator<Item = EditRef<'a>> {
+    pub fn undo_edits(&mut self) -> impl Iterator<Item = EditRef> {
         self.commit_edits();
 
         let range = match self.state {
@@ -108,7 +108,7 @@ impl History {
         })
     }
 
-    pub fn redo_edits<'a>(&'a mut self) -> impl Iterator<Item = EditRef<'a>> {
+    pub fn redo_edits(&mut self) -> impl Iterator<Item = EditRef> {
         self.commit_edits();
 
         let range = match self.state {
