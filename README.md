@@ -41,6 +41,7 @@ Experimental code editor
 	- ~~edit (command to open/create file?)~~
 	- ~~save~~
 	- reuse buffer if already open
+	- remove all buffer views (and viewport handles) when closing a buffer
 - code navigation
 	- home/end
 	- find char
