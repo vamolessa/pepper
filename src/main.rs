@@ -1,7 +1,10 @@
 mod buffer;
 mod buffer_position;
 mod buffer_view;
+mod client;
 mod command;
+mod application;
+mod connection;
 mod config;
 mod cursor;
 mod editor;
@@ -11,7 +14,6 @@ mod keymap;
 mod mode;
 mod theme;
 mod tui;
-mod viewport;
 
 fn main() {
     ctrlc::set_handler(|| {}).unwrap();
@@ -19,6 +21,7 @@ fn main() {
     let stdout = std::io::stdout();
     let stdout = stdout.lock();
 
+    /*
     let text = include_str!("main.rs");
     let content = buffer::BufferContent::from_str(text);
 
@@ -60,6 +63,7 @@ fn main() {
         .viewports
         .current_viewport_mut()
         .set_current_buffer_view_handle(buffer_view_index);
+    */
 
     tui::show(stdout, editor).unwrap();
 }

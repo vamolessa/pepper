@@ -7,7 +7,6 @@ use crate::{
     keymap::{KeyMapCollection, MatchResult},
     mode::{Mode, ModeContext, ModeOperation},
     theme::Theme,
-    viewport::ViewportCollection,
 };
 
 pub enum EditorPollResult {
@@ -55,7 +54,6 @@ pub struct Editor {
 
     pub buffers: BufferCollection,
     pub buffer_views: BufferViewCollection,
-    pub viewports: ViewportCollection,
 }
 
 impl Editor {
@@ -72,7 +70,6 @@ impl Editor {
 
             buffers: Default::default(),
             buffer_views: BufferViewCollection::default(),
-            viewports: ViewportCollection::new(),
         }
     }
 

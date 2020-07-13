@@ -14,7 +14,6 @@ use crate::{
     event::{Event, Key},
     mode::Mode,
     theme,
-    viewport::Viewport,
 };
 
 pub fn convert_event(event: event::Event) -> Event {
