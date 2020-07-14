@@ -1,5 +1,7 @@
 use std::{cmp::Ordering, io::Write, iter};
 
+use futures::stream::{StreamExt, FusedStream};
+
 use crossterm::{
     cursor, event, handle_command,
     style::{Color, Print, ResetColor, SetBackgroundColor, SetForegroundColor},
@@ -16,7 +18,7 @@ use crate::{
     theme::Theme,
 };
 
-pub fn convert_event(event: event::Event) -> Event {
+fn convert_event(event: event::Event) -> Event {
     match event {
         event::Event::Key(e) => match e.code {
             event::KeyCode::Backspace => Event::Key(Key::Backspace),
@@ -45,12 +47,16 @@ pub fn convert_event(event: event::Event) -> Event {
     }
 }
 
-pub const fn convert_color(color: theme::Color) -> Color {
+const fn convert_color(color: theme::Color) -> Color {
     Color::Rgb {
         r: color.0,
         g: color.1,
         b: color.2,
     }
+}
+
+pub async fn event_stream() -> impl FusedStream<Item =Event> {
+    event::EventStream::new().fused().map(convert_event)
 }
 
 pub struct Tui<W>

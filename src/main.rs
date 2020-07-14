@@ -1,11 +1,11 @@
+mod application;
 mod buffer;
 mod buffer_position;
 mod buffer_view;
 mod client;
 mod command;
-mod application;
-mod connection;
 mod config;
+mod connection;
 mod cursor;
 mod editor;
 mod event;
@@ -20,6 +20,7 @@ fn main() {
 
     let stdout = std::io::stdout();
     let stdout = stdout.lock();
+    let ui = tui::Tui::new(stdout);
 
     /*
     let text = include_str!("main.rs");
@@ -65,5 +66,6 @@ fn main() {
         .set_current_buffer_view_handle(buffer_view_index);
     */
 
-    tui::show(stdout, editor).unwrap();
+    smol::run(async { application::run_server_with_client(tui::event_stream(), ui).await })
+        .unwrap();
 }
