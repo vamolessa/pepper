@@ -24,6 +24,20 @@ pub enum EditorOperation<'a> {
     Search(&'a str),
 }
 
+pub struct EditorOperationSink<'a> {
+    operations: Vec<EditorOperation<'a>>,
+}
+
+impl<'a> EditorOperationSink<'a> {
+    pub fn send(&mut self, operation: EditorOperation<'a>) {
+        self.operations.push(operation);
+    }
+
+    pub fn drain(&mut self) -> impl 'a + Iterator<Item = EditorOperation<'a>> {
+        self.operations.drain(..)
+    }
+}
+
 pub enum EditorPollResult {
     Pending,
     Quit,
