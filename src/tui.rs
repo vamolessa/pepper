@@ -1,6 +1,6 @@
 use std::{cmp::Ordering, io::Write, iter};
 
-use futures::stream::{StreamExt, FusedStream};
+use futures::stream::{FusedStream, StreamExt};
 
 use crossterm::{
     cursor, event, handle_command,
@@ -55,8 +55,11 @@ const fn convert_color(color: theme::Color) -> Color {
     }
 }
 
-pub async fn event_stream() -> impl FusedStream<Item =Event> {
-    event::EventStream::new().fused().map(convert_event)
+pub async fn event_stream() -> impl FusedStream<Item = Event> {
+    event::EventStream::new().fuse().map(|e| match e {
+        Ok(e) => convert_event(e),
+        Err(_) => Event::None,
+    })
 }
 
 pub struct Tui<W>
@@ -261,10 +264,7 @@ where
         handle_command!(write, SetForegroundColor(convert_color(theme.background)))?;
     } else {
         handle_command!(write, SetBackgroundColor(convert_color(theme.background)))?;
-        handle_command!(
-            write,
-            SetForegroundColor(convert_color(theme.text_normal))
-        )?;
+        handle_command!(write, SetForegroundColor(convert_color(theme.text_normal)))?;
     }
     let buffer_name = "the buffer name";
     handle_command!(write, Print(buffer_name))?;
