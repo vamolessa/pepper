@@ -130,7 +130,7 @@ impl BufferContent {
         }
     }
 
-    fn find_search_ranges(&self, text: &str, ranges: &mut Vec<BufferRange>) {
+    pub fn find_search_ranges(&self, text: &str, ranges: &mut Vec<BufferRange>) {
         let char_count = text.chars().count();
         if char_count == 0 {
             return;
@@ -158,7 +158,7 @@ impl BufferContent {
         }
     }
 
-    fn insert_text(&mut self, mut position: BufferPosition, text: TextRef) -> BufferRange {
+    pub fn insert_text(&mut self, mut position: BufferPosition, text: TextRef) -> BufferRange {
         self.clamp_position(&mut position);
 
         let end_position = match text {
@@ -218,7 +218,7 @@ impl BufferContent {
         BufferRange::between(position, end_position)
     }
 
-    fn delete_range(&mut self, mut range: BufferRange) -> Text {
+    pub fn delete_range(&mut self, mut range: BufferRange) -> Text {
         self.clamp_position(&mut range.from);
         self.clamp_position(&mut range.to);
 

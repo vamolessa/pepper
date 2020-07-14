@@ -1,5 +1,9 @@
+use std::path::Path;
+
 use crate::{
-    buffer::BufferCollection,
+    buffer::{TextRef,BufferCollection},
+    cursor::Cursor,
+    buffer_position::{BufferPosition, BufferRange},
     buffer_view::{BufferViewCollection, BufferViewHandle},
     command::CommandCollection,
     config::Config,
@@ -8,6 +12,17 @@ use crate::{
     mode::{Mode, ModeContext, ModeOperation},
     theme::Theme,
 };
+
+pub enum EditorOperation<'a> {
+    Content(&'a str),
+    Path(Option<&'a Path>),
+    Mode(Mode),
+    Insert(BufferPosition, TextRef<'a>),
+    Delete(BufferRange),
+    ClearCursors,
+    Cursor(Cursor),
+    Search(&'a str),
+}
 
 pub enum EditorPollResult {
     Pending,

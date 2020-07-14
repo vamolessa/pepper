@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 
 use crate::{
-    buffer::BufferContent, buffer_position::BufferRange, config::Config, cursor::Cursor, mode::Mode,
+    buffer::BufferContent, buffer_position::BufferRange, config::Config, cursor::Cursor,
+    editor::EditorOperation, mode::Mode,
 };
 
 pub struct Client {
@@ -39,24 +40,24 @@ impl Client {
         }
     }
 
-    //pub fn on_editor_operation(&mut self, operation: EditorOperation) {
-    //    match operation {
-    //        EditorOperation::Content(text) => self.buffer = BufferContent::from_str(&text[..]),
-    //        EditorOperation::Path(path) => self.path = path,
-    //        EditorOperation::Mode(mode) => self.mode = mode,
-    //        EditorOperation::Insert(position, text) => {
-    //            self.buffer.insert_text(position, text.as_text_ref());
-    //        }
-    //        EditorOperation::Delete(range) => {
-    //            self.buffer.delete_range(range);
-    //        }
-    //        EditorOperation::ClearCursors => self.cursors.clear(),
-    //        EditorOperation::Cursor(cursor) => self.cursors.push(cursor),
-    //        EditorOperation::Search(search) => {
-    //            self.search_ranges.clear();
-    //            self.buffer
-    //                .find_search_ranges(&search[..], &mut self.search_ranges);
-    //        }
-    //    }
-    //}
+    pub fn on_editor_operation(&mut self, operation: EditorOperation) {
+        match operation {
+            EditorOperation::Content(text) => self.buffer = BufferContent::from_str(text),
+            EditorOperation::Path(path) => self.path = path.map(|p| p.into()),
+            EditorOperation::Mode(mode) => self.mode = mode,
+            EditorOperation::Insert(position, text) => {
+                self.buffer.insert_text(position, text);
+            }
+            EditorOperation::Delete(range) => {
+                self.buffer.delete_range(range);
+            }
+            EditorOperation::ClearCursors => self.cursors.clear(),
+            EditorOperation::Cursor(cursor) => self.cursors.push(cursor),
+            EditorOperation::Search(search) => {
+                self.search_ranges.clear();
+                self.buffer
+                    .find_search_ranges(&search[..], &mut self.search_ranges);
+            }
+        }
+    }
 }
