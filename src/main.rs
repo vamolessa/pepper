@@ -66,5 +66,6 @@ fn main() {
     let stdout = stdout.lock();
     let ui = tui::Tui::new(stdout);
 
-    smol::run(application::run_server_with_client(tui::event_stream(), ui)).unwrap();
+    //smol::run(application::run_server_with_client(tui::event_stream(), ui)).unwrap();
+    smol::run(application::run_client(tui::event_stream(), ui)).unwrap();
 }

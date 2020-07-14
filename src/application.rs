@@ -29,6 +29,10 @@ pub trait UI {
     }
 }
 
+pub async fn run_client<E, I>(event_stream: E, mut ui: I) -> Result<(), ()> {
+    Ok(())
+}
+
 pub async fn run_server_with_client<E, I>(event_stream: E, mut ui: I) -> Result<(), ()>
 where
     E: FusedStream<Item = Event>,
