@@ -52,7 +52,7 @@ where
             event = event_stream.select_next_some() => {
                 match event {
                     Event::Key(key) => {
-                        match client_editor .on_key(key){
+                        match editor.on_key(key){
                             EditorPollResult::Pending => (),
                             EditorPollResult::Quit => break,
                             EditorPollResult::Error(e) => error = Some(e),

@@ -1,9 +1,9 @@
 use crate::{
     buffer::BufferCollection,
-    buffer_view::BufferViewCollection,
+    buffer_view::{BufferViewCollection, BufferViewHandle},
     command::CommandCollection,
     config::Config,
-    event::{Event, Key},
+    event::Key,
     keymap::{KeyMapCollection, MatchResult},
     mode::{Mode, ModeContext, ModeOperation},
     theme::Theme,
@@ -54,6 +54,7 @@ pub struct Editor {
 
     pub buffers: BufferCollection,
     pub buffer_views: BufferViewCollection,
+    local_client_current_buffer_view_handle: Option<BufferViewHandle>,
 }
 
 impl Editor {
@@ -70,6 +71,7 @@ impl Editor {
 
             buffers: Default::default(),
             buffer_views: BufferViewCollection::default(),
+            local_client_current_buffer_view_handle: None,
         }
     }
 
@@ -81,73 +83,53 @@ impl Editor {
         &self.input[..]
     }
 
-    pub fn on_event(&mut self, event: Event) -> EditorPollResult {
-        match event {
-            Event::None => EditorPollResult::Pending,
-            Event::Resize(w, h) => {
-                self.viewports.set_view_size(w as _, h as _);
-                EditorPollResult::Pending
-            }
-            Event::Key(key) => {
-                self.buffered_keys.push(key);
+    pub fn on_key(&mut self, key: Key) -> EditorPollResult {
+        self.buffered_keys.push(key);
 
-                match self
-                    .keymaps
-                    .matches(self.mode.discriminant(), &self.buffered_keys[..])
-                {
-                    MatchResult::None => (),
-                    MatchResult::Prefix => return EditorPollResult::Pending,
-                    MatchResult::ReplaceWith(replaced_keys) => {
-                        self.buffered_keys.clear();
-                        self.buffered_keys.extend_from_slice(replaced_keys);
-                    }
-                }
-
-                let mut keys = KeysIterator::new(&self.buffered_keys);
-                let result = loop {
-                    if keys.index >= self.buffered_keys.len() {
-                        break EditorPollResult::Pending;
-                    }
-
-                    let mut mode_context = ModeContext {
-                        commands: &self.commands,
-                        buffers: &mut self.buffers,
-                        buffer_views: &mut self.buffer_views,
-                        viewports: &mut self.viewports,
-                        input: &mut self.input,
-                    };
-
-                    match self.mode.on_event(&mut mode_context, &mut keys) {
-                        ModeOperation::Pending => return EditorPollResult::Pending,
-                        ModeOperation::None => (),
-                        ModeOperation::Quit => return EditorPollResult::Quit,
-                        ModeOperation::EnterMode(next_mode) => {
-                            self.mode = next_mode;
-                            self.mode.on_enter(&mut mode_context);
-                        }
-                        ModeOperation::Error(error) => {
-                            self.mode = Mode::default();
-                            self.mode.on_enter(&mut mode_context);
-
-                            break EditorPollResult::Error(error);
-                        }
-                    }
-                };
-
-                if let Some(handle) = self
-                    .viewports
-                    .current_viewport()
-                    .current_buffer_view_handle()
-                {
-                    let buffer_view = &self.buffer_views.get(handle);
-                    self.viewports
-                        .current_viewport_mut()
-                        .scroll_to_cursor(buffer_view.cursors.main_cursor().position);
-                }
-
+        match self
+            .keymaps
+            .matches(self.mode.discriminant(), &self.buffered_keys[..])
+        {
+            MatchResult::None => (),
+            MatchResult::Prefix => return EditorPollResult::Pending,
+            MatchResult::ReplaceWith(replaced_keys) => {
                 self.buffered_keys.clear();
-                result
+                self.buffered_keys.extend_from_slice(replaced_keys);
             }
         }
+
+        let mut keys = KeysIterator::new(&self.buffered_keys);
+        let result = loop {
+            if keys.index >= self.buffered_keys.len() {
+                break EditorPollResult::Pending;
+            }
+
+            let mut mode_context = ModeContext {
+                commands: &self.commands,
+                buffers: &mut self.buffers,
+                buffer_views: &mut self.buffer_views,
+                current_buffer_view_handle: &mut self.local_client_current_buffer_view_handle,
+                input: &mut self.input,
+            };
+
+            match self.mode.on_event(&mut mode_context, &mut keys) {
+                ModeOperation::Pending => return EditorPollResult::Pending,
+                ModeOperation::None => (),
+                ModeOperation::Quit => return EditorPollResult::Quit,
+                ModeOperation::EnterMode(next_mode) => {
+                    self.mode = next_mode;
+                    self.mode.on_enter(&mut mode_context);
+                }
+                ModeOperation::Error(error) => {
+                    self.mode = Mode::default();
+                    self.mode.on_enter(&mut mode_context);
+
+                    break EditorPollResult::Error(error);
+                }
+            }
+        };
+
+        self.buffered_keys.clear();
+        result
     }
 }

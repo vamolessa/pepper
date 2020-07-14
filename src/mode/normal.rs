@@ -19,11 +19,7 @@ fn on_event_no_buffer(_ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOp
 pub fn on_enter(_ctx: &mut ModeContext) {}
 
 pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
-    let handle = if let Some(handle) = ctx
-        .viewports
-        .current_viewport()
-        .current_buffer_view_handle()
-    {
+    let handle = if let Some(handle) = ctx.current_buffer_view_handle {
         handle
     } else {
         return on_event_no_buffer(ctx, keys);
@@ -99,7 +95,6 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
             let mut child = std::process::Command::new("fzf").spawn().unwrap();
             child.wait().unwrap();
         }
-        Key::Tab => ctx.viewports.focus_next_viewport(ctx.buffer_views),
         _ => {
             keys.put_back();
             return on_event_no_buffer(ctx, keys);

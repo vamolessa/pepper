@@ -1,19 +1,19 @@
 use std::{cmp::Ordering, io::Write, iter};
 
-use futures::{future::FutureExt, StreamExt};
-
 use crossterm::{
     cursor, event, handle_command,
     style::{Color, Print, ResetColor, SetBackgroundColor, SetForegroundColor},
-    terminal, Result,
+    terminal, ErrorKind, Result,
 };
 
 use crate::{
+    application::UI,
     buffer_position::BufferPosition,
-    editor::{Editor, EditorPollResult},
+    client::Client,
     event::{Event, Key},
     mode::Mode,
     theme,
+    theme::Theme,
 };
 
 pub fn convert_event(event: event::Event) -> Event {
@@ -53,69 +53,62 @@ pub const fn convert_color(color: theme::Color) -> Color {
     }
 }
 
-pub fn show<W>(mut write: W, mut editor: Editor) -> Result<()>
+pub struct Tui<W>
 where
     W: Write,
 {
-    handle_command!(write, terminal::EnterAlternateScreen)?;
-    write.flush()?;
-    handle_command!(write, cursor::Hide)?;
-    write.flush()?;
-    terminal::enable_raw_mode()?;
-
-    let available_size = terminal::size()?;
-    editor.on_event(Event::Resize(available_size.0 as _, available_size.1 as _));
-
-    draw(&mut write, &editor, None)?;
-    smol::run(main_loop(&mut write, &mut editor))?;
-
-    handle_command!(write, terminal::LeaveAlternateScreen)?;
-    handle_command!(write, cursor::Show)?;
-    terminal::disable_raw_mode()?;
-
-    Ok(())
+    write: W,
 }
 
-async fn main_loop<W>(write: &mut W, editor: &mut Editor) -> Result<()>
+impl<W> Tui<W>
 where
     W: Write,
 {
-    let mut event_stream = event::EventStream::new();
-    loop {
-        let event = event_stream.next().fuse().await;
-        let mut error = None;
-        if let Some(event) = event {
-            match editor.on_event(convert_event(event?)) {
-                EditorPollResult::Pending => (),
-                EditorPollResult::Quit => break,
-                EditorPollResult::Error(e) => error = Some(e),
-            }
-        }
-        draw(write, &editor, error)?;
+    pub fn new(write: W) -> Self {
+        Self { write }
     }
-    Ok(())
 }
 
-fn draw<W>(write: &mut W, editor: &Editor, error: Option<String>) -> Result<()>
+impl<W> UI for Tui<W>
 where
     W: Write,
 {
-    //handle_command!(write, SetBackgroundColor(Color::Red))?;
-    //handle_command!(write, terminal::Clear(terminal::ClearType::All))?;
+    type Error = ErrorKind;
 
-    handle_command!(write, cursor::Hide)?;
-    for viewport in editor.viewports.iter() {
-        draw_viewport(write, editor, viewport)?;
+    fn init(&mut self) -> Result<()> {
+        handle_command!(self.write, terminal::EnterAlternateScreen)?;
+        self.write.flush()?;
+        handle_command!(self.write, cursor::Hide)?;
+        self.write.flush()?;
+        terminal::enable_raw_mode()?;
+        Ok(())
     }
 
-    handle_command!(write, cursor::MoveToNextLine(1))?;
-    draw_statusbar(write, editor, error)?;
+    fn draw(
+        &mut self,
+        client: &Client,
+        width: u16,
+        height: u16,
+        error: Option<String>,
+    ) -> Result<()> {
+        draw(&mut self.write, client, width, height, error)
+    }
 
-    write.flush()?;
-    Ok(())
+    fn shutdown(&mut self) -> Result<()> {
+        handle_command!(self.write, terminal::LeaveAlternateScreen)?;
+        handle_command!(self.write, cursor::Show)?;
+        terminal::disable_raw_mode()?;
+        Ok(())
+    }
 }
 
-fn draw_viewport<W>(write: &mut W, editor: &Editor, viewport: &Viewport) -> Result<()>
+fn draw<W>(
+    write: &mut W,
+    client: &Client,
+    width: u16,
+    height: u16,
+    error: Option<String>,
+) -> Result<()>
 where
     W: Write,
 {
@@ -126,77 +119,55 @@ where
         Cursor,
     }
 
-    let cursor_color = match editor.mode() {
-        Mode::Select => convert_color(editor.theme.cursor_select),
-        Mode::Insert => convert_color(editor.theme.cursor_insert),
-        _ => convert_color(editor.theme.cursor_normal),
+    //handle_command!(write, SetBackgroundColor(Color::Red))?;
+    //handle_command!(write, terminal::Clear(terminal::ClearType::All))?;
+
+    let theme = &client.config.theme;
+
+    handle_command!(write, cursor::Hide)?;
+
+    let cursor_color = match client.mode {
+        Mode::Select => convert_color(theme.cursor_select),
+        Mode::Insert => convert_color(theme.cursor_insert),
+        _ => convert_color(theme.cursor_normal),
     };
 
-    handle_command!(write, cursor::MoveTo(viewport.x as _, 0))?;
-    handle_command!(
-        write,
-        SetBackgroundColor(convert_color(editor.theme.background))
-    )?;
-    handle_command!(
-        write,
-        SetForegroundColor(convert_color(editor.theme.text_normal))
-    )?;
+    handle_command!(write, cursor::MoveTo(0, 0))?;
+    handle_command!(write, SetBackgroundColor(convert_color(theme.background)))?;
+    handle_command!(write, SetForegroundColor(convert_color(theme.text_normal)))?;
 
-    let (buffer_view, buffer) = match viewport
-        .current_buffer_view_handle()
-        .map(|h| editor.buffer_views.get(h))
-        .and_then(|bv| editor.buffers.get(bv.buffer_handle).map(|b| (bv, b)))
-    {
-        Some((buffer_view, buffer)) => (buffer_view, buffer),
-        None => {
-            for _ in 0..viewport.height {
-                handle_command!(write, Print('~'))?;
-                for _ in 0..viewport.width - 1 {
-                    handle_command!(write, Print(' '))?;
-                }
-                handle_command!(write, cursor::MoveToNextLine(1))?;
-                handle_command!(write, cursor::MoveToColumn((viewport.x + 1) as _))?;
-            }
-            return Ok(());
-        }
-    };
-
-    let mut line_index = viewport.scroll;
+    let mut line_index = client.scroll;
     let mut drawn_line_count = 0;
 
-    'lines_loop: for line in buffer.content.lines_from(viewport.scroll) {
+    'lines_loop: for line in client.buffer.lines_from(line_index) {
         let mut draw_state = DrawState::Normal;
         let mut column_index = 0;
         let mut x = 0;
 
         for c in line.text.chars().chain(iter::once(' ')) {
-            if x >= viewport.width {
+            if x >= width {
                 handle_command!(write, cursor::MoveToNextLine(1))?;
-                handle_command!(write, cursor::MoveToColumn((viewport.x + 1) as _))?;
 
                 draw_state = DrawState::Normal;
                 drawn_line_count += 1;
                 x = 0;
 
-                if drawn_line_count == viewport.height {
+                if drawn_line_count == height {
                     break 'lines_loop;
                 }
             }
 
             let char_position = BufferPosition::line_col(line_index, column_index);
-            if buffer_view.cursors[..]
+            if client.cursors[..]
                 .binary_search_by_key(&char_position, |c| c.position)
                 .is_ok()
             {
                 if !matches!(draw_state, DrawState::Cursor) {
                     draw_state = DrawState::Cursor;
                     handle_command!(write, SetBackgroundColor(cursor_color))?;
-                    handle_command!(
-                        write,
-                        SetForegroundColor(convert_color(editor.theme.text_normal))
-                    )?;
+                    handle_command!(write, SetForegroundColor(convert_color(theme.text_normal)))?;
                 }
-            } else if buffer_view.cursors[..]
+            } else if client.cursors[..]
                 .binary_search_by(|c| {
                     let range = c.range();
                     if range.to < char_position {
@@ -211,17 +182,11 @@ where
             {
                 if !matches!(draw_state, DrawState::Selection) {
                     draw_state = DrawState::Selection;
-                    handle_command!(
-                        write,
-                        SetBackgroundColor(convert_color(editor.theme.text_normal))
-                    )?;
-                    handle_command!(
-                        write,
-                        SetForegroundColor(convert_color(editor.theme.background))
-                    )?;
+                    handle_command!(write, SetBackgroundColor(convert_color(theme.text_normal)))?;
+                    handle_command!(write, SetForegroundColor(convert_color(theme.background)))?;
                 }
-            } else if buffer
-                .search_ranges()
+            } else if client
+                .search_ranges
                 .binary_search_by(|r| {
                     if r.to < char_position {
                         Ordering::Less
@@ -235,34 +200,22 @@ where
             {
                 if !matches!(draw_state, DrawState::Highlight) {
                     draw_state = DrawState::Highlight;
-                    handle_command!(
-                        write,
-                        SetBackgroundColor(convert_color(editor.theme.highlight))
-                    )?;
-                    handle_command!(
-                        write,
-                        SetForegroundColor(convert_color(editor.theme.text_normal))
-                    )?;
+                    handle_command!(write, SetBackgroundColor(convert_color(theme.highlight)))?;
+                    handle_command!(write, SetForegroundColor(convert_color(theme.text_normal)))?;
                 }
             } else if !matches!(draw_state, DrawState::Normal) {
                 draw_state = DrawState::Normal;
-                handle_command!(
-                    write,
-                    SetBackgroundColor(convert_color(editor.theme.background))
-                )?;
-                handle_command!(
-                    write,
-                    SetForegroundColor(convert_color(editor.theme.text_normal))
-                )?;
+                handle_command!(write, SetBackgroundColor(convert_color(theme.background)))?;
+                handle_command!(write, SetForegroundColor(convert_color(theme.text_normal)))?;
             }
 
             match c {
                 '\t' => {
-                    for _ in 0..editor.config.tab_size {
+                    for _ in 0..client.config.tab_size {
                         handle_command!(write, Print(' '))?
                     }
-                    column_index += editor.config.tab_size;
-                    x += editor.config.tab_size;
+                    column_index += client.config.tab_size;
+                    x += client.config.tab_size as u16;
                 }
                 _ => {
                     handle_command!(write, Print(c))?;
@@ -272,114 +225,97 @@ where
             }
         }
 
-        handle_command!(
-            write,
-            SetBackgroundColor(convert_color(editor.theme.background))
-        )?;
-        handle_command!(
-            write,
-            SetForegroundColor(convert_color(editor.theme.text_normal))
-        )?;
-        for _ in x..viewport.width {
+        handle_command!(write, SetBackgroundColor(convert_color(theme.background)))?;
+        handle_command!(write, SetForegroundColor(convert_color(theme.text_normal)))?;
+        for _ in x..width {
             handle_command!(write, Print(' '))?;
         }
         handle_command!(write, cursor::MoveToNextLine(1))?;
-        handle_command!(write, cursor::MoveToColumn((viewport.x + 1) as _))?;
 
         line_index += 1;
         drawn_line_count += 1;
 
-        if drawn_line_count == viewport.height {
+        if drawn_line_count == height {
             break;
         }
     }
 
-    handle_command!(
-        write,
-        SetBackgroundColor(convert_color(editor.theme.background))
-    )?;
-    handle_command!(
-        write,
-        SetForegroundColor(convert_color(editor.theme.text_normal))
-    )?;
-    for _ in drawn_line_count..viewport.height {
+    handle_command!(write, SetBackgroundColor(convert_color(theme.background)))?;
+    handle_command!(write, SetForegroundColor(convert_color(theme.text_normal)))?;
+    for _ in drawn_line_count..height {
         handle_command!(write, Print('~'))?;
-        for _ in 0..(viewport.width - 1) {
+        for _ in 0..(width - 1) {
             handle_command!(write, Print(' '))?;
         }
         handle_command!(write, cursor::MoveToNextLine(1))?;
-        handle_command!(write, cursor::MoveToColumn((viewport.x + 1) as _))?;
     }
 
-    if viewport.is_current {
-        handle_command!(
-            write,
-            SetBackgroundColor(convert_color(editor.theme.text_normal))
-        )?;
-        handle_command!(
-            write,
-            SetForegroundColor(convert_color(editor.theme.background))
-        )?;
+    if client.has_focus {
+        handle_command!(write, SetBackgroundColor(convert_color(theme.text_normal)))?;
+        handle_command!(write, SetForegroundColor(convert_color(theme.background)))?;
     } else {
+        handle_command!(write, SetBackgroundColor(convert_color(theme.background)))?;
         handle_command!(
             write,
-            SetBackgroundColor(convert_color(editor.theme.background))
-        )?;
-        handle_command!(
-            write,
-            SetForegroundColor(convert_color(editor.theme.text_normal))
+            SetForegroundColor(convert_color(theme.text_normal))
         )?;
     }
     let buffer_name = "the buffer name";
     handle_command!(write, Print(buffer_name))?;
-    for _ in buffer_name.len()..(viewport.width - 1) {
+    for _ in buffer_name.len()..(width as usize - 1) {
         handle_command!(write, Print(' '))?;
     }
 
     handle_command!(write, ResetColor)?;
+
+    handle_command!(write, cursor::MoveToNextLine(1))?;
+    draw_statusbar(write, client, error)?;
+
+    write.flush()?;
     Ok(())
 }
 
-fn draw_statusbar<W>(write: &mut W, editor: &Editor, error: Option<String>) -> Result<()>
+fn draw_statusbar<W>(write: &mut W, client: &Client, error: Option<String>) -> Result<()>
 where
     W: Write,
 {
-    fn draw_input<W>(write: &mut W, prefix: &str, editor: &Editor) -> Result<()>
+    fn draw_input<W>(write: &mut W, prefix: &str, input: &str, theme: &Theme) -> Result<()>
     where
         W: Write,
     {
         handle_command!(write, Print(prefix))?;
-        handle_command!(write, Print(editor.input()))?;
+        handle_command!(write, Print(input))?;
         handle_command!(
             write,
-            SetBackgroundColor(convert_color(editor.theme.cursor_normal))
+            SetBackgroundColor(convert_color(theme.cursor_normal))
         )?;
         handle_command!(write, Print(' '))?;
-        handle_command!(
-            write,
-            SetBackgroundColor(convert_color(editor.theme.background))
-        )?;
+        handle_command!(write, SetBackgroundColor(convert_color(theme.background)))?;
         Ok(())
     }
 
     handle_command!(
         write,
-        SetBackgroundColor(convert_color(editor.theme.background))
+        SetBackgroundColor(convert_color(client.config.theme.background))
     )?;
     handle_command!(
         write,
-        SetForegroundColor(convert_color(editor.theme.text_normal))
+        SetForegroundColor(convert_color(client.config.theme.text_normal))
     )?;
 
     if let Some(error) = error {
         handle_command!(write, Print("error: "))?;
         handle_command!(write, Print(error))?;
     } else {
-        match editor.mode() {
+        match client.mode {
             Mode::Select => handle_command!(write, Print("-- SELECT --"))?,
             Mode::Insert => handle_command!(write, Print("-- INSERT --"))?,
-            Mode::Search(_) => draw_input(write, "search: ", editor)?,
-            Mode::Command(_) => draw_input(write, "command: ", editor)?,
+            Mode::Search(_) => {
+                draw_input(write, "search: ", &client.input[..], &client.config.theme)?
+            }
+            Mode::Command(_) => {
+                draw_input(write, "command: ", &client.input[..], &client.config.theme)?
+            }
             _ => (),
         };
     }

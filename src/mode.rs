@@ -1,8 +1,11 @@
 use std::mem::Discriminant;
 
 use crate::{
-    buffer::BufferCollection, buffer_view::BufferViewCollection, command::CommandCollection,
-    editor::KeysIterator, event::Key, viewport::ViewportCollection,
+    buffer::BufferCollection,
+    buffer_view::{BufferViewCollection, BufferViewHandle},
+    command::CommandCollection,
+    editor::KeysIterator,
+    event::Key,
 };
 
 mod command;
@@ -23,7 +26,7 @@ pub struct ModeContext<'a> {
     pub commands: &'a CommandCollection,
     pub buffers: &'a mut BufferCollection,
     pub buffer_views: &'a mut BufferViewCollection,
-    pub viewports: &'a mut ViewportCollection,
+    pub current_buffer_view_handle: &'a mut Option<BufferViewHandle>,
     pub input: &'a mut String,
 }
 

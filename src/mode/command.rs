@@ -30,7 +30,7 @@ pub fn on_event(
             let command_context = CommandContext {
                 buffers: ctx.buffers,
                 buffer_views: ctx.buffer_views,
-                viewports: ctx.viewports,
+                current_buffer_view_handle: ctx.current_buffer_view_handle,
             };
 
             match ctx

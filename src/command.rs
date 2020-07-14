@@ -7,8 +7,7 @@ use std::{
 
 use crate::{
     buffer::{Buffer, BufferCollection, BufferContent},
-    buffer_view::{BufferView, BufferViewCollection},
-    viewport::ViewportCollection,
+    buffer_view::{BufferView, BufferViewCollection, BufferViewHandle},
 };
 
 pub enum CommandOperation {
@@ -20,7 +19,7 @@ pub enum CommandOperation {
 pub struct CommandContext<'a> {
     pub buffers: &'a mut BufferCollection,
     pub buffer_views: &'a mut BufferViewCollection,
-    pub viewports: &'a mut ViewportCollection,
+    pub current_buffer_view_handle: &'a mut Option<BufferViewHandle>,
 }
 
 type CommandBody = fn(CommandContext, &str) -> CommandOperation;
@@ -68,10 +67,8 @@ mod helper {
         content: BufferContent,
     ) {
         let buffer_handle = ctx.buffers.add(Buffer::new(path, content));
-        let buffer_view_index = ctx.buffer_views.add(BufferView::with_handle(buffer_handle));
-        ctx.viewports
-            .current_viewport_mut()
-            .set_current_buffer_view_handle(buffer_view_index);
+        let buffer_view_handle = ctx.buffer_views.add(BufferView::with_handle(buffer_handle));
+        *ctx.current_buffer_view_handle = Some(buffer_view_handle);
     }
 
     pub fn new_buffer_from_file(ctx: &mut CommandContext, path: &Path) -> Result<(), String> {
@@ -79,9 +76,7 @@ mod helper {
             if let Some(buffer_path) = &buffer.path {
                 if buffer_path == path {
                     let view_handle = ctx.buffer_views.add(BufferView::with_handle(handle));
-                    ctx.viewports
-                        .current_viewport_mut()
-                        .set_current_buffer_view_handle(view_handle);
+                    *ctx.current_buffer_view_handle = Some(view_handle);
                     return Ok(());
                 }
             }
@@ -144,11 +139,7 @@ mod commands {
 
     pub fn close(ctx: CommandContext, args: &str) -> CommandOperation {
         assert_empty!(args);
-        if let Some(handle) = ctx
-            .viewports
-            .current_viewport_mut()
-            .close_current_buffer_view()
-        {
+        if let Some(handle) = ctx.current_buffer_view_handle.take() {
             ctx.buffer_views.remove(handle);
         }
 
@@ -156,11 +147,7 @@ mod commands {
     }
 
     pub fn write(ctx: CommandContext, args: &str) -> CommandOperation {
-        let handle = match ctx
-            .viewports
-            .current_viewport()
-            .current_buffer_view_handle()
-        {
+        let handle = match ctx.current_buffer_view_handle {
             Some(handle) => handle,
             None => return CommandOperation::Error("no buffer opened".into()),
         };

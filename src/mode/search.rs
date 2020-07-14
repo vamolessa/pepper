@@ -24,12 +24,10 @@ pub fn on_event(
 }
 
 pub fn update_search(ctx: &mut ModeContext) {
-    for viewport in ctx.viewports.iter() {
-        if let Some(handle) = viewport.current_buffer_view_handle() {
-            let buffer_handle = ctx.buffer_views.get(handle).buffer_handle;
-            if let Some(buffer) = ctx.buffers.get_mut(buffer_handle) {
-                buffer.set_search(&ctx.input[..]);
-            }
-        };
-    }
+    if let Some(handle) = ctx.current_buffer_view_handle {
+        let buffer_handle = ctx.buffer_views.get(handle).buffer_handle;
+        if let Some(buffer) = ctx.buffers.get_mut(buffer_handle) {
+            buffer.set_search(&ctx.input[..]);
+        }
+    };
 }
