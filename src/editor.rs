@@ -1,12 +1,13 @@
 use std::path::Path;
 
 use crate::{
-    buffer::{TextRef,BufferCollection},
-    cursor::Cursor,
+    buffer::{BufferCollection, TextRef},
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{BufferViewCollection, BufferViewHandle},
     command::CommandCollection,
     config::Config,
+    connection::ConnectionWithClientHandle,
+    cursor::Cursor,
     event::Key,
     keymap::{KeyMapCollection, MatchResult},
     mode::{Mode, ModeContext, ModeOperation},
@@ -25,15 +26,21 @@ pub enum EditorOperation<'a> {
 }
 
 pub struct EditorOperationSink<'a> {
-    operations: Vec<EditorOperation<'a>>,
+    operations: Vec<(ConnectionWithClientHandle, EditorOperation<'a>)>,
 }
 
 impl<'a> EditorOperationSink<'a> {
-    pub fn send(&mut self, operation: EditorOperation<'a>) {
-        self.operations.push(operation);
+    pub fn send(
+        &mut self,
+        connection_handle: ConnectionWithClientHandle,
+        operation: EditorOperation<'a>,
+    ) {
+        self.operations.push((connection_handle, operation));
     }
 
-    pub fn drain(&mut self) -> impl 'a + Iterator<Item = EditorOperation<'a>> {
+    pub fn drain(
+        &mut self,
+    ) -> impl '_ + Iterator<Item = (ConnectionWithClientHandle, EditorOperation<'a>)> {
         self.operations.drain(..)
     }
 }
