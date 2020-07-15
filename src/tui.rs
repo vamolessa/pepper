@@ -101,6 +101,13 @@ where
         height: u16,
         error: Option<String>,
     ) -> Result<()> {
+        let cursor_position = client.main_cursor.position;
+        if cursor_position.line_index < self.scroll {
+            self.scroll = cursor_position.line_index;
+        } else if cursor_position.line_index >= self.scroll + height as usize {
+            self.scroll = cursor_position.line_index - height as usize + 1;
+        }
+
         draw(&mut self.write, client, self.scroll, width, height, error)
     }
 
