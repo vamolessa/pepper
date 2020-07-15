@@ -175,12 +175,14 @@ impl Editor {
                 ModeOperation::None => (),
                 ModeOperation::Quit => return EditorLoop::Quit,
                 ModeOperation::EnterMode(next_mode) => {
-                    self.mode = next_mode;
+                    self.mode = next_mode.clone();
                     self.mode.on_enter(&mut mode_context);
+                    operations.send(TargetClient::All, EditorOperation::Mode(next_mode));
                 }
                 ModeOperation::Error(error) => {
                     self.mode = Mode::default();
                     self.mode.on_enter(&mut mode_context);
+                    operations.send(TargetClient::All, EditorOperation::Mode(Mode::default()));
 
                     break EditorLoop::Error(error);
                 }
