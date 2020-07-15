@@ -42,6 +42,7 @@ impl Client {
 
     pub fn on_editor_operation(&mut self, operation: EditorOperation, content: &str) {
         match operation {
+            EditorOperation::Focused(focused) => self.has_focus = focused,
             EditorOperation::Content => self.buffer = BufferContent::from_str(content),
             EditorOperation::Path(path) => self.path = path,
             EditorOperation::Mode(mode) => self.mode = mode,

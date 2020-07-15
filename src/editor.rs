@@ -21,6 +21,7 @@ pub enum EditorLoop {
 }
 
 pub enum EditorOperation {
+    Focused(bool),
     Content,
     Path(Option<PathBuf>),
     Mode(Mode),
@@ -119,6 +120,8 @@ pub struct Editor {
     pub buffers: BufferCollection,
     pub buffer_views: BufferViewCollection,
     local_client_current_buffer_view_handle: Option<BufferViewHandle>,
+
+    focused_client: TargetClient,
 }
 
 impl Editor {
@@ -136,6 +139,8 @@ impl Editor {
             buffers: Default::default(),
             buffer_views: BufferViewCollection::default(),
             local_client_current_buffer_view_handle: None,
+
+            focused_client: TargetClient::Local,
         }
     }
 
@@ -153,6 +158,14 @@ impl Editor {
         target_client: TargetClient,
         operations: &mut EditorOperationSender,
     ) -> EditorLoop {
+        if target_client != self.focused_client {
+            operations.send(self.focused_client, EditorOperation::Focused(false));
+            operations.send(target_client, EditorOperation::Focused(true));
+
+            self.focused_client = target_client;
+            self.buffered_keys.clear();
+        }
+
         self.buffered_keys.push(key);
 
         match self
