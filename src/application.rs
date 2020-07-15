@@ -5,7 +5,8 @@ use futures::{
 
 use crate::{
     client::Client,
-    editor::{Editor, EditorPollResult},
+    connection::ConnectionWithClientHandle,
+    editor::{Editor, EditorLoop, EditorOperation, EditorOperationSink},
     event::Event,
 };
 
@@ -48,6 +49,8 @@ where
     let mut available_width = 0;
     let mut available_height = 0;
 
+    let mut editor_operations = EditorOperationSink::new();
+
     pin_mut!(event_stream);
     loop {
         let mut error = None;
@@ -56,12 +59,13 @@ where
             event = event_stream.select_next_some() => {
                 match event {
                     Event::Key(key) => {
-                        match editor.on_key(key){
-                            EditorPollResult::Pending => (),
-                            EditorPollResult::Quit => break,
-                            EditorPollResult::Error(e) => error = Some(e),
+                        match editor.on_key(key, ConnectionWithClientHandle::Local, &mut editor_operations) {
+                            EditorLoop::Quit => break,
+                            EditorLoop::Continue => (),
+                            EditorLoop::Error(e) => error = Some(e),
                         }
-                        //local_client.on_editor_operation();
+                        for (_connection_handle, operation) in editor_operations.drain() {
+                        }
                     },
                     Event::Resize(w, h) => {
                         available_width = w;

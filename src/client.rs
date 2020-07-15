@@ -42,21 +42,26 @@ impl Client {
 
     pub fn on_editor_operation(&mut self, operation: EditorOperation) {
         match operation {
-            EditorOperation::Content(text) => self.buffer = BufferContent::from_str(text),
+            EditorOperation::Content(text) => self.buffer = BufferContent::from_str(&text[..]),
             EditorOperation::Path(path) => self.path = path.map(|p| p.into()),
             EditorOperation::Mode(mode) => self.mode = mode,
             EditorOperation::Insert(position, text) => {
-                self.buffer.insert_text(position, text);
+                self.buffer.insert_text(position, text.as_text_ref());
             }
             EditorOperation::Delete(range) => {
                 self.buffer.delete_range(range);
             }
             EditorOperation::ClearCursors => self.cursors.clear(),
             EditorOperation::Cursor(cursor) => self.cursors.push(cursor),
-            EditorOperation::Search(search) => {
+            EditorOperation::SearchInsert(c) => {
+                self.input.push(c);
                 self.search_ranges.clear();
-                self.buffer
-                    .find_search_ranges(&search[..], &mut self.search_ranges);
+                self.buffer.find_search_ranges(&self.input[..], &mut self.search_ranges);
+            }
+            EditorOperation::SearchKeep(keep_count) => {
+                self.input.drain(..keep_count);
+                self.search_ranges.clear();
+                self.buffer.find_search_ranges(&self.input[..], &mut self.search_ranges);
             }
         }
     }

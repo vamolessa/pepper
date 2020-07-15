@@ -1,7 +1,7 @@
-use std::path::Path;
+use std::path::PathBuf;
 
 use crate::{
-    buffer::{BufferCollection, TextRef},
+    buffer::{BufferCollection, BufferHandle, Text},
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{BufferViewCollection, BufferViewHandle},
     command::CommandCollection,
@@ -14,41 +14,48 @@ use crate::{
     theme::Theme,
 };
 
-pub enum EditorOperation<'a> {
-    Content(&'a str),
-    Path(Option<&'a Path>),
+pub enum EditorLoop {
+    Quit,
+    Continue,
+    Error(String),
+}
+
+pub enum EditorOperation {
+    Content(String),
+    Path(Option<PathBuf>),
     Mode(Mode),
-    Insert(BufferPosition, TextRef<'a>),
+    Insert(BufferPosition, Text),
     Delete(BufferRange),
     ClearCursors,
     Cursor(Cursor),
-    Search(&'a str),
+    SearchInsert(char),
+    SearchKeep(usize),
 }
 
-pub struct EditorOperationSink<'a> {
-    operations: Vec<(ConnectionWithClientHandle, EditorOperation<'a>)>,
+pub struct EditorOperationSink {
+    operations: Vec<(ConnectionWithClientHandle, EditorOperation)>,
 }
 
-impl<'a> EditorOperationSink<'a> {
+impl EditorOperationSink {
+    pub fn new() -> Self {
+        Self {
+            operations: Vec::new(),
+        }
+    }
+
     pub fn send(
         &mut self,
         connection_handle: ConnectionWithClientHandle,
-        operation: EditorOperation<'a>,
+        operation: EditorOperation,
     ) {
         self.operations.push((connection_handle, operation));
     }
 
     pub fn drain(
         &mut self,
-    ) -> impl '_ + Iterator<Item = (ConnectionWithClientHandle, EditorOperation<'a>)> {
+    ) -> impl '_ + Iterator<Item = (ConnectionWithClientHandle, EditorOperation)> {
         self.operations.drain(..)
     }
-}
-
-pub enum EditorPollResult {
-    Pending,
-    Quit,
-    Error(String),
 }
 
 pub struct KeysIterator<'a> {
@@ -119,7 +126,12 @@ impl Editor {
         &self.input[..]
     }
 
-    pub fn on_key(&mut self, key: Key) -> EditorPollResult {
+    pub fn on_key(
+        &mut self,
+        key: Key,
+        connection_handle: ConnectionWithClientHandle,
+        operations: &mut EditorOperationSink,
+    ) -> EditorLoop {
         self.buffered_keys.push(key);
 
         match self
@@ -127,7 +139,7 @@ impl Editor {
             .matches(self.mode.discriminant(), &self.buffered_keys[..])
         {
             MatchResult::None => (),
-            MatchResult::Prefix => return EditorPollResult::Pending,
+            MatchResult::Prefix => return EditorLoop::Continue,
             MatchResult::ReplaceWith(replaced_keys) => {
                 self.buffered_keys.clear();
                 self.buffered_keys.extend_from_slice(replaced_keys);
@@ -137,10 +149,12 @@ impl Editor {
         let mut keys = KeysIterator::new(&self.buffered_keys);
         let result = loop {
             if keys.index >= self.buffered_keys.len() {
-                break EditorPollResult::Pending;
+                break EditorLoop::Continue;
             }
 
             let mut mode_context = ModeContext {
+                connection_handle,
+                operations,
                 commands: &self.commands,
                 buffers: &mut self.buffers,
                 buffer_views: &mut self.buffer_views,
@@ -149,9 +163,9 @@ impl Editor {
             };
 
             match self.mode.on_event(&mut mode_context, &mut keys) {
-                ModeOperation::Pending => return EditorPollResult::Pending,
+                ModeOperation::Pending => return EditorLoop::Continue,
                 ModeOperation::None => (),
-                ModeOperation::Quit => return EditorPollResult::Quit,
+                ModeOperation::Quit => return EditorLoop::Quit,
                 ModeOperation::EnterMode(next_mode) => {
                     self.mode = next_mode;
                     self.mode.on_enter(&mut mode_context);
@@ -160,7 +174,7 @@ impl Editor {
                     self.mode = Mode::default();
                     self.mode.on_enter(&mut mode_context);
 
-                    break EditorPollResult::Error(error);
+                    break EditorLoop::Error(error);
                 }
             }
         };
