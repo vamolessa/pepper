@@ -1,12 +1,8 @@
 use std::path::PathBuf;
 
 use crate::{
-    buffer::BufferContent,
-    buffer_position::BufferRange,
-    config::Config,
-    cursor::Cursor,
-    editor::{EditorOperation, EditorOperationSender},
-    mode::Mode,
+    buffer::BufferContent, buffer_position::BufferRange, config::Config, cursor::Cursor,
+    editor::EditorOperation, mode::Mode,
 };
 
 pub struct Client {
@@ -17,7 +13,7 @@ pub struct Client {
     pub path: Option<PathBuf>,
     pub buffer: BufferContent,
 
-    pub scroll: usize,
+    pub main_cursor: Cursor,
     pub cursors: Vec<Cursor>,
     pub search_ranges: Vec<BufferRange>,
 
@@ -35,7 +31,7 @@ impl Client {
             path: None,
             buffer: BufferContent::from_str(""),
 
-            scroll: 0,
+            main_cursor: Cursor::default(),
             cursors: Vec::new(),
             search_ranges: Vec::new(),
 
@@ -55,7 +51,10 @@ impl Client {
             EditorOperation::Delete(range) => {
                 self.buffer.delete_range(range);
             }
-            EditorOperation::ClearCursors => self.cursors.clear(),
+            EditorOperation::ClearCursors(cursor) => {
+                self.main_cursor = cursor;
+                self.cursors.clear();
+            }
             EditorOperation::Cursor(cursor) => self.cursors.push(cursor),
             EditorOperation::SearchAppend(c) => {
                 self.input.push(c);

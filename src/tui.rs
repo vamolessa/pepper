@@ -67,6 +67,7 @@ where
     W: Write,
 {
     write: W,
+    scroll: usize,
 }
 
 impl<W> Tui<W>
@@ -74,7 +75,7 @@ where
     W: Write,
 {
     pub fn new(write: W) -> Self {
-        Self { write }
+        Self { write, scroll: 0 }
     }
 }
 
@@ -100,7 +101,7 @@ where
         height: u16,
         error: Option<String>,
     ) -> Result<()> {
-        draw(&mut self.write, client, width, height, error)
+        draw(&mut self.write, client, self.scroll, width, height, error)
     }
 
     fn shutdown(&mut self) -> Result<()> {
@@ -114,6 +115,7 @@ where
 fn draw<W>(
     write: &mut W,
     client: &Client,
+    scroll: usize,
     width: u16,
     height: u16,
     error: Option<String>,
@@ -145,7 +147,7 @@ where
     handle_command!(write, SetBackgroundColor(convert_color(theme.background)))?;
     handle_command!(write, SetForegroundColor(convert_color(theme.text_normal)))?;
 
-    let mut line_index = client.scroll;
+    let mut line_index = scroll;
     let mut drawn_line_count = 0;
 
     'lines_loop: for line in client.buffer.lines_from(line_index) {

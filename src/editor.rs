@@ -26,7 +26,7 @@ pub enum EditorOperation {
     Mode(Mode),
     Insert(BufferPosition, Text),
     Delete(BufferRange),
-    ClearCursors,
+    ClearCursors(Cursor),
     Cursor(Cursor),
     SearchAppend(char),
     SearchKeep(usize),
@@ -49,8 +49,13 @@ impl EditorOperationSender {
         self.operations.push((target_client, operation));
     }
 
-    pub fn send_cursors(&mut self, target_client: TargetClient, cursors: &[Cursor]) {
-        self.send(target_client, EditorOperation::ClearCursors);
+    pub fn send_cursors(
+        &mut self,
+        target_client: TargetClient,
+        main_cursor: &Cursor,
+        cursors: &[Cursor],
+    ) {
+        self.send(target_client, EditorOperation::ClearCursors(*main_cursor));
         for cursor in cursors {
             self.send(target_client, EditorOperation::Cursor(*cursor));
         }
