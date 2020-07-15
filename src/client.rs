@@ -41,6 +41,7 @@ impl Client {
     }
 
     pub fn on_editor_operation(&mut self, operation: EditorOperation, content: &str) {
+        dbg!(&operation);
         match operation {
             EditorOperation::Focused(focused) => self.has_focus = focused,
             EditorOperation::Content => self.buffer = BufferContent::from_str(content),
@@ -70,5 +71,6 @@ impl Client {
                     .find_search_ranges(&self.input[..], &mut self.search_ranges);
             }
         }
+        dbg!(self.main_cursor);
     }
 }

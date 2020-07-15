@@ -4,7 +4,7 @@ use futures::stream::{FusedStream, StreamExt};
 
 use crossterm::{
     cursor, event, handle_command,
-    style::{Color, Print, ResetColor, SetBackgroundColor, SetForegroundColor},
+    style::{Color, Print, SetBackgroundColor, SetForegroundColor},
     terminal, ErrorKind, Result,
 };
 
@@ -186,7 +186,7 @@ where
                 drawn_line_count += 1;
                 x = 0;
 
-                if drawn_line_count == height {
+                if drawn_line_count >= height - 1 {
                     break 'lines_loop;
                 }
             }
@@ -269,14 +269,14 @@ where
         line_index += 1;
         drawn_line_count += 1;
 
-        if drawn_line_count == height {
+        if drawn_line_count >= height - 1 {
             break;
         }
     }
 
     handle_command!(write, SetBackgroundColor(convert_color(theme.background)))?;
     handle_command!(write, SetForegroundColor(convert_color(theme.text_normal)))?;
-    for _ in drawn_line_count..height {
+    for _ in drawn_line_count..(height - 1) {
         handle_command!(write, Print('~'))?;
         for _ in 0..(width - 1) {
             handle_command!(write, Print(' '))?;
@@ -291,13 +291,6 @@ where
         handle_command!(write, SetBackgroundColor(convert_color(theme.background)))?;
         handle_command!(write, SetForegroundColor(convert_color(theme.text_normal)))?;
     }
-    let buffer_name = "the buffer name";
-    handle_command!(write, Print(buffer_name))?;
-    for _ in buffer_name.len()..(width as usize - 1) {
-        handle_command!(write, Print(' '))?;
-    }
-
-    handle_command!(write, ResetColor)?;
 
     handle_command!(write, cursor::MoveToNextLine(1))?;
     draw_statusbar(write, client, error)?;
@@ -325,27 +318,40 @@ where
         Ok(())
     }
 
-    handle_command!(
-        write,
-        SetBackgroundColor(convert_color(client.config.theme.background))
-    )?;
-    handle_command!(
-        write,
-        SetForegroundColor(convert_color(client.config.theme.text_normal))
-    )?;
+    if client.has_focus {
+        handle_command!(
+            write,
+            SetBackgroundColor(convert_color(client.config.theme.text_normal))
+        )?;
+        handle_command!(
+            write,
+            SetForegroundColor(convert_color(client.config.theme.background))
+        )?;
+    } else {
+        handle_command!(
+            write,
+            SetBackgroundColor(convert_color(client.config.theme.background))
+        )?;
+        handle_command!(
+            write,
+            SetForegroundColor(convert_color(client.config.theme.text_normal))
+        )?;
+    }
+
+    handle_command!(write, Print("this is status"))?;
 
     if let Some(error) = error {
-        handle_command!(write, Print("error: "))?;
+        handle_command!(write, Print("error:"))?;
         handle_command!(write, Print(error))?;
     } else {
         match client.mode {
             Mode::Select => handle_command!(write, Print("-- SELECT --"))?,
             Mode::Insert => handle_command!(write, Print("-- INSERT --"))?,
             Mode::Search(_) => {
-                draw_input(write, "search: ", &client.input[..], &client.config.theme)?
+                draw_input(write, "search:", &client.input[..], &client.config.theme)?
             }
             Mode::Command(_) => {
-                draw_input(write, "command: ", &client.input[..], &client.config.theme)?
+                draw_input(write, "command:", &client.input[..], &client.config.theme)?
             }
             _ => (),
         };

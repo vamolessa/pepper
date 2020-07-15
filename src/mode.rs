@@ -34,7 +34,7 @@ pub struct ModeContext<'a> {
     pub input: &'a mut String,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum FromMode {
     Normal,
     Select,
@@ -49,7 +49,7 @@ impl FromMode {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum Mode {
     Normal,
     Select,

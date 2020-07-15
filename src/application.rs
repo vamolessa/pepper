@@ -52,6 +52,18 @@ fn bind_keys(editor: &mut Editor) {
         .unwrap();
 }
 
+fn send_operations(operations: &mut EditorOperationSender, local_client: &mut Client) {
+    for (target_client, operation, content) in operations.drain() {
+        match target_client {
+            TargetClient::All => {
+                local_client.on_editor_operation(operation, content);
+            }
+            TargetClient::Local => local_client.on_editor_operation(operation, content),
+            _ => (),
+        }
+    }
+}
+
 pub async fn run_server_with_client<E, I>(event_stream: E, mut ui: I) -> Result<(), ()>
 where
     E: FusedStream<Item = Event>,
@@ -80,14 +92,7 @@ where
                             EditorLoop::Continue => (),
                             EditorLoop::Error(e) => error = Some(e),
                         }
-                        for (target_client, operation, content) in editor_operations.drain() {
-                            match target_client {
-                                TargetClient::Local => local_client.on_editor_operation(
-                                    operation, content
-                                ),
-                                _=> (),
-                            }
-                        }
+                        send_operations(&mut editor_operations, &mut local_client);
                     },
                     Event::Resize(w, h) => if ui.resize(w, h).is_err() {
                         return Err(());

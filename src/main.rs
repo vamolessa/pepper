@@ -1,3 +1,5 @@
+#![recursion_limit="256"]
+
 mod application;
 mod buffer;
 mod buffer_position;

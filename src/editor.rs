@@ -20,6 +20,7 @@ pub enum EditorLoop {
     Error(String),
 }
 
+#[derive(Debug)]
 pub enum EditorOperation {
     Focused(bool),
     Content,
@@ -140,7 +141,7 @@ impl Editor {
             buffer_views: BufferViewCollection::default(),
             local_client_current_buffer_view_handle: None,
 
-            focused_client: TargetClient::Local,
+            focused_client: TargetClient::All,
         }
     }
 
