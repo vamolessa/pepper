@@ -6,10 +6,10 @@ use std::{
 };
 
 use crate::{
-    connection::TargetClient,
-    editor::EditorOperationSender,
     buffer::{Buffer, BufferCollection, BufferContent},
     buffer_view::{BufferView, BufferViewCollection, BufferViewHandle},
+    connection::TargetClient,
+    editor::{EditorOperation, EditorOperationSender},
 };
 
 pub enum CommandOperation {
@@ -71,8 +71,13 @@ mod helper {
         path: Option<PathBuf>,
         content: BufferContent,
     ) {
+        ctx.operations.send_content(ctx.target_client, &content);
+        ctx.operations
+            .send(ctx.target_client, EditorOperation::Path(path.clone()));
+
         let buffer_handle = ctx.buffers.add(Buffer::new(path, content));
-        let buffer_view_handle = ctx.buffer_views.add(BufferView::with_handle(buffer_handle));
+        let buffer_view = BufferView::new(ctx.target_client, buffer_handle);
+        let buffer_view_handle = ctx.buffer_views.add(buffer_view);
         *ctx.current_buffer_view_handle = Some(buffer_view_handle);
     }
 
@@ -80,9 +85,16 @@ mod helper {
         for (handle, buffer) in ctx.buffers.iter_with_handles() {
             if let Some(buffer_path) = &buffer.path {
                 if buffer_path == path {
-                    let view_handle = ctx.buffer_views.add(BufferView::with_handle(handle));
+                    let view_handle = ctx
+                        .buffer_views
+                        .add(BufferView::new(ctx.target_client, handle));
                     *ctx.current_buffer_view_handle = Some(view_handle);
-                    return Ok(());
+
+                    ctx.operations
+                        .send_content(ctx.target_client, &buffer.content);
+                    ctx.operations
+                        .send(ctx.target_client, EditorOperation::Path(Some(path.into())));
+                    break;
                 }
             }
         }
@@ -144,23 +156,33 @@ mod commands {
 
     pub fn close(ctx: CommandContext, args: &str) -> CommandOperation {
         assert_empty!(args);
-        if let Some(handle) = ctx.current_buffer_view_handle.take() {
-            ctx.buffer_views.remove(handle);
+        if let Some(handle) = ctx
+            .current_buffer_view_handle
+            .take()
+            .map(|h| ctx.buffer_views.get(&h).buffer_handle)
+        {
+            for view in ctx.buffer_views.iter() {
+                if view.buffer_handle == handle {
+                    ctx.operations.send_empty_content(view.target_client);
+                    ctx.operations
+                        .send(view.target_client, EditorOperation::Path(None));
+                }
+            }
+            ctx.buffer_views
+                .remove_where(|view| view.buffer_handle == handle);
         }
 
         CommandOperation::Complete
     }
 
     pub fn write(ctx: CommandContext, args: &str) -> CommandOperation {
-        let handle = match ctx.current_buffer_view_handle {
+        let view_handle = match ctx.current_buffer_view_handle {
             Some(handle) => handle,
             None => return CommandOperation::Error("no buffer opened".into()),
         };
 
-        let buffer = match ctx
-            .buffers
-            .get_mut(ctx.buffer_views.get(handle).buffer_handle)
-        {
+        let buffer_handle = ctx.buffer_views.get(view_handle).buffer_handle;
+        let buffer = match ctx.buffers.get_mut(buffer_handle) {
             Some(buffer) => buffer,
             None => return CommandOperation::Error("no buffer opened".into()),
         };
@@ -179,7 +201,15 @@ mod commands {
             let path = PathBuf::from(path_arg);
             match helper::write_buffer_to_file(buffer, &path) {
                 Ok(()) => {
-                    buffer.path = Some(path);
+                    for view in ctx.buffer_views.iter() {
+                        if view.buffer_handle == buffer_handle {
+                            ctx.operations.send(
+                                view.target_client,
+                                EditorOperation::Path(Some(path.clone())),
+                            );
+                        }
+                    }
+                    buffer.path = Some(path.clone());
                     CommandOperation::Complete
                 }
                 Err(error) => CommandOperation::Error(error),

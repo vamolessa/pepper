@@ -20,9 +20,9 @@ pub struct BufferView {
 }
 
 impl BufferView {
-    pub fn with_handle(buffer_handle: BufferHandle) -> Self {
+    pub fn new(target_client: TargetClient, buffer_handle: BufferHandle) -> Self {
         Self {
-            target_client: TargetClient::Local,
+            target_client,
             buffer_handle,
             cursors: CursorCollection::new(),
         }
@@ -187,12 +187,30 @@ impl BufferViewCollection {
         self.free_slots.push(handle);
     }
 
+    pub fn remove_where<F>(&mut self, predicate: F)
+    where
+        F: Fn(&BufferView) -> bool,
+    {
+        for i in 0..self.buffer_views.len() {
+            if let Some(view) = &self.buffer_views[i] {
+                if predicate(&view) {
+                    self.buffer_views[i] = None;
+                    self.free_slots.push(BufferViewHandle(i));
+                }
+            }
+        }
+    }
+
     pub fn get(&self, handle: &BufferViewHandle) -> &BufferView {
         self.buffer_views[handle.0].as_ref().unwrap()
     }
 
     pub fn get_mut(&mut self, handle: &BufferViewHandle) -> &mut BufferView {
         self.buffer_views[handle.0].as_mut().unwrap()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &BufferView> {
+        self.buffer_views.iter().flatten()
     }
 
     pub fn insert_text(

@@ -56,9 +56,13 @@ impl EditorOperationSender {
         }
     }
 
-    pub fn send_content(&mut self, target_client: TargetClient, content: &BufferContent) {
+    pub fn send_empty_content(&mut self, target_client: TargetClient) {
         self.send(target_client, EditorOperation::Content);
         self.write_content_buf.clear();
+    }
+
+    pub fn send_content(&mut self, target_client: TargetClient, content: &BufferContent) {
+        self.send_empty_content(target_client);
         content.write(&mut self.write_content_buf);
     }
 
