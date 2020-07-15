@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use crate::{
     buffer::BufferContent, buffer_position::BufferRange, config::Config, cursor::Cursor,
-    editor::EditorOperation, mode::Mode,
+    editor::{EditorOperationSender,EditorOperation}, mode::Mode,
 };
 
 pub struct Client {
@@ -40,10 +40,10 @@ impl Client {
         }
     }
 
-    pub fn on_editor_operation(&mut self, operation: EditorOperation) {
+    pub fn on_editor_operation(&mut self, operations: EditorOperationSender, operation: EditorOperation) {
         match operation {
-            EditorOperation::Content(text) => self.buffer = BufferContent::from_str(&text[..]),
-            EditorOperation::Path(path) => self.path = path.map(|p| p.into()),
+            EditorOperation::Content => self.buffer = BufferContent::from_str(operations.get_content()),
+            EditorOperation::Path(path) => self.path = path,
             EditorOperation::Mode(mode) => self.mode = mode,
             EditorOperation::Insert(position, text) => {
                 self.buffer.insert_text(position, text.as_text_ref());

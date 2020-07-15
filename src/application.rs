@@ -6,7 +6,7 @@ use futures::{
 use crate::{
     client::Client,
     connection::TargetClient,
-    editor::{Editor, EditorLoop, EditorOperationSink},
+    editor::{Editor, EditorLoop, EditorOperationSender},
     event::Event,
 };
 
@@ -49,7 +49,7 @@ where
     let mut available_width = 0;
     let mut available_height = 0;
 
-    let mut editor_operations = EditorOperationSink::new();
+    let mut editor_operations = EditorOperationSender::new();
 
     pin_mut!(event_stream);
     loop {

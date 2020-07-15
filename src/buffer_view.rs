@@ -3,7 +3,7 @@ use crate::{
     buffer_position::{BufferOffset, BufferRange},
     connection::TargetClient,
     cursor::CursorCollection,
-    editor::{EditorOperation, EditorOperationSink},
+    editor::{EditorOperation, EditorOperationSender},
     history::{EditKind, EditRef},
 };
 
@@ -31,7 +31,7 @@ impl BufferView {
     pub fn move_cursors(
         &mut self,
         buffers: &BufferCollection,
-        operations: &mut EditorOperationSink,
+        operations: &mut EditorOperationSender,
         offset: BufferOffset,
         movement_kind: MovementKind,
     ) {
@@ -64,7 +64,7 @@ impl BufferView {
     pub fn move_to_next_search_match(
         &mut self,
         buffers: &BufferCollection,
-        operations: &mut EditorOperationSink,
+        operations: &mut EditorOperationSender,
         movement_kind: MovementKind,
     ) {
         self.move_to_search_match(buffers, operations, movement_kind, |result, len| {
@@ -79,7 +79,7 @@ impl BufferView {
     pub fn move_to_previous_search_match(
         &mut self,
         buffers: &BufferCollection,
-        operations: &mut EditorOperationSink,
+        operations: &mut EditorOperationSender,
         movement_kind: MovementKind,
     ) {
         self.move_to_search_match(buffers, operations, movement_kind, |result, len| {
@@ -94,7 +94,7 @@ impl BufferView {
     fn move_to_search_match<F>(
         &mut self,
         buffers: &BufferCollection,
-        operations: &mut EditorOperationSink,
+        operations: &mut EditorOperationSender,
         movement_kind: MovementKind,
         index_selector: F,
     ) where
@@ -198,7 +198,7 @@ impl BufferViewCollection {
     pub fn insert_text(
         &mut self,
         buffers: &mut BufferCollection,
-        operations: &mut EditorOperationSink,
+        operations: &mut EditorOperationSender,
         handle: &BufferViewHandle,
         text: TextRef,
     ) {
@@ -245,7 +245,7 @@ impl BufferViewCollection {
     pub fn delete_in_selection(
         &mut self,
         buffers: &mut BufferCollection,
-        operations: &mut EditorOperationSink,
+        operations: &mut EditorOperationSender,
         handle: &BufferViewHandle,
     ) {
         let current_view = match &mut self.buffer_views[handle.0] {
@@ -289,7 +289,7 @@ impl BufferViewCollection {
     pub fn undo(
         &mut self,
         buffers: &mut BufferCollection,
-        operations: &mut EditorOperationSink,
+        operations: &mut EditorOperationSender,
         handle: &BufferViewHandle,
     ) {
         if let Some(buffer) = self.buffer_views[handle.0]
@@ -303,7 +303,7 @@ impl BufferViewCollection {
     pub fn redo(
         &mut self,
         buffers: &mut BufferCollection,
-        operations: &mut EditorOperationSink,
+        operations: &mut EditorOperationSender,
         handle: &BufferViewHandle,
     ) {
         if let Some(buffer) = self.buffer_views[handle.0]
@@ -317,7 +317,7 @@ impl BufferViewCollection {
     fn apply_edits<'a>(
         &mut self,
         handle: &BufferViewHandle,
-        operations: &mut EditorOperationSink,
+        operations: &mut EditorOperationSender,
         edits: impl 'a + Iterator<Item = EditRef<'a>>,
     ) {
         let buffer_handle = self.get(handle).buffer_handle;

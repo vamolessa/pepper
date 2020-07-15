@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use crate::{
-    buffer::{BufferCollection, Text},
+    buffer::{BufferCollection, BufferContent, Text},
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{BufferViewCollection, BufferViewHandle},
     command::CommandCollection,
@@ -21,7 +21,7 @@ pub enum EditorLoop {
 }
 
 pub enum EditorOperation {
-    Content(String),
+    Content,
     Path(Option<PathBuf>),
     Mode(Mode),
     Insert(BufferPosition, Text),
@@ -32,22 +32,20 @@ pub enum EditorOperation {
     SearchKeep(usize),
 }
 
-pub struct EditorOperationSink {
+pub struct EditorOperationSender {
     operations: Vec<(TargetClient, EditorOperation)>,
+    write_content_buf: Vec<u8>,
 }
 
-impl EditorOperationSink {
+impl EditorOperationSender {
     pub fn new() -> Self {
         Self {
             operations: Vec::new(),
+            write_content_buf: Vec::with_capacity(1024 * 8),
         }
     }
 
-    pub fn send(
-        &mut self,
-        target_client: TargetClient,
-        operation: EditorOperation,
-    ) {
+    pub fn send(&mut self, target_client: TargetClient, operation: EditorOperation) {
         self.operations.push((target_client, operation));
     }
 
@@ -58,9 +56,17 @@ impl EditorOperationSink {
         }
     }
 
-    pub fn drain(
-        &mut self,
-    ) -> impl '_ + Iterator<Item = (TargetClient, EditorOperation)> {
+    pub fn send_content(&mut self, target_client: TargetClient, content: &BufferContent) {
+        self.send(target_client, EditorOperation::Content);
+        self.write_content_buf.clear();
+        content.write(&mut self.write_content_buf);
+    }
+
+    pub fn get_content(&self) -> &str {
+        std::str::from_utf8(&self.write_content_buf[..]).unwrap_or("")
+    }
+
+    pub fn drain(&mut self) -> impl '_ + Iterator<Item = (TargetClient, EditorOperation)> {
         self.operations.drain(..)
     }
 }
@@ -137,7 +143,7 @@ impl Editor {
         &mut self,
         key: Key,
         target_client: TargetClient,
-        operations: &mut EditorOperationSink,
+        operations: &mut EditorOperationSender,
     ) -> EditorLoop {
         self.buffered_keys.push(key);
 

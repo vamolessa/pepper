@@ -7,7 +7,7 @@ use std::{
 
 use crate::{
     connection::TargetClient,
-    editor::EditorOperationSink,
+    editor::EditorOperationSender,
     buffer::{Buffer, BufferCollection, BufferContent},
     buffer_view::{BufferView, BufferViewCollection, BufferViewHandle},
 };
@@ -20,7 +20,7 @@ pub enum CommandOperation {
 
 pub struct CommandContext<'a> {
     pub target_client: TargetClient,
-    pub operations: &'a mut EditorOperationSink,
+    pub operations: &'a mut EditorOperationSender,
 
     pub buffers: &'a mut BufferCollection,
     pub buffer_views: &'a mut BufferViewCollection,
