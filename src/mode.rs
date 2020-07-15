@@ -4,7 +4,7 @@ use crate::{
     buffer::BufferCollection,
     buffer_view::{BufferViewCollection, BufferViewHandle},
     command::CommandCollection,
-    connection::ConnectionWithClientHandle,
+    connection::TargetClient,
     editor::{EditorOperationSink, KeysIterator},
     event::Key,
 };
@@ -24,7 +24,7 @@ pub enum ModeOperation {
 }
 
 pub struct ModeContext<'a> {
-    pub connection_handle: ConnectionWithClientHandle,
+    pub target_client: TargetClient,
     pub operations: &'a mut EditorOperationSink,
 
     pub commands: &'a CommandCollection,

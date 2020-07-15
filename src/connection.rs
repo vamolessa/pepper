@@ -3,7 +3,8 @@ use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use crate::event::Key;
 
 #[derive(Clone, Copy, Eq, PartialEq)]
-pub enum ConnectionWithClientHandle {
+pub enum TargetClient {
+    All,
     Local,
     Remote(RemoteConnectionWithClientHandle),
 }

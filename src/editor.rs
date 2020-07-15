@@ -1,12 +1,12 @@
 use std::path::PathBuf;
 
 use crate::{
-    buffer::{BufferCollection, BufferHandle, Text},
+    buffer::{BufferCollection, Text},
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{BufferViewCollection, BufferViewHandle},
     command::CommandCollection,
     config::Config,
-    connection::ConnectionWithClientHandle,
+    connection::TargetClient,
     cursor::Cursor,
     event::Key,
     keymap::{KeyMapCollection, MatchResult},
@@ -33,7 +33,7 @@ pub enum EditorOperation {
 }
 
 pub struct EditorOperationSink {
-    operations: Vec<(ConnectionWithClientHandle, EditorOperation)>,
+    operations: Vec<(TargetClient, EditorOperation)>,
 }
 
 impl EditorOperationSink {
@@ -45,15 +45,15 @@ impl EditorOperationSink {
 
     pub fn send(
         &mut self,
-        connection_handle: ConnectionWithClientHandle,
+        target_client: TargetClient,
         operation: EditorOperation,
     ) {
-        self.operations.push((connection_handle, operation));
+        self.operations.push((target_client, operation));
     }
 
     pub fn drain(
         &mut self,
-    ) -> impl '_ + Iterator<Item = (ConnectionWithClientHandle, EditorOperation)> {
+    ) -> impl '_ + Iterator<Item = (TargetClient, EditorOperation)> {
         self.operations.drain(..)
     }
 }
@@ -129,7 +129,7 @@ impl Editor {
     pub fn on_key(
         &mut self,
         key: Key,
-        connection_handle: ConnectionWithClientHandle,
+        target_client: TargetClient,
         operations: &mut EditorOperationSink,
     ) -> EditorLoop {
         self.buffered_keys.push(key);
@@ -153,7 +153,7 @@ impl Editor {
             }
 
             let mut mode_context = ModeContext {
-                connection_handle,
+                target_client,
                 operations,
                 commands: &self.commands,
                 buffers: &mut self.buffers,

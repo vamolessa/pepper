@@ -5,8 +5,8 @@ use futures::{
 
 use crate::{
     client::Client,
-    connection::ConnectionWithClientHandle,
-    editor::{Editor, EditorLoop, EditorOperation, EditorOperationSink},
+    connection::TargetClient,
+    editor::{Editor, EditorLoop, EditorOperationSink},
     event::Event,
 };
 
@@ -59,7 +59,7 @@ where
             event = event_stream.select_next_some() => {
                 match event {
                     Event::Key(key) => {
-                        match editor.on_key(key, ConnectionWithClientHandle::Local, &mut editor_operations) {
+                        match editor.on_key(key, TargetClient::Local, &mut editor_operations) {
                             EditorLoop::Quit => break,
                             EditorLoop::Continue => (),
                             EditorLoop::Error(e) => error = Some(e),

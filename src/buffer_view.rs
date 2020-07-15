@@ -1,4 +1,6 @@
 use crate::{
+    connection::TargetClient,
+    editor::{EditorOperationSink, EditorOperation},
     buffer::{BufferCollection, BufferHandle, TextRef},
     buffer_position::{BufferOffset, BufferRange},
     cursor::CursorCollection,
@@ -12,6 +14,7 @@ pub enum MovementKind {
 
 #[derive(Clone)]
 pub struct BufferView {
+    pub target_client: TargetClient,
     pub buffer_handle: BufferHandle,
     pub cursors: CursorCollection,
 }
@@ -19,6 +22,7 @@ pub struct BufferView {
 impl BufferView {
     pub fn with_handle(buffer_handle: BufferHandle) -> Self {
         Self {
+            target_client: TargetClient::Local,
             buffer_handle,
             cursors: CursorCollection::new(),
         }
@@ -27,6 +31,7 @@ impl BufferView {
     pub fn move_cursors(
         &mut self,
         buffers: &BufferCollection,
+        operations: &mut EditorOperationSink,
         offset: BufferOffset,
         movement_kind: MovementKind,
     ) {
@@ -52,14 +57,20 @@ impl BufferView {
                 }
             }
         });
+
+        operations.send(self.target_client, EditorOperation::ClearCursors);
+        for cursor in &self.cursors[..] {
+            operations.send(self.target_client, EditorOperation::Cursor(*cursor));
+        }
     }
 
     pub fn move_to_next_search_match(
         &mut self,
         buffers: &BufferCollection,
+        operations: &mut EditorOperationSink,
         movement_kind: MovementKind,
     ) {
-        self.move_to_search_match(buffers, movement_kind, |result, len| {
+        self.move_to_search_match(buffers, operations, movement_kind, |result, len| {
             let next_index = match result {
                 Ok(index) => index + 1,
                 Err(index) => index,
@@ -71,9 +82,10 @@ impl BufferView {
     pub fn move_to_previous_search_match(
         &mut self,
         buffers: &BufferCollection,
+        operations: &mut EditorOperationSink,
         movement_kind: MovementKind,
     ) {
-        self.move_to_search_match(buffers, movement_kind, |result, len| {
+        self.move_to_search_match(buffers, operations, movement_kind, |result, len| {
             let next_index = match result {
                 Ok(index) => index,
                 Err(index) => index,
@@ -85,6 +97,7 @@ impl BufferView {
     fn move_to_search_match<F>(
         &mut self,
         buffers: &BufferCollection,
+        operations: &mut EditorOperationSink,
         movement_kind: MovementKind,
         index_selector: F,
     ) where
@@ -115,6 +128,11 @@ impl BufferView {
                 }
             }
         });
+
+        operations.send(self.target_client, EditorOperation::ClearCursors);
+        for cursor in &self.cursors[..] {
+            operations.send(self.target_client, EditorOperation::Cursor(*cursor));
+        }
     }
 
     pub fn commit_edits(&self, buffers: &mut BufferCollection) {

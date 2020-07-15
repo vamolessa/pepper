@@ -29,6 +29,7 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
         Key::Char('h') => {
             ctx.buffer_views.get_mut(handle).move_cursors(
                 ctx.buffers,
+                ctx.operations,
                 BufferOffset::line_col(0, -1),
                 MovementKind::PositionWithAnchor,
             );
@@ -36,6 +37,7 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
         Key::Char('j') => {
             ctx.buffer_views.get_mut(handle).move_cursors(
                 ctx.buffers,
+                ctx.operations,
                 BufferOffset::line_col(1, 0),
                 MovementKind::PositionWithAnchor,
             );
@@ -43,6 +45,7 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
         Key::Char('k') => {
             ctx.buffer_views.get_mut(handle).move_cursors(
                 ctx.buffers,
+                ctx.operations,
                 BufferOffset::line_col(-1, 0),
                 MovementKind::PositionWithAnchor,
             );
@@ -50,6 +53,7 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
         Key::Char('l') => {
             ctx.buffer_views.get_mut(handle).move_cursors(
                 ctx.buffers,
+                ctx.operations,
                 BufferOffset::line_col(0, 1),
                 MovementKind::PositionWithAnchor,
             );
@@ -80,14 +84,20 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
             }
         }
         Key::Char('n') => {
-            ctx.buffer_views
-                .get_mut(handle)
-                .move_to_next_search_match(ctx.buffers, MovementKind::PositionWithAnchor);
+            ctx.buffer_views.get_mut(handle).move_to_next_search_match(
+                ctx.buffers,
+                ctx.operations,
+                MovementKind::PositionWithAnchor,
+            );
         }
         Key::Char('N') => {
             ctx.buffer_views
                 .get_mut(handle)
-                .move_to_previous_search_match(ctx.buffers, MovementKind::PositionWithAnchor);
+                .move_to_previous_search_match(
+                    ctx.buffers,
+                    ctx.operations,
+                    MovementKind::PositionWithAnchor,
+                );
         }
         Key::Char('u') => ctx.buffer_views.undo(ctx.buffers, handle),
         Key::Char('U') => ctx.buffer_views.redo(ctx.buffers, handle),

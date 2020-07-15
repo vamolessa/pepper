@@ -33,6 +33,7 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
         Key::Ctrl('h') => {
             ctx.buffer_views.get_mut(handle).move_cursors(
                 ctx.buffers,
+                ctx.operations,
                 BufferOffset::line_col(0, -1),
                 MovementKind::PositionOnly,
             );
@@ -41,6 +42,7 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
         Key::Delete => {
             ctx.buffer_views.get_mut(handle).move_cursors(
                 ctx.buffers,
+                ctx.operations,
                 BufferOffset::line_col(0, 1),
                 MovementKind::PositionOnly,
             );
