@@ -5,7 +5,7 @@ use crate::{
     buffer_view::{BufferViewCollection, BufferViewHandle},
     command::CommandCollection,
     connection::TargetClient,
-    editor::{EditorOperationSink, KeysIterator},
+    editor::{EditorOperation, EditorOperationSink, KeysIterator},
     event::Key,
 };
 
@@ -102,11 +102,15 @@ pub fn poll_input(ctx: &mut ModeContext, keys: &mut KeysIterator) -> InputPollRe
     match keys.next() {
         Key::Esc | Key::Ctrl('c') => {
             ctx.input.clear();
+            ctx.operations
+                .send(TargetClient::All, EditorOperation::SearchKeep(0));
             InputPollResult::Canceled
         }
         Key::Ctrl('m') => InputPollResult::Submited,
         Key::Ctrl('u') => {
             ctx.input.clear();
+            ctx.operations
+                .send(TargetClient::All, EditorOperation::SearchKeep(0));
             InputPollResult::Pending
         }
         Key::Ctrl('w') => {
@@ -124,16 +128,23 @@ pub fn poll_input(ctx: &mut ModeContext, keys: &mut KeysIterator) -> InputPollRe
             }
 
             ctx.input.drain(last_index..);
+            ctx.operations
+                .send(TargetClient::All, EditorOperation::SearchKeep(last_index));
             InputPollResult::Pending
         }
         Key::Ctrl('h') => {
             if let Some((last_char_index, _)) = ctx.input.char_indices().rev().next() {
                 ctx.input.drain(last_char_index..);
+                ctx.operations.send(
+                    TargetClient::All,
+                    EditorOperation::SearchKeep(last_char_index),
+                );
             }
             InputPollResult::Pending
         }
         Key::Char(c) => {
             ctx.input.push(c);
+            ctx.operations.send(TargetClient::All, EditorOperation::SearchAppend(c));
             InputPollResult::Pending
         }
         _ => InputPollResult::Pending,

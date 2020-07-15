@@ -28,6 +28,9 @@ pub fn on_event(
             }
 
             let command_context = CommandContext {
+                target_client: ctx.target_client,
+                operations: ctx.operations,
+
                 buffers: ctx.buffers,
                 buffer_views: ctx.buffer_views,
                 current_buffer_view_handle: ctx.current_buffer_view_handle,

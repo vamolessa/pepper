@@ -78,8 +78,12 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
         Key::Char('s') => return ModeOperation::EnterMode(Mode::Search(FromMode::Normal)),
         Key::Char('p') => {
             if let Ok(text) = ClipboardContext::new().and_then(|mut c| c.get_contents()) {
-                ctx.buffer_views
-                    .insert_text(ctx.buffers, handle, TextRef::Str(&text[..]));
+                ctx.buffer_views.insert_text(
+                    ctx.buffers,
+                    ctx.operations,
+                    handle,
+                    TextRef::Str(&text[..]),
+                );
                 ctx.buffer_views.get_mut(handle).commit_edits(ctx.buffers);
             }
         }
@@ -99,8 +103,8 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
                     MovementKind::PositionWithAnchor,
                 );
         }
-        Key::Char('u') => ctx.buffer_views.undo(ctx.buffers, handle),
-        Key::Char('U') => ctx.buffer_views.redo(ctx.buffers, handle),
+        Key::Char('u') => ctx.buffer_views.undo(ctx.buffers, ctx.operations, handle),
+        Key::Char('U') => ctx.buffer_views.redo(ctx.buffers, ctx.operations, handle),
         Key::Ctrl('p') => {
             let mut child = std::process::Command::new("fzf").spawn().unwrap();
             child.wait().unwrap();

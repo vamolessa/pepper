@@ -53,7 +53,7 @@ impl Client {
             }
             EditorOperation::ClearCursors => self.cursors.clear(),
             EditorOperation::Cursor(cursor) => self.cursors.push(cursor),
-            EditorOperation::SearchInsert(c) => {
+            EditorOperation::SearchAppend(c) => {
                 self.input.push(c);
                 self.search_ranges.clear();
                 self.buffer.find_search_ranges(&self.input[..], &mut self.search_ranges);

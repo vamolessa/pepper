@@ -36,7 +36,7 @@ impl BufferPosition {
         }
     }
 
-    pub fn remove(self, range: BufferRange) -> Self {
+    pub fn delete(self, range: BufferRange) -> Self {
         if self.line_index < range.from.line_index {
             self
         } else if self.line_index > range.to.line_index {
@@ -209,7 +209,7 @@ mod tests {
     }
 
     #[test]
-    fn buffer_position_remove() {
+    fn buffer_position_delete() {
         let pos12 = pos(1, 2);
         let pos31 = pos(3, 1);
         let pos32 = pos(3, 2);
@@ -221,19 +221,19 @@ mod tests {
         let range31_33 = BufferRange::between(pos(3, 1), pos(3, 3));
         let range33_51 = BufferRange::between(pos(3, 3), pos(5, 1));
 
-        assert_eq!(pos12, pos12.remove(range31_33));
-        assert_eq!(pos(3, 1), pos31.remove(range31_33));
-        assert_eq!(pos(3, 1), pos32.remove(range31_33));
-        assert_eq!(pos(3, 1), pos33.remove(range31_33));
-        assert_eq!(pos42, pos42.remove(range31_33));
-        assert_eq!(pos53, pos53.remove(range31_33));
+        assert_eq!(pos12, pos12.delete(range31_33));
+        assert_eq!(pos(3, 1), pos31.delete(range31_33));
+        assert_eq!(pos(3, 1), pos32.delete(range31_33));
+        assert_eq!(pos(3, 1), pos33.delete(range31_33));
+        assert_eq!(pos42, pos42.delete(range31_33));
+        assert_eq!(pos53, pos53.delete(range31_33));
 
-        assert_eq!(pos12, pos12.remove(range33_51));
-        assert_eq!(pos(3, 3), pos33.remove(range33_51));
-        assert_eq!(pos(3, 3), pos36.remove(range33_51));
-        assert_eq!(pos(3, 3), pos42.remove(range33_51));
-        assert_eq!(pos(3, 5), pos53.remove(range33_51));
-        assert_eq!(pos(4, 6), pos66.remove(range33_51));
+        assert_eq!(pos12, pos12.delete(range33_51));
+        assert_eq!(pos(3, 3), pos33.delete(range33_51));
+        assert_eq!(pos(3, 3), pos36.delete(range33_51));
+        assert_eq!(pos(3, 3), pos42.delete(range33_51));
+        assert_eq!(pos(3, 5), pos53.delete(range33_51));
+        assert_eq!(pos(4, 6), pos66.delete(range33_51));
     }
 
     #[test]

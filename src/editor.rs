@@ -28,7 +28,7 @@ pub enum EditorOperation {
     Delete(BufferRange),
     ClearCursors,
     Cursor(Cursor),
-    SearchInsert(char),
+    SearchAppend(char),
     SearchKeep(usize),
 }
 
@@ -49,6 +49,13 @@ impl EditorOperationSink {
         operation: EditorOperation,
     ) {
         self.operations.push((target_client, operation));
+    }
+
+    pub fn send_cursors(&mut self, target_client: TargetClient, cursors: &[Cursor]) {
+        self.send(target_client, EditorOperation::ClearCursors);
+        for cursor in cursors {
+            self.send(target_client, EditorOperation::Cursor(*cursor));
+        }
     }
 
     pub fn drain(
@@ -155,6 +162,7 @@ impl Editor {
             let mut mode_context = ModeContext {
                 target_client,
                 operations,
+
                 commands: &self.commands,
                 buffers: &mut self.buffers,
                 buffer_views: &mut self.buffer_views,

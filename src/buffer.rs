@@ -255,21 +255,18 @@ impl BufferContent {
         }
     }
 
-    fn apply_edits<'a, I: 'a>(
-        &'a mut self,
-        edits: I,
-    ) -> impl 'a + Iterator<Item = (EditKind, BufferRange)>
+    fn apply_edits<'a, I: 'a>(&'a mut self, edits: I) -> impl 'a + Iterator<Item = EditRef<'a>>
     where
         I: Iterator<Item = EditRef<'a>>,
     {
         edits.map(move |e| match e.kind {
             EditKind::Insert => {
                 self.insert_text(e.range.from, e.text);
-                (e.kind, e.range)
+                e
             }
-            EditKind::Remove => {
+            EditKind::Delete => {
                 self.delete_range(e.range);
-                (e.kind, e.range)
+                e
             }
         })
     }
@@ -302,20 +299,20 @@ impl Buffer {
         range
     }
 
-    pub fn remove_range(&mut self, range: BufferRange) {
+    pub fn delete_range(&mut self, range: BufferRange) {
         let deleted_text = self.content.delete_range(range);
         self.history.push_edit(Edit {
-            kind: EditKind::Remove,
+            kind: EditKind::Delete,
             range,
             text: deleted_text,
         });
     }
 
-    pub fn undo<'a>(&'a mut self) -> impl 'a + Iterator<Item = (EditKind, BufferRange)> {
+    pub fn undo<'a>(&'a mut self) -> impl 'a + Iterator<Item = EditRef<'a>> {
         self.content.apply_edits(self.history.undo_edits())
     }
 
-    pub fn redo<'a>(&'a mut self) -> impl 'a + Iterator<Item = (EditKind, BufferRange)> {
+    pub fn redo<'a>(&'a mut self) -> impl 'a + Iterator<Item = EditRef<'a>> {
         self.content.apply_edits(self.history.redo_edits())
     }
 
@@ -519,18 +516,18 @@ mod tests {
     }
 
     #[test]
-    fn buffer_remove_undo_redo_single_line() {
+    fn buffer_delete_undo_redo_single_line() {
         let mut buffer = Buffer::new(None, BufferContent::from_str("single line content"));
         let range = BufferRange::between(
             BufferPosition::line_col(0, 7),
             BufferPosition::line_col(0, 12),
         );
-        buffer.remove_range(range);
+        buffer.delete_range(range);
 
         assert_eq!("single content", buffer_to_string(&buffer.content));
         {
             let mut ranges = buffer.undo();
-            assert_eq!(range, ranges.next().unwrap().1);
+            assert_eq!(range, ranges.next().unwrap().range);
             assert!(ranges.next().is_none());
         }
         assert_eq!("single line content", buffer_to_string(&buffer.content));
@@ -539,18 +536,18 @@ mod tests {
     }
 
     #[test]
-    fn buffer_remove_undo_redo_multi_line() {
+    fn buffer_delete_undo_redo_multi_line() {
         let mut buffer = Buffer::new(None, BufferContent::from_str("multi\nline\ncontent"));
         let range = BufferRange::between(
             BufferPosition::line_col(0, 1),
             BufferPosition::line_col(1, 3),
         );
-        buffer.remove_range(range);
+        buffer.delete_range(range);
 
         assert_eq!("me\ncontent", buffer_to_string(&buffer.content));
         {
             let mut ranges = buffer.undo();
-            assert_eq!(range, ranges.next().unwrap().1);
+            assert_eq!(range, ranges.next().unwrap().range);
             assert!(ranges.next().is_none());
         }
         assert_eq!("multi\nline\ncontent", buffer_to_string(&buffer.content));

@@ -18,9 +18,9 @@ impl Cursor {
         self.position = self.position.insert(range);
     }
 
-    pub fn remove(&mut self, range: BufferRange) {
-        self.anchor = self.anchor.remove(range);
-        self.position = self.position.remove(range);
+    pub fn delete(&mut self, range: BufferRange) {
+        self.anchor = self.anchor.delete(range);
+        self.position = self.position.delete(range);
     }
 }
 
