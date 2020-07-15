@@ -18,13 +18,11 @@ pub trait UI {
         Ok(())
     }
 
-    fn draw(
-        &mut self,
-        client: &Client,
-        width: u16,
-        height: u16,
-        error: Option<String>,
-    ) -> Result<(), Self::Error>;
+    fn resize(&mut self, _width: u16, _height: u16) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn draw(&mut self, client: &Client, error: Option<String>) -> Result<(), Self::Error>;
 
     fn shutdown(&mut self) -> Result<(), Self::Error> {
         Ok(())
@@ -59,16 +57,13 @@ where
     E: FusedStream<Item = Event>,
     I: UI,
 {
-    if let Err(_) = ui.init() {
+    if ui.init().is_err() {
         return Err(());
     }
 
     let mut local_client = Client::new();
     let mut editor = Editor::new();
     bind_keys(&mut editor);
-
-    let mut available_width = 0;
-    let mut available_height = 0;
 
     let mut editor_operations = EditorOperationSender::new();
 
@@ -94,21 +89,20 @@ where
                             }
                         }
                     },
-                    Event::Resize(w, h) => {
-                        available_width = w;
-                        available_height = h;
+                    Event::Resize(w, h) => if ui.resize(w, h).is_err() {
+                        return Err(());
                     }
                     _ => break,
                 }
             },
         }
 
-        if let Err(_) = ui.draw(&local_client, available_width, available_height, error) {
+        if ui.draw(&local_client, error).is_err() {
             return Err(());
         }
     }
 
-    if let Err(_) = ui.shutdown() {
+    if ui.shutdown().is_err() {
         return Err(());
     }
 

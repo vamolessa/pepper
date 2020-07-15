@@ -68,6 +68,8 @@ where
 {
     write: W,
     scroll: usize,
+    width: u16,
+    height: u16,
 }
 
 impl<W> Tui<W>
@@ -75,7 +77,12 @@ where
     W: Write,
 {
     pub fn new(write: W) -> Self {
-        Self { write, scroll: 0 }
+        Self {
+            write,
+            scroll: 0,
+            width: 0,
+            height: 0,
+        }
     }
 }
 
@@ -91,24 +98,33 @@ where
         handle_command!(self.write, cursor::Hide)?;
         self.write.flush()?;
         terminal::enable_raw_mode()?;
+
+        let size = terminal::size()?;
+        self.resize(size.0, size.1)
+    }
+
+    fn resize(&mut self, width: u16, height: u16) -> Result<()> {
+        self.width = width;
+        self.height = height;
         Ok(())
     }
 
-    fn draw(
-        &mut self,
-        client: &Client,
-        width: u16,
-        height: u16,
-        error: Option<String>,
-    ) -> Result<()> {
+    fn draw(&mut self, client: &Client, error: Option<String>) -> Result<()> {
         let cursor_position = client.main_cursor.position;
         if cursor_position.line_index < self.scroll {
             self.scroll = cursor_position.line_index;
-        } else if cursor_position.line_index >= self.scroll + height as usize {
-            self.scroll = cursor_position.line_index - height as usize + 1;
+        } else if cursor_position.line_index >= self.scroll + self.height as usize {
+            self.scroll = cursor_position.line_index - self.height as usize + 1;
         }
 
-        draw(&mut self.write, client, self.scroll, width, height, error)
+        draw(
+            &mut self.write,
+            client,
+            self.scroll,
+            self.width,
+            self.height,
+            error,
+        )
     }
 
     fn shutdown(&mut self) -> Result<()> {
