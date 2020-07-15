@@ -182,11 +182,6 @@ impl BufferViewCollection {
         }
     }
 
-    pub fn remove(&mut self, handle: BufferViewHandle) {
-        self.buffer_views[handle.0] = None;
-        self.free_slots.push(handle);
-    }
-
     pub fn remove_where<F>(&mut self, predicate: F)
     where
         F: Fn(&BufferView) -> bool,

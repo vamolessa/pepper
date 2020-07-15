@@ -8,6 +8,7 @@ use crate::{
     connection::TargetClient,
     editor::{Editor, EditorLoop, EditorOperationSender},
     event::Event,
+    mode::Mode,
 };
 
 pub trait UI {
@@ -30,8 +31,27 @@ pub trait UI {
     }
 }
 
-pub async fn run_client<E, I>(event_stream: E, mut ui: I) -> Result<(), ()> {
-    Ok(())
+fn bind_keys(editor: &mut Editor) {
+    editor
+        .keymaps
+        .parse_map(Mode::Normal.discriminant(), "qq", ":quit<c-m>")
+        .unwrap();
+    editor
+        .keymaps
+        .parse_map(Mode::Normal.discriminant(), "edit", "i")
+        .unwrap();
+    editor
+        .keymaps
+        .parse_map(Mode::Normal.discriminant(), "dl", "vld")
+        .unwrap();
+    editor
+        .keymaps
+        .parse_map(Mode::Normal.discriminant(), "dh", "vvhd")
+        .unwrap();
+    editor
+        .keymaps
+        .parse_map(Mode::Normal.discriminant(), "<c-f>", ":find-command<c-m>")
+        .unwrap();
 }
 
 pub async fn run_server_with_client<E, I>(event_stream: E, mut ui: I) -> Result<(), ()>
@@ -45,6 +65,7 @@ where
 
     let mut local_client = Client::new();
     let mut editor = Editor::new();
+    bind_keys(&mut editor);
 
     let mut available_width = 0;
     let mut available_height = 0;
@@ -64,7 +85,13 @@ where
                             EditorLoop::Continue => (),
                             EditorLoop::Error(e) => error = Some(e),
                         }
-                        for (_connection_handle, operation) in editor_operations.drain() {
+                        for (target_client, operation, content) in editor_operations.drain() {
+                            match target_client {
+                                TargetClient::Local => local_client.on_editor_operation(
+                                    operation, content
+                                ),
+                                _=> (),
+                            }
                         }
                     },
                     Event::Resize(w, h) => {

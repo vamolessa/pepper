@@ -55,7 +55,7 @@ const fn convert_color(color: theme::Color) -> Color {
     }
 }
 
-pub async fn event_stream() -> impl FusedStream<Item = Event> {
+pub fn event_stream() -> impl FusedStream<Item = Event> {
     event::EventStream::new().fuse().map(|e| match e {
         Ok(e) => convert_event(e),
         Err(_) => Event::None,

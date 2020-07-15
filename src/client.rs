@@ -1,8 +1,12 @@
 use std::path::PathBuf;
 
 use crate::{
-    buffer::BufferContent, buffer_position::BufferRange, config::Config, cursor::Cursor,
-    editor::{EditorOperationSender,EditorOperation}, mode::Mode,
+    buffer::BufferContent,
+    buffer_position::BufferRange,
+    config::Config,
+    cursor::Cursor,
+    editor::{EditorOperation, EditorOperationSender},
+    mode::Mode,
 };
 
 pub struct Client {
@@ -40,9 +44,9 @@ impl Client {
         }
     }
 
-    pub fn on_editor_operation(&mut self, operations: EditorOperationSender, operation: EditorOperation) {
+    pub fn on_editor_operation(&mut self, operation: EditorOperation, content: &str) {
         match operation {
-            EditorOperation::Content => self.buffer = BufferContent::from_str(operations.get_content()),
+            EditorOperation::Content => self.buffer = BufferContent::from_str(content),
             EditorOperation::Path(path) => self.path = path,
             EditorOperation::Mode(mode) => self.mode = mode,
             EditorOperation::Insert(position, text) => {
@@ -56,12 +60,14 @@ impl Client {
             EditorOperation::SearchAppend(c) => {
                 self.input.push(c);
                 self.search_ranges.clear();
-                self.buffer.find_search_ranges(&self.input[..], &mut self.search_ranges);
+                self.buffer
+                    .find_search_ranges(&self.input[..], &mut self.search_ranges);
             }
             EditorOperation::SearchKeep(keep_count) => {
                 self.input.drain(..keep_count);
                 self.search_ranges.clear();
-                self.buffer.find_search_ranges(&self.input[..], &mut self.search_ranges);
+                self.buffer
+                    .find_search_ranges(&self.input[..], &mut self.search_ranges);
             }
         }
     }

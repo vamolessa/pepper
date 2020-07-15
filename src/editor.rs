@@ -63,15 +63,14 @@ impl EditorOperationSender {
 
     pub fn send_content(&mut self, target_client: TargetClient, content: &BufferContent) {
         self.send_empty_content(target_client);
-        content.write(&mut self.write_content_buf);
+        if content.write(&mut self.write_content_buf).is_err() {
+            self.write_content_buf.clear();
+        }
     }
 
-    pub fn get_content(&self) -> &str {
-        std::str::from_utf8(&self.write_content_buf[..]).unwrap_or("")
-    }
-
-    pub fn drain(&mut self) -> impl '_ + Iterator<Item = (TargetClient, EditorOperation)> {
-        self.operations.drain(..)
+    pub fn drain(&mut self) -> impl '_ + Iterator<Item = (TargetClient, EditorOperation, &str)> {
+        let content = std::str::from_utf8(&self.write_content_buf[..]).unwrap_or("");
+        self.operations.drain(..).map(move |(t, o)| (t, o, content))
     }
 }
 
