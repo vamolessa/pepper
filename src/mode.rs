@@ -105,14 +105,14 @@ pub fn poll_input(ctx: &mut ModeContext, keys: &mut KeysIterator) -> InputPollRe
         Key::Esc | Key::Ctrl('c') => {
             ctx.input.clear();
             ctx.operations
-                .send(TargetClient::All, EditorOperation::SearchKeep(0));
+                .send(TargetClient::All, EditorOperation::InputKeep(0));
             InputPollResult::Canceled
         }
         Key::Ctrl('m') => InputPollResult::Submited,
         Key::Ctrl('u') => {
             ctx.input.clear();
             ctx.operations
-                .send(TargetClient::All, EditorOperation::SearchKeep(0));
+                .send(TargetClient::All, EditorOperation::InputKeep(0));
             InputPollResult::Pending
         }
         Key::Ctrl('w') => {
@@ -131,7 +131,7 @@ pub fn poll_input(ctx: &mut ModeContext, keys: &mut KeysIterator) -> InputPollRe
 
             ctx.input.drain(last_index..);
             ctx.operations
-                .send(TargetClient::All, EditorOperation::SearchKeep(last_index));
+                .send(TargetClient::All, EditorOperation::InputKeep(last_index));
             InputPollResult::Pending
         }
         Key::Ctrl('h') => {
@@ -139,14 +139,14 @@ pub fn poll_input(ctx: &mut ModeContext, keys: &mut KeysIterator) -> InputPollRe
                 ctx.input.drain(last_char_index..);
                 ctx.operations.send(
                     TargetClient::All,
-                    EditorOperation::SearchKeep(last_char_index),
+                    EditorOperation::InputKeep(last_char_index),
                 );
             }
             InputPollResult::Pending
         }
         Key::Char(c) => {
             ctx.input.push(c);
-            ctx.operations.send(TargetClient::All, EditorOperation::SearchAppend(c));
+            ctx.operations.send(TargetClient::All, EditorOperation::InputAppend(c));
             InputPollResult::Pending
         }
         _ => InputPollResult::Pending,

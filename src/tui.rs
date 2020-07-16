@@ -15,7 +15,6 @@ use crate::{
     event::{Event, Key},
     mode::Mode,
     theme,
-    theme::Theme,
 };
 
 fn convert_event(event: event::Event) -> Event {
@@ -303,42 +302,42 @@ fn draw_statusbar<W>(write: &mut W, client: &Client, error: Option<String>) -> R
 where
     W: Write,
 {
-    fn draw_input<W>(write: &mut W, prefix: &str, input: &str, theme: &Theme) -> Result<()>
+    fn draw_input<W>(
+        write: &mut W,
+        prefix: &str,
+        input: &str,
+        background_color: Color,
+        cursor_color: Color,
+    ) -> Result<()>
     where
         W: Write,
     {
         handle_command!(write, Print(prefix))?;
         handle_command!(write, Print(input))?;
-        handle_command!(
-            write,
-            SetBackgroundColor(convert_color(theme.cursor_normal))
-        )?;
+        handle_command!(write, SetBackgroundColor(cursor_color))?;
         handle_command!(write, Print(' '))?;
-        handle_command!(write, SetBackgroundColor(convert_color(theme.background)))?;
+        handle_command!(write, SetBackgroundColor(background_color))?;
         Ok(())
     }
 
+    let background_color;
+    let foreground_color;
     if client.has_focus {
-        handle_command!(
-            write,
-            SetBackgroundColor(convert_color(client.config.theme.text_normal))
-        )?;
-        handle_command!(
-            write,
-            SetForegroundColor(convert_color(client.config.theme.background))
-        )?;
+        background_color = client.config.theme.text_normal;
+        foreground_color = client.config.theme.background;
     } else {
-        handle_command!(
-            write,
-            SetBackgroundColor(convert_color(client.config.theme.background))
-        )?;
-        handle_command!(
-            write,
-            SetForegroundColor(convert_color(client.config.theme.text_normal))
-        )?;
+        background_color = client.config.theme.background;
+        foreground_color = client.config.theme.text_normal;
     }
 
-    handle_command!(write, Print("this is status"))?;
+    let background_color = convert_color(background_color);
+    let foreground_color = convert_color(foreground_color);
+    let cursor_color = convert_color(client.config.theme.cursor_normal);
+
+    handle_command!(write, SetBackgroundColor(background_color))?;
+    handle_command!(write, SetForegroundColor(foreground_color))?;
+
+    //handle_command!(write, Print("this is status"))?;
 
     if let Some(error) = error {
         handle_command!(write, Print("error:"))?;
@@ -347,12 +346,20 @@ where
         match client.mode {
             Mode::Select => handle_command!(write, Print("-- SELECT --"))?,
             Mode::Insert => handle_command!(write, Print("-- INSERT --"))?,
-            Mode::Search(_) => {
-                draw_input(write, "search:", &client.input[..], &client.config.theme)?
-            }
-            Mode::Command(_) => {
-                draw_input(write, "command:", &client.input[..], &client.config.theme)?
-            }
+            Mode::Search(_) => draw_input(
+                write,
+                "search:",
+                &client.input[..],
+                background_color,
+                cursor_color,
+            )?,
+            Mode::Command(_) => draw_input(
+                write,
+                "command:",
+                &client.input[..],
+                background_color,
+                cursor_color,
+            )?,
             _ => (),
         };
     }

@@ -1,10 +1,13 @@
 use crate::{
-    editor::KeysIterator,
+    connection::TargetClient,
+    editor::{EditorOperation, KeysIterator},
     mode::{poll_input, FromMode, InputPollResult, Mode, ModeContext, ModeOperation},
 };
 
 pub fn on_enter(ctx: &mut ModeContext) {
     ctx.input.clear();
+    ctx.operations
+        .send(TargetClient::All, EditorOperation::InputKeep(0));
     update_search(ctx);
 }
 

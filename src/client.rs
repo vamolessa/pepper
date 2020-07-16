@@ -58,19 +58,18 @@ impl Client {
                 self.cursors.clear();
             }
             EditorOperation::Cursor(cursor) => self.cursors.push(cursor),
-            EditorOperation::SearchAppend(c) => {
+            EditorOperation::InputAppend(c) => {
                 self.input.push(c);
                 self.search_ranges.clear();
                 self.buffer
                     .find_search_ranges(&self.input[..], &mut self.search_ranges);
             }
-            EditorOperation::SearchKeep(keep_count) => {
-                self.input.drain(..keep_count);
+            EditorOperation::InputKeep(keep_count) => {
+                self.input.drain(keep_count..);
                 self.search_ranges.clear();
                 self.buffer
                     .find_search_ranges(&self.input[..], &mut self.search_ranges);
             }
         }
-        dbg!(self.main_cursor);
     }
 }

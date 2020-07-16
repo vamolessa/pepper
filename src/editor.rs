@@ -30,8 +30,8 @@ pub enum EditorOperation {
     Delete(BufferRange),
     ClearCursors(Cursor),
     Cursor(Cursor),
-    SearchAppend(char),
-    SearchKeep(usize),
+    InputAppend(char),
+    InputKeep(usize),
 }
 
 pub struct EditorOperationSender {
