@@ -145,14 +145,6 @@ impl Editor {
         }
     }
 
-    pub fn mode(&self) -> &Mode {
-        &self.mode
-    }
-
-    pub fn input(&self) -> &str {
-        &self.input[..]
-    }
-
     pub fn on_key(
         &mut self,
         key: Key,

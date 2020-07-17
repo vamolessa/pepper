@@ -22,3 +22,4 @@ crossterm = { version = "0.17.5", features = ["event-stream"] }
 futures = "0.3.5"
 smol = "0.1"
 copypasta = "0.7.0"
+argh = "0.1.3"
