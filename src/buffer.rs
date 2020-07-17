@@ -1,4 +1,4 @@
-use std::{io, path::PathBuf};
+use std::{io, path::{Path, PathBuf}};
 
 use crate::{
     buffer_position::{BufferPosition, BufferRange},
@@ -354,6 +354,18 @@ impl BufferCollection {
 
     pub fn get_mut(&mut self, handle: BufferHandle) -> Option<&mut Buffer> {
         self.buffers[handle.0].as_mut()
+    }
+
+    pub fn find_with_path(&self, path: &Path) -> Option<BufferHandle> {
+        for (handle, buffer) in self.iter_with_handles() {
+            if let Some(ref buffer_path) = buffer.path {
+                if buffer_path == path {
+                    return Some(handle);
+                }
+            }
+        }
+
+        None
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &Buffer> {

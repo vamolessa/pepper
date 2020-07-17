@@ -7,7 +7,7 @@ use crate::{
     command::CommandCollection,
     config::Config,
     connection::TargetClient,
-    cursor::Cursor,
+    cursor::{CursorCollection, Cursor},
     event::Key,
     keymap::{KeyMapCollection, MatchResult},
     mode::{Mode, ModeContext, ModeOperation},
@@ -32,6 +32,7 @@ pub enum EditorOperation {
     Cursor(Cursor),
     InputAppend(char),
     InputKeep(usize),
+    Search,
 }
 
 pub struct EditorOperationSender {
@@ -54,11 +55,10 @@ impl EditorOperationSender {
     pub fn send_cursors(
         &mut self,
         target_client: TargetClient,
-        main_cursor: &Cursor,
-        cursors: &[Cursor],
+        cursors: &CursorCollection,
     ) {
-        self.send(target_client, EditorOperation::ClearCursors(*main_cursor));
-        for cursor in cursors {
+        self.send(target_client, EditorOperation::ClearCursors(*cursors.main_cursor()));
+        for cursor in &cursors[..] {
             self.send(target_client, EditorOperation::Cursor(*cursor));
         }
     }

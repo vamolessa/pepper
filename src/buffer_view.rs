@@ -56,11 +56,7 @@ impl BufferView {
             }
         }
 
-        operations.send_cursors(
-            self.target_client,
-            self.cursors.main_cursor(),
-            &self.cursors[..],
-        );
+        operations.send_cursors(self.target_client, &self.cursors);
     }
 
     pub fn move_to_next_search_match(
@@ -129,11 +125,7 @@ impl BufferView {
             }
         }
 
-        operations.send_cursors(
-            self.target_client,
-            self.cursors.main_cursor(),
-            &self.cursors[..],
-        );
+        operations.send_cursors(self.target_client, &self.cursors);
     }
 
     pub fn commit_edits(&self, buffers: &mut BufferCollection) {
@@ -256,11 +248,7 @@ impl BufferViewCollection {
                     EditorOperation::Insert(range.from, text.to_text()),
                 );
             }
-            operations.send_cursors(
-                view.target_client,
-                view.cursors.main_cursor(),
-                &view.cursors[..],
-            );
+            operations.send_cursors(view.target_client, &view.cursors);
         }
     }
 
@@ -302,11 +290,7 @@ impl BufferViewCollection {
             for range in ranges {
                 operations.send(view.target_client, EditorOperation::Delete(*range));
             }
-            operations.send_cursors(
-                view.target_client,
-                view.cursors.main_cursor(),
-                &view.cursors[..],
-            );
+            operations.send_cursors(view.target_client, &view.cursors);
         }
     }
 
@@ -383,11 +367,7 @@ impl BufferViewCollection {
         }
 
         for view in self.buffer_views.iter().flatten() {
-            operations.send_cursors(
-                view.target_client,
-                view.cursors.main_cursor(),
-                &view.cursors[..],
-            );
+            operations.send_cursors(view.target_client, &view.cursors);
         }
     }
 }

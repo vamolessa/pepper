@@ -82,21 +82,34 @@ mod helper {
     }
 
     pub fn new_buffer_from_file(ctx: &mut CommandContext, path: &Path) -> Result<(), String> {
-        for (handle, buffer) in ctx.buffers.iter_with_handles() {
-            if let Some(buffer_path) = &buffer.path {
-                if buffer_path == path {
-                    let view_handle = ctx
-                        .buffer_views
-                        .add(BufferView::new(ctx.target_client, handle));
-                    *ctx.current_buffer_view_handle = Some(view_handle);
+        if let Some(buffer_handle) = ctx.buffers.find_with_path(path) {
+            let view = match ctx
+                .buffer_views
+                .iter()
+                .filter_map(|view| {
+                    if view.buffer_handle == buffer_handle
+                        && view.target_client == ctx.target_client
+                    {
+                        Some(view)
+                    } else {
+                        None
+                    }
+                })
+                .next()
+            {
+                Some(view) => view.clone(),
+                None => BufferView::new(ctx.target_client, buffer_handle),
+            };
 
-                    ctx.operations
-                        .send_content(ctx.target_client, &buffer.content);
-                    ctx.operations
-                        .send(ctx.target_client, EditorOperation::Path(Some(path.into())));
-                    break;
-                }
-            }
+            ctx.operations
+                .send_content(ctx.target_client, &ctx.buffers.get(buffer_handle).unwrap().content);
+            ctx.operations
+                .send(ctx.target_client, EditorOperation::Path(Some(path.into())));
+            ctx.operations
+                .send_cursors(ctx.target_client, &view.cursors);
+
+            let view_handle = ctx.buffer_views.add(view);
+            *ctx.current_buffer_view_handle = Some(view_handle);
         }
 
         let content = match File::open(&path) {

@@ -31,6 +31,8 @@ pub fn update_search(ctx: &mut ModeContext) {
         let buffer_handle = ctx.buffer_views.get(handle).buffer_handle;
         if let Some(buffer) = ctx.buffers.get_mut(buffer_handle) {
             buffer.set_search(&ctx.input[..]);
+            ctx.operations
+                .send(TargetClient::All, EditorOperation::Search);
         }
     };
 }
