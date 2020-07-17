@@ -1,4 +1,4 @@
-#![recursion_limit="256"]
+use argh::FromArgs;
 
 mod application;
 mod buffer;
@@ -17,8 +17,18 @@ mod mode;
 mod theme;
 mod tui;
 
+#[derive(FromArgs)]
+/// pepper editor
+struct Args {
+    #[argh(option, short = 's')]
+    /// session to connect to
+    session: Option<String>,
+}
+
 fn main() {
     ctrlc::set_handler(|| {}).unwrap();
+
+    let args: Args = argh::from_env();
 
     let stdout = std::io::stdout();
     let stdout = stdout.lock();
