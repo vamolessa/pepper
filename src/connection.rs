@@ -1,6 +1,30 @@
+use std::{io, path::Path};
+
+use uds_windows::{UnixListener, UnixStream};
+
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
+use smol::Async;
 
 use crate::event::Key;
+
+pub struct ClientListener {
+    listener: Async<UnixListener>,
+}
+
+impl ClientListener {
+    pub fn listen<P>(path: P) -> io::Result<Self>
+    where
+        P: AsRef<Path>,
+    {
+        Ok(Self {
+            listener: Async::new(UnixListener::bind(path)?)?,
+        })
+    }
+
+    pub async fn accept(&self) -> io::Result<UnixStream> {
+        self.listener.read_with(|l| Ok(l.accept()?.0)).await
+    }
+}
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub enum TargetClient {

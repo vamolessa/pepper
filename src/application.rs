@@ -1,17 +1,17 @@
 use std::{convert::From, env, fs, io};
 
-use uds_windows::{UnixListener, UnixStream};
+use uds_windows::UnixStream;
 
 use argh::FromArgs;
 use futures::{
+    future::FutureExt,
     pin_mut, select_biased,
     stream::{FusedStream, StreamExt},
 };
-use smol::Async;
 
 use crate::{
     client::Client,
-    connection::TargetClient,
+    connection::{ClientListener, TargetClient},
     editor::{Editor, EditorLoop, EditorOperationSender},
     event::Event,
     mode::Mode,
@@ -100,12 +100,11 @@ where
     let session_socket_path = env::current_dir()?.join("session_socket");
     if let Ok(_stream) = UnixStream::connect(&session_socket_path) {
         run_client(event_stream, ui).await?;
-    } else if let Ok(listener) = UnixListener::bind(&session_socket_path) {
-        let listener = Async::new(listener)?;
+    } else if let Ok(listener) = ClientListener::listen(&session_socket_path) {
         run_server_with_client(event_stream, ui, listener).await?;
         fs::remove_file(session_socket_path)?;
     } else if let Ok(()) = fs::remove_file(&session_socket_path) {
-        let listener = Async::new(UnixListener::bind(&session_socket_path)?)?;
+        let listener = ClientListener::listen(&session_socket_path)?;
         run_server_with_client(event_stream, ui, listener).await?;
         fs::remove_file(session_socket_path)?;
     }
@@ -116,7 +115,7 @@ where
 async fn run_server_with_client<E, I>(
     event_stream: E,
     mut ui: I,
-    listener: Async<UnixListener>,
+    listener: ClientListener,
 ) -> Result<(), ApplicationError<I::Error>>
 where
     E: FusedStream<Item = Event>,
@@ -130,7 +129,8 @@ where
 
     let mut editor_operations = EditorOperationSender::new();
 
-    pin_mut!(event_stream);
+    let listen_future = listener.accept().fuse();
+    pin_mut!(event_stream, listen_future);
     loop {
         let mut error = None;
 
@@ -149,6 +149,10 @@ where
                     _ => break,
                 }
             },
+            client_stream = listen_future => {
+                let _client_stream = client_stream?;
+                listen_future.set(listener.accept().fuse());
+            }
         }
 
         ui.draw(&local_client, error)
