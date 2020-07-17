@@ -24,7 +24,7 @@ pub fn on_event(
             let command_args;
             if let Some(index) = ctx.input.find(' ') {
                 command_name = &ctx.input[..index];
-                command_args = &ctx.input[index..];
+                command_args = &ctx.input[(index + 1)..];
             } else {
                 command_name = &ctx.input[..];
                 command_args = "";
