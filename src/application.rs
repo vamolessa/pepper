@@ -1,3 +1,8 @@
+use std::{env, fs, io};
+
+use uds_windows::{UnixListener, UnixStream};
+
+use argh::FromArgs;
 use futures::{
     pin_mut, select_biased,
     stream::{FusedStream, StreamExt},
@@ -10,6 +15,20 @@ use crate::{
     event::Event,
     mode::Mode,
 };
+
+#[derive(Debug)]
+pub enum ApplicationError<UiError> {
+    IO(io::ErrorKind),
+    UI(UiError),
+}
+
+#[derive(FromArgs)]
+/// pepper editor
+struct Args {
+    //#[argh(option, short = 's')]
+///// session to connect to
+//session: Option<String>,
+}
 
 pub trait UI {
     type Error;
@@ -64,14 +83,39 @@ fn send_operations(operations: &mut EditorOperationSender, local_client: &mut Cl
     }
 }
 
-pub async fn run_server_with_client<E, I>(event_stream: E, mut ui: I) -> Result<(), ()>
+pub async fn run<E, I>(event_stream: E, ui: I) -> Result<(), ApplicationError<I::Error>>
 where
     E: FusedStream<Item = Event>,
     I: UI,
 {
-    if ui.init().is_err() {
-        return Err(());
+    //let args: Args = argh::from_env();
+
+    let session_socket_path = env::current_dir()
+        .map_err(|e| ApplicationError::IO(e.kind()))?
+        .join("session_socket");
+    if let Ok(_stream) = UnixStream::connect(&session_socket_path) {
+        run_client(event_stream, ui).await?;
+    } else if let Ok(_listener) = UnixListener::bind(&session_socket_path) {
+        run_server_with_client(event_stream, ui).await?;
+        fs::remove_file(session_socket_path).map_err(|e| ApplicationError::IO(e.kind()))?;
+    } else if let Ok(()) = fs::remove_file(&session_socket_path) {
+        let _listener = UnixListener::bind(&session_socket_path).map_err(|e| ApplicationError::IO(e.kind()))?;
+        run_server_with_client(event_stream, ui).await?;
+        fs::remove_file(session_socket_path).map_err(|e| ApplicationError::IO(e.kind()))?;
     }
+
+    Ok(())
+}
+
+async fn run_server_with_client<E, I>(
+    event_stream: E,
+    mut ui: I,
+) -> Result<(), ApplicationError<I::Error>>
+where
+    E: FusedStream<Item = Event>,
+    I: UI,
+{
+    ui.init().map_err(|e| ApplicationError::UI(e))?;
 
     let mut local_client = Client::new();
     let mut editor = Editor::new();
@@ -94,22 +138,24 @@ where
                         }
                         send_operations(&mut editor_operations, &mut local_client);
                     },
-                    Event::Resize(w, h) => if ui.resize(w, h).is_err() {
-                        return Err(());
-                    }
+                    Event::Resize(w, h) => ui.resize(w, h).map_err(|e| ApplicationError::UI(e))?,
                     _ => break,
                 }
             },
         }
 
-        if ui.draw(&local_client, error).is_err() {
-            return Err(());
-        }
+        ui.draw(&local_client, error)
+            .map_err(|e| ApplicationError::UI(e))?;
     }
 
-    if ui.shutdown().is_err() {
-        return Err(());
-    }
+    ui.shutdown().map_err(|e| ApplicationError::UI(e))?;
+    Ok(())
+}
 
+async fn run_client<E, I>(event_stream: E, mut ui: I) -> Result<(), ApplicationError<I::Error>>
+where
+    E: FusedStream<Item = Event>,
+    I: UI,
+{
     Ok(())
 }

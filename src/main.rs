@@ -1,5 +1,3 @@
-use argh::FromArgs;
-
 mod application;
 mod buffer;
 mod buffer_position;
@@ -17,23 +15,17 @@ mod mode;
 mod theme;
 mod tui;
 
-#[derive(FromArgs)]
-/// pepper editor
-struct Args {
-    #[argh(option, short = 's')]
-    /// session to connect to
-    session: Option<String>,
-}
-
 fn main() {
-    ctrlc::set_handler(|| {}).unwrap();
-
-    let args: Args = argh::from_env();
+    if let Err(e) = ctrlc::set_handler(|| {}) {
+        eprintln!("could not set ctrl-c handler: {:?}", e);
+        return;
+    }
 
     let stdout = std::io::stdout();
     let stdout = stdout.lock();
     let ui = tui::Tui::new(stdout);
 
-    smol::run(application::run_server_with_client(tui::event_stream(), ui)).unwrap();
-    //smol::run(application::run_client(tui::event_stream(), ui)).unwrap();
+    if let Err(e) = smol::run(application::run(tui::event_stream(), ui)) {
+        eprintln!("{:?}", e);
+    }
 }
