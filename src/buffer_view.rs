@@ -40,23 +40,21 @@ impl BufferView {
             None => return,
         };
 
-        self.cursors.change_all(|cs| {
-            for c in cs {
-                let mut target = BufferOffset::from(c.position) + offset;
+        for c in &mut self.cursors.as_mut()[..] {
+            let mut target = BufferOffset::from(c.position) + offset;
 
-                target.line_offset = target
-                    .line_offset
-                    .min(buffer.content.line_count() as isize - 1)
-                    .max(0);
-                let target_line_len = buffer.content.line(target.line_offset as _).char_count();
-                target.column_offset = target.column_offset.min(target_line_len as _);
+            target.line_offset = target
+                .line_offset
+                .min(buffer.content.line_count() as isize - 1)
+                .max(0);
+            let target_line_len = buffer.content.line(target.line_offset as _).char_count();
+            target.column_offset = target.column_offset.min(target_line_len as _);
 
-                c.position = target.into();
-                if let MovementKind::PositionWithAnchor = movement_kind {
-                    c.anchor = c.position;
-                }
+            c.position = target.into();
+            if let MovementKind::PositionWithAnchor = movement_kind {
+                c.anchor = c.position;
             }
-        });
+        }
 
         operations.send_cursors(
             self.target_client,
@@ -118,17 +116,18 @@ impl BufferView {
         let search_result = search_ranges.binary_search_by_key(&main_position, |r| r.from);
         let next_index = index_selector(search_result, search_ranges.len());
 
-        self.cursors.change_all(|cs| {
-            for c in cs.iter_mut() {
+        {
+            let mut cursors = self.cursors.as_mut();
+            for c in &mut cursors[..] {
                 c.position = search_ranges[next_index].from;
             }
 
             if let MovementKind::PositionWithAnchor = movement_kind {
-                for c in cs.iter_mut() {
+                for c in &mut cursors[..] {
                     c.anchor = c.position;
                 }
             }
-        });
+        }
 
         operations.send_cursors(
             self.target_client,
@@ -245,13 +244,11 @@ impl BufferViewCollection {
             }
 
             let ranges = &self.temp_ranges;
-            view.cursors.change_all(|cs| {
-                for c in cs {
-                    for range in ranges {
-                        c.insert(*range);
-                    }
+            for c in &mut view.cursors.as_mut()[..] {
+                for range in ranges {
+                    c.insert(*range);
                 }
-            });
+            }
 
             for range in ranges {
                 operations.send(
@@ -296,13 +293,11 @@ impl BufferViewCollection {
             }
 
             let ranges = &self.temp_ranges;
-            view.cursors.change_all(|cs| {
-                for c in cs {
-                    for range in ranges.iter() {
-                        c.delete(*range);
-                    }
+            for c in &mut view.cursors.as_mut()[..] {
+                for range in ranges.iter() {
+                    c.delete(*range);
                 }
-            });
+            }
 
             for range in ranges {
                 operations.send(view.target_client, EditorOperation::Delete(*range));
@@ -354,19 +349,15 @@ impl BufferViewCollection {
         for edit in edits {
             match edit.kind {
                 EditKind::Insert => {
-                    self.get_mut(handle).cursors.change_all(|cs| {
-                        for c in cs {
-                            c.anchor = edit.range.to;
-                            c.position = edit.range.to;
-                        }
-                    });
+                    for c in &mut self.get_mut(handle).cursors.as_mut()[..] {
+                        c.anchor = edit.range.to;
+                        c.position = edit.range.to;
+                    }
                     for (i, view) in self.buffer_views.iter_mut().flatten().enumerate() {
                         if i != handle.0 && view.buffer_handle == buffer_handle {
-                            view.cursors.change_all(|cs| {
-                                for c in cs {
-                                    c.insert(edit.range);
-                                }
-                            });
+                            for c in &mut view.cursors.as_mut()[..] {
+                                c.insert(edit.range);
+                            }
                         }
                         operations.send(
                             view.target_client,
@@ -375,19 +366,15 @@ impl BufferViewCollection {
                     }
                 }
                 EditKind::Delete => {
-                    self.get_mut(handle).cursors.change_all(|cs| {
-                        for c in cs {
-                            c.anchor = edit.range.from;
-                            c.position = edit.range.from;
-                        }
-                    });
+                    for c in &mut self.get_mut(handle).cursors.as_mut()[..] {
+                        c.anchor = edit.range.from;
+                        c.position = edit.range.from;
+                    }
                     for (i, view) in self.buffer_views.iter_mut().flatten().enumerate() {
                         if i != handle.0 && view.buffer_handle == buffer_handle {
-                            view.cursors.change_all(|cs| {
-                                for c in cs {
-                                    c.delete(edit.range);
-                                }
-                            });
+                            for c in &mut view.cursors.as_mut()[..] {
+                                c.delete(edit.range);
+                            }
                         }
                         operations.send(view.target_client, EditorOperation::Delete(edit.range));
                     }
