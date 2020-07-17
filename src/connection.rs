@@ -1,16 +1,12 @@
 use std::{
-    future::Future,
+    cell::RefCell,
     io::{self, Read, Write},
     path::Path,
-    pin::Pin,
 };
 
 use uds_windows::{UnixListener, UnixStream};
 
-use futures::{
-    stream::{FuturesUnordered, Stream},
-    task::{Context, Poll},
-};
+use futures::stream::FuturesUnordered;
 use smol::Async;
 
 use crate::event::Key;
@@ -32,7 +28,7 @@ impl ClientListener {
     pub async fn accept(&self) -> io::Result<ConnectionWithClient> {
         let (stream, _address) = self.listener.read_with(|l| l.accept()).await?;
         let stream = Async::new(stream)?;
-        Ok(ConnectionWithClient(stream))
+        Ok(ConnectionWithClient(RefCell::new(stream)))
     }
 }
 
@@ -43,7 +39,23 @@ pub enum TargetClient {
     Remote(ConnectionWithClientHandle),
 }
 
-pub struct ConnectionWithClient(Async<UnixStream>);
+pub struct ConnectionWithClient(RefCell<Async<UnixStream>>);
+
+impl ConnectionWithClient {
+    pub async fn read_key(
+        &self,
+        handle: ConnectionWithClientHandle,
+    ) -> io::Result<(ConnectionWithClientHandle, Key)> {
+        match self.0.try_borrow_mut() {
+            Ok(mut stream) => {
+                let mut buf = [0; 256];
+                let _byte_count = stream.read_with_mut(|s| s.read(&mut buf)).await?;
+                Ok((handle, Key::None))
+            }
+            Err(e) => Err(io::Error::new(io::ErrorKind::Other, e)),
+        }
+    }
+}
 
 pub struct ConnectionWithServer;
 

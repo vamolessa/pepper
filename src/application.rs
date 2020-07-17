@@ -165,7 +165,7 @@ where
     Ok(())
 }
 
-async fn run_client<E, I>(event_stream: E, ui: I) -> Result<(), ApplicationError<I::Error>>
+async fn run_client<E, I>(_event_stream: E, _ui: I) -> Result<(), ApplicationError<I::Error>>
 where
     E: FusedStream<Item = Event>,
     I: UI,
