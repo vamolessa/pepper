@@ -1,4 +1,4 @@
-use std::{env, fs, io};
+use std::{convert::From, env, fs, io};
 
 use uds_windows::{UnixListener, UnixStream};
 
@@ -7,6 +7,7 @@ use futures::{
     pin_mut, select_biased,
     stream::{FusedStream, StreamExt},
 };
+use smol::Async;
 
 use crate::{
     client::Client,
@@ -18,8 +19,14 @@ use crate::{
 
 #[derive(Debug)]
 pub enum ApplicationError<UiError> {
-    IO(io::ErrorKind),
+    IO(io::Error),
     UI(UiError),
+}
+
+impl<UiError> From<io::Error> for ApplicationError<UiError> {
+    fn from(error: io::Error) -> Self {
+        ApplicationError::IO(error)
+    }
 }
 
 #[derive(FromArgs)]
@@ -90,18 +97,17 @@ where
 {
     //let args: Args = argh::from_env();
 
-    let session_socket_path = env::current_dir()
-        .map_err(|e| ApplicationError::IO(e.kind()))?
-        .join("session_socket");
+    let session_socket_path = env::current_dir()?.join("session_socket");
     if let Ok(_stream) = UnixStream::connect(&session_socket_path) {
         run_client(event_stream, ui).await?;
-    } else if let Ok(_listener) = UnixListener::bind(&session_socket_path) {
-        run_server_with_client(event_stream, ui).await?;
-        fs::remove_file(session_socket_path).map_err(|e| ApplicationError::IO(e.kind()))?;
+    } else if let Ok(listener) = UnixListener::bind(&session_socket_path) {
+        let listener = Async::new(listener)?;
+        run_server_with_client(event_stream, ui, listener).await?;
+        fs::remove_file(session_socket_path)?;
     } else if let Ok(()) = fs::remove_file(&session_socket_path) {
-        let _listener = UnixListener::bind(&session_socket_path).map_err(|e| ApplicationError::IO(e.kind()))?;
-        run_server_with_client(event_stream, ui).await?;
-        fs::remove_file(session_socket_path).map_err(|e| ApplicationError::IO(e.kind()))?;
+        let listener = Async::new(UnixListener::bind(&session_socket_path)?)?;
+        run_server_with_client(event_stream, ui, listener).await?;
+        fs::remove_file(session_socket_path)?;
     }
 
     Ok(())
@@ -110,6 +116,7 @@ where
 async fn run_server_with_client<E, I>(
     event_stream: E,
     mut ui: I,
+    listener: Async<UnixListener>,
 ) -> Result<(), ApplicationError<I::Error>>
 where
     E: FusedStream<Item = Event>,

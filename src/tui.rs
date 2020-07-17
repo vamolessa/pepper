@@ -4,7 +4,7 @@ use futures::stream::{FusedStream, StreamExt};
 
 use crossterm::{
     cursor, event, handle_command,
-    style::{Color, Print, SetBackgroundColor, SetForegroundColor},
+    style::{Color, Print, ResetColor, SetBackgroundColor, SetForegroundColor},
     terminal, ErrorKind, Result,
 };
 
@@ -127,6 +127,11 @@ where
     }
 
     fn shutdown(&mut self) -> Result<()> {
+        handle_command!(self.write, ResetColor)?;
+        handle_command!(
+            self.write,
+            terminal::Clear(terminal::ClearType::UntilNewLine)
+        )?;
         handle_command!(self.write, terminal::LeaveAlternateScreen)?;
         handle_command!(self.write, cursor::Show)?;
         terminal::disable_raw_mode()?;
