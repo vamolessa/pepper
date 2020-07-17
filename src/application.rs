@@ -11,7 +11,7 @@ use futures::{
 
 use crate::{
     client::Client,
-    connection::{ClientListener, TargetClient},
+    connection::{ClientListener, ConnectionWithClientCollection, TargetClient},
     editor::{Editor, EditorLoop, EditorOperationSender},
     event::Event,
     mode::Mode,
@@ -127,6 +127,8 @@ where
     let mut editor = Editor::new();
     bind_keys(&mut editor);
 
+    let mut client_connections = ConnectionWithClientCollection::default();
+
     let mut editor_operations = EditorOperationSender::new();
 
     let listen_future = listener.accept().fuse();
@@ -149,9 +151,9 @@ where
                     _ => break,
                 }
             },
-            client_stream = listen_future => {
-                let _client_stream = client_stream?;
+            connection = listen_future => {
                 listen_future.set(listener.accept().fuse());
+                client_connections.add(connection?);
             }
         }
 
@@ -163,7 +165,7 @@ where
     Ok(())
 }
 
-async fn run_client<E, I>(event_stream: E, mut ui: I) -> Result<(), ApplicationError<I::Error>>
+async fn run_client<E, I>(event_stream: E, ui: I) -> Result<(), ApplicationError<I::Error>>
 where
     E: FusedStream<Item = Event>,
     I: UI,
