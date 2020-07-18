@@ -3,7 +3,7 @@ use std::{io, mem, path::Path, pin::Pin, task::Poll};
 use uds_windows::{UnixListener, UnixStream};
 
 use futures::{
-    io::{AsyncRead, AsyncReadExt, AsyncWriteExt, BufWriter, ReadHalf, WriteHalf},
+    io::{AsyncRead, AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf},
     stream::{self, FuturesUnordered, SelectAll, Stream, StreamExt},
 };
 use smol::Async;
@@ -40,7 +40,7 @@ pub enum TargetClient {
 
 pub struct ConnectionWithClient(Async<UnixStream>);
 pub struct ClientKeyReader(ConnectionWithClientHandle, ReadHalf<Async<UnixStream>>);
-pub struct ClientOperationWriter(BufWriter<WriteHalf<Async<UnixStream>>>);
+pub struct ClientOperationWriter(WriteHalf<Async<UnixStream>>, Vec<u8>);
 pub struct ConnectionWithServer;
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -48,20 +48,18 @@ pub struct ConnectionWithClientHandle(usize);
 
 pub struct ConnectionWithClientCollection {
     operation_writers: Vec<Option<ClientOperationWriter>>,
-    serialization_buf: Vec<u8>,
 }
 
 impl ConnectionWithClientCollection {
     pub fn new() -> Self {
         Self {
             operation_writers: Vec::new(),
-            serialization_buf: Vec::new(),
         }
     }
 
     pub fn add_and_get_reader(&mut self, connection: ConnectionWithClient) -> ClientKeyReader {
         let (reader, writer) = connection.0.split();
-        let writer = ClientOperationWriter(BufWriter::new(writer));
+        let writer = ClientOperationWriter(writer, Vec::new());
 
         for (i, slot) in self.operation_writers.iter_mut().enumerate() {
             if slot.is_none() {
@@ -77,54 +75,43 @@ impl ConnectionWithClientCollection {
         ClientKeyReader(handle, reader)
     }
 
-    pub async fn send_operation(
+    pub fn queue_operation(
         &mut self,
         handle: ConnectionWithClientHandle,
         operation: &EditorOperation,
-    ) -> Result<(), ConnectionWithClientHandle> {
+    ) {
         if let Some(writer) = &mut self.operation_writers[handle.0] {
-            self.serialization_buf.clear();
-            if let Err(_) = bincode::serialize_into(&mut self.serialization_buf, operation) {
-                return Err(handle);
-            }
-
-            if let Err(_) = writer.0.write_all(&self.serialization_buf[..]).await {
-                return Err(handle);
-            }
+            let _ = bincode::serialize_into(&mut writer.1, operation);
         }
-
-        Ok(())
     }
 
-    pub async fn send_operation_to_all(
-        &mut self,
-        operation: &EditorOperation,
-    ) -> Result<(), Option<ConnectionWithClientHandle>> {
-        self.serialization_buf.clear();
-        if let Err(_) = bincode::serialize_into(&mut self.serialization_buf, operation) {
-            return Err(None);
+    pub fn queue_operation_all(&mut self, operation: &EditorOperation) {
+        for writer in self.operation_writers.iter_mut().flatten() {
+            let _ = bincode::serialize_into(&mut writer.1, operation);
         }
-
-        for (i, writer) in self
-            .operation_writers
-            .iter_mut()
-            .enumerate()
-            .flat_map(|(i, w)| w.as_mut().map(|w| (i, w)))
-        {
-            if let Err(_) = writer.0.write_all(&self.serialization_buf[..]).await {
-                return Err(Some(ConnectionWithClientHandle(i)));
-            }
-        }
-
-        Ok(())
     }
 
-    pub async fn flush_all(&mut self) {
+    pub async fn send_queued_operations(&mut self) -> Result<(), ()> {
         let mut futures = FuturesUnordered::new();
         for writer in self.operation_writers.iter_mut().flatten() {
-            futures.push(writer.0.flush());
+            if writer.1.len() > 0 {
+                futures.push(writer.0.write_all(&writer.1[..]));
+            }
         }
-        while futures.next().await.is_some() {}
+        loop {
+            match futures.next().await {
+                Some(Ok(_)) => (),
+                Some(Err(_)) => return Err(()), 
+                None => break,
+            }
+        }
+
+        drop(futures);
+        for writer in self.operation_writers.iter_mut().flatten() {
+            writer.1.clear();
+        }
+
+        Ok(())
     }
 }
 

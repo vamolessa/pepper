@@ -90,21 +90,18 @@ async fn send_operations(
         match target_client {
             TargetClient::All => {
                 local_client.on_editor_operation(&operation, content);
-                remote_clients.send_operation_to_all(&operation).await?;
+                remote_clients.queue_operation_all(&operation);
             }
             TargetClient::Local => {
                 local_client.on_editor_operation(&operation, content);
             }
             TargetClient::Remote(handle) => {
-                remote_clients
-                    .send_operation(handle, &operation)
-                    .await
-                    .map_err(|e| Some(e))?;
+                remote_clients.queue_operation(handle, &operation);
             }
         }
     }
 
-    remote_clients.flush_all().await;
+    remote_clients.send_queued_operations().await;
     Ok(())
 }
 
