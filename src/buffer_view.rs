@@ -165,20 +165,21 @@ pub struct BufferViewHandle(usize);
 #[derive(Default)]
 pub struct BufferViewCollection {
     buffer_views: Vec<Option<BufferView>>,
-    free_slots: Vec<BufferViewHandle>,
     temp_ranges: Vec<BufferRange>,
 }
 
 impl BufferViewCollection {
     pub fn add(&mut self, buffer_view: BufferView) -> BufferViewHandle {
-        if let Some(handle) = self.free_slots.pop() {
-            self.buffer_views[handle.0] = Some(buffer_view);
-            handle
-        } else {
-            let index = self.buffer_views.len();
-            self.buffer_views.push(Some(buffer_view));
-            BufferViewHandle(index)
+        for (i, slot) in self.buffer_views.iter_mut().enumerate() {
+            if slot.is_none() {
+                *slot = Some(buffer_view);
+                return BufferViewHandle(i);
+            }
         }
+
+        let handle = BufferViewHandle(self.buffer_views.len());
+        self.buffer_views.push(Some(buffer_view));
+        handle
     }
 
     pub fn remove_where<F>(&mut self, predicate: F)
@@ -189,7 +190,6 @@ impl BufferViewCollection {
             if let Some(view) = &self.buffer_views[i] {
                 if predicate(&view) {
                     self.buffer_views[i] = None;
-                    self.free_slots.push(BufferViewHandle(i));
                 }
             }
         }

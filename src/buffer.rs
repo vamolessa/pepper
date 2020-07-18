@@ -1,4 +1,7 @@
-use std::{io, path::{Path, PathBuf}};
+use std::{
+    io,
+    path::{Path, PathBuf},
+};
 
 use crate::{
     buffer_position::{BufferPosition, BufferRange},
@@ -333,19 +336,20 @@ pub struct BufferHandle(usize);
 #[derive(Default)]
 pub struct BufferCollection {
     buffers: Vec<Option<Buffer>>,
-    free_slots: Vec<BufferHandle>,
 }
 
 impl BufferCollection {
     pub fn add(&mut self, buffer: Buffer) -> BufferHandle {
-        if let Some(handle) = self.free_slots.pop() {
-            self.buffers[handle.0] = Some(buffer);
-            handle
-        } else {
-            let index = self.buffers.len();
-            self.buffers.push(Some(buffer));
-            BufferHandle(index)
+        for (i, slot) in self.buffers.iter_mut().enumerate() {
+            if slot.is_none() {
+                *slot = Some(buffer);
+                return BufferHandle(i);
+            }
         }
+
+        let handle = BufferHandle(self.buffers.len());
+        self.buffers.push(Some(buffer));
+        handle
     }
 
     pub fn get(&self, handle: BufferHandle) -> Option<&Buffer> {

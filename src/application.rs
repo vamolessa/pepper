@@ -127,7 +127,7 @@ where
     let mut editor = Editor::new();
     bind_keys(&mut editor);
 
-    let mut client_connections = ConnectionWithClientCollection::default();
+    let mut client_connections = ConnectionWithClientCollection::new();
     //let mut clients_key_futures = FuturesUnordered::new();
 
     let mut editor_operations = EditorOperationSender::new();
