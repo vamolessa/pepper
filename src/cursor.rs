@@ -3,9 +3,11 @@ use std::{
     slice::SliceIndex,
 };
 
+use serde_derive::{Deserialize, Serialize};
+
 use crate::buffer_position::{BufferPosition, BufferRange};
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
 pub struct Cursor {
     pub anchor: BufferPosition,
     pub position: BufferPosition,

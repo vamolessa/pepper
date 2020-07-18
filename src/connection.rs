@@ -1,14 +1,8 @@
-use std::{
-    io,
-    path::Path,
-    pin::Pin,
-    task::Poll,
-};
+use std::{io, mem, path::Path, pin::Pin, task::Poll};
 
 use uds_windows::{UnixListener, UnixStream};
 
 use futures::{
-    future::FusedFuture,
     io::{AsyncRead, AsyncReadExt, BufReader, ReadHalf},
     stream::{self, FusedStream, StreamExt},
 };
@@ -85,13 +79,13 @@ pub fn client_key_stream(
     let mut reader = reader;
     stream::poll_fn(move |ctx| {
         let reader = Pin::new(&mut reader);
-        let mut buf = [0; 128];
+        let mut buf = [0; mem::size_of::<Key>()];
         match reader.poll_read(ctx, &mut buf) {
             Poll::Pending => Poll::Pending,
-            Poll::Ready(Ok(_byte_count)) => {
-                //
-                Poll::Ready(Some((handle, Key::None)))
-            }
+            Poll::Ready(Ok(byte_count)) => match bincode::deserialize(&buf[..byte_count]) {
+                Ok(key) => Poll::Ready(Some((handle, key))),
+                Err(_) => Poll::Ready(None),
+            },
             Poll::Ready(Err(_)) => Poll::Ready(None),
         }
     })

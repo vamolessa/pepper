@@ -4,7 +4,9 @@ use std::{
     ops::{Add, Neg, Sub},
 };
 
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+use serde_derive::{Deserialize, Serialize};
+
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BufferPosition {
     pub line_index: usize,
     pub column_index: usize,
@@ -155,7 +157,7 @@ impl Neg for BufferOffset {
     }
 }
 
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BufferRange {
     pub from: BufferPosition,
     pub to: BufferPosition,

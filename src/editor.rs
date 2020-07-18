@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+use serde_derive::{Deserialize, Serialize};
+
 use crate::{
     buffer::{BufferCollection, BufferContent, Text},
     buffer_position::{BufferPosition, BufferRange},
@@ -7,7 +9,7 @@ use crate::{
     command::CommandCollection,
     config::Config,
     connection::TargetClient,
-    cursor::{CursorCollection, Cursor},
+    cursor::{Cursor, CursorCollection},
     event::Key,
     keymap::{KeyMapCollection, MatchResult},
     mode::{Mode, ModeContext, ModeOperation},
@@ -20,7 +22,7 @@ pub enum EditorLoop {
     Error(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum EditorOperation {
     Focused(bool),
     Content,
@@ -52,12 +54,11 @@ impl EditorOperationSender {
         self.operations.push((target_client, operation));
     }
 
-    pub fn send_cursors(
-        &mut self,
-        target_client: TargetClient,
-        cursors: &CursorCollection,
-    ) {
-        self.send(target_client, EditorOperation::ClearCursors(*cursors.main_cursor()));
+    pub fn send_cursors(&mut self, target_client: TargetClient, cursors: &CursorCollection) {
+        self.send(
+            target_client,
+            EditorOperation::ClearCursors(*cursors.main_cursor()),
+        );
         for cursor in &cursors[..] {
             self.send(target_client, EditorOperation::Cursor(*cursor));
         }

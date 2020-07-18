@@ -1,3 +1,5 @@
+use serde_derive::{Serialize, Deserialize};
+
 #[derive(Debug, Clone, Copy)]
 pub enum Event {
     None,
@@ -5,7 +7,7 @@ pub enum Event {
     Resize(u16, u16),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Key {
     None,
     Backspace,

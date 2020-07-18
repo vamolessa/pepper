@@ -3,12 +3,14 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use serde_derive::{Deserialize, Serialize};
+
 use crate::{
     buffer_position::{BufferPosition, BufferRange},
     history::{Edit, EditKind, EditRef, History},
 };
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum Text {
     Char(char),
     String(String),
