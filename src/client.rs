@@ -40,29 +40,29 @@ impl Client {
         }
     }
 
-    pub fn on_editor_operation(&mut self, operation: EditorOperation, content: &str) {
+    pub fn on_editor_operation(&mut self, operation: &EditorOperation, content: &str) {
         match operation {
-            EditorOperation::Focused(focused) => self.has_focus = focused,
+            EditorOperation::Focused(focused) => self.has_focus = *focused,
             EditorOperation::Content => {
                 self.buffer = BufferContent::from_str(content);
                 self.main_cursor = Cursor::default();
                 self.cursors.clear();
                 self.cursors.push(self.main_cursor);
             }
-            EditorOperation::Path(path) => self.path = path,
-            EditorOperation::Mode(mode) => self.mode = mode,
+            EditorOperation::Path(path) => self.path = path.clone(),
+            EditorOperation::Mode(mode) => self.mode = mode.clone(),
             EditorOperation::Insert(position, text) => {
-                self.buffer.insert_text(position, text.as_text_ref());
+                self.buffer.insert_text(*position, text.as_text_ref());
             }
             EditorOperation::Delete(range) => {
-                self.buffer.delete_range(range);
+                self.buffer.delete_range(*range);
             }
             EditorOperation::ClearCursors(cursor) => {
-                self.main_cursor = cursor;
+                self.main_cursor = *cursor;
                 self.cursors.clear();
             }
-            EditorOperation::Cursor(cursor) => self.cursors.push(cursor),
-            EditorOperation::InputAppend(c) => self.input.push(c),
+            EditorOperation::Cursor(cursor) => self.cursors.push(*cursor),
+            EditorOperation::InputAppend(c) => self.input.push(*c),
             EditorOperation::InputKeep(keep_count) => {
                 self.input.drain(keep_count..);
             }

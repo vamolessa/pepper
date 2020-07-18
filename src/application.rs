@@ -6,12 +6,15 @@ use argh::FromArgs;
 use futures::{
     future::FutureExt,
     pin_mut, select_biased,
-    stream::{FusedStream, FuturesUnordered, StreamExt},
+    stream::{FusedStream, StreamExt},
 };
 
 use crate::{
     client::Client,
-    connection::{ClientKeyStreams, ClientListener, ConnectionWithClientCollection, TargetClient},
+    connection::{
+        ClientKeyStreams, ClientListener, ConnectionWithClientCollection,
+        ConnectionWithClientHandle, TargetClient,
+    },
     editor::{Editor, EditorLoop, EditorOperationSender},
     event::Event,
     mode::Mode,
@@ -78,16 +81,31 @@ fn bind_keys(editor: &mut Editor) {
         .unwrap();
 }
 
-fn send_operations(operations: &mut EditorOperationSender, local_client: &mut Client) {
+async fn send_operations(
+    operations: &mut EditorOperationSender,
+    local_client: &mut Client,
+    remote_clients: &mut ConnectionWithClientCollection,
+) -> Result<(), Option<ConnectionWithClientHandle>> {
     for (target_client, operation, content) in operations.drain() {
         match target_client {
             TargetClient::All => {
-                local_client.on_editor_operation(operation, content);
+                local_client.on_editor_operation(&operation, content);
+                remote_clients.send_operation_to_all(&operation).await?;
             }
-            TargetClient::Local => local_client.on_editor_operation(operation, content),
-            _ => (),
+            TargetClient::Local => {
+                local_client.on_editor_operation(&operation, content);
+            }
+            TargetClient::Remote(handle) => {
+                remote_clients
+                    .send_operation(handle, &operation)
+                    .await
+                    .map_err(|e| Some(e))?;
+            }
         }
     }
+
+    remote_clients.flush_all().await;
+    Ok(())
 }
 
 pub async fn run<E, I>(event_stream: E, ui: I) -> Result<(), ApplicationError<I::Error>>
@@ -146,7 +164,7 @@ where
                             EditorLoop::Continue => (),
                             EditorLoop::Error(e) => error = Some(e),
                         }
-                        send_operations(&mut editor_operations, &mut local_client);
+                        send_operations(&mut editor_operations, &mut local_client, &mut client_connections).await;
                     },
                     Event::Resize(w, h) => ui.resize(w, h).map_err(|e| ApplicationError::UI(e))?,
                     _ => break,
@@ -158,7 +176,12 @@ where
                 client_key_streams.push(ClientKeyStreams::stream_from_reader(key_reader));
             },
             (handle, key) = client_key_streams.select_next_some() => {
-                //
+                match editor.on_key(key, TargetClient::Remote(handle), &mut editor_operations) {
+                    EditorLoop::Quit => break,
+                    EditorLoop::Continue => (),
+                    EditorLoop::Error(e) => error = Some(e),
+                }
+                send_operations(&mut editor_operations, &mut local_client, &mut client_connections).await;
             }
         }
 
