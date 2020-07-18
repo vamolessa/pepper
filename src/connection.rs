@@ -3,8 +3,8 @@ use std::{io, mem, path::Path, pin::Pin, task::Poll};
 use uds_windows::{UnixListener, UnixStream};
 
 use futures::{
-    io::{AsyncRead, AsyncReadExt, BufReader, ReadHalf},
-    stream::{self, FusedStream, StreamExt},
+    io::{AsyncRead, ReadHalf, WriteHalf},
+    stream::{self, SelectAll, Stream},
 };
 use smol::Async;
 
@@ -39,26 +39,26 @@ pub enum TargetClient {
 }
 
 pub struct ConnectionWithClient(Async<UnixStream>);
+pub struct ClientKeyReader(ConnectionWithClientHandle, ReadHalf<Async<UnixStream>>);
+pub struct ClientOperationWriter(WriteHalf<Async<UnixStream>>);
 pub struct ConnectionWithServer;
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub struct ConnectionWithClientHandle(usize);
 
 pub struct ConnectionWithClientCollection {
-    next_connection_handle: ConnectionWithClientHandle,
     connections: Vec<Option<ConnectionWithClient>>,
 }
 
 impl ConnectionWithClientCollection {
     pub fn new() -> Self {
         Self {
-            next_connection_handle: ConnectionWithClientHandle(0),
             connections: Vec::new(),
         }
     }
 
     pub fn add(&mut self, connection: ConnectionWithClient) -> ConnectionWithClientHandle {
-        self.next_connection_handle
+        ConnectionWithClientHandle(0)
 
         //if let Some(handle) = self.free_slots.pop() {
         //    self.connections[handle.0] = Some(RefCell::new(connection));
@@ -71,23 +71,28 @@ impl ConnectionWithClientCollection {
     }
 }
 
+pub fn client_key_streams<S>() -> SelectAll<S>
+where
+    S: Unpin + Stream<Item = (ConnectionWithClientHandle, Key)>,
+{
+    SelectAll::new()
+}
+
 pub fn client_key_stream(
-    handle: ConnectionWithClientHandle,
-    reader: ReadHalf<Async<UnixStream>>,
-) -> impl FusedStream<Item = (ConnectionWithClientHandle, Key)> {
+    reader: ClientKeyReader,
+) -> impl Stream<Item = (ConnectionWithClientHandle, Key)> {
     //let mut reader = BufReader::with_capacity(512, reader);
     let mut reader = reader;
     stream::poll_fn(move |ctx| {
-        let reader = Pin::new(&mut reader);
+        let r = Pin::new(&mut reader.1);
         let mut buf = [0; mem::size_of::<Key>()];
-        match reader.poll_read(ctx, &mut buf) {
+        match r.poll_read(ctx, &mut buf) {
             Poll::Pending => Poll::Pending,
             Poll::Ready(Ok(byte_count)) => match bincode::deserialize(&buf[..byte_count]) {
-                Ok(key) => Poll::Ready(Some((handle, key))),
+                Ok(key) => Poll::Ready(Some((reader.0, key))),
                 Err(_) => Poll::Ready(None),
             },
             Poll::Ready(Err(_)) => Poll::Ready(None),
         }
     })
-    .fuse()
 }
