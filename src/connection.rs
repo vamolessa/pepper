@@ -3,7 +3,7 @@ use std::{io, mem, path::Path, pin::Pin, task::Poll};
 use uds_windows::{UnixListener, UnixStream};
 
 use futures::{
-    io::{AsyncRead, AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf},
+    io::{AsyncRead, AsyncReadExt, AsyncWriteExt, BufWriter, ReadHalf, WriteHalf},
     stream::{self, FuturesUnordered, SelectAll, Stream, StreamExt},
 };
 use smol::Async;
@@ -40,7 +40,7 @@ pub enum TargetClient {
 
 pub struct ConnectionWithClient(Async<UnixStream>);
 pub struct ClientKeyReader(ConnectionWithClientHandle, ReadHalf<Async<UnixStream>>);
-pub struct ClientOperationWriter(WriteHalf<Async<UnixStream>>);
+pub struct ClientOperationWriter(BufWriter<WriteHalf<Async<UnixStream>>>);
 pub struct ConnectionWithServer;
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -61,7 +61,7 @@ impl ConnectionWithClientCollection {
 
     pub fn add_and_get_reader(&mut self, connection: ConnectionWithClient) -> ClientKeyReader {
         let (reader, writer) = connection.0.split();
-        let writer = ClientOperationWriter(writer);
+        let writer = ClientOperationWriter(BufWriter::new(writer));
 
         for (i, slot) in self.operation_writers.iter_mut().enumerate() {
             if slot.is_none() {
