@@ -1,12 +1,20 @@
 use std::{
-    cell::RefCell,
+    cell::{RefCell, RefMut},
+    future::Future,
     io::{self, Read, Write},
     path::Path,
+    pin::Pin,
+    task::Poll,
 };
 
 use uds_windows::{UnixListener, UnixStream};
 
-use futures::stream::FuturesUnordered;
+use futures::{
+    future::FusedFuture,
+    io::{AsyncRead, AsyncReadExt, ReadHalf},
+    pin_mut,
+    stream::{self, FusedStream, FuturesUnordered, StreamExt},
+};
 use smol::Async;
 
 use crate::event::Key;
@@ -28,7 +36,7 @@ impl ClientListener {
     pub async fn accept(&self) -> io::Result<ConnectionWithClient> {
         let (stream, _address) = self.listener.read_with(|l| l.accept()).await?;
         let stream = Async::new(stream)?;
-        Ok(ConnectionWithClient(RefCell::new(stream)))
+        Ok(ConnectionWithClient::new(stream))
     }
 }
 
@@ -39,21 +47,22 @@ pub enum TargetClient {
     Remote(ConnectionWithClientHandle),
 }
 
-pub struct ConnectionWithClient(RefCell<Async<UnixStream>>);
+pub struct ConnectionWithClient {
+    stream: Async<UnixStream>,
+}
 
 impl ConnectionWithClient {
+    fn new(stream: Async<UnixStream>) -> Self {
+        Self { stream }
+    }
+
     pub async fn read_key(
-        &self,
+        &mut self,
         handle: ConnectionWithClientHandle,
     ) -> io::Result<(ConnectionWithClientHandle, Key)> {
-        match self.0.try_borrow_mut() {
-            Ok(mut stream) => {
-                let mut buf = [0; 256];
-                let _byte_count = stream.read_with_mut(|s| s.read(&mut buf)).await?;
-                Ok((handle, Key::None))
-            }
-            Err(e) => Err(io::Error::new(io::ErrorKind::Other, e)),
-        }
+        let mut buf = [0; 256];
+        let _byte_count = self.stream.read_with_mut(|s| s.read(&mut buf)).await?;
+        Ok((handle, Key::None))
     }
 }
 
@@ -64,18 +73,18 @@ pub struct ConnectionWithClientHandle(usize);
 
 #[derive(Default)]
 pub struct ConnectionWithClientCollection {
-    connections: Vec<Option<ConnectionWithClient>>,
+    connections: Vec<Option<RefCell<ConnectionWithClient>>>,
     free_slots: Vec<ConnectionWithClientHandle>,
 }
 
 impl ConnectionWithClientCollection {
     pub fn add(&mut self, connection: ConnectionWithClient) -> ConnectionWithClientHandle {
         if let Some(handle) = self.free_slots.pop() {
-            self.connections[handle.0] = Some(connection);
+            self.connections[handle.0] = Some(RefCell::new(connection));
             handle
         } else {
             let index = self.connections.len();
-            self.connections.push(Some(connection));
+            self.connections.push(Some(RefCell::new(connection)));
             ConnectionWithClientHandle(index)
         }
     }
@@ -85,7 +94,29 @@ impl ConnectionWithClientCollection {
         self.free_slots.push(handle);
     }
 
-    pub fn get(&self, handle: ConnectionWithClientHandle) -> Option<&ConnectionWithClient> {
-        self.connections[handle.0].as_ref()
+    pub fn get(&self, handle: ConnectionWithClientHandle) -> Option<RefMut<ConnectionWithClient>> {
+        if let Some(connection) = &self.connections[handle.0] {
+            if let Ok(connection) = connection.try_borrow_mut() {
+                return Some(connection);
+            }
+        }
+
+        None
     }
+}
+
+pub fn client_stream(
+    handle: ConnectionWithClientHandle,
+    mut reader: ReadHalf<Async<UnixStream>>,
+) -> impl FusedStream<Item = (ConnectionWithClientHandle, Key)> {
+    stream::poll_fn(move |ctx| {
+        let reader = Pin::new(&mut reader);
+        let mut buf = [0; 128];
+        match reader.poll_read(ctx, &mut buf) {
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(Ok(_byte_count)) => Poll::Ready(Some((handle, Key::None))),
+            Poll::Ready(Err(_)) => Poll::Ready(None),
+        }
+    })
+    .fuse()
 }

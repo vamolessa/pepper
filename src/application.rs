@@ -6,7 +6,7 @@ use argh::FromArgs;
 use futures::{
     future::FutureExt,
     pin_mut, select_biased,
-    stream::{FusedStream, StreamExt},
+    stream::{FusedStream, FuturesUnordered, StreamExt},
 };
 
 use crate::{
@@ -128,6 +128,7 @@ where
     bind_keys(&mut editor);
 
     let mut client_connections = ConnectionWithClientCollection::default();
+    //let mut clients_key_futures = FuturesUnordered::new();
 
     let mut editor_operations = EditorOperationSender::new();
 
@@ -154,7 +155,7 @@ where
             connection = listen_future => {
                 listen_future.set(listener.accept().fuse());
                 client_connections.add(connection?);
-            }
+            },
         }
 
         ui.draw(&local_client, error)
