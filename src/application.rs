@@ -11,7 +11,7 @@ use futures::{
 
 use crate::{
     client::Client,
-    connection::{ClientListener, ConnectionWithClientCollection, TargetClient},
+    connection::{ClientKeyStreams, ClientListener, ConnectionWithClientCollection, TargetClient},
     editor::{Editor, EditorLoop, EditorOperationSender},
     event::Event,
     mode::Mode,
@@ -128,7 +128,7 @@ where
     bind_keys(&mut editor);
 
     let mut client_connections = ConnectionWithClientCollection::new();
-    //let mut clients_key_futures = FuturesUnordered::new();
+    let mut client_key_streams = ClientKeyStreams::new();
 
     let mut editor_operations = EditorOperationSender::new();
 
@@ -154,8 +154,12 @@ where
             },
             connection = listen_future => {
                 listen_future.set(listener.accept().fuse());
-                client_connections.add(connection?);
+                let key_reader = client_connections.add_and_get_reader(connection?);
+                client_key_streams.push(ClientKeyStreams::stream_from_reader(key_reader));
             },
+            (handle, key) = client_key_streams.select_next_some() => {
+                //
+            }
         }
 
         ui.draw(&local_client, error)

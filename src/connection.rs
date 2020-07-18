@@ -3,7 +3,7 @@ use std::{io, mem, path::Path, pin::Pin, task::Poll};
 use uds_windows::{UnixListener, UnixStream};
 
 use futures::{
-    io::{AsyncRead, ReadHalf, WriteHalf},
+    io::{AsyncRead, AsyncReadExt, ReadHalf, WriteHalf},
     stream::{self, SelectAll, Stream},
 };
 use smol::Async;
@@ -47,52 +47,63 @@ pub struct ConnectionWithServer;
 pub struct ConnectionWithClientHandle(usize);
 
 pub struct ConnectionWithClientCollection {
-    connections: Vec<Option<ConnectionWithClient>>,
+    operation_writers: Vec<Option<ClientOperationWriter>>,
 }
 
 impl ConnectionWithClientCollection {
     pub fn new() -> Self {
         Self {
-            connections: Vec::new(),
+            operation_writers: Vec::new(),
         }
     }
 
-    pub fn add(&mut self, connection: ConnectionWithClient) -> ConnectionWithClientHandle {
-        ConnectionWithClientHandle(0)
+    pub fn add_and_get_reader(
+        &mut self,
+        connection: ConnectionWithClient,
+    ) -> ClientKeyReader {
+        let (reader, writer) = connection.0.split();
+        let writer = ClientOperationWriter(writer);
 
-        //if let Some(handle) = self.free_slots.pop() {
-        //    self.connections[handle.0] = Some(RefCell::new(connection));
-        //    handle
-        //} else {
-        //    let index = self.connections.len();
-        //    self.connections.push(Some(RefCell::new(connection)));
-        //    ConnectionWithClientHandle(index)
-        //}
+        for (i, slot) in self.operation_writers.iter_mut().enumerate() {
+            if slot.is_none() {
+                *slot = Some(writer);
+                let handle = ConnectionWithClientHandle(i);
+                return ClientKeyReader(handle, reader);
+            }
+        }
+
+        let handle = ConnectionWithClientHandle(self.operation_writers.len());
+        self.operation_writers.push(Some(writer));
+
+        ClientKeyReader(handle, reader)
     }
 }
 
-pub fn client_key_streams<S>() -> SelectAll<S>
-where
-    S: Unpin + Stream<Item = (ConnectionWithClientHandle, Key)>,
-{
-    SelectAll::new()
-}
+pub struct ClientKeyStreams;
+impl ClientKeyStreams {
+    pub fn new<S>() -> SelectAll<S>
+    where
+        S: Unpin + Stream<Item = (ConnectionWithClientHandle, Key)>,
+    {
+        SelectAll::new()
+    }
 
-pub fn client_key_stream(
-    reader: ClientKeyReader,
-) -> impl Stream<Item = (ConnectionWithClientHandle, Key)> {
-    //let mut reader = BufReader::with_capacity(512, reader);
-    let mut reader = reader;
-    stream::poll_fn(move |ctx| {
-        let r = Pin::new(&mut reader.1);
-        let mut buf = [0; mem::size_of::<Key>()];
-        match r.poll_read(ctx, &mut buf) {
-            Poll::Pending => Poll::Pending,
-            Poll::Ready(Ok(byte_count)) => match bincode::deserialize(&buf[..byte_count]) {
-                Ok(key) => Poll::Ready(Some((reader.0, key))),
-                Err(_) => Poll::Ready(None),
-            },
-            Poll::Ready(Err(_)) => Poll::Ready(None),
-        }
-    })
+    pub fn stream_from_reader(
+        reader: ClientKeyReader,
+    ) -> impl Stream<Item = (ConnectionWithClientHandle, Key)> {
+        //let mut reader = BufReader::with_capacity(512, reader);
+        let mut reader = reader;
+        stream::poll_fn(move |ctx| {
+            let r = Pin::new(&mut reader.1);
+            let mut buf = [0; mem::size_of::<Key>()];
+            match r.poll_read(ctx, &mut buf) {
+                Poll::Pending => Poll::Pending,
+                Poll::Ready(Ok(byte_count)) => match bincode::deserialize(&buf[..byte_count]) {
+                    Ok(key) => Poll::Ready(Some((reader.0, key))),
+                    Err(_) => Poll::Ready(None),
+                },
+                Poll::Ready(Err(_)) => Poll::Ready(None),
+            }
+        })
+    }
 }
