@@ -200,7 +200,6 @@ impl ClientKeyStreams {
         let handle = reader.0;
         let mut reader = ReadExact::new(reader.1);
         stream::poll_fn(move |ctx| {
-            //let r = Pin::new(&mut reader.1);
             let mut buf = [0; mem::size_of::<Key>()];
             match reader.poll_read(ctx, &mut buf) {
                 Poll::Pending => Poll::Pending,
