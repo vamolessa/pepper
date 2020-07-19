@@ -21,6 +21,7 @@ use crate::{
 pub enum ApplicationError<UiError> {
     IO(io::Error),
     UI(UiError),
+    CouldNotConnectToOrStartServer,
 }
 
 impl<UiError> From<io::Error> for ApplicationError<UiError> {
@@ -111,6 +112,8 @@ where
         let listener = ClientListener::listen(&session_socket_path)?;
         run_server_with_client(event_stream, ui, listener).await?;
         fs::remove_file(session_socket_path)?;
+    } else {
+        return Err(ApplicationError::CouldNotConnectToOrStartServer);
     }
 
     Ok(())
