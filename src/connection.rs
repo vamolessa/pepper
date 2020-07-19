@@ -12,7 +12,6 @@ use smol::Async;
 use crate::{editor::EditorOperation, event::Key};
 
 pub struct ClientListener(Async<UnixListener>);
-
 impl ClientListener {
     pub fn listen<P>(path: P) -> io::Result<Self>
     where
@@ -150,7 +149,6 @@ impl ClientKeyStreams {
 }
 
 pub struct ConnectionWithServer(Async<UnixStream>);
-
 impl ConnectionWithServer {
     pub fn connect<P>(path: P) -> io::Result<Self>
     where
@@ -169,7 +167,6 @@ impl ConnectionWithServer {
 }
 
 pub struct ServerOperationReader(ReadHalf<Async<UnixStream>>);
-
 impl ServerOperationReader {
     pub fn to_stream(mut self) -> impl FusedStream<Item = EditorOperation> {
         stream::poll_fn(move |ctx| {
@@ -189,3 +186,11 @@ impl ServerOperationReader {
 }
 
 pub struct ServerKeyWriter(WriteHalf<Async<UnixStream>>, Vec<u8>);
+impl ServerKeyWriter {
+    pub async fn send(&mut self, key: Key) -> io::Result<()> {
+        let _ = bincode::serialize_into(&mut self.1, &key);
+        self.0.write_all(&self.1[..]).await?;
+        self.1.clear();
+        Ok(())
+    }
+}

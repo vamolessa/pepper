@@ -187,23 +187,21 @@ where
     ui.init().map_err(|e| ApplicationError::UI(e))?;
 
     let mut local_client = Client::new();
-    let (operation_reader, key_writer) = connection.split();
+    let (operation_reader, mut key_writer) = connection.split();
     let mut operation_stream = operation_reader.to_stream();
 
     pin_mut!(event_stream);
     loop {
         select_biased! {
             operation = operation_stream.next() => {
-                let operation = match operation {
-                    Some(operation) => operation,
+                match operation {
+                    Some(operation) => local_client.on_editor_operation(&operation, ""),
                     None => break,
                 };
             }
             event = event_stream.select_next_some() => {
                 match event {
-                    Event::Key(key) => {
-                        //key_writer.send(key)?;
-                    },
+                    Event::Key(key) => key_writer.send(key).await?,
                     Event::Resize(w, h) => ui.resize(w, h).map_err(|e| ApplicationError::UI(e))?,
                     _ => (),
                 }
