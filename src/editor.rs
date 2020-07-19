@@ -214,7 +214,10 @@ impl Editor {
             match self.mode.on_event(&mut mode_context, &mut keys) {
                 ModeOperation::Pending => return EditorLoop::Continue,
                 ModeOperation::None => (),
-                ModeOperation::Quit => return EditorLoop::Quit,
+                ModeOperation::Quit => {
+                    self.buffered_keys.clear();
+                    return EditorLoop::Quit;
+                }
                 ModeOperation::EnterMode(next_mode) => {
                     self.mode = next_mode.clone();
                     self.mode.on_enter(&mut mode_context);

@@ -60,22 +60,27 @@ async fn send_operations(
     local_client: &mut Client,
     remote_clients: &mut ConnectionWithClientCollection,
 ) {
+    let mut had_remote_operation = false;
     for (target_client, operation, content) in operations.drain() {
         match target_client {
             TargetClient::All => {
                 local_client.on_editor_operation(&operation, content);
                 remote_clients.queue_operation_all(&operation, content);
+                had_remote_operation = true;
             }
             TargetClient::Local => {
                 local_client.on_editor_operation(&operation, content);
             }
             TargetClient::Remote(handle) => {
                 remote_clients.queue_operation(handle, &operation, content);
+                had_remote_operation = true;
             }
         }
     }
 
-    remote_clients.send_queued_operations().await;
+    if had_remote_operation {
+        remote_clients.send_queued_operations().await;
+    }
 }
 
 pub async fn run<E, I>(event_stream: E, ui: I) -> Result<(), ApplicationError<I::Error>>

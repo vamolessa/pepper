@@ -299,6 +299,8 @@ where
     Ok(())
 }
 
+static mut TICK: usize = 0;
+
 fn draw_statusbar<W>(write: &mut W, client: &Client, error: Option<String>) -> Result<()>
 where
     W: Write,
@@ -324,6 +326,10 @@ where
     let background_color = convert_color(client.config.theme.text_normal);
     let foreground_color = convert_color(client.config.theme.background);
     let cursor_color = convert_color(client.config.theme.cursor_normal);
+
+    handle_command!(write, Print(unsafe { TICK }))?;
+    handle_command!(write, Print(' '))?;
+    unsafe { TICK += 1 }
 
     if !client.has_focus {
         handle_command!(write, SetBackgroundColor(foreground_color))?;
@@ -361,7 +367,10 @@ where
                 background_color,
                 cursor_color,
             )?,
-            _ => (),
+            _ => {
+                handle_command!(write, Print("random mode: "))?;
+                handle_command!(write, Print(format!("{:?}", client.mode.discriminant())))?
+            }
         };
     }
 
