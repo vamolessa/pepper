@@ -60,7 +60,10 @@ impl ConnectionWithClientCollection {
         }
     }
 
-    pub fn open_and_get_reader(&mut self, connection: ConnectionWithClient) -> ClientKeyReader {
+    pub fn open(
+        &mut self,
+        connection: ConnectionWithClient,
+    ) -> (ConnectionWithClientHandle, ClientKeyReader) {
         let (reader, writer) = connection.0.split();
         let writer = ClientOperationWriter(writer, Vec::new());
 
@@ -68,14 +71,14 @@ impl ConnectionWithClientCollection {
             if slot.is_none() {
                 *slot = Some(writer);
                 let handle = ConnectionWithClientHandle(i);
-                return ClientKeyReader(handle, reader);
+                return (handle, ClientKeyReader(handle, reader));
             }
         }
 
         let handle = ConnectionWithClientHandle(self.operation_writers.len());
         self.operation_writers.push(Some(writer));
 
-        ClientKeyReader(handle, reader)
+        (handle, ClientKeyReader(handle, reader))
     }
 
     pub fn close(&mut self, handle: ConnectionWithClientHandle) {

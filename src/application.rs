@@ -53,22 +53,6 @@ fn bind_keys(editor: &mut Editor) {
         .keymaps
         .parse_map(Mode::Normal.discriminant(), "qq", ":quit<c-m>")
         .unwrap();
-    editor
-        .keymaps
-        .parse_map(Mode::Normal.discriminant(), "edit", "i")
-        .unwrap();
-    editor
-        .keymaps
-        .parse_map(Mode::Normal.discriminant(), "dl", "vld")
-        .unwrap();
-    editor
-        .keymaps
-        .parse_map(Mode::Normal.discriminant(), "dh", "vvhd")
-        .unwrap();
-    editor
-        .keymaps
-        .parse_map(Mode::Normal.discriminant(), "<c-f>", ":find-command<c-m>")
-        .unwrap();
 }
 
 async fn send_operations(
@@ -161,6 +145,7 @@ where
                         client_connections.close(handle);
                         editor_operations.send(TargetClient::All, EditorOperation::InputKeep(0));
                         editor_operations.send(TargetClient::All, EditorOperation::Mode(Mode::default()));
+                        editor.on_client_left(TargetClient::Remote(handle), &mut editor_operations);
                     }
                     EditorLoop::Continue => (),
                     EditorLoop::Error(e) => error = Some(e),
@@ -169,8 +154,10 @@ where
             }
             connection = listen_future => {
                 listen_future.set(listener.accept().fuse());
-                let key_reader = client_connections.open_and_get_reader(connection?);
+                let (handle, key_reader) = client_connections.open(connection?);
                 client_key_streams.push(ClientKeyStreams::from_reader(key_reader));
+                editor.on_client_joined(TargetClient::Remote(handle), &mut editor_operations);
+                send_operations(&mut editor_operations, &mut local_client, &mut client_connections).await;
             },
         }
 

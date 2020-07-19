@@ -321,24 +321,24 @@ where
         Ok(())
     }
 
-    let background_color;
-    let foreground_color;
-    if client.has_focus {
-        background_color = client.config.theme.text_normal;
-        foreground_color = client.config.theme.background;
-    } else {
-        background_color = client.config.theme.background;
-        foreground_color = client.config.theme.text_normal;
-    }
-
-    let background_color = convert_color(background_color);
-    let foreground_color = convert_color(foreground_color);
+    let background_color = convert_color(client.config.theme.text_normal);
+    let foreground_color = convert_color(client.config.theme.background);
     let cursor_color = convert_color(client.config.theme.cursor_normal);
+
+    if !client.has_focus {
+        handle_command!(write, SetBackgroundColor(foreground_color))?;
+        handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
+
+        if let Some(error) = error {
+            handle_command!(write, SetForegroundColor(background_color))?;
+            handle_command!(write, Print("error:"))?;
+            handle_command!(write, Print(error))?;
+        }
+        return Ok(());
+    }
 
     handle_command!(write, SetBackgroundColor(background_color))?;
     handle_command!(write, SetForegroundColor(foreground_color))?;
-
-    //handle_command!(write, Print("this is status"))?;
 
     if let Some(error) = error {
         handle_command!(write, Print("error:"))?;

@@ -142,7 +142,27 @@ impl Editor {
             buffer_views: BufferViewCollection::default(),
             local_client_current_buffer_view_handle: None,
 
-            focused_client: TargetClient::All,
+            focused_client: TargetClient::Local,
+        }
+    }
+
+    pub fn on_client_joined(
+        &mut self,
+        target_client: TargetClient,
+        operations: &mut EditorOperationSender,
+    ) {
+        operations.send(self.focused_client, EditorOperation::Focused(false));
+        self.focused_client = target_client;
+    }
+
+    pub fn on_client_left(
+        &mut self,
+        target_client: TargetClient,
+        operations: &mut EditorOperationSender,
+    ) {
+        if self.focused_client == target_client {
+            self.focused_client = TargetClient::Local;
+            operations.send(self.focused_client, EditorOperation::Focused(true));
         }
     }
 
