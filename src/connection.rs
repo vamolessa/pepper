@@ -1,5 +1,5 @@
 use std::{
-    io, mem,
+    io,
     path::Path,
     pin::Pin,
     task::{Context, Poll},
@@ -78,16 +78,9 @@ impl ConnectionWithClientCollection {
     }
 
     fn serialize_operation(mut buf: &mut Vec<u8>, operation: &EditorOperation, content: &str) {
-        let index = buf.len();
-        buf.extend_from_slice(&[0; std::mem::size_of::<u32>()]);
         let _ = bincode::serialize_into(&mut buf, operation);
         if let EditorOperation::Content = operation {
             let _ = bincode::serialize_into(&mut buf, content);
-        }
-        let byte_count = (buf.len() - std::mem::size_of::<u32>() - index) as u32;
-        let byte_count_bytes = byte_count.to_le_bytes();
-        for i in 0..byte_count_bytes.len() {
-            buf[index + i] = byte_count_bytes[i];
         }
     }
 
@@ -141,46 +134,81 @@ impl ConnectionWithClientCollection {
     }
 }
 
-struct ReadExact<R>
+struct DeserializeRead<R>
 where
     R: Unpin + AsyncRead,
 {
     reader: R,
-    read_count: usize,
+    buf: Vec<u8>,
+    len: usize,
+    position: usize,
 }
 
-impl<R> ReadExact<R>
+impl<R> DeserializeRead<R>
 where
     R: Unpin + AsyncRead,
 {
-    pub fn new(reader: R) -> Self {
+    pub fn new(reader: R, capacity: usize) -> Self {
+        let mut buf = Vec::with_capacity(capacity);
+        buf.resize(capacity, 0);
         Self {
             reader,
-            read_count: 0,
+            buf,
+            len: 0,
+            position: 0,
         }
     }
 
-    pub fn poll_read(
-        &mut self,
-        ctx: &mut Context,
-        buf: &mut [u8],
-    ) -> Poll<Result<(), futures::io::Error>>
+    pub fn poll_deserialize<T>(&mut self, ctx: &mut Context) -> Poll<Result<T, futures::io::Error>>
     where
+        T: serde::de::DeserializeOwned,
         R: AsyncRead,
     {
-        let slice = &mut buf[self.read_count..];
-        let reader = Pin::new(&mut self.reader);
-        match reader.poll_read(ctx, slice) {
-            Poll::Pending => return Poll::Pending,
-            Poll::Ready(Ok(byte_count)) => {
-                self.read_count += byte_count;
-                if self.read_count >= buf.len() {
-                    Poll::Ready(Ok(()))
-                } else {
-                    Poll::Pending
+        loop {
+            if self.position == self.len {
+                if self.len == self.buf.len() {
+                    self.buf.resize(self.buf.len() * 2, 0);
+                }
+
+                let reader = Pin::new(&mut self.reader);
+                match reader.poll_read(ctx, &mut self.buf[self.len..]) {
+                    Poll::Pending => return Poll::Pending,
+                    Poll::Ready(Ok(byte_count)) => {
+                        self.len += byte_count;
+                    }
+                    Poll::Ready(Err(error)) => return Poll::Ready(Err(error)),
                 }
             }
-            Poll::Ready(Err(error)) => return Poll::Ready(Err(error)),
+
+            let mut cursor = io::Cursor::new(&mut self.buf[..self.len]);
+            cursor.set_position(self.position as _);
+            match bincode::deserialize_from(&mut cursor) {
+                Ok(value) => {
+                    self.position = cursor.position() as _;
+                    if self.position == self.len {
+                        self.len = 0;
+                        self.position = 0;
+                    }
+
+                    return Poll::Ready(Ok(value));
+                }
+                Err(error) => {
+                    match error.as_ref() {
+                        bincode::ErrorKind::Io(error) => match error.kind() {
+                            io::ErrorKind::UnexpectedEof => {
+                                self.buf.resize(self.buf.len() * 2, 0);
+                                continue;
+                            }
+                            _ => (),
+                        },
+                        _ => (),
+                    }
+                    return Poll::Ready(Err(futures::io::Error::new(
+                        futures::io::ErrorKind::Other,
+                        error,
+                    )));
+                }
+            }
         }
     }
 }
@@ -198,16 +226,13 @@ impl ClientKeyStreams {
         reader: ClientKeyReader,
     ) -> impl Stream<Item = (ConnectionWithClientHandle, Key)> {
         let handle = reader.0;
-        let mut reader = ReadExact::new(reader.1);
-        stream::poll_fn(move |ctx| {
-            let mut buf = [0; mem::size_of::<Key>()];
-            match reader.poll_read(ctx, &mut buf) {
-                Poll::Pending => Poll::Pending,
-                Poll::Ready(Ok(())) => match bincode::deserialize(&buf[..]) {
-                    Ok(key) => Poll::Ready(Some((handle, key))),
-                    Err(_) => Poll::Ready(None),
-                },
-                Poll::Ready(Err(_)) => Poll::Ready(None),
+        let mut reader = DeserializeRead::new(reader.1, 32);
+        stream::poll_fn(move |ctx| match reader.poll_deserialize(ctx) {
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(Ok(key)) => Poll::Ready(Some((handle, key))),
+            Poll::Ready(Err(error)) => {
+                dbg!(error);
+                Poll::Ready(None)
             }
         })
     }
@@ -233,19 +258,41 @@ impl ConnectionWithServer {
 
 pub struct ServerOperationReader(ReadHalf<Async<UnixStream>>);
 impl ServerOperationReader {
-    pub fn to_stream(mut self) -> impl FusedStream<Item = EditorOperation> {
-        stream::poll_fn(move |ctx| {
-            let reader = Pin::new(&mut self.0);
-            let mut byte_count_buf = [0; std::mem::size_of::<u32>()];
-            match reader.poll_read(ctx, &mut byte_count_buf) {
-                Poll::Pending => Poll::Pending,
-                Poll::Ready(Ok(byte_count)) => {
-                    match bincode::deserialize(&byte_count_buf[..byte_count]) {
-                        Ok(operation) => Poll::Ready(Some(operation)),
-                        Err(_) => Poll::Ready(None),
+    pub fn to_stream(self) -> impl FusedStream<Item = (EditorOperation, String)> {
+        enum State {
+            ReadingOperation,
+            ReadingContent,
+        }
+
+        let mut reader = DeserializeRead::new(self.0, 8 * 1024);
+        let mut state = State::ReadingOperation;
+        stream::poll_fn(move |ctx| loop {
+            match state {
+                State::ReadingOperation => match reader.poll_deserialize(ctx) {
+                    Poll::Pending => break Poll::Pending,
+                    Poll::Ready(Ok(operation)) => match operation {
+                        EditorOperation::Content => {
+                            state = State::ReadingContent;
+                            continue;
+                        }
+                        _ => break Poll::Ready(Some((operation, String::new()))),
+                    },
+                    Poll::Ready(Err(error)) => {
+                        dbg!(error);
+                        break Poll::Ready(None);
                     }
-                }
-                Poll::Ready(Err(_)) => Poll::Ready(None),
+                },
+                State::ReadingContent => match reader.poll_deserialize(ctx) {
+                    Poll::Pending => break Poll::Pending,
+                    Poll::Ready(Ok(content)) => {
+                        state = State::ReadingOperation;
+                        break Poll::Ready(Some((EditorOperation::Content, content)));
+                    }
+                    Poll::Ready(Err(error)) => {
+                        dbg!(error);
+                        break Poll::Ready(None);
+                    }
+                },
             }
         })
         .fuse()

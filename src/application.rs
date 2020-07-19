@@ -193,9 +193,9 @@ where
     pin_mut!(event_stream);
     loop {
         select_biased! {
-            operation = operation_stream.next() => {
-                match operation {
-                    Some(operation) => local_client.on_editor_operation(&operation, ""),
+            result = operation_stream.next() => {
+                match result {
+                    Some((operation, content)) => local_client.on_editor_operation(&operation, &content[..]),
                     None => break,
                 };
             }
