@@ -195,7 +195,7 @@ impl ClientKeyStreams {
     }
 
     pub fn from_reader(
-        mut reader: ClientKeyReader,
+        reader: ClientKeyReader,
     ) -> impl Stream<Item = (ConnectionWithClientHandle, Key)> {
         let handle = reader.0;
         let mut reader = ReadExact::new(reader.1);
