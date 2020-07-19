@@ -79,7 +79,7 @@ impl ConnectionWithClientCollection {
     }
 
     pub fn close(&mut self, handle: ConnectionWithClientHandle) {
-        self.operation_writers[handle.0] = None
+        drop(self.operation_writers[handle.0].take())
     }
 
     fn serialize_operation(mut buf: &mut Vec<u8>, operation: &EditorOperation, content: &str) {
@@ -179,6 +179,13 @@ where
                 match reader.poll_read(ctx, &mut self.buf[self.len..]) {
                     Poll::Pending => break Poll::Pending,
                     Poll::Ready(Ok(byte_count)) => {
+                        if byte_count == 0 {
+                            break Poll::Ready(Err(futures::io::Error::new(
+                                futures::io::ErrorKind::UnexpectedEof,
+                                "",
+                            )));
+                        }
+
                         self.len += byte_count;
                     }
                     Poll::Ready(Err(error)) => break Poll::Ready(Err(error)),

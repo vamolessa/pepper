@@ -101,14 +101,11 @@ where
 {
     let session_socket_path = env::current_dir()?.join("session_socket");
     if let Ok(connection) = ConnectionWithServer::connect(&session_socket_path) {
-        dbg!("run client");
         run_client(event_stream, ui, connection).await?;
     } else if let Ok(listener) = ClientListener::listen(&session_socket_path) {
-        dbg!("run server");
         run_server_with_client(event_stream, ui, listener).await?;
         fs::remove_file(session_socket_path)?;
     } else if let Ok(()) = fs::remove_file(&session_socket_path) {
-        dbg!("run server");
         let listener = ClientListener::listen(&session_socket_path)?;
         run_server_with_client(event_stream, ui, listener).await?;
         fs::remove_file(session_socket_path)?;
