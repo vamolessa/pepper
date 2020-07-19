@@ -5,28 +5,24 @@ use uds_windows::{UnixListener, UnixStream};
 use futures::{
     future::TryFutureExt,
     io::{AsyncRead, AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf},
-    stream::{self, FuturesUnordered, SelectAll, Stream, StreamExt},
+    stream::{self, FusedStream, FuturesUnordered, SelectAll, Stream, StreamExt},
 };
 use smol::Async;
 
 use crate::{editor::EditorOperation, event::Key};
 
-pub struct ClientListener {
-    listener: Async<UnixListener>,
-}
+pub struct ClientListener(Async<UnixListener>);
 
 impl ClientListener {
     pub fn listen<P>(path: P) -> io::Result<Self>
     where
         P: AsRef<Path>,
     {
-        Ok(Self {
-            listener: Async::new(UnixListener::bind(path)?)?,
-        })
+        Ok(Self(Async::new(UnixListener::bind(path)?)?))
     }
 
     pub async fn accept(&self) -> io::Result<ConnectionWithClient> {
-        let (stream, _address) = self.listener.read_with(|l| l.accept()).await?;
+        let (stream, _address) = self.0.read_with(|l| l.accept()).await?;
         let stream = Async::new(stream)?;
         Ok(ConnectionWithClient(stream))
     }
@@ -42,8 +38,6 @@ pub enum TargetClient {
 pub struct ConnectionWithClient(Async<UnixStream>);
 pub struct ClientKeyReader(ConnectionWithClientHandle, ReadHalf<Async<UnixStream>>);
 pub struct ClientOperationWriter(WriteHalf<Async<UnixStream>>, Vec<u8>);
-
-pub struct ConnectionWithServer;
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub struct ConnectionWithClientHandle(usize);
@@ -137,11 +131,9 @@ impl ClientKeyStreams {
         SelectAll::new()
     }
 
-    pub fn stream_from_reader(
-        reader: ClientKeyReader,
+    pub fn from_reader(
+        mut reader: ClientKeyReader,
     ) -> impl Stream<Item = (ConnectionWithClientHandle, Key)> {
-        //let mut reader = BufReader::with_capacity(512, reader);
-        let mut reader = reader;
         stream::poll_fn(move |ctx| {
             let r = Pin::new(&mut reader.1);
             let mut buf = [0; mem::size_of::<Key>()];
@@ -156,3 +148,44 @@ impl ClientKeyStreams {
         })
     }
 }
+
+pub struct ConnectionWithServer(Async<UnixStream>);
+
+impl ConnectionWithServer {
+    pub fn connect<P>(path: P) -> io::Result<Self>
+    where
+        P: AsRef<Path>,
+    {
+        Ok(Self(Async::new(UnixStream::connect(path)?)?))
+    }
+
+    pub fn split(self) -> (ServerOperationReader, ServerKeyWriter) {
+        let (reader, writer) = self.0.split();
+        (
+            ServerOperationReader(reader),
+            ServerKeyWriter(writer, Vec::new()),
+        )
+    }
+}
+
+pub struct ServerOperationReader(ReadHalf<Async<UnixStream>>);
+
+impl ServerOperationReader {
+    pub fn to_stream(mut self) -> impl FusedStream<Item = EditorOperation> {
+        stream::poll_fn(move |ctx| {
+            let reader = Pin::new(&mut self.0);
+            let mut buf = [0; mem::size_of::<EditorOperation>()];
+            match reader.poll_read(ctx, &mut buf) {
+                Poll::Pending => Poll::Pending,
+                Poll::Ready(Ok(byte_count)) => match bincode::deserialize(&buf[..byte_count]) {
+                    Ok(operation) => Poll::Ready(Some(operation)),
+                    Err(_) => Poll::Ready(None),
+                },
+                Poll::Ready(Err(_)) => Poll::Ready(None),
+            }
+        })
+        .fuse()
+    }
+}
+
+pub struct ServerKeyWriter(WriteHalf<Async<UnixStream>>, Vec<u8>);

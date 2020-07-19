@@ -1,7 +1,5 @@
 use std::{convert::From, env, fs, io};
 
-use uds_windows::UnixStream;
-
 use futures::{
     future::FutureExt,
     pin_mut, select_biased,
@@ -10,7 +8,10 @@ use futures::{
 
 use crate::{
     client::Client,
-    connection::{ClientKeyStreams, ClientListener, ConnectionWithClientCollection, TargetClient},
+    connection::{
+        ClientKeyStreams, ClientListener, ConnectionWithClientCollection, ConnectionWithServer,
+        TargetClient,
+    },
     editor::{Editor, EditorLoop, EditorOperationSender},
     event::Event,
     mode::Mode,
@@ -98,8 +99,8 @@ where
     I: UI,
 {
     let session_socket_path = env::current_dir()?.join("session_socket");
-    if let Ok(_stream) = UnixStream::connect(&session_socket_path) {
-        run_client(event_stream, ui).await?;
+    if let Ok(connection) = ConnectionWithServer::connect(&session_socket_path) {
+        run_client(event_stream, ui, connection).await?;
     } else if let Ok(listener) = ClientListener::listen(&session_socket_path) {
         run_server_with_client(event_stream, ui, listener).await?;
         fs::remove_file(session_socket_path)?;
@@ -129,7 +130,6 @@ where
 
     let mut client_connections = ConnectionWithClientCollection::new();
     let mut client_key_streams = ClientKeyStreams::new();
-
     let mut editor_operations = EditorOperationSender::new();
 
     let listen_future = listener.accept().fuse();
@@ -149,13 +149,8 @@ where
                         send_operations(&mut editor_operations, &mut local_client, &mut client_connections).await;
                     },
                     Event::Resize(w, h) => ui.resize(w, h).map_err(|e| ApplicationError::UI(e))?,
-                    _ => break,
+                    _ => (),
                 }
-            },
-            connection = listen_future => {
-                listen_future.set(listener.accept().fuse());
-                let key_reader = client_connections.add_and_get_reader(connection?);
-                client_key_streams.push(ClientKeyStreams::stream_from_reader(key_reader));
             },
             (handle, key) = client_key_streams.select_next_some() => {
                 match editor.on_key(key, TargetClient::Remote(handle), &mut editor_operations) {
@@ -165,6 +160,11 @@ where
                 }
                 send_operations(&mut editor_operations, &mut local_client, &mut client_connections).await;
             }
+            connection = listen_future => {
+                listen_future.set(listener.accept().fuse());
+                let key_reader = client_connections.add_and_get_reader(connection?);
+                client_key_streams.push(ClientKeyStreams::from_reader(key_reader));
+            },
         }
 
         ui.draw(&local_client, error)
@@ -175,10 +175,45 @@ where
     Ok(())
 }
 
-async fn run_client<E, I>(_event_stream: E, _ui: I) -> Result<(), ApplicationError<I::Error>>
+async fn run_client<E, I>(
+    event_stream: E,
+    mut ui: I,
+    connection: ConnectionWithServer,
+) -> Result<(), ApplicationError<I::Error>>
 where
     E: FusedStream<Item = Event>,
     I: UI,
 {
+    ui.init().map_err(|e| ApplicationError::UI(e))?;
+
+    let mut local_client = Client::new();
+    let (operation_reader, key_writer) = connection.split();
+    let mut operation_stream = operation_reader.to_stream();
+
+    pin_mut!(event_stream);
+    loop {
+        select_biased! {
+            operation = operation_stream.next() => {
+                let operation = match operation {
+                    Some(operation) => operation,
+                    None => break,
+                };
+            }
+            event = event_stream.select_next_some() => {
+                match event {
+                    Event::Key(key) => {
+                        //key_writer.send(key)?;
+                    },
+                    Event::Resize(w, h) => ui.resize(w, h).map_err(|e| ApplicationError::UI(e))?,
+                    _ => (),
+                }
+            },
+        }
+
+        ui.draw(&local_client, None)
+            .map_err(|e| ApplicationError::UI(e))?;
+    }
+
+    ui.shutdown().map_err(|e| ApplicationError::UI(e))?;
     Ok(())
 }
