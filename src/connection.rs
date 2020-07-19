@@ -3,6 +3,7 @@ use std::{io, mem, path::Path, pin::Pin, task::Poll};
 use uds_windows::{UnixListener, UnixStream};
 
 use futures::{
+    future::{FutureExt, TryFutureExt},
     io::{AsyncRead, AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf},
     stream::{self, FuturesUnordered, SelectAll, Stream, StreamExt},
 };
@@ -48,12 +49,14 @@ pub struct ConnectionWithClientHandle(usize);
 
 pub struct ConnectionWithClientCollection {
     operation_writers: Vec<Option<ClientOperationWriter>>,
+    error_indexes: Vec<usize>,
 }
 
 impl ConnectionWithClientCollection {
     pub fn new() -> Self {
         Self {
             operation_writers: Vec::new(),
+            error_indexes: Vec::new(),
         }
     }
 
@@ -91,27 +94,39 @@ impl ConnectionWithClientCollection {
         }
     }
 
-    pub async fn send_queued_operations(&mut self) -> Result<(), ()> {
+    pub async fn send_queued_operations(&mut self) {
         let mut futures = FuturesUnordered::new();
-        for writer in self.operation_writers.iter_mut().flatten() {
+        for (i, writer) in self
+            .operation_writers
+            .iter_mut()
+            .enumerate()
+            .flat_map(|(i, w)| w.as_mut().map(|w| (i, w)))
+        {
             if writer.1.len() > 0 {
-                futures.push(writer.0.write_all(&writer.1[..]));
+                let future = writer
+                    .0
+                    .write_all(&writer.1[..])
+                    .map_err(move |_| i);
+                futures.push(future);
             }
         }
+
+        self.error_indexes.clear();
         loop {
             match futures.next().await {
                 Some(Ok(_)) => (),
-                Some(Err(_)) => return Err(()), 
+                Some(Err(i)) => self.error_indexes.push(i),
                 None => break,
             }
         }
 
         drop(futures);
+        for i in &self.error_indexes {
+            self.operation_writers[*i] = None;
+        }
         for writer in self.operation_writers.iter_mut().flatten() {
             writer.1.clear();
         }
-
-        Ok(())
     }
 }
 

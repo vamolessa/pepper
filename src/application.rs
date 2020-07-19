@@ -85,7 +85,7 @@ async fn send_operations(
     operations: &mut EditorOperationSender,
     local_client: &mut Client,
     remote_clients: &mut ConnectionWithClientCollection,
-) -> Result<(), Option<ConnectionWithClientHandle>> {
+) {
     for (target_client, operation, content) in operations.drain() {
         match target_client {
             TargetClient::All => {
@@ -102,7 +102,6 @@ async fn send_operations(
     }
 
     remote_clients.send_queued_operations().await;
-    Ok(())
 }
 
 pub async fn run<E, I>(event_stream: E, ui: I) -> Result<(), ApplicationError<I::Error>>
