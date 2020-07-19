@@ -154,7 +154,7 @@ where
             },
             (handle, key) = client_key_streams.select_next_some() => {
                 match editor.on_key(key, TargetClient::Remote(handle), &mut editor_operations) {
-                    EditorLoop::Quit => break,
+                    EditorLoop::Quit => client_connections.close(handle),
                     EditorLoop::Continue => (),
                     EditorLoop::Error(e) => error = Some(e),
                 }
