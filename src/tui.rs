@@ -265,9 +265,7 @@ where
 
         handle_command!(write, SetBackgroundColor(convert_color(theme.background)))?;
         handle_command!(write, SetForegroundColor(convert_color(theme.text_normal)))?;
-        for _ in x..width {
-            handle_command!(write, Print(' '))?;
-        }
+        handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
         handle_command!(write, cursor::MoveToNextLine(1))?;
 
         line_index += 1;
@@ -282,9 +280,7 @@ where
     handle_command!(write, SetForegroundColor(convert_color(theme.text_normal)))?;
     for _ in drawn_line_count..(height - 1) {
         handle_command!(write, Print('~'))?;
-        for _ in 0..(width - 1) {
-            handle_command!(write, Print(' '))?;
-        }
+        handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
         handle_command!(write, cursor::MoveToNextLine(1))?;
     }
 
