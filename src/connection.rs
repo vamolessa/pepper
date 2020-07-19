@@ -7,6 +7,7 @@ use std::{
 
 use uds_windows::{UnixListener, UnixStream};
 
+use bincode::Options;
 use futures::{
     future::TryFutureExt,
     io::{AsyncRead, AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf},
@@ -82,9 +83,9 @@ impl ConnectionWithClientCollection {
     }
 
     fn serialize_operation(mut buf: &mut Vec<u8>, operation: &EditorOperation, content: &str) {
-        let _ = bincode::serialize_into(&mut buf, operation);
+        let _ = bincode_serializer().serialize_into(&mut buf, operation);
         if let EditorOperation::Content = operation {
-            let _ = bincode::serialize_into(&mut buf, content);
+            let _ = bincode_serializer().serialize_into(&mut buf, content);
         }
     }
 
@@ -176,17 +177,19 @@ where
 
                 let reader = Pin::new(&mut self.reader);
                 match reader.poll_read(ctx, &mut self.buf[self.len..]) {
-                    Poll::Pending => return Poll::Pending,
+                    Poll::Pending => break Poll::Pending,
                     Poll::Ready(Ok(byte_count)) => {
                         self.len += byte_count;
                     }
-                    Poll::Ready(Err(error)) => return Poll::Ready(Err(error)),
+                    Poll::Ready(Err(error)) => break Poll::Ready(Err(error)),
                 }
             }
 
             let mut cursor = io::Cursor::new(&mut self.buf[..self.len]);
             cursor.set_position(self.position as _);
-            match bincode::deserialize_from(&mut cursor) {
+
+            let deserializer = bincode_serializer().with_limit((self.len - self.position) as _);
+            match deserializer.deserialize_from(&mut cursor) {
                 Ok(value) => {
                     self.position = cursor.position() as _;
                     if self.position == self.len {
@@ -194,23 +197,18 @@ where
                         self.position = 0;
                     }
 
-                    return Poll::Ready(Ok(value));
+                    break Poll::Ready(Ok(value));
                 }
                 Err(error) => {
                     match error.as_ref() {
-                        bincode::ErrorKind::Io(error) => match error.kind() {
-                            io::ErrorKind::UnexpectedEof => {
-                                self.buf.resize(self.buf.len() * 2, 0);
-                                continue;
-                            }
-                            _ => (),
-                        },
-                        _ => (),
-                    }
-                    return Poll::Ready(Err(futures::io::Error::new(
-                        futures::io::ErrorKind::Other,
-                        error,
-                    )));
+                        bincode::ErrorKind::SizeLimit => self.buf.resize(self.buf.len() * 2, 0),
+                        _ => {
+                            break Poll::Ready(Err(futures::io::Error::new(
+                                futures::io::ErrorKind::Other,
+                                error,
+                            )))
+                        }
+                    };
                 }
             }
         }
@@ -276,6 +274,7 @@ impl ServerOperationReader {
                     Poll::Pending => break Poll::Pending,
                     Poll::Ready(Ok(operation)) => match operation {
                         EditorOperation::Content => {
+                            dbg!("reading content");
                             state = State::ReadingContent;
                             continue;
                         }
@@ -306,9 +305,13 @@ impl ServerOperationReader {
 pub struct ServerKeyWriter(WriteHalf<Async<UnixStream>>, Vec<u8>);
 impl ServerKeyWriter {
     pub async fn send(&mut self, key: Key) -> io::Result<()> {
-        let _ = bincode::serialize_into(&mut self.1, &key);
+        let _ = bincode_serializer().serialize_into(&mut self.1, &key);
         self.0.write_all(&self.1[..]).await?;
         self.1.clear();
         Ok(())
     }
+}
+
+pub fn bincode_serializer() -> impl Options {
+    bincode::options().with_fixint_encoding()
 }
