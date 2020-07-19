@@ -162,7 +162,7 @@ where
             }
             connection = listen_future => {
                 listen_future.set(listener.accept().fuse());
-                let key_reader = client_connections.add_and_get_reader(connection?);
+                let key_reader = client_connections.open_and_get_reader(connection?);
                 client_key_streams.push(ClientKeyStreams::from_reader(key_reader));
             },
         }

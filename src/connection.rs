@@ -59,7 +59,7 @@ impl ConnectionWithClientCollection {
         }
     }
 
-    pub fn add_and_get_reader(&mut self, connection: ConnectionWithClient) -> ClientKeyReader {
+    pub fn open_and_get_reader(&mut self, connection: ConnectionWithClient) -> ClientKeyReader {
         let (reader, writer) = connection.0.split();
         let writer = ClientOperationWriter(writer, Vec::new());
 
@@ -75,6 +75,10 @@ impl ConnectionWithClientCollection {
         self.operation_writers.push(Some(writer));
 
         ClientKeyReader(handle, reader)
+    }
+
+    pub fn close(&mut self, handle: ConnectionWithClientHandle) {
+        self.operation_writers[handle.0] = None
     }
 
     fn serialize_operation(mut buf: &mut Vec<u8>, operation: &EditorOperation, content: &str) {
