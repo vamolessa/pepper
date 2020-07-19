@@ -313,5 +313,7 @@ impl ServerKeyWriter {
 }
 
 pub fn bincode_serializer() -> impl Options {
-    bincode::options().with_fixint_encoding()
+    bincode::options()
+        .with_fixint_encoding()
+        .allow_trailing_bytes()
 }
