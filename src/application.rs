@@ -2,7 +2,6 @@ use std::{convert::From, env, fs, io};
 
 use uds_windows::UnixStream;
 
-use argh::FromArgs;
 use futures::{
     future::FutureExt,
     pin_mut, select_biased,
@@ -11,10 +10,7 @@ use futures::{
 
 use crate::{
     client::Client,
-    connection::{
-        ClientKeyStreams, ClientListener, ConnectionWithClientCollection,
-        ConnectionWithClientHandle, TargetClient,
-    },
+    connection::{ClientKeyStreams, ClientListener, ConnectionWithClientCollection, TargetClient},
     editor::{Editor, EditorLoop, EditorOperationSender},
     event::Event,
     mode::Mode,
@@ -30,14 +26,6 @@ impl<UiError> From<io::Error> for ApplicationError<UiError> {
     fn from(error: io::Error) -> Self {
         ApplicationError::IO(error)
     }
-}
-
-#[derive(FromArgs)]
-/// pepper editor
-struct Args {
-    //#[argh(option, short = 's')]
-///// session to connect to
-//session: Option<String>,
 }
 
 pub trait UI {
@@ -109,8 +97,6 @@ where
     E: FusedStream<Item = Event>,
     I: UI,
 {
-    //let args: Args = argh::from_env();
-
     let session_socket_path = env::current_dir()?.join("session_socket");
     if let Ok(_stream) = UnixStream::connect(&session_socket_path) {
         run_client(event_stream, ui).await?;

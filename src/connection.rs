@@ -3,7 +3,7 @@ use std::{io, mem, path::Path, pin::Pin, task::Poll};
 use uds_windows::{UnixListener, UnixStream};
 
 use futures::{
-    future::{FutureExt, TryFutureExt},
+    future::TryFutureExt,
     io::{AsyncRead, AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf},
     stream::{self, FuturesUnordered, SelectAll, Stream, StreamExt},
 };
@@ -42,6 +42,7 @@ pub enum TargetClient {
 pub struct ConnectionWithClient(Async<UnixStream>);
 pub struct ClientKeyReader(ConnectionWithClientHandle, ReadHalf<Async<UnixStream>>);
 pub struct ClientOperationWriter(WriteHalf<Async<UnixStream>>, Vec<u8>);
+
 pub struct ConnectionWithServer;
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -103,10 +104,7 @@ impl ConnectionWithClientCollection {
             .flat_map(|(i, w)| w.as_mut().map(|w| (i, w)))
         {
             if writer.1.len() > 0 {
-                let future = writer
-                    .0
-                    .write_all(&writer.1[..])
-                    .map_err(move |_| i);
+                let future = writer.0.write_all(&writer.1[..]).map_err(move |_| i);
                 futures.push(future);
             }
         }
