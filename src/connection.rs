@@ -1,4 +1,9 @@
-use std::{io, mem, path::Path, pin::Pin, task::Poll};
+use std::{
+    io, mem,
+    path::Path,
+    pin::Pin,
+    task::{Context, Poll},
+};
 
 use uds_windows::{UnixListener, UnixStream};
 
@@ -72,19 +77,34 @@ impl ConnectionWithClientCollection {
         ClientKeyReader(handle, reader)
     }
 
+    fn serialize_operation(mut buf: &mut Vec<u8>, operation: &EditorOperation, content: &str) {
+        let index = buf.len();
+        buf.extend_from_slice(&[0; std::mem::size_of::<u32>()]);
+        let _ = bincode::serialize_into(&mut buf, operation);
+        if let EditorOperation::Content = operation {
+            let _ = bincode::serialize_into(&mut buf, content);
+        }
+        let byte_count = (buf.len() - std::mem::size_of::<u32>() - index) as u32;
+        let byte_count_bytes = byte_count.to_le_bytes();
+        for i in 0..byte_count_bytes.len() {
+            buf[index + i] = byte_count_bytes[i];
+        }
+    }
+
     pub fn queue_operation(
         &mut self,
         handle: ConnectionWithClientHandle,
         operation: &EditorOperation,
+        content: &str,
     ) {
         if let Some(writer) = &mut self.operation_writers[handle.0] {
-            let _ = bincode::serialize_into(&mut writer.1, operation);
+            Self::serialize_operation(&mut writer.1, operation, content);
         }
     }
 
-    pub fn queue_operation_all(&mut self, operation: &EditorOperation) {
+    pub fn queue_operation_all(&mut self, operation: &EditorOperation, content: &str) {
         for writer in self.operation_writers.iter_mut().flatten() {
-            let _ = bincode::serialize_into(&mut writer.1, operation);
+            Self::serialize_operation(&mut writer.1, operation, content);
         }
     }
 
@@ -121,6 +141,50 @@ impl ConnectionWithClientCollection {
     }
 }
 
+struct ReadExact<R>
+where
+    R: Unpin + AsyncRead,
+{
+    reader: R,
+    read_count: usize,
+}
+
+impl<R> ReadExact<R>
+where
+    R: Unpin + AsyncRead,
+{
+    pub fn new(reader: R) -> Self {
+        Self {
+            reader,
+            read_count: 0,
+        }
+    }
+
+    pub fn poll_read(
+        &mut self,
+        ctx: &mut Context,
+        buf: &mut [u8],
+    ) -> Poll<Result<(), futures::io::Error>>
+    where
+        R: AsyncRead,
+    {
+        let slice = &mut buf[self.read_count..];
+        let reader = Pin::new(&mut self.reader);
+        match reader.poll_read(ctx, slice) {
+            Poll::Pending => return Poll::Pending,
+            Poll::Ready(Ok(byte_count)) => {
+                self.read_count += byte_count;
+                if self.read_count >= buf.len() {
+                    Poll::Ready(Ok(()))
+                } else {
+                    Poll::Pending
+                }
+            }
+            Poll::Ready(Err(error)) => return Poll::Ready(Err(error)),
+        }
+    }
+}
+
 pub struct ClientKeyStreams;
 impl ClientKeyStreams {
     pub fn new<S>() -> SelectAll<S>
@@ -133,13 +197,15 @@ impl ClientKeyStreams {
     pub fn from_reader(
         mut reader: ClientKeyReader,
     ) -> impl Stream<Item = (ConnectionWithClientHandle, Key)> {
+        let handle = reader.0;
+        let mut reader = ReadExact::new(reader.1);
         stream::poll_fn(move |ctx| {
-            let r = Pin::new(&mut reader.1);
+            //let r = Pin::new(&mut reader.1);
             let mut buf = [0; mem::size_of::<Key>()];
-            match r.poll_read(ctx, &mut buf) {
+            match reader.poll_read(ctx, &mut buf) {
                 Poll::Pending => Poll::Pending,
-                Poll::Ready(Ok(byte_count)) => match bincode::deserialize(&buf[..byte_count]) {
-                    Ok(key) => Poll::Ready(Some((reader.0, key))),
+                Poll::Ready(Ok(())) => match bincode::deserialize(&buf[..]) {
+                    Ok(key) => Poll::Ready(Some((handle, key))),
                     Err(_) => Poll::Ready(None),
                 },
                 Poll::Ready(Err(_)) => Poll::Ready(None),
@@ -171,13 +237,15 @@ impl ServerOperationReader {
     pub fn to_stream(mut self) -> impl FusedStream<Item = EditorOperation> {
         stream::poll_fn(move |ctx| {
             let reader = Pin::new(&mut self.0);
-            let mut buf = [0; mem::size_of::<EditorOperation>()];
-            match reader.poll_read(ctx, &mut buf) {
+            let mut byte_count_buf = [0; std::mem::size_of::<u32>()];
+            match reader.poll_read(ctx, &mut byte_count_buf) {
                 Poll::Pending => Poll::Pending,
-                Poll::Ready(Ok(byte_count)) => match bincode::deserialize(&buf[..byte_count]) {
-                    Ok(operation) => Poll::Ready(Some(operation)),
-                    Err(_) => Poll::Ready(None),
-                },
+                Poll::Ready(Ok(byte_count)) => {
+                    match bincode::deserialize(&byte_count_buf[..byte_count]) {
+                        Ok(operation) => Poll::Ready(Some(operation)),
+                        Err(_) => Poll::Ready(None),
+                    }
+                }
                 Poll::Ready(Err(_)) => Poll::Ready(None),
             }
         })

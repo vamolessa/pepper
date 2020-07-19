@@ -79,13 +79,13 @@ async fn send_operations(
         match target_client {
             TargetClient::All => {
                 local_client.on_editor_operation(&operation, content);
-                remote_clients.queue_operation_all(&operation);
+                remote_clients.queue_operation_all(&operation, content);
             }
             TargetClient::Local => {
                 local_client.on_editor_operation(&operation, content);
             }
             TargetClient::Remote(handle) => {
-                remote_clients.queue_operation(handle, &operation);
+                remote_clients.queue_operation(handle, &operation, content);
             }
         }
     }

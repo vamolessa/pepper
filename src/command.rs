@@ -101,8 +101,10 @@ mod helper {
                 None => BufferView::new(ctx.target_client, buffer_handle),
             };
 
-            ctx.operations
-                .send_content(ctx.target_client, &ctx.buffers.get(buffer_handle).unwrap().content);
+            ctx.operations.send_content(
+                ctx.target_client,
+                &ctx.buffers.get(buffer_handle).unwrap().content,
+            );
             ctx.operations
                 .send(ctx.target_client, EditorOperation::Path(Some(path.into())));
             ctx.operations

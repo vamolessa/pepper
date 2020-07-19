@@ -148,7 +148,8 @@ pub fn poll_input(ctx: &mut ModeContext, keys: &mut KeysIterator) -> InputPollRe
         }
         Key::Char(c) => {
             ctx.input.push(c);
-            ctx.operations.send(TargetClient::All, EditorOperation::InputAppend(c));
+            ctx.operations
+                .send(TargetClient::All, EditorOperation::InputAppend(c));
             InputPollResult::Pending
         }
         _ => InputPollResult::Pending,
