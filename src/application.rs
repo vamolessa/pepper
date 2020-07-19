@@ -12,7 +12,7 @@ use crate::{
         ClientKeyStreams, ClientListener, ConnectionWithClientCollection, ConnectionWithServer,
         TargetClient,
     },
-    editor::{Editor, EditorLoop, EditorOperationSender},
+    editor::{Editor, EditorLoop, EditorOperation, EditorOperationSender},
     event::Event,
     mode::Mode,
 };
@@ -157,7 +157,11 @@ where
             },
             (handle, key) = client_key_streams.select_next_some() => {
                 match editor.on_key(key, TargetClient::Remote(handle), &mut editor_operations) {
-                    EditorLoop::Quit => client_connections.close(handle),
+                    EditorLoop::Quit => {
+                        client_connections.close(handle);
+                        editor_operations.send(TargetClient::All, EditorOperation::InputKeep(0));
+                        editor_operations.send(TargetClient::All, EditorOperation::Mode(Mode::default()));
+                    }
                     EditorLoop::Continue => (),
                     EditorLoop::Error(e) => error = Some(e),
                 }
