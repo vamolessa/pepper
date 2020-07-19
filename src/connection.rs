@@ -201,7 +201,10 @@ where
                 }
                 Err(error) => {
                     match error.as_ref() {
-                        bincode::ErrorKind::SizeLimit => self.buf.resize(self.buf.len() * 2, 0),
+                        bincode::ErrorKind::SizeLimit => {
+                            dbg!("SIZE LIMIT");
+                            self.buf.resize(self.buf.len() * 2, 0);
+                        }
                         _ => {
                             break Poll::Ready(Err(futures::io::Error::new(
                                 futures::io::ErrorKind::Other,
