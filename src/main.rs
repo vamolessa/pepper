@@ -28,7 +28,7 @@ fn main() {
     let stdout = stdout.lock();
     let ui = tui::Tui::new(stdout);
 
-    if let Err(e) = smol::run(application::run(tui::event_stream(), ui)) {
+    if let Err(e) = smol::run(application::run_async(tui::event_stream(), ui)) {
         eprintln!("{:?}", e);
     }
 }

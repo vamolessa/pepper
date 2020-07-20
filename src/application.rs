@@ -1,4 +1,4 @@
-use std::{convert::From, env, fs, io};
+use std::{convert::From, env, fs, io, sync::mpsc, thread};
 
 use futures::{
     future::FutureExt,
@@ -14,24 +14,46 @@ use crate::{
     },
     editor::{Editor, EditorLoop, EditorOperation, EditorOperationSender},
     event::Event,
+    event_manager::{run_event_loop, EventManager},
     mode::Mode,
 };
 
+pub trait UiError: 'static + Send {}
+
 #[derive(Debug)]
-pub enum ApplicationError<UiError> {
+pub enum ApplicationError<UIE>
+where
+    UIE: UiError,
+{
     IO(io::Error),
-    UI(UiError),
+    UI(UIE),
     CouldNotConnectToOrStartServer,
 }
 
-impl<UiError> From<io::Error> for ApplicationError<UiError> {
+impl<UIE> From<io::Error> for ApplicationError<UIE>
+where
+    UIE: UiError,
+{
     fn from(error: io::Error) -> Self {
         ApplicationError::IO(error)
     }
 }
 
+impl<UIE> From<UIE> for ApplicationError<UIE>
+where
+    UIE: UiError,
+{
+    fn from(error: UIE) -> Self {
+        ApplicationError::UI(error)
+    }
+}
+
 pub trait UI {
-    type Error;
+    type Error: UiError;
+
+    fn run_event_loop(
+        event_sender: mpsc::Sender<Event>,
+    ) -> thread::JoinHandle<Result<(), Self::Error>>;
 
     fn init(&mut self) -> Result<(), Self::Error> {
         Ok(())
@@ -55,7 +77,78 @@ fn bind_keys(editor: &mut Editor) {
         .unwrap();
 }
 
-async fn send_operations(
+pub fn run<I>(ui: I) -> Result<(), ApplicationError<I::Error>>
+where
+    I: UI,
+{
+    let session_socket_path = env::current_dir()?.join("session_socket");
+    if let Ok(connection) = ConnectionWithServer::connect(&session_socket_path) {
+        run_client(ui, connection)?;
+    } else if let Ok(listener) = ClientListener::listen(&session_socket_path) {
+        run_server_with_client(ui, listener)?;
+        fs::remove_file(session_socket_path)?;
+    } else if let Ok(()) = fs::remove_file(&session_socket_path) {
+        let listener = ClientListener::listen(&session_socket_path)?;
+        run_server_with_client(ui, listener)?;
+        fs::remove_file(session_socket_path)?;
+    } else {
+        return Err(ApplicationError::CouldNotConnectToOrStartServer);
+    }
+
+    Ok(())
+}
+
+fn run_server_with_client<I>(
+    mut ui: I,
+    listener: ClientListener,
+) -> Result<(), ApplicationError<I::Error>>
+where
+    I: UI,
+{
+    let (event_sender, event_receiver) = mpsc::channel();
+    let event_manager = EventManager::new(event_sender.clone(), 8)?;
+    let _ = run_event_loop(event_manager);
+    let _ = I::run_event_loop(event_sender);
+
+    let mut local_client = Client::new();
+    let mut editor = Editor::new();
+    bind_keys(&mut editor);
+
+    let mut editor_operations = EditorOperationSender::new();
+
+    ui.init()?;
+
+    for event in event_receiver.iter() {
+        match event {
+            Event::Key(key) => {
+                match editor.on_key(key, TargetClient::Local, &mut editor_operations) {
+                    EditorLoop::Quit => break,
+                    EditorLoop::Continue => (),
+                    EditorLoop::Error(_e) => (),
+                }
+            }
+            Event::Resize(w, h) => ui.resize(w, h)?,
+            Event::Stream(id) => {
+                // read from stream
+            }
+            _ => (),
+        }
+    }
+
+    ui.shutdown()?;
+    Ok(())
+}
+
+fn run_client<I>(ui: I, connection: ConnectionWithServer) -> Result<(), ApplicationError<I::Error>>
+where
+    I: UI,
+{
+    Ok(())
+}
+
+// =========================================================================
+
+async fn send_operations_async(
     operations: &mut EditorOperationSender,
     local_client: &mut Client,
     remote_clients: &mut ConnectionWithClientCollection,
@@ -83,20 +176,20 @@ async fn send_operations(
     }
 }
 
-pub async fn run<E, I>(event_stream: E, ui: I) -> Result<(), ApplicationError<I::Error>>
+pub async fn run_async<E, I>(event_stream: E, ui: I) -> Result<(), ApplicationError<I::Error>>
 where
     E: FusedStream<Item = Event>,
     I: UI,
 {
     let session_socket_path = env::current_dir()?.join("session_socket");
     if let Ok(connection) = ConnectionWithServer::connect(&session_socket_path) {
-        run_client(event_stream, ui, connection).await?;
+        run_client_async(event_stream, ui, connection).await?;
     } else if let Ok(listener) = ClientListener::listen(&session_socket_path) {
-        run_server_with_client(event_stream, ui, listener).await?;
+        run_server_with_client_async(event_stream, ui, listener).await?;
         fs::remove_file(session_socket_path)?;
     } else if let Ok(()) = fs::remove_file(&session_socket_path) {
         let listener = ClientListener::listen(&session_socket_path)?;
-        run_server_with_client(event_stream, ui, listener).await?;
+        run_server_with_client_async(event_stream, ui, listener).await?;
         fs::remove_file(session_socket_path)?;
     } else {
         return Err(ApplicationError::CouldNotConnectToOrStartServer);
@@ -105,7 +198,7 @@ where
     Ok(())
 }
 
-async fn run_server_with_client<E, I>(
+async fn run_server_with_client_async<E, I>(
     event_stream: E,
     mut ui: I,
     listener: ClientListener,
@@ -138,7 +231,7 @@ where
                             EditorLoop::Continue => (),
                             EditorLoop::Error(e) => error = Some(e),
                         }
-                        send_operations(&mut editor_operations, &mut local_client, &mut client_connections).await;
+                        send_operations_async(&mut editor_operations, &mut local_client, &mut client_connections).await;
                     },
                     Event::Resize(w, h) => ui.resize(w, h).map_err(|e| ApplicationError::UI(e))?,
                     _ => (),
@@ -155,14 +248,14 @@ where
                     EditorLoop::Continue => (),
                     EditorLoop::Error(e) => error = Some(e),
                 }
-                send_operations(&mut editor_operations, &mut local_client, &mut client_connections).await;
+                send_operations_async(&mut editor_operations, &mut local_client, &mut client_connections).await;
             }
             connection = listen_future => {
                 listen_future.set(listener.accept().fuse());
                 let (handle, key_reader) = client_connections.open(connection?);
                 client_key_streams.push(ClientKeyStreams::from_reader(key_reader));
                 editor.on_client_joined(TargetClient::Remote(handle), &mut editor_operations);
-                send_operations(&mut editor_operations, &mut local_client, &mut client_connections).await;
+                send_operations_async(&mut editor_operations, &mut local_client, &mut client_connections).await;
             },
         }
 
@@ -174,7 +267,7 @@ where
     Ok(())
 }
 
-async fn run_client<E, I>(
+async fn run_client_async<E, I>(
     event_stream: E,
     mut ui: I,
     connection: ConnectionWithServer,

@@ -1,5 +1,8 @@
-pub use windows::*;
+use std::{io, thread};
 
+use crate::event::Event;
+
+#[derive(Debug, Clone, Copy)]
 pub enum StreamId {
     Listener,
     Stream(usize),
@@ -21,10 +24,21 @@ impl StreamId {
     }
 }
 
+pub fn run_event_loop(mut event_manager: EventManager) -> thread::JoinHandle<io::Result<()>> {
+    thread::spawn(move || {
+        while event_manager.poll()? {}
+        Ok(())
+    })
+}
+
+#[cfg(target_os = "windows")]
+pub use windows::*;
+
 #[cfg(target_os = "windows")]
 mod windows {
-    use std::{io, os::windows::io::AsRawSocket, sync::mpsc};
+    use std::{io, sync::mpsc};
 
+    use uds_windows::{UnixListener, UnixStream};
     use wepoll_binding::{Epoll, EventFlag, Events};
 
     use super::*;
@@ -32,14 +46,11 @@ mod windows {
     pub struct EventManager {
         poll: Epoll,
         events: Events,
-        event_sender: mpsc::Sender<StreamId>,
+        event_sender: mpsc::Sender<Event>,
     }
 
     impl EventManager {
-        pub fn new(
-            event_sender: mpsc::Sender<StreamId>,
-            capacity: usize,
-        ) -> io::Result<Self> {
+        pub fn new(event_sender: mpsc::Sender<Event>, capacity: usize) -> io::Result<Self> {
             Ok(Self {
                 poll: Epoll::new()?,
                 events: Events::with_capacity(capacity),
@@ -47,28 +58,36 @@ mod windows {
             })
         }
 
-        pub fn register<S>(&mut self, socket: &S, id: StreamId) -> io::Result<()>
-        where
-            S: AsRawSocket,
-        {
-            self.poll.register(socket, EventFlag::IN, id.raw_id())
+        pub fn register_listener(&mut self, listener: &UnixListener) -> io::Result<()> {
+            self.poll
+                .register(listener, EventFlag::IN, StreamId::Listener.raw_id())
         }
 
-        pub fn unregister<S>(&mut self, socket: &S) -> io::Result<()>
-        where
-            S: AsRawSocket,
-        {
-            self.poll.deregister(socket)
+        pub fn register_stream(&mut self, stream: &UnixStream, id: usize) -> io::Result<()> {
+            self.poll
+                .register(stream, EventFlag::IN, StreamId::Stream(id).raw_id())
         }
 
-        pub fn poll(&mut self) -> io::Result<()> {
+        pub fn unregister_listener(&mut self, listener: &UnixListener) -> io::Result<()> {
+            self.poll.deregister(listener)
+        }
+
+        pub fn unregister_stream(&mut self, stream: &UnixStream) -> io::Result<()> {
+            self.poll.deregister(stream)
+        }
+
+        pub fn poll(&mut self) -> io::Result<bool> {
             self.poll.poll(&mut self.events, None)?;
             for event in self.events.iter() {
-                if let Err(e) = self.event_sender.send(StreamId::from_raw_id(event.data())) {
-                    return Err(io::Error::new(io::ErrorKind::Other, e));
+                if self
+                    .event_sender
+                    .send(Event::Stream(StreamId::from_raw_id(event.data())))
+                    .is_err()
+                {
+                    return Ok(false);
                 }
             }
-            Ok(())
+            Ok(true)
         }
     }
 }

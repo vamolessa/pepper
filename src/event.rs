@@ -1,10 +1,13 @@
 use serde_derive::{Deserialize, Serialize};
 
+use crate::event_manager::StreamId;
+
 #[derive(Debug, Clone, Copy)]
 pub enum Event {
     None,
     Key(Key),
     Resize(u16, u16),
+    Stream(StreamId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

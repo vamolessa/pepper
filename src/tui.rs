@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, io::Write, iter};
+use std::{cmp::Ordering, io::Write, iter, sync::mpsc, thread};
 
 use futures::stream::{FusedStream, StreamExt};
 
@@ -9,7 +9,7 @@ use crossterm::{
 };
 
 use crate::{
-    application::UI,
+    application::{UiError, UI},
     buffer_position::BufferPosition,
     client::Client,
     event::{Event, Key},
@@ -61,6 +61,8 @@ pub fn event_stream() -> impl FusedStream<Item = Event> {
     })
 }
 
+impl UiError for ErrorKind {}
+
 pub struct Tui<W>
 where
     W: Write,
@@ -90,6 +92,13 @@ where
     W: Write,
 {
     type Error = ErrorKind;
+
+    fn run_event_loop(event_sender: mpsc::Sender<Event>) -> thread::JoinHandle<Result<()>> {
+        thread::spawn(move || {
+            while event_sender.send(convert_event(event::read()?)).is_ok() {}
+            Ok(())
+        })
+    }
 
     fn init(&mut self) -> Result<()> {
         handle_command!(self.write, terminal::EnterAlternateScreen)?;
