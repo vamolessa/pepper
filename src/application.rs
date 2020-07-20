@@ -192,21 +192,21 @@ where
     pin_mut!(event_stream);
     loop {
         select_biased! {
-        result = operation_stream.next() => {
-            if let Some((operation, content)) = result {
-                local_client.on_editor_operation(&operation, &content[..]);
-            } else {
-                break;
+            result = operation_stream.next() => {
+                if let Some((operation, content)) = result {
+                    local_client.on_editor_operation(&operation, &content[..]);
+                } else {
+                    break;
+                }
             }
+            event = event_stream.select_next_some() => {
+                match event {
+                    Event::Key(key) => key_writer.send(key).await?,
+                    Event::Resize(w, h) => ui.resize(w, h).map_err(|e| ApplicationError::UI(e))?,
+                    _ => (),
+                }
+            },
         }
-        event = event_stream.select_next_some() => {
-            match event {
-                Event::Key(key) => key_writer.send(key).await?,
-                Event::Resize(w, h) => ui.resize(w, h).map_err(|e| ApplicationError::UI(e))?,
-                _ => (),
-            }
-        },
-            }
 
         ui.draw(&local_client, None)
             .map_err(|e| ApplicationError::UI(e))?;
