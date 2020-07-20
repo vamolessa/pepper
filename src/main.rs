@@ -11,6 +11,7 @@ mod connection;
 mod cursor;
 mod editor;
 mod event;
+mod event_manager;
 mod history;
 mod keymap;
 mod mode;

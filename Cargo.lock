@@ -604,6 +604,7 @@ dependencies = [
  "serde_derive",
  "smol",
  "uds_windows",
+ "wepoll-binding",
 ]
 
 [[package]]
