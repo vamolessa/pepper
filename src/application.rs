@@ -156,6 +156,8 @@ where
                 event_barrier.wait();
             }
         }
+
+        ui.draw(&local_client, None)?;
     }
 
     ui.shutdown()?;
