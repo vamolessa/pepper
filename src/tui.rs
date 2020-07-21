@@ -1,7 +1,5 @@
 use std::{cmp::Ordering, io::Write, iter, sync::mpsc, thread};
 
-use futures::stream::{FusedStream, StreamExt};
-
 use crossterm::{
     cursor, event, handle_command,
     style::{Color, Print, ResetColor, SetBackgroundColor, SetForegroundColor},
@@ -52,13 +50,6 @@ const fn convert_color(color: theme::Color) -> Color {
         g: color.1,
         b: color.2,
     }
-}
-
-pub fn event_stream() -> impl FusedStream<Item = Event> {
-    event::EventStream::new().fuse().map(|e| match e {
-        Ok(e) => convert_event(e),
-        Err(_) => Event::None,
-    })
 }
 
 impl UiError for ErrorKind {}

@@ -1,5 +1,3 @@
-#![recursion_limit = "512"]
-
 mod application;
 mod buffer;
 mod buffer_position;
@@ -28,7 +26,7 @@ fn main() {
     let stdout = stdout.lock();
     let ui = tui::Tui::new(stdout);
 
-    if let Err(e) = smol::run(application::run_async(tui::event_stream(), ui)) {
+    if let Err(e) = application::run(ui) {
         eprintln!("{:?}", e);
     }
 }

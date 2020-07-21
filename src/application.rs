@@ -1,17 +1,8 @@
 use std::{convert::From, env, fs, io, sync::mpsc, thread};
 
-use futures::{
-    future::FutureExt,
-    pin_mut, select_biased,
-    stream::{FusedStream, StreamExt},
-};
-
 use crate::{
     client::Client,
-    connection::{
-        ClientKeyStreams, ClientListener, ConnectionWithClientCollection, ConnectionWithServer,
-        TargetClient,
-    },
+    connection::{ConnectionWithClientCollection, ConnectionWithServer, TargetClient},
     editor::{Editor, EditorLoop, EditorOperation, EditorOperationSender},
     event::Event,
     event_manager::{run_event_loop, EventManager},
@@ -84,11 +75,11 @@ where
     let session_socket_path = env::current_dir()?.join("session_socket");
     if let Ok(connection) = ConnectionWithServer::connect(&session_socket_path) {
         run_client(ui, connection)?;
-    } else if let Ok(listener) = ClientListener::listen(&session_socket_path) {
+    } else if let Ok(listener) = ConnectionWithClientCollection::listen(&session_socket_path) {
         run_server_with_client(ui, listener)?;
         fs::remove_file(session_socket_path)?;
     } else if let Ok(()) = fs::remove_file(&session_socket_path) {
-        let listener = ClientListener::listen(&session_socket_path)?;
+        let listener = ConnectionWithClientCollection::listen(&session_socket_path)?;
         run_server_with_client(ui, listener)?;
         fs::remove_file(session_socket_path)?;
     } else {
@@ -100,7 +91,7 @@ where
 
 fn run_server_with_client<I>(
     mut ui: I,
-    listener: ClientListener,
+    connections: ConnectionWithClientCollection,
 ) -> Result<(), ApplicationError<I::Error>>
 where
     I: UI,
@@ -148,6 +139,7 @@ where
 
 // =========================================================================
 
+/*
 async fn send_operations_async(
     operations: &mut EditorOperationSender,
     local_client: &mut Client,
@@ -308,3 +300,4 @@ where
     ui.shutdown().map_err(|e| ApplicationError::UI(e))?;
     Ok(())
 }
+*/
