@@ -7,23 +7,28 @@ use std::{
 use crate::event::Event;
 
 #[derive(Debug, Clone, Copy)]
+pub struct StreamId(pub usize);
+
+#[derive(Debug, Clone, Copy)]
 pub enum ConnectionEvent {
     NewConnection,
-    Stream(usize),
+    StreamIn(StreamId),
+    StreamError(StreamId),
 }
 
 impl ConnectionEvent {
-    fn from_raw_id(id: u64) -> Self {
-        match id {
-            0 => ConnectionEvent::NewConnection,
-            id => ConnectionEvent::Stream(id as usize - 1),
+    fn from_raw_id(id: u64, success: bool) -> Self {
+        match (id, success) {
+            (0, _) => ConnectionEvent::NewConnection,
+            (id, true) => ConnectionEvent::StreamIn(StreamId(id as usize - 1)),
+            (id, false) => ConnectionEvent::StreamError(StreamId(id as usize - 1)),
         }
     }
 
     fn raw_id(&self) -> u64 {
         match self {
             ConnectionEvent::NewConnection => 0,
-            ConnectionEvent::Stream(id) => *id as u64 + 1,
+            ConnectionEvent::StreamIn(id) | ConnectionEvent::StreamError(id) => id.0 as u64 + 1,
         }
     }
 }
@@ -75,11 +80,11 @@ mod windows {
             )
         }
 
-        pub fn register_stream(&mut self, stream: &UnixStream, id: usize) -> io::Result<()> {
+        pub fn register_stream(&mut self, stream: &UnixStream, id: StreamId) -> io::Result<()> {
             self.poll.register(
                 stream,
                 EventFlag::IN | EventFlag::RDHUP | EventFlag::HUP | EventFlag::ERR,
-                ConnectionEvent::Stream(id).raw_id(),
+                ConnectionEvent::StreamIn(id).raw_id(),
             )
         }
 
@@ -89,10 +94,10 @@ mod windows {
 
         pub fn poll(&mut self) -> io::Result<bool> {
             self.poll.poll(&mut self.events, None)?;
-            dbg!(self.events.len());
             for event in self.events.iter() {
-                dbg!(event.data(), event.flags());
-                let event = ConnectionEvent::from_raw_id(event.data());
+                let success = (event.flags() & !EventFlag::IN).is_empty();
+                dbg!(event.data(), event.flags(), success);
+                let event = ConnectionEvent::from_raw_id(event.data(), success);
                 if self.event_sender.send(Event::Connection(event)).is_err() {
                     return Ok(false);
                 }

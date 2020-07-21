@@ -1,5 +1,5 @@
 use std::{
-    convert::{From, TryInto},
+    convert::From,
     env, fs, io,
     sync::{mpsc, Arc, Barrier, Mutex},
     thread,
@@ -161,21 +161,23 @@ where
                 send_operations(&mut editor_operations, &mut local_client, &mut connections);
             }
             Event::Resize(w, h) => ui.resize(w, h)?,
-            Event::Connection(stream_id) => {
+            Event::Connection(event) => {
+                dbg!("connection event");
                 let mut event_manager = event_manager.lock().unwrap();
-                match stream_id {
+                match event {
                     ConnectionEvent::NewConnection => {
                         let handle = connections.accept_connection(&mut event_manager)?;
                         editor
                             .on_client_joined(TargetClient::Remote(handle), &mut editor_operations);
-                        send_operations(
-                            &mut editor_operations,
-                            &mut local_client,
-                            &mut connections,
-                        );
                     }
-                    ConnectionEvent::Stream(_) => {
-                        let handle = stream_id.try_into().unwrap();
+                    ConnectionEvent::StreamError(stream_id) => {
+                        dbg!("stream error event");
+                        let handle = stream_id.into();
+                        connections.close_connection(handle);
+                        editor.on_client_left(TargetClient::Remote(handle), &mut editor_operations);
+                    }
+                    ConnectionEvent::StreamIn(stream_id) => {
+                        let handle = stream_id.into();
                         loop {
                             match connections.receive_key(handle) {
                                 Ok(Some(key)) => received_keys.push(key),
@@ -209,15 +211,15 @@ where
                                 EditorLoop::Error(e) => error = Some(e),
                             }
                         }
-
-                        send_operations(
-                            &mut editor_operations,
-                            &mut local_client,
-                            &mut connections,
-                        );
                     }
                 }
+
                 connections.unregister_closed_connections(&mut event_manager)?;
+                dbg!("before send operations");
+                send_operations(&mut editor_operations, &mut local_client, &mut connections);
+                dbg!("after send operations");
+                connections.unregister_closed_connections(&mut event_manager)?;
+                drop(event_manager);
                 event_barrier.wait();
             }
         }
@@ -243,7 +245,7 @@ where
 
     let event_manager = Arc::new(Mutex::new(event_manager));
     let event_barrier = Arc::new(Barrier::new(2));
-    let _ = run_event_loop(event_manager.clone(), event_barrier.clone());
+    let _ = run_event_loop(event_manager, event_barrier.clone());
     let _ = I::run_event_loop(event_sender);
 
     let mut local_client = Client::new();
@@ -260,17 +262,23 @@ where
                 }
             }
             Event::Resize(w, h) => ui.resize(w, h)?,
-            Event::Connection(_) => {
-                loop {
-                    match connection.receive_operation() {
-                        Ok(Some(operation)) => received_operations.push(operation),
-                        Ok(None) => break,
-                        Err(_) => break 'main_loop,
-                    }
-                }
+            Event::Connection(event) => {
+                match event {
+                    ConnectionEvent::NewConnection => (),
+                    ConnectionEvent::StreamError(_) => break,
+                    ConnectionEvent::StreamIn(_) => {
+                        loop {
+                            match connection.receive_operation() {
+                                Ok(Some(operation)) => received_operations.push(operation),
+                                Ok(None) => break,
+                                Err(_) => break 'main_loop,
+                            }
+                        }
 
-                for operation in received_operations.drain(..) {
-                    local_client.on_editor_operation(&operation, "");
+                        for operation in received_operations.drain(..) {
+                            local_client.on_editor_operation(&operation, "");
+                        }
+                    }
                 }
                 event_barrier.wait();
             }
