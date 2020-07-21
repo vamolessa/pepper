@@ -132,7 +132,9 @@ where
             Event::Connection(stream_id) => {
                 match stream_id {
                     ConnectionEvent::NewConnection => {
-                        connections.accept_connection()?;
+                        let handle = connections.accept_connection()?;
+                        editor.on_client_joined(TargetClient::Remote(handle), &mut editor_operations);
+                        // send operations
                     }
                     ConnectionEvent::Stream(_) => {
                         let handle = stream_id.try_into().unwrap();
