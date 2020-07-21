@@ -30,7 +30,7 @@ impl StreamId {
 
 pub fn run_event_loop(
     event_manager: Arc<Mutex<EventManager>>,
-    barrier: Barrier,
+    barrier: Arc<Barrier>,
 ) -> thread::JoinHandle<io::Result<()>> {
     thread::spawn(move || {
         while event_manager.lock().unwrap().poll()? {
