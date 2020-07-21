@@ -94,6 +94,34 @@ where
     Ok(())
 }
 
+fn send_operations(
+    operations: &mut EditorOperationSender,
+    local_client: &mut Client,
+    remote_clients: &mut ConnectionWithClientCollection,
+) {
+    let mut had_remote_operation = false;
+    for (target_client, operation, content) in operations.drain() {
+        match target_client {
+            TargetClient::All => {
+                local_client.on_editor_operation(&operation, content);
+                remote_clients.queue_operation_all(&operation, content);
+                had_remote_operation = true;
+            }
+            TargetClient::Local => {
+                local_client.on_editor_operation(&operation, content);
+            }
+            TargetClient::Remote(handle) => {
+                remote_clients.queue_operation(handle, &operation, content);
+                had_remote_operation = true;
+            }
+        }
+    }
+
+    if had_remote_operation {
+        remote_clients.send_queued_operations();
+    }
+}
+
 fn run_server_with_client<I>(
     mut ui: I,
     mut connections: ConnectionWithClientCollection,
@@ -126,7 +154,7 @@ where
                     EditorLoop::Continue => (),
                     EditorLoop::Error(_e) => (),
                 }
-                // send operations
+                send_operations(&mut editor_operations, &mut local_client, &mut connections);
             }
             Event::Resize(w, h) => ui.resize(w, h)?,
             Event::Connection(stream_id) => {
@@ -134,7 +162,7 @@ where
                     ConnectionEvent::NewConnection => {
                         let handle = connections.accept_connection()?;
                         editor.on_client_joined(TargetClient::Remote(handle), &mut editor_operations);
-                        // send operations
+                        send_operations(&mut editor_operations, &mut local_client, &mut connections);
                     }
                     ConnectionEvent::Stream(_) => {
                         let handle = stream_id.try_into().unwrap();
@@ -152,7 +180,7 @@ where
                             }
                         }
 
-                        // send operations
+                        send_operations(&mut editor_operations, &mut local_client, &mut connections);
                     }
                 }
                 event_barrier.wait();
@@ -176,34 +204,6 @@ where
 // =========================================================================
 
 /*
-async fn send_operations_async(
-    operations: &mut EditorOperationSender,
-    local_client: &mut Client,
-    remote_clients: &mut ConnectionWithClientCollection,
-) {
-    let mut had_remote_operation = false;
-    for (target_client, operation, content) in operations.drain() {
-        match target_client {
-            TargetClient::All => {
-                local_client.on_editor_operation(&operation, content);
-                remote_clients.queue_operation_all(&operation, content);
-                had_remote_operation = true;
-            }
-            TargetClient::Local => {
-                local_client.on_editor_operation(&operation, content);
-            }
-            TargetClient::Remote(handle) => {
-                remote_clients.queue_operation(handle, &operation, content);
-                had_remote_operation = true;
-            }
-        }
-    }
-
-    if had_remote_operation {
-        remote_clients.send_queued_operations().await;
-    }
-}
-
 async fn run_server_with_client_async<E, I>(
     event_stream: E,
     mut ui: I,
