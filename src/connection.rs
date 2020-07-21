@@ -90,6 +90,12 @@ impl ConnectionWithClientCollection {
         }
     }
 
+    pub fn close_all_connections(&mut self) {
+        for connection in self.connections.iter().flatten() {
+            let _ = connection.0.get_ref().shutdown(Shutdown::Both);
+        }
+    }
+
     pub fn unregister_closed_connections(
         &mut self,
         event_manager: &mut EventManager,
@@ -169,6 +175,10 @@ impl ConnectionWithServer {
         P: AsRef<Path>,
     {
         Ok(Self(BufReader::new(UnixStream::connect(path)?)))
+    }
+
+    pub fn close(&self) {
+        let _ = self.0.get_ref().shutdown(Shutdown::Both);
     }
 
     pub fn register_connection(&self, event_manager: &mut EventManager) -> io::Result<()> {

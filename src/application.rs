@@ -225,6 +225,7 @@ where
         ui.draw(&local_client, error)?;
     }
 
+    connections.close_all_connections();
     ui.shutdown()?;
     Ok(())
 }
@@ -253,7 +254,11 @@ where
     'main_loop: for event in event_receiver.iter() {
         match event {
             Event::None => (),
-            Event::Key(key) => connection.send_key(key)?,
+            Event::Key(key) => {
+                if connection.send_key(key).is_err() {
+                    break;
+                }
+            }
             Event::Resize(w, h) => ui.resize(w, h)?,
             Event::Connection(_) => {
                 loop {
@@ -274,6 +279,7 @@ where
         ui.draw(&local_client, None)?;
     }
 
+    connection.close();
     ui.shutdown()?;
     Ok(())
 }

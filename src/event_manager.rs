@@ -68,13 +68,19 @@ mod windows {
         }
 
         pub fn register_listener(&mut self, listener: &UnixListener) -> io::Result<()> {
-            self.poll
-                .register(listener, EventFlag::IN, ConnectionEvent::NewConnection.raw_id())
+            self.poll.register(
+                listener,
+                EventFlag::IN | EventFlag::ERR,
+                ConnectionEvent::NewConnection.raw_id(),
+            )
         }
 
         pub fn register_stream(&mut self, stream: &UnixStream, id: usize) -> io::Result<()> {
-            self.poll
-                .register(stream, EventFlag::IN, ConnectionEvent::Stream(id).raw_id())
+            self.poll.register(
+                stream,
+                EventFlag::IN | EventFlag::RDHUP | EventFlag::HUP | EventFlag::ERR,
+                ConnectionEvent::Stream(id).raw_id(),
+            )
         }
 
         pub fn unregister_stream(&mut self, stream: &UnixStream) -> io::Result<()> {
@@ -86,7 +92,9 @@ mod windows {
             for event in self.events.iter() {
                 if self
                     .event_sender
-                    .send(Event::Connection(ConnectionEvent::from_raw_id(event.data())))
+                    .send(Event::Connection(ConnectionEvent::from_raw_id(
+                        event.data(),
+                    )))
                     .is_err()
                 {
                     return Ok(false);
