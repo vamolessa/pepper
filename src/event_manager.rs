@@ -12,7 +12,7 @@ impl StreamId {
     fn from_raw_id(id: u64) -> Self {
         match id {
             0 => StreamId::Listener,
-            id => StreamId::Stream(id as _),
+            id => StreamId::Stream(id as usize - 1),
         }
     }
 
