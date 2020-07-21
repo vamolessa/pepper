@@ -1,5 +1,5 @@
 use std::{
-    convert::TryFrom,
+    convert::TryInto,
     io::{self, BufReader, Read, Write},
     net::Shutdown,
     path::Path,
@@ -10,7 +10,7 @@ use uds_windows::{UnixListener, UnixStream};
 
 use bincode::Options;
 
-use crate::{event_manager::StreamId, editor::EditorOperation, event::Key};
+use crate::{editor::EditorOperation, event::Key, event_manager::ConnectionEvent};
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub enum TargetClient {
@@ -23,13 +23,13 @@ pub struct ConnectionWithClient(BufReader<UnixStream>, Vec<u8>);
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub struct ConnectionWithClientHandle(usize);
-impl TryFrom<StreamId> for ConnectionWithClientHandle {
+impl TryInto<ConnectionWithClientHandle> for ConnectionEvent {
     type Error = ();
 
-    fn try_from(stream_id: StreamId) -> Result<Self, ()> {
-        match stream_id {
-            StreamId::Listener => Err(()),
-            StreamId::Stream(id) => Ok(Self(id)),
+    fn try_into(self) -> Result<ConnectionWithClientHandle, ()> {
+        match self {
+            ConnectionEvent::NewConnection => Err(()),
+            ConnectionEvent::Stream(id) => Ok(ConnectionWithClientHandle(id)),
         }
     }
 }

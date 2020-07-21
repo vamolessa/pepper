@@ -7,23 +7,23 @@ use std::{
 use crate::event::Event;
 
 #[derive(Debug, Clone, Copy)]
-pub enum StreamId {
-    Listener,
+pub enum ConnectionEvent {
+    NewConnection,
     Stream(usize),
 }
 
-impl StreamId {
+impl ConnectionEvent {
     fn from_raw_id(id: u64) -> Self {
         match id {
-            0 => StreamId::Listener,
-            id => StreamId::Stream(id as usize - 1),
+            0 => ConnectionEvent::NewConnection,
+            id => ConnectionEvent::Stream(id as usize - 1),
         }
     }
 
     fn raw_id(&self) -> u64 {
         match self {
-            StreamId::Listener => 0,
-            StreamId::Stream(id) => *id as u64 + 1,
+            ConnectionEvent::NewConnection => 0,
+            ConnectionEvent::Stream(id) => *id as u64 + 1,
         }
     }
 }
@@ -69,12 +69,12 @@ mod windows {
 
         pub fn register_listener(&mut self, listener: &UnixListener) -> io::Result<()> {
             self.poll
-                .register(listener, EventFlag::IN, StreamId::Listener.raw_id())
+                .register(listener, EventFlag::IN, ConnectionEvent::NewConnection.raw_id())
         }
 
         pub fn register_stream(&mut self, stream: &UnixStream, id: usize) -> io::Result<()> {
             self.poll
-                .register(stream, EventFlag::IN, StreamId::Stream(id).raw_id())
+                .register(stream, EventFlag::IN, ConnectionEvent::Stream(id).raw_id())
         }
 
         pub fn unregister_listener(&mut self, listener: &UnixListener) -> io::Result<()> {
@@ -90,7 +90,7 @@ mod windows {
             for event in self.events.iter() {
                 if self
                     .event_sender
-                    .send(Event::Stream(StreamId::from_raw_id(event.data())))
+                    .send(Event::Connection(ConnectionEvent::from_raw_id(event.data())))
                     .is_err()
                 {
                     return Ok(false);

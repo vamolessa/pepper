@@ -1,7 +1,7 @@
 use std::{
-    convert::From,
+    convert::{From, TryInto},
     env, fs, io,
-    sync::{mpsc, Arc, Mutex, Barrier},
+    sync::{mpsc, Arc, Barrier, Mutex},
     thread,
 };
 
@@ -10,7 +10,7 @@ use crate::{
     connection::{ConnectionWithClientCollection, ConnectionWithServer, TargetClient},
     editor::{Editor, EditorLoop, EditorOperation, EditorOperationSender},
     event::Event,
-    event_manager::{run_event_loop, EventManager},
+    event_manager::{run_event_loop, ConnectionEvent, EventManager},
     mode::Mode,
 };
 
@@ -96,7 +96,7 @@ where
 
 fn run_server_with_client<I>(
     mut ui: I,
-    connections: ConnectionWithClientCollection,
+    mut connections: ConnectionWithClientCollection,
 ) -> Result<(), ApplicationError<I::Error>>
 where
     I: UI,
@@ -113,23 +113,48 @@ where
     bind_keys(&mut editor);
 
     let mut editor_operations = EditorOperationSender::new();
+    let mut received_keys = Vec::new();
 
     ui.init()?;
 
     for event in event_receiver.iter() {
         match event {
+            Event::None => (),
             Event::Key(key) => {
                 match editor.on_key(key, TargetClient::Local, &mut editor_operations) {
                     EditorLoop::Quit => break,
                     EditorLoop::Continue => (),
                     EditorLoop::Error(_e) => (),
                 }
+                // send operations
             }
             Event::Resize(w, h) => ui.resize(w, h)?,
-            Event::Stream(id) => {
-                // read from stream
+            Event::Connection(stream_id) => {
+                match stream_id {
+                    ConnectionEvent::NewConnection => {
+                        connections.accept_connection()?;
+                    }
+                    ConnectionEvent::Stream(_) => {
+                        let handle = stream_id.try_into().unwrap();
+                        while let Some(key) = connections.receive_key(handle)? {
+                            received_keys.push(key);
+                        }
+
+                        for key in received_keys.drain(..) {
+                            match editor.on_key(key, TargetClient::Local, &mut editor_operations) {
+                                EditorLoop::Quit => {
+                                    connections.close_connection(handle);
+                                }
+                                EditorLoop::Continue => (),
+                                EditorLoop::Error(_e) => (),
+                            }
+                        }
+
+                        // send operations
+                    }
+                }
+                event_barrier.wait();
             }
-            _ => (),
         }
     }
 
