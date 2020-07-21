@@ -179,15 +179,18 @@ where
                     ConnectionEvent::StreamIn(stream_id) => {
                         let handle = stream_id.into();
                         loop {
+                            dbg!("stream in event loop");
                             match connections.receive_key(handle) {
                                 Ok(Some(key)) => received_keys.push(key),
                                 Ok(None) => break,
-                                Err(_) => {
+                                Err(e) => {
+                                    dbg!("stream in event + error", e);
                                     connections.close_connection(handle);
                                     editor.on_client_left(
                                         TargetClient::Remote(handle),
                                         &mut editor_operations,
                                     );
+                                    break;
                                 }
                             }
                         }
@@ -195,6 +198,7 @@ where
                         for key in received_keys.drain(..) {
                             match editor.on_key(key, TargetClient::Local, &mut editor_operations) {
                                 EditorLoop::Quit => {
+                                    dbg!("stream in event + remote quit");
                                     connections.close_connection(handle);
                                     editor_operations
                                         .send(TargetClient::All, EditorOperation::InputKeep(0));
