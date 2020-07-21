@@ -130,10 +130,12 @@ where
     I: UI,
 {
     let (event_sender, event_receiver) = mpsc::channel();
-    let event_manager = EventManager::new(event_sender.clone(), 8)?;
+    let mut event_manager = EventManager::new(event_sender.clone(), 8)?;
+    connections.register_listener(&mut event_manager)?;
+
     let event_manager = Arc::new(Mutex::new(event_manager));
     let event_barrier = Arc::new(Barrier::new(2));
-    let _ = run_event_loop(event_manager, event_barrier.clone());
+    let _ = run_event_loop(event_manager.clone(), event_barrier.clone());
     let _ = I::run_event_loop(event_sender);
 
     let mut local_client = Client::new();
@@ -146,48 +148,81 @@ where
     ui.init()?;
 
     for event in event_receiver.iter() {
+        let mut error = None;
+
         match event {
             Event::None => (),
             Event::Key(key) => {
                 match editor.on_key(key, TargetClient::Local, &mut editor_operations) {
                     EditorLoop::Quit => break,
                     EditorLoop::Continue => (),
-                    EditorLoop::Error(_e) => (),
+                    EditorLoop::Error(e) => error = Some(e),
                 }
                 send_operations(&mut editor_operations, &mut local_client, &mut connections);
             }
             Event::Resize(w, h) => ui.resize(w, h)?,
             Event::Connection(stream_id) => {
+                let mut event_manager = event_manager.lock().unwrap();
                 match stream_id {
                     ConnectionEvent::NewConnection => {
-                        let handle = connections.accept_connection()?;
-                        editor.on_client_joined(TargetClient::Remote(handle), &mut editor_operations);
-                        send_operations(&mut editor_operations, &mut local_client, &mut connections);
+                        let handle = connections.accept_connection(&mut event_manager)?;
+                        editor
+                            .on_client_joined(TargetClient::Remote(handle), &mut editor_operations);
+                        send_operations(
+                            &mut editor_operations,
+                            &mut local_client,
+                            &mut connections,
+                        );
                     }
                     ConnectionEvent::Stream(_) => {
                         let handle = stream_id.try_into().unwrap();
-                        while let Some(key) = connections.receive_key(handle)? {
-                            received_keys.push(key);
+                        loop {
+                            match connections.receive_key(handle) {
+                                Ok(Some(key)) => received_keys.push(key),
+                                Ok(None) => break,
+                                Err(_) => {
+                                    connections.close_connection(handle);
+                                    editor.on_client_left(
+                                        TargetClient::Remote(handle),
+                                        &mut editor_operations,
+                                    );
+                                }
+                            }
                         }
 
                         for key in received_keys.drain(..) {
                             match editor.on_key(key, TargetClient::Local, &mut editor_operations) {
                                 EditorLoop::Quit => {
                                     connections.close_connection(handle);
+                                    editor_operations
+                                        .send(TargetClient::All, EditorOperation::InputKeep(0));
+                                    editor_operations.send(
+                                        TargetClient::All,
+                                        EditorOperation::Mode(Mode::default()),
+                                    );
+                                    editor.on_client_left(
+                                        TargetClient::Remote(handle),
+                                        &mut editor_operations,
+                                    );
                                 }
                                 EditorLoop::Continue => (),
-                                EditorLoop::Error(_e) => (),
+                                EditorLoop::Error(e) => error = Some(e),
                             }
                         }
 
-                        send_operations(&mut editor_operations, &mut local_client, &mut connections);
+                        send_operations(
+                            &mut editor_operations,
+                            &mut local_client,
+                            &mut connections,
+                        );
                     }
                 }
+                connections.unregister_closed_connections(&mut event_manager)?;
                 event_barrier.wait();
             }
         }
 
-        ui.draw(&local_client, None)?;
+        ui.draw(&local_client, error)?;
     }
 
     ui.shutdown()?;

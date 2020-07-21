@@ -77,10 +77,6 @@ mod windows {
                 .register(stream, EventFlag::IN, ConnectionEvent::Stream(id).raw_id())
         }
 
-        pub fn unregister_listener(&mut self, listener: &UnixListener) -> io::Result<()> {
-            self.poll.deregister(listener)
-        }
-
         pub fn unregister_stream(&mut self, stream: &UnixStream) -> io::Result<()> {
             self.poll.deregister(stream)
         }
