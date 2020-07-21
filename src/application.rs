@@ -1,4 +1,9 @@
-use std::{convert::From, env, fs, io, sync::mpsc, thread};
+use std::{
+    convert::From,
+    env, fs, io,
+    sync::{mpsc, Arc, Mutex, Barrier},
+    thread,
+};
 
 use crate::{
     client::Client,
@@ -98,7 +103,9 @@ where
 {
     let (event_sender, event_receiver) = mpsc::channel();
     let event_manager = EventManager::new(event_sender.clone(), 8)?;
-    let _ = run_event_loop(event_manager);
+    let event_manager = Arc::new(Mutex::new(event_manager));
+    let event_barrier = Arc::new(Barrier::new(2));
+    let _ = run_event_loop(event_manager, event_barrier.clone());
     let _ = I::run_event_loop(event_sender);
 
     let mut local_client = Client::new();
@@ -166,28 +173,6 @@ async fn send_operations_async(
     if had_remote_operation {
         remote_clients.send_queued_operations().await;
     }
-}
-
-pub async fn run_async<E, I>(event_stream: E, ui: I) -> Result<(), ApplicationError<I::Error>>
-where
-    E: FusedStream<Item = Event>,
-    I: UI,
-{
-    let session_socket_path = env::current_dir()?.join("session_socket");
-    if let Ok(connection) = ConnectionWithServer::connect(&session_socket_path) {
-        run_client_async(event_stream, ui, connection).await?;
-    } else if let Ok(listener) = ClientListener::listen(&session_socket_path) {
-        run_server_with_client_async(event_stream, ui, listener).await?;
-        fs::remove_file(session_socket_path)?;
-    } else if let Ok(()) = fs::remove_file(&session_socket_path) {
-        let listener = ClientListener::listen(&session_socket_path)?;
-        run_server_with_client_async(event_stream, ui, listener).await?;
-        fs::remove_file(session_socket_path)?;
-    } else {
-        return Err(ApplicationError::CouldNotConnectToOrStartServer);
-    }
-
-    Ok(())
 }
 
 async fn run_server_with_client_async<E, I>(

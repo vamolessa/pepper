@@ -1,4 +1,8 @@
-use std::{io, thread};
+use std::{
+    io,
+    sync::{Arc, Barrier, Mutex},
+    thread,
+};
 
 use crate::event::Event;
 
@@ -24,9 +28,14 @@ impl StreamId {
     }
 }
 
-pub fn run_event_loop(mut event_manager: EventManager) -> thread::JoinHandle<io::Result<()>> {
+pub fn run_event_loop(
+    event_manager: Arc<Mutex<EventManager>>,
+    barrier: Barrier,
+) -> thread::JoinHandle<io::Result<()>> {
     thread::spawn(move || {
-        while event_manager.poll()? {}
+        while event_manager.lock().unwrap().poll()? {
+            barrier.wait();
+        }
         Ok(())
     })
 }

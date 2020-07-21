@@ -32,7 +32,6 @@ impl TryFrom<StreamId> for ConnectionWithClientHandle {
             StreamId::Stream(id) => Ok(Self(id)),
         }
     }
-
 }
 
 pub struct ConnectionWithClientCollection {
