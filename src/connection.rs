@@ -1,6 +1,6 @@
 use std::{
     convert::Into,
-    io::{self, BufReader, Write},
+    io::{self, Read, Write},
     net::Shutdown,
     path::Path,
 };
@@ -16,6 +16,30 @@ use crate::{
     event_manager::{EventManager, StreamId},
 };
 
+pub struct RawBuf {
+    buf: Vec<u8>,
+    len: usize,
+}
+impl RawBuf {
+    pub fn new() -> Self {
+        let mut buf = Vec::with_capacity(1024);
+        buf.resize(buf.capacity(), 0);
+        Self { buf, len: 0 }
+    }
+
+    pub fn set_len(&mut self, len: usize) {
+        self.len = len;
+    }
+
+    pub fn read_slice(&self) -> &[u8] {
+        &self.buf[..self.len]
+    }
+
+    pub fn write_slice(&mut self) -> &mut [u8] {
+        &mut self.buf[self.len..]
+    }
+}
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum TargetClient {
     All,
@@ -23,7 +47,11 @@ pub enum TargetClient {
     Remote(ConnectionWithClientHandle),
 }
 
-pub struct ConnectionWithClient(UnixStream, Vec<u8>);
+pub struct ConnectionWithClient {
+    stream: UnixStream,
+    write_buf: Vec<u8>,
+    read_buf: RawBuf,
+}
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct ConnectionWithClientHandle(usize);
@@ -68,38 +96,37 @@ impl ConnectionWithClientCollection {
     ) -> io::Result<ConnectionWithClientHandle> {
         let (stream, _address) = self.listener.accept()?;
         stream.set_nonblocking(true)?;
-        //let connection = ConnectionWithClient(BufReader::with_capacity(128, stream), Vec::new());
-        let connection = ConnectionWithClient(stream, Vec::new());
+        let connection = ConnectionWithClient {
+            stream,
+            write_buf: Vec::with_capacity(8 * 1024),
+            read_buf: RawBuf::new(),
+        };
 
         for (i, slot) in self.connections.iter_mut().enumerate() {
             if slot.is_none() {
                 let handle = ConnectionWithClientHandle(i);
-                //event_manager.register_stream(connection.0.get_ref(), i)?;
-                event_manager.register_stream(&connection.0, handle.into())?;
+                event_manager.register_stream(&connection.stream, handle.into())?;
                 *slot = Some(connection);
                 return Ok(handle);
             }
         }
 
         let handle = ConnectionWithClientHandle(self.connections.len());
-        //event_manager.register_stream(connection.0.get_ref(), handle.0)?;
-        event_manager.register_stream(&connection.0, handle.into())?;
+        event_manager.register_stream(&connection.stream, handle.into())?;
         self.connections.push(Some(connection));
         Ok(handle)
     }
 
     pub fn close_connection(&mut self, handle: ConnectionWithClientHandle) {
         if let Some(connection) = &self.connections[handle.0] {
-            //let _ = connection.0.get_ref().shutdown(Shutdown::Both);
-            let _ = &connection.0.shutdown(Shutdown::Both);
+            let _ = &connection.stream.shutdown(Shutdown::Both);
             self.closed_connection_indexes.push(handle.0);
         }
     }
 
     pub fn close_all_connections(&mut self) {
         for connection in self.connections.iter().flatten() {
-            //let _ = connection.0.get_ref().shutdown(Shutdown::Both);
-            let _ = &connection.0.shutdown(Shutdown::Both);
+            let _ = &connection.stream.shutdown(Shutdown::Both);
         }
     }
 
@@ -109,16 +136,15 @@ impl ConnectionWithClientCollection {
     ) -> io::Result<()> {
         for i in self.closed_connection_indexes.drain(..) {
             if let Some(connection) = self.connections[i].take() {
-                //event_manager.unregister_stream(connection.0.get_ref())?;
-                event_manager.unregister_stream(&connection.0)?;
+                event_manager.unregister_stream(&connection.stream)?;
             }
         }
 
         Ok(())
     }
 
-    fn serialize_operation(mut buf: &mut Vec<u8>, operation: &EditorOperation, content: &str) {
-        let _ = bincode_serializer().serialize_into(&mut buf, operation);
+    fn serialize_operation(buf: &mut Vec<u8>, operation: &EditorOperation, content: &str) {
+        let _ = bincode_serializer().serialize_into(buf, operation);
         if let EditorOperation::Content = operation {
             //let _ = bincode_serializer().serialize_into(&mut buf, content);
         }
@@ -131,13 +157,13 @@ impl ConnectionWithClientCollection {
         content: &str,
     ) {
         if let Some(connection) = &mut self.connections[handle.0] {
-            Self::serialize_operation(&mut connection.1, operation, content);
+            Self::serialize_operation(&mut connection.write_buf, operation, content);
         }
     }
 
     pub fn queue_operation_all(&mut self, operation: &EditorOperation, content: &str) {
         for connection in self.connections.iter_mut().flatten() {
-            Self::serialize_operation(&mut connection.1, operation, content);
+            Self::serialize_operation(&mut connection.write_buf, operation, content);
         }
     }
 
@@ -149,9 +175,9 @@ impl ConnectionWithClientCollection {
             .enumerate()
             .flat_map(|(i, c)| c.as_mut().map(|c| (i, c)))
         {
-            if connection.1.len() > 0 {
-                //if connection.0.get_mut().write_all(&connection.1[..]).is_err() {
-                if connection.0.write_all(&connection.1[..]).is_err() {
+            let write_slice = &connection.write_buf[..];
+            if write_slice.len() > 0 {
+                if connection.stream.write_all(write_slice).is_err() {
                     self.error_indexes.push(i);
                 }
             }
@@ -165,19 +191,23 @@ impl ConnectionWithClientCollection {
         std::mem::swap(&mut self.error_indexes, &mut error_indexes);
 
         for connection in self.connections.iter_mut().flatten() {
-            connection.1.clear();
+            connection.write_buf.clear();
         }
     }
 
     pub fn receive_key(&mut self, handle: ConnectionWithClientHandle) -> io::Result<Option<Key>> {
         match &mut self.connections[handle.0] {
-            Some(connection) => deserialize(&mut connection.0),
+            Some(connection) => deserialize(&mut connection.stream, &mut connection.read_buf),
             None => Ok(None),
         }
     }
 }
 
-pub struct ConnectionWithServer(UnixStream);
+pub struct ConnectionWithServer {
+    stream: UnixStream,
+    read_buf: RawBuf,
+}
+
 impl ConnectionWithServer {
     pub fn connect<P>(path: P) -> io::Result<Self>
     where
@@ -185,27 +215,29 @@ impl ConnectionWithServer {
     {
         let stream = UnixStream::connect(path)?;
         stream.set_nonblocking(true)?;
-        //Ok(Self(BufReader::new(stream)))
-        Ok(Self(stream))
+        Ok(Self {
+            stream,
+            read_buf: RawBuf::new(),
+        })
     }
 
     pub fn close(&self) {
-        //let _ = self.0.get_ref().shutdown(Shutdown::Both);
-        let _ = &self.0.shutdown(Shutdown::Both);
+        let _ = &self.stream.shutdown(Shutdown::Both);
     }
 
     pub fn register_connection(&self, event_manager: &mut EventManager) -> io::Result<()> {
-        //event_manager.register_stream(self.0.get_ref(), 0)
-        event_manager.register_stream(&self.0, StreamId(0))
+        event_manager.register_stream(&self.stream, StreamId(0))
     }
 
     pub fn send_key(&mut self, key: Key) -> io::Result<()> {
-        //serialize(self.0.get_mut(), &key)
-        serialize(&mut self.0, &key)
+        match bincode_serializer().serialize_into(&mut self.stream, &key) {
+            Ok(()) => Ok(()),
+            Err(error) => Err(io::Error::new(io::ErrorKind::Other, error)),
+        }
     }
 
     pub fn receive_operation(&mut self) -> io::Result<Option<EditorOperation>> {
-        deserialize(&mut self.0)
+        deserialize(&mut self.stream, &mut self.read_buf)
     }
 }
 
@@ -215,39 +247,16 @@ fn bincode_serializer() -> impl Options {
         .allow_trailing_bytes()
 }
 
-fn serialize<T>(mut writer: &mut UnixStream, value: &T) -> io::Result<()>
-where
-    T: serde::ser::Serialize,
-{
-    match bincode_serializer().serialize_into(&mut writer, value) {
-        Ok(()) => Ok(()),
-        Err(error) => Err(io::Error::new(io::ErrorKind::Other, error)),
-    }
-}
-
-fn deserialize<T>(mut reader: &mut UnixStream) -> io::Result<Option<T>>
+fn deserialize<T>(reader: &mut UnixStream, buf: &mut RawBuf) -> io::Result<Option<T>>
 where
     T: serde::de::DeserializeOwned,
 {
-    /*
-    let buffer = reader.buffer();
-    let deserializer = bincode_serializer().with_limit(buffer.len() as _);
-    match deserializer.deserialize_from(&mut reader) {
-        Ok(value) => Ok(Some(value)),
-        Err(error) => match error.as_ref() {
-            bincode::ErrorKind::SizeLimit => Ok(None),
-            _ => Err(io::Error::new(io::ErrorKind::Other, error)),
-        },
-    }
-    */
-
-    use io::Read;
-    let mut buf = [0; 8 * 1024];
-    let byte_count = match reader.read(&mut buf) {
-        Ok(bc) => bc,
+    let start_index = buf.read_slice().len();
+    match reader.read(buf.write_slice()) {
+        Ok(len) => buf.set_len(start_index + len),
         Err(e) => match e.kind() {
             io::ErrorKind::WouldBlock => {
-                dbg!("would block");
+                buf.set_len(0);
                 return Ok(None);
             }
             _ => {
@@ -255,15 +264,15 @@ where
                 return Err(e);
             }
         },
-    };
-    if byte_count == 0 {
+    }
+
+    let read_slice = buf.read_slice();
+    if read_slice.len() == 0 {
         return Ok(None);
     }
 
-    let buf = &buf[..byte_count];
-    dbg!(buf);
-    let deserializer = bincode_serializer().with_limit(buf.len() as _);
-    match deserializer.deserialize_from(buf) {
+    let deserializer = bincode_serializer().with_limit(read_slice.len() as _);
+    match deserializer.deserialize_from(read_slice) {
         Ok(value) => Ok(Some(value)),
         Err(error) => match error.as_ref() {
             bincode::ErrorKind::SizeLimit => Ok(None),
