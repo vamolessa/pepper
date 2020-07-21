@@ -193,6 +193,7 @@ where
                                     break;
                                 }
                             }
+                            break;
                         }
 
                         for key in received_keys.drain(..) {
@@ -262,6 +263,7 @@ where
             Event::None => (),
             Event::Key(key) => {
                 if connection.send_key(key).is_err() {
+                    dbg!("error sending key");
                     break;
                 }
             }
@@ -269,13 +271,20 @@ where
             Event::Connection(event) => {
                 match event {
                     ConnectionEvent::NewConnection => (),
-                    ConnectionEvent::StreamError(_) => break,
+                    ConnectionEvent::StreamError(_) => {
+                        dbg!("connection error");
+                        break;
+                    }
                     ConnectionEvent::StreamIn(_) => {
                         loop {
+                            dbg!("receive operation loop");
                             match connection.receive_operation() {
                                 Ok(Some(operation)) => received_operations.push(operation),
                                 Ok(None) => break,
-                                Err(_) => break 'main_loop,
+                                Err(_) => {
+                                    dbg!("error reading operation");
+                                    break 'main_loop;
+                                }
                             }
                         }
 

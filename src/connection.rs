@@ -16,7 +16,7 @@ use crate::{
     event_manager::{EventManager, StreamId},
 };
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum TargetClient {
     All,
     Local,
@@ -25,7 +25,7 @@ pub enum TargetClient {
 
 pub struct ConnectionWithClient(UnixStream, Vec<u8>);
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct ConnectionWithClientHandle(usize);
 impl Into<ConnectionWithClientHandle> for StreamId {
     fn into(self) -> ConnectionWithClientHandle {
@@ -67,6 +67,7 @@ impl ConnectionWithClientCollection {
         event_manager: &mut EventManager,
     ) -> io::Result<ConnectionWithClientHandle> {
         let (stream, _address) = self.listener.accept()?;
+        stream.set_nonblocking(true)?;
         //let connection = ConnectionWithClient(BufReader::with_capacity(128, stream), Vec::new());
         let connection = ConnectionWithClient(stream, Vec::new());
 
@@ -182,8 +183,10 @@ impl ConnectionWithServer {
     where
         P: AsRef<Path>,
     {
-        //Ok(Self(BufReader::new(UnixStream::connect(path)?)))
-        Ok(Self(UnixStream::connect(path)?))
+        let stream = UnixStream::connect(path)?;
+        stream.set_nonblocking(true)?;
+        //Ok(Self(BufReader::new(stream)))
+        Ok(Self(stream))
     }
 
     pub fn close(&self) {
@@ -240,19 +243,34 @@ where
 
     use io::Read;
     let mut buf = [0; 8 * 1024];
-    let byte_count = reader.read(&mut buf)?;
+    let byte_count = match reader.read(&mut buf) {
+        Ok(bc) => bc,
+        Err(e) => match e.kind() {
+            io::ErrorKind::WouldBlock => {
+                dbg!("would block");
+                return Ok(None);
+            }
+            _ => {
+                dbg!(&e);
+                return Err(e);
+            }
+        },
+    };
     if byte_count == 0 {
-        return Err(io::Error::from(io::ErrorKind::UnexpectedEof));
+        return Ok(None);
     }
 
     let buf = &buf[..byte_count];
-
+    dbg!(buf);
     let deserializer = bincode_serializer().with_limit(buf.len() as _);
     match deserializer.deserialize_from(buf) {
         Ok(value) => Ok(Some(value)),
         Err(error) => match error.as_ref() {
             bincode::ErrorKind::SizeLimit => Ok(None),
-            _ => Err(io::Error::new(io::ErrorKind::Other, error)),
+            e => {
+                dbg!(&e);
+                Err(io::Error::new(io::ErrorKind::Other, error))
+            }
         },
     }
 }
