@@ -229,10 +229,52 @@ where
     Ok(())
 }
 
-fn run_client<I>(ui: I, connection: ConnectionWithServer) -> Result<(), ApplicationError<I::Error>>
+fn run_client<I>(
+    mut ui: I,
+    mut connection: ConnectionWithServer,
+) -> Result<(), ApplicationError<I::Error>>
 where
     I: UI,
 {
+    let (event_sender, event_receiver) = mpsc::channel();
+    let mut event_manager = EventManager::new(event_sender.clone(), 8)?;
+    connection.register_connection(&mut event_manager)?;
+
+    let event_manager = Arc::new(Mutex::new(event_manager));
+    let event_barrier = Arc::new(Barrier::new(2));
+    let _ = run_event_loop(event_manager.clone(), event_barrier.clone());
+    let _ = I::run_event_loop(event_sender);
+
+    let mut local_client = Client::new();
+    let mut received_operations = Vec::new();
+
+    ui.init()?;
+
+    'main_loop: for event in event_receiver.iter() {
+        match event {
+            Event::None => (),
+            Event::Key(key) => connection.send_key(key)?,
+            Event::Resize(w, h) => ui.resize(w, h)?,
+            Event::Connection(_) => {
+                loop {
+                    match connection.receive_operation() {
+                        Ok(Some(operation)) => received_operations.push(operation),
+                        Ok(None) => break,
+                        Err(_) => break 'main_loop,
+                    }
+                }
+
+                for operation in received_operations.drain(..) {
+                    local_client.on_editor_operation(&operation, "");
+                }
+                event_barrier.wait();
+            }
+        }
+
+        ui.draw(&local_client, None)?;
+    }
+
+    ui.shutdown()?;
     Ok(())
 }
 

@@ -171,6 +171,10 @@ impl ConnectionWithServer {
         Ok(Self(BufReader::new(UnixStream::connect(path)?)))
     }
 
+    pub fn register_connection(&self, event_manager: &mut EventManager) -> io::Result<()> {
+        event_manager.register_stream(self.0.get_ref(), 0)
+    }
+
     pub fn send_key(&mut self, key: Key) -> io::Result<()> {
         serialize(self.0.get_mut(), &key)
     }
