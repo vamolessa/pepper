@@ -89,17 +89,15 @@ mod windows {
 
         pub fn poll(&mut self) -> io::Result<bool> {
             self.poll.poll(&mut self.events, None)?;
+            dbg!(self.events.len());
             for event in self.events.iter() {
-                if self
-                    .event_sender
-                    .send(Event::Connection(ConnectionEvent::from_raw_id(
-                        event.data(),
-                    )))
-                    .is_err()
-                {
+                dbg!(event.data(), event.flags());
+                let event = ConnectionEvent::from_raw_id(event.data());
+                if self.event_sender.send(Event::Connection(event)).is_err() {
                     return Ok(false);
                 }
             }
+            self.events.clear();
             Ok(true)
         }
     }
