@@ -1,6 +1,6 @@
 use std::{
     convert::Into,
-    io::{self, Read, Write},
+    io::{self, Cursor, Read, Write},
     net::Shutdown,
     path::Path,
 };
@@ -16,27 +16,60 @@ use crate::{
     event_manager::{EventManager, StreamId},
 };
 
-pub struct RawBuf {
+struct ReadBuf {
     buf: Vec<u8>,
     len: usize,
+    position: usize,
 }
-impl RawBuf {
+
+impl ReadBuf {
     pub fn new() -> Self {
-        let mut buf = Vec::with_capacity(1024);
+        let mut buf = Vec::with_capacity(2 * 1024);
         buf.resize(buf.capacity(), 0);
-        Self { buf, len: 0 }
+        Self {
+            buf,
+            len: 0,
+            position: 0,
+        }
     }
 
-    pub fn set_len(&mut self, len: usize) {
-        self.len = len;
+    pub fn slice(&self) -> &[u8] {
+        &self.buf[self.position..self.len]
     }
 
-    pub fn read_slice(&self) -> &[u8] {
-        &self.buf[..self.len]
+    pub fn seek(&mut self, offset: usize) {
+        self.position += offset;
+        if self.position == self.len {
+            self.len = 0;
+            self.position = 0;
+        }
     }
 
-    pub fn write_slice(&mut self) -> &mut [u8] {
-        &mut self.buf[self.len..]
+    pub fn read_into<R>(&mut self, mut reader: R) -> io::Result<usize>
+    where
+        R: Read,
+    {
+        let mut total_bytes = 0;
+        loop {
+            match reader.read(&mut self.buf[self.len..]) {
+                Ok(len) => {
+                    total_bytes += len;
+                    self.len += len;
+
+                    if self.len < self.buf.len() {
+                        break;
+                    }
+
+                    self.buf.resize(self.buf.len() * 2, 0);
+                }
+                Err(e) => match e.kind() {
+                    io::ErrorKind::WouldBlock => break,
+                    _ => return Err(e),
+                },
+            }
+        }
+
+        Ok(total_bytes)
     }
 }
 
@@ -50,7 +83,7 @@ pub enum TargetClient {
 pub struct ConnectionWithClient {
     stream: UnixStream,
     write_buf: Vec<u8>,
-    read_buf: RawBuf,
+    read_buf: ReadBuf,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -99,7 +132,7 @@ impl ConnectionWithClientCollection {
         let connection = ConnectionWithClient {
             stream,
             write_buf: Vec::with_capacity(8 * 1024),
-            read_buf: RawBuf::new(),
+            read_buf: ReadBuf::new(),
         };
 
         for (i, slot) in self.connections.iter_mut().enumerate() {
@@ -143,10 +176,10 @@ impl ConnectionWithClientCollection {
         Ok(())
     }
 
-    fn serialize_operation(buf: &mut Vec<u8>, operation: &EditorOperation, content: &str) {
-        let _ = bincode_serializer().serialize_into(buf, operation);
+    fn serialize_operation(mut buf: &mut Vec<u8>, operation: &EditorOperation, content: &str) {
+        let _ = bincode_serializer().serialize_into(&mut buf, operation);
         if let EditorOperation::Content = operation {
-            //let _ = bincode_serializer().serialize_into(&mut buf, content);
+            let _ = bincode_serializer().serialize_into(&mut buf, content);
         }
     }
 
@@ -205,7 +238,7 @@ impl ConnectionWithClientCollection {
 
 pub struct ConnectionWithServer {
     stream: UnixStream,
-    read_buf: RawBuf,
+    read_buf: ReadBuf,
 }
 
 impl ConnectionWithServer {
@@ -217,7 +250,7 @@ impl ConnectionWithServer {
         stream.set_nonblocking(true)?;
         Ok(Self {
             stream,
-            read_buf: RawBuf::new(),
+            read_buf: ReadBuf::new(),
         })
     }
 
@@ -236,8 +269,17 @@ impl ConnectionWithServer {
         }
     }
 
-    pub fn receive_operation(&mut self) -> io::Result<Option<EditorOperation>> {
-        deserialize(&mut self.stream, &mut self.read_buf)
+    pub fn receive_operation(&mut self) -> io::Result<Option<(EditorOperation, String)>> {
+        match deserialize(&mut self.stream, &mut self.read_buf)? {
+            None => Ok(None),
+            Some(EditorOperation::Content) => {
+                match deserialize(&mut self.stream, &mut self.read_buf)? {
+                    Some(content) => Ok(Some((EditorOperation::Content, content))),
+                    None => Ok(None),
+                }
+            }
+            Some(operation) => Ok(Some((operation, String::new()))),
+        }
     }
 }
 
@@ -247,39 +289,28 @@ fn bincode_serializer() -> impl Options {
         .allow_trailing_bytes()
 }
 
-fn deserialize<T>(reader: &mut UnixStream, buf: &mut RawBuf) -> io::Result<Option<T>>
+fn deserialize<T>(mut reader: &mut UnixStream, buf: &mut ReadBuf) -> io::Result<Option<T>>
 where
     T: serde::de::DeserializeOwned,
 {
-    let start_index = buf.read_slice().len();
-    match reader.read(buf.write_slice()) {
-        Ok(len) => buf.set_len(start_index + len),
-        Err(e) => match e.kind() {
-            io::ErrorKind::WouldBlock => {
-                buf.set_len(0);
-                return Ok(None);
+    loop {
+        let slice = buf.slice();
+        let deserializer = bincode_serializer().with_limit(slice.len() as _);
+        let mut cursor = Cursor::new(slice);
+        match deserializer.deserialize_from(&mut cursor) {
+            Ok(value) => {
+                let position = cursor.position() as _;
+                buf.seek(position);
+                break Ok(Some(value));
             }
-            _ => {
-                dbg!(&e);
-                return Err(e);
-            }
-        },
-    }
+            Err(error) => match error.as_ref() {
+                bincode::ErrorKind::SizeLimit => (),
+                _ => break Err(io::Error::new(io::ErrorKind::Other, error)),
+            },
+        }
 
-    let read_slice = buf.read_slice();
-    if read_slice.len() == 0 {
-        return Ok(None);
-    }
-
-    let deserializer = bincode_serializer().with_limit(read_slice.len() as _);
-    match deserializer.deserialize_from(read_slice) {
-        Ok(value) => Ok(Some(value)),
-        Err(error) => match error.as_ref() {
-            bincode::ErrorKind::SizeLimit => Ok(None),
-            e => {
-                dbg!(&e);
-                Err(io::Error::new(io::ErrorKind::Other, error))
-            }
-        },
+        if buf.read_into(&mut reader)? == 0 {
+            break Ok(None);
+        }
     }
 }

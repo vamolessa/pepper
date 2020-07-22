@@ -288,8 +288,8 @@ where
                             }
                         }
 
-                        for operation in received_operations.drain(..) {
-                            local_client.on_editor_operation(&operation, "");
+                        for (operation, content) in received_operations.drain(..) {
+                            local_client.on_editor_operation(&operation, &content[..]);
                         }
                     }
                 }
@@ -304,118 +304,3 @@ where
     ui.shutdown()?;
     Ok(())
 }
-
-// =========================================================================
-
-/*
-async fn run_server_with_client_async<E, I>(
-    event_stream: E,
-    mut ui: I,
-    listener: ClientListener,
-) -> Result<(), ApplicationError<I::Error>>
-where
-    E: FusedStream<Item = Event>,
-    I: UI,
-{
-    ui.init().map_err(|e| ApplicationError::UI(e))?;
-
-    let mut local_client = Client::new();
-    let mut editor = Editor::new();
-    bind_keys(&mut editor);
-
-    let mut client_connections = ConnectionWithClientCollection::new();
-    let mut client_key_streams = ClientKeyStreams::new();
-    let mut editor_operations = EditorOperationSender::new();
-
-    let listen_future = listener.accept().fuse();
-    pin_mut!(event_stream, listen_future);
-    loop {
-        let mut error = None;
-
-        select_biased! {
-            event = event_stream.select_next_some() => {
-                match event {
-                    Event::Key(key) => {
-                        match editor.on_key(key, TargetClient::Local, &mut editor_operations) {
-                            EditorLoop::Quit => break,
-                            EditorLoop::Continue => (),
-                            EditorLoop::Error(e) => error = Some(e),
-                        }
-                        send_operations_async(&mut editor_operations, &mut local_client, &mut client_connections).await;
-                    },
-                    Event::Resize(w, h) => ui.resize(w, h).map_err(|e| ApplicationError::UI(e))?,
-                    _ => (),
-                }
-            },
-            (handle, key) = client_key_streams.select_next_some() => {
-                match editor.on_key(key, TargetClient::Remote(handle), &mut editor_operations) {
-                    EditorLoop::Quit => {
-                        client_connections.close(handle);
-                        editor_operations.send(TargetClient::All, EditorOperation::InputKeep(0));
-                        editor_operations.send(TargetClient::All, EditorOperation::Mode(Mode::default()));
-                        editor.on_client_left(TargetClient::Remote(handle), &mut editor_operations);
-                    }
-                    EditorLoop::Continue => (),
-                    EditorLoop::Error(e) => error = Some(e),
-                }
-                send_operations_async(&mut editor_operations, &mut local_client, &mut client_connections).await;
-            }
-            connection = listen_future => {
-                listen_future.set(listener.accept().fuse());
-                let (handle, key_reader) = client_connections.open(connection?);
-                client_key_streams.push(ClientKeyStreams::from_reader(key_reader));
-                editor.on_client_joined(TargetClient::Remote(handle), &mut editor_operations);
-                send_operations_async(&mut editor_operations, &mut local_client, &mut client_connections).await;
-            },
-        }
-
-        ui.draw(&local_client, error)
-            .map_err(|e| ApplicationError::UI(e))?;
-    }
-
-    ui.shutdown().map_err(|e| ApplicationError::UI(e))?;
-    Ok(())
-}
-
-async fn run_client_async<E, I>(
-    event_stream: E,
-    mut ui: I,
-    connection: ConnectionWithServer,
-) -> Result<(), ApplicationError<I::Error>>
-where
-    E: FusedStream<Item = Event>,
-    I: UI,
-{
-    ui.init().map_err(|e| ApplicationError::UI(e))?;
-
-    let mut local_client = Client::new();
-    let (operation_reader, mut key_writer) = connection.split();
-    let mut operation_stream = operation_reader.to_stream();
-
-    pin_mut!(event_stream);
-    loop {
-        select_biased! {
-            result = operation_stream.next() => {
-                if let Some((operation, content)) = result {
-                    local_client.on_editor_operation(&operation, &content[..]);
-                } else {
-                    break;
-                }
-            }
-            event = event_stream.select_next_some() => {
-                match event {
-                    Event::Key(key) => key_writer.send(key).await?,
-                    Event::Resize(w, h) => ui.resize(w, h).map_err(|e| ApplicationError::UI(e))?,
-                    _ => (),
-                }
-            },
-        }
-
-        ui.draw(&local_client, None)
-            .map_err(|e| ApplicationError::UI(e))?;
-    }
-
-    ui.shutdown().map_err(|e| ApplicationError::UI(e))?;
-    Ok(())
-}
-*/
