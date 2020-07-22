@@ -19,7 +19,6 @@ use crate::{
 pub enum EditorLoop {
     Quit,
     Continue,
-    Error(String),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -35,6 +34,7 @@ pub enum EditorOperation {
     InputAppend(char),
     InputKeep(usize),
     Search,
+    Error(String),
 }
 
 pub struct EditorOperationSender {
@@ -255,8 +255,9 @@ impl Editor {
                     self.mode = Mode::default();
                     self.mode.on_enter(&mut mode_context);
                     operations.send(TargetClient::All, EditorOperation::Mode(Mode::default()));
+                    operations.send(self.focused_client, EditorOperation::Error(error));
 
-                    break EditorLoop::Error(error);
+                    break EditorLoop::Continue;
                 }
             }
         };

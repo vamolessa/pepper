@@ -19,6 +19,7 @@ pub struct Client {
 
     pub has_focus: bool,
     pub input: String,
+    pub error: Option<String>,
 }
 
 impl Client {
@@ -37,6 +38,7 @@ impl Client {
 
             has_focus: true,
             input: String::new(),
+            error: None,
         }
     }
 
@@ -71,6 +73,7 @@ impl Client {
                 self.buffer
                     .find_search_ranges(&self.input[..], &mut self.search_ranges);
             }
+            EditorOperation::Error(error) => self.error = Some(error.clone()),
         }
     }
 }

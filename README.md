@@ -24,8 +24,8 @@ Experimental code editor
 - client/server model
 	- ~~dumb client sends Keys receives EditorOperations~~
 	- ~~track client that last send message (focused)~~
+	- ~~show error on focused client~~
 	- reuse allocation when deserializing EditorOperation::Content
-	- show error on focused client
 - custom bindings
 	- ~~custom bindings expand to builtin bindings~~
 	- ~~custom bindings take precedence~~

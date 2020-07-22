@@ -147,15 +147,12 @@ where
     ui.init()?;
 
     for event in event_receiver.iter() {
-        let mut error = None;
-
         match event {
             Event::None => (),
             Event::Key(key) => {
                 match editor.on_key(key, TargetClient::Local, &mut editor_operations) {
                     EditorLoop::Quit => break,
                     EditorLoop::Continue => (),
-                    EditorLoop::Error(e) => error = Some(e),
                 }
                 send_operations(&mut editor_operations, &mut local_client, &mut connections);
             }
@@ -205,7 +202,6 @@ where
                                     );
                                 }
                                 EditorLoop::Continue => (),
-                                EditorLoop::Error(e) => error = Some(e),
                             }
                         }
                     }
@@ -218,6 +214,7 @@ where
             }
         }
 
+        let error = local_client.error.take();
         ui.draw(&local_client, error)?;
     }
 
@@ -280,7 +277,8 @@ where
             }
         }
 
-        ui.draw(&local_client, None)?;
+        let error = local_client.error.take();
+        ui.draw(&local_client, error)?;
     }
 
     drop(event_manager_loop);
