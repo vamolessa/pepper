@@ -96,7 +96,6 @@ mod windows {
             self.poll.poll(&mut self.events, None)?;
             for event in self.events.iter() {
                 let success = (event.flags() & !EventFlag::IN).is_empty();
-                dbg!(event.data(), event.flags(), success);
                 let event = ConnectionEvent::from_raw_id(event.data(), success);
                 if self.event_sender.send(Event::Connection(event)).is_err() {
                     return Ok(false);

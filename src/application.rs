@@ -8,7 +8,7 @@ use std::{
 use crate::{
     client::Client,
     connection::{ConnectionWithClientCollection, ConnectionWithServer, TargetClient},
-    editor::{Editor, EditorLoop, EditorOperation, EditorOperationSender},
+    editor::{Editor, EditorLoop, EditorOperationSender},
     event::Event,
     event_manager::{run_event_loop, ConnectionEvent, EventManager},
     mode::Mode,
@@ -201,12 +201,6 @@ where
                                 EditorLoop::Quit => {
                                     dbg!("stream in event + remote quit");
                                     connections.close_connection(handle);
-                                    editor_operations
-                                        .send(TargetClient::All, EditorOperation::InputKeep(0));
-                                    editor_operations.send(
-                                        TargetClient::All,
-                                        EditorOperation::Mode(Mode::default()),
-                                    );
                                     editor.on_client_left(
                                         TargetClient::Remote(handle),
                                         &mut editor_operations,
@@ -220,9 +214,7 @@ where
                 }
 
                 connections.unregister_closed_connections(&mut event_manager)?;
-                dbg!("before send operations");
                 send_operations(&mut editor_operations, &mut local_client, &mut connections);
-                dbg!("after send operations");
                 connections.unregister_closed_connections(&mut event_manager)?;
                 drop(event_manager);
                 event_barrier.wait();

@@ -157,9 +157,6 @@ where
         Cursor,
     }
 
-    //handle_command!(write, SetBackgroundColor(Color::Red))?;
-    //handle_command!(write, terminal::Clear(terminal::ClearType::All))?;
-
     let theme = &client.config.theme;
 
     handle_command!(write, cursor::Hide)?;
