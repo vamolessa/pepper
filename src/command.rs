@@ -83,6 +83,7 @@ mod helper {
 
     pub fn new_buffer_from_file(ctx: &mut CommandContext, path: &Path) -> Result<(), String> {
         if let Some(buffer_handle) = ctx.buffers.find_with_path(path) {
+            eprintln!("found buffer {:?}", buffer_handle);
             let view = match ctx
                 .buffer_views
                 .iter()
@@ -90,6 +91,7 @@ mod helper {
                     if view.buffer_handle == buffer_handle
                         && view.target_client == ctx.target_client
                     {
+                        eprintln!("found buffer view");
                         Some(view)
                     } else {
                         None
@@ -112,26 +114,27 @@ mod helper {
 
             let view_handle = ctx.buffer_views.add(view);
             *ctx.current_buffer_view_handle = Some(view_handle);
+        } else {
+            let content = match File::open(&path) {
+                Ok(mut file) => {
+                    let mut content = String::new();
+                    match file.read_to_string(&mut content) {
+                        Ok(_) => (),
+                        Err(error) => {
+                            return Err(format!(
+                                "could not read contents from file {:?}: {:?}",
+                                path, error
+                            ))
+                        }
+                    }
+                    BufferContent::from_str(&content[..])
+                }
+                Err(_) => BufferContent::from_str(""),
+            };
+
+            new_buffer_from_content(ctx, Some(path.into()), content);
         }
 
-        let content = match File::open(&path) {
-            Ok(mut file) => {
-                let mut content = String::new();
-                match file.read_to_string(&mut content) {
-                    Ok(_) => (),
-                    Err(error) => {
-                        return Err(format!(
-                            "could not read contents from file {:?}: {:?}",
-                            path, error
-                        ))
-                    }
-                }
-                BufferContent::from_str(&content[..])
-            }
-            Err(_) => BufferContent::from_str(""),
-        };
-
-        new_buffer_from_content(ctx, Some(path.into()), content);
         Ok(())
     }
 
