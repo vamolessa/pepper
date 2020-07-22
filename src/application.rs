@@ -161,7 +161,6 @@ where
             }
             Event::Resize(w, h) => ui.resize(w, h)?,
             Event::Connection(event) => {
-                dbg!("connection event", event);
                 match event {
                     ConnectionEvent::NewConnection(EventResult::Error) => (),
                     ConnectionEvent::NewConnection(EventResult::Ok) => {
@@ -170,7 +169,6 @@ where
                             .on_client_joined(TargetClient::Remote(handle), &mut editor_operations);
                     }
                     ConnectionEvent::Stream(stream_id, EventResult::Error) => {
-                        dbg!("stream error event");
                         let handle = stream_id.into();
                         connections.close_connection(handle);
                         editor.on_client_left(TargetClient::Remote(handle), &mut editor_operations);
@@ -178,12 +176,10 @@ where
                     ConnectionEvent::Stream(stream_id, EventResult::Ok) => {
                         let handle = stream_id.into();
                         loop {
-                            dbg!("stream in event loop");
                             match connections.receive_key(handle) {
                                 Ok(Some(key)) => received_keys.push(key),
                                 Ok(None) => break,
-                                Err(e) => {
-                                    dbg!("stream in event + error", e);
+                                Err(_) => {
                                     connections.close_connection(handle);
                                     editor.on_client_left(
                                         TargetClient::Remote(handle),
@@ -196,9 +192,12 @@ where
                         }
 
                         for key in received_keys.drain(..) {
-                            match editor.on_key(key, TargetClient::Local, &mut editor_operations) {
+                            match editor.on_key(
+                                key,
+                                TargetClient::Remote(handle),
+                                &mut editor_operations,
+                            ) {
                                 EditorLoop::Quit => {
-                                    dbg!("stream in event + remote quit");
                                     connections.close_connection(handle);
                                     editor.on_client_left(
                                         TargetClient::Remote(handle),
@@ -255,7 +254,6 @@ where
             Event::None => (),
             Event::Key(key) => {
                 if connection.send_key(key).is_err() {
-                    dbg!("error sending key");
                     break;
                 }
             }
@@ -263,20 +261,13 @@ where
             Event::Connection(event) => {
                 match event {
                     ConnectionEvent::NewConnection(_) => (),
-                    ConnectionEvent::Stream(_, EventResult::Error) => {
-                        dbg!("connection error");
-                        break;
-                    }
+                    ConnectionEvent::Stream(_, EventResult::Error) => break,
                     ConnectionEvent::Stream(_, EventResult::Ok) => {
                         loop {
-                            dbg!("receive operation loop");
                             match connection.receive_operation() {
                                 Ok(Some(operation)) => received_operations.push(operation),
                                 Ok(None) => break,
-                                Err(_) => {
-                                    dbg!("error reading operation");
-                                    break 'main_loop;
-                                }
+                                Err(_) => break 'main_loop,
                             }
                         }
 

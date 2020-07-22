@@ -160,7 +160,6 @@ impl Editor {
         target_client: TargetClient,
         operations: &mut EditorOperationSender,
     ) {
-        dbg!("on client left", self.focused_client, target_client);
         if self.focused_client == target_client {
             self.focused_client = TargetClient::Local;
             operations.send(self.focused_client, EditorOperation::Focused(true));
@@ -180,11 +179,6 @@ impl Editor {
         operations: &mut EditorOperationSender,
     ) -> EditorLoop {
         if target_client != self.focused_client {
-            dbg!(
-                "key from different client",
-                target_client,
-                self.focused_client
-            );
             operations.send(self.focused_client, EditorOperation::Focused(false));
             operations.send(target_client, EditorOperation::Focused(true));
 
@@ -209,7 +203,6 @@ impl Editor {
         let mut keys = KeysIterator::new(&self.buffered_keys);
         let result = loop {
             if keys.index >= self.buffered_keys.len() {
-                dbg!("break", &self.buffered_keys, keys.index);
                 break EditorLoop::Continue;
             }
 
