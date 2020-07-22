@@ -84,7 +84,9 @@ where
 {
     type Error = ErrorKind;
 
-    fn run_event_loop_in_background(event_sender: mpsc::Sender<Event>) -> thread::JoinHandle<Result<()>> {
+    fn run_event_loop_in_background(
+        event_sender: mpsc::Sender<Event>,
+    ) -> thread::JoinHandle<Result<()>> {
         thread::spawn(move || {
             while event_sender.send(convert_event(event::read()?)).is_ok() {}
             Ok(())
@@ -249,15 +251,15 @@ where
                     for _ in 0..client.config.tab_size {
                         handle_command!(write, Print(' '))?
                     }
-                    column_index += client.config.tab_size;
                     x += client.config.tab_size as u16;
                 }
                 _ => {
                     handle_command!(write, Print(c))?;
-                    column_index += 1;
                     x += 1;
                 }
             }
+
+            column_index += 1;
         }
 
         handle_command!(write, SetBackgroundColor(convert_color(theme.background)))?;
