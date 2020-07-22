@@ -1,7 +1,7 @@
 use std::{
     convert::From,
     env, fs, io,
-    sync::{mpsc, Arc, Barrier, Mutex},
+    sync::{mpsc, Arc, Barrier},
     thread,
 };
 
@@ -10,7 +10,7 @@ use crate::{
     connection::{ConnectionWithClientCollection, ConnectionWithServer, TargetClient},
     editor::{Editor, EditorLoop, EditorOperationSender},
     event::Event,
-    event_manager::{run_event_loop, ConnectionEvent, EventManager},
+    event_manager::{ConnectionEvent, EventManager, EventResult},
     mode::Mode,
 };
 
@@ -47,7 +47,7 @@ where
 pub trait UI {
     type Error: UiError;
 
-    fn run_event_loop(
+    fn run_event_loop_in_background(
         event_sender: mpsc::Sender<Event>,
     ) -> thread::JoinHandle<Result<(), Self::Error>>;
 
@@ -130,13 +130,11 @@ where
     I: UI,
 {
     let (event_sender, event_receiver) = mpsc::channel();
-    let mut event_manager = EventManager::new(event_sender.clone(), 8)?;
-    connections.register_listener(&mut event_manager)?;
-
-    let event_manager = Arc::new(Mutex::new(event_manager));
-    let event_barrier = Arc::new(Barrier::new(2));
-    let _ = run_event_loop(event_manager.clone(), event_barrier.clone());
-    let _ = I::run_event_loop(event_sender);
+    let event_manager = EventManager::new(event_sender.clone(), 8)?;
+    let event_registry = event_manager.registry()?;
+    let event_loop_barrier = Arc::new(Barrier::new(2));
+    let event_manager_loop = event_manager.run_event_loop_in_background(event_loop_barrier.clone());
+    let ui_event_loop = I::run_event_loop_in_background(event_sender);
 
     let mut local_client = Client::new();
     let mut editor = Editor::new();
@@ -145,6 +143,7 @@ where
     let mut editor_operations = EditorOperationSender::new();
     let mut received_keys = Vec::new();
 
+    connections.register_listener(&event_registry)?;
     ui.init()?;
 
     for event in event_receiver.iter() {
@@ -162,21 +161,21 @@ where
             }
             Event::Resize(w, h) => ui.resize(w, h)?,
             Event::Connection(event) => {
-                dbg!("connection event");
-                let mut event_manager = event_manager.lock().unwrap();
+                dbg!("connection event", event);
                 match event {
-                    ConnectionEvent::NewConnection => {
-                        let handle = connections.accept_connection(&mut event_manager)?;
+                    ConnectionEvent::NewConnection(EventResult::Error) => (),
+                    ConnectionEvent::NewConnection(EventResult::Ok) => {
+                        let handle = connections.accept_connection(&event_registry)?;
                         editor
                             .on_client_joined(TargetClient::Remote(handle), &mut editor_operations);
                     }
-                    ConnectionEvent::StreamError(stream_id) => {
+                    ConnectionEvent::Stream(stream_id, EventResult::Error) => {
                         dbg!("stream error event");
                         let handle = stream_id.into();
                         connections.close_connection(handle);
                         editor.on_client_left(TargetClient::Remote(handle), &mut editor_operations);
                     }
-                    ConnectionEvent::StreamIn(stream_id) => {
+                    ConnectionEvent::Stream(stream_id, EventResult::Ok) => {
                         let handle = stream_id.into();
                         loop {
                             dbg!("stream in event loop");
@@ -213,16 +212,18 @@ where
                     }
                 }
 
-                connections.unregister_closed_connections(&mut event_manager)?;
+                connections.unregister_closed_connections(&event_registry)?;
                 send_operations(&mut editor_operations, &mut local_client, &mut connections);
-                connections.unregister_closed_connections(&mut event_manager)?;
-                drop(event_manager);
-                event_barrier.wait();
+                connections.unregister_closed_connections(&event_registry)?;
+                event_loop_barrier.wait();
             }
         }
 
         ui.draw(&local_client, error)?;
     }
+
+    drop(event_manager_loop);
+    drop(ui_event_loop);
 
     connections.close_all_connections();
     ui.shutdown()?;
@@ -237,17 +238,16 @@ where
     I: UI,
 {
     let (event_sender, event_receiver) = mpsc::channel();
-    let mut event_manager = EventManager::new(event_sender.clone(), 8)?;
-    connection.register_connection(&mut event_manager)?;
-
-    let event_manager = Arc::new(Mutex::new(event_manager));
-    let event_barrier = Arc::new(Barrier::new(2));
-    let _ = run_event_loop(event_manager, event_barrier.clone());
-    let _ = I::run_event_loop(event_sender);
+    let event_manager = EventManager::new(event_sender.clone(), 8)?;
+    let event_registry = event_manager.registry()?;
+    let event_loop_barrier = Arc::new(Barrier::new(2));
+    let event_manager_loop = event_manager.run_event_loop_in_background(event_loop_barrier.clone());
+    let ui_event_loop = I::run_event_loop_in_background(event_sender);
 
     let mut local_client = Client::new();
     let mut received_operations = Vec::new();
 
+    connection.register_connection(&event_registry)?;
     ui.init()?;
 
     'main_loop: for event in event_receiver.iter() {
@@ -262,12 +262,12 @@ where
             Event::Resize(w, h) => ui.resize(w, h)?,
             Event::Connection(event) => {
                 match event {
-                    ConnectionEvent::NewConnection => (),
-                    ConnectionEvent::StreamError(_) => {
+                    ConnectionEvent::NewConnection(_) => (),
+                    ConnectionEvent::Stream(_, EventResult::Error) => {
                         dbg!("connection error");
                         break;
                     }
-                    ConnectionEvent::StreamIn(_) => {
+                    ConnectionEvent::Stream(_, EventResult::Ok) => {
                         loop {
                             dbg!("receive operation loop");
                             match connection.receive_operation() {
@@ -285,12 +285,15 @@ where
                         }
                     }
                 }
-                event_barrier.wait();
+                event_loop_barrier.wait();
             }
         }
 
         ui.draw(&local_client, None)?;
     }
+
+    drop(event_manager_loop);
+    drop(ui_event_loop);
 
     connection.close();
     ui.shutdown()?;

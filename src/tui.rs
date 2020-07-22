@@ -84,7 +84,7 @@ where
 {
     type Error = ErrorKind;
 
-    fn run_event_loop(event_sender: mpsc::Sender<Event>) -> thread::JoinHandle<Result<()>> {
+    fn run_event_loop_in_background(event_sender: mpsc::Sender<Event>) -> thread::JoinHandle<Result<()>> {
         thread::spawn(move || {
             while event_sender.send(convert_event(event::read()?)).is_ok() {}
             Ok(())

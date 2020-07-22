@@ -13,7 +13,7 @@ use bincode::Options;
 use crate::{
     editor::EditorOperation,
     event::Key,
-    event_manager::{EventManager, StreamId},
+    event_manager::{EventRegistry, StreamId},
 };
 
 struct ReadBuf {
@@ -119,13 +119,13 @@ impl ConnectionWithClientCollection {
         })
     }
 
-    pub fn register_listener(&self, event_manager: &mut EventManager) -> io::Result<()> {
-        event_manager.register_listener(&self.listener)
+    pub fn register_listener(&self, event_registry: &EventRegistry) -> io::Result<()> {
+        event_registry.register_listener(&self.listener)
     }
 
     pub fn accept_connection(
         &mut self,
-        event_manager: &mut EventManager,
+        event_registry: &EventRegistry,
     ) -> io::Result<ConnectionWithClientHandle> {
         let (stream, _address) = self.listener.accept()?;
         stream.set_nonblocking(true)?;
@@ -138,14 +138,14 @@ impl ConnectionWithClientCollection {
         for (i, slot) in self.connections.iter_mut().enumerate() {
             if slot.is_none() {
                 let handle = ConnectionWithClientHandle(i);
-                event_manager.register_stream(&connection.stream, handle.into())?;
+                event_registry.register_stream(&connection.stream, handle.into())?;
                 *slot = Some(connection);
                 return Ok(handle);
             }
         }
 
         let handle = ConnectionWithClientHandle(self.connections.len());
-        event_manager.register_stream(&connection.stream, handle.into())?;
+        event_registry.register_stream(&connection.stream, handle.into())?;
         self.connections.push(Some(connection));
         Ok(handle)
     }
@@ -165,11 +165,11 @@ impl ConnectionWithClientCollection {
 
     pub fn unregister_closed_connections(
         &mut self,
-        event_manager: &mut EventManager,
+        event_registry: &EventRegistry,
     ) -> io::Result<()> {
         for i in self.closed_connection_indexes.drain(..) {
             if let Some(connection) = self.connections[i].take() {
-                event_manager.unregister_stream(&connection.stream)?;
+                event_registry.unregister_stream(&connection.stream)?;
             }
         }
 
@@ -258,8 +258,8 @@ impl ConnectionWithServer {
         let _ = &self.stream.shutdown(Shutdown::Both);
     }
 
-    pub fn register_connection(&self, event_manager: &mut EventManager) -> io::Result<()> {
-        event_manager.register_stream(&self.stream, StreamId(0))
+    pub fn register_connection(&self, event_registry: &EventRegistry) -> io::Result<()> {
+        event_registry.register_stream(&self.stream, StreamId(0))
     }
 
     pub fn send_key(&mut self, key: Key) -> io::Result<()> {
