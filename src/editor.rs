@@ -122,6 +122,7 @@ pub struct Editor {
     pub buffers: BufferCollection,
     pub buffer_views: BufferViewCollection,
     local_client_current_buffer_view_handle: Option<BufferViewHandle>,
+    remote_client_current_buffer_view_handles: Vec<Option<BufferViewHandle>>,
 
     focused_client: TargetClient,
 }
@@ -141,6 +142,7 @@ impl Editor {
             buffers: Default::default(),
             buffer_views: BufferViewCollection::default(),
             local_client_current_buffer_view_handle: None,
+            remote_client_current_buffer_view_handles: Vec::new(),
 
             focused_client: TargetClient::Local,
         }
@@ -153,6 +155,14 @@ impl Editor {
     ) {
         operations.send(self.focused_client, EditorOperation::Focused(false));
         self.focused_client = target_client;
+
+        if let TargetClient::Remote(handle) = target_client {
+            let min_len = handle.into_index() + 1;
+            if min_len > self.remote_client_current_buffer_view_handles.len() {
+                self.remote_client_current_buffer_view_handles
+                    .resize_with(min_len, || None);
+            }
+        }
     }
 
     pub fn on_client_left(
@@ -169,6 +179,10 @@ impl Editor {
             self.mode = Mode::default();
             self.buffered_keys.clear();
             self.input.clear();
+
+            if let TargetClient::Remote(handle) = target_client {
+                self.remote_client_current_buffer_view_handles[handle.into_index()] = None;
+            }
         }
     }
 
@@ -206,6 +220,14 @@ impl Editor {
                 break EditorLoop::Continue;
             }
 
+            let current_buffer_view_handle = match target_client {
+                TargetClient::All => unreachable!(),
+                TargetClient::Local => &mut self.local_client_current_buffer_view_handle,
+                TargetClient::Remote(handle) => {
+                    &mut self.remote_client_current_buffer_view_handles[handle.into_index()]
+                }
+            };
+
             let mut mode_context = ModeContext {
                 target_client,
                 operations,
@@ -213,7 +235,7 @@ impl Editor {
                 commands: &self.commands,
                 buffers: &mut self.buffers,
                 buffer_views: &mut self.buffer_views,
-                current_buffer_view_handle: &mut self.local_client_current_buffer_view_handle,
+                current_buffer_view_handle,
                 input: &mut self.input,
             };
 

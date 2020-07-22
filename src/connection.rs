@@ -88,6 +88,11 @@ pub struct ConnectionWithClient {
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct ConnectionWithClientHandle(usize);
+impl ConnectionWithClientHandle {
+    pub fn into_index(self) -> usize {
+        self.0
+    }
+}
 impl Into<ConnectionWithClientHandle> for StreamId {
     fn into(self) -> ConnectionWithClientHandle {
         ConnectionWithClientHandle(self.0)
