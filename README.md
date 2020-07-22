@@ -13,11 +13,6 @@ Experimental code editor
 	- ~~selection merging~~
 - ~~multiple cursors~~
 	- ~~merge cursors~~
-- ~~multiple viewports~~
-	- ~~multiple buffer views~~
-	- ~~same buffer different views~~
-	- ~~split and copy current view~~
-	- ~~remove unused buffer views when closing viewport~~
 - ~~long lines~~
 - ~~search~~
 	- ~~highlight search matches~~
@@ -26,6 +21,11 @@ Experimental code editor
 	- ~~delete~~
 	- ~~copy~~
 	- ~~paste~~
+- client/server model
+	- ~~dumb client sends Keys receives EditorOperations~~
+	- ~~track client that last send message (focused)~~
+	- reuse allocation when deserializing EditorOperation::Content
+	- show error on focused client
 - custom bindings
 	- ~~custom bindings expand to builtin bindings~~
 	- ~~custom bindings take precedence~~
@@ -37,15 +37,15 @@ Experimental code editor
 	- ~~basic command mode~~
 	- ~~default commands~~
 	- define custom commands in config file?? (or just aliases??)
+- syntax highlighting
 - file operations
 	- ~~edit (command to open/create file?)~~
 	- ~~save~~
-	- reuse buffer if already open
-	- remove all buffer views (and viewport handles) when closing a buffer
+	- ~~reuse buffer if already open~~
+	- ~~remove all buffer views (and viewport handles) when closing a buffer~~
 - code navigation
 	- home/end
 	- find char
-- syntax highlighting
 - status bar
 	- buffer name
 	- buffer position
