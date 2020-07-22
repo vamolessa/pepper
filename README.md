@@ -30,9 +30,6 @@ Experimental code editor
 	- ~~custom bindings expand to builtin bindings~~
 	- ~~custom bindings take precedence~~
 	- define custom bindings in config file
-- config file
-	- load config file at startup
-	- reload config file when changed??
 - command mode
 	- ~~basic command mode~~
 	- ~~default commands~~
@@ -43,6 +40,9 @@ Experimental code editor
 	- ~~save~~
 	- ~~reuse buffer if already open~~
 	- ~~remove all buffer views (and viewport handles) when closing a buffer~~
+- config file
+	- load config file at startup
+	- reload config file when changed??
 - code navigation
 	- home/end
 	- find char
