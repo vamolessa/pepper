@@ -112,10 +112,11 @@ where
 
     fn draw(&mut self, client: &Client, error: Option<String>) -> Result<()> {
         let cursor_position = client.main_cursor.position;
+        let height = self.height - 1;
         if cursor_position.line_index < self.scroll {
             self.scroll = cursor_position.line_index;
-        } else if cursor_position.line_index >= self.scroll + self.height as usize {
-            self.scroll = cursor_position.line_index - self.height as usize + 1;
+        } else if cursor_position.line_index >= self.scroll + height as usize {
+            self.scroll = cursor_position.line_index - height as usize + 1;
         }
 
         draw(
