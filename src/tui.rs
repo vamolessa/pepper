@@ -336,27 +336,20 @@ where
     let foreground_color = convert_color(client.config.theme.background);
     let cursor_color = convert_color(client.config.theme.cursor_normal);
 
-    if !client.has_focus {
+    if client.has_focus {
+        handle_command!(write, SetBackgroundColor(background_color))?;
+        handle_command!(write, SetForegroundColor(foreground_color))?;
+    } else {
         handle_command!(write, SetBackgroundColor(foreground_color))?;
-        handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
-
-        if let Some(error) = error {
-            handle_command!(write, SetForegroundColor(background_color))?;
-            handle_command!(write, Print("error:"))?;
-            handle_command!(write, Print(error))?;
-        }
-        return Ok(());
+        handle_command!(write, SetForegroundColor(background_color))?;
     }
-
-    handle_command!(write, SetBackgroundColor(background_color))?;
-    handle_command!(write, SetForegroundColor(foreground_color))?;
 
     let x = if let Some(error) = &error {
         let prefix = "error:";
         handle_command!(write, Print(prefix))?;
         handle_command!(write, Print(error))?;
         prefix.len() + error.len()
-    } else {
+    } else if client.has_focus {
         match client.mode {
             Mode::Select => {
                 let text = "-- SELECT --";
@@ -384,6 +377,8 @@ where
             )?,
             _ => 0,
         }
+    } else {
+        0
     };
 
     if let Some(buffer_path) = client
