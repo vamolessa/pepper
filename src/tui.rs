@@ -170,9 +170,13 @@ where
         _ => convert_color(theme.cursor_normal),
     };
 
+    let background_color = convert_color(theme.background);
+    let text_normal_color = convert_color(theme.text_normal);
+    let highlight_color = convert_color(theme.highlight);
+
     handle_command!(write, cursor::MoveTo(0, 0))?;
-    handle_command!(write, SetBackgroundColor(convert_color(theme.background)))?;
-    handle_command!(write, SetForegroundColor(convert_color(theme.text_normal)))?;
+    handle_command!(write, SetBackgroundColor(background_color))?;
+    handle_command!(write, SetForegroundColor(text_normal_color))?;
 
     let mut line_index = scroll;
     let mut drawn_line_count = 0;
@@ -186,9 +190,8 @@ where
             if x >= width {
                 handle_command!(write, cursor::MoveToNextLine(1))?;
 
-                draw_state = DrawState::Normal;
                 drawn_line_count += 1;
-                x = 0;
+                x -= width;
 
                 if drawn_line_count >= height - 1 {
                     break 'lines_loop;
@@ -203,7 +206,7 @@ where
                 if !matches!(draw_state, DrawState::Cursor) {
                     draw_state = DrawState::Cursor;
                     handle_command!(write, SetBackgroundColor(cursor_color))?;
-                    handle_command!(write, SetForegroundColor(convert_color(theme.text_normal)))?;
+                    handle_command!(write, SetForegroundColor(text_normal_color))?;
                 }
             } else if client.cursors[..]
                 .binary_search_by(|c| {
@@ -220,8 +223,8 @@ where
             {
                 if !matches!(draw_state, DrawState::Selection) {
                     draw_state = DrawState::Selection;
-                    handle_command!(write, SetBackgroundColor(convert_color(theme.text_normal)))?;
-                    handle_command!(write, SetForegroundColor(convert_color(theme.background)))?;
+                    handle_command!(write, SetBackgroundColor(text_normal_color))?;
+                    handle_command!(write, SetForegroundColor(background_color))?;
                 }
             } else if client
                 .search_ranges
@@ -238,13 +241,13 @@ where
             {
                 if !matches!(draw_state, DrawState::Highlight) {
                     draw_state = DrawState::Highlight;
-                    handle_command!(write, SetBackgroundColor(convert_color(theme.highlight)))?;
-                    handle_command!(write, SetForegroundColor(convert_color(theme.text_normal)))?;
+                    handle_command!(write, SetBackgroundColor(highlight_color))?;
+                    handle_command!(write, SetForegroundColor(text_normal_color))?;
                 }
             } else if !matches!(draw_state, DrawState::Normal) {
                 draw_state = DrawState::Normal;
-                handle_command!(write, SetBackgroundColor(convert_color(theme.background)))?;
-                handle_command!(write, SetForegroundColor(convert_color(theme.text_normal)))?;
+                handle_command!(write, SetBackgroundColor(background_color))?;
+                handle_command!(write, SetForegroundColor(text_normal_color))?;
             }
 
             match c {
@@ -263,9 +266,11 @@ where
             column_index += 1;
         }
 
-        handle_command!(write, SetBackgroundColor(convert_color(theme.background)))?;
-        handle_command!(write, SetForegroundColor(convert_color(theme.text_normal)))?;
-        handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
+        if x < width {
+            handle_command!(write, SetBackgroundColor(background_color))?;
+            handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
+        }
+
         handle_command!(write, cursor::MoveToNextLine(1))?;
 
         line_index += 1;
@@ -276,20 +281,12 @@ where
         }
     }
 
-    handle_command!(write, SetBackgroundColor(convert_color(theme.background)))?;
-    handle_command!(write, SetForegroundColor(convert_color(theme.text_normal)))?;
+    handle_command!(write, SetBackgroundColor(background_color))?;
+    handle_command!(write, SetForegroundColor(text_normal_color))?;
     for _ in drawn_line_count..(height - 1) {
         handle_command!(write, Print('~'))?;
         handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
         handle_command!(write, cursor::MoveToNextLine(1))?;
-    }
-
-    if client.has_focus {
-        handle_command!(write, SetBackgroundColor(convert_color(theme.text_normal)))?;
-        handle_command!(write, SetForegroundColor(convert_color(theme.background)))?;
-    } else {
-        handle_command!(write, SetBackgroundColor(convert_color(theme.background)))?;
-        handle_command!(write, SetForegroundColor(convert_color(theme.text_normal)))?;
     }
 
     handle_command!(write, cursor::MoveToNextLine(1))?;
