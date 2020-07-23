@@ -290,13 +290,18 @@ where
     }
 
     handle_command!(write, cursor::MoveToNextLine(1))?;
-    draw_statusbar(write, client, error)?;
+    draw_statusbar(write, client, width, error)?;
 
     write.flush()?;
     Ok(())
 }
 
-fn draw_statusbar<W>(write: &mut W, client: &Client, error: Option<String>) -> Result<()>
+fn draw_statusbar<W>(
+    write: &mut W,
+    client: &Client,
+    width: u16,
+    error: Option<String>,
+) -> Result<()>
 where
     W: Write,
 {
@@ -306,7 +311,7 @@ where
         input: &str,
         background_color: Color,
         cursor_color: Color,
-    ) -> Result<()>
+    ) -> Result<usize>
     where
         W: Write,
     {
@@ -315,7 +320,16 @@ where
         handle_command!(write, SetBackgroundColor(cursor_color))?;
         handle_command!(write, Print(' '))?;
         handle_command!(write, SetBackgroundColor(background_color))?;
-        Ok(())
+        Ok(prefix.len() + input.len() + 1)
+    }
+
+    fn find_digit_count(mut number: usize) -> usize {
+        let mut count = 0;
+        while number > 0 {
+            number /= 10;
+            count += 1;
+        }
+        count
     }
 
     let background_color = convert_color(client.config.theme.text_normal);
@@ -337,13 +351,23 @@ where
     handle_command!(write, SetBackgroundColor(background_color))?;
     handle_command!(write, SetForegroundColor(foreground_color))?;
 
-    if let Some(error) = error {
-        handle_command!(write, Print("error:"))?;
+    let x = if let Some(error) = &error {
+        let prefix = "error:";
+        handle_command!(write, Print(prefix))?;
         handle_command!(write, Print(error))?;
+        prefix.len() + error.len()
     } else {
         match client.mode {
-            Mode::Select => handle_command!(write, Print("-- SELECT --"))?,
-            Mode::Insert => handle_command!(write, Print("-- INSERT --"))?,
+            Mode::Select => {
+                let text = "-- SELECT --";
+                handle_command!(write, Print(text))?;
+                text.len()
+            }
+            Mode::Insert => {
+                let text = "-- INSERT --";
+                handle_command!(write, Print(text))?;
+                text.len()
+            }
             Mode::Search(_) => draw_input(
                 write,
                 "search:",
@@ -358,8 +382,32 @@ where
                 background_color,
                 cursor_color,
             )?,
-            _ => (),
-        };
+            _ => 0,
+        }
+    };
+
+    if let Some(buffer_path) = client
+        .path
+        .as_ref()
+        .map(|p| p.as_os_str().to_str())
+        .flatten()
+    {
+        let line_number = client.main_cursor.position.line_index + 1;
+        let column_number = client.main_cursor.position.column_index + 1;
+        let line_digit_count = find_digit_count(line_number);
+        let column_digit_count = find_digit_count(column_number);
+        let skip = (width as usize).saturating_sub(
+            x + buffer_path.len() + 1 + line_digit_count + 1 + column_digit_count + 1,
+        );
+        for _ in 0..skip {
+            handle_command!(write, Print(' '))?;
+        }
+
+        handle_command!(write, Print(buffer_path))?;
+        handle_command!(write, Print(':'))?;
+        handle_command!(write, Print(line_number))?;
+        handle_command!(write, Print(','))?;
+        handle_command!(write, Print(column_number))?;
     }
 
     handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;

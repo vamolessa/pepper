@@ -47,6 +47,7 @@ Experimental code editor
 	- home/end
 	- find char
 - status bar
-	- buffer name
-	- buffer position
+	- ~~buffer name~~
+	- ~~buffer position~~
+	- buffered keys
 - MORE!
