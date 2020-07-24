@@ -97,7 +97,7 @@ mod helper {
                 })
                 .next()
             {
-                Some(view) => view.clone(),
+                Some(view) => view.clone_with_target_client(ctx.target_client),
                 None => BufferView::new(ctx.target_client, buffer_handle),
             };
 

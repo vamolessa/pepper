@@ -12,7 +12,6 @@ pub enum MovementKind {
     PositionOnly,
 }
 
-#[derive(Clone)]
 pub struct BufferView {
     pub target_client: TargetClient,
     pub buffer_handle: BufferHandle,
@@ -25,6 +24,14 @@ impl BufferView {
             target_client,
             buffer_handle,
             cursors: CursorCollection::new(),
+        }
+    }
+
+    pub fn clone_with_target_client(&self, target_client: TargetClient) -> Self {
+        Self {
+            target_client,
+            buffer_handle: self.buffer_handle,
+            cursors: self.cursors.clone(),
         }
     }
 

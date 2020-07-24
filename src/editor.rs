@@ -180,11 +180,19 @@ impl Editor {
             TargetClient::Local => self
                 .local_client_current_buffer_view_handle
                 .as_ref()
-                .map(|h| self.buffer_views.get(h).clone()),
+                .map(|h| {
+                    self.buffer_views
+                        .get(h)
+                        .clone_with_target_client(target_client)
+                }),
             TargetClient::Remote(handle) => self.remote_client_current_buffer_view_handles
                 [handle.into_index()]
             .as_ref()
-            .map(|h| self.buffer_views.get(h).clone()),
+            .map(|h| {
+                self.buffer_views
+                    .get(h)
+                    .clone_with_target_client(target_client)
+            }),
         };
 
         if let Some(buffer_view) = &buffer_view {
@@ -210,6 +218,7 @@ impl Editor {
         }
 
         self.focused_client = target_client;
+        self.buffered_keys.clear();
     }
 
     pub fn on_client_left(
