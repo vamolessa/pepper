@@ -170,6 +170,10 @@ impl Editor {
         }
 
         operations.send(self.focused_client, EditorOperation::Focused(false));
+        operations.send(target_client, EditorOperation::Mode(self.mode.clone()));
+        for c in self.input.chars() {
+            operations.send(target_client, EditorOperation::InputAppend(c));
+        }
 
         let buffer_view = match self.focused_client {
             TargetClient::All => unreachable!(),
