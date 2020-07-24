@@ -153,16 +153,59 @@ impl Editor {
         target_client: TargetClient,
         operations: &mut EditorOperationSender,
     ) {
-        operations.send(self.focused_client, EditorOperation::Focused(false));
-        self.focused_client = target_client;
+        let buffer_view_handle = match self.focused_client {
+            TargetClient::All => None,
+            TargetClient::Local => self.local_client_current_buffer_view_handle.as_ref(),
+            TargetClient::Remote(handle) => {
+                self.remote_client_current_buffer_view_handles[handle.into_index()].as_ref()
+            }
+        };
+        if let Some(buffer) = buffer_view_handle
+            .map(|h| self.buffer_views.get(h).buffer_handle)
+            .map(|h| self.buffers.get(h))
+            .flatten()
+        {
+            operations.send_content(target_client, &buffer.content);
+            operations.send(target_client, EditorOperation::Path(buffer.path.clone()));
+        }
 
-        if let TargetClient::Remote(handle) = target_client {
-            let min_len = handle.into_index() + 1;
-            if min_len > self.remote_client_current_buffer_view_handles.len() {
-                self.remote_client_current_buffer_view_handles
-                    .resize_with(min_len, || None);
+        operations.send(self.focused_client, EditorOperation::Focused(false));
+
+        let buffer_view = match self.focused_client {
+            TargetClient::All => unreachable!(),
+            TargetClient::Local => self
+                .local_client_current_buffer_view_handle
+                .as_ref()
+                .map(|h| self.buffer_views.get(h).clone()),
+            TargetClient::Remote(handle) => self.remote_client_current_buffer_view_handles
+                [handle.into_index()]
+            .as_ref()
+            .map(|h| self.buffer_views.get(h).clone()),
+        };
+
+        if let Some(buffer_view) = &buffer_view {
+            operations.send_cursors(target_client, &buffer_view.cursors);
+        }
+
+        match target_client {
+            TargetClient::All => unreachable!(),
+            TargetClient::Local => {
+                self.local_client_current_buffer_view_handle =
+                    buffer_view.map(|v| self.buffer_views.add(v));
+            }
+            TargetClient::Remote(handle) => {
+                let min_len = handle.into_index() + 1;
+                if min_len > self.remote_client_current_buffer_view_handles.len() {
+                    self.remote_client_current_buffer_view_handles
+                        .resize_with(min_len, || None);
+                }
+
+                self.remote_client_current_buffer_view_handles[handle.into_index()] =
+                    buffer_view.map(|v| self.buffer_views.add(v));
             }
         }
+
+        self.focused_client = target_client;
     }
 
     pub fn on_client_left(
