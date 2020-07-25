@@ -241,12 +241,12 @@ impl ConnectionWithClientCollection {
     }
 }
 
-pub struct ConnectionWithServerRemote {
+pub struct ConnectionWithServer {
     stream: UnixStream,
     read_buf: ReadBuf,
 }
 
-impl ConnectionWithServerRemote {
+impl ConnectionWithServer {
     pub fn connect<P>(path: P) -> io::Result<Self>
     where
         P: AsRef<Path>,

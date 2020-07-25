@@ -7,7 +7,7 @@ use std::{
 
 use crate::{
     client::Client,
-    connection::{ConnectionWithClientCollection, ConnectionWithServerRemote, TargetClient},
+    connection::{ConnectionWithClientCollection, ConnectionWithServer, TargetClient},
     editor::{Editor, EditorLoop, EditorOperationSender},
     event::Event,
     event_manager::{ConnectionEvent, EventManager, EventResult},
@@ -78,7 +78,7 @@ where
     I: UI,
 {
     let session_socket_path = env::current_dir()?.join("session_socket");
-    if let Ok(connection) = ConnectionWithServerRemote::connect(&session_socket_path) {
+    if let Ok(connection) = ConnectionWithServer::connect(&session_socket_path) {
         run_client(ui, connection)?;
     } else if let Ok(listener) = ConnectionWithClientCollection::listen(&session_socket_path) {
         run_server_with_client(ui, listener)?;
@@ -228,7 +228,7 @@ where
 
 fn run_client<I>(
     mut ui: I,
-    mut connection: ConnectionWithServerRemote,
+    mut connection: ConnectionWithServer,
 ) -> Result<(), ApplicationError<I::Error>>
 where
     I: UI,
