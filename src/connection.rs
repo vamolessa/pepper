@@ -248,7 +248,6 @@ impl ConnectionWithClientCollection {
 pub struct ConnectionWithServer {
     stream: UnixStream,
     read_buf: ReadBuf,
-    content: String,
 }
 
 impl ConnectionWithServer {
@@ -261,7 +260,6 @@ impl ConnectionWithServer {
         Ok(Self {
             stream,
             read_buf: ReadBuf::new(),
-            content: String::new(),
         })
     }
 
@@ -280,14 +278,17 @@ impl ConnectionWithServer {
         }
     }
 
-    pub fn receive_operation(&mut self) -> io::Result<Option<(EditorOperation, String)>> {
+    pub fn receive_operation(
+        &mut self,
+        content: &mut String,
+    ) -> io::Result<Option<EditorOperation>> {
         match deserialize(&mut self.stream, &mut self.read_buf)? {
             None => Ok(None),
             Some(EditorOperation::Content) => {
-                deserialize_string(&mut self.stream, &mut self.read_buf, &mut self.content)?;
-                Ok(Some((EditorOperation::Content, self.content.clone())))
+                deserialize_string(&mut self.stream, &mut self.read_buf, content)?;
+                Ok(Some(EditorOperation::Content))
             }
-            Some(operation) => Ok(Some((operation, String::new()))),
+            Some(operation) => Ok(Some(operation)),
         }
     }
 }

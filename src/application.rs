@@ -242,6 +242,7 @@ where
 
     let mut local_client = Client::new();
     let mut received_operations = Vec::new();
+    let mut received_content = String::new();
 
     connection.register_connection(&event_registry)?;
     ui.init()?;
@@ -261,16 +262,17 @@ where
                     ConnectionEvent::Stream(_, EventResult::Error) => break,
                     ConnectionEvent::Stream(_, EventResult::Ok) => {
                         loop {
-                            match connection.receive_operation() {
+                            match connection.receive_operation(&mut received_content) {
                                 Ok(Some(operation)) => received_operations.push(operation),
                                 Ok(None) => break,
                                 Err(_) => break 'main_loop,
                             }
                         }
 
-                        for (operation, content) in received_operations.drain(..) {
-                            local_client.on_editor_operation(&operation, &content[..]);
+                        for operation in received_operations.drain(..) {
+                            local_client.on_editor_operation(&operation, &received_content[..]);
                         }
+                        received_content.clear();
                     }
                 }
                 event_loop_barrier.wait();

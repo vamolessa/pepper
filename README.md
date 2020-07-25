@@ -21,11 +21,11 @@ Experimental code editor
 	- ~~delete~~
 	- ~~copy~~
 	- ~~paste~~
-- client/server model
+- ~~client/server model~~
 	- ~~dumb client sends Keys receives EditorOperations~~
 	- ~~track client that last send message (focused)~~
 	- ~~show error on focused client~~
-	- reuse allocation when deserializing EditorOperation::Content
+	- ~~reuse allocation when deserializing EditorOperation::Content~~
 - custom bindings
 	- ~~custom bindings expand to builtin bindings~~
 	- ~~custom bindings take precedence~~
@@ -35,6 +35,8 @@ Experimental code editor
 	- ~~default commands~~
 	- define custom commands in config file?? (or just aliases??)
 - syntax highlighting
+	- define language syntaxes
+	- calculate highlight ranges when code changes
 - file operations
 	- ~~edit (command to open/create file?)~~
 	- ~~save~~
