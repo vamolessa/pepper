@@ -1,4 +1,5 @@
 mod application;
+mod syntax;
 mod buffer;
 mod buffer_position;
 mod buffer_view;

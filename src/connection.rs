@@ -241,12 +241,21 @@ impl ConnectionWithClientCollection {
     }
 }
 
-pub struct ConnectionWithServer {
+pub trait ConnectionWithServer {
+    fn register_connection(&self, _event_registry: &EventRegistry) -> io::Result<()> {
+        Ok(())
+    }
+
+    fn send_key(&mut self, key: Key) -> io::Result<()>;
+    fn receive_operation(&mut self) -> io::Result<Option<(EditorOperation, String)>>;
+}
+
+pub struct ConnectionWithServerRemote {
     stream: UnixStream,
     read_buf: ReadBuf,
 }
 
-impl ConnectionWithServer {
+impl ConnectionWithServerRemote {
     pub fn connect<P>(path: P) -> io::Result<Self>
     where
         P: AsRef<Path>,
@@ -258,23 +267,21 @@ impl ConnectionWithServer {
             read_buf: ReadBuf::new(),
         })
     }
+}
 
-    pub fn close(&self) {
-        let _ = &self.stream.shutdown(Shutdown::Both);
-    }
-
-    pub fn register_connection(&self, event_registry: &EventRegistry) -> io::Result<()> {
+impl ConnectionWithServer for ConnectionWithServerRemote {
+    fn register_connection(&self, event_registry: &EventRegistry) -> io::Result<()> {
         event_registry.register_stream(&self.stream, StreamId(0))
     }
 
-    pub fn send_key(&mut self, key: Key) -> io::Result<()> {
+    fn send_key(&mut self, key: Key) -> io::Result<()> {
         match bincode_serializer().serialize_into(&mut self.stream, &key) {
             Ok(()) => Ok(()),
             Err(error) => Err(io::Error::new(io::ErrorKind::Other, error)),
         }
     }
 
-    pub fn receive_operation(&mut self) -> io::Result<Option<(EditorOperation, String)>> {
+    fn receive_operation(&mut self) -> io::Result<Option<(EditorOperation, String)>> {
         match deserialize(&mut self.stream, &mut self.read_buf)? {
             None => Ok(None),
             Some(EditorOperation::Content) => {
@@ -285,6 +292,12 @@ impl ConnectionWithServer {
             }
             Some(operation) => Ok(Some((operation, String::new()))),
         }
+    }
+}
+
+impl Drop for ConnectionWithServerRemote {
+    fn drop(&mut self) {
+        let _ = &self.stream.shutdown(Shutdown::Both);
     }
 }
 

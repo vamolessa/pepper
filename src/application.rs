@@ -7,7 +7,10 @@ use std::{
 
 use crate::{
     client::Client,
-    connection::{ConnectionWithClientCollection, ConnectionWithServer, TargetClient},
+    connection::{
+        ConnectionWithClientCollection, ConnectionWithServer, ConnectionWithServerRemote,
+        TargetClient,
+    },
     editor::{Editor, EditorLoop, EditorOperationSender},
     event::Event,
     event_manager::{ConnectionEvent, EventManager, EventResult},
@@ -78,7 +81,7 @@ where
     I: UI,
 {
     let session_socket_path = env::current_dir()?.join("session_socket");
-    if let Ok(connection) = ConnectionWithServer::connect(&session_socket_path) {
+    if let Ok(connection) = ConnectionWithServerRemote::connect(&session_socket_path) {
         run_client(ui, connection)?;
     } else if let Ok(listener) = ConnectionWithClientCollection::listen(&session_socket_path) {
         run_server_with_client(ui, listener)?;
@@ -226,12 +229,10 @@ where
     Ok(())
 }
 
-fn run_client<I>(
-    mut ui: I,
-    mut connection: ConnectionWithServer,
-) -> Result<(), ApplicationError<I::Error>>
+fn run_client<I, C>(mut ui: I, mut connection: C) -> Result<(), ApplicationError<I::Error>>
 where
     I: UI,
+    C: ConnectionWithServer,
 {
     let (event_sender, event_receiver) = mpsc::channel();
     let event_manager = EventManager::new(event_sender.clone(), 8)?;
@@ -283,8 +284,8 @@ where
 
     drop(event_manager_loop);
     drop(ui_event_loop);
+    drop(connection);
 
-    connection.close();
     ui.shutdown()?;
     Ok(())
 }
