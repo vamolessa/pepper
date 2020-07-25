@@ -7,10 +7,7 @@ use std::{
 
 use crate::{
     client::Client,
-    connection::{
-        ConnectionWithClientCollection, ConnectionWithServer, ConnectionWithServerRemote,
-        TargetClient,
-    },
+    connection::{ConnectionWithClientCollection, ConnectionWithServerRemote, TargetClient},
     editor::{Editor, EditorLoop, EditorOperationSender},
     event::Event,
     event_manager::{ConnectionEvent, EventManager, EventResult},
@@ -229,10 +226,12 @@ where
     Ok(())
 }
 
-fn run_client<I, C>(mut ui: I, mut connection: C) -> Result<(), ApplicationError<I::Error>>
+fn run_client<I>(
+    mut ui: I,
+    mut connection: ConnectionWithServerRemote,
+) -> Result<(), ApplicationError<I::Error>>
 where
     I: UI,
-    C: ConnectionWithServer,
 {
     let (event_sender, event_receiver) = mpsc::channel();
     let event_manager = EventManager::new(event_sender.clone(), 8)?;
@@ -284,8 +283,8 @@ where
 
     drop(event_manager_loop);
     drop(ui_event_loop);
-    drop(connection);
 
+    connection.close();
     ui.shutdown()?;
     Ok(())
 }
