@@ -1,6 +1,7 @@
 use std::{
-    convert::Into,
+    convert::{Into, TryFrom},
     io::{self, Cursor, Read, Write},
+    mem,
     net::Shutdown,
     path::Path,
 };
@@ -184,7 +185,10 @@ impl ConnectionWithClientCollection {
     fn serialize_operation(mut buf: &mut Vec<u8>, operation: &EditorOperation, content: &str) {
         let _ = bincode_serializer().serialize_into(&mut buf, operation);
         if let EditorOperation::Content = operation {
-            let _ = bincode_serializer().serialize_into(&mut buf, content);
+            let bytes = content.as_bytes();
+            let len = bytes.len() as u64;
+            buf.extend_from_slice(&len.to_le_bytes());
+            buf.extend_from_slice(bytes);
         }
     }
 
@@ -244,6 +248,7 @@ impl ConnectionWithClientCollection {
 pub struct ConnectionWithServer {
     stream: UnixStream,
     read_buf: ReadBuf,
+    content: String,
 }
 
 impl ConnectionWithServer {
@@ -256,6 +261,7 @@ impl ConnectionWithServer {
         Ok(Self {
             stream,
             read_buf: ReadBuf::new(),
+            content: String::new(),
         })
     }
 
@@ -278,10 +284,8 @@ impl ConnectionWithServer {
         match deserialize(&mut self.stream, &mut self.read_buf)? {
             None => Ok(None),
             Some(EditorOperation::Content) => {
-                match deserialize(&mut self.stream, &mut self.read_buf)? {
-                    Some(content) => Ok(Some((EditorOperation::Content, content))),
-                    None => Ok(None),
-                }
+                deserialize_string(&mut self.stream, &mut self.read_buf, &mut self.content)?;
+                Ok(Some((EditorOperation::Content, self.content.clone())))
             }
             Some(operation) => Ok(Some((operation, String::new()))),
         }
@@ -316,6 +320,46 @@ where
 
         if buf.read_into(&mut reader)? == 0 {
             break Ok(None);
+        }
+    }
+}
+
+fn deserialize_u64(mut reader: &mut UnixStream, buf: &mut ReadBuf) -> io::Result<u64> {
+    const SIZE: usize = mem::size_of::<u64>();
+    loop {
+        let slice = buf.slice();
+        if slice.len() >= SIZE {
+            let array = <[u8; SIZE]>::try_from(&slice[..SIZE]).unwrap();
+            buf.seek(SIZE);
+            break Ok(u64::from_le_bytes(array));
+        }
+
+        if buf.read_into(&mut reader)? == 0 {
+            break Err(io::Error::from(io::ErrorKind::UnexpectedEof));
+        }
+    }
+}
+
+fn deserialize_string(
+    mut reader: &mut UnixStream,
+    mut buf: &mut ReadBuf,
+    text: &mut String,
+) -> io::Result<usize> {
+    text.clear();
+    let len = deserialize_u64(&mut reader, &mut buf)? as usize;
+
+    loop {
+        let slice = buf.slice();
+        if slice.len() >= len {
+            let slice = std::str::from_utf8(&slice[..len])
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            text.push_str(slice);
+            buf.seek(len);
+            break Ok(len);
+        }
+
+        if buf.read_into(&mut reader)? == 0 {
+            break Err(io::Error::from(io::ErrorKind::UnexpectedEof));
         }
     }
 }
