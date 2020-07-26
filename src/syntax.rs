@@ -38,7 +38,7 @@ impl SmallString {
     }
 
     pub fn as_str(&self) -> &str {
-        std::str::from_utf8(&self.bytes[..self.len as _]).unwrap()
+        unsafe { std::str::from_utf8_unchecked(&self.bytes[..self.len as _]) }
     }
 }
 
@@ -55,9 +55,8 @@ pub enum TokenKind {
 }
 
 pub enum LineKind {
-    Normal,
-    UnfinishedString(usize),
-    UnfinishedBlockComment(usize),
+    AllFinished,
+    Unfinished(usize, usize),
 }
 
 pub struct Token {
@@ -65,24 +64,62 @@ pub struct Token {
     pub range: Range<usize>,
 }
 
-#[derive(Default)]
 pub struct Syntax {
-    pub line_comments: Vec<SmallString>,
-    pub block_comments: Vec<(SmallString, SmallString)>,
-    pub keywords: Vec<SmallString>,
-    pub modifiers: Vec<SmallString>,
-    pub symbols: Vec<SmallString>,
-    pub strings: Vec<(SmallString, SmallString)>,
-    pub chars: Vec<(SmallString, SmallString)>,
-    pub literals: Vec<SmallString>,
+    scanners: Vec<Scanner>,
 }
 
 impl Syntax {
+    pub fn new() -> Self {
+        Self {
+            scanners: Vec::new(),
+        }
+    }
+
     pub fn parse_line(
         line: &str,
         previous_line_kind: LineKind,
         tokens: &mut Vec<TokenKind>,
     ) -> LineKind {
-        LineKind::Normal
+        LineKind::AllFinished
     }
+}
+
+enum ScannerResult {
+    Pending,
+    Ok(TokenKind),
+    Err,
+}
+
+struct Scanner {
+    state: usize,
+    arg0: SmallString,
+    arg1: SmallString,
+    body: fn(&mut usize, &str, &str, char) -> ScannerResult,
+}
+
+impl Scanner {
+    pub fn new(
+        arg0: SmallString,
+        arg1: SmallString,
+        body: fn(&mut usize, &str, &str, char) -> ScannerResult,
+    ) -> Self {
+        Self {
+            state: 0,
+            arg0,
+            arg1,
+            body,
+        }
+    }
+
+    pub fn state(&mut self) -> &mut usize {
+        &mut self.state
+    }
+
+    pub fn scan(&mut self, ch: char) -> ScannerResult {
+        (self.body)(&mut self.state, self.arg0.as_str(), self.arg1.as_str(), ch)
+    }
+}
+
+fn scan_line_comment(state: &mut usize, arg0: &str, arg1: &str, ch: char) -> ScannerResult {
+    ScannerResult::Err
 }
