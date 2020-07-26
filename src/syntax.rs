@@ -42,6 +42,7 @@ impl SmallString {
     }
 }
 
+#[derive(Clone, Copy)]
 pub enum TokenKind {
     LineComment,
     BlockComment,
@@ -84,6 +85,7 @@ impl Syntax {
     }
 }
 
+#[derive(Clone, Copy)]
 enum ScannerResult {
     Pending,
     Ok(TokenKind),
@@ -94,6 +96,7 @@ struct Scanner {
     state: usize,
     arg0: SmallString,
     arg1: SmallString,
+    result: ScannerResult,
     body: fn(&mut usize, &str, &str, char) -> ScannerResult,
 }
 
@@ -101,12 +104,14 @@ impl Scanner {
     pub fn new(
         arg0: SmallString,
         arg1: SmallString,
+        result: ScannerResult,
         body: fn(&mut usize, &str, &str, char) -> ScannerResult,
     ) -> Self {
         Self {
             state: 0,
             arg0,
             arg1,
+            result,
             body,
         }
     }
@@ -114,9 +119,13 @@ impl Scanner {
     pub fn state(&mut self) -> &mut usize {
         &mut self.state
     }
+    
+    pub fn result(&self) -> ScannerResult {
+        self.result
+    }
 
-    pub fn scan(&mut self, ch: char) -> ScannerResult {
-        (self.body)(&mut self.state, self.arg0.as_str(), self.arg1.as_str(), ch)
+    pub fn scan(&mut self, ch: char) {
+        self.result = (self.body)(&mut self.state, self.arg0.as_str(), self.arg1.as_str(), ch);
     }
 }
 

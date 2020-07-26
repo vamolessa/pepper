@@ -186,7 +186,7 @@ impl ConnectionWithClientCollection {
         let _ = bincode_serializer().serialize_into(&mut buf, operation);
         if let EditorOperation::Content = operation {
             let bytes = content.as_bytes();
-            let len = bytes.len() as u64;
+            let len = bytes.len() as u32;
             buf.extend_from_slice(&len.to_le_bytes());
             buf.extend_from_slice(bytes);
         }
@@ -325,14 +325,14 @@ where
     }
 }
 
-fn deserialize_u64(mut reader: &mut UnixStream, buf: &mut ReadBuf) -> io::Result<u64> {
-    const SIZE: usize = mem::size_of::<u64>();
+fn deserialize_u32(mut reader: &mut UnixStream, buf: &mut ReadBuf) -> io::Result<u32> {
+    const SIZE: usize = mem::size_of::<u32>();
     loop {
         let slice = buf.slice();
         if slice.len() >= SIZE {
             let array = <[u8; SIZE]>::try_from(&slice[..SIZE]).unwrap();
             buf.seek(SIZE);
-            break Ok(u64::from_le_bytes(array));
+            break Ok(u32::from_le_bytes(array));
         }
 
         if buf.read_into(&mut reader)? == 0 {
@@ -347,7 +347,7 @@ fn deserialize_string(
     text: &mut String,
 ) -> io::Result<usize> {
     text.clear();
-    let len = deserialize_u64(&mut reader, &mut buf)? as usize;
+    let len = deserialize_u32(&mut reader, &mut buf)? as usize;
 
     loop {
         let slice = buf.slice();
