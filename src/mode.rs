@@ -131,14 +131,14 @@ pub fn poll_input(ctx: &mut ModeContext, keys: &mut KeysIterator) -> InputPollRe
                 last_index = i;
             }
 
-            ctx.input.drain(last_index..);
+            ctx.input.truncate(last_index);
             ctx.operations
                 .send(TargetClient::All, EditorOperation::InputKeep(last_index));
             InputPollResult::Pending
         }
         Key::Ctrl('h') => {
             if let Some((last_char_index, _)) = ctx.input.char_indices().rev().next() {
-                ctx.input.drain(last_char_index..);
+                ctx.input.truncate(last_char_index);
                 ctx.operations.send(
                     TargetClient::All,
                     EditorOperation::InputKeep(last_char_index),

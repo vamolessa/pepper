@@ -66,7 +66,7 @@ impl Client {
             EditorOperation::Cursor(cursor) => self.cursors.push(*cursor),
             EditorOperation::InputAppend(c) => self.input.push(*c),
             EditorOperation::InputKeep(keep_count) => {
-                self.input.drain(keep_count..);
+                self.input.truncate(*keep_count);
             }
             EditorOperation::Search => {
                 self.search_ranges.clear();
