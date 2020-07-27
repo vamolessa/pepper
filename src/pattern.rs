@@ -16,9 +16,9 @@ pub struct Pattern {
 }
 
 impl Pattern {
-    pub fn build(pattern: &str) -> Result<Self, ()> {
-        Ok(Self {
-            ops: parse_ops(Bytes::from_slice(pattern.as_bytes()))?,
+    pub fn build(pattern: &str) -> Option<Self> {
+        Some(Self {
+            ops: parse_ops(pattern.as_bytes())?,
             state: PatternState { next_op: 0 },
         })
     }
@@ -28,62 +28,126 @@ impl Pattern {
     }
 }
 
-struct Bytes<'a> {
-    slice: &'a [u8],
-    index: usize,
+enum Op {
+    Match,
+    Error,
+    Alphabetic(u8, u8),
+    Lower(u8, u8),
+    Upper(u8, u8),
+    Digit(u8, u8),
+    Alphanumeric(u8, u8),
+    Byte(u8, u8, u8),
 }
 
-impl<'a> Bytes<'a> {
-    pub fn from_slice(slice: &'a [u8]) -> Self {
-        Self { slice, index: 0 }
+fn parse_ops(bytes: &[u8]) -> Option<Vec<Op>> {
+    let mut parser = OpParser::new(bytes);
+    parser.parse()
+}
+
+struct OpParser<'a> {
+    pub bytes: &'a [u8],
+    pub index: usize,
+    pub ops: Vec<Op>,
+}
+
+impl<'a> OpParser<'a> {
+    pub fn new(bytes: &'a [u8]) -> Self {
+        Self {
+            bytes,
+            index: 0,
+            ops: Vec::new(),
+        }
     }
 
-    pub fn next(&mut self) -> Option<u8> {
-        if self.index < self.slice.len() {
-            let next = self.slice[self.index];
+    pub fn parse(mut self) -> Option<Vec<Op>> {
+        self.ops.push(Op::Error);
+        while let Some(b) = self.next() {
+            self.parse_expr()?;
+        }
+        self.ops.push(Op::Match);
+
+        Some(self.ops)
+    }
+
+    fn next(&mut self) -> Option<u8> {
+        if self.index < self.bytes.len() {
+            let b = self.bytes[self.index];
             self.index += 1;
-            Some(next)
+            Some(b)
         } else {
             None
         }
     }
 
-    pub fn put_back(&mut self) {
-        self.index -= 1;
-    }
-}
-
-enum Op {
-    Match,
-    Error,
-    Jump(u8),
-    Digit(u8, u8),
-    Alphabetic(u8, u8),
-    Byte(u8, u8, u8),
-}
-
-fn parse_ops(mut bytes: Bytes) -> Result<Vec<Op>, ()> {
-    let mut ops = Vec::new();
-    parse_expr(&mut bytes, &mut ops);
-    Err(())
-}
-
-fn parse_expr(bytes: &mut Bytes, ops: &mut Vec<Op>) -> Result<(), ()> {
-    while let Some(b) = bytes.next() {
-        match b {
-            b'*' => (),
-            b'\\' => match bytes.next() {
-                Some(b'd') => ops.push(Op::Digit(0, 0)),
-                Some(b'w') => ops.push(Op::Alphabetic(0, 0)),
-                Some(b'[') => ops.push(Op::Byte(b'[', 0, 0)),
-                Some(b']') => ops.push(Op::Byte(b']', 0, 0)),
-                Some(b'{') => ops.push(Op::Byte(b'{', 0, 0)),
-                Some(b'}') => ops.push(Op::Byte(b'}', 0, 0)),
-                _ => return Err(()),
-            },
-            _ => ops.push(Op::Byte(b, 0, 0)),
+    fn parse_expr(&mut self) -> Option<()> {
+        match self.bytes[self.index] {
+            b'*' => None,
+            b'[' => self.parse_custom_class(),
+            _ => self.parse_class(),
         }
     }
 
-    Ok(())
+    fn parse_class(&mut self) -> Option<()> {
+        let okj = self.ops.len() + 1;
+        if okj > u8::max_value() as _ {
+            return None;
+        }
+        let okj = okj as _;
+
+        match self.bytes[self.index] {
+            b'%' => match self.next()? {
+                b'a' => self.ops.push(Op::Alphabetic(okj, 0)),
+                b'l' => self.ops.push(Op::Lower(okj, 0)),
+                b'u' => self.ops.push(Op::Upper(okj, 0)),
+                b'd' => self.ops.push(Op::Digit(okj, 0)),
+                b'w' => self.ops.push(Op::Alphanumeric(okj, 0)),
+                b'%' => self.ops.push(Op::Byte(b'%', okj, 0)),
+                b'[' => self.ops.push(Op::Byte(b'[', okj, 0)),
+                b']' => self.ops.push(Op::Byte(b']', okj, 0)),
+                b'*' => self.ops.push(Op::Byte(b'*', okj, 0)),
+                _ => return None,
+            },
+            b'[' => return None,
+            b']' => return None,
+            b'*' => return None,
+            b => self.ops.push(Op::Byte(b, okj, 0)),
+        }
+
+        Some(())
+    }
+
+    fn parse_custom_class(&mut self) -> Option<()> {
+        let start_op_index = self.ops.len();
+        while let Some(b) = self.next() {
+            match b {
+                b'[' => return None,
+                b']' => break,
+                _ => self.parse_expr()?,
+            }
+        }
+        if self.bytes[self.index] != b']' {
+            return None;
+        }
+
+        let end_op_index = self.ops.len();
+        let okj = end_op_index as _;
+        let mut erj = start_op_index as _;
+        for op in &mut self.ops[start_op_index..(end_op_index - 1)] {
+            match op {
+                Op::Alphabetic(ref mut o, ref mut e)
+                | Op::Lower(ref mut o, ref mut e)
+                | Op::Upper(ref mut o, ref mut e)
+                | Op::Digit(ref mut o, ref mut e)
+                | Op::Alphanumeric(ref mut o, ref mut e)
+                | Op::Byte(_, ref mut o, ref mut e) => {
+                    *o = okj;
+                    *e = erj;
+                }
+                _ => unreachable!(),
+            }
+            erj += 1;
+        }
+
+        Some(())
+    }
 }
