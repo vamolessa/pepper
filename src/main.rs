@@ -1,4 +1,5 @@
 mod application;
+mod pattern;
 mod syntax;
 mod buffer;
 mod buffer_position;
