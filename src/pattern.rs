@@ -7,7 +7,7 @@ pub enum MatchResult {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PatternState {
-    next_op: usize,
+    op_index: usize,
 }
 
 #[derive(Debug)]
@@ -30,7 +30,7 @@ impl Pattern {
     pub fn new(pattern: &str) -> Option<Self> {
         Some(Self {
             ops: parse_ops(pattern.as_bytes())?,
-            state: PatternState { next_op: 0 },
+            state: PatternState { op_index: 0 },
         })
     }
 
@@ -40,23 +40,23 @@ impl Pattern {
         let mut op_index = 1;
 
         for b in bytes {
-            len += 1;
             op_index = match ops[op_index] {
                 Op::Match => return MatchResult::Ok(len),
                 Op::Error => return MatchResult::Err,
-                Op::Alphabetic(okj, erj) => check!(b.is_ascii_alphanumeric(), okj, erj),
+                Op::Alphabetic(okj, erj) => check!(b.is_ascii_alphabetic(), okj, erj),
                 Op::Lower(okj, erj) => check!(b.is_ascii_lowercase(), okj, erj),
                 Op::Upper(okj, erj) => check!(b.is_ascii_uppercase(), okj, erj),
                 Op::Digit(okj, erj) => check!(b.is_ascii_digit(), okj, erj),
                 Op::Alphanumeric(okj, erj) => check!(b.is_ascii_alphanumeric(), okj, erj),
                 Op::Byte(b_class, okj, erj) => check!(*b == b_class, okj, erj),
             } as _;
+            len += 1;
         }
 
-        if let Op::Match = ops[op_index] {
-            MatchResult::Ok(len)
-        } else {
-            MatchResult::Pending(PatternState { next_op: op_index })
+        match ops[op_index] {
+            Op::Match => MatchResult::Ok(len),
+            Op::Error => MatchResult::Err,
+            _ => MatchResult::Pending(PatternState { op_index }),
         }
     }
 }
@@ -195,10 +195,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_match_simple() {
+    fn test_match_simple_classes() {
+        let p = Pattern::new("a").unwrap();
+        assert_eq!(MatchResult::Ok(1), p.matches(b"a"));
+        assert_eq!(MatchResult::Ok(1), p.matches(b"aa"));
+        assert_eq!(MatchResult::Err, p.matches(b"b"));
+
         let p = Pattern::new("aa").unwrap();
-        dbg!(&p);
         assert_eq!(MatchResult::Ok(2), p.matches(b"aa"));
-        //assert_eq!(MatchResult::Ok(2), p.matches(b"aaa"));
+        assert_eq!(MatchResult::Ok(2), p.matches(b"aaa"));
+        assert_eq!(MatchResult::Err, p.matches(b"baa"));
+
+        let p = Pattern::new("%% %[ %] %*").unwrap();
+        assert_eq!(MatchResult::Ok(7), p.matches(b"% [ ] *"));
+
+        let p = Pattern::new("%a").unwrap();
+        assert_eq!(MatchResult::Ok(1), p.matches(b"a"));
+        assert_eq!(MatchResult::Ok(1), p.matches(b"z"));
+        assert_eq!(MatchResult::Ok(1), p.matches(b"A"));
+        assert_eq!(MatchResult::Ok(1), p.matches(b"Z"));
+        assert_eq!(MatchResult::Err, p.matches(b"0"));
+        assert_eq!(MatchResult::Err, p.matches(b"9"));
+        assert_eq!(MatchResult::Err, p.matches(b"!"));
     }
 }
