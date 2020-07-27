@@ -13,14 +13,12 @@ pub struct PatternState {
 #[derive(Debug)]
 pub struct Pattern {
     ops: Vec<Op>,
-    state: PatternState,
 }
 
 impl Pattern {
     pub fn new(pattern: &str) -> Option<Self> {
         Some(Self {
             ops: parse_ops(pattern.as_bytes())?,
-            state: PatternState { op_index: 0 },
         })
     }
 
@@ -35,20 +33,13 @@ impl Pattern {
         let mut bytes_index = 0;
         let mut byte = bytes[bytes_index];
 
-        macro_rules! check {
+        macro_rules! jump {
             ($e:expr, $ok_jump:expr, $err_jump:expr) => {
                 if $e {
                     op_index = $ok_jump as _;
-
-                    len += 1;
-                    bytes_index += 1;
-                    if bytes_index == bytes.len() {
-                        break;
-                    }
-
-                    byte = bytes[bytes_index];
                 } else {
                     op_index = $err_jump as _;
+                    continue;
                 }
             };
         }
@@ -57,21 +48,36 @@ impl Pattern {
             match ops[op_index] {
                 Op::Match => return MatchResult::Ok(len),
                 Op::Error => return MatchResult::Err,
-                Op::Alphabetic(okj, erj) => check!(byte.is_ascii_alphabetic(), okj, erj),
-                Op::Lower(okj, erj) => check!(byte.is_ascii_lowercase(), okj, erj),
-                Op::Upper(okj, erj) => check!(byte.is_ascii_uppercase(), okj, erj),
-                Op::Digit(okj, erj) => check!(byte.is_ascii_digit(), okj, erj),
-                Op::Alphanumeric(okj, erj) => check!(byte.is_ascii_alphanumeric(), okj, erj),
-                Op::Byte(b, okj, erj) => check!(byte == b, okj, erj),
+                Op::Any(okj) => jump!(true, okj, 0),
+                Op::Alphabetic(okj, erj) => jump!(byte.is_ascii_alphabetic(), okj, erj),
+                Op::Lower(okj, erj) => jump!(byte.is_ascii_lowercase(), okj, erj),
+                Op::Upper(okj, erj) => jump!(byte.is_ascii_uppercase(), okj, erj),
+                Op::Digit(okj, erj) => jump!(byte.is_ascii_digit(), okj, erj),
+                Op::Alphanumeric(okj, erj) => jump!(byte.is_ascii_alphanumeric(), okj, erj),
+                Op::Byte(b, okj, erj) => jump!(byte == b, okj, erj),
             };
+
+            len += 1;
+            bytes_index += 1;
+            if bytes_index == bytes.len() {
+                break;
+            }
+
+            byte = bytes[bytes_index];
         }
 
         match ops[op_index] {
             Op::Match => MatchResult::Ok(len),
             Op::Error => MatchResult::Err,
-            _ => {
-                if bytes_index < bytes.len() {
-                    MatchResult::Pending(PatternState { op_index })
+            Op::Any(_) => MatchResult::Err,
+            Op::Alphabetic(_, erj)
+            | Op::Lower(_, erj)
+            | Op::Upper(_, erj)
+            | Op::Digit(_, erj)
+            | Op::Alphanumeric(_, erj)
+            | Op::Byte(_, _, erj) => {
+                if let Op::Match = ops[erj as usize] {
+                    MatchResult::Ok(len)
                 } else {
                     MatchResult::Err
                 }
@@ -84,6 +90,7 @@ impl Pattern {
 enum Op {
     Match,
     Error,
+    Any(u8),
     Alphabetic(u8, u8),
     Lower(u8, u8),
     Upper(u8, u8),
@@ -159,11 +166,13 @@ impl<'a> OpParser<'a> {
                 b'd' => self.ops.push(Op::Digit(okj, 0)),
                 b'w' => self.ops.push(Op::Alphanumeric(okj, 0)),
                 b'%' => self.ops.push(Op::Byte(b'%', okj, 0)),
+                b'.' => self.ops.push(Op::Byte(b'.', okj, 0)),
                 b'[' => self.ops.push(Op::Byte(b'[', okj, 0)),
                 b']' => self.ops.push(Op::Byte(b']', okj, 0)),
                 b'*' => self.ops.push(Op::Byte(b'*', okj, 0)),
                 _ => return None,
             },
+            b'.' => self.ops.push(Op::Any(okj)),
             b'[' => return None,
             b']' => return None,
             b'*' => return None,
@@ -220,6 +229,9 @@ impl<'a> OpParser<'a> {
         let mut i = previous_start_op_index;
         for op in &mut self.ops[previous_start_op_index..=last_index] {
             match op {
+                Op::Any(ref mut o) => {
+                    *o = okj;
+                }
                 Op::Alphabetic(ref mut o, ref mut e)
                 | Op::Lower(ref mut o, ref mut e)
                 | Op::Upper(ref mut o, ref mut e)
@@ -257,8 +269,17 @@ mod tests {
         assert_eq!(MatchResult::Ok(2), p.matches(b"aaa"));
         assert_eq!(MatchResult::Err, p.matches(b"baa"));
 
-        let p = Pattern::new("%% %[ %] %*").unwrap();
-        assert_eq!(MatchResult::Ok(7), p.matches(b"% [ ] *"));
+        let p = Pattern::new("%% %[ %] %* %.").unwrap();
+        assert_eq!(MatchResult::Ok(9), p.matches(b"% [ ] * ."));
+        
+        let p = Pattern::new(".").unwrap();
+        assert_eq!(MatchResult::Ok(1), p.matches(b"a"));
+        assert_eq!(MatchResult::Ok(1), p.matches(b"z"));
+        assert_eq!(MatchResult::Ok(1), p.matches(b"A"));
+        assert_eq!(MatchResult::Ok(1), p.matches(b"Z"));
+        assert_eq!(MatchResult::Ok(1), p.matches(b"0"));
+        assert_eq!(MatchResult::Ok(1), p.matches(b"9"));
+        assert_eq!(MatchResult::Ok(1), p.matches(b"!"));
 
         let p = Pattern::new("%a").unwrap();
         assert_eq!(MatchResult::Ok(1), p.matches(b"a"));
@@ -339,10 +360,33 @@ mod tests {
 
     #[test]
     fn test_repeat() {
+        let p = Pattern::new("a*").unwrap();
+        assert_eq!(MatchResult::Ok(1), p.matches(b"a"));
+        assert_eq!(MatchResult::Ok(4), p.matches(b"aaaa"));
+
         let p = Pattern::new("a*b").unwrap();
-        dbg!(&p);
         assert_eq!(MatchResult::Ok(2), p.matches(b"ab"));
         assert_eq!(MatchResult::Ok(3), p.matches(b"aab"));
         assert_eq!(MatchResult::Ok(5), p.matches(b"aaaab"));
+
+        let p = Pattern::new("ab*c").unwrap();
+        assert_eq!(MatchResult::Ok(2), p.matches(b"ac"));
+        assert_eq!(MatchResult::Ok(3), p.matches(b"abc"));
+        assert_eq!(MatchResult::Ok(5), p.matches(b"abbbc"));
+    }
+
+    #[test]
+    fn test_complex_pattern() {
+        let p = Pattern::new(".*").unwrap();
+        assert_eq!(MatchResult::Ok(10), p.matches(b"things 890"));
+    }
+
+    #[test]
+    fn test_bad_pattern() {
+        assert!(matches!(Pattern::new("["), None));
+        assert!(matches!(Pattern::new("]"), None));
+        assert!(matches!(Pattern::new("*"), None));
+        assert!(matches!(Pattern::new("%"), None));
+        assert!(matches!(Pattern::new("%h"), None));
     }
 }
