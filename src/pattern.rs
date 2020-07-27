@@ -1,33 +1,63 @@
-#[derive(Clone, Copy)]
-enum MatchResult {
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum MatchResult {
     Pending(PatternState),
     Ok(usize),
     Err,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PatternState {
     next_op: usize,
 }
 
+#[derive(Debug)]
 pub struct Pattern {
     ops: Vec<Op>,
     state: PatternState,
 }
 
+macro_rules! check {
+    ($e:expr, $ok_jump:expr, $err_jump:expr) => {
+        if $e {
+            $ok_jump
+        } else {
+            $err_jump
+        }
+    };
+}
+
 impl Pattern {
-    pub fn build(pattern: &str) -> Option<Self> {
+    pub fn new(pattern: &str) -> Option<Self> {
         Some(Self {
             ops: parse_ops(pattern.as_bytes())?,
             state: PatternState { next_op: 0 },
         })
     }
 
-    pub fn matches(&mut self, bytes: &[u8]) -> MatchResult {
-        MatchResult::Err
+    pub fn matches(&self, bytes: &[u8]) -> MatchResult {
+        let mut len = 0;
+        let ops = &self.ops[..];
+        let mut op_index = 0;
+
+        for b in bytes {
+            len += 1;
+            op_index = match ops[op_index] {
+                Op::Match => return MatchResult::Ok(len),
+                Op::Error => return MatchResult::Err,
+                Op::Alphabetic(okj, erj) => check!(b.is_ascii_alphanumeric(), okj, erj),
+                Op::Lower(okj, erj) => check!(b.is_ascii_lowercase(), okj, erj),
+                Op::Upper(okj, erj) => check!(b.is_ascii_uppercase(), okj, erj),
+                Op::Digit(okj, erj) => check!(b.is_ascii_digit(), okj, erj),
+                Op::Alphanumeric(okj, erj) => check!(b.is_ascii_alphanumeric(), okj, erj),
+                Op::Byte(b_class, okj, erj) => check!(*b == b_class, okj, erj),
+            } as _;
+        }
+
+        MatchResult::Pending(PatternState { next_op: op_index })
     }
 }
 
+#[derive(Debug)]
 enum Op {
     Match,
     Error,
@@ -69,6 +99,10 @@ impl<'a> OpParser<'a> {
         Some(self.ops)
     }
 
+    fn current(&self) -> u8 {
+        self.bytes[self.index - 1]
+    }
+
     fn next(&mut self) -> Option<u8> {
         if self.index < self.bytes.len() {
             let b = self.bytes[self.index];
@@ -80,7 +114,7 @@ impl<'a> OpParser<'a> {
     }
 
     fn parse_expr(&mut self) -> Option<()> {
-        match self.bytes[self.index] {
+        match self.current() {
             b'*' => None,
             b'[' => self.parse_custom_class(),
             _ => self.parse_class(),
@@ -94,7 +128,7 @@ impl<'a> OpParser<'a> {
         }
         let okj = okj as _;
 
-        match self.bytes[self.index] {
+        match self.current() {
             b'%' => match self.next()? {
                 b'a' => self.ops.push(Op::Alphabetic(okj, 0)),
                 b'l' => self.ops.push(Op::Lower(okj, 0)),
@@ -125,7 +159,7 @@ impl<'a> OpParser<'a> {
                 _ => self.parse_expr()?,
             }
         }
-        if self.bytes[self.index] != b']' {
+        if self.current() != b']' {
             return None;
         }
 
@@ -149,5 +183,18 @@ impl<'a> OpParser<'a> {
         }
 
         Some(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_match_simple() {
+        let p = Pattern::new("aa").unwrap();
+        dbg!(&p);
+        assert_eq!(MatchResult::Ok(2), p.matches(b"aa"));
+        //assert_eq!(MatchResult::Ok(2), p.matches(b"aaa"));
     }
 }
