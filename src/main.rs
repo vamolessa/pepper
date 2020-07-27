@@ -1,6 +1,4 @@
 mod application;
-mod pattern;
-mod syntax;
 mod buffer;
 mod buffer_position;
 mod buffer_view;
@@ -15,6 +13,8 @@ mod event_manager;
 mod history;
 mod keymap;
 mod mode;
+mod pattern;
+mod syntax;
 mod theme;
 mod tui;
 

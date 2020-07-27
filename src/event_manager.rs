@@ -1,4 +1,7 @@
-use std::{sync::{Barrier, Arc}, thread};
+use std::{
+    sync::{Arc, Barrier},
+    thread,
+};
 
 use crate::event::Event;
 
@@ -66,7 +69,10 @@ mod windows {
             })
         }
 
-        pub fn run_event_loop_in_background(mut self, barrier: Arc<Barrier>) -> thread::JoinHandle<io::Result<()>> {
+        pub fn run_event_loop_in_background(
+            mut self,
+            barrier: Arc<Barrier>,
+        ) -> thread::JoinHandle<io::Result<()>> {
             thread::spawn(move || {
                 while self.poll_and_send_events()? {
                     barrier.wait();
