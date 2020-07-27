@@ -16,16 +16,6 @@ pub struct Pattern {
     state: PatternState,
 }
 
-macro_rules! check {
-    ($e:expr, $ok_jump:expr, $err_jump:expr) => {
-        if $e {
-            $ok_jump
-        } else {
-            $err_jump
-        }
-    };
-}
-
 impl Pattern {
     pub fn new(pattern: &str) -> Option<Self> {
         Some(Self {
@@ -38,19 +28,38 @@ impl Pattern {
         let mut len = 0;
         let ops = &self.ops[..];
         let mut op_index = 1;
+        let mut bytes_index = 0;
+        let mut byte = bytes[bytes_index];
 
-        for b in bytes {
-            op_index = match ops[op_index] {
+        macro_rules! check {
+            ($e:expr, $ok_jump:expr, $err_jump:expr) => {
+                if $e {
+                    op_index = $ok_jump as _;
+
+                    len += 1;
+                    bytes_index += 1;
+                    if bytes_index == bytes.len() {
+                        break;
+                    }
+
+                    byte = bytes[bytes_index];
+                } else {
+                    op_index = $err_jump as _;
+                }
+            };
+        }
+
+        loop {
+            match ops[op_index] {
                 Op::Match => return MatchResult::Ok(len),
                 Op::Error => return MatchResult::Err,
-                Op::Alphabetic(okj, erj) => check!(b.is_ascii_alphabetic(), okj, erj),
-                Op::Lower(okj, erj) => check!(b.is_ascii_lowercase(), okj, erj),
-                Op::Upper(okj, erj) => check!(b.is_ascii_uppercase(), okj, erj),
-                Op::Digit(okj, erj) => check!(b.is_ascii_digit(), okj, erj),
-                Op::Alphanumeric(okj, erj) => check!(b.is_ascii_alphanumeric(), okj, erj),
-                Op::Byte(b_class, okj, erj) => check!(*b == b_class, okj, erj),
-            } as _;
-            len += 1;
+                Op::Alphabetic(okj, erj) => check!(byte.is_ascii_alphabetic(), okj, erj),
+                Op::Lower(okj, erj) => check!(byte.is_ascii_lowercase(), okj, erj),
+                Op::Upper(okj, erj) => check!(byte.is_ascii_uppercase(), okj, erj),
+                Op::Digit(okj, erj) => check!(byte.is_ascii_digit(), okj, erj),
+                Op::Alphanumeric(okj, erj) => check!(byte.is_ascii_alphanumeric(), okj, erj),
+                Op::Byte(b, okj, erj) => check!(byte == b, okj, erj),
+            };
         }
 
         match ops[op_index] {
@@ -171,6 +180,7 @@ impl<'a> OpParser<'a> {
         let okj = end_op_index as _;
         let mut erj = start_op_index as _;
         for op in &mut self.ops[start_op_index..(end_op_index - 1)] {
+            erj += 1;
             match op {
                 Op::Alphabetic(ref mut o, ref mut e)
                 | Op::Lower(ref mut o, ref mut e)
@@ -183,7 +193,6 @@ impl<'a> OpParser<'a> {
                 }
                 _ => unreachable!(),
             }
-            erj += 1;
         }
 
         Some(())
@@ -217,5 +226,56 @@ mod tests {
         assert_eq!(MatchResult::Err, p.matches(b"0"));
         assert_eq!(MatchResult::Err, p.matches(b"9"));
         assert_eq!(MatchResult::Err, p.matches(b"!"));
+
+        let p = Pattern::new("%l").unwrap();
+        assert_eq!(MatchResult::Ok(1), p.matches(b"a"));
+        assert_eq!(MatchResult::Ok(1), p.matches(b"z"));
+        assert_eq!(MatchResult::Err, p.matches(b"A"));
+        assert_eq!(MatchResult::Err, p.matches(b"Z"));
+        assert_eq!(MatchResult::Err, p.matches(b"0"));
+        assert_eq!(MatchResult::Err, p.matches(b"9"));
+        assert_eq!(MatchResult::Err, p.matches(b"!"));
+
+        let p = Pattern::new("%u").unwrap();
+        assert_eq!(MatchResult::Err, p.matches(b"a"));
+        assert_eq!(MatchResult::Err, p.matches(b"z"));
+        assert_eq!(MatchResult::Ok(1), p.matches(b"A"));
+        assert_eq!(MatchResult::Ok(1), p.matches(b"Z"));
+        assert_eq!(MatchResult::Err, p.matches(b"0"));
+        assert_eq!(MatchResult::Err, p.matches(b"9"));
+        assert_eq!(MatchResult::Err, p.matches(b"!"));
+
+        let p = Pattern::new("%d").unwrap();
+        assert_eq!(MatchResult::Err, p.matches(b"a"));
+        assert_eq!(MatchResult::Err, p.matches(b"z"));
+        assert_eq!(MatchResult::Err, p.matches(b"A"));
+        assert_eq!(MatchResult::Err, p.matches(b"Z"));
+        assert_eq!(MatchResult::Ok(1), p.matches(b"0"));
+        assert_eq!(MatchResult::Ok(1), p.matches(b"9"));
+        assert_eq!(MatchResult::Err, p.matches(b"!"));
+
+        let p = Pattern::new("%w").unwrap();
+        assert_eq!(MatchResult::Ok(1), p.matches(b"a"));
+        assert_eq!(MatchResult::Ok(1), p.matches(b"z"));
+        assert_eq!(MatchResult::Ok(1), p.matches(b"A"));
+        assert_eq!(MatchResult::Ok(1), p.matches(b"Z"));
+        assert_eq!(MatchResult::Ok(1), p.matches(b"0"));
+        assert_eq!(MatchResult::Ok(1), p.matches(b"9"));
+        assert_eq!(MatchResult::Err, p.matches(b"!"));
+    }
+
+    #[test]
+    fn test_match_custom_classes() {
+        let p = Pattern::new("[abc]").unwrap();
+        assert_eq!(MatchResult::Ok(1), p.matches(b"a"));
+        assert_eq!(MatchResult::Ok(1), p.matches(b"b"));
+        assert_eq!(MatchResult::Ok(1), p.matches(b"c"));
+        assert_eq!(MatchResult::Err, p.matches(b"d"));
+
+        let p = Pattern::new("z[abc]").unwrap();
+        assert_eq!(MatchResult::Ok(2), p.matches(b"za"));
+        assert_eq!(MatchResult::Ok(2), p.matches(b"zb"));
+        assert_eq!(MatchResult::Ok(2), p.matches(b"zc"));
+        assert_eq!(MatchResult::Err, p.matches(b"zd"));
     }
 }
