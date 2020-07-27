@@ -5,22 +5,27 @@ enum MatchResult {
     Err,
 }
 
-struct Flow {
-    ok: u8,
-    err: u8,
-}
-
-enum Op {
-    Match,
-    Error,
-    Digit(Flow),
-    Alphabetic(Flow),
-    Byte(u8, Flow),
-}
-
 #[derive(Clone, Copy)]
 pub struct PatternState {
     next_op: usize,
+}
+
+pub struct Pattern {
+    ops: Vec<Op>,
+    state: PatternState,
+}
+
+impl Pattern {
+    pub fn build(pattern: &str) -> Result<Self, ()> {
+        Ok(Self {
+            ops: parse_ops(Bytes::from_slice(pattern.as_bytes()))?,
+            state: PatternState { next_op: 0 },
+        })
+    }
+
+    pub fn matches(&mut self, bytes: &[u8]) -> MatchResult {
+        MatchResult::Err
+    }
 }
 
 struct Bytes<'a> {
@@ -48,22 +53,13 @@ impl<'a> Bytes<'a> {
     }
 }
 
-pub struct Pattern {
-    ops: Vec<Op>,
-    state: PatternState,
-}
-
-impl Pattern {
-    pub fn build(pattern: &str) -> Result<Self, ()> {
-        Ok(Self {
-            ops: parse_ops(Bytes::from_slice(pattern.as_bytes()))?,
-            state: PatternState { next_op: 0 },
-        })
-    }
-
-    pub fn matches(&mut self, bytes: &[u8]) -> MatchResult {
-        MatchResult::Err
-    }
+enum Op {
+    Match,
+    Error,
+    Jump(u8),
+    Digit(u8, u8),
+    Alphabetic(u8, u8),
+    Byte(u8, u8, u8),
 }
 
 fn parse_ops(mut bytes: Bytes) -> Result<Vec<Op>, ()> {
@@ -74,19 +70,18 @@ fn parse_ops(mut bytes: Bytes) -> Result<Vec<Op>, ()> {
 
 fn parse_expr(bytes: &mut Bytes, ops: &mut Vec<Op>) -> Result<(), ()> {
     while let Some(b) = bytes.next() {
-        let flow = Flow {ok: 0, err: 0};
         match b {
             b'*' => (),
             b'\\' => match bytes.next() {
-                Some(b'd') => ops.push(Op::Digit(flow)),
-                Some(b'w') => ops.push(Op::Alphabetic(flow)),
-                Some(b'[') => ops.push(Op::Byte(b'[', flow)),
-                Some(b']') => ops.push(Op::Byte(b']', flow)),
-                Some(b'{') => ops.push(Op::Byte(b'{', flow)),
-                Some(b'}') => ops.push(Op::Byte(b'}', flow)),
+                Some(b'd') => ops.push(Op::Digit(0, 0)),
+                Some(b'w') => ops.push(Op::Alphabetic(0, 0)),
+                Some(b'[') => ops.push(Op::Byte(b'[', 0, 0)),
+                Some(b']') => ops.push(Op::Byte(b']', 0, 0)),
+                Some(b'{') => ops.push(Op::Byte(b'{', 0, 0)),
+                Some(b'}') => ops.push(Op::Byte(b'}', 0, 0)),
                 _ => return Err(()),
             },
-            _ => ops.push(Op::Byte(b, flow)),
+            _ => ops.push(Op::Byte(b, 0, 0)),
         }
     }
 
