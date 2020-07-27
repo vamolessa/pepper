@@ -69,11 +69,13 @@ impl Pattern {
         match ops[op_index] {
             Op::Match => MatchResult::Ok(len),
             Op::Error => MatchResult::Err,
-            _ => if bytes_index < bytes.len() {
-                MatchResult::Pending(PatternState { op_index })
-            } else {
-                MatchResult::Err
-            },
+            _ => {
+                if bytes_index < bytes.len() {
+                    MatchResult::Pending(PatternState { op_index })
+                } else {
+                    MatchResult::Err
+                }
+            }
         }
     }
 }
@@ -113,7 +115,7 @@ impl<'a> OpParser<'a> {
     pub fn parse(mut self) -> Option<Vec<Op>> {
         self.ops.push(Op::Error);
         while let Some(b) = self.next() {
-            self.parse_expr()?;
+            self.parse_expr(self.ops.len() - 1)?;
         }
         self.ops.push(Op::Match);
 
@@ -134,9 +136,9 @@ impl<'a> OpParser<'a> {
         }
     }
 
-    fn parse_expr(&mut self) -> Option<()> {
+    fn parse_expr(&mut self, previous_start_op_index: usize) -> Option<()> {
         match self.current() {
-            b'*' => None,
+            b'*' => self.parse_repeat(previous_start_op_index),
             b'[' => self.parse_custom_class(),
             _ => self.parse_class(),
         }
@@ -177,7 +179,7 @@ impl<'a> OpParser<'a> {
             match b {
                 b'[' => return None,
                 b']' => break,
-                _ => self.parse_expr()?,
+                _ => self.parse_expr(start_op_index)?,
             }
         }
         if self.current() != b']' {
@@ -201,6 +203,37 @@ impl<'a> OpParser<'a> {
                 }
                 _ => unreachable!(),
             }
+        }
+
+        Some(())
+    }
+
+    fn parse_repeat(&mut self, previous_start_op_index: usize) -> Option<()> {
+        let last_index = self.ops.len() - 1;
+        if last_index == 0 {
+            return None;
+        }
+
+        let okj = previous_start_op_index as _;
+        let erj = self.ops.len() as _;
+
+        let mut i = previous_start_op_index;
+        for op in &mut self.ops[previous_start_op_index..=last_index] {
+            match op {
+                Op::Alphabetic(ref mut o, ref mut e)
+                | Op::Lower(ref mut o, ref mut e)
+                | Op::Upper(ref mut o, ref mut e)
+                | Op::Digit(ref mut o, ref mut e)
+                | Op::Alphanumeric(ref mut o, ref mut e)
+                | Op::Byte(_, ref mut o, ref mut e) => {
+                    *o = okj;
+                    if i == last_index {
+                        *e = erj;
+                    }
+                }
+                _ => unreachable!(),
+            }
+            i += 1;
         }
 
         Some(())
@@ -302,5 +335,14 @@ mod tests {
         assert_eq!(MatchResult::Err, p.matches(b"z"));
         assert_eq!(MatchResult::Err, p.matches(b"zA"));
         assert_eq!(MatchResult::Err, p.matches(b"zZ"));
+    }
+
+    #[test]
+    fn test_repeat() {
+        let p = Pattern::new("a*b").unwrap();
+        dbg!(&p);
+        assert_eq!(MatchResult::Ok(2), p.matches(b"ab"));
+        assert_eq!(MatchResult::Ok(3), p.matches(b"aab"));
+        assert_eq!(MatchResult::Ok(5), p.matches(b"aaaab"));
     }
 }
