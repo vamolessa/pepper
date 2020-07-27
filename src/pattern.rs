@@ -25,6 +25,10 @@ impl Pattern {
     }
 
     pub fn matches(&self, bytes: &[u8]) -> MatchResult {
+        if bytes.is_empty() {
+            return MatchResult::Err;
+        }
+
         let mut len = 0;
         let ops = &self.ops[..];
         let mut op_index = 1;
@@ -65,7 +69,11 @@ impl Pattern {
         match ops[op_index] {
             Op::Match => MatchResult::Ok(len),
             Op::Error => MatchResult::Err,
-            _ => MatchResult::Pending(PatternState { op_index }),
+            _ => if bytes_index < bytes.len() {
+                MatchResult::Pending(PatternState { op_index })
+            } else {
+                MatchResult::Err
+            },
         }
     }
 }
@@ -209,6 +217,7 @@ mod tests {
         assert_eq!(MatchResult::Ok(1), p.matches(b"a"));
         assert_eq!(MatchResult::Ok(1), p.matches(b"aa"));
         assert_eq!(MatchResult::Err, p.matches(b"b"));
+        assert_eq!(MatchResult::Err, p.matches(b""));
 
         let p = Pattern::new("aa").unwrap();
         assert_eq!(MatchResult::Ok(2), p.matches(b"aa"));
@@ -272,10 +281,26 @@ mod tests {
         assert_eq!(MatchResult::Ok(1), p.matches(b"c"));
         assert_eq!(MatchResult::Err, p.matches(b"d"));
 
-        let p = Pattern::new("z[abc]").unwrap();
+        let p = Pattern::new("z[abc]y").unwrap();
+        assert_eq!(MatchResult::Ok(3), p.matches(b"zay"));
+        assert_eq!(MatchResult::Ok(3), p.matches(b"zby"));
+        assert_eq!(MatchResult::Ok(3), p.matches(b"zcy"));
+        assert_eq!(MatchResult::Err, p.matches(b"z"));
+        assert_eq!(MatchResult::Err, p.matches(b"zy"));
+        assert_eq!(MatchResult::Err, p.matches(b"zdy"));
+
+        let p = Pattern::new("z[a]").unwrap();
         assert_eq!(MatchResult::Ok(2), p.matches(b"za"));
-        assert_eq!(MatchResult::Ok(2), p.matches(b"zb"));
-        assert_eq!(MatchResult::Ok(2), p.matches(b"zc"));
-        assert_eq!(MatchResult::Err, p.matches(b"zd"));
+        assert_eq!(MatchResult::Err, p.matches(b"z"));
+        assert_eq!(MatchResult::Err, p.matches(b"zb"));
+
+        let p = Pattern::new("z[%l%d]").unwrap();
+        assert_eq!(MatchResult::Ok(2), p.matches(b"za"));
+        assert_eq!(MatchResult::Ok(2), p.matches(b"zz"));
+        assert_eq!(MatchResult::Ok(2), p.matches(b"z0"));
+        assert_eq!(MatchResult::Ok(2), p.matches(b"z9"));
+        assert_eq!(MatchResult::Err, p.matches(b"z"));
+        assert_eq!(MatchResult::Err, p.matches(b"zA"));
+        assert_eq!(MatchResult::Err, p.matches(b"zZ"));
     }
 }
