@@ -37,7 +37,7 @@ impl Pattern {
     pub fn matches(&self, bytes: &[u8]) -> MatchResult {
         let mut len = 0;
         let ops = &self.ops[..];
-        let mut op_index = 0;
+        let mut op_index = 1;
 
         for b in bytes {
             len += 1;
@@ -53,7 +53,11 @@ impl Pattern {
             } as _;
         }
 
-        MatchResult::Pending(PatternState { next_op: op_index })
+        if let Op::Match = ops[op_index] {
+            MatchResult::Ok(len)
+        } else {
+            MatchResult::Pending(PatternState { next_op: op_index })
+        }
     }
 }
 
