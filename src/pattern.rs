@@ -66,22 +66,20 @@ impl Pattern {
             byte = bytes[bytes_index];
         }
 
-        match ops[op_index] {
-            Op::Match => MatchResult::Ok(len),
-            Op::Error => MatchResult::Err,
-            Op::Any(_, erj)
-            | Op::Alphabetic(_, erj)
-            | Op::Lower(_, erj)
-            | Op::Upper(_, erj)
-            | Op::Digit(_, erj)
-            | Op::Alphanumeric(_, erj)
-            | Op::Byte(_, _, erj) => {
-                if let Op::Match = ops[erj as usize] {
-                    MatchResult::Ok(len)
-                } else {
-                    MatchResult::Err
+        loop {
+            match ops[op_index] {
+                Op::Match => return MatchResult::Ok(len),
+                Op::Error => return MatchResult::Err,
+                Op::Any(_, erj)
+                | Op::Alphabetic(_, erj)
+                | Op::Lower(_, erj)
+                | Op::Upper(_, erj)
+                | Op::Digit(_, erj)
+                | Op::Alphanumeric(_, erj) 
+                | Op::Byte(_, _, erj) => {
+                    op_index = erj as _;
                 }
-            }
+            };
         }
     }
 }
@@ -232,7 +230,6 @@ impl<'a> OpParser<'a> {
         let okj = previous_start_op_index as _;
 
         let mut i = previous_start_op_index;
-        dbg!(previous_start_op_index);
         for op in &mut self.ops[previous_start_op_index..] {
             i += 1;
             match op {
@@ -386,13 +383,17 @@ mod tests {
         assert_eq!(MatchResult::Ok(1), p.matches(b"0"));
         assert_eq!(MatchResult::Ok(1), p.matches(b" "));
 
-        let p = Pattern::new("[ab]*c").unwrap();
-        dbg!(&p);
+        let p = Pattern::new("[ab%d]*c").unwrap();
         assert_eq!(MatchResult::Ok(1), p.matches(b"c"));
         assert_eq!(MatchResult::Ok(2), p.matches(b"ac"));
         assert_eq!(MatchResult::Ok(2), p.matches(b"bc"));
         assert_eq!(MatchResult::Ok(3), p.matches(b"bac"));
-        //assert_eq!(MatchResult::Ok(14), p.matches(b"a1b234ba9bbbbc"));
+        assert_eq!(MatchResult::Ok(5), p.matches(b"0b4ac"));
+        assert_eq!(MatchResult::Ok(14), p.matches(b"a1b234ba9bbbbc"));
+
+        let p = Pattern::new("%d[%w_%.]*@").unwrap();
+        assert_eq!(MatchResult::Ok(6), p.matches(b"1x4_5@"));
+        assert_eq!(MatchResult::Ok(15), p.matches(b"9xxasd_234.45f@"));
     }
 
     #[test]
