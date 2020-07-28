@@ -1,6 +1,6 @@
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MatchResult {
-    Pending(PatternState),
+    Pending(usize, PatternState),
     Ok(usize),
     Err,
 }
@@ -23,13 +23,17 @@ impl Pattern {
     }
 
     pub fn matches(&self, bytes: &[u8]) -> MatchResult {
+        self.matches_from_state(bytes, &PatternState { op_index: 1 })
+    }
+
+    pub fn matches_from_state(&self, bytes: &[u8], state: &PatternState) -> MatchResult {
         if bytes.is_empty() {
             return MatchResult::Err;
         }
 
         let mut len = 0;
         let ops = &self.ops[..];
-        let mut op_index = 1;
+        let mut op_index = state.op_index;
         let mut bytes_index = 0;
         let mut byte = bytes[bytes_index];
 
@@ -48,6 +52,7 @@ impl Pattern {
             match ops[op_index] {
                 Op::Match => return MatchResult::Ok(len),
                 Op::Error => return MatchResult::Err,
+                Op::EndAnchor(_, erj) => op_index = erj as _,
                 Op::Any(okj, erj) => jump!(true, okj, erj),
                 Op::Alphabetic(okj, erj) => jump!(byte.is_ascii_alphabetic(), okj, erj),
                 Op::Lower(okj, erj) => jump!(byte.is_ascii_lowercase(), okj, erj),
@@ -70,12 +75,19 @@ impl Pattern {
             match ops[op_index] {
                 Op::Match => return MatchResult::Ok(len),
                 Op::Error => return MatchResult::Err,
+                Op::EndAnchor(okj, _) => {
+                    op_index = okj as _;
+                    match ops[op_index] {
+                        Op::Match => return MatchResult::Ok(len),
+                        _ => return MatchResult::Pending(len, PatternState { op_index }),
+                    }
+                }
                 Op::Any(_, erj)
                 | Op::Alphabetic(_, erj)
                 | Op::Lower(_, erj)
                 | Op::Upper(_, erj)
                 | Op::Digit(_, erj)
-                | Op::Alphanumeric(_, erj) 
+                | Op::Alphanumeric(_, erj)
                 | Op::Byte(_, _, erj) => {
                     op_index = erj as _;
                 }
@@ -88,6 +100,7 @@ impl Pattern {
 enum Op {
     Match,
     Error,
+    EndAnchor(u8, u8),
     Any(u8, u8),
     Alphabetic(u8, u8),
     Lower(u8, u8),
@@ -168,12 +181,14 @@ impl<'a> OpParser<'a> {
                 b'd' => self.ops.push(Op::Digit(okj, 0)),
                 b'w' => self.ops.push(Op::Alphanumeric(okj, 0)),
                 b'%' => self.ops.push(Op::Byte(b'%', okj, 0)),
+                b'$' => self.ops.push(Op::Byte(b'$', okj, 0)),
                 b'.' => self.ops.push(Op::Byte(b'.', okj, 0)),
                 b'[' => self.ops.push(Op::Byte(b'[', okj, 0)),
                 b']' => self.ops.push(Op::Byte(b']', okj, 0)),
                 b'*' => self.ops.push(Op::Byte(b'*', okj, 0)),
                 _ => return None,
             },
+            b'$' => self.ops.push(Op::EndAnchor(okj, 0)),
             b'.' => self.ops.push(Op::Any(okj, 0)),
             b'[' => return None,
             b']' => return None,
@@ -233,7 +248,8 @@ impl<'a> OpParser<'a> {
         for op in &mut self.ops[previous_start_op_index..] {
             i += 1;
             match op {
-                Op::Any(ref mut o, ref mut e)
+                Op::EndAnchor(ref mut o, ref mut e)
+                | Op::Any(ref mut o, ref mut e)
                 | Op::Alphabetic(ref mut o, ref mut e)
                 | Op::Lower(ref mut o, ref mut e)
                 | Op::Upper(ref mut o, ref mut e)
@@ -270,8 +286,8 @@ mod tests {
         assert_eq!(MatchResult::Ok(2), p.matches(b"aaa"));
         assert_eq!(MatchResult::Err, p.matches(b"baa"));
 
-        let p = Pattern::new("%% %[ %] %* %.").unwrap();
-        assert_eq!(MatchResult::Ok(9), p.matches(b"% [ ] * ."));
+        let p = Pattern::new("%% %[ %] %* %. %$").unwrap();
+        assert_eq!(MatchResult::Ok(11), p.matches(b"% [ ] * . $"));
 
         let p = Pattern::new(".").unwrap();
         assert_eq!(MatchResult::Ok(1), p.matches(b"a"));
@@ -374,6 +390,23 @@ mod tests {
         assert_eq!(MatchResult::Ok(2), p.matches(b"ac"));
         assert_eq!(MatchResult::Ok(3), p.matches(b"abc"));
         assert_eq!(MatchResult::Ok(5), p.matches(b"abbbc"));
+    }
+
+    #[test]
+    fn test_end_anchor() {
+        let p = Pattern::new("a$").unwrap();
+        assert_eq!(MatchResult::Ok(1), p.matches(b"a"));
+        assert_eq!(MatchResult::Err, p.matches(b"aa"));
+
+        let p = Pattern::new("a$b").unwrap();
+        assert_eq!(
+            MatchResult::Pending(1, PatternState { op_index: 3 }),
+            p.matches(b"a")
+        );
+        assert_eq!(
+            MatchResult::Ok(1),
+            p.matches_from_state(b"b", &PatternState{op_index: 3})
+        );
     }
 
     #[test]
