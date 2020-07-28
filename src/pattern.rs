@@ -48,7 +48,7 @@ impl Pattern {
             match ops[op_index] {
                 Op::Match => return MatchResult::Ok(len),
                 Op::Error => return MatchResult::Err,
-                Op::Any(okj) => jump!(true, okj, 0),
+                Op::Any(okj, erj) => jump!(true, okj, erj),
                 Op::Alphabetic(okj, erj) => jump!(byte.is_ascii_alphabetic(), okj, erj),
                 Op::Lower(okj, erj) => jump!(byte.is_ascii_lowercase(), okj, erj),
                 Op::Upper(okj, erj) => jump!(byte.is_ascii_uppercase(), okj, erj),
@@ -69,8 +69,8 @@ impl Pattern {
         match ops[op_index] {
             Op::Match => MatchResult::Ok(len),
             Op::Error => MatchResult::Err,
-            Op::Any(_) => MatchResult::Err,
-            Op::Alphabetic(_, erj)
+            Op::Any(_, erj)
+            | Op::Alphabetic(_, erj)
             | Op::Lower(_, erj)
             | Op::Upper(_, erj)
             | Op::Digit(_, erj)
@@ -90,7 +90,7 @@ impl Pattern {
 enum Op {
     Match,
     Error,
-    Any(u8),
+    Any(u8, u8),
     Alphabetic(u8, u8),
     Lower(u8, u8),
     Upper(u8, u8),
@@ -121,8 +121,9 @@ impl<'a> OpParser<'a> {
 
     pub fn parse(mut self) -> Option<Vec<Op>> {
         self.ops.push(Op::Error);
+        let mut previous_len = 0;
         while let Some(b) = self.next() {
-            self.parse_expr(self.ops.len() - 1)?;
+            previous_len = self.parse_expr(previous_len)?;
         }
         self.ops.push(Op::Match);
 
@@ -143,12 +144,15 @@ impl<'a> OpParser<'a> {
         }
     }
 
-    fn parse_expr(&mut self, previous_start_op_index: usize) -> Option<()> {
+    fn parse_expr(&mut self, previous_len: usize) -> Option<usize> {
+        let start_len = self.ops.len();
         match self.current() {
-            b'*' => self.parse_repeat(previous_start_op_index),
-            b'[' => self.parse_custom_class(),
-            _ => self.parse_class(),
+            b'*' => self.parse_repeat(previous_len)?,
+            b'[' => self.parse_custom_class()?,
+            _ => self.parse_class()?,
         }
+
+        Some(self.ops.len() - start_len)
     }
 
     fn parse_class(&mut self) -> Option<()> {
@@ -172,7 +176,7 @@ impl<'a> OpParser<'a> {
                 b'*' => self.ops.push(Op::Byte(b'*', okj, 0)),
                 _ => return None,
             },
-            b'.' => self.ops.push(Op::Any(okj)),
+            b'.' => self.ops.push(Op::Any(okj, 0)),
             b'[' => return None,
             b']' => return None,
             b'*' => return None,
@@ -184,11 +188,12 @@ impl<'a> OpParser<'a> {
 
     fn parse_custom_class(&mut self) -> Option<()> {
         let start_op_index = self.ops.len();
+        let mut previous_len = 0;
         while let Some(b) = self.next() {
             match b {
                 b'[' => return None,
                 b']' => break,
-                _ => self.parse_expr(start_op_index)?,
+                _ => previous_len = self.parse_expr(previous_len)?,
             }
         }
         if self.current() != b']' {
@@ -217,35 +222,34 @@ impl<'a> OpParser<'a> {
         Some(())
     }
 
-    fn parse_repeat(&mut self, previous_start_op_index: usize) -> Option<()> {
-        let last_index = self.ops.len() - 1;
-        if last_index == 0 {
+    fn parse_repeat(&mut self, previous_len: usize) -> Option<()> {
+        if previous_len == 0 {
             return None;
         }
 
+        let len = self.ops.len();
+        let previous_start_op_index = len - previous_len;
         let okj = previous_start_op_index as _;
-        let erj = self.ops.len() as _;
 
         let mut i = previous_start_op_index;
-        for op in &mut self.ops[previous_start_op_index..=last_index] {
+        dbg!(previous_start_op_index);
+        for op in &mut self.ops[previous_start_op_index..] {
+            i += 1;
             match op {
-                Op::Any(ref mut o) => {
-                    *o = okj;
-                }
-                Op::Alphabetic(ref mut o, ref mut e)
+                Op::Any(ref mut o, ref mut e)
+                | Op::Alphabetic(ref mut o, ref mut e)
                 | Op::Lower(ref mut o, ref mut e)
                 | Op::Upper(ref mut o, ref mut e)
                 | Op::Digit(ref mut o, ref mut e)
                 | Op::Alphanumeric(ref mut o, ref mut e)
                 | Op::Byte(_, ref mut o, ref mut e) => {
                     *o = okj;
-                    if i == last_index {
-                        *e = erj;
+                    if i == len {
+                        *e = len as _;
                     }
                 }
                 _ => unreachable!(),
             }
-            i += 1;
         }
 
         Some(())
@@ -271,7 +275,7 @@ mod tests {
 
         let p = Pattern::new("%% %[ %] %* %.").unwrap();
         assert_eq!(MatchResult::Ok(9), p.matches(b"% [ ] * ."));
-        
+
         let p = Pattern::new(".").unwrap();
         assert_eq!(MatchResult::Ok(1), p.matches(b"a"));
         assert_eq!(MatchResult::Ok(1), p.matches(b"z"));
@@ -379,6 +383,16 @@ mod tests {
     fn test_complex_pattern() {
         let p = Pattern::new(".*").unwrap();
         assert_eq!(MatchResult::Ok(10), p.matches(b"things 890"));
+        assert_eq!(MatchResult::Ok(1), p.matches(b"0"));
+        assert_eq!(MatchResult::Ok(1), p.matches(b" "));
+
+        let p = Pattern::new("[ab]*c").unwrap();
+        dbg!(&p);
+        assert_eq!(MatchResult::Ok(1), p.matches(b"c"));
+        assert_eq!(MatchResult::Ok(2), p.matches(b"ac"));
+        assert_eq!(MatchResult::Ok(2), p.matches(b"bc"));
+        assert_eq!(MatchResult::Ok(3), p.matches(b"bac"));
+        //assert_eq!(MatchResult::Ok(14), p.matches(b"a1b234ba9bbbbc"));
     }
 
     #[test]
