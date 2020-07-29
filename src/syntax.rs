@@ -38,7 +38,7 @@ pub struct Token {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LineKind {
-    AllFinished,
+    Finished,
     Unfinished(usize, PatternState),
 }
 
@@ -61,10 +61,19 @@ impl Syntax {
         previous_line_kind: LineKind,
         tokens: &mut Vec<Token>,
     ) -> LineKind {
+        if self.rules.len() == 0 {
+            tokens.push(Token {
+                kind: TokenKind::Text,
+                range: 0..line.len(),
+            });
+            return LineKind::Finished;
+        }
+
+        let line_len = line.len();
         let mut line_index = 0;
 
         match previous_line_kind {
-            LineKind::AllFinished => (),
+            LineKind::Finished => (),
             LineKind::Unfinished(pattern_index, state) => match self.rules[pattern_index]
                 .1
                 .matches_from_state(line.as_bytes(), &state)
@@ -80,14 +89,14 @@ impl Syntax {
                 MatchResult::Pending(_, state) => {
                     tokens.push(Token {
                         kind: self.rules[pattern_index].0,
-                        range: 0..line.len(),
+                        range: 0..line_len,
                     });
                     return LineKind::Unfinished(pattern_index, state);
                 }
             },
         }
 
-        while line_index < line.len() {
+        while line_index < line_len {
             let line_slice = &line[line_index..].as_bytes();
             let whitespace_len = line_slice
                 .iter()
@@ -109,7 +118,7 @@ impl Syntax {
                     MatchResult::Pending(_, state) => {
                         tokens.push(Token {
                             kind: *kind,
-                            range: line_index..line.len(),
+                            range: line_index..line_len,
                         });
                         return LineKind::Unfinished(i, state);
                     }
@@ -123,20 +132,21 @@ impl Syntax {
                 max_len = line_slice
                     .iter()
                     .take_while(|b| b.is_ascii_alphanumeric())
-                    .count();
+                    .count()
+                    .max(1);
             }
 
-            max_len = 1.max(max_len + whitespace_len);
+            max_len += whitespace_len;
 
             let from = line_index;
-            line_index += max_len;
+            line_index = line_len.min(line_index + max_len);
             tokens.push(Token {
                 kind,
                 range: from..line_index,
             });
         }
 
-        LineKind::AllFinished
+        LineKind::Finished
     }
 }
 
@@ -150,6 +160,37 @@ mod tests {
     }
 
     #[test]
+    fn test_no_syntax() {
+        let syntax = Syntax::new();
+        let mut tokens = Vec::new();
+        let line = " fn main() ;  ";
+        let line_kind = syntax.parse_line(line, LineKind::Finished, &mut tokens);
+
+        assert_eq!(LineKind::Finished, line_kind);
+        assert_eq!(1, tokens.len());
+        assert_token(line, TokenKind::Text, line, &tokens[0]);
+    }
+
+    #[test]
+    fn test_one_rule_syntax() {
+        let mut syntax = Syntax::new();
+        syntax.add_rule(TokenKind::Symbol, Pattern::new(";").unwrap());
+
+        let mut tokens = Vec::new();
+        let line = " fn main() ;  ";
+        let line_kind = syntax.parse_line(line, LineKind::Finished, &mut tokens);
+
+        assert_eq!(LineKind::Finished, line_kind);
+        assert_eq!(6, tokens.len());
+        assert_token(" fn", TokenKind::Text, line, &tokens[0]);
+        assert_token(" main", TokenKind::Text, line, &tokens[1]);
+        assert_token("(", TokenKind::Text, line, &tokens[2]);
+        assert_token(")", TokenKind::Text, line, &tokens[3]);
+        assert_token(" ;", TokenKind::Symbol, line, &tokens[4]);
+        assert_token("  ", TokenKind::Text, line, &tokens[5]);
+    }
+
+    #[test]
     fn test_simple_syntax() {
         let mut syntax = Syntax::new();
         syntax.add_rule(TokenKind::Keyword, Pattern::new("fn").unwrap());
@@ -157,16 +198,16 @@ mod tests {
         syntax.add_rule(TokenKind::Symbol, Pattern::new(")").unwrap());
 
         let mut tokens = Vec::new();
-        let line = " fn main();  ";
-        let line_kind = syntax.parse_line(line, LineKind::AllFinished, &mut tokens);
-        dbg!(&tokens);
-        assert_eq!(LineKind::AllFinished, line_kind);
+        let line = " fn main() ;  ";
+        let line_kind = syntax.parse_line(line, LineKind::Finished, &mut tokens);
+
+        assert_eq!(LineKind::Finished, line_kind);
         assert_eq!(6, tokens.len());
         assert_token(" fn", TokenKind::Keyword, line, &tokens[0]);
         assert_token(" main", TokenKind::Text, line, &tokens[1]);
         assert_token("(", TokenKind::Symbol, line, &tokens[2]);
         assert_token(")", TokenKind::Symbol, line, &tokens[3]);
-        assert_token(";", TokenKind::Text, line, &tokens[4]);
+        assert_token(" ;", TokenKind::Text, line, &tokens[4]);
         assert_token("  ", TokenKind::Text, line, &tokens[5]);
     }
 }
