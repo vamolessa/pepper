@@ -23,10 +23,10 @@ impl Pattern {
     }
 
     pub fn matches(&self, bytes: &[u8]) -> MatchResult {
-        self.matches_from_state(bytes, &PatternState { op_index: 1 })
+        self.matches_with_state(bytes, &PatternState { op_index: 1 })
     }
 
-    pub fn matches_from_state(&self, bytes: &[u8], state: &PatternState) -> MatchResult {
+    pub fn matches_with_state(&self, bytes: &[u8], state: &PatternState) -> MatchResult {
         if bytes.is_empty() {
             return MatchResult::Err;
         }
@@ -219,7 +219,9 @@ impl<'a> OpParser<'a> {
         for op in &mut self.ops[start_op_index..(end_op_index - 1)] {
             erj += 1;
             match op {
-                Op::Alphabetic(ref mut o, ref mut e)
+                Op::EndAnchor(ref mut o, ref mut e)
+                | Op::Any(ref mut o, ref mut e)
+                | Op::Alphabetic(ref mut o, ref mut e)
                 | Op::Lower(ref mut o, ref mut e)
                 | Op::Upper(ref mut o, ref mut e)
                 | Op::Digit(ref mut o, ref mut e)
@@ -405,7 +407,32 @@ mod tests {
         );
         assert_eq!(
             MatchResult::Ok(1),
-            p.matches_from_state(b"b", &PatternState{op_index: 3})
+            p.matches_with_state(b"b", &PatternState { op_index: 3 })
+        );
+
+        let p = Pattern::new("a.*$b").unwrap();
+        assert_eq!(
+            MatchResult::Pending(4, PatternState { op_index: 4 }),
+            p.matches(b"axyz")
+        );
+        assert_eq!(
+            MatchResult::Ok(1),
+            p.matches_with_state(b"b", &PatternState { op_index: 4 })
+        );
+
+        let p = Pattern::new("a[b$]*c*d").unwrap();
+        dbg!(&p);
+        assert_eq!(
+            MatchResult::Pending(3, PatternState { op_index: 2 }),
+            p.matches(b"abb")
+        );
+        assert_eq!(
+            MatchResult::Pending(2, PatternState { op_index: 2 }),
+            p.matches_with_state(b"bb", &PatternState { op_index: 2 })
+        );
+        assert_eq!(
+            MatchResult::Ok(4),
+            p.matches_with_state(b"bccd", &PatternState { op_index: 2 })
         );
     }
 

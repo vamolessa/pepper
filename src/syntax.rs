@@ -1,17 +1,3 @@
-/*
-   line_comments //
-   block_comments /* */
-
-   keywords if else while loop fn match let use mod
-   modifiers pub
-
-   symbols ( ) { } [ ] < > = ! + - * / | : ;
-
-   strings " "
-   chars ' '
-   literals true false
-*/
-
 use std::ops::Range;
 
 use crate::pattern::{MatchResult, Pattern, PatternState};
@@ -19,8 +5,7 @@ use crate::pattern::{MatchResult, Pattern, PatternState};
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TokenKind {
     Text,
-    LineComment,
-    BlockComment,
+    Comment,
     Keyword,
     Modifier,
     Symbol,
@@ -76,7 +61,7 @@ impl Syntax {
             LineKind::Finished => (),
             LineKind::Unfinished(pattern_index, state) => match self.rules[pattern_index]
                 .1
-                .matches_from_state(line.as_bytes(), &state)
+                .matches_with_state(line.as_bytes(), &state)
             {
                 MatchResult::Ok(len) => {
                     tokens.push(Token {
@@ -209,5 +194,42 @@ mod tests {
         assert_token(")", TokenKind::Symbol, line, &tokens[3]);
         assert_token(" ;", TokenKind::Text, line, &tokens[4]);
         assert_token("  ", TokenKind::Text, line, &tokens[5]);
+    }
+
+    #[test]
+    fn test_multiline_syntax() {
+        let mut syntax = Syntax::new();
+        //syntax.add_rule(TokenKind::Comment, Pattern::new("/%*[.$]*%*/").unwrap());
+        syntax.add_rule(TokenKind::Comment, Pattern::new("/%*[%w $]*%*/").unwrap());
+
+        let mut tokens = Vec::new();
+        let line0 = "before /* comment";
+        let line1 = "only comment";
+        let line2 = "still comment */ after";
+
+        let line0_kind = syntax.parse_line(line0, LineKind::Finished, &mut tokens);
+        match line0_kind {
+            LineKind::Unfinished(i, _) => assert_eq!(0, i),
+            _ => panic!("{:?}", line0_kind),
+        }
+        assert_eq!(2, tokens.len());
+        assert_token("before", TokenKind::Text, line0, &tokens[0]);
+        assert_token(" /* comment", TokenKind::Comment, line0, &tokens[1]);
+
+        tokens.clear();
+        let line1_kind = syntax.parse_line(line1, line0_kind, &mut tokens);
+        match line1_kind {
+            LineKind::Unfinished(i, _) => assert_eq!(0, i),
+            _ => panic!("{:?}", line1_kind),
+        }
+        assert_eq!(1, tokens.len());
+        assert_token("only comment", TokenKind::Comment, line1, &tokens[0]);
+
+        //tokens.clear();
+        //let line2_kind = syntax.parse_line(line2, line1_kind, &mut tokens);
+        //assert_eq!(LineKind::Finished, line2_kind);
+        //assert_eq!(2, tokens.len());
+        //assert_token("still comment*/", TokenKind::Comment, line2, &tokens[0]);
+        //assert_token(" after", TokenKind::Text, line2, &tokens[1]);
     }
 }
