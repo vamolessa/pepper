@@ -123,11 +123,10 @@ impl Syntax {
                 max_len = line_slice
                     .iter()
                     .take_while(|b| b.is_ascii_alphanumeric())
-                    .count()
-                    .max(1);
+                    .count();
             }
 
-            max_len += whitespace_len;
+            max_len = 1.max(max_len + whitespace_len);
 
             let from = line_index;
             line_index += max_len;
@@ -159,14 +158,16 @@ mod tests {
         syntax.add_rule(TokenKind::Symbol, Pattern::new(";").unwrap());
 
         let mut tokens = Vec::new();
-        let line = "fn main();";
+        let line = " fn main();  ";
         let line_kind = syntax.parse_line(line, LineKind::AllFinished, &mut tokens);
+        dbg!(&tokens);
         assert_eq!(LineKind::AllFinished, line_kind);
-        assert_eq!(5, tokens.len());
-        assert_token("fn", TokenKind::Keyword, line, &tokens[0]);
+        assert_eq!(6, tokens.len());
+        assert_token(" fn", TokenKind::Keyword, line, &tokens[0]);
         assert_token(" main", TokenKind::Text, line, &tokens[1]);
         assert_token("(", TokenKind::Symbol, line, &tokens[2]);
         assert_token(")", TokenKind::Symbol, line, &tokens[3]);
         assert_token(";", TokenKind::Symbol, line, &tokens[4]);
+        assert_token("  ", TokenKind::Text, line, &tokens[5]);
     }
 }
