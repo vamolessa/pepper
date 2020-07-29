@@ -155,7 +155,6 @@ mod tests {
         syntax.add_rule(TokenKind::Keyword, Pattern::new("fn").unwrap());
         syntax.add_rule(TokenKind::Symbol, Pattern::new("(").unwrap());
         syntax.add_rule(TokenKind::Symbol, Pattern::new(")").unwrap());
-        syntax.add_rule(TokenKind::Symbol, Pattern::new(";").unwrap());
 
         let mut tokens = Vec::new();
         let line = " fn main();  ";
@@ -167,7 +166,7 @@ mod tests {
         assert_token(" main", TokenKind::Text, line, &tokens[1]);
         assert_token("(", TokenKind::Symbol, line, &tokens[2]);
         assert_token(")", TokenKind::Symbol, line, &tokens[3]);
-        assert_token(";", TokenKind::Symbol, line, &tokens[4]);
+        assert_token(";", TokenKind::Text, line, &tokens[4]);
         assert_token("  ", TokenKind::Text, line, &tokens[5]);
     }
 }
