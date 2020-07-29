@@ -16,8 +16,9 @@ use std::ops::Range;
 
 use crate::pattern::{MatchResult, Pattern, PatternState};
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TokenKind {
+    Text,
     LineComment,
     BlockComment,
     Keyword,
@@ -29,29 +30,29 @@ pub enum TokenKind {
     Number,
 }
 
-pub enum LineKind {
-    AllFinished,
-    Unfinished(usize, PatternState),
-}
-
+#[derive(Debug, Clone, PartialEq)]
 pub struct Token {
     pub kind: TokenKind,
     pub range: Range<usize>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum LineKind {
+    AllFinished,
+    Unfinished(usize, PatternState),
+}
+
 pub struct Syntax {
-    patterns: Vec<(TokenKind, Pattern)>,
+    rules: Vec<(TokenKind, Pattern)>,
 }
 
 impl Syntax {
     pub fn new() -> Self {
-        Self {
-            patterns: Vec::new(),
-        }
+        Self { rules: Vec::new() }
     }
 
-    pub fn add_pattern(&mut self, kind: TokenKind, pattern: Pattern) {
-        self.patterns.push((kind, pattern));
+    pub fn add_rule(&mut self, kind: TokenKind, pattern: Pattern) {
+        self.rules.push((kind, pattern));
     }
 
     pub fn parse_line(
@@ -64,13 +65,13 @@ impl Syntax {
 
         match previous_line_kind {
             LineKind::AllFinished => (),
-            LineKind::Unfinished(pattern_index, state) => match self.patterns[pattern_index]
+            LineKind::Unfinished(pattern_index, state) => match self.rules[pattern_index]
                 .1
                 .matches_from_state(line.as_bytes(), &state)
             {
                 MatchResult::Ok(len) => {
                     tokens.push(Token {
-                        kind: self.patterns[pattern_index].0,
+                        kind: self.rules[pattern_index].0,
                         range: 0..len,
                     });
                     line_index += len;
@@ -78,7 +79,7 @@ impl Syntax {
                 MatchResult::Err => (),
                 MatchResult::Pending(_, state) => {
                     tokens.push(Token {
-                        kind: self.patterns[pattern_index].0,
+                        kind: self.rules[pattern_index].0,
                         range: 0..line.len(),
                     });
                     return LineKind::Unfinished(pattern_index, state);
@@ -88,9 +89,15 @@ impl Syntax {
 
         while line_index < line.len() {
             let line_slice = &line[line_index..].as_bytes();
+            let whitespace_len = line_slice
+                .iter()
+                .take_while(|b| b.is_ascii_whitespace())
+                .count();
+            let line_slice = &line_slice[whitespace_len..];
+
             let mut best_pattern_index = 0;
             let mut max_len = 0;
-            for (i, (kind, pattern)) in self.patterns.iter().enumerate() {
+            for (i, (kind, pattern)) in self.rules.iter().enumerate() {
                 match pattern.matches(line_slice) {
                     MatchResult::Ok(len) => {
                         if len > max_len {
@@ -108,14 +115,58 @@ impl Syntax {
                     }
                 }
             }
+
+            let mut kind = self.rules[best_pattern_index].0;
+
+            if max_len == 0 {
+                kind = TokenKind::Text;
+                max_len = line_slice
+                    .iter()
+                    .take_while(|b| b.is_ascii_alphanumeric())
+                    .count()
+                    .max(1);
+            }
+
+            max_len += whitespace_len;
+
             let from = line_index;
-            line_index += line_index + max_len;
+            line_index += max_len;
             tokens.push(Token {
-                kind: self.patterns[best_pattern_index].0,
+                kind,
                 range: from..line_index,
             });
         }
 
         LineKind::AllFinished
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_token(slice: &str, kind: TokenKind, line: &str, token: &Token) {
+        assert_eq!(kind, token.kind);
+        assert_eq!(slice, &line[token.range.clone()]);
+    }
+
+    #[test]
+    fn test_simple_syntax() {
+        let mut syntax = Syntax::new();
+        syntax.add_rule(TokenKind::Keyword, Pattern::new("fn").unwrap());
+        syntax.add_rule(TokenKind::Symbol, Pattern::new("(").unwrap());
+        syntax.add_rule(TokenKind::Symbol, Pattern::new(")").unwrap());
+        syntax.add_rule(TokenKind::Symbol, Pattern::new(";").unwrap());
+
+        let mut tokens = Vec::new();
+        let line = "fn main();";
+        let line_kind = syntax.parse_line(line, LineKind::AllFinished, &mut tokens);
+        assert_eq!(LineKind::AllFinished, line_kind);
+        assert_eq!(5, tokens.len());
+        assert_token("fn", TokenKind::Keyword, line, &tokens[0]);
+        assert_token(" main", TokenKind::Text, line, &tokens[1]);
+        assert_token("(", TokenKind::Symbol, line, &tokens[2]);
+        assert_token(")", TokenKind::Symbol, line, &tokens[3]);
+        assert_token(";", TokenKind::Symbol, line, &tokens[4]);
     }
 }
