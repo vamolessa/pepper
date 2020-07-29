@@ -1,3 +1,5 @@
+use std::fmt;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MatchResult {
     Pending(usize, PatternState),
@@ -10,7 +12,6 @@ pub struct PatternState {
     op_index: usize,
 }
 
-#[derive(Debug)]
 pub struct Pattern {
     ops: Vec<Op>,
 }
@@ -96,7 +97,15 @@ impl Pattern {
     }
 }
 
-#[derive(Debug)]
+impl fmt::Debug for Pattern {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("Pattern ")?;
+        f.debug_map()
+            .entries(self.ops.iter().enumerate().map(|(i, op)| (i, op)))
+            .finish()
+    }
+}
+
 enum Op {
     Match,
     Error,
@@ -108,6 +117,23 @@ enum Op {
     Digit(u8, u8),
     Alphanumeric(u8, u8),
     Byte(u8, u8, u8),
+}
+
+impl fmt::Debug for Op {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Op::Match => f.write_str("Match"),
+            Op::Error => f.write_str("Error"),
+            Op::EndAnchor(o, e) => f.write_fmt(format_args!("EndAnchor    {} {}", o, e)),
+            Op::Any(o, e) => f.write_fmt(format_args!("Any          {} {}", o, e)),
+            Op::Alphabetic(o, e) => f.write_fmt(format_args!("Alphabetic   {} {}", o, e)),
+            Op::Lower(o, e) => f.write_fmt(format_args!("Lower        {} {}", o, e)),
+            Op::Upper(o, e) => f.write_fmt(format_args!("Upper        {} {}", o, e)),
+            Op::Digit(o, e) => f.write_fmt(format_args!("Digit        {} {}", o, e)),
+            Op::Alphanumeric(o, e) => f.write_fmt(format_args!("Alphanumeric {} {}", o, e)),
+            Op::Byte(b, o, e) => f.write_fmt(format_args!("Byte     '{}' {} {}", *b as char, o, e)),
+        }
+    }
 }
 
 fn parse_ops(bytes: &[u8]) -> Option<Vec<Op>> {
@@ -133,7 +159,7 @@ impl<'a> OpParser<'a> {
     pub fn parse(mut self) -> Option<Vec<Op>> {
         self.ops.push(Op::Error);
         let mut previous_len = 0;
-        while let Some(b) = self.next() {
+        while let Some(_) = self.next() {
             previous_len = self.parse_expr(previous_len)?;
         }
         self.ops.push(Op::Match);
