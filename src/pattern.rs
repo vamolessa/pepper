@@ -421,7 +421,6 @@ mod tests {
         );
 
         let p = Pattern::new("a[b$]*c*d").unwrap();
-        dbg!(&p);
         assert_eq!(
             MatchResult::Pending(3, PatternState { op_index: 2 }),
             p.matches(b"abb")
