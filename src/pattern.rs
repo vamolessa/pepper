@@ -19,7 +19,7 @@ pub struct Pattern {
 impl Pattern {
     pub fn new(pattern: &str) -> Option<Self> {
         Some(Self {
-            ops: parse_ops(pattern.as_bytes())?,
+            ops: PatternParser::new(pattern.as_bytes()).build_ops()?,
         })
     }
 
@@ -136,18 +136,13 @@ impl fmt::Debug for Op {
     }
 }
 
-fn parse_ops(bytes: &[u8]) -> Option<Vec<Op>> {
-    let mut parser = OpParser::new(bytes);
-    parser.parse()
-}
-
-struct OpParser<'a> {
+struct PatternParser<'a> {
     pub bytes: &'a [u8],
     pub index: usize,
     pub ops: Vec<Op>,
 }
 
-impl<'a> OpParser<'a> {
+impl<'a> PatternParser<'a> {
     pub fn new(bytes: &'a [u8]) -> Self {
         Self {
             bytes,
@@ -156,7 +151,7 @@ impl<'a> OpParser<'a> {
         }
     }
 
-    pub fn parse(mut self) -> Option<Vec<Op>> {
+    pub fn build_ops(mut self) -> Option<Vec<Op>> {
         self.ops.push(Op::Error);
         let mut previous_len = 0;
         while let Some(_) = self.next() {
