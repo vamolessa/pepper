@@ -40,7 +40,8 @@ impl Pattern {
             match ops[op_index] {
                 Op::Ok => return MatchResult::Ok(len),
                 Op::Error => return MatchResult::Err,
-                Op::Match(okj, erj, unwind, ref class) => {
+                Op::Jump(jump) => op_index = jump as _,
+                Op::Match(okj, erj, ref class) => {
                     let ok = match class {
                         CharClass::EndAnchor => false,
                         CharClass::Any => true,
@@ -56,9 +57,12 @@ impl Pattern {
                         op_index = okj as _;
                     } else {
                         op_index = erj as _;
-                        bytes_index -= unwind as usize;
                         continue;
                     }
+                }
+                Op::Unwind(len, jump) => {
+                    bytes_index -= len as usize;
+                    op_index = jump as _;
                 }
             };
 
@@ -75,16 +79,16 @@ impl Pattern {
             match ops[op_index] {
                 Op::Ok => return MatchResult::Ok(len),
                 Op::Error => return MatchResult::Err,
-                Op::Match(okj, _, _, CharClass::EndAnchor) => {
+                Op::Jump(jump) => op_index = jump as _,
+                Op::Match(okj, _, CharClass::EndAnchor) => {
                     op_index = okj as _;
                     match ops[op_index] {
                         Op::Ok => return MatchResult::Ok(len),
                         _ => return MatchResult::Pending(len, PatternState { op_index }),
                     }
                 }
-                Op::Match(_, erj, _, _) => {
-                    op_index = erj as _;
-                }
+                Op::Match(_, erj, _) => op_index = erj as _,
+                Op::Unwind(_, jump) => op_index = jump as _,
             };
         }
     }
@@ -115,7 +119,9 @@ enum CharClass {
 enum Op {
     Ok,
     Error,
-    Match(u8, u8, u8, CharClass),
+    Jump(u8),
+    Match(u8, u8, CharClass),
+    Unwind(u8, u8),
 }
 
 struct PatternParser<'a> {
@@ -137,11 +143,15 @@ impl<'a> PatternParser<'a> {
         self.ops.push(Op::Error);
         let mut previous_len = 0;
         while let Some(_) = self.next() {
-            previous_len = self.parse_expr(previous_len)?;
+            previous_len = self.parse_expr(previous_len, 0, 0)?;
         }
         self.ops.push(Op::Ok);
 
         Some(Pattern { ops: self.ops })
+    }
+
+    fn peek(&self) -> u8 {
+        self.bytes[self.index]
     }
 
     fn current(&self) -> u8 {
@@ -150,7 +160,7 @@ impl<'a> PatternParser<'a> {
 
     fn next(&mut self) -> Option<u8> {
         if self.index < self.bytes.len() {
-            let b = self.bytes[self.index];
+            let b = self.peek();
             self.index += 1;
             Some(b)
         } else {
@@ -158,18 +168,18 @@ impl<'a> PatternParser<'a> {
         }
     }
 
-    fn parse_expr(&mut self, previous_len: usize) -> Option<usize> {
-        let start_len = self.ops.len();
-        match self.current() {
-            b'*' => self.parse_repeat(previous_len)?,
-            b'[' => self.parse_custom_class()?,
-            _ => self.parse_class()?,
-        }
+    fn parse_expr(&mut self, previous_len: usize, okj: u8, erj: u8) -> Option<usize> {
+        let len = match self.current() {
+            b'*' => self.parse_repeat(previous_len, okj, erj)?,
+            b'(' => self.parse_sequence(okj, erj)?,
+            b'[' => self.parse_group(okj, erj)?,
+            _ => self.parse_class(okj, erj)?,
+        };
 
-        Some(self.ops.len() - start_len)
+        Some(len)
     }
 
-    fn parse_class(&mut self) -> Option<()> {
+    fn parse_class(&mut self, okj: u8, erj: u8) -> Option<usize> {
         let okj = self.ops.len() + 1;
         if okj > u8::max_value() as _ {
             return None;
@@ -186,6 +196,9 @@ impl<'a> PatternParser<'a> {
                 b'%' => CharClass::Byte(b'%'),
                 b'$' => CharClass::Byte(b'$'),
                 b'.' => CharClass::Byte(b'.'),
+                b'^' => CharClass::Byte(b'^'),
+                b'(' => CharClass::Byte(b'('),
+                b')' => CharClass::Byte(b')'),
                 b'[' => CharClass::Byte(b'['),
                 b']' => CharClass::Byte(b']'),
                 b'*' => CharClass::Byte(b'*'),
@@ -193,24 +206,72 @@ impl<'a> PatternParser<'a> {
             },
             b'$' => CharClass::EndAnchor,
             b'.' => CharClass::Any,
+            b'(' => return None,
+            b')' => return None,
             b'[' => return None,
             b']' => return None,
             b'*' => return None,
             b => CharClass::Byte(b),
         };
-        self.ops.push(Op::Match(okj, 0, 0, char_class));
+        self.ops.push(Op::Match(okj, 0, char_class));
 
-        Some(())
+        Some(1)
     }
 
-    fn parse_custom_class(&mut self) -> Option<()> {
+    fn parse_sequence(&mut self, okj: u8, erj: u8) -> Option<usize> {
+        let inverse = self.current() == b'^';
+        if inverse {
+            self.next();
+        }
+
+        let mut op_indices = Vec::new();
+        let mut previous_len = 0;
+        while let Some(b) = self.next() {
+            match b {
+                b')' => break,
+                _ => {
+                    previous_len = self.parse_expr(previous_len, okj, erj)?;
+                    op_indices.push(self.ops.len() - 1);
+                }
+            }
+        }
+        if self.current() != b')' {
+            return None;
+        }
+
+        let op_count = self.ops.len() as _;
+        let first_index = op_indices.first().cloned().unwrap_or(0);
+        let last_index = op_indices.last().cloned().unwrap_or(0);
+
+        for index in &op_indices {
+            let index = *index;
+            if let Op::Match(okj, erj, _) = &mut self.ops[index] {
+                if inverse {
+                    if index == last_index {
+                        *okj = 0;
+                    }
+
+                    *erj = op_count;
+                } else {
+                }
+            }
+        }
+
+        None
+    }
+
+    fn parse_group(&mut self, okj: u8, erj: u8) -> Option<usize> {
         let start_op_index = self.ops.len();
         let mut previous_len = 0;
+        let mut len = 0;
         while let Some(b) = self.next() {
             match b {
                 b'[' => return None,
                 b']' => break,
-                _ => previous_len = self.parse_expr(previous_len)?,
+                _ => {
+                    previous_len = self.parse_expr(previous_len, okj, erj)?;
+                    len += previous_len;
+                }
             }
         }
         if self.current() != b']' {
@@ -222,7 +283,7 @@ impl<'a> PatternParser<'a> {
         let mut erj = start_op_index as _;
         for op in &mut self.ops[start_op_index..(end_op_index - 1)] {
             erj += 1;
-            if let Op::Match(ref mut o, ref mut e, _, _) = op {
+            if let Op::Match(ref mut o, ref mut e, _) = op {
                 *o = okj;
                 *e = erj;
             } else {
@@ -230,10 +291,10 @@ impl<'a> PatternParser<'a> {
             }
         }
 
-        Some(())
+        Some(len)
     }
 
-    fn parse_repeat(&mut self, previous_len: usize) -> Option<()> {
+    fn parse_repeat(&mut self, previous_len: usize, okj: u8, erj: u8) -> Option<usize> {
         if previous_len == 0 {
             return None;
         }
@@ -245,7 +306,7 @@ impl<'a> PatternParser<'a> {
         let mut i = previous_start_op_index;
         for op in &mut self.ops[previous_start_op_index..] {
             i += 1;
-            if let Op::Match(ref mut o, ref mut e, _, _) = op {
+            if let Op::Match(ref mut o, ref mut e, _) = op {
                 *o = okj;
                 if i == len {
                     *e = len as _;
@@ -255,7 +316,7 @@ impl<'a> PatternParser<'a> {
             }
         }
 
-        Some(())
+        Some(0)
     }
 }
 
