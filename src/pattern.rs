@@ -36,29 +36,29 @@ impl Pattern {
         let mut bytes_index = 0;
         let mut byte = bytes[bytes_index];
 
-        macro_rules! jump {
-            ($e:expr, $ok_jump:expr, $err_jump:expr) => {
-                if $e {
-                    op_index = $ok_jump as _;
-                } else {
-                    op_index = $err_jump as _;
-                    continue;
-                }
-            };
-        }
-
         loop {
             match ops[op_index] {
                 Op::Match => return MatchResult::Ok(len),
                 Op::Error => return MatchResult::Err,
-                Op::EndAnchor(_, erj) => op_index = erj as _,
-                Op::Any(okj, erj) => jump!(true, okj, erj),
-                Op::Alphabetic(okj, erj) => jump!(byte.is_ascii_alphabetic(), okj, erj),
-                Op::Lower(okj, erj) => jump!(byte.is_ascii_lowercase(), okj, erj),
-                Op::Upper(okj, erj) => jump!(byte.is_ascii_uppercase(), okj, erj),
-                Op::Digit(okj, erj) => jump!(byte.is_ascii_digit(), okj, erj),
-                Op::Alphanumeric(okj, erj) => jump!(byte.is_ascii_alphanumeric(), okj, erj),
-                Op::Byte(b, okj, erj) => jump!(byte == b, okj, erj),
+                Op::Jump(okj, erj, ref class) => {
+                    let ok = match class {
+                        CharClass::EndAnchor => false,
+                        CharClass::Any => true,
+                        CharClass::Alphabetic => byte.is_ascii_alphabetic(),
+                        CharClass::Lower => byte.is_ascii_lowercase(),
+                        CharClass::Upper => byte.is_ascii_uppercase(),
+                        CharClass::Digit => byte.is_ascii_digit(),
+                        CharClass::Alphanumeric => byte.is_ascii_alphanumeric(),
+                        CharClass::Byte(b) => byte == *b,
+                    };
+
+                    if ok {
+                        op_index = okj as _;
+                    } else {
+                        op_index = erj as _;
+                        continue;
+                    }
+                }
             };
 
             len += 1;
@@ -74,20 +74,14 @@ impl Pattern {
             match ops[op_index] {
                 Op::Match => return MatchResult::Ok(len),
                 Op::Error => return MatchResult::Err,
-                Op::EndAnchor(okj, _) => {
+                Op::Jump(okj, _, CharClass::EndAnchor) => {
                     op_index = okj as _;
                     match ops[op_index] {
                         Op::Match => return MatchResult::Ok(len),
                         _ => return MatchResult::Pending(len, PatternState { op_index }),
                     }
                 }
-                Op::Any(_, erj)
-                | Op::Alphabetic(_, erj)
-                | Op::Lower(_, erj)
-                | Op::Upper(_, erj)
-                | Op::Digit(_, erj)
-                | Op::Alphanumeric(_, erj)
-                | Op::Byte(_, _, erj) => {
+                Op::Jump(_, erj, _) => {
                     op_index = erj as _;
                 }
             };
@@ -104,34 +98,23 @@ impl fmt::Debug for Pattern {
     }
 }
 
+#[derive(Debug)]
+enum CharClass {
+    EndAnchor,
+    Any,
+    Alphabetic,
+    Lower,
+    Upper,
+    Digit,
+    Alphanumeric,
+    Byte(u8),
+}
+
+#[derive(Debug)]
 enum Op {
     Match,
     Error,
-    EndAnchor(u8, u8),
-    Any(u8, u8),
-    Alphabetic(u8, u8),
-    Lower(u8, u8),
-    Upper(u8, u8),
-    Digit(u8, u8),
-    Alphanumeric(u8, u8),
-    Byte(u8, u8, u8),
-}
-
-impl fmt::Debug for Op {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Op::Match => f.write_str("Match"),
-            Op::Error => f.write_str("Error"),
-            Op::EndAnchor(o, e) => f.write_fmt(format_args!("EndAnchor    {} {}", o, e)),
-            Op::Any(o, e) => f.write_fmt(format_args!("Any          {} {}", o, e)),
-            Op::Alphabetic(o, e) => f.write_fmt(format_args!("Alphabetic   {} {}", o, e)),
-            Op::Lower(o, e) => f.write_fmt(format_args!("Lower        {} {}", o, e)),
-            Op::Upper(o, e) => f.write_fmt(format_args!("Upper        {} {}", o, e)),
-            Op::Digit(o, e) => f.write_fmt(format_args!("Digit        {} {}", o, e)),
-            Op::Alphanumeric(o, e) => f.write_fmt(format_args!("Alphanumeric {} {}", o, e)),
-            Op::Byte(b, o, e) => f.write_fmt(format_args!("Byte     '{}' {} {}", *b as char, o, e)),
-        }
-    }
+    Jump(u8, u8, CharClass),
 }
 
 struct PatternParser<'a> {
@@ -192,28 +175,29 @@ impl<'a> PatternParser<'a> {
         }
         let okj = okj as _;
 
-        match self.current() {
+        let char_class = match self.current() {
             b'%' => match self.next()? {
-                b'a' => self.ops.push(Op::Alphabetic(okj, 0)),
-                b'l' => self.ops.push(Op::Lower(okj, 0)),
-                b'u' => self.ops.push(Op::Upper(okj, 0)),
-                b'd' => self.ops.push(Op::Digit(okj, 0)),
-                b'w' => self.ops.push(Op::Alphanumeric(okj, 0)),
-                b'%' => self.ops.push(Op::Byte(b'%', okj, 0)),
-                b'$' => self.ops.push(Op::Byte(b'$', okj, 0)),
-                b'.' => self.ops.push(Op::Byte(b'.', okj, 0)),
-                b'[' => self.ops.push(Op::Byte(b'[', okj, 0)),
-                b']' => self.ops.push(Op::Byte(b']', okj, 0)),
-                b'*' => self.ops.push(Op::Byte(b'*', okj, 0)),
+                b'a' => CharClass::Alphabetic,
+                b'l' => CharClass::Lower,
+                b'u' => CharClass::Upper,
+                b'd' => CharClass::Digit,
+                b'w' => CharClass::Alphanumeric,
+                b'%' => CharClass::Byte(b'%'),
+                b'$' => CharClass::Byte(b'$'),
+                b'.' => CharClass::Byte(b'.'),
+                b'[' => CharClass::Byte(b'['),
+                b']' => CharClass::Byte(b']'),
+                b'*' => CharClass::Byte(b'*'),
                 _ => return None,
             },
-            b'$' => self.ops.push(Op::EndAnchor(okj, 0)),
-            b'.' => self.ops.push(Op::Any(okj, 0)),
+            b'$' => CharClass::EndAnchor,
+            b'.' => CharClass::Any,
             b'[' => return None,
             b']' => return None,
             b'*' => return None,
-            b => self.ops.push(Op::Byte(b, okj, 0)),
-        }
+            b => CharClass::Byte(b),
+        };
+        self.ops.push(Op::Jump(okj, 0, char_class));
 
         Some(())
     }
@@ -237,19 +221,11 @@ impl<'a> PatternParser<'a> {
         let mut erj = start_op_index as _;
         for op in &mut self.ops[start_op_index..(end_op_index - 1)] {
             erj += 1;
-            match op {
-                Op::EndAnchor(ref mut o, ref mut e)
-                | Op::Any(ref mut o, ref mut e)
-                | Op::Alphabetic(ref mut o, ref mut e)
-                | Op::Lower(ref mut o, ref mut e)
-                | Op::Upper(ref mut o, ref mut e)
-                | Op::Digit(ref mut o, ref mut e)
-                | Op::Alphanumeric(ref mut o, ref mut e)
-                | Op::Byte(_, ref mut o, ref mut e) => {
-                    *o = okj;
-                    *e = erj;
-                }
-                _ => unreachable!(),
+            if let Op::Jump(ref mut o, ref mut e, _) = op {
+                *o = okj;
+                *e = erj;
+            } else {
+                unreachable!();
             }
         }
 
@@ -268,21 +244,13 @@ impl<'a> PatternParser<'a> {
         let mut i = previous_start_op_index;
         for op in &mut self.ops[previous_start_op_index..] {
             i += 1;
-            match op {
-                Op::EndAnchor(ref mut o, ref mut e)
-                | Op::Any(ref mut o, ref mut e)
-                | Op::Alphabetic(ref mut o, ref mut e)
-                | Op::Lower(ref mut o, ref mut e)
-                | Op::Upper(ref mut o, ref mut e)
-                | Op::Digit(ref mut o, ref mut e)
-                | Op::Alphanumeric(ref mut o, ref mut e)
-                | Op::Byte(_, ref mut o, ref mut e) => {
-                    *o = okj;
-                    if i == len {
-                        *e = len as _;
-                    }
+            if let Op::Jump(ref mut o, ref mut e, _) = op {
+                *o = okj;
+                if i == len {
+                    *e = len as _;
                 }
-                _ => unreachable!(),
+            } else {
+                unreachable!();
             }
         }
 
