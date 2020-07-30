@@ -38,9 +38,9 @@ impl Pattern {
 
         loop {
             match ops[op_index] {
-                Op::Match => return MatchResult::Ok(len),
+                Op::Ok => return MatchResult::Ok(len),
                 Op::Error => return MatchResult::Err,
-                Op::Jump(okj, erj, ref class) => {
+                Op::Match(okj, erj, unwind, ref class) => {
                     let ok = match class {
                         CharClass::EndAnchor => false,
                         CharClass::Any => true,
@@ -56,6 +56,7 @@ impl Pattern {
                         op_index = okj as _;
                     } else {
                         op_index = erj as _;
+                        bytes_index -= unwind as usize;
                         continue;
                     }
                 }
@@ -72,16 +73,16 @@ impl Pattern {
 
         loop {
             match ops[op_index] {
-                Op::Match => return MatchResult::Ok(len),
+                Op::Ok => return MatchResult::Ok(len),
                 Op::Error => return MatchResult::Err,
-                Op::Jump(okj, _, CharClass::EndAnchor) => {
+                Op::Match(okj, _, _, CharClass::EndAnchor) => {
                     op_index = okj as _;
                     match ops[op_index] {
-                        Op::Match => return MatchResult::Ok(len),
+                        Op::Ok => return MatchResult::Ok(len),
                         _ => return MatchResult::Pending(len, PatternState { op_index }),
                     }
                 }
-                Op::Jump(_, erj, _) => {
+                Op::Match(_, erj, _, _) => {
                     op_index = erj as _;
                 }
             };
@@ -112,9 +113,9 @@ enum CharClass {
 
 #[derive(Debug)]
 enum Op {
-    Match,
+    Ok,
     Error,
-    Jump(u8, u8, CharClass),
+    Match(u8, u8, u8, CharClass),
 }
 
 struct PatternParser<'a> {
@@ -138,7 +139,7 @@ impl<'a> PatternParser<'a> {
         while let Some(_) = self.next() {
             previous_len = self.parse_expr(previous_len)?;
         }
-        self.ops.push(Op::Match);
+        self.ops.push(Op::Ok);
 
         Some(Pattern { ops: self.ops })
     }
@@ -197,7 +198,7 @@ impl<'a> PatternParser<'a> {
             b'*' => return None,
             b => CharClass::Byte(b),
         };
-        self.ops.push(Op::Jump(okj, 0, char_class));
+        self.ops.push(Op::Match(okj, 0, 0, char_class));
 
         Some(())
     }
@@ -221,7 +222,7 @@ impl<'a> PatternParser<'a> {
         let mut erj = start_op_index as _;
         for op in &mut self.ops[start_op_index..(end_op_index - 1)] {
             erj += 1;
-            if let Op::Jump(ref mut o, ref mut e, _) = op {
+            if let Op::Match(ref mut o, ref mut e, _, _) = op {
                 *o = okj;
                 *e = erj;
             } else {
@@ -244,7 +245,7 @@ impl<'a> PatternParser<'a> {
         let mut i = previous_start_op_index;
         for op in &mut self.ops[previous_start_op_index..] {
             i += 1;
-            if let Op::Jump(ref mut o, ref mut e, _) = op {
+            if let Op::Match(ref mut o, ref mut e, _, _) = op {
                 *o = okj;
                 if i == len {
                     *e = len as _;
