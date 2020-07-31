@@ -33,12 +33,7 @@ impl Pattern {
 
         macro_rules! check {
             ($e:expr, $okj:expr, $erj:expr) => {{
-                if bytes_index >= bytes.len() {
-                    dbg!(bytes_index >= bytes.len());
-                    break;
-                }
-
-                if $e {
+                if bytes_index < bytes.len() && $e {
                     op_index = $okj.0 as _;
                     bytes_index += 1;
                 } else {
@@ -58,7 +53,17 @@ impl Pattern {
             match ops[op_index] {
                 Op::Ok => return MatchResult::Ok(bytes_index),
                 Op::Error => return MatchResult::Err,
-                Op::EndAnchor(okj, erj) => check!(false, okj, erj),
+                Op::EndAnchor(okj, erj) => {
+                    if bytes_index < bytes.len() {
+                        op_index = erj.0 as _;
+                    } else {
+                        op_index = okj.0 as _;
+                        return match ops[op_index] {
+                            Op::Ok => MatchResult::Ok(bytes_index),
+                            _ => MatchResult::Pending(bytes_index, PatternState { op_index }),
+                        };
+                    }
+                }
                 Op::Any(okj, erj) => check!(true, okj, erj),
                 Op::Alphabetic(okj, erj) => {
                     check!(bytes[bytes_index].is_ascii_alphabetic(), okj, erj)
@@ -82,30 +87,6 @@ impl Pattern {
             } else {
                 eprintln!("\"\"");
             }
-        }
-
-        eprintln!("break");
-        loop {
-            eprintln!("[{}] {:?}", op_index, ops[op_index]);
-            match ops[op_index] {
-                Op::Ok => return MatchResult::Ok(bytes_index),
-                Op::Error => return MatchResult::Err,
-                Op::EndAnchor(okj, _) => {
-                    op_index = okj.0 as _;
-                    match ops[op_index] {
-                        Op::Ok => return MatchResult::Ok(bytes_index),
-                        _ => return MatchResult::Pending(bytes_index, PatternState { op_index }),
-                    }
-                }
-                Op::Any(_, erj)
-                | Op::Alphabetic(_, erj)
-                | Op::Lower(_, erj)
-                | Op::Upper(_, erj)
-                | Op::Digit(_, erj)
-                | Op::Alphanumeric(_, erj)
-                | Op::Byte(_, erj, _) => op_index = erj.0 as _,
-                Op::Jump(jump) | Op::Unwind(jump, _) => op_index = jump.0 as _,
-            };
         }
     }
 }
@@ -708,21 +689,16 @@ mod tests {
         assert_eq!(MatchResult::Ok(2), p.matches("bx"));
         assert_eq!(MatchResult::Ok(2), p.matches("bxa"));
         assert_eq!(MatchResult::Ok(2), p.matches("bxd"));
-        dbg!(&p);
         assert_eq!(MatchResult::Ok(1), p.matches("d"));
-
-        return;
 
         let p = Pattern::new("*(a[^ab])").unwrap();
         assert_eq!(MatchResult::Ok(0), p.matches(""));
-        //assert_eq!(MatchResult::Err, p.matches("a"));
+        assert_eq!(MatchResult::Ok(0), p.matches("a"));
         assert_eq!(MatchResult::Ok(2), p.matches("ac"));
-        //assert_eq!(MatchResult::Err, p.matches("aca"));
-        return;
+        assert_eq!(MatchResult::Ok(2), p.matches("aca"));
+        assert_eq!(MatchResult::Ok(2), p.matches("acab"));
 
         let p = Pattern::new("*[(^ab)c]").unwrap();
-        dbg!(&p);
-        assert!(false);
         assert_eq!(MatchResult::Ok(1), p.matches("c"));
         assert_eq!(MatchResult::Ok(0), p.matches("ab"));
     }
