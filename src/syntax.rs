@@ -198,7 +198,7 @@ mod tests {
         assert_token("  ", TokenKind::Text, line, &tokens[5]);
     }
 
-    //#[test]
+    #[test]
     fn test_multiline_syntax() {
         let mut syntax = Syntax::new();
         syntax.add_rule(
@@ -238,7 +238,7 @@ mod tests {
             eprintln!("{:?} => {}", t.kind, &line2[t.range.clone()]);
         }
         assert_eq!(2, tokens.len());
-        //assert_token("still comment*/", TokenKind::Comment, line2, &tokens[0]);
-        //assert_token(" after", TokenKind::Text, line2, &tokens[1]);
+        assert_token("still comment */", TokenKind::Comment, line2, &tokens[0]);
+        assert_token(" after", TokenKind::Text, line2, &tokens[1]);
     }
 }

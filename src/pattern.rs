@@ -699,8 +699,10 @@ mod tests {
         assert_eq!(MatchResult::Ok(2), p.matches("acab"));
 
         let p = Pattern::new("*[(^ab)c]").unwrap();
+        assert_eq!(MatchResult::Ok(0), p.matches(""));
         assert_eq!(MatchResult::Ok(1), p.matches("c"));
         assert_eq!(MatchResult::Ok(0), p.matches("ab"));
+        assert_eq!(MatchResult::Ok(2), p.matches("ac"));
     }
 
     #[test]
@@ -711,6 +713,6 @@ mod tests {
         assert!(matches!(Pattern::new("]"), None));
         assert!(matches!(Pattern::new("*"), None));
         assert!(matches!(Pattern::new("%"), None));
-        assert!(matches!(Pattern::new("%h"), None));
+        assert!(matches!(Pattern::new("%!"), None));
     }
 }
