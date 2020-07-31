@@ -59,35 +59,34 @@ impl Syntax {
 
         match previous_line_kind {
             LineKind::Finished => (),
-            LineKind::Unfinished(pattern_index, state) => match self.rules[pattern_index]
-                .1
-                .matches_with_state(line.as_bytes(), &state)
-            {
-                MatchResult::Ok(len) => {
-                    dbg!(state, len);
-                    tokens.push(Token {
-                        kind: self.rules[pattern_index].0,
-                        range: 0..len,
-                    });
-                    line_index += len;
+            LineKind::Unfinished(pattern_index, state) => {
+                match self.rules[pattern_index].1.matches_with_state(line, &state) {
+                    MatchResult::Ok(len) => {
+                        dbg!(state, len);
+                        tokens.push(Token {
+                            kind: self.rules[pattern_index].0,
+                            range: 0..len,
+                        });
+                        line_index += len;
+                    }
+                    MatchResult::Err => {
+                        dbg!(state, line);
+                    }
+                    MatchResult::Pending(_, state) => {
+                        tokens.push(Token {
+                            kind: self.rules[pattern_index].0,
+                            range: 0..line_len,
+                        });
+                        return LineKind::Unfinished(pattern_index, state);
+                    }
                 }
-                MatchResult::Err => {
-                    dbg!(state, line);
-                },
-                MatchResult::Pending(_, state) => {
-                    tokens.push(Token {
-                        kind: self.rules[pattern_index].0,
-                        range: 0..line_len,
-                    });
-                    return LineKind::Unfinished(pattern_index, state);
-                }
-            },
+            }
         }
 
         while line_index < line_len {
-            let line_slice = &line[line_index..].as_bytes();
+            let line_slice = &line[line_index..];
             let whitespace_len = line_slice
-                .iter()
+                .bytes()
                 .take_while(|b| b.is_ascii_whitespace())
                 .count();
             let line_slice = &line_slice[whitespace_len..];
@@ -118,7 +117,7 @@ impl Syntax {
             if max_len == 0 {
                 kind = TokenKind::Text;
                 max_len = line_slice
-                    .iter()
+                    .bytes()
                     .take_while(|b| b.is_ascii_alphanumeric())
                     .count()
                     .max(1);
@@ -147,7 +146,7 @@ mod tests {
         assert_eq!(slice, &line[token.range.clone()]);
     }
 
-    //#[test]
+    #[test]
     fn test_no_syntax() {
         let syntax = Syntax::new();
         let mut tokens = Vec::new();
@@ -159,7 +158,7 @@ mod tests {
         assert_token(line, TokenKind::Text, line, &tokens[0]);
     }
 
-    //#[test]
+    #[test]
     fn test_one_rule_syntax() {
         let mut syntax = Syntax::new();
         syntax.add_rule(TokenKind::Symbol, Pattern::new(";").unwrap());
@@ -178,12 +177,12 @@ mod tests {
         assert_token("  ", TokenKind::Text, line, &tokens[5]);
     }
 
-    //#[test]
+    #[test]
     fn test_simple_syntax() {
         let mut syntax = Syntax::new();
         syntax.add_rule(TokenKind::Keyword, Pattern::new("fn").unwrap());
-        syntax.add_rule(TokenKind::Symbol, Pattern::new("(").unwrap());
-        syntax.add_rule(TokenKind::Symbol, Pattern::new(")").unwrap());
+        syntax.add_rule(TokenKind::Symbol, Pattern::new("%(").unwrap());
+        syntax.add_rule(TokenKind::Symbol, Pattern::new("%)").unwrap());
 
         let mut tokens = Vec::new();
         let line = " fn main() ;  ";
@@ -202,8 +201,10 @@ mod tests {
     //#[test]
     fn test_multiline_syntax() {
         let mut syntax = Syntax::new();
-        //syntax.add_rule(TokenKind::Comment, Pattern::new("/%*[.$]*%*/").unwrap());
-        syntax.add_rule(TokenKind::Comment, Pattern::new("/%*[%w $]*%*/").unwrap());
+        syntax.add_rule(
+            TokenKind::Comment,
+            Pattern::new("/%**[(^%*/)$]%*/").unwrap(),
+        );
 
         let mut tokens = Vec::new();
         let line0 = "before /* comment";
