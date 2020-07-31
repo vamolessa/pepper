@@ -29,26 +29,21 @@ impl Pattern {
         let mut len = 0;
         let ops = &self.ops[..];
         let mut op_index = state.op_index;
-
-        if bytes.is_empty() {
-            return match ops[op_index] {
-                Op::Ok => MatchResult::Ok(0),
-                _ => MatchResult::Err,
-            };
-        }
-
         let mut bytes_index = 0;
-        let mut byte = bytes[bytes_index];
 
         macro_rules! check {
-            ($e:expr, $okj:expr, $erj:expr) => {
+            ($e:expr, $okj:expr, $erj:expr) => {{
+                if bytes_index >= bytes.len() {
+                    break;
+                }
+
                 if $e {
                     op_index = $okj.0 as _;
                 } else {
                     op_index = $erj.0 as _;
                     continue;
                 }
-            };
+            }};
         };
 
         loop {
@@ -57,14 +52,20 @@ impl Pattern {
                 Op::Error => return MatchResult::Err,
                 Op::EndAnchor(okj, erj) => check!(false, okj, erj),
                 Op::Any(okj, erj) => check!(true, okj, erj),
-                Op::Alphabetic(okj, erj) => check!(byte.is_ascii_alphabetic(), okj, erj),
-                Op::Lower(okj, erj) => check!(byte.is_ascii_lowercase(), okj, erj),
-                Op::Upper(okj, erj) => check!(byte.is_ascii_uppercase(), okj, erj),
-                Op::Digit(okj, erj) => check!(byte.is_ascii_digit(), okj, erj),
-                Op::Alphanumeric(okj, erj) => check!(byte.is_ascii_alphanumeric(), okj, erj),
-                Op::Byte(okj, erj, b) => check!(byte == b, okj, erj),
-                Op::Unwind(jump, len) => {
-                    bytes_index -= len.0 as usize;
+                Op::Alphabetic(okj, erj) => {
+                    check!(bytes[bytes_index].is_ascii_alphabetic(), okj, erj)
+                }
+                Op::Lower(okj, erj) => check!(bytes[bytes_index].is_ascii_lowercase(), okj, erj),
+                Op::Upper(okj, erj) => check!(bytes[bytes_index].is_ascii_uppercase(), okj, erj),
+                Op::Digit(okj, erj) => check!(bytes[bytes_index].is_ascii_digit(), okj, erj),
+                Op::Alphanumeric(okj, erj) => {
+                    check!(bytes[bytes_index].is_ascii_alphanumeric(), okj, erj)
+                }
+                Op::Byte(okj, erj, b) => check!(bytes[bytes_index] == b, okj, erj),
+                Op::Unwind(jump, count) => {
+                    let count = count.0 as usize;
+                    len -= count;
+                    bytes_index -= count;
                     op_index = jump.0 as _;
                     continue;
                 }
@@ -72,11 +73,6 @@ impl Pattern {
 
             len += 1;
             bytes_index += 1;
-            if bytes_index == bytes.len() {
-                break;
-            }
-
-            byte = bytes[bytes_index];
         }
 
         loop {
@@ -697,6 +693,9 @@ mod tests {
         let p = Pattern::new("%d*[%w_%.]@").unwrap();
         assert_eq!(MatchResult::Ok(6), p.matches(b"1x4_5@"));
         assert_eq!(MatchResult::Ok(15), p.matches(b"9xxasd_234.45f@"));
+
+        let p = Pattern::new("ab*(^ba)ba").unwrap();
+        assert_eq!(MatchResult::Ok(4), p.matches(b"abba"));
     }
 
     #[test]
