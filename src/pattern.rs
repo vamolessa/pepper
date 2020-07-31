@@ -36,31 +36,30 @@ impl Pattern {
         let mut bytes_index = 0;
         let mut byte = bytes[bytes_index];
 
+        macro_rules! check {
+            ($e:expr, $okj:expr, $erj:expr) => {
+                if $e {
+                    op_index = $okj as _;
+                } else {
+                    op_index = $erj as _;
+                    continue;
+                }
+            };
+        };
+
         loop {
             match ops[op_index] {
                 Op::Ok => return MatchResult::Ok(len),
                 Op::Error => return MatchResult::Err,
-                Op::Jump(jump) => op_index = jump as _,
-                Op::Match(okj, erj, ref class) => {
-                    let ok = match class {
-                        CharClass::EndAnchor => false,
-                        CharClass::Any => true,
-                        CharClass::Alphabetic => byte.is_ascii_alphabetic(),
-                        CharClass::Lower => byte.is_ascii_lowercase(),
-                        CharClass::Upper => byte.is_ascii_uppercase(),
-                        CharClass::Digit => byte.is_ascii_digit(),
-                        CharClass::Alphanumeric => byte.is_ascii_alphanumeric(),
-                        CharClass::Byte(b) => byte == *b,
-                    };
-
-                    if ok {
-                        op_index = okj as _;
-                    } else {
-                        op_index = erj as _;
-                        continue;
-                    }
-                }
-                Op::Unwind(len, jump) => {
+                Op::EndAnchor(okj, erj) => check!(false, okj, erj),
+                Op::Any(okj, erj) => check!(true, okj, erj),
+                Op::Alphabetic(okj, erj) => check!(byte.is_ascii_alphabetic(), okj, erj),
+                Op::Lower(okj, erj) => check!(byte.is_ascii_lowercase(), okj, erj),
+                Op::Upper(okj, erj) => check!(byte.is_ascii_uppercase(), okj, erj),
+                Op::Digit(okj, erj) => check!(byte.is_ascii_digit(), okj, erj),
+                Op::Alphanumeric(okj, erj) => check!(byte.is_ascii_alphanumeric(), okj, erj),
+                Op::Byte(okj, erj, b) => check!(byte == b, okj, erj),
+                Op::Unwind(jump, len) => {
                     bytes_index -= len as usize;
                     op_index = jump as _;
                 }
@@ -79,16 +78,21 @@ impl Pattern {
             match ops[op_index] {
                 Op::Ok => return MatchResult::Ok(len),
                 Op::Error => return MatchResult::Err,
-                Op::Jump(jump) => op_index = jump as _,
-                Op::Match(okj, _, CharClass::EndAnchor) => {
+                Op::EndAnchor(okj, _) => {
                     op_index = okj as _;
                     match ops[op_index] {
                         Op::Ok => return MatchResult::Ok(len),
                         _ => return MatchResult::Pending(len, PatternState { op_index }),
                     }
                 }
-                Op::Match(_, erj, _) => op_index = erj as _,
-                Op::Unwind(_, jump) => op_index = jump as _,
+                Op::Any(_, erj)
+                | Op::Alphabetic(_, erj)
+                | Op::Lower(_, erj)
+                | Op::Upper(_, erj)
+                | Op::Digit(_, erj)
+                | Op::Alphanumeric(_, erj)
+                | Op::Byte(_, erj, _) => op_index = erj as _,
+                Op::Unwind(jump, _) => op_index = jump as _,
             };
         }
     }
@@ -104,23 +108,17 @@ impl fmt::Debug for Pattern {
 }
 
 #[derive(Debug)]
-enum CharClass {
-    EndAnchor,
-    Any,
-    Alphabetic,
-    Lower,
-    Upper,
-    Digit,
-    Alphanumeric,
-    Byte(u8),
-}
-
-#[derive(Debug)]
 enum Op {
     Ok,
     Error,
-    Jump(u8),
-    Match(u8, u8, CharClass),
+    EndAnchor(u8, u8),
+    Any(u8, u8),
+    Alphabetic(u8, u8),
+    Lower(u8, u8),
+    Upper(u8, u8),
+    Digit(u8, u8),
+    Alphanumeric(u8, u8),
+    Byte(u8, u8, u8),
     Unwind(u8, u8),
 }
 
@@ -168,7 +166,15 @@ impl<'a> PatternParser<'a> {
         }
     }
 
-    fn parse_expr(&mut self, previous_len: usize, okj: u8, erj: u8) -> Option<usize> {
+    fn next_is_not(&mut self, byte: u8) -> bool {
+        if let Some(b) = self.next() {
+            b == byte
+        } else {
+            true
+        }
+    }
+
+    fn parse_expr(&mut self, previous_len: u8, okj: u8, erj: u8) -> Option<u8> {
         let len = match self.current() {
             b'*' => self.parse_repeat(previous_len, okj, erj)?,
             b'(' => self.parse_sequence(okj, erj)?,
@@ -179,144 +185,133 @@ impl<'a> PatternParser<'a> {
         Some(len)
     }
 
-    fn parse_class(&mut self, okj: u8, erj: u8) -> Option<usize> {
+    fn parse_class(&mut self, okj: u8, erj: u8) -> Option<u8> {
         let okj = self.ops.len() + 1;
         if okj > u8::max_value() as _ {
             return None;
         }
         let okj = okj as _;
 
-        let char_class = match self.current() {
+        let op = match self.current() {
             b'%' => match self.next()? {
-                b'a' => CharClass::Alphabetic,
-                b'l' => CharClass::Lower,
-                b'u' => CharClass::Upper,
-                b'd' => CharClass::Digit,
-                b'w' => CharClass::Alphanumeric,
-                b'%' => CharClass::Byte(b'%'),
-                b'$' => CharClass::Byte(b'$'),
-                b'.' => CharClass::Byte(b'.'),
-                b'^' => CharClass::Byte(b'^'),
-                b'(' => CharClass::Byte(b'('),
-                b')' => CharClass::Byte(b')'),
-                b'[' => CharClass::Byte(b'['),
-                b']' => CharClass::Byte(b']'),
-                b'*' => CharClass::Byte(b'*'),
+                b'a' => Op::Alphabetic(okj, erj),
+                b'l' => Op::Lower(okj, erj),
+                b'u' => Op::Upper(okj, erj),
+                b'd' => Op::Digit(okj, erj),
+                b'w' => Op::Alphanumeric(okj, erj),
+                b'%' => Op::Byte(b'%', okj, erj),
+                b'$' => Op::Byte(b'$', okj, erj),
+                b'.' => Op::Byte(b'.', okj, erj),
+                b'^' => Op::Byte(b'^', okj, erj),
+                b'(' => Op::Byte(b'(', okj, erj),
+                b')' => Op::Byte(b')', okj, erj),
+                b'[' => Op::Byte(b'[', okj, erj),
+                b']' => Op::Byte(b']', okj, erj),
+                b'*' => Op::Byte(b'*', okj, erj),
                 _ => return None,
             },
-            b'$' => CharClass::EndAnchor,
-            b'.' => CharClass::Any,
+            b'$' => Op::EndAnchor(okj, erj),
+            b'.' => Op::Any(okj, erj),
             b'(' => return None,
             b')' => return None,
             b'[' => return None,
             b']' => return None,
             b'*' => return None,
-            b => CharClass::Byte(b),
+            b => Op::Byte(okj, erj, b),
         };
-        self.ops.push(Op::Match(okj, 0, char_class));
 
+        self.ops.push(op);
         Some(1)
     }
 
-    fn parse_sequence(&mut self, okj: u8, erj: u8) -> Option<usize> {
+    fn parse_sequence(&mut self, okj: u8, erj: u8) -> Option<u8> {
         let inverse = self.current() == b'^';
-        if inverse {
-            self.next();
-        }
-
-        let mut op_indices = Vec::new();
-        let mut previous_len = 0;
-        while let Some(b) = self.next() {
-            match b {
-                b')' => break,
-                _ => {
-                    previous_len = self.parse_expr(previous_len, okj, erj)?;
-                    op_indices.push(self.ops.len() - 1);
-                }
-            }
-        }
-        if self.current() != b')' {
-            return None;
-        }
-
-        let op_count = self.ops.len() as _;
-        let first_index = op_indices.first().cloned().unwrap_or(0);
-        let last_index = op_indices.last().cloned().unwrap_or(0);
-
-        for index in &op_indices {
-            let index = *index;
-            if let Op::Match(okj, erj, _) = &mut self.ops[index] {
-                if inverse {
-                    if index == last_index {
-                        *okj = 0;
-                    }
-
-                    *erj = op_count;
-                } else {
-                }
-            }
-        }
-
-        None
-    }
-
-    fn parse_group(&mut self, okj: u8, erj: u8) -> Option<usize> {
-        let start_op_index = self.ops.len();
         let mut previous_len = 0;
         let mut len = 0;
-        while let Some(b) = self.next() {
-            match b {
-                b'[' => return None,
-                b']' => break,
-                _ => {
-                    previous_len = self.parse_expr(previous_len, okj, erj)?;
-                    len += previous_len;
-                }
-            }
-        }
-        if self.current() != b']' {
-            return None;
-        }
 
-        let end_op_index = self.ops.len();
-        let okj = end_op_index as _;
-        let mut erj = start_op_index as _;
-        for op in &mut self.ops[start_op_index..(end_op_index - 1)] {
-            erj += 1;
-            if let Op::Match(ref mut o, ref mut e, _) = op {
-                *o = okj;
-                *e = erj;
+        if inverse {
+            self.next();
+
+            self.ops.push(Op::Unwind((self.ops.len() + 2) as _, 0));
+            let patch_index = self.ops.len();
+            let inner_erj = patch_index as _;
+            self.ops.push(Op::Unwind(0, 0));
+
+            while self.next_is_not(b')') {
+                let inner_okj = self.ops.len() as _;
+                previous_len = self.parse_expr(previous_len, inner_okj, inner_erj)?;
+                len += previous_len;
+            }
+
+            self.ops.push(Op::Unwind(erj, len));
+            let op_count = self.ops.len();
+            if let Op::Unwind(jump, _) = &mut self.ops[patch_index] {
+                *jump = op_count as _;
             } else {
                 unreachable!();
             }
+        } else {
+            while self.next_is_not(b')') {
+                let inner_erj = self.ops.len() as _;
+                let inner_okj = inner_erj + 1;
+                previous_len = self.parse_expr(previous_len, inner_okj, inner_erj)?;
+                self.ops.push(Op::Unwind(erj, len));
+                len += previous_len;
+            }
         }
 
-        Some(len)
+        if self.current() == b')' {
+            Some(len)
+        } else {
+            None
+        }
     }
 
-    fn parse_repeat(&mut self, previous_len: usize, okj: u8, erj: u8) -> Option<usize> {
-        if previous_len == 0 {
-            return None;
-        }
+    fn parse_group(&mut self, okj: u8, erj: u8) -> Option<u8> {
+        let inverse = self.current() == b'^';
+        let mut previous_len = 0;
+        let mut len = 0;
 
-        let len = self.ops.len();
-        let previous_start_op_index = len - previous_len;
-        let okj = previous_start_op_index as _;
+        if inverse {
+            self.next();
 
-        let mut i = previous_start_op_index;
-        for op in &mut self.ops[previous_start_op_index..] {
-            i += 1;
-            if let Op::Match(ref mut o, ref mut e, _) = op {
-                *o = okj;
-                if i == len {
-                    *e = len as _;
-                }
+            while self.next_is_not(b']') {
+                let inner_okj = self.ops.len() as _;
+                let inner_erj = inner_okj + 1;
+                previous_len = self.parse_expr(previous_len, inner_okj, inner_erj)?;
+                self.ops.push(Op::Unwind(erj, previous_len));
+                len += previous_len;
+            }
+
+            self.ops.push(Op::Any(self.ops.len() as _, erj));
+        } else {
+            self.ops.push(Op::Unwind((self.ops.len() + 2) as _, 0));
+            let patch_index = self.ops.len();
+            let inner_okj = patch_index as _;
+            self.ops.push(Op::Unwind(0, 0));
+
+            while self.next_is_not(b']') {
+                previous_len = self.parse_expr(previous_len, inner_okj, erj)?;
+                len += previous_len;
+            }
+
+            let op_count = self.ops.len();
+            if let Op::Unwind(jump, _) = &mut self.ops[patch_index] {
+                *jump = op_count as _;
             } else {
                 unreachable!();
             }
         }
 
-        Some(0)
+        if self.current() == b']' {
+            Some(len)
+        } else {
+            None
+        }
+    }
+
+    fn parse_repeat(&mut self, previous_len: u8, okj: u8, erj: u8) -> Option<u8> {
+        None
     }
 }
 
