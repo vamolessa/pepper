@@ -22,7 +22,7 @@ impl Pattern {
     }
 
     pub fn matches(&self, bytes: &[u8]) -> MatchResult {
-        self.matches_with_state(bytes, &PatternState { op_index: 1 })
+        self.matches_with_state(bytes, &PatternState { op_index: 2 })
     }
 
     pub fn matches_with_state(&self, bytes: &[u8], state: &PatternState) -> MatchResult {
@@ -138,13 +138,11 @@ impl<'a> PatternParser<'a> {
     }
 
     pub fn parse(mut self) -> Option<Pattern> {
-        self.ops.push(Op::Error);
-        let mut previous_len = 0;
-        while let Some(_) = self.next() {
-            previous_len = self.parse_expr(previous_len, 0, 0)?;
-        }
         self.ops.push(Op::Ok);
-
+        self.ops.push(Op::Error);
+        while let Some(_) = self.next() {
+            self.parse_expr(0, 1)?;
+        }
         Some(Pattern { ops: self.ops })
     }
 
@@ -174,9 +172,9 @@ impl<'a> PatternParser<'a> {
         }
     }
 
-    fn parse_expr(&mut self, previous_len: u8, okj: u8, erj: u8) -> Option<u8> {
+    fn parse_expr(&mut self, okj: u8, erj: u8) -> Option<u8> {
         let len = match self.current() {
-            b'*' => self.parse_repeat(previous_len, okj, erj)?,
+            b'*' => self.parse_repeat(okj, erj)?,
             b'(' => self.parse_sequence(okj, erj)?,
             b'[' => self.parse_group(okj, erj)?,
             _ => self.parse_class(okj, erj)?,
@@ -226,38 +224,24 @@ impl<'a> PatternParser<'a> {
 
     fn parse_sequence(&mut self, okj: u8, erj: u8) -> Option<u8> {
         let inverse = self.current() == b'^';
-        let mut previous_len = 0;
         let mut len = 0;
 
         if inverse {
             self.next();
 
-            self.ops.push(Op::Unwind((self.ops.len() + 2) as _, 0));
-            let patch_index = self.ops.len();
-            let inner_erj = patch_index as _;
-            self.ops.push(Op::Unwind(0, 0));
-
             while self.next_is_not(b')') {
                 let inner_okj = self.ops.len() as _;
-                previous_len = self.parse_expr(previous_len, inner_okj, inner_erj)?;
-                len += previous_len;
+                len += self.parse_expr(inner_okj, okj)?;
             }
-
             self.ops.push(Op::Unwind(erj, len));
-            let op_count = self.ops.len();
-            if let Op::Unwind(jump, _) = &mut self.ops[patch_index] {
-                *jump = op_count as _;
-            } else {
-                unreachable!();
-            }
         } else {
             while self.next_is_not(b')') {
                 let inner_erj = self.ops.len() as _;
                 let inner_okj = inner_erj + 1;
-                previous_len = self.parse_expr(previous_len, inner_okj, inner_erj)?;
+                len += self.parse_expr(inner_okj, inner_erj)?;
                 self.ops.push(Op::Unwind(erj, len));
-                len += previous_len;
             }
+            self.ops.push(Op::Unwind(okj, 0));
         }
 
         if self.current() == b')' {
@@ -269,7 +253,6 @@ impl<'a> PatternParser<'a> {
 
     fn parse_group(&mut self, okj: u8, erj: u8) -> Option<u8> {
         let inverse = self.current() == b'^';
-        let mut previous_len = 0;
         let mut len = 0;
 
         if inverse {
@@ -278,28 +261,14 @@ impl<'a> PatternParser<'a> {
             while self.next_is_not(b']') {
                 let inner_okj = self.ops.len() as _;
                 let inner_erj = inner_okj + 1;
-                previous_len = self.parse_expr(previous_len, inner_okj, inner_erj)?;
+                let previous_len = self.parse_expr(inner_okj, inner_erj)?;
                 self.ops.push(Op::Unwind(erj, previous_len));
                 len += previous_len;
             }
-
             self.ops.push(Op::Any(self.ops.len() as _, erj));
         } else {
-            self.ops.push(Op::Unwind((self.ops.len() + 2) as _, 0));
-            let patch_index = self.ops.len();
-            let inner_okj = patch_index as _;
-            self.ops.push(Op::Unwind(0, 0));
-
             while self.next_is_not(b']') {
-                previous_len = self.parse_expr(previous_len, inner_okj, erj)?;
-                len += previous_len;
-            }
-
-            let op_count = self.ops.len();
-            if let Op::Unwind(jump, _) = &mut self.ops[patch_index] {
-                *jump = op_count as _;
-            } else {
-                unreachable!();
+                len += self.parse_expr(okj, erj)?;
             }
         }
 
@@ -310,8 +279,11 @@ impl<'a> PatternParser<'a> {
         }
     }
 
-    fn parse_repeat(&mut self, previous_len: u8, okj: u8, erj: u8) -> Option<u8> {
-        None
+    fn parse_repeat(&mut self, okj: u8, erj: u8) -> Option<u8> {
+        let start_index = self.ops.len();
+        self.parse_expr(okj, erj)?;
+        self.ops.push(Op::Unwind(start_index as _, 0));
+        Some(0)
     }
 }
 
