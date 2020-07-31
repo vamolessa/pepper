@@ -139,7 +139,6 @@ enum JumpFrom {
     End(Jump),
 }
 
-#[derive(Debug)]
 enum Op {
     Ok,
     Error,
@@ -152,6 +151,50 @@ enum Op {
     Alphanumeric(Jump, Jump),
     Byte(Jump, Jump, u8),
     Unwind(Jump, Length),
+}
+
+impl fmt::Debug for Op {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        const WIDTH: usize = 14;
+        macro_rules! p {
+            ($name:expr, $okj:expr, $erj:expr) => {
+                f.write_fmt(format_args!(
+                    "{:width$}{} {}",
+                    $name,
+                    $okj.0,
+                    $erj.0,
+                    width = WIDTH
+                ));
+            };
+        }
+
+        match self {
+            Op::Ok => f.write_str("Ok"),
+            Op::Error => f.write_str("Error"),
+            Op::EndAnchor(okj, erj) => p!("EndAnchor", okj, erj),
+            Op::Any(okj, erj) => p!("Any", okj, erj),
+            Op::Alphabetic(okj, erj) => p!("Alphabetic", okj, erj),
+            Op::Lower(okj, erj) => p!("Lower", okj, erj),
+            Op::Upper(okj, erj) => p!("Upper", okj, erj),
+            Op::Digit(okj, erj) => p!("Digit", okj, erj),
+            Op::Alphanumeric(okj, erj) => p!("Alphanumeric", okj, erj),
+            Op::Byte(okj, erj, byte) => f.write_fmt(format_args!(
+                "{:width$}'{}' {} {}",
+                "Byte",
+                byte,
+                okj.0,
+                erj.0,
+                width = WIDTH - 4
+            )),
+            Op::Unwind(jump, len) => f.write_fmt(format_args!(
+                "{:width$}[{}] {}",
+                "Unwind",
+                len.0,
+                jump.0,
+                width = WIDTH - 4
+            )),
+        }
+    }
 }
 
 struct PatternParser<'a> {
@@ -325,7 +368,8 @@ impl<'a> PatternParser<'a> {
             self.patch_jump(JumpFrom::End(Jump(0)), startj);
 
             while self.next_is_not(b']') {
-                len += self.parse_expr(JumpFrom::Beginning(abs_okj), JumpFrom::Beginning(abs_erj))?;
+                len +=
+                    self.parse_expr(JumpFrom::Beginning(abs_okj), JumpFrom::Beginning(abs_erj))?;
             }
             self.patch_jump(okj, abs_okj);
             self.patch_jump(erj, abs_erj);
@@ -343,6 +387,7 @@ impl<'a> PatternParser<'a> {
             JumpFrom::Beginning(jump) => jump,
             JumpFrom::End(mut jump) => {
                 jump += self.ops.len().into();
+                jump += 1.into();
                 jump
             }
         };
@@ -350,6 +395,7 @@ impl<'a> PatternParser<'a> {
             JumpFrom::Beginning(jump) => jump,
             JumpFrom::End(mut jump) => {
                 jump += self.ops.len().into();
+                jump += 1.into();
                 jump
             }
         };
@@ -362,7 +408,7 @@ impl<'a> PatternParser<'a> {
                 b'd' => Op::Digit(okj, erj),
                 b'w' => Op::Alphanumeric(okj, erj),
                 b'%' => Op::Byte(okj, erj, b'%'),
-                b'$' => Op::Byte(okj, erj, b'%'),
+                b'$' => Op::Byte(okj, erj, b'$'),
                 b'.' => Op::Byte(okj, erj, b'.'),
                 b'^' => Op::Byte(okj, erj, b'^'),
                 b'(' => Op::Byte(okj, erj, b'('),
@@ -391,7 +437,7 @@ impl<'a> PatternParser<'a> {
 mod tests {
     use super::*;
 
-    //#[test]
+    #[test]
     fn test_match_simple_classes() {
         let p = Pattern::new("a").unwrap();
         assert_eq!(MatchResult::Ok(1), p.matches(b"a"));
@@ -404,8 +450,8 @@ mod tests {
         assert_eq!(MatchResult::Ok(2), p.matches(b"aaa"));
         assert_eq!(MatchResult::Err, p.matches(b"baa"));
 
-        let p = Pattern::new("%% %[ %] %* %. %$").unwrap();
-        assert_eq!(MatchResult::Ok(11), p.matches(b"% [ ] * . $"));
+        let p = Pattern::new("%% %$ %. %^ %( %) %[ %] %*").unwrap();
+        assert_eq!(MatchResult::Ok(17), p.matches(b"% $ . ^ ( ) [ ] *"));
 
         let p = Pattern::new(".").unwrap();
         assert_eq!(MatchResult::Ok(1), p.matches(b"a"));
