@@ -284,7 +284,7 @@ impl<'a> PatternParser<'a> {
             JumpFrom::Beginning(jump) => self.ops.push(Op::Unwind(jump, Length(0))),
             JumpFrom::End(Jump(0)) => (),
             JumpFrom::End(mut jump) => {
-                jump += self.ops.len().into();
+                jump += (self.ops.len() + 1).into();
                 self.ops.push(Op::Unwind(jump, Length(0)));
             }
         }
@@ -303,7 +303,7 @@ impl<'a> PatternParser<'a> {
     }
 
     fn parse_sequence(&mut self, okj: JumpFrom, erj: JumpFrom) -> Option<Length> {
-        let inverse = self.current() == b'^';
+        let inverse = self.peek() == b'^';
         let mut len = Length(0);
 
         if inverse {
@@ -316,7 +316,7 @@ impl<'a> PatternParser<'a> {
             match erj {
                 JumpFrom::Beginning(jump) => self.ops.push(Op::Unwind(jump, len)),
                 JumpFrom::End(mut jump) => {
-                    jump += self.ops.len().into();
+                    jump += (self.ops.len() + 1).into();
                     self.ops.push(Op::Unwind(jump, len));
                 }
             }
@@ -340,7 +340,7 @@ impl<'a> PatternParser<'a> {
     }
 
     fn parse_group(&mut self, okj: JumpFrom, erj: JumpFrom) -> Option<Length> {
-        let inverse = self.current() == b'^';
+        let inverse = self.peek() == b'^';
         let mut len = Length(0);
 
         if inverse {
@@ -355,7 +355,7 @@ impl<'a> PatternParser<'a> {
             match okj {
                 JumpFrom::Beginning(jump) => self.ops.push(Op::Any(jump, abs_erj)),
                 JumpFrom::End(mut jump) => {
-                    jump += self.ops.len().into();
+                    jump += (self.ops.len() + 1).into();
                     self.ops.push(Op::Any(jump, abs_erj));
                 }
             }
@@ -531,6 +531,14 @@ mod tests {
         assert_eq!(MatchResult::Err, p.matches(b"z"));
         assert_eq!(MatchResult::Err, p.matches(b"zA"));
         assert_eq!(MatchResult::Err, p.matches(b"zZ"));
+
+        let p = Pattern::new("[^abc]").unwrap();
+        assert_eq!(MatchResult::Ok(1), p.matches(b"d"));
+        assert_eq!(MatchResult::Ok(1), p.matches(b"3"));
+        assert_eq!(MatchResult::Ok(1), p.matches(b"@"));
+        assert_eq!(MatchResult::Err, p.matches(b"a"));
+        assert_eq!(MatchResult::Err, p.matches(b"b"));
+        assert_eq!(MatchResult::Err, p.matches(b"c"));
     }
     
     #[test]
