@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{convert::From, fmt, ops::AddAssign};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MatchResult {
@@ -22,7 +22,7 @@ impl Pattern {
     }
 
     pub fn matches(&self, bytes: &[u8]) -> MatchResult {
-        self.matches_with_state(bytes, &PatternState { op_index: 2 })
+        self.matches_with_state(bytes, &PatternState { op_index: 1 })
     }
 
     pub fn matches_with_state(&self, bytes: &[u8], state: &PatternState) -> MatchResult {
@@ -39,9 +39,9 @@ impl Pattern {
         macro_rules! check {
             ($e:expr, $okj:expr, $erj:expr) => {
                 if $e {
-                    op_index = $okj as _;
+                    op_index = $okj.0 as _;
                 } else {
-                    op_index = $erj as _;
+                    op_index = $erj.0 as _;
                     continue;
                 }
             };
@@ -60,8 +60,8 @@ impl Pattern {
                 Op::Alphanumeric(okj, erj) => check!(byte.is_ascii_alphanumeric(), okj, erj),
                 Op::Byte(okj, erj, b) => check!(byte == b, okj, erj),
                 Op::Unwind(jump, len) => {
-                    bytes_index -= len as usize;
-                    op_index = jump as _;
+                    bytes_index -= len.0 as usize;
+                    op_index = jump.0 as _;
                 }
             };
 
@@ -79,7 +79,7 @@ impl Pattern {
                 Op::Ok => return MatchResult::Ok(len),
                 Op::Error => return MatchResult::Err,
                 Op::EndAnchor(okj, _) => {
-                    op_index = okj as _;
+                    op_index = okj.0 as _;
                     match ops[op_index] {
                         Op::Ok => return MatchResult::Ok(len),
                         _ => return MatchResult::Pending(len, PatternState { op_index }),
@@ -91,8 +91,8 @@ impl Pattern {
                 | Op::Upper(_, erj)
                 | Op::Digit(_, erj)
                 | Op::Alphanumeric(_, erj)
-                | Op::Byte(_, erj, _) => op_index = erj as _,
-                Op::Unwind(jump, _) => op_index = jump as _,
+                | Op::Byte(_, erj, _) => op_index = erj.0 as _,
+                Op::Unwind(jump, _) => op_index = jump.0 as _,
             };
         }
     }
@@ -107,19 +107,51 @@ impl fmt::Debug for Pattern {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct Length(u16);
+impl From<usize> for Length {
+    fn from(value: usize) -> Self {
+        Self(value as _)
+    }
+}
+impl AddAssign for Length {
+    fn add_assign(&mut self, other: Self) {
+        self.0 += other.0;
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Jump(u16);
+impl From<usize> for Jump {
+    fn from(value: usize) -> Self {
+        Self(value as _)
+    }
+}
+impl AddAssign for Jump {
+    fn add_assign(&mut self, other: Self) {
+        self.0 += other.0;
+    }
+}
+
+#[derive(Clone, Copy)]
+enum JumpFrom {
+    Beginning(Jump),
+    End(Jump),
+}
+
 #[derive(Debug)]
 enum Op {
     Ok,
     Error,
-    EndAnchor(u8, u8),
-    Any(u8, u8),
-    Alphabetic(u8, u8),
-    Lower(u8, u8),
-    Upper(u8, u8),
-    Digit(u8, u8),
-    Alphanumeric(u8, u8),
-    Byte(u8, u8, u8),
-    Unwind(u8, u8),
+    EndAnchor(Jump, Jump),
+    Any(Jump, Jump),
+    Alphabetic(Jump, Jump),
+    Lower(Jump, Jump),
+    Upper(Jump, Jump),
+    Digit(Jump, Jump),
+    Alphanumeric(Jump, Jump),
+    Byte(Jump, Jump, u8),
+    Unwind(Jump, Length),
 }
 
 struct PatternParser<'a> {
@@ -138,11 +170,11 @@ impl<'a> PatternParser<'a> {
     }
 
     pub fn parse(mut self) -> Option<Pattern> {
-        self.ops.push(Op::Ok);
         self.ops.push(Op::Error);
         while let Some(_) = self.next() {
-            self.parse_expr(0, 1)?;
+            self.parse_expr(JumpFrom::End(Jump(0)), JumpFrom::Beginning(Jump(0)))?;
         }
+        self.ops.push(Op::Ok);
         Some(Pattern { ops: self.ops })
     }
 
@@ -172,7 +204,7 @@ impl<'a> PatternParser<'a> {
         }
     }
 
-    fn parse_expr(&mut self, okj: u8, erj: u8) -> Option<u8> {
+    fn parse_expr(&mut self, okj: JumpFrom, erj: JumpFrom) -> Option<Length> {
         let len = match self.current() {
             b'*' => self.parse_repeat(okj, erj)?,
             b'(' => self.parse_sequence(okj, erj)?,
@@ -183,12 +215,144 @@ impl<'a> PatternParser<'a> {
         Some(len)
     }
 
-    fn parse_class(&mut self, okj: u8, erj: u8) -> Option<u8> {
-        let okj = self.ops.len() + 1;
-        if okj > u8::max_value() as _ {
-            return None;
+    fn parse_repeat(&mut self, okj: JumpFrom, erj: JumpFrom) -> Option<Length> {
+        let start_index = self.ops.len();
+        self.parse_expr(okj, erj)?;
+        self.ops.push(Op::Unwind(start_index.into(), Length(0)));
+        Some(Length(0))
+    }
+
+    fn get_absolute_jump(&mut self, jump: JumpFrom) -> Jump {
+        match jump {
+            JumpFrom::Beginning(jump) => jump,
+            JumpFrom::End(_) => {
+                let jump = self.ops.len().into();
+                self.ops.push(Op::Unwind(jump, Length(0)));
+                jump
+            }
         }
-        let okj = okj as _;
+    }
+
+    fn patch_jump(&mut self, jump: JumpFrom, abs_jump: Jump) {
+        if let JumpFrom::End(mut jump) = jump {
+            let op_count = self.ops.len().into();
+            if let Op::Unwind(j, _) = &mut self.ops[abs_jump.0 as usize] {
+                jump += op_count;
+                *j = jump;
+            } else {
+                unreachable!();
+            }
+        }
+    }
+
+    fn parse_sequence(&mut self, okj: JumpFrom, erj: JumpFrom) -> Option<Length> {
+        let inverse = self.current() == b'^';
+        let mut len = Length(0);
+
+        if inverse {
+            self.next();
+
+            let startj = self.get_absolute_jump(JumpFrom::End(Jump(0)));
+            let abs_okj = self.get_absolute_jump(okj);
+            self.patch_jump(JumpFrom::End(Jump(0)), startj);
+
+            while self.next_is_not(b')') {
+                len += self.parse_expr(JumpFrom::End(Jump(0)), JumpFrom::Beginning(abs_okj))?;
+            }
+            match erj {
+                JumpFrom::Beginning(jump) => self.ops.push(Op::Unwind(jump, len)),
+                JumpFrom::End(mut jump) => {
+                    jump += self.ops.len().into();
+                    self.ops.push(Op::Unwind(jump, len));
+                }
+            }
+            self.patch_jump(okj, abs_okj);
+        } else {
+            let startj = self.get_absolute_jump(JumpFrom::End(Jump(0)));
+            let abs_erj = self.get_absolute_jump(erj);
+            self.patch_jump(JumpFrom::End(Jump(0)), startj);
+
+            while self.next_is_not(b')') {
+                let expr_len = self.parse_expr(JumpFrom::End(Jump(1)), JumpFrom::End(Jump(0)))?;
+                self.ops.push(Op::Unwind(abs_erj, len));
+                len += expr_len;
+            }
+            match okj {
+                JumpFrom::Beginning(jump) => self.ops.push(Op::Unwind(jump, Length(0))),
+                JumpFrom::End(mut jump) => {
+                    jump += self.ops.len().into();
+                    self.ops.push(Op::Unwind(jump, Length(0)));
+                }
+            }
+            self.patch_jump(erj, abs_erj);
+        }
+
+        if self.current() == b')' {
+            Some(len)
+        } else {
+            None
+        }
+    }
+
+    fn parse_group(&mut self, okj: JumpFrom, erj: JumpFrom) -> Option<Length> {
+        let inverse = self.current() == b'^';
+        let mut len = Length(0);
+
+        if inverse {
+            self.next();
+
+            let startj = self.get_absolute_jump(JumpFrom::End(Jump(0)));
+            let abs_erj = self.get_absolute_jump(erj);
+            self.patch_jump(JumpFrom::End(Jump(0)), startj);
+
+            while self.next_is_not(b']') {
+                let expr_len = self.parse_expr(JumpFrom::End(Jump(0)), JumpFrom::End(Jump(1)))?;
+                self.ops.push(Op::Unwind(abs_erj, expr_len));
+                len += expr_len;
+            }
+            match okj {
+                JumpFrom::Beginning(jump) => self.ops.push(Op::Any(jump, abs_erj)),
+                JumpFrom::End(mut jump) => {
+                    jump += self.ops.len().into();
+                    self.ops.push(Op::Any(jump, abs_erj));
+                }
+            }
+            self.patch_jump(erj, abs_erj);
+        } else {
+            let startj = self.get_absolute_jump(JumpFrom::End(Jump(0)));
+            let abs_okj = self.get_absolute_jump(okj);
+            let abs_erj = self.get_absolute_jump(erj);
+            self.patch_jump(JumpFrom::End(Jump(0)), startj);
+
+            while self.next_is_not(b']') {
+                len += self.parse_expr(JumpFrom::Beginning(abs_okj), JumpFrom::Beginning(abs_erj))?;
+            }
+            self.patch_jump(okj, abs_okj);
+            self.patch_jump(erj, abs_erj);
+        }
+
+        if self.current() == b']' {
+            Some(len)
+        } else {
+            None
+        }
+    }
+
+    fn parse_class(&mut self, okj: JumpFrom, erj: JumpFrom) -> Option<Length> {
+        let okj = match okj {
+            JumpFrom::Beginning(jump) => jump,
+            JumpFrom::End(mut jump) => {
+                jump += self.ops.len().into();
+                jump
+            }
+        };
+        let erj = match erj {
+            JumpFrom::Beginning(jump) => jump,
+            JumpFrom::End(mut jump) => {
+                jump += self.ops.len().into();
+                jump
+            }
+        };
 
         let op = match self.current() {
             b'%' => match self.next()? {
@@ -197,15 +361,15 @@ impl<'a> PatternParser<'a> {
                 b'u' => Op::Upper(okj, erj),
                 b'd' => Op::Digit(okj, erj),
                 b'w' => Op::Alphanumeric(okj, erj),
-                b'%' => Op::Byte(b'%', okj, erj),
-                b'$' => Op::Byte(b'$', okj, erj),
-                b'.' => Op::Byte(b'.', okj, erj),
-                b'^' => Op::Byte(b'^', okj, erj),
-                b'(' => Op::Byte(b'(', okj, erj),
-                b')' => Op::Byte(b')', okj, erj),
-                b'[' => Op::Byte(b'[', okj, erj),
-                b']' => Op::Byte(b']', okj, erj),
-                b'*' => Op::Byte(b'*', okj, erj),
+                b'%' => Op::Byte(okj, erj, b'%'),
+                b'$' => Op::Byte(okj, erj, b'%'),
+                b'.' => Op::Byte(okj, erj, b'.'),
+                b'^' => Op::Byte(okj, erj, b'^'),
+                b'(' => Op::Byte(okj, erj, b'('),
+                b')' => Op::Byte(okj, erj, b')'),
+                b'[' => Op::Byte(okj, erj, b'['),
+                b']' => Op::Byte(okj, erj, b']'),
+                b'*' => Op::Byte(okj, erj, b'*'),
                 _ => return None,
             },
             b'$' => Op::EndAnchor(okj, erj),
@@ -219,71 +383,7 @@ impl<'a> PatternParser<'a> {
         };
 
         self.ops.push(op);
-        Some(1)
-    }
-
-    fn parse_sequence(&mut self, okj: u8, erj: u8) -> Option<u8> {
-        let inverse = self.current() == b'^';
-        let mut len = 0;
-
-        if inverse {
-            self.next();
-
-            while self.next_is_not(b')') {
-                let inner_okj = self.ops.len() as _;
-                len += self.parse_expr(inner_okj, okj)?;
-            }
-            self.ops.push(Op::Unwind(erj, len));
-        } else {
-            while self.next_is_not(b')') {
-                let inner_erj = self.ops.len() as _;
-                let inner_okj = inner_erj + 1;
-                len += self.parse_expr(inner_okj, inner_erj)?;
-                self.ops.push(Op::Unwind(erj, len));
-            }
-            self.ops.push(Op::Unwind(okj, 0));
-        }
-
-        if self.current() == b')' {
-            Some(len)
-        } else {
-            None
-        }
-    }
-
-    fn parse_group(&mut self, okj: u8, erj: u8) -> Option<u8> {
-        let inverse = self.current() == b'^';
-        let mut len = 0;
-
-        if inverse {
-            self.next();
-
-            while self.next_is_not(b']') {
-                let inner_okj = self.ops.len() as _;
-                let inner_erj = inner_okj + 1;
-                let previous_len = self.parse_expr(inner_okj, inner_erj)?;
-                self.ops.push(Op::Unwind(erj, previous_len));
-                len += previous_len;
-            }
-            self.ops.push(Op::Any(self.ops.len() as _, erj));
-        } else {
-            while self.next_is_not(b']') {
-                len += self.parse_expr(okj, erj)?;
-            }
-        }
-
-        if self.current() == b']' {
-            Some(len)
-        } else {
-            None
-        }
-    }
-
-    fn parse_repeat(&mut self, okj: u8, erj: u8) -> Option<u8> {
-        let start_index = self.ops.len();
-        self.parse_expr(okj, erj)?;
-        self.ops.push(Op::Unwind(start_index as _, 0));
-        Some(0)
+        Some(Length(1))
     }
 }
 
