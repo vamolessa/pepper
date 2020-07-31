@@ -62,6 +62,7 @@ impl Pattern {
                 Op::Unwind(jump, len) => {
                     bytes_index -= len.0 as usize;
                     op_index = jump.0 as _;
+                    continue;
                 }
             };
 
@@ -181,7 +182,7 @@ impl fmt::Debug for Op {
             Op::Byte(okj, erj, byte) => f.write_fmt(format_args!(
                 "{:width$}'{}' {} {}",
                 "Byte",
-                byte,
+                *byte as char,
                 okj.0,
                 erj.0,
                 width = WIDTH - 4
@@ -241,7 +242,7 @@ impl<'a> PatternParser<'a> {
 
     fn next_is_not(&mut self, byte: u8) -> bool {
         if let Some(b) = self.next() {
-            b == byte
+            b != byte
         } else {
             true
         }
@@ -269,9 +270,22 @@ impl<'a> PatternParser<'a> {
         match jump {
             JumpFrom::Beginning(jump) => jump,
             JumpFrom::End(_) => {
+                let jump = (self.ops.len() + 2).into();
+                self.ops.push(Op::Unwind(jump, Length(0)));
                 let jump = self.ops.len().into();
                 self.ops.push(Op::Unwind(jump, Length(0)));
                 jump
+            }
+        }
+    }
+
+    fn jump_at_end(&mut self, jump: JumpFrom) {
+        match jump {
+            JumpFrom::Beginning(jump) => self.ops.push(Op::Unwind(jump, Length(0))),
+            JumpFrom::End(Jump(0)) => (),
+            JumpFrom::End(mut jump) => {
+                jump += self.ops.len().into();
+                self.ops.push(Op::Unwind(jump, Length(0)));
             }
         }
     }
@@ -295,10 +309,7 @@ impl<'a> PatternParser<'a> {
         if inverse {
             self.next();
 
-            let startj = self.get_absolute_jump(JumpFrom::End(Jump(0)));
             let abs_okj = self.get_absolute_jump(okj);
-            self.patch_jump(JumpFrom::End(Jump(0)), startj);
-
             while self.next_is_not(b')') {
                 len += self.parse_expr(JumpFrom::End(Jump(0)), JumpFrom::Beginning(abs_okj))?;
             }
@@ -311,22 +322,13 @@ impl<'a> PatternParser<'a> {
             }
             self.patch_jump(okj, abs_okj);
         } else {
-            let startj = self.get_absolute_jump(JumpFrom::End(Jump(0)));
             let abs_erj = self.get_absolute_jump(erj);
-            self.patch_jump(JumpFrom::End(Jump(0)), startj);
-
             while self.next_is_not(b')') {
                 let expr_len = self.parse_expr(JumpFrom::End(Jump(1)), JumpFrom::End(Jump(0)))?;
                 self.ops.push(Op::Unwind(abs_erj, len));
                 len += expr_len;
             }
-            match okj {
-                JumpFrom::Beginning(jump) => self.ops.push(Op::Unwind(jump, Length(0))),
-                JumpFrom::End(mut jump) => {
-                    jump += self.ops.len().into();
-                    self.ops.push(Op::Unwind(jump, Length(0)));
-                }
-            }
+            self.jump_at_end(okj);
             self.patch_jump(erj, abs_erj);
         }
 
@@ -344,10 +346,7 @@ impl<'a> PatternParser<'a> {
         if inverse {
             self.next();
 
-            let startj = self.get_absolute_jump(JumpFrom::End(Jump(0)));
             let abs_erj = self.get_absolute_jump(erj);
-            self.patch_jump(JumpFrom::End(Jump(0)), startj);
-
             while self.next_is_not(b']') {
                 let expr_len = self.parse_expr(JumpFrom::End(Jump(0)), JumpFrom::End(Jump(1)))?;
                 self.ops.push(Op::Unwind(abs_erj, expr_len));
@@ -362,17 +361,12 @@ impl<'a> PatternParser<'a> {
             }
             self.patch_jump(erj, abs_erj);
         } else {
-            let startj = self.get_absolute_jump(JumpFrom::End(Jump(0)));
             let abs_okj = self.get_absolute_jump(okj);
-            let abs_erj = self.get_absolute_jump(erj);
-            self.patch_jump(JumpFrom::End(Jump(0)), startj);
-
             while self.next_is_not(b']') {
-                len +=
-                    self.parse_expr(JumpFrom::Beginning(abs_okj), JumpFrom::Beginning(abs_erj))?;
+                len += self.parse_expr(JumpFrom::Beginning(abs_okj), JumpFrom::End(Jump(0)))?;
             }
+            self.jump_at_end(erj);
             self.patch_jump(okj, abs_okj);
-            self.patch_jump(erj, abs_erj);
         }
 
         if self.current() == b']' {
@@ -438,7 +432,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_match_simple_classes() {
+    fn test_simple_pattern() {
         let p = Pattern::new("a").unwrap();
         assert_eq!(MatchResult::Ok(1), p.matches(b"a"));
         assert_eq!(MatchResult::Ok(1), p.matches(b"aa"));
@@ -508,8 +502,8 @@ mod tests {
         assert_eq!(MatchResult::Err, p.matches(b"!"));
     }
 
-    //#[test]
-    fn test_match_custom_classes() {
+    #[test]
+    fn test_group() {
         let p = Pattern::new("[abc]").unwrap();
         assert_eq!(MatchResult::Ok(1), p.matches(b"a"));
         assert_eq!(MatchResult::Ok(1), p.matches(b"b"));
@@ -537,6 +531,28 @@ mod tests {
         assert_eq!(MatchResult::Err, p.matches(b"z"));
         assert_eq!(MatchResult::Err, p.matches(b"zA"));
         assert_eq!(MatchResult::Err, p.matches(b"zZ"));
+    }
+    
+    #[test]
+    fn test_sequence() {
+        let p = Pattern::new("(abc)").unwrap();
+        assert_eq!(MatchResult::Ok(3), p.matches(b"abc"));
+        assert_eq!(MatchResult::Ok(3), p.matches(b"abcd"));
+        assert_eq!(MatchResult::Err, p.matches(b"a"));
+        assert_eq!(MatchResult::Err, p.matches(b"ab"));
+
+        let p = Pattern::new("z(abc)y").unwrap();
+        assert_eq!(MatchResult::Ok(5), p.matches(b"zabcy"));
+        assert_eq!(MatchResult::Ok(5), p.matches(b"zabcyd"));
+        assert_eq!(MatchResult::Err, p.matches(b"zay"));
+        assert_eq!(MatchResult::Err, p.matches(b"zaby"));
+
+        let p = Pattern::new("z(%u%w)y").unwrap();
+        assert_eq!(MatchResult::Ok(4), p.matches(b"zA0y"));
+        assert_eq!(MatchResult::Ok(4), p.matches(b"zZay"));
+        assert_eq!(MatchResult::Ok(4), p.matches(b"zA0yA"));
+        assert_eq!(MatchResult::Err, p.matches(b"zaay"));
+        assert_eq!(MatchResult::Err, p.matches(b"z8ay"));
     }
 
     //#[test]
