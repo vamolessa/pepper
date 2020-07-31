@@ -27,7 +27,6 @@ impl Pattern {
 
     pub fn matches_with_state(&self, text: &str, state: &PatternState) -> MatchResult {
         let bytes = text.as_bytes();
-        let mut len = 0;
         let ops = &self.ops[..];
         let mut op_index = state.op_index;
         let mut bytes_index = 0;
@@ -35,21 +34,29 @@ impl Pattern {
         macro_rules! check {
             ($e:expr, $okj:expr, $erj:expr) => {{
                 if bytes_index >= bytes.len() {
+                    dbg!(bytes_index >= bytes.len());
                     break;
                 }
 
                 if $e {
                     op_index = $okj.0 as _;
+                    bytes_index += 1;
                 } else {
                     op_index = $erj.0 as _;
-                    continue;
                 }
             }};
         };
 
+        if bytes_index < bytes.len() {
+            eprintln!("{:?}", std::str::from_utf8(&bytes[bytes_index..]).unwrap());
+        } else {
+            eprintln!("\"\"");
+        }
+
         loop {
+            eprintln!("[{}] {:?}", op_index, ops[op_index]);
             match ops[op_index] {
-                Op::Ok => return MatchResult::Ok(len),
+                Op::Ok => return MatchResult::Ok(bytes_index),
                 Op::Error => return MatchResult::Err,
                 Op::EndAnchor(okj, erj) => check!(false, okj, erj),
                 Op::Any(okj, erj) => check!(true, okj, erj),
@@ -63,28 +70,31 @@ impl Pattern {
                     check!(bytes[bytes_index].is_ascii_alphanumeric(), okj, erj)
                 }
                 Op::Byte(okj, erj, b) => check!(bytes[bytes_index] == b, okj, erj),
-                Op::Unwind(jump, count) => {
-                    let count = count.0 as usize;
-                    len -= count;
-                    bytes_index -= count;
+                Op::Jump(jump) => op_index = jump.0 as _,
+                Op::Unwind(jump, len) => {
+                    bytes_index -= len.0 as usize;
                     op_index = jump.0 as _;
-                    continue;
                 }
             };
 
-            len += 1;
-            bytes_index += 1;
+            if bytes_index < bytes.len() {
+                eprintln!("{:?}", std::str::from_utf8(&bytes[bytes_index..]).unwrap());
+            } else {
+                eprintln!("\"\"");
+            }
         }
 
+        eprintln!("break");
         loop {
+            eprintln!("[{}] {:?}", op_index, ops[op_index]);
             match ops[op_index] {
-                Op::Ok => return MatchResult::Ok(len),
+                Op::Ok => return MatchResult::Ok(bytes_index),
                 Op::Error => return MatchResult::Err,
                 Op::EndAnchor(okj, _) => {
                     op_index = okj.0 as _;
                     match ops[op_index] {
-                        Op::Ok => return MatchResult::Ok(len),
-                        _ => return MatchResult::Pending(len, PatternState { op_index }),
+                        Op::Ok => return MatchResult::Ok(bytes_index),
+                        _ => return MatchResult::Pending(bytes_index, PatternState { op_index }),
                     }
                 }
                 Op::Any(_, erj)
@@ -94,7 +104,7 @@ impl Pattern {
                 | Op::Digit(_, erj)
                 | Op::Alphanumeric(_, erj)
                 | Op::Byte(_, erj, _) => op_index = erj.0 as _,
-                Op::Unwind(jump, _) => op_index = jump.0 as _,
+                Op::Jump(jump) | Op::Unwind(jump, _) => op_index = jump.0 as _,
             };
         }
     }
@@ -144,6 +154,7 @@ enum JumpFrom {
 enum Op {
     Ok,
     Error,
+    Jump(Jump),
     EndAnchor(Jump, Jump),
     Any(Jump, Jump),
     Alphabetic(Jump, Jump),
@@ -173,6 +184,12 @@ impl fmt::Debug for Op {
         match self {
             Op::Ok => f.write_str("Ok"),
             Op::Error => f.write_str("Error"),
+            Op::Jump(jump) => f.write_fmt(format_args!(
+                "{:width$}[{}]",
+                "Jump",
+                jump.0,
+                width = WIDTH - 4
+            )),
             Op::EndAnchor(okj, erj) => p!("EndAnchor", okj, erj),
             Op::Any(okj, erj) => p!("Any", okj, erj),
             Op::Alphabetic(okj, erj) => p!("Alphabetic", okj, erj),
@@ -268,21 +285,10 @@ impl<'a> PatternParser<'a> {
             JumpFrom::Beginning(jump) => jump,
             JumpFrom::End(_) => {
                 let jump = (self.ops.len() + 2).into();
-                self.ops.push(Op::Unwind(jump, Length(0)));
+                self.ops.push(Op::Jump(jump));
                 let jump = self.ops.len().into();
-                self.ops.push(Op::Unwind(jump, Length(0)));
+                self.ops.push(Op::Jump(jump));
                 jump
-            }
-        }
-    }
-
-    fn jump_at_end(&mut self, jump: JumpFrom) {
-        match jump {
-            JumpFrom::Beginning(jump) => self.ops.push(Op::Unwind(jump, Length(0))),
-            JumpFrom::End(Jump(0)) => (),
-            JumpFrom::End(mut jump) => {
-                jump += (self.ops.len() + 1).into();
-                self.ops.push(Op::Unwind(jump, Length(0)));
             }
         }
     }
@@ -290,10 +296,21 @@ impl<'a> PatternParser<'a> {
     fn patch_jump(&mut self, jump: JumpFrom, abs_jump: Jump) {
         if let JumpFrom::End(mut jump) = jump {
             jump += self.ops.len().into();
-            if let Op::Unwind(j, _) = &mut self.ops[abs_jump.0 as usize] {
+            if let Op::Jump(j) = &mut self.ops[abs_jump.0 as usize] {
                 *j = jump;
             } else {
                 unreachable!();
+            }
+        }
+    }
+
+    fn jump_at_end(&mut self, jump: JumpFrom) {
+        match jump {
+            JumpFrom::Beginning(jump) => self.ops.push(Op::Jump(jump)),
+            JumpFrom::End(Jump(0)) => (),
+            JumpFrom::End(mut jump) => {
+                jump += (self.ops.len() + 1).into();
+                self.ops.push(Op::Jump(jump));
             }
         }
     }
@@ -312,35 +329,19 @@ impl<'a> PatternParser<'a> {
         if inverse {
             self.next()?;
 
-            let start_jump = (self.ops.len() + 2).into();
-            self.ops.push(Op::Unwind(start_jump, Length(0)));
-            let abs_okj = self.ops.len().into();
-            let any_jump = match okj {
-                JumpFrom::Beginning(jump) => jump,
-                JumpFrom::End(_) => Jump(0),
-            };
-            self.ops.push(Op::Any(any_jump, any_jump));
-
+            let abs_erj = self.get_absolute_jump(erj);
             while self.next_is_not(b')') {
-                len += self.parse_expr(JumpFrom::End(Jump(0)), JumpFrom::Beginning(abs_okj))?;
+                let expr_len = self.parse_expr(JumpFrom::End(Jump(2)), JumpFrom::End(Jump(0)))?;
+                self.ops.push(Op::Any(
+                    (self.ops.len() + 3).into(),
+                    (self.ops.len() + 1).into(),
+                ));
+                self.ops.push(Op::Unwind(abs_erj, len));
+                len += expr_len;
             }
-            match erj {
-                JumpFrom::Beginning(jump) => self.ops.push(Op::Unwind(jump, len)),
-                JumpFrom::End(mut jump) => {
-                    jump += (self.ops.len() + 1).into();
-                    self.ops.push(Op::Unwind(jump, len));
-                }
-            }
-
-            if let JumpFrom::End(mut jump) = okj {
-                jump += self.ops.len().into();
-                if let Op::Any(okj, erj) = &mut self.ops[abs_okj.0 as usize] {
-                    *okj = jump;
-                    *erj = jump;
-                } else {
-                    unreachable!();
-                }
-            }
+            self.ops.push(Op::Unwind(abs_erj, len));
+            self.jump_at_end(okj);
+            self.patch_jump(erj, abs_erj);
         } else {
             let abs_erj = self.get_absolute_jump(erj);
             while self.next_is_not(b')') {
@@ -608,14 +609,14 @@ mod tests {
         let p = Pattern::new("(^abc)").unwrap();
         assert_eq!(MatchResult::Err, p.matches("abc"));
         assert_eq!(MatchResult::Err, p.matches("abcd"));
-        assert_eq!(MatchResult::Ok(1), p.matches("a"));
-        assert_eq!(MatchResult::Ok(2), p.matches("ac"));
-        assert_eq!(MatchResult::Ok(2), p.matches("ab"));
+        assert_eq!(MatchResult::Err, p.matches("a"));
+        assert_eq!(MatchResult::Err, p.matches("ac"));
+        assert_eq!(MatchResult::Err, p.matches("ab"));
         assert_eq!(MatchResult::Ok(3), p.matches("abz"));
         assert_eq!(MatchResult::Ok(3), p.matches("ab!"));
-        assert_eq!(MatchResult::Ok(1), p.matches("z"));
-        assert_eq!(MatchResult::Ok(1), p.matches("7"));
-        assert_eq!(MatchResult::Ok(1), p.matches("7a"));
+        assert_eq!(MatchResult::Err, p.matches("z"));
+        assert_eq!(MatchResult::Err, p.matches("7a"));
+        assert_eq!(MatchResult::Ok(3), p.matches("7ab"));
     }
 
     #[test]
@@ -703,10 +704,21 @@ mod tests {
     fn test_pattern_composition() {
         let p = Pattern::new("[a(^bc)d]").unwrap();
         assert_eq!(MatchResult::Ok(1), p.matches("a"));
-        assert_eq!(MatchResult::Ok(1), p.matches("b"));
+        assert_eq!(MatchResult::Err, p.matches("b"));
         assert_eq!(MatchResult::Ok(2), p.matches("bx"));
-        assert_eq!(MatchResult::Ok(2), p.matches("bxy"));
+        assert_eq!(MatchResult::Ok(2), p.matches("bxa"));
+        assert_eq!(MatchResult::Ok(2), p.matches("bxd"));
+        dbg!(&p);
         assert_eq!(MatchResult::Ok(1), p.matches("d"));
+
+        return;
+
+        let p = Pattern::new("*(a[^ab])").unwrap();
+        assert_eq!(MatchResult::Ok(0), p.matches(""));
+        //assert_eq!(MatchResult::Err, p.matches("a"));
+        assert_eq!(MatchResult::Ok(2), p.matches("ac"));
+        //assert_eq!(MatchResult::Err, p.matches("aca"));
+        return;
 
         let p = Pattern::new("*[(^ab)c]").unwrap();
         dbg!(&p);
