@@ -13,6 +13,7 @@ pub struct PatternState {
 }
 
 pub struct Pattern {
+    start_index: usize,
     ops: Vec<Op>,
 }
 
@@ -22,7 +23,12 @@ impl Pattern {
     }
 
     pub fn matches(&self, text: &str) -> MatchResult {
-        self.matches_with_state(text, &PatternState { op_index: 1 })
+        self.matches_with_state(
+            text,
+            &PatternState {
+                op_index: self.start_index,
+            },
+        )
     }
 
     pub fn matches_with_state(&self, text: &str, state: &PatternState) -> MatchResult {
@@ -79,10 +85,18 @@ impl Pattern {
 
 impl fmt::Debug for Pattern {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("Pattern ")?;
-        f.debug_map()
-            .entries(self.ops.iter().enumerate().map(|(i, op)| (i, op)))
-            .finish()
+        f.write_str("Pattern {\n")?;
+        for (i, op) in self.ops.iter().enumerate() {
+            if i == self.start_index {
+                f.write_fmt(format_args!("  > [{}]", i))?;
+            } else {
+                f.write_fmt(format_args!("    [{}]", i))?;
+            }
+
+            fmt::Debug::fmt(op, f)?;
+        }
+        f.write_str("}\n")?;
+        Ok(())
     }
 }
 
@@ -179,6 +193,7 @@ impl fmt::Debug for Op {
 struct PatternParser<'a> {
     pub bytes: &'a [u8],
     pub index: usize,
+    pub start_index: usize,
     pub ops: Vec<Op>,
 }
 
@@ -187,6 +202,7 @@ impl<'a> PatternParser<'a> {
         Self {
             bytes,
             index: 0,
+            start_index: 1,
             ops: Vec::new(),
         }
     }
@@ -198,7 +214,11 @@ impl<'a> PatternParser<'a> {
         }
         self.ops.push(Op::Ok);
         self.optimize();
-        Some(Pattern { ops: self.ops })
+
+        Some(Pattern {
+            start_index: self.start_index,
+            ops: self.ops,
+        })
     }
 
     fn peek(&self) -> Option<u8> {
@@ -433,6 +453,12 @@ impl<'a> PatternParser<'a> {
                         *$j = jump;
                     }
                 };
+            }
+
+            if self.start_index > i {
+                self.start_index -= 1;
+            } else if self.start_index == i {
+                self.start_index = jump.0 as _;
             }
 
             for op in &mut self.ops {
