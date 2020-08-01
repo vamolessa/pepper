@@ -62,16 +62,13 @@ impl Syntax {
             LineKind::Unfinished(pattern_index, state) => {
                 match self.rules[pattern_index].1.matches_with_state(line, &state) {
                     MatchResult::Ok(len) => {
-                        dbg!(state, len);
                         tokens.push(Token {
                             kind: self.rules[pattern_index].0,
                             range: 0..len,
                         });
                         line_index += len;
                     }
-                    MatchResult::Err => {
-                        dbg!(state, line);
-                    }
+                    MatchResult::Err => (),
                     MatchResult::Pending(_, state) => {
                         tokens.push(Token {
                             kind: self.rules[pattern_index].0,
@@ -232,11 +229,6 @@ mod tests {
         tokens.clear();
         let line2_kind = syntax.parse_line(line2, line1_kind, &mut tokens);
         assert_eq!(LineKind::Finished, line2_kind);
-        dbg!(Pattern::new("/%*[%w $]*%*/").unwrap());
-        dbg!(line1_kind);
-        for t in &tokens {
-            eprintln!("{:?} => {}", t.kind, &line2[t.range.clone()]);
-        }
         assert_eq!(2, tokens.len());
         assert_token("still comment */", TokenKind::Comment, line2, &tokens[0]);
         assert_token(" after", TokenKind::Text, line2, &tokens[1]);

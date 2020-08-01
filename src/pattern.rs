@@ -42,17 +42,14 @@ impl Pattern {
             }};
         };
 
-        if bytes_index < bytes.len() {
-            eprintln!("{:?}", std::str::from_utf8(&bytes[bytes_index..]).unwrap());
-        } else {
-            eprintln!("\"\"");
-        }
-
         loop {
-            eprintln!("[{}] {:?}", op_index, ops[op_index]);
             match ops[op_index] {
                 Op::Ok => return MatchResult::Ok(bytes_index),
                 Op::Error => return MatchResult::Err,
+                Op::Unwind(jump, len) => {
+                    bytes_index -= len.0 as usize;
+                    op_index = jump.0 as _;
+                }
                 Op::EndAnchor(okj, erj) => {
                     if bytes_index < bytes.len() {
                         op_index = erj.0 as _;
@@ -75,18 +72,7 @@ impl Pattern {
                     check!(bytes[bytes_index].is_ascii_alphanumeric(), okj, erj)
                 }
                 Op::Byte(okj, erj, b) => check!(bytes[bytes_index] == b, okj, erj),
-                Op::Jump(jump) => op_index = jump.0 as _,
-                Op::Unwind(jump, len) => {
-                    bytes_index -= len.0 as usize;
-                    op_index = jump.0 as _;
-                }
             };
-
-            if bytes_index < bytes.len() {
-                eprintln!("{:?}", std::str::from_utf8(&bytes[bytes_index..]).unwrap());
-            } else {
-                eprintln!("\"\"");
-            }
         }
     }
 }
@@ -135,7 +121,7 @@ enum JumpFrom {
 enum Op {
     Ok,
     Error,
-    Jump(Jump),
+    Unwind(Jump, Length),
     EndAnchor(Jump, Jump),
     Any(Jump, Jump),
     Alphabetic(Jump, Jump),
@@ -144,7 +130,6 @@ enum Op {
     Digit(Jump, Jump),
     Alphanumeric(Jump, Jump),
     Byte(Jump, Jump, u8),
-    Unwind(Jump, Length),
 }
 
 impl fmt::Debug for Op {
@@ -165,9 +150,10 @@ impl fmt::Debug for Op {
         match self {
             Op::Ok => f.write_str("Ok"),
             Op::Error => f.write_str("Error"),
-            Op::Jump(jump) => f.write_fmt(format_args!(
-                "{:width$}[{}]",
-                "Jump",
+            Op::Unwind(jump, len) => f.write_fmt(format_args!(
+                "{:width$}[{}] {}",
+                "Unwind",
+                len.0,
                 jump.0,
                 width = WIDTH - 4
             )),
@@ -184,13 +170,6 @@ impl fmt::Debug for Op {
                 *byte as char,
                 okj.0,
                 erj.0,
-                width = WIDTH - 4
-            )),
-            Op::Unwind(jump, len) => f.write_fmt(format_args!(
-                "{:width$}[{}] {}",
-                "Unwind",
-                len.0,
-                jump.0,
                 width = WIDTH - 4
             )),
         }
@@ -218,6 +197,7 @@ impl<'a> PatternParser<'a> {
             self.parse_expr(JumpFrom::End(Jump(0)), JumpFrom::Beginning(Jump(0)))?;
         }
         self.ops.push(Op::Ok);
+        self.optimize();
         Some(Pattern { ops: self.ops })
     }
 
@@ -266,9 +246,9 @@ impl<'a> PatternParser<'a> {
             JumpFrom::Beginning(jump) => jump,
             JumpFrom::End(_) => {
                 let jump = (self.ops.len() + 2).into();
-                self.ops.push(Op::Jump(jump));
+                self.ops.push(Op::Unwind(jump, Length(0)));
                 let jump = self.ops.len().into();
-                self.ops.push(Op::Jump(jump));
+                self.ops.push(Op::Unwind(jump, Length(0)));
                 jump
             }
         }
@@ -277,7 +257,7 @@ impl<'a> PatternParser<'a> {
     fn patch_jump(&mut self, jump: JumpFrom, abs_jump: Jump) {
         if let JumpFrom::End(mut jump) = jump {
             jump += self.ops.len().into();
-            if let Op::Jump(j) = &mut self.ops[abs_jump.0 as usize] {
+            if let Op::Unwind(j, Length(0)) = &mut self.ops[abs_jump.0 as usize] {
                 *j = jump;
             } else {
                 unreachable!();
@@ -287,11 +267,11 @@ impl<'a> PatternParser<'a> {
 
     fn jump_at_end(&mut self, jump: JumpFrom) {
         match jump {
-            JumpFrom::Beginning(jump) => self.ops.push(Op::Jump(jump)),
+            JumpFrom::Beginning(jump) => self.ops.push(Op::Unwind(jump, Length(0))),
             JumpFrom::End(Jump(0)) => (),
             JumpFrom::End(mut jump) => {
                 jump += (self.ops.len() + 1).into();
-                self.ops.push(Op::Jump(jump));
+                self.ops.push(Op::Unwind(jump, Length(0)));
             }
         }
     }
@@ -427,6 +407,52 @@ impl<'a> PatternParser<'a> {
 
         self.ops.push(op);
         Some(Length(1))
+    }
+
+    fn optimize(&mut self) {
+        let mut i = 0;
+        while i < self.ops.len() {
+            let mut jump = match &self.ops[i] {
+                Op::Unwind(jump, Length(0)) => *jump,
+                _ => {
+                    i += 1;
+                    continue;
+                }
+            };
+            self.ops.remove(i);
+
+            if jump.0 as usize > i {
+                jump.0 -= 1;
+            }
+
+            macro_rules! fix_jump {
+                ($j:ident) => {
+                    if $j.0 as usize > i {
+                        $j.0 -= 1;
+                    } else if $j.0 as usize == i {
+                        *$j = jump;
+                    }
+                };
+            }
+
+            for op in &mut self.ops {
+                match op {
+                    Op::Ok | Op::Error => (),
+                    Op::Unwind(j, _) => fix_jump!(j),
+                    Op::EndAnchor(okj, erj)
+                    | Op::Any(okj, erj)
+                    | Op::Alphabetic(okj, erj)
+                    | Op::Lower(okj, erj)
+                    | Op::Upper(okj, erj)
+                    | Op::Digit(okj, erj)
+                    | Op::Alphanumeric(okj, erj)
+                    | Op::Byte(okj, erj, _) => {
+                        fix_jump!(okj);
+                        fix_jump!(erj);
+                    }
+                }
+            }
+        }
     }
 }
 
