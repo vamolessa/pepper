@@ -409,7 +409,7 @@ impl<'a> PatternCompiler<'a> {
         let mut len = Length(0);
 
         if inverse {
-            self.next();
+            self.next()?;
 
             let abs_erj = self.get_absolute_jump(erj);
             while self.next_is_not(b')')? {

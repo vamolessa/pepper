@@ -12,6 +12,7 @@ use crate::{
     client::Client,
     event::{Event, Key},
     mode::Mode,
+    syntax::TokenKind,
     theme,
 };
 
@@ -174,9 +175,12 @@ where
     let text_normal_color = convert_color(theme.text_normal);
     let highlight_color = convert_color(theme.highlight);
 
+    let mut current_token_kind = TokenKind::Text;
+    let mut text_color = text_normal_color;
+
     handle_command!(write, cursor::MoveTo(0, 0))?;
     handle_command!(write, SetBackgroundColor(background_color))?;
-    handle_command!(write, SetForegroundColor(text_normal_color))?;
+    handle_command!(write, SetForegroundColor(text_color))?;
 
     let mut line_index = scroll;
     let mut drawn_line_count = 0;
@@ -199,6 +203,23 @@ where
             }
 
             let char_position = BufferPosition::line_col(line_index, column_index);
+
+            let token_kind = client.highlighted_buffer.find_token_kind_at(char_position);
+            if token_kind != current_token_kind {
+                current_token_kind = token_kind;
+                text_color = match token_kind {
+                    TokenKind::Text => text_normal_color,
+                    TokenKind::Comment => text_normal_color,
+                    TokenKind::Keyword => text_normal_color,
+                    TokenKind::Modifier => text_normal_color,
+                    TokenKind::Symbol => text_normal_color,
+                    TokenKind::String => text_normal_color,
+                    TokenKind::Char => text_normal_color,
+                    TokenKind::Literal => text_normal_color,
+                    TokenKind::Number => text_normal_color,
+                };
+            }
+
             if client.cursors[..]
                 .binary_search_by_key(&char_position, |c| c.position)
                 .is_ok()
@@ -206,7 +227,7 @@ where
                 if !matches!(draw_state, DrawState::Cursor) {
                     draw_state = DrawState::Cursor;
                     handle_command!(write, SetBackgroundColor(cursor_color))?;
-                    handle_command!(write, SetForegroundColor(text_normal_color))?;
+                    handle_command!(write, SetForegroundColor(text_color))?;
                 }
             } else if client.cursors[..]
                 .binary_search_by(|c| {
@@ -223,7 +244,7 @@ where
             {
                 if !matches!(draw_state, DrawState::Selection) {
                     draw_state = DrawState::Selection;
-                    handle_command!(write, SetBackgroundColor(text_normal_color))?;
+                    handle_command!(write, SetBackgroundColor(text_color))?;
                     handle_command!(write, SetForegroundColor(background_color))?;
                 }
             } else if client
@@ -242,12 +263,12 @@ where
                 if !matches!(draw_state, DrawState::Highlight) {
                     draw_state = DrawState::Highlight;
                     handle_command!(write, SetBackgroundColor(highlight_color))?;
-                    handle_command!(write, SetForegroundColor(text_normal_color))?;
+                    handle_command!(write, SetForegroundColor(text_color))?;
                 }
             } else if !matches!(draw_state, DrawState::Normal) {
                 draw_state = DrawState::Normal;
                 handle_command!(write, SetBackgroundColor(background_color))?;
-                handle_command!(write, SetForegroundColor(text_normal_color))?;
+                handle_command!(write, SetForegroundColor(text_color))?;
             }
 
             match c {
@@ -282,7 +303,7 @@ where
     }
 
     handle_command!(write, SetBackgroundColor(background_color))?;
-    handle_command!(write, SetForegroundColor(text_normal_color))?;
+    handle_command!(write, SetForegroundColor(text_color))?;
     for _ in drawn_line_count..(height - 1) {
         handle_command!(write, Print('~'))?;
         handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;

@@ -1,8 +1,12 @@
 use std::ops::Range;
 
-use crate::pattern::{MatchResult, Pattern, PatternState};
+use crate::{
+    buffer_position::BufferPosition,
+    buffer::BufferContent,
+    pattern::{MatchResult, Pattern, PatternState},
+};
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenKind {
     Text,
     Comment,
@@ -16,15 +20,21 @@ pub enum TokenKind {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Token {
+struct Token {
     pub kind: TokenKind,
     pub range: Range<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum LineKind {
+enum LineKind {
     Finished,
     Unfinished(usize, PatternState),
+}
+
+impl Default for LineKind {
+    fn default() -> Self {
+        Self::Finished
+    }
 }
 
 pub struct Syntax {
@@ -134,6 +144,33 @@ impl Syntax {
     }
 }
 
+#[derive(Default, Clone)]
+struct HighlightedLine {
+    kind: LineKind,
+    tokens: Vec<Token>
+}
+
+#[derive(Default)]
+pub struct HighlightedBuffer {
+    lines: Vec<HighlightedLine>,
+}
+
+impl HighlightedBuffer {
+    pub fn highligh_all(&mut self, syntax: &Syntax, buffer: &BufferContent) {
+        self.lines.resize(buffer.line_count(), HighlightedLine::default());
+
+        let mut previous_line_kind = LineKind::Finished;
+        for (bline, hline) in buffer.lines_from(0).zip(self.lines.iter_mut()) {
+            hline.kind = syntax.parse_line(&bline.text[..], previous_line_kind, &mut hline.tokens);
+            previous_line_kind = hline.kind;
+        }
+    }
+
+    pub fn find_token_kind_at(&self, position: BufferPosition) -> TokenKind {
+        TokenKind::Text
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -198,10 +235,7 @@ mod tests {
     #[test]
     fn test_multiline_syntax() {
         let mut syntax = Syntax::new();
-        syntax.add_rule(
-            TokenKind::Comment,
-            Pattern::new("/*{!(*/).$}").unwrap(),
-        );
+        syntax.add_rule(TokenKind::Comment, Pattern::new("/*{!(*/).$}").unwrap());
 
         let mut tokens = Vec::new();
         let line0 = "before /* comment";

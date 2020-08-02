@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use crate::{
     buffer::BufferContent, buffer_position::BufferRange, config::Config, cursor::Cursor,
     editor::EditorOperation, mode::Mode,
+    syntax::HighlightedBuffer,
 };
 
 pub struct Client {
@@ -12,6 +13,7 @@ pub struct Client {
 
     pub path: Option<PathBuf>,
     pub buffer: BufferContent,
+    pub highlighted_buffer: HighlightedBuffer,
 
     pub main_cursor: Cursor,
     pub cursors: Vec<Cursor>,
@@ -31,6 +33,7 @@ impl Client {
 
             path: None,
             buffer: BufferContent::from_str(""),
+            highlighted_buffer: HighlightedBuffer::default(),
 
             main_cursor: Cursor::default(),
             cursors: Vec::new(),
