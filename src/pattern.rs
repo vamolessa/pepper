@@ -385,7 +385,7 @@ impl<'a> PatternCompiler<'a> {
         while self.next_is_not(b'}')? {
             match self.current() {
                 b'!' => {
-                    self.next();
+                    self.next()?;
                     self.parse_expr(JumpFrom::Beginning(end_jump), JumpFrom::End(Jump(0)))?;
                 }
                 _ => {
