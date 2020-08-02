@@ -7,14 +7,14 @@ pub enum MatchResult {
     Err,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum PatternError {
-    UnexpectedEof,
+    UnexpectedEndOfPattern,
     Expected(char),
     InvalidEscaping(char),
     Unescaped(char),
     EmptyGroup,
-    GroupWithDifferentSizeElements,
+    GroupWithElementsOfDifferentSize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -29,7 +29,7 @@ pub struct Pattern {
 
 impl Pattern {
     pub fn new(pattern: &str) -> Result<Self, PatternError> {
-        Ok(PatternParser::new(pattern.as_bytes()).parse()?)
+        Ok(PatternCompiler::new(pattern.as_bytes()).compile()?)
     }
 
     pub fn matches(&self, text: &str) -> MatchResult {
@@ -77,7 +77,17 @@ impl Pattern {
                         };
                     }
                 }
-                Op::Any(okj, erj) => check!(true, okj, erj),
+                Op::SkipOne(okj, erj) => check!(true, okj, erj),
+                Op::SkipMany(okj, erj, len) => {
+                    let len = len.0 as usize;
+                    bytes_index += len;
+                    if bytes_index <= bytes.len() {
+                        op_index = okj.0 as _;
+                    } else {
+                        bytes_index -= len;
+                        op_index = erj.0 as _;
+                    }
+                }
                 Op::Alphabetic(okj, erj) => {
                     check!(bytes[bytes_index].is_ascii_alphabetic(), okj, erj)
                 }
@@ -88,6 +98,7 @@ impl Pattern {
                     check!(bytes[bytes_index].is_ascii_alphanumeric(), okj, erj)
                 }
                 Op::Byte(okj, erj, b) => check!(bytes[bytes_index] == b, okj, erj),
+                Op::Bytes3(okj, erj, _) => (),
             };
         }
     }
@@ -155,13 +166,15 @@ enum Op {
     Error,
     Unwind(Jump, Length),
     EndAnchor(Jump, Jump),
-    Any(Jump, Jump),
+    SkipOne(Jump, Jump),
+    SkipMany(Jump, Jump, Length),
     Alphabetic(Jump, Jump),
     Lower(Jump, Jump),
     Upper(Jump, Jump),
     Digit(Jump, Jump),
     Alphanumeric(Jump, Jump),
     Byte(Jump, Jump, u8),
+    Bytes3(Jump, Jump, [u8; 3]),
 }
 
 impl fmt::Debug for Op {
@@ -190,7 +203,15 @@ impl fmt::Debug for Op {
                 width = WIDTH - 4
             )),
             Op::EndAnchor(okj, erj) => p!("EndAnchor", okj, erj),
-            Op::Any(okj, erj) => p!("Any", okj, erj),
+            Op::SkipOne(okj, erj) => p!("SkipOne", okj, erj),
+            Op::SkipMany(okj, erj, len) => f.write_fmt(format_args!(
+                "{:width$}[{}] {} {}",
+                "SkipMany",
+                len.0,
+                okj.0,
+                erj.0,
+                width = WIDTH - 4
+            )),
             Op::Alphabetic(okj, erj) => p!("Alphabetic", okj, erj),
             Op::Lower(okj, erj) => p!("Lower", okj, erj),
             Op::Upper(okj, erj) => p!("Upper", okj, erj),
@@ -204,18 +225,19 @@ impl fmt::Debug for Op {
                 erj.0,
                 width = WIDTH - 4
             )),
+            Op::Bytes3(okj, erj, bytes) => Ok(()),
         }
     }
 }
 
-struct PatternParser<'a> {
+struct PatternCompiler<'a> {
     pub bytes: &'a [u8],
     pub index: usize,
     pub start_index: usize,
     pub ops: Vec<Op>,
 }
 
-impl<'a> PatternParser<'a> {
+impl<'a> PatternCompiler<'a> {
     pub fn new(bytes: &'a [u8]) -> Self {
         Self {
             bytes,
@@ -225,7 +247,7 @@ impl<'a> PatternParser<'a> {
         }
     }
 
-    pub fn parse(mut self) -> Result<Pattern, PatternError> {
+    pub fn compile(mut self) -> Result<Pattern, PatternError> {
         self.ops.push(Op::Error);
         while let Ok(_) = self.next() {
             self.parse_stmt()?;
@@ -243,7 +265,7 @@ impl<'a> PatternParser<'a> {
         if self.index < self.bytes.len() {
             Ok(self.bytes[self.index])
         } else {
-            Err(PatternError::UnexpectedEof)
+            Err(PatternError::UnexpectedEndOfPattern)
         }
     }
 
@@ -324,6 +346,14 @@ impl<'a> PatternParser<'a> {
         }
     }
 
+    fn skip(&mut self, okj: Jump, erj: Jump, len: Length) {
+        match len {
+            Length(0) => self.ops.push(Op::Unwind(okj, Length(0))),
+            Length(1) => self.ops.push(Op::SkipOne(okj, erj)),
+            _ => self.ops.push(Op::SkipMany(okj, erj, len)),
+        }
+    }
+
     fn parse_repeat_stmt(&mut self) -> Result<(), PatternError> {
         let start_jump = self.ops.len().into();
         let end_jump = self.get_absolute_jump(JumpFrom::End(Jump(0)));
@@ -360,10 +390,11 @@ impl<'a> PatternParser<'a> {
             let abs_erj = self.get_absolute_jump(erj);
             while self.next_is_not(b')')? {
                 let expr_len = self.parse_expr(JumpFrom::End(Jump(2)), JumpFrom::End(Jump(0)))?;
-                self.ops.push(Op::Any(
+                self.skip(
                     (self.ops.len() + 3).into(),
                     (self.ops.len() + 1).into(),
-                ));
+                    expr_len,
+                );
                 self.ops.push(Op::Unwind(abs_erj, len));
                 len += expr_len;
             }
@@ -398,15 +429,17 @@ impl<'a> PatternParser<'a> {
                 self.ops.push(Op::Unwind(abs_erj, expr_len));
 
                 if len.unwrap_or(expr_len).0 != expr_len.0 {
-                    return Err(PatternError::GroupWithDifferentSizeElements);
+                    return Err(PatternError::GroupWithElementsOfDifferentSize);
                 }
                 len = Some(expr_len);
             }
+
+            let len = len.ok_or(PatternError::EmptyGroup)?;
             match okj {
-                JumpFrom::Beginning(jump) => self.ops.push(Op::Any(jump, abs_erj)),
+                JumpFrom::Beginning(jump) => self.skip(jump, abs_erj, len),
                 JumpFrom::End(mut jump) => {
                     jump += (self.ops.len() + 1).into();
-                    self.ops.push(Op::Any(jump, abs_erj));
+                    self.skip(jump, abs_erj, len);
                 }
             }
             self.patch_jump(erj, abs_erj);
@@ -415,8 +448,9 @@ impl<'a> PatternParser<'a> {
             while self.next_is_not(b']')? {
                 let expr_len =
                     self.parse_expr(JumpFrom::Beginning(abs_okj), JumpFrom::End(Jump(0)))?;
+
                 if len.unwrap_or(expr_len).0 != expr_len.0 {
-                    return Err(PatternError::GroupWithDifferentSizeElements);
+                    return Err(PatternError::GroupWithElementsOfDifferentSize);
                 }
                 len = Some(expr_len);
             }
@@ -469,7 +503,7 @@ impl<'a> PatternParser<'a> {
                 self.ops.push(Op::EndAnchor(okj, erj));
                 return Ok(Length(0));
             }
-            b'.' => Op::Any(okj, erj),
+            b'.' => Op::SkipOne(okj, erj),
             b'!' => return Err(PatternError::Unescaped('!')),
             b'(' => return Err(PatternError::Unescaped('(')),
             b')' => return Err(PatternError::Unescaped(')')),
@@ -500,6 +534,12 @@ impl<'a> PatternParser<'a> {
                 jump.0 -= 1;
             }
 
+            if self.start_index > i {
+                self.start_index -= 1;
+            } else if self.start_index == i {
+                self.start_index = jump.0 as _;
+            }
+
             macro_rules! fix_jump {
                 ($j:ident) => {
                     if $j.0 as usize > i {
@@ -510,24 +550,20 @@ impl<'a> PatternParser<'a> {
                 };
             }
 
-            if self.start_index > i {
-                self.start_index -= 1;
-            } else if self.start_index == i {
-                self.start_index = jump.0 as _;
-            }
-
             for op in &mut self.ops {
                 match op {
                     Op::Ok | Op::Error => (),
                     Op::Unwind(j, _) => fix_jump!(j),
                     Op::EndAnchor(okj, erj)
-                    | Op::Any(okj, erj)
+                    | Op::SkipOne(okj, erj)
+                    | Op::SkipMany(okj, erj, _)
                     | Op::Alphabetic(okj, erj)
                     | Op::Lower(okj, erj)
                     | Op::Upper(okj, erj)
                     | Op::Digit(okj, erj)
                     | Op::Alphanumeric(okj, erj)
-                    | Op::Byte(okj, erj, _) => {
+                    | Op::Byte(okj, erj, _)
+                    | Op::Bytes3(okj, erj, _) => {
                         fix_jump!(okj);
                         fix_jump!(erj);
                     }
@@ -543,6 +579,8 @@ mod tests {
 
     #[test]
     fn test_simple_pattern() {
+        assert_eq!(8, std::mem::size_of::<Op>());
+
         let p = Pattern::new("").unwrap();
         assert_eq!(MatchResult::Ok(0), p.matches(""));
         assert_eq!(MatchResult::Ok(0), p.matches("a"));
@@ -784,27 +822,41 @@ mod tests {
         assert_eq!(MatchResult::Ok(4), p.matches("abba"));
     }
 
-    //#[test]
-    fn test_pattern_inversion() {
+    #[test]
+    fn test_edge_cases() {
         let p = Pattern::new("(!(!abc))").unwrap();
-        dbg!(&p);
         assert_eq!(MatchResult::Ok(3), p.matches("abc"));
+        assert_eq!(MatchResult::Err, p.matches("xyz"));
+        assert_eq!(MatchResult::Err, p.matches("a"));
+        assert_eq!(MatchResult::Err, p.matches("ab"));
+        assert_eq!(MatchResult::Err, p.matches("abz"));
+
+        let p = Pattern::new("[![!abc]]").unwrap();
+        assert_eq!(MatchResult::Ok(1), p.matches("a"));
+        assert_eq!(MatchResult::Ok(1), p.matches("b"));
+        assert_eq!(MatchResult::Ok(1), p.matches("c"));
+        assert_eq!(MatchResult::Err, p.matches("x"));
+
+        let p = Pattern::new("()").unwrap();
+        assert_eq!(MatchResult::Ok(0), p.matches(""));
+        assert_eq!(MatchResult::Ok(0), p.matches("x"));
     }
 
-    //#[test]
+    #[test]
     fn test_pattern_composition() {
-        let p = Pattern::new("[![(ab)c]]").unwrap();
-        dbg!(&p);
-        assert_eq!(MatchResult::Ok(1), p.matches("c"));
-        assert!(false);
+        let p = Pattern::new("[![(ab)(cd)]]").unwrap();
+        assert_eq!(MatchResult::Ok(2), p.matches("ad"));
+        assert_eq!(MatchResult::Ok(2), p.matches("bc"));
+        assert_eq!(MatchResult::Err, p.matches("ab"));
+        assert_eq!(MatchResult::Err, p.matches("cd"));
 
-        let p = Pattern::new("[a(!bc)d]").unwrap();
-        assert_eq!(MatchResult::Ok(1), p.matches("a"));
+        let p = Pattern::new("[(ab)(!cd)]").unwrap();
+        assert_eq!(MatchResult::Ok(2), p.matches("ab"));
         assert_eq!(MatchResult::Err, p.matches("b"));
-        assert_eq!(MatchResult::Ok(2), p.matches("bx"));
-        assert_eq!(MatchResult::Ok(2), p.matches("bxa"));
-        assert_eq!(MatchResult::Ok(2), p.matches("bxd"));
-        assert_eq!(MatchResult::Ok(1), p.matches("d"));
+        assert_eq!(MatchResult::Ok(2), p.matches("ax"));
+        assert_eq!(MatchResult::Ok(2), p.matches("ac"));
+        assert_eq!(MatchResult::Ok(2), p.matches("acd"));
+        assert_eq!(MatchResult::Ok(2), p.matches("cb"));
 
         let p = Pattern::new("{(a[!ab])}").unwrap();
         assert_eq!(MatchResult::Ok(0), p.matches(""));
@@ -812,24 +864,36 @@ mod tests {
         assert_eq!(MatchResult::Ok(2), p.matches("ac"));
         assert_eq!(MatchResult::Ok(2), p.matches("aca"));
         assert_eq!(MatchResult::Ok(2), p.matches("acab"));
+        assert_eq!(MatchResult::Ok(4), p.matches("acax"));
 
-        let p = Pattern::new("{[(!ab)c]}").unwrap();
+        let p = Pattern::new("{[(!ab)(cd)]}").unwrap();
         assert_eq!(MatchResult::Ok(0), p.matches(""));
-        assert_eq!(MatchResult::Ok(1), p.matches("c"));
+        assert_eq!(MatchResult::Ok(2), p.matches("cd"));
         assert_eq!(MatchResult::Ok(0), p.matches("ab"));
         assert_eq!(MatchResult::Ok(2), p.matches("ac"));
+        assert_eq!(MatchResult::Ok(4), p.matches("accd"));
     }
 
     #[test]
     fn test_bad_pattern() {
-        assert!(matches!(Pattern::new("("), Err(_)));
-        assert!(matches!(Pattern::new(")"), Err(_)));
-        assert!(matches!(Pattern::new("["), Err(_)));
-        assert!(matches!(Pattern::new("]"), Err(_)));
-        assert!(matches!(Pattern::new("{"), Err(_)));
-        assert!(matches!(Pattern::new("}"), Err(_)));
-        assert!(matches!(Pattern::new("%"), Err(_)));
-        assert!(matches!(Pattern::new("!"), Err(_)));
-        assert!(matches!(Pattern::new("%@"), Err(_)));
+        macro_rules! assert_err {
+            ($expected:expr, $value:expr) => {
+                match $value {
+                    Ok(_) => assert!(false),
+                    Err(e) => assert_eq!($expected, e),
+                }
+            };
+        }
+
+        assert_err!(PatternError::UnexpectedEndOfPattern, Pattern::new("("));
+        assert_err!(PatternError::Unescaped(')'), Pattern::new(")"));
+        assert_err!(PatternError::UnexpectedEndOfPattern, Pattern::new("["));
+        assert_err!(PatternError::Unescaped(']'), Pattern::new("]"));
+        assert_err!(PatternError::EmptyGroup, Pattern::new("[]"));
+        assert_err!(PatternError::UnexpectedEndOfPattern, Pattern::new("{"));
+        assert_err!(PatternError::Unescaped('}'), Pattern::new("}"));
+        assert_err!(PatternError::UnexpectedEndOfPattern, Pattern::new("%"));
+        assert_err!(PatternError::Unescaped('!'), Pattern::new("!"));
+        assert_err!(PatternError::InvalidEscaping('@'), Pattern::new("%@"));
     }
 }
