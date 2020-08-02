@@ -200,7 +200,7 @@ mod tests {
         let mut syntax = Syntax::new();
         syntax.add_rule(
             TokenKind::Comment,
-            Pattern::new("/%**[(^%*/)$]%*/").unwrap(),
+            Pattern::new("/*{!(*/).$}").unwrap(),
         );
 
         let mut tokens = Vec::new();
