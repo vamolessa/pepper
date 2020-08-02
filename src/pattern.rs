@@ -98,7 +98,22 @@ impl Pattern {
                     check!(bytes[bytes_index].is_ascii_alphanumeric(), okj, erj)
                 }
                 Op::Byte(okj, erj, b) => check!(bytes[bytes_index] == b, okj, erj),
-                Op::Bytes3(okj, erj, _) => (),
+                Op::Bytes3(okj, erj, bs) => {
+                    let start_index = bytes_index;
+                    bytes_index += 3;
+                    if bytes_index <= bytes.len() {
+                        let slice = &bytes[start_index..bytes_index];
+                        if slice[0] == bs[0] && slice[1] == bs[1] && slice[2] == bs[2] {
+                            op_index = okj.0 as _;
+                        } else {
+                            bytes_index = start_index;
+                            op_index = erj.0 as _;
+                        }
+                    } else {
+                        bytes_index = start_index;
+                        op_index = erj.0 as _;
+                    }
+                }
             };
         }
     }
@@ -225,7 +240,16 @@ impl fmt::Debug for Op {
                 erj.0,
                 width = WIDTH - 4
             )),
-            Op::Bytes3(okj, erj, bytes) => Ok(()),
+            Op::Bytes3(okj, erj, bytes) => f.write_fmt(format_args!(
+                "{:width$}'{}','{}','{}' {} {}",
+                "Bytes3",
+                bytes[0] as char,
+                bytes[1] as char,
+                bytes[2] as char,
+                okj.0,
+                erj.0,
+                width = WIDTH - 4
+            )),
         }
     }
 }
@@ -521,52 +545,125 @@ impl<'a> PatternCompiler<'a> {
     fn optimize(&mut self) {
         let mut i = 0;
         while i < self.ops.len() {
-            let mut jump = match &self.ops[i] {
-                Op::Unwind(jump, Length(0)) => *jump,
-                _ => {
+            match &self.ops[i] {
+                Op::Byte(_, _, _) => {
+                    self.try_collapse_sequence3_at(i);
                     i += 1;
-                    continue;
+                }
+                Op::Unwind(jump, Length(0)) => {
+                    let jump = *jump;
+                    self.remove_jump_at(i, jump);
+                }
+                _ => i += 1,
+            }
+        }
+    }
+
+    fn remove_jump_at(&mut self, i: usize, mut jump: Jump) {
+        self.ops.remove(i);
+
+        if jump.0 as usize > i {
+            jump.0 -= 1;
+        }
+
+        if self.start_index > i {
+            self.start_index -= 1;
+        } else if self.start_index == i {
+            self.start_index = jump.0 as _;
+        }
+
+        macro_rules! fix_jump {
+            ($j:ident) => {
+                if $j.0 as usize > i {
+                    $j.0 -= 1;
+                } else if $j.0 as usize == i {
+                    *$j = jump;
                 }
             };
-            self.ops.remove(i);
+        }
 
-            if jump.0 as usize > i {
-                jump.0 -= 1;
+        for op in &mut self.ops {
+            match op {
+                Op::Ok | Op::Error => (),
+                Op::Unwind(j, _) => fix_jump!(j),
+                Op::EndAnchor(okj, erj)
+                | Op::SkipOne(okj, erj)
+                | Op::SkipMany(okj, erj, _)
+                | Op::Alphabetic(okj, erj)
+                | Op::Lower(okj, erj)
+                | Op::Upper(okj, erj)
+                | Op::Digit(okj, erj)
+                | Op::Alphanumeric(okj, erj)
+                | Op::Byte(okj, erj, _)
+                | Op::Bytes3(okj, erj, _) => {
+                    fix_jump!(okj);
+                    fix_jump!(erj);
+                }
+            }
+        }
+    }
+
+    fn try_collapse_sequence3_at(&mut self, index: usize) {
+        if index + 6 > self.ops.len() {
+            return;
+        }
+
+        let mut final_okj = None;
+        let mut final_erj = None;
+        let mut bytes = [0 as u8; 3];
+
+        for i in 0..bytes.len() {
+            let op_index = index + i * 2;
+            match &self.ops[op_index] {
+                Op::Byte(okj, erj, b)
+                    if okj.0 as usize == op_index + 2 && erj.0 as usize == op_index + 1 =>
+                {
+                    bytes[i] = *b;
+                    final_okj = Some(*okj);
+                }
+                _ => return,
             }
 
-            if self.start_index > i {
-                self.start_index -= 1;
-            } else if self.start_index == i {
-                self.start_index = jump.0 as _;
+            let op_index = op_index + 1;
+            match &self.ops[op_index] {
+                Op::Unwind(jump, len) if len.0 as usize == i => {
+                    final_erj = Some(*jump);
+                }
+                _ => return,
             }
+        }
 
-            macro_rules! fix_jump {
-                ($j:ident) => {
-                    if $j.0 as usize > i {
-                        $j.0 -= 1;
-                    } else if $j.0 as usize == i {
-                        *$j = jump;
-                    }
-                };
-            }
+        self.ops[index] = Op::Bytes3(final_okj.unwrap(), final_erj.unwrap(), bytes);
+        self.ops.drain((index + 1)..(index + 6));
 
-            for op in &mut self.ops {
-                match op {
-                    Op::Ok | Op::Error => (),
-                    Op::Unwind(j, _) => fix_jump!(j),
-                    Op::EndAnchor(okj, erj)
-                    | Op::SkipOne(okj, erj)
-                    | Op::SkipMany(okj, erj, _)
-                    | Op::Alphabetic(okj, erj)
-                    | Op::Lower(okj, erj)
-                    | Op::Upper(okj, erj)
-                    | Op::Digit(okj, erj)
-                    | Op::Alphanumeric(okj, erj)
-                    | Op::Byte(okj, erj, _)
-                    | Op::Bytes3(okj, erj, _) => {
-                        fix_jump!(okj);
-                        fix_jump!(erj);
-                    }
+        if self.start_index > index {
+            self.start_index -= 5;
+        }
+
+        macro_rules! fix_jump {
+            ($j:ident) => {
+                if $j.0 as usize > index {
+                    $j.0 -= 5;
+                }
+            };
+        }
+
+        for op in &mut self.ops {
+            match op {
+                Op::Ok | Op::Error => (),
+                Op::Unwind(j, _) => fix_jump!(j),
+                Op::EndAnchor(okj, erj)
+                | Op::SkipOne(okj, erj)
+                | Op::SkipMany(okj, erj, _)
+                | Op::Alphabetic(okj, erj)
+                | Op::Lower(okj, erj)
+                | Op::Upper(okj, erj)
+                | Op::Digit(okj, erj)
+                | Op::Alphanumeric(okj, erj)
+                | Op::Byte(okj, erj, _)
+                | Op::Bytes3(okj, erj, _) => {
+                    fix_jump!(okj);
+                    fix_jump!(erj);
                 }
             }
         }
