@@ -547,7 +547,9 @@ impl<'a> PatternCompiler<'a> {
         while i < self.ops.len() {
             match &self.ops[i] {
                 Op::Byte(_, _, _) => {
-                    self.try_collapse_sequence3_at(i);
+                    if !self.try_collapse_bytes3_at(i) {
+                        self.try_collapse_sequence3_at(i);
+                    }
                     i += 1;
                 }
                 Op::Unwind(jump, Length(0)) => {
@@ -603,9 +605,70 @@ impl<'a> PatternCompiler<'a> {
         }
     }
 
-    fn try_collapse_sequence3_at(&mut self, index: usize) {
+    fn try_collapse_bytes3_at(&mut self, index: usize) -> bool {
+        if index + 3 > self.ops.len() {
+            return false;
+        }
+
+        let mut final_okj = None;
+        let mut final_erj = None;
+        let mut bytes = [0 as u8; 3];
+
+        for i in 0..bytes.len() {
+            let op_index = index + i;
+            match &self.ops[op_index] {
+                Op::Byte(okj, erj, b)
+                    if okj.0 as usize == op_index + 1 && final_erj.unwrap_or(*erj).0 == erj.0 =>
+                {
+                    bytes[i] = *b;
+                    final_okj = Some(*okj);
+                    final_erj = Some(*erj);
+                }
+                _ => return false,
+            }
+        }
+
+        self.ops[index] = Op::Bytes3(final_okj.unwrap(), final_erj.unwrap(), bytes);
+        self.ops.drain((index + 1)..(index + 3));
+
+        if self.start_index > index {
+            self.start_index -= 2;
+        }
+
+        macro_rules! fix_jump {
+            ($j:ident) => {
+                if $j.0 as usize > index {
+                    $j.0 -= 2;
+                }
+            };
+        }
+
+        for op in &mut self.ops {
+            match op {
+                Op::Ok | Op::Error => (),
+                Op::Unwind(j, _) => fix_jump!(j),
+                Op::EndAnchor(okj, erj)
+                | Op::SkipOne(okj, erj)
+                | Op::SkipMany(okj, erj, _)
+                | Op::Alphabetic(okj, erj)
+                | Op::Lower(okj, erj)
+                | Op::Upper(okj, erj)
+                | Op::Digit(okj, erj)
+                | Op::Alphanumeric(okj, erj)
+                | Op::Byte(okj, erj, _)
+                | Op::Bytes3(okj, erj, _) => {
+                    fix_jump!(okj);
+                    fix_jump!(erj);
+                }
+            }
+        }
+
+        true
+    }
+
+    fn try_collapse_sequence3_at(&mut self, index: usize) -> bool {
         if index + 6 > self.ops.len() {
-            return;
+            return false;
         }
 
         let mut final_okj = None;
@@ -621,7 +684,7 @@ impl<'a> PatternCompiler<'a> {
                     bytes[i] = *b;
                     final_okj = Some(*okj);
                 }
-                _ => return,
+                _ => return false,
             }
 
             let op_index = op_index + 1;
@@ -629,7 +692,7 @@ impl<'a> PatternCompiler<'a> {
                 Op::Unwind(jump, len) if len.0 as usize == i => {
                     final_erj = Some(*jump);
                 }
-                _ => return,
+                _ => return false,
             }
         }
 
@@ -667,6 +730,8 @@ impl<'a> PatternCompiler<'a> {
                 }
             }
         }
+
+        true
     }
 }
 
@@ -675,9 +740,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_simple_pattern() {
+    fn assert_size() {
         assert_eq!(8, std::mem::size_of::<Op>());
+    }
 
+    #[test]
+    fn test_simple_pattern() {
         let p = Pattern::new("").unwrap();
         assert_eq!(MatchResult::Ok(0), p.matches(""));
         assert_eq!(MatchResult::Ok(0), p.matches("a"));
@@ -698,6 +766,11 @@ mod tests {
         assert_eq!(MatchResult::Ok(2), p.matches("aa"));
         assert_eq!(MatchResult::Ok(2), p.matches("aaa"));
         assert_eq!(MatchResult::Err, p.matches("baa"));
+
+        let p = Pattern::new("abc").unwrap();
+        assert_eq!(MatchResult::Ok(3), p.matches("abc"));
+        assert_eq!(MatchResult::Ok(3), p.matches("abcd"));
+        assert_eq!(MatchResult::Err, p.matches("aabc"));
 
         let p = Pattern::new("%% %$ %. %! %( %) %[ %] %{ %}").unwrap();
         let matched_text = "% $ . ! ( ) [ ] { }";
