@@ -231,7 +231,7 @@ impl<'a> PatternParser<'a> {
             self.parse_stmt()?;
         }
         self.ops.push(Op::Ok);
-        //self.optimize();
+        self.optimize();
 
         Ok(Pattern {
             start_index: self.start_index,
@@ -260,13 +260,10 @@ impl<'a> PatternParser<'a> {
     }
 
     fn next(&mut self) -> Result<u8, PatternError> {
-        match self.peek() {
-            Ok(b) => {
-                self.index += 1;
-                Ok(b)
-            }
-            Err(e) => Err(e),
-        }
+        self.peek().and_then(|b| {
+            self.index += 1;
+            Ok(b)
+        })
     }
 
     fn next_is_not(&mut self, byte: u8) -> Result<bool, PatternError> {
