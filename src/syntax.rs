@@ -150,7 +150,7 @@ impl Syntax {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct SyntaxHandle(usize);
 
 #[derive(Default)]
@@ -204,7 +204,15 @@ impl HighlightedBuffer {
     }
 
     pub fn find_token_kind_at(&self, position: BufferPosition) -> TokenKind {
-        TokenKind::Text
+        if position.line_index >= self.lines.len() {
+            return TokenKind::Text;
+        }
+
+        let tokens = &self.lines[position.line_index].tokens;
+        match tokens.binary_search_by(|t| t.range.start.cmp(&position.column_index)) {
+            Ok(index) => tokens[index].kind,
+            Err(_) => TokenKind::Text,
+        }
     }
 }
 
