@@ -382,11 +382,13 @@ impl<'a> PatternCompiler<'a> {
         let start_jump = self.ops.len().into();
         let end_jump = self.get_absolute_jump(JumpFrom::End(Jump(0)));
 
+        let mut has_cancel_pattern = false;
         while self.next_is_not(b'}')? {
             match self.current() {
                 b'!' => {
                     self.next()?;
                     self.parse_expr(JumpFrom::Beginning(end_jump), JumpFrom::End(Jump(0)))?;
+                    has_cancel_pattern = true;
                 }
                 _ => {
                     self.parse_expr(JumpFrom::Beginning(start_jump), JumpFrom::End(Jump(0)))?;
@@ -394,7 +396,10 @@ impl<'a> PatternCompiler<'a> {
             }
         }
 
-        self.ops.push(Op::Unwind(Jump(0), Length(0)));
+        if has_cancel_pattern {
+            self.ops.push(Op::Unwind(Jump(0), Length(0)));
+        }
+
         self.patch_jump(JumpFrom::End(Jump(0)), end_jump);
 
         self.assert_current(b'}')?;
@@ -919,25 +924,21 @@ mod tests {
 
     #[test]
     fn test_repeat() {
-        let p = Pattern::new("{a!$}").unwrap();
+        let p = Pattern::new("{a}").unwrap();
         assert_eq!(MatchResult::Ok(1), p.matches("a"));
         assert_eq!(MatchResult::Ok(4), p.matches("aaaa"));
 
-        let p = Pattern::new("{a!b}").unwrap();
+        let p = Pattern::new("{a}b").unwrap();
         assert_eq!(MatchResult::Ok(2), p.matches("ab"));
         assert_eq!(MatchResult::Ok(3), p.matches("aab"));
         assert_eq!(MatchResult::Ok(5), p.matches("aaaab"));
 
-        let p = Pattern::new("a{b!c}").unwrap();
+        let p = Pattern::new("a{b}c").unwrap();
+        assert_eq!(MatchResult::Err, p.matches("a"));
+        assert_eq!(MatchResult::Err, p.matches("ab"));
         assert_eq!(MatchResult::Ok(2), p.matches("ac"));
         assert_eq!(MatchResult::Ok(3), p.matches("abc"));
         assert_eq!(MatchResult::Ok(5), p.matches("abbbc"));
-
-        let p = Pattern::new("a{b!c}").unwrap();
-        assert_eq!(MatchResult::Err, p.matches("a"));
-        assert_eq!(MatchResult::Err, p.matches("ab"));
-        assert_eq!(MatchResult::Ok(3), p.matches("abc"));
-        assert_eq!(MatchResult::Ok(2), p.matches("ac"));
     }
 
     #[test]

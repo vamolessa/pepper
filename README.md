@@ -35,8 +35,10 @@ Experimental code editor
 	- ~~default commands~~
 	- define custom commands in config file?? (or just aliases??)
 - syntax highlighting
-	- define language syntaxes
-	- calculate highlight ranges when code changes
+	- ~~simple pattern matching~~
+	- ~~define language syntaxes~~
+	- ~~calculate highlight ranges when code changes~~
+	- recalculate only changed portions of buffer
 - file operations
 	- ~~edit (command to open/create file?)~~
 	- ~~save~~
