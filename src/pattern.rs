@@ -394,6 +394,7 @@ impl<'a> PatternCompiler<'a> {
             }
         }
 
+        self.ops.push(Op::Unwind(Jump(0), Length(0)));
         self.patch_jump(JumpFrom::End(Jump(0)), end_jump);
 
         self.assert_current(b'}')?;
@@ -918,19 +919,25 @@ mod tests {
 
     #[test]
     fn test_repeat() {
-        let p = Pattern::new("{a}").unwrap();
+        let p = Pattern::new("{a!$}").unwrap();
         assert_eq!(MatchResult::Ok(1), p.matches("a"));
         assert_eq!(MatchResult::Ok(4), p.matches("aaaa"));
 
-        let p = Pattern::new("{a}b").unwrap();
+        let p = Pattern::new("{a!b}").unwrap();
         assert_eq!(MatchResult::Ok(2), p.matches("ab"));
         assert_eq!(MatchResult::Ok(3), p.matches("aab"));
         assert_eq!(MatchResult::Ok(5), p.matches("aaaab"));
 
-        let p = Pattern::new("a{b}c").unwrap();
+        let p = Pattern::new("a{b!c}").unwrap();
         assert_eq!(MatchResult::Ok(2), p.matches("ac"));
         assert_eq!(MatchResult::Ok(3), p.matches("abc"));
         assert_eq!(MatchResult::Ok(5), p.matches("abbbc"));
+
+        let p = Pattern::new("a{b!c}").unwrap();
+        assert_eq!(MatchResult::Err, p.matches("a"));
+        assert_eq!(MatchResult::Err, p.matches("ab"));
+        assert_eq!(MatchResult::Ok(3), p.matches("abc"));
+        assert_eq!(MatchResult::Ok(2), p.matches("ac"));
     }
 
     #[test]
@@ -949,7 +956,7 @@ mod tests {
             p.matches_with_state("b", &PatternState { op_index: 3 })
         );
 
-        let p = Pattern::new("a{.}$b").unwrap();
+        let p = Pattern::new("a{.!$}b").unwrap();
         match p.matches("axyz") {
             MatchResult::Pending(4, state) => {
                 assert_eq!(MatchResult::Ok(1), p.matches_with_state("b", &state))
@@ -957,7 +964,7 @@ mod tests {
             _ => assert!(false),
         }
 
-        let p = Pattern::new("a{b$}{c}d").unwrap();
+        let p = Pattern::new("a{b$!c}{c!d}").unwrap();
         match p.matches("abb") {
             MatchResult::Pending(3, state) => match p.matches_with_state("bb", &state) {
                 MatchResult::Pending(2, state) => {
@@ -971,12 +978,12 @@ mod tests {
 
     #[test]
     fn test_complex_pattern() {
-        let p = Pattern::new("{.}").unwrap();
+        let p = Pattern::new("{.!$}").unwrap();
         assert_eq!(MatchResult::Ok(10), p.matches("things 890"));
         assert_eq!(MatchResult::Ok(1), p.matches("0"));
         assert_eq!(MatchResult::Ok(1), p.matches(" "));
 
-        let p = Pattern::new("{[ab%d]}c").unwrap();
+        let p = Pattern::new("{[ab%d]!c}").unwrap();
         assert_eq!(MatchResult::Ok(1), p.matches("c"));
         assert_eq!(MatchResult::Ok(2), p.matches("ac"));
         assert_eq!(MatchResult::Ok(2), p.matches("bc"));
@@ -984,11 +991,11 @@ mod tests {
         assert_eq!(MatchResult::Ok(5), p.matches("0b4ac"));
         assert_eq!(MatchResult::Ok(14), p.matches("a1b234ba9bbbbc"));
 
-        let p = Pattern::new("%d{[%w_%.]}@").unwrap();
+        let p = Pattern::new("%d{[%w_%.]!@}").unwrap();
         assert_eq!(MatchResult::Ok(6), p.matches("1x4_5@"));
         assert_eq!(MatchResult::Ok(15), p.matches("9xxasd_234.45f@"));
 
-        let p = Pattern::new("ab{(!ba)}ba").unwrap();
+        let p = Pattern::new("ab{(!ba)!b}a").unwrap();
         assert_eq!(MatchResult::Ok(4), p.matches("abba"));
     }
 
@@ -1028,18 +1035,18 @@ mod tests {
         assert_eq!(MatchResult::Ok(2), p.matches("acd"));
         assert_eq!(MatchResult::Ok(2), p.matches("cb"));
 
-        let p = Pattern::new("{(a[!ab])}").unwrap();
+        let p = Pattern::new("{(a[!ab])!x!$}").unwrap();
         assert_eq!(MatchResult::Ok(0), p.matches(""));
-        assert_eq!(MatchResult::Ok(0), p.matches("a"));
+        assert_eq!(MatchResult::Err, p.matches("a"));
         assert_eq!(MatchResult::Ok(2), p.matches("ac"));
-        assert_eq!(MatchResult::Ok(2), p.matches("aca"));
-        assert_eq!(MatchResult::Ok(2), p.matches("acab"));
+        assert_eq!(MatchResult::Err, p.matches("aca"));
+        assert_eq!(MatchResult::Err, p.matches("acab"));
         assert_eq!(MatchResult::Ok(4), p.matches("acax"));
 
-        let p = Pattern::new("{[(!ab)(cd)]}").unwrap();
+        let p = Pattern::new("{[(!ab)(cd)]!$}").unwrap();
         assert_eq!(MatchResult::Ok(0), p.matches(""));
         assert_eq!(MatchResult::Ok(2), p.matches("cd"));
-        assert_eq!(MatchResult::Ok(0), p.matches("ab"));
+        assert_eq!(MatchResult::Err, p.matches("ab"));
         assert_eq!(MatchResult::Ok(2), p.matches("ac"));
         assert_eq!(MatchResult::Ok(4), p.matches("accd"));
     }
