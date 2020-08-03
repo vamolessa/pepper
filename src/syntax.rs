@@ -14,9 +14,7 @@ pub enum TokenKind {
     Modifier,
     Symbol,
     String,
-    Char,
     Literal,
-    Number,
 }
 
 #[derive(Debug, Clone, PartialEq)]

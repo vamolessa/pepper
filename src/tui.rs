@@ -172,7 +172,8 @@ where
     };
 
     let background_color = convert_color(theme.background);
-    let text_normal_color = convert_color(theme.text_normal);
+    let text_normal_color = convert_color(theme.token_text);
+    let text_normal_color = convert_color(theme.token_text);
     let highlight_color = convert_color(theme.highlight);
 
     let mut current_token_kind = TokenKind::Text;
@@ -214,9 +215,7 @@ where
                     TokenKind::Modifier => text_normal_color,
                     TokenKind::Symbol => text_normal_color,
                     TokenKind::String => text_normal_color,
-                    TokenKind::Char => text_normal_color,
                     TokenKind::Literal => text_normal_color,
-                    TokenKind::Number => text_normal_color,
                 };
             }
 
@@ -353,7 +352,7 @@ where
         count
     }
 
-    let background_color = convert_color(client.config.theme.text_normal);
+    let background_color = convert_color(client.config.theme.token_text);
     let foreground_color = convert_color(client.config.theme.background);
     let cursor_color = convert_color(client.config.theme.cursor_normal);
 
