@@ -109,8 +109,8 @@ impl<'a> KeysIterator<'a> {
     }
 }
 
-pub struct Editor {
-    pub config: Config,
+pub struct Editor<'a> {
+    pub config: &'a Config,
     pub theme: Theme,
 
     mode: Mode,
@@ -127,10 +127,10 @@ pub struct Editor {
     focused_client: TargetClient,
 }
 
-impl Editor {
-    pub fn new() -> Self {
+impl<'a> Editor<'a> {
+    pub fn with_config(config: &'a Config) -> Self {
         Self {
-            config: Default::default(),
+            config,
             theme: Theme::default(),
 
             mode: Mode::default(),

@@ -6,6 +6,7 @@ use std::{
 };
 
 use crate::{
+    config::Config,
     client::Client,
     connection::{ConnectionWithClientCollection, ConnectionWithServer, TargetClient},
     editor::{Editor, EditorLoop, EditorOperationSender},
@@ -136,8 +137,11 @@ where
     let event_manager_loop = event_manager.run_event_loop_in_background(event_loop_barrier.clone());
     let ui_event_loop = I::run_event_loop_in_background(event_sender);
 
-    let mut local_client = Client::new();
-    let mut editor = Editor::new();
+    let mut config = Config::default();
+    config.reload();
+
+    let mut local_client = Client::with_config(&config);
+    let mut editor = Editor::with_config(&config);
     bind_keys(&mut editor);
 
     let mut editor_operations = EditorOperationSender::new();
@@ -240,7 +244,10 @@ where
     let event_manager_loop = event_manager.run_event_loop_in_background(event_loop_barrier.clone());
     let ui_event_loop = I::run_event_loop_in_background(event_sender);
 
-    let mut local_client = Client::new();
+    let mut config = Config::default();
+    config.reload();
+
+    let mut local_client = Client::with_config(&config);
     let mut received_operations = Vec::new();
     let mut received_content = String::new();
 

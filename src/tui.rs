@@ -172,12 +172,17 @@ where
     };
 
     let background_color = convert_color(theme.background);
-    let text_normal_color = convert_color(theme.token_text);
-    let text_normal_color = convert_color(theme.token_text);
+    let token_text_color = convert_color(theme.token_text);
+    let token_comment_color = convert_color(theme.token_comment);
+    let token_keyword_color = convert_color(theme.token_keyword);
+    let token_modifier_color = convert_color(theme.token_modifier);
+    let token_symbol_color = convert_color(theme.token_symbol);
+    let token_string_color = convert_color(theme.token_string);
+    let token_literal_color = convert_color(theme.token_literal);
     let highlight_color = convert_color(theme.highlight);
 
     let mut current_token_kind = TokenKind::Text;
-    let mut text_color = text_normal_color;
+    let mut text_color = token_text_color;
 
     handle_command!(write, cursor::MoveTo(0, 0))?;
     handle_command!(write, SetBackgroundColor(background_color))?;
@@ -209,13 +214,13 @@ where
             if token_kind != current_token_kind {
                 current_token_kind = token_kind;
                 text_color = match token_kind {
-                    TokenKind::Text => text_normal_color,
-                    TokenKind::Comment => text_normal_color,
-                    TokenKind::Keyword => text_normal_color,
-                    TokenKind::Modifier => text_normal_color,
-                    TokenKind::Symbol => text_normal_color,
-                    TokenKind::String => text_normal_color,
-                    TokenKind::Literal => text_normal_color,
+                    TokenKind::Text => token_text_color,
+                    TokenKind::Comment => token_comment_color,
+                    TokenKind::Keyword => token_keyword_color,
+                    TokenKind::Modifier => token_modifier_color,
+                    TokenKind::Symbol => token_symbol_color,
+                    TokenKind::String => token_string_color,
+                    TokenKind::Literal => token_literal_color,
                 };
             }
 

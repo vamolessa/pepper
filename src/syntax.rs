@@ -1,8 +1,8 @@
 use std::ops::Range;
 
 use crate::{
-    buffer_position::BufferPosition,
     buffer::BufferContent,
+    buffer_position::BufferPosition,
     pattern::{MatchResult, Pattern, PatternState},
 };
 
@@ -36,12 +36,20 @@ impl Default for LineKind {
 }
 
 pub struct Syntax {
+    extensions: Vec<String>,
     rules: Vec<(TokenKind, Pattern)>,
 }
 
 impl Syntax {
     pub fn new() -> Self {
-        Self { rules: Vec::new() }
+        Self {
+            extensions: Vec::new(),
+            rules: Vec::new(),
+        }
+    }
+
+    pub fn add_extension(&mut self, extension: String) {
+        self.extensions.push(extension);
     }
 
     pub fn add_rule(&mut self, kind: TokenKind, pattern: Pattern) {
@@ -142,10 +150,40 @@ impl Syntax {
     }
 }
 
+#[derive(Clone, Copy)]
+pub struct SyntaxHandle(usize);
+
+#[derive(Default)]
+pub struct SyntaxCollection {
+    syntaxes: Vec<Syntax>,
+}
+
+impl SyntaxCollection {
+    pub fn add(&mut self, syntax: Syntax) {
+        self.syntaxes.push(syntax);
+    }
+
+    pub fn find_by_extension(&self, extension: &str) -> Option<SyntaxHandle> {
+        for (i, syntax) in self.syntaxes.iter().enumerate() {
+            for ext in &syntax.extensions {
+                if extension == ext {
+                    return Some(SyntaxHandle(i));
+                }
+            }
+        }
+
+        None
+    }
+
+    pub fn get(&self, handle: SyntaxHandle) -> &Syntax {
+        &self.syntaxes[handle.0]
+    }
+}
+
 #[derive(Default, Clone)]
 struct HighlightedLine {
     kind: LineKind,
-    tokens: Vec<Token>
+    tokens: Vec<Token>,
 }
 
 #[derive(Default)]
@@ -155,7 +193,8 @@ pub struct HighlightedBuffer {
 
 impl HighlightedBuffer {
     pub fn highligh_all(&mut self, syntax: &Syntax, buffer: &BufferContent) {
-        self.lines.resize(buffer.line_count(), HighlightedLine::default());
+        self.lines
+            .resize(buffer.line_count(), HighlightedLine::default());
 
         let mut previous_line_kind = LineKind::Finished;
         for (bline, hline) in buffer.lines_from(0).zip(self.lines.iter_mut()) {
