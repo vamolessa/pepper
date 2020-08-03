@@ -1,4 +1,4 @@
-use std::ops::Range;
+use std::{cmp::Ordering, ops::Range};
 
 use crate::{
     buffer::BufferContent,
@@ -56,7 +56,7 @@ impl Syntax {
         self.rules.push((kind, pattern));
     }
 
-    pub fn parse_line(
+    fn parse_line(
         &self,
         line: &str,
         previous_line_kind: LineKind,
@@ -208,8 +208,17 @@ impl HighlightedBuffer {
             return TokenKind::Text;
         }
 
+        let x = position.column_index;
         let tokens = &self.lines[position.line_index].tokens;
-        match tokens.binary_search_by(|t| t.range.start.cmp(&position.column_index)) {
+        match tokens.binary_search_by(|t| {
+            if x < t.range.start {
+                Ordering::Less
+            } else if x > t.range.end {
+                Ordering::Greater
+            } else {
+                Ordering::Equal
+            }
+        }) {
             Ok(index) => tokens[index].kind,
             Err(_) => TokenKind::Text,
         }

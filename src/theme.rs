@@ -75,12 +75,12 @@ impl Default for Theme {
             cursor_insert: PICO8_COLORS[11],
 
             token_text: PICO8_COLORS[15],
-            token_comment: PICO8_COLORS[2],
-            token_keyword: PICO8_COLORS[9],
-            token_modifier: PICO8_COLORS[14],
+            token_comment: PICO8_COLORS[1],
+            token_keyword: PICO8_COLORS[4],
+            token_modifier: PICO8_COLORS[2],
             token_symbol: PICO8_COLORS[6],
-            token_string: PICO8_COLORS[4],
-            token_literal: PICO8_COLORS[10],
+            token_string: PICO8_COLORS[14],
+            token_literal: PICO8_COLORS[9],
 
             highlight: PICO8_COLORS[3],
         }

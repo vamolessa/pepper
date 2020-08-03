@@ -154,8 +154,9 @@ fn draw<W>(
 where
     W: Write,
 {
+    #[derive(Clone, Copy, PartialEq, Eq)]
     enum DrawState {
-        Normal,
+        Token(TokenKind),
         Selection,
         Highlight,
         Cursor,
@@ -192,7 +193,7 @@ where
     let mut drawn_line_count = 0;
 
     'lines_loop: for line in client.buffer.lines_from(line_index) {
-        let mut draw_state = DrawState::Normal;
+        let mut draw_state = DrawState::Token(TokenKind::Text);
         let mut column_index = 0;
         let mut x = 0;
 
@@ -228,7 +229,7 @@ where
                 .binary_search_by_key(&char_position, |c| c.position)
                 .is_ok()
             {
-                if !matches!(draw_state, DrawState::Cursor) {
+                if draw_state != DrawState::Cursor {
                     draw_state = DrawState::Cursor;
                     handle_command!(write, SetBackgroundColor(cursor_color))?;
                     handle_command!(write, SetForegroundColor(text_color))?;
@@ -246,7 +247,7 @@ where
                 })
                 .is_ok()
             {
-                if !matches!(draw_state, DrawState::Selection) {
+                if draw_state != DrawState::Selection {
                     draw_state = DrawState::Selection;
                     handle_command!(write, SetBackgroundColor(text_color))?;
                     handle_command!(write, SetForegroundColor(background_color))?;
@@ -264,13 +265,13 @@ where
                 })
                 .is_ok()
             {
-                if !matches!(draw_state, DrawState::Highlight) {
+                if draw_state != DrawState::Highlight {
                     draw_state = DrawState::Highlight;
                     handle_command!(write, SetBackgroundColor(highlight_color))?;
                     handle_command!(write, SetForegroundColor(text_color))?;
                 }
-            } else if !matches!(draw_state, DrawState::Normal) {
-                draw_state = DrawState::Normal;
+            } else if draw_state != DrawState::Token(token_kind) {
+                draw_state = DrawState::Token(token_kind);
                 handle_command!(write, SetBackgroundColor(background_color))?;
                 handle_command!(write, SetForegroundColor(text_color))?;
             }
