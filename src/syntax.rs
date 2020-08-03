@@ -213,7 +213,7 @@ impl HighlightedBuffer {
         match tokens.binary_search_by(|t| {
             if x < t.range.start {
                 Ordering::Greater
-            } else if x > t.range.end {
+            } else if x >= t.range.end {
                 Ordering::Less
             } else {
                 Ordering::Equal
