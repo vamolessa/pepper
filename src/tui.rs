@@ -182,7 +182,6 @@ where
     let token_literal_color = convert_color(theme.token_literal);
     let highlight_color = convert_color(theme.highlight);
 
-    let mut current_token_kind = TokenKind::Text;
     let mut text_color = token_text_color;
 
     handle_command!(write, cursor::MoveTo(0, 0))?;
@@ -196,6 +195,8 @@ where
         let mut draw_state = DrawState::Token(TokenKind::Text);
         let mut column_index = 0;
         let mut x = 0;
+
+        handle_command!(write, SetForegroundColor(token_text_color))?;
 
         for c in line.text.chars().chain(iter::once(' ')) {
             if x >= width {
@@ -212,18 +213,15 @@ where
             let char_position = BufferPosition::line_col(line_index, column_index);
 
             let token_kind = client.highlighted_buffer.find_token_kind_at(char_position);
-            if token_kind != current_token_kind {
-                current_token_kind = token_kind;
-                text_color = match token_kind {
-                    TokenKind::Text => token_text_color,
-                    TokenKind::Comment => token_comment_color,
-                    TokenKind::Keyword => token_keyword_color,
-                    TokenKind::Modifier => token_modifier_color,
-                    TokenKind::Symbol => token_symbol_color,
-                    TokenKind::String => token_string_color,
-                    TokenKind::Literal => token_literal_color,
-                };
-            }
+            text_color = match token_kind {
+                TokenKind::Text => token_text_color,
+                TokenKind::Comment => token_comment_color,
+                TokenKind::Keyword => token_keyword_color,
+                TokenKind::Modifier => token_modifier_color,
+                TokenKind::Symbol => token_symbol_color,
+                TokenKind::String => token_string_color,
+                TokenKind::Literal => token_literal_color,
+            };
 
             if client.cursors[..]
                 .binary_search_by_key(&char_position, |c| c.position)

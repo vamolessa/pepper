@@ -36,11 +36,10 @@ fn toml_syntax() -> Syntax {
     let mut syntax = Syntax::new();
     syntax.add_extension("toml".into());
 
-    syntax.add_rule(TokenKind::Symbol, Pattern::new("%[").unwrap());
-    syntax.add_rule(TokenKind::Symbol, Pattern::new("%]").unwrap());
     syntax.add_rule(TokenKind::Symbol, Pattern::new("=").unwrap());
     syntax.add_rule(TokenKind::Keyword, Pattern::new("%[{%w!%]}").unwrap());
-    syntax.add_rule(TokenKind::String, Pattern::new("\"{(\\\")!\"}").unwrap());
+    syntax.add_rule(TokenKind::Keyword, Pattern::new("%[%[{%w!%]}%]").unwrap());
+    syntax.add_rule(TokenKind::String, Pattern::new("\"{!\".}").unwrap());
 
     syntax
 }

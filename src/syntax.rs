@@ -212,9 +212,9 @@ impl HighlightedBuffer {
         let tokens = &self.lines[position.line_index].tokens;
         match tokens.binary_search_by(|t| {
             if x < t.range.start {
-                Ordering::Less
-            } else if x > t.range.end {
                 Ordering::Greater
+            } else if x > t.range.end {
+                Ordering::Less
             } else {
                 Ordering::Equal
             }
