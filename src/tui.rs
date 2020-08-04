@@ -159,7 +159,6 @@ where
         Cursor,
     }
 
-    let tab_size = client.config.tab_size;
     let theme = &client.config.theme;
 
     handle_command!(write, cursor::Hide)?;
@@ -284,17 +283,18 @@ where
                     if line.char_count() > x as usize {
                         handle_command!(write, Print('.'))?;
                     } else {
-                        handle_command!(write, Print(' '))?;
+                        handle_command!(write, Print(client.config.visualize_space))?;
                     }
                     x += 1;
                 }
                 '\t' => {
-                    handle_command!(write, Print('|'))?;
-                    let next_tab_stop = (tab_size - 1) - (x as usize) % tab_size;
+                    handle_command!(write, Print(client.config.visualize_tab.0))?;
+                    let tab_size = client.config.tab_size.get() as u16;
+                    let next_tab_stop = (tab_size - 1) - x % tab_size;
                     for _ in 0..next_tab_stop {
-                        handle_command!(write, Print(' '))?;
+                        handle_command!(write, Print(client.config.visualize_tab.1))?;
                     }
-                    x += client.config.tab_size as u16;
+                    x += tab_size;
                 }
                 _ => {
                     handle_command!(write, Print(c))?;
@@ -323,7 +323,7 @@ where
     handle_command!(write, SetBackgroundColor(background_color))?;
     handle_command!(write, SetForegroundColor(token_whitespace_color))?;
     for _ in drawn_line_count..(height - 1) {
-        handle_command!(write, Print('~'))?;
+        handle_command!(write, Print(client.config.visualize_empty))?;
         handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
         handle_command!(write, cursor::MoveToNextLine(1))?;
     }

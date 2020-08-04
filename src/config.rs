@@ -1,3 +1,5 @@
+use std::num::NonZeroUsize;
+
 use crate::{
     pattern::Pattern,
     syntax::{Syntax, SyntaxCollection, TokenKind},
@@ -7,7 +9,11 @@ use crate::{
 pub struct Config {
     pub theme: Theme,
     pub syntaxes: SyntaxCollection,
-    pub tab_size: usize,
+
+    pub tab_size: NonZeroUsize,
+    pub visualize_empty: char,
+    pub visualize_space: char,
+    pub visualize_tab: (char, char),
 }
 
 impl Config {
@@ -21,7 +27,10 @@ impl Default for Config {
         Self {
             theme: pico8_theme(),
             syntaxes: default_syntaxes(),
-            tab_size: 4,
+            tab_size: NonZeroUsize::new(4).unwrap(),
+            visualize_empty: '~',
+            visualize_space: '.',
+            visualize_tab: ('|', ' '),
         }
     }
 }
