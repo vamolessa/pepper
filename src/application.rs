@@ -138,7 +138,7 @@ where
     let ui_event_loop = I::run_event_loop_in_background(event_sender);
 
     let mut config = Config::default();
-    config.reload();
+    config.load();
 
     let mut local_client = Client::with_config(&config);
     let mut editor = Editor::with_config(&config);
@@ -245,7 +245,7 @@ where
     let ui_event_loop = I::run_event_loop_in_background(event_sender);
 
     let mut config = Config::default();
-    config.reload();
+    config.load();
 
     let mut local_client = Client::with_config(&config);
     let mut received_operations = Vec::new();

@@ -173,6 +173,7 @@ where
     };
 
     let background_color = convert_color(theme.background);
+    let token_whitespace_color = convert_color(theme.token_whitespace);
     let token_text_color = convert_color(theme.token_text);
     let token_comment_color = convert_color(theme.token_comment);
     let token_keyword_color = convert_color(theme.token_keyword);
@@ -214,6 +215,7 @@ where
 
             let token_kind = client.highlighted_buffer.find_token_kind_at(char_position);
             text_color = match token_kind {
+                TokenKind::Whitespace => token_whitespace_color,
                 TokenKind::Text => token_text_color,
                 TokenKind::Comment => token_comment_color,
                 TokenKind::Keyword => token_keyword_color,
@@ -306,7 +308,7 @@ where
     }
 
     handle_command!(write, SetBackgroundColor(background_color))?;
-    handle_command!(write, SetForegroundColor(text_color))?;
+    handle_command!(write, SetForegroundColor(token_whitespace_color))?;
     for _ in drawn_line_count..(height - 1) {
         handle_command!(write, Print('~'))?;
         handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
@@ -368,65 +370,83 @@ where
         handle_command!(write, SetForegroundColor(background_color))?;
     }
 
-    let x = if let Some(error) = &error {
+    let x;
+    let draw_buffer_path;
+
+    if let Some(error) = &error {
         let prefix = "error:";
         handle_command!(write, Print(prefix))?;
         handle_command!(write, Print(error))?;
-        prefix.len() + error.len()
+        x = prefix.len() + error.len();
+        draw_buffer_path = true;
     } else if client.has_focus {
         match client.mode {
             Mode::Select => {
                 let text = "-- SELECT --";
                 handle_command!(write, Print(text))?;
-                text.len()
+                x = text.len();
+                draw_buffer_path = true;
             }
             Mode::Insert => {
                 let text = "-- INSERT --";
                 handle_command!(write, Print(text))?;
-                text.len()
+                x = text.len();
+                draw_buffer_path = true;
             }
-            Mode::Search(_) => draw_input(
-                write,
-                "search:",
-                &client.input[..],
-                background_color,
-                cursor_color,
-            )?,
-            Mode::Command(_) => draw_input(
-                write,
-                "command:",
-                &client.input[..],
-                background_color,
-                cursor_color,
-            )?,
-            _ => 0,
+            Mode::Search(_) => {
+                x = draw_input(
+                    write,
+                    "search:",
+                    &client.input[..],
+                    background_color,
+                    cursor_color,
+                )?;
+                draw_buffer_path = false;
+            }
+            Mode::Command(_) => {
+                x = draw_input(
+                    write,
+                    "command:",
+                    &client.input[..],
+                    background_color,
+                    cursor_color,
+                )?;
+                draw_buffer_path = false;
+            }
+            _ => {
+                x = 0;
+                draw_buffer_path = true;
+            }
         }
     } else {
-        0
+        x = 0;
+        draw_buffer_path = true;
     };
 
-    if let Some(buffer_path) = client
-        .path
-        .as_ref()
-        .map(|p| p.as_os_str().to_str())
-        .flatten()
-    {
-        let line_number = client.main_cursor.position.line_index + 1;
-        let column_number = client.main_cursor.position.column_index + 1;
-        let line_digit_count = find_digit_count(line_number);
-        let column_digit_count = find_digit_count(column_number);
-        let skip = (width as usize).saturating_sub(
-            x + buffer_path.len() + 1 + line_digit_count + 1 + column_digit_count + 1,
-        );
-        for _ in 0..skip {
-            handle_command!(write, Print(' '))?;
-        }
+    if draw_buffer_path {
+        if let Some(buffer_path) = client
+            .path
+            .as_ref()
+            .map(|p| p.as_os_str().to_str())
+            .flatten()
+        {
+            let line_number = client.main_cursor.position.line_index + 1;
+            let column_number = client.main_cursor.position.column_index + 1;
+            let line_digit_count = find_digit_count(line_number);
+            let column_digit_count = find_digit_count(column_number);
+            let skip = (width as usize).saturating_sub(
+                x + buffer_path.len() + 1 + line_digit_count + 1 + column_digit_count + 1,
+            );
+            for _ in 0..skip {
+                handle_command!(write, Print(' '))?;
+            }
 
-        handle_command!(write, Print(buffer_path))?;
-        handle_command!(write, Print(':'))?;
-        handle_command!(write, Print(line_number))?;
-        handle_command!(write, Print(','))?;
-        handle_command!(write, Print(column_number))?;
+            handle_command!(write, Print(buffer_path))?;
+            handle_command!(write, Print(':'))?;
+            handle_command!(write, Print(line_number))?;
+            handle_command!(write, Print(','))?;
+            handle_command!(write, Print(column_number))?;
+        }
     }
 
     handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;

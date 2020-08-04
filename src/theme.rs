@@ -54,6 +54,7 @@ pub struct Theme {
     pub cursor_select: Color,
     pub cursor_insert: Color,
 
+    pub token_whitespace: Color,
     pub token_text: Color,
     pub token_comment: Color,
     pub token_keyword: Color,
@@ -74,8 +75,9 @@ impl Default for Theme {
             cursor_select: PICO8_COLORS[12],
             cursor_insert: PICO8_COLORS[11],
 
+            token_whitespace: PICO8_COLORS[5],
             token_text: PICO8_COLORS[15],
-            token_comment: PICO8_COLORS[1],
+            token_comment: PICO8_COLORS[13],
             token_keyword: PICO8_COLORS[4],
             token_modifier: PICO8_COLORS[2],
             token_symbol: PICO8_COLORS[6],

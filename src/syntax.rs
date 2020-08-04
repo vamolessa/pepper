@@ -8,6 +8,7 @@ use crate::{
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenKind {
+    Whitespace,
     Text,
     Comment,
     Keyword,
@@ -62,6 +63,8 @@ impl Syntax {
         previous_line_kind: LineKind,
         tokens: &mut Vec<Token>,
     ) -> LineKind {
+        tokens.clear();
+
         if self.rules.len() == 0 {
             tokens.push(Token {
                 kind: TokenKind::Text,
@@ -97,12 +100,20 @@ impl Syntax {
         }
 
         while line_index < line_len {
-            let line_slice = &line[line_index..];
-            let whitespace_len = line_slice
+            let whitespace_len = line[line_index..]
                 .bytes()
                 .take_while(|b| b.is_ascii_whitespace())
                 .count();
-            let line_slice = &line_slice[whitespace_len..];
+            if whitespace_len > 0 {
+                let from = line_index;
+                line_index += whitespace_len;
+                tokens.push(Token {
+                    kind: TokenKind::Whitespace,
+                    range: from..line_index,
+                });
+            }
+
+            let line_slice = &line[line_index..];
 
             let mut best_pattern_index = 0;
             let mut max_len = 0;
@@ -135,8 +146,6 @@ impl Syntax {
                     .count()
                     .max(1);
             }
-
-            max_len += whitespace_len;
 
             let from = line_index;
             line_index = line_len.min(line_index + max_len);
@@ -305,7 +314,6 @@ mod tests {
         assert_token("before", TokenKind::Text, line0, &tokens[0]);
         assert_token(" /* comment", TokenKind::Comment, line0, &tokens[1]);
 
-        tokens.clear();
         let line1_kind = syntax.parse_line(line1, line0_kind, &mut tokens);
         match line1_kind {
             LineKind::Unfinished(i, _) => assert_eq!(0, i),
@@ -314,7 +322,6 @@ mod tests {
         assert_eq!(1, tokens.len());
         assert_token("only comment", TokenKind::Comment, line1, &tokens[0]);
 
-        tokens.clear();
         let line2_kind = syntax.parse_line(line2, line1_kind, &mut tokens);
         assert_eq!(LineKind::Finished, line2_kind);
         assert_eq!(2, tokens.len());

@@ -11,7 +11,7 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn reload(&mut self) {
+    pub fn load(&mut self) {
         //
     }
 }
