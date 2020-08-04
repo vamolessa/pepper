@@ -99,12 +99,12 @@ impl Syntax {
         }
 
         while line_index < line_len {
-            let whitespace_len = line[line_index..]
+            let line_slice = &line[line_index..];
+            let whitespace_len = line_slice
                 .bytes()
                 .take_while(|b| b.is_ascii_whitespace())
                 .count();
-
-            let line_slice = &line[(line_index + whitespace_len)..];
+            let line_slice = &line_slice[whitespace_len..];
 
             let mut best_pattern_index = 0;
             let mut max_len = 0;
@@ -137,6 +137,8 @@ impl Syntax {
                     .count()
                     .max(1);
             }
+
+            max_len += whitespace_len;
 
             let from = line_index;
             line_index = line_len.min(line_index + max_len);
