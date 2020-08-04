@@ -13,7 +13,6 @@ use crate::{
     event::Key,
     keymap::{KeyMapCollection, MatchResult},
     mode::{Mode, ModeContext, ModeOperation},
-    theme::Theme,
 };
 
 pub enum EditorLoop {
@@ -111,7 +110,6 @@ impl<'a> KeysIterator<'a> {
 
 pub struct Editor<'a> {
     pub config: &'a Config,
-    pub theme: Theme,
 
     mode: Mode,
     pub keymaps: KeyMapCollection,
@@ -131,7 +129,6 @@ impl<'a> Editor<'a> {
     pub fn with_config(config: &'a Config) -> Self {
         Self {
             config,
-            theme: Theme::default(),
 
             mode: Mode::default(),
             keymaps: KeyMapCollection::default(),

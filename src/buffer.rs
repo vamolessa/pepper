@@ -295,6 +295,7 @@ impl Buffer {
     }
 
     pub fn insert_text(&mut self, position: BufferPosition, text: TextRef) -> BufferRange {
+        self.search_ranges.clear();
         let range = self.content.insert_text(position, text);
         self.history.push_edit(Edit {
             kind: EditKind::Insert,
@@ -305,6 +306,7 @@ impl Buffer {
     }
 
     pub fn delete_range(&mut self, range: BufferRange) {
+        self.search_ranges.clear();
         let deleted_text = self.content.delete_range(range);
         self.history.push_edit(Edit {
             kind: EditKind::Delete,
@@ -314,10 +316,12 @@ impl Buffer {
     }
 
     pub fn undo<'a>(&'a mut self) -> impl 'a + Iterator<Item = EditRef<'a>> {
+        self.search_ranges.clear();
         self.content.apply_edits(self.history.undo_edits())
     }
 
     pub fn redo<'a>(&'a mut self) -> impl 'a + Iterator<Item = EditRef<'a>> {
+        self.search_ranges.clear();
         self.content.apply_edits(self.history.redo_edits())
     }
 

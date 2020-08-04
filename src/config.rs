@@ -1,7 +1,7 @@
 use crate::{
     pattern::Pattern,
     syntax::{Syntax, SyntaxCollection, TokenKind},
-    theme::Theme,
+    theme::{Theme, pico8_theme},
 };
 
 pub struct Config {
@@ -19,7 +19,7 @@ impl Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            theme: Theme::default(),
+            theme: pico8_theme(),
             syntaxes: default_syntaxes(),
             tab_size: 4,
         }
@@ -51,7 +51,7 @@ fn rust_syntax() -> Syntax {
 
     for keyword in &[
         "fn", "let", "if", "while", "for", "return", "mod", "use", "as", "in", "enum", "struct",
-        "impl", "where",
+        "impl", "where", "mut", "pub",
     ] {
         syntax.add_rule(TokenKind::Keyword, Pattern::new(keyword).unwrap());
     }
@@ -63,8 +63,8 @@ fn rust_syntax() -> Syntax {
         syntax.add_rule(TokenKind::Symbol, Pattern::new(symbol).unwrap());
     }
 
-    for modifier in &["pub", "mut"] {
-        syntax.add_rule(TokenKind::Modifier, Pattern::new(modifier).unwrap());
+    for t in &["bool", "u32", "f32"] {
+        syntax.add_rule(TokenKind::Type, Pattern::new(t).unwrap());
     }
 
     for literal in &["true", "false", "self"] {
@@ -75,9 +75,11 @@ fn rust_syntax() -> Syntax {
     syntax.add_rule(TokenKind::Comment, Pattern::new("/*{!(*/).$}").unwrap());
 
     syntax.add_rule(TokenKind::Literal, Pattern::new("'{(\\')!'.}").unwrap());
-    syntax.add_rule(TokenKind::Literal, Pattern::new("%d{%w%.}").unwrap());
+    syntax.add_rule(TokenKind::Literal, Pattern::new("%d{%w%._}").unwrap());
     syntax.add_rule(TokenKind::String, Pattern::new("\"{(\\\")!\".}").unwrap());
-    syntax.add_rule(TokenKind::Modifier, Pattern::new("'%a{%w_}").unwrap());
+
+    syntax.add_rule(TokenKind::Type, Pattern::new("'%a{%w_}").unwrap());
+    syntax.add_rule(TokenKind::Type, Pattern::new("%u{%w_}").unwrap());
 
     syntax.add_rule(TokenKind::Text, Pattern::new("%a{%w_}").unwrap());
     syntax.add_rule(TokenKind::Text, Pattern::new("_{%w_}").unwrap());

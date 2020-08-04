@@ -21,7 +21,9 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
     match keys.next() {
         Key::Esc | Key::Ctrl('c') => {
             ctx.buffer_views.get_mut(handle).commit_edits(ctx.buffers);
-            ctx.buffer_views.get_mut(handle).cursors.collapse_anchors();
+            ctx.buffer_views
+                .get_mut(handle)
+                .collapse_cursors_anchors(ctx.operations);
             return ModeOperation::EnterMode(Mode::Normal);
         }
         Key::Char('h') => {
@@ -59,8 +61,7 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
         Key::Char('o') => ctx
             .buffer_views
             .get_mut(handle)
-            .cursors
-            .swap_positions_and_anchors(),
+            .swap_cursors_positions_and_anchors(ctx.operations),
         Key::Char('s') => return ModeOperation::EnterMode(Mode::Search(FromMode::Select)),
         Key::Char('d') => {
             ctx.buffer_views

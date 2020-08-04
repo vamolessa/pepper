@@ -134,7 +134,7 @@ where
         handle_command!(self.write, ResetColor)?;
         handle_command!(
             self.write,
-            terminal::Clear(terminal::ClearType::UntilNewLine)
+            terminal::Clear(terminal::ClearType::All)
         )?;
         handle_command!(self.write, terminal::LeaveAlternateScreen)?;
         handle_command!(self.write, cursor::Show)?;
@@ -157,7 +157,7 @@ where
     #[derive(Clone, Copy, PartialEq, Eq)]
     enum DrawState {
         Token(TokenKind),
-        Selection,
+        Selection(TokenKind),
         Highlight,
         Cursor,
     }
@@ -177,7 +177,7 @@ where
     let token_text_color = convert_color(theme.token_text);
     let token_comment_color = convert_color(theme.token_comment);
     let token_keyword_color = convert_color(theme.token_keyword);
-    let token_modifier_color = convert_color(theme.token_modifier);
+    let token_modifier_color = convert_color(theme.token_type);
     let token_symbol_color = convert_color(theme.token_symbol);
     let token_string_color = convert_color(theme.token_string);
     let token_literal_color = convert_color(theme.token_literal);
@@ -219,7 +219,7 @@ where
                 TokenKind::Text => token_text_color,
                 TokenKind::Comment => token_comment_color,
                 TokenKind::Keyword => token_keyword_color,
-                TokenKind::Modifier => token_modifier_color,
+                TokenKind::Type => token_modifier_color,
                 TokenKind::Symbol => token_symbol_color,
                 TokenKind::String => token_string_color,
                 TokenKind::Literal => token_literal_color,
@@ -247,8 +247,8 @@ where
                 })
                 .is_ok()
             {
-                if draw_state != DrawState::Selection {
-                    draw_state = DrawState::Selection;
+                if draw_state != DrawState::Selection(token_kind) {
+                    draw_state = DrawState::Selection(token_kind);
                     handle_command!(write, SetBackgroundColor(text_color))?;
                     handle_command!(write, SetForegroundColor(background_color))?;
                 }
@@ -268,7 +268,7 @@ where
                 if draw_state != DrawState::Highlight {
                     draw_state = DrawState::Highlight;
                     handle_command!(write, SetBackgroundColor(highlight_color))?;
-                    handle_command!(write, SetForegroundColor(text_color))?;
+                    handle_command!(write, SetForegroundColor(background_color))?;
                 }
             } else if draw_state != DrawState::Token(token_kind) {
                 draw_state = DrawState::Token(token_kind);
@@ -277,9 +277,20 @@ where
             }
 
             match c {
+                ' ' => {
+                    //handle_command!(write, Print('.'))?;
+                    handle_command!(write, Print(' '))?;
+                    x += 1;
+                }
                 '\t' => {
+                    /*
+                    handle_command!(write, Print('|'))?;
+                    for _ in 0..(client.config.tab_size - 1) {
+                        handle_command!(write, Print(' '))?;
+                    }
+                    */
                     for _ in 0..client.config.tab_size {
-                        handle_command!(write, Print(' '))?
+                        handle_command!(write, Print(' '))?;
                     }
                     x += client.config.tab_size as u16;
                 }

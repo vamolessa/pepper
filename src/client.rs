@@ -55,6 +55,7 @@ impl<'a> Client<'a> {
         match operation {
             EditorOperation::Focused(focused) => self.has_focus = *focused,
             EditorOperation::Content => {
+                self.search_ranges.clear();
                 self.buffer = BufferContent::from_str(content);
                 self.main_cursor = Cursor::default();
                 self.cursors.clear();
@@ -84,6 +85,7 @@ impl<'a> Client<'a> {
             }
             EditorOperation::Mode(mode) => self.mode = mode.clone(),
             EditorOperation::Insert(position, text) => {
+                self.search_ranges.clear();
                 self.buffer.insert_text(*position, text.as_text_ref());
                 if let Some(handle) = self.syntax_handle {
                     let syntax = self.config.syntaxes.get(handle);
@@ -91,6 +93,7 @@ impl<'a> Client<'a> {
                 }
             }
             EditorOperation::Delete(range) => {
+                self.search_ranges.clear();
                 self.buffer.delete_range(*range);
                 if let Some(handle) = self.syntax_handle {
                     let syntax = self.config.syntaxes.get(handle);

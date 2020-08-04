@@ -66,6 +66,16 @@ impl BufferView {
         operations.send_cursors(self.target_client, &self.cursors);
     }
 
+    pub fn collapse_cursors_anchors(&mut self, operations: &mut EditorOperationSender) {
+        self.cursors.collapse_anchors();
+        operations.send_cursors(self.target_client, &self.cursors);
+    }
+
+    pub fn swap_cursors_positions_and_anchors(&mut self, operations: &mut EditorOperationSender) {
+        self.cursors.swap_positions_and_anchors();
+        operations.send_cursors(self.target_client, &self.cursors);
+    }
+
     pub fn move_to_next_search_match(
         &mut self,
         buffers: &BufferCollection,

@@ -12,7 +12,7 @@ pub enum TokenKind {
     Text,
     Comment,
     Keyword,
-    Modifier,
+    Type,
     Symbol,
     String,
     Literal,
@@ -229,7 +229,7 @@ impl HighlightedBuffer {
             }
         }) {
             Ok(index) => tokens[index].kind,
-            Err(_) => TokenKind::Text,
+            Err(_) => TokenKind::Whitespace,
         }
     }
 }
