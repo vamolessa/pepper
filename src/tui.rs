@@ -159,6 +159,7 @@ where
         Cursor,
     }
 
+    let tab_size = client.config.tab_size;
     let theme = &client.config.theme;
 
     handle_command!(write, cursor::Hide)?;
@@ -289,7 +290,7 @@ where
                 }
                 '\t' => {
                     handle_command!(write, Print('|'))?;
-                    let next_tab_stop = 3 - x % 4;
+                    let next_tab_stop = (tab_size - 1) - (x as usize) % tab_size;
                     for _ in 0..next_tab_stop {
                         handle_command!(write, Print(' '))?;
                     }
