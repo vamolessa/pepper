@@ -8,7 +8,6 @@ use crate::{
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenKind {
-    Whitespace,
     Text,
     Comment,
     Keyword,
@@ -104,16 +103,8 @@ impl Syntax {
                 .bytes()
                 .take_while(|b| b.is_ascii_whitespace())
                 .count();
-            if whitespace_len > 0 {
-                let from = line_index;
-                line_index += whitespace_len;
-                tokens.push(Token {
-                    kind: TokenKind::Whitespace,
-                    range: from..line_index,
-                });
-            }
 
-            let line_slice = &line[line_index..];
+            let line_slice = &line[(line_index + whitespace_len)..];
 
             let mut best_pattern_index = 0;
             let mut max_len = 0;
@@ -229,7 +220,7 @@ impl HighlightedBuffer {
             }
         }) {
             Ok(index) => tokens[index].kind,
-            Err(_) => TokenKind::Whitespace,
+            Err(_) => TokenKind::Text,
         }
     }
 }

@@ -215,7 +215,7 @@ where
 
             let token_kind = client.highlighted_buffer.find_token_kind_at(char_position);
             text_color = match token_kind {
-                TokenKind::Whitespace => token_whitespace_color,
+                //TokenKind::Whitespace => token_whitespace_color,
                 TokenKind::Text => token_text_color,
                 TokenKind::Comment => token_comment_color,
                 TokenKind::Keyword => token_keyword_color,
