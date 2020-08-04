@@ -8,6 +8,7 @@ use crate::{
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenKind {
+    Whitespace,
     Text,
     Comment,
     Keyword,

@@ -132,10 +132,7 @@ where
 
     fn shutdown(&mut self) -> Result<()> {
         handle_command!(self.write, ResetColor)?;
-        handle_command!(
-            self.write,
-            terminal::Clear(terminal::ClearType::All)
-        )?;
+        handle_command!(self.write, terminal::Clear(terminal::ClearType::All))?;
         handle_command!(self.write, terminal::LeaveAlternateScreen)?;
         handle_command!(self.write, cursor::Show)?;
         terminal::disable_raw_mode()?;
@@ -213,9 +210,14 @@ where
 
             let char_position = BufferPosition::line_col(line_index, column_index);
 
-            let token_kind = client.highlighted_buffer.find_token_kind_at(char_position);
+            let token_kind = if c.is_ascii_whitespace() {
+                TokenKind::Whitespace
+            } else {
+                client.highlighted_buffer.find_token_kind_at(char_position)
+            };
+
             text_color = match token_kind {
-                //TokenKind::Whitespace => token_whitespace_color,
+                TokenKind::Whitespace => token_whitespace_color,
                 TokenKind::Text => token_text_color,
                 TokenKind::Comment => token_comment_color,
                 TokenKind::Keyword => token_keyword_color,
@@ -278,18 +280,17 @@ where
 
             match c {
                 ' ' => {
-                    //handle_command!(write, Print('.'))?;
-                    handle_command!(write, Print(' '))?;
+                    if line.char_count() > x as usize {
+                        handle_command!(write, Print('.'))?;
+                    } else {
+                        handle_command!(write, Print(' '))?;
+                    }
                     x += 1;
                 }
                 '\t' => {
-                    /*
                     handle_command!(write, Print('|'))?;
-                    for _ in 0..(client.config.tab_size - 1) {
-                        handle_command!(write, Print(' '))?;
-                    }
-                    */
-                    for _ in 0..client.config.tab_size {
+                    let next_tab_stop = 3 - x % 4;
+                    for _ in 0..next_tab_stop {
                         handle_command!(write, Print(' '))?;
                     }
                     x += client.config.tab_size as u16;
