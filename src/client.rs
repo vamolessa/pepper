@@ -86,10 +86,10 @@ impl<'a> Client<'a> {
             EditorOperation::Mode(mode) => self.mode = mode.clone(),
             EditorOperation::Insert(position, text) => {
                 self.search_ranges.clear();
-                self.buffer.insert_text(*position, text.as_text_ref());
+                let range = self.buffer.insert_text(*position, text.as_text_ref());
                 if let Some(handle) = self.syntax_handle {
                     let syntax = self.config.syntaxes.get(handle);
-                    self.highlighted_buffer.highligh_all(syntax, &self.buffer);
+                    self.highlighted_buffer.on_insert(syntax, &self.buffer, range);
                 }
             }
             EditorOperation::Delete(range) => {
@@ -97,7 +97,7 @@ impl<'a> Client<'a> {
                 self.buffer.delete_range(*range);
                 if let Some(handle) = self.syntax_handle {
                     let syntax = self.config.syntaxes.get(handle);
-                    self.highlighted_buffer.highligh_all(syntax, &self.buffer);
+                    self.highlighted_buffer.on_delete(syntax, &self.buffer, *range);
                 }
             }
             EditorOperation::ClearCursors(cursor) => {

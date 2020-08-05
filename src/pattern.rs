@@ -1,13 +1,13 @@
 use std::{convert::From, fmt, ops::AddAssign};
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MatchResult {
     Pending(usize, PatternState),
     Ok(usize),
     Err,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum PatternError {
     UnexpectedEndOfPattern,
     Expected(char),
@@ -17,7 +17,7 @@ pub enum PatternError {
     GroupWithElementsOfDifferentSize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PatternState {
     op_index: usize,
 }

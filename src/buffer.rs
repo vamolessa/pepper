@@ -109,7 +109,7 @@ impl BufferContent {
         Ok(())
     }
 
-    pub fn append_range_to_string(&self, mut range: BufferRange, text: &mut String) {
+    pub fn append_range_text_to_string(&self, mut range: BufferRange, text: &mut String) {
         self.clamp_position(&mut range.from);
         self.clamp_position(&mut range.to);
 

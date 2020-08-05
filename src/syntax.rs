@@ -1,8 +1,8 @@
-use std::{cmp::Ordering, ops::Range};
+use std::{cmp::Ordering, iter, ops::Range};
 
 use crate::{
     buffer::BufferContent,
-    buffer_position::BufferPosition,
+    buffer_position::{BufferPosition, BufferRange},
     pattern::{MatchResult, Pattern, PatternState},
 };
 
@@ -18,13 +18,13 @@ pub enum TokenKind {
     Literal,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct Token {
     pub kind: TokenKind,
     pub range: Range<usize>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LineKind {
     Finished,
     Unfinished(usize, PatternState),
@@ -204,6 +204,56 @@ impl HighlightedBuffer {
             hline.kind = syntax.parse_line(&bline.text[..], previous_line_kind, &mut hline.tokens);
             previous_line_kind = hline.kind;
         }
+    }
+
+    pub fn on_insert(&mut self, syntax: &Syntax, buffer: &BufferContent, range: BufferRange) {
+        let mut previous_line_kind = if range.from.line_index > 0 {
+            self.lines[range.from.line_index - 1].kind
+        } else {
+            LineKind::Finished
+        };
+
+        if range.from.line_index == range.to.line_index {
+            let bline = buffer.line(range.from.line_index);
+            let hline = &mut self.lines[range.from.line_index];
+            hline.kind = syntax.parse_line(&bline.text[..], previous_line_kind, &mut hline.tokens);
+            previous_line_kind = hline.kind;
+        } else {
+            let insert_index = range.from.line_index + 1;
+            let insert_count = range.to.line_index - range.from.line_index;
+            self.lines.splice(
+                insert_index..insert_index,
+                iter::repeat(HighlightedLine::default()).take(insert_count),
+            );
+
+            for (bline, hline) in buffer
+                .lines_from(range.from.line_index)
+                .zip(self.lines[range.from.line_index..].iter_mut())
+                .take(insert_count + 1)
+            {
+                hline.kind =
+                    syntax.parse_line(&bline.text[..], previous_line_kind, &mut hline.tokens);
+                previous_line_kind = hline.kind;
+            }
+        }
+
+        let line_index = range.to.line_index + 1;
+        for (bline, hline) in buffer
+            .lines_from(line_index)
+            .zip(self.lines[line_index..].iter_mut())
+        {
+            previous_line_kind =
+                syntax.parse_line(&bline.text[..], previous_line_kind, &mut hline.tokens);
+            if previous_line_kind == LineKind::Finished && hline.kind == previous_line_kind {
+                break;
+            }
+
+            hline.kind = previous_line_kind;
+        }
+    }
+
+    pub fn on_delete(&mut self, syntax: &Syntax, buffer: &BufferContent, range: BufferRange) {
+        self.highligh_all(syntax, buffer);
     }
 
     pub fn find_token_kind_at(&self, position: BufferPosition) -> TokenKind {
