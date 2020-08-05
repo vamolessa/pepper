@@ -39,7 +39,7 @@ Experimental code editor
 	- ~~define language syntaxes~~
 	- ~~calculate highlight ranges when code changes~~
 	- recalculate only changed portions of buffer
-	- show whitespace with correct colors
+	- ~~show whitespace with correct colors~~
 - file operations
 	- ~~edit (command to open/create file?)~~
 	- ~~save~~

@@ -196,7 +196,7 @@ where
 
         handle_command!(write, SetForegroundColor(token_text_color))?;
 
-        for c in line.text.chars().chain(iter::once(' ')) {
+        for c in line.text.chars().chain(iter::once('\0')) {
             if x >= width {
                 handle_command!(write, cursor::MoveToNextLine(1))?;
 
@@ -279,12 +279,12 @@ where
             }
 
             match c {
+                '\0' => {
+                    handle_command!(write, Print(' '))?;
+                    x += 1;
+                }
                 ' ' => {
-                    if line.char_count() > x as usize {
-                        handle_command!(write, Print('.'))?;
-                    } else {
-                        handle_command!(write, Print(client.config.visualize_space))?;
-                    }
+                    handle_command!(write, Print(client.config.visualize_space))?;
                     x += 1;
                 }
                 '\t' => {
