@@ -34,11 +34,11 @@ Experimental code editor
 	- ~~basic command mode~~
 	- ~~default commands~~
 	- define custom commands in config file?? (or just aliases??)
-- syntax highlighting
+- ~~syntax highlighting~~
 	- ~~simple pattern matching~~
 	- ~~define language syntaxes~~
 	- ~~calculate highlight ranges when code changes~~
-	- recalculate only changed portions of buffer
+	- ~~recalculate only changed portions of buffer~~
 	- ~~show whitespace with correct colors~~
 - file operations
 	- ~~edit (command to open/create file?)~~

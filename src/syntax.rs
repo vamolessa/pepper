@@ -207,53 +207,65 @@ impl HighlightedBuffer {
     }
 
     pub fn on_insert(&mut self, syntax: &Syntax, buffer: &BufferContent, range: BufferRange) {
-        let mut previous_line_kind = if range.from.line_index > 0 {
-            self.lines[range.from.line_index - 1].kind
-        } else {
-            LineKind::Finished
-        };
+        let mut previous_line_kind = self.previous_line_kind_at(range.from.line_index);
 
-        if range.from.line_index == range.to.line_index {
-            let bline = buffer.line(range.from.line_index);
-            let hline = &mut self.lines[range.from.line_index];
+        let insert_index = range.from.line_index + 1;
+        let insert_count = range.to.line_index - range.from.line_index;
+        self.lines.splice(
+            insert_index..insert_index,
+            iter::repeat(HighlightedLine::default()).take(insert_count),
+        );
+
+        for (bline, hline) in buffer
+            .lines_from(range.from.line_index)
+            .zip(self.lines[range.from.line_index..].iter_mut())
+            .take(insert_count + 1)
+        {
             hline.kind = syntax.parse_line(&bline.text[..], previous_line_kind, &mut hline.tokens);
             previous_line_kind = hline.kind;
-        } else {
-            let insert_index = range.from.line_index + 1;
-            let insert_count = range.to.line_index - range.from.line_index;
-            self.lines.splice(
-                insert_index..insert_index,
-                iter::repeat(HighlightedLine::default()).take(insert_count),
-            );
-
-            for (bline, hline) in buffer
-                .lines_from(range.from.line_index)
-                .zip(self.lines[range.from.line_index..].iter_mut())
-                .take(insert_count + 1)
-            {
-                hline.kind =
-                    syntax.parse_line(&bline.text[..], previous_line_kind, &mut hline.tokens);
-                previous_line_kind = hline.kind;
-            }
         }
 
-        let line_index = range.to.line_index + 1;
-        for (bline, hline) in buffer
-            .lines_from(line_index)
-            .zip(self.lines[line_index..].iter_mut())
-        {
-            previous_line_kind =
-                syntax.parse_line(&bline.text[..], previous_line_kind, &mut hline.tokens);
-            if previous_line_kind == LineKind::Finished && hline.kind == previous_line_kind {
-                break;
-            }
-
-            hline.kind = previous_line_kind;
-        }
+        self.fix_highlight_from(syntax, buffer, previous_line_kind, range.to.line_index + 1);
     }
 
     pub fn on_delete(&mut self, syntax: &Syntax, buffer: &BufferContent, range: BufferRange) {
-        self.highligh_all(syntax, buffer);
+        let previous_line_kind = self.previous_line_kind_at(range.from.line_index);
+        self.lines.drain(range.from.line_index..range.to.line_index);
+
+        let bline = buffer.line(range.from.line_index);
+        let hline = &mut self.lines[range.from.line_index];
+        hline.kind = syntax.parse_line(&bline.text[..], previous_line_kind, &mut hline.tokens);
+        let previous_line_kind = hline.kind;
+
+        self.fix_highlight_from(syntax, buffer, previous_line_kind, range.to.line_index + 1);
+    }
+
+    fn previous_line_kind_at(&self, index: usize) -> LineKind {
+        if index > 0 {
+            self.lines[index].kind
+        } else {
+            LineKind::Finished
+        }
+    }
+
+    fn fix_highlight_from(
+        &mut self,
+        syntax: &Syntax,
+        buffer: &BufferContent,
+        mut previous_line_kind: LineKind,
+        fix_from_index: usize,
+    ) {
+        for (bline, hline) in buffer
+            .lines_from(fix_from_index)
+            .zip(self.lines[fix_from_index..].iter_mut())
+        {
+            if previous_line_kind == LineKind::Finished && hline.kind == LineKind::Finished {
+                break;
+            }
+
+            hline.kind = syntax.parse_line(&bline.text[..], previous_line_kind, &mut hline.tokens);
+            previous_line_kind = hline.kind;
+        }
     }
 
     pub fn find_token_kind_at(&self, position: BufferPosition) -> TokenKind {
