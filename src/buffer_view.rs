@@ -161,7 +161,9 @@ impl BufferView {
         let mut iter = self.cursors[..].iter();
         if let Some(cursor) = iter.next() {
             let mut last_range = cursor.range();
-            buffer.content.append_range_text_to_string(last_range, &mut text);
+            buffer
+                .content
+                .append_range_text_to_string(last_range, &mut text);
             for cursor in iter {
                 let range = cursor.range();
                 if range.from.line_index > last_range.to.line_index {
@@ -222,6 +224,16 @@ impl BufferViewCollection {
 
     pub fn iter(&self) -> impl Iterator<Item = &BufferView> {
         self.buffer_views.iter().flatten()
+    }
+
+    pub fn iter_with_handles(&self) -> impl Iterator<Item = (BufferViewHandle, &BufferView)> {
+        self.buffer_views
+            .iter()
+            .enumerate()
+            .filter_map(|(i, v)| match v {
+                Some(v) => Some((BufferViewHandle(i), v)),
+                None => None,
+            })
     }
 
     pub fn insert_text(

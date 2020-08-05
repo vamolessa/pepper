@@ -83,22 +83,32 @@ mod helper {
 
     pub fn new_buffer_from_file(ctx: &mut CommandContext, path: &Path) -> Result<(), String> {
         if let Some(buffer_handle) = ctx.buffers.find_with_path(path) {
-            let view = match ctx
+            let mut iter = ctx
                 .buffer_views
-                .iter()
-                .filter_map(|view| {
+                .iter_with_handles()
+                .filter_map(|(handle, view)| {
                     if view.buffer_handle == buffer_handle
                         && view.target_client == ctx.target_client
                     {
-                        Some(view)
+                        Some((handle, view))
                     } else {
                         None
                     }
-                })
-                .next()
-            {
-                Some(view) => view.clone_with_target_client(ctx.target_client),
-                None => BufferView::new(ctx.target_client, buffer_handle),
+                });
+
+            let view = match iter.next() {
+                Some((handle, view)) => {
+                    *ctx.current_buffer_view_handle = Some(handle);
+                    view
+                }
+                None => {
+                    drop(iter);
+                    let view = BufferView::new(ctx.target_client, buffer_handle);
+                    let view_handle = ctx.buffer_views.add(view);
+                    let view = ctx.buffer_views.get(&view_handle);
+                    *ctx.current_buffer_view_handle = Some(view_handle);
+                    view
+                }
             };
 
             ctx.operations.send_content(
@@ -109,9 +119,6 @@ mod helper {
                 .send(ctx.target_client, EditorOperation::Path(Some(path.into())));
             ctx.operations
                 .send_cursors(ctx.target_client, &view.cursors);
-
-            let view_handle = ctx.buffer_views.add(view);
-            *ctx.current_buffer_view_handle = Some(view_handle);
         } else {
             let content = match File::open(&path) {
                 Ok(mut file) => {
