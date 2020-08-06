@@ -32,6 +32,7 @@ fn convert_event(event: event::Event) -> Event {
             event::KeyCode::Tab => Event::Key(Key::Tab),
             event::KeyCode::Delete => Event::Key(Key::Delete),
             event::KeyCode::F(f) => Event::Key(Key::F(f)),
+            event::KeyCode::Char('\0') => Event::None,
             event::KeyCode::Char(c) => match e.modifiers {
                 event::KeyModifiers::CONTROL => Event::Key(Key::Ctrl(c)),
                 event::KeyModifiers::ALT => Event::Key(Key::Alt(c)),

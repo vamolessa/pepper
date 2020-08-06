@@ -119,7 +119,7 @@ mod helper {
                 .send(ctx.target_client, EditorOperation::Path(Some(path.into())));
             ctx.operations
                 .send_cursors(ctx.target_client, &view.cursors);
-        } else {
+        } else if path.to_str().map(|s| s.trim().len()).unwrap_or(0) > 0 {
             let content = match File::open(&path) {
                 Ok(mut file) => {
                     let mut content = String::new();
@@ -138,6 +138,8 @@ mod helper {
             };
 
             new_buffer_from_content(ctx, Some(path.into()), content);
+        } else {
+            return Err(format!("invalid path {:?}", path));
         }
 
         Ok(())
@@ -160,7 +162,7 @@ mod commands {
     macro_rules! assert_empty {
         ($args:ident) => {
             if $args.trim().len() > 0 {
-                return CommandOperation::Error(format!("invalid command arguments '{}'", $args));
+                return CommandOperation::Error("command didn't expect arguments".into());
             }
         };
     }
