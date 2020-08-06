@@ -1,5 +1,6 @@
 use std::{
     io,
+    ops::{Bound, RangeBounds},
     path::{Path, PathBuf},
 };
 
@@ -59,47 +60,116 @@ impl<'a> TextRef<'a> {
     }
 }
 
-mod buffer_line {
-    use std::{ops::RangeBounds, string::Drain};
+pub struct BufferLine {
+    text: String,
+    char_to_byte_lut: Vec<usize>,
+}
 
-    pub struct BufferLine {
-        text: String,
+impl BufferLine {
+    pub fn new(text: String) -> Self {
+        let mut this = Self {
+            text,
+            char_to_byte_lut: Vec::new(),
+        };
+        this.update_index_look_up();
+        this
     }
 
-    impl BufferLine {
-        pub fn new(text: String) -> Self {
-            Self { text }
+    pub fn text<R>(&self, range: R) -> &str
+    where
+        R: RangeBounds<usize>,
+    {
+        let (start, end) = self.fix_range(range);
+        &self.text[start..end]
+    }
+
+    pub fn split_off(&mut self, index: usize) -> BufferLine {
+        let index = self.fix_index(index);
+        let splitted = BufferLine::new(self.text.split_off(index));
+        self.update_index_look_up();
+        splitted
+    }
+
+    pub fn insert(&mut self, index: usize, c: char) {
+        let index = self.fix_index(index);
+        self.text.insert(index, c);
+        self.update_index_look_up();
+    }
+
+    pub fn push_str(&mut self, s: &str) {
+        self.text.push_str(s);
+        self.update_index_look_up();
+    }
+
+    pub fn delete_range<R>(&mut self, range: R)
+    where
+        R: RangeBounds<usize>,
+    {
+        let (start, end) = self.fix_range(range);
+        self.text.drain(start..end);
+        self.update_index_look_up();
+    }
+
+    pub fn char_count(&self) -> usize {
+        let lut_len = self.char_to_byte_lut.len();
+        if lut_len == 0 {
+            self.text.len()
+        } else {
+            lut_len - 1
+        }
+    }
+
+    fn update_index_look_up(&mut self) {
+        self.char_to_byte_lut.clear();
+        for (i, c) in self.text.char_indices() {
+            if c.len_utf8() > 1 {
+                if self.char_to_byte_lut.len() == 0 {
+                    for j in 0..i {
+                        self.char_to_byte_lut.push(j);
+                    }
+                }
+
+                self.char_to_byte_lut.push(i);
+            } else if self.char_to_byte_lut.len() > 0 {
+                self.char_to_byte_lut.push(i);
+            }
         }
 
-        pub fn text(&self) -> &str {
-            &self.text[..]
+        if self.char_to_byte_lut.len() > 0 {
+            self.char_to_byte_lut.push(self.text.len());
         }
+    }
 
-        pub fn split_off(&mut self, index: usize) -> BufferLine {
-            BufferLine::new(self.text.split_off(index))
+    fn fix_index(&self, index: usize) -> usize {
+        if self.char_to_byte_lut.len() == 0 {
+            index
+        } else {
+            self.char_to_byte_lut[index]
         }
+    }
 
-        pub fn insert(&mut self, index: usize, c: char) {
-            self.text.insert(index, c);
-        }
+    fn fix_range<R>(&self, range: R) -> (usize, usize)
+    where
+        R: RangeBounds<usize>,
+    {
+        let start = match range.start_bound() {
+            Bound::Included(&i) => i,
+            Bound::Excluded(&i) => i + 1,
+            Bound::Unbounded => 0,
+        };
+        let end = match range.end_bound() {
+            Bound::Included(&i) => i + 1,
+            Bound::Excluded(&i) => i,
+            Bound::Unbounded => self.char_count(),
+        };
 
-        pub fn push_str(&mut self, s: &str) {
-            self.text.push_str(s);
-        }
-
-        pub fn drain<R>(&mut self, range: R) -> Drain
-        where
-            R: RangeBounds<usize>,
-        {
-            self.text.drain(range)
-        }
-
-        pub fn char_count(&self) -> usize {
-            self.text.chars().count()
+        if self.char_to_byte_lut.len() == 0 {
+            (start, end)
+        } else {
+            (self.char_to_byte_lut[start], self.char_to_byte_lut[end])
         }
     }
 }
-use buffer_line::*;
 
 pub struct BufferContent {
     lines: Vec<BufferLine>,
@@ -131,9 +201,9 @@ impl BufferContent {
     {
         let last_index = self.lines.len() - 1;
         for line in &self.lines[..last_index] {
-            writeln!(write, "{}", line.text())?;
+            writeln!(write, "{}", line.text(..))?;
         }
-        write!(write, "{}", self.lines[last_index].text())?;
+        write!(write, "{}", self.lines[last_index].text(..))?;
         Ok(())
     }
 
@@ -142,23 +212,23 @@ impl BufferContent {
         self.clamp_position(&mut range.to);
 
         if range.from.line_index == range.to.line_index {
-            let range_text = &self.lines[range.from.line_index].text()
+            let range_text = &self.lines[range.from.line_index].text(..)
                 [range.from.column_index..range.to.column_index];
             text.push_str(range_text);
         } else {
-            text.push_str(&self.lines[range.from.line_index].text()[range.from.column_index..]);
+            text.push_str(&self.lines[range.from.line_index].text(range.from.column_index..));
             let lines_range = (range.from.line_index + 1)..range.to.line_index;
             if lines_range.start < lines_range.end {
                 for line in &self.lines[lines_range] {
                     text.push('\n');
-                    text.push_str(line.text());
+                    text.push_str(line.text(..));
                 }
             }
             let to_line_index = range.from.line_index + 1;
             if to_line_index < self.lines.len() {
                 let to_line = &self.lines[to_line_index];
                 text.push('\n');
-                text.push_str(&to_line.text()[..range.to.column_index]);
+                text.push_str(&to_line.text(..range.to.column_index));
             }
         }
     }
@@ -170,7 +240,7 @@ impl BufferContent {
         }
 
         for (i, line) in self.lines.iter().enumerate() {
-            for (j, _) in line.text().match_indices(text) {
+            for (j, _) in line.text(..).match_indices(text) {
                 ranges.push(BufferRange::between(
                     BufferPosition::line_col(i, j),
                     BufferPosition::line_col(i, j + char_count - 1),
@@ -232,7 +302,7 @@ impl BufferContent {
                 } else {
                     let line = &mut self.lines[position.line_index + line_count];
                     let column_index = line.char_count();
-                    line.push_str(split_line.text());
+                    line.push_str(split_line.text(..));
 
                     BufferPosition::line_col(position.line_index + line_count, column_index)
                 }
@@ -247,26 +317,34 @@ impl BufferContent {
         self.clamp_position(&mut range.to);
 
         if range.from.line_index == range.to.line_index {
-            let deleted_chars = self.lines[range.from.line_index]
-                .drain(range.from.column_index..range.to.column_index);
-            Text::from_chars(deleted_chars)
+            let line = &mut self.lines[range.from.line_index];
+            let range = range.from.column_index..range.to.column_index;
+            let deleted_chars = line.text(range.clone()).chars();
+            let text = Text::from_chars(deleted_chars);
+            line.delete_range(range);
+            text
         } else {
             let mut deleted_text = String::new();
-            deleted_text.extend(self.lines[range.from.line_index].drain(range.from.column_index..));
+
+            let line = &mut self.lines[range.from.line_index];
+            let delete_range = range.from.column_index..;
+            deleted_text.push_str(line.text(delete_range.clone()));
+            line.delete_range(delete_range);
+            drop(line);
+
             let lines_range = (range.from.line_index + 1)..range.to.line_index;
             if lines_range.start < lines_range.end {
                 for line in self.lines.drain(lines_range) {
                     deleted_text.push('\n');
-                    deleted_text.push_str(line.text());
+                    deleted_text.push_str(line.text(..));
                 }
             }
             let to_line_index = range.from.line_index + 1;
             if to_line_index < self.lines.len() {
                 let to_line = self.lines.remove(to_line_index);
-                self.lines[range.from.line_index]
-                    .push_str(&to_line.text()[range.to.column_index..]);
+                self.lines[range.from.line_index].push_str(&to_line.text(range.to.column_index..));
                 deleted_text.push('\n');
-                deleted_text.push_str(&to_line.text()[..range.to.column_index]);
+                deleted_text.push_str(&to_line.text(..range.to.column_index));
             }
 
             Text::String(deleted_text)
@@ -588,5 +666,20 @@ mod tests {
         assert_eq!("multi\nline\ncontent", buffer_to_string(&buffer.content));
         for _ in buffer.redo() {}
         assert_eq!("me\ncontent", buffer_to_string(&buffer.content));
+    }
+
+    #[test]
+    fn test_utf8_support() {
+        let mut line = BufferLine::new("0ñà".into());
+        assert_eq!(3, line.char_count());
+        line.delete_range(1..2);
+        assert_eq!(2, line.char_count());
+        line.push_str("éç");
+        assert_eq!(4, line.char_count());
+        line.insert(2, 'è');
+        assert_eq!(5, line.char_count());
+        let other_line = line.split_off(3);
+        assert_eq!("àè", line.text(1..));
+        assert_eq!("éç", other_line.text(..));
     }
 }

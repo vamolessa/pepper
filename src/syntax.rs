@@ -201,7 +201,7 @@ impl HighlightedBuffer {
 
         let mut previous_line_kind = LineKind::Finished;
         for (bline, hline) in buffer.lines_from(0).zip(self.lines.iter_mut()) {
-            hline.kind = syntax.parse_line(bline.text(), previous_line_kind, &mut hline.tokens);
+            hline.kind = syntax.parse_line(bline.text(..), previous_line_kind, &mut hline.tokens);
             previous_line_kind = hline.kind;
         }
     }
@@ -221,7 +221,7 @@ impl HighlightedBuffer {
             .zip(self.lines[range.from.line_index..].iter_mut())
             .take(insert_count + 1)
         {
-            hline.kind = syntax.parse_line(bline.text(), previous_line_kind, &mut hline.tokens);
+            hline.kind = syntax.parse_line(bline.text(..), previous_line_kind, &mut hline.tokens);
             previous_line_kind = hline.kind;
         }
 
@@ -234,7 +234,7 @@ impl HighlightedBuffer {
 
         let bline = buffer.line(range.from.line_index);
         let hline = &mut self.lines[range.from.line_index];
-        hline.kind = syntax.parse_line(bline.text(), previous_line_kind, &mut hline.tokens);
+        hline.kind = syntax.parse_line(bline.text(..), previous_line_kind, &mut hline.tokens);
         let previous_line_kind = hline.kind;
 
         self.fix_highlight_from(syntax, buffer, previous_line_kind, range.to.line_index + 1);
@@ -263,7 +263,7 @@ impl HighlightedBuffer {
                 break;
             }
 
-            hline.kind = syntax.parse_line(bline.text(), previous_line_kind, &mut hline.tokens);
+            hline.kind = syntax.parse_line(bline.text(..), previous_line_kind, &mut hline.tokens);
             previous_line_kind = hline.kind;
         }
     }
