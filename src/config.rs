@@ -3,7 +3,7 @@ use std::num::NonZeroUsize;
 use crate::{
     pattern::Pattern,
     syntax::{Syntax, SyntaxCollection, TokenKind},
-    theme::{Theme, pico8_theme},
+    theme::{pico8_theme, Theme},
 };
 
 pub struct Config {

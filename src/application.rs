@@ -6,8 +6,8 @@ use std::{
 };
 
 use crate::{
-    config::Config,
     client::Client,
+    config::Config,
     connection::{ConnectionWithClientCollection, ConnectionWithServer, TargetClient},
     editor::{Editor, EditorLoop, EditorOperationSender},
     event::Event,

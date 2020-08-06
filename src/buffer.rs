@@ -1,6 +1,6 @@
 use std::{
     io,
-    ops::{Bound, RangeBounds},
+    ops::{Bound, Range, RangeBounds},
     path::{Path, PathBuf},
 };
 
@@ -81,8 +81,7 @@ impl BufferLine {
     where
         R: RangeBounds<usize>,
     {
-        let (start, end) = self.fix_range(range);
-        &self.text[start..end]
+        &self.text[self.fix_range(range)]
     }
 
     pub fn split_off(&mut self, index: usize) -> BufferLine {
@@ -107,8 +106,7 @@ impl BufferLine {
     where
         R: RangeBounds<usize>,
     {
-        let (start, end) = self.fix_range(range);
-        self.text.drain(start..end);
+        self.text.drain(self.fix_range(range));
         self.sync_state();
     }
 
@@ -142,7 +140,7 @@ impl BufferLine {
         index
     }
 
-    fn fix_range<R>(&self, range: R) -> (usize, usize)
+    fn fix_range<R>(&self, range: R) -> Range<usize>
     where
         R: RangeBounds<usize>,
     {
@@ -157,7 +155,7 @@ impl BufferLine {
             Bound::Unbounded => self.text.len(),
         };
 
-        (start, end)
+        Range { start, end }
     }
 }
 

@@ -197,7 +197,7 @@ where
 
         handle_command!(write, SetForegroundColor(token_text_color))?;
 
-        for c in line.text(..).chars().chain(iter::once('\0')) {
+        for (raw_char_index, c) in line.text(..).char_indices().chain(iter::once((0, '\0'))) {
             if x >= width {
                 handle_command!(write, cursor::MoveToNextLine(1))?;
 
@@ -214,7 +214,10 @@ where
             let token_kind = if c.is_ascii_whitespace() {
                 TokenKind::Whitespace
             } else {
-                client.highlighted_buffer.find_token_kind_at(char_position)
+                let raw_char_position = BufferPosition::line_col(line_index, raw_char_index);
+                client
+                    .highlighted_buffer
+                    .find_token_kind_at(raw_char_position)
             };
 
             text_color = match token_kind {

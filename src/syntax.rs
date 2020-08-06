@@ -143,6 +143,11 @@ impl Syntax {
 
             let from = line_index;
             line_index = line_len.min(line_index + max_len);
+
+            while !line.is_char_boundary(line_index) {
+                line_index += 1;
+            }
+
             tokens.push(Token {
                 kind,
                 range: from..line_index,
@@ -255,6 +260,10 @@ impl HighlightedBuffer {
         mut previous_line_kind: LineKind,
         fix_from_index: usize,
     ) {
+        if fix_from_index > self.lines.len() {
+            return;
+        }
+
         for (bline, hline) in buffer
             .lines_from(fix_from_index)
             .zip(self.lines[fix_from_index..].iter_mut())
