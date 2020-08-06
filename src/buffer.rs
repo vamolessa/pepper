@@ -59,19 +59,47 @@ impl<'a> TextRef<'a> {
     }
 }
 
-pub struct BufferLine {
-    pub text: String,
-}
+mod buffer_line {
+    use std::{ops::RangeBounds, string::Drain};
 
-impl BufferLine {
-    pub fn new(text: String) -> Self {
-        Self { text }
+    pub struct BufferLine {
+        text: String,
     }
 
-    pub fn char_count(&self) -> usize {
-        self.text.chars().count()
+    impl BufferLine {
+        pub fn new(text: String) -> Self {
+            Self { text }
+        }
+
+        pub fn text(&self) -> &str {
+            &self.text[..]
+        }
+
+        pub fn split_off(&mut self, index: usize) -> BufferLine {
+            BufferLine::new(self.text.split_off(index))
+        }
+
+        pub fn insert(&mut self, index: usize, c: char) {
+            self.text.insert(index, c);
+        }
+
+        pub fn push_str(&mut self, s: &str) {
+            self.text.push_str(s);
+        }
+
+        pub fn drain<R>(&mut self, range: R) -> Drain
+        where
+            R: RangeBounds<usize>,
+        {
+            self.text.drain(range)
+        }
+
+        pub fn char_count(&self) -> usize {
+            self.text.chars().count()
+        }
     }
 }
+use buffer_line::*;
 
 pub struct BufferContent {
     lines: Vec<BufferLine>,
@@ -103,9 +131,9 @@ impl BufferContent {
     {
         let last_index = self.lines.len() - 1;
         for line in &self.lines[..last_index] {
-            writeln!(write, "{}", line.text)?;
+            writeln!(write, "{}", line.text())?;
         }
-        write!(write, "{}", self.lines[last_index].text)?;
+        write!(write, "{}", self.lines[last_index].text())?;
         Ok(())
     }
 
@@ -114,23 +142,23 @@ impl BufferContent {
         self.clamp_position(&mut range.to);
 
         if range.from.line_index == range.to.line_index {
-            let range_text = &self.lines[range.from.line_index].text
+            let range_text = &self.lines[range.from.line_index].text()
                 [range.from.column_index..range.to.column_index];
             text.push_str(range_text);
         } else {
-            text.push_str(&self.lines[range.from.line_index].text[range.from.column_index..]);
+            text.push_str(&self.lines[range.from.line_index].text()[range.from.column_index..]);
             let lines_range = (range.from.line_index + 1)..range.to.line_index;
             if lines_range.start < lines_range.end {
                 for line in &self.lines[lines_range] {
                     text.push('\n');
-                    text.push_str(&line.text[..]);
+                    text.push_str(line.text());
                 }
             }
             let to_line_index = range.from.line_index + 1;
             if to_line_index < self.lines.len() {
                 let to_line = &self.lines[to_line_index];
                 text.push('\n');
-                text.push_str(&to_line.text[..range.to.column_index]);
+                text.push_str(&to_line.text()[..range.to.column_index]);
             }
         }
     }
@@ -142,7 +170,7 @@ impl BufferContent {
         }
 
         for (i, line) in self.lines.iter().enumerate() {
-            for (j, _) in line.text.match_indices(text) {
+            for (j, _) in line.text().match_indices(text) {
                 ranges.push(BufferRange::between(
                     BufferPosition::line_col(i, j),
                     BufferPosition::line_col(i, j + char_count - 1),
@@ -169,30 +197,23 @@ impl BufferContent {
         let end_position = match text {
             TextRef::Char(c) => {
                 if c == '\n' {
-                    let split_line = self.lines[position.line_index]
-                        .text
-                        .split_off(position.column_index);
-                    self.lines
-                        .insert(position.line_index + 1, BufferLine::new(split_line));
+                    let split_line =
+                        self.lines[position.line_index].split_off(position.column_index);
+                    self.lines.insert(position.line_index + 1, split_line);
 
                     BufferPosition::line_col(position.line_index + 1, 0)
                 } else {
-                    self.lines[position.line_index]
-                        .text
-                        .insert(position.column_index, c);
-
+                    self.lines[position.line_index].insert(position.column_index, c);
                     BufferPosition::line_col(position.line_index, position.column_index + 1)
                 }
             }
             TextRef::Str(text) => {
-                let split_line = self.lines[position.line_index]
-                    .text
-                    .split_off(position.column_index);
+                let split_line = self.lines[position.line_index].split_off(position.column_index);
 
                 let mut line_count = 0;
                 let mut lines = text.lines();
                 if let Some(line) = lines.next() {
-                    self.lines[position.line_index].text.push_str(&line[..]);
+                    self.lines[position.line_index].push_str(&line[..]);
                 }
                 for line in lines {
                     line_count += 1;
@@ -204,16 +225,14 @@ impl BufferContent {
 
                 if text.ends_with('\n') {
                     line_count += 1;
-                    self.lines.insert(
-                        position.line_index + line_count,
-                        BufferLine::new(split_line),
-                    );
+                    self.lines
+                        .insert(position.line_index + line_count, split_line);
 
                     BufferPosition::line_col(position.line_index + line_count, 0)
                 } else {
                     let line = &mut self.lines[position.line_index + line_count];
                     let column_index = line.char_count();
-                    line.text.push_str(&split_line[..]);
+                    line.push_str(split_line.text());
 
                     BufferPosition::line_col(position.line_index + line_count, column_index)
                 }
@@ -229,31 +248,25 @@ impl BufferContent {
 
         if range.from.line_index == range.to.line_index {
             let deleted_chars = self.lines[range.from.line_index]
-                .text
                 .drain(range.from.column_index..range.to.column_index);
             Text::from_chars(deleted_chars)
         } else {
             let mut deleted_text = String::new();
-            deleted_text.extend(
-                self.lines[range.from.line_index]
-                    .text
-                    .drain(range.from.column_index..),
-            );
+            deleted_text.extend(self.lines[range.from.line_index].drain(range.from.column_index..));
             let lines_range = (range.from.line_index + 1)..range.to.line_index;
             if lines_range.start < lines_range.end {
                 for line in self.lines.drain(lines_range) {
                     deleted_text.push('\n');
-                    deleted_text.push_str(&line.text[..]);
+                    deleted_text.push_str(line.text());
                 }
             }
             let to_line_index = range.from.line_index + 1;
             if to_line_index < self.lines.len() {
                 let to_line = self.lines.remove(to_line_index);
                 self.lines[range.from.line_index]
-                    .text
-                    .push_str(&to_line.text[range.to.column_index..]);
+                    .push_str(&to_line.text()[range.to.column_index..]);
                 deleted_text.push('\n');
-                deleted_text.push_str(&to_line.text[..range.to.column_index]);
+                deleted_text.push_str(&to_line.text()[..range.to.column_index]);
             }
 
             Text::String(deleted_text)
