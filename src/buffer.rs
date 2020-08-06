@@ -62,7 +62,7 @@ impl<'a> TextRef<'a> {
 
 pub struct BufferLine {
     text: String,
-    char_to_byte_lut: Vec<usize>,
+    char_to_byte_lut: Vec<u16>,
 }
 
 impl BufferLine {
@@ -120,23 +120,43 @@ impl BufferLine {
     }
 
     fn update_index_look_up(&mut self) {
+        const MAX_INDEX: usize = u16::MAX as _;
+
         self.char_to_byte_lut.clear();
+        let mut use_lut = false;
         for (i, c) in self.text.char_indices() {
-            if c.len_utf8() > 1 {
+            if use_lut {
+                if i > MAX_INDEX {
+                    for j in 1..4 {
+                        let i = i - j;
+                        if self.text.is_char_boundary(i) {
+                            self.text.truncate(i);
+                            break;
+                        }
+                    }
+                    break;
+                }
+
+                self.char_to_byte_lut.push(i as _);
+            } else if c.len_utf8() > 1 {
                 if self.char_to_byte_lut.len() == 0 {
                     for j in 0..i {
-                        self.char_to_byte_lut.push(j);
+                        self.char_to_byte_lut.push(j as _);
                     }
                 }
 
-                self.char_to_byte_lut.push(i);
-            } else if self.char_to_byte_lut.len() > 0 {
-                self.char_to_byte_lut.push(i);
+                if i > MAX_INDEX {
+                    self.text.truncate(i - 1);
+                    break;
+                }
+
+                self.char_to_byte_lut.push(i as _);
+                use_lut = true;
             }
         }
 
         if self.char_to_byte_lut.len() > 0 {
-            self.char_to_byte_lut.push(self.text.len());
+            self.char_to_byte_lut.push(self.text.len() as _);
         }
     }
 
@@ -144,7 +164,7 @@ impl BufferLine {
         if self.char_to_byte_lut.len() == 0 {
             index
         } else {
-            self.char_to_byte_lut[index]
+            self.char_to_byte_lut[index] as _
         }
     }
 
@@ -166,7 +186,10 @@ impl BufferLine {
         if self.char_to_byte_lut.len() == 0 {
             (start, end)
         } else {
-            (self.char_to_byte_lut[start], self.char_to_byte_lut[end])
+            (
+                self.char_to_byte_lut[start] as _,
+                self.char_to_byte_lut[end] as _,
+            )
         }
     }
 }
