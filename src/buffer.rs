@@ -62,16 +62,18 @@ impl<'a> TextRef<'a> {
 
 pub struct BufferLine {
     text: String,
-    char_to_byte_lut: Vec<u16>,
+    char_count: usize,
+    char_extra_lengths: Vec<(usize, u8)>,
 }
 
 impl BufferLine {
     pub fn new(text: String) -> Self {
         let mut this = Self {
             text,
-            char_to_byte_lut: Vec::new(),
+            char_count: 0,
+            char_extra_lengths: Vec::new(),
         };
-        this.update_index_look_up();
+        this.sync_state();
         this
     }
 
@@ -86,19 +88,19 @@ impl BufferLine {
     pub fn split_off(&mut self, index: usize) -> BufferLine {
         let index = self.fix_index(index);
         let splitted = BufferLine::new(self.text.split_off(index));
-        self.update_index_look_up();
+        self.sync_state();
         splitted
     }
 
     pub fn insert(&mut self, index: usize, c: char) {
         let index = self.fix_index(index);
         self.text.insert(index, c);
-        self.update_index_look_up();
+        self.sync_state();
     }
 
     pub fn push_str(&mut self, s: &str) {
         self.text.push_str(s);
-        self.update_index_look_up();
+        self.sync_state();
     }
 
     pub fn delete_range<R>(&mut self, range: R)
@@ -107,65 +109,37 @@ impl BufferLine {
     {
         let (start, end) = self.fix_range(range);
         self.text.drain(start..end);
-        self.update_index_look_up();
+        self.sync_state();
     }
 
     pub fn char_count(&self) -> usize {
-        let lut_len = self.char_to_byte_lut.len();
-        if lut_len == 0 {
-            self.text.len()
-        } else {
-            lut_len - 1
-        }
+        self.char_count
     }
 
-    fn update_index_look_up(&mut self) {
-        const MAX_INDEX: usize = u16::MAX as _;
+    fn sync_state(&mut self) {
+        self.char_count = 0;
+        self.char_extra_lengths.clear();
 
-        self.char_to_byte_lut.clear();
-        let mut use_lut = false;
         for (i, c) in self.text.char_indices() {
-            if use_lut {
-                if i > MAX_INDEX {
-                    for j in 1..4 {
-                        let i = i - j;
-                        if self.text.is_char_boundary(i) {
-                            self.text.truncate(i);
-                            break;
-                        }
-                    }
-                    break;
-                }
-
-                self.char_to_byte_lut.push(i as _);
-            } else if c.len_utf8() > 1 {
-                if self.char_to_byte_lut.len() == 0 {
-                    for j in 0..i {
-                        self.char_to_byte_lut.push(j as _);
-                    }
-                }
-
-                if i > MAX_INDEX {
-                    self.text.truncate(i - 1);
-                    break;
-                }
-
-                self.char_to_byte_lut.push(i as _);
-                use_lut = true;
+            let char_len = c.len_utf8();
+            if char_len > 1 {
+                self.char_extra_lengths.push((i, (char_len - 1) as _));
             }
-        }
 
-        if self.char_to_byte_lut.len() > 0 {
-            self.char_to_byte_lut.push(self.text.len() as _);
+            self.char_count += 1;
         }
     }
 
-    fn fix_index(&self, index: usize) -> usize {
-        if self.char_to_byte_lut.len() == 0 {
-            index
-        } else {
-            self.char_to_byte_lut[index] as _
+    fn fix_index(&self, mut index: usize) -> usize {
+        for &(i, len) in &self.char_extra_lengths {
+            if i >= index {
+                break;
+            }
+
+            index += len as usize;
         }
+
+        index
     }
 
     fn fix_range<R>(&self, range: R) -> (usize, usize)
@@ -173,24 +147,17 @@ impl BufferLine {
         R: RangeBounds<usize>,
     {
         let start = match range.start_bound() {
-            Bound::Included(&i) => i,
-            Bound::Excluded(&i) => i + 1,
+            Bound::Included(&i) => self.fix_index(i),
+            Bound::Excluded(&i) => self.fix_index(i + 1),
             Bound::Unbounded => 0,
         };
         let end = match range.end_bound() {
-            Bound::Included(&i) => i + 1,
-            Bound::Excluded(&i) => i,
-            Bound::Unbounded => self.char_count(),
+            Bound::Included(&i) => self.fix_index(i + 1),
+            Bound::Excluded(&i) => self.fix_index(i),
+            Bound::Unbounded => self.text.len(),
         };
 
-        if self.char_to_byte_lut.len() == 0 {
-            (start, end)
-        } else {
-            (
-                self.char_to_byte_lut[start] as _,
-                self.char_to_byte_lut[end] as _,
-            )
-        }
+        (start, end)
     }
 }
 
