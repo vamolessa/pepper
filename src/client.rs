@@ -10,8 +10,8 @@ use crate::{
     syntax::{HighlightedBuffer, SyntaxHandle},
 };
 
-pub struct Client<'a> {
-    pub config: &'a Config,
+pub struct Client {
+    pub config: Config,
 
     pub mode: Mode,
 
@@ -29,8 +29,11 @@ pub struct Client<'a> {
     pub error: Option<String>,
 }
 
-impl<'a> Client<'a> {
-    pub fn with_config(config: &'a Config) -> Self {
+impl Client {
+    pub fn new() -> Self {
+        let mut config = Config::default();
+        config.load();
+
         Self {
             config,
 

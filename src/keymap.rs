@@ -27,13 +27,17 @@ impl KeyMapCollection {
         mode: Discriminant<Mode>,
         from: &str,
         to: &str,
-    ) -> Result<(), KeyParseError> {
-        fn parse_keys(text: &str) -> Result<Vec<Key>, KeyParseError> {
+    ) -> Result<(), String> {
+        fn parse_keys(text: &str) -> Result<Vec<Key>, String> {
             let mut keys = Vec::new();
 
             let mut chars = text.chars().peekable();
             while chars.peek().is_some() {
-                keys.push(Key::parse(&mut chars)?);
+                match Key::parse(&mut chars) {
+                    Ok(key) => keys.push(key),
+                    Err(KeyParseError::UnexpectedEnd) => return Err(String::from("")),
+                    Err(KeyParseError::InvalidCharacter(c)) => return Err(format!("{}", c)),
+                }
             }
 
             Ok(keys)

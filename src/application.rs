@@ -2,12 +2,10 @@ use std::{convert::From, env, fs, io, sync::mpsc, thread};
 
 use crate::{
     client::Client,
-    config::Config,
     connection::{ConnectionWithClientCollection, ConnectionWithServer, TargetClient},
     editor::{Editor, EditorLoop, EditorOperationSender},
     event::Event,
     event_manager::{ConnectionEvent, EventManager},
-    mode::Mode,
 };
 
 pub trait UiError: 'static + Send {}
@@ -60,13 +58,6 @@ pub trait UI {
     fn shutdown(&mut self) -> Result<(), Self::Error> {
         Ok(())
     }
-}
-
-fn bind_keys(editor: &mut Editor) {
-    editor
-        .keymaps
-        .parse_map(Mode::Normal.discriminant(), "qq", ":quit<c-m>")
-        .unwrap();
 }
 
 pub fn run<I>(ui: I) -> Result<(), ApplicationError<I::Error>>
@@ -131,12 +122,8 @@ where
     let event_manager_loop = event_manager.run_event_loop_in_background(event_sender.clone());
     let ui_event_loop = I::run_event_loop_in_background(event_sender);
 
-    let mut config = Config::default();
-    config.load();
-
-    let mut local_client = Client::with_config(&config);
-    let mut editor = Editor::with_config(&config);
-    bind_keys(&mut editor);
+    let mut local_client = Client::new();
+    let mut editor = Editor::new();
 
     let mut editor_operations = EditorOperationSender::new();
     let mut received_keys = Vec::new();
@@ -148,7 +135,12 @@ where
         match event {
             Event::None => (),
             Event::Key(key) => {
-                match editor.on_key(key, TargetClient::Local, &mut editor_operations) {
+                match editor.on_key(
+                    &mut local_client.config,
+                    key,
+                    TargetClient::Local,
+                    &mut editor_operations,
+                ) {
                     EditorLoop::Quit => break,
                     EditorLoop::Continue => (),
                 }
@@ -192,6 +184,7 @@ where
 
                         for key in received_keys.drain(..) {
                             match editor.on_key(
+                                &mut local_client.config,
                                 key,
                                 TargetClient::Remote(handle),
                                 &mut editor_operations,
@@ -242,10 +235,7 @@ where
     let event_manager_loop = event_manager.run_event_loop_in_background(event_sender.clone());
     let ui_event_loop = I::run_event_loop_in_background(event_sender);
 
-    let mut config = Config::default();
-    config.load();
-
-    let mut local_client = Client::with_config(&config);
+    let mut local_client = Client::new();
     let mut received_operations = Vec::new();
     let mut received_content = String::new();
 

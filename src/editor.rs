@@ -108,9 +108,7 @@ impl<'a> KeysIterator<'a> {
     }
 }
 
-pub struct Editor<'a> {
-    pub config: &'a Config,
-
+pub struct Editor {
     mode: Mode,
     pub keymaps: KeyMapCollection,
     buffered_keys: Vec<Key>,
@@ -125,11 +123,9 @@ pub struct Editor<'a> {
     focused_client: TargetClient,
 }
 
-impl<'a> Editor<'a> {
-    pub fn with_config(config: &'a Config) -> Self {
+impl Editor {
+    pub fn new() -> Self {
         Self {
-            config,
-
             mode: Mode::default(),
             keymaps: KeyMapCollection::default(),
             buffered_keys: Vec::new(),
@@ -241,6 +237,7 @@ impl<'a> Editor<'a> {
 
     pub fn on_key(
         &mut self,
+        config: &mut Config,
         key: Key,
         target_client: TargetClient,
         operations: &mut EditorOperationSender,
@@ -285,6 +282,8 @@ impl<'a> Editor<'a> {
                 target_client,
                 operations,
 
+                config,
+                keymaps: &mut self.keymaps,
                 commands: &self.commands,
                 buffers: &mut self.buffers,
                 buffer_views: &mut self.buffer_views,

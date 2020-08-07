@@ -6,9 +6,11 @@ use crate::{
     buffer::BufferCollection,
     buffer_view::{BufferViewCollection, BufferViewHandle},
     command::CommandCollection,
+    config::Config,
     connection::TargetClient,
     editor::{EditorOperation, EditorOperationSender, KeysIterator},
     event::Key,
+    keymap::KeyMapCollection,
 };
 
 mod command;
@@ -29,6 +31,8 @@ pub struct ModeContext<'a> {
     pub target_client: TargetClient,
     pub operations: &'a mut EditorOperationSender,
 
+    pub config: &'a mut Config,
+    pub keymaps: &'a mut KeyMapCollection,
     pub commands: &'a CommandCollection,
     pub buffers: &'a mut BufferCollection,
     pub buffer_views: &'a mut BufferViewCollection,
