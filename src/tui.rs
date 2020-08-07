@@ -214,10 +214,9 @@ where
             let token_kind = if c.is_ascii_whitespace() {
                 TokenKind::Whitespace
             } else {
-                let raw_char_position = BufferPosition::line_col(line_index, raw_char_index);
                 client
                     .highlighted_buffer
-                    .find_token_kind_at(raw_char_position)
+                    .find_token_kind_at(line_index, raw_char_index)
             };
 
             text_color = match token_kind {

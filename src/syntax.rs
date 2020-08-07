@@ -2,7 +2,7 @@ use std::{cmp::Ordering, iter, ops::Range};
 
 use crate::{
     buffer::BufferContent,
-    buffer_position::{BufferPosition, BufferRange},
+    buffer_position::BufferRange,
     pattern::{MatchResult, Pattern, PatternState},
 };
 
@@ -277,17 +277,16 @@ impl HighlightedBuffer {
         }
     }
 
-    pub fn find_token_kind_at(&self, position: BufferPosition) -> TokenKind {
-        if position.line_index >= self.lines.len() {
+    pub fn find_token_kind_at(&self, line_index: usize, char_index: usize) -> TokenKind {
+        if line_index >= self.lines.len() {
             return TokenKind::Text;
         }
 
-        let x = position.column_index;
-        let tokens = &self.lines[position.line_index].tokens;
+        let tokens = &self.lines[line_index].tokens;
         match tokens.binary_search_by(|t| {
-            if x < t.range.start {
+            if char_index < t.range.start {
                 Ordering::Greater
-            } else if x >= t.range.end {
+            } else if char_index >= t.range.end {
                 Ordering::Less
             } else {
                 Ordering::Equal
