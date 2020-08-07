@@ -1,5 +1,6 @@
 use std::{
-    sync::{Arc, Barrier},
+    io,
+    sync::{mpsc, Arc},
     thread,
 };
 
@@ -9,118 +10,94 @@ use crate::event::Event;
 pub struct StreamId(pub usize);
 
 #[derive(Debug, Clone, Copy)]
-pub enum EventResult {
-    Ok,
-    Error,
-}
-
-#[derive(Debug, Clone, Copy)]
 pub enum ConnectionEvent {
-    NewConnection(EventResult),
-    Stream(StreamId, EventResult),
+    NewConnection,
+    Stream(StreamId),
 }
 
 impl ConnectionEvent {
-    fn from_raw_id(id: u64, result: EventResult) -> Self {
+    fn from_raw_id(id: usize) -> Self {
         match id {
-            0 => ConnectionEvent::NewConnection(result),
-            id => ConnectionEvent::Stream(StreamId(id as usize - 1), result),
+            0 => ConnectionEvent::NewConnection,
+            id => ConnectionEvent::Stream(StreamId(id - 1)),
         }
     }
 
-    fn raw_id(&self) -> u64 {
+    fn raw_id(&self) -> usize {
         match self {
-            ConnectionEvent::NewConnection(_) => 0,
-            ConnectionEvent::Stream(id, _) => id.0 as u64 + 1,
+            ConnectionEvent::NewConnection => 0,
+            ConnectionEvent::Stream(id) => id.0 + 1,
         }
     }
 }
 
 #[cfg(target_os = "windows")]
-pub use windows::*;
+use uds_windows::{UnixListener, UnixStream};
 
-#[cfg(target_os = "windows")]
-mod windows {
-    use std::{io, sync::mpsc};
+pub struct EventManager {
+    poller: Arc<polling::Poller>,
+}
 
-    use uds_windows::{UnixListener, UnixStream};
-    use wepoll_binding::{Epoll, EventFlag, Events};
-
-    use super::*;
-
-    pub struct EventManager {
-        poll: Arc<Epoll>,
-        events: Events,
-        event_sender: mpsc::Sender<Event>,
+impl EventManager {
+    pub fn new() -> io::Result<Self> {
+        Ok(Self {
+            poller: Arc::new(polling::Poller::new()?),
+        })
     }
 
-    impl EventManager {
-        pub fn new(event_sender: mpsc::Sender<Event>, capacity: usize) -> io::Result<Self> {
-            Ok(Self {
-                poll: Arc::new(Epoll::new()?),
-                events: Events::with_capacity(capacity),
-                event_sender,
-            })
-        }
-
-        pub fn registry(&self) -> io::Result<EventRegistry> {
-            Ok(EventRegistry {
-                poll: self.poll.clone(),
-            })
-        }
-
-        pub fn run_event_loop_in_background(
-            mut self,
-            barrier: Arc<Barrier>,
-        ) -> thread::JoinHandle<io::Result<()>> {
-            thread::spawn(move || {
-                while self.poll_and_send_events()? {
-                    barrier.wait();
-                }
-                Ok(())
-            })
-        }
-
-        fn poll_and_send_events(&mut self) -> io::Result<bool> {
-            self.poll.poll(&mut self.events, None)?;
-            for event in self.events.iter() {
-                let result = match (event.flags() & !EventFlag::IN).is_empty() {
-                    true => EventResult::Ok,
-                    false => EventResult::Error,
-                };
-                let event = ConnectionEvent::from_raw_id(event.data(), result);
-                if self.event_sender.send(Event::Connection(event)).is_err() {
-                    return Ok(false);
+    pub fn run_event_loop_in_background(
+        self,
+        event_sender: mpsc::Sender<Event>,
+    ) -> thread::JoinHandle<io::Result<()>> {
+        let mut events = Vec::new();
+        thread::spawn(move || 'event_loop: loop {
+            self.poller.wait(&mut events, None)?;
+            for event in &events {
+                let event = ConnectionEvent::from_raw_id(event.key);
+                if event_sender.send(Event::Connection(event)).is_err() {
+                    break 'event_loop Ok(());
                 }
             }
-            self.events.clear();
-            Ok(true)
-        }
+
+            events.clear();
+        })
     }
 
-    pub struct EventRegistry {
-        poll: Arc<Epoll>,
+    pub fn registry(&self) -> EventRegistry {
+        EventRegistry {
+            poller: self.poller.clone(),
+        }
+    }
+}
+
+pub struct EventRegistry {
+    poller: Arc<polling::Poller>,
+}
+
+impl EventRegistry {
+    pub fn register_listener(&self, listener: &UnixListener) -> io::Result<()> {
+        self.poller.insert(listener)?;
+        self.listen_next_listener_event(listener)?;
+        Ok(())
     }
 
-    impl EventRegistry {
-        pub fn register_listener(&self, listener: &UnixListener) -> io::Result<()> {
-            self.poll.register(
-                listener,
-                EventFlag::IN | EventFlag::ERR,
-                ConnectionEvent::NewConnection(EventResult::Ok).raw_id(),
-            )
-        }
+    pub fn register_stream(&self, stream: &UnixStream, id: StreamId) -> io::Result<()> {
+        self.poller.insert(stream)?;
+        self.listen_next_stream_event(stream, id)?;
+        Ok(())
+    }
 
-        pub fn register_stream(&self, stream: &UnixStream, id: StreamId) -> io::Result<()> {
-            self.poll.register(
-                stream,
-                EventFlag::IN | EventFlag::RDHUP | EventFlag::HUP | EventFlag::ERR,
-                ConnectionEvent::Stream(id, EventResult::Ok).raw_id(),
-            )
-        }
+    pub fn listen_next_listener_event(&self, listener: &UnixListener) -> io::Result<()> {
+        let id = ConnectionEvent::NewConnection.raw_id();
+        self.poller.interest(listener, polling::Event::readable(id))
+    }
 
-        pub fn unregister_stream(&self, stream: &UnixStream) -> io::Result<()> {
-            self.poll.deregister(stream)
-        }
+    pub fn listen_next_stream_event(&self, stream: &UnixStream, id: StreamId) -> io::Result<()> {
+        let id = ConnectionEvent::Stream(id).raw_id();
+        self.poller.interest(stream, polling::Event::readable(id))
+    }
+
+    pub fn unregister_stream(&self, stream: &UnixStream) -> io::Result<()> {
+        self.poller.remove(stream)
     }
 }

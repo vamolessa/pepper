@@ -1,9 +1,4 @@
-use std::{
-    convert::From,
-    env, fs, io,
-    sync::{mpsc, Arc, Barrier},
-    thread,
-};
+use std::{convert::From, env, fs, io, sync::mpsc, thread};
 
 use crate::{
     client::Client,
@@ -11,7 +6,7 @@ use crate::{
     connection::{ConnectionWithClientCollection, ConnectionWithServer, TargetClient},
     editor::{Editor, EditorLoop, EditorOperationSender},
     event::Event,
-    event_manager::{ConnectionEvent, EventManager, EventResult},
+    event_manager::{ConnectionEvent, EventManager},
     mode::Mode,
 };
 
@@ -131,10 +126,9 @@ where
     I: UI,
 {
     let (event_sender, event_receiver) = mpsc::channel();
-    let event_manager = EventManager::new(event_sender.clone(), 8)?;
-    let event_registry = event_manager.registry()?;
-    let event_loop_barrier = Arc::new(Barrier::new(2));
-    let event_manager_loop = event_manager.run_event_loop_in_background(event_loop_barrier.clone());
+    let event_manager = EventManager::new()?;
+    let event_registry = event_manager.registry();
+    let event_manager_loop = event_manager.run_event_loop_in_background(event_sender.clone());
     let ui_event_loop = I::run_event_loop_in_background(event_sender);
 
     let mut config = Config::default();
@@ -163,19 +157,15 @@ where
             Event::Resize(w, h) => ui.resize(w, h)?,
             Event::Connection(event) => {
                 match event {
-                    ConnectionEvent::NewConnection(EventResult::Error) => (),
-                    ConnectionEvent::NewConnection(EventResult::Ok) => {
+                    ConnectionEvent::NewConnection => {
                         let handle = connections.accept_connection(&event_registry)?;
                         editor
                             .on_client_joined(TargetClient::Remote(handle), &mut editor_operations);
+                        connections.listen_next_listener_event(&event_registry)?;
                     }
-                    ConnectionEvent::Stream(stream_id, EventResult::Error) => {
+                    ConnectionEvent::Stream(stream_id) => {
                         let handle = stream_id.into();
-                        connections.close_connection(handle);
-                        editor.on_client_left(TargetClient::Remote(handle), &mut editor_operations);
-                    }
-                    ConnectionEvent::Stream(stream_id, EventResult::Ok) => {
-                        let handle = stream_id.into();
+
                         loop {
                             match connections.receive_key(handle) {
                                 Ok(Some(key)) => received_keys.push(key),
@@ -190,6 +180,14 @@ where
                                 }
                             }
                             break;
+                        }
+
+                        if received_keys.len() == 0 {
+                            connections.close_connection(handle);
+                            editor.on_client_left(
+                                TargetClient::Remote(handle),
+                                &mut editor_operations,
+                            );
                         }
 
                         for key in received_keys.drain(..) {
@@ -208,13 +206,14 @@ where
                                 EditorLoop::Continue => (),
                             }
                         }
+
+                        connections.listen_next_connection_event(handle, &event_registry)?;
                     }
                 }
 
                 connections.unregister_closed_connections(&event_registry)?;
                 send_operations(&mut editor_operations, &mut local_client, &mut connections);
                 connections.unregister_closed_connections(&event_registry)?;
-                event_loop_barrier.wait();
             }
         }
 
@@ -238,10 +237,9 @@ where
     I: UI,
 {
     let (event_sender, event_receiver) = mpsc::channel();
-    let event_manager = EventManager::new(event_sender.clone(), 8)?;
-    let event_registry = event_manager.registry()?;
-    let event_loop_barrier = Arc::new(Barrier::new(2));
-    let event_manager_loop = event_manager.run_event_loop_in_background(event_loop_barrier.clone());
+    let event_manager = EventManager::new()?;
+    let event_registry = event_manager.registry();
+    let event_manager_loop = event_manager.run_event_loop_in_background(event_sender.clone());
     let ui_event_loop = I::run_event_loop_in_background(event_sender);
 
     let mut config = Config::default();
@@ -263,27 +261,29 @@ where
                 }
             }
             Event::Resize(w, h) => ui.resize(w, h)?,
-            Event::Connection(event) => {
-                match event {
-                    ConnectionEvent::NewConnection(_) => (),
-                    ConnectionEvent::Stream(_, EventResult::Error) => break,
-                    ConnectionEvent::Stream(_, EventResult::Ok) => {
-                        loop {
-                            match connection.receive_operation(&mut received_content) {
-                                Ok(Some(operation)) => received_operations.push(operation),
-                                Ok(None) => break,
-                                Err(_) => break 'main_loop,
-                            }
+            Event::Connection(event) => match event {
+                ConnectionEvent::NewConnection => (),
+                ConnectionEvent::Stream(_) => {
+                    loop {
+                        match connection.receive_operation(&mut received_content) {
+                            Ok(Some(operation)) => received_operations.push(operation),
+                            Ok(None) => break,
+                            Err(_) => break 'main_loop,
                         }
-
-                        for operation in received_operations.drain(..) {
-                            local_client.on_editor_operation(&operation, &received_content[..]);
-                        }
-                        received_content.clear();
                     }
+
+                    if received_operations.len() == 0 {
+                        break;
+                    }
+
+                    for operation in received_operations.drain(..) {
+                        local_client.on_editor_operation(&operation, &received_content[..]);
+                    }
+                    received_content.clear();
+
+                    connection.listen_next_event(&event_registry)?;
                 }
-                event_loop_barrier.wait();
-            }
+            },
         }
 
         let error = local_client.error.take();

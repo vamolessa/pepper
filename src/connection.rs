@@ -117,8 +117,11 @@ impl ConnectionWithClientCollection {
     where
         P: AsRef<Path>,
     {
+        let listener = UnixListener::bind(path)?;
+        listener.set_nonblocking(true)?;
+
         Ok(Self {
-            listener: UnixListener::bind(path)?,
+            listener,
             connections: Vec::new(),
             error_indexes: Vec::new(),
             closed_connection_indexes: Vec::new(),
@@ -127,6 +130,10 @@ impl ConnectionWithClientCollection {
 
     pub fn register_listener(&self, event_registry: &EventRegistry) -> io::Result<()> {
         event_registry.register_listener(&self.listener)
+    }
+
+    pub fn listen_next_listener_event(&self, event_registry: &EventRegistry) -> io::Result<()> {
+        event_registry.listen_next_listener_event(&self.listener)
     }
 
     pub fn accept_connection(
@@ -154,6 +161,18 @@ impl ConnectionWithClientCollection {
         event_registry.register_stream(&connection.stream, handle.into())?;
         self.connections.push(Some(connection));
         Ok(handle)
+    }
+
+    pub fn listen_next_connection_event(
+        &self,
+        handle: ConnectionWithClientHandle,
+        event_registry: &EventRegistry,
+    ) -> io::Result<()> {
+        if let Some(connection) = &self.connections[handle.0] {
+            event_registry.listen_next_stream_event(&connection.stream, handle.into())?;
+        }
+
+        Ok(())
     }
 
     pub fn close_connection(&mut self, handle: ConnectionWithClientHandle) {
@@ -269,6 +288,10 @@ impl ConnectionWithServer {
 
     pub fn register_connection(&self, event_registry: &EventRegistry) -> io::Result<()> {
         event_registry.register_stream(&self.stream, StreamId(0))
+    }
+
+    pub fn listen_next_event(&self, event_registry: &EventRegistry) -> io::Result<()> {
+        event_registry.listen_next_stream_event(&self.stream, StreamId(0))
     }
 
     pub fn send_key(&mut self, key: Key) -> io::Result<()> {
