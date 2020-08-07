@@ -35,8 +35,18 @@ impl KeyMapCollection {
             while chars.peek().is_some() {
                 match Key::parse(&mut chars) {
                     Ok(key) => keys.push(key),
-                    Err(KeyParseError::UnexpectedEnd) => return Err(String::from("")),
-                    Err(KeyParseError::InvalidCharacter(c)) => return Err(format!("{}", c)),
+                    Err(error) => {
+                        let (before, after) = text.split_at(text.len() - chars.count());
+                        let message = match error {
+                            KeyParseError::UnexpectedEnd => {
+                                format!("could not parse key at '{}' <- here '{}", before, after)
+                            }
+                            KeyParseError::InvalidCharacter(c) => {
+                                format!("invalid char '{}' at '{}' <- here '{}'", c, before, after)
+                            }
+                        };
+                        return Err(message);
+                    }
                 }
             }
 
