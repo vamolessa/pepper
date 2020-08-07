@@ -2,6 +2,7 @@ use std::{
     collections::HashMap,
     fs::File,
     io::Read,
+    ops::Range,
     path::{Path, PathBuf},
 };
 
@@ -52,31 +53,45 @@ impl<'a> CommandArgs<'a> {
         }
     }
 
-    pub fn next(&mut self) -> Result<&'a str, String> {
-        self.try_next()
+    pub fn expect_next(&mut self) -> Result<&'a str, String> {
+        self.next()
             .ok_or_else(|| String::from("command expected more arguments"))
     }
+}
 
-    pub fn try_next(&mut self) -> Option<&'a str> {
+impl<'a> Iterator for CommandArgs<'a> {
+    type Item = &'a str;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        fn find_string_end(s: &str, delim: char) -> Option<Range<usize>> {
+            let mut chars = s.char_indices();
+            chars.next()?;
+            for (i, c) in chars {
+                if c == delim {
+                    return Some(delim.len_utf8()..i);
+                }
+            }
+            None
+        }
+
         self.raw = self.raw.trim_start();
         if self.raw.len() == 0 {
             return None;
         }
 
-        let arg = match self.raw.find(|c: char| c.is_whitespace()) {
-            Some(index) => {
-                let (before, after) = self.raw.split_at(index);
-                self.raw = after;
-                before
-            }
-            None => {
-                let arg = self.raw;
-                self.raw = "";
-                arg
-            }
+        let arg_range = match self.raw.chars().next() {
+            Some('"') => find_string_end(self.raw, '"')?,
+            Some('\'') => find_string_end(self.raw, '\'')?,
+            _ => match self.raw.find(|c: char| c.is_whitespace()) {
+                Some(end) => 0..end,
+                None => 0..self.raw.len(),
+            },
         };
 
-        Some(arg)
+        let (arg, after) = self.raw.split_at(arg_range.end);
+        self.raw = after;
+
+        Some(&arg[arg_range])
     }
 }
 
@@ -96,6 +111,7 @@ impl Default for CommandCollection {
         this.register("write".into(), commands::write);
         this.register("write-all".into(), commands::write_all);
 
+        this.register("set".into(), commands::set);
         this.register("nmap".into(), commands::nmap);
         this.register("smap".into(), commands::smap);
         this.register("imap".into(), commands::imap);
@@ -231,7 +247,7 @@ mod commands {
     }
 
     pub fn edit(mut ctx: CommandContext, mut args: CommandArgs) -> CommandResult {
-        let path = Path::new(args.next()?);
+        let path = Path::new(args.expect_next()?);
         args.assert_empty()?;
         helper::new_buffer_from_file(&mut ctx, path)?;
         Ok(CommandOperation::Complete)
@@ -270,7 +286,7 @@ mod commands {
             .get_mut(buffer_handle)
             .ok_or_else(|| String::from("no buffer opened"))?;
 
-        let path = args.try_next();
+        let path = args.next();
         args.assert_empty()?;
         match path {
             Some(path) => {
@@ -309,6 +325,12 @@ mod commands {
         Ok(CommandOperation::Complete)
     }
 
+    pub fn set(ctx: CommandContext, mut args: CommandArgs) -> CommandResult {
+        let name = args.expect_next()?;
+        ctx.config.parse_and_set(name, args)?;
+        Ok(CommandOperation::Complete)
+    }
+
     pub fn nmap(ctx: CommandContext, args: CommandArgs) -> CommandResult {
         mode_map(ctx, args, Mode::Normal)
     }
@@ -322,8 +344,8 @@ mod commands {
     }
 
     fn mode_map(ctx: CommandContext, mut args: CommandArgs, mode: Mode) -> CommandResult {
-        let from = args.next()?;
-        let to = args.next()?;
+        let from = args.expect_next()?;
+        let to = args.expect_next()?;
         args.assert_empty()?;
 
         ctx.keymaps.parse_map(mode.discriminant(), from, to)?;

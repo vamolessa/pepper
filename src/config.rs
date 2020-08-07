@@ -1,4 +1,4 @@
-use std::num::NonZeroUsize;
+use std::{fmt::Display, num::NonZeroUsize, str::FromStr};
 
 use crate::{
     pattern::Pattern,
@@ -19,6 +19,41 @@ pub struct Config {
 impl Config {
     pub fn load(&mut self) {
         //
+    }
+
+    pub fn parse_and_set<'a>(
+        &mut self,
+        name: &str,
+        mut values: impl Iterator<Item = &'a str>,
+    ) -> Result<(), String> {
+        fn parse<T>(value: &str) -> Result<T, String>
+        where
+            T: FromStr,
+            T::Err: Display,
+        {
+            value
+                .parse()
+                .map_err(|e: T::Err| format!("{} in '{}'", e, value))
+        }
+
+        macro_rules! parse_next {
+            () => {
+                match values.next() {
+                    Some(value) => parse(value)?,
+                    None => return Err("expected value".into()),
+                }
+            };
+        }
+
+        match name {
+            "tab_size" => self.tab_size = parse_next!(),
+            "visualize_empty" => self.visualize_empty = parse_next!(),
+            "visualize_space" => self.visualize_space = parse_next!(),
+            "visualize_tab" => self.visualize_tab = (parse_next!(), parse_next!()),
+            _ => return Err(format!("could not find config '{}'", name)),
+        }
+
+        Ok(())
     }
 }
 
