@@ -20,6 +20,12 @@ pub struct Theme {
     pub highlight: Color,
 }
 
+impl Theme {
+    pub fn parse_and_set(&mut self, name: &str, color: &str) -> Result<(), ()> {
+        Ok(())
+    }
+}
+
 pub fn pico8_theme() -> Theme {
     const fn color_hex(hex: u32) -> Color {
         Color(

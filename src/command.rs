@@ -48,14 +48,6 @@ impl<'a> CommandArgs<'a> {
         Self { raw: args }
     }
 
-    pub fn assert_empty(&self) -> Result<(), String> {
-        if self.raw.trim_start().len() > 0 {
-            Err("command expected less arguments".into())
-        } else {
-            Ok(())
-        }
-    }
-
     pub fn expect_next(&mut self) -> Result<&'a str, String> {
         self.next()
             .ok_or_else(|| String::from("command expected more arguments"))
@@ -151,6 +143,13 @@ impl CommandCollection {
 
 mod helper {
     use super::*;
+
+    pub fn assert_empty<'a>(mut args: impl Iterator<Item = &'a str>) -> Result<(), String> {
+        match args.next() {
+            Some(_) => Err("command expected less arguments".into()),
+            None => Ok(()),
+        }
+    }
 
     pub fn parsing_error<T>(message: T, text: &str, error_index: usize) -> String
     where
@@ -259,19 +258,19 @@ mod commands {
     use super::*;
 
     pub fn quit(_ctx: CommandContext, args: CommandArgs) -> CommandResult {
-        args.assert_empty()?;
+        helper::assert_empty(args)?;
         Ok(CommandOperation::Quit)
     }
 
     pub fn edit(mut ctx: CommandContext, mut args: CommandArgs) -> CommandResult {
         let path = Path::new(args.expect_next()?);
-        args.assert_empty()?;
+        helper::assert_empty(args)?;
         helper::new_buffer_from_file(&mut ctx, path)?;
         Ok(CommandOperation::Complete)
     }
 
     pub fn close(ctx: CommandContext, args: CommandArgs) -> CommandResult {
-        args.assert_empty()?;
+        helper::assert_empty(args)?;
         if let Some(handle) = ctx
             .current_buffer_view_handle
             .take()
@@ -304,7 +303,7 @@ mod commands {
             .ok_or_else(|| String::from("no buffer opened"))?;
 
         let path = args.next();
-        args.assert_empty()?;
+        helper::assert_empty(args)?;
         match path {
             Some(path) => {
                 let path = PathBuf::from(path);
@@ -332,7 +331,7 @@ mod commands {
     }
 
     pub fn write_all(ctx: CommandContext, args: CommandArgs) -> CommandResult {
-        args.assert_empty()?;
+        helper::assert_empty(args)?;
         for buffer in ctx.buffers.iter() {
             if let Some(ref path) = buffer.path {
                 helper::write_buffer_to_file(buffer, path)?;
@@ -344,8 +343,19 @@ mod commands {
 
     pub fn set(ctx: CommandContext, mut args: CommandArgs) -> CommandResult {
         let name = args.expect_next()?;
-        ctx.config.parse_and_set(name, args)?;
-        Ok(CommandOperation::Complete)
+        let mut previous = "";
+        let mut args = args.map(|a| {
+            previous = a;
+            a
+        });
+
+        match ctx.config.parse_and_set(name, &mut args) {
+            Ok(()) => {
+                helper::assert_empty(args)?;
+                Ok(CommandOperation::Complete)
+            }
+            Err(e) => Err(helper::parsing_error(e, previous, 0)),
+        }
     }
 
     pub fn syntax(ctx: CommandContext, mut args: CommandArgs) -> CommandResult {
@@ -396,7 +406,7 @@ mod commands {
     fn mode_map(ctx: CommandContext, mut args: CommandArgs, mode: Mode) -> CommandResult {
         let from = args.expect_next()?;
         let to = args.expect_next()?;
-        args.assert_empty()?;
+        helper::assert_empty(args)?;
 
         match ctx.keymaps.parse_map(mode.discriminant(), from, to) {
             Ok(()) => Ok(CommandOperation::Complete),

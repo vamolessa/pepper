@@ -1,10 +1,28 @@
-use std::{fmt::Display, num::NonZeroUsize, str::FromStr};
+use std::{fmt, num::NonZeroUsize, str::FromStr};
 
 use crate::{
     pattern::Pattern,
     syntax::{Syntax, SyntaxCollection, TokenKind},
     theme::{pico8_theme, Theme},
 };
+
+pub enum ParseConfigError {
+    ConfigNotFound(String),
+    ParseError(String, Box<dyn fmt::Display>),
+    UnexpectedEndOfValues(String),
+}
+
+impl fmt::Display for ParseConfigError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::ConfigNotFound(name) => write!(f, "could not find config '{}'", name),
+            Self::ParseError(name, e) => write!(f, "config '{}' parse error: {}", name, e),
+            Self::UnexpectedEndOfValues(name) => {
+                write!(f, "unexpected end of values for config '{}'", name)
+            }
+        }
+    }
+}
 
 pub struct Config {
     pub theme: Theme,
@@ -24,23 +42,23 @@ impl Config {
     pub fn parse_and_set<'a>(
         &mut self,
         name: &str,
-        mut values: impl Iterator<Item = &'a str>,
-    ) -> Result<(), String> {
-        fn parse<T>(value: &str) -> Result<T, String>
+        values: &mut impl Iterator<Item = &'a str>,
+    ) -> Result<(), ParseConfigError> {
+        fn parse<T>(name: &str, value: &str) -> Result<T, ParseConfigError>
         where
             T: FromStr,
-            T::Err: Display,
+            T::Err: 'static + fmt::Display,
         {
             value
                 .parse()
-                .map_err(|e: T::Err| format!("{} in '{}'", e, value))
+                .map_err(|e| ParseConfigError::ParseError(name.into(), Box::new(e)))
         }
 
         macro_rules! parse_next {
             () => {
                 match values.next() {
-                    Some(value) => parse(value)?,
-                    None => return Err("unexpected end of value".into()),
+                    Some(value) => parse(name, value)?,
+                    None => return Err(ParseConfigError::UnexpectedEndOfValues(name.into())),
                 }
             };
         }
@@ -49,7 +67,7 @@ impl Config {
             ($($name:ident = $value:expr,)*) => {
                 match name {
                     $(stringify!($name) => self.$name = $value,)*
-                    _ => return Err(format!("could not find config '{}'", name)),
+                    _ => return Err(ParseConfigError::ConfigNotFound(name.into())),
                 }
             }
         }
@@ -61,11 +79,7 @@ impl Config {
             vusual_tab = (parse_next!(), parse_next!()),
         }
 
-        if let None = values.next() {
-            Ok(())
-        } else {
-            Err(format!("too many values for config '{}'", name))
-        }
+        Ok(())
     }
 }
 
