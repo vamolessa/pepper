@@ -18,6 +18,21 @@ pub enum TokenKind {
     Literal,
 }
 
+impl TokenKind {
+    pub fn from_str(text: &str) -> Option<Self> {
+        match text {
+            "text" => Some(Self::Text),
+            "comment" => Some(Self::Comment),
+            "keyword" => Some(Self::Keyword),
+            "type" => Some(Self::Type),
+            "symbol" => Some(Self::Symbol),
+            "string" => Some(Self::String),
+            "literal" => Some(Self::Literal),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Token {
     pub kind: TokenKind,
@@ -42,9 +57,9 @@ pub struct Syntax {
 }
 
 impl Syntax {
-    pub fn new() -> Self {
+    pub fn with_extension(extension: String) -> Self {
         Self {
-            extensions: Vec::new(),
+            extensions: vec![extension],
             rules: Vec::new(),
         }
     }
@@ -167,8 +182,10 @@ pub struct SyntaxCollection {
 }
 
 impl SyntaxCollection {
-    pub fn add(&mut self, syntax: Syntax) {
+    pub fn add(&mut self, syntax: Syntax) -> SyntaxHandle {
+        let handle = SyntaxHandle(self.syntaxes.len());
         self.syntaxes.push(syntax);
+        handle
     }
 
     pub fn find_by_extension(&self, extension: &str) -> Option<SyntaxHandle> {
@@ -185,6 +202,10 @@ impl SyntaxCollection {
 
     pub fn get(&self, handle: SyntaxHandle) -> &Syntax {
         &self.syntaxes[handle.0]
+    }
+
+    pub fn get_mut(&mut self, handle: SyntaxHandle) -> &mut Syntax {
+        &mut self.syntaxes[handle.0]
     }
 }
 
@@ -309,7 +330,7 @@ mod tests {
 
     #[test]
     fn test_no_syntax() {
-        let syntax = Syntax::new();
+        let syntax = Syntax::with_extension("".into());
         let mut tokens = Vec::new();
         let line = " fn main() ;  ";
         let line_kind = syntax.parse_line(line, LineKind::Finished, &mut tokens);
@@ -321,7 +342,7 @@ mod tests {
 
     #[test]
     fn test_one_rule_syntax() {
-        let mut syntax = Syntax::new();
+        let mut syntax = Syntax::with_extension("".into());
         syntax.add_rule(TokenKind::Symbol, Pattern::new(";").unwrap());
 
         let mut tokens = Vec::new();
@@ -340,7 +361,7 @@ mod tests {
 
     #[test]
     fn test_simple_syntax() {
-        let mut syntax = Syntax::new();
+        let mut syntax = Syntax::with_extension("".into());
         syntax.add_rule(TokenKind::Keyword, Pattern::new("fn").unwrap());
         syntax.add_rule(TokenKind::Symbol, Pattern::new("%(").unwrap());
         syntax.add_rule(TokenKind::Symbol, Pattern::new("%)").unwrap());
@@ -361,7 +382,7 @@ mod tests {
 
     #[test]
     fn test_multiline_syntax() {
-        let mut syntax = Syntax::new();
+        let mut syntax = Syntax::with_extension("".into());
         syntax.add_rule(TokenKind::Comment, Pattern::new("/*{!(*/).$}").unwrap());
 
         let mut tokens = Vec::new();

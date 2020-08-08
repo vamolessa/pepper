@@ -17,6 +17,21 @@ pub enum PatternError {
     GroupWithElementsOfDifferentSize,
 }
 
+impl fmt::Display for PatternError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::UnexpectedEndOfPattern => write!(f, "unexpected end of pattern"),
+            Self::Expected(c) => write!(f, "expected character '{}'", c),
+            Self::InvalidEscaping(c) => write!(f, "invalid escaping '%{}'", c),
+            Self::Unescaped(c) => write!(f, "unescaped character '{}'", c),
+            Self::EmptyGroup => write!(f, "empty pattern group"),
+            Self::GroupWithElementsOfDifferentSize => {
+                write!(f, "pattern group has elements of different size")
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PatternState {
     op_index: usize,

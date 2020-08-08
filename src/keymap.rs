@@ -11,6 +11,11 @@ pub enum MatchResult<'a> {
     ReplaceWith(&'a [Key]),
 }
 
+pub enum ParseKeyMapError {
+    From(usize, KeyParseError),
+    To(usize, KeyParseError),
+}
+
 struct KeyMap {
     from: Vec<Key>,
     to: Vec<Key>,
@@ -27,8 +32,8 @@ impl KeyMapCollection {
         mode: Discriminant<Mode>,
         from: &str,
         to: &str,
-    ) -> Result<(), String> {
-        fn parse_keys(text: &str) -> Result<Vec<Key>, String> {
+    ) -> Result<(), ParseKeyMapError> {
+        fn parse_keys(text: &str) -> Result<Vec<Key>, (usize, KeyParseError)> {
             let mut keys = Vec::new();
 
             let mut chars = text.chars().peekable();
@@ -36,16 +41,9 @@ impl KeyMapCollection {
                 match Key::parse(&mut chars) {
                     Ok(key) => keys.push(key),
                     Err(error) => {
-                        let (before, after) = text.split_at(text.len() - chars.count());
-                        let message = match error {
-                            KeyParseError::UnexpectedEnd => {
-                                format!("could not parse key at '{}' <- here '{}", before, after)
-                            }
-                            KeyParseError::InvalidCharacter(c) => {
-                                format!("invalid char '{}' at '{}' <- here '{}'", c, before, after)
-                            }
-                        };
-                        return Err(message);
+                        let chars_len: usize = chars.map(|c| c.len_utf8()).sum();
+                        let error_index = text.len() - chars_len;
+                        return Err((error_index, error));
                     }
                 }
             }
@@ -54,8 +52,8 @@ impl KeyMapCollection {
         }
 
         let map = KeyMap {
-            from: parse_keys(from)?,
-            to: parse_keys(to)?,
+            from: parse_keys(from).map_err(|(i, e)| ParseKeyMapError::From(i, e))?,
+            to: parse_keys(to).map_err(|(i, e)| ParseKeyMapError::To(i, e))?,
         };
 
         self.maps.entry(mode).or_insert_with(Vec::new).push(map);

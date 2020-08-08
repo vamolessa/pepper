@@ -1,3 +1,5 @@
+use std::fmt;
+
 use serde_derive::{Deserialize, Serialize};
 
 use crate::event_manager::ConnectionEvent;
@@ -36,6 +38,15 @@ pub enum Key {
 pub enum KeyParseError {
     UnexpectedEnd,
     InvalidCharacter(char),
+}
+
+impl fmt::Display for KeyParseError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::UnexpectedEnd => write!(f, "could not finish parsing key"),
+            Self::InvalidCharacter(c) => write!(f, "invalid character {}", c),
+        }
+    }
 }
 
 impl Key {

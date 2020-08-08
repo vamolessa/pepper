@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    fmt,
     fs::File,
     io::Read,
     ops::Range,
@@ -12,8 +13,10 @@ use crate::{
     config::Config,
     connection::TargetClient,
     editor::{EditorOperation, EditorOperationSender},
-    keymap::KeyMapCollection,
+    keymap::{KeyMapCollection, ParseKeyMapError},
     mode::Mode,
+    pattern::Pattern,
+    syntax::{Syntax, TokenKind},
 };
 
 type CommandResult = Result<CommandOperation, String>;
@@ -105,16 +108,17 @@ impl Default for CommandCollection {
             commands: HashMap::new(),
         };
 
-        this.register("quit".into(), commands::quit);
-        this.register("edit".into(), commands::edit);
-        this.register("close".into(), commands::close);
-        this.register("write".into(), commands::write);
-        this.register("write-all".into(), commands::write_all);
+        macro_rules! register_all {
+            ($($name:ident,)*) => {
+                $(this.register(stringify!($name).replace('_', "-"), commands::$name);)*
+            }
+        }
 
-        this.register("set".into(), commands::set);
-        this.register("nmap".into(), commands::nmap);
-        this.register("smap".into(), commands::smap);
-        this.register("imap".into(), commands::imap);
+        register_all! {
+            quit, edit, close, write, write_all,
+            set, syntax,
+            nmap, smap, imap,
+        }
 
         this
     }
@@ -147,6 +151,19 @@ impl CommandCollection {
 
 mod helper {
     use super::*;
+
+    pub fn parsing_error<T>(message: T, text: &str, error_index: usize) -> String
+    where
+        T: fmt::Display,
+    {
+        let (before, after) = text.split_at(error_index);
+        match (before.len(), after.len()) {
+            (0, 0) => format!("{} at ''", message),
+            (_, 0) => format!("{} at '{}' <- here", message, before),
+            (0, _) => format!("{} at here -> '{}'", message, after),
+            (_, _) => format!("{} at '{}' <- here '{}'", message, before, after),
+        }
+    }
 
     pub fn new_buffer_from_content(
         ctx: &mut CommandContext,
@@ -331,6 +348,39 @@ mod commands {
         Ok(CommandOperation::Complete)
     }
 
+    pub fn syntax(ctx: CommandContext, mut args: CommandArgs) -> CommandResult {
+        let extension = args.expect_next()?;
+        let handle = match ctx.config.syntaxes.find_by_extension(extension) {
+            Some(handle) => handle,
+            None => ctx
+                .config
+                .syntaxes
+                .add(Syntax::with_extension(extension.into())),
+        };
+        let syntax = ctx.config.syntaxes.get_mut(handle);
+
+        let subcommand = args.expect_next()?;
+        if subcommand == "extension" {
+            for extension in args {
+                syntax.add_extension(extension.into());
+            }
+        } else if let Some(token_kind) = TokenKind::from_str(subcommand) {
+            for pattern in args {
+                syntax.add_rule(
+                    token_kind,
+                    Pattern::new(pattern).map_err(|e| helper::parsing_error(e, pattern, 0))?,
+                );
+            }
+        } else {
+            return Err(format!(
+                "no such subcommand '{}'. expected either 'extension' or a token kind",
+                subcommand
+            ));
+        }
+
+        Ok(CommandOperation::Complete)
+    }
+
     pub fn nmap(ctx: CommandContext, args: CommandArgs) -> CommandResult {
         mode_map(ctx, args, Mode::Normal)
     }
@@ -348,7 +398,10 @@ mod commands {
         let to = args.expect_next()?;
         args.assert_empty()?;
 
-        ctx.keymaps.parse_map(mode.discriminant(), from, to)?;
-        Ok(CommandOperation::Complete)
+        match ctx.keymaps.parse_map(mode.discriminant(), from, to) {
+            Ok(()) => Ok(CommandOperation::Complete),
+            Err(ParseKeyMapError::From(i, e)) => Err(helper::parsing_error(e, from, i)),
+            Err(ParseKeyMapError::To(i, e)) => Err(helper::parsing_error(e, to, i)),
+        }
     }
 }

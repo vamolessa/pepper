@@ -40,20 +40,32 @@ impl Config {
             () => {
                 match values.next() {
                     Some(value) => parse(value)?,
-                    None => return Err("expected value".into()),
+                    None => return Err("unexpected end of value".into()),
                 }
             };
         }
 
-        match name {
-            "tab_size" => self.tab_size = parse_next!(),
-            "visualize_empty" => self.visualize_empty = parse_next!(),
-            "visualize_space" => self.visualize_space = parse_next!(),
-            "visualize_tab" => self.visualize_tab = (parse_next!(), parse_next!()),
-            _ => return Err(format!("could not find config '{}'", name)),
+        macro_rules! match_and_parse {
+            ($($name:ident = $value:expr,)*) => {
+                match name {
+                    $(stringify!($name) => self.$name = $value,)*
+                    _ => return Err(format!("could not find config '{}'", name)),
+                }
+            }
         }
 
-        Ok(())
+        match_and_parse! {
+            tab_size = parse_next!(),
+            visualize_empty = parse_next!(),
+            visualize_space = parse_next!(),
+            visualize_tab = (parse_next!(), parse_next!()),
+        }
+
+        if let None = values.next() {
+            Ok(())
+        } else {
+            Err(format!("too many values for config '{}'", name))
+        }
     }
 }
 
@@ -78,9 +90,7 @@ fn default_syntaxes() -> SyntaxCollection {
 }
 
 fn toml_syntax() -> Syntax {
-    let mut syntax = Syntax::new();
-    syntax.add_extension("toml".into());
-
+    let mut syntax = Syntax::with_extension("toml".into());
     syntax.add_rule(TokenKind::Symbol, Pattern::new("=").unwrap());
     syntax.add_rule(TokenKind::Keyword, Pattern::new("%[{%w!%]}").unwrap());
     syntax.add_rule(TokenKind::Keyword, Pattern::new("%[%[{%w!%]}%]").unwrap());
@@ -90,8 +100,7 @@ fn toml_syntax() -> Syntax {
 }
 
 fn rust_syntax() -> Syntax {
-    let mut syntax = Syntax::new();
-    syntax.add_extension("rs".into());
+    let mut syntax = Syntax::with_extension("rs".into());
 
     for keyword in &[
         "fn", "let", "if", "while", "for", "return", "mod", "use", "as", "in", "enum", "struct",
