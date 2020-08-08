@@ -7,19 +7,17 @@ use crate::{
 };
 
 pub enum ParseConfigError {
-    ConfigNotFound(String),
-    ParseError(String, Box<dyn fmt::Display>),
-    UnexpectedEndOfValues(String),
+    ConfigNotFound,
+    ParseError(Box<dyn fmt::Display>),
+    UnexpectedEndOfValues,
 }
 
 impl fmt::Display for ParseConfigError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::ConfigNotFound(name) => write!(f, "could not find config '{}'", name),
-            Self::ParseError(name, e) => write!(f, "config '{}' parse error: {}", name, e),
-            Self::UnexpectedEndOfValues(name) => {
-                write!(f, "unexpected end of values for config '{}'", name)
-            }
+            Self::ConfigNotFound => write!(f, "could not find config"),
+            Self::ParseError(e) => write!(f, "config parse error: {}", e),
+            Self::UnexpectedEndOfValues => write!(f, "unexpected end of values for config"),
         }
     }
 }
@@ -44,21 +42,21 @@ impl Config {
         name: &str,
         values: &mut impl Iterator<Item = &'a str>,
     ) -> Result<(), ParseConfigError> {
-        fn parse<T>(name: &str, value: &str) -> Result<T, ParseConfigError>
+        fn parse<T>(value: &str) -> Result<T, ParseConfigError>
         where
             T: FromStr,
             T::Err: 'static + fmt::Display,
         {
             value
                 .parse()
-                .map_err(|e| ParseConfigError::ParseError(name.into(), Box::new(e)))
+                .map_err(|e| ParseConfigError::ParseError(Box::new(e)))
         }
 
         macro_rules! parse_next {
             () => {
                 match values.next() {
-                    Some(value) => parse(name, value)?,
-                    None => return Err(ParseConfigError::UnexpectedEndOfValues(name.into())),
+                    Some(value) => parse(value)?,
+                    None => return Err(ParseConfigError::UnexpectedEndOfValues),
                 }
             };
         }
@@ -67,7 +65,7 @@ impl Config {
             ($($name:ident = $value:expr,)*) => {
                 match name {
                     $(stringify!($name) => self.$name = $value,)*
-                    _ => return Err(ParseConfigError::ConfigNotFound(name.into())),
+                    _ => return Err(ParseConfigError::ConfigNotFound),
                 }
             }
         }

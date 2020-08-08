@@ -10,13 +10,14 @@ use std::{
 use crate::{
     buffer::{Buffer, BufferCollection, BufferContent},
     buffer_view::{BufferView, BufferViewCollection, BufferViewHandle},
-    config::Config,
+    config::{Config, ParseConfigError},
     connection::TargetClient,
     editor::{EditorOperation, EditorOperationSender},
     keymap::{KeyMapCollection, ParseKeyMapError},
     mode::Mode,
     pattern::Pattern,
     syntax::{Syntax, TokenKind},
+    theme::ParseThemeError,
 };
 
 type CommandResult = Result<CommandOperation, String>;
@@ -108,7 +109,7 @@ impl Default for CommandCollection {
 
         register_all! {
             quit, edit, close, write, write_all,
-            set, syntax,
+            set, syntax, theme,
             nmap, smap, imap,
         }
 
@@ -354,7 +355,13 @@ mod commands {
                 helper::assert_empty(args)?;
                 Ok(CommandOperation::Complete)
             }
-            Err(e) => Err(helper::parsing_error(e, previous, 0)),
+            Err(e) => match e {
+                ParseConfigError::ConfigNotFound => Err(helper::parsing_error(e, name, 0)),
+                ParseConfigError::ParseError(e) => Err(helper::parsing_error(e, previous, 0)),
+                ParseConfigError::UnexpectedEndOfValues => {
+                    Err(helper::parsing_error(e, previous, previous.len()))
+                }
+            },
         }
     }
 
@@ -389,6 +396,25 @@ mod commands {
         }
 
         Ok(CommandOperation::Complete)
+    }
+
+    pub fn theme(ctx: CommandContext, mut args: CommandArgs) -> CommandResult {
+        let name = args.expect_next()?;
+        let color = args.expect_next()?;
+        helper::assert_empty(args)?;
+
+        match ctx.config.theme.parse_and_set(name, color) {
+            Ok(()) => Ok(CommandOperation::Complete),
+            Err(e) => {
+                let context = format!("{} {}", name, color);
+                match e {
+                    ParseThemeError::ColorNotFound => {
+                        Err(helper::parsing_error(e, &context[..], 0))
+                    }
+                    _ => Err(helper::parsing_error(e, &context[..], context.len())),
+                }
+            }
+        }
     }
 
     pub fn nmap(ctx: CommandContext, args: CommandArgs) -> CommandResult {
