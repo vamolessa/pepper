@@ -287,15 +287,15 @@ where
                     x += 1;
                 }
                 ' ' => {
-                    handle_command!(write, Print(client.config.visualize_space))?;
+                    handle_command!(write, Print(client.config.visual_space))?;
                     x += 1;
                 }
                 '\t' => {
-                    handle_command!(write, Print(client.config.visualize_tab.0))?;
+                    handle_command!(write, Print(client.config.vusual_tab.0))?;
                     let tab_size = client.config.tab_size.get() as u16;
                     let next_tab_stop = (tab_size - 1) - x % tab_size;
                     for _ in 0..next_tab_stop {
-                        handle_command!(write, Print(client.config.visualize_tab.1))?;
+                        handle_command!(write, Print(client.config.vusual_tab.1))?;
                     }
                     x += tab_size;
                 }
@@ -326,7 +326,7 @@ where
     handle_command!(write, SetBackgroundColor(background_color))?;
     handle_command!(write, SetForegroundColor(token_whitespace_color))?;
     for _ in drawn_line_count..(height - 1) {
-        handle_command!(write, Print(client.config.visualize_empty))?;
+        handle_command!(write, Print(client.config.visual_empty))?;
         handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
         handle_command!(write, cursor::MoveToNextLine(1))?;
     }

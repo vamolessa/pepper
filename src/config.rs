@@ -11,9 +11,9 @@ pub struct Config {
     pub syntaxes: SyntaxCollection,
 
     pub tab_size: NonZeroUsize,
-    pub visualize_empty: char,
-    pub visualize_space: char,
-    pub visualize_tab: (char, char),
+    pub visual_empty: char,
+    pub visual_space: char,
+    pub vusual_tab: (char, char),
 }
 
 impl Config {
@@ -56,9 +56,9 @@ impl Config {
 
         match_and_parse! {
             tab_size = parse_next!(),
-            visualize_empty = parse_next!(),
-            visualize_space = parse_next!(),
-            visualize_tab = (parse_next!(), parse_next!()),
+            visual_empty = parse_next!(),
+            visual_space = parse_next!(),
+            vusual_tab = (parse_next!(), parse_next!()),
         }
 
         if let None = values.next() {
@@ -75,9 +75,9 @@ impl Default for Config {
             theme: pico8_theme(),
             syntaxes: default_syntaxes(),
             tab_size: NonZeroUsize::new(4).unwrap(),
-            visualize_empty: '~',
-            visualize_space: '.',
-            visualize_tab: ('|', ' '),
+            visual_empty: '~',
+            visual_space: '.',
+            vusual_tab: ('|', ' '),
         }
     }
 }
