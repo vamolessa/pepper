@@ -32,7 +32,7 @@ pub struct Client {
 impl Client {
     pub fn new() -> Self {
         let mut config = Config::default();
-        config.load();
+        //config.load();
 
         Self {
             config,

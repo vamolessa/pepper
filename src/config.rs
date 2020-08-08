@@ -1,6 +1,7 @@
-use std::{fmt, num::NonZeroUsize, str::FromStr};
+use std::{env, fmt, fs::File, io::Read, num::NonZeroUsize, path::PathBuf, str::FromStr};
 
 use crate::{
+    command::{CommandCollection, CommandContext},
     pattern::Pattern,
     syntax::{Syntax, SyntaxCollection, TokenKind},
     theme::{pico8_theme, Theme},
@@ -33,8 +34,38 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn load(&mut self) {
-        //
+    pub fn load(
+        &mut self,
+        commands: &CommandCollection,
+        ctx: CommandContext,
+    ) -> Result<(), String> {
+        let path = match env::var("PEPPERC") {
+            Ok(path) => PathBuf::from(path)
+                .canonicalize()
+                .map_err(|e| e.to_string())?,
+            Err(_) => return Ok(()),
+        };
+        let mut file = match File::open(&path) {
+            Ok(file) => file,
+            Err(e) => return Err(e.to_string()),
+        };
+        let mut contents = String::with_capacity(2 * 1024);
+        file.read_to_string(&mut contents)
+            .map_err(|e| e.to_string())?;
+
+        for (i, line) in contents
+            .lines()
+            .enumerate()
+            .filter(|(_, l)| l.starts_with('#'))
+        {
+            /*
+            commands
+                .parse_and_execute(ctx, line)
+                .map_err(|e| format!("error at {:?}:{} {}", path, i + 1, e))?;
+                */
+        }
+
+        Ok(())
     }
 
     pub fn parse_and_set<'a>(
