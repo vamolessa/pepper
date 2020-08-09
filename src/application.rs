@@ -157,8 +157,11 @@ where
                 match event {
                     ConnectionEvent::NewConnection => {
                         let handle = connections.accept_connection(&event_registry)?;
-                        editor
-                            .on_client_joined(TargetClient::Remote(handle), &mut editor_operations);
+                        editor.on_client_joined(
+                            TargetClient::Remote(handle),
+                            &local_client.config,
+                            &mut editor_operations,
+                        );
                         connections.listen_next_listener_event(&event_registry)?;
                     }
                     ConnectionEvent::Stream(stream_id) => {

@@ -14,7 +14,7 @@ use crate::{
     keymap::{KeyMapCollection, MatchResult},
     mode::{Mode, ModeContext, ModeOperation},
     pattern::Pattern,
-    syntax::TokenKind,
+    syntax::{SyntaxCollection, TokenKind},
     theme::Theme,
 };
 
@@ -79,6 +79,34 @@ impl EditorOperationSender {
         self.send_empty_content(target_client);
         if content.write(&mut self.write_content_buf).is_err() {
             self.write_content_buf.clear();
+        }
+    }
+
+    pub fn send_syntaxes(&mut self, target_client: TargetClient, syntaxes: &SyntaxCollection) {
+        for syntax in syntaxes.iter() {
+            let mut extensions = syntax.extensions();
+            let main_extension = match extensions.next() {
+                Some(ext) => ext,
+                None => continue,
+            };
+
+            self.send(
+                target_client,
+                EditorOperation::SyntaxExtension(main_extension.into(), main_extension.into()),
+            );
+            for extension in extensions {
+                self.send(
+                    target_client,
+                    EditorOperation::SyntaxExtension(main_extension.into(), extension.into()),
+                );
+            }
+
+            for (token_kind, pattern) in syntax.rules() {
+                self.send(
+                    target_client,
+                    EditorOperation::SyntaxRule(main_extension.into(), token_kind, pattern.clone()),
+                );
+            }
         }
     }
 
@@ -151,6 +179,7 @@ impl Editor {
     pub fn on_client_joined(
         &mut self,
         target_client: TargetClient,
+        config: &Config,
         operations: &mut EditorOperationSender,
     ) {
         let buffer_view_handle = match self.focused_client {
@@ -174,6 +203,12 @@ impl Editor {
         for c in self.input.chars() {
             operations.send(target_client, EditorOperation::InputAppend(c));
         }
+        operations.send(
+            target_client,
+            EditorOperation::ConfigValues(config.values.clone()),
+        );
+        operations.send(target_client, EditorOperation::Theme(config.theme.clone()));
+        operations.send_syntaxes(target_client, &config.syntaxes);
 
         let buffer_view = match self.focused_client {
             TargetClient::All => unreachable!(),

@@ -75,6 +75,14 @@ impl Syntax {
         self.rules.push((kind, pattern));
     }
 
+    pub fn extensions(&self) -> impl Iterator<Item = &str> {
+        self.extensions.iter().map(|e| &e[..])
+    }
+
+    pub fn rules(&self) -> impl Iterator<Item = (TokenKind, &Pattern)> {
+        self.rules.iter().map(|(t, p)| (*t, p))
+    }
+
     fn parse_line(
         &self,
         line: &str,
@@ -212,6 +220,10 @@ impl SyntaxCollection {
 
     pub fn get(&self, handle: SyntaxHandle) -> &Syntax {
         &self.syntaxes[handle.0]
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Syntax> {
+        self.syntaxes.iter()
     }
 }
 

@@ -402,7 +402,8 @@ mod commands {
             },
         }?;
 
-        ctx.operations.send(TargetClient::All, EditorOperation::ConfigValues(values));
+        ctx.operations
+            .send(TargetClient::All, EditorOperation::ConfigValues(values));
         Ok(())
     }
 
@@ -453,7 +454,8 @@ mod commands {
             return Err(helper::parsing_error(e, &context[..], error_index));
         }
 
-        ctx.operations.send(TargetClient::All, EditorOperation::Theme(theme));
+        ctx.operations
+            .send(TargetClient::All, EditorOperation::Theme(theme));
         Ok(())
     }
 
