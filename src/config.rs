@@ -1,7 +1,7 @@
 use std::{env, fmt, fs::File, io::Read, num::NonZeroUsize, path::PathBuf, str::FromStr};
 
 use crate::{
-    command::{CommandCollection, CommandContext},
+    command::{CommandCollection, FullCommandContext},
     pattern::Pattern,
     syntax::{Syntax, SyntaxCollection, TokenKind},
     theme::{pico8_theme, Theme},
@@ -37,7 +37,7 @@ impl Config {
     pub fn load(
         &mut self,
         commands: &CommandCollection,
-        ctx: CommandContext,
+        ctx: FullCommandContext,
     ) -> Result<(), String> {
         let path = match env::var("PEPPERC") {
             Ok(path) => PathBuf::from(path)

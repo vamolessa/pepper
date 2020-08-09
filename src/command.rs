@@ -20,14 +20,15 @@ use crate::{
     theme::ParseThemeError,
 };
 
-type CommandResult = Result<CommandOperation, String>;
+type FullCommandResult = Result<CommandOperation, String>;
+type ConfigCommandResult = Result<(), String>;
 
 pub enum CommandOperation {
     Complete,
     Quit,
 }
 
-pub struct CommandContext<'a> {
+pub struct FullCommandContext<'a> {
     pub target_client: TargetClient,
     pub operations: &'a mut EditorOperationSender,
 
@@ -38,7 +39,13 @@ pub struct CommandContext<'a> {
     pub current_buffer_view_handle: &'a mut Option<BufferViewHandle>,
 }
 
-type CommandBody = fn(CommandContext, CommandArgs) -> CommandResult;
+pub struct ConfigCommandContext<'a> {
+    pub config: &'a mut Config,
+    pub keymaps: &'a mut KeyMapCollection,
+}
+
+type FullCommandBody = fn(FullCommandContext, CommandArgs) -> FullCommandResult;
+type ConfigCommandBody = fn(ConfigCommandContext, CommandArgs) -> ConfigCommandResult;
 
 pub struct CommandArgs<'a> {
     raw: &'a str,
@@ -92,23 +99,34 @@ impl<'a> Iterator for CommandArgs<'a> {
 }
 
 pub struct CommandCollection {
-    commands: HashMap<String, CommandBody>,
+    full_commands: HashMap<String, FullCommandBody>,
+    config_commands: HashMap<String, ConfigCommandBody>,
 }
 
 impl Default for CommandCollection {
     fn default() -> Self {
         let mut this = Self {
-            commands: HashMap::new(),
+            full_commands: HashMap::new(),
+            config_commands: HashMap::new(),
         };
 
-        macro_rules! register_all {
+        macro_rules! register_full_commands {
             ($($name:ident,)*) => {
-                $(this.register(stringify!($name).replace('_', "-"), commands::$name);)*
+                $(this.register_full_command(stringify!($name).replace('_', "-"), commands::$name);)*
             }
         }
 
-        register_all! {
+        macro_rules! register_config_commands {
+            ($($name:ident,)*) => {
+                $(this.register_config_command(stringify!($name).replace('_', "-"), commands::$name);)*
+            }
+        }
+
+        register_full_commands! {
             quit, edit, close, write, write_all,
+        }
+
+        register_config_commands! {
             set, syntax, theme,
             nmap, smap, imap,
         }
@@ -118,11 +136,19 @@ impl Default for CommandCollection {
 }
 
 impl CommandCollection {
-    pub fn register(&mut self, name: String, body: CommandBody) {
-        self.commands.insert(name, body);
+    pub fn register_full_command(&mut self, name: String, body: FullCommandBody) {
+        self.full_commands.insert(name, body);
     }
 
-    pub fn parse_and_execute(&self, ctx: CommandContext, command: &str) -> CommandResult {
+    pub fn register_config_command(&mut self, name: String, body: ConfigCommandBody) {
+        self.config_commands.insert(name, body);
+    }
+
+    pub fn parse_and_execut_config_command(
+        &self,
+        ctx: ConfigCommandContext,
+        command: &str,
+    ) -> ConfigCommandResult {
         let command = command.trim();
         let name;
         let args;
@@ -134,8 +160,37 @@ impl CommandCollection {
             args = CommandArgs::new("");
         }
 
-        if let Some(command) = self.commands.get(name) {
+        if let Some(command) = self.config_commands.get(name) {
             command(ctx, args)
+        } else {
+            Err(format!("command '{}' not found", name))
+        }
+    }
+
+    pub fn parse_and_execute_all(
+        &self,
+        ctx: FullCommandContext,
+        command: &str,
+    ) -> FullCommandResult {
+        let command = command.trim();
+        let name;
+        let args;
+        if let Some(index) = command.find(' ') {
+            name = &command[..index];
+            args = CommandArgs::new(&command[(index + 1)..]);
+        } else {
+            name = command;
+            args = CommandArgs::new("");
+        }
+
+        if let Some(command) = self.full_commands.get(name) {
+            command(ctx, args)
+        } else if let Some(command) = self.config_commands.get(name) {
+            let ctx = ConfigCommandContext {
+                config: ctx.config,
+                keymaps: ctx.keymaps,
+            };
+            command(ctx, args).map(|_| CommandOperation::Complete)
         } else {
             Err(format!("command '{}' not found", name))
         }
@@ -166,7 +221,7 @@ mod helper {
     }
 
     pub fn new_buffer_from_content(
-        ctx: &mut CommandContext,
+        ctx: &mut FullCommandContext,
         path: Option<PathBuf>,
         content: BufferContent,
     ) {
@@ -180,7 +235,7 @@ mod helper {
         *ctx.current_buffer_view_handle = Some(buffer_view_handle);
     }
 
-    pub fn new_buffer_from_file(ctx: &mut CommandContext, path: &Path) -> Result<(), String> {
+    pub fn new_buffer_from_file(ctx: &mut FullCommandContext, path: &Path) -> Result<(), String> {
         if let Some(buffer_handle) = ctx.buffers.find_with_path(path) {
             let mut iter = ctx
                 .buffer_views
@@ -258,19 +313,19 @@ mod helper {
 mod commands {
     use super::*;
 
-    pub fn quit(_ctx: CommandContext, args: CommandArgs) -> CommandResult {
+    pub fn quit(_ctx: FullCommandContext, args: CommandArgs) -> FullCommandResult {
         helper::assert_empty(args)?;
         Ok(CommandOperation::Quit)
     }
 
-    pub fn edit(mut ctx: CommandContext, mut args: CommandArgs) -> CommandResult {
+    pub fn edit(mut ctx: FullCommandContext, mut args: CommandArgs) -> FullCommandResult {
         let path = Path::new(args.expect_next()?);
         helper::assert_empty(args)?;
         helper::new_buffer_from_file(&mut ctx, path)?;
         Ok(CommandOperation::Complete)
     }
 
-    pub fn close(ctx: CommandContext, args: CommandArgs) -> CommandResult {
+    pub fn close(ctx: FullCommandContext, args: CommandArgs) -> FullCommandResult {
         helper::assert_empty(args)?;
         if let Some(handle) = ctx
             .current_buffer_view_handle
@@ -291,7 +346,7 @@ mod commands {
         Ok(CommandOperation::Complete)
     }
 
-    pub fn write(ctx: CommandContext, mut args: CommandArgs) -> CommandResult {
+    pub fn write(ctx: FullCommandContext, mut args: CommandArgs) -> FullCommandResult {
         let view_handle = ctx
             .current_buffer_view_handle
             .as_ref()
@@ -331,7 +386,7 @@ mod commands {
         }
     }
 
-    pub fn write_all(ctx: CommandContext, args: CommandArgs) -> CommandResult {
+    pub fn write_all(ctx: FullCommandContext, args: CommandArgs) -> FullCommandResult {
         helper::assert_empty(args)?;
         for buffer in ctx.buffers.iter() {
             if let Some(ref path) = buffer.path {
@@ -342,7 +397,7 @@ mod commands {
         Ok(CommandOperation::Complete)
     }
 
-    pub fn set(ctx: CommandContext, mut args: CommandArgs) -> CommandResult {
+    pub fn set(ctx: ConfigCommandContext, mut args: CommandArgs) -> ConfigCommandResult {
         let name = args.expect_next()?;
         let mut previous = "";
         let mut args = args.map(|a| {
@@ -351,10 +406,7 @@ mod commands {
         });
 
         match ctx.config.parse_and_set(name, &mut args) {
-            Ok(()) => {
-                helper::assert_empty(args)?;
-                Ok(CommandOperation::Complete)
-            }
+            Ok(()) => helper::assert_empty(args),
             Err(e) => match e {
                 ParseConfigError::ConfigNotFound => Err(helper::parsing_error(e, name, 0)),
                 ParseConfigError::ParseError(e) => Err(helper::parsing_error(e, previous, 0)),
@@ -365,7 +417,7 @@ mod commands {
         }
     }
 
-    pub fn syntax(ctx: CommandContext, mut args: CommandArgs) -> CommandResult {
+    pub fn syntax(ctx: ConfigCommandContext, mut args: CommandArgs) -> ConfigCommandResult {
         let extension = args.expect_next()?;
         let handle = match ctx.config.syntaxes.find_by_extension(extension) {
             Some(handle) => handle,
@@ -395,16 +447,16 @@ mod commands {
             ));
         }
 
-        Ok(CommandOperation::Complete)
+        Ok(())
     }
 
-    pub fn theme(ctx: CommandContext, mut args: CommandArgs) -> CommandResult {
+    pub fn theme(ctx: ConfigCommandContext, mut args: CommandArgs) -> ConfigCommandResult {
         let name = args.expect_next()?;
         let color = args.expect_next()?;
         helper::assert_empty(args)?;
 
         match ctx.config.theme.parse_and_set(name, color) {
-            Ok(()) => Ok(CommandOperation::Complete),
+            Ok(()) => Ok(()),
             Err(e) => {
                 let context = format!("{} {}", name, color);
                 match e {
@@ -417,25 +469,29 @@ mod commands {
         }
     }
 
-    pub fn nmap(ctx: CommandContext, args: CommandArgs) -> CommandResult {
+    pub fn nmap(ctx: ConfigCommandContext, args: CommandArgs) -> ConfigCommandResult {
         mode_map(ctx, args, Mode::Normal)
     }
 
-    pub fn smap(ctx: CommandContext, args: CommandArgs) -> CommandResult {
+    pub fn smap(ctx: ConfigCommandContext, args: CommandArgs) -> ConfigCommandResult {
         mode_map(ctx, args, Mode::Select)
     }
 
-    pub fn imap(ctx: CommandContext, args: CommandArgs) -> CommandResult {
+    pub fn imap(ctx: ConfigCommandContext, args: CommandArgs) -> ConfigCommandResult {
         mode_map(ctx, args, Mode::Insert)
     }
 
-    fn mode_map(ctx: CommandContext, mut args: CommandArgs, mode: Mode) -> CommandResult {
+    fn mode_map(
+        ctx: ConfigCommandContext,
+        mut args: CommandArgs,
+        mode: Mode,
+    ) -> ConfigCommandResult {
         let from = args.expect_next()?;
         let to = args.expect_next()?;
         helper::assert_empty(args)?;
 
         match ctx.keymaps.parse_map(mode.discriminant(), from, to) {
-            Ok(()) => Ok(CommandOperation::Complete),
+            Ok(()) => Ok(()),
             Err(ParseKeyMapError::From(i, e)) => Err(helper::parsing_error(e, from, i)),
             Err(ParseKeyMapError::To(i, e)) => Err(helper::parsing_error(e, to, i)),
         }
