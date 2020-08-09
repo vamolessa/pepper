@@ -144,22 +144,21 @@ impl CommandCollection {
         self.config_commands.insert(name, body);
     }
 
+    fn split_name_and_args(command: &str) -> (&str, CommandArgs) {
+        let command = command.trim();
+        if let Some(index) = command.find(' ') {
+            (&command[..index], CommandArgs::new(&command[index..]))
+        } else {
+            (command, CommandArgs::new(""))
+        }
+    }
+
     pub fn parse_and_execut_config_command(
         &self,
         ctx: ConfigCommandContext,
         command: &str,
     ) -> ConfigCommandResult {
-        let command = command.trim();
-        let name;
-        let args;
-        if let Some(index) = command.find(' ') {
-            name = &command[..index];
-            args = CommandArgs::new(&command[(index + 1)..]);
-        } else {
-            name = command;
-            args = CommandArgs::new("");
-        }
-
+        let (name, args) = Self::split_name_and_args(command);
         if let Some(command) = self.config_commands.get(name) {
             command(ctx, args)
         } else {
@@ -167,22 +166,12 @@ impl CommandCollection {
         }
     }
 
-    pub fn parse_and_execute_all(
+    pub fn parse_and_execute_any_command(
         &self,
         ctx: FullCommandContext,
         command: &str,
     ) -> FullCommandResult {
-        let command = command.trim();
-        let name;
-        let args;
-        if let Some(index) = command.find(' ') {
-            name = &command[..index];
-            args = CommandArgs::new(&command[(index + 1)..]);
-        } else {
-            name = command;
-            args = CommandArgs::new("");
-        }
-
+        let (name, args) = Self::split_name_and_args(command);
         if let Some(command) = self.full_commands.get(name) {
             command(ctx, args)
         } else if let Some(command) = self.config_commands.get(name) {

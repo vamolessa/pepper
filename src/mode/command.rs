@@ -33,7 +33,7 @@ pub fn on_event(
 
             match ctx
                 .commands
-                .parse_and_execute_all(command_context, &ctx.input[..])
+                .parse_and_execute_any_command(command_context, &ctx.input[..])
             {
                 Ok(CommandOperation::Complete) => ModeOperation::EnterMode(from_mode.as_mode()),
                 Ok(CommandOperation::Quit) => ModeOperation::Quit,
