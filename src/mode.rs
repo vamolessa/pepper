@@ -31,7 +31,7 @@ pub struct ModeContext<'a> {
     pub target_client: TargetClient,
     pub operations: &'a mut EditorOperationSender,
 
-    pub config: &'a mut Config,
+    pub config: &'a Config,
     pub keymaps: &'a mut KeyMapCollection,
     pub commands: &'a CommandCollection,
     pub buffers: &'a mut BufferCollection,

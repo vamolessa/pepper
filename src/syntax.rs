@@ -1,12 +1,14 @@
 use std::{cmp::Ordering, iter, ops::Range};
 
+use serde_derive::{Deserialize, Serialize};
+
 use crate::{
     buffer::BufferContent,
     buffer_position::BufferRange,
     pattern::{MatchResult, Pattern, PatternState},
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 pub enum TokenKind {
     Whitespace,
     Text,
@@ -51,15 +53,16 @@ impl Default for LineKind {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Syntax {
     extensions: Vec<String>,
     rules: Vec<(TokenKind, Pattern)>,
 }
 
 impl Syntax {
-    pub fn with_extension(extension: String) -> Self {
+    pub fn new() -> Self {
         Self {
-            extensions: vec![extension],
+            extensions: Vec::new(),
             rules: Vec::new(),
         }
     }
@@ -173,21 +176,15 @@ impl Syntax {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct SyntaxHandle(usize);
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct SyntaxCollection {
     syntaxes: Vec<Syntax>,
 }
 
 impl SyntaxCollection {
-    pub fn add(&mut self, syntax: Syntax) -> SyntaxHandle {
-        let handle = SyntaxHandle(self.syntaxes.len());
-        self.syntaxes.push(syntax);
-        handle
-    }
-
     pub fn find_by_extension(&self, extension: &str) -> Option<SyntaxHandle> {
         for (i, syntax) in self.syntaxes.iter().enumerate() {
             for ext in &syntax.extensions {
@@ -200,12 +197,21 @@ impl SyntaxCollection {
         None
     }
 
-    pub fn get(&self, handle: SyntaxHandle) -> &Syntax {
-        &self.syntaxes[handle.0]
+    pub fn get_by_extension(&mut self, extension: &str) -> &mut Syntax {
+        match self.find_by_extension(extension) {
+            Some(handle) => &mut self.syntaxes[handle.0],
+            None => {
+                let mut syntax = Syntax::new();
+                syntax.add_extension(extension.into());
+                self.syntaxes.push(syntax);
+                let last_index = self.syntaxes.len() - 1;
+                &mut self.syntaxes[last_index]
+            }
+        }
     }
 
-    pub fn get_mut(&mut self, handle: SyntaxHandle) -> &mut Syntax {
-        &mut self.syntaxes[handle.0]
+    pub fn get(&self, handle: SyntaxHandle) -> &Syntax {
+        &self.syntaxes[handle.0]
     }
 }
 
@@ -330,7 +336,7 @@ mod tests {
 
     #[test]
     fn test_no_syntax() {
-        let syntax = Syntax::with_extension("".into());
+        let syntax = Syntax::new();
         let mut tokens = Vec::new();
         let line = " fn main() ;  ";
         let line_kind = syntax.parse_line(line, LineKind::Finished, &mut tokens);
@@ -342,7 +348,7 @@ mod tests {
 
     #[test]
     fn test_one_rule_syntax() {
-        let mut syntax = Syntax::with_extension("".into());
+        let mut syntax = Syntax::new();
         syntax.add_rule(TokenKind::Symbol, Pattern::new(";").unwrap());
 
         let mut tokens = Vec::new();
@@ -361,7 +367,7 @@ mod tests {
 
     #[test]
     fn test_simple_syntax() {
-        let mut syntax = Syntax::with_extension("".into());
+        let mut syntax = Syntax::new();
         syntax.add_rule(TokenKind::Keyword, Pattern::new("fn").unwrap());
         syntax.add_rule(TokenKind::Symbol, Pattern::new("%(").unwrap());
         syntax.add_rule(TokenKind::Symbol, Pattern::new("%)").unwrap());
@@ -382,7 +388,7 @@ mod tests {
 
     #[test]
     fn test_multiline_syntax() {
-        let mut syntax = Syntax::with_extension("".into());
+        let mut syntax = Syntax::new();
         syntax.add_rule(TokenKind::Comment, Pattern::new("/*{!(*/).$}").unwrap());
 
         let mut tokens = Vec::new();

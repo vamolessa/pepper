@@ -128,6 +128,12 @@ where
     let mut editor_operations = EditorOperationSender::new();
     let mut received_keys = Vec::new();
 
+    local_client.load_config(
+        &editor.commands,
+        &mut editor.keymaps,
+        &mut editor_operations,
+    );
+
     connections.register_listener(&event_registry)?;
     ui.init()?;
 
@@ -136,7 +142,7 @@ where
             Event::None => (),
             Event::Key(key) => {
                 match editor.on_key(
-                    &mut local_client.config,
+                    &local_client.config,
                     key,
                     TargetClient::Local,
                     &mut editor_operations,
@@ -184,7 +190,7 @@ where
 
                         for key in received_keys.drain(..) {
                             match editor.on_key(
-                                &mut local_client.config,
+                                &local_client.config,
                                 key,
                                 TargetClient::Remote(handle),
                                 &mut editor_operations,

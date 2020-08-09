@@ -3,16 +3,17 @@ use std::path::PathBuf;
 use crate::{
     buffer::BufferContent,
     buffer_position::BufferRange,
+    command::{CommandCollection, ConfigCommandContext},
     config::Config,
     cursor::Cursor,
-    editor::EditorOperation,
+    editor::{EditorOperation, EditorOperationSender},
+    keymap::KeyMapCollection,
     mode::Mode,
     syntax::{HighlightedBuffer, SyntaxHandle},
 };
 
 pub struct Client {
     pub config: Config,
-
     pub mode: Mode,
 
     pub path: Option<PathBuf>,
@@ -31,12 +32,8 @@ pub struct Client {
 
 impl Client {
     pub fn new() -> Self {
-        let mut config = Config::default();
-        //config.load();
-
         Self {
-            config,
-
+            config: Config::default(),
             mode: Mode::default(),
 
             path: None,
@@ -51,6 +48,28 @@ impl Client {
             has_focus: true,
             input: String::new(),
             error: None,
+        }
+    }
+
+    pub fn load_config(
+        &mut self,
+        commands: &CommandCollection,
+        keymaps: &mut KeyMapCollection,
+        operations: &mut EditorOperationSender,
+    ) {
+        let mut ctx = ConfigCommandContext {
+            operations,
+            config: &self.config,
+            keymaps,
+        };
+
+        if let Err(e) = Config::load_into_operations(commands, &mut ctx) {
+            self.error = Some(e);
+            return;
+        }
+
+        for (_target, operation, content) in operations.drain() {
+            self.on_editor_operation(&operation, content);
         }
     }
 
@@ -119,6 +138,18 @@ impl Client {
                 self.buffer
                     .find_search_ranges(&self.input[..], &mut self.search_ranges);
             }
+            EditorOperation::ConfigValues(values) => self.config.values = values.clone(),
+            EditorOperation::Theme(theme) => self.config.theme = theme.clone(),
+            EditorOperation::SyntaxExtension(extension, other_extension) => self
+                .config
+                .syntaxes
+                .get_by_extension(extension)
+                .add_extension(other_extension.clone()),
+            EditorOperation::SyntaxRule(extension, token, pattern) => self
+                .config
+                .syntaxes
+                .get_by_extension(extension)
+                .add_rule(*token, pattern.clone()),
             EditorOperation::Error(error) => self.error = Some(error.clone()),
         }
     }

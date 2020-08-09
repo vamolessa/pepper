@@ -1,7 +1,9 @@
 use std::{env, fmt, fs::File, io::Read, num::NonZeroUsize, path::PathBuf, str::FromStr};
 
+use serde_derive::{Deserialize, Serialize};
+
 use crate::{
-    command::{CommandCollection, FullCommandContext},
+    command::{CommandCollection, ConfigCommandContext},
     pattern::Pattern,
     syntax::{Syntax, SyntaxCollection, TokenKind},
     theme::{pico8_theme, Theme},
@@ -23,51 +25,15 @@ impl fmt::Display for ParseConfigError {
     }
 }
 
-pub struct Config {
-    pub theme: Theme,
-    pub syntaxes: SyntaxCollection,
-
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ConfigValues {
     pub tab_size: NonZeroUsize,
     pub visual_empty: char,
     pub visual_space: char,
-    pub vusual_tab: (char, char),
+    pub visual_tab: (char, char),
 }
 
-impl Config {
-    pub fn load(
-        &mut self,
-        commands: &CommandCollection,
-        ctx: FullCommandContext,
-    ) -> Result<(), String> {
-        let path = match env::var("PEPPERC") {
-            Ok(path) => PathBuf::from(path)
-                .canonicalize()
-                .map_err(|e| e.to_string())?,
-            Err(_) => return Ok(()),
-        };
-        let mut file = match File::open(&path) {
-            Ok(file) => file,
-            Err(e) => return Err(e.to_string()),
-        };
-        let mut contents = String::with_capacity(2 * 1024);
-        file.read_to_string(&mut contents)
-            .map_err(|e| e.to_string())?;
-
-        for (i, line) in contents
-            .lines()
-            .enumerate()
-            .filter(|(_, l)| l.starts_with('#'))
-        {
-            /*
-            commands
-                .parse_and_execute(ctx, line)
-                .map_err(|e| format!("error at {:?}:{} {}", path, i + 1, e))?;
-                */
-        }
-
-        Ok(())
-    }
-
+impl ConfigValues {
     pub fn parse_and_set<'a>(
         &mut self,
         name: &str,
@@ -105,7 +71,57 @@ impl Config {
             tab_size = parse_next!(),
             visual_empty = parse_next!(),
             visual_space = parse_next!(),
-            vusual_tab = (parse_next!(), parse_next!()),
+            visual_tab= (parse_next!(), parse_next!()),
+        }
+
+        Ok(())
+    }
+}
+
+impl Default for ConfigValues {
+    fn default() -> Self {
+        Self {
+            tab_size: NonZeroUsize::new(4).unwrap(),
+            visual_empty: '~',
+            visual_space: '.',
+            visual_tab: ('|', ' '),
+        }
+    }
+}
+
+pub struct Config {
+    pub values: ConfigValues,
+    pub theme: Theme,
+    pub syntaxes: SyntaxCollection,
+}
+
+impl Config {
+    pub fn load_into_operations(
+        commands: &CommandCollection,
+        ctx: &mut ConfigCommandContext,
+    ) -> Result<(), String> {
+        let path = match env::var("PEPPERC") {
+            Ok(path) => PathBuf::from(path)
+                .canonicalize()
+                .map_err(|e| e.to_string())?,
+            Err(_) => return Ok(()),
+        };
+        let mut file = match File::open(&path) {
+            Ok(file) => file,
+            Err(e) => return Err(e.to_string()),
+        };
+        let mut contents = String::with_capacity(2 * 1024);
+        file.read_to_string(&mut contents)
+            .map_err(|e| e.to_string())?;
+
+        for (i, line) in contents
+            .lines()
+            .enumerate()
+            .filter(|(_, l)| l.starts_with('#'))
+        {
+            commands
+                .parse_and_execut_config_command(ctx, line)
+                .map_err(|e| format!("error at {:?}:{} {}", path, i + 1, e))?;
         }
 
         Ok(())
@@ -114,37 +130,18 @@ impl Config {
 
 impl Default for Config {
     fn default() -> Self {
+        let mut syntaxes = SyntaxCollection::default();
+        set_rust_syntax(syntaxes.get_by_extension("rs"));
+
         Self {
+            values: ConfigValues::default(),
             theme: pico8_theme(),
-            syntaxes: default_syntaxes(),
-            tab_size: NonZeroUsize::new(4).unwrap(),
-            visual_empty: '~',
-            visual_space: '.',
-            vusual_tab: ('|', ' '),
+            syntaxes,
         }
     }
 }
 
-fn default_syntaxes() -> SyntaxCollection {
-    let mut syntaxes = SyntaxCollection::default();
-    syntaxes.add(toml_syntax());
-    syntaxes.add(rust_syntax());
-    syntaxes
-}
-
-fn toml_syntax() -> Syntax {
-    let mut syntax = Syntax::with_extension("toml".into());
-    syntax.add_rule(TokenKind::Symbol, Pattern::new("=").unwrap());
-    syntax.add_rule(TokenKind::Keyword, Pattern::new("%[{%w!%]}").unwrap());
-    syntax.add_rule(TokenKind::Keyword, Pattern::new("%[%[{%w!%]}%]").unwrap());
-    syntax.add_rule(TokenKind::String, Pattern::new("\"{!\".}").unwrap());
-
-    syntax
-}
-
-fn rust_syntax() -> Syntax {
-    let mut syntax = Syntax::with_extension("rs".into());
-
+fn set_rust_syntax(syntax: &mut Syntax) {
     for keyword in &[
         "fn", "let", "if", "while", "for", "return", "mod", "use", "as", "in", "enum", "struct",
         "impl", "where", "mut", "pub",
@@ -179,6 +176,4 @@ fn rust_syntax() -> Syntax {
 
     syntax.add_rule(TokenKind::Text, Pattern::new("%a{%w_}").unwrap());
     syntax.add_rule(TokenKind::Text, Pattern::new("_{%w_}").unwrap());
-
-    syntax
 }

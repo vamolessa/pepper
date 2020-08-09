@@ -7,12 +7,15 @@ use crate::{
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{BufferViewCollection, BufferViewHandle},
     command::CommandCollection,
-    config::Config,
+    config::{Config, ConfigValues},
     connection::TargetClient,
     cursor::{Cursor, CursorCollection},
     event::Key,
     keymap::{KeyMapCollection, MatchResult},
     mode::{Mode, ModeContext, ModeOperation},
+    pattern::Pattern,
+    syntax::TokenKind,
+    theme::Theme,
 };
 
 pub enum EditorLoop {
@@ -20,7 +23,7 @@ pub enum EditorLoop {
     Continue,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub enum EditorOperation {
     Focused(bool),
     Content,
@@ -33,6 +36,10 @@ pub enum EditorOperation {
     InputAppend(char),
     InputKeep(usize),
     Search,
+    ConfigValues(ConfigValues),
+    Theme(Theme),
+    SyntaxExtension(String, String),
+    SyntaxRule(String, TokenKind, Pattern),
     Error(String),
 }
 
@@ -237,7 +244,7 @@ impl Editor {
 
     pub fn on_key(
         &mut self,
-        config: &mut Config,
+        config: &Config,
         key: Key,
         target_client: TargetClient,
         operations: &mut EditorOperationSender,
