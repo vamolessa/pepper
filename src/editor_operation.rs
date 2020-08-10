@@ -425,25 +425,12 @@ macro_rules! read {
 }
 
 impl<'de> DeserializationSlice<'de> {
-    fn split<'a, T>(slice: &'a mut [T], index: usize) -> (&'a mut [T], &'a mut [T]) {
-        slice.split_at_mut(index)
-    }
-
     fn read_bytes(&mut self, len: usize) -> Result<&'de [u8], SerdeError> {
         if len <= self.0.len() {
-            //*
-            let total_len = self.0.len();
-            let ptr = self.0.as_mut_ptr();
-            let before;
-            unsafe {
-                before = std::slice::from_raw_parts_mut(ptr, len);
-                self.0 = std::slice::from_raw_parts_mut(ptr.add(len), total_len - len);
-            }
-            //*/
-            /*
-            let (before, after) = Self::split(self.0, len);
+            let mut tmp = &mut [][..];
+            std::mem::swap(&mut tmp, &mut self.0);
+            let (before, after) = tmp.split_at_mut(len);
             self.0 = after;
-            */
             Ok(before)
         } else {
             Err(SerdeError)
@@ -677,13 +664,17 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut DeserializationSlice<'de> {
     fn deserialize_enum<V>(
         self,
         _name: &'static str,
-        variants: &'static [&'static str],
+        _variants: &'static [&'static str],
         visitor: V,
     ) -> Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        todo!()
+        let variant_index = read!(self, u32);
+        visitor.visit_enum(DeserializationEnumAccess {
+            de: self,
+            variant_index,
+        })
     }
 
     fn deserialize_identifier<V>(self, visitor: V) -> Result<V::Value, Self::Error>
