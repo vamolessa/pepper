@@ -670,11 +670,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut DeserializationSlice<'de> {
     where
         V: de::Visitor<'de>,
     {
-        let variant_index = read!(self, u32);
-        visitor.visit_enum(DeserializationEnumAccess {
-            de: self,
-            variant_index,
-        })
+        visitor.visit_enum(DeserializationEnumAccess { de: self })
     }
 
     fn deserialize_identifier<V>(self, visitor: V) -> Result<V::Value, Self::Error>
@@ -738,7 +734,6 @@ impl<'de, 'a> de::MapAccess<'de> for DeserializationCollectionAccess<'a, 'de> {
 
 struct DeserializationEnumAccess<'a, 'de: 'a> {
     de: &'a mut DeserializationSlice<'de>,
-    variant_index: u32,
 }
 
 impl<'de, 'a> de::EnumAccess<'de> for DeserializationEnumAccess<'a, 'de> {
@@ -749,7 +744,10 @@ impl<'de, 'a> de::EnumAccess<'de> for DeserializationEnumAccess<'a, 'de> {
     where
         V: de::DeserializeSeed<'de>,
     {
-        Ok((seed.deserialize(&mut *self.de)?, self))
+        use de::IntoDeserializer;
+        let variant_index = read!(self.de, u32);
+        let value = seed.deserialize(variant_index.into_deserializer())?;
+        Ok((value, self))
     }
 }
 
