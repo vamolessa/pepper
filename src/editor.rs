@@ -8,6 +8,7 @@ use crate::{
     buffer_view::{BufferViewCollection, BufferViewHandle},
     command::CommandCollection,
     config::{Config, ConfigValues},
+    connection::ConnectionWithClientHandle,
     connection::TargetClient,
     cursor::{Cursor, CursorCollection},
     event::Key,
@@ -178,10 +179,12 @@ impl Editor {
 
     pub fn on_client_joined(
         &mut self,
-        target_client: TargetClient,
+        client_handle: ConnectionWithClientHandle,
         config: &Config,
         operations: &mut EditorOperationSender,
     ) {
+        let target_client = TargetClient::Remote(client_handle);
+
         let buffer_view_handle = match self.focused_client {
             TargetClient::All => None,
             TargetClient::Local => self.local_client_current_buffer_view_handle.as_ref(),
@@ -258,10 +261,10 @@ impl Editor {
 
     pub fn on_client_left(
         &mut self,
-        target_client: TargetClient,
+        client_handle: ConnectionWithClientHandle,
         operations: &mut EditorOperationSender,
     ) {
-        if self.focused_client == target_client {
+        if self.focused_client == TargetClient::Remote(client_handle) {
             self.focused_client = TargetClient::Local;
             operations.send(self.focused_client, EditorOperation::Focused(true));
             operations.send(TargetClient::All, EditorOperation::InputKeep(0));
@@ -271,9 +274,7 @@ impl Editor {
             self.buffered_keys.clear();
             self.input.clear();
 
-            if let TargetClient::Remote(handle) = target_client {
-                self.remote_client_current_buffer_view_handles[handle.into_index()] = None;
-            }
+            self.remote_client_current_buffer_view_handles[client_handle.into_index()] = None;
         }
     }
 

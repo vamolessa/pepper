@@ -158,7 +158,7 @@ where
                     ConnectionEvent::NewConnection => {
                         let handle = connections.accept_connection(&event_registry)?;
                         editor.on_client_joined(
-                            TargetClient::Remote(handle),
+                            handle,
                             &local_client.config,
                             &mut editor_operations,
                         );
@@ -173,10 +173,7 @@ where
                                 Ok(None) => break,
                                 Err(_) => {
                                     connections.close_connection(handle);
-                                    editor.on_client_left(
-                                        TargetClient::Remote(handle),
-                                        &mut editor_operations,
-                                    );
+                                    editor.on_client_left(handle, &mut editor_operations);
                                     break;
                                 }
                             }
@@ -185,10 +182,7 @@ where
 
                         if received_keys.len() == 0 {
                             connections.close_connection(handle);
-                            editor.on_client_left(
-                                TargetClient::Remote(handle),
-                                &mut editor_operations,
-                            );
+                            editor.on_client_left(handle, &mut editor_operations);
                         }
 
                         for key in received_keys.drain(..) {
@@ -200,10 +194,7 @@ where
                             ) {
                                 EditorLoop::Quit => {
                                     connections.close_connection(handle);
-                                    editor.on_client_left(
-                                        TargetClient::Remote(handle),
-                                        &mut editor_operations,
-                                    );
+                                    editor.on_client_left(handle, &mut editor_operations);
                                 }
                                 EditorLoop::Continue => (),
                             }
