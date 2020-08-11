@@ -13,7 +13,7 @@ pub struct BufferPosition {
 }
 
 impl BufferPosition {
-    pub fn line_col(line_index: usize, column_index: usize) -> Self {
+    pub const fn line_col(line_index: usize, column_index: usize) -> Self {
         Self {
             line_index,
             column_index,

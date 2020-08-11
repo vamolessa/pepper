@@ -25,7 +25,7 @@ impl fmt::Display for ParseConfigError {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConfigValues {
     pub tab_size: NonZeroUsize,
     pub visual_empty: char,

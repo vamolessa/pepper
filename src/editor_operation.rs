@@ -15,7 +15,7 @@ use crate::{
     theme::Theme,
 };
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum EditorOperation<'a> {
     Focused(bool),
     Content(&'a str),
@@ -71,6 +71,10 @@ impl EditorOperationSerializer {
             }
         };
     }
+
+    pub fn local_bytes(&self) -> &[u8] {
+        &self.local_buf.0[..]
+    }
 }
 
 pub struct EditorOperationDeserializer<'a> {
@@ -82,10 +86,17 @@ impl<'a> EditorOperationDeserializer<'a> {
         Self { buf }
     }
 
-    pub fn deserialize(&mut self) -> Result<Option<EditorOperation<'a>>, ()> {
+    pub fn deserialize_next(&mut self) -> Result<Option<EditorOperation<'a>>, ()> {
         use serde::Deserialize;
         if self.buf.len() > 0 {
-            Err(())
+            let mut deserializer = DeserializationSlice(self.buf);
+            match EditorOperation::deserialize(&mut deserializer) {
+                Ok(op) => {
+                    self.buf = deserializer.0;
+                    Ok(Some(op))
+                }
+                Err(_) => Err(()),
+            }
         } else {
             Ok(None)
         }
@@ -800,5 +811,95 @@ impl<'de, 'a> de::VariantAccess<'de> for DeserializationEnumAccess<'a, 'de> {
         V: de::Visitor<'de>,
     {
         de::Deserializer::deserialize_struct(self.de, "", fields, visitor)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_editor_operation_serialization() {
+        let mut serializer = EditorOperationSerializer::default();
+        serializer.serialize(TargetClient::Local, &EditorOperation::Focused(true));
+        serializer.serialize(
+            TargetClient::Local,
+            &EditorOperation::Content("this is a content"),
+        );
+        serializer.serialize(
+            TargetClient::Local,
+            &EditorOperation::Path(Some(Path::new("this/is/a/path"))),
+        );
+        serializer.serialize(TargetClient::Local, &EditorOperation::Mode(Mode::Insert));
+        serializer.serialize(
+            TargetClient::Local,
+            &EditorOperation::Insert(BufferPosition::line_col(4, 7), "this is a text"),
+        );
+        serializer.serialize(
+            TargetClient::Local,
+            &EditorOperation::Delete(BufferRange::between(
+                BufferPosition::line_col(0, 1),
+                BufferPosition::line_col(2, 3),
+            )),
+        );
+        serializer.serialize(
+            TargetClient::Local,
+            &EditorOperation::ClearCursors(Cursor {
+                anchor: BufferPosition::line_col(4, 5),
+                position: BufferPosition::line_col(6, 7),
+            }),
+        );
+        serializer.serialize(
+            TargetClient::Local,
+            &EditorOperation::Cursor(Cursor {
+                anchor: BufferPosition::line_col(8, 9),
+                position: BufferPosition::line_col(10, 11),
+            }),
+        );
+        serializer.serialize(TargetClient::Local, &EditorOperation::InputAppend('h'));
+        serializer.serialize(TargetClient::Local, &EditorOperation::InputKeep(12));
+        serializer.serialize(TargetClient::Local, &EditorOperation::Search);
+        serializer.serialize(
+            TargetClient::Local,
+            &EditorOperation::ConfigValues(ConfigValues::default()),
+        );
+        serializer.serialize(
+            TargetClient::Local,
+            &EditorOperation::SyntaxExtension("abc", "def"),
+        );
+        serializer.serialize(
+            TargetClient::Local,
+            &EditorOperation::SyntaxRule("abc", TokenKind::Text, Pattern::new("pat").unwrap()),
+        );
+        serializer.serialize(
+            TargetClient::Local,
+            &EditorOperation::Error("this is an error"),
+        );
+
+        let mut deserializer = EditorOperationDeserializer::from_slice(serializer.local_bytes());
+
+        macro_rules! assert_next {
+            ($p:pat) => {
+                let result = deserializer.deserialize_next();
+                if matches!(result, Ok(Some($p))) {
+                    assert!(true);
+                } else {
+                    eprintln!("expected: {}\ngot {:?}", stringify!($p), result);
+                    assert!(false);
+                }
+            };
+        }
+
+        assert_next!(EditorOperation::Focused(true));
+        assert_next!(EditorOperation::Content("this is a content"));
+        assert_next!(EditorOperation::Path(Some(Path {..})));
+        assert_next!(EditorOperation::Mode(Mode::Insert));
+        assert_next!(EditorOperation::Insert(
+            BufferPosition {
+                line_index: 4,
+                column_index: 7,
+            },
+            "this is a text"
+        ));
     }
 }
