@@ -1,14 +1,15 @@
-use std::{error, fmt, path::Path};
+use std::{error, fmt, io, path::Path};
 
 use serde::{de, ser};
 use serde_derive::{Deserialize, Serialize};
 
 use crate::{
+    buffer::BufferContent,
     buffer_position::{BufferPosition, BufferRange},
     config::ConfigValues,
     connection::ConnectionWithClientHandle,
     connection::TargetClient,
-    cursor::Cursor,
+    cursor::{Cursor, CursorCollection},
     mode::Mode,
     pattern::Pattern,
     syntax::TokenKind,
@@ -18,7 +19,7 @@ use crate::{
 #[derive(Debug, Serialize, Deserialize)]
 pub enum EditorOperation<'a> {
     Focused(bool),
-    Content(&'a str),
+    Buffer(&'a str),
     Path(Option<&'a Path>),
     Mode(Mode),
     Insert(BufferPosition, &'a str),
@@ -70,6 +71,44 @@ impl EditorOperationSerializer {
                 let _ = operation.serialize(&mut self.remote_bufs[handle.into_index()]);
             }
         };
+    }
+
+    pub fn serialize_buffer(&mut self, target_client: TargetClient, content: &BufferContent) {
+        use serde::Serialize;
+        fn write_buffer(buf: &mut SerializationBuf, content: &BufferContent) {
+            let _ = EditorOperation::Buffer("").serialize(&mut *buf);
+            let content_start = buf.0.len();
+            let _ = content.write(&mut *buf);
+            let content_len = (buf.0.len() - content_start) as u32;
+            let content_len_bytes = content_len.to_le_bytes();
+
+            let len_start = content_start - content_len_bytes.len();
+            buf.0[len_start..(len_start + content_len_bytes.len())]
+                .clone_from_slice(&content_len_bytes[..]);
+        }
+
+        match target_client {
+            TargetClient::All => {
+                write_buffer(&mut self.local_buf, content);
+                for buf in &mut self.remote_bufs {
+                    write_buffer(buf, content);
+                }
+            }
+            TargetClient::Local => write_buffer(&mut self.local_buf, content),
+            TargetClient::Remote(handle) => {
+                write_buffer(&mut self.remote_bufs[handle.into_index()], content)
+            }
+        }
+    }
+
+    pub fn serialize_cursors(&mut self, target_client: TargetClient, cursors: &CursorCollection) {
+        self.serialize(
+            target_client,
+            &EditorOperation::ClearCursors(*cursors.main_cursor()),
+        );
+        for cursor in &cursors[..] {
+            self.serialize(target_client, &EditorOperation::Cursor(*cursor));
+        }
     }
 
     pub fn local_bytes(&self) -> &[u8] {
@@ -134,6 +173,17 @@ struct SerializationBuf(Vec<u8>);
 impl SerializationBuf {
     fn write_bytes(&mut self, bytes: &[u8]) -> Result<(), SerdeError> {
         self.0.extend_from_slice(bytes);
+        Ok(())
+    }
+}
+
+impl io::Write for SerializationBuf {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
 }
@@ -813,12 +863,25 @@ mod tests {
     }
 
     #[test]
+    fn test_buffer_content_serialization() {
+        let buffer = BufferContent::from_str("this is some\nbuffer content");
+        let mut serializer = EditorOperationSerializer::default();
+        serializer.serialize_buffer(TargetClient::Local, &buffer);
+
+        let mut deserializer = EditorOperationDeserializer::from_slice(serializer.local_bytes());
+        assert_next!(
+            deserializer,
+            EditorOperation::Buffer("this is some\nbuffer content")
+        );
+    }
+
+    #[test]
     fn test_editor_operation_serialization() {
         let mut serializer = EditorOperationSerializer::default();
         serializer.serialize(TargetClient::Local, &EditorOperation::Focused(true));
         serializer.serialize(
             TargetClient::Local,
-            &EditorOperation::Content("this is a content"),
+            &EditorOperation::Buffer("this is a content"),
         );
         serializer.serialize(
             TargetClient::Local,
@@ -873,7 +936,7 @@ mod tests {
         let mut deserializer = EditorOperationDeserializer::from_slice(serializer.local_bytes());
 
         assert_next!(deserializer, EditorOperation::Focused(true));
-        assert_next!(deserializer, EditorOperation::Content("this is a content"));
+        assert_next!(deserializer, EditorOperation::Buffer("this is a content"));
         assert_next!(deserializer, EditorOperation::Path(Some(Path { .. })));
         assert_next!(deserializer, EditorOperation::Mode(Mode::Insert));
         assert_next!(
