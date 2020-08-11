@@ -73,6 +73,25 @@ impl EditorOperationSerializer {
     }
 }
 
+pub struct EditorOperationDeserializer<'a> {
+    buf: &'a [u8],
+}
+
+impl<'a> EditorOperationDeserializer<'a> {
+    pub fn from_slice(buf: &'a [u8]) -> Self {
+        Self { buf }
+    }
+
+    pub fn deserialize(&mut self) -> Result<Option<EditorOperation<'a>>, ()> {
+        use serde::Deserialize;
+        if self.buf.len() > 0 {
+            Err(())
+        } else {
+            Ok(None)
+        }
+    }
+}
+
 #[derive(Debug)]
 struct SerdeError;
 impl fmt::Display for SerdeError {
@@ -413,7 +432,7 @@ impl<'a> ser::SerializeStructVariant for &'a mut SerializationBuf {
     }
 }
 
-struct DeserializationSlice<'de>(&'de mut [u8]);
+struct DeserializationSlice<'de>(&'de [u8]);
 
 macro_rules! read {
     ($read:expr, $type:ty) => {{
@@ -427,9 +446,9 @@ macro_rules! read {
 impl<'de> DeserializationSlice<'de> {
     fn read_bytes(&mut self, len: usize) -> Result<&'de [u8], SerdeError> {
         if len <= self.0.len() {
-            let mut tmp = &mut [][..];
+            let mut tmp = &[][..];
             std::mem::swap(&mut tmp, &mut self.0);
-            let (before, after) = tmp.split_at_mut(len);
+            let (before, after) = tmp.split_at(len);
             self.0 = after;
             Ok(before)
         } else {
@@ -441,7 +460,7 @@ impl<'de> DeserializationSlice<'de> {
 impl<'de, 'a> de::Deserializer<'de> for &'a mut DeserializationSlice<'de> {
     type Error = SerdeError;
 
-    fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    fn deserialize_any<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
