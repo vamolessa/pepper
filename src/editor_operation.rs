@@ -104,7 +104,13 @@ impl<'a> EditorOperationDeserializer<'a> {
 }
 
 #[derive(Debug)]
-struct SerdeError;
+struct SerdeError(());
+impl SerdeError {
+    pub fn new() -> Self {
+        panic!("serde error");
+        Self(())
+    }
+}
 impl fmt::Display for SerdeError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str(stringify!(SerializationError))
@@ -116,7 +122,7 @@ impl ser::Error for SerdeError {
     where
         T: fmt::Display,
     {
-        Self
+        Self::new()
     }
 }
 impl de::Error for SerdeError {
@@ -124,7 +130,8 @@ impl de::Error for SerdeError {
     where
         T: fmt::Display,
     {
-        Self
+        eprintln!("msg: {}", _msg);
+        Self::new()
     }
 }
 
@@ -136,6 +143,14 @@ impl SerializationBuf {
         self.0.extend_from_slice(bytes);
         Ok(())
     }
+}
+
+macro_rules! impl_serialize_num {
+    ($func:ident, $type:ty) => {
+        fn $func(self, v: $type) -> Result<Self::Ok, Self::Error> {
+            self.write_bytes(&v.to_le_bytes())
+        }
+    };
 }
 
 impl<'a> ser::Serializer for &'a mut SerializationBuf {
@@ -153,45 +168,18 @@ impl<'a> ser::Serializer for &'a mut SerializationBuf {
         self.serialize_u8(v as _)
     }
 
-    fn serialize_i8(self, v: i8) -> Result<Self::Ok, Self::Error> {
-        self.write_bytes(&v.to_le_bytes())
-    }
+    impl_serialize_num!(serialize_i8, i8);
+    impl_serialize_num!(serialize_i16, i16);
+    impl_serialize_num!(serialize_i32, i32);
+    impl_serialize_num!(serialize_i64, i64);
 
-    fn serialize_i16(self, v: i16) -> Result<Self::Ok, Self::Error> {
-        self.write_bytes(&v.to_le_bytes())
-    }
+    impl_serialize_num!(serialize_u8, u8);
+    impl_serialize_num!(serialize_u16, u16);
+    impl_serialize_num!(serialize_u32, u32);
+    impl_serialize_num!(serialize_u64, u64);
 
-    fn serialize_i32(self, v: i32) -> Result<Self::Ok, Self::Error> {
-        self.write_bytes(&v.to_le_bytes())
-    }
-
-    fn serialize_i64(self, v: i64) -> Result<Self::Ok, Self::Error> {
-        self.write_bytes(&v.to_le_bytes())
-    }
-
-    fn serialize_u8(self, v: u8) -> Result<Self::Ok, Self::Error> {
-        self.write_bytes(&v.to_le_bytes())
-    }
-
-    fn serialize_u16(self, v: u16) -> Result<Self::Ok, Self::Error> {
-        self.write_bytes(&v.to_le_bytes())
-    }
-
-    fn serialize_u32(self, v: u32) -> Result<Self::Ok, Self::Error> {
-        self.write_bytes(&v.to_le_bytes())
-    }
-
-    fn serialize_u64(self, v: u64) -> Result<Self::Ok, Self::Error> {
-        self.write_bytes(&v.to_le_bytes())
-    }
-
-    fn serialize_f32(self, v: f32) -> Result<Self::Ok, Self::Error> {
-        self.write_bytes(&v.to_le_bytes())
-    }
-
-    fn serialize_f64(self, v: f64) -> Result<Self::Ok, Self::Error> {
-        self.write_bytes(&v.to_le_bytes())
-    }
+    impl_serialize_num!(serialize_f32, f32);
+    impl_serialize_num!(serialize_f64, f64);
 
     fn serialize_char(self, v: char) -> Result<Self::Ok, Self::Error> {
         let mut buf = [0; std::mem::size_of::<char>()];
@@ -267,7 +255,7 @@ impl<'a> ser::Serializer for &'a mut SerializationBuf {
                 self.serialize_u32(len as _)?;
                 Ok(self)
             }
-            None => Err(SerdeError),
+            None => Err(SerdeError::new()),
         }
     }
 
@@ -290,7 +278,7 @@ impl<'a> ser::Serializer for &'a mut SerializationBuf {
         _variant: &'static str,
         _len: usize,
     ) -> Result<Self::SerializeTupleVariant, Self::Error> {
-        self.serialize_u32(variant_index as _)?;
+        self.serialize_u32(variant_index)?;
         Ok(self)
     }
 
@@ -300,7 +288,7 @@ impl<'a> ser::Serializer for &'a mut SerializationBuf {
                 self.serialize_u32(len as _)?;
                 Ok(self)
             }
-            None => Err(SerdeError),
+            None => Err(SerdeError::new()),
         }
     }
 
@@ -319,7 +307,7 @@ impl<'a> ser::Serializer for &'a mut SerializationBuf {
         _variant: &'static str,
         _len: usize,
     ) -> Result<Self::SerializeStructVariant, Self::Error> {
-        self.serialize_u32(variant_index as _)?;
+        self.serialize_u32(variant_index)?;
         Ok(self)
     }
 }
@@ -463,7 +451,8 @@ impl<'de> DeserializationSlice<'de> {
             self.0 = after;
             Ok(before)
         } else {
-            Err(SerdeError)
+            dbg!(len, self.0.len());
+            Err(SerdeError::new())
         }
     }
 }
@@ -475,7 +464,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut DeserializationSlice<'de> {
     where
         V: de::Visitor<'de>,
     {
-        Err(SerdeError)
+        dbg!("deserialize_any");
+        Err(SerdeError::new())
     }
 
     fn deserialize_bool<V>(self, visitor: V) -> Result<V::Value, Self::Error>
@@ -561,10 +551,10 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut DeserializationSlice<'de> {
     {
         let len = read!(self, u32) as _;
         let slice = self.read_bytes(len)?;
-        let s = std::str::from_utf8(slice).map_err(|_| SerdeError)?;
+        let s = std::str::from_utf8(slice).map_err(|_| SerdeError::new())?;
         match s.chars().next() {
             Some(c) => visitor.visit_char(c),
-            None => Err(SerdeError),
+            None => Err(SerdeError::new()),
         }
     }
 
@@ -574,7 +564,10 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut DeserializationSlice<'de> {
     {
         let len = read!(self, u32) as _;
         let slice = self.read_bytes(len)?;
-        let s = std::str::from_utf8(slice).map_err(|_| SerdeError)?;
+        let s = std::str::from_utf8(slice).map_err(|_| {
+            dbg!(slice);
+            SerdeError::new()
+        })?;
         visitor.visit_borrowed_str(s)
     }
 
@@ -653,6 +646,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut DeserializationSlice<'de> {
     where
         V: de::Visitor<'de>,
     {
+        dbg!("deserialize tuple");
         visitor.visit_seq(DeserializationCollectionAccess { de: self, len })
     }
 
@@ -685,7 +679,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut DeserializationSlice<'de> {
     where
         V: de::Visitor<'de>,
     {
-        visitor.visit_map(DeserializationCollectionAccess {
+        visitor.visit_seq(DeserializationCollectionAccess {
             de: self,
             len: fields.len(),
         })
@@ -700,6 +694,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut DeserializationSlice<'de> {
     where
         V: de::Visitor<'de>,
     {
+        dbg!("deserialize enum");
         visitor.visit_enum(DeserializationEnumAccess { de: self })
     }
 
@@ -714,7 +709,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut DeserializationSlice<'de> {
     where
         V: de::Visitor<'de>,
     {
-        Err(SerdeError)
+        dbg!("deserialize_ignored_any");
+        Err(SerdeError::new())
     }
 }
 
@@ -731,9 +727,11 @@ impl<'de, 'a> de::SeqAccess<'de> for DeserializationCollectionAccess<'a, 'de> {
         T: de::DeserializeSeed<'de>,
     {
         if self.len > 0 {
+            dbg!("deserializing seq", self.len);
             self.len -= 1;
             seed.deserialize(&mut *self.de).map(Some)
         } else {
+            dbg!("finish seq");
             Ok(None)
         }
     }
@@ -818,6 +816,19 @@ impl<'de, 'a> de::VariantAccess<'de> for DeserializationEnumAccess<'a, 'de> {
 mod tests {
     use super::*;
 
+    macro_rules! assert_next {
+        ($d:ident, $p:pat) => {
+            let result = $d.deserialize_next();
+            if matches!(result, Ok(Some($p))) {
+                assert!(true);
+            } else {
+                eprintln!("expected: {}\ngot {:?}", stringify!($p), result);
+                result.unwrap().unwrap();
+                assert!(false);
+            }
+        };
+    }
+
     #[test]
     fn test_editor_operation_serialization() {
         let mut serializer = EditorOperationSerializer::default();
@@ -878,28 +889,19 @@ mod tests {
 
         let mut deserializer = EditorOperationDeserializer::from_slice(serializer.local_bytes());
 
-        macro_rules! assert_next {
-            ($p:pat) => {
-                let result = deserializer.deserialize_next();
-                if matches!(result, Ok(Some($p))) {
-                    assert!(true);
-                } else {
-                    eprintln!("expected: {}\ngot {:?}", stringify!($p), result);
-                    assert!(false);
-                }
-            };
-        }
-
-        assert_next!(EditorOperation::Focused(true));
-        assert_next!(EditorOperation::Content("this is a content"));
-        assert_next!(EditorOperation::Path(Some(Path {..})));
-        assert_next!(EditorOperation::Mode(Mode::Insert));
-        assert_next!(EditorOperation::Insert(
-            BufferPosition {
-                line_index: 4,
-                column_index: 7,
-            },
-            "this is a text"
-        ));
+        assert_next!(deserializer, EditorOperation::Focused(true));
+        assert_next!(deserializer, EditorOperation::Content("this is a content"));
+        assert_next!(deserializer, EditorOperation::Path(Some(Path {..})));
+        assert_next!(deserializer, EditorOperation::Mode(Mode::Insert));
+        assert_next!(
+            deserializer,
+            EditorOperation::Insert(
+                BufferPosition {
+                    line_index: 4,
+                    column_index: 7,
+                },
+                "this is a text"
+            )
+        );
     }
 }
