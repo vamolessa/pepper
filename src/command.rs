@@ -1,18 +1,11 @@
-use std::{
-    collections::HashMap,
-    fmt,
-    fs::File,
-    io::Read,
-    ops::Range,
-    path::{Path, PathBuf},
-};
+use std::{collections::HashMap, fmt, fs::File, io::Read, ops::Range, path::Path};
 
 use crate::{
     buffer::{Buffer, BufferCollection, BufferContent},
     buffer_view::{BufferView, BufferViewCollection, BufferViewHandle},
     config::{Config, ParseConfigError},
     connection::TargetClient,
-    editor::{EditorOperation, EditorOperationSender},
+    editor_operation::{EditorOperation, EditorOperationSerializer},
     keymap::{KeyMapCollection, ParseKeyMapError},
     mode::Mode,
     pattern::Pattern,
@@ -30,7 +23,7 @@ pub enum CommandOperation {
 
 pub struct FullCommandContext<'a> {
     pub target_client: TargetClient,
-    pub operations: &'a mut EditorOperationSender,
+    pub operations: &'a mut EditorOperationSerializer,
 
     pub config: &'a Config,
     pub keymaps: &'a mut KeyMapCollection,
@@ -40,7 +33,7 @@ pub struct FullCommandContext<'a> {
 }
 
 pub struct ConfigCommandContext<'a> {
-    pub operations: &'a mut EditorOperationSender,
+    pub operations: &'a mut EditorOperationSerializer,
     pub config: &'a Config,
     pub keymaps: &'a mut KeyMapCollection,
 }
@@ -207,14 +200,14 @@ mod helper {
 
     pub fn new_buffer_from_content(
         ctx: &mut FullCommandContext,
-        path: Option<PathBuf>,
+        path: &Path,
         content: BufferContent,
     ) {
-        ctx.operations.send_content(ctx.target_client, &content);
+        ctx.operations.serialize_buffer(ctx.target_client, &content);
         ctx.operations
-            .send(ctx.target_client, EditorOperation::Path(path.clone()));
+            .serialize(ctx.target_client, &EditorOperation::Path(path));
 
-        let buffer_handle = ctx.buffers.add(Buffer::new(path, content));
+        let buffer_handle = ctx.buffers.add(Buffer::new(path.into(), content));
         let buffer_view = BufferView::new(ctx.target_client, buffer_handle);
         let buffer_view_handle = ctx.buffer_views.add(buffer_view);
         *ctx.current_buffer_view_handle = Some(buffer_view_handle);
@@ -250,14 +243,14 @@ mod helper {
                 }
             };
 
-            ctx.operations.send_content(
+            ctx.operations.serialize_buffer(
                 ctx.target_client,
                 &ctx.buffers.get(buffer_handle).unwrap().content,
             );
             ctx.operations
-                .send(ctx.target_client, EditorOperation::Path(Some(path.into())));
+                .serialize(ctx.target_client, &EditorOperation::Path(path));
             ctx.operations
-                .send_cursors(ctx.target_client, &view.cursors);
+                .serialize_cursors(ctx.target_client, &view.cursors);
         } else if path.to_str().map(|s| s.trim().len()).unwrap_or(0) > 0 {
             let content = match File::open(&path) {
                 Ok(mut file) => {
@@ -276,7 +269,7 @@ mod helper {
                 Err(_) => BufferContent::from_str(""),
             };
 
-            new_buffer_from_content(ctx, Some(path.into()), content);
+            new_buffer_from_content(ctx, path, content);
         } else {
             return Err(format!("invalid path {:?}", path));
         }
@@ -319,9 +312,10 @@ mod commands {
         {
             for view in ctx.buffer_views.iter() {
                 if view.buffer_handle == handle {
-                    ctx.operations.send_empty_content(view.target_client);
                     ctx.operations
-                        .send(view.target_client, EditorOperation::Path(None));
+                        .serialize(view.target_client, &EditorOperation::Buffer(""));
+                    ctx.operations
+                        .serialize(view.target_client, &EditorOperation::Path(Path::new("")));
                 }
             }
             ctx.buffer_views
@@ -347,25 +341,23 @@ mod commands {
         helper::assert_empty(args)?;
         match path {
             Some(path) => {
-                let path = PathBuf::from(path);
-                helper::write_buffer_to_file(buffer, &path)?;
+                let path = Path::new(path);
+                helper::write_buffer_to_file(buffer, path)?;
                 for view in ctx.buffer_views.iter() {
                     if view.buffer_handle == buffer_handle {
-                        ctx.operations.send(
-                            view.target_client,
-                            EditorOperation::Path(Some(path.clone())),
-                        );
+                        ctx.operations
+                            .serialize(view.target_client, &EditorOperation::Path(path));
                     }
                 }
-                buffer.path = Some(path.clone());
+                buffer.path.clear();
+                buffer.path.push(path);
                 Ok(CommandOperation::Complete)
             }
             None => {
-                let path = buffer
-                    .path
-                    .as_ref()
-                    .ok_or_else(|| String::from("buffer has no path"))?;
-                helper::write_buffer_to_file(buffer, path)?;
+                if !buffer.path.as_os_str().is_empty() {
+                    return Err(String::from("buffer has no path"));
+                }
+                helper::write_buffer_to_file(buffer, &buffer.path)?;
                 Ok(CommandOperation::Complete)
             }
         }
@@ -374,8 +366,8 @@ mod commands {
     pub fn write_all(ctx: &mut FullCommandContext, args: CommandArgs) -> FullCommandResult {
         helper::assert_empty(args)?;
         for buffer in ctx.buffers.iter() {
-            if let Some(ref path) = buffer.path {
-                helper::write_buffer_to_file(buffer, path)?;
+            if !buffer.path.as_os_str().is_empty() {
+                helper::write_buffer_to_file(buffer, &buffer.path)?;
             }
         }
 
@@ -402,27 +394,29 @@ mod commands {
             },
         }?;
 
-        ctx.operations
-            .send(TargetClient::All, EditorOperation::ConfigValues(values));
+        ctx.operations.serialize(
+            TargetClient::All,
+            &EditorOperation::ConfigValues(Box::new(values)),
+        );
         Ok(())
     }
 
     pub fn syntax(ctx: &mut ConfigCommandContext, mut args: CommandArgs) -> ConfigCommandResult {
-        let extension = args.expect_next()?;
+        let main_extension = args.expect_next()?;
         let subcommand = args.expect_next()?;
         if subcommand == "extension" {
-            for other_extension in args {
-                ctx.operations.send(
+            for extension in args {
+                ctx.operations.serialize(
                     TargetClient::All,
-                    EditorOperation::SyntaxExtension(extension.into(), other_extension.into()),
+                    &EditorOperation::SyntaxExtension(main_extension, extension),
                 );
             }
         } else if let Some(token_kind) = TokenKind::from_str(subcommand) {
             for pattern in args {
-                ctx.operations.send(
+                ctx.operations.serialize(
                     TargetClient::All,
-                    EditorOperation::SyntaxRule(
-                        extension.into(),
+                    &EditorOperation::SyntaxRule(
+                        main_extension,
                         token_kind,
                         Pattern::new(pattern).map_err(|e| helper::parsing_error(e, pattern, 0))?,
                     ),
@@ -455,7 +449,7 @@ mod commands {
         }
 
         ctx.operations
-            .send(TargetClient::All, EditorOperation::Theme(theme));
+            .serialize(TargetClient::All, &EditorOperation::Theme(Box::new(theme)));
         Ok(())
     }
 

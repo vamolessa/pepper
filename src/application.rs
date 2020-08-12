@@ -3,7 +3,8 @@ use std::{convert::From, env, fs, io, sync::mpsc, thread};
 use crate::{
     client::Client,
     connection::{ConnectionWithClientCollection, ConnectionWithServer, TargetClient},
-    editor::{Editor, EditorLoop, EditorOperationSender},
+    editor::{Editor, EditorLoop},
+    editor_operation::{EditorOperationDeserializer, EditorOperationSerializer},
     event::Event,
     event_manager::{ConnectionEvent, EventManager},
 };
@@ -53,7 +54,7 @@ pub trait UI {
         Ok(())
     }
 
-    fn draw(&mut self, client: &Client, error: Option<String>) -> Result<(), Self::Error>;
+    fn draw(&mut self, client: &Client, error: &str) -> Result<(), Self::Error>;
 
     fn shutdown(&mut self) -> Result<(), Self::Error> {
         Ok(())
@@ -82,30 +83,19 @@ where
 }
 
 fn send_operations(
-    operations: &mut EditorOperationSender,
+    operations: &mut EditorOperationSerializer,
     local_client: &mut Client,
     remote_clients: &mut ConnectionWithClientCollection,
 ) {
-    let mut had_remote_operation = false;
-    for (target_client, operation, content) in operations.drain() {
-        match target_client {
-            TargetClient::All => {
-                local_client.on_editor_operation(&operation, content);
-                remote_clients.queue_operation_all(&operation, content);
-                had_remote_operation = true;
-            }
-            TargetClient::Local => {
-                local_client.on_editor_operation(&operation, content);
-            }
-            TargetClient::Remote(handle) => {
-                remote_clients.queue_operation(handle, &operation, content);
-                had_remote_operation = true;
-            }
+    {
+        let mut deserializer = EditorOperationDeserializer::from_slice(operations.local_bytes());
+        while let Ok(Some(op)) = deserializer.deserialize_next() {
+            local_client.on_editor_operation(&op);
         }
     }
 
-    if had_remote_operation {
-        remote_clients.send_queued_operations();
+    for handle in remote_clients.all_handles() {
+        remote_clients.send_serialized_operations(handle, operations.remote_bytes(handle));
     }
 }
 
@@ -125,7 +115,7 @@ where
     let mut local_client = Client::new();
     let mut editor = Editor::new();
 
-    let mut editor_operations = EditorOperationSender::new();
+    let mut editor_operations = EditorOperationSerializer::default();
     let mut received_keys = Vec::new();
 
     local_client.load_config(
@@ -210,8 +200,8 @@ where
             }
         }
 
-        let error = local_client.error.take();
-        ui.draw(&local_client, error)?;
+        ui.draw(&local_client, &local_client.error[..])?;
+        local_client.error.clear();
     }
 
     drop(event_manager_loop);
@@ -236,8 +226,6 @@ where
     let ui_event_loop = I::run_event_loop_in_background(event_sender);
 
     let mut local_client = Client::new();
-    let mut received_operations = Vec::new();
-    let mut received_content = String::new();
 
     connection.register_connection(&event_registry)?;
     ui.init()?;
@@ -254,30 +242,32 @@ where
             Event::Connection(event) => match event {
                 ConnectionEvent::NewConnection => (),
                 ConnectionEvent::Stream(_) => {
-                    loop {
-                        match connection.receive_operation(&mut received_content) {
-                            Ok(Some(operation)) => received_operations.push(operation),
-                            Ok(None) => break,
-                            Err(_) => break 'main_loop,
-                        }
+                    let mut received_operation = false;
+                    match connection.receive_operations() {
+                        Ok(mut deserializer) => loop {
+                            match deserializer.deserialize_next() {
+                                Ok(Some(op)) => {
+                                    received_operation = true;
+                                    local_client.on_editor_operation(&op);
+                                }
+                                Ok(None) => break,
+                                Err(_) => break 'main_loop,
+                            }
+                        },
+                        Err(_) => break,
                     }
 
-                    if received_operations.len() == 0 {
+                    if !received_operation {
                         break;
                     }
-
-                    for operation in received_operations.drain(..) {
-                        local_client.on_editor_operation(&operation, &received_content[..]);
-                    }
-                    received_content.clear();
 
                     connection.listen_next_event(&event_registry)?;
                 }
             },
         }
 
-        let error = local_client.error.take();
-        ui.draw(&local_client, error)?;
+        ui.draw(&local_client, &local_client.error[..])?;
+        local_client.error.clear();
     }
 
     drop(event_manager_loop);

@@ -1,7 +1,6 @@
 use std::{
-    convert::{Into, TryFrom},
+    convert::Into,
     io::{self, Cursor, Read, Write},
-    mem,
     net::Shutdown,
     path::Path,
 };
@@ -12,7 +11,7 @@ use uds_windows::{UnixListener, UnixStream};
 use bincode::Options;
 
 use crate::{
-    editor::EditorOperation,
+    editor_operation::EditorOperationDeserializer,
     event::Key,
     event_manager::{EventRegistry, StreamId},
 };
@@ -83,7 +82,6 @@ pub enum TargetClient {
 
 pub struct ConnectionWithClient {
     stream: UnixStream,
-    write_buf: Vec<u8>,
     read_buf: ReadBuf,
 }
 
@@ -109,7 +107,6 @@ pub struct ConnectionWithClientCollection {
     listener: UnixListener,
     connections: Vec<Option<ConnectionWithClient>>,
     closed_connection_indexes: Vec<usize>,
-    error_indexes: Vec<usize>,
 }
 
 impl ConnectionWithClientCollection {
@@ -123,7 +120,6 @@ impl ConnectionWithClientCollection {
         Ok(Self {
             listener,
             connections: Vec::new(),
-            error_indexes: Vec::new(),
             closed_connection_indexes: Vec::new(),
         })
     }
@@ -144,7 +140,6 @@ impl ConnectionWithClientCollection {
         stream.set_nonblocking(true)?;
         let connection = ConnectionWithClient {
             stream,
-            write_buf: Vec::with_capacity(8 * 1024),
             read_buf: ReadBuf::new(),
         };
 
@@ -201,58 +196,18 @@ impl ConnectionWithClientCollection {
         Ok(())
     }
 
-    fn serialize_operation(mut buf: &mut Vec<u8>, operation: &EditorOperation, content: &str) {
-        let _ = bincode_serializer().serialize_into(&mut buf, operation);
-        if let EditorOperation::Content = operation {
-            let bytes = content.as_bytes();
-            let len = bytes.len() as u32;
-            buf.extend_from_slice(&len.to_le_bytes());
-            buf.extend_from_slice(bytes);
-        }
-    }
-
-    pub fn queue_operation(
-        &mut self,
-        handle: ConnectionWithClientHandle,
-        operation: &EditorOperation,
-        content: &str,
-    ) {
-        if let Some(connection) = &mut self.connections[handle.0] {
-            Self::serialize_operation(&mut connection.write_buf, operation, content);
-        }
-    }
-
-    pub fn queue_operation_all(&mut self, operation: &EditorOperation, content: &str) {
-        for connection in self.connections.iter_mut().flatten() {
-            Self::serialize_operation(&mut connection.write_buf, operation, content);
-        }
-    }
-
-    pub fn send_queued_operations(&mut self) {
-        self.error_indexes.clear();
-        for (i, connection) in self
-            .connections
-            .iter_mut()
-            .enumerate()
-            .flat_map(|(i, c)| c.as_mut().map(|c| (i, c)))
-        {
-            let write_slice = &connection.write_buf[..];
-            if write_slice.len() > 0 {
-                if connection.stream.write_all(write_slice).is_err() {
-                    self.error_indexes.push(i);
-                }
-            }
+    pub fn send_serialized_operations(&mut self, handle: ConnectionWithClientHandle, bytes: &[u8]) {
+        if bytes.is_empty() {
+            return;
         }
 
-        let mut error_indexes = Vec::new();
-        std::mem::swap(&mut self.error_indexes, &mut error_indexes);
-        for i in error_indexes.drain(..) {
-            self.close_connection(ConnectionWithClientHandle(i));
-        }
-        std::mem::swap(&mut self.error_indexes, &mut error_indexes);
+        let stream = match &mut self.connections[handle.0] {
+            Some(connection) => &mut connection.stream,
+            None => return,
+        };
 
-        for connection in self.connections.iter_mut().flatten() {
-            connection.write_buf.clear();
+        if stream.write_all(bytes).is_err() {
+            self.close_connection(handle);
         }
     }
 
@@ -261,6 +216,10 @@ impl ConnectionWithClientCollection {
             Some(connection) => deserialize(&mut connection.stream, &mut connection.read_buf),
             None => Ok(None),
         }
+    }
+
+    pub fn all_handles(&self) -> impl Iterator<Item = ConnectionWithClientHandle> {
+        (0..self.connections.len()).map(|i| ConnectionWithClientHandle(i))
     }
 }
 
@@ -301,18 +260,11 @@ impl ConnectionWithServer {
         }
     }
 
-    pub fn receive_operation(
-        &mut self,
-        content: &mut String,
-    ) -> io::Result<Option<EditorOperation>> {
-        match deserialize(&mut self.stream, &mut self.read_buf)? {
-            None => Ok(None),
-            Some(EditorOperation::Content) => {
-                deserialize_string(&mut self.stream, &mut self.read_buf, content)?;
-                Ok(Some(EditorOperation::Content))
-            }
-            Some(operation) => Ok(Some(operation)),
-        }
+    pub fn receive_operations(&mut self) -> io::Result<EditorOperationDeserializer<'_>> {
+        self.read_buf.read_into(&mut self.stream)?;
+        Ok(EditorOperationDeserializer::from_slice(
+            self.read_buf.slice(),
+        ))
     }
 }
 
@@ -344,46 +296,6 @@ where
 
         if buf.read_into(&mut reader)? == 0 {
             break Ok(None);
-        }
-    }
-}
-
-fn deserialize_u32(mut reader: &mut UnixStream, buf: &mut ReadBuf) -> io::Result<u32> {
-    const SIZE: usize = mem::size_of::<u32>();
-    loop {
-        let slice = buf.slice();
-        if slice.len() >= SIZE {
-            let array = <[u8; SIZE]>::try_from(&slice[..SIZE]).unwrap();
-            buf.seek(SIZE);
-            break Ok(u32::from_le_bytes(array));
-        }
-
-        if buf.read_into(&mut reader)? == 0 {
-            break Err(io::Error::from(io::ErrorKind::UnexpectedEof));
-        }
-    }
-}
-
-fn deserialize_string(
-    mut reader: &mut UnixStream,
-    mut buf: &mut ReadBuf,
-    text: &mut String,
-) -> io::Result<usize> {
-    text.clear();
-    let len = deserialize_u32(&mut reader, &mut buf)? as usize;
-
-    loop {
-        let slice = buf.slice();
-        if slice.len() >= len {
-            let slice = std::str::from_utf8(&slice[..len])
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-            text.push_str(slice);
-            buf.seek(len);
-            break Ok(len);
-        }
-
-        if buf.read_into(&mut reader)? == 0 {
-            break Err(io::Error::from(io::ErrorKind::UnexpectedEof));
         }
     }
 }

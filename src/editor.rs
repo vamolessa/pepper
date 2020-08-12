@@ -1,120 +1,19 @@
-use std::path::PathBuf;
-
-use serde_derive::{Deserialize, Serialize};
-
 use crate::{
-    buffer::{BufferCollection, BufferContent, Text},
-    buffer_position::{BufferPosition, BufferRange},
+    buffer::BufferCollection,
     buffer_view::{BufferViewCollection, BufferViewHandle},
     command::CommandCollection,
-    config::{Config, ConfigValues},
+    config::Config,
     connection::ConnectionWithClientHandle,
     connection::TargetClient,
-    cursor::{Cursor, CursorCollection},
+    editor_operation::{EditorOperation, EditorOperationSerializer},
     event::Key,
     keymap::{KeyMapCollection, MatchResult},
     mode::{Mode, ModeContext, ModeOperation},
-    pattern::Pattern,
-    syntax::{SyntaxCollection, TokenKind},
-    theme::Theme,
 };
 
 pub enum EditorLoop {
     Quit,
     Continue,
-}
-
-#[derive(Serialize, Deserialize)]
-pub enum EditorOperation {
-    Focused(bool),
-    Content,
-    Path(Option<PathBuf>),
-    Mode(Mode),
-    Insert(BufferPosition, Text),
-    Delete(BufferRange),
-    ClearCursors(Cursor),
-    Cursor(Cursor),
-    InputAppend(char),
-    InputKeep(usize),
-    Search,
-    ConfigValues(ConfigValues),
-    Theme(Theme),
-    SyntaxExtension(String, String),
-    SyntaxRule(String, TokenKind, Pattern),
-    Error(String),
-}
-
-pub struct EditorOperationSender {
-    operations: Vec<(TargetClient, EditorOperation)>,
-    write_content_buf: Vec<u8>,
-}
-
-impl EditorOperationSender {
-    pub fn new() -> Self {
-        Self {
-            operations: Vec::new(),
-            write_content_buf: Vec::with_capacity(1024 * 8),
-        }
-    }
-
-    pub fn send(&mut self, target_client: TargetClient, operation: EditorOperation) {
-        self.operations.push((target_client, operation));
-    }
-
-    pub fn send_cursors(&mut self, target_client: TargetClient, cursors: &CursorCollection) {
-        self.send(
-            target_client,
-            EditorOperation::ClearCursors(*cursors.main_cursor()),
-        );
-        for cursor in &cursors[..] {
-            self.send(target_client, EditorOperation::Cursor(*cursor));
-        }
-    }
-
-    pub fn send_empty_content(&mut self, target_client: TargetClient) {
-        self.send(target_client, EditorOperation::Content);
-        self.write_content_buf.clear();
-    }
-
-    pub fn send_content(&mut self, target_client: TargetClient, content: &BufferContent) {
-        self.send_empty_content(target_client);
-        if content.write(&mut self.write_content_buf).is_err() {
-            self.write_content_buf.clear();
-        }
-    }
-
-    pub fn send_syntaxes(&mut self, target_client: TargetClient, syntaxes: &SyntaxCollection) {
-        for syntax in syntaxes.iter() {
-            let mut extensions = syntax.extensions();
-            let main_extension = match extensions.next() {
-                Some(ext) => ext,
-                None => continue,
-            };
-
-            self.send(
-                target_client,
-                EditorOperation::SyntaxExtension(main_extension.into(), main_extension.into()),
-            );
-            for extension in extensions {
-                self.send(
-                    target_client,
-                    EditorOperation::SyntaxExtension(main_extension.into(), extension.into()),
-                );
-            }
-
-            for (token_kind, pattern) in syntax.rules() {
-                self.send(
-                    target_client,
-                    EditorOperation::SyntaxRule(main_extension.into(), token_kind, pattern.clone()),
-                );
-            }
-        }
-    }
-
-    pub fn drain(&mut self) -> impl '_ + Iterator<Item = (TargetClient, EditorOperation, &str)> {
-        let content = std::str::from_utf8(&self.write_content_buf[..]).unwrap_or("");
-        self.operations.drain(..).map(move |(t, o)| (t, o, content))
-    }
 }
 
 pub struct KeysIterator<'a> {
@@ -181,8 +80,9 @@ impl Editor {
         &mut self,
         client_handle: ConnectionWithClientHandle,
         config: &Config,
-        operations: &mut EditorOperationSender,
+        operations: &mut EditorOperationSerializer,
     ) {
+        operations.on_client_joined(client_handle);
         let target_client = TargetClient::Remote(client_handle);
 
         let buffer_view_handle = match self.focused_client {
@@ -197,21 +97,26 @@ impl Editor {
             .map(|h| self.buffers.get(h))
             .flatten()
         {
-            operations.send_content(target_client, &buffer.content);
-            operations.send(target_client, EditorOperation::Path(buffer.path.clone()));
+            operations.serialize_buffer(target_client, &buffer.content);
+            operations.serialize(target_client, &EditorOperation::Path(buffer.path.as_ref()));
         }
 
-        operations.send(self.focused_client, EditorOperation::Focused(false));
-        operations.send(target_client, EditorOperation::Mode(self.mode.clone()));
+        operations.serialize(self.focused_client, &EditorOperation::Focused(false));
+        operations.serialize(target_client, &EditorOperation::Mode(self.mode.clone()));
         for c in self.input.chars() {
-            operations.send(target_client, EditorOperation::InputAppend(c));
+            operations.serialize(target_client, &EditorOperation::InputAppend(c));
         }
-        operations.send(
+        operations.serialize(
             target_client,
-            EditorOperation::ConfigValues(config.values.clone()),
+            &EditorOperation::ConfigValues(Box::new(config.values.clone())),
         );
-        operations.send(target_client, EditorOperation::Theme(config.theme.clone()));
-        operations.send_syntaxes(target_client, &config.syntaxes);
+        operations.serialize(
+            target_client,
+            &EditorOperation::Theme(Box::new(config.theme.clone())),
+        );
+        for syntax in config.syntaxes.iter() {
+            operations.serialize_syntax(target_client, syntax);
+        }
 
         let buffer_view = match self.focused_client {
             TargetClient::All => unreachable!(),
@@ -234,7 +139,7 @@ impl Editor {
         };
 
         if let Some(buffer_view) = &buffer_view {
-            operations.send_cursors(target_client, &buffer_view.cursors);
+            operations.serialize_cursors(target_client, &buffer_view.cursors);
         }
 
         match target_client {
@@ -262,13 +167,14 @@ impl Editor {
     pub fn on_client_left(
         &mut self,
         client_handle: ConnectionWithClientHandle,
-        operations: &mut EditorOperationSender,
+        operations: &mut EditorOperationSerializer,
     ) {
+        operations.on_client_left(client_handle);
         if self.focused_client == TargetClient::Remote(client_handle) {
             self.focused_client = TargetClient::Local;
-            operations.send(self.focused_client, EditorOperation::Focused(true));
-            operations.send(TargetClient::All, EditorOperation::InputKeep(0));
-            operations.send(TargetClient::All, EditorOperation::Mode(Mode::default()));
+            operations.serialize(self.focused_client, &EditorOperation::Focused(true));
+            operations.serialize(TargetClient::All, &EditorOperation::InputKeep(0));
+            operations.serialize(TargetClient::All, &EditorOperation::Mode(Mode::default()));
 
             self.mode = Mode::default();
             self.buffered_keys.clear();
@@ -283,11 +189,11 @@ impl Editor {
         config: &Config,
         key: Key,
         target_client: TargetClient,
-        operations: &mut EditorOperationSender,
+        operations: &mut EditorOperationSerializer,
     ) -> EditorLoop {
         if target_client != self.focused_client {
-            operations.send(self.focused_client, EditorOperation::Focused(false));
-            operations.send(target_client, EditorOperation::Focused(true));
+            operations.serialize(self.focused_client, &EditorOperation::Focused(false));
+            operations.serialize(target_client, &EditorOperation::Focused(true));
 
             self.focused_client = target_client;
             self.buffered_keys.clear();
@@ -344,13 +250,14 @@ impl Editor {
                 ModeOperation::EnterMode(next_mode) => {
                     self.mode = next_mode.clone();
                     self.mode.on_enter(&mut mode_context);
-                    operations.send(TargetClient::All, EditorOperation::Mode(next_mode));
+                    operations.serialize(TargetClient::All, &EditorOperation::Mode(next_mode));
                 }
                 ModeOperation::Error(error) => {
                     self.mode = Mode::default();
                     self.mode.on_enter(&mut mode_context);
-                    operations.send(TargetClient::All, EditorOperation::Mode(Mode::default()));
-                    operations.send(self.focused_client, EditorOperation::Error(error));
+                    operations
+                        .serialize(TargetClient::All, &EditorOperation::Mode(Mode::default()));
+                    operations.serialize(self.focused_client, &EditorOperation::Error(&error[..]));
 
                     break EditorLoop::Continue;
                 }

@@ -1,12 +1,12 @@
 use std::path::PathBuf;
 
 use crate::{
-    buffer::BufferContent,
+    buffer::{BufferContent, TextRef},
     buffer_position::BufferRange,
     command::{CommandCollection, ConfigCommandContext},
     config::Config,
     cursor::Cursor,
-    editor::{EditorOperation, EditorOperationSender},
+    editor_operation::{EditorOperation, EditorOperationSerializer},
     keymap::KeyMapCollection,
     mode::Mode,
     syntax::{HighlightedBuffer, SyntaxHandle},
@@ -16,7 +16,7 @@ pub struct Client {
     pub config: Config,
     pub mode: Mode,
 
-    pub path: Option<PathBuf>,
+    pub path: PathBuf,
     pub buffer: BufferContent,
     pub highlighted_buffer: HighlightedBuffer,
     pub syntax_handle: Option<SyntaxHandle>,
@@ -27,7 +27,7 @@ pub struct Client {
 
     pub has_focus: bool,
     pub input: String,
-    pub error: Option<String>,
+    pub error: String,
 }
 
 impl Client {
@@ -36,7 +36,7 @@ impl Client {
             config: Config::default(),
             mode: Mode::default(),
 
-            path: None,
+            path: PathBuf::new(),
             buffer: BufferContent::from_str(""),
             highlighted_buffer: HighlightedBuffer::default(),
             syntax_handle: None,
@@ -47,7 +47,7 @@ impl Client {
 
             has_focus: true,
             input: String::new(),
-            error: None,
+            error: String::new(),
         }
     }
 
@@ -55,7 +55,7 @@ impl Client {
         &mut self,
         commands: &CommandCollection,
         keymaps: &mut KeyMapCollection,
-        operations: &mut EditorOperationSender,
+        operations: &mut EditorOperationSerializer,
     ) {
         let mut ctx = ConfigCommandContext {
             operations,
@@ -64,19 +64,22 @@ impl Client {
         };
 
         if let Err(e) = Config::load_into_operations(commands, &mut ctx) {
-            self.error = Some(e);
+            self.error.clear();
+            self.error.push_str(&e[..]);
             return;
         }
 
+        /*
         for (_target, operation, content) in operations.drain() {
             self.on_editor_operation(&operation, content);
         }
+        */
     }
 
-    pub fn on_editor_operation(&mut self, operation: &EditorOperation, content: &str) {
+    pub fn on_editor_operation(&mut self, operation: &EditorOperation) {
         match operation {
             EditorOperation::Focused(focused) => self.has_focus = *focused,
-            EditorOperation::Content => {
+            EditorOperation::Buffer(content) => {
                 self.search_ranges.clear();
                 self.buffer = BufferContent::from_str(content);
                 self.main_cursor = Cursor::default();
@@ -89,13 +92,16 @@ impl Client {
                 }
             }
             EditorOperation::Path(path) => {
-                self.path = path.clone();
+                self.path.clear();
+                self.path.push(path);
+
                 self.syntax_handle = None;
 
                 if let Some(extension) = self
                     .path
-                    .as_ref()
-                    .and_then(|p| p.extension().or(p.file_name()).and_then(|s| s.to_str()))
+                    .extension()
+                    .or(self.path.file_name())
+                    .and_then(|s| s.to_str())
                 {
                     self.syntax_handle = self.config.syntaxes.find_by_extension(extension);
                 }
@@ -108,7 +114,7 @@ impl Client {
             EditorOperation::Mode(mode) => self.mode = mode.clone(),
             EditorOperation::Insert(position, text) => {
                 self.search_ranges.clear();
-                let range = self.buffer.insert_text(*position, text.as_text_ref());
+                let range = self.buffer.insert_text(*position, TextRef::Str(text));
                 if let Some(handle) = self.syntax_handle {
                     let syntax = self.config.syntaxes.get(handle);
                     self.highlighted_buffer
@@ -124,7 +130,7 @@ impl Client {
                         .on_delete(syntax, &self.buffer, *range);
                 }
             }
-            EditorOperation::ClearCursors(cursor) => {
+            EditorOperation::CursorsClear(cursor) => {
                 self.main_cursor = *cursor;
                 self.cursors.clear();
             }
@@ -138,19 +144,22 @@ impl Client {
                 self.buffer
                     .find_search_ranges(&self.input[..], &mut self.search_ranges);
             }
-            EditorOperation::ConfigValues(values) => self.config.values = values.clone(),
-            EditorOperation::Theme(theme) => self.config.theme = theme.clone(),
-            EditorOperation::SyntaxExtension(extension, other_extension) => self
+            EditorOperation::ConfigValues(values) => self.config.values = *values.clone(),
+            EditorOperation::Theme(theme) => self.config.theme = *theme.clone(),
+            EditorOperation::SyntaxExtension(main_extension, other_extension) => self
                 .config
                 .syntaxes
-                .get_by_extension(extension)
-                .add_extension(other_extension.clone()),
-            EditorOperation::SyntaxRule(extension, token, pattern) => self
+                .get_by_extension(main_extension)
+                .add_extension((*other_extension).into()),
+            EditorOperation::SyntaxRule(main_extension, token, pattern) => self
                 .config
                 .syntaxes
-                .get_by_extension(extension)
+                .get_by_extension(main_extension)
                 .add_rule(*token, pattern.clone()),
-            EditorOperation::Error(error) => self.error = Some(error.clone()),
+            EditorOperation::Error(error) => {
+                self.error.clear();
+                self.error.push_str(error);
+            }
         }
     }
 }

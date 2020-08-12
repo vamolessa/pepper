@@ -112,7 +112,7 @@ where
         Ok(())
     }
 
-    fn draw(&mut self, client: &Client, error: Option<String>) -> Result<()> {
+    fn draw(&mut self, client: &Client, error: &str) -> Result<()> {
         let cursor_position = client.main_cursor.position;
         let height = self.height - 1;
         if cursor_position.line_index < self.scroll {
@@ -147,7 +147,7 @@ fn draw<W>(
     scroll: usize,
     width: u16,
     height: u16,
-    error: Option<String>,
+    error: &str,
 ) -> Result<()>
 where
     W: Write,
@@ -338,12 +338,7 @@ where
     Ok(())
 }
 
-fn draw_statusbar<W>(
-    write: &mut W,
-    client: &Client,
-    width: u16,
-    error: Option<String>,
-) -> Result<()>
+fn draw_statusbar<W>(write: &mut W, client: &Client, width: u16, error: &str) -> Result<()>
 where
     W: Write,
 {
@@ -389,7 +384,7 @@ where
     let x;
     let draw_buffer_path;
 
-    if let Some(error) = &error {
+    if !error.is_empty() {
         let prefix = "error:";
         handle_command!(write, Print(prefix))?;
         handle_command!(write, Print(error))?;
@@ -440,12 +435,7 @@ where
     };
 
     if draw_buffer_path {
-        if let Some(buffer_path) = client
-            .path
-            .as_ref()
-            .map(|p| p.as_os_str().to_str())
-            .flatten()
-        {
+        if let Some(buffer_path) = client.path.as_os_str().to_str().filter(|s| !s.is_empty()) {
             let line_number = client.main_cursor.position.line_index + 1;
             let column_number = client.main_cursor.position.column_index + 1;
             let line_digit_count = find_digit_count(line_number);

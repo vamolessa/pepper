@@ -3,7 +3,7 @@ use crate::{
     buffer_position::{BufferOffset, BufferRange},
     connection::TargetClient,
     cursor::CursorCollection,
-    editor::{EditorOperation, EditorOperationSender},
+    editor_operation::{EditorOperation, EditorOperationSerializer},
     history::{EditKind, EditRef},
 };
 
@@ -38,7 +38,7 @@ impl BufferView {
     pub fn move_cursors(
         &mut self,
         buffers: &BufferCollection,
-        operations: &mut EditorOperationSender,
+        operations: &mut EditorOperationSerializer,
         offset: BufferOffset,
         movement_kind: MovementKind,
     ) {
@@ -63,23 +63,26 @@ impl BufferView {
             }
         }
 
-        operations.send_cursors(self.target_client, &self.cursors);
+        operations.serialize_cursors(self.target_client, &self.cursors);
     }
 
-    pub fn collapse_cursors_anchors(&mut self, operations: &mut EditorOperationSender) {
+    pub fn collapse_cursors_anchors(&mut self, operations: &mut EditorOperationSerializer) {
         self.cursors.collapse_anchors();
-        operations.send_cursors(self.target_client, &self.cursors);
+        operations.serialize_cursors(self.target_client, &self.cursors);
     }
 
-    pub fn swap_cursors_positions_and_anchors(&mut self, operations: &mut EditorOperationSender) {
+    pub fn swap_cursors_positions_and_anchors(
+        &mut self,
+        operations: &mut EditorOperationSerializer,
+    ) {
         self.cursors.swap_positions_and_anchors();
-        operations.send_cursors(self.target_client, &self.cursors);
+        operations.serialize_cursors(self.target_client, &self.cursors);
     }
 
     pub fn move_to_next_search_match(
         &mut self,
         buffers: &BufferCollection,
-        operations: &mut EditorOperationSender,
+        operations: &mut EditorOperationSerializer,
         movement_kind: MovementKind,
     ) {
         self.move_to_search_match(buffers, operations, movement_kind, |result, len| {
@@ -94,7 +97,7 @@ impl BufferView {
     pub fn move_to_previous_search_match(
         &mut self,
         buffers: &BufferCollection,
-        operations: &mut EditorOperationSender,
+        operations: &mut EditorOperationSerializer,
         movement_kind: MovementKind,
     ) {
         self.move_to_search_match(buffers, operations, movement_kind, |result, len| {
@@ -109,7 +112,7 @@ impl BufferView {
     fn move_to_search_match<F>(
         &mut self,
         buffers: &BufferCollection,
-        operations: &mut EditorOperationSender,
+        operations: &mut EditorOperationSerializer,
         movement_kind: MovementKind,
         index_selector: F,
     ) where
@@ -142,7 +145,7 @@ impl BufferView {
             }
         }
 
-        operations.send_cursors(self.target_client, &self.cursors);
+        operations.serialize_cursors(self.target_client, &self.cursors);
     }
 
     pub fn commit_edits(&self, buffers: &mut BufferCollection) {
@@ -239,7 +242,7 @@ impl BufferViewCollection {
     pub fn insert_text(
         &mut self,
         buffers: &mut BufferCollection,
-        operations: &mut EditorOperationSender,
+        operations: &mut EditorOperationSerializer,
         handle: &BufferViewHandle,
         text: TextRef,
     ) {
@@ -272,19 +275,16 @@ impl BufferViewCollection {
             }
 
             for range in ranges {
-                operations.send(
-                    view.target_client,
-                    EditorOperation::Insert(range.from, text.to_text()),
-                );
+                operations.serialize_insert(view.target_client, range.from, text);
             }
-            operations.send_cursors(view.target_client, &view.cursors);
+            operations.serialize_cursors(view.target_client, &view.cursors);
         }
     }
 
     pub fn delete_in_selection(
         &mut self,
         buffers: &mut BufferCollection,
-        operations: &mut EditorOperationSender,
+        operations: &mut EditorOperationSerializer,
         handle: &BufferViewHandle,
     ) {
         let current_view = match &mut self.buffer_views[handle.0] {
@@ -317,16 +317,16 @@ impl BufferViewCollection {
             }
 
             for range in ranges {
-                operations.send(view.target_client, EditorOperation::Delete(*range));
+                operations.serialize(view.target_client, &EditorOperation::Delete(*range));
             }
-            operations.send_cursors(view.target_client, &view.cursors);
+            operations.serialize_cursors(view.target_client, &view.cursors);
         }
     }
 
     pub fn undo(
         &mut self,
         buffers: &mut BufferCollection,
-        operations: &mut EditorOperationSender,
+        operations: &mut EditorOperationSerializer,
         handle: &BufferViewHandle,
     ) {
         if let Some(buffer) = self.buffer_views[handle.0]
@@ -340,7 +340,7 @@ impl BufferViewCollection {
     pub fn redo(
         &mut self,
         buffers: &mut BufferCollection,
-        operations: &mut EditorOperationSender,
+        operations: &mut EditorOperationSerializer,
         handle: &BufferViewHandle,
     ) {
         if let Some(buffer) = self.buffer_views[handle.0]
@@ -354,7 +354,7 @@ impl BufferViewCollection {
     fn apply_edits<'a>(
         &mut self,
         handle: &BufferViewHandle,
-        operations: &mut EditorOperationSender,
+        operations: &mut EditorOperationSerializer,
         edits: impl 'a + Iterator<Item = EditRef<'a>>,
     ) {
         let buffer_handle = self.get(handle).buffer_handle;
@@ -372,10 +372,7 @@ impl BufferViewCollection {
                                 c.insert(edit.range);
                             }
                         }
-                        operations.send(
-                            view.target_client,
-                            EditorOperation::Insert(edit.range.from, edit.text.to_text()),
-                        );
+                        operations.serialize_insert(view.target_client, edit.range.from, edit.text);
                     }
                 }
                 EditKind::Delete => {
@@ -389,14 +386,15 @@ impl BufferViewCollection {
                                 c.delete(edit.range);
                             }
                         }
-                        operations.send(view.target_client, EditorOperation::Delete(edit.range));
+                        operations
+                            .serialize(view.target_client, &EditorOperation::Delete(edit.range));
                     }
                 }
             }
         }
 
         for view in self.buffer_views.iter().flatten() {
-            operations.send_cursors(view.target_client, &view.cursors);
+            operations.serialize_cursors(view.target_client, &view.cursors);
         }
     }
 }

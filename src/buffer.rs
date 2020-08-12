@@ -357,14 +357,14 @@ impl BufferContent {
 }
 
 pub struct Buffer {
-    pub path: Option<PathBuf>,
+    pub path: PathBuf,
     pub content: BufferContent,
     pub history: History,
     search_ranges: Vec<BufferRange>,
 }
 
 impl Buffer {
-    pub fn new(path: Option<PathBuf>, content: BufferContent) -> Self {
+    pub fn new(path: PathBuf, content: BufferContent) -> Self {
         Self {
             path,
             content,
@@ -446,11 +446,13 @@ impl BufferCollection {
     }
 
     pub fn find_with_path(&self, path: &Path) -> Option<BufferHandle> {
+        if path.as_os_str().len() == 0 {
+            return None;
+        }
+
         for (handle, buffer) in self.iter_with_handles() {
-            if let Some(ref buffer_path) = buffer.path {
-                if buffer_path == path {
-                    return Some(handle);
-                }
+            if buffer.path == path {
+                return Some(handle);
             }
         }
 
@@ -618,7 +620,7 @@ mod tests {
 
     #[test]
     fn buffer_delete_undo_redo_single_line() {
-        let mut buffer = Buffer::new(None, BufferContent::from_str("single line content"));
+        let mut buffer = Buffer::new(PathBuf::new(), BufferContent::from_str("single line content"));
         let range = BufferRange::between(
             BufferPosition::line_col(0, 7),
             BufferPosition::line_col(0, 12),
@@ -638,7 +640,7 @@ mod tests {
 
     #[test]
     fn buffer_delete_undo_redo_multi_line() {
-        let mut buffer = Buffer::new(None, BufferContent::from_str("multi\nline\ncontent"));
+        let mut buffer = Buffer::new(PathBuf::new(), BufferContent::from_str("multi\nline\ncontent"));
         let range = BufferRange::between(
             BufferPosition::line_col(0, 1),
             BufferPosition::line_col(1, 3),

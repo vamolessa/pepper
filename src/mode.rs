@@ -8,7 +8,8 @@ use crate::{
     command::CommandCollection,
     config::Config,
     connection::TargetClient,
-    editor::{EditorOperation, EditorOperationSender, KeysIterator},
+    editor::KeysIterator,
+    editor_operation::{EditorOperation, EditorOperationSerializer},
     event::Key,
     keymap::KeyMapCollection,
 };
@@ -29,7 +30,7 @@ pub enum ModeOperation {
 
 pub struct ModeContext<'a> {
     pub target_client: TargetClient,
-    pub operations: &'a mut EditorOperationSender,
+    pub operations: &'a mut EditorOperationSerializer,
 
     pub config: &'a Config,
     pub keymaps: &'a mut KeyMapCollection,
@@ -111,14 +112,14 @@ pub fn poll_input(ctx: &mut ModeContext, keys: &mut KeysIterator) -> InputPollRe
         Key::Esc | Key::Ctrl('c') => {
             ctx.input.clear();
             ctx.operations
-                .send(TargetClient::All, EditorOperation::InputKeep(0));
+                .serialize(TargetClient::All, &EditorOperation::InputKeep(0));
             InputPollResult::Canceled
         }
         Key::Ctrl('m') => InputPollResult::Submited,
         Key::Ctrl('u') => {
             ctx.input.clear();
             ctx.operations
-                .send(TargetClient::All, EditorOperation::InputKeep(0));
+                .serialize(TargetClient::All, &EditorOperation::InputKeep(0));
             InputPollResult::Pending
         }
         Key::Ctrl('w') => {
@@ -137,15 +138,15 @@ pub fn poll_input(ctx: &mut ModeContext, keys: &mut KeysIterator) -> InputPollRe
 
             ctx.input.truncate(last_index);
             ctx.operations
-                .send(TargetClient::All, EditorOperation::InputKeep(last_index));
+                .serialize(TargetClient::All, &EditorOperation::InputKeep(last_index));
             InputPollResult::Pending
         }
         Key::Ctrl('h') => {
             if let Some((last_char_index, _)) = ctx.input.char_indices().rev().next() {
                 ctx.input.truncate(last_char_index);
-                ctx.operations.send(
+                ctx.operations.serialize(
                     TargetClient::All,
-                    EditorOperation::InputKeep(last_char_index),
+                    &EditorOperation::InputKeep(last_char_index),
                 );
             }
             InputPollResult::Pending
@@ -153,7 +154,7 @@ pub fn poll_input(ctx: &mut ModeContext, keys: &mut KeysIterator) -> InputPollRe
         Key::Char(c) => {
             ctx.input.push(c);
             ctx.operations
-                .send(TargetClient::All, EditorOperation::InputAppend(c));
+                .serialize(TargetClient::All, &EditorOperation::InputAppend(c));
             InputPollResult::Pending
         }
         _ => InputPollResult::Pending,

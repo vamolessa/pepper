@@ -4,7 +4,7 @@ use serde::{de, ser};
 use serde_derive::{Deserialize, Serialize};
 
 use crate::{
-    buffer::BufferContent,
+    buffer::{BufferContent, TextRef},
     buffer_position::{BufferPosition, BufferRange},
     config::ConfigValues,
     connection::ConnectionWithClientHandle,
@@ -12,7 +12,7 @@ use crate::{
     cursor::{Cursor, CursorCollection},
     mode::Mode,
     pattern::Pattern,
-    syntax::TokenKind,
+    syntax::{Syntax, TokenKind},
     theme::Theme,
 };
 
@@ -20,7 +20,6 @@ use crate::{
 pub enum EditorOperation<'a> {
     Focused(bool),
     Buffer(&'a str),
-    PathClear,
     Path(&'a Path),
     Mode(Mode),
     Insert(BufferPosition, &'a str),
@@ -102,6 +101,22 @@ impl EditorOperationSerializer {
         }
     }
 
+    pub fn serialize_insert(
+        &mut self,
+        target_client: TargetClient,
+        position: BufferPosition,
+        text: TextRef,
+    ) {
+        match text {
+            TextRef::Char(c) => {
+                let mut buf = [0; std::mem::size_of::<char>()];
+                let s = c.encode_utf8(&mut buf);
+                self.serialize(target_client, &EditorOperation::Insert(position, s));
+            }
+            TextRef::Str(s) => self.serialize(target_client, &EditorOperation::Insert(position, s)),
+        }
+    }
+
     pub fn serialize_cursors(&mut self, target_client: TargetClient, cursors: &CursorCollection) {
         self.serialize(
             target_client,
@@ -112,8 +127,34 @@ impl EditorOperationSerializer {
         }
     }
 
+    pub fn serialize_syntax(&mut self, target_client: TargetClient, syntax: &Syntax) {
+        let mut extensions = syntax.extensions();
+        let main_extension = match extensions.next() {
+            Some(ext) => ext,
+            None => return,
+        };
+
+        for ext in extensions {
+            self.serialize(
+                target_client,
+                &EditorOperation::SyntaxExtension(main_extension, ext),
+            );
+        }
+
+        for (token_kind, pattern) in syntax.rules() {
+            self.serialize(
+                target_client,
+                &EditorOperation::SyntaxRule(main_extension, token_kind, pattern.clone()),
+            );
+        }
+    }
+
     pub fn local_bytes(&self) -> &[u8] {
         &self.local_buf.0[..]
+    }
+
+    pub fn remote_bytes(&self, handle: ConnectionWithClientHandle) -> &[u8] {
+        &self.remote_bufs[handle.into_index()].0
     }
 }
 
@@ -168,13 +209,18 @@ impl de::Error for SerdeError {
     }
 }
 
-#[derive(Default)]
 struct SerializationBuf(Vec<u8>);
 
 impl SerializationBuf {
     fn write_bytes(&mut self, bytes: &[u8]) -> Result<(), SerdeError> {
         self.0.extend_from_slice(bytes);
         Ok(())
+    }
+}
+
+impl Default for SerializationBuf {
+    fn default() -> Self {
+        Self(Vec::with_capacity(2 * 1024))
     }
 }
 

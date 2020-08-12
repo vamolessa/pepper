@@ -1,14 +1,15 @@
 use crate::{
     command::{CommandOperation, FullCommandContext},
     connection::TargetClient,
-    editor::{EditorOperation, KeysIterator},
+    editor::KeysIterator,
+    editor_operation::EditorOperation,
     mode::{poll_input, FromMode, InputPollResult, ModeContext, ModeOperation},
 };
 
 pub fn on_enter(ctx: &mut ModeContext) {
     ctx.input.clear();
     ctx.operations
-        .send(TargetClient::All, EditorOperation::InputKeep(0));
+        .serialize(TargetClient::All, &EditorOperation::InputKeep(0));
 }
 
 pub fn on_event(

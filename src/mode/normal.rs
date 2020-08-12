@@ -74,7 +74,7 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
             buffer_view.cursors.add_cursor(cursor);
 
             ctx.operations
-                .send_cursors(buffer_view.target_client, &buffer_view.cursors);
+                .serialize_cursors(buffer_view.target_client, &buffer_view.cursors);
         }
         Key::Char('i') => return ModeOperation::EnterMode(Mode::Insert),
         Key::Char('v') => return ModeOperation::EnterMode(Mode::Select),
