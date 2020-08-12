@@ -244,7 +244,7 @@ where
             Event::Connection(event) => match event {
                 ConnectionEvent::NewConnection => (),
                 ConnectionEvent::Stream(_) => {
-                    let op_count = connection.receive_operations2(|op| {
+                    let op_count = connection.receive_operations(|op| {
                         local_client.on_editor_operation(&op);
                     })?;
 

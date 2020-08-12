@@ -262,7 +262,7 @@ impl ConnectionWithServer {
         }
     }
 
-    pub fn receive_operations2<F>(&mut self, mut callback: F) -> io::Result<usize>
+    pub fn receive_operations<F>(&mut self, mut callback: F) -> io::Result<usize>
     where
         F: FnMut(EditorOperation<'_>),
     {
@@ -282,12 +282,6 @@ impl ConnectionWithServer {
                 }
             }
         }
-    }
-
-    pub fn receive_operations(&mut self) -> io::Result<EditorOperationDeserializer<'_>> {
-        Ok(EditorOperationDeserializer::from_slice(
-            self.read_buf.slice(),
-        ))
     }
 }
 
