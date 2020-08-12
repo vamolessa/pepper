@@ -20,17 +20,18 @@ use crate::{
 pub enum EditorOperation<'a> {
     Focused(bool),
     Buffer(&'a str),
-    Path(Option<&'a Path>),
+    PathClear,
+    Path(&'a Path),
     Mode(Mode),
     Insert(BufferPosition, &'a str),
     Delete(BufferRange),
-    ClearCursors(Cursor),
+    CursorsClear(Cursor),
     Cursor(Cursor),
     InputAppend(char),
     InputKeep(usize),
     Search,
-    ConfigValues(ConfigValues),
-    Theme(Theme),
+    ConfigValues(Box<ConfigValues>),
+    Theme(Box<Theme>),
     SyntaxExtension(&'a str, &'a str),
     SyntaxRule(&'a str, TokenKind, Pattern),
     Error(&'a str),
@@ -104,7 +105,7 @@ impl EditorOperationSerializer {
     pub fn serialize_cursors(&mut self, target_client: TargetClient, cursors: &CursorCollection) {
         self.serialize(
             target_client,
-            &EditorOperation::ClearCursors(*cursors.main_cursor()),
+            &EditorOperation::CursorsClear(*cursors.main_cursor()),
         );
         for cursor in &cursors[..] {
             self.serialize(target_client, &EditorOperation::Cursor(*cursor));
@@ -885,7 +886,7 @@ mod tests {
         );
         serializer.serialize(
             TargetClient::Local,
-            &EditorOperation::Path(Some(Path::new("this/is/a/path"))),
+            &EditorOperation::Path(Path::new("this/is/a/path")),
         );
         serializer.serialize(TargetClient::Local, &EditorOperation::Mode(Mode::Insert));
         serializer.serialize(
@@ -901,7 +902,7 @@ mod tests {
         );
         serializer.serialize(
             TargetClient::Local,
-            &EditorOperation::ClearCursors(Cursor {
+            &EditorOperation::CursorsClear(Cursor {
                 anchor: BufferPosition::line_col(4, 5),
                 position: BufferPosition::line_col(6, 7),
             }),
@@ -918,7 +919,7 @@ mod tests {
         serializer.serialize(TargetClient::Local, &EditorOperation::Search);
         serializer.serialize(
             TargetClient::Local,
-            &EditorOperation::ConfigValues(ConfigValues::default()),
+            &EditorOperation::ConfigValues(Box::new(ConfigValues::default())),
         );
         serializer.serialize(
             TargetClient::Local,
@@ -937,7 +938,7 @@ mod tests {
 
         assert_next!(deserializer, EditorOperation::Focused(true));
         assert_next!(deserializer, EditorOperation::Buffer("this is a content"));
-        assert_next!(deserializer, EditorOperation::Path(Some(Path { .. })));
+        assert_next!(deserializer, EditorOperation::Path(Path { .. }));
         assert_next!(deserializer, EditorOperation::Mode(Mode::Insert));
         assert_next!(
             deserializer,
@@ -952,7 +953,7 @@ mod tests {
         assert_next!(deserializer, EditorOperation::Delete(BufferRange { .. }));
         assert_next!(
             deserializer,
-            EditorOperation::ClearCursors(Cursor {
+            EditorOperation::CursorsClear(Cursor {
                 anchor: BufferPosition {
                     line_index: 4,
                     column_index: 5,
@@ -979,10 +980,7 @@ mod tests {
         assert_next!(deserializer, EditorOperation::InputAppend('h'));
         assert_next!(deserializer, EditorOperation::InputKeep(12));
         assert_next!(deserializer, EditorOperation::Search);
-        assert_next!(
-            deserializer,
-            EditorOperation::ConfigValues(ConfigValues { .. })
-        );
+        assert_next!(deserializer, EditorOperation::ConfigValues(Box { .. }));
         assert_next!(deserializer, EditorOperation::SyntaxExtension("abc", "def"));
         assert_next!(
             deserializer,

@@ -41,8 +41,8 @@ pub struct PatternState {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Pattern {
-    start_index: usize,
-    ops: Vec<Op>,
+    ops: Box<[Op]>,
+    start_jump: Jump,
 }
 
 impl Pattern {
@@ -54,7 +54,7 @@ impl Pattern {
         self.matches_with_state(
             text,
             &PatternState {
-                op_index: self.start_index,
+                op_index: self.start_jump.0 as _,
             },
         )
     }
@@ -148,7 +148,7 @@ impl fmt::Debug for Pattern {
 
         f.write_str("Pattern {\n")?;
         for (i, op) in self.ops.iter().enumerate() {
-            if i == self.start_index {
+            if i == self.start_jump.0 as _ {
                 f.write_fmt(format_args!("  > [{:width$}] ", i, width = op_digit_count))?;
             } else {
                 f.write_fmt(format_args!("    [{:width$}] ", i, width = op_digit_count))?;
@@ -276,7 +276,7 @@ impl fmt::Debug for Op {
 struct PatternCompiler<'a> {
     pub bytes: &'a [u8],
     pub index: usize,
-    pub start_index: usize,
+    pub start_jump: Jump,
     pub ops: Vec<Op>,
 }
 
@@ -285,7 +285,7 @@ impl<'a> PatternCompiler<'a> {
         Self {
             bytes,
             index: 0,
-            start_index: 1,
+            start_jump: Jump(1),
             ops: Vec::new(),
         }
     }
@@ -299,8 +299,8 @@ impl<'a> PatternCompiler<'a> {
         self.optimize();
 
         Ok(Pattern {
-            start_index: self.start_index,
-            ops: self.ops,
+            ops: self.ops.into_boxed_slice(),
+            start_jump: self.start_jump,
         })
     }
 
@@ -593,10 +593,10 @@ impl<'a> PatternCompiler<'a> {
             jump.0 -= 1;
         }
 
-        if self.start_index > i {
-            self.start_index -= 1;
-        } else if self.start_index == i {
-            self.start_index = jump.0 as _;
+        if self.start_jump.0 as usize > i {
+            self.start_jump.0 -= 1;
+        } else if self.start_jump.0 as usize == i {
+            self.start_jump = jump;
         }
 
         macro_rules! fix_jump {
@@ -656,8 +656,8 @@ impl<'a> PatternCompiler<'a> {
         self.ops[index] = Op::Bytes3(final_okj.unwrap(), final_erj.unwrap(), bytes);
         self.ops.drain((index + 1)..(index + 3));
 
-        if self.start_index > index {
-            self.start_index -= 2;
+        if self.start_jump.0 as usize > index {
+            self.start_jump.0 -= 2;
         }
 
         macro_rules! fix_jump {
@@ -724,8 +724,8 @@ impl<'a> PatternCompiler<'a> {
         self.ops[index] = Op::Bytes3(final_okj.unwrap(), final_erj.unwrap(), bytes);
         self.ops.drain((index + 1)..(index + 6));
 
-        if self.start_index > index {
-            self.start_index -= 5;
+        if self.start_jump.0 as usize > index {
+            self.start_jump.0 -= 5;
         }
 
         macro_rules! fix_jump {
