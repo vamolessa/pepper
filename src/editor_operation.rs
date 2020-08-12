@@ -158,6 +158,13 @@ impl EditorOperationSerializer {
     }
 }
 
+#[derive(Debug)]
+pub enum EditorOperationDeserializeResult<'a> {
+    Some(EditorOperation<'a>),
+    None,
+    Error,
+}
+
 pub struct EditorOperationDeserializer<'a> {
     buf: &'a [u8],
 }
@@ -167,19 +174,21 @@ impl<'a> EditorOperationDeserializer<'a> {
         Self { buf }
     }
 
-    pub fn deserialize_next(&mut self) -> Result<Option<EditorOperation<'a>>, ()> {
+    pub fn deserialize_next(
+        &mut self,
+    ) -> EditorOperationDeserializeResult<'a> {
         use serde::Deserialize;
-        if self.buf.len() > 0 {
-            let mut deserializer = DeserializationSlice(self.buf);
-            match EditorOperation::deserialize(&mut deserializer) {
-                Ok(op) => {
-                    self.buf = deserializer.0;
-                    Ok(Some(op))
-                }
-                Err(_) => Err(()),
+        if self.buf.is_empty() {
+            return EditorOperationDeserializeResult::None;
+        }
+
+        let mut deserializer = DeserializationSlice(self.buf);
+        match EditorOperation::deserialize(&mut deserializer) {
+            Ok(op) => {
+                self.buf = deserializer.0;
+                EditorOperationDeserializeResult::Some(op)
             }
-        } else {
-            Ok(None)
+            Err(_) => EditorOperationDeserializeResult::Error,
         }
     }
 }
@@ -899,11 +908,10 @@ mod tests {
     macro_rules! assert_next {
         ($d:ident, $p:pat) => {
             let result = $d.deserialize_next();
-            if matches!(result, Ok(Some($p))) {
+            if matches!(result, EditorOperationDeserializeResult::Some($p)) {
                 assert!(true);
             } else {
                 eprintln!("expected: {}\ngot {:?}", stringify!($p), result);
-                result.unwrap().unwrap();
                 assert!(false);
             }
         };

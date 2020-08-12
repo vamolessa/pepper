@@ -11,7 +11,9 @@ use uds_windows::{UnixListener, UnixStream};
 use bincode::Options;
 
 use crate::{
-    editor_operation::EditorOperationDeserializer,
+    editor_operation::{
+        EditorOperation, EditorOperationDeserializeResult, EditorOperationDeserializer,
+    },
     event::Key,
     event_manager::{EventRegistry, StreamId},
 };
@@ -260,8 +262,29 @@ impl ConnectionWithServer {
         }
     }
 
-    pub fn receive_operations(&mut self) -> io::Result<EditorOperationDeserializer<'_>> {
+    pub fn receive_operations2<F>(&mut self, mut callback: F) -> io::Result<usize>
+    where
+        F: FnMut(EditorOperation<'_>),
+    {
         self.read_buf.read_into(&mut self.stream)?;
+
+        let mut operation_count = 0;
+        let mut deserializer = EditorOperationDeserializer::from_slice(self.read_buf.slice());
+        loop {
+            match deserializer.deserialize_next() {
+                EditorOperationDeserializeResult::Some(operation) => {
+                    operation_count += 1;
+                    callback(operation);
+                }
+                EditorOperationDeserializeResult::None => break Ok(operation_count),
+                EditorOperationDeserializeResult::Error => {
+                    break Err(io::Error::from(io::ErrorKind::Other))
+                }
+            }
+        }
+    }
+
+    pub fn receive_operations(&mut self) -> io::Result<EditorOperationDeserializer<'_>> {
         Ok(EditorOperationDeserializer::from_slice(
             self.read_buf.slice(),
         ))

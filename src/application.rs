@@ -4,7 +4,9 @@ use crate::{
     client::Client,
     connection::{ConnectionWithClientCollection, ConnectionWithServer, TargetClient},
     editor::{Editor, EditorLoop},
-    editor_operation::{EditorOperationDeserializer, EditorOperationSerializer},
+    editor_operation::{
+        EditorOperationDeserializeResult, EditorOperationDeserializer, EditorOperationSerializer,
+    },
     event::Event,
     event_manager::{ConnectionEvent, EventManager},
 };
@@ -89,7 +91,7 @@ fn send_operations(
 ) {
     {
         let mut deserializer = EditorOperationDeserializer::from_slice(operations.local_bytes());
-        while let Ok(Some(op)) = deserializer.deserialize_next() {
+        while let EditorOperationDeserializeResult::Some(op) = deserializer.deserialize_next() {
             local_client.on_editor_operation(&op);
         }
     }
@@ -230,7 +232,7 @@ where
     connection.register_connection(&event_registry)?;
     ui.init()?;
 
-    'main_loop: for event in event_receiver.iter() {
+    for event in event_receiver.iter() {
         match event {
             Event::None => (),
             Event::Key(key) => {
@@ -242,22 +244,11 @@ where
             Event::Connection(event) => match event {
                 ConnectionEvent::NewConnection => (),
                 ConnectionEvent::Stream(_) => {
-                    let mut received_operation = false;
-                    match connection.receive_operations() {
-                        Ok(mut deserializer) => loop {
-                            match deserializer.deserialize_next() {
-                                Ok(Some(op)) => {
-                                    received_operation = true;
-                                    local_client.on_editor_operation(&op);
-                                }
-                                Ok(None) => break,
-                                Err(_) => break 'main_loop,
-                            }
-                        },
-                        Err(_) => break,
-                    }
+                    let op_count = connection.receive_operations2(|op| {
+                        local_client.on_editor_operation(&op);
+                    })?;
 
-                    if !received_operation {
+                    if op_count == 0 {
                         break;
                     }
 
