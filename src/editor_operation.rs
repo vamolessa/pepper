@@ -156,6 +156,13 @@ impl EditorOperationSerializer {
     pub fn remote_bytes(&self, handle: ConnectionWithClientHandle) -> &[u8] {
         &self.remote_bufs[handle.into_index()].0
     }
+
+    pub fn clear(&mut self) {
+        self.local_buf.clear();
+        for buf in &mut self.remote_bufs {
+            buf.clear();
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -174,9 +181,7 @@ impl<'a> EditorOperationDeserializer<'a> {
         Self { buf }
     }
 
-    pub fn deserialize_next(
-        &mut self,
-    ) -> EditorOperationDeserializeResult<'a> {
+    pub fn deserialize_next(&mut self) -> EditorOperationDeserializeResult<'a> {
         use serde::Deserialize;
         if self.buf.is_empty() {
             return EditorOperationDeserializeResult::None;
@@ -221,9 +226,12 @@ impl de::Error for SerdeError {
 struct SerializationBuf(Vec<u8>);
 
 impl SerializationBuf {
-    fn write_bytes(&mut self, bytes: &[u8]) -> Result<(), SerdeError> {
+    pub fn clear(&mut self) {
+        self.0.clear();
+    }
+
+    pub fn extend(&mut self, bytes: &[u8]) {
         self.0.extend_from_slice(bytes);
-        Ok(())
     }
 }
 
@@ -235,7 +243,7 @@ impl Default for SerializationBuf {
 
 impl io::Write for SerializationBuf {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.0.extend_from_slice(buf);
+        self.extend(buf);
         Ok(buf.len())
     }
 
@@ -247,7 +255,8 @@ impl io::Write for SerializationBuf {
 macro_rules! impl_serialize_num {
     ($func:ident, $type:ty) => {
         fn $func(self, v: $type) -> Result<Self::Ok, Self::Error> {
-            self.write_bytes(&v.to_le_bytes())
+            self.extend(&v.to_le_bytes());
+            Ok(())
         }
     };
 }
@@ -291,7 +300,8 @@ impl<'a> ser::Serializer for &'a mut SerializationBuf {
 
     fn serialize_bytes(self, v: &[u8]) -> Result<Self::Ok, Self::Error> {
         self.serialize_u32(v.len() as _)?;
-        self.write_bytes(v)
+        self.extend(v);
+        Ok(())
     }
 
     fn serialize_none(self) -> Result<Self::Ok, Self::Error> {

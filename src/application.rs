@@ -99,6 +99,8 @@ fn send_operations(
     for handle in remote_clients.all_handles() {
         remote_clients.send_serialized_operations(handle, operations.remote_bytes(handle));
     }
+
+    operations.clear();
 }
 
 fn run_server_with_client<I>(

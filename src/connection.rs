@@ -47,6 +47,11 @@ impl ReadBuf {
         }
     }
 
+    pub fn clear(&mut self) {
+        self.len = 0;
+        self.position = 0;
+    }
+
     pub fn read_into<R>(&mut self, mut reader: R) -> io::Result<usize>
     where
         R: Read,
@@ -276,12 +281,15 @@ impl ConnectionWithServer {
                     operation_count += 1;
                     callback(operation);
                 }
-                EditorOperationDeserializeResult::None => break Ok(operation_count),
+                EditorOperationDeserializeResult::None => break,
                 EditorOperationDeserializeResult::Error => {
-                    break Err(io::Error::from(io::ErrorKind::Other))
+                    return Err(io::Error::from(io::ErrorKind::Other))
                 }
             }
         }
+
+        self.read_buf.clear();
+        Ok(operation_count)
     }
 }
 
