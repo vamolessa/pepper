@@ -229,10 +229,6 @@ impl SerializationBuf {
     pub fn clear(&mut self) {
         self.0.clear();
     }
-
-    pub fn extend(&mut self, bytes: &[u8]) {
-        self.0.extend_from_slice(bytes);
-    }
 }
 
 impl Default for SerializationBuf {
@@ -243,7 +239,7 @@ impl Default for SerializationBuf {
 
 impl io::Write for SerializationBuf {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.extend(buf);
+        self.0.extend_from_slice(buf);
         Ok(buf.len())
     }
 
@@ -255,7 +251,8 @@ impl io::Write for SerializationBuf {
 macro_rules! impl_serialize_num {
     ($func:ident, $type:ty) => {
         fn $func(self, v: $type) -> Result<Self::Ok, Self::Error> {
-            self.extend(&v.to_le_bytes());
+            use io::Write;
+            let _ = self.write(&v.to_le_bytes());
             Ok(())
         }
     };
@@ -299,8 +296,9 @@ impl<'a> ser::Serializer for &'a mut SerializationBuf {
     }
 
     fn serialize_bytes(self, v: &[u8]) -> Result<Self::Ok, Self::Error> {
+        use io::Write;
         self.serialize_u32(v.len() as _)?;
-        self.extend(v);
+        let _ = self.write(v);
         Ok(())
     }
 
