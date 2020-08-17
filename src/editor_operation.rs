@@ -894,7 +894,8 @@ impl<'de, 'a> de::VariantAccess<'de> for DeserializationEnumAccess<'a, 'de> {
     where
         V: de::Visitor<'de>,
     {
-        de::Deserializer::deserialize_tuple(self.de, len, visitor)
+        use de::Deserializer;
+        self.de.deserialize_tuple(len, visitor)
     }
 
     fn struct_variant<V>(
@@ -905,7 +906,8 @@ impl<'de, 'a> de::VariantAccess<'de> for DeserializationEnumAccess<'a, 'de> {
     where
         V: de::Visitor<'de>,
     {
-        de::Deserializer::deserialize_struct(self.de, "", fields, visitor)
+        use de::Deserializer;
+        self.de.deserialize_struct("", fields, visitor)
     }
 }
 
@@ -926,7 +928,7 @@ mod tests {
     }
 
     #[test]
-    fn test_buffer_content_serialization() {
+    fn buffer_content_serialization() {
         let buffer = BufferContent::from_str("this is some\nbuffer content");
         let mut serializer = EditorOperationSerializer::default();
         serializer.serialize_buffer(TargetClient::Local, &buffer);
@@ -939,7 +941,7 @@ mod tests {
     }
 
     #[test]
-    fn test_editor_operation_serialization() {
+    fn editor_operation_serialization() {
         let mut serializer = EditorOperationSerializer::default();
         serializer.serialize(TargetClient::Local, &EditorOperation::Focused(true));
         serializer.serialize(
