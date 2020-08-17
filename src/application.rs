@@ -118,9 +118,7 @@ where
 
     let mut local_client = Client::new();
     let mut editor = Editor::new();
-
     let mut editor_operations = EditorOperationSerializer::default();
-    let mut received_keys = Vec::new();
 
     local_client.load_config(
         &editor.commands,
@@ -161,40 +159,21 @@ where
                     ConnectionEvent::Stream(stream_id) => {
                         let handle = stream_id.into();
 
-                        loop {
-                            match connections.receive_key(handle) {
-                                Ok(Some(key)) => received_keys.push(key),
-                                Ok(None) => break,
-                                Err(_) => {
-                                    connections.close_connection(handle);
-                                    editor.on_client_left(handle, &mut editor_operations);
-                                    break;
-                                }
-                            }
-                            break;
-                        }
-
-                        if received_keys.len() == 0 {
-                            connections.close_connection(handle);
-                            editor.on_client_left(handle, &mut editor_operations);
-                        }
-
-                        for key in received_keys.drain(..) {
-                            match editor.on_key(
+                        let result = connections.receive_keys(handle, |key| {
+                            editor.on_key(
                                 &local_client.config,
                                 key,
                                 TargetClient::Remote(handle),
                                 &mut editor_operations,
-                            ) {
-                                EditorLoop::Quit => {
-                                    connections.close_connection(handle);
-                                    editor.on_client_left(handle, &mut editor_operations);
-                                }
-                                EditorLoop::Continue => (),
-                            }
-                        }
+                            )
+                        });
 
-                        connections.listen_next_connection_event(handle, &event_registry)?;
+                        if matches!(result, Ok(0) | Err(_) ) {
+                            connections.close_connection(handle);
+                            editor.on_client_left(handle, &mut editor_operations);
+                        } else {
+                            connections.listen_next_connection_event(handle, &event_registry)?;
+                        }
                     }
                 }
 

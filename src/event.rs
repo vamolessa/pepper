@@ -253,12 +253,12 @@ pub struct KeySerializer {
 }
 
 impl KeySerializer {
-    pub fn clear(&mut self) {
+    pub fn serialize(&mut self, key: Key) -> &[u8] {
+        use serde::Serialize;
+        let _ = key.serialize(&mut *self);
+        let slice = &self.buf[..self.len];
         self.len = 0;
-    }
-
-    pub fn slice(&self) -> &[u8] {
-        &self.buf[..self.len]
+        slice
     }
 
     fn write_byte(&mut self, byte: u8) {
@@ -446,6 +446,10 @@ pub enum KeyDeserializeResult {
 pub struct KeyDeserializer<'de>(&'de [u8]);
 
 impl<'de> KeyDeserializer<'de> {
+    pub fn from_slice(slice: &'de [u8]) -> Self {
+        Self(slice)
+    }
+
     pub fn deserialize_next(&mut self) -> KeyDeserializeResult {
         use serde::Deserialize;
         if self.0.is_empty() {
@@ -677,8 +681,6 @@ impl<'de, 'a> de::VariantAccess<'de> for &'a mut KeyDeserializer<'de> {
 
 #[cfg(test)]
 mod tests {
-    use serde::Serialize;
-
     use super::*;
 
     #[test]
@@ -738,8 +740,8 @@ mod tests {
         macro_rules! assert_serialization {
             ($key:expr) => {
                 let mut serializer = KeySerializer::default();
-                $key.serialize(&mut serializer).unwrap();
-                let mut deserializer = KeyDeserializer(serializer.slice());
+                let slice = serializer.serialize($key);
+                let mut deserializer = KeyDeserializer::from_slice(slice);
                 if let KeyDeserializeResult::Some(key) = deserializer.deserialize_next() {
                     assert_eq!($key, key);
                 } else {

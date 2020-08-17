@@ -1,6 +1,6 @@
 use std::{
     convert::Into,
-    io::{self, Cursor, Read, Write},
+    io::{self, Read, Write},
     net::Shutdown,
     path::Path,
 };
@@ -8,13 +8,12 @@ use std::{
 #[cfg(target_os = "windows")]
 use uds_windows::{UnixListener, UnixStream};
 
-use bincode::Options;
-
 use crate::{
+    editor::EditorLoop,
     editor_operation::{
         EditorOperation, EditorOperationDeserializeResult, EditorOperationDeserializer,
     },
-    event::Key,
+    event::{Key, KeyDeserializeResult, KeyDeserializer, KeySerializer},
     event_manager::{EventRegistry, StreamId},
 };
 
@@ -37,14 +36,6 @@ impl ReadBuf {
 
     pub fn slice(&self) -> &[u8] {
         &self.buf[self.position..self.len]
-    }
-
-    pub fn seek(&mut self, offset: usize) {
-        self.position += offset;
-        if self.position == self.len {
-            self.len = 0;
-            self.position = 0;
-        }
     }
 
     pub fn clear(&mut self) {
@@ -218,11 +209,38 @@ impl ConnectionWithClientCollection {
         }
     }
 
-    pub fn receive_key(&mut self, handle: ConnectionWithClientHandle) -> io::Result<Option<Key>> {
-        match &mut self.connections[handle.0] {
-            Some(connection) => deserialize(&mut connection.stream, &mut connection.read_buf),
-            None => Ok(None),
+    pub fn receive_keys<F>(
+        &mut self,
+        handle: ConnectionWithClientHandle,
+        mut callback: F,
+    ) -> io::Result<usize>
+    where
+        F: FnMut(Key) -> EditorLoop,
+    {
+        let connection = match &mut self.connections[handle.0] {
+            Some(connection) => connection,
+            None => return Ok(0),
+        };
+
+        connection.read_buf.read_into(&mut connection.stream)?;
+        let mut key_count = 0;
+        let mut deserializer = KeyDeserializer::from_slice(connection.read_buf.slice());
+
+        loop {
+            match deserializer.deserialize_next() {
+                KeyDeserializeResult::Some(key) => {
+                    key_count += 1;
+                    if let EditorLoop::Quit = callback(key) {
+                        return Ok(0);
+                    }
+                }
+                KeyDeserializeResult::None => break,
+                KeyDeserializeResult::Error => return Err(io::Error::from(io::ErrorKind::Other)),
+            }
         }
+
+        connection.read_buf.clear();
+        Ok(key_count)
     }
 
     pub fn all_handles(&self) -> impl Iterator<Item = ConnectionWithClientHandle> {
@@ -261,7 +279,9 @@ impl ConnectionWithServer {
     }
 
     pub fn send_key(&mut self, key: Key) -> io::Result<()> {
-        match bincode_serializer().serialize_into(&mut self.stream, &key) {
+        let mut serializer = KeySerializer::default();
+        let slice = serializer.serialize(key);
+        match self.stream.write_all(slice) {
             Ok(()) => Ok(()),
             Err(error) => Err(io::Error::new(io::ErrorKind::Other, error)),
         }
@@ -272,9 +292,9 @@ impl ConnectionWithServer {
         F: FnMut(EditorOperation<'_>),
     {
         self.read_buf.read_into(&mut self.stream)?;
-
         let mut operation_count = 0;
         let mut deserializer = EditorOperationDeserializer::from_slice(self.read_buf.slice());
+
         loop {
             match deserializer.deserialize_next() {
                 EditorOperationDeserializeResult::Some(operation) => {
@@ -290,37 +310,5 @@ impl ConnectionWithServer {
 
         self.read_buf.clear();
         Ok(operation_count)
-    }
-}
-
-fn bincode_serializer() -> impl Options {
-    bincode::options()
-        .with_fixint_encoding()
-        .allow_trailing_bytes()
-}
-
-fn deserialize<T>(mut reader: &mut UnixStream, buf: &mut ReadBuf) -> io::Result<Option<T>>
-where
-    T: serde::de::DeserializeOwned,
-{
-    loop {
-        let slice = buf.slice();
-        let deserializer = bincode_serializer().with_limit(slice.len() as _);
-        let mut cursor = Cursor::new(slice);
-        match deserializer.deserialize_from(&mut cursor) {
-            Ok(value) => {
-                let position = cursor.position() as _;
-                buf.seek(position);
-                break Ok(Some(value));
-            }
-            Err(error) => match error.as_ref() {
-                bincode::ErrorKind::SizeLimit => (),
-                _ => break Err(io::Error::new(io::ErrorKind::Other, error)),
-            },
-        }
-
-        if buf.read_into(&mut reader)? == 0 {
-            break Ok(None);
-        }
     }
 }
