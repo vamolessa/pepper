@@ -128,34 +128,41 @@ impl EditorOperationSerializer {
         }
     }
 
+    fn temp_buf_scope<F>(&mut self, callback: F)
+    where
+        F: FnOnce(&mut EditorOperationSerializer, &mut SerializationBuf),
+    {
+        let mut temp_buf = SerializationBuf(Vec::new());
+        std::mem::swap(&mut self.temp_buf, &mut temp_buf);
+        callback(self, &mut temp_buf);
+        temp_buf.clear();
+        std::mem::swap(&mut self.temp_buf, &mut temp_buf);
+    }
+
     pub fn serialize_config_values(
         &mut self,
         target_client: TargetClient,
         config_values: &ConfigValues,
     ) {
         use serde::Serialize;
-        let mut temp_buf = SerializationBuf(Vec::new());
-        std::mem::swap(&mut self.temp_buf, &mut temp_buf);
-        let _ = config_values.serialize(&mut temp_buf);
-        self.serialize(
-            target_client,
-            &EditorOperation::ConfigValues(temp_buf.as_slice()),
-        );
-        temp_buf.clear();
-        std::mem::swap(&mut self.temp_buf, &mut temp_buf);
+        self.temp_buf_scope(|this, temp_buf| {
+            let _ = config_values.serialize(&mut *temp_buf);
+            this.serialize(
+                target_client,
+                &EditorOperation::ConfigValues(temp_buf.as_slice()),
+            );
+        });
     }
 
     pub fn serialize_theme(&mut self, target_client: TargetClient, theme: &Theme) {
         use serde::Serialize;
-        let mut temp_buf = SerializationBuf(Vec::new());
-        std::mem::swap(&mut self.temp_buf, &mut temp_buf);
-        let _ = theme.serialize(&mut temp_buf);
-        self.serialize(
-            target_client,
-            &EditorOperation::Theme(temp_buf.as_slice()),
-        );
-        temp_buf.clear();
-        std::mem::swap(&mut self.temp_buf, &mut temp_buf);
+        self.temp_buf_scope(|this, temp_buf| {
+            let _ = theme.serialize(&mut *temp_buf);
+            this.serialize(
+                target_client,
+                &EditorOperation::Theme(temp_buf.as_slice()),
+            );
+        });
     }
 
     pub fn serialize_syntax_rule(
@@ -166,15 +173,13 @@ impl EditorOperationSerializer {
         pattern: &Pattern,
     ) {
         use serde::Serialize;
-        let mut temp_buf = SerializationBuf(Vec::new());
-        std::mem::swap(&mut self.temp_buf, &mut temp_buf);
-        let _ = (main_extension, token_kind, pattern).serialize(&mut temp_buf);
-        self.serialize(
-            target_client,
-            &EditorOperation::SyntaxRule(temp_buf.as_slice()),
-        );
-        temp_buf.clear();
-        std::mem::swap(&mut self.temp_buf, &mut temp_buf);
+        self.temp_buf_scope(|this, temp_buf| {
+            let _ = (main_extension, token_kind, pattern).serialize(&mut *temp_buf);
+            this.serialize(
+                target_client,
+                &EditorOperation::SyntaxRule(temp_buf.as_slice()),
+            );
+        });
     }
 
     pub fn serialize_syntax(&mut self, target_client: TargetClient, syntax: &Syntax) {
