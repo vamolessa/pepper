@@ -6,7 +6,10 @@ use crate::{
     command::{CommandCollection, ConfigCommandContext},
     config::Config,
     cursor::Cursor,
-    editor_operation::{EditorOperation, EditorOperationDeserializer, EditorOperationSerializer},
+    editor_operation::{
+        EditorOperation, EditorOperationDeserializeResult, EditorOperationDeserializer,
+        EditorOperationSerializer,
+    },
     keymap::KeyMapCollection,
     mode::Mode,
     syntax::{HighlightedBuffer, SyntaxHandle},
@@ -69,11 +72,14 @@ impl Client {
             return;
         }
 
-        /*
-        for (_target, operation, content) in operations.drain() {
-            self.on_editor_operation(&operation, content);
+        let mut deserializer = EditorOperationDeserializer::from_slice(operations.local_bytes());
+        loop {
+            match deserializer.deserialize_next() {
+                EditorOperationDeserializeResult::Some(op) => self.on_editor_operation(&op),
+                EditorOperationDeserializeResult::None
+                | EditorOperationDeserializeResult::Error => break,
+            }
         }
-        */
     }
 
     pub fn on_editor_operation(&mut self, operation: &EditorOperation) {

@@ -101,27 +101,28 @@ impl Config {
         ctx: &mut ConfigCommandContext,
     ) -> Result<(), String> {
         let path = match env::var("PEPPERC") {
-            Ok(path) => PathBuf::from(path)
+            Ok(path) => PathBuf::from(&path[..])
                 .canonicalize()
-                .map_err(|e| e.to_string())?,
+                .map_err(|e| format!("loading config at {}: {}", &path[..], e))?,
             Err(_) => return Ok(()),
         };
         let mut file = match File::open(&path) {
             Ok(file) => file,
-            Err(e) => return Err(e.to_string()),
+            Err(e) => return Err(format!("loading config: {}", e)),
         };
         let mut contents = String::with_capacity(2 * 1024);
         file.read_to_string(&mut contents)
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| format!("loading config at {:?}: {}", path, e))?;
 
         for (i, line) in contents
             .lines()
             .enumerate()
-            .filter(|(_, l)| l.starts_with('#'))
+            .map(|(i, l)| (i, l.trim()))
+            .filter(|(_, l)| !l.starts_with('#'))
         {
             commands
                 .parse_and_execut_config_command(ctx, line)
-                .map_err(|e| format!("error at {:?}:{} {}", path, i + 1, e))?;
+                .map_err(|e| format!("loading config at {:?}:{} {}", path, i + 1, e))?;
         }
 
         Ok(())

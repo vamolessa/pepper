@@ -50,7 +50,7 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- ~~reuse buffer if already open~~
 	- ~~remove all buffer views (and viewport handles) when closing a buffer~~
 - config file
-	- load config file at startup
+	- ~~load config file at startup~~
 	- reload config file when changed??
 - code navigation
 	- home/end
