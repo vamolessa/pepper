@@ -1,5 +1,4 @@
 mod application;
-mod editor_operation;
 mod buffer;
 mod buffer_position;
 mod buffer_view;
@@ -9,6 +8,7 @@ mod config;
 mod connection;
 mod cursor;
 mod editor;
+mod editor_operation;
 mod event;
 mod event_manager;
 mod history;

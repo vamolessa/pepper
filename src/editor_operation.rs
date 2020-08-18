@@ -158,10 +158,7 @@ impl EditorOperationSerializer {
         use serde::Serialize;
         self.temp_buf_scope(|this, temp_buf| {
             let _ = theme.serialize(&mut *temp_buf);
-            this.serialize(
-                target_client,
-                &EditorOperation::Theme(temp_buf.as_slice()),
-            );
+            this.serialize(target_client, &EditorOperation::Theme(temp_buf.as_slice()));
         });
     }
 

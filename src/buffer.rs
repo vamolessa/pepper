@@ -620,7 +620,10 @@ mod tests {
 
     #[test]
     fn buffer_delete_undo_redo_single_line() {
-        let mut buffer = Buffer::new(PathBuf::new(), BufferContent::from_str("single line content"));
+        let mut buffer = Buffer::new(
+            PathBuf::new(),
+            BufferContent::from_str("single line content"),
+        );
         let range = BufferRange::between(
             BufferPosition::line_col(0, 7),
             BufferPosition::line_col(0, 12),
@@ -640,7 +643,10 @@ mod tests {
 
     #[test]
     fn buffer_delete_undo_redo_multi_line() {
-        let mut buffer = Buffer::new(PathBuf::new(), BufferContent::from_str("multi\nline\ncontent"));
+        let mut buffer = Buffer::new(
+            PathBuf::new(),
+            BufferContent::from_str("multi\nline\ncontent"),
+        );
         let range = BufferRange::between(
             BufferPosition::line_col(0, 1),
             BufferPosition::line_col(1, 3),
