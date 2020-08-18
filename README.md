@@ -29,10 +29,10 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- ~~track client that last send message (focused)~~
 	- ~~show error on focused client~~
 	- ~~reuse allocation when deserializing EditorOperation::Content~~
-- custom bindings
+- ~~custom bindings~~
 	- ~~custom bindings expand to builtin bindings~~
 	- ~~custom bindings take precedence~~
-	- define custom bindings in config file
+	- ~~define custom bindings in config file~~
 - command mode
 	- ~~basic command mode~~
 	- ~~default commands~~
@@ -59,4 +59,5 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- ~~buffer name~~
 	- ~~buffer position~~
 	- buffered keys
-- MORE!
+- autocomplete
+- lsp
