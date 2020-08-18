@@ -6,7 +6,7 @@ use crate::{
     command::{CommandCollection, ConfigCommandContext},
     config::Config,
     cursor::Cursor,
-    editor_operation::{EditorOperation, EditorOperationSerializer},
+    editor_operation::{EditorOperation, EditorOperationDeserializer, EditorOperationSerializer},
     keymap::KeyMapCollection,
     mode::Mode,
     syntax::{HighlightedBuffer, SyntaxHandle},
@@ -144,18 +144,31 @@ impl Client {
                 self.buffer
                     .find_search_ranges(&self.input[..], &mut self.search_ranges);
             }
-            EditorOperation::ConfigValues(values) => self.config.values = *values.clone(),
-            EditorOperation::Theme(theme) => self.config.theme = *theme.clone(),
+            EditorOperation::ConfigValues(serialized) => {
+                if let Some(values) = EditorOperationDeserializer::deserialize_inner(serialized) {
+                    self.config.values = values;
+                }
+            }
+            EditorOperation::Theme(serialized) => {
+                if let Some(theme) = EditorOperationDeserializer::deserialize_inner(serialized) {
+                    self.config.theme = theme;
+                }
+            }
             EditorOperation::SyntaxExtension(main_extension, other_extension) => self
                 .config
                 .syntaxes
                 .get_by_extension(main_extension)
                 .add_extension((*other_extension).into()),
-            EditorOperation::SyntaxRule(main_extension, token, pattern) => self
-                .config
-                .syntaxes
-                .get_by_extension(main_extension)
-                .add_rule(*token, pattern.clone()),
+            EditorOperation::SyntaxRule(serialized) => {
+                if let Some((main_extension, token_kind, pattern)) =
+                    EditorOperationDeserializer::deserialize_inner(serialized)
+                {
+                    self.config
+                        .syntaxes
+                        .get_by_extension(main_extension)
+                        .add_rule(token_kind, pattern);
+                }
+            }
             EditorOperation::Error(error) => {
                 self.error.clear();
                 self.error.push_str(error);

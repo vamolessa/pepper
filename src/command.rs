@@ -394,10 +394,8 @@ mod commands {
             },
         }?;
 
-        ctx.operations.serialize(
-            TargetClient::All,
-            &EditorOperation::ConfigValues(Box::new(values)),
-        );
+        ctx.operations
+            .serialize_config_values(TargetClient::All, &values);
         Ok(())
     }
 
@@ -413,13 +411,11 @@ mod commands {
             }
         } else if let Some(token_kind) = TokenKind::from_str(subcommand) {
             for pattern in args {
-                ctx.operations.serialize(
+                ctx.operations.serialize_syntax_rule(
                     TargetClient::All,
-                    &EditorOperation::SyntaxRule(
-                        main_extension,
-                        token_kind,
-                        Pattern::new(pattern).map_err(|e| helper::parsing_error(e, pattern, 0))?,
-                    ),
+                    main_extension,
+                    token_kind,
+                    &Pattern::new(pattern).map_err(|e| helper::parsing_error(e, pattern, 0))?,
                 );
             }
         } else {
@@ -448,8 +444,7 @@ mod commands {
             return Err(helper::parsing_error(e, &context[..], error_index));
         }
 
-        ctx.operations
-            .serialize(TargetClient::All, &EditorOperation::Theme(Box::new(theme)));
+        ctx.operations.serialize_theme(TargetClient::All, &theme);
         Ok(())
     }
 

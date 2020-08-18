@@ -34,7 +34,7 @@ impl ReadBuf {
         }
     }
 
-    pub fn slice(&self) -> &[u8] {
+    pub fn as_slice(&self) -> &[u8] {
         &self.buf[self.position..self.len]
     }
 
@@ -224,7 +224,7 @@ impl ConnectionWithClientCollection {
 
         connection.read_buf.read_into(&mut connection.stream)?;
         let mut key_count = 0;
-        let mut deserializer = KeyDeserializer::from_slice(connection.read_buf.slice());
+        let mut deserializer = KeyDeserializer::from_slice(connection.read_buf.as_slice());
 
         loop {
             match deserializer.deserialize_next() {
@@ -293,7 +293,7 @@ impl ConnectionWithServer {
     {
         self.read_buf.read_into(&mut self.stream)?;
         let mut operation_count = 0;
-        let mut deserializer = EditorOperationDeserializer::from_slice(self.read_buf.slice());
+        let mut deserializer = EditorOperationDeserializer::from_slice(self.read_buf.as_slice());
 
         loop {
             match deserializer.deserialize_next() {

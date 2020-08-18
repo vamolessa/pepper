@@ -106,14 +106,8 @@ impl Editor {
         for c in self.input.chars() {
             operations.serialize(target_client, &EditorOperation::InputAppend(c));
         }
-        operations.serialize(
-            target_client,
-            &EditorOperation::ConfigValues(Box::new(config.values.clone())),
-        );
-        operations.serialize(
-            target_client,
-            &EditorOperation::Theme(Box::new(config.theme.clone())),
-        );
+        operations.serialize_config_values(target_client, &config.values);
+        operations.serialize_theme(target_client, &config.theme);
         for syntax in config.syntaxes.iter() {
             operations.serialize_syntax(target_client, syntax);
         }

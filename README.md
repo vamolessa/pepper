@@ -55,6 +55,9 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 - code navigation
 	- home/end
 	- find char
+- text objects
+	- word
+	- braces
 - status bar
 	- ~~buffer name~~
 	- ~~buffer position~~

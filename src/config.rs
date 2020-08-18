@@ -71,7 +71,7 @@ impl ConfigValues {
             tab_size = parse_next!(),
             visual_empty = parse_next!(),
             visual_space = parse_next!(),
-            visual_tab= (parse_next!(), parse_next!()),
+            visual_tab = (parse_next!(), parse_next!()),
         }
 
         Ok(())

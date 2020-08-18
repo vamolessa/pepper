@@ -29,15 +29,16 @@ pub enum EditorOperation<'a> {
     InputAppend(char),
     InputKeep(usize),
     Search,
-    ConfigValues(Box<ConfigValues>),
-    Theme(Box<Theme>),
+    ConfigValues(&'a [u8]),
+    Theme(&'a [u8]),
     SyntaxExtension(&'a str, &'a str),
-    SyntaxRule(&'a str, TokenKind, Pattern),
+    SyntaxRule(&'a [u8]),
     Error(&'a str),
 }
 
 #[derive(Default)]
 pub struct EditorOperationSerializer {
+    temp_buf: SerializationBuf,
     local_buf: SerializationBuf,
     remote_bufs: Vec<SerializationBuf>,
 }
@@ -127,6 +128,55 @@ impl EditorOperationSerializer {
         }
     }
 
+    pub fn serialize_config_values(
+        &mut self,
+        target_client: TargetClient,
+        config_values: &ConfigValues,
+    ) {
+        use serde::Serialize;
+        let mut temp_buf = SerializationBuf(Vec::new());
+        std::mem::swap(&mut self.temp_buf, &mut temp_buf);
+        let _ = config_values.serialize(&mut temp_buf);
+        self.serialize(
+            target_client,
+            &EditorOperation::ConfigValues(temp_buf.as_slice()),
+        );
+        temp_buf.clear();
+        std::mem::swap(&mut self.temp_buf, &mut temp_buf);
+    }
+
+    pub fn serialize_theme(&mut self, target_client: TargetClient, theme: &Theme) {
+        use serde::Serialize;
+        let mut temp_buf = SerializationBuf(Vec::new());
+        std::mem::swap(&mut self.temp_buf, &mut temp_buf);
+        let _ = theme.serialize(&mut temp_buf);
+        self.serialize(
+            target_client,
+            &EditorOperation::Theme(temp_buf.as_slice()),
+        );
+        temp_buf.clear();
+        std::mem::swap(&mut self.temp_buf, &mut temp_buf);
+    }
+
+    pub fn serialize_syntax_rule(
+        &mut self,
+        target_client: TargetClient,
+        main_extension: &str,
+        token_kind: TokenKind,
+        pattern: &Pattern,
+    ) {
+        use serde::Serialize;
+        let mut temp_buf = SerializationBuf(Vec::new());
+        std::mem::swap(&mut self.temp_buf, &mut temp_buf);
+        let _ = (main_extension, token_kind, pattern).serialize(&mut temp_buf);
+        self.serialize(
+            target_client,
+            &EditorOperation::SyntaxRule(temp_buf.as_slice()),
+        );
+        temp_buf.clear();
+        std::mem::swap(&mut self.temp_buf, &mut temp_buf);
+    }
+
     pub fn serialize_syntax(&mut self, target_client: TargetClient, syntax: &Syntax) {
         let mut extensions = syntax.extensions();
         let main_extension = match extensions.next() {
@@ -142,10 +192,7 @@ impl EditorOperationSerializer {
         }
 
         for (token_kind, pattern) in syntax.rules() {
-            self.serialize(
-                target_client,
-                &EditorOperation::SyntaxRule(main_extension, token_kind, pattern.clone()),
-            );
+            self.serialize_syntax_rule(target_client, main_extension, token_kind, pattern);
         }
     }
 
@@ -177,6 +224,14 @@ pub struct EditorOperationDeserializer<'a> {
 }
 
 impl<'a> EditorOperationDeserializer<'a> {
+    pub fn deserialize_inner<'de, T>(buf: &'de [u8]) -> Option<T>
+    where
+        T: serde::Deserialize<'de>,
+    {
+        let mut deserializer = DeserializationSlice(buf);
+        T::deserialize(&mut deserializer).ok()
+    }
+
     pub fn from_slice(buf: &'a [u8]) -> Self {
         Self { buf }
     }
@@ -226,6 +281,10 @@ impl de::Error for SerdeError {
 struct SerializationBuf(Vec<u8>);
 
 impl SerializationBuf {
+    pub fn as_slice(&self) -> &[u8] {
+        &self.0[..]
+    }
+
     pub fn clear(&mut self) {
         self.0.clear();
     }
@@ -915,6 +974,8 @@ impl<'de, 'a> de::VariantAccess<'de> for DeserializationEnumAccess<'a, 'de> {
 mod tests {
     use super::*;
 
+    use crate::syntax::SyntaxCollection;
+
     macro_rules! assert_next {
         ($d:ident, $p:pat) => {
             let result = $d.deserialize_next();
@@ -981,18 +1042,12 @@ mod tests {
         serializer.serialize(TargetClient::Local, &EditorOperation::InputAppend('h'));
         serializer.serialize(TargetClient::Local, &EditorOperation::InputKeep(12));
         serializer.serialize(TargetClient::Local, &EditorOperation::Search);
-        serializer.serialize(
-            TargetClient::Local,
-            &EditorOperation::ConfigValues(Box::new(ConfigValues::default())),
-        );
-        serializer.serialize(
-            TargetClient::Local,
-            &EditorOperation::SyntaxExtension("abc", "def"),
-        );
-        serializer.serialize(
-            TargetClient::Local,
-            &EditorOperation::SyntaxRule("abc", TokenKind::Text, Pattern::new("pat").unwrap()),
-        );
+        serializer.serialize_config_values(TargetClient::Local, &ConfigValues::default());
+        let mut syntax_collection = SyntaxCollection::default();
+        let syntax = syntax_collection.get_by_extension("abc");
+        syntax.add_extension("def".into());
+        syntax.add_rule(TokenKind::Text, Pattern::new("pat").unwrap());
+        serializer.serialize_syntax(TargetClient::Local, syntax);
         serializer.serialize(
             TargetClient::Local,
             &EditorOperation::Error("this is an error"),
@@ -1044,12 +1099,9 @@ mod tests {
         assert_next!(deserializer, EditorOperation::InputAppend('h'));
         assert_next!(deserializer, EditorOperation::InputKeep(12));
         assert_next!(deserializer, EditorOperation::Search);
-        assert_next!(deserializer, EditorOperation::ConfigValues(Box { .. }));
+        assert_next!(deserializer, EditorOperation::ConfigValues(_));
         assert_next!(deserializer, EditorOperation::SyntaxExtension("abc", "def"));
-        assert_next!(
-            deserializer,
-            EditorOperation::SyntaxRule("abc", TokenKind::Text, Pattern { .. })
-        );
+        assert_next!(deserializer, EditorOperation::SyntaxRule(_));
         assert_next!(deserializer, EditorOperation::Error("this is an error"));
     }
 }
