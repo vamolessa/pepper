@@ -33,6 +33,8 @@ pub enum EditorOperation<'a> {
     Theme(&'a [u8]),
     SyntaxExtension(&'a str, &'a str),
     SyntaxRule(&'a [u8]),
+    SelectClear,
+    SelectEntry(&'a str),
     Error(&'a str),
 }
 

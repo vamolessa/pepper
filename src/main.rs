@@ -15,6 +15,7 @@ mod history;
 mod keymap;
 mod mode;
 mod pattern;
+mod select;
 mod syntax;
 mod theme;
 mod tui;

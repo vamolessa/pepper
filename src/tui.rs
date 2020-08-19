@@ -61,7 +61,8 @@ where
     W: Write,
 {
     write: W,
-    scroll: usize,
+    text_scroll: usize,
+    select_scroll: usize,
     width: u16,
     height: u16,
 }
@@ -73,7 +74,8 @@ where
     pub fn new(write: W) -> Self {
         Self {
             write,
-            scroll: 0,
+            text_scroll: 0,
+            select_scroll: 0,
             width: 0,
             height: 0,
         }
@@ -113,22 +115,47 @@ where
     }
 
     fn draw(&mut self, client: &Client, error: &str) -> Result<()> {
+        let text_height = self.height - 1;
+        let select_entry_count = if client.has_focus {
+            client.select_entries.len() as u16
+        } else {
+            0
+        };
+        let select_height = select_entry_count.min(text_height / 2);
+        let text_height = text_height - select_height;
+
         let cursor_position = client.main_cursor.position;
-        let height = self.height - 1;
-        if cursor_position.line_index < self.scroll {
-            self.scroll = cursor_position.line_index;
-        } else if cursor_position.line_index >= self.scroll + height as usize {
-            self.scroll = cursor_position.line_index - height as usize + 1;
+        if cursor_position.line_index < self.text_scroll {
+            self.text_scroll = cursor_position.line_index;
+        } else if cursor_position.line_index >= self.text_scroll + text_height as usize {
+            self.text_scroll = cursor_position.line_index + 1 - text_height as usize;
         }
 
-        draw(
+        let selected_index = client.select_entries.selected_index;
+        if selected_index < self.select_scroll {
+            self.select_scroll = selected_index;
+        } else if selected_index >= self.select_scroll + select_height as usize {
+            self.select_scroll = selected_index + 1 - select_height as usize;
+        }
+
+        draw_text(
             &mut self.write,
             client,
-            self.scroll,
+            self.text_scroll,
             self.width,
-            self.height,
-            error,
-        )
+            text_height,
+        )?;
+        draw_select(
+            &mut self.write,
+            client,
+            self.select_scroll,
+            self.width,
+            select_height,
+        )?;
+        draw_statusbar(&mut self.write, client, self.width, error)?;
+
+        self.write.flush()?;
+        Ok(())
     }
 
     fn shutdown(&mut self) -> Result<()> {
@@ -141,13 +168,12 @@ where
     }
 }
 
-fn draw<W>(
+fn draw_text<W>(
     write: &mut W,
     client: &Client,
     scroll: usize,
     width: u16,
     height: u16,
-    error: &str,
 ) -> Result<()>
 where
     W: Write,
@@ -204,7 +230,7 @@ where
                 drawn_line_count += 1;
                 x -= width;
 
-                if drawn_line_count >= height - 1 {
+                if drawn_line_count >= height {
                     break 'lines_loop;
                 }
             }
@@ -318,23 +344,44 @@ where
         line_index += 1;
         drawn_line_count += 1;
 
-        if drawn_line_count >= height - 1 {
+        if drawn_line_count >= height {
             break;
         }
     }
 
     handle_command!(write, SetBackgroundColor(background_color))?;
     handle_command!(write, SetForegroundColor(token_whitespace_color))?;
-    for _ in drawn_line_count..(height - 1) {
+    for _ in drawn_line_count..height {
         handle_command!(write, Print(client.config.values.visual_empty))?;
         handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
         handle_command!(write, cursor::MoveToNextLine(1))?;
     }
 
-    handle_command!(write, cursor::MoveToNextLine(1))?;
-    draw_statusbar(write, client, width, error)?;
+    Ok(())
+}
 
-    write.flush()?;
+fn draw_select<W>(
+    write: &mut W,
+    client: &Client,
+    scroll: usize,
+    _width: u16,
+    height: u16,
+) -> Result<()>
+where
+    W: Write,
+{
+    let background_color = convert_color(client.config.theme.token_whitespace);
+    let foreground_color = convert_color(client.config.theme.token_text);
+
+    handle_command!(write, SetBackgroundColor(background_color))?;
+    handle_command!(write, SetForegroundColor(foreground_color))?;
+
+    for entry in client.select_entries.entries_from(scroll).take(height as _) {
+        handle_command!(write, Print(&entry.name[..]))?;
+        handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
+        handle_command!(write, cursor::MoveToNextLine(1))?;
+    }
+
     Ok(())
 }
 

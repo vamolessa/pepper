@@ -12,6 +12,7 @@ use crate::{
     },
     keymap::KeyMapCollection,
     mode::Mode,
+    select::SelectEntryCollection,
     syntax::{HighlightedBuffer, SyntaxHandle},
 };
 
@@ -30,6 +31,7 @@ pub struct Client {
 
     pub has_focus: bool,
     pub input: String,
+    pub select_entries: SelectEntryCollection,
     pub error: String,
 }
 
@@ -50,6 +52,7 @@ impl Client {
 
             has_focus: true,
             input: String::new(),
+            select_entries: SelectEntryCollection::default(),
             error: String::new(),
         }
     }
@@ -175,6 +178,8 @@ impl Client {
                         .add_rule(token_kind, pattern);
                 }
             }
+            EditorOperation::SelectClear => self.select_entries.clear(),
+            EditorOperation::SelectEntry(name) => self.select_entries.add(name),
             EditorOperation::Error(error) => {
                 self.error.clear();
                 self.error.push_str(error);
