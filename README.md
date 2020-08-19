@@ -62,5 +62,14 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- ~~buffer name~~
 	- ~~buffer position~~
 	- buffered keys
+- external commands
+	- cli commands that execute on the server (rg)
+	- tui commands that execute on a client (fzf) that then sends result back to server
 - autocomplete
+	- select/entries ui
+	- selection movements
+	- clear/change entries
+	- completion suggestion as typing word
+	- accept completion
+	- word dictionary
 - lsp
