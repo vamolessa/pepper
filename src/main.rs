@@ -16,6 +16,7 @@ mod keymap;
 mod mode;
 mod pattern;
 mod select;
+mod serialization;
 mod syntax;
 mod theme;
 mod tui;

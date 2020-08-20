@@ -7,7 +7,7 @@ use crate::{
     editor_operation::{
         EditorOperationDeserializeResult, EditorOperationDeserializer, EditorOperationSerializer,
     },
-    event::Event,
+    event::{KeySerializer, Event},
     event_manager::{ConnectionEvent, EventManager},
 };
 
@@ -97,7 +97,7 @@ fn send_operations(
     }
 
     for handle in remote_clients.all_handles() {
-        remote_clients.send_serialized_operations(handle, operations.remote_bytes(handle));
+        remote_clients.send_serialized_operations(handle, &operations);
     }
 
     operations.clear();
@@ -209,6 +209,7 @@ where
     let ui_event_loop = I::run_event_loop_in_background(event_sender);
 
     let mut local_client = Client::new();
+    let mut keys = KeySerializer::default();
 
     connection.register_connection(&event_registry)?;
     ui.init()?;
@@ -217,7 +218,8 @@ where
         match event {
             Event::None => (),
             Event::Key(key) => {
-                if connection.send_key(key).is_err() {
+                keys.serialize(key);
+                if connection.send_serialized_keys(&mut keys).is_err() {
                     break;
                 }
             }

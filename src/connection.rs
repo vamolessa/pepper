@@ -12,6 +12,7 @@ use crate::{
     editor::EditorLoop,
     editor_operation::{
         EditorOperation, EditorOperationDeserializeResult, EditorOperationDeserializer,
+        EditorOperationSerializer,
     },
     event::{Key, KeyDeserializeResult, KeyDeserializer, KeySerializer},
     event_manager::{EventRegistry, StreamId},
@@ -190,7 +191,12 @@ impl ConnectionWithClientCollection {
         Ok(())
     }
 
-    pub fn send_serialized_operations(&mut self, handle: ConnectionWithClientHandle, bytes: &[u8]) {
+    pub fn send_serialized_operations(
+        &mut self,
+        handle: ConnectionWithClientHandle,
+        serializer: &EditorOperationSerializer,
+    ) {
+        let bytes = serializer.remote_bytes(handle);
         if bytes.is_empty() {
             return;
         }
@@ -274,13 +280,19 @@ impl ConnectionWithServer {
         event_registry.listen_next_stream_event(&self.stream, StreamId(0))
     }
 
-    pub fn send_key(&mut self, key: Key) -> io::Result<()> {
-        let mut serializer = KeySerializer::default();
-        let slice = serializer.serialize(key);
-        match self.stream.write_all(slice) {
+    pub fn send_serialized_keys(&mut self, serializer: &mut KeySerializer) -> io::Result<()> {
+        let bytes = serializer.bytes();
+        if bytes.is_empty() {
+            return Ok(());
+        }
+
+        let result = match self.stream.write_all(bytes) {
             Ok(()) => Ok(()),
             Err(error) => Err(io::Error::new(io::ErrorKind::Other, error)),
-        }
+        };
+
+        serializer.clear();
+        result
     }
 
     pub fn receive_operations<F>(&mut self, mut callback: F) -> io::Result<usize>
