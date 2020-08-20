@@ -5,7 +5,7 @@ Experimental code editor
 https://twitter.com/ahvamolessa/status/1276978064166182913
 
 # todo
-- ~~undo/redo~~
+- undo/redo
 	- ~~store/apply edit diffs~~
 	- limit history size??
 - ~~modes~~

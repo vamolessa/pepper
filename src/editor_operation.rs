@@ -1,4 +1,4 @@
-use std::{error, fmt, io, path::Path};
+use std::{convert::TryFrom, error, fmt, io, path::Path};
 
 use serde::{de, ser};
 use serde_derive::{Deserialize, Serialize};
@@ -350,8 +350,7 @@ impl<'a> ser::Serializer for &'a mut SerializationBuf {
     impl_serialize_num!(serialize_f64, f64);
 
     fn serialize_char(self, v: char) -> Result<Self::Ok, Self::Error> {
-        let mut buf = [0; std::mem::size_of::<char>()];
-        self.serialize_str(v.encode_utf8(&mut buf))
+        self.serialize_u32(v as _)
     }
 
     fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
@@ -391,7 +390,7 @@ impl<'a> ser::Serializer for &'a mut SerializationBuf {
         variant_index: u32,
         _variant: &'static str,
     ) -> Result<Self::Ok, Self::Error> {
-        self.serialize_u32(variant_index)
+        self.serialize_u8(variant_index as _)
     }
 
     fn serialize_newtype_struct<T>(
@@ -415,7 +414,7 @@ impl<'a> ser::Serializer for &'a mut SerializationBuf {
     where
         T: ?Sized + ser::Serialize,
     {
-        self.serialize_u32(variant_index)?;
+        self.serialize_u8(variant_index as _)?;
         value.serialize(self)
     }
 
@@ -448,7 +447,7 @@ impl<'a> ser::Serializer for &'a mut SerializationBuf {
         _variant: &'static str,
         _len: usize,
     ) -> Result<Self::SerializeTupleVariant, Self::Error> {
-        self.serialize_u32(variant_index)?;
+        self.serialize_u8(variant_index as _)?;
         Ok(self)
     }
 
@@ -477,7 +476,7 @@ impl<'a> ser::Serializer for &'a mut SerializationBuf {
         _variant: &'static str,
         _len: usize,
     ) -> Result<Self::SerializeStructVariant, Self::Error> {
-        self.serialize_u32(variant_index)?;
+        self.serialize_u8(variant_index as _)?;
         Ok(self)
     }
 }
@@ -717,13 +716,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut DeserializationSlice<'de> {
     where
         V: de::Visitor<'de>,
     {
-        let len = read!(self, u32) as _;
-        let slice = self.read_bytes(len)?;
-        let s = std::str::from_utf8(slice).map_err(|_| SerdeError)?;
-        match s.chars().next() {
-            Some(c) => visitor.visit_char(c),
-            None => Err(SerdeError),
-        }
+        let c = read!(self, u32);
+        visitor.visit_char(char::try_from(c).map_err(|_| SerdeError)?)
     }
 
     fn deserialize_str<V>(self, visitor: V) -> Result<V::Value, Self::Error>
@@ -933,7 +927,7 @@ impl<'de, 'a> de::EnumAccess<'de> for DeserializationEnumAccess<'a, 'de> {
         V: de::DeserializeSeed<'de>,
     {
         use de::IntoDeserializer;
-        let variant_index = read!(self.de, u32);
+        let variant_index = read!(self.de, u8);
         let value = seed.deserialize(variant_index.into_deserializer())?;
         Ok((value, self))
     }
