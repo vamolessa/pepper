@@ -434,6 +434,7 @@ where
     if !error.is_empty() {
         let prefix = "error:";
         handle_command!(write, Print(prefix))?;
+        let error = error.lines().next().unwrap_or("");
         handle_command!(write, Print(error))?;
         x = prefix.len() + error.len();
         draw_buffer_path = true;

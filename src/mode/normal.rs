@@ -108,10 +108,6 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
         }
         Key::Char('u') => ctx.buffer_views.undo(ctx.buffers, ctx.operations, handle),
         Key::Char('U') => ctx.buffer_views.redo(ctx.buffers, ctx.operations, handle),
-        Key::Ctrl('p') => {
-            let mut child = std::process::Command::new("fzf").spawn().unwrap();
-            child.wait().unwrap();
-        }
         _ => {
             keys.put_back();
             return on_event_no_buffer(ctx, keys);

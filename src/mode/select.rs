@@ -72,7 +72,8 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
         Key::Char('y') => {
             if let Ok(mut clipboard) = ClipboardContext::new() {
                 let buffer_view = ctx.buffer_views.get(handle);
-                let text = buffer_view.get_selection_text(ctx.buffers);
+                let mut text = String::new();
+                buffer_view.get_selection_text(ctx.buffers, &mut text);
                 let _ = clipboard.set_contents(text);
             }
         }

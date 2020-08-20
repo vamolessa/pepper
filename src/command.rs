@@ -1,4 +1,12 @@
-use std::{collections::HashMap, fmt, fs::File, io::Read, ops::Range, path::Path};
+use std::{
+    collections::HashMap,
+    fmt,
+    fs::File,
+    io::Read,
+    ops::Range,
+    path::Path,
+    process::{Command, Stdio},
+};
 
 use crate::{
     buffer::{Buffer, BufferCollection, BufferContent},
@@ -38,7 +46,8 @@ pub struct ConfigCommandContext<'a> {
     pub keymaps: &'a mut KeyMapCollection,
 }
 
-type FullCommandBody = fn(&mut FullCommandContext, CommandArgs) -> FullCommandResult;
+type FullCommandBody =
+    fn(&mut FullCommandContext, CommandArgs, &str, &mut String) -> FullCommandResult;
 type ConfigCommandBody = fn(&mut ConfigCommandContext, CommandArgs) -> ConfigCommandResult;
 
 pub struct CommandArgs<'a> {
@@ -49,11 +58,34 @@ impl<'a> CommandArgs<'a> {
     pub fn new(args: &'a str) -> Self {
         Self { raw: args }
     }
+}
 
-    pub fn expect_next(&mut self) -> Result<&'a str, String> {
-        self.next()
-            .ok_or_else(|| String::from("command expected more arguments"))
-    }
+macro_rules! assert_empty {
+    ($args:expr) => {
+        match $args.next() {
+            Some(_) => return Err("command expected less arguments".into()),
+            None => (),
+        }
+    };
+}
+
+macro_rules! expect_next {
+    ($args:expr) => {
+        match $args.next() {
+            Some(arg) => arg,
+            None => return Err(String::from("command expected more arguments")),
+        }
+    };
+}
+
+macro_rules! expect_input_or_next {
+    ($args:expr, $input:expr) => {
+        if $input.is_empty() {
+            expect_next!($args)
+        } else {
+            $input
+        }
+    };
 }
 
 impl<'a> Iterator for CommandArgs<'a> {
@@ -112,6 +144,7 @@ impl Default for CommandCollection {
 
         register! { register_full_command =>
             quit, edit, close, write, write_all,
+            selection, replace, pipe,
         }
 
         register! { register_config_command =>
@@ -161,7 +194,8 @@ impl CommandCollection {
     ) -> FullCommandResult {
         let (name, args) = Self::split_name_and_args(command);
         if let Some(command) = self.full_commands.get(name) {
-            command(ctx, args)
+            let mut output = String::new();
+            command(ctx, args, "", &mut output)
         } else if let Some(command) = self.config_commands.get(name) {
             let mut ctx = ConfigCommandContext {
                 operations: ctx.operations,
@@ -177,13 +211,6 @@ impl CommandCollection {
 
 mod helper {
     use super::*;
-
-    pub fn assert_empty<'a>(mut args: impl Iterator<Item = &'a str>) -> Result<(), String> {
-        match args.next() {
-            Some(_) => Err("command expected less arguments".into()),
-            None => Ok(()),
-        }
-    }
 
     pub fn parsing_error<T>(message: T, text: &str, error_index: usize) -> String
     where
@@ -291,20 +318,35 @@ mod helper {
 mod commands {
     use super::*;
 
-    pub fn quit(_ctx: &mut FullCommandContext, args: CommandArgs) -> FullCommandResult {
-        helper::assert_empty(args)?;
+    pub fn quit(
+        _ctx: &mut FullCommandContext,
+        mut args: CommandArgs,
+        _input: &str,
+        _output: &mut String,
+    ) -> FullCommandResult {
+        assert_empty!(args);
         Ok(CommandOperation::Quit)
     }
 
-    pub fn edit(mut ctx: &mut FullCommandContext, mut args: CommandArgs) -> FullCommandResult {
-        let path = Path::new(args.expect_next()?);
-        helper::assert_empty(args)?;
+    pub fn edit<'a, 'b>(
+        mut ctx: &mut FullCommandContext,
+        mut args: CommandArgs,
+        input: &str,
+        _output: &mut String,
+    ) -> FullCommandResult {
+        let path = Path::new(expect_input_or_next!(args, input));
+        assert_empty!(args);
         helper::new_buffer_from_file(&mut ctx, path)?;
         Ok(CommandOperation::Complete)
     }
 
-    pub fn close(ctx: &mut FullCommandContext, args: CommandArgs) -> FullCommandResult {
-        helper::assert_empty(args)?;
+    pub fn close(
+        ctx: &mut FullCommandContext,
+        mut args: CommandArgs,
+        _input: &str,
+        _output: &mut String,
+    ) -> FullCommandResult {
+        assert_empty!(args);
         if let Some(handle) = ctx
             .current_buffer_view_handle
             .take()
@@ -325,7 +367,12 @@ mod commands {
         Ok(CommandOperation::Complete)
     }
 
-    pub fn write(ctx: &mut FullCommandContext, mut args: CommandArgs) -> FullCommandResult {
+    pub fn write(
+        ctx: &mut FullCommandContext,
+        mut args: CommandArgs,
+        _input: &str,
+        _output: &mut String,
+    ) -> FullCommandResult {
         let view_handle = ctx
             .current_buffer_view_handle
             .as_ref()
@@ -338,7 +385,7 @@ mod commands {
             .ok_or_else(|| String::from("no buffer opened"))?;
 
         let path = args.next();
-        helper::assert_empty(args)?;
+        assert_empty!(args);
         match path {
             Some(path) => {
                 let path = Path::new(path);
@@ -363,8 +410,13 @@ mod commands {
         }
     }
 
-    pub fn write_all(ctx: &mut FullCommandContext, args: CommandArgs) -> FullCommandResult {
-        helper::assert_empty(args)?;
+    pub fn write_all(
+        ctx: &mut FullCommandContext,
+        mut args: CommandArgs,
+        _input: &str,
+        _output: &mut String,
+    ) -> FullCommandResult {
+        assert_empty!(args);
         for buffer in ctx.buffers.iter() {
             if !buffer.path.as_os_str().is_empty() {
                 helper::write_buffer_to_file(buffer, &buffer.path)?;
@@ -374,8 +426,59 @@ mod commands {
         Ok(CommandOperation::Complete)
     }
 
+    pub fn selection(
+        ctx: &mut FullCommandContext,
+        mut args: CommandArgs,
+        _input: &str,
+        _output: &mut String,
+    ) -> FullCommandResult {
+        assert_empty!(args);
+        let mut text = String::new();
+        if let Some(buffer_view) = ctx
+            .current_buffer_view_handle
+            .as_ref()
+            .map(|h| ctx.buffer_views.get(h))
+        {
+            buffer_view.get_selection_text(ctx.buffers, &mut text);
+        }
+
+        Ok(CommandOperation::Complete)
+    }
+
+    pub fn replace(
+        _ctx: &mut FullCommandContext,
+        mut args: CommandArgs,
+        _input: &str,
+        _output: &mut String,
+    ) -> FullCommandResult {
+        assert_empty!(args);
+        Ok(CommandOperation::Complete)
+    }
+
+    pub fn pipe(
+        _ctx: &mut FullCommandContext,
+        mut args: CommandArgs,
+        _input: &str,
+        _output: &mut String,
+    ) -> FullCommandResult {
+        let name = expect_next!(args);
+        let mut command = Command::new(name);
+        command.stdin(Stdio::piped());
+        command.stdout(Stdio::piped());
+        command.stderr(Stdio::piped());
+        for arg in args {
+            command.arg(arg);
+        }
+
+        let child = command.spawn().map_err(|e| e.to_string())?;
+        let output = child.wait_with_output().map_err(|e| e.to_string())?;
+        let output = String::from_utf8(output.stdout).map_err(|e| e.to_string())?;
+
+        Err(output)
+    }
+
     pub fn set(ctx: &mut ConfigCommandContext, mut args: CommandArgs) -> ConfigCommandResult {
-        let name = args.expect_next()?;
+        let name = expect_next!(args);
         let mut previous = "";
         let mut args = args.map(|a| {
             previous = a;
@@ -384,15 +487,17 @@ mod commands {
 
         let mut values = ctx.config.values.clone();
         match values.parse_and_set(name, &mut args) {
-            Ok(()) => helper::assert_empty(args),
+            Ok(()) => assert_empty!(args),
             Err(e) => match e {
-                ParseConfigError::ConfigNotFound => Err(helper::parsing_error(e, name, 0)),
-                ParseConfigError::ParseError(e) => Err(helper::parsing_error(e, previous, 0)),
+                ParseConfigError::ConfigNotFound => return Err(helper::parsing_error(e, name, 0)),
+                ParseConfigError::ParseError(e) => {
+                    return Err(helper::parsing_error(e, previous, 0))
+                }
                 ParseConfigError::UnexpectedEndOfValues => {
-                    Err(helper::parsing_error(e, previous, previous.len()))
+                    return Err(helper::parsing_error(e, previous, previous.len()));
                 }
             },
-        }?;
+        }
 
         ctx.operations
             .serialize_config_values(TargetClient::All, &values);
@@ -400,8 +505,8 @@ mod commands {
     }
 
     pub fn syntax(ctx: &mut ConfigCommandContext, mut args: CommandArgs) -> ConfigCommandResult {
-        let main_extension = args.expect_next()?;
-        let subcommand = args.expect_next()?;
+        let main_extension = expect_next!(args);
+        let subcommand = expect_next!(args);
         if subcommand == "extension" {
             for extension in args {
                 ctx.operations.serialize(
@@ -429,9 +534,9 @@ mod commands {
     }
 
     pub fn theme(ctx: &mut ConfigCommandContext, mut args: CommandArgs) -> ConfigCommandResult {
-        let name = args.expect_next()?;
-        let color = args.expect_next()?;
-        helper::assert_empty(args)?;
+        let name = expect_next!(args);
+        let color = expect_next!(args);
+        assert_empty!(args);
 
         let mut theme = ctx.config.theme.clone();
         if let Err(e) = theme.parse_and_set(name, color) {
@@ -465,9 +570,9 @@ mod commands {
         mut args: CommandArgs,
         mode: Mode,
     ) -> ConfigCommandResult {
-        let from = args.expect_next()?;
-        let to = args.expect_next()?;
-        helper::assert_empty(args)?;
+        let from = expect_next!(args);
+        let to = expect_next!(args);
+        assert_empty!(args);
 
         match ctx.keymaps.parse_map(mode.discriminant(), from, to) {
             Ok(()) => Ok(()),

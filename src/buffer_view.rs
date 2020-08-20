@@ -154,30 +154,29 @@ impl BufferView {
         }
     }
 
-    pub fn get_selection_text(&self, buffers: &BufferCollection) -> String {
+    pub fn get_selection_text(&self, buffers: &BufferCollection, text: &mut String) {
+        text.clear();
+
         let buffer = match buffers.get(self.buffer_handle) {
             Some(buffer) => buffer,
-            None => return String::new(),
+            None => return,
         };
 
-        let mut text = String::new();
         let mut iter = self.cursors[..].iter();
         if let Some(cursor) = iter.next() {
             let mut last_range = cursor.range();
             buffer
                 .content
-                .append_range_text_to_string(last_range, &mut text);
+                .append_range_text_to_string(last_range, text);
             for cursor in iter {
                 let range = cursor.range();
                 if range.from.line_index > last_range.to.line_index {
                     text.push('\n');
                 }
-                buffer.content.append_range_text_to_string(range, &mut text);
+                buffer.content.append_range_text_to_string(range, text);
                 last_range = range;
             }
         }
-
-        text
     }
 }
 
