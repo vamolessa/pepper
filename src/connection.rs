@@ -78,10 +78,7 @@ pub enum TargetClient {
     Remote(ConnectionWithClientHandle),
 }
 
-pub struct ConnectionWithClient {
-    stream: UnixStream,
-    read_buf: ReadBuf,
-}
+pub struct ConnectionWithClient(UnixStream);
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct ConnectionWithClientHandle(usize);
@@ -105,6 +102,7 @@ pub struct ConnectionWithClientCollection {
     listener: UnixListener,
     connections: Vec<Option<ConnectionWithClient>>,
     closed_connection_indexes: Vec<usize>,
+    read_buf: ReadBuf,
 }
 
 impl ConnectionWithClientCollection {
@@ -119,6 +117,7 @@ impl ConnectionWithClientCollection {
             listener,
             connections: Vec::new(),
             closed_connection_indexes: Vec::new(),
+            read_buf: ReadBuf::new(),
         })
     }
 
@@ -136,22 +135,19 @@ impl ConnectionWithClientCollection {
     ) -> io::Result<ConnectionWithClientHandle> {
         let (stream, _address) = self.listener.accept()?;
         stream.set_nonblocking(true)?;
-        let connection = ConnectionWithClient {
-            stream,
-            read_buf: ReadBuf::new(),
-        };
+        let connection = ConnectionWithClient(stream);
 
         for (i, slot) in self.connections.iter_mut().enumerate() {
             if slot.is_none() {
                 let handle = ConnectionWithClientHandle(i);
-                event_registry.register_stream(&connection.stream, handle.into())?;
+                event_registry.register_stream(&connection.0, handle.into())?;
                 *slot = Some(connection);
                 return Ok(handle);
             }
         }
 
         let handle = ConnectionWithClientHandle(self.connections.len());
-        event_registry.register_stream(&connection.stream, handle.into())?;
+        event_registry.register_stream(&connection.0, handle.into())?;
         self.connections.push(Some(connection));
         Ok(handle)
     }
@@ -162,7 +158,7 @@ impl ConnectionWithClientCollection {
         event_registry: &EventRegistry,
     ) -> io::Result<()> {
         if let Some(connection) = &self.connections[handle.0] {
-            event_registry.listen_next_stream_event(&connection.stream, handle.into())?;
+            event_registry.listen_next_stream_event(&connection.0, handle.into())?;
         }
 
         Ok(())
@@ -170,14 +166,14 @@ impl ConnectionWithClientCollection {
 
     pub fn close_connection(&mut self, handle: ConnectionWithClientHandle) {
         if let Some(connection) = &self.connections[handle.0] {
-            let _ = &connection.stream.shutdown(Shutdown::Both);
+            let _ = &connection.0.shutdown(Shutdown::Both);
             self.closed_connection_indexes.push(handle.0);
         }
     }
 
     pub fn close_all_connections(&mut self) {
         for connection in self.connections.iter().flatten() {
-            let _ = &connection.stream.shutdown(Shutdown::Both);
+            let _ = &connection.0.shutdown(Shutdown::Both);
         }
     }
 
@@ -187,7 +183,7 @@ impl ConnectionWithClientCollection {
     ) -> io::Result<()> {
         for i in self.closed_connection_indexes.drain(..) {
             if let Some(connection) = self.connections[i].take() {
-                event_registry.unregister_stream(&connection.stream)?;
+                event_registry.unregister_stream(&connection.0)?;
             }
         }
 
@@ -200,7 +196,7 @@ impl ConnectionWithClientCollection {
         }
 
         let stream = match &mut self.connections[handle.0] {
-            Some(connection) => &mut connection.stream,
+            Some(connection) => &mut connection.0,
             None => return,
         };
 
@@ -222,9 +218,9 @@ impl ConnectionWithClientCollection {
             None => return Ok(0),
         };
 
-        connection.read_buf.read_into(&mut connection.stream)?;
+        self.read_buf.read_into(&mut connection.0)?;
         let mut key_count = 0;
-        let mut deserializer = KeyDeserializer::from_slice(connection.read_buf.as_slice());
+        let mut deserializer = KeyDeserializer::from_slice(self.read_buf.as_slice());
 
         loop {
             match deserializer.deserialize_next() {
@@ -239,7 +235,7 @@ impl ConnectionWithClientCollection {
             }
         }
 
-        connection.read_buf.clear();
+        self.read_buf.clear();
         Ok(key_count)
     }
 
