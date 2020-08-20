@@ -47,7 +47,7 @@ pub struct ConfigCommandContext<'a> {
 }
 
 type FullCommandBody =
-    fn(&mut FullCommandContext, CommandArgs, &str, &mut String) -> FullCommandResult;
+    fn(&mut FullCommandContext, CommandArgs, Option<&str>, &mut String) -> FullCommandResult;
 type ConfigCommandBody = fn(&mut ConfigCommandContext, CommandArgs) -> ConfigCommandResult;
 
 pub struct CommandArgs<'a> {
@@ -80,20 +80,16 @@ macro_rules! expect_next {
 
 macro_rules! input_or_next {
     ($args:expr, $input:expr) => {
-        if $input.is_empty() {
-            $args.next()
-        } else {
-            Some($input)
-        }
+        $input.or_else(|| $args.next())
     };
 }
 
 macro_rules! expect_input_or_next {
     ($args:expr, $input:expr) => {
-        if $input.is_empty() {
-            expect_next!($args)
+        if let Some(input) = $input {
+            input
         } else {
-            $input
+            expect_next!($args)
         }
     };
 }
@@ -205,7 +201,7 @@ impl CommandCollection {
         let (name, args) = Self::split_name_and_args(command);
         if let Some(command) = self.full_commands.get(name) {
             let mut output = String::new();
-            command(ctx, args, "", &mut output)
+            command(ctx, args, None, &mut output)
         } else if let Some(command) = self.config_commands.get(name) {
             let mut ctx = ConfigCommandContext {
                 operations: ctx.operations,
@@ -331,7 +327,7 @@ mod commands {
     pub fn quit(
         _ctx: &mut FullCommandContext,
         mut args: CommandArgs,
-        _input: &str,
+        _input: Option<&str>,
         _output: &mut String,
     ) -> FullCommandResult {
         assert_empty!(args);
@@ -341,7 +337,7 @@ mod commands {
     pub fn edit<'a, 'b>(
         mut ctx: &mut FullCommandContext,
         mut args: CommandArgs,
-        input: &str,
+        input: Option<&str>,
         _output: &mut String,
     ) -> FullCommandResult {
         let path = Path::new(expect_input_or_next!(args, input));
@@ -353,7 +349,7 @@ mod commands {
     pub fn close(
         ctx: &mut FullCommandContext,
         mut args: CommandArgs,
-        _input: &str,
+        _input: Option<&str>,
         _output: &mut String,
     ) -> FullCommandResult {
         assert_empty!(args);
@@ -380,7 +376,7 @@ mod commands {
     pub fn write(
         ctx: &mut FullCommandContext,
         mut args: CommandArgs,
-        input: &str,
+        input: Option<&str>,
         _output: &mut String,
     ) -> FullCommandResult {
         let view_handle = ctx
@@ -423,7 +419,7 @@ mod commands {
     pub fn write_all(
         ctx: &mut FullCommandContext,
         mut args: CommandArgs,
-        _input: &str,
+        _input: Option<&str>,
         _output: &mut String,
     ) -> FullCommandResult {
         assert_empty!(args);
@@ -439,7 +435,7 @@ mod commands {
     pub fn selection(
         ctx: &mut FullCommandContext,
         mut args: CommandArgs,
-        _input: &str,
+        _input: Option<&str>,
         output: &mut String,
     ) -> FullCommandResult {
         assert_empty!(args);
@@ -457,7 +453,7 @@ mod commands {
     pub fn replace(
         _ctx: &mut FullCommandContext,
         mut args: CommandArgs,
-        input: &str,
+        input: Option<&str>,
         _output: &mut String,
     ) -> FullCommandResult {
         let _input = expect_input_or_next!(args, input);
@@ -468,7 +464,7 @@ mod commands {
     pub fn pipe(
         _ctx: &mut FullCommandContext,
         mut args: CommandArgs,
-        _input: &str,
+        _input: Option<&str>,
         _output: &mut String,
     ) -> FullCommandResult {
         let name = expect_next!(args);
