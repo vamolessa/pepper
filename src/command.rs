@@ -78,6 +78,16 @@ macro_rules! expect_next {
     };
 }
 
+macro_rules! input_or_next {
+    ($args:expr, $input:expr) => {
+        if $input.is_empty() {
+            $args.next()
+        } else {
+            Some($input)
+        }
+    };
+}
+
 macro_rules! expect_input_or_next {
     ($args:expr, $input:expr) => {
         if $input.is_empty() {
@@ -370,7 +380,7 @@ mod commands {
     pub fn write(
         ctx: &mut FullCommandContext,
         mut args: CommandArgs,
-        _input: &str,
+        input: &str,
         _output: &mut String,
     ) -> FullCommandResult {
         let view_handle = ctx
@@ -384,7 +394,7 @@ mod commands {
             .get_mut(buffer_handle)
             .ok_or_else(|| String::from("no buffer opened"))?;
 
-        let path = args.next();
+        let path = input_or_next!(args, input);
         assert_empty!(args);
         match path {
             Some(path) => {
@@ -430,16 +440,15 @@ mod commands {
         ctx: &mut FullCommandContext,
         mut args: CommandArgs,
         _input: &str,
-        _output: &mut String,
+        output: &mut String,
     ) -> FullCommandResult {
         assert_empty!(args);
-        let mut text = String::new();
         if let Some(buffer_view) = ctx
             .current_buffer_view_handle
             .as_ref()
             .map(|h| ctx.buffer_views.get(h))
         {
-            buffer_view.get_selection_text(ctx.buffers, &mut text);
+            buffer_view.get_selection_text(ctx.buffers, output);
         }
 
         Ok(CommandOperation::Complete)
@@ -448,9 +457,10 @@ mod commands {
     pub fn replace(
         _ctx: &mut FullCommandContext,
         mut args: CommandArgs,
-        _input: &str,
+        input: &str,
         _output: &mut String,
     ) -> FullCommandResult {
+        let _input = expect_input_or_next!(args, input);
         assert_empty!(args);
         Ok(CommandOperation::Complete)
     }
