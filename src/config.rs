@@ -37,7 +37,7 @@ impl ConfigValues {
     pub fn parse_and_set<'a>(
         &mut self,
         name: &str,
-        values: &mut impl Iterator<Item = &'a str>,
+        values: &mut impl Iterator<Item = Result<&'a str, String>>,
     ) -> Result<(), ParseConfigError> {
         fn parse<T>(value: &str) -> Result<T, ParseConfigError>
         where
@@ -52,7 +52,8 @@ impl ConfigValues {
         macro_rules! parse_next {
             () => {
                 match values.next() {
-                    Some(value) => parse(value)?,
+                    Some(Ok(value)) => parse(value)?,
+                    Some(Err(error)) => return Err(ParseConfigError::ParseError(Box::new(error))),
                     None => return Err(ParseConfigError::UnexpectedEndOfValues),
                 }
             };

@@ -50,6 +50,38 @@ type FullCommandBody =
     fn(&mut FullCommandContext, &mut CommandArgs, Option<&str>, &mut String) -> FullCommandResult;
 type ConfigCommandBody = fn(&mut ConfigCommandContext, &mut CommandArgs) -> ConfigCommandResult;
 
+struct ParsedCommand<'a> {
+    pub name: &'a str,
+    pub args: CommandArgs<'a>,
+}
+
+impl<'a> ParsedCommand<'a> {
+    pub fn parse(command: &'a str) -> Option<Self> {
+        let mut command = command.trim_start();
+        match command.chars().next() {
+            Some('|') => command = &command[1..].trim_start(),
+            None => return None,
+            _ => (),
+        }
+
+        if let Some(index) = command.find(' ') {
+            Some(Self {
+                name: &command[..index],
+                args: CommandArgs::new(&command[index..]),
+            })
+        } else {
+            Some(Self {
+                name: command,
+                args: CommandArgs::new(""),
+            })
+        }
+    }
+
+    pub fn unparsed(self) -> &'a str {
+        self.args.raw
+    }
+}
+
 pub struct CommandArgs<'a> {
     raw: &'a str,
 }
@@ -60,74 +92,38 @@ impl<'a> CommandArgs<'a> {
     }
 }
 
-macro_rules! assert_empty {
-    ($args:expr) => {
-        match $args.next() {
-            Some(_) => return Err("command expected less arguments".into()),
-            None => (),
-        }
-    };
-}
-
-macro_rules! expect_next {
-    ($args:expr) => {
-        match $args.next() {
-            Some(arg) => arg,
-            None => return Err(String::from("command expected more arguments")),
-        }
-    };
-}
-
-macro_rules! input_or_next {
-    ($args:expr, $input:expr) => {
-        $input.or_else(|| $args.next())
-    };
-}
-
-macro_rules! expect_input_or_next {
-    ($args:expr, $input:expr) => {
-        if let Some(input) = $input {
-            input
-        } else {
-            expect_next!($args)
-        }
-    };
-}
-
 impl<'a> Iterator for CommandArgs<'a> {
-    type Item = &'a str;
+    type Item = Result<&'a str, String>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        fn find_string_end(s: &str, delim: char) -> Option<Range<usize>> {
+        fn find_string_end(s: &str, delim: char) -> Result<Range<usize>, String> {
             let mut chars = s.char_indices();
-            chars.next()?;
+            chars.next();
             for (i, c) in chars {
                 if c == delim {
-                    return Some(delim.len_utf8()..i);
+                    return Ok(delim.len_utf8()..i);
                 }
             }
-            None
+            Err(format!("unclosed '{}'", delim))
         }
 
         self.raw = self.raw.trim_start();
-        if self.raw.is_empty() {
-            return None;
-        }
-
-        let arg_range = match self.raw.chars().next() {
-            Some('|') => 0..0,
-            Some('"') => find_string_end(self.raw, '"')?,
-            Some('\'') => find_string_end(self.raw, '\'')?,
+        let (arg_range, arg_margin) = match self.raw.chars().next() {
+            None | Some('|') => return None,
+            Some(c @ '"') | Some(c @ '\'') => match find_string_end(self.raw, c) {
+                Ok(range) => (range, c.len_utf8()),
+                Err(error) => return Some(Err(error)),
+            },
             _ => match self.raw.find(|c: char| c.is_whitespace()) {
-                Some(end) => 0..end,
-                None => 0..self.raw.len(),
+                Some(end) => (0..end, 0),
+                None => (0..self.raw.len(), 0),
             },
         };
 
-        let (arg, after) = self.raw.split_at(arg_range.end);
+        let (arg, after) = self.raw.split_at(arg_range.end + arg_margin);
         self.raw = after;
 
-        Some(&arg[arg_range])
+        Some(Ok(&arg[arg_range]))
     }
 }
 
@@ -172,35 +168,20 @@ impl CommandCollection {
         self.config_commands.insert(name, body);
     }
 
-    fn next_command(command: &str) -> Option<(&str, CommandArgs)> {
-        let mut command = command.trim_start();
-        match command.chars().next() {
-            Some('|') => command = &command[1..].trim_start(),
-            None => return None,
-            _ => (),
-        }
-
-        if let Some(index) = command.find(' ') {
-            Some((&command[..index], CommandArgs::new(&command[index..])))
-        } else {
-            Some((command, CommandArgs::new("")))
-        }
-    }
-
     pub fn parse_and_execut_config_command(
         &self,
         ctx: &mut ConfigCommandContext,
         command: &str,
     ) -> ConfigCommandResult {
-        let (name, mut args) = match Self::next_command(command) {
-            Some((name, args)) => (name, args),
+        let mut parsed = match ParsedCommand::parse(command) {
+            Some(parsed) => parsed,
             None => return Err("empty command name".into()),
         };
 
-        if let Some(command) = self.config_commands.get(name) {
-            command(ctx, &mut args)
+        if let Some(command) = self.config_commands.get(parsed.name) {
+            command(ctx, &mut parsed.args)
         } else {
-            Err(format!("command '{}' not found", name))
+            Err(format!("command '{}' not found", parsed.name))
         }
     }
 
@@ -214,8 +195,8 @@ impl CommandCollection {
         let mut output = String::new();
 
         loop {
-            let (name, mut args) = match Self::next_command(command) {
-                Some((name, args)) => (name, args),
+            let mut parsed = match ParsedCommand::parse(command) {
+                Some(parsed) => parsed,
                 None => {
                     break match last_result {
                         Some(result) => result,
@@ -224,29 +205,71 @@ impl CommandCollection {
                 }
             };
 
-            if let Some(command) = self.full_commands.get(name) {
+            if let Some(command) = self.full_commands.get(parsed.name) {
                 let maybe_input = match last_result {
                     Some(_) => Some(&input[..]),
                     None => None,
                 };
                 output.clear();
-                last_result = Some(command(ctx, &mut args, maybe_input, &mut output));
+                last_result = Some(command(ctx, &mut parsed.args, maybe_input, &mut output));
                 std::mem::swap(&mut input, &mut output);
-            } else if let Some(command) = self.config_commands.get(name) {
+            } else if let Some(command) = self.config_commands.get(parsed.name) {
                 let mut ctx = ConfigCommandContext {
                     operations: ctx.operations,
                     config: ctx.config,
                     keymaps: ctx.keymaps,
                 };
-                last_result = Some(command(&mut ctx, &mut args).map(|_| CommandOperation::Complete));
+                last_result =
+                    Some(command(&mut ctx, &mut parsed.args).map(|_| CommandOperation::Complete));
                 input.clear();
             } else {
-                return Err(format!("command '{}' not found", name));
+                return Err(format!("command '{}' not found", parsed.name));
             }
 
-            command = args.raw;
+            command = parsed.unparsed();
         }
     }
+}
+
+macro_rules! assert_empty {
+    ($args:expr) => {
+        match $args.next() {
+            Some(_) => return Err("command expected less arguments".into()),
+            None => (),
+        }
+    };
+}
+
+macro_rules! expect_next {
+    ($args:expr) => {
+        match $args.next() {
+            Some(Ok(arg)) => arg,
+            Some(Err(error)) => return Err(error),
+            None => return Err(String::from("command expected more arguments")),
+        }
+    };
+}
+
+macro_rules! input_or_next {
+    ($args:expr, $input:expr) => {
+        match $input {
+            Some(input) => Some(input),
+            None => match $args.next() {
+                Some(Ok(arg)) => Some(arg),
+                Some(Err(error)) => return Err(error),
+                None => None,
+            },
+        }
+    };
+}
+
+macro_rules! expect_input_or_next {
+    ($args:expr, $input:expr) => {
+        match $input {
+            Some(input) => input,
+            None => expect_next!($args),
+        }
+    };
 }
 
 mod helper {
@@ -515,7 +538,7 @@ mod commands {
         command.stdout(Stdio::piped());
         command.stderr(Stdio::piped());
         for arg in args {
-            command.arg(arg);
+            command.arg(arg?);
         }
 
         let mut child = command.spawn().map_err(|e| e.to_string())?;
@@ -538,9 +561,11 @@ mod commands {
     pub fn set(ctx: &mut ConfigCommandContext, args: &mut CommandArgs) -> ConfigCommandResult {
         let name = expect_next!(args);
         let mut previous = "";
-        let mut args = args.map(|a| {
-            previous = a;
-            a
+        let mut args = args.map(|arg| {
+            if let Ok(arg) = arg {
+                previous = arg
+            }
+            arg
         });
 
         let mut values = ctx.config.values.clone();
@@ -569,11 +594,12 @@ mod commands {
             for extension in args {
                 ctx.operations.serialize(
                     TargetClient::All,
-                    &EditorOperation::SyntaxExtension(main_extension, extension),
+                    &EditorOperation::SyntaxExtension(main_extension, extension?),
                 );
             }
         } else if let Some(token_kind) = TokenKind::from_str(subcommand) {
             for pattern in args {
+                let pattern = pattern?;
                 ctx.operations.serialize_syntax_rule(
                     TargetClient::All,
                     main_extension,
@@ -637,5 +663,66 @@ mod commands {
             Err(ParseKeyMapError::From(i, e)) => Err(helper::parsing_error(e, from, i)),
             Err(ParseKeyMapError::To(i, e)) => Err(helper::parsing_error(e, to, i)),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn single_command_arg_parsing() {
+        let mut args = CommandArgs::new("arg");
+        assert_eq!(Some(Ok("arg")), args.next());
+        assert_eq!(None, args.next());
+
+        let mut args = CommandArgs::new("  ' arg ' ");
+        assert_eq!(Some(Ok(" arg ")), args.next());
+        assert_eq!(None, args.next());
+
+        let mut args = CommandArgs::new("  \" arg \" ");
+        assert_eq!(Some(Ok(" arg ")), args.next());
+        assert_eq!(None, args.next());
+    }
+
+    #[test]
+    fn multiple_command_arg_parsing() {
+        let mut args = CommandArgs::new("arg1 arg2");
+        assert_eq!(Some(Ok("arg1")), args.next());
+        assert_eq!(Some(Ok("arg2")), args.next());
+        assert_eq!(None, args.next());
+
+        let mut args = CommandArgs::new("  ' arg1 '   '  arg2' ");
+        assert_eq!(Some(Ok(" arg1 ")), args.next());
+        assert_eq!(Some(Ok("  arg2")), args.next());
+        assert_eq!(None, args.next());
+
+        let mut args = CommandArgs::new("  \" arg \" ");
+        assert_eq!(Some(Ok(" arg ")), args.next());
+        assert_eq!(None, args.next());
+    }
+
+    #[test]
+    fn fail_arg_parsing() {
+        let mut args = CommandArgs::new("'arg");
+        assert!(args.next().unwrap().is_err());
+
+        let mut args = CommandArgs::new("\"arg");
+        assert!(args.next().unwrap().is_err());
+    }
+
+    #[test]
+    fn single_command_parsing() {
+        let mut parsed = ParsedCommand::parse("name arg1 arg2").unwrap();
+        assert_eq!("name", parsed.name);
+        assert_eq!(Some(Ok("arg1")), parsed.args.next());
+        assert_eq!(Some(Ok("arg2")), parsed.args.next());
+        assert_eq!(None, parsed.args.next());
+
+        let mut parsed = ParsedCommand::parse("name   'arg1 '   \" arg2 '\"").unwrap();
+        assert_eq!("name", parsed.name);
+        assert_eq!(Some(Ok("arg1 ")), parsed.args.next());
+        assert_eq!(Some(Ok(" arg2 '")), parsed.args.next());
+        assert_eq!(None, parsed.args.next());
     }
 }
