@@ -47,16 +47,16 @@ pub struct ConfigCommandContext<'a> {
 }
 
 type FullCommandBody =
-    fn(&mut FullCommandContext, CommandArgs, Option<&str>, &mut String) -> FullCommandResult;
-type ConfigCommandBody = fn(&mut ConfigCommandContext, CommandArgs) -> ConfigCommandResult;
+    fn(&mut FullCommandContext, &mut CommandArgs, Option<&str>, &mut String) -> FullCommandResult;
+type ConfigCommandBody = fn(&mut ConfigCommandContext, &mut CommandArgs) -> ConfigCommandResult;
 
 pub struct CommandArgs<'a> {
     raw: &'a str,
 }
 
 impl<'a> CommandArgs<'a> {
-    pub fn new(args: &'a str) -> Self {
-        Self { raw: args }
+    pub fn new(raw: &'a str) -> Self {
+        Self { raw }
     }
 }
 
@@ -110,11 +110,12 @@ impl<'a> Iterator for CommandArgs<'a> {
         }
 
         self.raw = self.raw.trim_start();
-        if self.raw.len() == 0 {
+        if self.raw.is_empty() {
             return None;
         }
 
         let arg_range = match self.raw.chars().next() {
+            Some('|') => 0..0,
             Some('"') => find_string_end(self.raw, '"')?,
             Some('\'') => find_string_end(self.raw, '\'')?,
             _ => match self.raw.find(|c: char| c.is_whitespace()) {
@@ -171,12 +172,18 @@ impl CommandCollection {
         self.config_commands.insert(name, body);
     }
 
-    fn split_name_and_args(command: &str) -> (&str, CommandArgs) {
-        let command = command.trim();
+    fn next_command(command: &str) -> Option<(&str, CommandArgs)> {
+        let mut command = command.trim_start();
+        match command.chars().next() {
+            Some('|') => command = &command[1..].trim_start(),
+            None => return None,
+            _ => (),
+        }
+
         if let Some(index) = command.find(' ') {
-            (&command[..index], CommandArgs::new(&command[index..]))
+            Some((&command[..index], CommandArgs::new(&command[index..])))
         } else {
-            (command, CommandArgs::new(""))
+            Some((command, CommandArgs::new("")))
         }
     }
 
@@ -185,9 +192,13 @@ impl CommandCollection {
         ctx: &mut ConfigCommandContext,
         command: &str,
     ) -> ConfigCommandResult {
-        let (name, args) = Self::split_name_and_args(command);
+        let (name, mut args) = match Self::next_command(command) {
+            Some((name, args)) => (name, args),
+            None => return Err("empty command name".into()),
+        };
+
         if let Some(command) = self.config_commands.get(name) {
-            command(ctx, args)
+            command(ctx, &mut args)
         } else {
             Err(format!("command '{}' not found", name))
         }
@@ -196,21 +207,44 @@ impl CommandCollection {
     pub fn parse_and_execute_any_command(
         &self,
         ctx: &mut FullCommandContext,
-        command: &str,
+        mut command: &str,
     ) -> FullCommandResult {
-        let (name, args) = Self::split_name_and_args(command);
-        if let Some(command) = self.full_commands.get(name) {
-            let mut output = String::new();
-            command(ctx, args, None, &mut output)
-        } else if let Some(command) = self.config_commands.get(name) {
-            let mut ctx = ConfigCommandContext {
-                operations: ctx.operations,
-                config: ctx.config,
-                keymaps: ctx.keymaps,
+        let mut last_result = None;
+        let mut input = String::new();
+        let mut output = String::new();
+
+        loop {
+            let (name, mut args) = match Self::next_command(command) {
+                Some((name, args)) => (name, args),
+                None => {
+                    break match last_result {
+                        Some(result) => result,
+                        None => Err("empty command name".into()),
+                    }
+                }
             };
-            command(&mut ctx, args).map(|_| CommandOperation::Complete)
-        } else {
-            Err(format!("command '{}' not found", name))
+
+            if let Some(command) = self.full_commands.get(name) {
+                let maybe_input = match last_result {
+                    Some(_) => Some(&input[..]),
+                    None => None,
+                };
+                output.clear();
+                last_result = Some(command(ctx, &mut args, maybe_input, &mut output));
+                std::mem::swap(&mut input, &mut output);
+            } else if let Some(command) = self.config_commands.get(name) {
+                let mut ctx = ConfigCommandContext {
+                    operations: ctx.operations,
+                    config: ctx.config,
+                    keymaps: ctx.keymaps,
+                };
+                last_result = Some(command(&mut ctx, &mut args).map(|_| CommandOperation::Complete));
+                input.clear();
+            } else {
+                return Err(format!("command '{}' not found", name));
+            }
+
+            command = args.raw;
         }
     }
 }
@@ -326,7 +360,7 @@ mod commands {
 
     pub fn quit(
         _ctx: &mut FullCommandContext,
-        mut args: CommandArgs,
+        args: &mut CommandArgs,
         _input: Option<&str>,
         _output: &mut String,
     ) -> FullCommandResult {
@@ -336,7 +370,7 @@ mod commands {
 
     pub fn open<'a, 'b>(
         mut ctx: &mut FullCommandContext,
-        mut args: CommandArgs,
+        args: &mut CommandArgs,
         input: Option<&str>,
         _output: &mut String,
     ) -> FullCommandResult {
@@ -348,7 +382,7 @@ mod commands {
 
     pub fn close(
         ctx: &mut FullCommandContext,
-        mut args: CommandArgs,
+        args: &mut CommandArgs,
         _input: Option<&str>,
         _output: &mut String,
     ) -> FullCommandResult {
@@ -375,7 +409,7 @@ mod commands {
 
     pub fn save(
         ctx: &mut FullCommandContext,
-        mut args: CommandArgs,
+        args: &mut CommandArgs,
         input: Option<&str>,
         _output: &mut String,
     ) -> FullCommandResult {
@@ -418,7 +452,7 @@ mod commands {
 
     pub fn save_all(
         ctx: &mut FullCommandContext,
-        mut args: CommandArgs,
+        args: &mut CommandArgs,
         _input: Option<&str>,
         _output: &mut String,
     ) -> FullCommandResult {
@@ -434,7 +468,7 @@ mod commands {
 
     pub fn selection(
         ctx: &mut FullCommandContext,
-        mut args: CommandArgs,
+        args: &mut CommandArgs,
         _input: Option<&str>,
         output: &mut String,
     ) -> FullCommandResult {
@@ -452,7 +486,7 @@ mod commands {
 
     pub fn replace(
         ctx: &mut FullCommandContext,
-        mut args: CommandArgs,
+        args: &mut CommandArgs,
         input: Option<&str>,
         _output: &mut String,
     ) -> FullCommandResult {
@@ -470,7 +504,7 @@ mod commands {
 
     pub fn pipe(
         _ctx: &mut FullCommandContext,
-        mut args: CommandArgs,
+        args: &mut CommandArgs,
         input: Option<&str>,
         output: &mut String,
     ) -> FullCommandResult {
@@ -501,7 +535,7 @@ mod commands {
         }
     }
 
-    pub fn set(ctx: &mut ConfigCommandContext, mut args: CommandArgs) -> ConfigCommandResult {
+    pub fn set(ctx: &mut ConfigCommandContext, args: &mut CommandArgs) -> ConfigCommandResult {
         let name = expect_next!(args);
         let mut previous = "";
         let mut args = args.map(|a| {
@@ -528,7 +562,7 @@ mod commands {
         Ok(())
     }
 
-    pub fn syntax(ctx: &mut ConfigCommandContext, mut args: CommandArgs) -> ConfigCommandResult {
+    pub fn syntax(ctx: &mut ConfigCommandContext, args: &mut CommandArgs) -> ConfigCommandResult {
         let main_extension = expect_next!(args);
         let subcommand = expect_next!(args);
         if subcommand == "extension" {
@@ -557,7 +591,7 @@ mod commands {
         Ok(())
     }
 
-    pub fn theme(ctx: &mut ConfigCommandContext, mut args: CommandArgs) -> ConfigCommandResult {
+    pub fn theme(ctx: &mut ConfigCommandContext, args: &mut CommandArgs) -> ConfigCommandResult {
         let name = expect_next!(args);
         let color = expect_next!(args);
         assert_empty!(args);
@@ -577,21 +611,21 @@ mod commands {
         Ok(())
     }
 
-    pub fn nmap(ctx: &mut ConfigCommandContext, args: CommandArgs) -> ConfigCommandResult {
+    pub fn nmap(ctx: &mut ConfigCommandContext, args: &mut CommandArgs) -> ConfigCommandResult {
         mode_map(ctx, args, Mode::Normal)
     }
 
-    pub fn smap(ctx: &mut ConfigCommandContext, args: CommandArgs) -> ConfigCommandResult {
+    pub fn smap(ctx: &mut ConfigCommandContext, args: &mut CommandArgs) -> ConfigCommandResult {
         mode_map(ctx, args, Mode::Select)
     }
 
-    pub fn imap(ctx: &mut ConfigCommandContext, args: CommandArgs) -> ConfigCommandResult {
+    pub fn imap(ctx: &mut ConfigCommandContext, args: &mut CommandArgs) -> ConfigCommandResult {
         mode_map(ctx, args, Mode::Insert)
     }
 
     fn mode_map(
         ctx: &mut ConfigCommandContext,
-        mut args: CommandArgs,
+        args: &mut CommandArgs,
         mode: Mode,
     ) -> ConfigCommandResult {
         let from = expect_next!(args);
