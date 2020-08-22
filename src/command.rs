@@ -2,14 +2,14 @@ use std::{
     collections::HashMap,
     fmt,
     fs::File,
-    io::Read,
+    io::{Read, Write},
     ops::Range,
     path::Path,
     process::{Command, Stdio},
 };
 
 use crate::{
-    buffer::{Buffer, BufferCollection, BufferContent},
+    buffer::{Buffer, BufferCollection, BufferContent, TextRef},
     buffer_view::{BufferView, BufferViewCollection, BufferViewHandle},
     config::{Config, ParseConfigError},
     connection::TargetClient,
@@ -149,7 +149,7 @@ impl Default for CommandCollection {
         }
 
         register! { register_full_command =>
-            quit, edit, close, write, write_all,
+            quit, open, close, save, save_all,
             selection, replace, pipe,
         }
 
@@ -334,7 +334,7 @@ mod commands {
         Ok(CommandOperation::Quit)
     }
 
-    pub fn edit<'a, 'b>(
+    pub fn open<'a, 'b>(
         mut ctx: &mut FullCommandContext,
         mut args: CommandArgs,
         input: Option<&str>,
@@ -373,7 +373,7 @@ mod commands {
         Ok(CommandOperation::Complete)
     }
 
-    pub fn write(
+    pub fn save(
         ctx: &mut FullCommandContext,
         mut args: CommandArgs,
         input: Option<&str>,
@@ -416,7 +416,7 @@ mod commands {
         }
     }
 
-    pub fn write_all(
+    pub fn save_all(
         ctx: &mut FullCommandContext,
         mut args: CommandArgs,
         _input: Option<&str>,
@@ -451,23 +451,31 @@ mod commands {
     }
 
     pub fn replace(
-        _ctx: &mut FullCommandContext,
+        ctx: &mut FullCommandContext,
         mut args: CommandArgs,
         input: Option<&str>,
         _output: &mut String,
     ) -> FullCommandResult {
-        let _input = expect_input_or_next!(args, input);
+        let input = expect_input_or_next!(args, input);
         assert_empty!(args);
+        if let Some(handle) = ctx.current_buffer_view_handle {
+            ctx.buffer_views
+                .delete_in_selection(ctx.buffers, ctx.operations, handle);
+            ctx.buffer_views
+                .insert_text(ctx.buffers, ctx.operations, handle, TextRef::Str(input));
+        }
+
         Ok(CommandOperation::Complete)
     }
 
     pub fn pipe(
         _ctx: &mut FullCommandContext,
         mut args: CommandArgs,
-        _input: Option<&str>,
-        _output: &mut String,
+        input: Option<&str>,
+        output: &mut String,
     ) -> FullCommandResult {
         let name = expect_next!(args);
+
         let mut command = Command::new(name);
         command.stdin(Stdio::piped());
         command.stdout(Stdio::piped());
@@ -476,11 +484,21 @@ mod commands {
             command.arg(arg);
         }
 
-        let child = command.spawn().map_err(|e| e.to_string())?;
-        let output = child.wait_with_output().map_err(|e| e.to_string())?;
-        let output = String::from_utf8(output.stdout).map_err(|e| e.to_string())?;
+        let mut child = command.spawn().map_err(|e| e.to_string())?;
+        if let (Some(input), Some(stdin)) = (input, child.stdin.as_mut()) {
+            let _ = stdin.write_all(input.as_bytes());
+        }
+        child.stdin = None;
 
-        Err(output)
+        let child_output = child.wait_with_output().map_err(|e| e.to_string())?;
+        if child_output.status.success() {
+            let child_output = String::from_utf8_lossy(&child_output.stdout[..]);
+            output.push_str(child_output.as_ref());
+            Ok(CommandOperation::Complete)
+        } else {
+            let child_output = String::from_utf8_lossy(&child_output.stdout[..]).into_owned();
+            Err(child_output)
+        }
     }
 
     pub fn set(ctx: &mut ConfigCommandContext, mut args: CommandArgs) -> ConfigCommandResult {
