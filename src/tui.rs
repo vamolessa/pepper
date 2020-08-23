@@ -10,6 +10,7 @@ use crate::{
     application::{UiError, UI},
     buffer_position::BufferPosition,
     client::Client,
+    editor_operation::StatusMessageKind,
     event::{Event, Key},
     mode::Mode,
     syntax::TokenKind,
@@ -114,7 +115,12 @@ where
         Ok(())
     }
 
-    fn draw(&mut self, client: &Client, error: &str) -> Result<()> {
+    fn draw(
+        &mut self,
+        client: &Client,
+        status_message_kind: StatusMessageKind,
+        status_message: &str,
+    ) -> Result<()> {
         let text_height = self.height - 1;
         let select_entry_count = if client.has_focus {
             client.select_entries.len() as u16
@@ -152,7 +158,13 @@ where
             self.width,
             select_height,
         )?;
-        draw_statusbar(&mut self.write, client, self.width, error)?;
+        draw_statusbar(
+            &mut self.write,
+            client,
+            self.width,
+            status_message_kind,
+            status_message,
+        )?;
 
         self.write.flush()?;
         Ok(())
@@ -385,7 +397,13 @@ where
     Ok(())
 }
 
-fn draw_statusbar<W>(write: &mut W, client: &Client, width: u16, error: &str) -> Result<()>
+fn draw_statusbar<W>(
+    write: &mut W,
+    client: &Client,
+    width: u16,
+    status_message_kind: StatusMessageKind,
+    status_message: &str,
+) -> Result<()>
 where
     W: Write,
 {
@@ -431,10 +449,13 @@ where
     let x;
     let draw_buffer_path;
 
-    if !error.is_empty() {
-        let prefix = "error:";
+    if !status_message.is_empty() {
+        let prefix = match status_message_kind {
+            StatusMessageKind::Info => "info:",
+            StatusMessageKind::Error => "error:",
+        };
         handle_command!(write, Print(prefix))?;
-        let error = error.lines().next().unwrap_or("");
+        let error = status_message.lines().next().unwrap_or("");
         handle_command!(write, Print(error))?;
         x = prefix.len() + error.len();
         draw_buffer_path = true;
@@ -455,7 +476,7 @@ where
             Mode::Search(_) => {
                 x = draw_input(
                     write,
-                    "search:",
+                    "/",
                     &client.input[..],
                     background_color,
                     cursor_color,
@@ -465,7 +486,7 @@ where
             Mode::Command(_) => {
                 x = draw_input(
                     write,
-                    "command:",
+                    ":",
                     &client.input[..],
                     background_color,
                     cursor_color,

@@ -6,8 +6,9 @@ use crate::{
     editor::{Editor, EditorLoop},
     editor_operation::{
         EditorOperationDeserializeResult, EditorOperationDeserializer, EditorOperationSerializer,
+        StatusMessageKind,
     },
-    event::{KeySerializer, Event},
+    event::{Event, KeySerializer},
     event_manager::{ConnectionEvent, EventManager},
 };
 
@@ -56,7 +57,12 @@ pub trait UI {
         Ok(())
     }
 
-    fn draw(&mut self, client: &Client, error: &str) -> Result<(), Self::Error>;
+    fn draw(
+        &mut self,
+        client: &Client,
+        status_message_kind: StatusMessageKind,
+        status_message: &str,
+    ) -> Result<(), Self::Error>;
 
     fn shutdown(&mut self) -> Result<(), Self::Error> {
         Ok(())
@@ -183,8 +189,12 @@ where
             }
         }
 
-        ui.draw(&local_client, &local_client.error[..])?;
-        local_client.error.clear();
+        ui.draw(
+            &local_client,
+            local_client.status_message_kind,
+            &local_client.status_message[..],
+        )?;
+        local_client.status_message.clear();
     }
 
     drop(event_manager_loop);
@@ -240,8 +250,12 @@ where
             },
         }
 
-        ui.draw(&local_client, &local_client.error[..])?;
-        local_client.error.clear();
+        ui.draw(
+            &local_client,
+            local_client.status_message_kind,
+            &local_client.status_message[..],
+        )?;
+        local_client.status_message.clear();
     }
 
     drop(event_manager_loop);

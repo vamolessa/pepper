@@ -16,6 +16,12 @@ use crate::{
     theme::Theme,
 };
 
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+pub enum StatusMessageKind {
+    Info,
+    Error,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub enum EditorOperation<'a> {
     Focused(bool),
@@ -35,7 +41,7 @@ pub enum EditorOperation<'a> {
     SyntaxRule(&'a [u8]),
     SelectClear,
     SelectEntry(&'a str),
-    Error(&'a str),
+    StatusMessage(StatusMessageKind, &'a str),
 }
 
 #[derive(Default)]
@@ -331,7 +337,7 @@ mod tests {
         serializer.serialize_syntax(TargetClient::Local, syntax);
         serializer.serialize(
             TargetClient::Local,
-            &EditorOperation::Error("this is an error"),
+            &EditorOperation::StatusMessage(StatusMessageKind::Error, "this is an error"),
         );
 
         let mut deserializer = EditorOperationDeserializer::from_slice(serializer.local_bytes());
@@ -383,6 +389,9 @@ mod tests {
         assert_next!(deserializer, EditorOperation::ConfigValues(_));
         assert_next!(deserializer, EditorOperation::SyntaxExtension("abc", "def"));
         assert_next!(deserializer, EditorOperation::SyntaxRule(_));
-        assert_next!(deserializer, EditorOperation::Error("this is an error"));
+        assert_next!(
+            deserializer,
+            EditorOperation::StatusMessage(StatusMessageKind::Error, "this is an error")
+        );
     }
 }

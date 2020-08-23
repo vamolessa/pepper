@@ -13,7 +13,7 @@ use crate::{
     buffer_view::{BufferView, BufferViewCollection, BufferViewHandle},
     config::{Config, ParseConfigError},
     connection::TargetClient,
-    editor_operation::{EditorOperation, EditorOperationSerializer},
+    editor_operation::{EditorOperation, EditorOperationSerializer, StatusMessageKind},
     keymap::{KeyMapCollection, ParseKeyMapError},
     mode::Mode,
     pattern::Pattern,
@@ -147,7 +147,7 @@ impl Default for CommandCollection {
 
         register! { register_full_command =>
             quit, open, close, save, save_all,
-            selection, replace, pipe,
+            selection, replace, echo, pipe,
         }
 
         register! { register_config_command =>
@@ -522,6 +522,28 @@ mod commands {
                 .insert_text(ctx.buffers, ctx.operations, handle, TextRef::Str(input));
         }
 
+        Ok(CommandOperation::Complete)
+    }
+
+    pub fn echo(
+        ctx: &mut FullCommandContext,
+        args: &mut CommandArgs,
+        input: Option<&str>,
+        _output: &mut String,
+    ) -> FullCommandResult {
+        let mut message = String::new();
+        if let Some(input) = input {
+            message.push_str(input);
+        }
+
+        for arg in args {
+            message.push_str(arg?);
+        }
+
+        ctx.operations.serialize(
+            TargetClient::All,
+            &EditorOperation::StatusMessage(StatusMessageKind::Info, &message[..]),
+        );
         Ok(CommandOperation::Complete)
     }
 

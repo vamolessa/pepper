@@ -7,7 +7,7 @@ use crate::{
     config::Config,
     cursor::Cursor,
     editor_operation::{
-        EditorOperation, EditorOperationDeserializeResult, EditorOperationDeserializer,
+        EditorOperation, StatusMessageKind, EditorOperationDeserializeResult, EditorOperationDeserializer,
         EditorOperationSerializer,
     },
     keymap::KeyMapCollection,
@@ -32,7 +32,9 @@ pub struct Client {
     pub has_focus: bool,
     pub input: String,
     pub select_entries: SelectEntryCollection,
-    pub error: String,
+
+    pub status_message_kind: StatusMessageKind,
+    pub status_message: String,
 }
 
 impl Client {
@@ -53,7 +55,9 @@ impl Client {
             has_focus: true,
             input: String::new(),
             select_entries: SelectEntryCollection::default(),
-            error: String::new(),
+
+            status_message_kind: StatusMessageKind::Info,
+            status_message: String::new(),
         }
     }
 
@@ -70,8 +74,8 @@ impl Client {
         };
 
         if let Err(e) = Config::load_into_operations(commands, &mut ctx) {
-            self.error.clear();
-            self.error.push_str(&e[..]);
+            self.status_message.clear();
+            self.status_message.push_str(&e[..]);
             return;
         }
 
@@ -180,9 +184,10 @@ impl Client {
             }
             EditorOperation::SelectClear => self.select_entries.clear(),
             EditorOperation::SelectEntry(name) => self.select_entries.add(name),
-            EditorOperation::Error(error) => {
-                self.error.clear();
-                self.error.push_str(error);
+            EditorOperation::StatusMessage(kind, message) => {
+                self.status_message_kind = *kind;
+                self.status_message.clear();
+                self.status_message.push_str(message);
             }
         }
     }

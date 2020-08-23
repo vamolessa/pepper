@@ -5,7 +5,7 @@ use crate::{
     config::Config,
     connection::ConnectionWithClientHandle,
     connection::TargetClient,
-    editor_operation::{EditorOperation, EditorOperationSerializer},
+    editor_operation::{EditorOperation, EditorOperationSerializer, StatusMessageKind},
     event::Key,
     keymap::{KeyMapCollection, MatchResult},
     mode::{Mode, ModeContext, ModeOperation},
@@ -251,7 +251,10 @@ impl Editor {
                     self.mode.on_enter(&mut mode_context);
                     operations
                         .serialize(TargetClient::All, &EditorOperation::Mode(Mode::default()));
-                    operations.serialize(self.focused_client, &EditorOperation::Error(&error[..]));
+                    operations.serialize(
+                        self.focused_client,
+                        &EditorOperation::StatusMessage(StatusMessageKind::Error, &error[..]),
+                    );
 
                     break EditorLoop::Continue;
                 }
