@@ -451,7 +451,7 @@ where
 
     if !status_message.is_empty() {
         let prefix = match status_message_kind {
-            StatusMessageKind::Info => "info:",
+            StatusMessageKind::Info => "",
             StatusMessageKind::Error => "error:",
         };
         handle_command!(write, Print(prefix))?;
