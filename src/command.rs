@@ -70,7 +70,7 @@ type FullCommandBody = fn(
 ) -> FullCommandOperation;
 type ConfigCommandBody = fn(&mut ConfigCommandContext, &mut CommandArgs) -> ConfigCommandOperation;
 
-struct ParsedCommand<'a> {
+pub struct ParsedCommand<'a> {
     pub name: &'a str,
     pub args: CommandArgs<'a>,
 }
