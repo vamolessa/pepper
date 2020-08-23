@@ -531,19 +531,33 @@ mod commands {
         input: Option<&str>,
         _output: &mut String,
     ) -> FullCommandResult {
-        let mut message = String::new();
+        ctx.operations.serialize(
+            TargetClient::All,
+            &EditorOperation::StatusMessage(StatusMessageKind::Info, ""),
+        );
+
         if let Some(input) = input {
-            message.push_str(input);
+            ctx.operations.serialize(
+                TargetClient::All,
+                &EditorOperation::StatusMessageAppend(input),
+            );
+            ctx.operations.serialize(
+                TargetClient::All,
+                &EditorOperation::StatusMessageAppend(" "),
+            );
         }
 
         for arg in args {
-            message.push_str(arg?);
+            ctx.operations.serialize(
+                TargetClient::All,
+                &EditorOperation::StatusMessageAppend(arg?),
+            );
+            ctx.operations.serialize(
+                TargetClient::All,
+                &EditorOperation::StatusMessageAppend(" "),
+            );
         }
 
-        ctx.operations.serialize(
-            TargetClient::All,
-            &EditorOperation::StatusMessage(StatusMessageKind::Info, &message[..]),
-        );
         Ok(CommandOperation::Complete)
     }
 

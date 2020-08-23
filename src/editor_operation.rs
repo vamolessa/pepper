@@ -42,6 +42,7 @@ pub enum EditorOperation<'a> {
     SelectClear,
     SelectEntry(&'a str),
     StatusMessage(StatusMessageKind, &'a str),
+    StatusMessageAppend(&'a str),
 }
 
 #[derive(Default)]

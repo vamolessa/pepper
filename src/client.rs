@@ -7,8 +7,8 @@ use crate::{
     config::Config,
     cursor::Cursor,
     editor_operation::{
-        EditorOperation, StatusMessageKind, EditorOperationDeserializeResult, EditorOperationDeserializer,
-        EditorOperationSerializer,
+        EditorOperation, EditorOperationDeserializeResult, EditorOperationDeserializer,
+        EditorOperationSerializer, StatusMessageKind,
     },
     keymap::KeyMapCollection,
     mode::Mode,
@@ -187,6 +187,9 @@ impl Client {
             EditorOperation::StatusMessage(kind, message) => {
                 self.status_message_kind = *kind;
                 self.status_message.clear();
+                self.status_message.push_str(message);
+            }
+            EditorOperation::StatusMessageAppend(message) => {
                 self.status_message.push_str(message);
             }
         }
