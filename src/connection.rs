@@ -5,8 +5,10 @@ use std::{
     path::Path,
 };
 
-#[cfg(target_os = "windows")]
+#[cfg(windows)]
 use uds_windows::{UnixListener, UnixStream};
+#[cfg(unix)]
+use std::os::unix::net::{UnixListener, UnixStream};
 
 use crate::{
     editor::EditorLoop,
@@ -293,6 +295,12 @@ impl ConnectionWithServer {
 
         serializer.clear();
         result
+    }
+
+    pub fn send_spawn_output(&mut self, output: &str) -> io::Result<()> {
+        self.stream.set_nonblocking(false)?;
+        self.stream.set_nonblocking(true)?;
+        Ok(())
     }
 
     pub fn receive_operations<F>(&mut self, mut callback: F) -> io::Result<usize>

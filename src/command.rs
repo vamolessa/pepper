@@ -169,6 +169,7 @@ macro_rules! unwrap_or_command_error {
 pub struct CommandCollection {
     full_commands: HashMap<String, FullCommandBody>,
     config_commands: HashMap<String, ConfigCommandBody>,
+    pending_commands: String,
 }
 
 impl Default for CommandCollection {
@@ -176,6 +177,7 @@ impl Default for CommandCollection {
         let mut this = Self {
             full_commands: HashMap::new(),
             config_commands: HashMap::new(),
+            pending_commands: String::new(),
         };
 
         macro_rules! register {
@@ -230,14 +232,33 @@ impl CommandCollection {
     pub fn parse_and_execute_any_command(
         &mut self,
         ctx: &mut FullCommandContext,
-        mut command: &str,
+        command: &str,
     ) -> FullCommandOperation {
-        let mut last_result = None;
-        let mut input = String::new();
+        self.pending_commands.clear();
+        self.pending_commands.push_str(command);
+        self.parse_and_execute_any_command_from(ctx, None, String::new())
+    }
+
+    pub fn continue_parse_and_execute_any_command(
+        &mut self,
+        ctx: &mut FullCommandContext,
+        input: String,
+    ) -> FullCommandOperation {
+        self.parse_and_execute_any_command_from(ctx, Some(FullCommandOperation::Complete), input)
+    }
+
+    fn parse_and_execute_any_command_from(
+        &mut self,
+        ctx: &mut FullCommandContext,
+        mut last_result: Option<FullCommandOperation>,
+        mut input: String,
+    ) -> FullCommandOperation {
+        let mut commands = &self.pending_commands[..];
+        let mut last_command = commands;
         let mut output = String::new();
 
         loop {
-            let mut parsed = match ParsedCommand::parse(command) {
+            let mut parsed = match ParsedCommand::parse(commands) {
                 Some(parsed) => parsed,
                 None => {
                     break match last_result {
@@ -248,22 +269,24 @@ impl CommandCollection {
             };
 
             if let Some(command) = self.full_commands.get(parsed.name) {
-                let maybe_input = match last_result {
-                    Some(_) => Some(&input[..]),
-                    None => None,
-                };
+                let maybe_input = last_result.map(|_| &input[..]);
                 output.clear();
                 last_result = match command(ctx, &mut parsed.args, maybe_input, &mut output) {
-                    FullCommandOperation::Error => return FullCommandOperation::Error,
+                    FullCommandOperation::Error => break FullCommandOperation::Error,
                     FullCommandOperation::WaitForClient => {
+                        let pending_command = parsed.unparsed();
+                        let spawn_command_len = last_command.len() - pending_command.len();
                         ctx.operations.serialize(
                             TargetClient::All,
                             &EditorOperation::Spawn(
-                                parsed.unparsed().trim_start(),
-                                maybe_input.unwrap_or(""),
+                                &last_command[..spawn_command_len],
+                                maybe_input,
                             ),
                         );
-                        return FullCommandOperation::WaitForClient;
+                        let drain_len = self.pending_commands.len() - commands.trim_start().len();
+                        self.pending_commands.drain(..drain_len);
+
+                        break FullCommandOperation::WaitForClient;
                     }
                     result => Some(result),
                 };
@@ -275,7 +298,7 @@ impl CommandCollection {
                     keymaps: ctx.keymaps,
                 };
                 if let ConfigCommandOperation::Error = command(&mut ctx, &mut parsed.args) {
-                    return FullCommandOperation::Error;
+                    break FullCommandOperation::Error;
                 }
                 last_result = Some(FullCommandOperation::Complete);
                 input.clear();
@@ -286,7 +309,8 @@ impl CommandCollection {
                 );
             }
 
-            command = parsed.unparsed();
+            last_command = commands;
+            commands = parsed.unparsed();
         }
     }
 }
@@ -671,10 +695,11 @@ mod commands {
 
     pub fn spawn(
         _ctx: &mut FullCommandContext,
-        _args: &mut CommandArgs,
+        args: &mut CommandArgs,
         _input: Option<&str>,
         _output: &mut String,
     ) -> FullCommandOperation {
+        for _ in args {}
         FullCommandOperation::WaitForClient
     }
 

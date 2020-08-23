@@ -200,7 +200,7 @@ impl Client {
                 self.status_message.push_str(message);
             }
             EditorOperation::Spawn(command, input) => {
-                if let Some(output) = self.spawn_command(command, input) {
+                if let Some(output) = self.spawn_command(command, *input) {
                     return ClientResponse::SpawnOutput(output);
                 }
             }
@@ -209,7 +209,7 @@ impl Client {
         ClientResponse::None
     }
 
-    fn spawn_command(&mut self, command: &str, input: &str) -> Option<String> {
+    fn spawn_command(&mut self, command: &str, input: Option<&str>) -> Option<String> {
         macro_rules! unwrap_or_command_error {
             ($value:expr) => {
                 match $value {
@@ -236,7 +236,7 @@ impl Client {
         }
 
         let mut child = unwrap_or_command_error!(command.spawn().map_err(|e| e.to_string()));
-        if let Some(stdin) = child.stdin.as_mut() {
+        if let (Some(input), Some(stdin)) = (input, child.stdin.as_mut()) {
             let _ = stdin.write_all(input.as_bytes());
         }
         child.stdin = None;

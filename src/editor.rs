@@ -1,10 +1,9 @@
 use crate::{
     buffer::BufferCollection,
     buffer_view::{BufferViewCollection, BufferViewHandle},
-    command::CommandCollection,
+    command::{CommandCollection, FullCommandContext, FullCommandOperation},
     config::Config,
-    connection::ConnectionWithClientHandle,
-    connection::TargetClient,
+    connection::{ConnectionWithClientHandle, TargetClient},
     editor_operation::{EditorOperation, EditorOperationSerializer},
     event::Key,
     keymap::{KeyMapCollection, MatchResult},
@@ -258,5 +257,41 @@ impl Editor {
 
         self.buffered_keys.clear();
         result
+    }
+
+    pub fn on_spawn_output(
+        &mut self,
+        config: &Config,
+        output: &str,
+        target_client: TargetClient,
+        operations: &mut EditorOperationSerializer,
+    ) -> EditorLoop {
+        let current_buffer_view_handle = match target_client {
+            TargetClient::All => unreachable!(),
+            TargetClient::Local => &mut self.local_client_current_buffer_view_handle,
+            TargetClient::Remote(handle) => {
+                &mut self.remote_client_current_buffer_view_handles[handle.into_index()]
+            }
+        };
+
+        let mut command_context = FullCommandContext {
+            target_client,
+            operations,
+
+            config,
+            keymaps: &mut self.keymaps,
+            buffers: &mut self.buffers,
+            buffer_views: &mut self.buffer_views,
+            current_buffer_view_handle,
+        };
+
+        match self
+            .commands
+            .continue_parse_and_execute_any_command(&mut command_context, output.into())
+        {
+            FullCommandOperation::Error | FullCommandOperation::Complete => EditorLoop::Continue,
+            FullCommandOperation::WaitForClient => EditorLoop::WaitForClient,
+            FullCommandOperation::Quit => EditorLoop::Quit,
+        }
     }
 }

@@ -43,7 +43,7 @@ pub enum EditorOperation<'a> {
     SelectEntry(&'a str),
     StatusMessage(StatusMessageKind, &'a str),
     StatusMessageAppend(&'a str),
-    Spawn(&'a str, &'a str),
+    Spawn(&'a str, Option<&'a str>),
 }
 
 #[derive(Default)]
