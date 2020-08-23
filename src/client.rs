@@ -192,6 +192,13 @@ impl Client {
             EditorOperation::StatusMessageAppend(message) => {
                 self.status_message.push_str(message);
             }
+            EditorOperation::Spawn(command, input) => {
+                self.status_message_kind = StatusMessageKind::Info;
+                self.status_message.clear();
+                self.status_message.push_str(input);
+                self.status_message.push_str(" | ");
+                self.status_message.push_str(command);
+            }
         }
     }
 }

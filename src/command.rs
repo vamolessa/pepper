@@ -200,7 +200,7 @@ impl CommandCollection {
                 Some(parsed) => parsed,
                 None => {
                     break match last_result {
-                        Some(result) => result,
+                        Some(result) => Ok(result),
                         None => Err("empty command name".into()),
                     }
                 }
@@ -212,25 +212,15 @@ impl CommandCollection {
                     None => None,
                 };
                 output.clear();
-                last_result = match command(ctx, &mut parsed.args, maybe_input, &mut output) {
-                    Ok(CommandOperation::Suspend) => {
+                last_result = match command(ctx, &mut parsed.args, maybe_input, &mut output)? {
+                    CommandOperation::Suspend => {
                         ctx.operations.serialize(
                             TargetClient::All,
-                            &EditorOperation::StatusMessage(
-                                StatusMessageKind::Info,
-                                parsed.unparsed(),
+                            &EditorOperation::Spawn(
+                                parsed.unparsed().trim_start(),
+                                maybe_input.unwrap_or(""),
                             ),
                         );
-                        if let Some(input) = maybe_input {
-                            ctx.operations.serialize(
-                                TargetClient::All,
-                                &EditorOperation::StatusMessageAppend(" < "),
-                            );
-                            ctx.operations.serialize(
-                                TargetClient::All,
-                                &EditorOperation::StatusMessageAppend(input),
-                            );
-                        }
 
                         return Ok(CommandOperation::Suspend);
                     }
@@ -243,8 +233,8 @@ impl CommandCollection {
                     config: ctx.config,
                     keymaps: ctx.keymaps,
                 };
-                last_result =
-                    Some(command(&mut ctx, &mut parsed.args).map(|_| CommandOperation::Complete));
+                command(&mut ctx, &mut parsed.args)?;
+                last_result = Some(CommandOperation::Complete);
                 input.clear();
             } else {
                 return Err(format!("command '{}' not found", parsed.name));
@@ -799,7 +789,7 @@ mod tests {
 
     #[test]
     fn multiple_command_parsing() {
-        let mut parsed = ParsedCommand::parse("name1 arg1 arg2 | name2 arg3 arg4").unwrap();
+        let mut parsed = ParsedCommand::parse("name1 arg1 arg2 |    name2 arg3 arg4").unwrap();
         assert_eq!("name1", parsed.name);
         assert_eq!(Some(Ok("arg1")), parsed.args.next());
         assert_eq!(Some(Ok("arg2")), parsed.args.next());
@@ -812,9 +802,9 @@ mod tests {
         assert_eq!(None, parsed.args.next());
         assert!(parsed.unparsed().trim().is_empty());
 
-        let mut parsed = ParsedCommand::parse("name1 'arg1 | name2'").unwrap();
+        let mut parsed = ParsedCommand::parse("name1 'arg1 |  name2'").unwrap();
         assert_eq!("name1", parsed.name);
-        assert_eq!(Some(Ok("arg1 | name2")), parsed.args.next());
+        assert_eq!(Some(Ok("arg1 |  name2")), parsed.args.next());
         assert_eq!(None, parsed.args.next());
         assert!(parsed.unparsed().trim().is_empty());
     }
