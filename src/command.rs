@@ -26,6 +26,7 @@ type ConfigCommandResult = Result<(), String>;
 
 pub enum CommandOperation {
     Complete,
+    Suspend,
     Quit,
 }
 
@@ -147,7 +148,7 @@ impl Default for CommandCollection {
 
         register! { register_full_command =>
             quit, open, close, save, save_all,
-            selection, replace, echo, pipe,
+            selection, replace, echo, pipe, spawn,
         }
 
         register! { register_config_command =>
@@ -186,7 +187,7 @@ impl CommandCollection {
     }
 
     pub fn parse_and_execute_any_command(
-        &self,
+        &mut self,
         ctx: &mut FullCommandContext,
         mut command: &str,
     ) -> FullCommandResult {
@@ -211,7 +212,30 @@ impl CommandCollection {
                     None => None,
                 };
                 output.clear();
-                last_result = Some(command(ctx, &mut parsed.args, maybe_input, &mut output));
+                last_result = match command(ctx, &mut parsed.args, maybe_input, &mut output) {
+                    Ok(CommandOperation::Suspend) => {
+                        ctx.operations.serialize(
+                            TargetClient::All,
+                            &EditorOperation::StatusMessage(
+                                StatusMessageKind::Info,
+                                parsed.unparsed(),
+                            ),
+                        );
+                        if let Some(input) = maybe_input {
+                            ctx.operations.serialize(
+                                TargetClient::All,
+                                &EditorOperation::StatusMessageAppend(" < "),
+                            );
+                            ctx.operations.serialize(
+                                TargetClient::All,
+                                &EditorOperation::StatusMessageAppend(input),
+                            );
+                        }
+
+                        return Ok(CommandOperation::Suspend);
+                    }
+                    result => Some(result),
+                };
                 std::mem::swap(&mut input, &mut output);
             } else if let Some(command) = self.config_commands.get(parsed.name) {
                 let mut ctx = ConfigCommandContext {
@@ -592,6 +616,15 @@ mod commands {
             let child_output = String::from_utf8_lossy(&child_output.stdout[..]).into_owned();
             Err(child_output)
         }
+    }
+
+    pub fn spawn(
+        _ctx: &mut FullCommandContext,
+        _args: &mut CommandArgs,
+        _input: Option<&str>,
+        _output: &mut String,
+    ) -> FullCommandResult {
+        Ok(CommandOperation::Suspend)
     }
 
     pub fn set(ctx: &mut ConfigCommandContext, args: &mut CommandArgs) -> ConfigCommandResult {

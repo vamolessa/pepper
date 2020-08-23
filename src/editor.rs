@@ -227,7 +227,7 @@ impl Editor {
 
                 config,
                 keymaps: &mut self.keymaps,
-                commands: &self.commands,
+                commands: &mut self.commands,
                 buffers: &mut self.buffers,
                 buffer_views: &mut self.buffer_views,
                 current_buffer_view_handle,

@@ -34,7 +34,7 @@ pub struct ModeContext<'a> {
 
     pub config: &'a Config,
     pub keymaps: &'a mut KeyMapCollection,
-    pub commands: &'a CommandCollection,
+    pub commands: &'a mut CommandCollection,
     pub buffers: &'a mut BufferCollection,
     pub buffer_views: &'a mut BufferViewCollection,
     pub current_buffer_view_handle: &'a mut Option<BufferViewHandle>,
