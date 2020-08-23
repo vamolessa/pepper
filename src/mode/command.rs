@@ -36,8 +36,9 @@ pub fn on_event(
                 .commands
                 .parse_and_execute_any_command(&mut command_context, &ctx.input[..])
             {
-                Ok(CommandOperation::Complete) | Ok(CommandOperation::Suspend) => {
-                    ModeOperation::EnterMode(from_mode.as_mode())
+                Ok(CommandOperation::Complete) => ModeOperation::EnterMode(from_mode.as_mode()),
+                Ok(CommandOperation::WaitForClient) => {
+                    ModeOperation::WaitForClient(from_mode.as_mode())
                 }
                 Ok(CommandOperation::Quit) => ModeOperation::Quit,
                 Err(error) => ModeOperation::Error(error),

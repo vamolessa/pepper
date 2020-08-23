@@ -26,7 +26,7 @@ type ConfigCommandResult = Result<(), String>;
 
 pub enum CommandOperation {
     Complete,
-    Suspend,
+    WaitForClient,
     Quit,
 }
 
@@ -213,7 +213,7 @@ impl CommandCollection {
                 };
                 output.clear();
                 last_result = match command(ctx, &mut parsed.args, maybe_input, &mut output)? {
-                    CommandOperation::Suspend => {
+                    CommandOperation::WaitForClient => {
                         ctx.operations.serialize(
                             TargetClient::All,
                             &EditorOperation::Spawn(
@@ -222,7 +222,7 @@ impl CommandCollection {
                             ),
                         );
 
-                        return Ok(CommandOperation::Suspend);
+                        return Ok(CommandOperation::WaitForClient);
                     }
                     result => Some(result),
                 };
@@ -614,7 +614,7 @@ mod commands {
         _input: Option<&str>,
         _output: &mut String,
     ) -> FullCommandResult {
-        Ok(CommandOperation::Suspend)
+        Ok(CommandOperation::WaitForClient)
     }
 
     pub fn set(ctx: &mut ConfigCommandContext, args: &mut CommandArgs) -> ConfigCommandResult {

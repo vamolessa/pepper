@@ -215,34 +215,34 @@ impl ConnectionWithClientCollection {
         &mut self,
         handle: ConnectionWithClientHandle,
         mut callback: F,
-    ) -> io::Result<usize>
+    ) -> io::Result<EditorLoop>
     where
         F: FnMut(Key) -> EditorLoop,
     {
         let connection = match &mut self.connections[handle.0] {
             Some(connection) => connection,
-            None => return Ok(0),
+            None => return Ok(EditorLoop::Quit),
         };
 
         self.read_buf.read_into(&mut connection.0)?;
-        let mut key_count = 0;
         let mut deserializer = KeyDeserializer::from_slice(self.read_buf.as_slice());
 
         loop {
             match deserializer.deserialize_next() {
-                KeyDeserializeResult::Some(key) => {
-                    key_count += 1;
-                    if let EditorLoop::Quit = callback(key) {
-                        return Ok(0);
+                KeyDeserializeResult::Some(key) => match callback(key) {
+                    EditorLoop::Continue => (),
+                    result => {
+                        self.read_buf.clear();
+                        return Ok(result);
                     }
-                }
+                },
                 KeyDeserializeResult::None => break,
                 KeyDeserializeResult::Error => return Err(io::Error::from(io::ErrorKind::Other)),
             }
         }
 
         self.read_buf.clear();
-        Ok(key_count)
+        Ok(EditorLoop::Continue)
     }
 
     pub fn all_handles(&self) -> impl Iterator<Item = ConnectionWithClientHandle> {

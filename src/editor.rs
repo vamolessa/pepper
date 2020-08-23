@@ -14,6 +14,7 @@ use crate::{
 pub enum EditorLoop {
     Quit,
     Continue,
+    WaitForClient,
 }
 
 pub struct KeysIterator<'a> {
@@ -240,6 +241,12 @@ impl Editor {
                 ModeOperation::Quit => {
                     self.buffered_keys.clear();
                     return EditorLoop::Quit;
+                }
+                ModeOperation::WaitForClient(next_mode) => {
+                    self.buffered_keys.clear();
+                    self.mode = next_mode.clone();
+                    self.mode.on_enter(&mut mode_context);
+                    return EditorLoop::WaitForClient;
                 }
                 ModeOperation::EnterMode(next_mode) => {
                     self.mode = next_mode.clone();

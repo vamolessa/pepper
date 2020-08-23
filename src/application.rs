@@ -146,9 +146,22 @@ where
                     &mut editor_operations,
                 ) {
                     EditorLoop::Quit => break,
-                    EditorLoop::Continue => (),
+                    EditorLoop::Continue => {
+                        send_operations(
+                            &mut editor_operations,
+                            &mut local_client,
+                            &mut connections,
+                        );
+                    }
+                    EditorLoop::WaitForClient => {
+                        send_operations(
+                            &mut editor_operations,
+                            &mut local_client,
+                            &mut connections,
+                        );
+                        todo!("wait client response");
+                    }
                 }
-                send_operations(&mut editor_operations, &mut local_client, &mut connections);
             }
             Event::Resize(w, h) => ui.resize(w, h)?,
             Event::Connection(event) => {
@@ -174,11 +187,18 @@ where
                             )
                         });
 
-                        if matches!(result, Ok(0) | Err(_) ) {
-                            connections.close_connection(handle);
-                            editor.on_client_left(handle, &mut editor_operations);
-                        } else {
-                            connections.listen_next_connection_event(handle, &event_registry)?;
+                        match result {
+                            Ok(EditorLoop::Quit) | Err(_) => {
+                                connections.close_connection(handle);
+                                editor.on_client_left(handle, &mut editor_operations);
+                            }
+                            Ok(result) => {
+                                connections
+                                    .listen_next_connection_event(handle, &event_registry)?;
+                                if let EditorLoop::WaitForClient = result {
+                                    todo!("wait client response");
+                                }
+                            }
                         }
                     }
                 }
