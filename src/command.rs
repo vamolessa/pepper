@@ -718,11 +718,35 @@ mod tests {
         assert_eq!(Some(Ok("arg1")), parsed.args.next());
         assert_eq!(Some(Ok("arg2")), parsed.args.next());
         assert_eq!(None, parsed.args.next());
+        assert!(parsed.unparsed().trim().is_empty());
 
         let mut parsed = ParsedCommand::parse("name   'arg1 '   \" arg2 '\"").unwrap();
         assert_eq!("name", parsed.name);
         assert_eq!(Some(Ok("arg1 ")), parsed.args.next());
         assert_eq!(Some(Ok(" arg2 '")), parsed.args.next());
         assert_eq!(None, parsed.args.next());
+        assert!(parsed.unparsed().trim().is_empty());
+    }
+
+    #[test]
+    fn multiple_command_parsing() {
+        let mut parsed = ParsedCommand::parse("name1 arg1 arg2 | name2 arg3 arg4").unwrap();
+        assert_eq!("name1", parsed.name);
+        assert_eq!(Some(Ok("arg1")), parsed.args.next());
+        assert_eq!(Some(Ok("arg2")), parsed.args.next());
+        assert_eq!(None, parsed.args.next());
+
+        let mut parsed = ParsedCommand::parse(parsed.unparsed()).unwrap();
+        assert_eq!("name2", parsed.name);
+        assert_eq!(Some(Ok("arg3")), parsed.args.next());
+        assert_eq!(Some(Ok("arg4")), parsed.args.next());
+        assert_eq!(None, parsed.args.next());
+        assert!(parsed.unparsed().trim().is_empty());
+
+        let mut parsed = ParsedCommand::parse("name1 'arg1 | name2'").unwrap();
+        assert_eq!("name1", parsed.name);
+        assert_eq!(Some(Ok("arg1 | name2")), parsed.args.next());
+        assert_eq!(None, parsed.args.next());
+        assert!(parsed.unparsed().trim().is_empty());
     }
 }
