@@ -5,12 +5,13 @@ use std::{
     path::Path,
 };
 
-#[cfg(windows)]
-use uds_windows::{UnixListener, UnixStream};
 #[cfg(unix)]
 use std::os::unix::net::{UnixListener, UnixStream};
+#[cfg(windows)]
+use uds_windows::{UnixListener, UnixStream};
 
 use crate::{
+    client::ClientResponse,
     editor::EditorLoop,
     editor_operation::{
         EditorOperation, EditorOperationDeserializeResult, EditorOperationDeserializer,
@@ -37,24 +38,13 @@ impl ReadBuf {
         }
     }
 
-    pub fn as_slice(&self) -> &[u8] {
-        &self.buf[self.position..self.len]
-    }
-
-    pub fn clear(&mut self) {
-        self.len = 0;
-        self.position = 0;
-    }
-
-    pub fn read_into<R>(&mut self, mut reader: R) -> io::Result<usize>
+    pub fn read_into<'a, R>(&'a mut self, mut reader: R) -> io::Result<ReadSlice<'a>>
     where
         R: Read,
     {
-        let mut total_bytes = 0;
         loop {
             match reader.read(&mut self.buf[self.len..]) {
                 Ok(len) => {
-                    total_bytes += len;
                     self.len += len;
 
                     if self.len < self.buf.len() {
@@ -70,7 +60,25 @@ impl ReadBuf {
             }
         }
 
-        Ok(total_bytes)
+        Ok(ReadSlice { buf: self })
+    }
+}
+
+struct ReadSlice<'a> {
+    buf: &'a mut ReadBuf,
+}
+
+impl<'a> ReadSlice<'a> {
+    pub fn bytes(&'a self) -> &'a [u8] {
+        let buf = &self.buf;
+        &buf.buf[buf.position..buf.len]
+    }
+}
+
+impl<'a> Drop for ReadSlice<'a> {
+    fn drop(&mut self) {
+        self.buf.len = 0;
+        self.buf.position = 0;
     }
 }
 
@@ -226,25 +234,31 @@ impl ConnectionWithClientCollection {
             None => return Ok(EditorLoop::Quit),
         };
 
-        self.read_buf.read_into(&mut connection.0)?;
-        let mut deserializer = KeyDeserializer::from_slice(self.read_buf.as_slice());
+        let read_slice = self.read_buf.read_into(&mut connection.0)?;
+        let mut last_result = EditorLoop::Quit;
+        let mut deserializer = KeyDeserializer::from_slice(read_slice.bytes());
 
         loop {
             match deserializer.deserialize_next() {
-                KeyDeserializeResult::Some(key) => match callback(key) {
-                    EditorLoop::Continue => (),
-                    result => {
-                        self.read_buf.clear();
-                        return Ok(result);
+                KeyDeserializeResult::Some(key) => {
+                    last_result = callback(key);
+                    if let EditorLoop::WaitForClient | EditorLoop::Quit = last_result {
+                        break;
                     }
-                },
+                }
                 KeyDeserializeResult::None => break,
                 KeyDeserializeResult::Error => return Err(io::Error::from(io::ErrorKind::Other)),
             }
         }
 
-        self.read_buf.clear();
-        Ok(EditorLoop::Continue)
+        Ok(last_result)
+    }
+
+    pub fn receive_spawn_output(
+        &mut self,
+        handle: ConnectionWithClientHandle,
+    ) -> io::Result<String> {
+        todo!("receive spawn output");
     }
 
     pub fn all_handles(&self) -> impl Iterator<Item = ConnectionWithClientHandle> {
@@ -298,24 +312,31 @@ impl ConnectionWithServer {
     }
 
     pub fn send_spawn_output(&mut self, output: &str) -> io::Result<()> {
-        self.stream.set_nonblocking(false)?;
-        self.stream.set_nonblocking(true)?;
+        let output_len_bytes = (output.len() as u32).to_le_bytes();
+        self.stream
+            .write_all(&output_len_bytes[..])
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        self.stream
+            .write_all(output.as_bytes())
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
         Ok(())
     }
 
-    pub fn receive_operations<F>(&mut self, mut callback: F) -> io::Result<usize>
+    pub fn receive_operations<F>(&mut self, mut callback: F) -> io::Result<Option<ClientResponse>>
     where
-        F: FnMut(EditorOperation<'_>),
+        F: FnMut(EditorOperation<'_>) -> ClientResponse,
     {
-        self.read_buf.read_into(&mut self.stream)?;
-        let mut operation_count = 0;
-        let mut deserializer = EditorOperationDeserializer::from_slice(self.read_buf.as_slice());
+        let read_slice = self.read_buf.read_into(&mut self.stream)?;
+        let mut last_response = None;
+        let mut deserializer = EditorOperationDeserializer::from_slice(read_slice.bytes());
 
         loop {
             match deserializer.deserialize_next() {
                 EditorOperationDeserializeResult::Some(operation) => {
-                    operation_count += 1;
-                    callback(operation);
+                    last_response = Some(callback(operation));
+                    if let Some(ClientResponse::SpawnOutput(_)) = last_response {
+                        break;
+                    }
                 }
                 EditorOperationDeserializeResult::None => break,
                 EditorOperationDeserializeResult::Error => {
@@ -324,7 +345,6 @@ impl ConnectionWithServer {
             }
         }
 
-        self.read_buf.clear();
-        Ok(operation_count)
+        Ok(last_response)
     }
 }

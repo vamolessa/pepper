@@ -1,7 +1,7 @@
 use std::{convert::From, env, fs, io, sync::mpsc, thread};
 
 use crate::{
-    client::Client,
+    client::{Client, ClientResponse},
     connection::{ConnectionWithClientCollection, ConnectionWithServer, TargetClient},
     editor::{Editor, EditorLoop},
     editor_operation::{
@@ -94,19 +94,21 @@ fn send_operations(
     operations: &mut EditorOperationSerializer,
     local_client: &mut Client,
     remote_clients: &mut ConnectionWithClientCollection,
-) {
-    {
-        let mut deserializer = EditorOperationDeserializer::from_slice(operations.local_bytes());
-        while let EditorOperationDeserializeResult::Some(op) = deserializer.deserialize_next() {
-            local_client.on_editor_operation(&op);
-        }
-    }
-
+) -> ClientResponse {
     for handle in remote_clients.all_handles() {
         remote_clients.send_serialized_operations(handle, &operations);
     }
 
+    let mut deserializer = EditorOperationDeserializer::from_slice(operations.local_bytes());
+    while let EditorOperationDeserializeResult::Some(op) = deserializer.deserialize_next() {
+        if let response @ ClientResponse::SpawnOutput(_) = local_client.on_editor_operation(&op) {
+            operations.clear();
+            return response;
+        }
+    }
+
     operations.clear();
+    ClientResponse::None
 }
 
 fn run_server_with_client<I>(
@@ -135,7 +137,7 @@ where
     connections.register_listener(&event_registry)?;
     ui.init()?;
 
-    for event in event_receiver.iter() {
+    'main_loop: for event in event_receiver.iter() {
         match event {
             Event::None => (),
             Event::Key(key) => {
@@ -153,14 +155,25 @@ where
                             &mut connections,
                         );
                     }
-                    EditorLoop::WaitForClient => {
-                        send_operations(
+                    EditorLoop::WaitForClient => loop {
+                        match send_operations(
                             &mut editor_operations,
                             &mut local_client,
                             &mut connections,
-                        );
-                        todo!("wait client response");
-                    }
+                        ) {
+                            ClientResponse::SpawnOutput(output) => match editor.on_spawn_output(
+                                &local_client.config,
+                                output,
+                                TargetClient::Local,
+                                &mut editor_operations,
+                            ) {
+                                EditorLoop::Continue => break,
+                                EditorLoop::WaitForClient => (),
+                                EditorLoop::Quit => break 'main_loop,
+                            },
+                            _ => break,
+                        }
+                    },
                 }
             }
             Event::Resize(w, h) => ui.resize(w, h)?,
@@ -196,7 +209,7 @@ where
                                 connections
                                     .listen_next_connection_event(handle, &event_registry)?;
                                 if let EditorLoop::WaitForClient = result {
-                                    todo!("wait client response");
+                                    todo!("wait remote client response");
                                 }
                             }
                         }
@@ -257,12 +270,14 @@ where
             Event::Connection(event) => match event {
                 ConnectionEvent::NewConnection => (),
                 ConnectionEvent::Stream(_) => {
-                    let op_count = connection.receive_operations(|op| {
-                        local_client.on_editor_operation(&op);
-                    })?;
-
-                    if op_count == 0 {
-                        break;
+                    let response = connection
+                        .receive_operations(|op| local_client.on_editor_operation(&op))?;
+                    match response {
+                        Some(ClientResponse::None) => (),
+                        Some(ClientResponse::SpawnOutput(output)) => {
+                            connection.send_spawn_output(&output[..])?
+                        }
+                        None => break,
                     }
 
                     connection.listen_next_event(&event_registry)?;

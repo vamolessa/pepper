@@ -262,7 +262,7 @@ impl Editor {
     pub fn on_spawn_output(
         &mut self,
         config: &Config,
-        output: &str,
+        output: String,
         target_client: TargetClient,
         operations: &mut EditorOperationSerializer,
     ) -> EditorLoop {
@@ -287,7 +287,7 @@ impl Editor {
 
         match self
             .commands
-            .continue_parse_and_execute_any_command(&mut command_context, output.into())
+            .continue_parse_and_execute_any_command(&mut command_context, output)
         {
             FullCommandOperation::Error | FullCommandOperation::Complete => EditorLoop::Continue,
             FullCommandOperation::WaitForClient => EditorLoop::WaitForClient,
