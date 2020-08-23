@@ -1,5 +1,5 @@
 use crate::{
-    command::{CommandOperation, FullCommandContext},
+    command::{FullCommandContext, FullCommandOperation},
     connection::TargetClient,
     editor::KeysIterator,
     editor_operation::EditorOperation,
@@ -36,12 +36,13 @@ pub fn on_event(
                 .commands
                 .parse_and_execute_any_command(&mut command_context, &ctx.input[..])
             {
-                Ok(CommandOperation::Complete) => ModeOperation::EnterMode(from_mode.as_mode()),
-                Ok(CommandOperation::WaitForClient) => {
+                FullCommandOperation::Complete | FullCommandOperation::Error => {
+                    ModeOperation::EnterMode(from_mode.as_mode())
+                }
+                FullCommandOperation::WaitForClient => {
                     ModeOperation::WaitForClient(from_mode.as_mode())
                 }
-                Ok(CommandOperation::Quit) => ModeOperation::Quit,
-                Err(error) => ModeOperation::Error(error),
+                FullCommandOperation::Quit => ModeOperation::Quit,
             }
         }
     }

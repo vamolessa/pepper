@@ -21,13 +21,28 @@ use crate::{
     theme::ParseThemeError,
 };
 
-type FullCommandResult = Result<CommandOperation, String>;
-type ConfigCommandResult = Result<(), String>;
-
-pub enum CommandOperation {
+pub enum FullCommandOperation {
+    Error,
     Complete,
     WaitForClient,
     Quit,
+}
+
+impl Default for FullCommandOperation {
+    fn default() -> Self {
+        Self::Error
+    }
+}
+
+pub enum ConfigCommandOperation {
+    Error,
+    Complete,
+}
+
+impl Default for ConfigCommandOperation {
+    fn default() -> Self {
+        Self::Error
+    }
 }
 
 pub struct FullCommandContext<'a> {
@@ -47,9 +62,13 @@ pub struct ConfigCommandContext<'a> {
     pub keymaps: &'a mut KeyMapCollection,
 }
 
-type FullCommandBody =
-    fn(&mut FullCommandContext, &mut CommandArgs, Option<&str>, &mut String) -> FullCommandResult;
-type ConfigCommandBody = fn(&mut ConfigCommandContext, &mut CommandArgs) -> ConfigCommandResult;
+type FullCommandBody = fn(
+    &mut FullCommandContext,
+    &mut CommandArgs,
+    Option<&str>,
+    &mut String,
+) -> FullCommandOperation;
+type ConfigCommandBody = fn(&mut ConfigCommandContext, &mut CommandArgs) -> ConfigCommandOperation;
 
 struct ParsedCommand<'a> {
     pub name: &'a str,
@@ -128,6 +147,25 @@ impl<'a> Iterator for CommandArgs<'a> {
     }
 }
 
+macro_rules! command_error {
+    ($operations:expr, $error:expr) => {{
+        $operations.serialize(
+            TargetClient::All,
+            &EditorOperation::StatusMessage(StatusMessageKind::Error, &$error),
+        );
+        return Default::default();
+    }};
+}
+
+macro_rules! unwrap_or_command_error {
+    ($operations:expr, $value:expr) => {
+        match $value {
+            Ok(value) => value,
+            Err(error) => command_error!($operations, &error),
+        }
+    };
+}
+
 pub struct CommandCollection {
     full_commands: HashMap<String, FullCommandBody>,
     config_commands: HashMap<String, ConfigCommandBody>,
@@ -173,16 +211,19 @@ impl CommandCollection {
         &self,
         ctx: &mut ConfigCommandContext,
         command: &str,
-    ) -> ConfigCommandResult {
+    ) -> ConfigCommandOperation {
         let mut parsed = match ParsedCommand::parse(command) {
             Some(parsed) => parsed,
-            None => return Err("empty command name".into()),
+            None => command_error!(ctx.operations, "empty command name"),
         };
 
         if let Some(command) = self.config_commands.get(parsed.name) {
             command(ctx, &mut parsed.args)
         } else {
-            Err(format!("command '{}' not found", parsed.name))
+            command_error!(
+                ctx.operations,
+                format!("command '{}' not found", parsed.name)
+            )
         }
     }
 
@@ -190,7 +231,7 @@ impl CommandCollection {
         &mut self,
         ctx: &mut FullCommandContext,
         mut command: &str,
-    ) -> FullCommandResult {
+    ) -> FullCommandOperation {
         let mut last_result = None;
         let mut input = String::new();
         let mut output = String::new();
@@ -200,8 +241,8 @@ impl CommandCollection {
                 Some(parsed) => parsed,
                 None => {
                     break match last_result {
-                        Some(result) => Ok(result),
-                        None => Err("empty command name".into()),
+                        Some(result) => result,
+                        None => command_error!(ctx.operations, "empty command name"),
                     }
                 }
             };
@@ -212,8 +253,9 @@ impl CommandCollection {
                     None => None,
                 };
                 output.clear();
-                last_result = match command(ctx, &mut parsed.args, maybe_input, &mut output)? {
-                    CommandOperation::WaitForClient => {
+                last_result = match command(ctx, &mut parsed.args, maybe_input, &mut output) {
+                    FullCommandOperation::Error => return FullCommandOperation::Error,
+                    FullCommandOperation::WaitForClient => {
                         ctx.operations.serialize(
                             TargetClient::All,
                             &EditorOperation::Spawn(
@@ -221,8 +263,7 @@ impl CommandCollection {
                                 maybe_input.unwrap_or(""),
                             ),
                         );
-
-                        return Ok(CommandOperation::WaitForClient);
+                        return FullCommandOperation::WaitForClient;
                     }
                     result => Some(result),
                 };
@@ -233,11 +274,16 @@ impl CommandCollection {
                     config: ctx.config,
                     keymaps: ctx.keymaps,
                 };
-                command(&mut ctx, &mut parsed.args)?;
-                last_result = Some(CommandOperation::Complete);
+                if let ConfigCommandOperation::Error = command(&mut ctx, &mut parsed.args) {
+                    return FullCommandOperation::Error;
+                }
+                last_result = Some(FullCommandOperation::Complete);
                 input.clear();
             } else {
-                return Err(format!("command '{}' not found", parsed.name));
+                command_error!(
+                    ctx.operations,
+                    format!("command '{}' not found", parsed.name)
+                );
             }
 
             command = parsed.unparsed();
@@ -246,31 +292,31 @@ impl CommandCollection {
 }
 
 macro_rules! assert_empty {
-    ($args:expr) => {
+    ($operations:expr, $args:expr) => {
         match $args.next() {
-            Some(_) => return Err("command expected less arguments".into()),
+            Some(_) => command_error!($operations, "command expected less arguments"),
             None => (),
         }
     };
 }
 
 macro_rules! expect_next {
-    ($args:expr) => {
+    ($operations:expr, $args:expr) => {
         match $args.next() {
             Some(Ok(arg)) => arg,
-            Some(Err(error)) => return Err(error),
-            None => return Err(String::from("command expected more arguments")),
+            Some(Err(error)) => command_error!($operations, &error),
+            None => command_error!($operations, "command expected more arguments"),
         }
     };
 }
 
 macro_rules! input_or_next {
-    ($args:expr, $input:expr) => {
+    ($operations:expr, $args:expr, $input:expr) => {
         match $input {
             Some(input) => Some(input),
             None => match $args.next() {
                 Some(Ok(arg)) => Some(arg),
-                Some(Err(error)) => return Err(error),
+                Some(Err(error)) => command_error!($operations, &error),
                 None => None,
             },
         }
@@ -278,10 +324,10 @@ macro_rules! input_or_next {
 }
 
 macro_rules! expect_input_or_next {
-    ($args:expr, $input:expr) => {
+    ($operations:expr, $args:expr, $input:expr) => {
         match $input {
             Some(input) => input,
-            None => expect_next!($args),
+            None => expect_next!($operations, $args),
         }
     };
 }
@@ -396,13 +442,13 @@ mod commands {
     use super::*;
 
     pub fn quit(
-        _ctx: &mut FullCommandContext,
+        ctx: &mut FullCommandContext,
         args: &mut CommandArgs,
         _input: Option<&str>,
         _output: &mut String,
-    ) -> FullCommandResult {
-        assert_empty!(args);
-        Ok(CommandOperation::Quit)
+    ) -> FullCommandOperation {
+        assert_empty!(ctx.operations, args);
+        FullCommandOperation::Quit
     }
 
     pub fn open<'a, 'b>(
@@ -410,11 +456,13 @@ mod commands {
         args: &mut CommandArgs,
         input: Option<&str>,
         _output: &mut String,
-    ) -> FullCommandResult {
-        let path = Path::new(expect_input_or_next!(args, input));
-        assert_empty!(args);
-        helper::new_buffer_from_file(&mut ctx, path)?;
-        Ok(CommandOperation::Complete)
+    ) -> FullCommandOperation {
+        let path = Path::new(expect_input_or_next!(ctx.operations, args, input));
+        assert_empty!(ctx.operations, args);
+        if let Err(error) = helper::new_buffer_from_file(&mut ctx, path) {
+            command_error!(ctx.operations, error);
+        }
+        FullCommandOperation::Complete
     }
 
     pub fn close(
@@ -422,8 +470,8 @@ mod commands {
         args: &mut CommandArgs,
         _input: Option<&str>,
         _output: &mut String,
-    ) -> FullCommandResult {
-        assert_empty!(args);
+    ) -> FullCommandOperation {
+        assert_empty!(ctx.operations, args);
         if let Some(handle) = ctx
             .current_buffer_view_handle
             .take()
@@ -441,7 +489,7 @@ mod commands {
                 .remove_where(|view| view.buffer_handle == handle);
         }
 
-        Ok(CommandOperation::Complete)
+        FullCommandOperation::Complete
     }
 
     pub fn save(
@@ -449,24 +497,26 @@ mod commands {
         args: &mut CommandArgs,
         input: Option<&str>,
         _output: &mut String,
-    ) -> FullCommandResult {
-        let view_handle = ctx
-            .current_buffer_view_handle
-            .as_ref()
-            .ok_or_else(|| String::from("no buffer opened"))?;
+    ) -> FullCommandOperation {
+        let view_handle = match ctx.current_buffer_view_handle.as_ref() {
+            Some(handle) => handle,
+            None => command_error!(ctx.operations, "no buffer opened"),
+        };
 
         let buffer_handle = ctx.buffer_views.get(view_handle).buffer_handle;
-        let buffer = ctx
-            .buffers
-            .get_mut(buffer_handle)
-            .ok_or_else(|| String::from("no buffer opened"))?;
+        let buffer = match ctx.buffers.get_mut(buffer_handle) {
+            Some(buffer) => buffer,
+            None => command_error!(ctx.operations, "no buffer opened"),
+        };
 
-        let path = input_or_next!(args, input);
-        assert_empty!(args);
+        let path = input_or_next!(ctx.operations, args, input);
+        assert_empty!(ctx.operations, args);
         match path {
             Some(path) => {
                 let path = Path::new(path);
-                helper::write_buffer_to_file(buffer, path)?;
+                if let Err(error) = helper::write_buffer_to_file(buffer, path) {
+                    command_error!(ctx.operations, error);
+                }
                 for view in ctx.buffer_views.iter() {
                     if view.buffer_handle == buffer_handle {
                         ctx.operations
@@ -475,14 +525,16 @@ mod commands {
                 }
                 buffer.path.clear();
                 buffer.path.push(path);
-                Ok(CommandOperation::Complete)
+                FullCommandOperation::Complete
             }
             None => {
                 if !buffer.path.as_os_str().is_empty() {
-                    return Err(String::from("buffer has no path"));
+                    command_error!(ctx.operations, "buffer has no path");
                 }
-                helper::write_buffer_to_file(buffer, &buffer.path)?;
-                Ok(CommandOperation::Complete)
+                if let Err(error) = helper::write_buffer_to_file(buffer, &buffer.path) {
+                    command_error!(ctx.operations, error);
+                }
+                FullCommandOperation::Complete
             }
         }
     }
@@ -492,15 +544,17 @@ mod commands {
         args: &mut CommandArgs,
         _input: Option<&str>,
         _output: &mut String,
-    ) -> FullCommandResult {
-        assert_empty!(args);
+    ) -> FullCommandOperation {
+        assert_empty!(ctx.operations, args);
         for buffer in ctx.buffers.iter() {
             if !buffer.path.as_os_str().is_empty() {
-                helper::write_buffer_to_file(buffer, &buffer.path)?;
+                if let Err(error) = helper::write_buffer_to_file(buffer, &buffer.path) {
+                    command_error!(ctx.operations, error);
+                }
             }
         }
 
-        Ok(CommandOperation::Complete)
+        FullCommandOperation::Complete
     }
 
     pub fn selection(
@@ -508,8 +562,8 @@ mod commands {
         args: &mut CommandArgs,
         _input: Option<&str>,
         output: &mut String,
-    ) -> FullCommandResult {
-        assert_empty!(args);
+    ) -> FullCommandOperation {
+        assert_empty!(ctx.operations, args);
         if let Some(buffer_view) = ctx
             .current_buffer_view_handle
             .as_ref()
@@ -518,7 +572,7 @@ mod commands {
             buffer_view.get_selection_text(ctx.buffers, output);
         }
 
-        Ok(CommandOperation::Complete)
+        FullCommandOperation::Complete
     }
 
     pub fn replace(
@@ -526,9 +580,9 @@ mod commands {
         args: &mut CommandArgs,
         input: Option<&str>,
         _output: &mut String,
-    ) -> FullCommandResult {
-        let input = expect_input_or_next!(args, input);
-        assert_empty!(args);
+    ) -> FullCommandOperation {
+        let input = expect_input_or_next!(ctx.operations, args, input);
+        assert_empty!(ctx.operations, args);
         if let Some(handle) = ctx.current_buffer_view_handle {
             ctx.buffer_views
                 .delete_in_selection(ctx.buffers, ctx.operations, handle);
@@ -536,7 +590,7 @@ mod commands {
                 .insert_text(ctx.buffers, ctx.operations, handle, TextRef::Str(input));
         }
 
-        Ok(CommandOperation::Complete)
+        FullCommandOperation::Complete
     }
 
     pub fn echo(
@@ -544,7 +598,7 @@ mod commands {
         args: &mut CommandArgs,
         input: Option<&str>,
         _output: &mut String,
-    ) -> FullCommandResult {
+    ) -> FullCommandOperation {
         ctx.operations.serialize(
             TargetClient::All,
             &EditorOperation::StatusMessage(StatusMessageKind::Info, ""),
@@ -562,9 +616,10 @@ mod commands {
         }
 
         for arg in args {
+            let arg = unwrap_or_command_error!(ctx.operations, arg);
             ctx.operations.serialize(
                 TargetClient::All,
-                &EditorOperation::StatusMessageAppend(arg?),
+                &EditorOperation::StatusMessageAppend(arg),
             );
             ctx.operations.serialize(
                 TargetClient::All,
@@ -572,40 +627,46 @@ mod commands {
             );
         }
 
-        Ok(CommandOperation::Complete)
+        FullCommandOperation::Complete
     }
 
     pub fn pipe(
-        _ctx: &mut FullCommandContext,
+        ctx: &mut FullCommandContext,
         args: &mut CommandArgs,
         input: Option<&str>,
         output: &mut String,
-    ) -> FullCommandResult {
-        let name = expect_next!(args);
+    ) -> FullCommandOperation {
+        let name = expect_next!(ctx.operations, args);
 
         let mut command = Command::new(name);
         command.stdin(Stdio::piped());
         command.stdout(Stdio::piped());
         command.stderr(Stdio::piped());
         for arg in args {
-            command.arg(arg?);
+            let arg = unwrap_or_command_error!(ctx.operations, arg);
+            command.arg(arg);
         }
 
-        let mut child = command.spawn().map_err(|e| e.to_string())?;
+        let mut child =
+            unwrap_or_command_error!(ctx.operations, command.spawn().map_err(|e| e.to_string()));
         if let (Some(input), Some(stdin)) = (input, child.stdin.as_mut()) {
             let _ = stdin.write_all(input.as_bytes());
         }
         child.stdin = None;
 
-        let child_output = child.wait_with_output().map_err(|e| e.to_string())?;
+        let child_output = unwrap_or_command_error!(
+            ctx.operations,
+            child.wait_with_output().map_err(|e| e.to_string())
+        );
         if child_output.status.success() {
             let child_output = String::from_utf8_lossy(&child_output.stdout[..]);
             output.push_str(child_output.as_ref());
-            Ok(CommandOperation::Complete)
         } else {
-            let child_output = String::from_utf8_lossy(&child_output.stdout[..]).into_owned();
-            Err(child_output)
+            let child_output = String::from_utf8_lossy(&child_output.stdout[..]);
+            command_error!(ctx.operations, child_output);
         }
+
+        FullCommandOperation::Complete
     }
 
     pub fn spawn(
@@ -613,12 +674,12 @@ mod commands {
         _args: &mut CommandArgs,
         _input: Option<&str>,
         _output: &mut String,
-    ) -> FullCommandResult {
-        Ok(CommandOperation::WaitForClient)
+    ) -> FullCommandOperation {
+        FullCommandOperation::WaitForClient
     }
 
-    pub fn set(ctx: &mut ConfigCommandContext, args: &mut CommandArgs) -> ConfigCommandResult {
-        let name = expect_next!(args);
+    pub fn set(ctx: &mut ConfigCommandContext, args: &mut CommandArgs) -> ConfigCommandOperation {
+        let name = expect_next!(ctx.operations, args);
         let mut previous = "";
         let mut args = args.map(|arg| {
             if let Ok(arg) = arg {
@@ -629,57 +690,72 @@ mod commands {
 
         let mut values = ctx.config.values.clone();
         match values.parse_and_set(name, &mut args) {
-            Ok(()) => assert_empty!(args),
-            Err(e) => match e {
-                ParseConfigError::ConfigNotFound => return Err(helper::parsing_error(e, name, 0)),
-                ParseConfigError::ParseError(e) => {
-                    return Err(helper::parsing_error(e, previous, 0))
-                }
-                ParseConfigError::UnexpectedEndOfValues => {
-                    return Err(helper::parsing_error(e, previous, previous.len()));
-                }
-            },
+            Ok(()) => assert_empty!(ctx.operations, args),
+            Err(e) => {
+                let message = match e {
+                    ParseConfigError::ConfigNotFound => helper::parsing_error(e, name, 0),
+                    ParseConfigError::ParseError(e) => helper::parsing_error(e, previous, 0),
+                    ParseConfigError::UnexpectedEndOfValues => {
+                        helper::parsing_error(e, previous, previous.len())
+                    }
+                };
+                command_error!(ctx.operations, message);
+            }
         }
 
         ctx.operations
             .serialize_config_values(TargetClient::All, &values);
-        Ok(())
+        ConfigCommandOperation::Complete
     }
 
-    pub fn syntax(ctx: &mut ConfigCommandContext, args: &mut CommandArgs) -> ConfigCommandResult {
-        let main_extension = expect_next!(args);
-        let subcommand = expect_next!(args);
+    pub fn syntax(
+        ctx: &mut ConfigCommandContext,
+        args: &mut CommandArgs,
+    ) -> ConfigCommandOperation {
+        let main_extension = expect_next!(ctx.operations, args);
+        let subcommand = expect_next!(ctx.operations, args);
         if subcommand == "extension" {
             for extension in args {
+                let extension = unwrap_or_command_error!(ctx.operations, extension);
                 ctx.operations.serialize(
                     TargetClient::All,
-                    &EditorOperation::SyntaxExtension(main_extension, extension?),
+                    &EditorOperation::SyntaxExtension(main_extension, extension),
                 );
             }
         } else if let Some(token_kind) = TokenKind::from_str(subcommand) {
             for pattern in args {
-                let pattern = pattern?;
+                let pattern = unwrap_or_command_error!(ctx.operations, pattern);
+                let pattern = match Pattern::new(pattern) {
+                    Ok(pattern) => pattern,
+                    Err(error) => {
+                        let message = helper::parsing_error(error, pattern, 0);
+                        command_error!(ctx.operations, message);
+                    }
+                };
                 ctx.operations.serialize_syntax_rule(
                     TargetClient::All,
                     main_extension,
                     token_kind,
-                    &Pattern::new(pattern).map_err(|e| helper::parsing_error(e, pattern, 0))?,
+                    &pattern,
                 );
             }
         } else {
-            return Err(format!(
-                "no such subcommand '{}'. expected either 'extension' or a token kind",
-                subcommand
-            ));
+            command_error!(
+                ctx.operations,
+                format!(
+                    "no such subcommand '{}'. expected either 'extension' or a token kind",
+                    subcommand
+                )
+            );
         }
 
-        Ok(())
+        ConfigCommandOperation::Complete
     }
 
-    pub fn theme(ctx: &mut ConfigCommandContext, args: &mut CommandArgs) -> ConfigCommandResult {
-        let name = expect_next!(args);
-        let color = expect_next!(args);
-        assert_empty!(args);
+    pub fn theme(ctx: &mut ConfigCommandContext, args: &mut CommandArgs) -> ConfigCommandOperation {
+        let name = expect_next!(ctx.operations, args);
+        let color = expect_next!(ctx.operations, args);
+        assert_empty!(ctx.operations, args);
 
         let mut theme = ctx.config.theme.clone();
         if let Err(e) = theme.parse_and_set(name, color) {
@@ -689,22 +765,25 @@ mod commands {
                 _ => context.len(),
             };
 
-            return Err(helper::parsing_error(e, &context[..], error_index));
+            command_error!(
+                ctx.operations,
+                helper::parsing_error(e, &context[..], error_index)
+            );
         }
 
         ctx.operations.serialize_theme(TargetClient::All, &theme);
-        Ok(())
+        ConfigCommandOperation::Complete
     }
 
-    pub fn nmap(ctx: &mut ConfigCommandContext, args: &mut CommandArgs) -> ConfigCommandResult {
+    pub fn nmap(ctx: &mut ConfigCommandContext, args: &mut CommandArgs) -> ConfigCommandOperation {
         mode_map(ctx, args, Mode::Normal)
     }
 
-    pub fn smap(ctx: &mut ConfigCommandContext, args: &mut CommandArgs) -> ConfigCommandResult {
+    pub fn smap(ctx: &mut ConfigCommandContext, args: &mut CommandArgs) -> ConfigCommandOperation {
         mode_map(ctx, args, Mode::Select)
     }
 
-    pub fn imap(ctx: &mut ConfigCommandContext, args: &mut CommandArgs) -> ConfigCommandResult {
+    pub fn imap(ctx: &mut ConfigCommandContext, args: &mut CommandArgs) -> ConfigCommandOperation {
         mode_map(ctx, args, Mode::Insert)
     }
 
@@ -712,16 +791,22 @@ mod commands {
         ctx: &mut ConfigCommandContext,
         args: &mut CommandArgs,
         mode: Mode,
-    ) -> ConfigCommandResult {
-        let from = expect_next!(args);
-        let to = expect_next!(args);
-        assert_empty!(args);
+    ) -> ConfigCommandOperation {
+        let from = expect_next!(ctx.operations, args);
+        let to = expect_next!(ctx.operations, args);
+        assert_empty!(ctx.operations, args);
 
         match ctx.keymaps.parse_map(mode.discriminant(), from, to) {
-            Ok(()) => Ok(()),
-            Err(ParseKeyMapError::From(i, e)) => Err(helper::parsing_error(e, from, i)),
-            Err(ParseKeyMapError::To(i, e)) => Err(helper::parsing_error(e, to, i)),
+            Ok(()) => (),
+            Err(ParseKeyMapError::From(i, e)) => {
+                command_error!(ctx.operations, helper::parsing_error(e, from, i))
+            }
+            Err(ParseKeyMapError::To(i, e)) => {
+                command_error!(ctx.operations, helper::parsing_error(e, to, i))
+            }
         }
+
+        ConfigCommandOperation::Complete
     }
 }
 

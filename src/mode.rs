@@ -26,7 +26,6 @@ pub enum ModeOperation {
     Quit,
     WaitForClient(Mode),
     EnterMode(Mode),
-    Error(String),
 }
 
 pub struct ModeContext<'a> {

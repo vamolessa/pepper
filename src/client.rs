@@ -73,13 +73,9 @@ impl Client {
             keymaps,
         };
 
-        if let Err(e) = Config::load_into_operations(commands, &mut ctx) {
-            self.status_message.clear();
-            self.status_message.push_str(&e[..]);
-            return;
-        }
-
+        Config::load_into_operations(commands, &mut ctx);
         let mut deserializer = EditorOperationDeserializer::from_slice(operations.local_bytes());
+
         loop {
             match deserializer.deserialize_next() {
                 EditorOperationDeserializeResult::Some(op) => self.on_editor_operation(&op),
