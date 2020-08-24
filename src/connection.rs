@@ -351,10 +351,11 @@ impl ConnectionWithServer {
         loop {
             match deserializer.deserialize_next() {
                 EditorOperationDeserializeResult::Some(operation) => {
-                    last_response = Some(callback(operation));
-                    if let Some(ClientResponse::SpawnResult(_)) = last_response {
-                        break;
-                    }
+                    let response = callback(operation);
+                    last_response = Some(match last_response {
+                        Some(r) => response.or(r),
+                        None => response,
+                    });
                 }
                 EditorOperationDeserializeResult::None => break,
                 EditorOperationDeserializeResult::Error => {

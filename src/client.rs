@@ -26,6 +26,16 @@ pub enum ClientResponse {
     SpawnResult(SpawnResult),
 }
 
+impl ClientResponse {
+    pub fn or(self, other: Self) -> Self {
+        match (&self, &other) {
+            (_, ClientResponse::None) => self,
+            (ClientResponse::None, _) => other,
+            _ => self,
+        }
+    }
+}
+
 pub struct Client {
     pub config: Config,
     pub mode: Mode,

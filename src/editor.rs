@@ -246,6 +246,7 @@ impl Editor {
                     self.buffered_keys.clear();
                     self.mode = next_mode.clone();
                     self.mode.on_enter(&mut mode_context);
+                    operations.serialize(TargetClient::All, &EditorOperation::Mode(next_mode));
                     return EditorLoop::WaitForSpawnOutputOnClient;
                 }
                 ModeOperation::EnterMode(next_mode) => {

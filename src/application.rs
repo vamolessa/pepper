@@ -100,15 +100,13 @@ fn send_operations(
     }
 
     let mut deserializer = EditorOperationDeserializer::from_slice(operations.local_bytes());
+    let mut response = ClientResponse::None;
     while let EditorOperationDeserializeResult::Some(op) = deserializer.deserialize_next() {
-        if let response @ ClientResponse::SpawnResult(_) = local_client.on_editor_operation(&op) {
-            operations.clear();
-            return response;
-        }
+        response = response.or(local_client.on_editor_operation(&op));
     }
 
     operations.clear();
-    ClientResponse::None
+    response
 }
 
 fn run_server_with_client<I>(
