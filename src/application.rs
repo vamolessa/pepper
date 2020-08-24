@@ -1,4 +1,4 @@
-use std::{fmt, convert::From, env, fs, io, sync::mpsc, thread};
+use std::{convert::From, env, fmt, fs, io, sync::mpsc, thread};
 
 use crate::{
     client::{Client, ClientResponse},

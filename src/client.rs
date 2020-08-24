@@ -223,9 +223,9 @@ impl Client {
             }
             EditorOperation::Spawn(command, input) => {
                 let _ = ui.shutdown();
-                let output = self.spawn_command(command, *input);
+                let result = self.spawn_command(command, *input);
                 let _ = ui.init();
-                return ClientResponse::SpawnResult(output);
+                return ClientResponse::SpawnResult(result);
             }
         }
 
