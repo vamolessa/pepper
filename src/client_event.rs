@@ -229,12 +229,12 @@ impl Key {
 impl<'de> ClientEventSerialize<'de> for Key {}
 
 #[derive(Serialize, Deserialize)]
-pub struct SpawnOutput<'a> {
-    success: bool,
-    output: &'a str,
+pub struct SpawnResult {
+    pub success: bool,
+    pub output: String,
 }
 
-impl<'a, 'de: 'a> ClientEventSerialize<'de> for SpawnOutput<'a> {}
+impl<'de> ClientEventSerialize<'de> for SpawnResult {}
 
 #[derive(Default)]
 pub struct ClientEventSerializer(SerializationBuf);
@@ -275,7 +275,7 @@ impl<'a> ClientEventDeserializer<'a> {
 
     pub fn deserialize_next<T>(&mut self) -> ClientEventDeserializeResult<T>
     where
-        T: for <'de> ClientEventSerialize<'de>,
+        T: for<'de> ClientEventSerialize<'de>,
     {
         if self.0.as_slice().is_empty() {
             return ClientEventDeserializeResult::None;

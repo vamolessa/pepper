@@ -5,7 +5,7 @@ use crate::{
     config::Config,
     connection::{ConnectionWithClientHandle, TargetClient},
     editor_operation::{EditorOperation, EditorOperationSerializer},
-    client_event::Key,
+    client_event::{SpawnResult, Key},
     keymap::{KeyMapCollection, MatchResult},
     mode::{Mode, ModeContext, ModeOperation},
 };
@@ -260,13 +260,17 @@ impl Editor {
         result
     }
 
-    pub fn on_spawn_output(
+    pub fn on_spawn_result(
         &mut self,
         config: &Config,
-        output: String,
+        result: SpawnResult,
         target_client: TargetClient,
         operations: &mut EditorOperationSerializer,
     ) -> EditorLoop {
+        if !result.success {
+            //
+        }
+
         let current_buffer_view_handle = match target_client {
             TargetClient::All => unreachable!(),
             TargetClient::Local => &mut self.local_client_current_buffer_view_handle,
@@ -288,7 +292,7 @@ impl Editor {
 
         match self
             .commands
-            .continue_parse_and_execute_any_command(&mut command_context, output)
+            .continue_parse_and_execute_any_command(&mut command_context, result.output)
         {
             FullCommandOperation::Error | FullCommandOperation::Complete => EditorLoop::Continue,
             FullCommandOperation::WaitForSpawnOutputOnClient => EditorLoop::WaitForSpawnOutputOnClient,

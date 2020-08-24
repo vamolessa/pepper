@@ -7,6 +7,7 @@ use std::{
 use crate::{
     buffer::{BufferContent, TextRef},
     buffer_position::BufferRange,
+    client_event::SpawnResult,
     command::{CommandCollection, ConfigCommandContext, ParsedCommand},
     config::Config,
     cursor::Cursor,
@@ -22,7 +23,7 @@ use crate::{
 
 pub enum ClientResponse {
     None,
-    SpawnOutput(Option<String>),
+    SpawnResult(SpawnResult),
 }
 
 pub struct Client {
@@ -201,29 +202,31 @@ impl Client {
             }
             EditorOperation::Spawn(command, input) => {
                 let output = self.spawn_command(command, *input);
-                return ClientResponse::SpawnOutput(output);
+                return ClientResponse::SpawnResult(output);
             }
         }
 
         ClientResponse::None
     }
 
-    fn spawn_command(&mut self, command: &str, input: Option<&str>) -> Option<String> {
+    fn spawn_command(&mut self, command: &str, input: Option<&str>) -> SpawnResult {
         macro_rules! unwrap_or_command_error {
             ($value:expr) => {
                 match $value {
                     Ok(value) => value,
                     Err(error) => {
-                        self.status_message_kind = StatusMessageKind::Error;
-                        self.status_message.clear();
-                        self.status_message.push_str(&error);
-                        return None;
+                        return SpawnResult {
+                            success: false,
+                            output: error,
+                        };
                     }
                 }
             };
         }
 
-        let parsed = ParsedCommand::parse(command)?;
+        let parsed = unwrap_or_command_error!(
+            ParsedCommand::parse(command).ok_or_else(|| "empty command name".into())
+        );
 
         let mut command = Command::new(parsed.name);
         command.stdin(Stdio::piped());
@@ -240,14 +243,12 @@ impl Client {
         }
         child.stdin = None;
 
-        let output = unwrap_or_command_error!(child.wait_with_output().map_err(|e| e.to_string()));
-        if output.status.success() {
-            let output = String::from_utf8_lossy(&output.stdout[..]);
-            Some(output.into_owned())
-        } else {
-            let output = String::from_utf8_lossy(&output.stdout[..]);
-            unwrap_or_command_error!(Err(output));
-            None
+        let child_output =
+            unwrap_or_command_error!(child.wait_with_output().map_err(|e| e.to_string()));
+        let output = String::from_utf8_lossy(&child_output.stdout[..]);
+        SpawnResult {
+            success: child_output.status.success(),
+            output: output.into_owned(),
         }
     }
 }

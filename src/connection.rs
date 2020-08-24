@@ -12,12 +12,15 @@ use uds_windows::{UnixListener, UnixStream};
 
 use crate::{
     client::ClientResponse,
+    client_event::{
+        ClientEventDeserializeResult, ClientEventDeserializer, ClientEventSerializer, Key,
+        SpawnResult,
+    },
     editor::EditorLoop,
     editor_operation::{
         EditorOperation, EditorOperationDeserializeResult, EditorOperationDeserializer,
         EditorOperationSerializer,
     },
-    client_event::{Key, ClientEventDeserializeResult, ClientEventDeserializer, ClientEventSerializer},
     event_manager::{EventRegistry, StreamId},
 };
 
@@ -249,49 +252,38 @@ impl ConnectionWithClientCollection {
                     }
                 }
                 ClientEventDeserializeResult::None => break,
-                ClientEventDeserializeResult::Error => return Err(io::Error::from(io::ErrorKind::Other)),
+                ClientEventDeserializeResult::Error => {
+                    return Err(io::Error::from(io::ErrorKind::Other))
+                }
             }
         }
 
         Ok(last_result)
     }
 
-    pub fn receive_spawn_output(
+    pub fn receive_spawn_result(
         &mut self,
         handle: ConnectionWithClientHandle,
-    ) -> io::Result<String> {
+    ) -> io::Result<Option<SpawnResult>> {
         let connection = match &mut self.connections[handle.0] {
             Some(connection) => connection,
-            None => return Ok(String::new()),
+            None => return Ok(None),
         };
 
         connection.0.set_nonblocking(false)?;
 
         let mut read_scope = self.read_buf.scope();
+
         let output = loop {
             read_scope.read_from(&mut connection.0)?;
-            let bytes = read_scope.as_bytes();
-
-            const LEN_SIZE: usize = std::mem::size_of::<u32>();
-            if bytes.len() < LEN_SIZE {
-                continue;
-            }
-
-            let mut len_bytes = [0; LEN_SIZE];
-            len_bytes.copy_from_slice(&bytes[..LEN_SIZE]);
-            let len = u32::from_le_bytes(len_bytes) as usize;
-
-            let output = &bytes[LEN_SIZE..];
-            if output.len() == len {
-                match std::str::from_utf8(output) {
-                    Ok(output) => break output.into(),
-                    Err(e) => return Err(io::Error::new(io::ErrorKind::Other, e)),
-                }
+            let mut deserializer = ClientEventDeserializer::from_slice(read_scope.as_bytes());
+            if let ClientEventDeserializeResult::Some(output) = deserializer.deserialize_next() {
+                break output;
             }
         };
 
         connection.0.set_nonblocking(true)?;
-        Ok(output)
+        Ok(Some(output))
     }
 
     pub fn all_handles(&self) -> impl Iterator<Item = ConnectionWithClientHandle> {
@@ -329,7 +321,10 @@ impl ConnectionWithServer {
         event_registry.listen_next_stream_event(&self.stream, StreamId(0))
     }
 
-    pub fn send_serialized_events(&mut self, serializer: &mut ClientEventSerializer) -> io::Result<()> {
+    pub fn send_serialized_events(
+        &mut self,
+        serializer: &mut ClientEventSerializer,
+    ) -> io::Result<()> {
         let bytes = serializer.bytes();
         if bytes.is_empty() {
             return Ok(());
@@ -357,7 +352,7 @@ impl ConnectionWithServer {
             match deserializer.deserialize_next() {
                 EditorOperationDeserializeResult::Some(operation) => {
                     last_response = Some(callback(operation));
-                    if let Some(ClientResponse::SpawnOutput(_)) = last_response {
+                    if let Some(ClientResponse::SpawnResult(_)) = last_response {
                         break;
                     }
                 }

@@ -2,13 +2,13 @@ use std::{convert::From, env, fs, io, sync::mpsc, thread};
 
 use crate::{
     client::{Client, ClientResponse},
+    client_event::{ClientEvent, ClientEventSerializer},
     connection::{ConnectionWithClientCollection, ConnectionWithServer, TargetClient},
     editor::{Editor, EditorLoop},
     editor_operation::{
         EditorOperationDeserializeResult, EditorOperationDeserializer, EditorOperationSerializer,
         StatusMessageKind,
     },
-    client_event::{ClientEvent, ClientEventSerializer},
     event_manager::{ConnectionEvent, EventManager},
 };
 
@@ -101,7 +101,7 @@ fn send_operations(
 
     let mut deserializer = EditorOperationDeserializer::from_slice(operations.local_bytes());
     while let EditorOperationDeserializeResult::Some(op) = deserializer.deserialize_next() {
-        if let response @ ClientResponse::SpawnOutput(_) = local_client.on_editor_operation(&op) {
+        if let response @ ClientResponse::SpawnResult(_) = local_client.on_editor_operation(&op) {
             operations.clear();
             return response;
         }
@@ -166,12 +166,12 @@ where
                                 &mut connections,
                             ) {
                                 ClientResponse::None => break,
-                                ClientResponse::SpawnOutput(output) => {
+                                ClientResponse::SpawnResult(result) => {
                                     todo!();
                                     /*
                                     result = editor.on_spawn_output(
                                         &local_client.config,
-                                        output,
+                                        result,
                                         TargetClient::Local,
                                         &mut editor_operations,
                                     );
@@ -221,10 +221,14 @@ where
                                 Ok(EditorLoop::WaitForSpawnOutputOnClient) => {
                                     connections
                                         .listen_next_connection_event(handle, &event_registry)?;
-                                    let output = connections.receive_spawn_output(handle)?;
-                                    result = Ok(editor.on_spawn_output(
+                                    let spawn_result = match connections.receive_spawn_result(handle)? {
+                                        Some(spawn_result) => spawn_result,
+                                        None => break,
+                                    };
+
+                                    result = Ok(editor.on_spawn_result(
                                         &local_client.config,
-                                        output,
+                                        spawn_result,
                                         TargetClient::Remote(handle),
                                         &mut editor_operations,
                                     ));
@@ -294,8 +298,9 @@ where
                         .receive_operations(|op| local_client.on_editor_operation(&op))?;
                     match response {
                         Some(ClientResponse::None) => (),
-                        Some(ClientResponse::SpawnOutput(output)) => {
-                            //connection.send_serialized_client_input(&output[..])?
+                        Some(ClientResponse::SpawnResult(result)) => {
+                            todo!();
+                            //connection.send_serialized_client_input(&result[..])?
                         }
                         None => break,
                     }
