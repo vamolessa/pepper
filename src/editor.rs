@@ -10,6 +10,7 @@ use crate::{
     mode::{Mode, ModeContext, ModeOperation},
 };
 
+#[derive(Clone, Copy)]
 pub enum EditorLoop {
     Quit,
     Continue,

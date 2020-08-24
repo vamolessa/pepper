@@ -266,11 +266,32 @@ impl ConnectionWithClientCollection {
         };
 
         connection.0.set_nonblocking(false)?;
+
         let mut read_scope = self.read_buf.scope();
-        read_scope.read_from(&mut connection.0)?;
+        let output = loop {
+            read_scope.read_from(&mut connection.0)?;
+            let bytes = read_scope.as_bytes();
+
+            const LEN_SIZE: usize = std::mem::size_of::<u32>();
+            if bytes.len() < LEN_SIZE {
+                continue;
+            }
+
+            let mut len_bytes = [0; LEN_SIZE];
+            len_bytes.copy_from_slice(&bytes[..LEN_SIZE]);
+            let len = u32::from_le_bytes(len_bytes) as usize;
+
+            let output = &bytes[LEN_SIZE..];
+            if output.len() == len {
+                match std::str::from_utf8(output) {
+                    Ok(output) => break output.into(),
+                    Err(e) => return Err(io::Error::new(io::ErrorKind::Other, e)),
+                }
+            }
+        };
 
         connection.0.set_nonblocking(true)?;
-        Ok(String::new())
+        Ok(output)
     }
 
     pub fn all_handles(&self) -> impl Iterator<Item = ConnectionWithClientHandle> {

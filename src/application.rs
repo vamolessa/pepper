@@ -141,39 +141,42 @@ where
         match event {
             Event::None => (),
             Event::Key(key) => {
-                match editor.on_key(
+                let mut result = editor.on_key(
                     &local_client.config,
                     key,
                     TargetClient::Local,
                     &mut editor_operations,
-                ) {
-                    EditorLoop::Quit => break,
-                    EditorLoop::Continue => {
-                        send_operations(
-                            &mut editor_operations,
-                            &mut local_client,
-                            &mut connections,
-                        );
-                    }
-                    EditorLoop::WaitForClient => loop {
-                        match send_operations(
-                            &mut editor_operations,
-                            &mut local_client,
-                            &mut connections,
-                        ) {
-                            ClientResponse::SpawnOutput(output) => match editor.on_spawn_output(
-                                &local_client.config,
-                                output,
-                                TargetClient::Local,
+                );
+
+                loop {
+                    match result {
+                        EditorLoop::Quit => break 'main_loop,
+                        EditorLoop::Continue => {
+                            send_operations(
                                 &mut editor_operations,
-                            ) {
-                                EditorLoop::Continue => break,
-                                EditorLoop::WaitForClient => (),
-                                EditorLoop::Quit => break 'main_loop,
-                            },
-                            _ => break,
+                                &mut local_client,
+                                &mut connections,
+                            );
+                            break;
                         }
-                    },
+                        EditorLoop::WaitForClient => {
+                            match send_operations(
+                                &mut editor_operations,
+                                &mut local_client,
+                                &mut connections,
+                            ) {
+                                ClientResponse::None => break,
+                                ClientResponse::SpawnOutput(output) => {
+                                    result = editor.on_spawn_output(
+                                        &local_client.config,
+                                        output,
+                                        TargetClient::Local,
+                                        &mut editor_operations,
+                                    );
+                                }
+                            }
+                        }
+                    }
                 }
             }
             Event::Resize(w, h) => ui.resize(w, h)?,
@@ -191,7 +194,7 @@ where
                     ConnectionEvent::Stream(stream_id) => {
                         let handle = stream_id.into();
 
-                        let result = connections.receive_keys(handle, |key| {
+                        let mut result = connections.receive_keys(handle, |key| {
                             editor.on_key(
                                 &local_client.config,
                                 key,
@@ -200,16 +203,30 @@ where
                             )
                         });
 
-                        match result {
-                            Ok(EditorLoop::Quit) | Err(_) => {
-                                connections.close_connection(handle);
-                                editor.on_client_left(handle, &mut editor_operations);
-                            }
-                            Ok(result) => {
-                                connections
-                                    .listen_next_connection_event(handle, &event_registry)?;
-                                if let EditorLoop::WaitForClient = result {
-                                    todo!("wait remote client response");
+                        loop {
+                            match result {
+                                Ok(EditorLoop::Quit) | Err(_) => {
+                                    connections.close_connection(handle);
+                                    editor.on_client_left(handle, &mut editor_operations);
+                                    break;
+                                }
+                                Ok(EditorLoop::Continue) => {
+                                    connections
+                                        .listen_next_connection_event(handle, &event_registry)?;
+                                    break;
+                                }
+                                Ok(EditorLoop::WaitForClient) => {
+                                    connections
+                                        .listen_next_connection_event(handle, &event_registry)?;
+                                    let output = connections.receive_spawn_output(handle)?;
+                                    result = Ok(editor.on_spawn_output(
+                                        &local_client.config,
+                                        output,
+                                        TargetClient::Remote(handle),
+                                        &mut editor_operations,
+                                    ));
+                                    connections
+                                        .listen_next_connection_event(handle, &event_registry)?;
                                 }
                             }
                         }
