@@ -38,20 +38,28 @@ impl ReadBuf {
         }
     }
 
-    pub fn read_into<'a, R>(&'a mut self, mut reader: R) -> io::Result<ReadSlice<'a>>
+    pub fn scope(&mut self) -> ReadScope {
+        ReadScope(self)
+    }
+}
+
+struct ReadScope<'a>(&'a mut ReadBuf);
+
+impl<'a> ReadScope<'a> {
+    pub fn read_from<R>(&mut self, mut reader: R) -> io::Result<()>
     where
         R: Read,
     {
         loop {
-            match reader.read(&mut self.buf[self.len..]) {
+            match reader.read(&mut self.0.buf[self.0.len..]) {
                 Ok(len) => {
-                    self.len += len;
+                    self.0.len += len;
 
-                    if self.len < self.buf.len() {
+                    if self.0.len < self.0.buf.len() {
                         break;
                     }
 
-                    self.buf.resize(self.buf.len() * 2, 0);
+                    self.0.buf.resize(self.0.buf.len() * 2, 0);
                 }
                 Err(e) => match e.kind() {
                     io::ErrorKind::WouldBlock => break,
@@ -60,25 +68,18 @@ impl ReadBuf {
             }
         }
 
-        Ok(ReadSlice { buf: self })
+        Ok(())
+    }
+
+    pub fn as_bytes(&'a self) -> &'a [u8] {
+        &self.0.buf[self.0.position..self.0.len]
     }
 }
 
-struct ReadSlice<'a> {
-    buf: &'a mut ReadBuf,
-}
-
-impl<'a> ReadSlice<'a> {
-    pub fn bytes(&'a self) -> &'a [u8] {
-        let buf = &self.buf;
-        &buf.buf[buf.position..buf.len]
-    }
-}
-
-impl<'a> Drop for ReadSlice<'a> {
+impl<'a> Drop for ReadScope<'a> {
     fn drop(&mut self) {
-        self.buf.len = 0;
-        self.buf.position = 0;
+        self.0.len = 0;
+        self.0.position = 0;
     }
 }
 
@@ -234,9 +235,10 @@ impl ConnectionWithClientCollection {
             None => return Ok(EditorLoop::Quit),
         };
 
-        let read_slice = self.read_buf.read_into(&mut connection.0)?;
+        let mut read_scope = self.read_buf.scope();
+        read_scope.read_from(&mut connection.0)?;
         let mut last_result = EditorLoop::Quit;
-        let mut deserializer = KeyDeserializer::from_slice(read_slice.bytes());
+        let mut deserializer = KeyDeserializer::from_slice(read_scope.as_bytes());
 
         loop {
             match deserializer.deserialize_next() {
@@ -258,7 +260,17 @@ impl ConnectionWithClientCollection {
         &mut self,
         handle: ConnectionWithClientHandle,
     ) -> io::Result<String> {
-        todo!("receive spawn output");
+        let connection = match &mut self.connections[handle.0] {
+            Some(connection) => connection,
+            None => return Ok(String::new()),
+        };
+
+        connection.0.set_nonblocking(false)?;
+        let mut read_scope = self.read_buf.scope();
+        read_scope.read_from(&mut connection.0)?;
+
+        connection.0.set_nonblocking(true)?;
+        Ok(String::new())
     }
 
     pub fn all_handles(&self) -> impl Iterator<Item = ConnectionWithClientHandle> {
@@ -326,9 +338,10 @@ impl ConnectionWithServer {
     where
         F: FnMut(EditorOperation<'_>) -> ClientResponse,
     {
-        let read_slice = self.read_buf.read_into(&mut self.stream)?;
+        let mut read_scope = self.read_buf.scope();
+        read_scope.read_from(&mut self.stream)?;
         let mut last_response = None;
-        let mut deserializer = EditorOperationDeserializer::from_slice(read_slice.bytes());
+        let mut deserializer = EditorOperationDeserializer::from_slice(read_scope.as_bytes());
 
         loop {
             match deserializer.deserialize_next() {
