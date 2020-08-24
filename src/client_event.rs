@@ -9,14 +9,14 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Copy)]
-pub enum Event {
+pub enum ClientEvent {
     None,
     Key(Key),
     Resize(u16, u16),
     Connection(ConnectionEvent),
 }
 
-pub trait SerializeEvent<'de>: Serialize + Deserialize<'de> {}
+pub trait ClientEventSerialize<'de>: Serialize + Deserialize<'de> {}
 
 #[derive(Debug)]
 pub enum KeyParseError {
@@ -226,7 +226,7 @@ impl Key {
     }
 }
 
-impl<'de> SerializeEvent<'de> for Key {}
+impl<'de> ClientEventSerialize<'de> for Key {}
 
 #[derive(Serialize, Deserialize)]
 pub struct SpawnOutput<'a> {
@@ -234,12 +234,12 @@ pub struct SpawnOutput<'a> {
     output: &'a str,
 }
 
-impl<'a, 'de: 'a> SerializeEvent<'de> for SpawnOutput<'a> {}
+impl<'a, 'de: 'a> ClientEventSerialize<'de> for SpawnOutput<'a> {}
 
 #[derive(Default)]
-pub struct EventSerializer(SerializationBuf);
+pub struct ClientEventSerializer(SerializationBuf);
 
-impl EventSerializer {
+impl ClientEventSerializer {
     pub fn serialize<T>(&mut self, input: T)
     where
         T: Serialize,
@@ -257,33 +257,33 @@ impl EventSerializer {
 }
 
 #[derive(Debug)]
-pub enum EventDeserializeResult<T>
+pub enum ClientEventDeserializeResult<T>
 where
-    T: for<'de> SerializeEvent<'de>,
+    T: for<'de> ClientEventSerialize<'de>,
 {
     Some(T),
     None,
     Error,
 }
 
-pub struct EventDeserializer<'a>(DeserializationSlice<'a>);
+pub struct ClientEventDeserializer<'a>(DeserializationSlice<'a>);
 
-impl<'a> EventDeserializer<'a> {
+impl<'a> ClientEventDeserializer<'a> {
     pub fn from_slice(slice: &'a [u8]) -> Self {
         Self(DeserializationSlice::from_slice(slice))
     }
 
-    pub fn deserialize_next<T>(&mut self) -> EventDeserializeResult<T>
+    pub fn deserialize_next<T>(&mut self) -> ClientEventDeserializeResult<T>
     where
-        T: for <'de> SerializeEvent<'de>,
+        T: for <'de> ClientEventSerialize<'de>,
     {
         if self.0.as_slice().is_empty() {
-            return EventDeserializeResult::None;
+            return ClientEventDeserializeResult::None;
         }
 
         match T::deserialize(&mut self.0) {
-            Ok(key) => EventDeserializeResult::Some(key),
-            Err(_) => EventDeserializeResult::Error,
+            Ok(key) => ClientEventDeserializeResult::Some(key),
+            Err(_) => ClientEventDeserializeResult::Error,
         }
     }
 }
@@ -342,11 +342,11 @@ mod tests {
     fn key_serialization() {
         macro_rules! assert_serialization {
             ($key:expr) => {
-                let mut serializer = EventSerializer::default();
+                let mut serializer = ClientEventSerializer::default();
                 serializer.serialize($key);
                 let slice = serializer.bytes();
-                let mut deserializer = EventDeserializer::from_slice(slice);
-                if let EventDeserializeResult::Some(key) = deserializer.deserialize_next() {
+                let mut deserializer = ClientEventDeserializer::from_slice(slice);
+                if let ClientEventDeserializeResult::Some(key) = deserializer.deserialize_next() {
                     assert_eq!($key, key);
                 } else {
                     assert!(false);

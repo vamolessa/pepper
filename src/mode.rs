@@ -10,7 +10,7 @@ use crate::{
     connection::TargetClient,
     editor::KeysIterator,
     editor_operation::{EditorOperation, EditorOperationSerializer},
-    event::Key,
+    client_event::Key,
     keymap::KeyMapCollection,
 };
 

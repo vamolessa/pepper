@@ -9,7 +9,7 @@ mod connection;
 mod cursor;
 mod editor;
 mod editor_operation;
-mod event;
+mod client_event;
 mod event_manager;
 mod history;
 mod keymap;

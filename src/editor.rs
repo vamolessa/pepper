@@ -5,7 +5,7 @@ use crate::{
     config::Config,
     connection::{ConnectionWithClientHandle, TargetClient},
     editor_operation::{EditorOperation, EditorOperationSerializer},
-    event::Key,
+    client_event::Key,
     keymap::{KeyMapCollection, MatchResult},
     mode::{Mode, ModeContext, ModeOperation},
 };

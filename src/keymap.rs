@@ -1,7 +1,7 @@
 use std::{collections::HashMap, mem::Discriminant};
 
 use crate::{
-    event::{Key, KeyParseError},
+    client_event::{Key, KeyParseError},
     mode::Mode,
 };
 

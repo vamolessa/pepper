@@ -4,7 +4,7 @@ use std::{
     thread,
 };
 
-use crate::event::Event;
+use crate::client_event::ClientEvent;
 
 #[derive(Debug, Clone, Copy)]
 pub struct StreamId(pub usize);
@@ -31,7 +31,7 @@ impl ConnectionEvent {
     }
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(windows)]
 use uds_windows::{UnixListener, UnixStream};
 
 pub struct EventManager {
@@ -47,14 +47,14 @@ impl EventManager {
 
     pub fn run_event_loop_in_background(
         self,
-        event_sender: mpsc::Sender<Event>,
+        event_sender: mpsc::Sender<ClientEvent>,
     ) -> thread::JoinHandle<io::Result<()>> {
         let mut events = Vec::new();
         thread::spawn(move || 'event_loop: loop {
             self.poller.wait(&mut events, None)?;
             for event in &events {
                 let event = ConnectionEvent::from_raw_id(event.key);
-                if event_sender.send(Event::Connection(event)).is_err() {
+                if event_sender.send(ClientEvent::Connection(event)).is_err() {
                     break 'event_loop Ok(());
                 }
             }

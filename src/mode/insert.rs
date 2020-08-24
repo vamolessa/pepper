@@ -3,7 +3,7 @@ use crate::{
     buffer_position::BufferOffset,
     buffer_view::MovementKind,
     editor::KeysIterator,
-    event::Key,
+    client_event::Key,
     mode::{Mode, ModeContext, ModeOperation},
 };
 

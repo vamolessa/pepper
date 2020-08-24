@@ -8,7 +8,7 @@ use crate::{
         EditorOperationDeserializeResult, EditorOperationDeserializer, EditorOperationSerializer,
         StatusMessageKind,
     },
-    event::{Event, EventSerializer},
+    client_event::{ClientEvent, ClientEventSerializer},
     event_manager::{ConnectionEvent, EventManager},
 };
 
@@ -46,7 +46,7 @@ pub trait UI {
     type Error: UiError;
 
     fn run_event_loop_in_background(
-        event_sender: mpsc::Sender<Event>,
+        event_sender: mpsc::Sender<ClientEvent>,
     ) -> thread::JoinHandle<Result<(), Self::Error>>;
 
     fn init(&mut self) -> Result<(), Self::Error> {
@@ -139,8 +139,8 @@ where
 
     'main_loop: for event in event_receiver.iter() {
         match event {
-            Event::None => (),
-            Event::Key(key) => {
+            ClientEvent::None => (),
+            ClientEvent::Key(key) => {
                 let mut result = editor.on_key(
                     &local_client.config,
                     key,
@@ -182,8 +182,8 @@ where
                     }
                 }
             }
-            Event::Resize(w, h) => ui.resize(w, h)?,
-            Event::Connection(event) => {
+            ClientEvent::Resize(w, h) => ui.resize(w, h)?,
+            ClientEvent::Connection(event) => {
                 match event {
                     ConnectionEvent::NewConnection => {
                         let handle = connections.accept_connection(&event_registry)?;
@@ -272,22 +272,22 @@ where
     let ui_event_loop = I::run_event_loop_in_background(event_sender);
 
     let mut local_client = Client::new();
-    let mut keys = EventSerializer::default();
+    let mut keys = ClientEventSerializer::default();
 
     connection.register_connection(&event_registry)?;
     ui.init()?;
 
     for event in event_receiver.iter() {
         match event {
-            Event::None => (),
-            Event::Key(key) => {
+            ClientEvent::None => (),
+            ClientEvent::Key(key) => {
                 keys.serialize(key);
                 if connection.send_serialized_events(&mut keys).is_err() {
                     break;
                 }
             }
-            Event::Resize(w, h) => ui.resize(w, h)?,
-            Event::Connection(event) => match event {
+            ClientEvent::Resize(w, h) => ui.resize(w, h)?,
+            ClientEvent::Connection(event) => match event {
                 ConnectionEvent::NewConnection => (),
                 ConnectionEvent::Stream(_) => {
                     let response = connection

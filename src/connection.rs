@@ -17,7 +17,7 @@ use crate::{
         EditorOperation, EditorOperationDeserializeResult, EditorOperationDeserializer,
         EditorOperationSerializer,
     },
-    event::{Key, EventDeserializeResult, EventDeserializer, EventSerializer},
+    client_event::{Key, ClientEventDeserializeResult, ClientEventDeserializer, ClientEventSerializer},
     event_manager::{EventRegistry, StreamId},
 };
 
@@ -238,18 +238,18 @@ impl ConnectionWithClientCollection {
         let mut read_scope = self.read_buf.scope();
         read_scope.read_from(&mut connection.0)?;
         let mut last_result = EditorLoop::Quit;
-        let mut deserializer = EventDeserializer::from_slice(read_scope.as_bytes());
+        let mut deserializer = ClientEventDeserializer::from_slice(read_scope.as_bytes());
 
         loop {
             match deserializer.deserialize_next() {
-                EventDeserializeResult::Some(key) => {
+                ClientEventDeserializeResult::Some(key) => {
                     last_result = callback(key);
                     if let EditorLoop::WaitForSpawnOutputOnClient | EditorLoop::Quit = last_result {
                         break;
                     }
                 }
-                EventDeserializeResult::None => break,
-                EventDeserializeResult::Error => return Err(io::Error::from(io::ErrorKind::Other)),
+                ClientEventDeserializeResult::None => break,
+                ClientEventDeserializeResult::Error => return Err(io::Error::from(io::ErrorKind::Other)),
             }
         }
 
@@ -329,7 +329,7 @@ impl ConnectionWithServer {
         event_registry.listen_next_stream_event(&self.stream, StreamId(0))
     }
 
-    pub fn send_serialized_events(&mut self, serializer: &mut EventSerializer) -> io::Result<()> {
+    pub fn send_serialized_events(&mut self, serializer: &mut ClientEventSerializer) -> io::Result<()> {
         let bytes = serializer.bytes();
         if bytes.is_empty() {
             return Ok(());
