@@ -229,7 +229,11 @@ impl Client {
         );
 
         let mut command = Command::new(parsed.name);
-        command.stdin(Stdio::piped());
+        command.stdin(if input.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::inherit()
+        });
         command.stdout(Stdio::piped());
         command.stderr(Stdio::piped());
         for arg in parsed.args {

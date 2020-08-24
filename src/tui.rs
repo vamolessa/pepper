@@ -166,6 +166,7 @@ where
             status_message,
         )?;
 
+        handle_command!(self.write, ResetColor)?;
         self.write.flush()?;
         Ok(())
     }
