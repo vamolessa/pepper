@@ -222,7 +222,9 @@ impl Client {
                 self.status_message.push_str(message);
             }
             EditorOperation::Spawn(command, input) => {
+                let _ = ui.shutdown();
                 let output = self.spawn_command(command, *input);
+                let _ = ui.init();
                 return ClientResponse::SpawnResult(output);
             }
         }
