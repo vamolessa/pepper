@@ -98,7 +98,7 @@ impl<'a> ParsedCommand<'a> {
     }
 
     pub fn unparsed(self) -> &'a str {
-        self.args.raw
+        self.args.unparsed()
     }
 }
 
@@ -109,6 +109,10 @@ pub struct CommandArgs<'a> {
 impl<'a> CommandArgs<'a> {
     pub fn new(raw: &'a str) -> Self {
         Self { raw }
+    }
+
+    pub fn unparsed(self) -> &'a str {
+        self.raw
     }
 }
 
@@ -254,7 +258,6 @@ impl CommandCollection {
         mut input: String,
     ) -> FullCommandOperation {
         let mut commands = &self.pending_commands[..];
-        let mut last_command = commands;
         let mut output = String::new();
 
         loop {
@@ -274,12 +277,15 @@ impl CommandCollection {
                 last_result = match command(ctx, &mut parsed.args, maybe_input, &mut output) {
                     FullCommandOperation::Error => break FullCommandOperation::Error,
                     FullCommandOperation::WaitForClient => {
-                        let pending_command = parsed.unparsed();
-                        let spawn_command_len = last_command.len() - pending_command.len();
+                        let pending_commands = parsed.unparsed().trim_start();
+                        let mut args = CommandArgs::new(pending_commands);
+                        for _ in &mut args {}
+                        commands = args.unparsed();
+                        let spawn_command_len = pending_commands.len() - commands.len();
                         ctx.operations.serialize(
                             TargetClient::All,
                             &EditorOperation::Spawn(
-                                &last_command[..spawn_command_len],
+                                &pending_commands[..spawn_command_len],
                                 maybe_input,
                             ),
                         );
@@ -309,7 +315,6 @@ impl CommandCollection {
                 );
             }
 
-            last_command = commands;
             commands = parsed.unparsed();
         }
     }
@@ -695,11 +700,10 @@ mod commands {
 
     pub fn spawn(
         _ctx: &mut FullCommandContext,
-        args: &mut CommandArgs,
+        _args: &mut CommandArgs,
         _input: Option<&str>,
         _output: &mut String,
     ) -> FullCommandOperation {
-        for _ in args {}
         FullCommandOperation::WaitForClient
     }
 
