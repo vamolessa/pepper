@@ -24,7 +24,7 @@ pub enum ModeOperation {
     Pending,
     None,
     Quit,
-    WaitForClient(Mode),
+    WaitForSpawnOutputOnClient(Mode),
     EnterMode(Mode),
 }
 

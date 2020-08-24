@@ -8,7 +8,7 @@ use crate::{
         EditorOperationDeserializeResult, EditorOperationDeserializer, EditorOperationSerializer,
         StatusMessageKind,
     },
-    event::{Event, KeySerializer},
+    event::{Event, EventSerializer},
     event_manager::{ConnectionEvent, EventManager},
 };
 
@@ -159,7 +159,7 @@ where
                             );
                             break;
                         }
-                        EditorLoop::WaitForClient => {
+                        EditorLoop::WaitForSpawnOutputOnClient => {
                             match send_operations(
                                 &mut editor_operations,
                                 &mut local_client,
@@ -167,12 +167,15 @@ where
                             ) {
                                 ClientResponse::None => break,
                                 ClientResponse::SpawnOutput(output) => {
+                                    todo!();
+                                    /*
                                     result = editor.on_spawn_output(
                                         &local_client.config,
                                         output,
                                         TargetClient::Local,
                                         &mut editor_operations,
                                     );
+                                    */
                                 }
                             }
                         }
@@ -215,7 +218,7 @@ where
                                         .listen_next_connection_event(handle, &event_registry)?;
                                     break;
                                 }
-                                Ok(EditorLoop::WaitForClient) => {
+                                Ok(EditorLoop::WaitForSpawnOutputOnClient) => {
                                     connections
                                         .listen_next_connection_event(handle, &event_registry)?;
                                     let output = connections.receive_spawn_output(handle)?;
@@ -269,7 +272,7 @@ where
     let ui_event_loop = I::run_event_loop_in_background(event_sender);
 
     let mut local_client = Client::new();
-    let mut keys = KeySerializer::default();
+    let mut keys = EventSerializer::default();
 
     connection.register_connection(&event_registry)?;
     ui.init()?;
@@ -279,7 +282,7 @@ where
             Event::None => (),
             Event::Key(key) => {
                 keys.serialize(key);
-                if connection.send_serialized_keys(&mut keys).is_err() {
+                if connection.send_serialized_events(&mut keys).is_err() {
                     break;
                 }
             }
@@ -292,7 +295,7 @@ where
                     match response {
                         Some(ClientResponse::None) => (),
                         Some(ClientResponse::SpawnOutput(output)) => {
-                            connection.send_spawn_output(&output[..])?
+                            //connection.send_serialized_client_input(&output[..])?
                         }
                         None => break,
                     }

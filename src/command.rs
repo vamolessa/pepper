@@ -24,7 +24,7 @@ use crate::{
 pub enum FullCommandOperation {
     Error,
     Complete,
-    WaitForClient,
+    WaitForSpawnOutputOnClient,
     Quit,
 }
 
@@ -276,7 +276,7 @@ impl CommandCollection {
                 output.clear();
                 last_result = match command(ctx, &mut parsed.args, maybe_input, &mut output) {
                     FullCommandOperation::Error => break FullCommandOperation::Error,
-                    FullCommandOperation::WaitForClient => {
+                    FullCommandOperation::WaitForSpawnOutputOnClient => {
                         let pending_commands = parsed.unparsed().trim_start();
                         let mut args = CommandArgs::new(pending_commands);
                         for _ in &mut args {}
@@ -292,7 +292,7 @@ impl CommandCollection {
                         let drain_len = self.pending_commands.len() - commands.trim_start().len();
                         self.pending_commands.drain(..drain_len);
 
-                        break FullCommandOperation::WaitForClient;
+                        break FullCommandOperation::WaitForSpawnOutputOnClient;
                     }
                     result => Some(result),
                 };
@@ -704,7 +704,7 @@ mod commands {
         _input: Option<&str>,
         _output: &mut String,
     ) -> FullCommandOperation {
-        FullCommandOperation::WaitForClient
+        FullCommandOperation::WaitForSpawnOutputOnClient
     }
 
     pub fn set(ctx: &mut ConfigCommandContext, args: &mut CommandArgs) -> ConfigCommandOperation {

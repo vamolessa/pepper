@@ -14,7 +14,7 @@ use crate::{
 pub enum EditorLoop {
     Quit,
     Continue,
-    WaitForClient,
+    WaitForSpawnOutputOnClient,
 }
 
 pub struct KeysIterator<'a> {
@@ -242,11 +242,11 @@ impl Editor {
                     self.buffered_keys.clear();
                     return EditorLoop::Quit;
                 }
-                ModeOperation::WaitForClient(next_mode) => {
+                ModeOperation::WaitForSpawnOutputOnClient(next_mode) => {
                     self.buffered_keys.clear();
                     self.mode = next_mode.clone();
                     self.mode.on_enter(&mut mode_context);
-                    return EditorLoop::WaitForClient;
+                    return EditorLoop::WaitForSpawnOutputOnClient;
                 }
                 ModeOperation::EnterMode(next_mode) => {
                     self.mode = next_mode.clone();
@@ -291,7 +291,7 @@ impl Editor {
             .continue_parse_and_execute_any_command(&mut command_context, output)
         {
             FullCommandOperation::Error | FullCommandOperation::Complete => EditorLoop::Continue,
-            FullCommandOperation::WaitForClient => EditorLoop::WaitForClient,
+            FullCommandOperation::WaitForSpawnOutputOnClient => EditorLoop::WaitForSpawnOutputOnClient,
             FullCommandOperation::Quit => EditorLoop::Quit,
         }
     }

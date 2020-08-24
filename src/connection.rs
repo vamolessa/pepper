@@ -17,7 +17,7 @@ use crate::{
         EditorOperation, EditorOperationDeserializeResult, EditorOperationDeserializer,
         EditorOperationSerializer,
     },
-    event::{Key, KeyDeserializeResult, KeyDeserializer, KeySerializer},
+    event::{Key, EventDeserializeResult, EventDeserializer, EventSerializer},
     event_manager::{EventRegistry, StreamId},
 };
 
@@ -238,18 +238,18 @@ impl ConnectionWithClientCollection {
         let mut read_scope = self.read_buf.scope();
         read_scope.read_from(&mut connection.0)?;
         let mut last_result = EditorLoop::Quit;
-        let mut deserializer = KeyDeserializer::from_slice(read_scope.as_bytes());
+        let mut deserializer = EventDeserializer::from_slice(read_scope.as_bytes());
 
         loop {
             match deserializer.deserialize_next() {
-                KeyDeserializeResult::Some(key) => {
+                EventDeserializeResult::Some(key) => {
                     last_result = callback(key);
-                    if let EditorLoop::WaitForClient | EditorLoop::Quit = last_result {
+                    if let EditorLoop::WaitForSpawnOutputOnClient | EditorLoop::Quit = last_result {
                         break;
                     }
                 }
-                KeyDeserializeResult::None => break,
-                KeyDeserializeResult::Error => return Err(io::Error::from(io::ErrorKind::Other)),
+                EventDeserializeResult::None => break,
+                EventDeserializeResult::Error => return Err(io::Error::from(io::ErrorKind::Other)),
             }
         }
 
@@ -329,7 +329,7 @@ impl ConnectionWithServer {
         event_registry.listen_next_stream_event(&self.stream, StreamId(0))
     }
 
-    pub fn send_serialized_keys(&mut self, serializer: &mut KeySerializer) -> io::Result<()> {
+    pub fn send_serialized_events(&mut self, serializer: &mut EventSerializer) -> io::Result<()> {
         let bytes = serializer.bytes();
         if bytes.is_empty() {
             return Ok(());
@@ -342,17 +342,6 @@ impl ConnectionWithServer {
 
         serializer.clear();
         result
-    }
-
-    pub fn send_spawn_output(&mut self, output: &str) -> io::Result<()> {
-        let output_len_bytes = (output.len() as u32).to_le_bytes();
-        self.stream
-            .write_all(&output_len_bytes[..])
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-        self.stream
-            .write_all(output.as_bytes())
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-        Ok(())
     }
 
     pub fn receive_operations<F>(&mut self, mut callback: F) -> io::Result<Option<ClientResponse>>

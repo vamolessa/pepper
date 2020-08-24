@@ -1,5 +1,6 @@
 use std::fmt;
 
+use serde::{Deserialize, Serialize};
 use serde_derive::{Deserialize, Serialize};
 
 use crate::{
@@ -13,6 +14,23 @@ pub enum Event {
     Key(Key),
     Resize(u16, u16),
     Connection(ConnectionEvent),
+}
+
+pub trait SerializeEvent<'de>: Serialize + Deserialize<'de> {}
+
+#[derive(Debug)]
+pub enum KeyParseError {
+    UnexpectedEnd,
+    InvalidCharacter(char),
+}
+
+impl fmt::Display for KeyParseError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::UnexpectedEnd => write!(f, "could not finish parsing key"),
+            Self::InvalidCharacter(c) => write!(f, "invalid character {}", c),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -35,21 +53,6 @@ pub enum Key {
     Ctrl(char),
     Alt(char),
     Esc,
-}
-
-#[derive(Debug)]
-pub enum KeyParseError {
-    UnexpectedEnd,
-    InvalidCharacter(char),
-}
-
-impl fmt::Display for KeyParseError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Self::UnexpectedEnd => write!(f, "could not finish parsing key"),
-            Self::InvalidCharacter(c) => write!(f, "invalid character {}", c),
-        }
-    }
 }
 
 impl Key {
@@ -223,13 +226,25 @@ impl Key {
     }
 }
 
-#[derive(Default)]
-pub struct KeySerializer(SerializationBuf);
+impl<'de> SerializeEvent<'de> for Key {}
 
-impl KeySerializer {
-    pub fn serialize(&mut self, key: Key) {
-        use serde::Serialize;
-        let _ = key.serialize(&mut self.0);
+#[derive(Serialize, Deserialize)]
+pub struct SpawnOutput<'a> {
+    success: bool,
+    output: &'a str,
+}
+
+impl<'a, 'de: 'a> SerializeEvent<'de> for SpawnOutput<'a> {}
+
+#[derive(Default)]
+pub struct EventSerializer(SerializationBuf);
+
+impl EventSerializer {
+    pub fn serialize<T>(&mut self, input: T)
+    where
+        T: Serialize,
+    {
+        let _ = input.serialize(&mut self.0);
     }
 
     pub fn bytes(&self) -> &[u8] {
@@ -242,28 +257,33 @@ impl KeySerializer {
 }
 
 #[derive(Debug)]
-pub enum KeyDeserializeResult {
-    Some(Key),
+pub enum EventDeserializeResult<T>
+where
+    T: for<'de> SerializeEvent<'de>,
+{
+    Some(T),
     None,
     Error,
 }
 
-pub struct KeyDeserializer<'a>(DeserializationSlice<'a>);
+pub struct EventDeserializer<'a>(DeserializationSlice<'a>);
 
-impl<'a> KeyDeserializer<'a> {
+impl<'a> EventDeserializer<'a> {
     pub fn from_slice(slice: &'a [u8]) -> Self {
         Self(DeserializationSlice::from_slice(slice))
     }
 
-    pub fn deserialize_next(&mut self) -> KeyDeserializeResult {
-        use serde::Deserialize;
+    pub fn deserialize_next<T>(&mut self) -> EventDeserializeResult<T>
+    where
+        T: for <'de> SerializeEvent<'de>,
+    {
         if self.0.as_slice().is_empty() {
-            return KeyDeserializeResult::None;
+            return EventDeserializeResult::None;
         }
 
-        match Key::deserialize(&mut self.0) {
-            Ok(key) => KeyDeserializeResult::Some(key),
-            Err(_) => KeyDeserializeResult::Error,
+        match T::deserialize(&mut self.0) {
+            Ok(key) => EventDeserializeResult::Some(key),
+            Err(_) => EventDeserializeResult::Error,
         }
     }
 }
@@ -322,11 +342,11 @@ mod tests {
     fn key_serialization() {
         macro_rules! assert_serialization {
             ($key:expr) => {
-                let mut serializer = KeySerializer::default();
+                let mut serializer = EventSerializer::default();
                 serializer.serialize($key);
                 let slice = serializer.bytes();
-                let mut deserializer = KeyDeserializer::from_slice(slice);
-                if let KeyDeserializeResult::Some(key) = deserializer.deserialize_next() {
+                let mut deserializer = EventDeserializer::from_slice(slice);
+                if let EventDeserializeResult::Some(key) = deserializer.deserialize_next() {
                     assert_eq!($key, key);
                 } else {
                     assert!(false);

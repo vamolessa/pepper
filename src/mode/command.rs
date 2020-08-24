@@ -39,8 +39,8 @@ pub fn on_event(
                 FullCommandOperation::Complete | FullCommandOperation::Error => {
                     ModeOperation::EnterMode(from_mode.as_mode())
                 }
-                FullCommandOperation::WaitForClient => {
-                    ModeOperation::WaitForClient(from_mode.as_mode())
+                FullCommandOperation::WaitForSpawnOutputOnClient => {
+                    ModeOperation::WaitForSpawnOutputOnClient(from_mode.as_mode())
                 }
                 FullCommandOperation::Quit => ModeOperation::Quit,
             }
