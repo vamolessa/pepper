@@ -22,7 +22,7 @@ use crate::{
 
 pub enum ClientResponse {
     None,
-    SpawnOutput(String),
+    SpawnOutput(Option<String>),
 }
 
 pub struct Client {
@@ -200,9 +200,8 @@ impl Client {
                 self.status_message.push_str(message);
             }
             EditorOperation::Spawn(command, input) => {
-                if let Some(output) = self.spawn_command(command, *input) {
-                    return ClientResponse::SpawnOutput(output);
-                }
+                let output = self.spawn_command(command, *input);
+                return ClientResponse::SpawnOutput(output);
             }
         }
 
