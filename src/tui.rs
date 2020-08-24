@@ -10,8 +10,8 @@ use crate::{
     application::{UiError, UI},
     buffer_position::BufferPosition,
     client::Client,
-    editor_operation::StatusMessageKind,
     client_event::{ClientEvent, Key},
+    editor_operation::StatusMessageKind,
     mode::Mode,
     syntax::TokenKind,
     theme,
@@ -100,7 +100,6 @@ where
 
     fn init(&mut self) -> Result<()> {
         handle_command!(self.write, terminal::EnterAlternateScreen)?;
-        self.write.flush()?;
         handle_command!(self.write, cursor::Hide)?;
         self.write.flush()?;
         terminal::enable_raw_mode()?;
@@ -172,10 +171,11 @@ where
     }
 
     fn shutdown(&mut self) -> Result<()> {
-        handle_command!(self.write, ResetColor)?;
         handle_command!(self.write, terminal::Clear(terminal::ClearType::All))?;
         handle_command!(self.write, terminal::LeaveAlternateScreen)?;
+        handle_command!(self.write, ResetColor)?;
         handle_command!(self.write, cursor::Show)?;
+        self.write.flush()?;
         terminal::disable_raw_mode()?;
         Ok(())
     }

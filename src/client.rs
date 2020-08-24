@@ -5,6 +5,7 @@ use std::{
 };
 
 use crate::{
+    application::UI,
     buffer::{BufferContent, TextRef},
     buffer_position::BufferRange,
     client_event::SpawnResult,
@@ -81,12 +82,15 @@ impl Client {
         }
     }
 
-    pub fn load_config(
+    pub fn load_config<I>(
         &mut self,
         commands: &CommandCollection,
         keymaps: &mut KeyMapCollection,
         operations: &mut EditorOperationSerializer,
-    ) {
+        ui: &mut I,
+    ) where
+        I: UI,
+    {
         let mut ctx = ConfigCommandContext {
             operations,
             config: &self.config,
@@ -99,7 +103,7 @@ impl Client {
         loop {
             match deserializer.deserialize_next() {
                 EditorOperationDeserializeResult::Some(op) => {
-                    let _ = self.on_editor_operation(&op);
+                    let _ = self.on_editor_operation(&op, ui);
                 }
                 EditorOperationDeserializeResult::None
                 | EditorOperationDeserializeResult::Error => break,
@@ -107,7 +111,14 @@ impl Client {
         }
     }
 
-    pub fn on_editor_operation(&mut self, operation: &EditorOperation) -> ClientResponse {
+    pub fn on_editor_operation<I>(
+        &mut self,
+        operation: &EditorOperation,
+        ui: &mut I,
+    ) -> ClientResponse
+    where
+        I: UI,
+    {
         match operation {
             EditorOperation::Focused(focused) => self.has_focus = *focused,
             EditorOperation::Buffer(content) => {

@@ -1,4 +1,4 @@
-use std::{convert::From, env, fs, io, sync::mpsc, thread};
+use std::{fmt, convert::From, env, fs, io, sync::mpsc, thread};
 
 use crate::{
     client::{Client, ClientResponse},
@@ -12,7 +12,7 @@ use crate::{
     event_manager::{ConnectionEvent, EventManager},
 };
 
-pub trait UiError: 'static + Send {}
+pub trait UiError: 'static + Send + fmt::Debug {}
 
 #[derive(Debug)]
 pub enum ApplicationError<UIE>
@@ -90,11 +90,15 @@ where
     Ok(())
 }
 
-fn send_operations(
+fn send_operations<I>(
     operations: &mut EditorOperationSerializer,
     local_client: &mut Client,
     remote_clients: &mut ConnectionWithClientCollection,
-) -> ClientResponse {
+    ui: &mut I,
+) -> ClientResponse
+where
+    I: UI,
+{
     for handle in remote_clients.all_handles() {
         remote_clients.send_serialized_operations(handle, &operations);
     }
@@ -102,7 +106,7 @@ fn send_operations(
     let mut deserializer = EditorOperationDeserializer::from_slice(operations.local_bytes());
     let mut response = ClientResponse::None;
     while let EditorOperationDeserializeResult::Some(op) = deserializer.deserialize_next() {
-        response = response.or(local_client.on_editor_operation(&op));
+        response = response.or(local_client.on_editor_operation(&op, ui));
     }
 
     operations.clear();
@@ -130,6 +134,7 @@ where
         &editor.commands,
         &mut editor.keymaps,
         &mut editor_operations,
+        &mut ui,
     );
 
     connections.register_listener(&event_registry)?;
@@ -154,6 +159,7 @@ where
                                 &mut editor_operations,
                                 &mut local_client,
                                 &mut connections,
+                                &mut ui,
                             );
                             break;
                         }
@@ -162,6 +168,7 @@ where
                                 &mut editor_operations,
                                 &mut local_client,
                                 &mut connections,
+                                &mut ui,
                             ) {
                                 ClientResponse::None => break,
                                 ClientResponse::SpawnResult(spawn_result) => {
@@ -237,7 +244,12 @@ where
                 }
 
                 connections.unregister_closed_connections(&event_registry)?;
-                send_operations(&mut editor_operations, &mut local_client, &mut connections);
+                send_operations(
+                    &mut editor_operations,
+                    &mut local_client,
+                    &mut connections,
+                    &mut ui,
+                );
                 connections.unregister_closed_connections(&event_registry)?;
             }
         }
@@ -291,7 +303,7 @@ where
                 ConnectionEvent::NewConnection => (),
                 ConnectionEvent::Stream(_) => {
                     let response = connection
-                        .receive_operations(|op| local_client.on_editor_operation(&op))?;
+                        .receive_operations(|op| local_client.on_editor_operation(&op, &mut ui))?;
                     match response {
                         Some(ClientResponse::None) => (),
                         Some(ClientResponse::SpawnResult(spawn_result)) => {
