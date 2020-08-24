@@ -41,14 +41,14 @@ impl ReadBuf {
         }
     }
 
-    pub fn scope(&mut self) -> ReadScope {
-        ReadScope(self)
+    pub fn guard(&mut self) -> ReadGuard {
+        ReadGuard(self)
     }
 }
 
-struct ReadScope<'a>(&'a mut ReadBuf);
+struct ReadGuard<'a>(&'a mut ReadBuf);
 
-impl<'a> ReadScope<'a> {
+impl<'a> ReadGuard<'a> {
     pub fn read_from<R>(&mut self, mut reader: R) -> io::Result<()>
     where
         R: Read,
@@ -79,7 +79,7 @@ impl<'a> ReadScope<'a> {
     }
 }
 
-impl<'a> Drop for ReadScope<'a> {
+impl<'a> Drop for ReadGuard<'a> {
     fn drop(&mut self) {
         self.0.len = 0;
         self.0.position = 0;
@@ -238,10 +238,10 @@ impl ConnectionWithClientCollection {
             None => return Ok(EditorLoop::Quit),
         };
 
-        let mut read_scope = self.read_buf.scope();
-        read_scope.read_from(&mut connection.0)?;
+        let mut read_guard = self.read_buf.guard();
+        read_guard.read_from(&mut connection.0)?;
         let mut last_result = EditorLoop::Quit;
-        let mut deserializer = ClientEventDeserializer::from_slice(read_scope.as_bytes());
+        let mut deserializer = ClientEventDeserializer::from_slice(read_guard.as_bytes());
 
         loop {
             match deserializer.deserialize_next() {
@@ -272,11 +272,11 @@ impl ConnectionWithClientCollection {
 
         connection.0.set_nonblocking(false)?;
 
-        let mut read_scope = self.read_buf.scope();
+        let mut read_guard = self.read_buf.guard();
 
         let output = loop {
-            read_scope.read_from(&mut connection.0)?;
-            let mut deserializer = ClientEventDeserializer::from_slice(read_scope.as_bytes());
+            read_guard.read_from(&mut connection.0)?;
+            let mut deserializer = ClientEventDeserializer::from_slice(read_guard.as_bytes());
             if let ClientEventDeserializeResult::Some(output) = deserializer.deserialize_next() {
                 break output;
             }
@@ -343,10 +343,10 @@ impl ConnectionWithServer {
     where
         F: FnMut(EditorOperation<'_>) -> ClientResponse,
     {
-        let mut read_scope = self.read_buf.scope();
-        read_scope.read_from(&mut self.stream)?;
+        let mut read_guard = self.read_buf.guard();
+        read_guard.read_from(&mut self.stream)?;
         let mut last_response = None;
-        let mut deserializer = EditorOperationDeserializer::from_slice(read_scope.as_bytes());
+        let mut deserializer = EditorOperationDeserializer::from_slice(read_guard.as_bytes());
 
         loop {
             match deserializer.deserialize_next() {
