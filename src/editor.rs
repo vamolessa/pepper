@@ -1,11 +1,11 @@
 use crate::{
     buffer::BufferCollection,
     buffer_view::{BufferViewCollection, BufferViewHandle},
+    client_event::{Key, SpawnResult},
     command::{CommandCollection, FullCommandContext, FullCommandOperation},
     config::Config,
     connection::{ConnectionWithClientHandle, TargetClient},
-    editor_operation::{EditorOperation, EditorOperationSerializer},
-    client_event::{SpawnResult, Key},
+    editor_operation::{EditorOperation, EditorOperationSerializer, StatusMessageKind},
     keymap::{KeyMapCollection, MatchResult},
     mode::{Mode, ModeContext, ModeOperation},
 };
@@ -263,12 +263,16 @@ impl Editor {
     pub fn on_spawn_result(
         &mut self,
         config: &Config,
-        result: SpawnResult,
+        spawn_result: SpawnResult,
         target_client: TargetClient,
         operations: &mut EditorOperationSerializer,
     ) -> EditorLoop {
-        if !result.success {
-            //
+        if !spawn_result.success {
+            operations.serialize(
+                TargetClient::All,
+                &EditorOperation::StatusMessage(StatusMessageKind::Error, &spawn_result.output[..]),
+            );
+            return EditorLoop::Continue;
         }
 
         let current_buffer_view_handle = match target_client {
@@ -292,10 +296,12 @@ impl Editor {
 
         match self
             .commands
-            .continue_parse_and_execute_any_command(&mut command_context, result.output)
+            .continue_parse_and_execute_any_command(&mut command_context, spawn_result.output)
         {
             FullCommandOperation::Error | FullCommandOperation::Complete => EditorLoop::Continue,
-            FullCommandOperation::WaitForSpawnOutputOnClient => EditorLoop::WaitForSpawnOutputOnClient,
+            FullCommandOperation::WaitForSpawnOutputOnClient => {
+                EditorLoop::WaitForSpawnOutputOnClient
+            }
             FullCommandOperation::Quit => EditorLoop::Quit,
         }
     }

@@ -166,16 +166,13 @@ where
                                 &mut connections,
                             ) {
                                 ClientResponse::None => break,
-                                ClientResponse::SpawnResult(result) => {
-                                    todo!();
-                                    /*
-                                    result = editor.on_spawn_output(
+                                ClientResponse::SpawnResult(spawn_result) => {
+                                    result = editor.on_spawn_result(
                                         &local_client.config,
-                                        result,
+                                        spawn_result,
                                         TargetClient::Local,
                                         &mut editor_operations,
                                     );
-                                    */
                                 }
                             }
                         }
@@ -221,10 +218,11 @@ where
                                 Ok(EditorLoop::WaitForSpawnOutputOnClient) => {
                                     connections
                                         .listen_next_connection_event(handle, &event_registry)?;
-                                    let spawn_result = match connections.receive_spawn_result(handle)? {
-                                        Some(spawn_result) => spawn_result,
-                                        None => break,
-                                    };
+                                    let spawn_result =
+                                        match connections.receive_spawn_result(handle)? {
+                                            Some(spawn_result) => spawn_result,
+                                            None => break,
+                                        };
 
                                     result = Ok(editor.on_spawn_result(
                                         &local_client.config,
@@ -276,7 +274,7 @@ where
     let ui_event_loop = I::run_event_loop_in_background(event_sender);
 
     let mut local_client = Client::new();
-    let mut keys = ClientEventSerializer::default();
+    let mut events = ClientEventSerializer::default();
 
     connection.register_connection(&event_registry)?;
     ui.init()?;
@@ -285,8 +283,8 @@ where
         match event {
             ClientEvent::None => (),
             ClientEvent::Key(key) => {
-                keys.serialize(key);
-                if connection.send_serialized_events(&mut keys).is_err() {
+                events.serialize(key);
+                if connection.send_serialized_events(&mut events).is_err() {
                     break;
                 }
             }
@@ -298,9 +296,11 @@ where
                         .receive_operations(|op| local_client.on_editor_operation(&op))?;
                     match response {
                         Some(ClientResponse::None) => (),
-                        Some(ClientResponse::SpawnResult(result)) => {
-                            todo!();
-                            //connection.send_serialized_client_input(&result[..])?
+                        Some(ClientResponse::SpawnResult(spawn_result)) => {
+                            events.serialize(spawn_result);
+                            if connection.send_serialized_events(&mut events).is_err() {
+                                break;
+                            }
                         }
                         None => break,
                     }
