@@ -147,12 +147,7 @@ where
                 match result {
                     EditorLoop::Quit => break,
                     EditorLoop::Continue => {
-                        send_operations(
-                            &mut editor_operations,
-                            &mut local_client,
-                            &mut connections,
-                        );
-                        break;
+                        send_operations(&mut editor_operations, &mut local_client, &mut connections)
                     }
                 }
             }
@@ -239,7 +234,7 @@ where
             ClientEvent::None => (),
             ClientEvent::Key(key) => {
                 events.serialize(key);
-                if connection.send_serialized_events(&mut events).is_err() {
+                if let Err(_) = connection.send_serialized_events(&mut events) {
                     break;
                 }
             }
