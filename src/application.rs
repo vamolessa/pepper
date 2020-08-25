@@ -4,7 +4,7 @@ use argh::FromArgs;
 
 use crate::{
     client::Client,
-    client_event::{ClientEvent, ClientEventSerializer},
+    client_event::{ClientEvent, KeySerializer},
     connection::{ConnectionWithClientCollection, ConnectionWithServer, TargetClient},
     editor::{Editor, EditorLoop},
     editor_operation::{
@@ -251,7 +251,7 @@ where
     let ui_event_loop = I::run_event_loop_in_background(event_sender);
 
     let mut local_client = Client::new();
-    let mut events = ClientEventSerializer::default();
+    let mut keys = KeySerializer::default();
 
     connection.register_connection(&event_registry)?;
     ui.init()?;
@@ -260,8 +260,8 @@ where
         match event {
             ClientEvent::None => (),
             ClientEvent::Key(key) => {
-                events.serialize(key);
-                if let Err(_) = connection.send_serialized_events(&mut events) {
+                keys.serialize(key);
+                if let Err(_) = connection.send_serialized_keys(&mut keys) {
                     break;
                 }
             }

@@ -12,7 +12,7 @@ use uds_windows::{UnixListener, UnixStream};
 
 use crate::{
     client_event::{
-        ClientEventDeserializeResult, ClientEventDeserializer, ClientEventSerializer, Key,
+        KeyDeserializeResult, KeyDeserializer, KeySerializer, Key,
     },
     editor::EditorLoop,
     editor_operation::{
@@ -239,18 +239,18 @@ impl ConnectionWithClientCollection {
         let mut read_guard = self.read_buf.guard();
         read_guard.read_from(&mut connection.0)?;
         let mut last_result = EditorLoop::Quit;
-        let mut deserializer = ClientEventDeserializer::from_slice(read_guard.as_bytes());
+        let mut deserializer = KeyDeserializer::from_slice(read_guard.as_bytes());
 
         loop {
             match deserializer.deserialize_next() {
-                ClientEventDeserializeResult::Some(key) => {
+                KeyDeserializeResult::Some(key) => {
                     last_result = callback(key);
                     if let EditorLoop::Quit = last_result {
                         break;
                     }
                 }
-                ClientEventDeserializeResult::None => break,
-                ClientEventDeserializeResult::Error => {
+                KeyDeserializeResult::None => break,
+                KeyDeserializeResult::Error => {
                     return Err(io::Error::from(io::ErrorKind::Other))
                 }
             }
@@ -294,9 +294,9 @@ impl ConnectionWithServer {
         event_registry.listen_next_stream_event(&self.stream, StreamId(0))
     }
 
-    pub fn send_serialized_events(
+    pub fn send_serialized_keys(
         &mut self,
-        serializer: &mut ClientEventSerializer,
+        serializer: &mut KeySerializer,
     ) -> io::Result<()> {
         let bytes = serializer.bytes();
         if bytes.is_empty() {

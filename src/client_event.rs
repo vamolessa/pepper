@@ -225,9 +225,9 @@ impl Key {
 }
 
 #[derive(Default)]
-pub struct ClientEventSerializer(SerializationBuf);
+pub struct KeySerializer(SerializationBuf);
 
-impl ClientEventSerializer {
+impl KeySerializer {
     pub fn serialize<T>(&mut self, input: T)
     where
         T: Serialize,
@@ -245,27 +245,27 @@ impl ClientEventSerializer {
 }
 
 #[derive(Debug)]
-pub enum ClientEventDeserializeResult {
+pub enum KeyDeserializeResult {
     Some(Key),
     None,
     Error,
 }
 
-pub struct ClientEventDeserializer<'a>(DeserializationSlice<'a>);
+pub struct KeyDeserializer<'a>(DeserializationSlice<'a>);
 
-impl<'a> ClientEventDeserializer<'a> {
+impl<'a> KeyDeserializer<'a> {
     pub fn from_slice(slice: &'a [u8]) -> Self {
         Self(DeserializationSlice::from_slice(slice))
     }
 
-    pub fn deserialize_next(&mut self) -> ClientEventDeserializeResult {
+    pub fn deserialize_next(&mut self) -> KeyDeserializeResult {
         if self.0.as_slice().is_empty() {
-            return ClientEventDeserializeResult::None;
+            return KeyDeserializeResult::None;
         }
 
         match Key::deserialize(&mut self.0) {
-            Ok(key) => ClientEventDeserializeResult::Some(key),
-            Err(_) => ClientEventDeserializeResult::Error,
+            Ok(key) => KeyDeserializeResult::Some(key),
+            Err(_) => KeyDeserializeResult::Error,
         }
     }
 }
@@ -324,11 +324,11 @@ mod tests {
     fn key_serialization() {
         macro_rules! assert_serialization {
             ($key:expr) => {
-                let mut serializer = ClientEventSerializer::default();
+                let mut serializer = KeySerializer::default();
                 serializer.serialize($key);
                 let slice = serializer.bytes();
-                let mut deserializer = ClientEventDeserializer::from_slice(slice);
-                if let ClientEventDeserializeResult::Some(key) = deserializer.deserialize_next() {
+                let mut deserializer = KeyDeserializer::from_slice(slice);
+                if let KeyDeserializeResult::Some(key) = deserializer.deserialize_next() {
                     assert_eq!($key, key);
                 } else {
                     assert!(false);
