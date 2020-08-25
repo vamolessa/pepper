@@ -14,7 +14,7 @@ use crate::{
     event_manager::{ConnectionEvent, EventManager},
 };
 
-/// cli arguments
+/// code editor inspired by vim and kakoune
 #[derive(FromArgs)]
 struct Args {
     /// path where config file is located
@@ -90,7 +90,7 @@ where
     let args: Args = argh::from_env();
 
     let mut session_socket_path = env::temp_dir();
-    session_socket_path.push("pepper");
+    session_socket_path.push(env!("CARGO_PKG_NAME"));
     if !session_socket_path.exists() {
         std::fs::create_dir_all(&session_socket_path)?;
     }
