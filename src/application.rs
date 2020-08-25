@@ -124,11 +124,7 @@ where
     let mut editor = Editor::new();
     let mut editor_operations = EditorOperationSerializer::default();
 
-    local_client.load_config(
-        &editor.commands,
-        &mut editor.keymaps,
-        &mut editor_operations,
-    );
+    editor.load_config(&mut local_client, &mut editor_operations);
 
     connections.register_listener(&event_registry)?;
     ui.init()?;

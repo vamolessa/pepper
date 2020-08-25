@@ -1,5 +1,5 @@
 use crate::{
-    command::{FullCommandContext, FullCommandOperation},
+    command::{CommandContext, CommandOperation},
     connection::TargetClient,
     editor::KeysIterator,
     editor_operation::EditorOperation,
@@ -21,7 +21,7 @@ pub fn on_event(
         InputPollResult::Pending => ModeOperation::None,
         InputPollResult::Canceled => ModeOperation::EnterMode(from_mode.as_mode()),
         InputPollResult::Submited => {
-            let mut command_context = FullCommandContext {
+            let mut command_context = CommandContext {
                 target_client: ctx.target_client,
                 operations: ctx.operations,
 
@@ -34,12 +34,12 @@ pub fn on_event(
 
             match ctx
                 .commands
-                .parse_and_execute_any_command(&mut command_context, &ctx.input[..])
+                .parse_and_execute_command(&mut command_context, &ctx.input[..])
             {
-                FullCommandOperation::Complete | FullCommandOperation::Error => {
+                CommandOperation::Complete | CommandOperation::Error => {
                     ModeOperation::EnterMode(from_mode.as_mode())
                 }
-                FullCommandOperation::Quit => ModeOperation::Quit,
+                CommandOperation::Quit => ModeOperation::Quit,
             }
         }
     }

@@ -3,7 +3,7 @@ use std::{env, fmt, fs::File, io::Read, num::NonZeroUsize, path::PathBuf, str::F
 use serde_derive::{Deserialize, Serialize};
 
 use crate::{
-    command::{CommandCollection, ConfigCommandContext, ConfigCommandOperation},
+    command::{CommandCollection, CommandContext, CommandOperation},
     connection::TargetClient,
     editor_operation::{EditorOperation, StatusMessageKind},
     pattern::Pattern,
@@ -99,7 +99,7 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn load_into_operations(commands: &CommandCollection, ctx: &mut ConfigCommandContext) {
+    pub fn load_into_operations(commands: &mut CommandCollection, ctx: &mut CommandContext) {
         macro_rules! serialize_error {
             ($error:expr) => {{
                 ctx.operations.serialize(
@@ -133,8 +133,8 @@ impl Config {
             .map(|(i, l)| (i, l.trim()))
             .filter(|(_, l)| !l.starts_with('#'))
         {
-            if let ConfigCommandOperation::Error =
-                commands.parse_and_execut_config_command(ctx, line)
+            if let CommandOperation::Error =
+                commands.parse_and_execute_command(ctx, line)
             {
                 let message = format!(" loading config at {:?}:{}", path, i + 1);
                 ctx.operations.serialize(

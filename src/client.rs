@@ -3,14 +3,9 @@ use std::path::PathBuf;
 use crate::{
     buffer::{BufferContent, TextRef},
     buffer_position::BufferRange,
-    command::{CommandCollection, ConfigCommandContext},
     config::Config,
     cursor::Cursor,
-    editor_operation::{
-        EditorOperation, EditorOperationDeserializeResult, EditorOperationDeserializer,
-        EditorOperationSerializer, StatusMessageKind,
-    },
-    keymap::KeyMapCollection,
+    editor_operation::{EditorOperation, EditorOperationDeserializer, StatusMessageKind},
     mode::Mode,
     select::SelectEntryCollection,
     syntax::{HighlightedBuffer, SyntaxHandle},
@@ -58,32 +53,6 @@ impl Client {
 
             status_message_kind: StatusMessageKind::Info,
             status_message: String::new(),
-        }
-    }
-
-    pub fn load_config(
-        &mut self,
-        commands: &CommandCollection,
-        keymaps: &mut KeyMapCollection,
-        operations: &mut EditorOperationSerializer,
-    ) {
-        let mut ctx = ConfigCommandContext {
-            operations,
-            config: &self.config,
-            keymaps,
-        };
-
-        Config::load_into_operations(commands, &mut ctx);
-        let mut deserializer = EditorOperationDeserializer::from_slice(operations.local_bytes());
-
-        loop {
-            match deserializer.deserialize_next() {
-                EditorOperationDeserializeResult::Some(op) => {
-                    let _ = self.on_editor_operation(&op);
-                }
-                EditorOperationDeserializeResult::None
-                | EditorOperationDeserializeResult::Error => break,
-            }
         }
     }
 

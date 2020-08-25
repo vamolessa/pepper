@@ -1,11 +1,15 @@
 use crate::{
+    client::Client,
     buffer::BufferCollection,
     buffer_view::{BufferViewCollection, BufferViewHandle},
     client_event::Key,
-    command::CommandCollection,
+    command::{CommandCollection, CommandContext},
     config::Config,
     connection::{ConnectionWithClientHandle, TargetClient},
-    editor_operation::{EditorOperation, EditorOperationSerializer},
+    editor_operation::{
+        EditorOperation, EditorOperationDeserializeResult, EditorOperationDeserializer,
+        EditorOperationSerializer,
+    },
     keymap::{KeyMapCollection, MatchResult},
     mode::{Mode, ModeContext, ModeOperation},
 };
@@ -73,6 +77,32 @@ impl Editor {
             remote_client_current_buffer_view_handles: Vec::new(),
 
             focused_client: TargetClient::Local,
+        }
+    }
+
+    pub fn load_config(&mut self, client: &mut Client, operations: &mut EditorOperationSerializer) {
+        let mut ctx = CommandContext {
+            target_client: TargetClient::Local,
+            operations,
+
+            config: &client.config,
+            keymaps: &mut self.keymaps,
+            buffers: &mut self.buffers,
+            buffer_views: &mut self.buffer_views,
+            current_buffer_view_handle: &mut self.local_client_current_buffer_view_handle,
+        };
+
+        Config::load_into_operations(&mut self.commands, &mut ctx);
+        let mut deserializer = EditorOperationDeserializer::from_slice(operations.local_bytes());
+
+        loop {
+            match deserializer.deserialize_next() {
+                EditorOperationDeserializeResult::Some(op) => {
+                    let _ = client.on_editor_operation(&op);
+                }
+                EditorOperationDeserializeResult::None
+                | EditorOperationDeserializeResult::Error => break,
+            }
         }
     }
 
