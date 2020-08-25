@@ -12,7 +12,8 @@ use crate::{
     buffer::{Buffer, BufferCollection, BufferContent, TextRef},
     buffer_view::{BufferView, BufferViewCollection, BufferViewHandle},
     config::{Config, ParseConfigError},
-    connection::TargetClient,
+    connection::{ConnectionWithClientHandle, TargetClient},
+    editor::ClientTargetMap,
     editor_operation::{EditorOperation, EditorOperationSerializer, StatusMessageKind},
     keymap::{KeyMapCollection, ParseKeyMapError},
     mode::Mode,
@@ -27,14 +28,9 @@ pub enum CommandOperation {
     Quit,
 }
 
-impl Default for CommandOperation {
-    fn default() -> Self {
-        Self::Error
-    }
-}
-
 pub struct CommandContext<'a> {
     pub target_client: TargetClient,
+    pub client_target_map: &'a mut ClientTargetMap,
     pub operations: &'a mut EditorOperationSerializer,
 
     pub config: &'a Config,
@@ -44,12 +40,8 @@ pub struct CommandContext<'a> {
     pub current_buffer_view_handle: &'a mut Option<BufferViewHandle>,
 }
 
-type CommandBody = fn(
-    &mut CommandContext,
-    &mut CommandArgs,
-    Option<&str>,
-    &mut String,
-) -> CommandOperation;
+type CommandBody =
+    fn(&mut CommandContext, &mut CommandArgs, Option<&str>, &mut String) -> CommandOperation;
 
 struct ParsedCommand<'a> {
     pub name: &'a str,
@@ -138,7 +130,7 @@ macro_rules! command_error {
             TargetClient::All,
             &EditorOperation::StatusMessage(StatusMessageKind::Error, &$error),
         );
-        return Default::default();
+        return CommandOperation::Error;
     }};
 }
 
@@ -168,6 +160,8 @@ impl Default for CommandCollection {
         }
 
         register_commands! {
+            target,
+
             quit, open, close, save, save_all,
             selection, replace, echo, pipe,
 
@@ -185,7 +179,7 @@ impl CommandCollection {
     }
 
     pub fn parse_and_execute_command(
-        &mut self,
+        &self,
         ctx: &mut CommandContext,
         mut commands: &str,
     ) -> CommandOperation {
@@ -281,11 +275,7 @@ mod helper {
         }
     }
 
-    pub fn new_buffer_from_content(
-        ctx: &mut CommandContext,
-        path: &Path,
-        content: BufferContent,
-    ) {
+    pub fn new_buffer_from_content(ctx: &mut CommandContext, path: &Path, content: BufferContent) {
         ctx.operations.serialize_buffer(ctx.target_client, &content);
         ctx.operations
             .serialize(ctx.target_client, &EditorOperation::Path(path));
@@ -373,6 +363,29 @@ mod helper {
 
 mod commands {
     use super::*;
+
+    pub fn target(
+        ctx: &mut CommandContext,
+        args: &mut CommandArgs,
+        _input: Option<&str>,
+        _output: &mut String,
+    ) -> CommandOperation {
+        let target = expect_next!(ctx.operations, args);
+        match target {
+            "local" => ctx
+                .client_target_map
+                .map(ctx.target_client, TargetClient::Local),
+            _ => {
+                let client_handle: ConnectionWithClientHandle = match target.parse() {
+                    Ok(handle) => handle,
+                    Err(_) => command_error!(ctx.operations, "could not parse target client"),
+                };
+                ctx.client_target_map
+                    .map(ctx.target_client, TargetClient::Remote(client_handle));
+            }
+        }
+        CommandOperation::Complete
+    }
 
     pub fn quit(
         ctx: &mut CommandContext,
@@ -738,11 +751,7 @@ mod commands {
         mode_map(ctx, args, Mode::Insert)
     }
 
-    fn mode_map(
-        ctx: &mut CommandContext,
-        args: &mut CommandArgs,
-        mode: Mode,
-    ) -> CommandOperation {
+    fn mode_map(ctx: &mut CommandContext, args: &mut CommandArgs, mode: Mode) -> CommandOperation {
         let from = expect_next!(ctx.operations, args);
         let to = expect_next!(ctx.operations, args);
         assert_empty!(ctx.operations, args);

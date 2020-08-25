@@ -1,9 +1,9 @@
 use std::path::Path;
 
 use crate::{
-    client::Client,
     buffer::BufferCollection,
     buffer_view::{BufferViewCollection, BufferViewHandle},
+    client::Client,
     client_event::Key,
     command::{CommandCollection, CommandContext},
     config::Config,
@@ -49,6 +49,64 @@ impl<'a> KeysIterator<'a> {
     }
 }
 
+#[derive(Default)]
+pub struct ClientTargetMap {
+    local_target: Option<TargetClient>,
+    remote_targets: Vec<Option<TargetClient>>,
+}
+
+impl ClientTargetMap {
+    pub fn on_client_joined(&mut self, client_handle: ConnectionWithClientHandle) {
+        let min_len = client_handle.into_index() + 1;
+        if min_len > self.remote_targets.len() {
+            self.remote_targets.resize_with(min_len, || None);
+        }
+    }
+
+    pub fn on_client_left(&mut self, client_handle: ConnectionWithClientHandle) {
+        if self.local_target == Some(TargetClient::Remote(client_handle)) {
+            self.local_target = None;
+        }
+
+        self.remote_targets[client_handle.into_index()] = None;
+        for target in &mut self.remote_targets {
+            if *target == Some(TargetClient::Remote(client_handle)) {
+                *target = None;
+            }
+        }
+    }
+
+    pub fn map(&mut self, from: TargetClient, to: TargetClient) {
+        let to = match to {
+            TargetClient::All => unreachable!(),
+            TargetClient::Local => Some(to),
+            TargetClient::Remote(handle) => {
+                if handle.into_index() < self.remote_targets.len() {
+                    Some(to)
+                } else {
+                    None
+                }
+            }
+        };
+
+        match from {
+            TargetClient::All => unreachable!(),
+            TargetClient::Local => self.local_target = to,
+            TargetClient::Remote(handle) => self.remote_targets[handle.into_index()] = to,
+        }
+    }
+
+    pub fn get(&self, target: TargetClient) -> TargetClient {
+        match target {
+            TargetClient::All => target,
+            TargetClient::Local => self.local_target.unwrap_or(target),
+            TargetClient::Remote(handle) => {
+                self.remote_targets[handle.into_index()].unwrap_or(target)
+            }
+        }
+    }
+}
+
 pub struct Editor {
     mode: Mode,
     keymaps: KeyMapCollection,
@@ -62,6 +120,7 @@ pub struct Editor {
     remote_client_current_buffer_view_handles: Vec<Option<BufferViewHandle>>,
 
     focused_client: TargetClient,
+    client_target_map: ClientTargetMap,
 }
 
 impl Editor {
@@ -79,12 +138,19 @@ impl Editor {
             remote_client_current_buffer_view_handles: Vec::new(),
 
             focused_client: TargetClient::Local,
+            client_target_map: ClientTargetMap::default(),
         }
     }
 
-    pub fn load_config(&mut self, client: &mut Client, operations: &mut EditorOperationSerializer, path: &Path) {
+    pub fn load_config(
+        &mut self,
+        client: &mut Client,
+        operations: &mut EditorOperationSerializer,
+        path: &Path,
+    ) {
         let mut ctx = CommandContext {
             target_client: TargetClient::Local,
+            client_target_map: &mut self.client_target_map,
             operations,
 
             config: &client.config,
@@ -115,6 +181,8 @@ impl Editor {
         operations: &mut EditorOperationSerializer,
     ) {
         operations.on_client_joined(client_handle);
+        self.client_target_map.on_client_joined(client_handle);
+
         let target_client = TargetClient::Remote(client_handle);
 
         let buffer_view_handle = match self.focused_client {
@@ -196,6 +264,8 @@ impl Editor {
         operations: &mut EditorOperationSerializer,
     ) {
         operations.on_client_left(client_handle);
+        self.client_target_map.on_client_left(client_handle);
+
         if self.focused_client == TargetClient::Remote(client_handle) {
             self.focused_client = TargetClient::Local;
             operations.serialize(self.focused_client, &EditorOperation::Focused(true));
@@ -217,6 +287,8 @@ impl Editor {
         target_client: TargetClient,
         operations: &mut EditorOperationSerializer,
     ) -> EditorLoop {
+        let target_client = self.client_target_map.get(target_client);
+
         if target_client != self.focused_client {
             operations.serialize(self.focused_client, &EditorOperation::Focused(false));
             operations.serialize(target_client, &EditorOperation::Focused(true));
@@ -255,6 +327,7 @@ impl Editor {
 
             let mut mode_context = ModeContext {
                 target_client,
+                client_target_map: &mut self.client_target_map,
                 operations,
 
                 config,

@@ -3,6 +3,7 @@ use std::{
     io::{self, Read, Write},
     net::Shutdown,
     path::Path,
+    str::FromStr,
 };
 
 #[cfg(unix)]
@@ -11,9 +12,7 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use uds_windows::{UnixListener, UnixStream};
 
 use crate::{
-    client_event::{
-        KeyDeserializeResult, KeyDeserializer, KeySerializer, Key,
-    },
+    client_event::{Key, KeyDeserializeResult, KeyDeserializer, KeySerializer},
     editor::EditorLoop,
     editor_operation::{
         EditorOperation, EditorOperationDeserializeResult, EditorOperationDeserializer,
@@ -108,6 +107,13 @@ impl Into<ConnectionWithClientHandle> for StreamId {
 impl Into<StreamId> for ConnectionWithClientHandle {
     fn into(self) -> StreamId {
         StreamId(self.0)
+    }
+}
+impl FromStr for ConnectionWithClientHandle {
+    type Err = <usize as FromStr>::Err;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self(s.parse()?))
     }
 }
 
@@ -250,9 +256,7 @@ impl ConnectionWithClientCollection {
                     }
                 }
                 KeyDeserializeResult::None => break,
-                KeyDeserializeResult::Error => {
-                    return Err(io::Error::from(io::ErrorKind::Other))
-                }
+                KeyDeserializeResult::Error => return Err(io::Error::from(io::ErrorKind::Other)),
             }
         }
 
@@ -294,10 +298,7 @@ impl ConnectionWithServer {
         event_registry.listen_next_stream_event(&self.stream, StreamId(0))
     }
 
-    pub fn send_serialized_keys(
-        &mut self,
-        serializer: &mut KeySerializer,
-    ) -> io::Result<()> {
+    pub fn send_serialized_keys(&mut self, serializer: &mut KeySerializer) -> io::Result<()> {
         let bytes = serializer.bytes();
         if bytes.is_empty() {
             return Ok(());

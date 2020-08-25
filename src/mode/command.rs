@@ -23,6 +23,7 @@ pub fn on_event(
         InputPollResult::Submited => {
             let mut command_context = CommandContext {
                 target_client: ctx.target_client,
+                client_target_map: ctx.client_target_map,
                 operations: ctx.operations,
 
                 config: ctx.config,
