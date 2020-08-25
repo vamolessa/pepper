@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use crate::{
     client::Client,
     buffer::BufferCollection,
@@ -49,13 +51,13 @@ impl<'a> KeysIterator<'a> {
 
 pub struct Editor {
     mode: Mode,
-    pub keymaps: KeyMapCollection,
+    keymaps: KeyMapCollection,
     buffered_keys: Vec<Key>,
     input: String,
-    pub commands: CommandCollection,
+    commands: CommandCollection,
 
-    pub buffers: BufferCollection,
-    pub buffer_views: BufferViewCollection,
+    buffers: BufferCollection,
+    buffer_views: BufferViewCollection,
     local_client_current_buffer_view_handle: Option<BufferViewHandle>,
     remote_client_current_buffer_view_handles: Vec<Option<BufferViewHandle>>,
 
@@ -80,7 +82,7 @@ impl Editor {
         }
     }
 
-    pub fn load_config(&mut self, client: &mut Client, operations: &mut EditorOperationSerializer) {
+    pub fn load_config(&mut self, client: &mut Client, operations: &mut EditorOperationSerializer, path: &Path) {
         let mut ctx = CommandContext {
             target_client: TargetClient::Local,
             operations,
@@ -92,7 +94,7 @@ impl Editor {
             current_buffer_view_handle: &mut self.local_client_current_buffer_view_handle,
         };
 
-        Config::load_into_operations(&mut self.commands, &mut ctx);
+        Config::load_into_operations(&mut self.commands, &mut ctx, path);
         let mut deserializer = EditorOperationDeserializer::from_slice(operations.local_bytes());
 
         loop {

@@ -1,4 +1,6 @@
-use std::{convert::From, env, fmt, fs, io, sync::mpsc, thread};
+use std::{convert::From, env, fmt, fs, io, path::PathBuf, sync::mpsc, thread};
+
+use argh::FromArgs;
 
 use crate::{
     client::Client,
@@ -11,6 +13,18 @@ use crate::{
     },
     event_manager::{ConnectionEvent, EventManager},
 };
+
+/// cli arguments
+#[derive(FromArgs)]
+struct Args {
+    /// path where config file is located
+    #[argh(option, short = 'c')]
+    config: Option<PathBuf>,
+
+    /// session name
+    #[argh(option, short = 's')]
+    session: Option<String>,
+}
 
 pub trait UiError: 'static + Send + fmt::Debug {}
 
@@ -73,15 +87,29 @@ pub fn run<I>(ui: I) -> Result<(), ApplicationError<I::Error>>
 where
     I: UI,
 {
-    let session_socket_path = env::current_dir()?.join("session_socket");
+    let args: Args = argh::from_env();
+
+    let mut session_socket_path = env::temp_dir();
+    session_socket_path.push("pepper");
+    if !session_socket_path.exists() {
+        std::fs::create_dir_all(&session_socket_path)?;
+    }
+
+    let mut session_name = match args.session.clone() {
+        Some(session) => session,
+        None => env::current_dir()?.to_string_lossy().into_owned(),
+    };
+    session_name.retain(|c| c.is_alphanumeric());
+    session_socket_path.push(session_name);
+
     if let Ok(connection) = ConnectionWithServer::connect(&session_socket_path) {
         run_client(ui, connection)?;
     } else if let Ok(listener) = ConnectionWithClientCollection::listen(&session_socket_path) {
-        run_server_with_client(ui, listener)?;
+        run_server_with_client(args, ui, listener)?;
         fs::remove_file(session_socket_path)?;
     } else if let Ok(()) = fs::remove_file(&session_socket_path) {
         let listener = ConnectionWithClientCollection::listen(&session_socket_path)?;
-        run_server_with_client(ui, listener)?;
+        run_server_with_client(args, ui, listener)?;
         fs::remove_file(session_socket_path)?;
     } else {
         return Err(ApplicationError::CouldNotConnectToOrStartServer);
@@ -108,6 +136,7 @@ fn send_operations(
 }
 
 fn run_server_with_client<I>(
+    args: Args,
     mut ui: I,
     mut connections: ConnectionWithClientCollection,
 ) -> Result<(), ApplicationError<I::Error>>
@@ -124,7 +153,9 @@ where
     let mut editor = Editor::new();
     let mut editor_operations = EditorOperationSerializer::default();
 
-    editor.load_config(&mut local_client, &mut editor_operations);
+    if let Some(config_path) = args.config {
+        editor.load_config(&mut local_client, &mut editor_operations, &config_path);
+    }
 
     connections.register_listener(&event_registry)?;
     ui.init()?;

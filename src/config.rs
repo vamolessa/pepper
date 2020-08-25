@@ -1,4 +1,4 @@
-use std::{env, fmt, fs::File, io::Read, num::NonZeroUsize, path::PathBuf, str::FromStr};
+use std::{fmt, fs::File, io::Read, num::NonZeroUsize, path::Path, str::FromStr};
 
 use serde_derive::{Deserialize, Serialize};
 
@@ -99,33 +99,29 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn load_into_operations(commands: &mut CommandCollection, ctx: &mut CommandContext) {
-        macro_rules! serialize_error {
-            ($error:expr) => {{
-                ctx.operations.serialize(
-                    TargetClient::All,
-                    &EditorOperation::StatusMessage(StatusMessageKind::Error, &$error),
-                );
-                return;
-            }};
+    pub fn load_into_operations(
+        commands: &mut CommandCollection,
+        ctx: &mut CommandContext,
+        path: &Path,
+    ) {
+        macro_rules! unwrap_or_serialize_error {
+            ($value:expr) => {
+                match $value {
+                    Ok(value) => value,
+                    Err(error) => {
+                        let error = format!("loading config at {:?}: {}", path, error);
+                        let op = EditorOperation::StatusMessage(StatusMessageKind::Error, &error);
+                        ctx.operations.serialize(TargetClient::All, &op);
+                        return;
+                    }
+                }
+            };
         }
 
-        let path = match env::var("PEPPERC") {
-            Ok(path) => match PathBuf::from(&path[..]).canonicalize() {
-                Ok(path) => path,
-                Err(e) => serialize_error!(format!("loading config at {}: {}", &path[..], e)),
-            },
-            Err(_) => return,
-        };
-        let mut file = match File::open(&path) {
-            Ok(file) => file,
-            Err(e) => serialize_error!(format!("loading config: {}", e)),
-        };
-        let mut contents = String::with_capacity(2 * 1024);
-        match file.read_to_string(&mut contents) {
-            Ok(_) => (),
-            Err(e) => serialize_error!(format!("loading config at {:?}: {}", path, e)),
-        }
+        let mut file = unwrap_or_serialize_error!(File::open(path));
+        let metadata = unwrap_or_serialize_error!(file.metadata());
+        let mut contents = String::with_capacity(metadata.len() as _);
+        unwrap_or_serialize_error!(file.read_to_string(&mut contents));
 
         for (i, line) in contents
             .lines()
@@ -133,9 +129,7 @@ impl Config {
             .map(|(i, l)| (i, l.trim()))
             .filter(|(_, l)| !l.starts_with('#'))
         {
-            if let CommandOperation::Error =
-                commands.parse_and_execute_command(ctx, line)
-            {
+            if let CommandOperation::Error = commands.parse_and_execute_command(ctx, line) {
                 let message = format!(" loading config at {:?}:{}", path, i + 1);
                 ctx.operations.serialize(
                     TargetClient::All,
