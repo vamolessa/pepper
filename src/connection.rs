@@ -11,10 +11,8 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use uds_windows::{UnixListener, UnixStream};
 
 use crate::{
-    client::ClientResponse,
     client_event::{
         ClientEventDeserializeResult, ClientEventDeserializer, ClientEventSerializer, Key,
-        SpawnResult,
     },
     editor::EditorLoop,
     editor_operation::{
@@ -247,7 +245,7 @@ impl ConnectionWithClientCollection {
             match deserializer.deserialize_next() {
                 ClientEventDeserializeResult::Some(key) => {
                     last_result = callback(key);
-                    if let EditorLoop::WaitForSpawnOutputOnClient | EditorLoop::Quit = last_result {
+                    if let EditorLoop::Quit = last_result {
                         break;
                     }
                 }
@@ -259,31 +257,6 @@ impl ConnectionWithClientCollection {
         }
 
         Ok(last_result)
-    }
-
-    pub fn receive_spawn_result(
-        &mut self,
-        handle: ConnectionWithClientHandle,
-    ) -> io::Result<Option<SpawnResult>> {
-        let connection = match &mut self.connections[handle.0] {
-            Some(connection) => connection,
-            None => return Ok(None),
-        };
-
-        connection.0.set_nonblocking(false)?;
-
-        let mut read_guard = self.read_buf.guard();
-
-        let output = loop {
-            read_guard.read_from(&mut connection.0)?;
-            let mut deserializer = ClientEventDeserializer::from_slice(read_guard.as_bytes());
-            if let ClientEventDeserializeResult::Some(output) = deserializer.deserialize_next() {
-                break output;
-            }
-        };
-
-        connection.0.set_nonblocking(true)?;
-        Ok(Some(output))
     }
 
     pub fn all_handles(&self) -> impl Iterator<Item = ConnectionWithClientHandle> {
@@ -339,9 +312,9 @@ impl ConnectionWithServer {
         result
     }
 
-    pub fn receive_operations<F>(&mut self, mut callback: F) -> io::Result<Option<ClientResponse>>
+    pub fn receive_operations<F>(&mut self, mut callback: F) -> io::Result<Option<()>>
     where
-        F: FnMut(EditorOperation<'_>) -> ClientResponse,
+        F: FnMut(EditorOperation<'_>),
     {
         let mut read_guard = self.read_buf.guard();
         read_guard.read_from(&mut self.stream)?;
@@ -351,11 +324,8 @@ impl ConnectionWithServer {
         loop {
             match deserializer.deserialize_next() {
                 EditorOperationDeserializeResult::Some(operation) => {
-                    let response = callback(operation);
-                    last_response = Some(match last_response {
-                        Some(r) => response.or(r),
-                        None => response,
-                    });
+                    callback(operation);
+                    last_response = Some(());
                 }
                 EditorOperationDeserializeResult::None => break,
                 EditorOperationDeserializeResult::Error => {

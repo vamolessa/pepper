@@ -1,11 +1,11 @@
 use crate::{
     buffer::BufferCollection,
     buffer_view::{BufferViewCollection, BufferViewHandle},
-    client_event::{Key, SpawnResult},
-    command::{CommandCollection, FullCommandContext, FullCommandOperation},
+    client_event::Key,
+    command::CommandCollection,
     config::Config,
     connection::{ConnectionWithClientHandle, TargetClient},
-    editor_operation::{EditorOperation, EditorOperationSerializer, StatusMessageKind},
+    editor_operation::{EditorOperation, EditorOperationSerializer},
     keymap::{KeyMapCollection, MatchResult},
     mode::{Mode, ModeContext, ModeOperation},
 };
@@ -14,7 +14,6 @@ use crate::{
 pub enum EditorLoop {
     Quit,
     Continue,
-    WaitForSpawnOutputOnClient,
 }
 
 pub struct KeysIterator<'a> {
@@ -242,13 +241,6 @@ impl Editor {
                     self.buffered_keys.clear();
                     return EditorLoop::Quit;
                 }
-                ModeOperation::WaitForSpawnOutputOnClient(next_mode) => {
-                    self.buffered_keys.clear();
-                    self.mode = next_mode.clone();
-                    self.mode.on_enter(&mut mode_context);
-                    operations.serialize(TargetClient::All, &EditorOperation::Mode(next_mode));
-                    return EditorLoop::WaitForSpawnOutputOnClient;
-                }
                 ModeOperation::EnterMode(next_mode) => {
                     self.mode = next_mode.clone();
                     self.mode.on_enter(&mut mode_context);
@@ -259,51 +251,5 @@ impl Editor {
 
         self.buffered_keys.clear();
         result
-    }
-
-    pub fn on_spawn_result(
-        &mut self,
-        config: &Config,
-        spawn_result: SpawnResult,
-        target_client: TargetClient,
-        operations: &mut EditorOperationSerializer,
-    ) -> EditorLoop {
-        if !spawn_result.success {
-            operations.serialize(
-                TargetClient::All,
-                &EditorOperation::StatusMessage(StatusMessageKind::Error, &spawn_result.output[..]),
-            );
-            return EditorLoop::Continue;
-        }
-
-        let current_buffer_view_handle = match target_client {
-            TargetClient::All => unreachable!(),
-            TargetClient::Local => &mut self.local_client_current_buffer_view_handle,
-            TargetClient::Remote(handle) => {
-                &mut self.remote_client_current_buffer_view_handles[handle.into_index()]
-            }
-        };
-
-        let mut command_context = FullCommandContext {
-            target_client,
-            operations,
-
-            config,
-            keymaps: &mut self.keymaps,
-            buffers: &mut self.buffers,
-            buffer_views: &mut self.buffer_views,
-            current_buffer_view_handle,
-        };
-
-        match self
-            .commands
-            .continue_parse_and_execute_any_command(&mut command_context, spawn_result.output)
-        {
-            FullCommandOperation::Error | FullCommandOperation::Complete => EditorLoop::Continue,
-            FullCommandOperation::WaitForSpawnOutputOnClient => {
-                EditorLoop::WaitForSpawnOutputOnClient
-            }
-            FullCommandOperation::Quit => EditorLoop::Quit,
-        }
     }
 }

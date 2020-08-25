@@ -1,7 +1,7 @@
 use std::{convert::From, env, fmt, fs, io, sync::mpsc, thread};
 
 use crate::{
-    client::{Client, ClientResponse},
+    client::Client,
     client_event::{ClientEvent, ClientEventSerializer},
     connection::{ConnectionWithClientCollection, ConnectionWithServer, TargetClient},
     editor::{Editor, EditorLoop},
@@ -90,27 +90,21 @@ where
     Ok(())
 }
 
-fn send_operations<I>(
+fn send_operations(
     operations: &mut EditorOperationSerializer,
     local_client: &mut Client,
     remote_clients: &mut ConnectionWithClientCollection,
-    ui: &mut I,
-) -> ClientResponse
-where
-    I: UI,
-{
+) {
     for handle in remote_clients.all_handles() {
         remote_clients.send_serialized_operations(handle, &operations);
     }
 
     let mut deserializer = EditorOperationDeserializer::from_slice(operations.local_bytes());
-    let mut response = ClientResponse::None;
     while let EditorOperationDeserializeResult::Some(op) = deserializer.deserialize_next() {
-        response = response.or(local_client.on_editor_operation(&op, ui));
+        local_client.on_editor_operation(&op);
     }
 
     operations.clear();
-    response
 }
 
 fn run_server_with_client<I>(
@@ -134,53 +128,31 @@ where
         &editor.commands,
         &mut editor.keymaps,
         &mut editor_operations,
-        &mut ui,
     );
 
     connections.register_listener(&event_registry)?;
     ui.init()?;
 
-    'main_loop: for event in event_receiver.iter() {
+    for event in event_receiver.iter() {
         match event {
             ClientEvent::None => (),
             ClientEvent::Key(key) => {
-                let mut result = editor.on_key(
+                let result = editor.on_key(
                     &local_client.config,
                     key,
                     TargetClient::Local,
                     &mut editor_operations,
                 );
 
-                loop {
-                    match result {
-                        EditorLoop::Quit => break 'main_loop,
-                        EditorLoop::Continue => {
-                            send_operations(
-                                &mut editor_operations,
-                                &mut local_client,
-                                &mut connections,
-                                &mut ui,
-                            );
-                            break;
-                        }
-                        EditorLoop::WaitForSpawnOutputOnClient => {
-                            match send_operations(
-                                &mut editor_operations,
-                                &mut local_client,
-                                &mut connections,
-                                &mut ui,
-                            ) {
-                                ClientResponse::None => break,
-                                ClientResponse::SpawnResult(spawn_result) => {
-                                    result = editor.on_spawn_result(
-                                        &local_client.config,
-                                        spawn_result,
-                                        TargetClient::Local,
-                                        &mut editor_operations,
-                                    );
-                                }
-                            }
-                        }
+                match result {
+                    EditorLoop::Quit => break,
+                    EditorLoop::Continue => {
+                        send_operations(
+                            &mut editor_operations,
+                            &mut local_client,
+                            &mut connections,
+                        );
+                        break;
                     }
                 }
             }
@@ -199,7 +171,7 @@ where
                     ConnectionEvent::Stream(stream_id) => {
                         let handle = stream_id.into();
 
-                        let mut result = connections.receive_keys(handle, |key| {
+                        let result = connections.receive_keys(handle, |key| {
                             editor.on_key(
                                 &local_client.config,
                                 key,
@@ -208,48 +180,21 @@ where
                             )
                         });
 
-                        loop {
-                            match result {
-                                Ok(EditorLoop::Quit) | Err(_) => {
-                                    connections.close_connection(handle);
-                                    editor.on_client_left(handle, &mut editor_operations);
-                                    break;
-                                }
-                                Ok(EditorLoop::Continue) => {
-                                    connections
-                                        .listen_next_connection_event(handle, &event_registry)?;
-                                    break;
-                                }
-                                Ok(EditorLoop::WaitForSpawnOutputOnClient) => {
-                                    connections
-                                        .listen_next_connection_event(handle, &event_registry)?;
-                                    let spawn_result =
-                                        match connections.receive_spawn_result(handle)? {
-                                            Some(spawn_result) => spawn_result,
-                                            None => break,
-                                        };
-
-                                    result = Ok(editor.on_spawn_result(
-                                        &local_client.config,
-                                        spawn_result,
-                                        TargetClient::Remote(handle),
-                                        &mut editor_operations,
-                                    ));
-                                    connections
-                                        .listen_next_connection_event(handle, &event_registry)?;
-                                }
+                        match result {
+                            Ok(EditorLoop::Quit) | Err(_) => {
+                                connections.close_connection(handle);
+                                editor.on_client_left(handle, &mut editor_operations);
+                            }
+                            Ok(EditorLoop::Continue) => {
+                                connections
+                                    .listen_next_connection_event(handle, &event_registry)?;
                             }
                         }
                     }
                 }
 
                 connections.unregister_closed_connections(&event_registry)?;
-                send_operations(
-                    &mut editor_operations,
-                    &mut local_client,
-                    &mut connections,
-                    &mut ui,
-                );
+                send_operations(&mut editor_operations, &mut local_client, &mut connections);
                 connections.unregister_closed_connections(&event_registry)?;
             }
         }
@@ -303,16 +248,9 @@ where
                 ConnectionEvent::NewConnection => (),
                 ConnectionEvent::Stream(_) => {
                     let response = connection
-                        .receive_operations(|op| local_client.on_editor_operation(&op, &mut ui))?;
-                    match response {
-                        Some(ClientResponse::None) => (),
-                        Some(ClientResponse::SpawnResult(spawn_result)) => {
-                            events.serialize(spawn_result);
-                            if connection.send_serialized_events(&mut events).is_err() {
-                                break;
-                            }
-                        }
-                        None => break,
+                        .receive_operations(|op| local_client.on_editor_operation(&op))?;
+                    if let None = response {
+                        break;
                     }
 
                     connection.listen_next_event(&event_registry)?;

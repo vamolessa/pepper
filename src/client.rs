@@ -1,15 +1,9 @@
-use std::{
-    io::Write,
-    path::PathBuf,
-    process::{Command, Stdio},
-};
+use std::path::PathBuf;
 
 use crate::{
-    application::UI,
     buffer::{BufferContent, TextRef},
     buffer_position::BufferRange,
-    client_event::SpawnResult,
-    command::{CommandCollection, ConfigCommandContext, ParsedCommand},
+    command::{CommandCollection, ConfigCommandContext},
     config::Config,
     cursor::Cursor,
     editor_operation::{
@@ -21,21 +15,6 @@ use crate::{
     select::SelectEntryCollection,
     syntax::{HighlightedBuffer, SyntaxHandle},
 };
-
-pub enum ClientResponse {
-    None,
-    SpawnResult(SpawnResult),
-}
-
-impl ClientResponse {
-    pub fn or(self, other: Self) -> Self {
-        match (&self, &other) {
-            (_, ClientResponse::None) => self,
-            (ClientResponse::None, _) => other,
-            _ => self,
-        }
-    }
-}
 
 pub struct Client {
     pub config: Config,
@@ -82,15 +61,12 @@ impl Client {
         }
     }
 
-    pub fn load_config<I>(
+    pub fn load_config(
         &mut self,
         commands: &CommandCollection,
         keymaps: &mut KeyMapCollection,
         operations: &mut EditorOperationSerializer,
-        ui: &mut I,
-    ) where
-        I: UI,
-    {
+    ) {
         let mut ctx = ConfigCommandContext {
             operations,
             config: &self.config,
@@ -103,7 +79,7 @@ impl Client {
         loop {
             match deserializer.deserialize_next() {
                 EditorOperationDeserializeResult::Some(op) => {
-                    let _ = self.on_editor_operation(&op, ui);
+                    let _ = self.on_editor_operation(&op);
                 }
                 EditorOperationDeserializeResult::None
                 | EditorOperationDeserializeResult::Error => break,
@@ -111,14 +87,7 @@ impl Client {
         }
     }
 
-    pub fn on_editor_operation<I>(
-        &mut self,
-        operation: &EditorOperation,
-        ui: &mut I,
-    ) -> ClientResponse
-    where
-        I: UI,
-    {
+    pub fn on_editor_operation(&mut self, operation: &EditorOperation) {
         match operation {
             EditorOperation::Focused(focused) => self.has_focus = *focused,
             EditorOperation::Buffer(content) => {
@@ -221,61 +190,6 @@ impl Client {
             EditorOperation::StatusMessageAppend(message) => {
                 self.status_message.push_str(message);
             }
-            EditorOperation::Spawn(command, input) => {
-                let _ = ui.shutdown();
-                let result = self.spawn_command(command, *input);
-                let _ = ui.init();
-                return ClientResponse::SpawnResult(result);
-            }
-        }
-
-        ClientResponse::None
-    }
-
-    fn spawn_command(&mut self, command: &str, input: Option<&str>) -> SpawnResult {
-        macro_rules! unwrap_or_command_error {
-            ($value:expr) => {
-                match $value {
-                    Ok(value) => value,
-                    Err(error) => {
-                        return SpawnResult {
-                            success: false,
-                            output: error,
-                        };
-                    }
-                }
-            };
-        }
-
-        let parsed = unwrap_or_command_error!(
-            ParsedCommand::parse(command).ok_or_else(|| "empty command name".into())
-        );
-
-        let mut command = Command::new(parsed.name);
-        command.stdin(if input.is_some() {
-            Stdio::piped()
-        } else {
-            Stdio::inherit()
-        });
-        command.stdout(Stdio::piped());
-        command.stderr(Stdio::piped());
-        for arg in parsed.args {
-            let arg = unwrap_or_command_error!(arg);
-            command.arg(arg);
-        }
-
-        let mut child = unwrap_or_command_error!(command.spawn().map_err(|e| e.to_string()));
-        if let (Some(input), Some(stdin)) = (input, child.stdin.as_mut()) {
-            let _ = stdin.write_all(input.as_bytes());
-        }
-        child.stdin = None;
-
-        let child_output =
-            unwrap_or_command_error!(child.wait_with_output().map_err(|e| e.to_string()));
-        let output = String::from_utf8_lossy(&child_output.stdout[..]);
-        SpawnResult {
-            success: child_output.status.success(),
-            output: output.into_owned(),
         }
     }
 }

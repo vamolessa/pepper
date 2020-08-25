@@ -24,7 +24,6 @@ use crate::{
 pub enum FullCommandOperation {
     Error,
     Complete,
-    WaitForSpawnOutputOnClient,
     Quit,
 }
 
@@ -70,7 +69,7 @@ type FullCommandBody = fn(
 ) -> FullCommandOperation;
 type ConfigCommandBody = fn(&mut ConfigCommandContext, &mut CommandArgs) -> ConfigCommandOperation;
 
-pub struct ParsedCommand<'a> {
+struct ParsedCommand<'a> {
     pub name: &'a str,
     pub args: CommandArgs<'a>,
 }
@@ -173,7 +172,6 @@ macro_rules! unwrap_or_command_error {
 pub struct CommandCollection {
     full_commands: HashMap<String, FullCommandBody>,
     config_commands: HashMap<String, ConfigCommandBody>,
-    pending_commands: String,
 }
 
 impl Default for CommandCollection {
@@ -181,7 +179,6 @@ impl Default for CommandCollection {
         let mut this = Self {
             full_commands: HashMap::new(),
             config_commands: HashMap::new(),
-            pending_commands: String::new(),
         };
 
         macro_rules! register {
@@ -192,7 +189,7 @@ impl Default for CommandCollection {
 
         register! { register_full_command =>
             quit, open, close, save, save_all,
-            selection, replace, echo, pipe, spawn,
+            selection, replace, echo, pipe,
         }
 
         register! { register_config_command =>
@@ -236,29 +233,11 @@ impl CommandCollection {
     pub fn parse_and_execute_any_command(
         &mut self,
         ctx: &mut FullCommandContext,
-        command: &str,
+        mut commands: &str,
     ) -> FullCommandOperation {
-        self.pending_commands.clear();
-        self.pending_commands.push_str(command);
-        self.parse_and_execute_any_command_from(ctx, None, String::new())
-    }
-
-    pub fn continue_parse_and_execute_any_command(
-        &mut self,
-        ctx: &mut FullCommandContext,
-        input: String,
-    ) -> FullCommandOperation {
-        self.parse_and_execute_any_command_from(ctx, Some(FullCommandOperation::Complete), input)
-    }
-
-    fn parse_and_execute_any_command_from(
-        &mut self,
-        ctx: &mut FullCommandContext,
-        mut last_result: Option<FullCommandOperation>,
-        mut input: String,
-    ) -> FullCommandOperation {
-        let mut commands = &self.pending_commands[..];
+        let mut input = String::new();
         let mut output = String::new();
+        let mut last_result = None;
 
         loop {
             let mut parsed = match ParsedCommand::parse(commands) {
@@ -276,24 +255,6 @@ impl CommandCollection {
                 output.clear();
                 last_result = match command(ctx, &mut parsed.args, maybe_input, &mut output) {
                     FullCommandOperation::Error => break FullCommandOperation::Error,
-                    FullCommandOperation::WaitForSpawnOutputOnClient => {
-                        let pending_commands = parsed.unparsed().trim_start();
-                        let mut args = CommandArgs::new(pending_commands);
-                        for _ in &mut args {}
-                        commands = args.unparsed();
-                        let spawn_command_len = pending_commands.len() - commands.len();
-                        ctx.operations.serialize(
-                            TargetClient::All,
-                            &EditorOperation::Spawn(
-                                &pending_commands[..spawn_command_len],
-                                maybe_input,
-                            ),
-                        );
-                        let drain_len = self.pending_commands.len() - commands.trim_start().len();
-                        self.pending_commands.drain(..drain_len);
-
-                        break FullCommandOperation::WaitForSpawnOutputOnClient;
-                    }
                     result => Some(result),
                 };
                 std::mem::swap(&mut input, &mut output);
@@ -696,15 +657,6 @@ mod commands {
         }
 
         FullCommandOperation::Complete
-    }
-
-    pub fn spawn(
-        _ctx: &mut FullCommandContext,
-        _args: &mut CommandArgs,
-        _input: Option<&str>,
-        _output: &mut String,
-    ) -> FullCommandOperation {
-        FullCommandOperation::WaitForSpawnOutputOnClient
     }
 
     pub fn set(ctx: &mut ConfigCommandContext, args: &mut CommandArgs) -> ConfigCommandOperation {

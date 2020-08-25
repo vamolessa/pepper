@@ -16,8 +16,6 @@ pub enum ClientEvent {
     Connection(ConnectionEvent),
 }
 
-pub trait ClientEventSerialize<'de>: Serialize + Deserialize<'de> {}
-
 #[derive(Debug)]
 pub enum KeyParseError {
     UnexpectedEnd,
@@ -226,16 +224,6 @@ impl Key {
     }
 }
 
-impl<'de> ClientEventSerialize<'de> for Key {}
-
-#[derive(Serialize, Deserialize)]
-pub struct SpawnResult {
-    pub success: bool,
-    pub output: String,
-}
-
-impl<'de> ClientEventSerialize<'de> for SpawnResult {}
-
 #[derive(Default)]
 pub struct ClientEventSerializer(SerializationBuf);
 
@@ -257,11 +245,8 @@ impl ClientEventSerializer {
 }
 
 #[derive(Debug)]
-pub enum ClientEventDeserializeResult<T>
-where
-    T: for<'de> ClientEventSerialize<'de>,
-{
-    Some(T),
+pub enum ClientEventDeserializeResult {
+    Some(Key),
     None,
     Error,
 }
@@ -273,15 +258,12 @@ impl<'a> ClientEventDeserializer<'a> {
         Self(DeserializationSlice::from_slice(slice))
     }
 
-    pub fn deserialize_next<T>(&mut self) -> ClientEventDeserializeResult<T>
-    where
-        T: for<'de> ClientEventSerialize<'de>,
-    {
+    pub fn deserialize_next(&mut self) -> ClientEventDeserializeResult {
         if self.0.as_slice().is_empty() {
             return ClientEventDeserializeResult::None;
         }
 
-        match T::deserialize(&mut self.0) {
+        match Key::deserialize(&mut self.0) {
             Ok(key) => ClientEventDeserializeResult::Some(key),
             Err(_) => ClientEventDeserializeResult::Error,
         }
