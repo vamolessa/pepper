@@ -5,12 +5,12 @@ use serde_derive::{Deserialize, Serialize};
 use crate::{
     buffer::BufferCollection,
     buffer_view::{BufferViewCollection, BufferViewHandle},
+    client_event::Key,
     command::CommandCollection,
     config::Config,
     connection::TargetClient,
     editor::{ClientTargetMap, KeysIterator},
     editor_operation::{EditorOperation, EditorOperationSerializer},
-    client_event::Key,
     keymap::KeyMapCollection,
 };
 

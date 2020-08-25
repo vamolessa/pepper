@@ -2,8 +2,8 @@ use crate::{
     buffer::TextRef,
     buffer_position::BufferOffset,
     buffer_view::MovementKind,
-    editor::KeysIterator,
     client_event::Key,
+    editor::KeysIterator,
     mode::{Mode, ModeContext, ModeOperation},
 };
 
