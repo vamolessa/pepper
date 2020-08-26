@@ -12,7 +12,6 @@ use crate::{
 };
 
 pub struct Client {
-    pub config: Config,
     pub mode: Mode,
 
     pub path: PathBuf,
@@ -35,7 +34,6 @@ pub struct Client {
 impl Client {
     pub fn new() -> Self {
         Self {
-            config: Config::default(),
             mode: Mode::default(),
 
             path: PathBuf::new(),
@@ -56,7 +54,7 @@ impl Client {
         }
     }
 
-    pub fn on_editor_operation(&mut self, operation: &EditorOperation) {
+    pub fn on_editor_operation(&mut self, config: &mut Config, operation: &EditorOperation) {
         match operation {
             EditorOperation::Focused(focused) => self.has_focus = *focused,
             EditorOperation::Buffer(content) => {
@@ -67,7 +65,7 @@ impl Client {
                 self.cursors.push(self.main_cursor);
 
                 if let Some(handle) = self.syntax_handle {
-                    let syntax = self.config.syntaxes.get(handle);
+                    let syntax = config.syntaxes.get(handle);
                     self.highlighted_buffer.highligh_all(syntax, &self.buffer);
                 }
             }
@@ -83,11 +81,11 @@ impl Client {
                     .or(self.path.file_name())
                     .and_then(|s| s.to_str())
                 {
-                    self.syntax_handle = self.config.syntaxes.find_by_extension(extension);
+                    self.syntax_handle = config.syntaxes.find_by_extension(extension);
                 }
 
                 if let Some(handle) = self.syntax_handle {
-                    let syntax = self.config.syntaxes.get(handle);
+                    let syntax = config.syntaxes.get(handle);
                     self.highlighted_buffer.highligh_all(syntax, &self.buffer);
                 }
             }
@@ -96,7 +94,7 @@ impl Client {
                 self.search_ranges.clear();
                 let range = self.buffer.insert_text(*position, TextRef::Str(text));
                 if let Some(handle) = self.syntax_handle {
-                    let syntax = self.config.syntaxes.get(handle);
+                    let syntax = config.syntaxes.get(handle);
                     self.highlighted_buffer
                         .on_insert(syntax, &self.buffer, range);
                 }
@@ -105,7 +103,7 @@ impl Client {
                 self.search_ranges.clear();
                 self.buffer.delete_range(*range);
                 if let Some(handle) = self.syntax_handle {
-                    let syntax = self.config.syntaxes.get(handle);
+                    let syntax = config.syntaxes.get(handle);
                     self.highlighted_buffer
                         .on_delete(syntax, &self.buffer, *range);
                 }
@@ -126,16 +124,15 @@ impl Client {
             }
             EditorOperation::ConfigValues(serialized) => {
                 if let Some(values) = EditorOperationDeserializer::deserialize_inner(serialized) {
-                    self.config.values = values;
+                    config.values = values;
                 }
             }
             EditorOperation::Theme(serialized) => {
                 if let Some(theme) = EditorOperationDeserializer::deserialize_inner(serialized) {
-                    self.config.theme = theme;
+                    config.theme = theme;
                 }
             }
-            EditorOperation::SyntaxExtension(main_extension, other_extension) => self
-                .config
+            EditorOperation::SyntaxExtension(main_extension, other_extension) => config
                 .syntaxes
                 .get_by_extension(main_extension)
                 .add_extension((*other_extension).into()),
@@ -143,7 +140,7 @@ impl Client {
                 if let Some((main_extension, token_kind, pattern)) =
                     EditorOperationDeserializer::deserialize_inner(serialized)
                 {
-                    self.config
+                    config
                         .syntaxes
                         .get_by_extension(main_extension)
                         .add_rule(token_kind, pattern);

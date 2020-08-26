@@ -1,7 +1,7 @@
 use std::{collections::HashMap, mem::Discriminant};
 
 use crate::{
-    client_event::{Key, KeyParseError},
+    client_event::{Key, KeyParseAllError},
     mode::Mode,
 };
 
@@ -12,8 +12,8 @@ pub enum MatchResult<'a> {
 }
 
 pub enum ParseKeyMapError {
-    From(usize, KeyParseError),
-    To(usize, KeyParseError),
+    From(KeyParseAllError),
+    To(KeyParseAllError),
 }
 
 struct KeyMap {
@@ -33,27 +33,20 @@ impl KeyMapCollection {
         from: &str,
         to: &str,
     ) -> Result<(), ParseKeyMapError> {
-        fn parse_keys(text: &str) -> Result<Vec<Key>, (usize, KeyParseError)> {
+        fn parse_keys(text: &str) -> Result<Vec<Key>, KeyParseAllError> {
             let mut keys = Vec::new();
-
-            let mut chars = text.chars().peekable();
-            while chars.peek().is_some() {
-                match Key::parse(&mut chars) {
+            for key in Key::parse_all(text) {
+                match key {
                     Ok(key) => keys.push(key),
-                    Err(error) => {
-                        let chars_len: usize = chars.map(|c| c.len_utf8()).sum();
-                        let error_index = text.len() - chars_len;
-                        return Err((error_index, error));
-                    }
+                    Err(error) => return Err(error),
                 }
             }
-
             Ok(keys)
         }
 
         let map = KeyMap {
-            from: parse_keys(from).map_err(|(i, e)| ParseKeyMapError::From(i, e))?,
-            to: parse_keys(to).map_err(|(i, e)| ParseKeyMapError::To(i, e))?,
+            from: parse_keys(from).map_err(|e| ParseKeyMapError::From(e))?,
+            to: parse_keys(to).map_err(|e| ParseKeyMapError::To(e))?,
         };
 
         self.maps.entry(mode).or_insert_with(Vec::new).push(map);

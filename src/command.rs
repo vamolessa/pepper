@@ -758,11 +758,12 @@ mod commands {
 
         match ctx.keymaps.parse_map(mode.discriminant(), from, to) {
             Ok(()) => (),
-            Err(ParseKeyMapError::From(i, e)) => {
-                command_error!(ctx.operations, helper::parsing_error(e, from, i))
-            }
-            Err(ParseKeyMapError::To(i, e)) => {
-                command_error!(ctx.operations, helper::parsing_error(e, to, i))
+            Err(ParseKeyMapError::From(e)) => command_error!(
+                ctx.operations,
+                helper::parsing_error(e.error, from, e.index)
+            ),
+            Err(ParseKeyMapError::To(e)) => {
+                command_error!(ctx.operations, helper::parsing_error(e.error, to, e.index))
             }
         }
 

@@ -11,6 +11,7 @@ use crate::{
     buffer_position::BufferPosition,
     client::Client,
     client_event::{ClientEvent, Key},
+    config::Config,
     editor_operation::StatusMessageKind,
     mode::Mode,
     syntax::TokenKind,
@@ -114,6 +115,7 @@ where
 
     fn draw(
         &mut self,
+        config: &Config,
         client: &Client,
         status_message_kind: StatusMessageKind,
         status_message: &str,
@@ -143,6 +145,7 @@ where
 
         draw_text(
             &mut self.write,
+            config,
             client,
             self.text_scroll,
             self.width,
@@ -150,6 +153,7 @@ where
         )?;
         draw_select(
             &mut self.write,
+            config,
             client,
             self.select_scroll,
             self.width,
@@ -157,6 +161,7 @@ where
         )?;
         draw_statusbar(
             &mut self.write,
+            config,
             client,
             self.width,
             status_message_kind,
@@ -181,6 +186,7 @@ where
 
 fn draw_text<W>(
     write: &mut W,
+    config: &Config,
     client: &Client,
     scroll: usize,
     width: u16,
@@ -197,7 +203,7 @@ where
         Cursor,
     }
 
-    let theme = &client.config.theme;
+    let theme = &config.theme;
 
     handle_command!(write, cursor::Hide)?;
 
@@ -324,15 +330,15 @@ where
                     x += 1;
                 }
                 ' ' => {
-                    handle_command!(write, Print(client.config.values.visual_space))?;
+                    handle_command!(write, Print(config.values.visual_space))?;
                     x += 1;
                 }
                 '\t' => {
-                    handle_command!(write, Print(client.config.values.visual_tab.0))?;
-                    let tab_size = client.config.values.tab_size.get() as u16;
+                    handle_command!(write, Print(config.values.visual_tab.0))?;
+                    let tab_size = config.values.tab_size.get() as u16;
                     let next_tab_stop = (tab_size - 1) - x % tab_size;
                     for _ in 0..next_tab_stop {
-                        handle_command!(write, Print(client.config.values.visual_tab.1))?;
+                        handle_command!(write, Print(config.values.visual_tab.1))?;
                     }
                     x += tab_size;
                 }
@@ -363,7 +369,7 @@ where
     handle_command!(write, SetBackgroundColor(background_color))?;
     handle_command!(write, SetForegroundColor(token_whitespace_color))?;
     for _ in drawn_line_count..height {
-        handle_command!(write, Print(client.config.values.visual_empty))?;
+        handle_command!(write, Print(config.values.visual_empty))?;
         handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
         handle_command!(write, cursor::MoveToNextLine(1))?;
     }
@@ -373,6 +379,7 @@ where
 
 fn draw_select<W>(
     write: &mut W,
+    config: &Config,
     client: &Client,
     scroll: usize,
     _width: u16,
@@ -381,8 +388,8 @@ fn draw_select<W>(
 where
     W: Write,
 {
-    let background_color = convert_color(client.config.theme.token_whitespace);
-    let foreground_color = convert_color(client.config.theme.token_text);
+    let background_color = convert_color(config.theme.token_whitespace);
+    let foreground_color = convert_color(config.theme.token_text);
 
     handle_command!(write, SetBackgroundColor(background_color))?;
     handle_command!(write, SetForegroundColor(foreground_color))?;
@@ -398,6 +405,7 @@ where
 
 fn draw_statusbar<W>(
     write: &mut W,
+    config: &Config,
     client: &Client,
     width: u16,
     status_message_kind: StatusMessageKind,
@@ -433,9 +441,9 @@ where
         count
     }
 
-    let background_color = convert_color(client.config.theme.token_text);
-    let foreground_color = convert_color(client.config.theme.background);
-    let cursor_color = convert_color(client.config.theme.cursor_normal);
+    let background_color = convert_color(config.theme.token_text);
+    let foreground_color = convert_color(config.theme.background);
+    let cursor_color = convert_color(config.theme.cursor_normal);
 
     if client.has_focus {
         handle_command!(write, SetBackgroundColor(background_color))?;

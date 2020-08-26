@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{error::Error, fmt, str::Chars};
 
 use serde::{Deserialize, Serialize};
 use serde_derive::{Deserialize, Serialize};
@@ -21,12 +21,47 @@ pub enum KeyParseError {
     UnexpectedEnd,
     InvalidCharacter(char),
 }
-
 impl fmt::Display for KeyParseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::UnexpectedEnd => write!(f, "could not finish parsing key"),
             Self::InvalidCharacter(c) => write!(f, "invalid character {}", c),
+        }
+    }
+}
+impl Error for KeyParseError {}
+
+#[derive(Debug)]
+pub struct KeyParseAllError {
+    pub index: usize,
+    pub error: KeyParseError,
+}
+impl fmt::Display for KeyParseAllError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.error.fmt(f)?;
+        f.write_fmt(format_args!(" at index: {}", self.index))?;
+        Ok(())
+    }
+}
+impl Error for KeyParseAllError {}
+
+pub struct KeyParser<'a> {
+    len: usize,
+    chars: Chars<'a>,
+}
+impl<'a> Iterator for KeyParser<'a> {
+    type Item = Result<Key, KeyParseAllError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.chars.as_str().is_empty() {
+            return None;
+        }
+        match Key::parse(&mut self.chars) {
+            Ok(key) => Some(Ok(key)),
+            Err(error) => Some(Err(KeyParseAllError {
+                index: self.len - self.chars.as_str().len(),
+                error,
+            })),
         }
     }
 }
@@ -54,6 +89,13 @@ pub enum Key {
 }
 
 impl Key {
+    pub fn parse_all<'a>(raw: &'a str) -> KeyParser<'a> {
+        KeyParser {
+            len: raw.len(),
+            chars: raw.chars(),
+        }
+    }
+
     pub fn parse(chars: &mut impl Iterator<Item = char>) -> Result<Self, KeyParseError> {
         macro_rules! next {
             () => {
@@ -228,11 +270,11 @@ impl Key {
 pub struct KeySerializer(SerializationBuf);
 
 impl KeySerializer {
-    pub fn serialize<T>(&mut self, input: T)
+    pub fn serialize<T>(&mut self, key: T)
     where
         T: Serialize,
     {
-        let _ = input.serialize(&mut self.0);
+        let _ = key.serialize(&mut self.0);
     }
 
     pub fn bytes(&self) -> &[u8] {

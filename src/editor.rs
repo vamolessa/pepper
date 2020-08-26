@@ -144,6 +144,7 @@ impl Editor {
 
     pub fn load_config(
         &mut self,
+        config: &mut Config,
         client: &mut Client,
         operations: &mut EditorOperationSerializer,
         path: &Path,
@@ -153,7 +154,7 @@ impl Editor {
             client_target_map: &mut self.client_target_map,
             operations,
 
-            config: &client.config,
+            config,
             keymaps: &mut self.keymaps,
             buffers: &mut self.buffers,
             buffer_views: &mut self.buffer_views,
@@ -166,7 +167,7 @@ impl Editor {
         loop {
             match deserializer.deserialize_next() {
                 EditorOperationDeserializeResult::Some(op) => {
-                    let _ = client.on_editor_operation(&op);
+                    let _ = client.on_editor_operation(config, &op);
                 }
                 EditorOperationDeserializeResult::None
                 | EditorOperationDeserializeResult::Error => break,

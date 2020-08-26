@@ -1,17 +1,11 @@
-use std::{
-    env,
-    error::Error,
-    fmt, fs,
-    path::{Path, PathBuf},
-    sync::mpsc,
-    thread,
-};
+use std::{env, error::Error, fmt, fs, path::PathBuf, sync::mpsc, thread};
 
 use argh::FromArgs;
 
 use crate::{
     client::Client,
-    client_event::{ClientEvent, KeySerializer},
+    client_event::{ClientEvent, Key, KeySerializer},
+    config::Config,
     connection::{ConnectionWithClientCollection, ConnectionWithServer, TargetClient},
     editor::{Editor, EditorLoop},
     editor_operation::{
@@ -64,6 +58,7 @@ pub trait UI {
 
     fn draw(
         &mut self,
+        config: &Config,
         client: &Client,
         status_message_kind: StatusMessageKind,
         status_message: &str,
@@ -101,15 +96,8 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let stdout = stdout.lock();
     let ui = Tui::new(stdout);
 
-    run_with_ui(args, ui, &session_socket_path)
-}
-
-fn run_with_ui<I>(args: Args, ui: I, session_socket_path: &Path) -> Result<(), Box<dyn Error>>
-where
-    I: UI,
-{
     if let Ok(connection) = ConnectionWithServer::connect(&session_socket_path) {
-        run_client(ui, connection)?;
+        run_client(args, ui, connection)?;
     } else if let Ok(listener) = ConnectionWithClientCollection::listen(&session_socket_path) {
         run_server_with_client(args, ui, listener)?;
         fs::remove_file(session_socket_path)?;
@@ -127,6 +115,7 @@ where
 }
 
 fn send_operations(
+    config: &mut Config,
     operations: &mut EditorOperationSerializer,
     local_client: &mut Client,
     remote_clients: &mut ConnectionWithClientCollection,
@@ -137,7 +126,7 @@ fn send_operations(
 
     let mut deserializer = EditorOperationDeserializer::from_slice(operations.local_bytes());
     while let EditorOperationDeserializeResult::Some(op) = deserializer.deserialize_next() {
-        local_client.on_editor_operation(&op);
+        local_client.on_editor_operation(config, &op);
     }
 
     operations.clear();
@@ -152,17 +141,37 @@ where
     I: UI,
 {
     let (event_sender, event_receiver) = mpsc::channel();
+
     let event_manager = EventManager::new()?;
     let event_registry = event_manager.registry();
     let event_manager_loop = event_manager.run_event_loop_in_background(event_sender.clone());
     let ui_event_loop = I::run_event_loop_in_background(event_sender);
 
+    let mut config = Config::default();
     let mut local_client = Client::new();
     let mut editor = Editor::new();
     let mut editor_operations = EditorOperationSerializer::default();
 
     if let Some(config_path) = args.config {
-        editor.load_config(&mut local_client, &mut editor_operations, &config_path);
+        editor.load_config(
+            &mut config,
+            &mut local_client,
+            &mut editor_operations,
+            &config_path,
+        );
+    }
+
+    if let Some(keys) = args.keys {
+        for key in Key::parse_all(&keys[..]) {
+            match key {
+                Ok(key) => {
+                    editor.on_key(&config, key, TargetClient::Local, &mut editor_operations);
+                }
+                Err(error) => return Err(Box::new(error)),
+            }
+        }
+
+        return Ok(());
     }
 
     connections.register_listener(&event_registry)?;
@@ -172,18 +181,17 @@ where
         match event {
             ClientEvent::None => (),
             ClientEvent::Key(key) => {
-                let result = editor.on_key(
-                    &local_client.config,
-                    key,
-                    TargetClient::Local,
-                    &mut editor_operations,
-                );
+                let result =
+                    editor.on_key(&config, key, TargetClient::Local, &mut editor_operations);
 
                 match result {
                     EditorLoop::Quit => break,
-                    EditorLoop::Continue => {
-                        send_operations(&mut editor_operations, &mut local_client, &mut connections)
-                    }
+                    EditorLoop::Continue => send_operations(
+                        &mut config,
+                        &mut editor_operations,
+                        &mut local_client,
+                        &mut connections,
+                    ),
                 }
             }
             ClientEvent::Resize(w, h) => ui.resize(w, h)?,
@@ -191,11 +199,7 @@ where
                 match event {
                     ConnectionEvent::NewConnection => {
                         let handle = connections.accept_connection(&event_registry)?;
-                        editor.on_client_joined(
-                            handle,
-                            &local_client.config,
-                            &mut editor_operations,
-                        );
+                        editor.on_client_joined(handle, &config, &mut editor_operations);
                         connections.listen_next_listener_event(&event_registry)?;
                     }
                     ConnectionEvent::Stream(stream_id) => {
@@ -203,7 +207,7 @@ where
 
                         let result = connections.receive_keys(handle, |key| {
                             editor.on_key(
-                                &local_client.config,
+                                &config,
                                 key,
                                 TargetClient::Remote(handle),
                                 &mut editor_operations,
@@ -224,12 +228,18 @@ where
                 }
 
                 connections.unregister_closed_connections(&event_registry)?;
-                send_operations(&mut editor_operations, &mut local_client, &mut connections);
+                send_operations(
+                    &mut config,
+                    &mut editor_operations,
+                    &mut local_client,
+                    &mut connections,
+                );
                 connections.unregister_closed_connections(&event_registry)?;
             }
         }
 
         ui.draw(
+            &config,
             &local_client,
             local_client.status_message_kind,
             &local_client.status_message[..],
@@ -245,18 +255,38 @@ where
     Ok(())
 }
 
-fn run_client<I>(mut ui: I, mut connection: ConnectionWithServer) -> Result<(), Box<dyn Error>>
+fn run_client<I>(
+    args: Args,
+    mut ui: I,
+    mut connection: ConnectionWithServer,
+) -> Result<(), Box<dyn Error>>
 where
     I: UI,
 {
     let (event_sender, event_receiver) = mpsc::channel();
+
+    let mut keys = KeySerializer::default();
+    if let Some(ks) = args.keys {
+        for key in Key::parse_all(&ks[..]) {
+            match key {
+                Ok(key) => keys.serialize(key),
+                Err(error) => return Err(Box::new(error)),
+            }
+            dbg!(key.unwrap());
+        }
+
+        let _ = connection.send_serialized_keys(&mut keys);
+        connection.close();
+        return Ok(());
+    }
+
     let event_manager = EventManager::new()?;
     let event_registry = event_manager.registry();
     let event_manager_loop = event_manager.run_event_loop_in_background(event_sender.clone());
     let ui_event_loop = I::run_event_loop_in_background(event_sender);
 
+    let mut config = Config::default();
     let mut local_client = Client::new();
-    let mut keys = KeySerializer::default();
 
     connection.register_connection(&event_registry)?;
     ui.init()?;
@@ -274,8 +304,9 @@ where
             ClientEvent::Connection(event) => match event {
                 ConnectionEvent::NewConnection => (),
                 ConnectionEvent::Stream(_) => {
-                    let response = connection
-                        .receive_operations(|op| local_client.on_editor_operation(&op))?;
+                    let response = connection.receive_operations(|op| {
+                        local_client.on_editor_operation(&mut config, &op)
+                    })?;
                     if let None = response {
                         break;
                     }
@@ -286,6 +317,7 @@ where
         }
 
         ui.draw(
+            &config,
             &local_client,
             local_client.status_message_kind,
             &local_client.status_message[..],
