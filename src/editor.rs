@@ -1,5 +1,7 @@
 use std::path::Path;
 
+use rhai::Engine;
+
 use crate::{
     buffer::BufferCollection,
     buffer_view::{BufferViewCollection, BufferViewHandle},
@@ -113,6 +115,7 @@ pub struct Editor {
     buffered_keys: Vec<Key>,
     input: String,
     commands: CommandCollection,
+    script_engine: Engine,
 
     buffers: BufferCollection,
     buffer_views: BufferViewCollection,
@@ -131,6 +134,7 @@ impl Editor {
             buffered_keys: Vec::new(),
             input: String::new(),
             commands: CommandCollection::default(),
+            script_engine: Engine::new(),
 
             buffers: Default::default(),
             buffer_views: BufferViewCollection::default(),
