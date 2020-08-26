@@ -47,7 +47,7 @@ fn main() {
     scripts
         .eval(
             context,
-            "my_print(\"sadsad\")"
+            "my_print(\"sadsad\"); print_with_ctx("
         )
         .unwrap();
     return;
