@@ -15,6 +15,7 @@ mod history;
 mod keymap;
 mod mode;
 mod pattern;
+mod script;
 mod select;
 mod serialization;
 mod syntax;
