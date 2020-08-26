@@ -11,7 +11,7 @@ use crate::{
 
 fn on_event_no_buffer(_ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
     match keys.next() {
-        Key::Char(':') => ModeOperation::EnterMode(Mode::Command(FromMode::Normal)),
+        Key::Char(':') => ModeOperation::EnterMode(Mode::Script(FromMode::Normal)),
         _ => ModeOperation::None,
     }
 }

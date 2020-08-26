@@ -14,7 +14,7 @@ use crate::{
     keymap::KeyMapCollection,
 };
 
-mod command;
+mod script;
 mod insert;
 mod normal;
 mod search;
@@ -62,7 +62,7 @@ pub enum Mode {
     Select,
     Insert,
     Search(FromMode),
-    Command(FromMode),
+    Script(FromMode),
 }
 
 impl Mode {
@@ -76,7 +76,7 @@ impl Mode {
             Mode::Select => select::on_enter(context),
             Mode::Insert => insert::on_enter(context),
             Mode::Search(_) => search::on_enter(context),
-            Mode::Command(_) => command::on_enter(context),
+            Mode::Script(_) => script::on_enter(context),
         }
     }
 
@@ -90,7 +90,7 @@ impl Mode {
             Mode::Select => select::on_event(context, keys),
             Mode::Insert => insert::on_event(context, keys),
             Mode::Search(from_mode) => search::on_event(context, keys, from_mode),
-            Mode::Command(from_mode) => command::on_event(context, keys, from_mode),
+            Mode::Script(from_mode) => script::on_event(context, keys, from_mode),
         }
     }
 }

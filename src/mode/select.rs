@@ -107,7 +107,7 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
                     MovementKind::PositionOnly,
                 );
         }
-        Key::Char(':') => return ModeOperation::EnterMode(Mode::Command(FromMode::Select)),
+        Key::Char(':') => return ModeOperation::EnterMode(Mode::Script(FromMode::Select)),
         _ => (),
     };
 

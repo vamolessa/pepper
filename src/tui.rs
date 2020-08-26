@@ -490,7 +490,7 @@ where
                 )?;
                 draw_buffer_path = false;
             }
-            Mode::Command(_) => {
+            Mode::Script(_) => {
                 x = draw_input(
                     write,
                     ":",
