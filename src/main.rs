@@ -22,16 +22,7 @@ mod theme;
 mod tui;
 
 fn main() {
-    if let Err(e) = ctrlc::set_handler(|| {}) {
-        eprintln!("could not set ctrl-c handler: {:?}", e);
-        return;
-    }
-
-    let stdout = std::io::stdout();
-    let stdout = stdout.lock();
-    let ui = tui::Tui::new(stdout);
-
-    if let Err(e) = application::run(ui) {
-        eprintln!("{:?}", e);
+    if let Err(e) = application::run() {
+        eprintln!("{}", e);
     }
 }

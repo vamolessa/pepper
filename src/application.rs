@@ -1,4 +1,11 @@
-use std::{convert::From, env, fmt, fs, io, path::PathBuf, sync::mpsc, thread};
+use std::{
+    env,
+    error::Error,
+    fmt, fs,
+    path::{Path, PathBuf},
+    sync::mpsc,
+    thread,
+};
 
 use argh::FromArgs;
 
@@ -12,6 +19,7 @@ use crate::{
         StatusMessageKind,
     },
     event_manager::{ConnectionEvent, EventManager},
+    tui::Tui,
 };
 
 /// code editor inspired by vim and kakoune
@@ -24,40 +32,23 @@ struct Args {
     /// session name
     #[argh(option, short = 's')]
     session: Option<String>,
-}
 
-pub trait UiError: 'static + Send + fmt::Debug {}
+    /// send keys to server and quit
+    #[argh(option, short = 'k')]
+    keys: Option<String>,
+}
 
 #[derive(Debug)]
-pub enum ApplicationError<UIE>
-where
-    UIE: UiError,
-{
-    IO(io::Error),
-    UI(UIE),
-    CouldNotConnectToOrStartServer,
-}
-
-impl<UIE> From<io::Error> for ApplicationError<UIE>
-where
-    UIE: UiError,
-{
-    fn from(error: io::Error) -> Self {
-        ApplicationError::IO(error)
-    }
-}
-
-impl<UIE> From<UIE> for ApplicationError<UIE>
-where
-    UIE: UiError,
-{
-    fn from(error: UIE) -> Self {
-        ApplicationError::UI(error)
+pub struct ApplicationError(String);
+impl Error for ApplicationError {}
+impl fmt::Display for ApplicationError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(&self.0[..])
     }
 }
 
 pub trait UI {
-    type Error: UiError;
+    type Error: 'static + Send + Error;
 
     fn run_event_loop_in_background(
         event_sender: mpsc::Sender<ClientEvent>,
@@ -83,25 +74,40 @@ pub trait UI {
     }
 }
 
-pub fn run<I>(ui: I) -> Result<(), ApplicationError<I::Error>>
-where
-    I: UI,
-{
+pub fn run() -> Result<(), Box<dyn Error>> {
+    if let Err(e) = ctrlc::set_handler(|| {}) {
+        return Err(Box::new(e));
+    }
+
     let args: Args = argh::from_env();
 
     let mut session_socket_path = env::temp_dir();
     session_socket_path.push(env!("CARGO_PKG_NAME"));
     if !session_socket_path.exists() {
-        std::fs::create_dir_all(&session_socket_path)?;
+        std::fs::create_dir_all(&session_socket_path).map_err(|e| Box::new(e))?;
     }
 
     let mut session_name = match args.session.clone() {
         Some(session) => session,
-        None => env::current_dir()?.to_string_lossy().into_owned(),
+        None => env::current_dir()
+            .map_err(|e| Box::new(e))?
+            .to_string_lossy()
+            .into_owned(),
     };
     session_name.retain(|c| c.is_alphanumeric());
     session_socket_path.push(session_name);
 
+    let stdout = std::io::stdout();
+    let stdout = stdout.lock();
+    let ui = Tui::new(stdout);
+
+    run_with_ui(args, ui, &session_socket_path)
+}
+
+fn run_with_ui<I>(args: Args, ui: I, session_socket_path: &Path) -> Result<(), Box<dyn Error>>
+where
+    I: UI,
+{
     if let Ok(connection) = ConnectionWithServer::connect(&session_socket_path) {
         run_client(ui, connection)?;
     } else if let Ok(listener) = ConnectionWithClientCollection::listen(&session_socket_path) {
@@ -112,7 +118,9 @@ where
         run_server_with_client(args, ui, listener)?;
         fs::remove_file(session_socket_path)?;
     } else {
-        return Err(ApplicationError::CouldNotConnectToOrStartServer);
+        return Err(Box::new(ApplicationError(
+            "could not connect to or start the server".into(),
+        )));
     }
 
     Ok(())
@@ -139,7 +147,7 @@ fn run_server_with_client<I>(
     args: Args,
     mut ui: I,
     mut connections: ConnectionWithClientCollection,
-) -> Result<(), ApplicationError<I::Error>>
+) -> Result<(), Box<dyn Error>>
 where
     I: UI,
 {
@@ -237,10 +245,7 @@ where
     Ok(())
 }
 
-fn run_client<I>(
-    mut ui: I,
-    mut connection: ConnectionWithServer,
-) -> Result<(), ApplicationError<I::Error>>
+fn run_client<I>(mut ui: I, mut connection: ConnectionWithServer) -> Result<(), Box<dyn Error>>
 where
     I: UI,
 {

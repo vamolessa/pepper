@@ -7,7 +7,7 @@ use crossterm::{
 };
 
 use crate::{
-    application::{UiError, UI},
+    application::UI,
     buffer_position::BufferPosition,
     client::Client,
     client_event::{ClientEvent, Key},
@@ -54,8 +54,6 @@ const fn convert_color(color: theme::Color) -> Color {
         b: color.2,
     }
 }
-
-impl UiError for ErrorKind {}
 
 pub struct Tui<W>
 where
