@@ -31,6 +31,8 @@ impl ConnectionEvent {
     }
 }
 
+#[cfg(unix)]
+use std::os::unix::net::{UnixListener, UnixStream};
 #[cfg(windows)]
 use uds_windows::{UnixListener, UnixStream};
 

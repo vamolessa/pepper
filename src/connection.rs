@@ -185,14 +185,14 @@ impl ConnectionWithClientCollection {
 
     pub fn close_connection(&mut self, handle: ConnectionWithClientHandle) {
         if let Some(connection) = &self.connections[handle.0] {
-            let _ = &connection.0.shutdown(Shutdown::Both);
+            let _ = connection.0.shutdown(Shutdown::Both);
             self.closed_connection_indexes.push(handle.0);
         }
     }
 
     pub fn close_all_connections(&mut self) {
         for connection in self.connections.iter().flatten() {
-            let _ = &connection.0.shutdown(Shutdown::Both);
+            let _ = connection.0.shutdown(Shutdown::Both);
         }
     }
 
@@ -224,7 +224,7 @@ impl ConnectionWithClientCollection {
             None => return,
         };
 
-        if stream.write_all(bytes).is_err() {
+        if let Err(_) = stream.write_all(bytes).and_then(|_| stream.flush()) {
             self.close_connection(handle);
         }
     }
@@ -286,8 +286,12 @@ impl ConnectionWithServer {
         })
     }
 
-    pub fn close(&self) {
-        let _ = &self.stream.shutdown(Shutdown::Both);
+    pub fn set_blocking(&mut self) -> io::Result<()> {
+        self.stream.set_nonblocking(false)
+    }
+
+    pub fn close(&mut self) {
+        let _ = self.stream.shutdown(Shutdown::Both);
     }
 
     pub fn register_connection(&self, event_registry: &EventRegistry) -> io::Result<()> {
@@ -304,10 +308,10 @@ impl ConnectionWithServer {
             return Ok(());
         }
 
-        let result = match self.stream.write_all(bytes) {
-            Ok(()) => Ok(()),
-            Err(error) => Err(io::Error::new(io::ErrorKind::Other, error)),
-        };
+        let result = self
+            .stream
+            .write_all(bytes)
+            .and_then(|_| self.stream.flush());
 
         serializer.clear();
         result

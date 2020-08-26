@@ -272,11 +272,13 @@ where
                 Ok(key) => keys.serialize(key),
                 Err(error) => return Err(Box::new(error)),
             }
-            dbg!(key.unwrap());
         }
 
+        connection.set_blocking()?;
         let _ = connection.send_serialized_keys(&mut keys);
+        let _ = connection.receive_operations(|_| ());
         connection.close();
+
         return Ok(());
     }
 
