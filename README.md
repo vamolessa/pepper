@@ -57,14 +57,20 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- find char
 - text objects
 	- word
-	- braces
+	- balanced braces
 - status bar
 	- ~~buffer name~~
 	- ~~buffer position~~
 	- buffered keys
 - external commands
-	- cli commands that execute on the server (rg)
-	- tui commands that execute on a client (fzf) that then sends result back to server
+	- ~~cli commands that execute on the server~~
+- cli
+	- ~~custom session name~~
+	- ~~config path~~
+	- ~~send keys to server and quit~~
+- scripting
+	- integrate scripting language to use as command interface
+	- config file is script file
 - autocomplete
 	- select/entries ui
 	- selection movements
