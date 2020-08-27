@@ -1,12 +1,12 @@
 use std::{
+    fs::File,
     io::Read,
     ops::{Deref, DerefMut},
-    fs::File,
     path::Path,
     sync::Arc,
 };
 
-use mlua::prelude::{Lua, LuaResult, LuaUserData, LuaError};
+use mlua::prelude::{Lua, LuaError, LuaResult, LuaTable, LuaUserData};
 
 use crate::{
     buffer::BufferCollection,
@@ -31,9 +31,9 @@ pub struct ScriptContext<'a> {
 }
 
 #[derive(Clone)]
-struct ScriptContextRef(*mut ScriptContextRef);
+pub struct ScriptContextRef(*mut ScriptContextRef);
 impl ScriptContextRef {
-    pub fn new(ctx: &mut ScriptContext) -> Self {
+    fn new(ctx: &mut ScriptContext) -> Self {
         Self(ctx as *mut ScriptContext as *mut _)
     }
 }
@@ -67,32 +67,24 @@ impl ScriptEngine {
             | mlua::StdLib::MATH
             | mlua::StdLib::PACKAGE;
         let lua = Lua::new_with(libs)?;
-
-        let api = lua.create_table()?;
-        api.set(
-            "p",
-            lua.create_function(|_, n: String| {
-                println!("opaa {}", n);
-                Ok(())
-            })?,
-        )?;
-        api.set(
-            "print",
-            lua.create_function(|_, (ctx, n): (ScriptContextRef, u64)| {
-                println!("aeee {} tabsize: {}", n, ctx.config.values.tab_size);
-                Ok(())
-            })?,
-        )?;
-
-        lua.globals().set("api", api)?;
-
         Ok(Self { lua })
+    }
+
+    pub fn register_all_functions<'lua, F>(&'lua self, name: &str, func: F) -> LuaResult<()>
+    where
+        F: FnOnce(&LuaTable<'lua>),
+    {
+        let functions_table = self.lua.create_table()?;
+        func(&functions_table);
+        self.lua.globals().set(name, functions_table)?;
+        Ok(())
     }
 
     pub fn eval(&mut self, mut ctx: ScriptContext, source: &str) -> LuaResult<()> {
         self.lua.scope(|scope| {
             let ctx = scope.create_userdata(ScriptContextRef::new(&mut ctx))?;
             self.lua.globals().set("ctx", ctx)?;
+
             self.lua.load(source).exec()?;
             Ok(())
         })
@@ -100,9 +92,12 @@ impl ScriptEngine {
 
     pub fn load_entry_file(&mut self, mut ctx: ScriptContext, path: &Path) -> LuaResult<()> {
         let mut file = File::open(path).map_err(|e| LuaError::ExternalError(Arc::new(e)))?;
-        let metadata = file.metadata().map_err(|e| LuaError::ExternalError(Arc::new(e)))?;
+        let metadata = file
+            .metadata()
+            .map_err(|e| LuaError::ExternalError(Arc::new(e)))?;
         let mut source = String::with_capacity(metadata.len() as _);
-        file.read_to_string(&mut source).map_err(|e| LuaError::ExternalError(Arc::new(e)))?;
+        file.read_to_string(&mut source)
+            .map_err(|e| LuaError::ExternalError(Arc::new(e)))?;
 
         self.lua.scope(|scope| {
             let ctx = scope.create_userdata(ScriptContextRef::new(&mut ctx))?;
@@ -114,6 +109,7 @@ impl ScriptEngine {
             } else {
                 chunk
             };
+
             chunk.exec()?;
             Ok(())
         })
