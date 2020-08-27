@@ -1,12 +1,6 @@
-use std::{rc::Rc, cell::RefCell, path::PathBuf};
+use std::{cell::RefCell, path::PathBuf, rc::Rc};
 
-use rhai::{
-    def_package,
-    Dynamic,
-    module_resolvers::FileModuleResolver,
-    packages::{EvalPackage, Package},
-    Engine, EvalAltResult, ImmutableString, Scope,
-};
+use mlua::prelude::{Lua, LuaResult, LuaUserData};
 
 use crate::{
     buffer::BufferCollection,
@@ -30,37 +24,72 @@ pub struct ScriptContext<'a> {
     pub current_buffer_view_handle: &'a mut Option<BufferViewHandle>,
 }
 
+#[derive(Clone)]
+pub struct ScriptContextRef<'a>(*mut ScriptContext<'a>);
+impl<'a> ScriptContextRef<'a> {
+    pub fn get(&self) -> &mut ScriptContext<'a> {
+        unsafe { &mut *self.0 }
+    }
+}
+impl<'a> LuaUserData for ScriptContextRef<'a> {}
+
 pub struct ScriptEngine {
-    engine: Engine,
+    lua: Lua,
 }
 
 impl ScriptEngine {
     pub fn new() -> Self {
-        let mut engine = Engine::new();
-        engine.load_package(EvalPackage::new().get());
-        engine.load_package(ApiPackage::new().get());
-
-        Self { engine }
+        Self::try_new().unwrap()
     }
 
-    pub fn eval(
+    pub fn try_new() -> LuaResult<Self> {
+        let libs = mlua::StdLib::TABLE
+            | mlua::StdLib::STRING
+            | mlua::StdLib::UTF8
+            | mlua::StdLib::MATH
+            | mlua::StdLib::PACKAGE;
+        let lua = Lua::new_with(libs)?;
+
+        let api = lua.create_table()?;
+        api.set("p", lua.create_function(|_, n: String| {
+            println!("opaa {}", n);
+            Ok(())
+        })?)?;
+        api.set(
+            "print",
+            lua.create_function(|_, (_ctx, n): (ScriptContextRef, u64)| {
+                println!("aeee {}", n);
+                Ok(())
+            })?,
+        )?;
+
+        lua.globals().set("api", api)?;
+
+        Ok(Self { lua })
+    }
+
+    pub fn eval(&mut self, mut ctx: ScriptContext, expression: &str) -> LuaResult<()> {
+        self.lua.scope(|scope| {
+            let ctx = scope.create_nonstatic_userdata(ScriptContextRef(&mut ctx))?;
+            self.lua.globals().set("ctx", ctx)?;
+            self.lua.load(expression).exec()?;
+            Ok(())
+        })
+    }
+
+    /*
+    pub fn load_entry_file(
         &mut self,
         ctx: ScriptContext,
-        expression: &str,
+        path: PathBuf,
     ) -> Result<(), Box<EvalAltResult>> {
-        let mut scope = Self::scope(ctx);
-        self.engine
-            .eval_expression_with_scope(&mut scope, expression)
-    }
-
-    pub fn load_entry_file(&mut self, ctx: ScriptContext, path: PathBuf) -> Result<(), Box<EvalAltResult>> {
         let mut root_path = path.clone();
         root_path.pop();
 
         self.engine
             .set_module_resolver(Some(FileModuleResolver::new_with_path(root_path)));
 
-        let mut scope = Self::scope(ctx);
+        let mut scope = Self::scope(ScriptContextRef::new(ctx));
         let ast = self.engine.compile_file_with_scope(&scope, path)?;
         self.engine.consume_ast_with_scope(&mut scope, &ast)?;
 
@@ -68,21 +97,5 @@ impl ScriptEngine {
             .set_module_resolver(Option::<FileModuleResolver>::None);
         Ok(())
     }
-
-    fn scope<'a>(ctx: ScriptContext<'a>) -> Scope<'a> {
-        let scope = Scope::new();
-        scope
-    }
+    */
 }
-
-def_package!(rhai:ApiPackage:"pepper api", module, {
-    module.set_fn_1("my_print", |s: ImmutableString| {
-        println!("hello {}", s);
-        Ok(())
-    });
-
-    module.set_fn_2("print_with_ctx", |ctx: Rc<RefCell<ScriptContext>>, s: ImmutableString| {
-        println!("hello tab_size {}", ctx.borrow_mut().config.values.tab_size);
-        Ok(())
-    });
-});

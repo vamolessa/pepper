@@ -44,12 +44,7 @@ fn main() {
     };
 
     let mut scripts = script::ScriptEngine::new();
-    scripts
-        .eval(
-            context,
-            "my_print(\"sadsad\"); print_with_ctx("
-        )
-        .unwrap();
+    scripts.eval(context, "api.p(type(ctx))").unwrap();
     return;
 
     if let Err(e) = application::run() {
