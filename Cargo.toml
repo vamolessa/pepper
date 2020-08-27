@@ -10,7 +10,7 @@ documentation = "https://github.com/matheuslessarodrigues/pepper"
 homepage = "https://github.com/matheuslessarodrigues/pepper"
 repository = "https://github.com/matheuslessarodrigues/pepper"
 readme = "README.md"
-categories = ["command-line-utilities"]
+categories = ["command-line-utilities", "text-editors"]
 
 [[bin]]
 name = "pepper"
