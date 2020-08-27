@@ -31,6 +31,8 @@ fn main() {
     let mut buffer_views = buffer_view::BufferViewCollection::default();
     let mut current_buffer_view_handle = None;
 
+    let mut scripts = script::ScriptEngine::new();
+
     let context = script::ScriptContext {
         target_client: connection::TargetClient::All,
         client_target_map: &mut client_target_map,
@@ -43,8 +45,22 @@ fn main() {
         current_buffer_view_handle: &mut current_buffer_view_handle,
     };
 
-    let mut scripts = script::ScriptEngine::new();
-    scripts.eval(context, "api.p(type(ctx))").unwrap();
+    scripts.eval(context, "api.p(\"1\") a = nil api.p(type(a)) a = ctx api.p(type(a)) api.print(a, 45)").unwrap();
+
+    let context = script::ScriptContext {
+        target_client: connection::TargetClient::All,
+        client_target_map: &mut client_target_map,
+        operations: &mut operations,
+
+        config: &config,
+        keymaps: &mut keymaps,
+        buffers: &mut buffers,
+        buffer_views: &mut buffer_views,
+        current_buffer_view_handle: &mut current_buffer_view_handle,
+    };
+
+    let r = scripts.eval(context, "api.p(\"2\") api.p(type(a)) api.print(a, 45)");
+    dbg!(r);
     return;
 
     if let Err(e) = application::run() {

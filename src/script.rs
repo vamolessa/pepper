@@ -1,6 +1,12 @@
-use std::{cell::RefCell, path::PathBuf, rc::Rc};
+use std::{
+    io::Read,
+    ops::{Deref, DerefMut},
+    fs::File,
+    path::Path,
+    sync::Arc,
+};
 
-use mlua::prelude::{Lua, LuaResult, LuaUserData};
+use mlua::prelude::{Lua, LuaResult, LuaUserData, LuaError};
 
 use crate::{
     buffer::BufferCollection,
@@ -25,13 +31,25 @@ pub struct ScriptContext<'a> {
 }
 
 #[derive(Clone)]
-pub struct ScriptContextRef<'a>(*mut ScriptContext<'a>);
-impl<'a> ScriptContextRef<'a> {
-    pub fn get(&self) -> &mut ScriptContext<'a> {
-        unsafe { &mut *self.0 }
+struct ScriptContextRef(*mut ScriptContextRef);
+impl ScriptContextRef {
+    pub fn new(ctx: &mut ScriptContext) -> Self {
+        Self(ctx as *mut ScriptContext as *mut _)
     }
 }
-impl<'a> LuaUserData for ScriptContextRef<'a> {}
+impl Deref for ScriptContextRef {
+    type Target = ScriptContext<'static>;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*(self.0 as *const _) }
+    }
+}
+impl DerefMut for ScriptContextRef {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { &mut *(self.0 as *mut _) }
+    }
+}
+impl LuaUserData for ScriptContextRef {}
 
 pub struct ScriptEngine {
     lua: Lua,
@@ -51,14 +69,17 @@ impl ScriptEngine {
         let lua = Lua::new_with(libs)?;
 
         let api = lua.create_table()?;
-        api.set("p", lua.create_function(|_, n: String| {
-            println!("opaa {}", n);
-            Ok(())
-        })?)?;
+        api.set(
+            "p",
+            lua.create_function(|_, n: String| {
+                println!("opaa {}", n);
+                Ok(())
+            })?,
+        )?;
         api.set(
             "print",
-            lua.create_function(|_, (_ctx, n): (ScriptContextRef, u64)| {
-                println!("aeee {}", n);
+            lua.create_function(|_, (ctx, n): (ScriptContextRef, u64)| {
+                println!("aeee {} tabsize: {}", n, ctx.config.values.tab_size);
                 Ok(())
             })?,
         )?;
@@ -68,34 +89,33 @@ impl ScriptEngine {
         Ok(Self { lua })
     }
 
-    pub fn eval(&mut self, mut ctx: ScriptContext, expression: &str) -> LuaResult<()> {
+    pub fn eval(&mut self, mut ctx: ScriptContext, source: &str) -> LuaResult<()> {
         self.lua.scope(|scope| {
-            let ctx = scope.create_nonstatic_userdata(ScriptContextRef(&mut ctx))?;
+            let ctx = scope.create_userdata(ScriptContextRef::new(&mut ctx))?;
             self.lua.globals().set("ctx", ctx)?;
-            self.lua.load(expression).exec()?;
+            self.lua.load(source).exec()?;
             Ok(())
         })
     }
 
-    /*
-    pub fn load_entry_file(
-        &mut self,
-        ctx: ScriptContext,
-        path: PathBuf,
-    ) -> Result<(), Box<EvalAltResult>> {
-        let mut root_path = path.clone();
-        root_path.pop();
+    pub fn load_entry_file(&mut self, mut ctx: ScriptContext, path: &Path) -> LuaResult<()> {
+        let mut file = File::open(path).map_err(|e| LuaError::ExternalError(Arc::new(e)))?;
+        let metadata = file.metadata().map_err(|e| LuaError::ExternalError(Arc::new(e)))?;
+        let mut source = String::with_capacity(metadata.len() as _);
+        file.read_to_string(&mut source).map_err(|e| LuaError::ExternalError(Arc::new(e)))?;
 
-        self.engine
-            .set_module_resolver(Some(FileModuleResolver::new_with_path(root_path)));
+        self.lua.scope(|scope| {
+            let ctx = scope.create_userdata(ScriptContextRef::new(&mut ctx))?;
+            self.lua.globals().set("ctx", ctx)?;
 
-        let mut scope = Self::scope(ScriptContextRef::new(ctx));
-        let ast = self.engine.compile_file_with_scope(&scope, path)?;
-        self.engine.consume_ast_with_scope(&mut scope, &ast)?;
-
-        self.engine
-            .set_module_resolver(Option::<FileModuleResolver>::None);
-        Ok(())
+            let chunk = self.lua.load(&source);
+            let chunk = if let Some(name) = path.to_str() {
+                chunk.set_name(name)?
+            } else {
+                chunk
+            };
+            chunk.exec()?;
+            Ok(())
+        })
     }
-    */
 }
