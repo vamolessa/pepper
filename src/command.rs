@@ -595,7 +595,7 @@ mod commands {
 
         let mut child =
             unwrap_or_command_error!(ctx.operations, command.spawn().map_err(|e| e.to_string()));
-        if let (Some(input), Some(stdin)) = (input, child.stdin.as_mut()) {
+        if let Some((stdin, input)) = child.stdin.as_mut().zip(input) {
             let _ = stdin.write_all(input.as_bytes());
         }
         child.stdin = None;

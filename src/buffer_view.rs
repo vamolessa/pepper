@@ -230,10 +230,7 @@ impl BufferViewCollection {
         self.buffer_views
             .iter()
             .enumerate()
-            .filter_map(|(i, v)| match v {
-                Some(v) => Some((BufferViewHandle(i), v)),
-                None => None,
-            })
+            .filter_map(|(i, v)| Some(BufferViewHandle(i)).zip(v.as_ref()))
     }
 
     pub fn insert_text(

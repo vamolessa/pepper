@@ -467,10 +467,7 @@ impl BufferCollection {
         self.buffers
             .iter()
             .enumerate()
-            .filter_map(|(i, b)| match b {
-                Some(b) => Some((BufferHandle(i), b)),
-                None => None,
-            })
+            .filter_map(|(i, b)| Some(BufferHandle(i)).zip(b.as_ref()))
     }
 }
 
