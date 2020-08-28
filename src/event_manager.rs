@@ -1,13 +1,25 @@
 use std::{
+    convert::Into,
     io,
     sync::{mpsc, Arc},
     thread,
 };
 
-use crate::client_event::ClientEvent;
+use crate::{client_event::ClientEvent, connection::ConnectionWithClientHandle};
 
 #[derive(Debug, Clone, Copy)]
-pub struct StreamId(pub usize);
+pub struct StreamId(usize);
+
+impl Into<ConnectionWithClientHandle> for StreamId {
+    fn into(self) -> ConnectionWithClientHandle {
+        ConnectionWithClientHandle::from_index(self.0)
+    }
+}
+impl Into<StreamId> for ConnectionWithClientHandle {
+    fn into(self) -> StreamId {
+        StreamId(self.into_index())
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 pub enum ConnectionEvent {

@@ -1,9 +1,7 @@
 use std::{
-    convert::Into,
     io::{self, Read, Write},
     net::Shutdown,
     path::Path,
-    str::FromStr,
 };
 
 #[cfg(unix)]
@@ -18,7 +16,7 @@ use crate::{
         EditorOperation, EditorOperationDeserializeResult, EditorOperationDeserializer,
         EditorOperationSerializer,
     },
-    event_manager::{EventRegistry, StreamId},
+    event_manager::EventRegistry,
 };
 
 struct ReadBuf {
@@ -95,25 +93,12 @@ pub struct ConnectionWithClient(UnixStream);
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct ConnectionWithClientHandle(usize);
 impl ConnectionWithClientHandle {
+    pub fn from_index(index: usize) -> Self {
+        Self(index)
+    }
+
     pub fn into_index(self) -> usize {
         self.0
-    }
-}
-impl Into<ConnectionWithClientHandle> for StreamId {
-    fn into(self) -> ConnectionWithClientHandle {
-        ConnectionWithClientHandle(self.0)
-    }
-}
-impl Into<StreamId> for ConnectionWithClientHandle {
-    fn into(self) -> StreamId {
-        StreamId(self.0)
-    }
-}
-impl FromStr for ConnectionWithClientHandle {
-    type Err = <usize as FromStr>::Err;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Self(s.parse()?))
     }
 }
 
@@ -295,11 +280,17 @@ impl ConnectionWithServer {
     }
 
     pub fn register_connection(&self, event_registry: &EventRegistry) -> io::Result<()> {
-        event_registry.register_stream(&self.stream, StreamId(0))
+        event_registry.register_stream(
+            &self.stream,
+            ConnectionWithClientHandle::from_index(0).into(),
+        )
     }
 
     pub fn listen_next_event(&self, event_registry: &EventRegistry) -> io::Result<()> {
-        event_registry.listen_next_stream_event(&self.stream, StreamId(0))
+        event_registry.listen_next_stream_event(
+            &self.stream,
+            ConnectionWithClientHandle::from_index(0).into(),
+        )
     }
 
     pub fn send_serialized_keys(&mut self, serializer: &mut KeySerializer) -> io::Result<()> {

@@ -165,7 +165,7 @@ impl Default for CommandCollection {
             quit, open, close, save, save_all,
             selection, replace, echo, pipe,
 
-            set, syntax, theme,
+            syntax, theme,
             nmap, smap, imap,
         }
 
@@ -376,12 +376,7 @@ mod commands {
                 .client_target_map
                 .map(ctx.target_client, TargetClient::Local),
             _ => {
-                let client_handle: ConnectionWithClientHandle = match target.parse() {
-                    Ok(handle) => handle,
-                    Err(_) => command_error!(ctx.operations, "could not parse target client"),
-                };
-                ctx.client_target_map
-                    .map(ctx.target_client, TargetClient::Remote(client_handle));
+                command_error!(ctx.operations, "could not parse target client");
             }
         }
         CommandOperation::Complete
@@ -397,7 +392,7 @@ mod commands {
         CommandOperation::Quit
     }
 
-    pub fn open<'a, 'b>(
+    pub fn open(
         mut ctx: &mut CommandContext,
         args: &mut CommandArgs,
         input: Option<&str>,
@@ -610,87 +605,6 @@ mod commands {
         } else {
             let child_output = String::from_utf8_lossy(&child_output.stdout[..]);
             command_error!(ctx.operations, child_output);
-        }
-
-        CommandOperation::Complete
-    }
-
-    pub fn set(
-        ctx: &mut CommandContext,
-        args: &mut CommandArgs,
-        _input: Option<&str>,
-        _output: &mut String,
-    ) -> CommandOperation {
-        let name = expect_next!(ctx.operations, args);
-        let mut previous = "";
-        let mut args = args.map(|arg| {
-            if let Ok(arg) = arg {
-                previous = arg
-            }
-            arg
-        });
-
-        let mut values = ctx.config.values.clone();
-        match values.parse_and_set(name, &mut args) {
-            Ok(()) => assert_empty!(ctx.operations, args),
-            Err(e) => {
-                let message = match e {
-                    ParseConfigError::ConfigNotFound => helper::parsing_error(e, name, 0),
-                    ParseConfigError::ParseError(e) => helper::parsing_error(e, previous, 0),
-                    ParseConfigError::UnexpectedEndOfValues => {
-                        helper::parsing_error(e, previous, previous.len())
-                    }
-                };
-                command_error!(ctx.operations, message);
-            }
-        }
-
-        ctx.operations
-            .serialize_config_values(TargetClient::All, &values);
-        CommandOperation::Complete
-    }
-
-    pub fn syntax(
-        ctx: &mut CommandContext,
-        args: &mut CommandArgs,
-        _input: Option<&str>,
-        _output: &mut String,
-    ) -> CommandOperation {
-        let main_extension = expect_next!(ctx.operations, args);
-        let subcommand = expect_next!(ctx.operations, args);
-        if subcommand == "extension" {
-            for extension in args {
-                let extension = unwrap_or_command_error!(ctx.operations, extension);
-                ctx.operations.serialize(
-                    TargetClient::All,
-                    &EditorOperation::SyntaxExtension(main_extension, extension),
-                );
-            }
-        } else if let Some(token_kind) = TokenKind::from_str(subcommand) {
-            for pattern in args {
-                let pattern = unwrap_or_command_error!(ctx.operations, pattern);
-                let pattern = match Pattern::new(pattern) {
-                    Ok(pattern) => pattern,
-                    Err(error) => {
-                        let message = helper::parsing_error(error, pattern, 0);
-                        command_error!(ctx.operations, message);
-                    }
-                };
-                ctx.operations.serialize_syntax_rule(
-                    TargetClient::All,
-                    main_extension,
-                    token_kind,
-                    &pattern,
-                );
-            }
-        } else {
-            command_error!(
-                ctx.operations,
-                format!(
-                    "no such subcommand '{}'. expected either 'extension' or a token kind",
-                    subcommand
-                )
-            );
         }
 
         CommandOperation::Complete

@@ -126,7 +126,7 @@ fn send_operations(
 
     let mut deserializer = EditorOperationDeserializer::from_slice(operations.local_bytes());
     while let EditorOperationDeserializeResult::Some(op) = deserializer.deserialize_next() {
-        local_client.on_editor_operation(config, &op);
+        let _ = local_client.on_editor_operation(config, &op);
     }
 
     operations.clear();

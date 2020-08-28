@@ -1,6 +1,6 @@
 #![macro_use]
 
-use std::{fs::File, io::Read, path::Path, sync::Arc};
+use std::{error::Error, fmt, fs::File, io::Read, path::Path, sync::Arc};
 
 use mlua::prelude::{
     FromLua, FromLuaMulti, Lua, LuaError, LuaLightUserData, LuaResult, LuaString, LuaValue,
@@ -15,12 +15,43 @@ use crate::{
     editor::ClientTargetMap,
     editor_operation::EditorOperationSerializer,
     keymap::KeyMapCollection,
+    script_bindings,
 };
 
 pub type ScriptResult<T> = LuaResult<T>;
 
+pub struct ScriptError<T>(T);
+impl<T> ScriptError<T>
+where
+    T: 'static + fmt::Display,
+{
+    pub fn from(e: T) -> LuaError {
+        LuaError::ExternalError(Arc::new(ScriptError(e)))
+    }
+}
+impl<T> fmt::Debug for ScriptError<T>
+where
+    T: fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(self, f)
+    }
+}
+impl<T> fmt::Display for ScriptError<T>
+where
+    T: fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+impl<T> Error for ScriptError<T> where T: fmt::Display {}
+
 pub struct ScriptStr<'lua>(LuaString<'lua>);
 impl<'lua> ScriptStr<'lua> {
+    pub fn as_bytes(&self) -> &[u8] {
+        self.0.as_bytes()
+    }
     pub fn to_str(&self) -> ScriptResult<&str> {
         self.0.to_str()
     }
@@ -39,13 +70,8 @@ impl<'lua> FromLua<'lua> for ScriptStr<'lua> {
     }
 }
 
-macro_rules! impl_script_data {
-    ($t:ty) => {
-        impl mlua::prelude::LuaUserData for $t {}
-    };
-}
-
 pub struct ScriptContext<'a> {
+    pub quit: &'a mut bool,
     pub target_client: TargetClient,
     pub client_target_map: &'a mut ClientTargetMap,
     pub operations: &'a mut EditorOperationSerializer,
@@ -73,7 +99,11 @@ impl ScriptEngine {
             | mlua::StdLib::MATH
             | mlua::StdLib::PACKAGE;
         let lua = Lua::new_with(libs)?;
-        Ok(Self { lua })
+
+        let mut this = Self { lua };
+        script_bindings::bind_all(&mut this)?;
+
+        Ok(this)
     }
 
     pub fn register_ctx_function<'lua, A, R, F>(
@@ -101,7 +131,7 @@ impl ScriptEngine {
         Ok(())
     }
 
-    pub fn load_entry_file(&mut self, mut ctx: ScriptContext, path: &Path) -> ScriptResult<()> {
+    pub fn eval_entry_file(&mut self, mut ctx: ScriptContext, path: &Path) -> ScriptResult<()> {
         let mut file = File::open(path).map_err(|e| LuaError::ExternalError(Arc::new(e)))?;
         let metadata = file
             .metadata()

@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, iter, ops::Range};
+use std::{str::FromStr, cmp::Ordering, iter, ops::Range, fmt};
 
 use serde_derive::{Deserialize, Serialize};
 
@@ -20,17 +20,26 @@ pub enum TokenKind {
     Literal,
 }
 
-impl TokenKind {
-    pub fn from_str(text: &str) -> Option<Self> {
+pub struct TokenKindParseError;
+impl fmt::Display for TokenKindParseError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("could not parse TokenKind")
+    }
+}
+
+impl FromStr for TokenKind {
+    type Err = TokenKindParseError;
+
+    fn from_str(text: &str) -> Result<Self, Self::Err> {
         match text {
-            "text" => Some(Self::Text),
-            "comment" => Some(Self::Comment),
-            "keyword" => Some(Self::Keyword),
-            "type" => Some(Self::Type),
-            "symbol" => Some(Self::Symbol),
-            "string" => Some(Self::String),
-            "literal" => Some(Self::Literal),
-            _ => None,
+            "text" => Ok(Self::Text),
+            "comment" => Ok(Self::Comment),
+            "keyword" => Ok(Self::Keyword),
+            "type" => Ok(Self::Type),
+            "symbol" => Ok(Self::Symbol),
+            "string" => Ok(Self::String),
+            "literal" => Ok(Self::Literal),
+            _ => Err(TokenKindParseError),
         }
     }
 }

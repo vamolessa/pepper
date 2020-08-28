@@ -1,11 +1,8 @@
-use std::{fmt, fs::File, io::Read, num::NonZeroUsize, path::Path, str::FromStr};
+use std::{fmt, num::NonZeroUsize, str::FromStr};
 
 use serde_derive::{Deserialize, Serialize};
 
 use crate::{
-    command::{CommandCollection, CommandContext, CommandOperation},
-    connection::TargetClient,
-    editor_operation::{EditorOperation, StatusMessageKind},
     pattern::Pattern,
     syntax::{Syntax, SyntaxCollection, TokenKind},
     theme::{pico8_theme, Theme},
@@ -14,7 +11,6 @@ use crate::{
 pub enum ParseConfigError {
     ConfigNotFound,
     ParseError(Box<dyn fmt::Display>),
-    UnexpectedEndOfValues,
 }
 
 impl fmt::Display for ParseConfigError {
@@ -22,7 +18,6 @@ impl fmt::Display for ParseConfigError {
         match self {
             Self::ConfigNotFound => write!(f, "could not find config"),
             Self::ParseError(e) => write!(f, "config parse error: {}", e),
-            Self::UnexpectedEndOfValues => write!(f, "unexpected end of values for config"),
         }
     }
 }
@@ -36,11 +31,7 @@ pub struct ConfigValues {
 }
 
 impl ConfigValues {
-    pub fn parse_and_set<'a>(
-        &mut self,
-        name: &str,
-        values: &mut impl Iterator<Item = Result<&'a str, String>>,
-    ) -> Result<(), ParseConfigError> {
+    pub fn parse_and_set<'a>(&mut self, name: &str, value: &str) -> Result<(), ParseConfigError> {
         fn parse<T>(value: &str) -> Result<T, ParseConfigError>
         where
             T: FromStr,
@@ -51,30 +42,20 @@ impl ConfigValues {
                 .map_err(|e| ParseConfigError::ParseError(Box::new(e)))
         }
 
-        macro_rules! parse_next {
-            () => {
-                match values.next() {
-                    Some(Ok(value)) => parse(value)?,
-                    Some(Err(error)) => return Err(ParseConfigError::ParseError(Box::new(error))),
-                    None => return Err(ParseConfigError::UnexpectedEndOfValues),
-                }
-            };
-        }
-
         macro_rules! match_and_parse {
-            ($($name:ident = $value:expr,)*) => {
+            ($($name:ident,)*) => {
                 match name {
-                    $(stringify!($name) => self.$name = $value,)*
+                    $(stringify!($name) => self.$name = parse(value)?,)*
                     _ => return Err(ParseConfigError::ConfigNotFound),
                 }
             }
         }
 
         match_and_parse! {
-            tab_size = parse_next!(),
-            visual_empty = parse_next!(),
-            visual_space = parse_next!(),
-            visual_tab = (parse_next!(), parse_next!()),
+            tab_size,
+            visual_empty,
+            visual_space,
+            //visual_tab = (parse_next!(), parse_next!()),
         }
 
         Ok(())
@@ -96,49 +77,6 @@ pub struct Config {
     pub values: ConfigValues,
     pub theme: Theme,
     pub syntaxes: SyntaxCollection,
-}
-
-impl Config {
-    pub fn load_into_operations(
-        commands: &mut CommandCollection,
-        ctx: &mut CommandContext,
-        path: &Path,
-    ) {
-        macro_rules! unwrap_or_serialize_error {
-            ($value:expr) => {
-                match $value {
-                    Ok(value) => value,
-                    Err(error) => {
-                        let error = format!("loading config at {:?}: {}", path, error);
-                        let op = EditorOperation::StatusMessage(StatusMessageKind::Error, &error);
-                        ctx.operations.serialize(TargetClient::All, &op);
-                        return;
-                    }
-                }
-            };
-        }
-
-        let mut file = unwrap_or_serialize_error!(File::open(path));
-        let metadata = unwrap_or_serialize_error!(file.metadata());
-        let mut contents = String::with_capacity(metadata.len() as _);
-        unwrap_or_serialize_error!(file.read_to_string(&mut contents));
-
-        for (i, line) in contents
-            .lines()
-            .enumerate()
-            .map(|(i, l)| (i, l.trim()))
-            .filter(|(_, l)| !l.starts_with('#'))
-        {
-            if let CommandOperation::Error = commands.parse_and_execute_command(ctx, line) {
-                let message = format!(" loading config at {:?}:{}", path, i + 1);
-                ctx.operations.serialize(
-                    TargetClient::All,
-                    &EditorOperation::StatusMessageAppend(&message[..]),
-                );
-                return;
-            }
-        }
-    }
 }
 
 impl Default for Config {

@@ -1,9 +1,9 @@
 use crate::{
-    command::{CommandContext, CommandOperation},
     connection::TargetClient,
     editor::KeysIterator,
-    editor_operation::EditorOperation,
+    editor_operation::{EditorOperation, StatusMessageKind},
     mode::{poll_input, FromMode, InputPollResult, ModeContext, ModeOperation},
+    script::ScriptContext,
 };
 
 pub fn on_enter(ctx: &mut ModeContext) {
@@ -21,7 +21,9 @@ pub fn on_event(
         InputPollResult::Pending => ModeOperation::None,
         InputPollResult::Canceled => ModeOperation::EnterMode(from_mode.as_mode()),
         InputPollResult::Submited => {
-            let mut command_context = CommandContext {
+            let mut quit = false;
+            let context = ScriptContext {
+                quit: &mut quit,
                 target_client: ctx.target_client,
                 client_target_map: ctx.client_target_map,
                 operations: ctx.operations,
@@ -33,14 +35,17 @@ pub fn on_event(
                 current_buffer_view_handle: ctx.current_buffer_view_handle,
             };
 
-            match ctx
-                .commands
-                .parse_and_execute_command(&mut command_context, &ctx.input[..])
-            {
-                CommandOperation::Complete | CommandOperation::Error => {
-                    ModeOperation::EnterMode(from_mode.as_mode())
-                }
-                CommandOperation::Quit => ModeOperation::Quit,
+            match ctx.scripts.eval(context, &ctx.input[..]) {
+                Ok(()) => ModeOperation::EnterMode(from_mode.as_mode()),
+                Err(e) => match quit {
+                    true => ModeOperation::Quit,
+                    false => {
+                        let message = e.to_string();
+                        let op = EditorOperation::StatusMessage(StatusMessageKind::Error, &message);
+                        ctx.operations.serialize(TargetClient::All, &op);
+                        ModeOperation::EnterMode(from_mode.as_mode())
+                    }
+                },
             }
         }
     }

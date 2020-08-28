@@ -6,17 +6,17 @@ use crate::{
     buffer::BufferCollection,
     buffer_view::{BufferViewCollection, BufferViewHandle},
     client_event::Key,
-    command::CommandCollection,
     config::Config,
     connection::TargetClient,
     editor::{ClientTargetMap, KeysIterator},
     editor_operation::{EditorOperation, EditorOperationSerializer},
     keymap::KeyMapCollection,
+    script::ScriptEngine,
 };
 
-mod script;
 mod insert;
 mod normal;
+mod script;
 mod search;
 mod select;
 
@@ -34,7 +34,7 @@ pub struct ModeContext<'a> {
 
     pub config: &'a Config,
     pub keymaps: &'a mut KeyMapCollection,
-    pub commands: &'a CommandCollection,
+    pub scripts: &'a mut ScriptEngine,
     pub buffers: &'a mut BufferCollection,
     pub buffer_views: &'a mut BufferViewCollection,
     pub current_buffer_view_handle: &'a mut Option<BufferViewHandle>,

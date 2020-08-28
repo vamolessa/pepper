@@ -5,16 +5,15 @@ use crate::{
     buffer_view::{BufferViewCollection, BufferViewHandle},
     client::Client,
     client_event::Key,
-    command::{CommandCollection, CommandContext},
     config::Config,
     connection::{ConnectionWithClientHandle, TargetClient},
     editor_operation::{
         EditorOperation, EditorOperationDeserializeResult, EditorOperationDeserializer,
-        EditorOperationSerializer,
+        EditorOperationSerializer, StatusMessageKind,
     },
     keymap::{KeyMapCollection, MatchResult},
     mode::{Mode, ModeContext, ModeOperation},
-    script::ScriptEngine,
+    script::{ScriptContext, ScriptEngine},
 };
 
 #[derive(Clone, Copy)]
@@ -113,7 +112,6 @@ pub struct Editor {
     keymaps: KeyMapCollection,
     buffered_keys: Vec<Key>,
     input: String,
-    commands: CommandCollection,
     pub scripts: ScriptEngine,
 
     buffers: BufferCollection,
@@ -132,7 +130,6 @@ impl Editor {
             keymaps: KeyMapCollection::default(),
             buffered_keys: Vec::new(),
             input: String::new(),
-            commands: CommandCollection::default(),
             scripts: ScriptEngine::new(),
 
             buffers: Default::default(),
@@ -152,7 +149,9 @@ impl Editor {
         operations: &mut EditorOperationSerializer,
         path: &Path,
     ) {
-        let mut ctx = CommandContext {
+        let mut quit = false;
+        let ctx = ScriptContext {
+            quit: &mut quit,
             target_client: TargetClient::Local,
             client_target_map: &mut self.client_target_map,
             operations,
@@ -164,17 +163,15 @@ impl Editor {
             current_buffer_view_handle: &mut self.local_client_current_buffer_view_handle,
         };
 
-        Config::load_into_operations(&mut self.commands, &mut ctx, path);
-        let mut deserializer = EditorOperationDeserializer::from_slice(operations.local_bytes());
+        if let Err(e) = self.scripts.eval_entry_file(ctx, path) {
+            let message = e.to_string();
+            let op = EditorOperation::StatusMessage(StatusMessageKind::Error, &message);
+            operations.serialize(TargetClient::Local, &op);
+        }
 
-        loop {
-            match deserializer.deserialize_next() {
-                EditorOperationDeserializeResult::Some(op) => {
-                    let _ = client.on_editor_operation(config, &op);
-                }
-                EditorOperationDeserializeResult::None
-                | EditorOperationDeserializeResult::Error => break,
-            }
+        let mut deserializer = EditorOperationDeserializer::from_slice(operations.local_bytes());
+        while let EditorOperationDeserializeResult::Some(op) = deserializer.deserialize_next() {
+            let _ = client.on_editor_operation(config, &op);
         }
     }
 
@@ -336,7 +333,7 @@ impl Editor {
 
                 config,
                 keymaps: &mut self.keymaps,
-                commands: &mut self.commands,
+                scripts: &mut self.scripts,
                 buffers: &mut self.buffers,
                 buffer_views: &mut self.buffer_views,
                 current_buffer_view_handle,
