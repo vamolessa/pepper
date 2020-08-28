@@ -3,7 +3,8 @@
 use std::{fs::File, io::Read, path::Path, sync::Arc};
 
 use mlua::prelude::{
-    FromLuaMulti, Lua, LuaError, LuaLightUserData, LuaResult, LuaString, ToLuaMulti,
+    FromLua, FromLuaMulti, Lua, LuaError, LuaLightUserData, LuaResult, LuaString, LuaValue,
+    ToLuaMulti,
 };
 
 use crate::{
@@ -17,7 +18,26 @@ use crate::{
 };
 
 pub type ScriptResult<T> = LuaResult<T>;
-pub type ScriptStr<'lua> = LuaString<'lua>;
+
+pub struct ScriptStr<'lua>(LuaString<'lua>);
+impl<'lua> ScriptStr<'lua> {
+    pub fn to_str(&self) -> ScriptResult<&str> {
+        self.0.to_str()
+    }
+}
+impl<'lua> FromLua<'lua> for ScriptStr<'lua> {
+    fn from_lua(lua_value: LuaValue<'lua>, _lua: &'lua Lua) -> LuaResult<Self> {
+        if let LuaValue::String(s) = lua_value {
+            Ok(ScriptStr(s))
+        } else {
+            Err(LuaError::FromLuaConversionError {
+                from: lua_value.type_name(),
+                to: stringify!(ScriptStr),
+                message: None,
+            })
+        }
+    }
+}
 
 macro_rules! impl_script_data {
     ($t:ty) => {
@@ -64,7 +84,7 @@ impl ScriptEngine {
     where
         A: FromLuaMulti<'lua>,
         R: ToLuaMulti<'lua>,
-        F: 'static + Fn(&mut ScriptContext, A) -> ScriptResult<R>
+        F: 'static + Fn(&mut ScriptContext, A) -> ScriptResult<R>,
     {
         let func = self.lua.create_function(move |lua, args| {
             let ctx: LuaLightUserData = lua.named_registry_value("ctx")?;
