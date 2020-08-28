@@ -165,7 +165,6 @@ mod bindings {
 
     pub fn print(ctx: &mut ScriptContext, message: ScriptStr) -> ScriptResult<()> {
         let message = message.to_str()?;
-        println!("printing: {}", message);
         ctx.operations.serialize(
             TargetClient::All,
             &EditorOperation::StatusMessage(StatusMessageKind::Info, message),
