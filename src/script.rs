@@ -1,6 +1,8 @@
+#![macro_use]
+
 use std::{fs::File, io::Read, path::Path, sync::Arc};
 
-use mlua::prelude::{FromLua, Lua, LuaError, LuaLightUserData, LuaRegistryKey, LuaResult, ToLua};
+use mlua::prelude::{FromLuaMulti, Lua, LuaError, LuaLightUserData, LuaResult, ToLuaMulti};
 
 use crate::{
     buffer::BufferCollection,
@@ -11,6 +13,14 @@ use crate::{
     editor_operation::EditorOperationSerializer,
     keymap::KeyMapCollection,
 };
+
+pub type ScriptResult<T> = LuaResult<T>;
+
+macro_rules! impl_script_data {
+    ($t:ty) => {
+        impl mlua::prelude::LuaUserData for $t {}
+    }
+}
 
 pub struct ScriptContext<'a> {
     pub target_client: TargetClient,
@@ -33,7 +43,7 @@ impl ScriptEngine {
         Self::try_new().unwrap()
     }
 
-    pub fn try_new() -> LuaResult<Self> {
+    pub fn try_new() -> ScriptResult<Self> {
         let libs = mlua::StdLib::TABLE
             | mlua::StdLib::STRING
             | mlua::StdLib::UTF8
@@ -44,30 +54,30 @@ impl ScriptEngine {
     }
 
     pub fn register_ctx_function<'lua, A, R>(
-        &'lua self,
+        &'lua mut self,
         name: &str,
-        func: fn(&mut ScriptContext, A) -> R,
-    ) -> LuaResult<()>
+        func: fn(&mut ScriptContext, A) -> ScriptResult<R>,
+    ) -> ScriptResult<()>
     where
-        A: 'static + FromLua<'lua>,
-        R: 'static + ToLua<'lua>,
+        A: 'static + FromLuaMulti<'lua>,
+        R: 'static + ToLuaMulti<'lua>,
     {
         let func = self.lua.create_function(move |lua, args| {
             let ctx: LuaLightUserData = lua.named_registry_value("ctx")?;
             let ctx = unsafe { &mut *(ctx.0 as *mut _) };
-            Ok(func(ctx, args))
+            func(ctx, args)
         })?;
         self.lua.globals().set(name, func)?;
         Ok(())
     }
 
-    pub fn eval(&mut self, mut ctx: ScriptContext, source: &str) -> LuaResult<()> {
+    pub fn eval(&mut self, mut ctx: ScriptContext, source: &str) -> ScriptResult<()> {
         self.update_ctx(&mut ctx)?;
         self.lua.load(source).exec()?;
         Ok(())
     }
 
-    pub fn load_entry_file(&mut self, mut ctx: ScriptContext, path: &Path) -> LuaResult<()> {
+    pub fn load_entry_file(&mut self, mut ctx: ScriptContext, path: &Path) -> ScriptResult<()> {
         let mut file = File::open(path).map_err(|e| LuaError::ExternalError(Arc::new(e)))?;
         let metadata = file
             .metadata()
@@ -89,7 +99,7 @@ impl ScriptEngine {
         Ok(())
     }
 
-    fn update_ctx(&mut self, ctx: &mut ScriptContext) -> LuaResult<()> {
+    fn update_ctx(&mut self, ctx: &mut ScriptContext) -> ScriptResult<()> {
         self.lua
             .set_named_registry_value("ctx", LuaLightUserData(ctx as *mut ScriptContext as _))
     }

@@ -16,6 +16,7 @@ mod keymap;
 mod mode;
 mod pattern;
 mod script;
+mod script_bindings;
 mod select;
 mod serialization;
 mod syntax;
@@ -45,21 +46,8 @@ fn main() {
         current_buffer_view_handle: &mut current_buffer_view_handle,
     };
 
-    scripts.eval(context, "api.p(\"1\") a = nil api.p(type(a)) a = ctx api.p(type(a)) api.print(a, 45)").unwrap();
-
-    let context = script::ScriptContext {
-        target_client: connection::TargetClient::All,
-        client_target_map: &mut client_target_map,
-        operations: &mut operations,
-
-        config: &config,
-        keymaps: &mut keymaps,
-        buffers: &mut buffers,
-        buffer_views: &mut buffer_views,
-        current_buffer_view_handle: &mut current_buffer_view_handle,
-    };
-
-    let r = scripts.eval(context, "api.p(\"2\") api.p(type(a)) api.print(a, 45)");
+    script_bindings::bind_all(&mut scripts).unwrap();
+    let r = scripts.eval(context, "print(\"asd\")");
     dbg!(r);
     return;
 
