@@ -2,7 +2,9 @@
 
 use std::{fs::File, io::Read, path::Path, sync::Arc};
 
-use mlua::prelude::{FromLuaMulti, Lua, LuaError, LuaLightUserData, LuaResult, ToLuaMulti};
+use mlua::prelude::{
+    FromLuaMulti, Lua, LuaError, LuaLightUserData, LuaResult, LuaString, ToLuaMulti,
+};
 
 use crate::{
     buffer::BufferCollection,
@@ -15,11 +17,12 @@ use crate::{
 };
 
 pub type ScriptResult<T> = LuaResult<T>;
+pub type ScriptStr<'lua> = LuaString<'lua>;
 
 macro_rules! impl_script_data {
     ($t:ty) => {
         impl mlua::prelude::LuaUserData for $t {}
-    }
+    };
 }
 
 pub struct ScriptContext<'a> {
@@ -53,14 +56,15 @@ impl ScriptEngine {
         Ok(Self { lua })
     }
 
-    pub fn register_ctx_function<'lua, A, R>(
+    pub fn register_ctx_function<'lua, A, R, F>(
         &'lua mut self,
         name: &str,
-        func: fn(&mut ScriptContext, A) -> ScriptResult<R>,
+        func: F,
     ) -> ScriptResult<()>
     where
-        A: 'static + FromLuaMulti<'lua>,
-        R: 'static + ToLuaMulti<'lua>,
+        A: FromLuaMulti<'lua>,
+        R: ToLuaMulti<'lua>,
+        F: 'static + Fn(&mut ScriptContext, A) -> ScriptResult<R>
     {
         let func = self.lua.create_function(move |lua, args| {
             let ctx: LuaLightUserData = lua.named_registry_value("ctx")?;
