@@ -334,11 +334,11 @@ where
                     x += 1;
                 }
                 '\t' => {
-                    handle_command!(write, Print(config.values.visual_tab.0))?;
+                    handle_command!(write, Print(config.values.visual_tab_first))?;
                     let tab_size = config.values.tab_size.get() as u16;
                     let next_tab_stop = (tab_size - 1) - x % tab_size;
                     for _ in 0..next_tab_stop {
-                        handle_command!(write, Print(config.values.visual_tab.1))?;
+                        handle_command!(write, Print(config.values.visual_tab_repeat))?;
                     }
                     x += tab_size;
                 }

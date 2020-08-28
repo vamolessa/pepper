@@ -27,7 +27,8 @@ pub struct ConfigValues {
     pub tab_size: NonZeroUsize,
     pub visual_empty: char,
     pub visual_space: char,
-    pub visual_tab: (char, char),
+    pub visual_tab_first: char,
+    pub visual_tab_repeat: char,
 }
 
 impl ConfigValues {
@@ -55,7 +56,8 @@ impl ConfigValues {
             tab_size,
             visual_empty,
             visual_space,
-            //visual_tab = (parse_next!(), parse_next!()),
+            visual_tab_first,
+            visual_tab_repeat,
         }
 
         Ok(())
@@ -68,7 +70,8 @@ impl Default for ConfigValues {
             tab_size: NonZeroUsize::new(4).unwrap(),
             visual_empty: '~',
             visual_space: '.',
-            visual_tab: ('|', ' '),
+            visual_tab_first: '|',
+            visual_tab_repeat: ' ',
         }
     }
 }
