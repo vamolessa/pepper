@@ -31,7 +31,7 @@ pub struct Args {
     #[argh(switch, short = 'v')]
     version: bool,
 
-    /// path where config file is located
+    /// load config file at path
     #[argh(option, short = 'c')]
     config: Option<std::path::PathBuf>,
 
@@ -51,7 +51,7 @@ pub struct Args {
     #[argh(option, short = 'k')]
     keys: Option<String>,
 
-    /// files to open
+    /// open files at paths
     #[argh(positional)]
     files: Vec<String>,
 }

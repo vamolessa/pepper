@@ -34,7 +34,7 @@ pub fn bind_all<'a>(scripts: &'a mut ScriptEngine) -> ScriptResult<()> {
 
     register_all! {
         quit, quit_all, open, close, save, save_all,
-        selection, replace, print, spawn,
+        selection, replace, print, pipe,
         config, syntax_extension, syntax_rule, theme,
         mapn, maps, mapi,
     };
@@ -155,7 +155,7 @@ mod bindings {
         Ok(())
     }
 
-    pub fn spawn(
+    pub fn pipe(
         _ctx: &mut ScriptContext,
         (name, args, input): (ScriptStr, Vec<ScriptStr>, Option<ScriptStr>),
     ) -> ScriptResult<String> {
