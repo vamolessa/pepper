@@ -62,15 +62,16 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- ~~buffer name~~
 	- ~~buffer position~~
 	- buffered keys
-- external commands
-	- ~~cli commands that execute on the server~~
-- cli
+- ~~external commands~~
+	- ~~spawn cli commands that execute on the server~~
+- ~~cli~~
 	- ~~custom session name~~
 	- ~~config path~~
-	- ~~send keys to server and quit~~
-- scripting
-	- integrate scripting language to use as command interface
-	- config file is script file
+	- ~~send keys to server~~
+	- ~~open files~~
+- ~~scripting~~
+	- ~~integrate lua to use as command interface~~
+	- ~~config file is script file~~
 - autocomplete
 	- select/entries ui
 	- selection movements
