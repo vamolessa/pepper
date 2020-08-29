@@ -1,5 +1,7 @@
+use std::{fs::File, io::Read, path::Path};
+
 use crate::{
-    buffer::{BufferCollection, BufferHandle, TextRef},
+    buffer::{Buffer, BufferCollection, BufferContent, BufferHandle, TextRef},
     buffer_position::{BufferOffset, BufferRange},
     connection::TargetClient,
     cursor::CursorCollection,
@@ -389,6 +391,73 @@ impl BufferViewCollection {
 
         for view in self.buffer_views.iter().flatten() {
             operations.serialize_cursors(view.target_client, &view.cursors);
+        }
+    }
+
+    pub fn new_buffer_from_file(
+        &mut self,
+        buffers: &mut BufferCollection,
+        target_client: TargetClient,
+        operations: &mut EditorOperationSerializer,
+        path: &Path,
+    ) -> Result<BufferViewHandle, String> {
+        if let Some(buffer_handle) = buffers.find_with_path(path) {
+            let mut iter = self.iter_with_handles().filter_map(|(handle, view)| {
+                if view.buffer_handle == buffer_handle && view.target_client == target_client {
+                    Some((handle, view))
+                } else {
+                    None
+                }
+            });
+
+            let buffer_view_handle;
+            let view = match iter.next() {
+                Some((handle, view)) => {
+                    buffer_view_handle = handle;
+                    view
+                }
+                None => {
+                    drop(iter);
+                    let view = BufferView::new(target_client, buffer_handle);
+                    let view_handle = self.add(view);
+                    let view = self.get(&view_handle);
+                    buffer_view_handle = view_handle;
+                    view
+                }
+            };
+
+            operations
+                .serialize_buffer(target_client, &buffers.get(buffer_handle).unwrap().content);
+            operations.serialize(target_client, &EditorOperation::Path(path));
+            operations.serialize_cursors(target_client, &view.cursors);
+            Ok(buffer_view_handle)
+        } else if path.to_str().map(|s| s.trim().len()).unwrap_or(0) > 0 {
+            let content = match File::open(&path) {
+                Ok(mut file) => {
+                    let mut content = String::new();
+                    match file.read_to_string(&mut content) {
+                        Ok(_) => (),
+                        Err(error) => {
+                            return Err(format!(
+                                "could not read contents from file {:?}: {:?}",
+                                path, error
+                            ))
+                        }
+                    }
+                    BufferContent::from_str(&content[..])
+                }
+                Err(_) => BufferContent::from_str(""),
+            };
+
+            operations.serialize_buffer(target_client, &content);
+            operations.serialize(target_client, &EditorOperation::Path(path));
+
+            let buffer_handle = buffers.add(Buffer::new(path.into(), content));
+            let buffer_view = BufferView::new(target_client, buffer_handle);
+            let buffer_view_handle = self.add(buffer_view);
+            Ok(buffer_view_handle)
+        } else {
+            Err(format!("invalid path {:?}", path))
         }
     }
 }

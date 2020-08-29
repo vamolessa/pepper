@@ -9,11 +9,19 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Copy)]
-pub enum ClientEvent {
+pub enum LocalEvent {
     None,
     Key(Key),
     Resize(u16, u16),
     Connection(ConnectionEvent),
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum ClientEvent<'a> {
+    AsLocalClient,
+    AsRemoteClient(usize),
+    OpenFile(&'a str),
+    Key(Key),
 }
 
 #[derive(Debug)]
@@ -267,14 +275,11 @@ impl Key {
 }
 
 #[derive(Default)]
-pub struct KeySerializer(SerializationBuf);
+pub struct ClientEventSerializer(SerializationBuf);
 
-impl KeySerializer {
-    pub fn serialize<T>(&mut self, key: T)
-    where
-        T: Serialize,
-    {
-        let _ = key.serialize(&mut self.0);
+impl ClientEventSerializer {
+    pub fn serialize(&mut self, event: ClientEvent) {
+        let _ = event.serialize(&mut self.0);
     }
 
     pub fn bytes(&self) -> &[u8] {
@@ -287,27 +292,27 @@ impl KeySerializer {
 }
 
 #[derive(Debug)]
-pub enum KeyDeserializeResult {
-    Some(Key),
+pub enum ClientEventDeserializeResult<'a> {
+    Some(ClientEvent<'a>),
     None,
     Error,
 }
 
-pub struct KeyDeserializer<'a>(DeserializationSlice<'a>);
+pub struct ClientEventDeserializer<'a>(DeserializationSlice<'a>);
 
-impl<'a> KeyDeserializer<'a> {
+impl<'a> ClientEventDeserializer<'a> {
     pub fn from_slice(slice: &'a [u8]) -> Self {
         Self(DeserializationSlice::from_slice(slice))
     }
 
-    pub fn deserialize_next(&mut self) -> KeyDeserializeResult {
+    pub fn deserialize_next(&mut self) -> ClientEventDeserializeResult {
         if self.0.as_slice().is_empty() {
-            return KeyDeserializeResult::None;
+            return ClientEventDeserializeResult::None;
         }
 
-        match Key::deserialize(&mut self.0) {
-            Ok(key) => KeyDeserializeResult::Some(key),
-            Err(_) => KeyDeserializeResult::Error,
+        match ClientEvent::deserialize(&mut self.0) {
+            Ok(event) => ClientEventDeserializeResult::Some(event),
+            Err(_) => ClientEventDeserializeResult::Error,
         }
     }
 }
@@ -364,13 +369,15 @@ mod tests {
 
     #[test]
     fn key_serialization() {
-        macro_rules! assert_serialization {
+        macro_rules! assert_key_serialization {
             ($key:expr) => {
-                let mut serializer = KeySerializer::default();
-                serializer.serialize($key);
+                let mut serializer = ClientEventSerializer::default();
+                serializer.serialize(ClientEvent::Key($key));
                 let slice = serializer.bytes();
-                let mut deserializer = KeyDeserializer::from_slice(slice);
-                if let KeyDeserializeResult::Some(key) = deserializer.deserialize_next() {
+                let mut deserializer = ClientEventDeserializer::from_slice(slice);
+                if let ClientEventDeserializeResult::Some(ClientEvent::Key(key)) =
+                    deserializer.deserialize_next()
+                {
                     assert_eq!($key, key);
                 } else {
                     assert!(false);
@@ -378,43 +385,43 @@ mod tests {
             };
         }
 
-        assert_serialization!(Key::None);
-        assert_serialization!(Key::Backspace);
-        assert_serialization!(Key::Enter);
-        assert_serialization!(Key::Left);
-        assert_serialization!(Key::Right);
-        assert_serialization!(Key::Up);
-        assert_serialization!(Key::Down);
-        assert_serialization!(Key::Home);
-        assert_serialization!(Key::End);
-        assert_serialization!(Key::PageUp);
-        assert_serialization!(Key::PageDown);
-        assert_serialization!(Key::Tab);
-        assert_serialization!(Key::Delete);
-        assert_serialization!(Key::F(0));
-        assert_serialization!(Key::F(9));
-        assert_serialization!(Key::F(12));
-        assert_serialization!(Key::Char('a'));
-        assert_serialization!(Key::Char('z'));
-        assert_serialization!(Key::Char('A'));
-        assert_serialization!(Key::Char('Z'));
-        assert_serialization!(Key::Char('0'));
-        assert_serialization!(Key::Char('9'));
-        assert_serialization!(Key::Char('$'));
-        assert_serialization!(Key::Ctrl('a'));
-        assert_serialization!(Key::Ctrl('z'));
-        assert_serialization!(Key::Ctrl('A'));
-        assert_serialization!(Key::Ctrl('Z'));
-        assert_serialization!(Key::Ctrl('0'));
-        assert_serialization!(Key::Ctrl('9'));
-        assert_serialization!(Key::Ctrl('$'));
-        assert_serialization!(Key::Alt('a'));
-        assert_serialization!(Key::Alt('z'));
-        assert_serialization!(Key::Alt('A'));
-        assert_serialization!(Key::Alt('Z'));
-        assert_serialization!(Key::Alt('0'));
-        assert_serialization!(Key::Alt('9'));
-        assert_serialization!(Key::Alt('$'));
-        assert_serialization!(Key::Esc);
+        assert_key_serialization!(Key::None);
+        assert_key_serialization!(Key::Backspace);
+        assert_key_serialization!(Key::Enter);
+        assert_key_serialization!(Key::Left);
+        assert_key_serialization!(Key::Right);
+        assert_key_serialization!(Key::Up);
+        assert_key_serialization!(Key::Down);
+        assert_key_serialization!(Key::Home);
+        assert_key_serialization!(Key::End);
+        assert_key_serialization!(Key::PageUp);
+        assert_key_serialization!(Key::PageDown);
+        assert_key_serialization!(Key::Tab);
+        assert_key_serialization!(Key::Delete);
+        assert_key_serialization!(Key::F(0));
+        assert_key_serialization!(Key::F(9));
+        assert_key_serialization!(Key::F(12));
+        assert_key_serialization!(Key::Char('a'));
+        assert_key_serialization!(Key::Char('z'));
+        assert_key_serialization!(Key::Char('A'));
+        assert_key_serialization!(Key::Char('Z'));
+        assert_key_serialization!(Key::Char('0'));
+        assert_key_serialization!(Key::Char('9'));
+        assert_key_serialization!(Key::Char('$'));
+        assert_key_serialization!(Key::Ctrl('a'));
+        assert_key_serialization!(Key::Ctrl('z'));
+        assert_key_serialization!(Key::Ctrl('A'));
+        assert_key_serialization!(Key::Ctrl('Z'));
+        assert_key_serialization!(Key::Ctrl('0'));
+        assert_key_serialization!(Key::Ctrl('9'));
+        assert_key_serialization!(Key::Ctrl('$'));
+        assert_key_serialization!(Key::Alt('a'));
+        assert_key_serialization!(Key::Alt('z'));
+        assert_key_serialization!(Key::Alt('A'));
+        assert_key_serialization!(Key::Alt('Z'));
+        assert_key_serialization!(Key::Alt('0'));
+        assert_key_serialization!(Key::Alt('9'));
+        assert_key_serialization!(Key::Alt('$'));
+        assert_key_serialization!(Key::Esc);
     }
 }

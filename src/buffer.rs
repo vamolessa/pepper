@@ -1,4 +1,5 @@
 use std::{
+    fs::File,
     io,
     ops::{Bound, Range, RangeBounds},
     path::{Path, PathBuf},
@@ -357,7 +358,7 @@ impl BufferContent {
 }
 
 pub struct Buffer {
-    pub path: PathBuf,
+    path: PathBuf,
     pub content: BufferContent,
     pub history: History,
     search_ranges: Vec<BufferRange>,
@@ -371,6 +372,15 @@ impl Buffer {
             history: History::new(),
             search_ranges: Vec::new(),
         }
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn set_path(&mut self, path: &Path) {
+        self.path.clear();
+        self.path.push(path);
     }
 
     pub fn insert_text(&mut self, position: BufferPosition, text: TextRef) -> BufferRange {
@@ -412,6 +422,19 @@ impl Buffer {
 
     pub fn search_ranges(&self) -> &[BufferRange] {
         &self.search_ranges[..]
+    }
+
+    pub fn save_to_file(&self) -> Result<(), String> {
+        if self.path.as_os_str().is_empty() {
+            return Err("buffer has no path".into());
+        }
+
+        let mut file = File::create(&self.path)
+            .map_err(|e| format!("could not create file {:?}: {:?}", &self.path, e))?;
+
+        self.content
+            .write(&mut file)
+            .map_err(|e| format!("could not write to file {:?}: {:?}", &self.path, e))
     }
 }
 

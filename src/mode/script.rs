@@ -1,7 +1,7 @@
 use crate::{
     connection::TargetClient,
     editor::KeysIterator,
-    editor_operation::{EditorOperation, StatusMessageKind},
+    editor_operation::EditorOperation,
     mode::{poll_input, FromMode, InputPollResult, ModeContext, ModeOperation},
     script::ScriptContext,
 };
@@ -25,7 +25,6 @@ pub fn on_event(
             let context = ScriptContext {
                 quit: &mut quit,
                 target_client: ctx.target_client,
-                client_target_map: ctx.client_target_map,
                 operations: ctx.operations,
 
                 config: ctx.config,
@@ -41,8 +40,7 @@ pub fn on_event(
                     true => ModeOperation::Quit,
                     false => {
                         let message = e.to_string();
-                        let op = EditorOperation::StatusMessage(StatusMessageKind::Error, &message);
-                        ctx.operations.serialize(TargetClient::All, &op);
+                        ctx.operations.serialize_error(&message);
                         ModeOperation::EnterMode(from_mode.as_mode())
                     }
                 },

@@ -1,16 +1,14 @@
 use std::{
     fmt,
-    fs::File,
-    io::{Read, Write},
+    io::Write,
     path::Path,
     process::{Command, Stdio},
 };
 
 use crate::{
-    buffer::{Buffer, BufferContent, TextRef},
-    buffer_view::BufferView,
+    buffer::TextRef,
     config::ParseConfigError,
-    connection::{ConnectionWithClientHandle, TargetClient},
+    connection::TargetClient,
     editor_operation::{EditorOperation, StatusMessageKind},
     keymap::ParseKeyMapError,
     mode::Mode,
@@ -34,7 +32,6 @@ pub fn bind_all<'a>(scripts: &'a mut ScriptEngine) -> ScriptResult<()> {
     }
 
     register_all! {
-        target,
         quit, open, close, save, save_all,
         selection, replace, print, pipe,
         config, syntax_extension, syntax_rule, theme,
@@ -47,20 +44,6 @@ pub fn bind_all<'a>(scripts: &'a mut ScriptEngine) -> ScriptResult<()> {
 mod bindings {
     use super::*;
 
-    pub fn target(ctx: &mut ScriptContext, target: Option<usize>) -> ScriptResult<()> {
-        match target {
-            Some(index) => {
-                let client_handle = ConnectionWithClientHandle::from_index(index);
-                ctx.client_target_map
-                    .map(ctx.target_client, TargetClient::Remote(client_handle));
-            }
-            None => ctx
-                .client_target_map
-                .map(ctx.target_client, TargetClient::Local),
-        }
-        Ok(())
-    }
-
     pub fn quit(ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
         *ctx.quit = true;
         Err(ScriptError::from(QuitError))
@@ -68,7 +51,11 @@ mod bindings {
 
     pub fn open(ctx: &mut ScriptContext, path: ScriptStr) -> ScriptResult<()> {
         let path = Path::new(path.to_str()?);
-        helper::new_buffer_from_file(ctx, path).map_err(ScriptError::from)?;
+        let buffer_view_handle = ctx
+            .buffer_views
+            .new_buffer_from_file(ctx.buffers, ctx.target_client, ctx.operations, path)
+            .map_err(ScriptError::from)?;
+        *ctx.current_buffer_view_handle = Some(buffer_view_handle);
         Ok(())
     }
 
@@ -108,34 +95,24 @@ mod bindings {
         match path {
             Some(path) => {
                 let path = Path::new(path.to_str()?);
-                helper::write_buffer_to_file(buffer, path).map_err(ScriptError::from)?;
+                buffer.set_path(path);
+                buffer.save_to_file().map_err(ScriptError::from)?;
                 for view in ctx.buffer_views.iter() {
                     if view.buffer_handle == buffer_handle {
                         ctx.operations
                             .serialize(view.target_client, &EditorOperation::Path(path));
                     }
                 }
-                buffer.path.clear();
-                buffer.path.push(path);
                 Ok(())
             }
-            None => {
-                if !buffer.path.as_os_str().is_empty() {
-                    Err(ScriptError::from("buffer has no path"))
-                } else {
-                    helper::write_buffer_to_file(buffer, &buffer.path).map_err(ScriptError::from)
-                }
-            }
+            None => buffer.save_to_file().map_err(ScriptError::from),
         }
     }
 
     pub fn save_all(ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
         for buffer in ctx.buffers.iter() {
-            if !buffer.path.as_os_str().is_empty() {
-                helper::write_buffer_to_file(buffer, &buffer.path).map_err(ScriptError::from)?;
-            }
+            buffer.save_to_file().map_err(ScriptError::from)?;
         }
-
         Ok(())
     }
 
@@ -328,90 +305,5 @@ mod helper {
             (0, _) => format!("{} at here -> '{}'", message, after),
             (_, _) => format!("{} at '{}' <- here '{}'", message, before, after),
         }
-    }
-
-    pub fn new_buffer_from_content(ctx: &mut ScriptContext, path: &Path, content: BufferContent) {
-        ctx.operations.serialize_buffer(ctx.target_client, &content);
-        ctx.operations
-            .serialize(ctx.target_client, &EditorOperation::Path(path));
-
-        let buffer_handle = ctx.buffers.add(Buffer::new(path.into(), content));
-        let buffer_view = BufferView::new(ctx.target_client, buffer_handle);
-        let buffer_view_handle = ctx.buffer_views.add(buffer_view);
-        *ctx.current_buffer_view_handle = Some(buffer_view_handle);
-    }
-
-    pub fn new_buffer_from_file(ctx: &mut ScriptContext, path: &Path) -> Result<(), String> {
-        if let Some(buffer_handle) = ctx.buffers.find_with_path(path) {
-            let mut iter = ctx
-                .buffer_views
-                .iter_with_handles()
-                .filter_map(|(handle, view)| {
-                    if view.buffer_handle == buffer_handle
-                        && view.target_client == ctx.target_client
-                    {
-                        Some((handle, view))
-                    } else {
-                        None
-                    }
-                });
-
-            let view = match iter.next() {
-                Some((handle, view)) => {
-                    *ctx.current_buffer_view_handle = Some(handle);
-                    view
-                }
-                None => {
-                    drop(iter);
-                    let view = BufferView::new(ctx.target_client, buffer_handle);
-                    let view_handle = ctx.buffer_views.add(view);
-                    let view = ctx.buffer_views.get(&view_handle);
-                    *ctx.current_buffer_view_handle = Some(view_handle);
-                    view
-                }
-            };
-
-            ctx.operations.serialize_buffer(
-                ctx.target_client,
-                &ctx.buffers.get(buffer_handle).unwrap().content,
-            );
-            ctx.operations
-                .serialize(ctx.target_client, &EditorOperation::Path(path));
-            ctx.operations
-                .serialize_cursors(ctx.target_client, &view.cursors);
-        } else if path.to_str().map(|s| s.trim().len()).unwrap_or(0) > 0 {
-            let content = match File::open(&path) {
-                Ok(mut file) => {
-                    let mut content = String::new();
-                    match file.read_to_string(&mut content) {
-                        Ok(_) => (),
-                        Err(error) => {
-                            return Err(format!(
-                                "could not read contents from file {:?}: {:?}",
-                                path, error
-                            ))
-                        }
-                    }
-                    BufferContent::from_str(&content[..])
-                }
-                Err(_) => BufferContent::from_str(""),
-            };
-
-            new_buffer_from_content(ctx, path, content);
-        } else {
-            return Err(format!("invalid path {:?}", path));
-        }
-
-        Ok(())
-    }
-
-    pub fn write_buffer_to_file(buffer: &Buffer, path: &Path) -> Result<(), String> {
-        let mut file =
-            File::create(path).map_err(|e| format!("could not create file {:?}: {:?}", path, e))?;
-
-        buffer
-            .content
-            .write(&mut file)
-            .map_err(|e| format!("could not write to file {:?}: {:?}", path, e))
     }
 }

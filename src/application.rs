@@ -1,10 +1,8 @@
-use std::{env, error::Error, fmt, fs, path::PathBuf, sync::mpsc, thread};
-
-use argh::FromArgs;
+use std::{env, error::Error, fmt, fs, sync::mpsc, thread};
 
 use crate::{
     client::Client,
-    client_event::{ClientEvent, Key, KeySerializer},
+    client_event::{ClientEvent, ClientEventSerializer, Key, LocalEvent},
     config::Config,
     connection::{ConnectionWithClientCollection, ConnectionWithServer, TargetClient},
     editor::{Editor, EditorLoop},
@@ -14,23 +12,8 @@ use crate::{
     },
     event_manager::{ConnectionEvent, EventManager},
     tui::Tui,
+    Args,
 };
-
-/// code editor inspired by vim and kakoune
-#[derive(FromArgs)]
-struct Args {
-    /// path where config file is located
-    #[argh(option, short = 'c')]
-    config: Option<PathBuf>,
-
-    /// session name
-    #[argh(option, short = 's')]
-    session: Option<String>,
-
-    /// send keys to server and quit
-    #[argh(option, short = 'k')]
-    keys: Option<String>,
-}
 
 #[derive(Debug)]
 pub struct ApplicationError(String);
@@ -45,7 +28,7 @@ pub trait UI {
     type Error: 'static + Send + Error;
 
     fn run_event_loop_in_background(
-        event_sender: mpsc::Sender<ClientEvent>,
+        event_sender: mpsc::Sender<LocalEvent>,
     ) -> thread::JoinHandle<Result<(), Self::Error>>;
 
     fn init(&mut self) -> Result<(), Self::Error> {
@@ -69,12 +52,10 @@ pub trait UI {
     }
 }
 
-pub fn run() -> Result<(), Box<dyn Error>> {
+pub fn run(args: Args) -> Result<(), Box<dyn Error>> {
     if let Err(e) = ctrlc::set_handler(|| {}) {
         return Err(Box::new(e));
     }
-
-    let args: Args = argh::from_env();
 
     let mut session_socket_path = env::temp_dir();
     session_socket_path.push(env!("CARGO_PKG_NAME"));
@@ -112,6 +93,34 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
+}
+
+fn client_events_from_args<F>(args: &Args, mut func: F) -> Result<EditorLoop, Box<dyn Error>>
+where
+    F: FnMut(ClientEvent),
+{
+    if args.as_local_client {
+        func(ClientEvent::AsLocalClient);
+    } else if let Some(index) = args.as_remote_client {
+        func(ClientEvent::AsRemoteClient(index));
+    }
+
+    for path in &args.files {
+        func(ClientEvent::OpenFile(path));
+    }
+
+    if let Some(keys) = args.keys.as_ref() {
+        for key in Key::parse_all(keys) {
+            match key {
+                Ok(key) => func(ClientEvent::Key(key)),
+                Err(error) => return Err(Box::new(error)),
+            }
+        }
+
+        return Ok(EditorLoop::Quit);
+    }
+
+    Ok(EditorLoop::Continue)
 }
 
 fn send_operations(
@@ -152,7 +161,7 @@ where
     let mut editor = Editor::new();
     let mut editor_operations = EditorOperationSerializer::default();
 
-    if let Some(config_path) = args.config {
+    if let Some(config_path) = args.config.as_ref() {
         editor.load_config(
             &mut config,
             &mut local_client,
@@ -161,16 +170,9 @@ where
         );
     }
 
-    if let Some(keys) = args.keys {
-        for key in Key::parse_all(&keys[..]) {
-            match key {
-                Ok(key) => {
-                    editor.on_key(&config, key, TargetClient::Local, &mut editor_operations);
-                }
-                Err(error) => return Err(Box::new(error)),
-            }
-        }
-
+    if let EditorLoop::Quit = client_events_from_args(&args, |event| {
+        editor.on_event(&config, event, TargetClient::Local, &mut editor_operations);
+    })? {
         return Ok(());
     }
 
@@ -179,10 +181,14 @@ where
 
     for event in event_receiver.iter() {
         match event {
-            ClientEvent::None => (),
-            ClientEvent::Key(key) => {
-                let result =
-                    editor.on_key(&config, key, TargetClient::Local, &mut editor_operations);
+            LocalEvent::None => (),
+            LocalEvent::Key(key) => {
+                let result = editor.on_event(
+                    &config,
+                    ClientEvent::Key(key),
+                    TargetClient::Local,
+                    &mut editor_operations,
+                );
 
                 match result {
                     EditorLoop::Quit => break,
@@ -194,8 +200,8 @@ where
                     ),
                 }
             }
-            ClientEvent::Resize(w, h) => ui.resize(w, h)?,
-            ClientEvent::Connection(event) => {
+            LocalEvent::Resize(w, h) => ui.resize(w, h)?,
+            LocalEvent::Connection(event) => {
                 match event {
                     ConnectionEvent::NewConnection => {
                         let handle = connections.accept_connection(&event_registry)?;
@@ -205,8 +211,8 @@ where
                     ConnectionEvent::Stream(stream_id) => {
                         let handle = stream_id.into();
 
-                        let result = connections.receive_keys(handle, |key| {
-                            editor.on_key(
+                        let result = connections.receive_events(handle, |key| {
+                            editor.on_event(
                                 &config,
                                 key,
                                 TargetClient::Remote(handle),
@@ -265,20 +271,15 @@ where
 {
     let (event_sender, event_receiver) = mpsc::channel();
 
-    let mut keys = KeySerializer::default();
-    if let Some(ks) = args.keys {
-        for key in Key::parse_all(&ks[..]) {
-            match key {
-                Ok(key) => keys.serialize(key),
-                Err(error) => return Err(Box::new(error)),
-            }
-        }
+    let mut events = ClientEventSerializer::default();
+    let result = client_events_from_args(&args, |event| {
+        events.serialize(event);
+    })?;
 
-        connection.set_blocking()?;
-        let _ = connection.send_serialized_keys(&mut keys);
+    let _ = connection.send_serialized_events_blocking(&mut events);
+    if let EditorLoop::Quit = result {
         let _ = connection.receive_operations(|_| ());
         connection.close();
-
         return Ok(());
     }
 
@@ -295,15 +296,15 @@ where
 
     for event in event_receiver.iter() {
         match event {
-            ClientEvent::None => (),
-            ClientEvent::Key(key) => {
-                keys.serialize(key);
-                if let Err(_) = connection.send_serialized_keys(&mut keys) {
+            LocalEvent::None => (),
+            LocalEvent::Key(key) => {
+                events.serialize(ClientEvent::Key(key));
+                if let Err(_) = connection.send_serialized_events(&mut events) {
                     break;
                 }
             }
-            ClientEvent::Resize(w, h) => ui.resize(w, h)?,
-            ClientEvent::Connection(event) => match event {
+            LocalEvent::Resize(w, h) => ui.resize(w, h)?,
+            LocalEvent::Connection(event) => match event {
                 ConnectionEvent::NewConnection => (),
                 ConnectionEvent::Stream(_) => {
                     let response = connection.receive_operations(|op| {

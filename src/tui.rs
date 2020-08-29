@@ -10,7 +10,7 @@ use crate::{
     application::UI,
     buffer_position::BufferPosition,
     client::Client,
-    client_event::{ClientEvent, Key},
+    client_event::{LocalEvent, Key},
     config::Config,
     editor_operation::StatusMessageKind,
     mode::Mode,
@@ -18,33 +18,33 @@ use crate::{
     theme,
 };
 
-fn convert_event(event: event::Event) -> ClientEvent {
+fn convert_event(event: event::Event) -> LocalEvent {
     match event {
         event::Event::Key(e) => match e.code {
-            event::KeyCode::Backspace => ClientEvent::Key(Key::Backspace),
-            event::KeyCode::Enter => ClientEvent::Key(Key::Enter),
-            event::KeyCode::Left => ClientEvent::Key(Key::Left),
-            event::KeyCode::Right => ClientEvent::Key(Key::Right),
-            event::KeyCode::Up => ClientEvent::Key(Key::Up),
-            event::KeyCode::Down => ClientEvent::Key(Key::Down),
-            event::KeyCode::Home => ClientEvent::Key(Key::Home),
-            event::KeyCode::End => ClientEvent::Key(Key::End),
-            event::KeyCode::PageUp => ClientEvent::Key(Key::PageUp),
-            event::KeyCode::PageDown => ClientEvent::Key(Key::PageDown),
-            event::KeyCode::Tab => ClientEvent::Key(Key::Tab),
-            event::KeyCode::Delete => ClientEvent::Key(Key::Delete),
-            event::KeyCode::F(f) => ClientEvent::Key(Key::F(f)),
-            event::KeyCode::Char('\0') => ClientEvent::None,
+            event::KeyCode::Backspace => LocalEvent::Key(Key::Backspace),
+            event::KeyCode::Enter => LocalEvent::Key(Key::Enter),
+            event::KeyCode::Left => LocalEvent::Key(Key::Left),
+            event::KeyCode::Right => LocalEvent::Key(Key::Right),
+            event::KeyCode::Up => LocalEvent::Key(Key::Up),
+            event::KeyCode::Down => LocalEvent::Key(Key::Down),
+            event::KeyCode::Home => LocalEvent::Key(Key::Home),
+            event::KeyCode::End => LocalEvent::Key(Key::End),
+            event::KeyCode::PageUp => LocalEvent::Key(Key::PageUp),
+            event::KeyCode::PageDown => LocalEvent::Key(Key::PageDown),
+            event::KeyCode::Tab => LocalEvent::Key(Key::Tab),
+            event::KeyCode::Delete => LocalEvent::Key(Key::Delete),
+            event::KeyCode::F(f) => LocalEvent::Key(Key::F(f)),
+            event::KeyCode::Char('\0') => LocalEvent::None,
             event::KeyCode::Char(c) => match e.modifiers {
-                event::KeyModifiers::CONTROL => ClientEvent::Key(Key::Ctrl(c)),
-                event::KeyModifiers::ALT => ClientEvent::Key(Key::Alt(c)),
-                _ => ClientEvent::Key(Key::Char(c)),
+                event::KeyModifiers::CONTROL => LocalEvent::Key(Key::Ctrl(c)),
+                event::KeyModifiers::ALT => LocalEvent::Key(Key::Alt(c)),
+                _ => LocalEvent::Key(Key::Char(c)),
             },
-            event::KeyCode::Esc => ClientEvent::Key(Key::Esc),
-            _ => ClientEvent::None,
+            event::KeyCode::Esc => LocalEvent::Key(Key::Esc),
+            _ => LocalEvent::None,
         },
-        event::Event::Resize(w, h) => ClientEvent::Resize(w, h),
-        _ => ClientEvent::None,
+        event::Event::Resize(w, h) => LocalEvent::Resize(w, h),
+        _ => LocalEvent::None,
     }
 }
 
@@ -89,7 +89,7 @@ where
     type Error = ErrorKind;
 
     fn run_event_loop_in_background(
-        event_sender: mpsc::Sender<ClientEvent>,
+        event_sender: mpsc::Sender<LocalEvent>,
     ) -> thread::JoinHandle<Result<()>> {
         thread::spawn(move || {
             while event_sender.send(convert_event(event::read()?)).is_ok() {}

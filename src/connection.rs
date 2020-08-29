@@ -10,7 +10,9 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use uds_windows::{UnixListener, UnixStream};
 
 use crate::{
-    client_event::{Key, KeyDeserializeResult, KeyDeserializer, KeySerializer},
+    client_event::{
+        ClientEvent, ClientEventDeserializeResult, ClientEventDeserializer, ClientEventSerializer,
+    },
     editor::EditorLoop,
     editor_operation::{
         EditorOperation, EditorOperationDeserializeResult, EditorOperationDeserializer,
@@ -214,13 +216,13 @@ impl ConnectionWithClientCollection {
         }
     }
 
-    pub fn receive_keys<F>(
+    pub fn receive_events<F>(
         &mut self,
         handle: ConnectionWithClientHandle,
         mut callback: F,
     ) -> io::Result<EditorLoop>
     where
-        F: FnMut(Key) -> EditorLoop,
+        F: FnMut(ClientEvent) -> EditorLoop,
     {
         let connection = match &mut self.connections[handle.0] {
             Some(connection) => connection,
@@ -230,18 +232,20 @@ impl ConnectionWithClientCollection {
         let mut read_guard = self.read_buf.guard();
         read_guard.read_from(&mut connection.0)?;
         let mut last_result = EditorLoop::Quit;
-        let mut deserializer = KeyDeserializer::from_slice(read_guard.as_bytes());
+        let mut deserializer = ClientEventDeserializer::from_slice(read_guard.as_bytes());
 
         loop {
             match deserializer.deserialize_next() {
-                KeyDeserializeResult::Some(key) => {
-                    last_result = callback(key);
+                ClientEventDeserializeResult::Some(event) => {
+                    last_result = callback(event);
                     if let EditorLoop::Quit = last_result {
                         break;
                     }
                 }
-                KeyDeserializeResult::None => break,
-                KeyDeserializeResult::Error => return Err(io::Error::from(io::ErrorKind::Other)),
+                ClientEventDeserializeResult::None => break,
+                ClientEventDeserializeResult::Error => {
+                    return Err(io::Error::from(io::ErrorKind::Other))
+                }
             }
         }
 
@@ -271,10 +275,6 @@ impl ConnectionWithServer {
         })
     }
 
-    pub fn set_blocking(&mut self) -> io::Result<()> {
-        self.stream.set_nonblocking(false)
-    }
-
     pub fn close(&mut self) {
         let _ = self.stream.shutdown(Shutdown::Both);
     }
@@ -293,7 +293,20 @@ impl ConnectionWithServer {
         )
     }
 
-    pub fn send_serialized_keys(&mut self, serializer: &mut KeySerializer) -> io::Result<()> {
+    pub fn send_serialized_events_blocking(
+        &mut self,
+        serializer: &mut ClientEventSerializer,
+    ) -> io::Result<()> {
+        self.stream.set_nonblocking(false)?;
+        self.send_serialized_events(serializer)?;
+        self.stream.set_nonblocking(false)?;
+        Ok(())
+    }
+
+    pub fn send_serialized_events(
+        &mut self,
+        serializer: &mut ClientEventSerializer,
+    ) -> io::Result<()> {
         let bytes = serializer.bytes();
         if bytes.is_empty() {
             return Ok(());

@@ -4,12 +4,12 @@ use crate::{
     buffer::BufferCollection,
     buffer_view::{BufferViewCollection, BufferViewHandle},
     client::Client,
-    client_event::Key,
+    client_event::{ClientEvent, Key},
     config::Config,
     connection::{ConnectionWithClientHandle, TargetClient},
     editor_operation::{
         EditorOperation, EditorOperationDeserializeResult, EditorOperationDeserializer,
-        EditorOperationSerializer, StatusMessageKind,
+        EditorOperationSerializer,
     },
     keymap::{KeyMapCollection, MatchResult},
     mode::{Mode, ModeContext, ModeOperation},
@@ -153,7 +153,6 @@ impl Editor {
         let ctx = ScriptContext {
             quit: &mut quit,
             target_client: TargetClient::Local,
-            client_target_map: &mut self.client_target_map,
             operations,
 
             config,
@@ -165,8 +164,7 @@ impl Editor {
 
         if let Err(e) = self.scripts.eval_entry_file(ctx, path) {
             let message = e.to_string();
-            let op = EditorOperation::StatusMessage(StatusMessageKind::Error, &message);
-            operations.serialize(TargetClient::Local, &op);
+            operations.serialize_error(&message);
         }
 
         let mut deserializer = EditorOperationDeserializer::from_slice(operations.local_bytes());
@@ -199,7 +197,7 @@ impl Editor {
             .flatten()
         {
             operations.serialize_buffer(target_client, &buffer.content);
-            operations.serialize(target_client, &EditorOperation::Path(buffer.path.as_ref()));
+            operations.serialize(target_client, &EditorOperation::Path(buffer.path()));
         }
 
         operations.serialize(self.focused_client, &EditorOperation::Focused(false));
@@ -281,81 +279,119 @@ impl Editor {
         }
     }
 
-    pub fn on_key(
+    pub fn on_event(
         &mut self,
         config: &Config,
-        key: Key,
+        event: ClientEvent,
         target_client: TargetClient,
         operations: &mut EditorOperationSerializer,
     ) -> EditorLoop {
-        let target_client = self.client_target_map.get(target_client);
-
-        if target_client != self.focused_client {
-            operations.serialize(self.focused_client, &EditorOperation::Focused(false));
-            operations.serialize(target_client, &EditorOperation::Focused(true));
-
-            self.focused_client = target_client;
-            self.buffered_keys.clear();
-        }
-
-        self.buffered_keys.push(key);
-
-        match self
-            .keymaps
-            .matches(self.mode.discriminant(), &self.buffered_keys[..])
-        {
-            MatchResult::None => (),
-            MatchResult::Prefix => return EditorLoop::Continue,
-            MatchResult::ReplaceWith(replaced_keys) => {
-                self.buffered_keys.clear();
-                self.buffered_keys.extend_from_slice(replaced_keys);
+        match event {
+            ClientEvent::AsLocalClient => {
+                self.client_target_map
+                    .map(target_client, TargetClient::Local);
+                EditorLoop::Continue
             }
-        }
-
-        let mut keys = KeysIterator::new(&self.buffered_keys);
-        let result = loop {
-            if keys.index >= self.buffered_keys.len() {
-                break EditorLoop::Continue;
+            ClientEvent::AsRemoteClient(index) => {
+                let handle = ConnectionWithClientHandle::from_index(index);
+                self.client_target_map
+                    .map(target_client, TargetClient::Remote(handle));
+                EditorLoop::Continue
             }
-
-            let current_buffer_view_handle = match target_client {
-                TargetClient::All => unreachable!(),
-                TargetClient::Local => &mut self.local_client_current_buffer_view_handle,
-                TargetClient::Remote(handle) => {
-                    &mut self.remote_client_current_buffer_view_handles[handle.into_index()]
+            ClientEvent::OpenFile(path) => {
+                let path = Path::new(path);
+                match self.buffer_views.new_buffer_from_file(
+                    &mut self.buffers,
+                    target_client,
+                    operations,
+                    path,
+                ) {
+                    Ok(buffer_view_handle) => match target_client {
+                        TargetClient::All => unreachable!(),
+                        TargetClient::Local => {
+                            self.local_client_current_buffer_view_handle = Some(buffer_view_handle)
+                        }
+                        TargetClient::Remote(handle) => {
+                            self.remote_client_current_buffer_view_handles[handle.into_index()] =
+                                Some(buffer_view_handle)
+                        }
+                    },
+                    Err(error) => operations.serialize_error(&error),
                 }
-            };
 
-            let mut mode_context = ModeContext {
-                target_client,
-                client_target_map: &mut self.client_target_map,
-                operations,
+                EditorLoop::Continue
+            }
+            ClientEvent::Key(key) => {
+                let target_client = self.client_target_map.get(target_client);
 
-                config,
-                keymaps: &mut self.keymaps,
-                scripts: &mut self.scripts,
-                buffers: &mut self.buffers,
-                buffer_views: &mut self.buffer_views,
-                current_buffer_view_handle,
-                input: &mut self.input,
-            };
+                if target_client != self.focused_client {
+                    operations.serialize(self.focused_client, &EditorOperation::Focused(false));
+                    operations.serialize(target_client, &EditorOperation::Focused(true));
 
-            match self.mode.on_event(&mut mode_context, &mut keys) {
-                ModeOperation::Pending => return EditorLoop::Continue,
-                ModeOperation::None => (),
-                ModeOperation::Quit => {
+                    self.focused_client = target_client;
                     self.buffered_keys.clear();
-                    return EditorLoop::Quit;
                 }
-                ModeOperation::EnterMode(next_mode) => {
-                    self.mode = next_mode.clone();
-                    self.mode.on_enter(&mut mode_context);
-                    operations.serialize(TargetClient::All, &EditorOperation::Mode(next_mode));
-                }
-            }
-        };
 
-        self.buffered_keys.clear();
-        result
+                self.buffered_keys.push(key);
+
+                match self
+                    .keymaps
+                    .matches(self.mode.discriminant(), &self.buffered_keys[..])
+                {
+                    MatchResult::None => (),
+                    MatchResult::Prefix => return EditorLoop::Continue,
+                    MatchResult::ReplaceWith(replaced_keys) => {
+                        self.buffered_keys.clear();
+                        self.buffered_keys.extend_from_slice(replaced_keys);
+                    }
+                }
+
+                let mut keys = KeysIterator::new(&self.buffered_keys);
+                let result = loop {
+                    if keys.index >= self.buffered_keys.len() {
+                        break EditorLoop::Continue;
+                    }
+
+                    let current_buffer_view_handle = match target_client {
+                        TargetClient::All => unreachable!(),
+                        TargetClient::Local => &mut self.local_client_current_buffer_view_handle,
+                        TargetClient::Remote(handle) => {
+                            &mut self.remote_client_current_buffer_view_handles[handle.into_index()]
+                        }
+                    };
+
+                    let mut mode_context = ModeContext {
+                        target_client,
+                        operations,
+
+                        config,
+                        keymaps: &mut self.keymaps,
+                        scripts: &mut self.scripts,
+                        buffers: &mut self.buffers,
+                        buffer_views: &mut self.buffer_views,
+                        current_buffer_view_handle,
+                        input: &mut self.input,
+                    };
+
+                    match self.mode.on_event(&mut mode_context, &mut keys) {
+                        ModeOperation::Pending => return EditorLoop::Continue,
+                        ModeOperation::None => (),
+                        ModeOperation::Quit => {
+                            self.buffered_keys.clear();
+                            return EditorLoop::Quit;
+                        }
+                        ModeOperation::EnterMode(next_mode) => {
+                            self.mode = next_mode.clone();
+                            self.mode.on_enter(&mut mode_context);
+                            operations
+                                .serialize(TargetClient::All, &EditorOperation::Mode(next_mode));
+                        }
+                    }
+                };
+
+                self.buffered_keys.clear();
+                result
+            }
+        }
     }
 }

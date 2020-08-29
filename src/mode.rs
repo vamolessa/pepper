@@ -8,7 +8,7 @@ use crate::{
     client_event::Key,
     config::Config,
     connection::TargetClient,
-    editor::{ClientTargetMap, KeysIterator},
+    editor::KeysIterator,
     editor_operation::{EditorOperation, EditorOperationSerializer},
     keymap::KeyMapCollection,
     script::ScriptEngine,
@@ -29,7 +29,6 @@ pub enum ModeOperation {
 
 pub struct ModeContext<'a> {
     pub target_client: TargetClient,
-    pub client_target_map: &'a mut ClientTargetMap,
     pub operations: &'a mut EditorOperationSerializer,
 
     pub config: &'a Config,

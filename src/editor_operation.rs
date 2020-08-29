@@ -83,6 +83,11 @@ impl EditorOperationSerializer {
         };
     }
 
+    pub fn serialize_error(&mut self, error: &str) {
+        let op = EditorOperation::StatusMessage(StatusMessageKind::Error, error);
+        self.serialize(TargetClient::All, &op);
+    }
+
     pub fn serialize_buffer(&mut self, target_client: TargetClient, content: &BufferContent) {
         use serde::Serialize;
         fn write_buffer(buf: &mut SerializationBuf, content: &BufferContent) {
@@ -336,10 +341,7 @@ mod tests {
         syntax.add_extension("def".into());
         syntax.add_rule(TokenKind::Text, Pattern::new("pat").unwrap());
         serializer.serialize_syntax(TargetClient::Local, syntax);
-        serializer.serialize(
-            TargetClient::Local,
-            &EditorOperation::StatusMessage(StatusMessageKind::Error, "this is an error"),
-        );
+        serializer.serialize_error("this is an error");
 
         let mut deserializer = EditorOperationDeserializer::from_slice(serializer.local_bytes());
 

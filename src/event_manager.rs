@@ -5,7 +5,7 @@ use std::{
     thread,
 };
 
-use crate::{client_event::ClientEvent, connection::ConnectionWithClientHandle};
+use crate::{client_event::LocalEvent, connection::ConnectionWithClientHandle};
 
 #[derive(Debug, Clone, Copy)]
 pub struct StreamId(usize);
@@ -61,14 +61,14 @@ impl EventManager {
 
     pub fn run_event_loop_in_background(
         self,
-        event_sender: mpsc::Sender<ClientEvent>,
+        event_sender: mpsc::Sender<LocalEvent>,
     ) -> thread::JoinHandle<io::Result<()>> {
         let mut events = Vec::new();
         thread::spawn(move || 'event_loop: loop {
             self.poller.wait(&mut events, None)?;
             for event in &events {
                 let event = ConnectionEvent::from_raw_id(event.key);
-                if event_sender.send(ClientEvent::Connection(event)).is_err() {
+                if event_sender.send(LocalEvent::Connection(event)).is_err() {
                     break 'event_loop Ok(());
                 }
             }
