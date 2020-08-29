@@ -70,15 +70,14 @@ mod bindings {
             .buffer_views
             .new_buffer_from_file(ctx.buffers, ctx.target_client, ctx.operations, path)
             .map_err(ScriptError::from)?;
-        *ctx.current_buffer_view_handle = Some(buffer_view_handle);
+        ctx.set_current_buffer_view_handle(Some(buffer_view_handle));
         Ok(())
     }
 
     pub fn close(ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
         if let Some(handle) = ctx
-            .current_buffer_view_handle
-            .take()
-            .map(|h| ctx.buffer_views.get(&h).buffer_handle)
+            .current_buffer_view_handle()
+            .map(|h| ctx.buffer_views.get(h).buffer_handle)
         {
             for view in ctx.buffer_views.iter() {
                 if view.buffer_handle == handle {
@@ -92,20 +91,26 @@ mod bindings {
                 .remove_where(ctx.buffers, |view| view.buffer_handle == handle);
         }
 
+        ctx.set_current_buffer_view_handle(None);
         Ok(())
     }
 
     pub fn close_all(ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
-        ctx.buffer_views.remove_where(ctx.buffers, |_view| true);
+        ctx.buffer_views.remove_where(ctx.buffers, |_| true);
         ctx.operations
             .serialize(TargetClient::All, &EditorOperation::Buffer(""));
         ctx.operations
             .serialize(TargetClient::All, &EditorOperation::Path(Path::new("")));
+
+        *ctx.local_client_current_buffer_view_handle = None;
+        for handle in ctx.remote_client_current_buffer_view_handles.iter_mut() {
+            *handle = None;
+        }
         Ok(())
     }
 
     pub fn save(ctx: &mut ScriptContext, path: Option<ScriptStr>) -> ScriptResult<()> {
-        let view_handle = match ctx.current_buffer_view_handle.as_ref() {
+        let view_handle = match ctx.current_buffer_view_handle() {
             Some(handle) => handle,
             None => return Err(ScriptError::from("no buffer opened")),
         };
@@ -143,8 +148,7 @@ mod bindings {
     pub fn selection(ctx: &mut ScriptContext, _: ()) -> ScriptResult<String> {
         let mut selection = String::new();
         if let Some(buffer_view) = ctx
-            .current_buffer_view_handle
-            .as_ref()
+            .current_buffer_view_handle()
             .map(|h| ctx.buffer_views.get(h))
         {
             buffer_view.get_selection_text(ctx.buffers, &mut selection);
@@ -154,7 +158,7 @@ mod bindings {
     }
 
     pub fn replace(ctx: &mut ScriptContext, text: ScriptStr) -> ScriptResult<()> {
-        if let Some(handle) = ctx.current_buffer_view_handle {
+        if let Some(handle) = ctx.current_buffer_view_handle() {
             let text = TextRef::Str(text.to_str()?);
             ctx.buffer_views
                 .delete_in_selection(ctx.buffers, ctx.operations, handle);

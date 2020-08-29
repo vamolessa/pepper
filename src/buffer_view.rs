@@ -180,7 +180,7 @@ impl BufferView {
     }
 }
 
-#[derive(Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub struct BufferViewHandle(usize);
 
 #[derive(Default)]
@@ -215,14 +215,14 @@ impl BufferViewCollection {
             }
         }
 
-        buffers.remove_where(|h, _b| self.iter().any(|v| v.buffer_handle == h));
+        buffers.remove_where(|h, _b| !self.iter().any(|v| v.buffer_handle == h));
     }
 
-    pub fn get(&self, handle: &BufferViewHandle) -> &BufferView {
+    pub fn get(&self, handle: BufferViewHandle) -> &BufferView {
         self.buffer_views[handle.0].as_ref().unwrap()
     }
 
-    pub fn get_mut(&mut self, handle: &BufferViewHandle) -> &mut BufferView {
+    pub fn get_mut(&mut self, handle: BufferViewHandle) -> &mut BufferView {
         self.buffer_views[handle.0].as_mut().unwrap()
     }
 
@@ -241,7 +241,7 @@ impl BufferViewCollection {
         &mut self,
         buffers: &mut BufferCollection,
         operations: &mut EditorOperationSerializer,
-        handle: &BufferViewHandle,
+        handle: BufferViewHandle,
         text: TextRef,
     ) {
         let current_view = match &mut self.buffer_views[handle.0] {
@@ -283,7 +283,7 @@ impl BufferViewCollection {
         &mut self,
         buffers: &mut BufferCollection,
         operations: &mut EditorOperationSerializer,
-        handle: &BufferViewHandle,
+        handle: BufferViewHandle,
     ) {
         let current_view = match &mut self.buffer_views[handle.0] {
             Some(view) => view,
@@ -325,7 +325,7 @@ impl BufferViewCollection {
         &mut self,
         buffers: &mut BufferCollection,
         operations: &mut EditorOperationSerializer,
-        handle: &BufferViewHandle,
+        handle: BufferViewHandle,
     ) {
         if let Some(buffer) = self.buffer_views[handle.0]
             .as_mut()
@@ -339,7 +339,7 @@ impl BufferViewCollection {
         &mut self,
         buffers: &mut BufferCollection,
         operations: &mut EditorOperationSerializer,
-        handle: &BufferViewHandle,
+        handle: BufferViewHandle,
     ) {
         if let Some(buffer) = self.buffer_views[handle.0]
             .as_mut()
@@ -351,7 +351,7 @@ impl BufferViewCollection {
 
     fn apply_edits<'a>(
         &mut self,
-        handle: &BufferViewHandle,
+        handle: BufferViewHandle,
         operations: &mut EditorOperationSerializer,
         edits: impl 'a + Iterator<Item = EditRef<'a>>,
     ) {
@@ -418,7 +418,7 @@ impl BufferViewCollection {
                     drop(iter);
                     let view = BufferView::new(target_client, buffer_handle);
                     let view_handle = self.add(view);
-                    let view = self.get(&view_handle);
+                    let view = self.get(view_handle);
                     buffer_view_handle = view_handle;
                     view
                 }

@@ -79,7 +79,31 @@ pub struct ScriptContext<'a> {
     pub keymaps: &'a mut KeyMapCollection,
     pub buffers: &'a mut BufferCollection,
     pub buffer_views: &'a mut BufferViewCollection,
-    pub current_buffer_view_handle: &'a mut Option<BufferViewHandle>,
+
+    pub local_client_current_buffer_view_handle: &'a mut Option<BufferViewHandle>,
+    pub remote_client_current_buffer_view_handles: &'a mut [Option<BufferViewHandle>],
+}
+
+impl<'a> ScriptContext<'a> {
+    pub fn current_buffer_view_handle(&self) -> Option<BufferViewHandle> {
+        match self.target_client {
+            TargetClient::All => unreachable!(),
+            TargetClient::Local => self.local_client_current_buffer_view_handle.clone(),
+            TargetClient::Remote(handle) => {
+                self.remote_client_current_buffer_view_handles[handle.into_index()].clone()
+            }
+        }
+    }
+
+    pub fn set_current_buffer_view_handle(&mut self, handle: Option<BufferViewHandle>) {
+        match self.target_client {
+            TargetClient::All => unreachable!(),
+            TargetClient::Local => *self.local_client_current_buffer_view_handle = handle,
+            TargetClient::Remote(h) => {
+                self.remote_client_current_buffer_view_handles[h.into_index()] = handle
+            }
+        }
+    }
 }
 
 pub struct ScriptEngine {

@@ -119,7 +119,7 @@ pub struct Editor {
     keymaps: KeyMapCollection,
     buffered_keys: Vec<Key>,
     input: String,
-    pub scripts: ScriptEngine,
+    scripts: ScriptEngine,
 
     buffers: BufferCollection,
     buffer_views: BufferViewCollection,
@@ -166,7 +166,10 @@ impl Editor {
             keymaps: &mut self.keymaps,
             buffers: &mut self.buffers,
             buffer_views: &mut self.buffer_views,
-            current_buffer_view_handle: &mut self.local_client_current_buffer_view_handle,
+            local_client_current_buffer_view_handle: &mut self
+                .local_client_current_buffer_view_handle,
+            remote_client_current_buffer_view_handles: &mut self
+                .remote_client_current_buffer_view_handles,
         };
 
         if let Err(e) = self.scripts.eval_entry_file(ctx, path) {
@@ -192,10 +195,10 @@ impl Editor {
         let target_client = TargetClient::Remote(client_handle);
 
         let buffer_view_handle = match self.focused_client {
-            TargetClient::All => None,
-            TargetClient::Local => self.local_client_current_buffer_view_handle.as_ref(),
+            TargetClient::All => unreachable!(),
+            TargetClient::Local => self.local_client_current_buffer_view_handle,
             TargetClient::Remote(handle) => {
-                self.remote_client_current_buffer_view_handles[handle.into_index()].as_ref()
+                self.remote_client_current_buffer_view_handles[handle.into_index()]
             }
         };
         if let Some(buffer) = buffer_view_handle
@@ -220,22 +223,18 @@ impl Editor {
 
         let buffer_view = match self.focused_client {
             TargetClient::All => unreachable!(),
-            TargetClient::Local => self
-                .local_client_current_buffer_view_handle
-                .as_ref()
-                .map(|h| {
-                    self.buffer_views
-                        .get(h)
-                        .clone_with_target_client(target_client)
-                }),
-            TargetClient::Remote(handle) => self.remote_client_current_buffer_view_handles
-                [handle.into_index()]
-            .as_ref()
-            .map(|h| {
+            TargetClient::Local => self.local_client_current_buffer_view_handle.map(|h| {
                 self.buffer_views
                     .get(h)
                     .clone_with_target_client(target_client)
             }),
+            TargetClient::Remote(handle) => {
+                self.remote_client_current_buffer_view_handles[handle.into_index()].map(|h| {
+                    self.buffer_views
+                        .get(h)
+                        .clone_with_target_client(target_client)
+                })
+            }
         };
 
         if let Some(buffer_view) = &buffer_view {
@@ -361,14 +360,6 @@ impl Editor {
                         break EditorLoop::Continue;
                     }
 
-                    let current_buffer_view_handle = match target_client {
-                        TargetClient::All => unreachable!(),
-                        TargetClient::Local => &mut self.local_client_current_buffer_view_handle,
-                        TargetClient::Remote(handle) => {
-                            &mut self.remote_client_current_buffer_view_handles[handle.into_index()]
-                        }
-                    };
-
                     let mut mode_context = ModeContext {
                         target_client,
                         operations,
@@ -378,7 +369,10 @@ impl Editor {
                         scripts: &mut self.scripts,
                         buffers: &mut self.buffers,
                         buffer_views: &mut self.buffer_views,
-                        current_buffer_view_handle,
+                        local_client_current_buffer_view_handle: &mut self
+                            .local_client_current_buffer_view_handle,
+                        remote_client_current_buffer_view_handles: &mut self
+                            .remote_client_current_buffer_view_handles,
                         input: &mut self.input,
                     };
 

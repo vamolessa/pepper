@@ -29,16 +29,30 @@ pub enum ModeOperation {
 }
 
 pub struct ModeContext<'a> {
+    pub input: &'a mut String,
     pub target_client: TargetClient,
     pub operations: &'a mut EditorOperationSerializer,
+    pub scripts: &'a mut ScriptEngine,
 
     pub config: &'a Config,
     pub keymaps: &'a mut KeyMapCollection,
-    pub scripts: &'a mut ScriptEngine,
     pub buffers: &'a mut BufferCollection,
     pub buffer_views: &'a mut BufferViewCollection,
-    pub current_buffer_view_handle: &'a mut Option<BufferViewHandle>,
-    pub input: &'a mut String,
+
+    pub local_client_current_buffer_view_handle: &'a mut Option<BufferViewHandle>,
+    pub remote_client_current_buffer_view_handles: &'a mut [Option<BufferViewHandle>],
+}
+
+impl<'a> ModeContext<'a> {
+    pub fn current_buffer_view_handle(&self) -> Option<BufferViewHandle> {
+        match self.target_client {
+            TargetClient::All => unreachable!(),
+            TargetClient::Local => self.local_client_current_buffer_view_handle.clone(),
+            TargetClient::Remote(handle) => {
+                self.remote_client_current_buffer_view_handles[handle.into_index()].clone()
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]

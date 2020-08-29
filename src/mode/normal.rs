@@ -19,7 +19,7 @@ fn on_event_no_buffer(_ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOp
 pub fn on_enter(_ctx: &mut ModeContext) {}
 
 pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
-    let handle = if let Some(handle) = ctx.current_buffer_view_handle {
+    let handle = if let Some(handle) = ctx.current_buffer_view_handle() {
         handle
     } else {
         return on_event_no_buffer(ctx, keys);

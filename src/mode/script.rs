@@ -31,7 +31,11 @@ pub fn on_event(
                 keymaps: ctx.keymaps,
                 buffers: ctx.buffers,
                 buffer_views: ctx.buffer_views,
-                current_buffer_view_handle: ctx.current_buffer_view_handle,
+
+                local_client_current_buffer_view_handle: ctx
+                    .local_client_current_buffer_view_handle,
+                remote_client_current_buffer_view_handles: ctx
+                    .remote_client_current_buffer_view_handles,
             };
 
             match ctx.scripts.eval(context, &ctx.input[..]) {
