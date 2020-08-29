@@ -39,11 +39,11 @@ pub struct Args {
     #[argh(option, short = 's')]
     session: Option<String>,
 
-    /// send events in behalf of the server local client and quit
+    /// send events on behalf of the server local client and quit
     #[argh(switch)]
     as_local_client: bool,
 
-    /// send events in behalf of a remote client and quit
+    /// send events on behalf of a remote client and quit
     #[argh(option)]
     as_remote_client: Option<usize>,
 
