@@ -174,16 +174,24 @@ where
         );
     }
 
-    if client_events_from_args(&args, |event| {
+    let editor_loop = client_events_from_args(&args, |event| {
         editor.on_event(&config, event, TargetClient::Local, &mut editor_operations);
-    })?
-    .is_quit()
-    {
+    })?;
+    if editor_loop.is_quit() {
         return Ok(());
     }
+    send_operations(&mut config, &mut editor_operations, &mut local_client, &mut connections);
 
     connections.register_listener(&event_registry)?;
+
     ui.init()?;
+    ui.draw(
+        &config,
+        &local_client,
+        local_client.status_message_kind,
+        &local_client.status_message[..],
+    )?;
+    local_client.status_message.clear();
 
     for event in event_receiver.iter() {
         match event {
@@ -299,7 +307,15 @@ where
     let mut local_client = Client::new();
 
     connection.register_connection(&event_registry)?;
+
     ui.init()?;
+    ui.draw(
+        &config,
+        &local_client,
+        local_client.status_message_kind,
+        &local_client.status_message[..],
+    )?;
+    local_client.status_message.clear();
 
     for event in event_receiver.iter() {
         match event {
