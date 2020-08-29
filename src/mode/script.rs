@@ -40,7 +40,15 @@ pub fn on_event(
                     EditorLoop::Quit => ModeOperation::Quit,
                     EditorLoop::QuitAll => ModeOperation::QuitAll,
                     EditorLoop::Continue => {
-                        let message = e.to_string();
+                        use std::error::Error;
+                        let mut message = e.to_string();
+                        let mut error = e.source();
+                        while let Some(e) = error {
+                            message.push('\n');
+                            let s = e.to_string();
+                            message.push_str(&s);
+                            error = e.source();
+                        }
                         ctx.operations.serialize_error(&message);
                         ModeOperation::EnterMode(from_mode.as_mode())
                     }

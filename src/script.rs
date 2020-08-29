@@ -126,7 +126,7 @@ impl ScriptEngine {
 
     pub fn eval(&mut self, mut ctx: ScriptContext, source: &str) -> ScriptResult<()> {
         self.update_ctx(&mut ctx)?;
-        self.lua.load(source).exec()?;
+        self.lua.load(source).set_name(source)?.exec()?;
         Ok(())
     }
 
@@ -142,13 +142,12 @@ impl ScriptEngine {
         self.update_ctx(&mut ctx)?;
 
         let chunk = self.lua.load(&source);
-        let chunk = if let Some(name) = path.to_str() {
-            chunk.set_name(name)?
+        if let Some(name) = path.to_str() {
+            chunk.set_name(name)?.exec()?;
         } else {
-            chunk
-        };
+            chunk.exec()?;
+        }
 
-        chunk.exec()?;
         Ok(())
     }
 

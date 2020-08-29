@@ -10,7 +10,7 @@ use crate::{
     application::UI,
     buffer_position::BufferPosition,
     client::Client,
-    client_event::{LocalEvent, Key},
+    client_event::{Key, LocalEvent},
     config::Config,
     editor_operation::StatusMessageKind,
     mode::Mode,
@@ -453,64 +453,62 @@ where
         handle_command!(write, SetForegroundColor(background_color))?;
     }
 
-    let x;
-    let draw_buffer_path;
-
-    if !status_message.is_empty() {
+    let x = if !status_message.is_empty() {
         let prefix = match status_message_kind {
             StatusMessageKind::Info => "",
             StatusMessageKind::Error => "error:",
         };
-        handle_command!(write, Print(prefix))?;
-        let error = status_message.lines().next().unwrap_or("");
-        handle_command!(write, Print(error))?;
-        x = prefix.len() + error.len();
-        draw_buffer_path = true;
+
+        let line_count = status_message.lines().count();
+        if line_count > 1 {
+            handle_command!(write, cursor::MoveUp(line_count as _))?;
+            handle_command!(write, Print(prefix))?;
+            handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
+
+            for line in status_message.lines() {
+                handle_command!(write, cursor::MoveToNextLine(1))?;
+                handle_command!(write, terminal::Clear(terminal::ClearType::CurrentLine))?;
+                handle_command!(write, Print(line))?;
+            }
+        } else {
+            handle_command!(write, Print(prefix))?;
+            handle_command!(write, Print(status_message))?;
+        }
+
+        None
     } else if client.has_focus {
         match client.mode {
             Mode::Select => {
                 let text = "-- SELECT --";
                 handle_command!(write, Print(text))?;
-                x = text.len();
-                draw_buffer_path = true;
+                Some(text.len())
             }
             Mode::Insert => {
                 let text = "-- INSERT --";
                 handle_command!(write, Print(text))?;
-                x = text.len();
-                draw_buffer_path = true;
+                Some(text.len())
             }
-            Mode::Search(_) => {
-                x = draw_input(
-                    write,
-                    "/",
-                    &client.input[..],
-                    background_color,
-                    cursor_color,
-                )?;
-                draw_buffer_path = false;
-            }
-            Mode::Script(_) => {
-                x = draw_input(
-                    write,
-                    ":",
-                    &client.input[..],
-                    background_color,
-                    cursor_color,
-                )?;
-                draw_buffer_path = false;
-            }
-            _ => {
-                x = 0;
-                draw_buffer_path = true;
-            }
+            Mode::Search(_) => Some(draw_input(
+                write,
+                "/",
+                &client.input[..],
+                background_color,
+                cursor_color,
+            )?),
+            Mode::Script(_) => Some(draw_input(
+                write,
+                ":",
+                &client.input[..],
+                background_color,
+                cursor_color,
+            )?),
+            _ => Some(0),
         }
     } else {
-        x = 0;
-        draw_buffer_path = true;
+        Some(0)
     };
 
-    if draw_buffer_path {
+    if let Some(x) = x {
         if let Some(buffer_path) = client.path.as_os_str().to_str().filter(|s| !s.is_empty()) {
             let line_number = client.main_cursor.position.line_index + 1;
             let column_number = client.main_cursor.position.column_index + 1;
