@@ -34,7 +34,7 @@ pub fn bind_all<'a>(scripts: &'a mut ScriptEngine) -> ScriptResult<()> {
 
     register_all! {
         quit, quit_all, open, close, save, save_all,
-        selection, replace, print, pipe,
+        selection, replace, print, spawn,
         config, syntax_extension, syntax_rule, theme,
         mapn, maps, mapi,
     };
@@ -155,12 +155,16 @@ mod bindings {
         Ok(())
     }
 
-    pub fn pipe(
+    pub fn spawn(
         _ctx: &mut ScriptContext,
         (name, args, input): (ScriptStr, Vec<ScriptStr>, Option<ScriptStr>),
     ) -> ScriptResult<String> {
         let mut command = Command::new(name.to_str()?);
-        command.stdin(Stdio::piped());
+        command.stdin(if input.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        });
         command.stdout(Stdio::piped());
         command.stderr(Stdio::piped());
         for arg in args {
@@ -168,8 +172,12 @@ mod bindings {
         }
 
         let mut child = command.spawn().map_err(ScriptError::from)?;
-        if let Some((stdin, input)) = child.stdin.as_mut().zip(input) {
-            let _ = stdin.write_all(input.as_bytes());
+        if let Some(stdin) = child.stdin.as_mut() {
+            let bytes = match input.as_ref() {
+                Some(input) => input.as_bytes(),
+                None => &[],
+            };
+            let _ = stdin.write_all(bytes);
         }
         child.stdin = None;
 
