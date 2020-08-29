@@ -492,6 +492,17 @@ impl BufferCollection {
             .enumerate()
             .filter_map(|(i, b)| Some(BufferHandle(i)).zip(b.as_ref()))
     }
+
+    pub fn remove_where<F>(&mut self, predicate: F) where F : Fn(BufferHandle, &Buffer) -> bool {
+        for i in 0..self.buffers.len() {
+            if let Some(buffer) = &self.buffers[i] {
+                let handle = BufferHandle(i);
+                if predicate(handle, &buffer) {
+                    self.buffers[i] = None;
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]

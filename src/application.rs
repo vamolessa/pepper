@@ -286,12 +286,12 @@ where
 {
     let (event_sender, event_receiver) = mpsc::channel();
 
-    let mut events = ClientEventSerializer::default();
+    let mut client_events = ClientEventSerializer::default();
     let editor_loop = client_events_from_args(&args, |event| {
-        events.serialize(event);
+        client_events.serialize(event);
     })?;
 
-    let _ = connection.send_serialized_events_blocking(&mut events);
+    let _ = connection.send_serialized_events_blocking(&mut client_events);
     if editor_loop.is_quit() {
         let _ = connection.receive_operations(|_| ());
         connection.close();
@@ -321,8 +321,8 @@ where
         match event {
             LocalEvent::None => (),
             LocalEvent::Key(key) => {
-                events.serialize(ClientEvent::Key(key));
-                if let Err(_) = connection.send_serialized_events(&mut events) {
+                client_events.serialize(ClientEvent::Key(key));
+                if let Err(_) = connection.send_serialized_events(&mut client_events) {
                     break;
                 }
             }

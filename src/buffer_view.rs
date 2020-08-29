@@ -203,7 +203,7 @@ impl BufferViewCollection {
         handle
     }
 
-    pub fn remove_where<F>(&mut self, predicate: F)
+    pub fn remove_where<F>(&mut self, buffers: &mut BufferCollection, predicate: F)
     where
         F: Fn(&BufferView) -> bool,
     {
@@ -214,6 +214,8 @@ impl BufferViewCollection {
                 }
             }
         }
+
+        buffers.remove_where(|h, _b| self.iter().any(|v| v.buffer_handle == h));
     }
 
     pub fn get(&self, handle: &BufferViewHandle) -> &BufferView {
@@ -228,7 +230,7 @@ impl BufferViewCollection {
         self.buffer_views.iter().flatten()
     }
 
-    pub fn iter_with_handles(&self) -> impl Iterator<Item = (BufferViewHandle, &BufferView)> {
+    fn iter_with_handles(&self) -> impl Iterator<Item = (BufferViewHandle, &BufferView)> {
         self.buffer_views
             .iter()
             .enumerate()
@@ -402,12 +404,8 @@ impl BufferViewCollection {
         path: &Path,
     ) -> Result<BufferViewHandle, String> {
         if let Some(buffer_handle) = buffers.find_with_path(path) {
-            let mut iter = self.iter_with_handles().filter_map(|(handle, view)| {
-                if view.buffer_handle == buffer_handle && view.target_client == target_client {
-                    Some((handle, view))
-                } else {
-                    None
-                }
+            let mut iter = self.iter_with_handles().filter(|(_handle, view)| {
+                view.buffer_handle == buffer_handle && view.target_client == target_client
             });
 
             let buffer_view_handle;

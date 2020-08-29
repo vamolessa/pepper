@@ -33,7 +33,7 @@ pub fn bind_all<'a>(scripts: &'a mut ScriptEngine) -> ScriptResult<()> {
     }
 
     register_all! {
-        quit, quit_all, open, close, save, save_all,
+        quit, quit_all, open, close, close_all, save, save_all,
         selection, replace, print, spawn,
         config, syntax_extension, syntax_rule, theme,
         mapn, maps, mapi,
@@ -80,9 +80,18 @@ mod bindings {
                 }
             }
             ctx.buffer_views
-                .remove_where(|view| view.buffer_handle == handle);
+                .remove_where(ctx.buffers, |view| view.buffer_handle == handle);
         }
 
+        Ok(())
+    }
+
+    pub fn close_all(ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
+        ctx.buffer_views.remove_where(ctx.buffers, |_view| true);
+        ctx.operations
+            .serialize(TargetClient::All, &EditorOperation::Buffer(""));
+        ctx.operations
+            .serialize(TargetClient::All, &EditorOperation::Path(Path::new("")));
         Ok(())
     }
 
