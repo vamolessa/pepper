@@ -24,9 +24,13 @@ mod tui;
 
 use argh::FromArgs;
 
-/// code editor inspired by vim and kakoune
+/// Pepper editor is a minimalistic and modal code editor inspired by vim and kakoune.
 #[derive(FromArgs)]
 pub struct Args {
+    /// print version and quit
+    #[argh(switch, short = 'v')]
+    version: bool,
+
     /// path where config file is located
     #[argh(option, short = 'c')]
     config: Option<std::path::PathBuf>,
@@ -35,11 +39,11 @@ pub struct Args {
     #[argh(option, short = 's')]
     session: Option<String>,
 
-    /// send messages in behalf of the server local client
+    /// send events in behalf of the server local client and quit
     #[argh(switch)]
     as_local_client: bool,
 
-    /// send messages in behalf of a remote client
+    /// send events in behalf of a remote client and quit
     #[argh(option)]
     as_remote_client: Option<usize>,
 
@@ -54,7 +58,9 @@ pub struct Args {
 
 fn main() {
     let args: Args = argh::from_env();
-    if let Err(e) = application::run(args) {
+    if args.version {
+        println!("{} version {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+    } else if let Err(e) = application::run(args) {
         eprintln!("{}", e);
     }
 }
