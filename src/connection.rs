@@ -231,14 +231,14 @@ impl ConnectionWithClientCollection {
 
         let mut read_guard = self.read_buf.guard();
         read_guard.read_from(&mut connection.0)?;
-        let mut last_result = EditorLoop::Quit;
+        let mut last_editor_loop = EditorLoop::Quit;
         let mut deserializer = ClientEventDeserializer::from_slice(read_guard.as_bytes());
 
         loop {
             match deserializer.deserialize_next() {
                 ClientEventDeserializeResult::Some(event) => {
-                    last_result = callback(event);
-                    if let EditorLoop::Quit = last_result {
+                    last_editor_loop = callback(event);
+                    if last_editor_loop.is_quit() {
                         break;
                     }
                 }
@@ -249,7 +249,7 @@ impl ConnectionWithClientCollection {
             }
         }
 
-        Ok(last_result)
+        Ok(last_editor_loop)
     }
 
     pub fn all_handles(&self) -> impl Iterator<Item = ConnectionWithClientHandle> {

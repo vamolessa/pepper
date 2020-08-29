@@ -9,6 +9,7 @@ use crate::{
     buffer::TextRef,
     config::ParseConfigError,
     connection::TargetClient,
+    editor::EditorLoop,
     editor_operation::{EditorOperation, StatusMessageKind},
     keymap::ParseKeyMapError,
     mode::Mode,
@@ -32,7 +33,7 @@ pub fn bind_all<'a>(scripts: &'a mut ScriptEngine) -> ScriptResult<()> {
     }
 
     register_all! {
-        quit, open, close, save, save_all,
+        quit, quit_all, open, close, save, save_all,
         selection, replace, print, pipe,
         config, syntax_extension, syntax_rule, theme,
         mapn, maps, mapi,
@@ -45,7 +46,12 @@ mod bindings {
     use super::*;
 
     pub fn quit(ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
-        *ctx.quit = true;
+        *ctx.editor_loop = EditorLoop::Quit;
+        Err(ScriptError::from(QuitError))
+    }
+
+    pub fn quit_all(ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
+        *ctx.editor_loop = EditorLoop::QuitAll;
         Err(ScriptError::from(QuitError))
     }
 

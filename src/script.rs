@@ -12,6 +12,7 @@ use crate::{
     buffer_view::{BufferViewCollection, BufferViewHandle},
     config::Config,
     connection::TargetClient,
+    editor::EditorLoop,
     editor_operation::EditorOperationSerializer,
     keymap::KeyMapCollection,
     script_bindings,
@@ -70,7 +71,7 @@ impl<'lua> FromLua<'lua> for ScriptStr<'lua> {
 }
 
 pub struct ScriptContext<'a> {
-    pub quit: &'a mut bool,
+    pub editor_loop: &'a mut EditorLoop,
     pub target_client: TargetClient,
     pub operations: &'a mut EditorOperationSerializer,
 

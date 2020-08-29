@@ -99,10 +99,14 @@ fn client_events_from_args<F>(args: &Args, mut func: F) -> Result<EditorLoop, Bo
 where
     F: FnMut(ClientEvent),
 {
+    let mut result = EditorLoop::Continue;
+
     if args.as_local_client {
         func(ClientEvent::AsLocalClient);
+        result = EditorLoop::Quit;
     } else if let Some(index) = args.as_remote_client {
         func(ClientEvent::AsRemoteClient(index));
+        result = EditorLoop::Quit;
     }
 
     for path in &args.files {
@@ -117,10 +121,10 @@ where
             }
         }
 
-        return Ok(EditorLoop::Quit);
+        result = EditorLoop::Quit;
     }
 
-    Ok(EditorLoop::Continue)
+    Ok(result)
 }
 
 fn send_operations(
@@ -170,9 +174,11 @@ where
         );
     }
 
-    if let EditorLoop::Quit = client_events_from_args(&args, |event| {
+    if client_events_from_args(&args, |event| {
         editor.on_event(&config, event, TargetClient::Local, &mut editor_operations);
-    })? {
+    })?
+    .is_quit()
+    {
         return Ok(());
     }
 
@@ -191,7 +197,7 @@ where
                 );
 
                 match result {
-                    EditorLoop::Quit => break,
+                    EditorLoop::Quit | EditorLoop::QuitAll => break,
                     EditorLoop::Continue => send_operations(
                         &mut config,
                         &mut editor_operations,
@@ -221,6 +227,7 @@ where
                         });
 
                         match result {
+                            Ok(EditorLoop::QuitAll) => break,
                             Ok(EditorLoop::Quit) | Err(_) => {
                                 connections.close_connection(handle);
                                 editor.on_client_left(handle, &mut editor_operations);
@@ -272,12 +279,12 @@ where
     let (event_sender, event_receiver) = mpsc::channel();
 
     let mut events = ClientEventSerializer::default();
-    let result = client_events_from_args(&args, |event| {
+    let editor_loop = client_events_from_args(&args, |event| {
         events.serialize(event);
     })?;
 
     let _ = connection.send_serialized_events_blocking(&mut events);
-    if let EditorLoop::Quit = result {
+    if editor_loop.is_quit() {
         let _ = connection.receive_operations(|_| ());
         connection.close();
         return Ok(());

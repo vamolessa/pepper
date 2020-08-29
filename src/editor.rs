@@ -19,7 +19,14 @@ use crate::{
 #[derive(Clone, Copy)]
 pub enum EditorLoop {
     Quit,
+    QuitAll,
     Continue,
+}
+
+impl EditorLoop {
+    pub fn is_quit(self) -> bool {
+        matches!(self, EditorLoop::Quit | EditorLoop::QuitAll)
+    }
 }
 
 pub struct KeysIterator<'a> {
@@ -149,9 +156,9 @@ impl Editor {
         operations: &mut EditorOperationSerializer,
         path: &Path,
     ) {
-        let mut quit = false;
+        let mut editor_loop = EditorLoop::Continue;
         let ctx = ScriptContext {
-            quit: &mut quit,
+            editor_loop: &mut editor_loop,
             target_client: TargetClient::Local,
             operations,
 
@@ -299,6 +306,8 @@ impl Editor {
                 EditorLoop::Continue
             }
             ClientEvent::OpenFile(path) => {
+                let target_client = self.client_target_map.get(target_client);
+
                 let path = Path::new(path);
                 match self.buffer_views.new_buffer_from_file(
                     &mut self.buffers,
@@ -379,6 +388,10 @@ impl Editor {
                         ModeOperation::Quit => {
                             self.buffered_keys.clear();
                             return EditorLoop::Quit;
+                        }
+                        ModeOperation::QuitAll => {
+                            self.buffered_keys.clear();
+                            return EditorLoop::QuitAll;
                         }
                         ModeOperation::EnterMode(next_mode) => {
                             self.mode = next_mode.clone();
