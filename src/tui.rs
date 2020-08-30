@@ -462,8 +462,10 @@ where
         let line_count = status_message.lines().count();
         if line_count > 1 {
             handle_command!(write, cursor::MoveUp(line_count as _))?;
-            handle_command!(write, Print(prefix))?;
-            handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
+            if !prefix.is_empty() {
+                handle_command!(write, Print(prefix))?;
+                handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
+            }
 
             for line in status_message.lines() {
                 handle_command!(write, cursor::MoveToNextLine(1))?;
