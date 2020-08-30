@@ -18,8 +18,8 @@ pub enum LocalEvent {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ClientEvent<'a> {
-    AsLocalClient,
-    AsRemoteClient(usize),
+    AsFocusedClient,
+    AsClient(usize),
     OpenFile(&'a str),
     Key(Key),
 }

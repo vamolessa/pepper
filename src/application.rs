@@ -101,11 +101,11 @@ where
 {
     let mut result = EditorLoop::Continue;
 
-    if args.as_local_client {
-        func(ClientEvent::AsLocalClient);
+    if args.as_focused_client {
+        func(ClientEvent::AsFocusedClient);
         result = EditorLoop::Quit;
-    } else if let Some(index) = args.as_remote_client {
-        func(ClientEvent::AsRemoteClient(index));
+    } else if let Some(client_index) = args.as_client {
+        func(ClientEvent::AsClient(client_index));
         result = EditorLoop::Quit;
     }
 
@@ -162,6 +162,7 @@ where
 
     let mut config = Config::default();
     let mut local_client = Client::new();
+    local_client.has_focus = true;
     let mut editor = Editor::new();
     let mut editor_operations = EditorOperationSerializer::default();
 
@@ -180,7 +181,12 @@ where
     if editor_loop.is_quit() {
         return Ok(());
     }
-    send_operations(&mut config, &mut editor_operations, &mut local_client, &mut connections);
+    send_operations(
+        &mut config,
+        &mut editor_operations,
+        &mut local_client,
+        &mut connections,
+    );
 
     connections.register_listener(&event_registry)?;
 
@@ -291,6 +297,7 @@ where
         client_events.serialize(event);
     })?;
 
+    client_events.serialize(ClientEvent::Key(Key::None));
     let _ = connection.send_serialized_events_blocking(&mut client_events);
     if editor_loop.is_quit() {
         let _ = connection.receive_operations(|_| ());

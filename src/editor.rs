@@ -209,7 +209,6 @@ impl Editor {
             operations.serialize(target_client, &EditorOperation::Path(buffer.path()));
         }
 
-        operations.serialize(self.focused_client, &EditorOperation::Focused(false));
         operations.serialize(target_client, &EditorOperation::Mode(self.mode.clone()));
         for c in self.input.chars() {
             operations.serialize(target_client, &EditorOperation::InputAppend(c));
@@ -254,7 +253,6 @@ impl Editor {
             }
         }
 
-        self.focused_client = target_client;
         self.buffered_keys.clear();
     }
 
@@ -288,15 +286,14 @@ impl Editor {
         operations: &mut EditorOperationSerializer,
     ) -> EditorLoop {
         match event {
-            ClientEvent::AsLocalClient => {
+            ClientEvent::AsFocusedClient => {
                 self.client_target_map
-                    .map(target_client, TargetClient::Local);
+                    .map(target_client, self.focused_client);
                 EditorLoop::Continue
             }
-            ClientEvent::AsRemoteClient(index) => {
-                let handle = ConnectionWithClientHandle::from_index(index);
+            ClientEvent::AsClient(index) => {
                 self.client_target_map
-                    .map(target_client, TargetClient::Remote(handle));
+                    .map(target_client, TargetClient::from_index(index));
                 EditorLoop::Continue
             }
             ClientEvent::OpenFile(path) => {

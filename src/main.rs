@@ -39,13 +39,13 @@ pub struct Args {
     #[argh(option, short = 's')]
     session: Option<String>,
 
-    /// send events on behalf of the server local client and quit
+    /// send events on behalf of the currently focused client
     #[argh(switch)]
-    as_local_client: bool,
+    as_focused_client: bool,
 
-    /// send events on behalf of a remote client and quit
+    /// send events on behalf of the client at index
     #[argh(option)]
-    as_remote_client: Option<usize>,
+    as_client: Option<usize>,
 
     /// send keys to server and quit
     #[argh(option, short = 'k')]
@@ -59,11 +59,9 @@ pub struct Args {
 fn main() {
     let args: Args = argh::from_env();
     if args.version {
-        println!(
-            "{} version {}",
-            env!("CARGO_PKG_NAME"),
-            env!("CARGO_PKG_VERSION")
-        );
+        let name = env!("CARGO_PKG_NAME");
+        let version = env!("CARGO_PKG_VERSION");
+        println!("{} version {}", name, version);
     } else if let Err(e) = application::run(args) {
         eprintln!("{}", e);
     }

@@ -33,7 +33,7 @@ pub fn bind_all<'a>(scripts: &'a mut ScriptEngine) -> ScriptResult<()> {
     }
 
     register_all! {
-        remote_client_index,
+        client_index,
         quit, quit_all, open, close, close_all, save, save_all,
         selection, replace, print, pipe, spawn,
         config, syntax_extension, syntax_rule, theme,
@@ -46,12 +46,8 @@ pub fn bind_all<'a>(scripts: &'a mut ScriptEngine) -> ScriptResult<()> {
 mod bindings {
     use super::*;
 
-    pub fn remote_client_index(ctx: &mut ScriptContext, _: ()) -> ScriptResult<Option<usize>> {
-        match ctx.target_client {
-            TargetClient::All => unreachable!(),
-            TargetClient::Local => Ok(None),
-            TargetClient::Remote(handle) => Ok(Some(handle.into_index())),
-        }
+    pub fn client_index(ctx: &mut ScriptContext, _: ()) -> ScriptResult<usize> {
+        Ok(ctx.target_client.into_index())
     }
 
     pub fn quit(ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {

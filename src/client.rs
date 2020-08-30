@@ -45,7 +45,7 @@ impl Client {
             cursors: Vec::new(),
             search_ranges: Vec::new(),
 
-            has_focus: true,
+            has_focus: false,
             input: String::new(),
             select_entries: SelectEntryCollection::default(),
 
