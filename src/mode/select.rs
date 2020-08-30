@@ -21,13 +21,12 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
         Key::Esc | Key::Ctrl('c') => {
             let view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
             view.commit_edits(ctx.buffers);
-            view.collapse_cursors_anchors(ctx.operations);
+            view.collapse_cursors_anchors();
             return ModeOperation::EnterMode(Mode::Normal);
         }
         Key::Char('h') => {
             unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
                 ctx.buffers,
-                ctx.operations,
                 BufferOffset::line_col(0, -1),
                 MovementKind::PositionOnly,
             );
@@ -35,7 +34,6 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
         Key::Char('j') => {
             unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
                 ctx.buffers,
-                ctx.operations,
                 BufferOffset::line_col(1, 0),
                 MovementKind::PositionOnly,
             );
@@ -43,7 +41,6 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
         Key::Char('k') => {
             unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
                 ctx.buffers,
-                ctx.operations,
                 BufferOffset::line_col(-1, 0),
                 MovementKind::PositionOnly,
             );
@@ -51,17 +48,16 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
         Key::Char('l') => {
             unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
                 ctx.buffers,
-                ctx.operations,
                 BufferOffset::line_col(0, 1),
                 MovementKind::PositionOnly,
             );
         }
-        Key::Char('o') => unwrap_or_none!(ctx.buffer_views.get_mut(handle))
-            .swap_cursors_positions_and_anchors(ctx.operations),
+        Key::Char('o') => {
+            unwrap_or_none!(ctx.buffer_views.get_mut(handle)).swap_cursors_positions_and_anchors()
+        }
         Key::Char('s') => return ModeOperation::EnterMode(Mode::Search(FromMode::Select)),
         Key::Char('d') => {
-            ctx.buffer_views
-                .delete_in_selection(ctx.buffers, ctx.operations, handle);
+            ctx.buffer_views.delete_in_selection(ctx.buffers, handle);
             unwrap_or_none!(ctx.buffer_views.get_mut(handle)).commit_edits(ctx.buffers);
             return ModeOperation::EnterMode(Mode::Normal);
         }
@@ -74,32 +70,21 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
             }
         }
         Key::Char('p') => {
-            ctx.buffer_views
-                .delete_in_selection(ctx.buffers, ctx.operations, handle);
+            ctx.buffer_views.delete_in_selection(ctx.buffers, handle);
             if let Ok(text) = ClipboardContext::new().and_then(|mut c| c.get_contents()) {
-                ctx.buffer_views.insert_text(
-                    ctx.buffers,
-                    ctx.operations,
-                    handle,
-                    TextRef::Str(&text[..]),
-                );
+                ctx.buffer_views
+                    .insert_text(ctx.buffers, handle, TextRef::Str(&text[..]));
             }
             unwrap_or_none!(ctx.buffer_views.get_mut(handle)).commit_edits(ctx.buffers);
             return ModeOperation::EnterMode(Mode::Normal);
         }
         Key::Char('n') => {
-            unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_to_next_search_match(
-                ctx.buffers,
-                ctx.operations,
-                MovementKind::PositionOnly,
-            );
+            unwrap_or_none!(ctx.buffer_views.get_mut(handle))
+                .move_to_next_search_match(ctx.buffers, MovementKind::PositionOnly);
         }
         Key::Char('N') => {
-            unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_to_previous_search_match(
-                ctx.buffers,
-                ctx.operations,
-                MovementKind::PositionOnly,
-            );
+            unwrap_or_none!(ctx.buffer_views.get_mut(handle))
+                .move_to_previous_search_match(ctx.buffers, MovementKind::PositionOnly);
         }
         Key::Char(':') => return ModeOperation::EnterMode(Mode::Script(FromMode::Select)),
         _ => (),

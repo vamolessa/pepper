@@ -8,10 +8,9 @@ use mlua::prelude::{
 use crate::{
     buffer::BufferCollection,
     buffer_view::{BufferViewCollection, BufferViewHandle},
+    client::{ClientCollection, TargetClient},
     config::Config,
-    connection::TargetClient,
-    editor::EditorLoop,
-    editor_operation::EditorOperationSerializer,
+    editor::{EditorLoop, StatusMessageKind},
     keymap::KeyMapCollection,
     script_bindings,
 };
@@ -71,35 +70,28 @@ impl<'lua> FromLua<'lua> for ScriptStr<'lua> {
 pub struct ScriptContext<'a> {
     pub editor_loop: &'a mut EditorLoop,
     pub target_client: TargetClient,
-    pub operations: &'a mut EditorOperationSerializer,
 
-    pub config: &'a Config,
+    pub config: &'a mut Config,
     pub keymaps: &'a mut KeyMapCollection,
     pub buffers: &'a mut BufferCollection,
     pub buffer_views: &'a mut BufferViewCollection,
 
-    pub local_client_current_buffer_view_handle: &'a mut Option<BufferViewHandle>,
-    pub remote_client_current_buffer_view_handles: &'a mut [Option<BufferViewHandle>],
+    pub clients: &'a mut ClientCollection,
+
+    pub status_message_kind: &'a mut StatusMessageKind,
+    pub status_message: &'a mut String,
 }
 
 impl<'a> ScriptContext<'a> {
     pub fn current_buffer_view_handle(&self) -> Option<BufferViewHandle> {
-        match self.target_client {
-            TargetClient::All => unreachable!(),
-            TargetClient::Local => self.local_client_current_buffer_view_handle.clone(),
-            TargetClient::Remote(handle) => {
-                self.remote_client_current_buffer_view_handles[handle.into_index()].clone()
-            }
-        }
+        self.clients
+            .get(self.target_client)
+            .and_then(|c| c.current_buffer_view_handle)
     }
 
     pub fn set_current_buffer_view_handle(&mut self, handle: Option<BufferViewHandle>) {
-        match self.target_client {
-            TargetClient::All => unreachable!(),
-            TargetClient::Local => *self.local_client_current_buffer_view_handle = handle,
-            TargetClient::Remote(h) => {
-                self.remote_client_current_buffer_view_handles[h.into_index()] = handle
-            }
+        if let Some(client) = self.clients.get_mut(self.target_client) {
+            client.current_buffer_view_handle = handle;
         }
     }
 }

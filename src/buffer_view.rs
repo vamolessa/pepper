@@ -3,9 +3,8 @@ use std::{fs::File, io::Read, path::Path};
 use crate::{
     buffer::{Buffer, BufferCollection, BufferContent, BufferHandle, TextRef},
     buffer_position::{BufferOffset, BufferRange},
-    connection::TargetClient,
+    client::TargetClient,
     cursor::CursorCollection,
-    editor_operation::{EditorOperation, EditorOperationSerializer},
     history::{EditKind, EditRef},
 };
 
@@ -40,7 +39,6 @@ impl BufferView {
     pub fn move_cursors(
         &mut self,
         buffers: &BufferCollection,
-        operations: &mut EditorOperationSerializer,
         offset: BufferOffset,
         movement_kind: MovementKind,
     ) {
@@ -64,30 +62,22 @@ impl BufferView {
                 c.anchor = c.position;
             }
         }
-
-        operations.serialize_cursors(self.target_client, &self.cursors);
     }
 
-    pub fn collapse_cursors_anchors(&mut self, operations: &mut EditorOperationSerializer) {
+    pub fn collapse_cursors_anchors(&mut self) {
         self.cursors.collapse_anchors();
-        operations.serialize_cursors(self.target_client, &self.cursors);
     }
 
-    pub fn swap_cursors_positions_and_anchors(
-        &mut self,
-        operations: &mut EditorOperationSerializer,
-    ) {
+    pub fn swap_cursors_positions_and_anchors(&mut self) {
         self.cursors.swap_positions_and_anchors();
-        operations.serialize_cursors(self.target_client, &self.cursors);
     }
 
     pub fn move_to_next_search_match(
         &mut self,
         buffers: &BufferCollection,
-        operations: &mut EditorOperationSerializer,
         movement_kind: MovementKind,
     ) {
-        self.move_to_search_match(buffers, operations, movement_kind, |result, len| {
+        self.move_to_search_match(buffers, movement_kind, |result, len| {
             let next_index = match result {
                 Ok(index) => index + 1,
                 Err(index) => index,
@@ -99,10 +89,9 @@ impl BufferView {
     pub fn move_to_previous_search_match(
         &mut self,
         buffers: &BufferCollection,
-        operations: &mut EditorOperationSerializer,
         movement_kind: MovementKind,
     ) {
-        self.move_to_search_match(buffers, operations, movement_kind, |result, len| {
+        self.move_to_search_match(buffers, movement_kind, |result, len| {
             let next_index = match result {
                 Ok(index) => index,
                 Err(index) => index,
@@ -114,7 +103,6 @@ impl BufferView {
     fn move_to_search_match<F>(
         &mut self,
         buffers: &BufferCollection,
-        operations: &mut EditorOperationSerializer,
         movement_kind: MovementKind,
         index_selector: F,
     ) where
@@ -146,8 +134,6 @@ impl BufferView {
                 }
             }
         }
-
-        operations.serialize_cursors(self.target_client, &self.cursors);
     }
 
     pub fn commit_edits(&self, buffers: &mut BufferCollection) {
@@ -240,7 +226,6 @@ impl BufferViewCollection {
     pub fn insert_text(
         &mut self,
         buffers: &mut BufferCollection,
-        operations: &mut EditorOperationSerializer,
         handle: BufferViewHandle,
         text: TextRef,
     ) {
@@ -271,18 +256,12 @@ impl BufferViewCollection {
                     c.insert(*range);
                 }
             }
-
-            for range in ranges {
-                operations.serialize_insert(view.target_client, range.from, text);
-            }
-            operations.serialize_cursors(view.target_client, &view.cursors);
         }
     }
 
     pub fn delete_in_selection(
         &mut self,
         buffers: &mut BufferCollection,
-        operations: &mut EditorOperationSerializer,
         handle: BufferViewHandle,
     ) {
         let current_view = match &mut self.buffer_views[handle.0] {
@@ -313,46 +292,30 @@ impl BufferViewCollection {
                     c.delete(*range);
                 }
             }
-
-            for range in ranges {
-                operations.serialize(view.target_client, &EditorOperation::Delete(*range));
-            }
-            operations.serialize_cursors(view.target_client, &view.cursors);
         }
     }
 
-    pub fn undo(
-        &mut self,
-        buffers: &mut BufferCollection,
-        operations: &mut EditorOperationSerializer,
-        handle: BufferViewHandle,
-    ) {
+    pub fn undo(&mut self, buffers: &mut BufferCollection, handle: BufferViewHandle) {
         if let Some(buffer) = self.buffer_views[handle.0]
             .as_mut()
             .and_then(|view| buffers.get_mut(view.buffer_handle))
         {
-            self.apply_edits(handle, operations, buffer.undo());
+            self.apply_edits(handle, buffer.undo());
         }
     }
 
-    pub fn redo(
-        &mut self,
-        buffers: &mut BufferCollection,
-        operations: &mut EditorOperationSerializer,
-        handle: BufferViewHandle,
-    ) {
+    pub fn redo(&mut self, buffers: &mut BufferCollection, handle: BufferViewHandle) {
         if let Some(buffer) = self.buffer_views[handle.0]
             .as_mut()
             .and_then(|view| buffers.get_mut(view.buffer_handle))
         {
-            self.apply_edits(handle, operations, buffer.redo());
+            self.apply_edits(handle, buffer.redo());
         }
     }
 
     fn apply_edits<'a>(
         &mut self,
         handle: BufferViewHandle,
-        operations: &mut EditorOperationSerializer,
         edits: impl 'a + Iterator<Item = EditRef<'a>>,
     ) {
         let buffer_handle = match self.get(handle) {
@@ -378,7 +341,6 @@ impl BufferViewCollection {
                                 c.insert(edit.range);
                             }
                         }
-                        operations.serialize_insert(view.target_client, edit.range.from, edit.text);
                     }
                 }
                 EditKind::Delete => {
@@ -397,15 +359,9 @@ impl BufferViewCollection {
                                 c.delete(edit.range);
                             }
                         }
-                        operations
-                            .serialize(view.target_client, &EditorOperation::Delete(edit.range));
                     }
                 }
             }
-        }
-
-        for view in self.buffer_views.iter().flatten() {
-            operations.serialize_cursors(view.target_client, &view.cursors);
         }
     }
 
@@ -413,7 +369,6 @@ impl BufferViewCollection {
         &mut self,
         buffers: &mut BufferCollection,
         target_client: TargetClient,
-        operations: &mut EditorOperationSerializer,
         path: &Path,
     ) -> Result<BufferViewHandle, String> {
         if let Some(buffer_handle) = buffers.find_with_path(path) {
@@ -436,11 +391,6 @@ impl BufferViewCollection {
                     view
                 }
             };
-
-            operations
-                .serialize_buffer(target_client, &buffers.get(buffer_handle).unwrap().content);
-            operations.serialize(target_client, &EditorOperation::Path(path));
-            operations.serialize_cursors(target_client, &view.cursors);
             Ok(buffer_view_handle)
         } else if path.to_str().map(|s| s.trim().len()).unwrap_or(0) > 0 {
             let content = match File::open(&path) {
@@ -459,9 +409,6 @@ impl BufferViewCollection {
                 }
                 Err(_) => BufferContent::from_str(""),
             };
-
-            operations.serialize_buffer(target_client, &content);
-            operations.serialize(target_client, &EditorOperation::Path(path));
 
             let buffer_handle = buffers.add(Buffer::new(path.into(), content));
             let buffer_view = BufferView::new(target_client, buffer_handle);

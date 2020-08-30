@@ -1,15 +1,11 @@
 use crate::{
-    connection::TargetClient,
     editor::{EditorLoop, KeysIterator},
-    editor_operation::EditorOperation,
     mode::{poll_input, FromMode, InputPollResult, ModeContext, ModeOperation},
     script::ScriptContext,
 };
 
 pub fn on_enter(ctx: &mut ModeContext) {
     ctx.input.clear();
-    ctx.operations
-        .serialize(TargetClient::All, &EditorOperation::InputKeep(0));
 }
 
 pub fn on_event(
@@ -25,17 +21,17 @@ pub fn on_event(
             let context = ScriptContext {
                 editor_loop: &mut editor_loop,
                 target_client: ctx.target_client,
-                operations: ctx.operations,
 
                 config: ctx.config,
                 keymaps: ctx.keymaps,
                 buffers: ctx.buffers,
                 buffer_views: ctx.buffer_views,
 
-                local_client_current_buffer_view_handle: ctx
-                    .local_client_current_buffer_view_handle,
-                remote_client_current_buffer_view_handles: ctx
-                    .remote_client_current_buffer_view_handles,
+                local_client: ctx.local_client,
+                remote_clients: ctx.remote_clients,
+
+                status_message_kind: ctx.status_message_kind,
+                status_message: ctx.status_message,
             };
 
             match ctx.scripts.eval(context, &ctx.input[..]) {
@@ -53,7 +49,6 @@ pub fn on_event(
                             message.push_str(&s);
                             error = e.source();
                         }
-                        ctx.operations.serialize_error(&message);
                         ModeOperation::EnterMode(from_mode.as_mode())
                     }
                 },

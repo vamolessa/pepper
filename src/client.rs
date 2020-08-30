@@ -1,160 +1,156 @@
-use std::path::PathBuf;
-
 use crate::{
-    buffer::{BufferContent, TextRef},
-    buffer_position::BufferRange,
-    config::Config,
-    cursor::Cursor,
-    editor_operation::{EditorOperation, EditorOperationDeserializer, StatusMessageKind},
-    mode::Mode,
+    buffer_view::BufferViewHandle, connection::ConnectionWithClientHandle, cursor::Cursor,
     select::SelectEntryCollection,
-    syntax::{HighlightedBuffer, SyntaxHandle},
 };
 
-pub struct Client {
-    pub mode: Mode,
-
-    pub path: PathBuf,
-    pub buffer: BufferContent,
-    pub highlighted_buffer: HighlightedBuffer,
-    pub syntax_handle: Option<SyntaxHandle>,
-
-    pub main_cursor: Cursor,
-    pub cursors: Vec<Cursor>,
-    pub search_ranges: Vec<BufferRange>,
-
-    pub has_focus: bool,
-    pub input: String,
-    pub select_entries: SelectEntryCollection,
-
-    pub status_message_kind: StatusMessageKind,
-    pub status_message: String,
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum TargetClient {
+    Local,
+    Remote(ConnectionWithClientHandle),
 }
 
-impl Client {
-    pub fn new() -> Self {
-        Self {
-            mode: Mode::default(),
-
-            path: PathBuf::new(),
-            buffer: BufferContent::from_str(""),
-            highlighted_buffer: HighlightedBuffer::default(),
-            syntax_handle: None,
-
-            main_cursor: Cursor::default(),
-            cursors: Vec::new(),
-            search_ranges: Vec::new(),
-
-            has_focus: false,
-            input: String::new(),
-            select_entries: SelectEntryCollection::default(),
-
-            status_message_kind: StatusMessageKind::Info,
-            status_message: String::new(),
+impl TargetClient {
+    pub fn from_index(index: usize) -> Self {
+        match index {
+            0 => TargetClient::Local,
+            _ => TargetClient::Remote(ConnectionWithClientHandle::from_index(index - 1)),
         }
     }
 
-    pub fn on_editor_operation(&mut self, config: &mut Config, operation: &EditorOperation) {
-        match operation {
-            EditorOperation::Focused(focused) => self.has_focus = *focused,
-            EditorOperation::Buffer(content) => {
-                self.search_ranges.clear();
-                self.buffer = BufferContent::from_str(content);
-                self.main_cursor = Cursor::default();
-                self.cursors.clear();
-                self.cursors.push(self.main_cursor);
+    pub fn into_index(self) -> usize {
+        match self {
+            TargetClient::Local => 0,
+            TargetClient::Remote(handle) => handle.into_index() + 1,
+        }
+    }
+}
 
-                if let Some(handle) = self.syntax_handle {
-                    let syntax = config.syntaxes.get(handle);
-                    self.highlighted_buffer.highligh_all(syntax, &self.buffer);
-                }
-            }
-            EditorOperation::Path(path) => {
-                self.path.clear();
-                self.path.push(path);
+pub struct Client {
+    pub current_buffer_view_handle: Option<BufferViewHandle>,
+    pub width: u16,
+    pub height: u16,
+    pub text_scroll: usize,
+    pub select_scroll: usize,
+    pub text_height: u16,
+    pub select_height: u16,
+}
 
-                self.syntax_handle = None;
+impl Client {
+    pub fn scroll(
+        &mut self,
+        has_focus: bool,
+        main_cursor: Cursor,
+        select_entries: &SelectEntryCollection,
+    ) {
+        self.text_height = self.height - 1;
 
-                if let Some(extension) = self
-                    .path
-                    .extension()
-                    .or(self.path.file_name())
-                    .and_then(|s| s.to_str())
-                {
-                    self.syntax_handle = config.syntaxes.find_by_extension(extension);
-                }
+        let select_entry_count = if has_focus {
+            select_entries.len() as u16
+        } else {
+            0
+        };
 
-                if let Some(handle) = self.syntax_handle {
-                    let syntax = config.syntaxes.get(handle);
-                    self.highlighted_buffer.highligh_all(syntax, &self.buffer);
+        self.select_height = select_entry_count.min(self.text_height / 2);
+        self.text_height -= self.select_height;
+
+        let cursor_position = main_cursor.position;
+        if cursor_position.line_index < self.text_scroll {
+            self.text_scroll = cursor_position.line_index;
+        } else if cursor_position.line_index >= self.text_scroll + self.text_height as usize {
+            self.text_scroll = cursor_position.line_index + 1 - self.text_height as usize;
+        }
+
+        let selected_index = select_entries.selected_index;
+        if selected_index < self.select_scroll {
+            self.select_scroll = selected_index;
+        } else if selected_index >= self.select_scroll + self.select_height as usize {
+            self.select_scroll = selected_index + 1 - self.select_height as usize;
+        }
+    }
+}
+
+pub struct ClientCollection {
+    pub local: Client,
+    pub remotes: Vec<Option<Client>>,
+}
+
+impl ClientCollection {
+    pub fn on_client_joined(&mut self, client_handle: ConnectionWithClientHandle) {
+        let min_len = client_handle.into_index() + 1;
+        if min_len > self.remotes.len() {
+            self.remotes.resize_with(min_len, || None);
+        }
+    }
+
+    pub fn on_client_left(&mut self, client_handle: ConnectionWithClientHandle) {
+        self.remotes[client_handle.into_index()] = None;
+    }
+
+    pub fn get(&self, target: TargetClient) -> Option<&Client> {
+        match target {
+            TargetClient::Local => Some(&self.local),
+            TargetClient::Remote(handle) => self.remotes[handle.into_index()].as_ref(),
+        }
+    }
+
+    pub fn get_mut(&mut self, target: TargetClient) -> Option<&mut Client> {
+        match target {
+            TargetClient::Local => Some(&mut self.local),
+            TargetClient::Remote(handle) => self.remotes[handle.into_index()].as_mut(),
+        }
+    }
+}
+
+#[derive(Default)]
+pub struct ClientTargetMap {
+    local_target: Option<TargetClient>,
+    remote_targets: Vec<Option<TargetClient>>,
+}
+
+impl ClientTargetMap {
+    pub fn on_client_joined(&mut self, client_handle: ConnectionWithClientHandle) {
+        let min_len = client_handle.into_index() + 1;
+        if min_len > self.remote_targets.len() {
+            self.remote_targets.resize_with(min_len, || None);
+        }
+    }
+
+    pub fn on_client_left(&mut self, client_handle: ConnectionWithClientHandle) {
+        if self.local_target == Some(TargetClient::Remote(client_handle)) {
+            self.local_target = None;
+        }
+
+        self.remote_targets[client_handle.into_index()] = None;
+        for target in &mut self.remote_targets {
+            if *target == Some(TargetClient::Remote(client_handle)) {
+                *target = None;
+            }
+        }
+    }
+
+    pub fn map(&mut self, from: TargetClient, to: TargetClient) {
+        let to = match to {
+            TargetClient::Local => Some(to),
+            TargetClient::Remote(handle) => {
+                if handle.into_index() < self.remote_targets.len() {
+                    Some(to)
+                } else {
+                    None
                 }
             }
-            EditorOperation::Mode(mode) => self.mode = mode.clone(),
-            EditorOperation::Insert(position, text) => {
-                self.search_ranges.clear();
-                let range = self.buffer.insert_text(*position, TextRef::Str(text));
-                if let Some(handle) = self.syntax_handle {
-                    let syntax = config.syntaxes.get(handle);
-                    self.highlighted_buffer
-                        .on_insert(syntax, &self.buffer, range);
-                }
-            }
-            EditorOperation::Delete(range) => {
-                self.search_ranges.clear();
-                self.buffer.delete_range(*range);
-                if let Some(handle) = self.syntax_handle {
-                    let syntax = config.syntaxes.get(handle);
-                    self.highlighted_buffer
-                        .on_delete(syntax, &self.buffer, *range);
-                }
-            }
-            EditorOperation::CursorsClear(cursor) => {
-                self.main_cursor = *cursor;
-                self.cursors.clear();
-            }
-            EditorOperation::Cursor(cursor) => self.cursors.push(*cursor),
-            EditorOperation::InputAppend(c) => self.input.push(*c),
-            EditorOperation::InputKeep(keep_count) => {
-                self.input.truncate(*keep_count);
-            }
-            EditorOperation::Search => {
-                self.search_ranges.clear();
-                self.buffer
-                    .find_search_ranges(&self.input[..], &mut self.search_ranges);
-            }
-            EditorOperation::ConfigValues(serialized) => {
-                if let Some(values) = EditorOperationDeserializer::deserialize_inner(serialized) {
-                    config.values = values;
-                }
-            }
-            EditorOperation::Theme(serialized) => {
-                if let Some(theme) = EditorOperationDeserializer::deserialize_inner(serialized) {
-                    config.theme = theme;
-                }
-            }
-            EditorOperation::SyntaxExtension(main_extension, other_extension) => config
-                .syntaxes
-                .get_by_extension(main_extension)
-                .add_extension((*other_extension).into()),
-            EditorOperation::SyntaxRule(serialized) => {
-                if let Some((main_extension, token_kind, pattern)) =
-                    EditorOperationDeserializer::deserialize_inner(serialized)
-                {
-                    config
-                        .syntaxes
-                        .get_by_extension(main_extension)
-                        .add_rule(token_kind, pattern);
-                }
-            }
-            EditorOperation::SelectClear => self.select_entries.clear(),
-            EditorOperation::SelectEntry(name) => self.select_entries.add(name),
-            EditorOperation::StatusMessage(kind, message) => {
-                self.status_message_kind = *kind;
-                self.status_message.clear();
-                self.status_message.push_str(message);
-            }
-            EditorOperation::StatusMessageAppend(message) => {
-                self.status_message.push_str(message);
+        };
+
+        match from {
+            TargetClient::Local => self.local_target = to,
+            TargetClient::Remote(handle) => self.remote_targets[handle.into_index()] = to,
+        }
+    }
+
+    pub fn get(&self, target: TargetClient) -> TargetClient {
+        match target {
+            TargetClient::Local => self.local_target.unwrap_or(target),
+            TargetClient::Remote(handle) => {
+                self.remote_targets[handle.into_index()].unwrap_or(target)
             }
         }
     }

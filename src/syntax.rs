@@ -1,14 +1,12 @@
 use std::{str::FromStr, cmp::Ordering, iter, ops::Range, fmt};
 
-use serde_derive::{Deserialize, Serialize};
-
 use crate::{
     buffer::BufferContent,
     buffer_position::BufferRange,
     pattern::{MatchResult, Pattern, PatternState},
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenKind {
     Whitespace,
     Text,
@@ -62,7 +60,7 @@ impl Default for LineKind {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
 pub struct Syntax {
     extensions: Vec<String>,
     rules: Vec<(TokenKind, Pattern)>,

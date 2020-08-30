@@ -16,12 +16,6 @@ use crate::{
     theme::Theme,
 };
 
-#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
-pub enum StatusMessageKind {
-    Info,
-    Error,
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 pub enum EditorOperation<'a> {
     Focused(bool),

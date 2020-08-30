@@ -1,15 +1,10 @@
 use std::{env, error::Error, fmt, fs, sync::mpsc, thread};
 
 use crate::{
-    client::Client,
     client_event::{ClientEvent, ClientEventSerializer, Key, LocalEvent},
     config::Config,
     connection::{ConnectionWithClientCollection, ConnectionWithServer, TargetClient},
-    editor::{Editor, EditorLoop},
-    editor_operation::{
-        EditorOperationDeserializeResult, EditorOperationDeserializer, EditorOperationSerializer,
-        StatusMessageKind,
-    },
+    editor::{Editor, EditorLoop, StatusMessageKind},
     event_manager::{ConnectionEvent, EventManager},
     tui::Tui,
     Args,
@@ -35,17 +30,16 @@ pub trait UI {
         Ok(())
     }
 
-    fn resize(&mut self, _width: u16, _height: u16) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    fn draw(
+    fn draw_into(
         &mut self,
-        config: &Config,
-        client: &Client,
+        editor: &Editor,
+        target_client: TargetClient,
         status_message_kind: StatusMessageKind,
         status_message: &str,
+        buffer: &mut Vec<u8>,
     ) -> Result<(), Self::Error>;
+
+    fn display(&mut self, buffer: &[u8]) -> Result<(), Self::Error>;
 
     fn shutdown(&mut self) -> Result<(), Self::Error> {
         Ok(())
@@ -127,24 +121,6 @@ where
     Ok(result)
 }
 
-fn send_operations(
-    config: &mut Config,
-    operations: &mut EditorOperationSerializer,
-    local_client: &mut Client,
-    remote_clients: &mut ConnectionWithClientCollection,
-) {
-    for handle in remote_clients.all_handles() {
-        remote_clients.send_serialized_operations(handle, &operations);
-    }
-
-    let mut deserializer = EditorOperationDeserializer::from_slice(operations.local_bytes());
-    while let EditorOperationDeserializeResult::Some(op) = deserializer.deserialize_next() {
-        let _ = local_client.on_editor_operation(config, &op);
-    }
-
-    operations.clear();
-}
-
 fn run_server_with_client<I>(
     args: Args,
     mut ui: I,
@@ -161,7 +137,6 @@ where
     let ui_event_loop = I::run_event_loop_in_background(event_sender);
 
     let mut config = Config::default();
-    let mut local_client = Client::new();
     local_client.has_focus = true;
     let mut editor = Editor::new();
     let mut editor_operations = EditorOperationSerializer::default();

@@ -1,7 +1,5 @@
 use std::{fmt, str::FromStr};
 
-use serde_derive::{Deserialize, Serialize};
-
 pub enum ParseThemeError {
     ColorNotFound,
     BadColorFormat,
@@ -20,7 +18,7 @@ impl fmt::Display for ParseThemeError {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Color(pub u8, pub u8, pub u8);
 
 impl Color {
@@ -55,7 +53,7 @@ impl FromStr for Color {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct Theme {
     pub background: Color,
     pub highlight: Color,

@@ -8,7 +8,6 @@ mod config;
 mod connection;
 mod cursor;
 mod editor;
-mod editor_operation;
 mod event_manager;
 mod history;
 mod keymap;

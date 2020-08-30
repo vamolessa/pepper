@@ -83,30 +83,6 @@ impl<'a> Drop for ReadGuard<'a> {
     }
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub enum TargetClient {
-    All,
-    Local,
-    Remote(ConnectionWithClientHandle),
-}
-
-impl TargetClient {
-    pub fn from_index(index: usize) -> Self {
-        match index {
-            0 => TargetClient::Local,
-            _ => TargetClient::Remote(ConnectionWithClientHandle::from_index(index - 1)),
-        }
-    }
-
-    pub fn into_index(self) -> usize {
-        match self {
-            TargetClient::All => unreachable!(),
-            TargetClient::Local => 0,
-            TargetClient::Remote(handle) => handle.into_index() + 1,
-        }
-    }
-}
-
 pub struct ConnectionWithClient(UnixStream);
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]

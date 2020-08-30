@@ -8,9 +8,7 @@ use std::{
 use crate::{
     buffer::TextRef,
     config::ParseConfigError,
-    connection::TargetClient,
-    editor::EditorLoop,
-    editor_operation::{EditorOperation, StatusMessageKind},
+    editor::{EditorLoop, StatusMessageKind},
     keymap::ParseKeyMapError,
     mode::Mode,
     pattern::Pattern,
@@ -64,7 +62,7 @@ mod bindings {
         let path = Path::new(path.to_str()?);
         let buffer_view_handle = ctx
             .buffer_views
-            .new_buffer_from_file(ctx.buffers, ctx.target_client, ctx.operations, path)
+            .new_buffer_from_file(ctx.buffers, ctx.target_client, path)
             .map_err(ScriptError::from)?;
         ctx.set_current_buffer_view_handle(Some(buffer_view_handle));
         Ok(())
@@ -76,14 +74,6 @@ mod bindings {
             .and_then(|h| ctx.buffer_views.get(h))
             .map(|v| v.buffer_handle)
         {
-            for view in ctx.buffer_views.iter() {
-                if view.buffer_handle == handle {
-                    ctx.operations
-                        .serialize(view.target_client, &EditorOperation::Buffer(""));
-                    ctx.operations
-                        .serialize(view.target_client, &EditorOperation::Path(Path::new("")));
-                }
-            }
             ctx.buffer_views
                 .remove_where(ctx.buffers, |view| view.buffer_handle == handle);
         }
@@ -94,14 +84,9 @@ mod bindings {
 
     pub fn close_all(ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
         ctx.buffer_views.remove_where(ctx.buffers, |_| true);
-        ctx.operations
-            .serialize(TargetClient::All, &EditorOperation::Buffer(""));
-        ctx.operations
-            .serialize(TargetClient::All, &EditorOperation::Path(Path::new("")));
-
-        *ctx.local_client_current_buffer_view_handle = None;
-        for handle in ctx.remote_client_current_buffer_view_handles.iter_mut() {
-            *handle = None;
+        ctx.local_client.current_buffer_view_handle = None;
+        for client in ctx.remote_clients.iter_mut().flatten() {
+            client.current_buffer_view_handle = None;
         }
         Ok(())
     }
@@ -126,12 +111,6 @@ mod bindings {
                 let path = Path::new(path.to_str()?);
                 buffer.set_path(path);
                 buffer.save_to_file().map_err(ScriptError::from)?;
-                for view in ctx.buffer_views.iter() {
-                    if view.buffer_handle == buffer_handle {
-                        ctx.operations
-                            .serialize(view.target_client, &EditorOperation::Path(path));
-                    }
-                }
                 Ok(())
             }
             None => buffer.save_to_file().map_err(ScriptError::from),
@@ -156,20 +135,17 @@ mod bindings {
     pub fn replace(ctx: &mut ScriptContext, text: ScriptStr) -> ScriptResult<()> {
         if let Some(handle) = ctx.current_buffer_view_handle() {
             let text = TextRef::Str(text.to_str()?);
-            ctx.buffer_views
-                .delete_in_selection(ctx.buffers, ctx.operations, handle);
-            ctx.buffer_views
-                .insert_text(ctx.buffers, ctx.operations, handle, text);
+            ctx.buffer_views.delete_in_selection(ctx.buffers, handle);
+            ctx.buffer_views.insert_text(ctx.buffers, handle, text);
         }
         Ok(())
     }
 
     pub fn print(ctx: &mut ScriptContext, message: ScriptStr) -> ScriptResult<()> {
         let message = message.to_str()?;
-        ctx.operations.serialize(
-            TargetClient::All,
-            &EditorOperation::StatusMessage(StatusMessageKind::Info, message),
-        );
+        *ctx.status_message_kind = StatusMessageKind::Info;
+        ctx.status_message.clear();
+        ctx.status_message.push_str(message);
         Ok(())
     }
 
@@ -233,17 +209,13 @@ mod bindings {
         let name = name.to_str()?;
         let value = value.to_str()?;
 
-        let mut values = ctx.config.values.clone();
-        if let Err(e) = values.parse_and_set(name, value) {
+        if let Err(e) = ctx.config.values.parse_and_set(name, value) {
             let message = match e {
                 ParseConfigError::ConfigNotFound => helper::parsing_error(e, name, 0),
                 ParseConfigError::ParseError(e) => helper::parsing_error(e, value, 0),
             };
             return Err(ScriptError::from(message));
         }
-
-        ctx.operations
-            .serialize_config_values(TargetClient::All, &values);
         Ok(())
     }
 
@@ -253,10 +225,10 @@ mod bindings {
     ) -> ScriptResult<()> {
         let main_extension = main_extension.to_str()?;
         let other_extension = other_extension.to_str()?;
-        ctx.operations.serialize(
-            TargetClient::All,
-            &EditorOperation::SyntaxExtension(main_extension, other_extension),
-        );
+        ctx.config
+            .syntaxes
+            .get_by_extension(main_extension)
+            .add_extension(other_extension.into());
         Ok(())
     }
 
@@ -274,12 +246,10 @@ mod bindings {
             ScriptError::from(message)
         })?;
 
-        ctx.operations.serialize_syntax_rule(
-            TargetClient::All,
-            main_extension,
-            token_kind,
-            &pattern,
-        );
+        ctx.config
+            .syntaxes
+            .get_by_extension(main_extension)
+            .add_rule(token_kind, pattern);
         Ok(())
     }
 
@@ -290,8 +260,7 @@ mod bindings {
         let name = name.to_str()?;
         let color = color.to_str()?;
 
-        let mut theme = ctx.config.theme.clone();
-        if let Err(e) = theme.parse_and_set(name, color) {
+        if let Err(e) = ctx.config.theme.parse_and_set(name, color) {
             let context = format!("{} {}", name, color);
             let error_index = match e {
                 ParseThemeError::ColorNotFound => 0,
@@ -301,7 +270,6 @@ mod bindings {
             return Err(ScriptError::from(message));
         }
 
-        ctx.operations.serialize_theme(TargetClient::All, &theme);
         Ok(())
     }
 

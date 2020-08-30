@@ -7,11 +7,10 @@ use serde_derive::{Deserialize, Serialize};
 use crate::{
     buffer::BufferCollection,
     buffer_view::{BufferViewCollection, BufferViewHandle},
+    client::{ClientCollection, TargetClient},
     client_event::Key,
     config::Config,
-    connection::TargetClient,
-    editor::KeysIterator,
-    editor_operation::{EditorOperation, EditorOperationSerializer},
+    editor::{KeysIterator, StatusMessageKind},
     keymap::KeyMapCollection,
     script::ScriptEngine,
 };
@@ -42,27 +41,24 @@ pub enum ModeOperation {
 pub struct ModeContext<'a> {
     pub input: &'a mut String,
     pub target_client: TargetClient,
-    pub operations: &'a mut EditorOperationSerializer,
     pub scripts: &'a mut ScriptEngine,
 
-    pub config: &'a Config,
+    pub config: &'a mut Config,
     pub keymaps: &'a mut KeyMapCollection,
     pub buffers: &'a mut BufferCollection,
     pub buffer_views: &'a mut BufferViewCollection,
 
-    pub local_client_current_buffer_view_handle: &'a mut Option<BufferViewHandle>,
-    pub remote_client_current_buffer_view_handles: &'a mut [Option<BufferViewHandle>],
+    pub clients: &'a mut ClientCollection,
+
+    pub status_message_kind: &'a mut StatusMessageKind,
+    pub status_message: &'a mut String,
 }
 
 impl<'a> ModeContext<'a> {
     pub fn current_buffer_view_handle(&self) -> Option<BufferViewHandle> {
-        match self.target_client {
-            TargetClient::All => unreachable!(),
-            TargetClient::Local => self.local_client_current_buffer_view_handle.clone(),
-            TargetClient::Remote(handle) => {
-                self.remote_client_current_buffer_view_handles[handle.into_index()].clone()
-            }
-        }
+        self.clients
+            .get(self.target_client)
+            .and_then(|c| c.current_buffer_view_handle)
     }
 }
 
@@ -136,15 +132,11 @@ pub fn poll_input(ctx: &mut ModeContext, keys: &mut KeysIterator) -> InputPollRe
     match keys.next() {
         Key::Esc | Key::Ctrl('c') => {
             ctx.input.clear();
-            ctx.operations
-                .serialize(TargetClient::All, &EditorOperation::InputKeep(0));
             InputPollResult::Canceled
         }
         Key::Ctrl('m') => InputPollResult::Submited,
         Key::Ctrl('u') => {
             ctx.input.clear();
-            ctx.operations
-                .serialize(TargetClient::All, &EditorOperation::InputKeep(0));
             InputPollResult::Pending
         }
         Key::Ctrl('w') => {
@@ -162,24 +154,16 @@ pub fn poll_input(ctx: &mut ModeContext, keys: &mut KeysIterator) -> InputPollRe
             }
 
             ctx.input.truncate(last_index);
-            ctx.operations
-                .serialize(TargetClient::All, &EditorOperation::InputKeep(last_index));
             InputPollResult::Pending
         }
         Key::Ctrl('h') => {
             if let Some((last_char_index, _)) = ctx.input.char_indices().rev().next() {
                 ctx.input.truncate(last_char_index);
-                ctx.operations.serialize(
-                    TargetClient::All,
-                    &EditorOperation::InputKeep(last_char_index),
-                );
             }
             InputPollResult::Pending
         }
         Key::Char(c) => {
             ctx.input.push(c);
-            ctx.operations
-                .serialize(TargetClient::All, &EditorOperation::InputAppend(c));
             InputPollResult::Pending
         }
         _ => InputPollResult::Pending,

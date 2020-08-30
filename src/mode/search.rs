@@ -1,14 +1,10 @@
 use crate::{
-    connection::TargetClient,
     editor::KeysIterator,
-    editor_operation::EditorOperation,
     mode::{poll_input, FromMode, InputPollResult, Mode, ModeContext, ModeOperation},
 };
 
 pub fn on_enter(ctx: &mut ModeContext) {
     ctx.input.clear();
-    ctx.operations
-        .serialize(TargetClient::All, &EditorOperation::InputKeep(0));
     update_search(ctx);
 }
 
@@ -37,7 +33,5 @@ pub fn update_search(ctx: &mut ModeContext) {
         .and_then(|v| buffers.get_mut(v.buffer_handle))
     {
         buffer.set_search(&ctx.input[..]);
-        ctx.operations
-            .serialize(TargetClient::All, &EditorOperation::Search);
     }
 }

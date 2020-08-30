@@ -8,11 +8,12 @@ use crossterm::{
 
 use crate::{
     application::UI,
+    buffer::BufferContent,
     buffer_position::BufferPosition,
-    client::Client,
     client_event::{Key, LocalEvent},
     config::Config,
-    editor_operation::StatusMessageKind,
+    connection::TargetClient,
+    editor::{Client, Editor, StatusMessageKind},
     mode::Mode,
     syntax::TokenKind,
     theme,
@@ -63,8 +64,6 @@ where
     write: W,
     text_scroll: usize,
     select_scroll: usize,
-    width: u16,
-    height: u16,
 }
 
 impl<W> Tui<W>
@@ -76,8 +75,6 @@ where
             write,
             text_scroll: 0,
             select_scroll: 0,
-            width: 0,
-            height: 0,
         }
     }
 }
@@ -102,74 +99,54 @@ where
         handle_command!(self.write, cursor::Hide)?;
         self.write.flush()?;
         terminal::enable_raw_mode()?;
-
-        let size = terminal::size()?;
-        self.resize(size.0, size.1)
-    }
-
-    fn resize(&mut self, width: u16, height: u16) -> Result<()> {
-        self.width = width;
-        self.height = height;
         Ok(())
     }
 
-    fn draw(
+    fn draw_into(
         &mut self,
-        config: &Config,
-        client: &Client,
+        editor: &Editor,
+        target_client: TargetClient,
         status_message_kind: StatusMessageKind,
         status_message: &str,
+        buffer: &mut Vec<u8>,
     ) -> Result<()> {
-        let text_height = self.height - 1;
-        let select_entry_count = if client.has_focus {
-            client.select_entries.len() as u16
-        } else {
-            0
+        let client_has_focus = target_client == editor.focused_client;
+        let client = match editor.client(target_client) {
+            Some(client) => client,
+            None => return Ok(()),
         };
-        let select_height = select_entry_count.min(text_height / 2);
-        let text_height = text_height - select_height;
-
-        let cursor_position = client.main_cursor.position;
-        if cursor_position.line_index < self.text_scroll {
-            self.text_scroll = cursor_position.line_index;
-        } else if cursor_position.line_index >= self.text_scroll + text_height as usize {
-            self.text_scroll = cursor_position.line_index + 1 - text_height as usize;
-        }
-
-        let selected_index = client.select_entries.selected_index;
-        if selected_index < self.select_scroll {
-            self.select_scroll = selected_index;
-        } else if selected_index >= self.select_scroll + select_height as usize {
-            self.select_scroll = selected_index + 1 - select_height as usize;
-        }
 
         draw_text(
-            &mut self.write,
-            config,
-            client,
-            self.text_scroll,
-            self.width,
-            text_height,
+            buffer,
+            editor,
+            target_client,
+            client.text_scroll,
+            client.width,
+            client.text_height,
         )?;
         draw_select(
-            &mut self.write,
-            config,
-            client,
-            self.select_scroll,
-            self.width,
-            select_height,
+            buffer,
+            editor,
+            target_client,
+            client.select_scroll,
+            client.width,
+            client.select_height,
         )?;
         draw_statusbar(
-            &mut self.write,
-            config,
-            client,
-            self.width,
-            status_message_kind,
-            status_message,
+            buffer,
+            editor,
+            target_client,
+            client.width,
+            editor.status_message_kind,
+            &editor.status_message,
         )?;
 
         handle_command!(self.write, ResetColor)?;
         self.write.flush()?;
+        Ok(())
+    }
+
+    fn display(&mut self, buffer: &[u8]) -> Result<()> {
         Ok(())
     }
 
@@ -184,10 +161,12 @@ where
     }
 }
 
+static EMPTY_BUFFER: BufferContent = BufferContent::from_str("");
+
 fn draw_text<W>(
     write: &mut W,
-    config: &Config,
-    client: &Client,
+    editor: &Editor,
+    target_client: TargetClient,
     scroll: usize,
     width: u16,
     height: u16,
@@ -203,11 +182,25 @@ where
         Cursor,
     }
 
-    let theme = &config.theme;
+    let theme = &editor.config.theme;
+    let client = match editor.client(target_client) {
+        Some(client) => client,
+        None => return Ok(()),
+    };
+    let buffer = match client
+        .current_buffer_view_handle
+        .and_then(|h| editor.buffer_views.get(h))
+        .map(|v| v.buffer_handle)
+        .and_then(|h| editor.buffers.get(h))
+        .map(|b| &b.content)
+    {
+        Some(buffer) => buffer,
+        None => &EMPTY_BUFFER,
+    };
 
     handle_command!(write, cursor::Hide)?;
 
-    let cursor_color = match client.mode {
+    let cursor_color = match editor.mode {
         Mode::Select => convert_color(theme.cursor_select),
         Mode::Insert => convert_color(theme.cursor_insert),
         _ => convert_color(theme.cursor_normal),
@@ -233,7 +226,7 @@ where
     let mut line_index = scroll;
     let mut drawn_line_count = 0;
 
-    'lines_loop: for line in client.buffer.lines_from(line_index) {
+    'lines_loop: for line in buffer.lines_from(line_index) {
         let mut draw_state = DrawState::Token(TokenKind::Text);
         let mut column_index = 0;
         let mut x = 0;
@@ -330,15 +323,15 @@ where
                     x += 1;
                 }
                 ' ' => {
-                    handle_command!(write, Print(config.values.visual_space))?;
+                    handle_command!(write, Print(editor.config.values.visual_space))?;
                     x += 1;
                 }
                 '\t' => {
-                    handle_command!(write, Print(config.values.visual_tab_first))?;
-                    let tab_size = config.values.tab_size.get() as u16;
+                    handle_command!(write, Print(editor.config.values.visual_tab_first))?;
+                    let tab_size = editor.config.values.tab_size.get() as u16;
                     let next_tab_stop = (tab_size - 1) - x % tab_size;
                     for _ in 0..next_tab_stop {
-                        handle_command!(write, Print(config.values.visual_tab_repeat))?;
+                        handle_command!(write, Print(editor.config.values.visual_tab_repeat))?;
                     }
                     x += tab_size;
                 }
@@ -369,7 +362,7 @@ where
     handle_command!(write, SetBackgroundColor(background_color))?;
     handle_command!(write, SetForegroundColor(token_whitespace_color))?;
     for _ in drawn_line_count..height {
-        handle_command!(write, Print(config.values.visual_empty))?;
+        handle_command!(write, Print(editor.config.values.visual_empty))?;
         handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
         handle_command!(write, cursor::MoveToNextLine(1))?;
     }

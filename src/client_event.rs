@@ -22,6 +22,7 @@ pub enum ClientEvent<'a> {
     AsClient(usize),
     OpenFile(&'a str),
     Key(Key),
+    Resize(u16, u16),
 }
 
 #[derive(Debug)]

@@ -1,7 +1,5 @@
 use std::{fmt, num::NonZeroUsize, str::FromStr};
 
-use serde_derive::{Deserialize, Serialize};
-
 use crate::{
     pattern::Pattern,
     syntax::{Syntax, SyntaxCollection, TokenKind},
@@ -22,7 +20,7 @@ impl fmt::Display for ParseConfigError {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct ConfigValues {
     pub tab_size: NonZeroUsize,
     pub visual_empty: char,

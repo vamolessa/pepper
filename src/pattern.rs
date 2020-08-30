@@ -1,7 +1,5 @@
 use std::{convert::From, fmt, ops::AddAssign};
 
-use serde_derive::{Deserialize, Serialize};
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MatchResult {
     Pending(usize, PatternState),
@@ -39,7 +37,7 @@ pub struct PatternState {
     op_index: usize,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone)]
 pub struct Pattern {
     ops: Box<[Op]>,
     start_jump: Jump,
@@ -162,7 +160,7 @@ impl fmt::Debug for Pattern {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy)]
 struct Length(u16);
 impl From<usize> for Length {
     fn from(value: usize) -> Self {
@@ -175,7 +173,7 @@ impl AddAssign for Length {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy)]
 struct Jump(u16);
 impl From<usize> for Jump {
     fn from(value: usize) -> Self {
@@ -194,7 +192,7 @@ enum JumpFrom {
     End(Jump),
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone)]
 enum Op {
     Ok,
     Error,
