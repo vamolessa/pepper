@@ -9,11 +9,11 @@ use crossterm::{
 use crate::{
     application::UI,
     buffer::BufferContent,
-    buffer_position::BufferPosition,
+    buffer_position::{BufferPosition, BufferRange},
+    client::{Client, TargetClient},
     client_event::{Key, LocalEvent},
-    config::Config,
-    connection::TargetClient,
-    editor::{Client, Editor, StatusMessageKind},
+    cursor::CursorCollection,
+    editor::{Editor, StatusMessageKind},
     mode::Mode,
     syntax::TokenKind,
     theme,
@@ -105,40 +105,32 @@ where
     fn draw_into(
         &mut self,
         editor: &Editor,
+        client: &Client,
         target_client: TargetClient,
-        status_message_kind: StatusMessageKind,
-        status_message: &str,
         buffer: &mut Vec<u8>,
     ) -> Result<()> {
-        let client_has_focus = target_client == editor.focused_client;
-        let client = match editor.client(target_client) {
-            Some(client) => client,
-            None => return Ok(()),
-        };
+        let has_focus = target_client == editor.focused_client;
+        let client_view = get_client_view(editor, client);
 
         draw_text(
             buffer,
             editor,
+            client,
+            client_view,
             target_client,
-            client.text_scroll,
-            client.width,
-            client.text_height,
         )?;
         draw_select(
             buffer,
             editor,
-            target_client,
-            client.select_scroll,
-            client.width,
-            client.select_height,
+            client,
+            client_view,
         )?;
         draw_statusbar(
             buffer,
             editor,
-            target_client,
-            client.width,
-            editor.status_message_kind,
-            &editor.status_message,
+            client,
+            client_view,
+            has_focus,
         )?;
 
         handle_command!(self.write, ResetColor)?;
@@ -162,14 +154,53 @@ where
 }
 
 static EMPTY_BUFFER: BufferContent = BufferContent::from_str("");
+static EMPTY_CURSORS: CursorCollection = CursorCollection::new();
+
+struct ClientView<'a> {
+    buffer: &'a BufferContent,
+    cursors: &'a CursorCollection,
+    search_ranges: &'a [BufferRange],
+}
+
+fn get_client_view<'a>(editor: &'a Editor, client: &Client) -> ClientView<'a> {
+    let buffer_view = client
+        .current_buffer_view_handle
+        .and_then(|h| editor.buffer_views.get(h));
+    let buffer = buffer_view
+        .map(|v| v.buffer_handle)
+        .and_then(|h| editor.buffers.get(h));
+
+    let content;
+    let search_ranges;
+    match buffer {
+        Some(buffer) => {
+            content = &buffer.content;
+            search_ranges = buffer.search_ranges();
+        }
+        None => {
+            content = &EMPTY_BUFFER;
+            search_ranges = &[];
+        }
+    }
+
+    let cursors = match buffer_view {
+        Some(view) => &view.cursors,
+        None => &EMPTY_CURSORS,
+    };
+
+    ClientView {
+        buffer: content,
+        cursors,
+        search_ranges,
+    }
+}
 
 fn draw_text<W>(
     write: &mut W,
     editor: &Editor,
+    client: &Client,
+    client_view: ClientView,
     target_client: TargetClient,
-    scroll: usize,
-    width: u16,
-    height: u16,
 ) -> Result<()>
 where
     W: Write,
@@ -182,21 +213,10 @@ where
         Cursor,
     }
 
+    let scroll = client.text_scroll;
+    let width = client.width;
+    let height = client.text_height;
     let theme = &editor.config.theme;
-    let client = match editor.client(target_client) {
-        Some(client) => client,
-        None => return Ok(()),
-    };
-    let buffer = match client
-        .current_buffer_view_handle
-        .and_then(|h| editor.buffer_views.get(h))
-        .map(|v| v.buffer_handle)
-        .and_then(|h| editor.buffers.get(h))
-        .map(|b| &b.content)
-    {
-        Some(buffer) => buffer,
-        None => &EMPTY_BUFFER,
-    };
 
     handle_command!(write, cursor::Hide)?;
 
@@ -226,7 +246,7 @@ where
     let mut line_index = scroll;
     let mut drawn_line_count = 0;
 
-    'lines_loop: for line in buffer.lines_from(line_index) {
+    'lines_loop: for line in client_view.buffer.lines_from(line_index) {
         let mut draw_state = DrawState::Token(TokenKind::Text);
         let mut column_index = 0;
         let mut x = 0;
@@ -266,7 +286,7 @@ where
                 TokenKind::Literal => token_literal_color,
             };
 
-            if client.cursors[..]
+            if client_view.cursors[..]
                 .binary_search_by_key(&char_position, |c| c.position)
                 .is_ok()
             {
@@ -275,7 +295,7 @@ where
                     handle_command!(write, SetBackgroundColor(cursor_color))?;
                     handle_command!(write, SetForegroundColor(text_color))?;
                 }
-            } else if client.cursors[..]
+            } else if client_view.cursors[..]
                 .binary_search_by(|c| {
                     let range = c.range();
                     if range.to < char_position {
@@ -293,8 +313,7 @@ where
                     handle_command!(write, SetBackgroundColor(text_color))?;
                     handle_command!(write, SetForegroundColor(background_color))?;
                 }
-            } else if client
-                .search_ranges
+            } else if client_view.search_ranges
                 .binary_search_by(|r| {
                     if r.to < char_position {
                         Ordering::Less
@@ -372,7 +391,7 @@ where
 
 fn draw_select<W>(
     write: &mut W,
-    config: &Config,
+    editor: &Editor,
     client: &Client,
     scroll: usize,
     _width: u16,
@@ -381,13 +400,13 @@ fn draw_select<W>(
 where
     W: Write,
 {
-    let background_color = convert_color(config.theme.token_whitespace);
-    let foreground_color = convert_color(config.theme.token_text);
+    let background_color = convert_color(editor.config.theme.token_whitespace);
+    let foreground_color = convert_color(editor.config.theme.token_text);
 
     handle_command!(write, SetBackgroundColor(background_color))?;
     handle_command!(write, SetForegroundColor(foreground_color))?;
 
-    for entry in client.select_entries.entries_from(scroll).take(height as _) {
+    for entry in editor.selects.entries_from(scroll).take(height as _) {
         handle_command!(write, Print(&entry.name[..]))?;
         handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
         handle_command!(write, cursor::MoveToNextLine(1))?;
@@ -398,8 +417,9 @@ where
 
 fn draw_statusbar<W>(
     write: &mut W,
-    config: &Config,
+    editor: &Editor,
     client: &Client,
+    has_focus: bool,
     width: u16,
     status_message_kind: StatusMessageKind,
     status_message: &str,
@@ -434,11 +454,11 @@ where
         count
     }
 
-    let background_color = convert_color(config.theme.token_text);
-    let foreground_color = convert_color(config.theme.background);
-    let cursor_color = convert_color(config.theme.cursor_normal);
+    let background_color = convert_color(editor.config.theme.token_text);
+    let foreground_color = convert_color(editor.config.theme.background);
+    let cursor_color = convert_color(editor.config.theme.cursor_normal);
 
-    if client.has_focus {
+    if has_focus {
         handle_command!(write, SetBackgroundColor(background_color))?;
         handle_command!(write, SetForegroundColor(foreground_color))?;
     } else {
@@ -477,8 +497,8 @@ where
         }
 
         None
-    } else if client.has_focus {
-        match client.mode {
+    } else if has_focus {
+        match editor.mode {
             Mode::Select => {
                 let text = "-- SELECT --";
                 handle_command!(write, Print(text))?;
@@ -492,14 +512,14 @@ where
             Mode::Search(_) => Some(draw_input(
                 write,
                 "/",
-                &client.input[..],
+                &editor.input[..],
                 background_color,
                 cursor_color,
             )?),
             Mode::Script(_) => Some(draw_input(
                 write,
                 ":",
-                &client.input[..],
+                &editor.input[..],
                 background_color,
                 cursor_color,
             )?),

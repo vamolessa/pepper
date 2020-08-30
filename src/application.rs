@@ -3,7 +3,8 @@ use std::{env, error::Error, fmt, fs, sync::mpsc, thread};
 use crate::{
     client_event::{ClientEvent, ClientEventSerializer, Key, LocalEvent},
     config::Config,
-    connection::{ConnectionWithClientCollection, ConnectionWithServer, TargetClient},
+    connection::{ConnectionWithClientCollection, ConnectionWithServer},
+    client::{Client, ClientCollection, TargetClient},
     editor::{Editor, EditorLoop, StatusMessageKind},
     event_manager::{ConnectionEvent, EventManager},
     tui::Tui,
@@ -33,9 +34,8 @@ pub trait UI {
     fn draw_into(
         &mut self,
         editor: &Editor,
+        client: &Client,
         target_client: TargetClient,
-        status_message_kind: StatusMessageKind,
-        status_message: &str,
         buffer: &mut Vec<u8>,
     ) -> Result<(), Self::Error>;
 

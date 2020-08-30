@@ -1,5 +1,6 @@
 use crate::{
     buffer_view::BufferViewHandle, connection::ConnectionWithClientHandle, cursor::Cursor,
+    syntax::HighlightedBuffer,
     select::SelectEntryCollection,
 };
 
@@ -25,6 +26,7 @@ impl TargetClient {
     }
 }
 
+#[derive(Default)]
 pub struct Client {
     pub current_buffer_view_handle: Option<BufferViewHandle>,
     pub width: u16,
@@ -33,6 +35,7 @@ pub struct Client {
     pub select_scroll: usize,
     pub text_height: u16,
     pub select_height: u16,
+    pub highlighted_buffer: HighlightedBuffer,
 }
 
 impl Client {
@@ -69,6 +72,7 @@ impl Client {
     }
 }
 
+#[derive(Default)]
 pub struct ClientCollection {
     pub local: Client,
     pub remotes: Vec<Option<Client>>,
