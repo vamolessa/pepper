@@ -77,7 +77,8 @@ mod bindings {
     pub fn close(ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
         if let Some(handle) = ctx
             .current_buffer_view_handle()
-            .map(|h| ctx.buffer_views.get(h).buffer_handle)
+            .and_then(|h| ctx.buffer_views.get(h))
+            .map(|v| v.buffer_handle)
         {
             for view in ctx.buffer_views.iter() {
                 if view.buffer_handle == handle {
@@ -110,12 +111,15 @@ mod bindings {
     }
 
     pub fn save(ctx: &mut ScriptContext, path: Option<ScriptStr>) -> ScriptResult<()> {
-        let view_handle = match ctx.current_buffer_view_handle() {
+        let buffer_handle = match ctx
+            .current_buffer_view_handle()
+            .and_then(|h| ctx.buffer_views.get(h))
+            .map(|v| v.buffer_handle)
+        {
             Some(handle) => handle,
             None => return Err(ScriptError::from("no buffer opened")),
         };
 
-        let buffer_handle = ctx.buffer_views.get(view_handle).buffer_handle;
         let buffer = match ctx.buffers.get_mut(buffer_handle) {
             Some(buffer) => buffer,
             None => return Err(ScriptError::from("no buffer opened")),
@@ -147,13 +151,9 @@ mod bindings {
 
     pub fn selection(ctx: &mut ScriptContext, _: ()) -> ScriptResult<String> {
         let mut selection = String::new();
-        if let Some(buffer_view) = ctx
-            .current_buffer_view_handle()
-            .map(|h| ctx.buffer_views.get(h))
-        {
-            buffer_view.get_selection_text(ctx.buffers, &mut selection);
-        }
-
+        ctx.current_buffer_view_handle()
+            .and_then(|h| ctx.buffer_views.get(h))
+            .map(|v| v.get_selection_text(ctx.buffers, &mut selection));
         Ok(selection)
     }
 

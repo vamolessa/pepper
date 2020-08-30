@@ -218,12 +218,12 @@ impl BufferViewCollection {
         buffers.remove_where(|h, _b| !self.iter().any(|v| v.buffer_handle == h));
     }
 
-    pub fn get(&self, handle: BufferViewHandle) -> &BufferView {
-        self.buffer_views[handle.0].as_ref().unwrap()
+    pub fn get(&self, handle: BufferViewHandle) -> Option<&BufferView> {
+        self.buffer_views[handle.0].as_ref()
     }
 
-    pub fn get_mut(&mut self, handle: BufferViewHandle) -> &mut BufferView {
-        self.buffer_views[handle.0].as_mut().unwrap()
+    pub fn get_mut(&mut self, handle: BufferViewHandle) -> Option<&mut BufferView> {
+        self.buffer_views[handle.0].as_mut()
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &BufferView> {
@@ -355,12 +355,20 @@ impl BufferViewCollection {
         operations: &mut EditorOperationSerializer,
         edits: impl 'a + Iterator<Item = EditRef<'a>>,
     ) {
-        let buffer_handle = self.get(handle).buffer_handle;
+        let buffer_handle = match self.get(handle) {
+            Some(view) => view.buffer_handle,
+            None => return,
+        };
 
         for edit in edits {
             match edit.kind {
                 EditKind::Insert => {
-                    for c in &mut self.get_mut(handle).cursors.as_mut()[..] {
+                    let view = match self.get_mut(handle) {
+                        Some(view) => view,
+                        None => continue,
+                    };
+
+                    for c in &mut view.cursors.as_mut()[..] {
                         c.anchor = edit.range.to;
                         c.position = edit.range.to;
                     }
@@ -374,7 +382,12 @@ impl BufferViewCollection {
                     }
                 }
                 EditKind::Delete => {
-                    for c in &mut self.get_mut(handle).cursors.as_mut()[..] {
+                    let view = match self.get_mut(handle) {
+                        Some(view) => view,
+                        None => continue,
+                    };
+
+                    for c in &mut view.cursors.as_mut()[..] {
                         c.anchor = edit.range.from;
                         c.position = edit.range.from;
                     }
@@ -418,7 +431,7 @@ impl BufferViewCollection {
                     drop(iter);
                     let view = BufferView::new(target_client, buffer_handle);
                     let view_handle = self.add(view);
-                    let view = self.get(view_handle);
+                    let view = self.get(view_handle).unwrap();
                     buffer_view_handle = view_handle;
                     view
                 }

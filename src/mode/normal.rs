@@ -19,15 +19,14 @@ fn on_event_no_buffer(_ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOp
 pub fn on_enter(_ctx: &mut ModeContext) {}
 
 pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
-    let handle = if let Some(handle) = ctx.current_buffer_view_handle() {
-        handle
-    } else {
-        return on_event_no_buffer(ctx, keys);
+    let handle = match ctx.current_buffer_view_handle() {
+        Some(handle) => handle,
+        None => return on_event_no_buffer(ctx, keys),
     };
 
     match keys.next() {
         Key::Char('h') => {
-            ctx.buffer_views.get_mut(handle).move_cursors(
+            unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
                 ctx.buffers,
                 ctx.operations,
                 BufferOffset::line_col(0, -1),
@@ -35,7 +34,7 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
             );
         }
         Key::Char('j') => {
-            ctx.buffer_views.get_mut(handle).move_cursors(
+            unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
                 ctx.buffers,
                 ctx.operations,
                 BufferOffset::line_col(1, 0),
@@ -43,7 +42,7 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
             );
         }
         Key::Char('k') => {
-            ctx.buffer_views.get_mut(handle).move_cursors(
+            unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
                 ctx.buffers,
                 ctx.operations,
                 BufferOffset::line_col(-1, 0),
@@ -51,7 +50,7 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
             );
         }
         Key::Char('l') => {
-            ctx.buffer_views.get_mut(handle).move_cursors(
+            unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
                 ctx.buffers,
                 ctx.operations,
                 BufferOffset::line_col(0, 1),
@@ -59,7 +58,7 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
             );
         }
         Key::Char('J') => {
-            let buffer_view = ctx.buffer_views.get_mut(handle);
+            let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
             let buffer_handle = buffer_view.buffer_handle;
             let buffer_line_count = ctx
                 .buffers
@@ -87,24 +86,22 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
                     handle,
                     TextRef::Str(&text[..]),
                 );
-                ctx.buffer_views.get_mut(handle).commit_edits(ctx.buffers);
+                unwrap_or_none!(ctx.buffer_views.get_mut(handle)).commit_edits(ctx.buffers);
             }
         }
         Key::Char('n') => {
-            ctx.buffer_views.get_mut(handle).move_to_next_search_match(
+            unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_to_next_search_match(
                 ctx.buffers,
                 ctx.operations,
                 MovementKind::PositionWithAnchor,
             );
         }
         Key::Char('N') => {
-            ctx.buffer_views
-                .get_mut(handle)
-                .move_to_previous_search_match(
-                    ctx.buffers,
-                    ctx.operations,
-                    MovementKind::PositionWithAnchor,
-                );
+            unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_to_previous_search_match(
+                ctx.buffers,
+                ctx.operations,
+                MovementKind::PositionWithAnchor,
+            );
         }
         Key::Char('u') => ctx.buffer_views.undo(ctx.buffers, ctx.operations, handle),
         Key::Char('U') => ctx.buffer_views.redo(ctx.buffers, ctx.operations, handle),

@@ -59,7 +59,11 @@ pub struct Args {
 fn main() {
     let args: Args = argh::from_env();
     if args.version {
-        println!("{} version {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+        println!(
+            "{} version {}",
+            env!("CARGO_PKG_NAME"),
+            env!("CARGO_PKG_VERSION")
+        );
     } else if let Err(e) = application::run(args) {
         eprintln!("{}", e);
     }

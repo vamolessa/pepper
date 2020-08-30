@@ -28,12 +28,16 @@ pub fn on_event(
 }
 
 pub fn update_search(ctx: &mut ModeContext) {
-    if let Some(handle) = ctx.current_buffer_view_handle() {
-        let buffer_handle = ctx.buffer_views.get(handle).buffer_handle;
-        if let Some(buffer) = ctx.buffers.get_mut(buffer_handle) {
-            buffer.set_search(&ctx.input[..]);
-            ctx.operations
-                .serialize(TargetClient::All, &EditorOperation::Search);
-        }
-    };
+    let view_handle = ctx.current_buffer_view_handle();
+    let buffer_views = &ctx.buffer_views;
+    let buffers = &mut ctx.buffers;
+
+    if let Some(buffer) = view_handle
+        .and_then(|h| buffer_views.get(h))
+        .and_then(|v| buffers.get_mut(v.buffer_handle))
+    {
+        buffer.set_search(&ctx.input[..]);
+        ctx.operations
+            .serialize(TargetClient::All, &EditorOperation::Search);
+    }
 }

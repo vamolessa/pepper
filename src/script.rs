@@ -1,5 +1,3 @@
-#![macro_use]
-
 use std::{error::Error, fmt, fs::File, io::Read, path::Path, sync::Arc};
 
 use mlua::prelude::{

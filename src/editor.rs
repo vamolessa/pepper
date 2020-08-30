@@ -202,9 +202,8 @@ impl Editor {
             }
         };
         if let Some(buffer) = buffer_view_handle
-            .map(|h| self.buffer_views.get(h).buffer_handle)
-            .map(|h| self.buffers.get(h))
-            .flatten()
+            .and_then(|h| self.buffer_views.get(h))
+            .and_then(|v| self.buffers.get(v.buffer_handle))
         {
             operations.serialize_buffer(target_client, &buffer.content);
             operations.serialize(target_client, &EditorOperation::Path(buffer.path()));
@@ -223,18 +222,14 @@ impl Editor {
 
         let buffer_view = match self.focused_client {
             TargetClient::All => unreachable!(),
-            TargetClient::Local => self.local_client_current_buffer_view_handle.map(|h| {
-                self.buffer_views
-                    .get(h)
-                    .clone_with_target_client(target_client)
-            }),
-            TargetClient::Remote(handle) => {
-                self.remote_client_current_buffer_view_handles[handle.into_index()].map(|h| {
-                    self.buffer_views
-                        .get(h)
-                        .clone_with_target_client(target_client)
-                })
-            }
+            TargetClient::Local => self
+                .local_client_current_buffer_view_handle
+                .and_then(|h| self.buffer_views.get(h))
+                .map(|v| v.clone_with_target_client(target_client)),
+            TargetClient::Remote(handle) => self.remote_client_current_buffer_view_handles
+                [handle.into_index()]
+            .and_then(|h| self.buffer_views.get(h))
+            .map(|v| v.clone_with_target_client(target_client)),
         };
 
         if let Some(buffer_view) = &buffer_view {

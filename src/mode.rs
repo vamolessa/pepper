@@ -1,3 +1,5 @@
+#![macro_use]
+
 use std::mem::Discriminant;
 
 use serde_derive::{Deserialize, Serialize};
@@ -13,6 +15,15 @@ use crate::{
     keymap::KeyMapCollection,
     script::ScriptEngine,
 };
+
+macro_rules! unwrap_or_none {
+    ($e:expr) => {
+        match $e {
+            Some(v) => v,
+            None => return ModeOperation::None,
+        }
+    };
+}
 
 mod insert;
 mod normal;
