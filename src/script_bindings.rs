@@ -179,7 +179,7 @@ mod bindings {
 
     pub fn spawn(
         _ctx: &mut ScriptContext,
-        (name, args, wait, input): (ScriptStr, Vec<ScriptStr>, bool, Option<ScriptStr>),
+        (name, args, skip_output, input): (ScriptStr, Vec<ScriptStr>, bool, Option<ScriptStr>),
     ) -> ScriptResult<String> {
         let mut command = Command::new(name.to_str()?);
         command.stdin(if input.is_some() {
@@ -187,7 +187,7 @@ mod bindings {
         } else {
             Stdio::null()
         });
-        command.stdout(if wait { Stdio::piped() } else { Stdio::null() });
+        command.stdout(if skip_output { Stdio::null() } else { Stdio::piped() });
         command.stderr(Stdio::piped());
         for arg in args {
             command.arg(arg.to_str()?);
@@ -203,7 +203,7 @@ mod bindings {
         }
         child.stdin = None;
 
-        if !wait {
+        if skip_output {
             return Ok(String::new());
         }
 
