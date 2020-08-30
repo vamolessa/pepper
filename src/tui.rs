@@ -461,18 +461,24 @@ where
 
         let line_count = status_message.lines().count();
         if line_count > 1 {
-            handle_command!(write, cursor::MoveUp(line_count as _))?;
-            if !prefix.is_empty() {
+            if prefix.is_empty() {
+                handle_command!(write, cursor::MoveUp((line_count - 1) as _))?;
+                handle_command!(write, terminal::Clear(terminal::ClearType::FromCursorDown))?;
+            } else {
+                handle_command!(write, cursor::MoveUp(line_count as _))?;
                 handle_command!(write, Print(prefix))?;
-                handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
+                handle_command!(write, terminal::Clear(terminal::ClearType::FromCursorDown))?;
+                handle_command!(write, cursor::MoveToNextLine(1))?;
             }
 
-            for line in status_message.lines() {
-                handle_command!(write, cursor::MoveToNextLine(1))?;
-                handle_command!(write, terminal::Clear(terminal::ClearType::CurrentLine))?;
+            for (i, line) in status_message.lines().enumerate() {
                 handle_command!(write, Print(line))?;
+                if i < line_count - 1 {
+                    handle_command!(write, cursor::MoveToNextLine(1))?;
+                }
             }
         } else {
+            handle_command!(write, terminal::Clear(terminal::ClearType::CurrentLine))?;
             handle_command!(write, Print(prefix))?;
             handle_command!(write, Print(status_message))?;
         }
