@@ -2,7 +2,7 @@ use std::{
     fmt,
     io::Write,
     path::Path,
-    process::{Command, Stdio},
+    process::{Child, Command, Stdio},
 };
 
 use crate::{
@@ -35,7 +35,7 @@ pub fn bind_all<'a>(scripts: &'a mut ScriptEngine) -> ScriptResult<()> {
     register_all! {
         remote_client_index,
         quit, quit_all, open, close, close_all, save, save_all,
-        selection, replace, print, spawn,
+        selection, replace, print, pipe, spawn,
         config, syntax_extension, syntax_rule, theme,
         mapn, maps, mapi,
     };
@@ -177,17 +177,42 @@ mod bindings {
         Ok(())
     }
 
+    pub fn pipe(
+        _ctx: &mut ScriptContext,
+        (name, args, input): (ScriptStr, Vec<ScriptStr>, Option<ScriptStr>),
+    ) -> ScriptResult<String> {
+        let child = run_process(name, args, input, Stdio::piped())?;
+        let child_output = child.wait_with_output().map_err(ScriptError::from)?;
+        if child_output.status.success() {
+            let child_output = String::from_utf8_lossy(&child_output.stdout[..]);
+            Ok(child_output.into_owned())
+        } else {
+            let child_output = String::from_utf8_lossy(&child_output.stdout[..]);
+            Err(ScriptError::from(child_output.into_owned()))
+        }
+    }
+
     pub fn spawn(
         _ctx: &mut ScriptContext,
-        (name, args, skip_output, input): (ScriptStr, Vec<ScriptStr>, bool, Option<ScriptStr>),
-    ) -> ScriptResult<String> {
+        (name, args, input): (ScriptStr, Vec<ScriptStr>, Option<ScriptStr>),
+    ) -> ScriptResult<()> {
+        run_process(name, args, input, Stdio::null())?;
+        Ok(())
+    }
+
+    fn run_process(
+        name: ScriptStr,
+        args: Vec<ScriptStr>,
+        input: Option<ScriptStr>,
+        output: Stdio,
+    ) -> ScriptResult<Child> {
         let mut command = Command::new(name.to_str()?);
         command.stdin(if input.is_some() {
             Stdio::piped()
         } else {
             Stdio::null()
         });
-        command.stdout(if skip_output { Stdio::null() } else { Stdio::piped() });
+        command.stdout(output);
         command.stderr(Stdio::piped());
         for arg in args {
             command.arg(arg.to_str()?);
@@ -202,19 +227,7 @@ mod bindings {
             let _ = stdin.write_all(bytes);
         }
         child.stdin = None;
-
-        if skip_output {
-            return Ok(String::new());
-        }
-
-        let child_output = child.wait_with_output().map_err(ScriptError::from)?;
-        if child_output.status.success() {
-            let child_output = String::from_utf8_lossy(&child_output.stdout[..]);
-            Ok(child_output.into_owned())
-        } else {
-            let child_output = String::from_utf8_lossy(&child_output.stdout[..]);
-            Err(ScriptError::from(child_output.into_owned()))
-        }
+        Ok(child)
     }
 
     pub fn config(
