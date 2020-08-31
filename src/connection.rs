@@ -186,6 +186,10 @@ impl ConnectionWithClientCollection {
     }
 
     pub fn send_serialized_display(&mut self, handle: ConnectionWithClientHandle, bytes: &[u8]) {
+        if bytes.is_empty() {
+            return;
+        }
+
         let stream = match &mut self.connections[handle.0] {
             Some(connection) => &mut connection.0,
             None => return,

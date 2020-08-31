@@ -241,7 +241,7 @@ impl HighlightedBuffer {
             .resize(buffer.line_count(), HighlightedLine::default());
 
         let mut previous_line_kind = LineKind::Finished;
-        for (bline, hline) in buffer.lines_from(0).zip(self.lines.iter_mut()) {
+        for (bline, hline) in buffer.lines().zip(self.lines.iter_mut()) {
             hline.kind = syntax.parse_line(bline.text(..), previous_line_kind, &mut hline.tokens);
             previous_line_kind = hline.kind;
         }
@@ -258,7 +258,8 @@ impl HighlightedBuffer {
         );
 
         for (bline, hline) in buffer
-            .lines_from(range.from.line_index)
+            .lines()
+            .skip(range.from.line_index)
             .zip(self.lines[range.from.line_index..].iter_mut())
             .take(insert_count + 1)
         {
@@ -301,7 +302,8 @@ impl HighlightedBuffer {
         }
 
         for (bline, hline) in buffer
-            .lines_from(fix_from_index)
+            .lines()
+            .skip(fix_from_index)
             .zip(self.lines[fix_from_index..].iter_mut())
         {
             if previous_line_kind == LineKind::Finished && hline.kind == LineKind::Finished {

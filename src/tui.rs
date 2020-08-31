@@ -88,12 +88,12 @@ where
         })
     }
 
-    fn init(&mut self) -> Result<()> {
+    fn init(&mut self) -> Result<(u16, u16)> {
         handle_command!(self.write, terminal::EnterAlternateScreen)?;
         handle_command!(self.write, cursor::Hide)?;
         self.write.flush()?;
         terminal::enable_raw_mode()?;
-        Ok(())
+        terminal::size()
     }
 
     fn render(
@@ -241,7 +241,7 @@ where
     let mut line_index = scroll;
     let mut drawn_line_count = 0;
 
-    'lines_loop: for line in client_view.buffer_content.lines_from(line_index) {
+    'lines_loop: for line in client_view.buffer_content.lines().skip(line_index) {
         let mut draw_state = DrawState::Token(TokenKind::Text);
         let mut column_index = 0;
         let mut x = 0;

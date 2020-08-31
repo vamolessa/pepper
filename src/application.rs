@@ -26,8 +26,8 @@ pub trait UI {
         event_sender: mpsc::Sender<LocalEvent>,
     ) -> thread::JoinHandle<Result<(), Self::Error>>;
 
-    fn init(&mut self) -> Result<(), Self::Error> {
-        Ok(())
+    fn init(&mut self) -> Result<(u16, u16), Self::Error> {
+        Ok((0, 0))
     }
 
     fn render(
@@ -171,7 +171,12 @@ where
 
     connections.register_listener(&event_registry)?;
 
-    ui.init()?;
+    let (local_width, local_height) = ui.init()?;
+    if let Some(c) = clients.get_mut(TargetClient::Local) {
+        c.width = local_width;
+        c.height = local_height;
+    }
+
     render_clients(&editor, &mut clients, &mut ui, &mut connections)?;
     editor.status_message.clear();
 
@@ -265,7 +270,9 @@ where
 
     connection.register_connection(&event_registry)?;
 
-    ui.init()?;
+    let (local_width, local_height) = ui.init()?;
+    client_events.serialize(ClientEvent::Resize(local_width, local_height));
+    connection.send_serialized_events(&mut client_events)?;
 
     for event in event_receiver.iter() {
         match event {

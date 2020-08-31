@@ -43,7 +43,7 @@ impl Client {
         main_cursor: Cursor,
         select_entries: &SelectEntryCollection,
     ) {
-        self.text_height = self.height - 1;
+        self.text_height = self.height.saturating_sub(1);
 
         let select_entry_count = if has_focus {
             select_entries.len() as u16
@@ -86,15 +86,21 @@ pub struct ClientCollection {
 
 impl ClientCollection {
     pub fn on_client_joined(&mut self, client_handle: ConnectionWithClientHandle) {
-        let min_len = client_handle.into_index() + 1;
+        let index = client_handle.into_index();
+        let min_len = index + 1;
         if min_len > self.remotes.len() {
             self.remotes.resize_with(min_len, || None);
+        }
+        self.remotes[index] = Some(Client::default());
+        if min_len > self.remote_bufs.len() {
             self.remote_bufs.resize_with(min_len, || Vec::new());
         }
     }
 
     pub fn on_client_left(&mut self, client_handle: ConnectionWithClientHandle) {
-        self.remotes[client_handle.into_index()] = None;
+        let index = client_handle.into_index();
+        self.remotes[index] = None;
+        self.remote_bufs[index].clear();
     }
 
     pub fn get(&self, target: TargetClient) -> Option<&Client> {
