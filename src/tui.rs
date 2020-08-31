@@ -15,7 +15,7 @@ use crate::{
     cursor::Cursor,
     editor::{Editor, StatusMessageKind},
     mode::Mode,
-    syntax::TokenKind,
+    syntax::{HighlightedBuffer, TokenKind},
     theme,
 };
 
@@ -132,8 +132,9 @@ where
 
 struct ClientView<'a> {
     client: &'a Client,
-    buffer_content: &'a BufferContent,
     buffer_path: &'a Path,
+    buffer_content: &'a BufferContent,
+    highlighted_buffer: &'a HighlightedBuffer,
     main_cursor: Cursor,
     cursors: &'a [Cursor],
     search_ranges: &'a [BufferRange],
@@ -142,6 +143,7 @@ struct ClientView<'a> {
 impl<'a> ClientView<'a> {
     pub fn from(editor: &'a Editor, client: &'a Client) -> ClientView<'a> {
         static EMPTY_BUFFER: BufferContent = BufferContent::empty();
+        static EMPTY_HIGHLIGHTED_BUFFER: HighlightedBuffer = HighlightedBuffer::default();
 
         let buffer_view = client
             .current_buffer_view_handle
@@ -150,18 +152,21 @@ impl<'a> ClientView<'a> {
             .map(|v| v.buffer_handle)
             .and_then(|h| editor.buffers.get(h));
 
-        let buffer_content;
         let buffer_path;
+        let buffer_content;
+        let highlighted_buffer;
         let search_ranges;
         match maybe_buffer {
             Some(buffer) => {
-                buffer_content = &buffer.content;
                 buffer_path = buffer.path();
+                buffer_content = &buffer.content;
+                highlighted_buffer = &buffer.highlighted;
                 search_ranges = buffer.search_ranges();
             }
             None => {
-                buffer_content = &EMPTY_BUFFER;
                 buffer_path = Path::new("");
+                buffer_content = &EMPTY_BUFFER;
+                highlighted_buffer = &EMPTY_HIGHLIGHTED_BUFFER;
                 search_ranges = &[];
             }
         }
@@ -181,8 +186,9 @@ impl<'a> ClientView<'a> {
 
         ClientView {
             client,
-            buffer_content,
             buffer_path,
+            buffer_content,
+            highlighted_buffer,
             main_cursor,
             cursors,
             search_ranges,

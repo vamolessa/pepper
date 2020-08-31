@@ -10,7 +10,7 @@ use serde_derive::{Deserialize, Serialize};
 use crate::{
     buffer_position::{BufferPosition, BufferRange},
     history::{Edit, EditKind, EditRef, History},
-    syntax::{HighlightedBuffer, SyntaxCollection, SyntaxHandle},
+    syntax::{self, HighlightedBuffer, SyntaxCollection, SyntaxHandle},
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -374,7 +374,7 @@ pub struct Buffer {
 impl Buffer {
     pub fn new(syntaxes: &SyntaxCollection, path: PathBuf, content: BufferContent) -> Self {
         let syntax_handle = syntaxes
-            .find_handle_by_extension(&path)
+            .find_handle_by_extension(syntax::get_path_extension(&path))
             .unwrap_or(SyntaxHandle::default());
 
         let mut highlighted = HighlightedBuffer::default();
@@ -394,9 +394,17 @@ impl Buffer {
         &self.path
     }
 
-    pub fn set_path(&mut self, path: &Path) {
+    pub fn set_path(&mut self, syntaxes: &SyntaxCollection, path: &Path) {
         self.path.clear();
         self.path.push(path);
+
+        let syntax_handle = syntaxes
+            .find_handle_by_extension(syntax::get_path_extension(&path))
+            .unwrap_or(SyntaxHandle::default());
+        if self.syntax_handle != syntax_handle {
+            self.syntax_handle = syntax_handle;
+            self.highlighted.highligh_all(syntaxes.get(self.syntax_handle), &self.content);
+        }
     }
 
     pub fn insert_text(

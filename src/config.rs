@@ -82,7 +82,7 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
-        let mut syntaxes = SyntaxCollection::default();
+        let mut syntaxes = SyntaxCollection::new();
         set_rust_syntax(syntaxes.get_by_extension("rs"));
 
         Self {

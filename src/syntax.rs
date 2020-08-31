@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, fmt, iter, ops::Range, str::FromStr};
+use std::{cmp::Ordering, fmt, iter, ops::Range, path::Path, str::FromStr};
 
 use crate::{
     buffer::BufferContent,
@@ -184,7 +184,7 @@ impl Syntax {
     }
 }
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub struct SyntaxHandle(usize);
 
 #[derive(Debug)]
@@ -341,6 +341,13 @@ impl HighlightedBuffer {
             Err(_) => TokenKind::Text,
         }
     }
+}
+
+pub fn get_path_extension(path: &Path) -> &str {
+    path.extension()
+        .or(path.file_name())
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
 }
 
 #[cfg(test)]

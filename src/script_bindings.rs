@@ -62,7 +62,7 @@ mod bindings {
         let path = Path::new(path.to_str()?);
         let buffer_view_handle = ctx
             .buffer_views
-            .new_buffer_from_file(ctx.buffers, ctx.target_client, path)
+            .new_buffer_from_file(ctx.buffers, &ctx.config.syntaxes, ctx.target_client, path)
             .map_err(ScriptError::from)?;
         ctx.set_current_buffer_view_handle(Some(buffer_view_handle));
         Ok(())
@@ -108,7 +108,7 @@ mod bindings {
         match path {
             Some(path) => {
                 let path = Path::new(path.to_str()?);
-                buffer.set_path(path);
+                buffer.set_path(&ctx.config.syntaxes, path);
                 buffer.save_to_file().map_err(ScriptError::from)?;
                 Ok(())
             }
@@ -134,8 +134,10 @@ mod bindings {
     pub fn replace(ctx: &mut ScriptContext, text: ScriptStr) -> ScriptResult<()> {
         if let Some(handle) = ctx.current_buffer_view_handle() {
             let text = TextRef::Str(text.to_str()?);
-            ctx.buffer_views.delete_in_selection(ctx.buffers, handle);
-            ctx.buffer_views.insert_text(ctx.buffers, handle, text);
+            ctx.buffer_views
+                .delete_in_selection(ctx.buffers, &ctx.config.syntaxes, handle);
+            ctx.buffer_views
+                .insert_text(ctx.buffers, &ctx.config.syntaxes, handle, text);
         }
         Ok(())
     }

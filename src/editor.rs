@@ -192,10 +192,12 @@ impl Editor {
                 let target_client = self.client_target_map.get(target_client);
 
                 let path = Path::new(path);
-                match self
-                    .buffer_views
-                    .new_buffer_from_file(&mut self.buffers, target_client, path)
-                {
+                match self.buffer_views.new_buffer_from_file(
+                    &mut self.buffers,
+                    &self.config.syntaxes,
+                    target_client,
+                    path,
+                ) {
                     Ok(buffer_view_handle) => {
                         if let Some(client) = clients.get_mut(target_client) {
                             client.current_buffer_view_handle = Some(buffer_view_handle);
@@ -285,7 +287,6 @@ impl Editor {
                 .map(|v| v.cursors.main_cursor().clone())
                 .unwrap_or(Cursor::default());
             client.scroll(self.focused_client == target, main_cursor, &self.selects);
-
         }
 
         result
