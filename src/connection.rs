@@ -231,10 +231,6 @@ impl ConnectionWithClientCollection {
 
         Ok(last_editor_loop)
     }
-
-    pub fn all_handles(&self) -> impl Iterator<Item = ConnectionWithClientHandle> {
-        (0..self.connections.len()).map(|i| ConnectionWithClientHandle(i))
-    }
 }
 
 pub struct ConnectionWithServer {

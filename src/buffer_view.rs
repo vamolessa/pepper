@@ -390,19 +390,12 @@ impl BufferViewCollection {
                 view.buffer_handle == buffer_handle && view.target_client == target_client
             });
 
-            let buffer_view_handle;
-            let view = match iter.next() {
-                Some((handle, view)) => {
-                    buffer_view_handle = handle;
-                    view
-                }
+            let buffer_view_handle = match iter.next() {
+                Some((handle, _view)) => handle,
                 None => {
                     drop(iter);
                     let view = BufferView::new(target_client, buffer_handle);
-                    let view_handle = self.add(view);
-                    let view = self.get(view_handle).unwrap();
-                    buffer_view_handle = view_handle;
-                    view
+                    self.add(view)
                 }
             };
             Ok(buffer_view_handle)
