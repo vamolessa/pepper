@@ -123,18 +123,14 @@ where
 fn render_clients<I>(
     ui: &mut I,
     editor: &Editor,
-    clients: &ClientCollection,
+    clients: &mut ClientCollection,
 ) -> Result<(), I::Error>
 where
     I: UI,
 {
-    let mut buffer = Vec::new();
-    ui.render(
-        &editor,
-        clients.get(TargetClient::Local).unwrap(),
-        TargetClient::Local,
-        &mut buffer,
-    )?;
+    for c in clients.clients() {
+        ui.render(&editor, c.client, c.target, c.buffer)?;
+    }
     Ok(())
 }
 
@@ -170,27 +166,17 @@ where
     connections.register_listener(&event_registry)?;
 
     ui.init()?;
-    render_clients(&mut ui, &editor, &clients)?;
+    render_clients(&mut ui, &editor, &mut clients)?;
     editor.status_message.clear();
 
     for event in event_receiver.iter() {
         match event {
-            LocalEvent::None => (),
+            LocalEvent::None => continue,
             LocalEvent::Key(key) => {
-                let result =
+                let editor_loop =
                     editor.on_event(&mut clients, TargetClient::Local, ClientEvent::Key(key));
-                match result {
-                    EditorLoop::Quit | EditorLoop::QuitAll => break,
-                    EditorLoop::Continue =>
-                    /*send_operations(
-                        &mut config,
-                        &mut editor_operations,
-                        &mut local_client,
-                        &mut connections,
-                    )*/
-                    {
-                        ()
-                    }
+                if editor_loop.is_quit() {
+                    break;
                 }
             }
             LocalEvent::Resize(w, h) => {
@@ -228,19 +214,10 @@ where
                 }
 
                 connections.unregister_closed_connections(&event_registry)?;
-                /*
-                send_operations(
-                    &mut config,
-                    &mut editor_operations,
-                    &mut local_client,
-                    &mut connections,
-                );
-                */
-                connections.unregister_closed_connections(&event_registry)?;
             }
         }
 
-        render_clients(&mut ui, &editor, &clients)?;
+        render_clients(&mut ui, &editor, &mut clients)?;
         editor.status_message.clear();
     }
 
@@ -270,7 +247,7 @@ where
     client_events.serialize(ClientEvent::Key(Key::None));
     let _ = connection.send_serialized_events_blocking(&mut client_events);
     if editor_loop.is_quit() {
-        let _ = connection.receive_display(|_| ());
+        connection.receive_display(|_| ())?;
         connection.close();
         return Ok(());
     }
@@ -298,17 +275,16 @@ where
                 if let Err(_) = connection.send_serialized_events(&mut client_events) {
                     break;
                 }
-            },
+            }
             LocalEvent::Connection(event) => match event {
                 ConnectionEvent::NewConnection => (),
                 ConnectionEvent::Stream(_) => {
-                    //connection.receive_display()?;
-                    ui.display(&[])?;
-                    /*
-                    if let None = response {
+                    let empty = connection.receive_display(|bytes| {
+                        ui.display(bytes).map(|_| bytes.is_empty())
+                    })??;
+                    if empty {
                         break;
                     }
-                    */
 
                     connection.listen_next_event(&event_registry)?;
                 }

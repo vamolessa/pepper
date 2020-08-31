@@ -301,13 +301,12 @@ impl ConnectionWithServer {
         result
     }
 
-    pub fn receive_display<F>(&mut self, func: F) -> io::Result<()>
-    where
-        F: FnOnce(&[u8]),
+    pub fn receive_display<F, R>(&mut self, func: F) -> io::Result<R>
+        where F: FnOnce(&[u8]) -> R
     {
         let mut read_guard = self.read_buf.guard();
         read_guard.read_from(&mut self.stream)?;
-        func(read_guard.as_bytes());
-        Ok(())
+        let bytes = read_guard.as_bytes();
+        Ok(func(bytes))
     }
 }
