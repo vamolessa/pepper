@@ -6,6 +6,7 @@ use crate::{
     client::TargetClient,
     cursor::CursorCollection,
     history::{EditKind, EditRef},
+    syntax::SyntaxCollection,
 };
 
 pub enum MovementKind {
@@ -226,6 +227,7 @@ impl BufferViewCollection {
     pub fn insert_text(
         &mut self,
         buffers: &mut BufferCollection,
+        syntaxes: &SyntaxCollection,
         handle: BufferViewHandle,
         text: TextRef,
     ) {
@@ -240,7 +242,7 @@ impl BufferViewCollection {
 
         self.temp_ranges.clear();
         for cursor in current_view.cursors[..].iter().rev() {
-            let range = buffer.insert_text(cursor.position, text);
+            let range = buffer.insert_text(syntaxes, cursor.position, text);
             self.temp_ranges.push(range);
         }
 
@@ -262,6 +264,7 @@ impl BufferViewCollection {
     pub fn delete_in_selection(
         &mut self,
         buffers: &mut BufferCollection,
+        syntaxes: &SyntaxCollection,
         handle: BufferViewHandle,
     ) {
         let current_view = match &mut self.buffer_views[handle.0] {
@@ -276,7 +279,7 @@ impl BufferViewCollection {
         self.temp_ranges.clear();
         for cursor in current_view.cursors[..].iter().rev() {
             let range = cursor.range();
-            buffer.delete_range(range);
+            buffer.delete_range(syntaxes, range);
             self.temp_ranges.push(range);
         }
 
@@ -295,21 +298,31 @@ impl BufferViewCollection {
         }
     }
 
-    pub fn undo(&mut self, buffers: &mut BufferCollection, handle: BufferViewHandle) {
+    pub fn undo(
+        &mut self,
+        buffers: &mut BufferCollection,
+        syntaxes: &SyntaxCollection,
+        handle: BufferViewHandle,
+    ) {
         if let Some(buffer) = self.buffer_views[handle.0]
             .as_mut()
             .and_then(|view| buffers.get_mut(view.buffer_handle))
         {
-            self.apply_edits(handle, buffer.undo());
+            self.apply_edits(handle, buffer.undo(syntaxes));
         }
     }
 
-    pub fn redo(&mut self, buffers: &mut BufferCollection, handle: BufferViewHandle) {
+    pub fn redo(
+        &mut self,
+        buffers: &mut BufferCollection,
+        syntaxes: &SyntaxCollection,
+        handle: BufferViewHandle,
+    ) {
         if let Some(buffer) = self.buffer_views[handle.0]
             .as_mut()
             .and_then(|view| buffers.get_mut(view.buffer_handle))
         {
-            self.apply_edits(handle, buffer.redo());
+            self.apply_edits(handle, buffer.redo(syntaxes));
         }
     }
 
@@ -368,6 +381,7 @@ impl BufferViewCollection {
     pub fn new_buffer_from_file(
         &mut self,
         buffers: &mut BufferCollection,
+        syntaxes: &SyntaxCollection,
         target_client: TargetClient,
         path: &Path,
     ) -> Result<BufferViewHandle, String> {
@@ -410,7 +424,7 @@ impl BufferViewCollection {
                 Err(_) => BufferContent::from_str(""),
             };
 
-            let buffer_handle = buffers.add(Buffer::new(path.into(), content));
+            let buffer_handle = buffers.add(Buffer::new(syntaxes, path.into(), content));
             let buffer_view = BufferView::new(target_client, buffer_handle);
             let buffer_view_handle = self.add(buffer_view);
             Ok(buffer_view_handle)

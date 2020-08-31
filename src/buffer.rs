@@ -10,6 +10,7 @@ use serde_derive::{Deserialize, Serialize};
 use crate::{
     buffer_position::{BufferPosition, BufferRange},
     history::{Edit, EditKind, EditRef, History},
+    syntax::{HighlightedBuffer, SyntaxCollection, SyntaxHandle},
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -344,9 +345,9 @@ impl BufferContent {
         }
     }
 
-    fn apply_edits<'a, I: 'a>(&'a mut self, edits: I) -> impl 'a + Iterator<Item = EditRef<'a>>
+    fn apply_edits<'a, I>(&'a mut self, edits: I) -> impl 'a + Iterator<Item = EditRef<'a>>
     where
-        I: Iterator<Item = EditRef<'a>>,
+        I: 'a + Iterator<Item = EditRef<'a>>,
     {
         edits.map(move |e| match e.kind {
             EditKind::Insert => {
@@ -364,15 +365,26 @@ impl BufferContent {
 pub struct Buffer {
     path: PathBuf,
     pub content: BufferContent,
+    syntax_handle: SyntaxHandle,
+    pub highlighted: HighlightedBuffer,
     pub history: History,
     search_ranges: Vec<BufferRange>,
 }
 
 impl Buffer {
-    pub fn new(path: PathBuf, content: BufferContent) -> Self {
+    pub fn new(syntaxes: &SyntaxCollection, path: PathBuf, content: BufferContent) -> Self {
+        let syntax_handle = syntaxes
+            .find_handle_by_extension(&path)
+            .unwrap_or(SyntaxHandle::default());
+
+        let mut highlighted = HighlightedBuffer::default();
+        highlighted.highligh_all(syntaxes.get(syntax_handle), &content);
+
         Self {
             path,
             content,
+            syntax_handle,
+            highlighted,
             history: History::new(),
             search_ranges: Vec::new(),
         }
@@ -387,9 +399,16 @@ impl Buffer {
         self.path.push(path);
     }
 
-    pub fn insert_text(&mut self, position: BufferPosition, text: TextRef) -> BufferRange {
+    pub fn insert_text(
+        &mut self,
+        syntaxes: &SyntaxCollection,
+        position: BufferPosition,
+        text: TextRef,
+    ) -> BufferRange {
         self.search_ranges.clear();
         let range = self.content.insert_text(position, text);
+        self.highlighted
+            .on_insert(syntaxes.get(self.syntax_handle), &self.content, range);
         self.history.push_edit(Edit {
             kind: EditKind::Insert,
             range,
@@ -398,9 +417,11 @@ impl Buffer {
         range
     }
 
-    pub fn delete_range(&mut self, range: BufferRange) {
+    pub fn delete_range(&mut self, syntaxes: &SyntaxCollection, range: BufferRange) {
         self.search_ranges.clear();
         let deleted_text = self.content.delete_range(range);
+        self.highlighted
+            .on_delete(syntaxes.get(self.syntax_handle), &self.content, range);
         self.history.push_edit(Edit {
             kind: EditKind::Delete,
             range,
@@ -408,12 +429,25 @@ impl Buffer {
         });
     }
 
-    pub fn undo<'a>(&'a mut self) -> impl 'a + Iterator<Item = EditRef<'a>> {
+    pub fn undo<'a>(
+        &'a mut self,
+        syntaxes: &'a SyntaxCollection,
+    ) -> impl 'a + Iterator<Item = EditRef<'a>> {
         self.search_ranges.clear();
-        self.content.apply_edits(self.history.undo_edits())
+        let content = &mut self.content;
+        content.apply_edits(self.history.undo_edits()).inspect(|e| {
+            let syntax = syntaxes.get(self.syntax_handle);
+            match e.kind {
+                EditKind::Insert => self.highlighted.on_insert(syntax, content, e.range),
+                EditKind::Delete => self.highlighted.on_delete(syntax, content, e.range),
+            }
+        })
     }
 
-    pub fn redo<'a>(&'a mut self) -> impl 'a + Iterator<Item = EditRef<'a>> {
+    pub fn redo<'a>(
+        &'a mut self,
+        syntaxes: &SyntaxCollection,
+    ) -> impl 'a + Iterator<Item = EditRef<'a>> {
         self.search_ranges.clear();
         self.content.apply_edits(self.history.redo_edits())
     }

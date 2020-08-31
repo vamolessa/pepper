@@ -260,7 +260,6 @@ where
                 TokenKind::Whitespace
             } else {
                 client_view
-                    .client
                     .highlighted_buffer
                     .find_token_kind_at(line_index, raw_char_index)
             };

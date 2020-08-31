@@ -1,4 +1,4 @@
-use std::{str::FromStr, cmp::Ordering, iter, ops::Range, fmt};
+use std::{cmp::Ordering, fmt, iter, ops::Range, str::FromStr};
 
 use crate::{
     buffer::BufferContent,
@@ -60,20 +60,13 @@ impl Default for LineKind {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Syntax {
     extensions: Vec<String>,
     rules: Vec<(TokenKind, Pattern)>,
 }
 
 impl Syntax {
-    pub fn new() -> Self {
-        Self {
-            extensions: Vec::new(),
-            rules: Vec::new(),
-        }
-    }
-
     pub fn add_extension(&mut self, extension: String) {
         self.extensions.push(extension);
     }
@@ -191,16 +184,22 @@ impl Syntax {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub struct SyntaxHandle(usize);
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct SyntaxCollection {
     syntaxes: Vec<Syntax>,
 }
 
 impl SyntaxCollection {
-    pub fn find_by_extension(&self, extension: &str) -> Option<SyntaxHandle> {
+    pub fn new() -> Self {
+        let mut syntaxes = Vec::new();
+        syntaxes.push(Syntax::default());
+        Self { syntaxes }
+    }
+
+    pub fn find_handle_by_extension(&self, extension: &str) -> Option<SyntaxHandle> {
         for (i, syntax) in self.syntaxes.iter().enumerate() {
             for ext in &syntax.extensions {
                 if extension == ext {
@@ -213,10 +212,10 @@ impl SyntaxCollection {
     }
 
     pub fn get_by_extension(&mut self, extension: &str) -> &mut Syntax {
-        match self.find_by_extension(extension) {
+        match self.find_handle_by_extension(extension) {
             Some(handle) => &mut self.syntaxes[handle.0],
             None => {
-                let mut syntax = Syntax::new();
+                let mut syntax = Syntax::default();
                 syntax.add_extension(extension.into());
                 self.syntaxes.push(syntax);
                 let last_index = self.syntaxes.len() - 1;
@@ -355,7 +354,7 @@ mod tests {
 
     #[test]
     fn test_no_syntax() {
-        let syntax = Syntax::new();
+        let syntax = Syntax::default();
         let mut tokens = Vec::new();
         let line = " fn main() ;  ";
         let line_kind = syntax.parse_line(line, LineKind::Finished, &mut tokens);
@@ -367,7 +366,7 @@ mod tests {
 
     #[test]
     fn test_one_rule_syntax() {
-        let mut syntax = Syntax::new();
+        let mut syntax = Syntax::default();
         syntax.add_rule(TokenKind::Symbol, Pattern::new(";").unwrap());
 
         let mut tokens = Vec::new();
@@ -386,7 +385,7 @@ mod tests {
 
     #[test]
     fn test_simple_syntax() {
-        let mut syntax = Syntax::new();
+        let mut syntax = Syntax::default();
         syntax.add_rule(TokenKind::Keyword, Pattern::new("fn").unwrap());
         syntax.add_rule(TokenKind::Symbol, Pattern::new("%(").unwrap());
         syntax.add_rule(TokenKind::Symbol, Pattern::new("%)").unwrap());
@@ -407,7 +406,7 @@ mod tests {
 
     #[test]
     fn test_multiline_syntax() {
-        let mut syntax = Syntax::new();
+        let mut syntax = Syntax::default();
         syntax.add_rule(TokenKind::Comment, Pattern::new("/*{!(*/).$}").unwrap());
 
         let mut tokens = Vec::new();

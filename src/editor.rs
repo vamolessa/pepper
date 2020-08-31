@@ -7,6 +7,7 @@ use crate::{
     client_event::{ClientEvent, Key},
     config::Config,
     connection::ConnectionWithClientHandle,
+    cursor::Cursor,
     keymap::{KeyMapCollection, MatchResult},
     mode::{Mode, ModeContext, ModeOperation},
     script::{ScriptContext, ScriptEngine},
@@ -176,7 +177,7 @@ impl Editor {
         target_client: TargetClient,
         event: ClientEvent,
     ) -> EditorLoop {
-        match event {
+        let result = match event {
             ClientEvent::AsFocusedClient => {
                 self.client_target_map
                     .map(target_client, self.focused_client);
@@ -275,6 +276,18 @@ impl Editor {
                 }
                 EditorLoop::Continue
             }
+        };
+
+        for (target, client) in clients.target_and_clients_mut() {
+            let main_cursor = client
+                .current_buffer_view_handle
+                .and_then(|h| self.buffer_views.get(h))
+                .map(|v| v.cursors.main_cursor().clone())
+                .unwrap_or(Cursor::default());
+            client.scroll(self.focused_client == target, main_cursor, &self.selects);
+
         }
+
+        result
     }
 }

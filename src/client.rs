@@ -1,6 +1,6 @@
 use crate::{
     buffer_view::BufferViewHandle, connection::ConnectionWithClientHandle, cursor::Cursor,
-    select::SelectEntryCollection, syntax::HighlightedBuffer,
+    select::SelectEntryCollection,
 };
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -34,7 +34,6 @@ pub struct Client {
     pub select_scroll: usize,
     pub text_height: u16,
     pub select_height: u16,
-    pub highlighted_buffer: HighlightedBuffer,
 }
 
 impl Client {
@@ -106,8 +105,21 @@ impl ClientCollection {
         }
     }
 
-    pub fn clients_mut(&mut self) -> impl Iterator<Item = &mut Client> {
-        std::iter::once(&mut self.local).chain(self.remotes.iter_mut().flatten())
+    pub fn target_and_clients_mut(&mut self) -> impl Iterator<Item = (TargetClient, &mut Client)> {
+        let remotes_iter = self
+            .remotes
+            .iter_mut()
+            .enumerate()
+            .map(|(i, c)| {
+                c.as_mut().map(|c| {
+                    (
+                        TargetClient::Remote(ConnectionWithClientHandle::from_index(i)),
+                        c,
+                    )
+                })
+            })
+            .flatten();
+        std::iter::once((TargetClient::Local, &mut self.local)).chain(remotes_iter)
     }
 
     /*
