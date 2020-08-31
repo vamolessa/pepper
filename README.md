@@ -25,18 +25,16 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- ~~copy~~
 	- ~~paste~~
 - ~~client/server model~~
-	- ~~dumb client sends Keys receives EditorOperations~~
-	- ~~track client that last send message (focused)~~
-	- ~~show error on focused client~~
-	- ~~reuse allocation when deserializing EditorOperation::Content~~
+	- ~~dumb client sends events and receives display bytes~~
+	- ~~track client that last sent event (focused)~~
+	- ~~show status messages on focused client~~
 - ~~custom bindings~~
 	- ~~custom bindings expand to builtin bindings~~
 	- ~~custom bindings take precedence~~
 	- ~~define custom bindings in config file~~
-- command mode
-	- ~~basic command mode~~
-	- ~~default commands~~
-	- define custom commands in config file?? (or just aliases??)
+- script (command) mode
+	- ~~execute script line and preserve context~~
+	- ~~builtin bindings~~
 - ~~syntax highlighting~~
 	- ~~simple pattern matching~~
 	- ~~define language syntaxes~~
@@ -48,10 +46,7 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- ~~edit (command to open/create file?)~~
 	- ~~save~~
 	- ~~reuse buffer if already open~~
-	- ~~remove all buffer views (and viewport handles) when closing a buffer~~
-- config file
-	- ~~load config file at startup~~
-	- reload config file when changed??
+	- ~~remove all buffer views when closing a buffer~~
 - code navigation
 	- home/end
 	- find char
@@ -71,7 +66,8 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- ~~open files~~
 - ~~scripting~~
 	- ~~integrate lua to use as command interface~~
-	- ~~config file is script file~~
+	- ~~config file is lua script~~
+	- ~~builtin bindings~~
 - autocomplete
 	- select/entries ui
 	- selection movements
