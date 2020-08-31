@@ -14,10 +14,6 @@ use crate::{
         ClientEvent, ClientEventDeserializeResult, ClientEventDeserializer, ClientEventSerializer,
     },
     editor::EditorLoop,
-    editor_operation::{
-        EditorOperation, EditorOperationDeserializeResult, EditorOperationDeserializer,
-        EditorOperationSerializer,
-    },
     event_manager::EventRegistry,
 };
 
@@ -189,7 +185,7 @@ impl ConnectionWithClientCollection {
         Ok(())
     }
 
-    pub fn send_serialized_operations(
+    pub fn send_serialized_display(
         &mut self,
         handle: ConnectionWithClientHandle,
         serializer: &EditorOperationSerializer,
@@ -212,7 +208,7 @@ impl ConnectionWithClientCollection {
     pub fn receive_events<F>(
         &mut self,
         handle: ConnectionWithClientHandle,
-        mut callback: F,
+        mut func: F,
     ) -> io::Result<EditorLoop>
     where
         F: FnMut(ClientEvent) -> EditorLoop,
@@ -230,7 +226,7 @@ impl ConnectionWithClientCollection {
         loop {
             match deserializer.deserialize_next() {
                 ClientEventDeserializeResult::Some(event) => {
-                    last_editor_loop = callback(event);
+                    last_editor_loop = func(event);
                     if last_editor_loop.is_quit() {
                         break;
                     }
@@ -314,14 +310,12 @@ impl ConnectionWithServer {
         result
     }
 
-    pub fn receive_operations<F>(&mut self, mut callback: F) -> io::Result<Option<()>>
+    pub fn receive_display<F>(&mut self, func: F) -> io::Result<()>
     where
-        F: FnMut(EditorOperation<'_>),
+        F: FnOnce(&[u8]),
     {
         let mut read_guard = self.read_buf.guard();
         read_guard.read_from(&mut self.stream)?;
-        let mut last_response = None;
-        let mut deserializer = EditorOperationDeserializer::from_slice(read_guard.as_bytes());
 
         loop {
             match deserializer.deserialize_next() {

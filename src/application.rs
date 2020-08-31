@@ -278,7 +278,7 @@ where
     client_events.serialize(ClientEvent::Key(Key::None));
     let _ = connection.send_serialized_events_blocking(&mut client_events);
     if editor_loop.is_quit() {
-        let _ = connection.receive_operations(|_| ());
+        let _ = connection.receive_display(|_| ());
         connection.close();
         return Ok(());
     }

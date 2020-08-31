@@ -38,10 +38,6 @@ impl SerializationBuf {
         &self.0[..]
     }
 
-    pub fn as_slice_mut(&mut self) -> &mut [u8] {
-        &mut self.0[..]
-    }
-
     pub fn clear(&mut self) {
         self.0.clear();
     }
