@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, io::Write, iter, sync::mpsc, thread};
+use std::{cmp::Ordering, io::Write, iter, path::PathBuf, sync::mpsc, thread};
 
 use crossterm::{
     cursor, event, handle_command,
@@ -8,7 +8,7 @@ use crossterm::{
 
 use crate::{
     application::UI,
-    buffer::BufferContent,
+    buffer::{Buffer, BufferContent},
     buffer_position::{BufferPosition, BufferRange},
     client::{Client, TargetClient},
     client_event::{Key, LocalEvent},
@@ -62,8 +62,6 @@ where
     W: Write,
 {
     write: W,
-    text_scroll: usize,
-    select_scroll: usize,
 }
 
 impl<W> Tui<W>
@@ -71,11 +69,7 @@ where
     W: Write,
 {
     pub fn new(write: W) -> Self {
-        Self {
-            write,
-            text_scroll: 0,
-            select_scroll: 0,
-        }
+        Self { write }
     }
 }
 
@@ -112,33 +106,16 @@ where
         let has_focus = target_client == editor.focused_client;
         let client_view = get_client_view(editor, client);
 
-        draw_text(
-            buffer,
-            editor,
-            client,
-            client_view,
-            target_client,
-        )?;
-        draw_select(
-            buffer,
-            editor,
-            client,
-            client_view,
-        )?;
-        draw_statusbar(
-            buffer,
-            editor,
-            client,
-            client_view,
-            has_focus,
-        )?;
-
-        handle_command!(self.write, ResetColor)?;
-        self.write.flush()?;
+        draw_text(buffer, editor, client_view, target_client)?;
+        draw_select(buffer, editor, client_view)?;
+        draw_statusbar(buffer, editor, client_view, has_focus)?;
         Ok(())
     }
 
     fn display(&mut self, buffer: &[u8]) -> Result<()> {
+        self.write.write_all(buffer)?;
+        handle_command!(self.write, ResetColor)?;
+        self.write.flush()?;
         Ok(())
     }
 
@@ -153,32 +130,33 @@ where
     }
 }
 
-static EMPTY_BUFFER: BufferContent = BufferContent::from_str("");
+static EMPTY_BUFFER: Buffer = Buffer::new(PathBuf::new(), BufferContent::from_str(""));
 static EMPTY_CURSORS: CursorCollection = CursorCollection::new();
 
 struct ClientView<'a> {
-    buffer: &'a BufferContent,
+    client: &'a Client,
+    buffer: &'a Buffer,
     cursors: &'a CursorCollection,
     search_ranges: &'a [BufferRange],
 }
 
-fn get_client_view<'a>(editor: &'a Editor, client: &Client) -> ClientView<'a> {
+fn get_client_view<'a>(editor: &'a Editor, client: &'a Client) -> ClientView<'a> {
     let buffer_view = client
         .current_buffer_view_handle
         .and_then(|h| editor.buffer_views.get(h));
-    let buffer = buffer_view
+    let maybe_buffer = buffer_view
         .map(|v| v.buffer_handle)
         .and_then(|h| editor.buffers.get(h));
 
-    let content;
+    let buffer;
     let search_ranges;
-    match buffer {
+    match maybe_buffer {
         Some(buffer) => {
-            content = &buffer.content;
+            buffer = &buffer;
             search_ranges = buffer.search_ranges();
         }
         None => {
-            content = &EMPTY_BUFFER;
+            buffer = &EMPTY_BUFFER;
             search_ranges = &[];
         }
     }
@@ -189,7 +167,8 @@ fn get_client_view<'a>(editor: &'a Editor, client: &Client) -> ClientView<'a> {
     };
 
     ClientView {
-        buffer: content,
+        client,
+        buffer,
         cursors,
         search_ranges,
     }
@@ -198,7 +177,6 @@ fn get_client_view<'a>(editor: &'a Editor, client: &Client) -> ClientView<'a> {
 fn draw_text<W>(
     write: &mut W,
     editor: &Editor,
-    client: &Client,
     client_view: ClientView,
     target_client: TargetClient,
 ) -> Result<()>
@@ -213,9 +191,9 @@ where
         Cursor,
     }
 
-    let scroll = client.text_scroll;
-    let width = client.width;
-    let height = client.text_height;
+    let scroll = client_view.client.text_scroll;
+    let width = client_view.client.width;
+    let height = client_view.client.text_height;
     let theme = &editor.config.theme;
 
     handle_command!(write, cursor::Hide)?;
@@ -246,7 +224,7 @@ where
     let mut line_index = scroll;
     let mut drawn_line_count = 0;
 
-    'lines_loop: for line in client_view.buffer.lines_from(line_index) {
+    'lines_loop: for line in client_view.buffer.content.lines_from(line_index) {
         let mut draw_state = DrawState::Token(TokenKind::Text);
         let mut column_index = 0;
         let mut x = 0;
@@ -270,7 +248,8 @@ where
             let token_kind = if c.is_ascii_whitespace() {
                 TokenKind::Whitespace
             } else {
-                client
+                client_view
+                    .client
                     .highlighted_buffer
                     .find_token_kind_at(line_index, raw_char_index)
             };
@@ -313,7 +292,8 @@ where
                     handle_command!(write, SetBackgroundColor(text_color))?;
                     handle_command!(write, SetForegroundColor(background_color))?;
                 }
-            } else if client_view.search_ranges
+            } else if client_view
+                .search_ranges
                 .binary_search_by(|r| {
                     if r.to < char_position {
                         Ordering::Less
@@ -389,17 +369,13 @@ where
     Ok(())
 }
 
-fn draw_select<W>(
-    write: &mut W,
-    editor: &Editor,
-    client: &Client,
-    scroll: usize,
-    _width: u16,
-    height: u16,
-) -> Result<()>
+fn draw_select<W>(write: &mut W, editor: &Editor, client_view: ClientView) -> Result<()>
 where
     W: Write,
 {
+    let scroll = client_view.client.select_scroll;
+    let height = client_view.client.select_height;
+
     let background_color = convert_color(editor.config.theme.token_whitespace);
     let foreground_color = convert_color(editor.config.theme.token_text);
 
@@ -418,11 +394,8 @@ where
 fn draw_statusbar<W>(
     write: &mut W,
     editor: &Editor,
-    client: &Client,
+    client_view: ClientView,
     has_focus: bool,
-    width: u16,
-    status_message_kind: StatusMessageKind,
-    status_message: &str,
 ) -> Result<()>
 where
     W: Write,
@@ -466,13 +439,13 @@ where
         handle_command!(write, SetForegroundColor(background_color))?;
     }
 
-    let x = if !status_message.is_empty() {
-        let prefix = match status_message_kind {
+    let x = if !editor.status_message.is_empty() {
+        let prefix = match editor.status_message_kind {
             StatusMessageKind::Info => "",
             StatusMessageKind::Error => "error:",
         };
 
-        let line_count = status_message.lines().count();
+        let line_count = editor.status_message.lines().count();
         if line_count > 1 {
             if prefix.is_empty() {
                 handle_command!(write, cursor::MoveUp((line_count - 1) as _))?;
@@ -484,7 +457,7 @@ where
                 handle_command!(write, cursor::MoveToNextLine(1))?;
             }
 
-            for (i, line) in status_message.lines().enumerate() {
+            for (i, line) in editor.status_message.lines().enumerate() {
                 handle_command!(write, Print(line))?;
                 if i < line_count - 1 {
                     handle_command!(write, cursor::MoveToNextLine(1))?;
@@ -493,7 +466,7 @@ where
         } else {
             handle_command!(write, terminal::Clear(terminal::ClearType::CurrentLine))?;
             handle_command!(write, Print(prefix))?;
-            handle_command!(write, Print(status_message))?;
+            handle_command!(write, Print(editor.status_message))?;
         }
 
         None
@@ -530,12 +503,19 @@ where
     };
 
     if let Some(x) = x {
-        if let Some(buffer_path) = client.path.as_os_str().to_str().filter(|s| !s.is_empty()) {
-            let line_number = client.main_cursor.position.line_index + 1;
-            let column_number = client.main_cursor.position.column_index + 1;
+        if let Some(buffer_path) = client_view
+            .buffer
+            .path()
+            .as_os_str()
+            .to_str()
+            .filter(|s| !s.is_empty())
+        {
+            let main_cursor = client_view.cursors.main_cursor();
+            let line_number = main_cursor.position.line_index + 1;
+            let column_number = main_cursor.position.column_index + 1;
             let line_digit_count = find_digit_count(line_number);
             let column_digit_count = find_digit_count(column_number);
-            let skip = (width as usize).saturating_sub(
+            let skip = (client_view.client.width as usize).saturating_sub(
                 x + buffer_path.len() + 1 + line_digit_count + 1 + column_digit_count + 1,
             );
             for _ in 0..skip {
