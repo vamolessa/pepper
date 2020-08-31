@@ -377,7 +377,7 @@ impl Buffer {
             .find_handle_by_extension(syntax::get_path_extension(&path))
             .unwrap_or(SyntaxHandle::default());
 
-        let mut highlighted = HighlightedBuffer::default();
+        let mut highlighted = HighlightedBuffer::new();
         highlighted.highligh_all(syntaxes.get(syntax_handle), &content);
 
         Self {
@@ -403,7 +403,8 @@ impl Buffer {
             .unwrap_or(SyntaxHandle::default());
         if self.syntax_handle != syntax_handle {
             self.syntax_handle = syntax_handle;
-            self.highlighted.highligh_all(syntaxes.get(self.syntax_handle), &self.content);
+            self.highlighted
+                .highligh_all(syntaxes.get(self.syntax_handle), &self.content);
         }
     }
 
@@ -441,23 +442,39 @@ impl Buffer {
         &'a mut self,
         syntaxes: &'a SyntaxCollection,
     ) -> impl 'a + Iterator<Item = EditRef<'a>> {
-        self.search_ranges.clear();
-        let content = &mut self.content;
-        content.apply_edits(self.history.undo_edits()).inspect(|e| {
-            let syntax = syntaxes.get(self.syntax_handle);
-            match e.kind {
-                EditKind::Insert => self.highlighted.on_insert(syntax, content, e.range),
-                EditKind::Delete => self.highlighted.on_delete(syntax, content, e.range),
-            }
-        })
+        self.history_edits(syntaxes, |h| h.undo_edits())
     }
 
     pub fn redo<'a>(
         &'a mut self,
         syntaxes: &SyntaxCollection,
     ) -> impl 'a + Iterator<Item = EditRef<'a>> {
+        self.history_edits(syntaxes, |h| h.redo_edits())
+    }
+
+    fn history_edits<'a, F, I>(&'a mut self, syntaxes: &SyntaxCollection, selector: F) -> I
+    where
+        F: FnOnce(&'a mut History) -> I,
+        I: 'a + Clone + Iterator<Item = EditRef<'a>>,
+    {
         self.search_ranges.clear();
-        self.content.apply_edits(self.history.redo_edits())
+        let syntax = syntaxes.get(self.syntax_handle);
+        let edits = selector(&mut self.history);
+        for edit in edits.clone() {
+            match edit.kind {
+                EditKind::Insert => {
+                    let range = self.content.insert_text(edit.range.from, edit.text);
+                    self.highlighted.on_insert(syntax, &self.content, range);
+                }
+                EditKind::Delete => {
+                    self.content.delete_range(edit.range);
+                    self.highlighted
+                        .on_insert(syntax, &self.content, edit.range);
+                }
+            }
+        }
+
+        edits
     }
 
     pub fn set_search(&mut self, text: &str) {
@@ -700,7 +717,10 @@ mod tests {
 
     #[test]
     fn buffer_delete_undo_redo_single_line() {
+        let syntaxes = SyntaxCollection::new();
+
         let mut buffer = Buffer::new(
+            &syntaxes,
             PathBuf::new(),
             BufferContent::from_str("single line content"),
         );
@@ -708,22 +728,25 @@ mod tests {
             BufferPosition::line_col(0, 7),
             BufferPosition::line_col(0, 12),
         );
-        buffer.delete_range(range);
+        buffer.delete_range(&syntaxes, range);
 
         assert_eq!("single content", buffer_to_string(&buffer.content));
         {
-            let mut ranges = buffer.undo();
+            let mut ranges = buffer.undo(&syntaxes);
             assert_eq!(range, ranges.next().unwrap().range);
             assert!(ranges.next().is_none());
         }
         assert_eq!("single line content", buffer_to_string(&buffer.content));
-        for _ in buffer.redo() {}
+        for _ in buffer.redo(&syntaxes) {}
         assert_eq!("single content", buffer_to_string(&buffer.content));
     }
 
     #[test]
     fn buffer_delete_undo_redo_multi_line() {
+        let syntaxes = SyntaxCollection::new();
+
         let mut buffer = Buffer::new(
+            &syntaxes,
             PathBuf::new(),
             BufferContent::from_str("multi\nline\ncontent"),
         );
@@ -731,16 +754,16 @@ mod tests {
             BufferPosition::line_col(0, 1),
             BufferPosition::line_col(1, 3),
         );
-        buffer.delete_range(range);
+        buffer.delete_range(&syntaxes, range);
 
         assert_eq!("me\ncontent", buffer_to_string(&buffer.content));
         {
-            let mut ranges = buffer.undo();
+            let mut ranges = buffer.undo(&syntaxes);
             assert_eq!(range, ranges.next().unwrap().range);
             assert!(ranges.next().is_none());
         }
         assert_eq!("multi\nline\ncontent", buffer_to_string(&buffer.content));
-        for _ in buffer.redo() {}
+        for _ in buffer.redo(&syntaxes) {}
         assert_eq!("me\ncontent", buffer_to_string(&buffer.content));
     }
 

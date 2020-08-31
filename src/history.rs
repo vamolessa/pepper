@@ -84,7 +84,7 @@ impl History {
         }
     }
 
-    pub fn undo_edits(&mut self) -> impl Iterator<Item = EditRef> {
+    pub fn undo_edits(&mut self) -> impl Clone + Iterator<Item = EditRef> {
         self.commit_edits();
 
         let range = match self.state {
@@ -109,7 +109,7 @@ impl History {
         })
     }
 
-    pub fn redo_edits(&mut self) -> impl Iterator<Item = EditRef> {
+    pub fn redo_edits(&mut self) -> impl Clone + Iterator<Item = EditRef> {
         self.commit_edits();
 
         let range = match self.state {

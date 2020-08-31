@@ -143,7 +143,7 @@ struct ClientView<'a> {
 impl<'a> ClientView<'a> {
     pub fn from(editor: &'a Editor, client: &'a Client) -> ClientView<'a> {
         static EMPTY_BUFFER: BufferContent = BufferContent::empty();
-        static EMPTY_HIGHLIGHTED_BUFFER: HighlightedBuffer = HighlightedBuffer::default();
+        static EMPTY_HIGHLIGHTED_BUFFER: HighlightedBuffer = HighlightedBuffer::new();
 
         let buffer_view = client
             .current_buffer_view_handle

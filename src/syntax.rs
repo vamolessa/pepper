@@ -239,12 +239,15 @@ struct HighlightedLine {
     tokens: Vec<Token>,
 }
 
-#[derive(Default)]
 pub struct HighlightedBuffer {
     lines: Vec<HighlightedLine>,
 }
 
 impl HighlightedBuffer {
+    pub const fn new() -> Self {
+        Self { lines: Vec::new() }
+    }
+
     pub fn highligh_all(&mut self, syntax: &Syntax, buffer: &BufferContent) {
         self.lines
             .resize(buffer.line_count(), HighlightedLine::default());
