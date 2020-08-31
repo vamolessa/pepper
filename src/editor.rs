@@ -280,7 +280,7 @@ impl Editor {
             }
         };
 
-        for c in clients.clients() {
+        for c in clients.client_refs() {
             let main_cursor = c
                 .client
                 .current_buffer_view_handle

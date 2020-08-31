@@ -84,7 +84,7 @@ mod bindings {
 
     pub fn close_all(ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
         ctx.buffer_views.remove_where(ctx.buffers, |_| true);
-        for c in ctx.clients.clients() {
+        for c in ctx.clients.client_refs() {
             c.client.current_buffer_view_handle = None;
         }
         Ok(())

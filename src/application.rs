@@ -121,15 +121,21 @@ where
 }
 
 fn render_clients<I>(
-    ui: &mut I,
     editor: &Editor,
     clients: &mut ClientCollection,
+    ui: &mut I,
+    connections: &mut ConnectionWithClientCollection,
 ) -> Result<(), I::Error>
 where
     I: UI,
 {
-    for c in clients.clients() {
+    for c in clients.client_refs() {
+        c.buffer.clear();
         ui.render(&editor, c.client, c.target, c.buffer)?;
+        match c.target {
+            TargetClient::Local => ui.display(c.buffer)?,
+            TargetClient::Remote(handle) => connections.send_serialized_display(handle, c.buffer),
+        }
     }
     Ok(())
 }
@@ -166,7 +172,7 @@ where
     connections.register_listener(&event_registry)?;
 
     ui.init()?;
-    render_clients(&mut ui, &editor, &mut clients)?;
+    render_clients(&editor, &mut clients, &mut ui, &mut connections)?;
     editor.status_message.clear();
 
     for event in event_receiver.iter() {
@@ -217,7 +223,7 @@ where
             }
         }
 
-        render_clients(&mut ui, &editor, &mut clients)?;
+        render_clients(&editor, &mut clients, &mut ui, &mut connections)?;
         editor.status_message.clear();
     }
 
@@ -279,9 +285,8 @@ where
             LocalEvent::Connection(event) => match event {
                 ConnectionEvent::NewConnection => (),
                 ConnectionEvent::Stream(_) => {
-                    let empty = connection.receive_display(|bytes| {
-                        ui.display(bytes).map(|_| bytes.is_empty())
-                    })??;
+                    let empty = connection
+                        .receive_display(|bytes| ui.display(bytes).map(|_| bytes.is_empty()))??;
                     if empty {
                         break;
                     }

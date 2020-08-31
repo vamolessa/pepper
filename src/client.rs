@@ -78,10 +78,10 @@ pub struct ClientRef<'a> {
 
 #[derive(Default)]
 pub struct ClientCollection {
-    pub local: Client,
-    pub remotes: Vec<Option<Client>>,
-    pub local_buf: Vec<u8>,
-    pub remote_bufs: Vec<Vec<u8>>,
+    local: Client,
+    remotes: Vec<Option<Client>>,
+    local_buf: Vec<u8>,
+    remote_bufs: Vec<Vec<u8>>,
 }
 
 impl ClientCollection {
@@ -111,8 +111,8 @@ impl ClientCollection {
         }
     }
 
-    pub fn clients<'a>(&'a mut self) -> impl Iterator<Item = ClientRef<'a>> {
-        let remotes_iter = self
+    pub fn client_refs<'a>(&'a mut self) -> impl Iterator<Item = ClientRef<'a>> {
+        let remotes = self
             .remotes
             .iter_mut()
             .enumerate()
@@ -124,12 +124,13 @@ impl ClientCollection {
                     buffer: b,
                 })
             });
+
         std::iter::once(ClientRef {
             target: TargetClient::Local,
             client: &mut self.local,
             buffer: &mut self.local_buf,
         })
-        .chain(remotes_iter)
+        .chain(remotes)
     }
 }
 
