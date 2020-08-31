@@ -104,9 +104,9 @@ where
         buffer: &mut Vec<u8>,
     ) -> Result<()> {
         let has_focus = target_client == editor.focused_client;
-        let client_view = get_client_view(editor, client);
+        let client_view = ClientView::from(editor, client);
 
-        draw_text(buffer, editor, &client_view, target_client)?;
+        draw_text(buffer, editor, &client_view)?;
         draw_select(buffer, editor, &client_view)?;
         draw_statusbar(buffer, editor, &client_view, has_focus)?;
         Ok(())
@@ -130,8 +130,6 @@ where
     }
 }
 
-static EMPTY_BUFFER: BufferContent = BufferContent::empty();
-
 struct ClientView<'a> {
     client: &'a Client,
     buffer_content: &'a BufferContent,
@@ -141,59 +139,58 @@ struct ClientView<'a> {
     search_ranges: &'a [BufferRange],
 }
 
-fn get_client_view<'a>(editor: &'a Editor, client: &'a Client) -> ClientView<'a> {
-    let buffer_view = client
-        .current_buffer_view_handle
-        .and_then(|h| editor.buffer_views.get(h));
-    let maybe_buffer = buffer_view
-        .map(|v| v.buffer_handle)
-        .and_then(|h| editor.buffers.get(h));
+impl<'a> ClientView<'a> {
+    pub fn from(editor: &'a Editor, client: &'a Client) -> ClientView<'a> {
+        static EMPTY_BUFFER: BufferContent = BufferContent::empty();
 
-    let buffer_content;
-    let buffer_path;
-    let search_ranges;
-    match maybe_buffer {
-        Some(buffer) => {
-            buffer_content = &buffer.content;
-            buffer_path = buffer.path();
-            search_ranges = buffer.search_ranges();
-        }
-        None => {
-            buffer_content = &EMPTY_BUFFER;
-            buffer_path = Path::new("");
-            search_ranges = &[];
-        }
-    }
+        let buffer_view = client
+            .current_buffer_view_handle
+            .and_then(|h| editor.buffer_views.get(h));
+        let maybe_buffer = buffer_view
+            .map(|v| v.buffer_handle)
+            .and_then(|h| editor.buffers.get(h));
 
-    let main_cursor;
-    let cursors;
-    match buffer_view {
-        Some(view) => {
-            main_cursor = view.cursors.main_cursor().clone();
-            cursors = &view.cursors[..];
+        let buffer_content;
+        let buffer_path;
+        let search_ranges;
+        match maybe_buffer {
+            Some(buffer) => {
+                buffer_content = &buffer.content;
+                buffer_path = buffer.path();
+                search_ranges = buffer.search_ranges();
+            }
+            None => {
+                buffer_content = &EMPTY_BUFFER;
+                buffer_path = Path::new("");
+                search_ranges = &[];
+            }
         }
-        None => {
-            main_cursor = Cursor::default();
-            cursors = &[];
-        }
-    };
 
-    ClientView {
-        client,
-        buffer_content,
-        buffer_path,
-        main_cursor,
-        cursors,
-        search_ranges,
+        let main_cursor;
+        let cursors;
+        match buffer_view {
+            Some(view) => {
+                main_cursor = view.cursors.main_cursor().clone();
+                cursors = &view.cursors[..];
+            }
+            None => {
+                main_cursor = Cursor::default();
+                cursors = &[];
+            }
+        };
+
+        ClientView {
+            client,
+            buffer_content,
+            buffer_path,
+            main_cursor,
+            cursors,
+            search_ranges,
+        }
     }
 }
 
-fn draw_text<W>(
-    write: &mut W,
-    editor: &Editor,
-    client_view: &ClientView,
-    target_client: TargetClient,
-) -> Result<()>
+fn draw_text<W>(write: &mut W, editor: &Editor, client_view: &ClientView) -> Result<()>
 where
     W: Write,
 {
