@@ -280,13 +280,15 @@ impl Editor {
             }
         };
 
-        for (target, client) in clients.target_and_clients_mut() {
-            let main_cursor = client
+        for c in clients.clients() {
+            let main_cursor = c
+                .client
                 .current_buffer_view_handle
                 .and_then(|h| self.buffer_views.get(h))
                 .map(|v| v.cursors.main_cursor().clone())
                 .unwrap_or(Cursor::default());
-            client.scroll(self.focused_client == target, main_cursor, &self.selects);
+            c.client
+                .scroll(self.focused_client == c.target, main_cursor, &self.selects);
         }
 
         result

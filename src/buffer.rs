@@ -344,22 +344,6 @@ impl BufferContent {
             Text::String(deleted_text)
         }
     }
-
-    fn apply_edits<'a, I>(&'a mut self, edits: I) -> impl 'a + Iterator<Item = EditRef<'a>>
-    where
-        I: 'a + Iterator<Item = EditRef<'a>>,
-    {
-        edits.map(move |e| match e.kind {
-            EditKind::Insert => {
-                self.insert_text(e.range.from, e.text);
-                e
-            }
-            EditKind::Delete => {
-                self.delete_range(e.range);
-                e
-            }
-        })
-    }
 }
 
 pub struct Buffer {

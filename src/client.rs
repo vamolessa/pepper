@@ -70,6 +70,12 @@ impl Client {
     }
 }
 
+pub struct ClientRef<'a> {
+    pub target: TargetClient,
+    pub client: &'a mut Client,
+    pub buffer: &'a mut Vec<u8>,
+}
+
 #[derive(Default)]
 pub struct ClientCollection {
     pub local: Client,
@@ -105,34 +111,26 @@ impl ClientCollection {
         }
     }
 
-    pub fn target_and_clients_mut(&mut self) -> impl Iterator<Item = (TargetClient, &mut Client)> {
+    pub fn clients<'a>(&'a mut self) -> impl Iterator<Item = ClientRef<'a>> {
         let remotes_iter = self
             .remotes
             .iter_mut()
             .enumerate()
-            .map(|(i, c)| {
-                c.as_mut().map(|c| {
-                    (
-                        TargetClient::Remote(ConnectionWithClientHandle::from_index(i)),
-                        c,
-                    )
-                })
-            })
-            .flatten();
-        std::iter::once((TargetClient::Local, &mut self.local)).chain(remotes_iter)
-    }
-
-    /*
-    pub fn clients_and_buffers(&mut self) -> impl Iterator<Item = (&mut Client, &mut Vec<u8>)> {
-        let remotes_iter = self
-            .remotes
-            .iter_mut()
             .zip(self.remote_bufs.iter_mut())
-            .map(|(c, b)| c.map(|c| (c, b)))
-            .flatten();
-        std::iter::once((&mut self.local, &mut self.local_buf)).chain(remotes_iter)
+            .flat_map(|((i, c), b)| {
+                c.as_mut().map(move |c| ClientRef {
+                    target: TargetClient::Remote(ConnectionWithClientHandle::from_index(i)),
+                    client: c,
+                    buffer: b,
+                })
+            });
+        std::iter::once(ClientRef {
+            target: TargetClient::Local,
+            client: &mut self.local,
+            buffer: &mut self.local_buf,
+        })
+        .chain(remotes_iter)
     }
-    */
 }
 
 #[derive(Default)]

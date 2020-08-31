@@ -166,14 +166,6 @@ where
     if editor_loop.is_quit() {
         return Ok(());
     }
-    /*
-    send_operations(
-        &mut config,
-        &mut editor_operations,
-        &mut local_client,
-        &mut connections,
-    );
-    */
 
     connections.register_listener(&event_registry)?;
 
