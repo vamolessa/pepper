@@ -118,7 +118,7 @@ impl Editor {
             keymaps: &mut self.keymaps,
             buffers: &mut self.buffers,
             buffer_views: &mut self.buffer_views,
-            clients: &mut clients,
+            clients,
 
             status_message_kind: &mut self.status_message_kind,
             status_message: &mut self.status_message,

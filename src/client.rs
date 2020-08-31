@@ -1,7 +1,6 @@
 use crate::{
     buffer_view::BufferViewHandle, connection::ConnectionWithClientHandle, cursor::Cursor,
-    syntax::HighlightedBuffer,
-    select::SelectEntryCollection,
+    select::SelectEntryCollection, syntax::HighlightedBuffer,
 };
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -76,6 +75,8 @@ impl Client {
 pub struct ClientCollection {
     pub local: Client,
     pub remotes: Vec<Option<Client>>,
+    pub local_buf: Vec<u8>,
+    pub remote_bufs: Vec<Vec<u8>>,
 }
 
 impl ClientCollection {
@@ -83,6 +84,7 @@ impl ClientCollection {
         let min_len = client_handle.into_index() + 1;
         if min_len > self.remotes.len() {
             self.remotes.resize_with(min_len, || None);
+            self.remote_bufs.resize_with(min_len, || Vec::new());
         }
     }
 
@@ -103,6 +105,22 @@ impl ClientCollection {
             TargetClient::Remote(handle) => self.remotes[handle.into_index()].as_mut(),
         }
     }
+
+    pub fn clients_mut(&mut self) -> impl Iterator<Item = &mut Client> {
+        std::iter::once(&mut self.local).chain(self.remotes.iter_mut().flatten())
+    }
+
+    /*
+    pub fn clients_and_buffers(&mut self) -> impl Iterator<Item = (&mut Client, &mut Vec<u8>)> {
+        let remotes_iter = self
+            .remotes
+            .iter_mut()
+            .zip(self.remote_bufs.iter_mut())
+            .map(|(c, b)| c.map(|c| (c, b)))
+            .flatten();
+        std::iter::once((&mut self.local, &mut self.local_buf)).chain(remotes_iter)
+    }
+    */
 }
 
 #[derive(Default)]

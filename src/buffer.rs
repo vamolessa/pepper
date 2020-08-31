@@ -165,6 +165,10 @@ pub struct BufferContent {
 }
 
 impl BufferContent {
+    pub const fn empty() -> Self {
+        Self { lines: Vec::new() }
+    }
+
     pub fn from_str(text: &str) -> Self {
         let mut this = Self { lines: Vec::new() };
         this.lines.push(BufferLine::new(String::new()));
@@ -493,7 +497,10 @@ impl BufferCollection {
             .filter_map(|(i, b)| Some(BufferHandle(i)).zip(b.as_ref()))
     }
 
-    pub fn remove_where<F>(&mut self, predicate: F) where F : Fn(BufferHandle, &Buffer) -> bool {
+    pub fn remove_where<F>(&mut self, predicate: F)
+    where
+        F: Fn(BufferHandle, &Buffer) -> bool,
+    {
         for i in 0..self.buffers.len() {
             if let Some(buffer) = &self.buffers[i] {
                 let handle = BufferHandle(i);

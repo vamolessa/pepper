@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, io::Write, iter, path::PathBuf, sync::mpsc, thread};
+use std::{cmp::Ordering, io::Write, iter, path::Path, sync::mpsc, thread};
 
 use crossterm::{
     cursor, event, handle_command,
@@ -8,11 +8,11 @@ use crossterm::{
 
 use crate::{
     application::UI,
-    buffer::{Buffer, BufferContent},
+    buffer::BufferContent,
     buffer_position::{BufferPosition, BufferRange},
     client::{Client, TargetClient},
     client_event::{Key, LocalEvent},
-    cursor::CursorCollection,
+    cursor::Cursor,
     editor::{Editor, StatusMessageKind},
     mode::Mode,
     syntax::TokenKind,
@@ -96,7 +96,7 @@ where
         Ok(())
     }
 
-    fn draw_into(
+    fn render(
         &mut self,
         editor: &Editor,
         client: &Client,
@@ -106,9 +106,9 @@ where
         let has_focus = target_client == editor.focused_client;
         let client_view = get_client_view(editor, client);
 
-        draw_text(buffer, editor, client_view, target_client)?;
-        draw_select(buffer, editor, client_view)?;
-        draw_statusbar(buffer, editor, client_view, has_focus)?;
+        draw_text(buffer, editor, &client_view, target_client)?;
+        draw_select(buffer, editor, &client_view)?;
+        draw_statusbar(buffer, editor, &client_view, has_focus)?;
         Ok(())
     }
 
@@ -130,13 +130,14 @@ where
     }
 }
 
-static EMPTY_BUFFER: Buffer = Buffer::new(PathBuf::new(), BufferContent::from_str(""));
-static EMPTY_CURSORS: CursorCollection = CursorCollection::new();
+static EMPTY_BUFFER: BufferContent = BufferContent::empty();
 
 struct ClientView<'a> {
     client: &'a Client,
-    buffer: &'a Buffer,
-    cursors: &'a CursorCollection,
+    buffer_content: &'a BufferContent,
+    buffer_path: &'a Path,
+    main_cursor: Cursor,
+    cursors: &'a [Cursor],
     search_ranges: &'a [BufferRange],
 }
 
@@ -148,27 +149,40 @@ fn get_client_view<'a>(editor: &'a Editor, client: &'a Client) -> ClientView<'a>
         .map(|v| v.buffer_handle)
         .and_then(|h| editor.buffers.get(h));
 
-    let buffer;
+    let buffer_content;
+    let buffer_path;
     let search_ranges;
     match maybe_buffer {
         Some(buffer) => {
-            buffer = &buffer;
+            buffer_content = &buffer.content;
+            buffer_path = buffer.path();
             search_ranges = buffer.search_ranges();
         }
         None => {
-            buffer = &EMPTY_BUFFER;
+            buffer_content = &EMPTY_BUFFER;
+            buffer_path = Path::new("");
             search_ranges = &[];
         }
     }
 
-    let cursors = match buffer_view {
-        Some(view) => &view.cursors,
-        None => &EMPTY_CURSORS,
+    let main_cursor;
+    let cursors;
+    match buffer_view {
+        Some(view) => {
+            main_cursor = view.cursors.main_cursor().clone();
+            cursors = &view.cursors[..];
+        }
+        None => {
+            main_cursor = Cursor::default();
+            cursors = &[];
+        }
     };
 
     ClientView {
         client,
-        buffer,
+        buffer_content,
+        buffer_path,
+        main_cursor,
         cursors,
         search_ranges,
     }
@@ -177,7 +191,7 @@ fn get_client_view<'a>(editor: &'a Editor, client: &'a Client) -> ClientView<'a>
 fn draw_text<W>(
     write: &mut W,
     editor: &Editor,
-    client_view: ClientView,
+    client_view: &ClientView,
     target_client: TargetClient,
 ) -> Result<()>
 where
@@ -224,7 +238,7 @@ where
     let mut line_index = scroll;
     let mut drawn_line_count = 0;
 
-    'lines_loop: for line in client_view.buffer.content.lines_from(line_index) {
+    'lines_loop: for line in client_view.buffer_content.lines_from(line_index) {
         let mut draw_state = DrawState::Token(TokenKind::Text);
         let mut column_index = 0;
         let mut x = 0;
@@ -369,7 +383,7 @@ where
     Ok(())
 }
 
-fn draw_select<W>(write: &mut W, editor: &Editor, client_view: ClientView) -> Result<()>
+fn draw_select<W>(write: &mut W, editor: &Editor, client_view: &ClientView) -> Result<()>
 where
     W: Write,
 {
@@ -394,7 +408,7 @@ where
 fn draw_statusbar<W>(
     write: &mut W,
     editor: &Editor,
-    client_view: ClientView,
+    client_view: &ClientView,
     has_focus: bool,
 ) -> Result<()>
 where
@@ -466,7 +480,7 @@ where
         } else {
             handle_command!(write, terminal::Clear(terminal::ClearType::CurrentLine))?;
             handle_command!(write, Print(prefix))?;
-            handle_command!(write, Print(editor.status_message))?;
+            handle_command!(write, Print(&editor.status_message))?;
         }
 
         None
@@ -504,15 +518,13 @@ where
 
     if let Some(x) = x {
         if let Some(buffer_path) = client_view
-            .buffer
-            .path()
+            .buffer_path
             .as_os_str()
             .to_str()
             .filter(|s| !s.is_empty())
         {
-            let main_cursor = client_view.cursors.main_cursor();
-            let line_number = main_cursor.position.line_index + 1;
-            let column_number = main_cursor.position.column_index + 1;
+            let line_number = client_view.main_cursor.position.line_index + 1;
+            let column_number = client_view.main_cursor.position.column_index + 1;
             let line_digit_count = find_digit_count(line_number);
             let column_digit_count = find_digit_count(column_number);
             let skip = (client_view.client.width as usize).saturating_sub(

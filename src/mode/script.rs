@@ -27,8 +27,7 @@ pub fn on_event(
                 buffers: ctx.buffers,
                 buffer_views: ctx.buffer_views,
 
-                local_client: ctx.local_client,
-                remote_clients: ctx.remote_clients,
+                clients: ctx.clients,
 
                 status_message_kind: ctx.status_message_kind,
                 status_message: ctx.status_message,

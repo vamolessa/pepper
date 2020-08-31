@@ -185,16 +185,7 @@ impl ConnectionWithClientCollection {
         Ok(())
     }
 
-    pub fn send_serialized_display(
-        &mut self,
-        handle: ConnectionWithClientHandle,
-        serializer: &EditorOperationSerializer,
-    ) {
-        let bytes = serializer.remote_bytes(handle);
-        if bytes.is_empty() {
-            return;
-        }
-
+    pub fn send_serialized_display(&mut self, handle: ConnectionWithClientHandle, bytes: &[u8]) {
         let stream = match &mut self.connections[handle.0] {
             Some(connection) => &mut connection.0,
             None => return,
@@ -316,20 +307,7 @@ impl ConnectionWithServer {
     {
         let mut read_guard = self.read_buf.guard();
         read_guard.read_from(&mut self.stream)?;
-
-        loop {
-            match deserializer.deserialize_next() {
-                EditorOperationDeserializeResult::Some(operation) => {
-                    callback(operation);
-                    last_response = Some(());
-                }
-                EditorOperationDeserializeResult::None => break,
-                EditorOperationDeserializeResult::Error => {
-                    return Err(io::Error::from(io::ErrorKind::Other))
-                }
-            }
-        }
-
-        Ok(last_response)
+        func(read_guard.as_bytes());
+        Ok(())
     }
 }
