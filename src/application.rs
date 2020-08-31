@@ -1,11 +1,10 @@
 use std::{env, error::Error, fmt, fs, sync::mpsc, thread};
 
 use crate::{
-    client_event::{ClientEvent, ClientEventSerializer, Key, LocalEvent},
-    config::Config,
-    connection::{ConnectionWithClientCollection, ConnectionWithServer},
     client::{Client, ClientCollection, TargetClient},
-    editor::{Editor, EditorLoop, StatusMessageKind},
+    client_event::{ClientEvent, ClientEventSerializer, Key, LocalEvent},
+    connection::{ConnectionWithClientCollection, ConnectionWithServer},
+    editor::{Editor, EditorLoop},
     event_manager::{ConnectionEvent, EventManager},
     tui::Tui,
     Args,
@@ -31,7 +30,7 @@ pub trait UI {
         Ok(())
     }
 
-    fn draw_into(
+    fn render(
         &mut self,
         editor: &Editor,
         client: &Client,
@@ -121,6 +120,24 @@ where
     Ok(result)
 }
 
+fn render_clients<I>(
+    ui: &mut I,
+    editor: &Editor,
+    clients: &ClientCollection,
+) -> Result<(), I::Error>
+where
+    I: UI,
+{
+    let mut buffer = Vec::new();
+    ui.render(
+        &editor,
+        clients.get(TargetClient::Local).unwrap(),
+        TargetClient::Local,
+        &mut buffer,
+    )?;
+    Ok(())
+}
+
 fn run_server_with_client<I>(
     args: Args,
     mut ui: I,
@@ -136,90 +153,79 @@ where
     let event_manager_loop = event_manager.run_event_loop_in_background(event_sender.clone());
     let ui_event_loop = I::run_event_loop_in_background(event_sender);
 
-    let mut config = Config::default();
-    local_client.has_focus = true;
     let mut editor = Editor::new();
-    let mut editor_operations = EditorOperationSerializer::default();
+    let mut clients = ClientCollection::default();
 
     if let Some(config_path) = args.config.as_ref() {
-        editor.load_config(
-            &mut config,
-            &mut local_client,
-            &mut editor_operations,
-            &config_path,
-        );
+        editor.load_config(&mut clients, config_path);
     }
 
     let editor_loop = client_events_from_args(&args, |event| {
-        editor.on_event(&config, event, TargetClient::Local, &mut editor_operations);
+        editor.on_event(&mut clients, TargetClient::Local, event);
     })?;
     if editor_loop.is_quit() {
         return Ok(());
     }
+    /*
     send_operations(
         &mut config,
         &mut editor_operations,
         &mut local_client,
         &mut connections,
     );
+    */
 
     connections.register_listener(&event_registry)?;
 
     ui.init()?;
-    ui.draw(
-        &config,
-        &local_client,
-        local_client.status_message_kind,
-        &local_client.status_message[..],
-    )?;
-    local_client.status_message.clear();
+    render_clients(&mut ui, &editor, &clients)?;
+    editor.status_message.clear();
 
     for event in event_receiver.iter() {
         match event {
             LocalEvent::None => (),
             LocalEvent::Key(key) => {
-                let result = editor.on_event(
-                    &config,
-                    ClientEvent::Key(key),
-                    TargetClient::Local,
-                    &mut editor_operations,
-                );
-
+                let result =
+                    editor.on_event(&mut clients, TargetClient::Local, ClientEvent::Key(key));
                 match result {
                     EditorLoop::Quit | EditorLoop::QuitAll => break,
-                    EditorLoop::Continue => send_operations(
+                    EditorLoop::Continue =>
+                    /*send_operations(
                         &mut config,
                         &mut editor_operations,
                         &mut local_client,
                         &mut connections,
-                    ),
+                    )*/
+                    {
+                        ()
+                    }
                 }
             }
-            LocalEvent::Resize(w, h) => ui.resize(w, h)?,
+            LocalEvent::Resize(w, h) => {
+                if let Some(client) = clients.get_mut(TargetClient::Local) {
+                    client.width = w;
+                    client.height = h;
+                }
+            }
             LocalEvent::Connection(event) => {
                 match event {
                     ConnectionEvent::NewConnection => {
                         let handle = connections.accept_connection(&event_registry)?;
-                        editor.on_client_joined(handle, &config, &mut editor_operations);
+                        editor.on_client_joined(&mut clients, handle);
                         connections.listen_next_listener_event(&event_registry)?;
                     }
                     ConnectionEvent::Stream(stream_id) => {
                         let handle = stream_id.into();
 
-                        let result = connections.receive_events(handle, |key| {
-                            editor.on_event(
-                                &config,
-                                key,
-                                TargetClient::Remote(handle),
-                                &mut editor_operations,
-                            )
+                        let result = connections.receive_events(handle, |event| {
+                            editor.on_event(&mut clients, TargetClient::Remote(handle), event)
                         });
 
                         match result {
                             Ok(EditorLoop::QuitAll) => break,
                             Ok(EditorLoop::Quit) | Err(_) => {
                                 connections.close_connection(handle);
-                                editor.on_client_left(handle, &mut editor_operations);
+                                editor.on_client_left(&mut clients, handle);
                             }
                             Ok(EditorLoop::Continue) => {
                                 connections
@@ -230,23 +236,20 @@ where
                 }
 
                 connections.unregister_closed_connections(&event_registry)?;
+                /*
                 send_operations(
                     &mut config,
                     &mut editor_operations,
                     &mut local_client,
                     &mut connections,
                 );
+                */
                 connections.unregister_closed_connections(&event_registry)?;
             }
         }
 
-        ui.draw(
-            &config,
-            &local_client,
-            local_client.status_message_kind,
-            &local_client.status_message[..],
-        )?;
-        local_client.status_message.clear();
+        render_clients(&mut ui, &editor, &clients)?;
+        editor.status_message.clear();
     }
 
     drop(event_manager_loop);
@@ -285,19 +288,9 @@ where
     let event_manager_loop = event_manager.run_event_loop_in_background(event_sender.clone());
     let ui_event_loop = I::run_event_loop_in_background(event_sender);
 
-    let mut config = Config::default();
-    let mut local_client = Client::new();
-
     connection.register_connection(&event_registry)?;
 
     ui.init()?;
-    ui.draw(
-        &config,
-        &local_client,
-        local_client.status_message_kind,
-        &local_client.status_message[..],
-    )?;
-    local_client.status_message.clear();
 
     for event in event_receiver.iter() {
         match event {
@@ -308,29 +301,27 @@ where
                     break;
                 }
             }
-            LocalEvent::Resize(w, h) => ui.resize(w, h)?,
+            LocalEvent::Resize(w, h) => {
+                client_events.serialize(ClientEvent::Resize(w, h));
+                if let Err(_) = connection.send_serialized_events(&mut client_events) {
+                    break;
+                }
+            },
             LocalEvent::Connection(event) => match event {
                 ConnectionEvent::NewConnection => (),
                 ConnectionEvent::Stream(_) => {
-                    let response = connection.receive_operations(|op| {
-                        local_client.on_editor_operation(&mut config, &op)
-                    })?;
+                    //connection.receive_display()?;
+                    ui.display(&[])?;
+                    /*
                     if let None = response {
                         break;
                     }
+                    */
 
                     connection.listen_next_event(&event_registry)?;
                 }
             },
         }
-
-        ui.draw(
-            &config,
-            &local_client,
-            local_client.status_message_kind,
-            &local_client.status_message[..],
-        )?;
-        local_client.status_message.clear();
     }
 
     drop(event_manager_loop);

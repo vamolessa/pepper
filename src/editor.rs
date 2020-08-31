@@ -3,7 +3,7 @@ use std::path::Path;
 use crate::{
     buffer::BufferCollection,
     buffer_view::BufferViewCollection,
-    client::{Client, ClientCollection, ClientTargetMap, TargetClient},
+    client::{ClientCollection, ClientTargetMap, TargetClient},
     client_event::{ClientEvent, Key},
     config::Config,
     connection::ConnectionWithClientHandle,
@@ -108,7 +108,7 @@ impl Editor {
         self.status_message.push_str(message);
     }
 
-    pub fn load_config(&mut self, clients: &ClientCollection, path: &Path) {
+    pub fn load_config(&mut self, clients: &mut ClientCollection, path: &Path) {
         let mut editor_loop = EditorLoop::Continue;
         let ctx = ScriptContext {
             editor_loop: &mut editor_loop,
