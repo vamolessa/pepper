@@ -172,10 +172,11 @@ where
     connections.register_listener(&event_registry)?;
 
     let (local_width, local_height) = ui.init()?;
-    if let Some(c) = clients.get_mut(TargetClient::Local) {
-        c.width = local_width;
-        c.height = local_height;
-    }
+    let _ = editor.on_event(
+        &mut clients,
+        TargetClient::Local,
+        ClientEvent::Resize(local_width, local_height),
+    );
 
     render_clients(&editor, &mut clients, &mut ui, &mut connections)?;
     editor.status_message.clear();

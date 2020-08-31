@@ -33,7 +33,9 @@ pub fn on_event(
                 status_message: ctx.status_message,
             };
 
-            match ctx.scripts.eval(context, &ctx.input[..]) {
+            let result = ctx.scripts.eval(context, &ctx.input[..]);
+            ctx.input.clear();
+            match result {
                 Ok(()) => ModeOperation::EnterMode(from_mode.as_mode()),
                 Err(e) => match editor_loop {
                     EditorLoop::Quit => ModeOperation::Quit,

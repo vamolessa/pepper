@@ -140,7 +140,6 @@ impl Editor {
         self.client_target_map.on_client_joined(client_handle);
 
         let target_client = TargetClient::Remote(client_handle);
-
         let buffer_view_handle = clients
             .get(self.focused_client)
             .and_then(|c| c.current_buffer_view_handle)
@@ -148,11 +147,9 @@ impl Editor {
             .map(|v| v.clone_with_target_client(target_client))
             .map(|b| self.buffer_views.add(b));
 
-        if let Some(client) = clients.get_mut(self.focused_client) {
+        if let Some(client) = clients.get_mut(target_client) {
             client.current_buffer_view_handle = buffer_view_handle;
         }
-
-        self.buffered_keys.clear();
     }
 
     pub fn on_client_left(
@@ -165,9 +162,6 @@ impl Editor {
 
         if self.focused_client == TargetClient::Remote(client_handle) {
             self.focused_client = TargetClient::Local;
-            self.mode = Mode::default();
-            self.buffered_keys.clear();
-            self.input.clear();
         }
     }
 
@@ -253,6 +247,8 @@ impl Editor {
                         ModeOperation::Pending => return EditorLoop::Continue,
                         ModeOperation::None => (),
                         ModeOperation::Quit => {
+                            self.mode = Mode::default();
+                            self.mode.on_enter(&mut mode_context);
                             self.buffered_keys.clear();
                             return EditorLoop::Quit;
                         }
