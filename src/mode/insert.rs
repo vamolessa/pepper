@@ -56,13 +56,27 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
             ctx.buffer_views
                 .delete_in_selection(ctx.buffers, &ctx.config.syntaxes, handle);
         }
-        Key::Ctrl('n') => ctx
-            .selects
-            .move_cursor(1, ctx.config.values.select_max_height.get()),
-        Key::Ctrl('p') => ctx
-            .selects
-            .move_cursor(-1, ctx.config.values.select_max_height.get()),
+        Key::Ctrl('n') => ctx.selects.move_cursor(1),
+        Key::Ctrl('p') => ctx.selects.move_cursor(-1),
         _ => (),
+    }
+
+    let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
+    let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
+    let main_cursor = buffer_view.cursors.main_cursor();
+    let line = buffer.content.line(main_cursor.position.line_index);
+    let line = line.text(..main_cursor.position.column_index);
+    let current_word_index = line
+        .char_indices()
+        .rev()
+        .take_while(|(_i, c)| c.is_alphanumeric())
+        .last()
+        .map(|(i, _c)| i);
+    if let Some(index) = current_word_index {
+        let current_word = &line[index..];
+        ctx.selects.set_filter(current_word);
+    } else {
+        ctx.selects.clear();
     }
 
     ModeOperation::None

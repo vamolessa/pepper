@@ -82,13 +82,13 @@ pub struct Editor {
 impl Editor {
     pub fn new() -> Self {
         let mut selects = SelectEntryCollection::default();
-        /*
-        selects.add("matheus");
-        selects.add("mate");
-        selects.add("material");
-        selects.add("materialista");
-        selects.add("materializar");
-        */
+        selects.add_provider(Box::new(vec![
+            "matheus".into(),
+            "mate".into(),
+            "material".into(),
+            "materialisa".into(),
+            "materializar".into(),
+        ]));
 
         Self {
             config: Config::default(),
@@ -294,6 +294,8 @@ impl Editor {
             }
         };
 
+        self.selects
+            .update_scroll(self.config.values.select_max_height.get());
         for c in clients.client_refs() {
             c.client.update_view(self, self.focused_client == c.target);
         }

@@ -1,12 +1,35 @@
 use fuzzy_matcher::{skim::SkimMatcherV2, FuzzyMatcher};
 
+pub trait SelectEntryProvider {
+    fn provide_entries(&self) -> &[SelectEntry];
+}
+
+impl SelectEntryProvider for &[SelectEntry] {
+    fn provide_entries(&self) -> &[SelectEntry] {
+        self
+    }
+}
+
+impl SelectEntryProvider for Vec<SelectEntry> {
+    fn provide_entries(&self) -> &[SelectEntry] {
+        &self[..]
+    }
+}
+
 #[derive(Default)]
 pub struct SelectEntry {
     pub name: String,
 }
 
+impl std::convert::From<&str> for SelectEntry {
+    fn from(value: &str) -> Self {
+        Self { name: value.into() }
+    }
+}
+
 #[derive(Default)]
 struct FilteredEntry {
+    pub provider_index: usize,
     pub entry_index: usize,
     pub score: i64,
 }
@@ -16,8 +39,7 @@ pub struct SelectEntryCollection {
     cursor: usize,
     scroll: usize,
 
-    len: usize,
-    entries: Vec<SelectEntry>,
+    providers: Vec<Box<dyn SelectEntryProvider>>,
     filtered: Vec<FilteredEntry>,
     filter: String,
     matcher: SkimMatcherV2,
@@ -33,19 +55,19 @@ impl SelectEntryCollection {
     }
 
     pub fn height(&self, max_height: usize) -> usize {
-        self.len.min(max_height)
+        self.filtered.len().min(max_height)
     }
 
-    pub fn len(&self) -> usize {
-        self.len
+    pub fn get_filter(&self) -> &str {
+        &self.filter[..]
     }
 
-    pub fn move_cursor(&mut self, offset: isize, max_height: usize) {
-        if self.len == 0 {
+    pub fn move_cursor(&mut self, offset: isize) {
+        if self.filtered.len() == 0 {
             return;
         }
 
-        let last_index = self.len - 1;
+        let last_index = self.filtered.len() - 1;
         if offset > 0 {
             let mut offset = offset as usize;
             if self.cursor == last_index {
@@ -71,7 +93,9 @@ impl SelectEntryCollection {
                 self.cursor = 0;
             }
         }
-        
+    }
+
+    pub fn update_scroll(&mut self, max_height: usize) {
         let height = self.height(max_height);
         if self.cursor < self.scroll {
             self.scroll = self.cursor;
@@ -84,21 +108,12 @@ impl SelectEntryCollection {
         self.cursor = 0;
         self.scroll = 0;
 
-        self.len = 0;
         self.filtered.clear();
+        self.filter.clear();
     }
 
-    pub fn add(&mut self, name: &str) {
-        let entry = if self.len < self.entries.len() {
-            &mut self.entries[self.len]
-        } else {
-            self.entries.push(SelectEntry::default());
-            self.len = self.entries.len();
-            &mut self.entries[self.len - 1]
-        };
-
-        entry.name.clear();
-        entry.name.push_str(name);
+    pub fn add_provider(&mut self, provider: Box<dyn SelectEntryProvider>) {
+        self.providers.push(provider);
         self.filter();
     }
 
@@ -111,21 +126,26 @@ impl SelectEntryCollection {
     fn filter(&mut self) {
         self.filtered.clear();
         let filter = &self.filter[..];
-        for (i, e) in self.entries.iter().take(self.len).enumerate() {
-            if let Some(score) = self.matcher.fuzzy_match(&e.name[..], filter) {
-                self.filtered.push(FilteredEntry {
-                    entry_index: i,
-                    score,
-                });
+        for (pi, p) in self.providers.iter().enumerate() {
+            for (ei, e) in p.provide_entries().iter().enumerate() {
+                if let Some(score) = self.matcher.fuzzy_match(&e.name[..], filter) {
+                    self.filtered.push(FilteredEntry {
+                        provider_index: pi,
+                        entry_index: ei,
+                        score,
+                    });
+                }
             }
         }
 
-        self.filtered.sort_unstable_by_key(|f| f.score);
+        self.filtered.sort_unstable_by(|a, b| b.score.cmp(&a.score));
+        self.cursor = self.cursor.min(self.filtered.len());
+        self.move_cursor(0);
     }
 
     pub fn filtered_entries(&self) -> impl Iterator<Item = &SelectEntry> {
         self.filtered
             .iter()
-            .map(move |f| &self.entries[f.entry_index])
+            .map(move |f| &self.providers[f.provider_index].provide_entries()[f.entry_index])
     }
 }
