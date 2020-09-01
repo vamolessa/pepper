@@ -2,8 +2,6 @@
 
 use std::mem::Discriminant;
 
-use serde_derive::{Deserialize, Serialize};
-
 use crate::{
     buffer::BufferCollection,
     buffer_view::{BufferViewCollection, BufferViewHandle},
@@ -66,7 +64,7 @@ impl<'a> ModeContext<'a> {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy)]
 pub enum FromMode {
     Normal,
     Select,
@@ -81,7 +79,7 @@ impl FromMode {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub enum Mode {
     Normal,
     Select,
