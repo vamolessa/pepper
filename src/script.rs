@@ -6,7 +6,6 @@ use mlua::prelude::{
 };
 
 use crate::{
-    select::SelectEntryCollection,
     buffer::BufferCollection,
     buffer_view::{BufferViewCollection, BufferViewHandle},
     client::{ClientCollection, TargetClient},
@@ -14,6 +13,7 @@ use crate::{
     editor::{EditorLoop, StatusMessageKind},
     keymap::KeyMapCollection,
     script_bindings,
+    select::SelectEntryCollection,
 };
 
 pub type ScriptResult<T> = LuaResult<T>;

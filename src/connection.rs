@@ -50,11 +50,9 @@ impl<'a> ReadGuard<'a> {
             match reader.read(&mut self.0.buf[self.0.len..]) {
                 Ok(len) => {
                     self.0.len += len;
-
                     if self.0.len < self.0.buf.len() {
                         break;
                     }
-
                     self.0.buf.resize(self.0.buf.len() * 2, 0);
                 }
                 Err(e) => match e.kind() {
@@ -302,7 +300,8 @@ impl ConnectionWithServer {
     }
 
     pub fn receive_display<F, R>(&mut self, func: F) -> io::Result<R>
-        where F: FnOnce(&[u8]) -> R
+    where
+        F: FnOnce(&[u8]) -> R,
     {
         let mut read_guard = self.read_buf.guard();
         read_guard.read_from(&mut self.stream)?;

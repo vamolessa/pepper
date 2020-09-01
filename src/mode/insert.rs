@@ -5,24 +5,23 @@ use crate::{
     client_event::Key,
     editor::KeysIterator,
     mode::{Mode, ModeContext, ModeOperation},
-    select::SelectEntry,
+    select::SelectEntryRef,
 };
 
-static AUTOCOMPLETE_ENTRIES: &[SelectEntry] = &[
-    SelectEntry::from_str("matheus"),
-    SelectEntry::from_str("mate"),
-    SelectEntry::from_str("material"),
-    SelectEntry::from_str("materializar"),
-    SelectEntry::from_str("materiale"),
+static AUTOCOMPLETE_ENTRIES: &[SelectEntryRef] = &[
+    SelectEntryRef::from_str("matheus"),
+    SelectEntryRef::from_str("mate"),
+    SelectEntryRef::from_str("material"),
+    SelectEntryRef::from_str("materializar"),
+    SelectEntryRef::from_str("materiale"),
 ];
 
-pub fn on_enter(ctx: &mut ModeContext) {
-    ctx.selects.add_provider(Box::new(AUTOCOMPLETE_ENTRIES));
+pub fn on_enter(_ctx: &mut ModeContext) {
+    //ctx.selects.add_provider(Box::new(AUTOCOMPLETE_ENTRIES));
 }
 
 pub fn on_exit(ctx: &mut ModeContext) {
-    ctx.selects.clear_filtered();
-    ctx.selects.clear_providers();
+    ctx.selects.clear();
 }
 
 pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
@@ -90,9 +89,9 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
         .map(|(i, _c)| i);
     if let Some(index) = current_word_index {
         let current_word = &line[index..];
-        ctx.selects.set_filter(current_word);
+        ctx.selects.filter(&[&AUTOCOMPLETE_ENTRIES], current_word);
     } else {
-        ctx.selects.clear_filtered();
+        ctx.selects.clear();
     }
 
     ModeOperation::None
