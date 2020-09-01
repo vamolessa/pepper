@@ -111,17 +111,21 @@ impl Editor {
     pub fn load_config(&mut self, clients: &mut ClientCollection, path: &Path) {
         let mut editor_loop = EditorLoop::Continue;
         let ctx = ScriptContext {
-            editor_loop: &mut editor_loop,
             target_client: TargetClient::Local,
+            clients,
+            editor_loop: &mut editor_loop,
 
             config: &mut self.config,
-            keymaps: &mut self.keymaps,
+
             buffers: &mut self.buffers,
             buffer_views: &mut self.buffer_views,
-            clients,
+
+            selects: &mut self.selects,
 
             status_message_kind: &mut self.status_message_kind,
             status_message: &mut self.status_message,
+
+            keymaps: &mut self.keymaps,
         };
 
         if let Err(e) = self.scripts.eval_entry_file(ctx, path) {
@@ -231,15 +235,21 @@ impl Editor {
 
                     let mut mode_context = ModeContext {
                         target_client,
+                        clients,
+
                         config: &mut self.config,
-                        keymaps: &mut self.keymaps,
-                        scripts: &mut self.scripts,
+
                         buffers: &mut self.buffers,
                         buffer_views: &mut self.buffer_views,
-                        clients,
+
                         input: &mut self.input,
+                        selects: &mut self.selects,
+
                         status_message_kind: &mut self.status_message_kind,
                         status_message: &mut self.status_message,
+
+                        keymaps: &mut self.keymaps,
+                        scripts: &mut self.scripts,
                     };
 
                     match self.mode.on_event(&mut mode_context, &mut keys) {

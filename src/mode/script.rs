@@ -19,18 +19,21 @@ pub fn on_event(
         InputPollResult::Submited => {
             let mut editor_loop = EditorLoop::Continue;
             let context = ScriptContext {
-                editor_loop: &mut editor_loop,
                 target_client: ctx.target_client,
+                clients: ctx.clients,
+                editor_loop: &mut editor_loop,
 
                 config: ctx.config,
-                keymaps: ctx.keymaps,
+
                 buffers: ctx.buffers,
                 buffer_views: ctx.buffer_views,
 
-                clients: ctx.clients,
+                selects: ctx.selects,
 
                 status_message_kind: ctx.status_message_kind,
                 status_message: ctx.status_message,
+
+                keymaps: ctx.keymaps,
             };
 
             let result = ctx.scripts.eval(context, &ctx.input[..]);

@@ -13,6 +13,7 @@ use crate::{
     editor::{KeysIterator, StatusMessageKind},
     keymap::KeyMapCollection,
     script::ScriptEngine,
+    select::SelectEntryCollection,
 };
 
 macro_rules! unwrap_or_none {
@@ -39,19 +40,22 @@ pub enum ModeOperation {
 }
 
 pub struct ModeContext<'a> {
-    pub input: &'a mut String,
     pub target_client: TargetClient,
-    pub scripts: &'a mut ScriptEngine,
+    pub clients: &'a mut ClientCollection,
 
     pub config: &'a mut Config,
-    pub keymaps: &'a mut KeyMapCollection,
+
     pub buffers: &'a mut BufferCollection,
     pub buffer_views: &'a mut BufferViewCollection,
 
-    pub clients: &'a mut ClientCollection,
+    pub input: &'a mut String,
+    pub selects: &'a mut SelectEntryCollection,
 
     pub status_message_kind: &'a mut StatusMessageKind,
     pub status_message: &'a mut String,
+
+    pub keymaps: &'a mut KeyMapCollection,
+    pub scripts: &'a mut ScriptEngine,
 }
 
 impl<'a> ModeContext<'a> {

@@ -6,6 +6,7 @@ use mlua::prelude::{
 };
 
 use crate::{
+    select::SelectEntryCollection,
     buffer::BufferCollection,
     buffer_view::{BufferViewCollection, BufferViewHandle},
     client::{ClientCollection, TargetClient},
@@ -68,18 +69,21 @@ impl<'lua> FromLua<'lua> for ScriptStr<'lua> {
 }
 
 pub struct ScriptContext<'a> {
-    pub editor_loop: &'a mut EditorLoop,
     pub target_client: TargetClient,
+    pub clients: &'a mut ClientCollection,
+    pub editor_loop: &'a mut EditorLoop,
 
     pub config: &'a mut Config,
-    pub keymaps: &'a mut KeyMapCollection,
+
     pub buffers: &'a mut BufferCollection,
     pub buffer_views: &'a mut BufferViewCollection,
 
-    pub clients: &'a mut ClientCollection,
+    pub selects: &'a mut SelectEntryCollection,
 
     pub status_message_kind: &'a mut StatusMessageKind,
     pub status_message: &'a mut String,
+
+    pub keymaps: &'a mut KeyMapCollection,
 }
 
 impl<'a> ScriptContext<'a> {

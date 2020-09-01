@@ -398,7 +398,7 @@ where
     handle_command!(write, SetBackgroundColor(background_color))?;
     handle_command!(write, SetForegroundColor(foreground_color))?;
 
-    for entry in editor.selects.entries_from(scroll).take(height as _) {
+    for entry in editor.selects.filtered_entries().skip(scroll).take(height as _) {
         handle_command!(write, Print(&entry.name[..]))?;
         handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
         handle_command!(write, cursor::MoveToNextLine(1))?;
