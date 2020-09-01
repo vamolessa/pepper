@@ -4,6 +4,12 @@ pub trait SelectSource {
     fn entries(&self) -> &[SelectEntryRef];
 }
 
+impl<'a> SelectSource for SelectEntryRef<'a> {
+    fn entries(&self) -> &[SelectEntryRef] {
+        std::slice::from_ref(self)
+    }
+}
+
 impl<'a> SelectSource for &[SelectEntryRef<'a>] {
     fn entries(&self) -> &[SelectEntryRef] {
         self
@@ -37,7 +43,6 @@ pub struct SelectEntryCollection {
     matcher: SkimMatcherV2,
     len: usize,
     entries: Vec<SelectEntry>,
-    pattern: String,
 
     cursor: usize,
     scroll: usize,
@@ -54,10 +59,6 @@ impl SelectEntryCollection {
 
     pub fn height(&self, max_height: usize) -> usize {
         self.len.min(max_height)
-    }
-
-    pub fn pattern(&self) -> &str {
-        &self.pattern[..]
     }
 
     pub fn move_cursor(&mut self, offset: isize) {
@@ -129,9 +130,6 @@ impl SelectEntryCollection {
                 }
             }
         }
-
-        self.pattern.clear();
-        self.pattern.push_str(pattern);
 
         self.entries.sort_unstable_by(|a, b| b.score.cmp(&a.score));
         self.cursor = self.cursor.min(self.len);

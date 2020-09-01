@@ -513,8 +513,7 @@ where
             Mode::Insert => {
                 let text = "-- INSERT --";
                 handle_command!(write, Print(text))?;
-                handle_command!(write, Print(editor.selects.pattern()))?;
-                Some(text.len() + editor.selects.pattern().len())
+                Some(text.len())
             }
             Mode::Search(_) => Some(draw_input(
                 write,

@@ -16,7 +16,9 @@ static AUTOCOMPLETE_ENTRIES: &[SelectEntryRef] = &[
     SelectEntryRef::from_str("materiale"),
 ];
 
-pub fn on_enter(_ctx: &mut ModeContext) {}
+pub fn on_enter(ctx: &mut ModeContext) {
+    ctx.selects.clear();
+}
 
 pub fn on_exit(ctx: &mut ModeContext) {
     ctx.selects.clear();
@@ -87,7 +89,8 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
         .map(|(i, _c)| i);
     if let Some(index) = current_word_index {
         let current_word = &line[index..];
-        ctx.selects.filter(&[&AUTOCOMPLETE_ENTRIES], current_word);
+        let current_word_entry = SelectEntryRef::from_str(current_word);
+        ctx.selects.filter(&[&current_word_entry, &AUTOCOMPLETE_ENTRIES], current_word);
     } else {
         ctx.selects.clear();
     }
