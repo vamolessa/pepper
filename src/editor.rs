@@ -81,6 +81,13 @@ pub struct Editor {
 
 impl Editor {
     pub fn new() -> Self {
+        let mut selects = SelectEntryCollection::default();
+        selects.add("matheus");
+        selects.add("mate");
+        selects.add("material");
+        selects.add("materialista");
+        selects.add("materializar");
+
         Self {
             config: Config::default(),
             mode: Mode::default(),
@@ -90,7 +97,8 @@ impl Editor {
 
             buffered_keys: Vec::new(),
             input: String::new(),
-            selects: SelectEntryCollection::default(),
+            //selects: SelectEntryCollection::default(),
+            selects,
 
             focused_client: TargetClient::Local,
             status_message: String::new(),

@@ -31,9 +31,7 @@ pub struct Client {
     pub width: u16,
     pub height: u16,
     pub text_scroll: usize,
-    pub select_scroll: usize,
     pub text_height: u16,
-    pub select_height: u16,
 }
 
 impl Client {
@@ -46,27 +44,21 @@ impl Client {
 
         self.text_height = self.height.saturating_sub(1);
 
-        let select_entry_count = if has_focus {
-            editor.selects.len() as u16
+        let select_height = if has_focus {
+            editor
+                .selects
+                .height(editor.config.values.select_max_height.get()) as u16
         } else {
             0
         };
 
-        self.select_height = select_entry_count.min(self.text_height / 2);
-        self.text_height -= self.select_height;
+        self.text_height -= select_height;
 
         let cursor_position = main_cursor.position;
         if cursor_position.line_index < self.text_scroll {
             self.text_scroll = cursor_position.line_index;
         } else if cursor_position.line_index >= self.text_scroll + self.text_height as usize {
             self.text_scroll = cursor_position.line_index + 1 - self.text_height as usize;
-        }
-
-        let selected_index = editor.selects.selected_index;
-        if selected_index < self.select_scroll {
-            self.select_scroll = selected_index;
-        } else if selected_index >= self.select_scroll + self.select_height as usize {
-            self.select_scroll = selected_index + 1 - self.select_height as usize;
         }
     }
 }

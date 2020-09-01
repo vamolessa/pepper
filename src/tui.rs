@@ -107,7 +107,7 @@ where
         let client_view = ClientView::from(editor, client);
 
         draw_text(buffer, editor, &client_view)?;
-        draw_select(buffer, editor, &client_view)?;
+        draw_select(buffer, editor)?;
         draw_statusbar(buffer, editor, &client_view, has_focus)?;
         Ok(())
     }
@@ -385,12 +385,12 @@ where
     Ok(())
 }
 
-fn draw_select<W>(write: &mut W, editor: &Editor, client_view: &ClientView) -> Result<()>
+fn draw_select<W>(write: &mut W, editor: &Editor) -> Result<()>
 where
     W: Write,
 {
-    let scroll = client_view.client.select_scroll;
-    let height = client_view.client.select_height;
+    let scroll = editor.selects.cursor();
+    let height = editor.selects.height(editor.config.values.select_max_height.get());
 
     let background_color = convert_color(editor.config.theme.token_whitespace);
     let foreground_color = convert_color(editor.config.theme.token_text);

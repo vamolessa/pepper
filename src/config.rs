@@ -23,10 +23,13 @@ impl fmt::Display for ParseConfigError {
 #[derive(Debug, Clone)]
 pub struct ConfigValues {
     pub tab_size: NonZeroUsize,
+
     pub visual_empty: char,
     pub visual_space: char,
     pub visual_tab_first: char,
     pub visual_tab_repeat: char,
+
+    pub select_max_height: NonZeroUsize,
 }
 
 impl ConfigValues {
@@ -52,10 +55,13 @@ impl ConfigValues {
 
         match_and_parse! {
             tab_size,
+
             visual_empty,
             visual_space,
             visual_tab_first,
             visual_tab_repeat,
+
+            select_max_height,
         }
 
         Ok(())
@@ -66,10 +72,13 @@ impl Default for ConfigValues {
     fn default() -> Self {
         Self {
             tab_size: NonZeroUsize::new(4).unwrap(),
+
             visual_empty: '~',
             visual_space: '.',
             visual_tab_first: '|',
             visual_tab_repeat: ' ',
+
+            select_max_height: NonZeroUsize::new(8).unwrap(),
         }
     }
 }

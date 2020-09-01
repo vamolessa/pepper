@@ -56,6 +56,12 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
             ctx.buffer_views
                 .delete_in_selection(ctx.buffers, &ctx.config.syntaxes, handle);
         }
+        Key::Ctrl('n') => ctx
+            .selects
+            .move_cursor(1, ctx.config.values.select_max_height.get()),
+        Key::Ctrl('p') => ctx
+            .selects
+            .move_cursor(-1, ctx.config.values.select_max_height.get()),
         _ => (),
     }
 
