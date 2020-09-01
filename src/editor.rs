@@ -286,15 +286,14 @@ impl Editor {
             ClientEvent::Resize(width, height) => {
                 let target_client = self.client_target_map.get(target_client);
                 if let Some(client) = clients.get_mut(target_client) {
-                    client.width = width;
-                    client.height = height;
+                    client.viewport_size = (width, height);
                 }
                 EditorLoop::Continue
             }
         };
 
         for c in clients.client_refs() {
-            c.client.scroll(self, self.focused_client == c.target);
+            c.client.update_view(self, self.focused_client == c.target);
         }
 
         result

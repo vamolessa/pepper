@@ -208,9 +208,9 @@ where
         Cursor,
     }
 
-    let scroll = client_view.client.text_scroll;
-    let width = client_view.client.width;
-    let height = client_view.client.text_height;
+    let scroll = client_view.client.scroll;
+    let width = client_view.client.viewport_size.0;
+    let height = client_view.client.height;
     let theme = &editor.config.theme;
 
     handle_command!(write, cursor::Hide)?;
@@ -390,7 +390,9 @@ where
     W: Write,
 {
     let scroll = editor.selects.cursor();
-    let height = editor.selects.height(editor.config.values.select_max_height.get());
+    let height = editor
+        .selects
+        .height(editor.config.values.select_max_height.get());
 
     let background_color = convert_color(editor.config.theme.token_whitespace);
     let foreground_color = convert_color(editor.config.theme.token_text);
@@ -398,7 +400,12 @@ where
     handle_command!(write, SetBackgroundColor(background_color))?;
     handle_command!(write, SetForegroundColor(foreground_color))?;
 
-    for entry in editor.selects.filtered_entries().skip(scroll).take(height as _) {
+    for entry in editor
+        .selects
+        .filtered_entries()
+        .skip(scroll)
+        .take(height as _)
+    {
         handle_command!(write, Print(&entry.name[..]))?;
         handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
         handle_command!(write, cursor::MoveToNextLine(1))?;
@@ -529,7 +536,7 @@ where
             let column_number = client_view.main_cursor.position.column_index + 1;
             let line_digit_count = find_digit_count(line_number);
             let column_digit_count = find_digit_count(column_number);
-            let skip = (client_view.client.width as usize).saturating_sub(
+            let skip = (client_view.client.viewport_size.0 as usize).saturating_sub(
                 x + buffer_path.len() + 1 + line_digit_count + 1 + column_digit_count + 1,
             );
             for _ in 0..skip {

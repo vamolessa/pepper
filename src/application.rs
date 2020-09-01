@@ -192,9 +192,10 @@ where
                 }
             }
             LocalEvent::Resize(w, h) => {
-                if let Some(client) = clients.get_mut(TargetClient::Local) {
-                    client.width = w;
-                    client.height = h;
+                let editor_loop =
+                    editor.on_event(&mut clients, TargetClient::Local, ClientEvent::Resize(w, h));
+                if editor_loop.is_quit() {
+                    break;
                 }
             }
             LocalEvent::Connection(event) => {
@@ -206,12 +207,10 @@ where
                     }
                     ConnectionEvent::Stream(stream_id) => {
                         let handle = stream_id.into();
-
-                        let result = connections.receive_events(handle, |event| {
+                        let editor_loop = connections.receive_events(handle, |event| {
                             editor.on_event(&mut clients, TargetClient::Remote(handle), event)
                         });
-
-                        match result {
+                        match editor_loop {
                             Ok(EditorLoop::QuitAll) => break,
                             Ok(EditorLoop::Quit) | Err(_) => {
                                 connections.close_connection(handle);

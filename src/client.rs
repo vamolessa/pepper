@@ -28,21 +28,20 @@ impl TargetClient {
 #[derive(Default)]
 pub struct Client {
     pub current_buffer_view_handle: Option<BufferViewHandle>,
-    pub width: u16,
+    pub viewport_size: (u16, u16),
+    pub scroll: usize,
     pub height: u16,
-    pub text_scroll: usize,
-    pub text_height: u16,
 }
 
 impl Client {
-    pub fn scroll(&mut self, editor: &Editor, has_focus: bool) {
+    pub fn update_view(&mut self, editor: &Editor, has_focus: bool) {
         let main_cursor = self
             .current_buffer_view_handle
             .and_then(|h| editor.buffer_views.get(h))
             .map(|v| v.cursors.main_cursor().clone())
             .unwrap_or(Cursor::default());
 
-        self.text_height = self.height.saturating_sub(1);
+        self.height = self.viewport_size.1.saturating_sub(1);
 
         let select_height = if has_focus {
             editor
@@ -52,13 +51,13 @@ impl Client {
             0
         };
 
-        self.text_height -= select_height;
+        self.height -= select_height;
 
         let cursor_position = main_cursor.position;
-        if cursor_position.line_index < self.text_scroll {
-            self.text_scroll = cursor_position.line_index;
-        } else if cursor_position.line_index >= self.text_scroll + self.text_height as usize {
-            self.text_scroll = cursor_position.line_index + 1 - self.text_height as usize;
+        if cursor_position.line_index < self.scroll {
+            self.scroll = cursor_position.line_index;
+        } else if cursor_position.line_index >= self.scroll + self.height as usize {
+            self.scroll = cursor_position.line_index + 1 - self.height as usize;
         }
     }
 }
