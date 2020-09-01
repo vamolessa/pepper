@@ -1,3 +1,5 @@
+use fuzzy_matcher::{skim::SkimMatcherV2, FuzzyMatcher};
+
 #[derive(Default)]
 pub struct SelectEntry {
     pub name: String,
@@ -16,6 +18,7 @@ pub struct SelectEntryCollection {
     entries: Vec<SelectEntry>,
     filtered: Vec<FilteredEntry>,
     filter: String,
+    matcher: SkimMatcherV2,
 }
 
 impl SelectEntryCollection {
@@ -51,12 +54,17 @@ impl SelectEntryCollection {
 
     fn filter(&mut self) {
         self.filtered.clear();
-        for i in 0..self.len {
-            self.filtered.push(FilteredEntry {
-                entry_index: i,
-                score: 0,
-            });
+        let filter = &self.filter[..];
+        for (i, e) in self.entries.iter().take(self.len).enumerate() {
+            if let Some(score) = self.matcher.fuzzy_match(&e.name[..], filter) {
+                self.filtered.push(FilteredEntry {
+                    entry_index: i,
+                    score,
+                });
+            }
         }
+
+        self.filtered.sort_unstable_by_key(|f| f.score);
     }
 
     pub fn filtered_entries(&self) -> impl Iterator<Item = &SelectEntry> {

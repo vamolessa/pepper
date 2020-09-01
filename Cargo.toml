@@ -24,3 +24,4 @@ argh = "0.1"
 uds_windows = "0.1"
 polling = "0.1"
 mlua = { version = "0.4", features = [ "vendored", "lua54" ] }
+fuzzy-matcher = "0.3"
