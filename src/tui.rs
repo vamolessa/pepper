@@ -389,7 +389,8 @@ fn draw_select<W>(write: &mut W, editor: &Editor) -> Result<()>
 where
     W: Write,
 {
-    let scroll = editor.selects.cursor();
+    let cursor = editor.selects.cursor();
+    let scroll = editor.selects.scroll();
     let height = editor
         .selects
         .height(editor.config.values.select_max_height.get());
@@ -400,12 +401,21 @@ where
     handle_command!(write, SetBackgroundColor(background_color))?;
     handle_command!(write, SetForegroundColor(foreground_color))?;
 
-    for entry in editor
+    for (i, entry) in editor
         .selects
         .filtered_entries()
+        .enumerate()
         .skip(scroll)
-        .take(height as _)
+        .take(height)
     {
+        if i == cursor {
+            handle_command!(write, SetForegroundColor(background_color))?;
+            handle_command!(write, SetBackgroundColor(foreground_color))?;
+        } else if i == cursor + 1 {
+            handle_command!(write, SetBackgroundColor(background_color))?;
+            handle_command!(write, SetForegroundColor(foreground_color))?;
+        }
+
         handle_command!(write, Print(&entry.name[..]))?;
         handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
         handle_command!(write, cursor::MoveToNextLine(1))?;
