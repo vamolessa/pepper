@@ -1,6 +1,6 @@
 use crate::{
     buffer_view::BufferViewHandle, connection::ConnectionWithClientHandle, cursor::Cursor,
-    select::SelectEntryCollection,
+    editor::Editor,
 };
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -37,16 +37,17 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn scroll(
-        &mut self,
-        has_focus: bool,
-        main_cursor: Cursor,
-        select_entries: &SelectEntryCollection,
-    ) {
+    pub fn scroll(&mut self, editor: &Editor, has_focus: bool) {
+        let main_cursor = self
+            .current_buffer_view_handle
+            .and_then(|h| editor.buffer_views.get(h))
+            .map(|v| v.cursors.main_cursor().clone())
+            .unwrap_or(Cursor::default());
+
         self.text_height = self.height.saturating_sub(1);
 
         let select_entry_count = if has_focus {
-            select_entries.len() as u16
+            editor.selects.len() as u16
         } else {
             0
         };
@@ -61,7 +62,7 @@ impl Client {
             self.text_scroll = cursor_position.line_index + 1 - self.text_height as usize;
         }
 
-        let selected_index = select_entries.selected_index;
+        let selected_index = editor.selects.selected_index;
         if selected_index < self.select_scroll {
             self.select_scroll = selected_index;
         } else if selected_index >= self.select_scroll + self.select_height as usize {

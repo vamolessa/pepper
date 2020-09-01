@@ -7,7 +7,6 @@ use crate::{
     client_event::{ClientEvent, Key},
     config::Config,
     connection::ConnectionWithClientHandle,
-    cursor::Cursor,
     keymap::{KeyMapCollection, MatchResult},
     mode::{Mode, ModeContext, ModeOperation},
     script::{ScriptContext, ScriptEngine},
@@ -64,6 +63,9 @@ pub struct Editor {
     pub config: Config,
     pub mode: Mode,
 
+    pub buffers: BufferCollection,
+    pub buffer_views: BufferViewCollection,
+
     pub buffered_keys: Vec<Key>,
     pub input: String,
     pub selects: SelectEntryCollection,
@@ -72,12 +74,8 @@ pub struct Editor {
     pub status_message: String,
     pub status_message_kind: StatusMessageKind,
 
-    pub buffers: BufferCollection,
-    pub buffer_views: BufferViewCollection,
-
     keymaps: KeyMapCollection,
     scripts: ScriptEngine,
-
     client_target_map: ClientTargetMap,
 }
 
@@ -86,20 +84,21 @@ impl Editor {
         Self {
             config: Config::default(),
             mode: Mode::default(),
-            keymaps: KeyMapCollection::default(),
-            buffered_keys: Vec::new(),
-            input: String::new(),
-            selects: SelectEntryCollection::default(),
-            scripts: ScriptEngine::new(),
 
             buffers: Default::default(),
             buffer_views: BufferViewCollection::default(),
 
-            focused_client: TargetClient::Local,
-            client_target_map: ClientTargetMap::default(),
+            buffered_keys: Vec::new(),
+            input: String::new(),
+            selects: SelectEntryCollection::default(),
 
+            focused_client: TargetClient::Local,
             status_message: String::new(),
             status_message_kind: StatusMessageKind::Info,
+
+            keymaps: KeyMapCollection::default(),
+            scripts: ScriptEngine::new(),
+            client_target_map: ClientTargetMap::default(),
         }
     }
 
@@ -277,14 +276,7 @@ impl Editor {
         };
 
         for c in clients.client_refs() {
-            let main_cursor = c
-                .client
-                .current_buffer_view_handle
-                .and_then(|h| self.buffer_views.get(h))
-                .map(|v| v.cursors.main_cursor().clone())
-                .unwrap_or(Cursor::default());
-            c.client
-                .scroll(self.focused_client == c.target, main_cursor, &self.selects);
+            c.client.scroll(self, self.focused_client == c.target);
         }
 
         result
