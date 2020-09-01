@@ -8,7 +8,7 @@ use crate::{
     select::SelectEntry,
 };
 
-static AUTOCOMPLETE_ENTRIES : &[SelectEntry] = &[
+static AUTOCOMPLETE_ENTRIES: &[SelectEntry] = &[
     SelectEntry::from_str("matheus"),
     SelectEntry::from_str("mate"),
     SelectEntry::from_str("material"),
@@ -21,6 +21,7 @@ pub fn on_enter(ctx: &mut ModeContext) {
 }
 
 pub fn on_exit(ctx: &mut ModeContext) {
+    ctx.selects.clear_filtered();
     ctx.selects.clear_providers();
 }
 
@@ -91,7 +92,7 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
         let current_word = &line[index..];
         ctx.selects.set_filter(current_word);
     } else {
-        ctx.selects.clear();
+        ctx.selects.clear_filtered();
     }
 
     ModeOperation::None

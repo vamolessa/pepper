@@ -102,7 +102,7 @@ impl SelectEntryCollection {
         }
     }
 
-    pub fn clear(&mut self) {
+    pub fn clear_filtered(&mut self) {
         self.cursor = 0;
         self.scroll = 0;
 
