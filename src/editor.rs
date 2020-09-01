@@ -82,11 +82,13 @@ pub struct Editor {
 impl Editor {
     pub fn new() -> Self {
         let mut selects = SelectEntryCollection::default();
+        /*
         selects.add("matheus");
         selects.add("mate");
         selects.add("material");
         selects.add("materialista");
         selects.add("materializar");
+        */
 
         Self {
             config: Config::default(),

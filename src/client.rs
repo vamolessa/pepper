@@ -51,7 +51,7 @@ impl Client {
             0
         };
 
-        self.height -= select_height;
+        self.height = self.height.saturating_sub(select_height);
 
         let cursor_position = main_cursor.position;
         if cursor_position.line_index < self.scroll {

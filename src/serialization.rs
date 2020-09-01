@@ -79,7 +79,8 @@ impl<'de> Serialize<'de> for &'de str {
     where
         D: Deserializer<'de>,
     {
-        let bytes = deserializer.read(10)?;
+        let len = u32::deserialize(deserializer)?;
+        let bytes = deserializer.read(len as _)?;
         std::str::from_utf8(bytes).map_err(|_| DeserializeError)
     }
 }
