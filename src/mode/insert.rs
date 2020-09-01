@@ -16,9 +16,7 @@ static AUTOCOMPLETE_ENTRIES: &[SelectEntryRef] = &[
     SelectEntryRef::from_str("materiale"),
 ];
 
-pub fn on_enter(_ctx: &mut ModeContext) {
-    //ctx.selects.add_provider(Box::new(AUTOCOMPLETE_ENTRIES));
-}
+pub fn on_enter(_ctx: &mut ModeContext) {}
 
 pub fn on_exit(ctx: &mut ModeContext) {
     ctx.selects.clear();
