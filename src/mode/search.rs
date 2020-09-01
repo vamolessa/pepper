@@ -8,10 +8,12 @@ pub fn on_enter(ctx: &mut ModeContext) {
     update_search(ctx);
 }
 
+pub fn on_exit(_ctx: &mut ModeContext) {}
+
 pub fn on_event(
     mut ctx: &mut ModeContext,
     keys: &mut KeysIterator,
-    from_mode: &FromMode,
+    from_mode: FromMode,
 ) -> ModeOperation {
     let operation = match poll_input(&mut ctx, keys) {
         InputPollResult::Pending => ModeOperation::None,

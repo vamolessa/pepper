@@ -81,15 +81,6 @@ pub struct Editor {
 
 impl Editor {
     pub fn new() -> Self {
-        let mut selects = SelectEntryCollection::default();
-        selects.add_provider(Box::new(vec![
-            "matheus".into(),
-            "mate".into(),
-            "material".into(),
-            "materialisa".into(),
-            "materializar".into(),
-        ]));
-
         Self {
             config: Config::default(),
             mode: Mode::default(),
@@ -99,8 +90,7 @@ impl Editor {
 
             buffered_keys: Vec::new(),
             input: String::new(),
-            //selects: SelectEntryCollection::default(),
-            selects,
+            selects: SelectEntryCollection::default(),
 
             focused_client: TargetClient::Local,
             status_message: String::new(),
@@ -266,6 +256,7 @@ impl Editor {
                         ModeOperation::Pending => return EditorLoop::Continue,
                         ModeOperation::None => (),
                         ModeOperation::Quit => {
+                            self.mode.on_exit(&mut mode_context);
                             self.mode = Mode::default();
                             self.mode.on_enter(&mut mode_context);
                             self.buffered_keys.clear();
@@ -276,7 +267,8 @@ impl Editor {
                             return EditorLoop::QuitAll;
                         }
                         ModeOperation::EnterMode(next_mode) => {
-                            self.mode = next_mode.clone();
+                            self.mode.on_exit(&mut mode_context);
+                            self.mode = next_mode;
                             self.mode.on_enter(&mut mode_context);
                         }
                     }

@@ -5,9 +5,24 @@ use crate::{
     client_event::Key,
     editor::KeysIterator,
     mode::{Mode, ModeContext, ModeOperation},
+    select::SelectEntry,
 };
 
-pub fn on_enter(_ctx: &mut ModeContext) {}
+static AUTOCOMPLETE_ENTRIES : &[SelectEntry] = &[
+    SelectEntry::from_str("matheus"),
+    SelectEntry::from_str("mate"),
+    SelectEntry::from_str("material"),
+    SelectEntry::from_str("materializar"),
+    SelectEntry::from_str("materiale"),
+];
+
+pub fn on_enter(ctx: &mut ModeContext) {
+    ctx.selects.add_provider(Box::new(AUTOCOMPLETE_ENTRIES));
+}
+
+pub fn on_exit(ctx: &mut ModeContext) {
+    ctx.selects.clear_providers();
+}
 
 pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
     let handle = match ctx.current_buffer_view_handle() {

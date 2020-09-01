@@ -17,6 +17,7 @@ fn on_event_no_buffer(_ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOp
 }
 
 pub fn on_enter(_ctx: &mut ModeContext) {}
+pub fn on_exit(_ctx: &mut ModeContext) {}
 
 pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
     let handle = match ctx.current_buffer_view_handle() {
@@ -73,8 +74,12 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
         Key::Char('s') => return ModeOperation::EnterMode(Mode::Search(FromMode::Normal)),
         Key::Char('p') => {
             if let Ok(text) = ClipboardContext::new().and_then(|mut c| c.get_contents()) {
-                ctx.buffer_views
-                    .insert_text(ctx.buffers, &ctx.config.syntaxes, handle, TextRef::Str(&text[..]));
+                ctx.buffer_views.insert_text(
+                    ctx.buffers,
+                    &ctx.config.syntaxes,
+                    handle,
+                    TextRef::Str(&text[..]),
+                );
                 unwrap_or_none!(ctx.buffer_views.get_mut(handle)).commit_edits(ctx.buffers);
             }
         }
@@ -86,8 +91,12 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
             unwrap_or_none!(ctx.buffer_views.get_mut(handle))
                 .move_to_previous_search_match(ctx.buffers, MovementKind::PositionWithAnchor);
         }
-        Key::Char('u') => ctx.buffer_views.undo(ctx.buffers, &ctx.config.syntaxes, handle),
-        Key::Char('U') => ctx.buffer_views.redo(ctx.buffers, &ctx.config.syntaxes, handle),
+        Key::Char('u') => ctx
+            .buffer_views
+            .undo(ctx.buffers, &ctx.config.syntaxes, handle),
+        Key::Char('U') => ctx
+            .buffer_views
+            .redo(ctx.buffers, &ctx.config.syntaxes, handle),
         _ => {
             keys.put_back();
             return on_event_no_buffer(ctx, keys);

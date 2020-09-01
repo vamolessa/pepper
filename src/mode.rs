@@ -79,7 +79,6 @@ impl FromMode {
     }
 }
 
-#[derive(Debug, Clone)]
 pub enum Mode {
     Normal,
     Select,
@@ -103,6 +102,16 @@ impl Mode {
         }
     }
 
+    pub fn on_exit(&mut self, context: &mut ModeContext) {
+        match self {
+            Mode::Normal => normal::on_exit(context),
+            Mode::Select => select::on_exit(context),
+            Mode::Insert => insert::on_exit(context),
+            Mode::Search(_) => search::on_exit(context),
+            Mode::Script(_) => script::on_exit(context),
+        }
+    }
+
     pub fn on_event(
         &mut self,
         context: &mut ModeContext,
@@ -112,8 +121,8 @@ impl Mode {
             Mode::Normal => normal::on_event(context, keys),
             Mode::Select => select::on_event(context, keys),
             Mode::Insert => insert::on_event(context, keys),
-            Mode::Search(from_mode) => search::on_event(context, keys, from_mode),
-            Mode::Script(from_mode) => script::on_event(context, keys, from_mode),
+            Mode::Search(from_mode) => search::on_event(context, keys, *from_mode),
+            Mode::Script(from_mode) => script::on_event(context, keys, *from_mode),
         }
     }
 }

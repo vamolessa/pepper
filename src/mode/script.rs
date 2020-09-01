@@ -8,10 +8,14 @@ pub fn on_enter(ctx: &mut ModeContext) {
     ctx.input.clear();
 }
 
+pub fn on_exit(ctx: &mut ModeContext) {
+    ctx.input.clear();
+}
+
 pub fn on_event(
     mut ctx: &mut ModeContext,
     keys: &mut KeysIterator,
-    from_mode: &FromMode,
+    from_mode: FromMode,
 ) -> ModeOperation {
     match poll_input(&mut ctx, keys) {
         InputPollResult::Pending => ModeOperation::None,
@@ -36,9 +40,7 @@ pub fn on_event(
                 keymaps: ctx.keymaps,
             };
 
-            let result = ctx.scripts.eval(context, &ctx.input[..]);
-            ctx.input.clear();
-            match result {
+            match ctx.scripts.eval(context, &ctx.input[..]) {
                 Ok(()) => ModeOperation::EnterMode(from_mode.as_mode()),
                 Err(e) => match editor_loop {
                     EditorLoop::Quit => ModeOperation::Quit,

@@ -4,26 +4,24 @@ pub trait SelectEntryProvider {
     fn provide_entries(&self) -> &[SelectEntry];
 }
 
-impl SelectEntryProvider for &[SelectEntry] {
+impl<'a> SelectEntryProvider for &[SelectEntry<'a>] {
     fn provide_entries(&self) -> &[SelectEntry] {
         self
     }
 }
 
-impl SelectEntryProvider for Vec<SelectEntry> {
-    fn provide_entries(&self) -> &[SelectEntry] {
-        &self[..]
-    }
-}
-
 #[derive(Default)]
-pub struct SelectEntry {
-    pub name: String,
+pub struct SelectEntry<'a> {
+    pub name: &'a str,
+    pub description: &'a str,
 }
 
-impl std::convert::From<&str> for SelectEntry {
-    fn from(value: &str) -> Self {
-        Self { name: value.into() }
+impl<'a> SelectEntry<'a> {
+    pub const fn from_str(name: &'a str) -> Self {
+        Self {
+            name,
+            description: "",
+        }
     }
 }
 
@@ -114,7 +112,10 @@ impl SelectEntryCollection {
 
     pub fn add_provider(&mut self, provider: Box<dyn SelectEntryProvider>) {
         self.providers.push(provider);
-        self.filter();
+    }
+
+    pub fn clear_providers(&mut self) {
+        self.providers.clear();
     }
 
     pub fn set_filter(&mut self, filter: &str) {

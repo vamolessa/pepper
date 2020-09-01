@@ -10,6 +10,7 @@ use crate::{
 };
 
 pub fn on_enter(_ctx: &mut ModeContext) {}
+pub fn on_exit(_ctx: &mut ModeContext) {}
 
 pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
     let handle = match ctx.current_buffer_view_handle() {
