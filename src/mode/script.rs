@@ -86,6 +86,7 @@ pub fn on_event(
                         *ctx.status_message_kind = StatusMessageKind::Error;
                         ctx.status_message.clear();
                         ctx.status_message.push_str(&message);
+
                         ModeOperation::EnterMode(from_mode.as_mode())
                     }
                 },

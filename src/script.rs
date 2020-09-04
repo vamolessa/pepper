@@ -99,6 +99,7 @@ pub enum ScriptValue<'lua> {
     Number(LuaNumber),
     String(ScriptStr<'lua>),
     Function(ScriptFunction<'lua>),
+    Other(LuaValue<'lua>),
 }
 impl<'lua> fmt::Display for ScriptValue<'lua> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -112,6 +113,7 @@ impl<'lua> fmt::Display for ScriptValue<'lua> {
                 Err(_) => Err(fmt::Error),
             },
             ScriptValue::Function(_) => f.write_str("function"),
+            ScriptValue::Other(_) => Ok(()),
         }
     }
 }
@@ -124,11 +126,7 @@ impl<'lua> FromLua<'lua> for ScriptValue<'lua> {
             LuaValue::Number(n) => Ok(Self::Number(n)),
             LuaValue::String(s) => Ok(Self::String(ScriptStr(s))),
             LuaValue::Function(f) => Ok(Self::Function(ScriptFunction(f))),
-            _ => Err(LuaError::FromLuaConversionError {
-                from: lua_value.type_name(),
-                to: stringify!(ScriptValue),
-                message: None,
-            }),
+            _ => Ok(Self::Other(lua_value)),
         }
     }
 }
