@@ -12,7 +12,7 @@ use crate::{
     keymap::ParseKeyMapError,
     mode::Mode,
     pattern::Pattern,
-    script::{ScriptContext, ScriptEngine, ScriptError, ScriptResult, ScriptStr},
+    script::{ScriptContext, ScriptEngine, ScriptError, ScriptResult, ScriptStr, ScriptValue},
     theme::ParseThemeError,
 };
 
@@ -142,11 +142,11 @@ mod bindings {
         Ok(())
     }
 
-    pub fn print(ctx: &mut ScriptContext, message: ScriptStr) -> ScriptResult<()> {
-        let message = message.to_str()?;
+    pub fn print(ctx: &mut ScriptContext, value: ScriptValue) -> ScriptResult<()> {
+        let message = value.to_string();
         *ctx.status_message_kind = StatusMessageKind::Info;
         ctx.status_message.clear();
-        ctx.status_message.push_str(message);
+        ctx.status_message.push_str(&message);
         Ok(())
     }
 

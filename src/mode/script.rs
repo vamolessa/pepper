@@ -73,6 +73,7 @@ pub fn on_event(
                     EditorLoop::QuitAll => ModeOperation::QuitAll,
                     EditorLoop::Continue => {
                         use std::error::Error;
+
                         let mut message = e.to_string();
                         let mut error = e.source();
                         while let Some(e) = error {
@@ -81,6 +82,10 @@ pub fn on_event(
                             message.push_str(&s);
                             error = e.source();
                         }
+
+                        *ctx.status_message_kind = StatusMessageKind::Error;
+                        ctx.status_message.clear();
+                        ctx.status_message.push_str(&message);
                         ModeOperation::EnterMode(from_mode.as_mode())
                     }
                 },
