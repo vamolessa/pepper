@@ -1,8 +1,8 @@
 use std::{error::Error, fmt, fs::File, io::Read, path::Path, sync::Arc};
 
 use mlua::prelude::{
-    FromLua, FromLuaMulti, Lua, LuaError, LuaLightUserData, LuaResult, LuaString, LuaValue,
-    ToLuaMulti,
+    FromLua, FromLuaMulti, Lua, LuaError, LuaFunction, LuaInteger, LuaLightUserData, LuaNumber,
+    LuaResult, LuaString, LuaValue, ToLuaMulti,
 };
 
 use crate::{
@@ -57,13 +57,78 @@ impl<'lua> ScriptStr<'lua> {
 impl<'lua> FromLua<'lua> for ScriptStr<'lua> {
     fn from_lua(lua_value: LuaValue<'lua>, _lua: &'lua Lua) -> LuaResult<Self> {
         if let LuaValue::String(s) = lua_value {
-            Ok(ScriptStr(s))
+            Ok(Self(s))
         } else {
             Err(LuaError::FromLuaConversionError {
                 from: lua_value.type_name(),
                 to: stringify!(ScriptStr),
                 message: None,
             })
+        }
+    }
+}
+
+pub struct ScriptFunction<'lua>(LuaFunction<'lua>);
+impl<'lua> ScriptFunction<'lua> {
+    pub fn call<A, R>(&self, args: A) -> ScriptResult<R>
+    where
+        A: ToLuaMulti<'lua>,
+        R: FromLuaMulti<'lua>,
+    {
+        self.0.call(args)
+    }
+}
+impl<'lua> FromLua<'lua> for ScriptFunction<'lua> {
+    fn from_lua(lua_value: LuaValue<'lua>, _lua: &'lua Lua) -> LuaResult<Self> {
+        if let LuaValue::Function(f) = lua_value {
+            Ok(Self(f))
+        } else {
+            Err(LuaError::FromLuaConversionError {
+                from: lua_value.type_name(),
+                to: stringify!(ScriptFunction),
+                message: None,
+            })
+        }
+    }
+}
+
+pub enum ScriptValue<'lua> {
+    Nil,
+    Boolean(bool),
+    Integer(LuaInteger),
+    Number(LuaNumber),
+    String(ScriptStr<'lua>),
+    Function(ScriptFunction<'lua>),
+}
+impl<'lua> fmt::Display for ScriptValue<'lua> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ScriptValue::Nil => f.write_str("nil"),
+            ScriptValue::Boolean(b) => b.fmt(f),
+            ScriptValue::Integer(i) => i.fmt(f),
+            ScriptValue::Number(n) => n.fmt(f),
+            ScriptValue::String(s) => match s.to_str() {
+                Ok(s) => s.fmt(f),
+                Err(_) => Err(fmt::Error),
+            },
+            ScriptValue::Function(_) => f.write_str("function"),
+        }
+    }
+}
+impl<'lua> FromLua<'lua> for ScriptValue<'lua> {
+    fn from_lua(lua_value: LuaValue<'lua>, _lua: &'lua Lua) -> LuaResult<Self> {
+        match lua_value {
+            LuaValue::Nil => Ok(Self::Nil),
+            LuaValue::Boolean(b) => Ok(Self::Boolean(b)),
+            LuaValue::Integer(i) => Ok(Self::Integer(i)),
+            LuaValue::Number(n) => Ok(Self::Number(n)),
+            LuaValue::String(s) => Ok(Self::String(ScriptStr(s))),
+            LuaValue::Function(f) => Ok(Self::Function(ScriptFunction(f))),
+            _ => Err(LuaError::FromLuaConversionError {
+                from: lua_value.type_name(),
+                to: stringify!(ScriptValue),
+                message: None,
+            }),
         }
     }
 }
@@ -142,10 +207,9 @@ impl ScriptEngine {
         Ok(())
     }
 
-    pub fn eval(&mut self, mut ctx: ScriptContext, source: &str) -> ScriptResult<()> {
+    pub fn eval(&mut self, mut ctx: ScriptContext, source: &str) -> ScriptResult<ScriptValue> {
         self.update_ctx(&mut ctx)?;
-        self.lua.load(source).set_name(source)?.exec()?;
-        Ok(())
+        self.lua.load(source).set_name(source)?.eval()
     }
 
     pub fn eval_entry_file(&mut self, mut ctx: ScriptContext, path: &Path) -> ScriptResult<()> {
