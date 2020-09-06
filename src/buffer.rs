@@ -199,28 +199,28 @@ impl BufferContent {
         Ok(())
     }
 
-    pub fn append_range_text_to_string(&self, mut range: BufferRange, text: &mut String) {
-        self.clamp_position(&mut range.from);
-        self.clamp_position(&mut range.to);
+    pub fn append_range_text_to_string(&self, range: BufferRange, text: &mut String) {
+        let from = self.clamp_position(range.from);
+        let to = self.clamp_position(range.to);
 
-        if range.from.line_index == range.to.line_index {
-            let range_text = &self.lines[range.from.line_index].text(..)
-                [range.from.column_index..range.to.column_index];
+        if from.line_index == to.line_index {
+            let range_text =
+                &self.lines[from.line_index].text(..)[from.column_index..to.column_index];
             text.push_str(range_text);
         } else {
-            text.push_str(&self.lines[range.from.line_index].text(range.from.column_index..));
-            let lines_range = (range.from.line_index + 1)..range.to.line_index;
+            text.push_str(&self.lines[from.line_index].text(from.column_index..));
+            let lines_range = (from.line_index + 1)..to.line_index;
             if lines_range.start < lines_range.end {
                 for line in &self.lines[lines_range] {
                     text.push('\n');
                     text.push_str(line.text(..));
                 }
             }
-            let to_line_index = range.from.line_index + 1;
+            let to_line_index = from.line_index + 1;
             if to_line_index < self.lines.len() {
                 let to_line = &self.lines[to_line_index];
                 text.push('\n');
-                text.push_str(&to_line.text(..range.to.column_index));
+                text.push_str(&to_line.text(..to.column_index));
             }
         }
     }
@@ -241,7 +241,7 @@ impl BufferContent {
         }
     }
 
-    fn clamp_position(&self, position: &mut BufferPosition) {
+    fn clamp_position(&self, mut position: BufferPosition) -> BufferPosition {
         let line_count = self.line_count();
         if position.line_index >= line_count {
             position.line_index = line_count - 1;
@@ -251,10 +251,12 @@ impl BufferContent {
         if position.column_index > char_count {
             position.column_index = char_count;
         }
+
+        position
     }
 
-    pub fn insert_text(&mut self, mut position: BufferPosition, text: TextRef) -> BufferRange {
-        self.clamp_position(&mut position);
+    pub fn insert_text(&mut self, position: BufferPosition, text: TextRef) -> BufferRange {
+        let position = self.clamp_position(position);
 
         let end_position = match text {
             TextRef::Char(c) => {
@@ -304,13 +306,13 @@ impl BufferContent {
         BufferRange::between(position, end_position)
     }
 
-    pub fn delete_range(&mut self, mut range: BufferRange) -> Text {
-        self.clamp_position(&mut range.from);
-        self.clamp_position(&mut range.to);
+    pub fn delete_range(&mut self, range: BufferRange) -> Text {
+        let from = self.clamp_position(range.from);
+        let to = self.clamp_position(range.to);
 
-        if range.from.line_index == range.to.line_index {
-            let line = &mut self.lines[range.from.line_index];
-            let range = range.from.column_index..range.to.column_index;
+        if from.line_index == to.line_index {
+            let line = &mut self.lines[from.line_index];
+            let range = from.column_index..to.column_index;
             let deleted_chars = line.text(range.clone()).chars();
             let text = Text::from_chars(deleted_chars);
             line.delete_range(range);
@@ -318,29 +320,41 @@ impl BufferContent {
         } else {
             let mut deleted_text = String::new();
 
-            let line = &mut self.lines[range.from.line_index];
-            let delete_range = range.from.column_index..;
+            let line = &mut self.lines[from.line_index];
+            let delete_range = from.column_index..;
             deleted_text.push_str(line.text(delete_range.clone()));
             line.delete_range(delete_range);
             drop(line);
 
-            let lines_range = (range.from.line_index + 1)..range.to.line_index;
+            let lines_range = (from.line_index + 1)..to.line_index;
             if lines_range.start < lines_range.end {
                 for line in self.lines.drain(lines_range) {
                     deleted_text.push('\n');
                     deleted_text.push_str(line.text(..));
                 }
             }
-            let to_line_index = range.from.line_index + 1;
+            let to_line_index = from.line_index + 1;
             if to_line_index < self.lines.len() {
                 let to_line = self.lines.remove(to_line_index);
-                self.lines[range.from.line_index].push_str(&to_line.text(range.to.column_index..));
+                self.lines[from.line_index].push_str(&to_line.text(to.column_index..));
                 deleted_text.push('\n');
-                deleted_text.push_str(&to_line.text(..range.to.column_index));
+                deleted_text.push_str(&to_line.text(..to.column_index));
             }
 
             Text::String(deleted_text)
         }
+    }
+
+    pub fn find_word_prefix(&self, position: BufferPosition) -> Option<&str> {
+        let position = self.clamp_position(position);
+
+        let line = self.line(position.line_index);
+        let line = line.text(..position.column_index);
+        line.char_indices()
+            .rev()
+            .take_while(|(_i, c)| c.is_alphanumeric())
+            .last()
+            .map(|(i, _c)| &line[i..])
     }
 }
 

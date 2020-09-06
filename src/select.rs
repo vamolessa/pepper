@@ -44,12 +44,12 @@ pub struct SelectEntryCollection {
     len: usize,
     entries: Vec<SelectEntry>,
 
-    cursor: usize,
+    cursor: Option<usize>,
     scroll: usize,
 }
 
 impl SelectEntryCollection {
-    pub fn cursor(&self) -> usize {
+    pub fn cursor(&self) -> Option<usize> {
         self.cursor
     }
 
@@ -66,46 +66,55 @@ impl SelectEntryCollection {
             return;
         }
 
-        let last_index = self.len - 1;
+        let end_index = self.len - 1;
+        let mut cursor = 0;
+
         if offset > 0 {
+            cursor = self.cursor.unwrap_or(end_index);
+
             let mut offset = offset as usize;
-            if self.cursor == last_index {
+            if cursor == end_index {
                 offset -= 1;
-                self.cursor = 0;
+                cursor = 0;
             }
 
-            if offset < last_index - self.cursor {
-                self.cursor += offset;
+            if offset < end_index - cursor {
+                cursor += offset;
             } else {
-                self.cursor = last_index;
+                cursor = end_index;
             }
         } else if offset < 0 {
+            cursor = self.cursor.unwrap_or(0);
+
             let mut offset = (-offset) as usize;
-            if self.cursor == 0 {
+            if cursor == 0 {
                 offset -= 1;
-                self.cursor = last_index;
+                cursor = end_index;
             }
 
-            if offset < self.cursor {
-                self.cursor -= offset;
+            if offset < cursor {
+                cursor -= offset;
             } else {
-                self.cursor = 0;
+                cursor = 0;
             }
         }
+
+        self.cursor = Some(cursor);
     }
 
     pub fn update_scroll(&mut self, max_height: usize) {
+        let cursor = self.cursor.unwrap_or(0);
         let height = self.height(max_height);
-        if self.cursor < self.scroll {
-            self.scroll = self.cursor;
-        } else if self.cursor >= self.scroll + height as usize {
-            self.scroll = self.cursor + 1 - height as usize;
+        if cursor < self.scroll {
+            self.scroll = cursor;
+        } else if cursor >= self.scroll + height as usize {
+            self.scroll = cursor + 1 - height as usize;
         }
     }
 
     pub fn clear(&mut self) {
         self.len = 0;
-        self.cursor = 0;
+        self.cursor = None;
         self.scroll = 0;
     }
 
@@ -132,7 +141,11 @@ impl SelectEntryCollection {
         }
 
         self.entries.sort_unstable_by(|a, b| b.score.cmp(&a.score));
-        self.cursor = self.cursor.min(self.len);
+        self.cursor = self.cursor.map(|c| c.min(self.len));
+    }
+
+    pub fn selected_entry(&self) -> Option<&SelectEntry> {
+        self.cursor.map(|c| &self.entries[c])
     }
 
     pub fn entries(&self) -> impl Iterator<Item = &SelectEntry> {
