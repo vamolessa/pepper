@@ -72,20 +72,12 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
                 .delete_in_selection(ctx.buffers, &ctx.config.syntaxes, handle);
         }
         Key::Ctrl('n') => {
-            //if ctx.selects.selected_entry().is_some() {
-            //ctx.buffer_views.undo(ctx.buffers, &ctx.config.syntaxes, handle);
-            //}
-
             ctx.selects.move_cursor(1);
             let entry = ctx.selects.selected_entry();
             let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
             let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
             let main_cursor = buffer_view.cursors.main_cursor();
-            let prefix_len = buffer
-                .content
-                .find_word_prefix(main_cursor.position)
-                .map(|w| w.len())
-                .unwrap_or(0);
+            let prefix_len = buffer.content.find_word_at(main_cursor.position).1.len();
             let suffix = &entry.name[prefix_len..];
 
             ctx.buffer_views.insert_text(
@@ -103,13 +95,13 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
     let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
     let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
     let main_cursor = buffer_view.cursors.main_cursor();
-    let current_word_prefix = buffer.content.find_word_prefix(main_cursor.position);
-    if let Some(prefix) = current_word_prefix {
-        let current_word_entry = SelectEntryRef::from_str(prefix);
-        ctx.selects
-            .filter(&[&current_word_entry, &AUTOCOMPLETE_ENTRIES], prefix);
-    } else {
+    let word = buffer.content.find_word_at(main_cursor.position).1;
+    if word.is_empty() {
         ctx.selects.clear();
+    } else {
+        let current_word_entry = SelectEntryRef::from_str(word);
+        ctx.selects
+            .filter(&[&current_word_entry, &AUTOCOMPLETE_ENTRIES], word);
     }
 
     ModeOperation::None

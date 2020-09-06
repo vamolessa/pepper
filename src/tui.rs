@@ -248,7 +248,7 @@ where
 
         handle_command!(write, SetForegroundColor(token_text_color))?;
 
-        for (raw_char_index, c) in line.text(..).char_indices().chain(iter::once((0, '\0'))) {
+        for (raw_char_index, c) in line.as_str().char_indices().chain(iter::once((0, '\0'))) {
             if x >= width {
                 handle_command!(write, cursor::MoveToNextLine(1))?;
 

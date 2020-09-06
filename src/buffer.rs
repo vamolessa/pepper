@@ -77,7 +77,11 @@ impl BufferLine {
         this
     }
 
-    pub fn text<R>(&self, range: R) -> &str
+    pub fn as_str(&self) -> &str {
+        &self.text[..]
+    }
+
+    pub fn slice<R>(&self, range: R) -> &str
     where
         R: RangeBounds<usize>,
     {
@@ -89,6 +93,31 @@ impl BufferLine {
         let splitted = BufferLine::new(self.text.split_off(index));
         self.sync_state();
         splitted
+    }
+
+    pub fn find_word_at<F>(&self, index: usize, mut predicate: F) -> (Range<usize>, &str)
+    where
+        F: FnMut(char) -> bool,
+    {
+        let index = self.fix_index(index);
+
+        let start_index = self.text[..index]
+            .char_indices()
+            .rev()
+            .take_while(|(_i, c)| predicate(*c))
+            .last()
+            .map(|(i, _c)| i)
+            .unwrap_or(index);
+
+        let end_index = self.text[index..]
+            .char_indices()
+            .take_while(|(_i, c)| predicate(*c))
+            .last()
+            .map(|(i, _c)| i + index + 1)
+            .unwrap_or(index);
+
+        let range = start_index..end_index;
+        (range.clone(), &self.text[range])
     }
 
     pub fn insert(&mut self, index: usize, c: char) {
@@ -193,9 +222,9 @@ impl BufferContent {
     {
         let last_index = self.lines.len() - 1;
         for line in &self.lines[..last_index] {
-            writeln!(write, "{}", line.text(..))?;
+            writeln!(write, "{}", line.as_str())?;
         }
-        write!(write, "{}", self.lines[last_index].text(..))?;
+        write!(write, "{}", self.lines[last_index].as_str())?;
         Ok(())
     }
 
@@ -204,23 +233,22 @@ impl BufferContent {
         let to = self.clamp_position(range.to);
 
         if from.line_index == to.line_index {
-            let range_text =
-                &self.lines[from.line_index].text(..)[from.column_index..to.column_index];
+            let range_text = &self.lines[from.line_index].slice(from.column_index..to.column_index);
             text.push_str(range_text);
         } else {
-            text.push_str(&self.lines[from.line_index].text(from.column_index..));
+            text.push_str(&self.lines[from.line_index].slice(from.column_index..));
             let lines_range = (from.line_index + 1)..to.line_index;
             if lines_range.start < lines_range.end {
                 for line in &self.lines[lines_range] {
                     text.push('\n');
-                    text.push_str(line.text(..));
+                    text.push_str(line.as_str());
                 }
             }
             let to_line_index = from.line_index + 1;
             if to_line_index < self.lines.len() {
                 let to_line = &self.lines[to_line_index];
                 text.push('\n');
-                text.push_str(&to_line.text(..to.column_index));
+                text.push_str(&to_line.slice(..to.column_index));
             }
         }
     }
@@ -232,7 +260,7 @@ impl BufferContent {
         }
 
         for (i, line) in self.lines.iter().enumerate() {
-            for (j, _) in line.text(..).match_indices(text) {
+            for (j, _) in line.as_str().match_indices(text) {
                 ranges.push(BufferRange::between(
                     BufferPosition::line_col(i, j),
                     BufferPosition::line_col(i, j + char_count - 1),
@@ -296,7 +324,7 @@ impl BufferContent {
                 } else {
                     let line = &mut self.lines[position.line_index + line_count];
                     let column_index = line.char_count();
-                    line.push_str(split_line.text(..));
+                    line.push_str(split_line.as_str());
 
                     BufferPosition::line_col(position.line_index + line_count, column_index)
                 }
@@ -313,7 +341,7 @@ impl BufferContent {
         if from.line_index == to.line_index {
             let line = &mut self.lines[from.line_index];
             let range = from.column_index..to.column_index;
-            let deleted_chars = line.text(range.clone()).chars();
+            let deleted_chars = line.slice(range.clone()).chars();
             let text = Text::from_chars(deleted_chars);
             line.delete_range(range);
             text
@@ -322,7 +350,7 @@ impl BufferContent {
 
             let line = &mut self.lines[from.line_index];
             let delete_range = from.column_index..;
-            deleted_text.push_str(line.text(delete_range.clone()));
+            deleted_text.push_str(line.slice(delete_range.clone()));
             line.delete_range(delete_range);
             drop(line);
 
@@ -330,31 +358,25 @@ impl BufferContent {
             if lines_range.start < lines_range.end {
                 for line in self.lines.drain(lines_range) {
                     deleted_text.push('\n');
-                    deleted_text.push_str(line.text(..));
+                    deleted_text.push_str(line.as_str());
                 }
             }
             let to_line_index = from.line_index + 1;
             if to_line_index < self.lines.len() {
                 let to_line = self.lines.remove(to_line_index);
-                self.lines[from.line_index].push_str(&to_line.text(to.column_index..));
+                self.lines[from.line_index].push_str(&to_line.slice(to.column_index..));
                 deleted_text.push('\n');
-                deleted_text.push_str(&to_line.text(..to.column_index));
+                deleted_text.push_str(&to_line.slice(..to.column_index));
             }
 
             Text::String(deleted_text)
         }
     }
 
-    pub fn find_word_prefix(&self, position: BufferPosition) -> Option<&str> {
+    pub fn find_word_at(&self, position: BufferPosition) -> (Range<usize>, &str) {
         let position = self.clamp_position(position);
-
-        let line = self.line(position.line_index);
-        let line = line.text(..position.column_index);
-        line.char_indices()
-            .rev()
-            .take_while(|(_i, c)| c.is_alphanumeric())
-            .last()
-            .map(|(i, _c)| &line[i..])
+        self.line(position.line_index)
+            .find_word_at(position.column_index, |c| c.is_alphanumeric() || c == '_')
     }
 }
 
@@ -764,7 +786,7 @@ mod tests {
     }
 
     #[test]
-    fn test_utf8_support() {
+    fn utf8_support() {
         let mut line = BufferLine::new("0ñà".into());
         assert_eq!(3, line.char_count());
         line.delete_range(1..2);
@@ -774,7 +796,27 @@ mod tests {
         line.insert(2, 'è');
         assert_eq!(5, line.char_count());
         let other_line = line.split_off(3);
-        assert_eq!("àè", line.text(1..));
-        assert_eq!("éç", other_line.text(..));
+        assert_eq!("àè", line.slice(1..));
+        assert_eq!("éç", other_line.as_str());
+    }
+
+    #[test]
+    fn buffer_line_find_word() {
+        fn is_word(c: char) -> bool {
+            c.is_alphanumeric()
+        }
+
+        let line = BufferLine::new("word".into());
+        assert_eq!((0..4, "word"), line.find_word_at(0, is_word));
+        assert_eq!((0..4, "word"), line.find_word_at(2, is_word));
+        assert_eq!((0..4, "word"), line.find_word_at(4, is_word));
+
+        let line = BufferLine::new("asd word+? asd".into());
+        assert_eq!((0..3, "asd"), line.find_word_at(3, is_word));
+        assert_eq!((4..8, "word"), line.find_word_at(4, is_word));
+        assert_eq!((4..8, "word"), line.find_word_at(6, is_word));
+        assert_eq!((4..8, "word"), line.find_word_at(8, is_word));
+        assert_eq!((9..9, ""), line.find_word_at(9, is_word));
+        assert_eq!((10..10, ""), line.find_word_at(10, is_word));
     }
 }
