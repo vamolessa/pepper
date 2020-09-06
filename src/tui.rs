@@ -408,14 +408,12 @@ where
         .skip(scroll)
         .take(height)
     {
-        if let Some(cursor) = cursor {
-            if i == cursor {
-                handle_command!(write, SetForegroundColor(background_color))?;
-                handle_command!(write, SetBackgroundColor(foreground_color))?;
-            } else if i == cursor + 1 {
-                handle_command!(write, SetBackgroundColor(background_color))?;
-                handle_command!(write, SetForegroundColor(foreground_color))?;
-            }
+        if i == cursor {
+            handle_command!(write, SetForegroundColor(background_color))?;
+            handle_command!(write, SetBackgroundColor(foreground_color))?;
+        } else if i == cursor + 1 {
+            handle_command!(write, SetBackgroundColor(background_color))?;
+            handle_command!(write, SetForegroundColor(foreground_color))?;
         }
 
         handle_command!(write, Print(&entry.name[..]))?;

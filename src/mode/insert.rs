@@ -72,30 +72,28 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
                 .delete_in_selection(ctx.buffers, &ctx.config.syntaxes, handle);
         }
         Key::Ctrl('n') => {
-            if ctx.selects.selected_entry().is_some() {
-                ctx.buffer_views
-                    .undo(ctx.buffers, &ctx.config.syntaxes, handle);
-            }
+            //if ctx.selects.selected_entry().is_some() {
+            //ctx.buffer_views.undo(ctx.buffers, &ctx.config.syntaxes, handle);
+            //}
 
             ctx.selects.move_cursor(1);
-            if let Some(entry) = ctx.selects.selected_entry() {
-                let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
-                let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
-                let main_cursor = buffer_view.cursors.main_cursor();
-                let prefix_len = buffer
-                    .content
-                    .find_word_prefix(main_cursor.position)
-                    .map(|w| w.len())
-                    .unwrap_or(0);
-                let suffix = &entry.name[prefix_len..];
+            let entry = ctx.selects.selected_entry();
+            let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
+            let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
+            let main_cursor = buffer_view.cursors.main_cursor();
+            let prefix_len = buffer
+                .content
+                .find_word_prefix(main_cursor.position)
+                .map(|w| w.len())
+                .unwrap_or(0);
+            let suffix = &entry.name[prefix_len..];
 
-                ctx.buffer_views.insert_text(
-                    ctx.buffers,
-                    &ctx.config.syntaxes,
-                    handle,
-                    TextRef::Str(suffix),
-                );
-            }
+            ctx.buffer_views.insert_text(
+                ctx.buffers,
+                &ctx.config.syntaxes,
+                handle,
+                TextRef::Str(suffix),
+            );
             return ModeOperation::None;
         }
         Key::Ctrl('p') => ctx.selects.move_cursor(-1),
