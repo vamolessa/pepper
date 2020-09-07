@@ -352,7 +352,7 @@ impl BufferContent {
         position
     }
 
-    pub fn insert_text(&mut self, position: BufferPosition, text: &str) -> BufferRange {
+    fn insert_text(&mut self, position: BufferPosition, text: &str) -> BufferRange {
         let position = self.clamp_position(position);
 
         let text_ends_with_newline = text.ends_with('\n');
@@ -402,7 +402,7 @@ impl BufferContent {
         }
     }
 
-    pub fn delete_range(&mut self, range: BufferRange) -> Text {
+    fn delete_range(&mut self, range: BufferRange) -> Text {
         let from = self.clamp_position(range.from);
         let to = self.clamp_position(range.to);
 
@@ -538,14 +538,6 @@ impl Buffer {
             range,
             text: deleted_text.as_str(),
         });
-    }
-
-    pub fn highlight_from_line(&mut self, syntaxes: &SyntaxCollection, line_index: usize) {
-        self.highlighted.highligh_from_line(
-            syntaxes.get(self.syntax_handle),
-            &self.content,
-            line_index,
-        );
     }
 
     pub fn undo<'a>(

@@ -5,7 +5,7 @@ use crate::{
     buffer_position::{BufferOffset, BufferRange},
     client::TargetClient,
     cursor::{Cursor, CursorCollection},
-    history::{EditKind, Edit},
+    history::{Edit, EditKind},
     syntax::SyntaxCollection,
 };
 
@@ -300,13 +300,9 @@ impl BufferViewCollection {
                 .find_prefix_at(cursor.position, previous_completion);
             if !prefix.is_empty() {
                 let range = BufferRange::between(prefix_position, cursor.position);
-                buffer.content.delete_range(range);
+                buffer.delete_range(syntaxes, range);
             }
-            let insert_range = buffer
-                .content
-                .insert_text(prefix_position, next_completion);
-
-            buffer.highlight_from_line(syntaxes, cursor.position.line_index);
+            let insert_range = buffer.insert_text(syntaxes, prefix_position, next_completion);
 
             let mut range = BufferRange::between(cursor.position, insert_range.to);
             if cursor.position > insert_range.to {
