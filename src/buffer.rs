@@ -355,36 +355,51 @@ impl BufferContent {
     pub fn insert_text(&mut self, position: BufferPosition, text: &str) -> BufferRange {
         let position = self.clamp_position(position);
 
-        let split_line = self.lines[position.line_index].split_off(position.column_index);
+        let text_ends_with_newline = text.ends_with('\n');
 
-        let mut line_count = 0;
-        let mut lines = text.lines();
-        if let Some(line) = lines.next() {
-            self.lines[position.line_index].push_text(&line[..]);
-        }
-        for line in lines {
-            line_count += 1;
-            self.lines.insert(
-                position.line_index + line_count,
-                BufferLine::new(line.into()),
+        if text.lines().nth(1).is_none() && !text_ends_with_newline {
+            let line = &mut self.lines[position.line_index];
+            let previous_char_count = line.char_count();
+            line.insert_text(position.column_index, text);
+            let char_count_diff = line.char_count() - previous_char_count;
+
+            let end_position = BufferPosition::line_col(
+                position.line_index,
+                position.column_index + char_count_diff,
             );
-        }
-
-        let end_position = if text.ends_with('\n') {
-            line_count += 1;
-            self.lines
-                .insert(position.line_index + line_count, split_line);
-
-            BufferPosition::line_col(position.line_index + line_count, 0)
+            BufferRange::between(position, end_position)
         } else {
-            let line = &mut self.lines[position.line_index + line_count];
-            let column_index = line.char_count();
-            line.push_text(split_line.as_str());
+            let split_line = self.lines[position.line_index].split_off(position.column_index);
 
-            BufferPosition::line_col(position.line_index + line_count, column_index)
-        };
+            let mut line_count = 0;
+            let mut lines = text.lines();
+            if let Some(line) = lines.next() {
+                self.lines[position.line_index].push_text(&line[..]);
+            }
+            for line in lines {
+                line_count += 1;
+                self.lines.insert(
+                    position.line_index + line_count,
+                    BufferLine::new(line.into()),
+                );
+            }
 
-        BufferRange::between(position, end_position)
+            let end_position = if text_ends_with_newline {
+                line_count += 1;
+                self.lines
+                    .insert(position.line_index + line_count, split_line);
+
+                BufferPosition::line_col(position.line_index + line_count, 0)
+            } else {
+                let line = &mut self.lines[position.line_index + line_count];
+                let column_index = line.char_count();
+                line.push_text(split_line.as_str());
+
+                BufferPosition::line_col(position.line_index + line_count, column_index)
+            };
+
+            BufferRange::between(position, end_position)
+        }
     }
 
     pub fn delete_range(&mut self, range: BufferRange) -> Text {
