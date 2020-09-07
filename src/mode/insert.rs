@@ -74,29 +74,23 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
         Key::Ctrl('n') => {
             ctx.selects.move_cursor(1);
             let entry = ctx.selects.selected_entry();
-            let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
-            let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
-            let main_cursor = buffer_view.cursors.main_cursor();
-            let prefix_len = buffer.content.find_word_at(main_cursor.position).1.len();
-            let suffix = &entry.name[prefix_len..];
-
-            ctx.buffer_views.insert_text(
+            ctx.buffer_views.preview_autocomplete_text(
                 ctx.buffers,
                 &ctx.config.syntaxes,
                 handle,
-                TextRef::Str(suffix),
+                &entry.name,
             );
             return ModeOperation::None;
         }
-        Key::Ctrl('p') => ctx.selects.move_cursor(-1),
+        //Key::Ctrl('p') => ctx.selects.move_cursor(-1),
         _ => (),
     }
 
     let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
     let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
     let main_cursor = buffer_view.cursors.main_cursor();
-    let word = buffer.content.find_word_at(main_cursor.position).1;
-    if word.is_empty() {
+    let (word_range, word) = buffer.content.find_word_at(main_cursor.position);
+    if word.is_empty() || main_cursor.position.column_index < word_range.to.column_index {
         ctx.selects.clear();
     } else {
         let current_word_entry = SelectEntryRef::from_str(word);

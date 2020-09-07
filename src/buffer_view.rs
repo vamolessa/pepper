@@ -2,7 +2,7 @@ use std::{fs::File, io::Read, path::Path};
 
 use crate::{
     buffer::{Buffer, BufferCollection, BufferContent, BufferHandle, TextRef},
-    buffer_position::{BufferOffset, BufferRange},
+    buffer_position::{BufferOffset, BufferPosition, BufferRange},
     client::TargetClient,
     cursor::CursorCollection,
     history::{EditKind, EditRef},
@@ -293,6 +293,49 @@ impl BufferViewCollection {
             for c in &mut view.cursors.as_mut()[..] {
                 for range in ranges.iter() {
                     c.delete(*range);
+                }
+            }
+        }
+    }
+
+    pub fn preview_autocomplete_text(
+        &mut self,
+        buffers: &mut BufferCollection,
+        syntaxes: &SyntaxCollection,
+        handle: BufferViewHandle,
+        text: &str,
+    ) {
+        let current_view = match &mut self.buffer_views[handle.0] {
+            Some(view) => view,
+            None => return,
+        };
+        let buffer = match buffers.get_mut(current_view.buffer_handle) {
+            Some(buffer) => buffer,
+            None => return,
+        };
+
+        self.temp_ranges.clear();
+        for cursor in current_view.cursors[..].iter().rev() {
+            let (word_range, _word) = buffer.content.find_word_at(cursor.position);
+            if cursor.position.column_index > word_range.from.column_index {
+                let range = BufferRange::between(word_range.from, cursor.position);
+                buffer.delete_range(syntaxes, range);
+            }
+            let insert_range = buffer.insert_text(syntaxes, word_range.from, TextRef::Str(text));
+            self.temp_ranges
+                .push(BufferRange::between(cursor.position, insert_range.to));
+        }
+
+        let current_buffer_handle = current_view.buffer_handle;
+        for view in self.buffer_views.iter_mut().flatten() {
+            if view.buffer_handle != current_buffer_handle {
+                continue;
+            }
+
+            let ranges = &self.temp_ranges;
+            for c in &mut view.cursors.as_mut()[..] {
+                for range in ranges {
+                    c.insert(*range);
                 }
             }
         }

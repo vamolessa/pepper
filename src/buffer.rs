@@ -85,11 +85,11 @@ impl BufferLine {
     where
         R: RangeBounds<usize>,
     {
-        &self.text[self.fix_range(range)]
+        &self.text[self.column_range_to_index_range(range)]
     }
 
     pub fn split_off(&mut self, index: usize) -> BufferLine {
-        let index = self.fix_index(index);
+        let index = self.column_to_index(index);
         let splitted = BufferLine::new(self.text.split_off(index));
         self.sync_state();
         splitted
@@ -99,7 +99,7 @@ impl BufferLine {
     where
         F: FnMut(char) -> bool,
     {
-        let index = self.fix_index(index);
+        let index = self.column_to_index(index);
 
         let start_index = self.text[..index]
             .char_indices()
@@ -116,12 +116,13 @@ impl BufferLine {
             .map(|(i, _c)| i + index + 1)
             .unwrap_or(index);
 
-        let range = start_index..end_index;
-        (range.clone(), &self.text[range])
+        let index_range = start_index..end_index;
+        let column_range = self.index_range_to_column_rangge(index_range.clone());
+        (column_range, &self.text[index_range])
     }
 
     pub fn insert(&mut self, index: usize, c: char) {
-        let index = self.fix_index(index);
+        let index = self.column_to_index(index);
         self.text.insert(index, c);
         self.sync_state();
     }
@@ -135,7 +136,7 @@ impl BufferLine {
     where
         R: RangeBounds<usize>,
     {
-        self.text.drain(self.fix_range(range));
+        self.text.drain(self.column_range_to_index_range(range));
         self.sync_state();
     }
 
@@ -157,7 +158,8 @@ impl BufferLine {
         }
     }
 
-    fn fix_index(&self, mut index: usize) -> usize {
+    fn column_to_index(&self, column: usize) -> usize {
+        let mut index = column;
         for &(i, len) in &self.char_extra_lengths {
             if i >= index {
                 break;
@@ -169,18 +171,49 @@ impl BufferLine {
         index
     }
 
-    fn fix_range<R>(&self, range: R) -> Range<usize>
+    fn index_to_column(&self, index: usize) -> usize {
+        let mut column = index;
+        for &(i, len) in &self.char_extra_lengths {
+            if i >= index {
+                break;
+            }
+
+            column -= len as usize;
+        }
+
+        column
+    }
+
+    fn column_range_to_index_range<R>(&self, range: R) -> Range<usize>
     where
         R: RangeBounds<usize>,
     {
         let start = match range.start_bound() {
-            Bound::Included(&i) => self.fix_index(i),
-            Bound::Excluded(&i) => self.fix_index(i + 1),
+            Bound::Included(&c) => self.column_to_index(c),
+            Bound::Excluded(&c) => self.column_to_index(c + 1),
             Bound::Unbounded => 0,
         };
         let end = match range.end_bound() {
-            Bound::Included(&i) => self.fix_index(i + 1),
-            Bound::Excluded(&i) => self.fix_index(i),
+            Bound::Included(&c) => self.column_to_index(c + 1),
+            Bound::Excluded(&c) => self.column_to_index(c),
+            Bound::Unbounded => self.text.len(),
+        };
+
+        Range { start, end }
+    }
+
+    fn index_range_to_column_rangge<R>(&self, range: R) -> Range<usize>
+    where
+        R: RangeBounds<usize>,
+    {
+        let start = match range.start_bound() {
+            Bound::Included(&i) => self.index_to_column(i),
+            Bound::Excluded(&i) => self.index_to_column(i) + 1,
+            Bound::Unbounded => 0,
+        };
+        let end = match range.end_bound() {
+            Bound::Included(&i) => self.column_to_index(i) + 1,
+            Bound::Excluded(&i) => self.column_to_index(i),
             Bound::Unbounded => self.text.len(),
         };
 
@@ -373,10 +406,16 @@ impl BufferContent {
         }
     }
 
-    pub fn find_word_at(&self, position: BufferPosition) -> (Range<usize>, &str) {
+    pub fn find_word_at(&self, position: BufferPosition) -> (BufferRange, &str) {
         let position = self.clamp_position(position);
-        self.line(position.line_index)
-            .find_word_at(position.column_index, |c| c.is_alphanumeric() || c == '_')
+        let (range, word) = self
+            .line(position.line_index)
+            .find_word_at(position.column_index, |c| c.is_alphanumeric() || c == '_');
+        let range = BufferRange::between(
+            BufferPosition::line_col(position.line_index, range.start),
+            BufferPosition::line_col(position.line_index, range.end),
+        );
+        (range, word)
     }
 }
 
