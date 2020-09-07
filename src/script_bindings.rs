@@ -6,7 +6,6 @@ use std::{
 };
 
 use crate::{
-    buffer::TextRef,
     config::ParseConfigError,
     editor::{EditorLoop, StatusMessageKind},
     keymap::ParseKeyMapError,
@@ -133,7 +132,7 @@ mod bindings {
 
     pub fn replace(ctx: &mut ScriptContext, text: ScriptStr) -> ScriptResult<()> {
         if let Some(handle) = ctx.current_buffer_view_handle() {
-            let text = TextRef::Str(text.to_str()?);
+            let text = text.to_str()?;
             ctx.buffer_views
                 .delete_in_selection(ctx.buffers, &ctx.config.syntaxes, handle);
             ctx.buffer_views

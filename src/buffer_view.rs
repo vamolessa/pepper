@@ -1,7 +1,7 @@
 use std::{fs::File, io::Read, path::Path};
 
 use crate::{
-    buffer::{Buffer, BufferCollection, BufferContent, BufferHandle, TextRef},
+    buffer::{Buffer, BufferCollection, BufferContent, BufferHandle},
     buffer_position::{BufferOffset, BufferRange},
     client::TargetClient,
     cursor::{Cursor, CursorCollection},
@@ -229,7 +229,7 @@ impl BufferViewCollection {
         buffers: &mut BufferCollection,
         syntaxes: &SyntaxCollection,
         handle: BufferViewHandle,
-        text: TextRef,
+        text: &str,
     ) {
         let current_view = match &mut self.buffer_views[handle.0] {
             Some(view) => view,
@@ -304,7 +304,7 @@ impl BufferViewCollection {
             }
             let insert_range = buffer
                 .content
-                .insert_text(prefix_position, TextRef::Str(next_completion));
+                .insert_text(prefix_position, next_completion);
 
             buffer.highlight_from_line(syntaxes, cursor.position.line_index);
 

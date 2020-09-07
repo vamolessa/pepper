@@ -1,9 +1,6 @@
 use std::ops::Range;
 
-use crate::{
-    buffer::{Text, TextRef},
-    buffer_position::BufferRange,
-};
+use crate::{buffer::Text, buffer_position::BufferRange};
 
 #[derive(Debug, Clone, Copy)]
 pub enum EditKind {
@@ -23,7 +20,7 @@ impl Edit {
         EditRef {
             kind: self.kind,
             range: self.range,
-            text: self.text.as_text_ref(),
+            text: self.text.as_str(),
         }
     }
 }
@@ -32,7 +29,7 @@ impl Edit {
 pub struct EditRef<'a> {
     pub kind: EditKind,
     pub range: BufferRange,
-    pub text: TextRef<'a>,
+    pub text: &'a str,
 }
 
 #[derive(Debug)]
@@ -57,7 +54,7 @@ impl History {
         }
     }
 
-    pub fn push_edit(&mut self, edit: Edit) {
+    pub fn add_edit(&mut self, edit: EditRef) {
         match self.state {
             HistoryState::IterIndex(index) => {
                 let edit_index = if index < self.group_ranges.len() {
@@ -74,7 +71,11 @@ impl History {
             }
         }
 
-        self.edits.push(edit);
+        self.edits.push(Edit {
+            kind: edit.kind,
+            range: edit.range,
+            text: Text::from(edit.text),
+        });
     }
 
     pub fn commit_edits(&mut self) {
@@ -132,10 +133,7 @@ impl History {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        buffer::{Text, TextRef},
-        buffer_position::BufferRange,
-    };
+    use crate::buffer_position::BufferRange;
 
     #[test]
     fn commit_edits_on_emtpy_history() {
@@ -155,15 +153,15 @@ mod tests {
     fn edit_grouping() {
         let mut history = History::new();
 
-        history.push_edit(Edit {
+        history.add_edit(EditRef {
             kind: EditKind::Insert,
             range: BufferRange::default(),
-            text: Text::Char('a'),
+            text: "a",
         });
-        history.push_edit(Edit {
+        history.add_edit(EditRef {
             kind: EditKind::Delete,
             range: BufferRange::default(),
-            text: Text::Char('b'),
+            text: "b",
         });
 
         assert_eq!(0, history.redo_edits().count());
@@ -171,20 +169,20 @@ mod tests {
         let mut edit_iter = history.undo_edits();
         let edit = edit_iter.next().unwrap();
         assert!(matches!(edit.kind, EditKind::Insert));
-        assert!(matches!(edit.text, TextRef::Char('b')));
+        assert!(matches!(edit.text, "b"));
         let edit = edit_iter.next().unwrap();
         assert!(matches!(edit.kind, EditKind::Delete));
-        assert!(matches!(edit.text, TextRef::Char('a')));
+        assert!(matches!(edit.text, "a"));
         assert!(edit_iter.next().is_none());
         drop(edit_iter);
 
         let mut edit_iter = history.redo_edits();
         let edit = edit_iter.next().unwrap();
         assert!(matches!(edit.kind, EditKind::Insert));
-        assert!(matches!(edit.text, TextRef::Char('a')));
+        assert!(matches!(edit.text, "a"));
         let edit = edit_iter.next().unwrap();
         assert!(matches!(edit.kind, EditKind::Delete));
-        assert!(matches!(edit.text, TextRef::Char('b')));
+        assert!(matches!(edit.text, "b"));
         assert!(edit_iter.next().is_none());
         drop(edit_iter);
 
@@ -193,17 +191,17 @@ mod tests {
         let mut edit_iter = history.undo_edits();
         let edit = edit_iter.next().unwrap();
         assert!(matches!(edit.kind, EditKind::Insert));
-        assert!(matches!(edit.text, TextRef::Char('b')));
+        assert!(matches!(edit.text, "b"));
         let edit = edit_iter.next().unwrap();
         assert!(matches!(edit.kind, EditKind::Delete));
-        assert!(matches!(edit.text, TextRef::Char('a')));
+        assert!(matches!(edit.text, "a"));
         assert!(edit_iter.next().is_none());
         drop(edit_iter);
 
-        history.push_edit(Edit {
+        history.add_edit(EditRef {
             kind: EditKind::Insert,
             range: BufferRange::default(),
-            text: Text::Char('c'),
+            text: "c",
         });
 
         assert_eq!(0, history.redo_edits().count());
@@ -211,7 +209,7 @@ mod tests {
         let mut edit_iter = history.undo_edits();
         let edit = edit_iter.next().unwrap();
         assert!(matches!(edit.kind, EditKind::Delete));
-        assert!(matches!(edit.text, TextRef::Char('c')));
+        assert!(matches!(edit.text, "c"));
         assert!(edit_iter.next().is_none());
         drop(edit_iter);
 

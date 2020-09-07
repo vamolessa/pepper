@@ -1,7 +1,6 @@
 use copypasta::{ClipboardContext, ClipboardProvider};
 
 use crate::{
-    buffer::TextRef,
     buffer_position::BufferOffset,
     buffer_view::MovementKind,
     client_event::Key,
@@ -78,7 +77,7 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
                     ctx.buffers,
                     &ctx.config.syntaxes,
                     handle,
-                    TextRef::Str(&text[..]),
+                    &text[..],
                 );
                 unwrap_or_none!(ctx.buffer_views.get_mut(handle)).commit_edits(ctx.buffers);
             }

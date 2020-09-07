@@ -8,111 +8,77 @@ use std::{
 
 use crate::{
     buffer_position::{BufferPosition, BufferRange},
-    history::{Edit, EditKind, EditRef, History},
+    history::{EditKind, EditRef, History},
     syntax::{self, HighlightedBuffer, SyntaxCollection, SyntaxHandle},
 };
 
-const INLINE_STRING_MAX_LEN: usize = 22;
+#[derive(Debug)]
 enum TextImpl {
-    Inline(u8, [u8; INLINE_STRING_MAX_LEN]),
-    Boxed(Box<str>),
+    Inline(u8, [u8; Text::inline_string_max_len()]),
+    String(String),
 }
 
-struct Text2(TextImpl);
+#[derive(Debug)]
+pub struct Text(TextImpl);
 
-impl Text2 {
+impl Text {
+    pub const fn inline_string_max_len() -> usize {
+        30
+    }
+
+    pub fn new() -> Self {
+        Self(TextImpl::Inline(0, [0; Self::inline_string_max_len()]))
+    }
+
     pub fn as_str(&self) -> &str {
         match &self.0 {
             TextImpl::Inline(len, buf) => unsafe {
                 let len = *len as usize;
                 std::str::from_utf8_unchecked(&buf[..len])
             },
-            TextImpl::Boxed(s) => s,
+            TextImpl::String(s) => s,
         }
     }
-}
 
-impl From<&str> for Text2 {
-    fn from(s: &str) -> Self {
-        if s.len() > INLINE_STRING_MAX_LEN {
-            Self(TextImpl::Boxed(String::from(s).into_boxed_str()))
-        } else {
-            let mut buf = [0; INLINE_STRING_MAX_LEN];
-            buf.copy_from_slice(s.as_bytes());
-            Self(TextImpl::Inline(s.len() as _, buf))
-        }
-    }
-}
-
-impl From<Box<str>> for Text2 {
-    fn from(s: Box<str>) -> Self {
-        if s.len() > INLINE_STRING_MAX_LEN {
-            Self(TextImpl::Boxed(s))
-        } else {
-            let mut buf = [0; INLINE_STRING_MAX_LEN];
-            buf.copy_from_slice(s.as_bytes());
-            Self(TextImpl::Inline(s.len() as _, buf))
-        }
-    }
-}
-
-impl From<String> for Text2 {
-    fn from(s: String) -> Self {
-        if s.len() > INLINE_STRING_MAX_LEN {
-            Self(TextImpl::Boxed(s.into_boxed_str()))
-        } else {
-            let mut buf = [0; INLINE_STRING_MAX_LEN];
-            buf.copy_from_slice(s.as_bytes());
-            Self(TextImpl::Inline(s.len() as _, buf))
-        }
-    }
-}
-
-#[derive(Debug)]
-pub enum Text {
-    Char(char),
-    String(String),
-}
-
-impl Text {
-    pub fn from_chars<I>(mut chars: I) -> Self
-    where
-        I: Iterator<Item = char>,
-    {
-        if let Some(first_char) = chars.next() {
-            if let Some(second_char) = chars.next() {
-                let mut text = String::new();
-                text.push(first_char);
-                text.push(second_char);
-                text.extend(chars);
-                Text::String(text)
-            } else {
-                Text::Char(first_char)
+    pub fn push_str(&mut self, text: &str) {
+        match &mut self.0 {
+            TextImpl::Inline(len, buf) => {
+                let previous_len = *len as usize;
+                *len += text.len() as u8;
+                if *len as usize <= Self::inline_string_max_len() {
+                    buf[previous_len..*len as usize].copy_from_slice(text.as_bytes());
+                } else {
+                    let mut s = String::with_capacity(*len as _);
+                    s.push_str(unsafe { std::str::from_utf8_unchecked(&buf[..previous_len]) });
+                    s.push_str(text);
+                    *self = Self(TextImpl::String(s));
+                }
             }
+            TextImpl::String(s) => s.push_str(text),
+        }
+    }
+}
+
+impl From<&str> for Text {
+    fn from(s: &str) -> Self {
+        if s.len() <= Self::inline_string_max_len() {
+            let mut buf = [0; Self::inline_string_max_len()];
+            buf[..s.len()].copy_from_slice(s.as_bytes());
+            Self(TextImpl::Inline(s.len() as _, buf))
         } else {
-            Text::String(String::new())
-        }
-    }
-
-    pub fn as_text_ref(&self) -> TextRef {
-        match self {
-            Text::Char(c) => TextRef::Char(*c),
-            Text::String(s) => TextRef::Str(&s[..]),
+            Self(TextImpl::String(String::from(s)))
         }
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum TextRef<'a> {
-    Char(char),
-    Str(&'a str),
-}
-
-impl<'a> TextRef<'a> {
-    pub fn to_text(&self) -> Text {
-        match self {
-            TextRef::Char(c) => Text::Char(*c),
-            TextRef::Str(s) => Text::String(s.to_string()),
+impl From<String> for Text {
+    fn from(s: String) -> Self {
+        if s.len() <= Self::inline_string_max_len() {
+            let mut buf = [0; Self::inline_string_max_len()];
+            buf[..s.len()].copy_from_slice(s.as_bytes());
+            Self(TextImpl::Inline(s.len() as _, buf))
+        } else {
+            Self(TextImpl::String(s))
         }
     }
 }
@@ -191,13 +157,13 @@ impl BufferLine {
         (column, "")
     }
 
-    pub fn insert(&mut self, column: usize, c: char) {
+    pub fn insert_text(&mut self, column: usize, text: &str) {
         let index = self.column_to_index(column);
-        self.text.insert(index, c);
+        self.text.insert_str(index, text);
         self.sync_state();
     }
 
-    pub fn push_str(&mut self, s: &str) {
+    pub fn push_text(&mut self, s: &str) {
         self.text.push_str(s);
         self.sync_state();
     }
@@ -303,7 +269,7 @@ impl BufferContent {
     pub fn from_str(text: &str) -> Self {
         let mut this = Self { lines: Vec::new() };
         this.lines.push(BufferLine::new(String::new()));
-        this.insert_text(BufferPosition::line_col(0, 0), TextRef::Str(text));
+        this.insert_text(BufferPosition::line_col(0, 0), text);
         this
     }
 
@@ -386,52 +352,36 @@ impl BufferContent {
         position
     }
 
-    pub fn insert_text(&mut self, position: BufferPosition, text: TextRef) -> BufferRange {
+    pub fn insert_text(&mut self, position: BufferPosition, text: &str) -> BufferRange {
         let position = self.clamp_position(position);
 
-        let end_position = match text {
-            TextRef::Char(c) => {
-                if c == '\n' {
-                    let split_line =
-                        self.lines[position.line_index].split_off(position.column_index);
-                    self.lines.insert(position.line_index + 1, split_line);
+        let split_line = self.lines[position.line_index].split_off(position.column_index);
 
-                    BufferPosition::line_col(position.line_index + 1, 0)
-                } else {
-                    self.lines[position.line_index].insert(position.column_index, c);
-                    BufferPosition::line_col(position.line_index, position.column_index + 1)
-                }
-            }
-            TextRef::Str(text) => {
-                let split_line = self.lines[position.line_index].split_off(position.column_index);
+        let mut line_count = 0;
+        let mut lines = text.lines();
+        if let Some(line) = lines.next() {
+            self.lines[position.line_index].push_text(&line[..]);
+        }
+        for line in lines {
+            line_count += 1;
+            self.lines.insert(
+                position.line_index + line_count,
+                BufferLine::new(line.into()),
+            );
+        }
 
-                let mut line_count = 0;
-                let mut lines = text.lines();
-                if let Some(line) = lines.next() {
-                    self.lines[position.line_index].push_str(&line[..]);
-                }
-                for line in lines {
-                    line_count += 1;
-                    self.lines.insert(
-                        position.line_index + line_count,
-                        BufferLine::new(line.into()),
-                    );
-                }
+        let end_position = if text.ends_with('\n') {
+            line_count += 1;
+            self.lines
+                .insert(position.line_index + line_count, split_line);
 
-                if text.ends_with('\n') {
-                    line_count += 1;
-                    self.lines
-                        .insert(position.line_index + line_count, split_line);
+            BufferPosition::line_col(position.line_index + line_count, 0)
+        } else {
+            let line = &mut self.lines[position.line_index + line_count];
+            let column_index = line.char_count();
+            line.push_text(split_line.as_str());
 
-                    BufferPosition::line_col(position.line_index + line_count, 0)
-                } else {
-                    let line = &mut self.lines[position.line_index + line_count];
-                    let column_index = line.char_count();
-                    line.push_str(split_line.as_str());
-
-                    BufferPosition::line_col(position.line_index + line_count, column_index)
-                }
-            }
+            BufferPosition::line_col(position.line_index + line_count, column_index)
         };
 
         BufferRange::between(position, end_position)
@@ -444,12 +394,13 @@ impl BufferContent {
         if from.line_index == to.line_index {
             let line = &mut self.lines[from.line_index];
             let range = from.column_index..to.column_index;
-            let deleted_chars = line.slice(range.clone()).chars();
-            let text = Text::from_chars(deleted_chars);
+            let deleted_text = line.slice(range.clone());
+            let text = Text::from(deleted_text);
             line.delete_range(range);
+
             text
         } else {
-            let mut deleted_text = String::new();
+            let mut deleted_text = Text::new();
 
             let line = &mut self.lines[from.line_index];
             let delete_range = from.column_index..;
@@ -460,19 +411,19 @@ impl BufferContent {
             let lines_range = (from.line_index + 1)..to.line_index;
             if lines_range.start < lines_range.end {
                 for line in self.lines.drain(lines_range) {
-                    deleted_text.push('\n');
+                    deleted_text.push_str("\n");
                     deleted_text.push_str(line.as_str());
                 }
             }
             let to_line_index = from.line_index + 1;
             if to_line_index < self.lines.len() {
                 let to_line = self.lines.remove(to_line_index);
-                self.lines[from.line_index].push_str(&to_line.slice(to.column_index..));
-                deleted_text.push('\n');
+                self.lines[from.line_index].push_text(&to_line.slice(to.column_index..));
+                deleted_text.push_str("\n");
                 deleted_text.push_str(&to_line.slice(..to.column_index));
             }
 
-            Text::String(deleted_text)
+            deleted_text
         }
     }
 
@@ -548,16 +499,16 @@ impl Buffer {
         &mut self,
         syntaxes: &SyntaxCollection,
         position: BufferPosition,
-        text: TextRef,
+        text: &str,
     ) -> BufferRange {
         self.search_ranges.clear();
         let range = self.content.insert_text(position, text);
         self.highlighted
             .on_insert(syntaxes.get(self.syntax_handle), &self.content, range);
-        self.history.push_edit(Edit {
+        self.history.add_edit(EditRef {
             kind: EditKind::Insert,
             range,
-            text: text.to_text(),
+            text,
         });
         range
     }
@@ -567,10 +518,10 @@ impl Buffer {
         let deleted_text = self.content.delete_range(range);
         self.highlighted
             .on_delete(syntaxes.get(self.syntax_handle), &self.content, range);
-        self.history.push_edit(Edit {
+        self.history.add_edit(EditRef {
             kind: EditKind::Delete,
             range,
-            text: deleted_text,
+            text: deleted_text.as_str(),
         });
     }
 
@@ -729,7 +680,22 @@ mod tests {
     #[test]
     fn text_size() {
         assert_eq!(32, std::mem::size_of::<Text>());
-        assert_eq!(24, std::mem::size_of::<Text2>());
+    }
+
+    #[test]
+    fn text_grow() {
+        const S1: &str = "123456789012345678901234567890";
+        const S2: &str = "abc";
+
+        let mut text = Text::new();
+        text.push_str(S1);
+        assert_eq!(S1, text.as_str());
+        text.push_str(S2);
+
+        let mut s = String::new();
+        s.push_str(S1);
+        s.push_str(S2);
+        assert_eq!(s, text.as_str());
     }
 
     #[test]
@@ -739,16 +705,16 @@ mod tests {
         assert_eq!(1, buffer.line_count());
         assert_eq!("", buffer_to_string(&buffer));
 
-        buffer.insert_text(BufferPosition::line_col(0, 0), TextRef::Str("hold"));
-        buffer.insert_text(BufferPosition::line_col(0, 2), TextRef::Char('r'));
-        buffer.insert_text(BufferPosition::line_col(0, 1), TextRef::Str("ello w"));
+        buffer.insert_text(BufferPosition::line_col(0, 0), "hold");
+        buffer.insert_text(BufferPosition::line_col(0, 2), "r");
+        buffer.insert_text(BufferPosition::line_col(0, 1), "ello w");
         assert_eq!(1, buffer.line_count());
         assert_eq!("hello world", buffer_to_string(&buffer));
 
-        buffer.insert_text(BufferPosition::line_col(0, 5), TextRef::Char('\n'));
+        buffer.insert_text(BufferPosition::line_col(0, 5), "\n");
         buffer.insert_text(
             BufferPosition::line_col(1, 6),
-            TextRef::Str(" appending more\nand more\nand even more\nlines"),
+            " appending more\nand more\nand even more\nlines",
         );
         assert_eq!(5, buffer.line_count());
         assert_eq!(
@@ -757,17 +723,14 @@ mod tests {
         );
 
         let mut buffer = BufferContent::from_str("this is content");
-        buffer.insert_text(
-            BufferPosition::line_col(0, 8),
-            TextRef::Str("some\nmultiline "),
-        );
+        buffer.insert_text(BufferPosition::line_col(0, 8), "some\nmultiline ");
         assert_eq!(2, buffer.line_count());
         assert_eq!("this is some\nmultiline content", buffer_to_string(&buffer));
 
         let mut buffer = BufferContent::from_str("this is content");
         buffer.insert_text(
             BufferPosition::line_col(0, 8),
-            TextRef::Str("some\nmore\nextensive\nmultiline "),
+            "some\nmore\nextensive\nmultiline ",
         );
         assert_eq!(4, buffer.line_count());
         assert_eq!(
@@ -795,10 +758,7 @@ mod tests {
             "this is the initial\ncontent of the buffer",
             buffer_to_string(&buffer)
         );
-        match deleted_text {
-            Text::String(s) => assert_eq!("", s),
-            Text::Char(_c) => unreachable!(),
-        }
+        assert_eq!("", deleted_text.as_str());
 
         let deleted_text = buffer.delete_range(BufferRange::between(
             BufferPosition::line_col(0, 11),
@@ -809,10 +769,7 @@ mod tests {
             "this is the\ncontent of the buffer",
             buffer_to_string(&buffer)
         );
-        match deleted_text {
-            Text::String(s) => assert_eq!(" initial", s),
-            Text::Char(_c) => unreachable!(),
-        }
+        assert_eq!(" initial", deleted_text.as_str());
 
         let deleted_text = buffer.delete_range(BufferRange::between(
             BufferPosition::line_col(0, 8),
@@ -820,10 +777,7 @@ mod tests {
         ));
         assert_eq!(1, buffer.line_count());
         assert_eq!("this is buffer", buffer_to_string(&buffer));
-        match deleted_text {
-            Text::String(s) => assert_eq!("the\ncontent of the ", s),
-            Text::Char(_c) => unreachable!(),
-        }
+        assert_eq!("the\ncontent of the ", deleted_text.as_str());
 
         let mut buffer = BufferContent::from_str("this\nbuffer\ncontains\nmultiple\nlines\nyes");
         assert_eq!(6, buffer.line_count());
@@ -832,10 +786,7 @@ mod tests {
             BufferPosition::line_col(4, 1),
         ));
         assert_eq!("this\nbuffines\nyes", buffer_to_string(&buffer));
-        match deleted_text {
-            Text::String(s) => assert_eq!("er\ncontains\nmultiple\nl", s),
-            Text::Char(_c) => unreachable!(),
-        }
+        assert_eq!("er\ncontains\nmultiple\nl", deleted_text.as_str());
     }
 
     #[test]
@@ -847,10 +798,7 @@ mod tests {
             BufferPosition::line_col(2, 0),
         ));
         assert_eq!("first line\nthird line", buffer_to_string(&buffer));
-        match deleted_text {
-            Text::String(s) => assert_eq!("second line\n", s),
-            Text::Char(_c) => unreachable!(),
-        }
+        assert_eq!("second line\n", deleted_text.as_str());
 
         let mut buffer = BufferContent::from_str("first line\nsecond line\nthird line");
         assert_eq!(3, buffer.line_count());
@@ -859,10 +807,7 @@ mod tests {
             BufferPosition::line_col(1, 11),
         ));
         assert_eq!("first line\n\nthird line", buffer_to_string(&buffer));
-        match deleted_text {
-            Text::String(s) => assert_eq!("second line", s),
-            Text::Char(_c) => unreachable!(),
-        }
+        assert_eq!("second line", deleted_text.as_str());
     }
 
     #[test]
@@ -923,9 +868,9 @@ mod tests {
         assert_eq!(3, line.char_count());
         line.delete_range(1..2);
         assert_eq!(2, line.char_count());
-        line.push_str("éç");
+        line.push_text("éç");
         assert_eq!(4, line.char_count());
-        line.insert(2, 'è');
+        line.insert_text(2, "è");
         assert_eq!(5, line.char_count());
         let other_line = line.split_off(3);
         assert_eq!("àè", line.slice(1..));

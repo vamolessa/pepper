@@ -1,7 +1,6 @@
 use copypasta::{ClipboardContext, ClipboardProvider};
 
 use crate::{
-    buffer::TextRef,
     buffer_position::BufferOffset,
     buffer_view::MovementKind,
     client_event::Key,
@@ -75,12 +74,8 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
             ctx.buffer_views
                 .delete_in_selection(ctx.buffers, &ctx.config.syntaxes, handle);
             if let Ok(text) = ClipboardContext::new().and_then(|mut c| c.get_contents()) {
-                ctx.buffer_views.insert_text(
-                    ctx.buffers,
-                    &ctx.config.syntaxes,
-                    handle,
-                    TextRef::Str(&text[..]),
-                );
+                ctx.buffer_views
+                    .insert_text(ctx.buffers, &ctx.config.syntaxes, handle, &text[..]);
             }
             unwrap_or_none!(ctx.buffer_views.get_mut(handle)).commit_edits(ctx.buffers);
             return ModeOperation::EnterMode(Mode::Normal);

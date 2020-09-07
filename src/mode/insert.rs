@@ -1,5 +1,4 @@
 use crate::{
-    buffer::TextRef,
     buffer_position::BufferOffset,
     buffer_view::{BufferViewHandle, MovementKind},
     client_event::Key,
@@ -35,24 +34,19 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
             unwrap_or_none!(ctx.buffer_views.get_mut(handle)).commit_edits(ctx.buffers);
             return ModeOperation::EnterMode(Mode::Normal);
         }
-        Key::Tab => ctx.buffer_views.insert_text(
-            ctx.buffers,
-            &ctx.config.syntaxes,
-            handle,
-            TextRef::Char('\t'),
-        ),
-        Key::Ctrl('m') => ctx.buffer_views.insert_text(
-            ctx.buffers,
-            &ctx.config.syntaxes,
-            handle,
-            TextRef::Char('\n'),
-        ),
-        Key::Char(c) => ctx.buffer_views.insert_text(
-            ctx.buffers,
-            &ctx.config.syntaxes,
-            handle,
-            TextRef::Char(c),
-        ),
+        Key::Tab => ctx
+            .buffer_views
+            .insert_text(ctx.buffers, &ctx.config.syntaxes, handle, "\t"),
+        Key::Ctrl('m') => {
+            ctx.buffer_views
+                .insert_text(ctx.buffers, &ctx.config.syntaxes, handle, "\n")
+        }
+        Key::Char(c) => {
+            let mut buf = [0; std::mem::size_of::<char>()];
+            let s = c.encode_utf8(&mut buf);
+            ctx.buffer_views
+                .insert_text(ctx.buffers, &ctx.config.syntaxes, handle, s);
+        }
         Key::Ctrl('h') => {
             unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
                 ctx.buffers,
