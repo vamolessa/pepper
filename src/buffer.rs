@@ -8,7 +8,7 @@ use std::{
 
 use crate::{
     buffer_position::{BufferPosition, BufferRange},
-    history::{EditKind, EditRef, History},
+    history::{EditKind, Edit, History},
     syntax::{self, HighlightedBuffer, SyntaxCollection, SyntaxHandle},
 };
 
@@ -520,7 +520,7 @@ impl Buffer {
         let range = self.content.insert_text(position, text);
         self.highlighted
             .on_insert(syntaxes.get(self.syntax_handle), &self.content, range);
-        self.history.add_edit(EditRef {
+        self.history.add_edit(Edit {
             kind: EditKind::Insert,
             range,
             text,
@@ -533,7 +533,7 @@ impl Buffer {
         let deleted_text = self.content.delete_range(range);
         self.highlighted
             .on_delete(syntaxes.get(self.syntax_handle), &self.content, range);
-        self.history.add_edit(EditRef {
+        self.history.add_edit(Edit {
             kind: EditKind::Delete,
             range,
             text: deleted_text.as_str(),
@@ -551,21 +551,21 @@ impl Buffer {
     pub fn undo<'a>(
         &'a mut self,
         syntaxes: &'a SyntaxCollection,
-    ) -> impl 'a + Iterator<Item = EditRef<'a>> {
+    ) -> impl 'a + Iterator<Item = Edit<'a>> {
         self.history_edits(syntaxes, |h| h.undo_edits())
     }
 
     pub fn redo<'a>(
         &'a mut self,
         syntaxes: &SyntaxCollection,
-    ) -> impl 'a + Iterator<Item = EditRef<'a>> {
+    ) -> impl 'a + Iterator<Item = Edit<'a>> {
         self.history_edits(syntaxes, |h| h.redo_edits())
     }
 
     fn history_edits<'a, F, I>(&'a mut self, syntaxes: &SyntaxCollection, selector: F) -> I
     where
         F: FnOnce(&'a mut History) -> I,
-        I: 'a + Clone + Iterator<Item = EditRef<'a>>,
+        I: 'a + Clone + Iterator<Item = Edit<'a>>,
     {
         self.search_ranges.clear();
         let syntax = syntaxes.get(self.syntax_handle);

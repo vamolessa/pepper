@@ -5,7 +5,7 @@ use crate::{
     buffer_position::{BufferOffset, BufferRange},
     client::TargetClient,
     cursor::{Cursor, CursorCollection},
-    history::{EditKind, EditRef},
+    history::{EditKind, Edit},
     syntax::SyntaxCollection,
 };
 
@@ -376,7 +376,7 @@ impl BufferViewCollection {
     fn apply_edits<'a>(
         &mut self,
         handle: BufferViewHandle,
-        edits: impl 'a + Iterator<Item = EditRef<'a>>,
+        edits: impl 'a + Iterator<Item = Edit<'a>>,
     ) {
         let buffer_handle = match self.get(handle) {
             Some(view) => view.buffer_handle,

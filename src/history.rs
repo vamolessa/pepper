@@ -1,46 +1,44 @@
 use std::ops::Range;
 
-use crate::{buffer::Text, buffer_position::BufferRange};
+use crate::buffer_position::BufferRange;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub enum EditKind {
     Insert,
     Delete,
 }
 
-#[derive(Debug)]
-pub struct Edit {
-    pub kind: EditKind,
-    pub range: BufferRange,
-    pub text: Text,
-}
-
-impl Edit {
-    pub fn as_edit_ref(&self) -> EditRef {
-        EditRef {
-            kind: self.kind,
-            range: self.range,
-            text: self.text.as_str(),
-        }
-    }
-}
-
 #[derive(Clone, Copy)]
-pub struct EditRef<'a> {
+pub struct Edit<'a> {
     pub kind: EditKind,
     pub range: BufferRange,
     pub text: &'a str,
 }
 
-#[derive(Debug)]
+struct EditInternal {
+    pub kind: EditKind,
+    pub buffer_range: BufferRange,
+    pub texts_range: Range<usize>,
+}
+
+impl EditInternal {
+    pub fn as_edit_ref<'a>(&self, texts: &'a str) -> Edit<'a> {
+        Edit {
+            kind: self.kind,
+            range: self.buffer_range,
+            text: &texts[self.texts_range.clone()],
+        }
+    }
+}
+
 enum HistoryState {
     IterIndex(usize),
     InsertGroup(Range<usize>),
 }
 
-#[derive(Debug)]
 pub struct History {
-    edits: Vec<Edit>,
+    texts: String,
+    edits: Vec<EditInternal>,
     group_ranges: Vec<Range<usize>>,
     state: HistoryState,
 }
@@ -48,13 +46,14 @@ pub struct History {
 impl History {
     pub fn new() -> Self {
         Self {
+            texts: String::new(),
             edits: Vec::new(),
             group_ranges: Vec::new(),
             state: HistoryState::IterIndex(0),
         }
     }
 
-    pub fn add_edit(&mut self, edit: EditRef) {
+    pub fn add_edit(&mut self, edit: Edit) {
         match self.state {
             HistoryState::IterIndex(index) => {
                 let edit_index = if index < self.group_ranges.len() {
@@ -71,10 +70,12 @@ impl History {
             }
         }
 
-        self.edits.push(Edit {
+        let texts_range_start = self.texts.len();
+        self.texts.push_str(edit.text);
+        self.edits.push(EditInternal {
             kind: edit.kind,
-            range: edit.range,
-            text: Text::from(edit.text),
+            buffer_range: edit.range,
+            texts_range: texts_range_start..self.texts.len(),
         });
     }
 
@@ -85,7 +86,7 @@ impl History {
         }
     }
 
-    pub fn undo_edits(&mut self) -> impl Clone + Iterator<Item = EditRef> {
+    pub fn undo_edits(&mut self) -> impl Clone + Iterator<Item = Edit> {
         self.commit_edits();
 
         let range = match self.state {
@@ -100,8 +101,9 @@ impl History {
             _ => unreachable!(),
         };
 
-        self.edits[range].iter().rev().map(|e| {
-            let mut edit = e.as_edit_ref();
+        let texts = &self.texts[..];
+        self.edits[range].iter().rev().map(move |e| {
+            let mut edit = e.as_edit_ref(texts);
             edit.kind = match edit.kind {
                 EditKind::Insert => EditKind::Delete,
                 EditKind::Delete => EditKind::Insert,
@@ -110,7 +112,7 @@ impl History {
         })
     }
 
-    pub fn redo_edits(&mut self) -> impl Clone + Iterator<Item = EditRef> {
+    pub fn redo_edits(&mut self) -> impl Clone + Iterator<Item = Edit> {
         self.commit_edits();
 
         let range = match self.state {
@@ -126,7 +128,8 @@ impl History {
             _ => unreachable!(),
         };
 
-        self.edits[range].iter().map(|e| e.as_edit_ref())
+        let texts = &self.texts[..];
+        self.edits[range].iter().map(move |e| e.as_edit_ref(texts))
     }
 }
 
@@ -153,12 +156,12 @@ mod tests {
     fn edit_grouping() {
         let mut history = History::new();
 
-        history.add_edit(EditRef {
+        history.add_edit(Edit {
             kind: EditKind::Insert,
             range: BufferRange::default(),
             text: "a",
         });
-        history.add_edit(EditRef {
+        history.add_edit(Edit {
             kind: EditKind::Delete,
             range: BufferRange::default(),
             text: "b",
@@ -198,7 +201,7 @@ mod tests {
         assert!(edit_iter.next().is_none());
         drop(edit_iter);
 
-        history.add_edit(EditRef {
+        history.add_edit(Edit {
             kind: EditKind::Insert,
             range: BufferRange::default(),
             text: "c",
