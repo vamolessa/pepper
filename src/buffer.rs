@@ -1,4 +1,5 @@
 use std::{
+    convert::From,
     fs::File,
     io,
     ops::{Bound, Range, RangeBounds},
@@ -10,6 +11,62 @@ use crate::{
     history::{Edit, EditKind, EditRef, History},
     syntax::{self, HighlightedBuffer, SyntaxCollection, SyntaxHandle},
 };
+
+const INLINE_STRING_MAX_LEN: usize = 22;
+enum TextImpl {
+    Inline(u8, [u8; INLINE_STRING_MAX_LEN]),
+    Boxed(Box<str>),
+}
+
+struct Text2(TextImpl);
+
+impl Text2 {
+    pub fn as_str(&self) -> &str {
+        match &self.0 {
+            TextImpl::Inline(len, buf) => unsafe {
+                let len = *len as usize;
+                std::str::from_utf8_unchecked(&buf[..len])
+            },
+            TextImpl::Boxed(s) => s,
+        }
+    }
+}
+
+impl From<&str> for Text2 {
+    fn from(s: &str) -> Self {
+        if s.len() > INLINE_STRING_MAX_LEN {
+            Self(TextImpl::Boxed(String::from(s).into_boxed_str()))
+        } else {
+            let mut buf = [0; INLINE_STRING_MAX_LEN];
+            buf.copy_from_slice(s.as_bytes());
+            Self(TextImpl::Inline(s.len() as _, buf))
+        }
+    }
+}
+
+impl From<Box<str>> for Text2 {
+    fn from(s: Box<str>) -> Self {
+        if s.len() > INLINE_STRING_MAX_LEN {
+            Self(TextImpl::Boxed(s))
+        } else {
+            let mut buf = [0; INLINE_STRING_MAX_LEN];
+            buf.copy_from_slice(s.as_bytes());
+            Self(TextImpl::Inline(s.len() as _, buf))
+        }
+    }
+}
+
+impl From<String> for Text2 {
+    fn from(s: String) -> Self {
+        if s.len() > INLINE_STRING_MAX_LEN {
+            Self(TextImpl::Boxed(s.into_boxed_str()))
+        } else {
+            let mut buf = [0; INLINE_STRING_MAX_LEN];
+            buf.copy_from_slice(s.as_bytes());
+            Self(TextImpl::Inline(s.len() as _, buf))
+        }
+    }
+}
 
 #[derive(Debug)]
 pub enum Text {
@@ -667,6 +724,12 @@ mod tests {
         let mut buf = Vec::new();
         buffer.write(&mut buf).unwrap();
         String::from_utf8(buf).unwrap()
+    }
+
+    #[test]
+    fn text_size() {
+        assert_eq!(32, std::mem::size_of::<Text>());
+        assert_eq!(24, std::mem::size_of::<Text2>());
     }
 
     #[test]
