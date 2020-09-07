@@ -88,18 +88,18 @@ impl BufferLine {
         &self.text[self.column_range_to_index_range(range)]
     }
 
-    pub fn split_off(&mut self, index: usize) -> BufferLine {
-        let index = self.column_to_index(index);
+    pub fn split_off(&mut self, column: usize) -> BufferLine {
+        let index = self.column_to_index(column);
         let splitted = BufferLine::new(self.text.split_off(index));
         self.sync_state();
         splitted
     }
 
-    pub fn find_word_at<F>(&self, index: usize, mut predicate: F) -> (Range<usize>, &str)
+    pub fn find_word_at<F>(&self, column: usize, mut predicate: F) -> (Range<usize>, &str)
     where
         F: FnMut(char) -> bool,
     {
-        let index = self.column_to_index(index);
+        let index = self.column_to_index(column);
 
         let start_index = self.text[..index]
             .char_indices()
@@ -121,8 +121,21 @@ impl BufferLine {
         (column_range, &self.text[index_range])
     }
 
-    pub fn insert(&mut self, index: usize, c: char) {
-        let index = self.column_to_index(index);
+    pub fn find_prefix_at<'a>(&'a self, column: usize, text: &str) -> (Range<usize>, &'a str) {
+        let line = self.slice(..column);
+        for (i, _c) in line.char_indices() {
+            let slice = &line[i..];
+            if text.starts_with(slice) {
+                let from = self.index_to_column(i);
+                return (from..column, slice);
+            }
+        }
+
+        (column..column, "")
+    }
+
+    pub fn insert(&mut self, column: usize, c: char) {
+        let index = self.column_to_index(column);
         self.text.insert(index, c);
         self.sync_state();
     }
@@ -857,5 +870,13 @@ mod tests {
         assert_eq!((4..8, "word"), line.find_word_at(8, is_word));
         assert_eq!((9..9, ""), line.find_word_at(9, is_word));
         assert_eq!((10..10, ""), line.find_word_at(10, is_word));
+    }
+
+    #[test]
+    fn buffer_line_find_prefix() {
+        let line = BufferLine::new("long line".into());
+        assert_eq!((5..9, "line"), line.find_prefix_at(9, "lineart"));
+        assert_eq!((0..4, "long"), line.find_prefix_at(4, "longest"));
+        assert_eq!((0..2, "lo"), line.find_prefix_at(2, "low"));
     }
 }
