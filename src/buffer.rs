@@ -517,6 +517,14 @@ impl Buffer {
         });
     }
 
+    pub fn highlight_from_line(&mut self, syntaxes: &SyntaxCollection, line_index: usize) {
+        self.highlighted.highligh_from_line(
+            syntaxes.get(self.syntax_handle),
+            &self.content,
+            line_index,
+        );
+    }
+
     pub fn undo<'a>(
         &'a mut self,
         syntaxes: &'a SyntaxCollection,

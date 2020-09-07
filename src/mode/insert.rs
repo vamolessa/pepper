@@ -1,7 +1,7 @@
 use crate::{
     buffer::TextRef,
     buffer_position::BufferOffset,
-    buffer_view::MovementKind,
+    buffer_view::{BufferViewHandle, MovementKind},
     client_event::Key,
     editor::KeysIterator,
     mode::{Mode, ModeContext, ModeOperation},
@@ -72,20 +72,13 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
                 .delete_in_selection(ctx.buffers, &ctx.config.syntaxes, handle);
         }
         Key::Ctrl('n') => {
-            let previous_cursor = ctx.selects.cursor();
-            ctx.selects.move_cursor(1);
-            let previous_entry = ctx.selects.entry(previous_cursor);
-            let next_entry = ctx.selects.entry(ctx.selects.cursor());
-            ctx.buffer_views.preview_autocomplete_text(
-                ctx.buffers,
-                &ctx.config.syntaxes,
-                handle,
-                &previous_entry.name,
-                &next_entry.name,
-            );
+            preview_completion(ctx, handle, 1);
             return ModeOperation::None;
         }
-        //Key::Ctrl('p') => ctx.selects.move_cursor(-1),
+        Key::Ctrl('p') => {
+            preview_completion(ctx, handle, -1);
+            return ModeOperation::None;
+        }
         _ => (),
     }
 
@@ -102,4 +95,18 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
     }
 
     ModeOperation::None
+}
+
+fn preview_completion(ctx: &mut ModeContext, handle: BufferViewHandle, cursor_movement: isize) {
+    let previous_cursor = ctx.selects.cursor();
+    ctx.selects.move_cursor(cursor_movement);
+    let previous_entry = ctx.selects.entry(previous_cursor);
+    let next_entry = ctx.selects.entry(ctx.selects.cursor());
+    ctx.buffer_views.preview_completion(
+        ctx.buffers,
+        &ctx.config.syntaxes,
+        handle,
+        &previous_entry.name,
+        &next_entry.name,
+    );
 }

@@ -276,13 +276,13 @@ impl BufferViewCollection {
         self.fix_buffer_cursors(current_buffer_handle, |cursor, range| cursor.delete(range));
     }
 
-    pub fn preview_autocomplete_text(
+    pub fn preview_completion(
         &mut self,
         buffers: &mut BufferCollection,
         syntaxes: &SyntaxCollection,
         handle: BufferViewHandle,
-        previous_text: &str,
-        next_text: &str,
+        previous_completion: &str,
+        next_completion: &str,
     ) {
         let current_view = match &mut self.buffer_views[handle.0] {
             Some(view) => view,
@@ -297,13 +297,16 @@ impl BufferViewCollection {
         for cursor in current_view.cursors[..].iter().rev() {
             let (prefix_position, prefix) = buffer
                 .content
-                .find_prefix_at(cursor.position, previous_text);
+                .find_prefix_at(cursor.position, previous_completion);
             if !prefix.is_empty() {
                 let range = BufferRange::between(prefix_position, cursor.position);
-                buffer.delete_range(syntaxes, range);
+                buffer.content.delete_range(range);
             }
-            let insert_range =
-                buffer.insert_text(syntaxes, prefix_position, TextRef::Str(next_text));
+            let insert_range = buffer
+                .content
+                .insert_text(prefix_position, TextRef::Str(next_completion));
+
+            buffer.highlight_from_line(syntaxes, cursor.position.line_index);
 
             let mut range = BufferRange::between(cursor.position, insert_range.to);
             if cursor.position > insert_range.to {

@@ -247,6 +247,16 @@ impl HighlightedBuffer {
         }
     }
 
+    pub fn highligh_from_line(
+        &mut self,
+        syntax: &Syntax,
+        buffer: &BufferContent,
+        line_index: usize,
+    ) {
+        let previous_line_kind = self.previous_line_kind_at(line_index);
+        self.fix_highlight_from(syntax, buffer, previous_line_kind, line_index);
+    }
+
     pub fn on_insert(&mut self, syntax: &Syntax, buffer: &BufferContent, range: BufferRange) {
         let mut previous_line_kind = self.previous_line_kind_at(range.from.line_index);
 
