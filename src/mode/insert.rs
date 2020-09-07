@@ -72,13 +72,16 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
                 .delete_in_selection(ctx.buffers, &ctx.config.syntaxes, handle);
         }
         Key::Ctrl('n') => {
+            let previous_cursor = ctx.selects.cursor();
             ctx.selects.move_cursor(1);
-            let entry = ctx.selects.selected_entry();
+            let previous_entry = ctx.selects.entry(previous_cursor);
+            let next_entry = ctx.selects.entry(ctx.selects.cursor());
             ctx.buffer_views.preview_autocomplete_text(
                 ctx.buffers,
                 &ctx.config.syntaxes,
                 handle,
-                &entry.name,
+                &previous_entry.name,
+                &next_entry.name,
             );
             return ModeOperation::None;
         }

@@ -2,9 +2,9 @@ use std::{fs::File, io::Read, path::Path};
 
 use crate::{
     buffer::{Buffer, BufferCollection, BufferContent, BufferHandle, TextRef},
-    buffer_position::{BufferOffset, BufferPosition, BufferRange},
+    buffer_position::{BufferOffset, BufferRange},
     client::TargetClient,
-    cursor::CursorCollection,
+    cursor::{Cursor, CursorCollection},
     history::{EditKind, EditRef},
     syntax::SyntaxCollection,
 };
@@ -173,7 +173,7 @@ pub struct BufferViewHandle(usize);
 #[derive(Default)]
 pub struct BufferViewCollection {
     buffer_views: Vec<Option<BufferView>>,
-    temp_ranges: Vec<BufferRange>,
+    fix_cursor_ranges: Vec<BufferRange>,
 }
 
 impl BufferViewCollection {
@@ -240,25 +240,14 @@ impl BufferViewCollection {
             None => return,
         };
 
-        self.temp_ranges.clear();
+        self.fix_cursor_ranges.clear();
         for cursor in current_view.cursors[..].iter().rev() {
             let range = buffer.insert_text(syntaxes, cursor.position, text);
-            self.temp_ranges.push(range);
+            self.fix_cursor_ranges.push(range);
         }
 
         let current_buffer_handle = current_view.buffer_handle;
-        for view in self.buffer_views.iter_mut().flatten() {
-            if view.buffer_handle != current_buffer_handle {
-                continue;
-            }
-
-            let ranges = &self.temp_ranges;
-            for c in &mut view.cursors.as_mut()[..] {
-                for range in ranges {
-                    c.insert(*range);
-                }
-            }
-        }
+        self.fix_buffer_cursors(current_buffer_handle, |cursor, range| cursor.insert(range));
     }
 
     pub fn delete_in_selection(
@@ -276,26 +265,15 @@ impl BufferViewCollection {
             None => return,
         };
 
-        self.temp_ranges.clear();
+        self.fix_cursor_ranges.clear();
         for cursor in current_view.cursors[..].iter().rev() {
             let range = cursor.range();
             buffer.delete_range(syntaxes, range);
-            self.temp_ranges.push(range);
+            self.fix_cursor_ranges.push(range);
         }
 
         let current_buffer_handle = current_view.buffer_handle;
-        for view in self.buffer_views.iter_mut().flatten() {
-            if view.buffer_handle != current_buffer_handle {
-                continue;
-            }
-
-            let ranges = &self.temp_ranges;
-            for c in &mut view.cursors.as_mut()[..] {
-                for range in ranges.iter() {
-                    c.delete(*range);
-                }
-            }
-        }
+        self.fix_buffer_cursors(current_buffer_handle, |cursor, range| cursor.delete(range));
     }
 
     pub fn preview_autocomplete_text(
@@ -303,7 +281,8 @@ impl BufferViewCollection {
         buffers: &mut BufferCollection,
         syntaxes: &SyntaxCollection,
         handle: BufferViewHandle,
-        text: &str,
+        previous_text: &str,
+        next_text: &str,
     ) {
         let current_view = match &mut self.buffer_views[handle.0] {
             Some(view) => view,
@@ -314,28 +293,50 @@ impl BufferViewCollection {
             None => return,
         };
 
-        self.temp_ranges.clear();
+        self.fix_cursor_ranges.clear();
         for cursor in current_view.cursors[..].iter().rev() {
-            let (word_range, _word) = buffer.content.find_word_at(cursor.position);
-            if cursor.position.column_index > word_range.from.column_index {
-                let range = BufferRange::between(word_range.from, cursor.position);
+            let (prefix_position, prefix) = buffer
+                .content
+                .find_prefix_at(cursor.position, previous_text);
+            if !prefix.is_empty() {
+                let range = BufferRange::between(prefix_position, cursor.position);
                 buffer.delete_range(syntaxes, range);
             }
-            let insert_range = buffer.insert_text(syntaxes, word_range.from, TextRef::Str(text));
-            self.temp_ranges
-                .push(BufferRange::between(cursor.position, insert_range.to));
+            let insert_range =
+                buffer.insert_text(syntaxes, prefix_position, TextRef::Str(next_text));
+
+            let mut range = BufferRange::between(cursor.position, insert_range.to);
+            if cursor.position > insert_range.to {
+                std::mem::swap(&mut range.from, &mut range.to);
+            }
+            self.fix_cursor_ranges.push(range);
         }
 
         let current_buffer_handle = current_view.buffer_handle;
+        self.fix_buffer_cursors(current_buffer_handle, |cursor, mut range| {
+            if range.from <= range.to {
+                cursor.insert(range);
+            } else {
+                std::mem::swap(&mut range.from, &mut range.to);
+                cursor.delete(range);
+            }
+        });
+    }
+
+    fn fix_buffer_cursors(
+        &mut self,
+        buffer_handle: BufferHandle,
+        op: fn(&mut Cursor, BufferRange),
+    ) {
         for view in self.buffer_views.iter_mut().flatten() {
-            if view.buffer_handle != current_buffer_handle {
+            if view.buffer_handle != buffer_handle {
                 continue;
             }
 
-            let ranges = &self.temp_ranges;
+            let ranges = &self.fix_cursor_ranges;
             for c in &mut view.cursors.as_mut()[..] {
-                for range in ranges {
-                    c.insert(*range);
+                for range in ranges.iter() {
+                    op(c, *range);
                 }
             }
         }
@@ -380,13 +381,13 @@ impl BufferViewCollection {
         };
 
         for edit in edits {
+            let view = match self.get_mut(handle) {
+                Some(view) => view,
+                None => continue,
+            };
+
             match edit.kind {
                 EditKind::Insert => {
-                    let view = match self.get_mut(handle) {
-                        Some(view) => view,
-                        None => continue,
-                    };
-
                     for c in &mut view.cursors.as_mut()[..] {
                         c.anchor = edit.range.to;
                         c.position = edit.range.to;
@@ -400,11 +401,6 @@ impl BufferViewCollection {
                     }
                 }
                 EditKind::Delete => {
-                    let view = match self.get_mut(handle) {
-                        Some(view) => view,
-                        None => continue,
-                    };
-
                     for c in &mut view.cursors.as_mut()[..] {
                         c.anchor = edit.range.from;
                         c.position = edit.range.from;

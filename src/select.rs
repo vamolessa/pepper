@@ -136,8 +136,8 @@ impl SelectEntryCollection {
         self.cursor = self.cursor.min(self.len);
     }
 
-    pub fn selected_entry(&self) -> &SelectEntry {
-        &self.entries[self.cursor]
+    pub fn entry(&self, index: usize) -> &SelectEntry {
+        &self.entries[index]
     }
 
     pub fn entries(&self) -> impl Iterator<Item = &SelectEntry> {
