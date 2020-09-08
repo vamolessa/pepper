@@ -355,9 +355,7 @@ impl BufferContent {
     fn insert_text(&mut self, position: BufferPosition, text: &str) -> BufferRange {
         let position = self.clamp_position(position);
 
-        let text_ends_with_newline = text.ends_with('\n');
-
-        if text.lines().nth(1).is_none() && !text_ends_with_newline {
+        if let None = text.find('\n') {
             let line = &mut self.lines[position.line_index];
             let previous_char_count = line.char_count();
             line.insert_text(position.column_index, text);
@@ -384,7 +382,7 @@ impl BufferContent {
                 );
             }
 
-            let end_position = if text_ends_with_newline {
+            let end_position = if text.ends_with('\n') {
                 line_count += 1;
                 self.lines
                     .insert(position.line_index + line_count, split_line);
