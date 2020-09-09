@@ -386,10 +386,10 @@ impl BufferViewCollection {
                 self.fix_cursor_ranges
                     .resize(cursor_index + 1, BufferRange::default());
             }
-            self.fix_cursor_ranges[cursor_index] = edit.range;
 
             match edit.kind {
                 EditKind::Insert => {
+                    self.fix_cursor_ranges[cursor_index].from = edit.range.to;
                     for (i, view) in self.buffer_views.iter_mut().flatten().enumerate() {
                         if i != handle.0 && view.buffer_handle == buffer_handle {
                             for c in &mut view.cursors.mut_guard()[..] {
@@ -399,7 +399,7 @@ impl BufferViewCollection {
                     }
                 }
                 EditKind::Delete => {
-                    self.fix_cursor_ranges[cursor_index].to = edit.range.from;
+                    self.fix_cursor_ranges[cursor_index].from = edit.range.from;
                     for (i, view) in self.buffer_views.iter_mut().flatten().enumerate() {
                         if i != handle.0 && view.buffer_handle == buffer_handle {
                             for c in &mut view.cursors.mut_guard()[..] {
@@ -412,14 +412,16 @@ impl BufferViewCollection {
         }
 
         if let Some(view) = self.buffer_views[handle.0].as_mut() {
-            let mut cursors = view.cursors.mut_guard();
-            cursors.clear();
+            if !self.fix_cursor_ranges.is_empty() {
+                let mut cursors = view.cursors.mut_guard();
+                cursors.clear();
 
-            for range in &self.fix_cursor_ranges {
-                cursors.add_cursor(Cursor {
-                    anchor: range.from,
-                    position: range.to,
-                });
+                for range in &self.fix_cursor_ranges {
+                    cursors.add_cursor(Cursor {
+                        anchor: range.from,
+                        position: range.from,
+                    });
+                }
             }
         }
     }

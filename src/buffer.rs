@@ -523,7 +523,7 @@ impl Buffer {
             kind: EditKind::Insert,
             range,
             text,
-            cursor_index: cursor_index.max(u8::MAX as _) as _,
+            cursor_index: cursor_index.min(u8::MAX as _) as _,
         });
         range
     }
@@ -542,7 +542,7 @@ impl Buffer {
             kind: EditKind::Delete,
             range,
             text: deleted_text.as_str(),
-            cursor_index: cursor_index.max(u8::MAX as _) as _,
+            cursor_index: cursor_index.min(u8::MAX as _) as _,
         });
     }
 
