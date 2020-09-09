@@ -7,6 +7,7 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 # todo
 - undo/redo
 	- ~~store/apply edit diffs~~
+	- ~~compress history when adding edits~~
 	- limit history size??
 - ~~modes~~
 	- ~~basic implementation~~
@@ -32,7 +33,7 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- ~~custom bindings expand to builtin bindings~~
 	- ~~custom bindings take precedence~~
 	- ~~define custom bindings in config file~~
-- script (command) mode
+- ~~script (command) mode~~
 	- ~~execute script line and preserve context~~
 	- ~~builtin bindings~~
 - ~~syntax highlighting~~
@@ -58,7 +59,7 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- ~~buffer position~~
 	- buffered keys
 - ~~external commands~~
-	- ~~spawn cli commands that execute on the server~~
+	- ~~spawn commands (processes) that execute on the server~~
 - ~~cli~~
 	- ~~custom session name~~
 	- ~~config path~~
