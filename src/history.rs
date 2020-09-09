@@ -76,11 +76,16 @@ impl History {
 
             match (last_edit.kind, edit.kind) {
                 (EditKind::Insert, EditKind::Insert) => {
+                    // -- insert --
+                    //             -- insert --
                     if edit.range.from == last_edit.buffer_range.to {
                         append_edit = false;
                         last_edit.buffer_range.to = edit.range.to;
                         self.texts.push_str(edit.text);
                         last_edit.texts_range.end = self.texts.len();
+
+                    //             -- insert --
+                    // -- insert --
                     } else if edit.range.from == last_edit.buffer_range.from {
                         append_edit = false;
                         last_edit.buffer_range.to = last_edit.buffer_range.to.insert(edit.range);
@@ -90,11 +95,16 @@ impl History {
                     }
                 }
                 (EditKind::Delete, EditKind::Delete) => {
+                    // -- delete --
+                    //             -- delete --
                     if edit.range.from == last_edit.buffer_range.from {
                         append_edit = false;
                         last_edit.buffer_range.to = last_edit.buffer_range.to.insert(edit.range);
                         self.texts.push_str(edit.text);
                         last_edit.texts_range.end = self.texts.len();
+
+                    //             -- delete --
+                    // -- delete --
                     } else if edit.range.to == last_edit.buffer_range.from {
                         append_edit = false;
                         last_edit.buffer_range.from = edit.range.from;
@@ -105,7 +115,7 @@ impl History {
                 }
                 (EditKind::Insert, EditKind::Delete) => {
                     // ------ insert --
-                    //     -- delete --
+                    // -- delete --
                     if last_edit.buffer_range.from == edit.range.from
                         && edit.range.to <= last_edit.buffer_range.to
                     {
@@ -118,6 +128,7 @@ impl History {
                             self.texts.drain(deleted_text_range);
                             last_edit.texts_range.end = self.texts.len();
                         }
+
                     // ------ insert --
                     //     -- delete --
                     } else if edit.range.to == last_edit.buffer_range.to
@@ -131,14 +142,15 @@ impl History {
                             self.texts.truncate(deleted_text_range.start);
                             last_edit.texts_range.end = self.texts.len();
                         }
+
                     // -- insert --
                     // -- delete ------
                     } else if edit.range.from == last_edit.buffer_range.from
                         && last_edit.buffer_range.to <= edit.range.to
                     {
-                        let deleted_text_start =
+                        let inserted_text_end =
                             last_edit.texts_range.end - last_edit.texts_range.start;
-                        if &edit.text[..deleted_text_start]
+                        if &edit.text[..inserted_text_end]
                             == &self.texts[last_edit.texts_range.clone()]
                         {
                             append_edit = false;
@@ -146,15 +158,28 @@ impl History {
                             last_edit.buffer_range.to =
                                 edit.range.to.delete(last_edit.buffer_range);
                             self.texts.truncate(last_edit.texts_range.start);
-                            self.texts.push_str(&edit.text[deleted_text_start..]);
+                            self.texts.push_str(&edit.text[inserted_text_end..]);
                             last_edit.texts_range.end = self.texts.len();
                         }
-                    // -- insert --
-                    // -- delete ------
+
+                    //     -- insert --
+                    // ------ delete --
                     } else if last_edit.buffer_range.to == edit.range.to
                         && edit.range.from <= last_edit.buffer_range.from
                     {
-                        //
+                        let inserted_text_start =
+                            last_edit.texts_range.end - last_edit.texts_range.start;
+                        if &edit.text[inserted_text_start..]
+                            == &self.texts[last_edit.texts_range.clone()]
+                        {
+                            append_edit = false;
+                            last_edit.kind = EditKind::Delete;
+                            last_edit.buffer_range.to = last_edit.buffer_range.from;
+                            last_edit.buffer_range.from = edit.range.from;
+                            self.texts.truncate(last_edit.texts_range.start);
+                            self.texts.push_str(&edit.text[..inserted_text_start]);
+                            last_edit.texts_range.end = self.texts.len();
+                        }
                     }
                 }
                 _ => (),
@@ -549,5 +574,35 @@ mod tests {
 
         //     -- insert --
         // ------ delete --
+        let mut history = History::new();
+        history.add_edit(Edit {
+            kind: EditKind::Insert,
+            range: BufferRange::between(
+                BufferPosition::line_col(0, 3),
+                BufferPosition::line_col(0, 6),
+            ),
+            text: "def",
+        });
+        history.add_edit(Edit {
+            kind: EditKind::Delete,
+            range: BufferRange::between(
+                BufferPosition::line_col(0, 0),
+                BufferPosition::line_col(0, 6),
+            ),
+            text: "abcdef",
+        });
+
+        let mut edit_iter = history.undo_edits();
+        let edit = edit_iter.next().unwrap();
+        assert_eq!(EditKind::Insert, edit.kind);
+        assert_eq!("abc", edit.text);
+        assert_eq!(
+            BufferRange::between(
+                BufferPosition::line_col(0, 0),
+                BufferPosition::line_col(0, 3)
+            ),
+            edit.range
+        );
+        assert!(edit_iter.next().is_none());
     }
 }
