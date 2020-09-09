@@ -104,6 +104,8 @@ impl History {
                     }
                 }
                 (EditKind::Insert, EditKind::Delete) => {
+                    // ------ insert --
+                    //     -- delete --
                     if last_edit.buffer_range.from == edit.range.from
                         && edit.range.to <= last_edit.buffer_range.to
                     {
@@ -116,6 +118,8 @@ impl History {
                             self.texts.drain(deleted_text_range);
                             last_edit.texts_range.end = self.texts.len();
                         }
+                    // ------ insert --
+                    //     -- delete --
                     } else if edit.range.to == last_edit.buffer_range.to
                         && last_edit.buffer_range.from <= edit.range.from
                     {
@@ -127,10 +131,26 @@ impl History {
                             self.texts.truncate(deleted_text_range.start);
                             last_edit.texts_range.end = self.texts.len();
                         }
+                    // -- insert --
+                    // -- delete ------
                     } else if edit.range.from == last_edit.buffer_range.from
                         && last_edit.buffer_range.to <= edit.range.to
                     {
-                        //
+                        let deleted_text_start =
+                            last_edit.texts_range.end - last_edit.texts_range.start;
+                        if &edit.text[..deleted_text_start]
+                            == &self.texts[last_edit.texts_range.clone()]
+                        {
+                            append_edit = false;
+                            last_edit.kind = EditKind::Delete;
+                            last_edit.buffer_range.to =
+                                edit.range.to.delete(last_edit.buffer_range);
+                            self.texts.truncate(last_edit.texts_range.start);
+                            self.texts.push_str(&edit.text[deleted_text_start..]);
+                            last_edit.texts_range.end = self.texts.len();
+                        }
+                    // -- insert --
+                    // -- delete ------
                     } else if last_edit.buffer_range.to == edit.range.to
                         && edit.range.from <= last_edit.buffer_range.from
                     {
@@ -426,7 +446,10 @@ mod tests {
         assert!(edit_iter.next().is_none());
     }
 
+    #[test]
     fn compress_insert_delete_edits() {
+        // -- insert ------
+        // -- delete --
         let mut history = History::new();
         history.add_edit(Edit {
             kind: EditKind::Insert,
@@ -458,6 +481,8 @@ mod tests {
         );
         assert!(edit_iter.next().is_none());
 
+        // ------ insert --
+        //     -- delete --
         let mut history = History::new();
         history.add_edit(Edit {
             kind: EditKind::Insert,
@@ -478,7 +503,7 @@ mod tests {
 
         let mut edit_iter = history.undo_edits();
         let edit = edit_iter.next().unwrap();
-        assert_eq!(EditKind::Insert, edit.kind);
+        assert_eq!(EditKind::Delete, edit.kind);
         assert_eq!("abc", edit.text);
         assert_eq!(
             BufferRange::between(
@@ -488,5 +513,41 @@ mod tests {
             edit.range
         );
         assert!(edit_iter.next().is_none());
+
+        // -- insert --
+        // -- delete ------
+        let mut history = History::new();
+        history.add_edit(Edit {
+            kind: EditKind::Insert,
+            range: BufferRange::between(
+                BufferPosition::line_col(0, 0),
+                BufferPosition::line_col(0, 3),
+            ),
+            text: "abc",
+        });
+        history.add_edit(Edit {
+            kind: EditKind::Delete,
+            range: BufferRange::between(
+                BufferPosition::line_col(0, 0),
+                BufferPosition::line_col(0, 6),
+            ),
+            text: "abcdef",
+        });
+
+        let mut edit_iter = history.undo_edits();
+        let edit = edit_iter.next().unwrap();
+        assert_eq!(EditKind::Insert, edit.kind);
+        assert_eq!("def", edit.text);
+        assert_eq!(
+            BufferRange::between(
+                BufferPosition::line_col(0, 0),
+                BufferPosition::line_col(0, 3)
+            ),
+            edit.range
+        );
+        assert!(edit_iter.next().is_none());
+
+        //     -- insert --
+        // ------ delete --
     }
 }
