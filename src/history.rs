@@ -54,7 +54,7 @@ impl History {
     }
 
     pub fn add_edit(&mut self, edit: Edit) {
-        let group_len = match self.state {
+        let current_group_len = match self.state {
             HistoryState::IterIndex(index) => {
                 let edit_index = if index < self.group_ranges.len() {
                     self.group_ranges[index].start
@@ -62,19 +62,15 @@ impl History {
                     self.edits.len()
                 };
                 self.edits.truncate(edit_index);
-                self.state = HistoryState::InsertGroup(edit_index..edit_index + 1);
+                self.state = HistoryState::InsertGroup(edit_index..edit_index);
                 self.group_ranges.truncate(index);
                 0
             }
-            HistoryState::InsertGroup(ref mut range) => {
-                let len = range.end - range.start;
-                range.end = self.edits.len() + 1;
-                len
-            }
+            HistoryState::InsertGroup(ref range) => range.end - range.start,
         };
 
         let mut append_edit = true;
-        if group_len > 0 {
+        if current_group_len > 0 {
             let last_edit_index = self.edits.len() - 1;
             let last_edit = &mut self.edits[last_edit_index];
 
@@ -111,12 +107,26 @@ impl History {
                     if last_edit.buffer_range.from == edit.range.from
                         && edit.range.to <= last_edit.buffer_range.to
                     {
-                        //append_edit = false;
-                        //
+                        let deleted_text_range = last_edit.texts_range.start
+                            ..(last_edit.texts_range.start + edit.text.len());
+                        if edit.text == &self.texts[deleted_text_range.clone()] {
+                            append_edit = false;
+                            last_edit.buffer_range.to =
+                                last_edit.buffer_range.to.delete(edit.range);
+                            self.texts.drain(deleted_text_range);
+                            last_edit.texts_range.end = self.texts.len();
+                        }
                     } else if edit.range.to == last_edit.buffer_range.to
                         && last_edit.buffer_range.from <= edit.range.from
                     {
-                        //
+                        let deleted_text_range = (last_edit.texts_range.end - edit.text.len())
+                            ..last_edit.texts_range.end;
+                        if edit.text == &self.texts[deleted_text_range.clone()] {
+                            append_edit = false;
+                            last_edit.buffer_range.to = edit.range.from;
+                            self.texts.truncate(deleted_text_range.start);
+                            last_edit.texts_range.end = self.texts.len();
+                        }
                     } else if edit.range.from == last_edit.buffer_range.from
                         && last_edit.buffer_range.to <= edit.range.to
                     {
@@ -132,6 +142,10 @@ impl History {
         }
 
         if append_edit {
+            if let HistoryState::InsertGroup(range) = &mut self.state {
+                range.end += 1;
+            }
+
             let texts_range_start = self.texts.len();
             self.texts.push_str(edit.text);
             self.edits.push(EditInternal {
@@ -139,8 +153,6 @@ impl History {
                 buffer_range: edit.range,
                 texts_range: texts_range_start..self.texts.len(),
             });
-        } else if let HistoryState::InsertGroup(range) = &mut self.state {
-            range.end -= 1;
         }
     }
 
@@ -382,6 +394,71 @@ mod tests {
         );
         assert!(edit_iter.next().is_none());
 
+        let mut history = History::new();
+        history.add_edit(Edit {
+            kind: EditKind::Delete,
+            range: BufferRange::between(
+                BufferPosition::line_col(0, 3),
+                BufferPosition::line_col(0, 6),
+            ),
+            text: "abc",
+        });
+        history.add_edit(Edit {
+            kind: EditKind::Delete,
+            range: BufferRange::between(
+                BufferPosition::line_col(0, 0),
+                BufferPosition::line_col(0, 3),
+            ),
+            text: "def",
+        });
+
+        let mut edit_iter = history.undo_edits();
+        let edit = edit_iter.next().unwrap();
+        assert_eq!(EditKind::Insert, edit.kind);
+        assert_eq!("defabc", edit.text);
+        assert_eq!(
+            BufferRange::between(
+                BufferPosition::line_col(0, 0),
+                BufferPosition::line_col(0, 6)
+            ),
+            edit.range
+        );
+        assert!(edit_iter.next().is_none());
+    }
+
+    fn compress_insert_delete_edits() {
+        let mut history = History::new();
+        history.add_edit(Edit {
+            kind: EditKind::Insert,
+            range: BufferRange::between(
+                BufferPosition::line_col(0, 0),
+                BufferPosition::line_col(0, 6),
+            ),
+            text: "abcdef",
+        });
+        history.add_edit(Edit {
+            kind: EditKind::Delete,
+            range: BufferRange::between(
+                BufferPosition::line_col(0, 0),
+                BufferPosition::line_col(0, 3),
+            ),
+            text: "abc",
+        });
+
+        let mut edit_iter = history.undo_edits();
+        let edit = edit_iter.next().unwrap();
+        assert_eq!(EditKind::Delete, edit.kind);
+        assert_eq!("def", edit.text);
+        assert_eq!(
+            BufferRange::between(
+                BufferPosition::line_col(0, 0),
+                BufferPosition::line_col(0, 3)
+            ),
+            edit.range
+        );
+        assert!(edit_iter.next().is_none());
+
+        return;
         let mut history = History::new();
         history.add_edit(Edit {
             kind: EditKind::Delete,
