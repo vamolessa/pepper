@@ -8,7 +8,7 @@ use std::{
 
 use crate::{
     buffer_position::{BufferPosition, BufferRange},
-    history::{EditKind, Edit, History},
+    history::{Edit, EditKind, History},
     syntax::{self, HighlightedBuffer, SyntaxCollection, SyntaxHandle},
 };
 
@@ -513,6 +513,7 @@ impl Buffer {
         syntaxes: &SyntaxCollection,
         position: BufferPosition,
         text: &str,
+        cursor_index: usize,
     ) -> BufferRange {
         self.search_ranges.clear();
         let range = self.content.insert_text(position, text);
@@ -522,11 +523,17 @@ impl Buffer {
             kind: EditKind::Insert,
             range,
             text,
+            cursor_index: cursor_index.max(u8::MAX as _) as _,
         });
         range
     }
 
-    pub fn delete_range(&mut self, syntaxes: &SyntaxCollection, range: BufferRange) {
+    pub fn delete_range(
+        &mut self,
+        syntaxes: &SyntaxCollection,
+        range: BufferRange,
+        cursor_index: usize,
+    ) {
         self.search_ranges.clear();
         let deleted_text = self.content.delete_range(range);
         self.highlighted
@@ -535,6 +542,7 @@ impl Buffer {
             kind: EditKind::Delete,
             range,
             text: deleted_text.as_str(),
+            cursor_index: cursor_index.max(u8::MAX as _) as _,
         });
     }
 
@@ -829,7 +837,7 @@ mod tests {
             BufferPosition::line_col(0, 7),
             BufferPosition::line_col(0, 12),
         );
-        buffer.delete_range(&syntaxes, range);
+        buffer.delete_range(&syntaxes, range, 0);
 
         assert_eq!("single content", buffer_to_string(&buffer.content));
         {
@@ -855,7 +863,7 @@ mod tests {
             BufferPosition::line_col(0, 1),
             BufferPosition::line_col(1, 3),
         );
-        buffer.delete_range(&syntaxes, range);
+        buffer.delete_range(&syntaxes, range, 0);
 
         assert_eq!("me\ncontent", buffer_to_string(&buffer.content));
         {
