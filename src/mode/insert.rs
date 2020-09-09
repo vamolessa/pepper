@@ -96,7 +96,7 @@ fn preview_completion(ctx: &mut ModeContext, handle: BufferViewHandle, cursor_mo
     ctx.selects.move_cursor(cursor_movement);
     let previous_entry = ctx.selects.entry(previous_cursor);
     let next_entry = ctx.selects.entry(ctx.selects.cursor());
-    ctx.buffer_views.preview_completion(
+    ctx.buffer_views.apply_completion(
         ctx.buffers,
         &ctx.config.syntaxes,
         handle,

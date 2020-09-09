@@ -276,7 +276,7 @@ impl BufferViewCollection {
         self.fix_buffer_cursors(current_buffer_handle, |cursor, range| cursor.delete(range));
     }
 
-    pub fn preview_completion(
+    pub fn apply_completion(
         &mut self,
         buffers: &mut BufferCollection,
         syntaxes: &SyntaxCollection,
