@@ -541,14 +541,14 @@ impl Buffer {
     pub fn undo<'a>(
         &'a mut self,
         syntaxes: &'a SyntaxCollection,
-    ) -> impl 'a + Iterator<Item = Edit<'a>> {
+    ) -> impl 'a + Clone + Iterator<Item = Edit<'a>> {
         self.history_edits(syntaxes, |h| h.undo_edits())
     }
 
     pub fn redo<'a>(
         &'a mut self,
         syntaxes: &SyntaxCollection,
-    ) -> impl 'a + Iterator<Item = Edit<'a>> {
+    ) -> impl 'a + Clone + Iterator<Item = Edit<'a>> {
         self.history_edits(syntaxes, |h| h.redo_edits())
     }
 
@@ -560,6 +560,7 @@ impl Buffer {
         self.search_ranges.clear();
         let syntax = syntaxes.get(self.syntax_handle);
         let edits = selector(&mut self.history);
+
         for edit in edits.clone() {
             match edit.kind {
                 EditKind::Insert => {

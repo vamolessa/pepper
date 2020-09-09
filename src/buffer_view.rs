@@ -48,7 +48,7 @@ impl BufferView {
             None => return,
         };
 
-        for c in &mut self.cursors.as_mut()[..] {
+        for c in &mut self.cursors.mut_guard()[..] {
             let mut target = BufferOffset::from(c.position) + offset;
 
             target.line_offset = target
@@ -124,7 +124,7 @@ impl BufferView {
         let next_index = index_selector(search_result, search_ranges.len());
 
         {
-            let mut cursors = self.cursors.as_mut();
+            let mut cursors = self.cursors.mut_guard();
             for c in &mut cursors[..] {
                 c.position = search_ranges[next_index].from;
             }
@@ -333,7 +333,7 @@ impl BufferViewCollection {
             }
 
             let ranges = &self.fix_cursor_ranges;
-            for c in &mut view.cursors.as_mut()[..] {
+            for c in &mut view.cursors.mut_guard()[..] {
                 for range in ranges.iter() {
                     op(c, *range);
                 }
@@ -385,28 +385,33 @@ impl BufferViewCollection {
                 None => continue,
             };
 
+            let mut view_cursors = view.cursors.mut_guard();
+            view_cursors.clear();
+
             match edit.kind {
                 EditKind::Insert => {
-                    for c in &mut view.cursors.as_mut()[..] {
-                        c.anchor = edit.range.to;
-                        c.position = edit.range.to;
-                    }
+                    view_cursors.add_cursor(Cursor {
+                        anchor: edit.range.to,
+                        position: edit.range.to,
+                    });
+                    drop(view_cursors);
                     for (i, view) in self.buffer_views.iter_mut().flatten().enumerate() {
                         if i != handle.0 && view.buffer_handle == buffer_handle {
-                            for c in &mut view.cursors.as_mut()[..] {
+                            for c in &mut view.cursors.mut_guard()[..] {
                                 c.insert(edit.range);
                             }
                         }
                     }
                 }
                 EditKind::Delete => {
-                    for c in &mut view.cursors.as_mut()[..] {
-                        c.anchor = edit.range.from;
-                        c.position = edit.range.from;
-                    }
+                    view_cursors.add_cursor(Cursor {
+                        anchor: edit.range.from,
+                        position: edit.range.from,
+                    });
+                    drop(view_cursors);
                     for (i, view) in self.buffer_views.iter_mut().flatten().enumerate() {
                         if i != handle.0 && view.buffer_handle == buffer_handle {
-                            for c in &mut view.cursors.as_mut()[..] {
+                            for c in &mut view.cursors.mut_guard()[..] {
                                 c.delete(edit.range);
                             }
                         }
