@@ -379,22 +379,12 @@ impl BufferViewCollection {
             None => return,
         };
 
+        let mut main_cursor = Cursor::default();
         for edit in edits {
-            let view = match self.get_mut(handle) {
-                Some(view) => view,
-                None => continue,
-            };
-
-            let mut view_cursors = view.cursors.mut_guard();
-            view_cursors.clear();
-
             match edit.kind {
                 EditKind::Insert => {
-                    view_cursors.add_cursor(Cursor {
-                        anchor: edit.range.to,
-                        position: edit.range.to,
-                    });
-                    drop(view_cursors);
+                    main_cursor.anchor = edit.range.to;
+                    main_cursor.position = edit.range.to;
                     for (i, view) in self.buffer_views.iter_mut().flatten().enumerate() {
                         if i != handle.0 && view.buffer_handle == buffer_handle {
                             for c in &mut view.cursors.mut_guard()[..] {
@@ -404,11 +394,8 @@ impl BufferViewCollection {
                     }
                 }
                 EditKind::Delete => {
-                    view_cursors.add_cursor(Cursor {
-                        anchor: edit.range.from,
-                        position: edit.range.from,
-                    });
-                    drop(view_cursors);
+                    main_cursor.anchor = edit.range.from;
+                    main_cursor.position = edit.range.from;
                     for (i, view) in self.buffer_views.iter_mut().flatten().enumerate() {
                         if i != handle.0 && view.buffer_handle == buffer_handle {
                             for c in &mut view.cursors.mut_guard()[..] {
@@ -418,6 +405,12 @@ impl BufferViewCollection {
                     }
                 }
             }
+        }
+
+        if let Some(view) = self.get_mut(handle) {
+            let mut cursors = view.cursors.mut_guard();
+            cursors.clear();
+            cursors.add_cursor(main_cursor);
         }
     }
 
