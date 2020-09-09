@@ -111,8 +111,7 @@ impl History {
                     if last_edit.buffer_range.from == edit.range.from
                         && edit.range.to <= last_edit.buffer_range.to
                     {
-                        append_edit = false;
-
+                        //append_edit = false;
                         //
                     } else if edit.range.to == last_edit.buffer_range.to
                         && last_edit.buffer_range.from <= edit.range.from
