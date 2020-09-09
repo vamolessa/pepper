@@ -107,6 +107,27 @@ impl History {
                         last_edit.texts_range.end = self.texts.len();
                     }
                 }
+                (EditKind::Insert, EditKind::Delete) => {
+                    if last_edit.buffer_range.from == edit.range.from
+                        && edit.range.to <= last_edit.buffer_range.to
+                    {
+                        append_edit = false;
+
+                        //
+                    } else if edit.range.to == last_edit.buffer_range.to
+                        && last_edit.buffer_range.from <= edit.range.from
+                    {
+                        //
+                    } else if edit.range.from == last_edit.buffer_range.from
+                        && last_edit.buffer_range.to <= edit.range.to
+                    {
+                        //
+                    } else if last_edit.buffer_range.to == edit.range.to
+                        && edit.range.from <= last_edit.buffer_range.from
+                    {
+                        //
+                    }
+                }
                 _ => (),
             }
         }
