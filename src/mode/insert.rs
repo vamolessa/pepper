@@ -4,23 +4,25 @@ use crate::{
     client_event::Key,
     editor::KeysIterator,
     mode::{Mode, ModeContext, ModeOperation},
-    select::SelectEntryRef,
+    select::{SelectContext, SelectEntry},
 };
 
-static AUTOCOMPLETE_ENTRIES: &[SelectEntryRef] = &[
-    SelectEntryRef::from_str("matheus"),
-    SelectEntryRef::from_str("mate"),
-    SelectEntryRef::from_str("material"),
-    SelectEntryRef::from_str("materializar"),
-    SelectEntryRef::from_str("materiale"),
+static AUTOCOMPLETE_ENTRIES: &[SelectEntry] = &[
+    SelectEntry::from_str("matheus"),
+    SelectEntry::from_str("mate"),
+    SelectEntry::from_str("material"),
+    SelectEntry::from_str("materializar"),
+    SelectEntry::from_str("materiale"),
 ];
 
 pub fn on_enter(ctx: &mut ModeContext) {
     ctx.selects.clear();
+    ctx.selects.set_sources(&[|_ctx| &AUTOCOMPLETE_ENTRIES]);
 }
 
 pub fn on_exit(ctx: &mut ModeContext) {
     ctx.selects.clear();
+    ctx.selects.set_sources(&[]);
 }
 
 pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
@@ -83,9 +85,11 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
     if word.is_empty() || main_cursor.position.column_index < word_range.to.column_index {
         ctx.selects.clear();
     } else {
-        let current_word_entry = SelectEntryRef::from_str(word);
-        ctx.selects
-            .filter(&[&current_word_entry, &AUTOCOMPLETE_ENTRIES], word);
+        let select_ctx = SelectContext {
+            buffers: ctx.buffers,
+            buffer_views: ctx.buffer_views,
+        };
+        ctx.selects.filter(&select_ctx, word);
     }
 
     ModeOperation::None
@@ -94,13 +98,25 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
 fn preview_completion(ctx: &mut ModeContext, handle: BufferViewHandle, cursor_movement: isize) {
     let previous_cursor = ctx.selects.cursor();
     ctx.selects.move_cursor(cursor_movement);
-    let previous_entry = ctx.selects.entry(previous_cursor);
-    let next_entry = ctx.selects.entry(ctx.selects.cursor());
+
+    let select_ctx = SelectContext {
+        buffers: ctx.buffers,
+        buffer_views: ctx.buffer_views,
+    };
+
+    let previous_entry = ctx.selects.entry(&select_ctx, previous_cursor);
+    let next_entry = ctx.selects.entry(&select_ctx, ctx.selects.cursor());
+
+    let previous_name = previous_entry.name.to_string();
+    let next_name = next_entry.name.to_string();
+
     ctx.buffer_views.apply_completion(
         ctx.buffers,
         &ctx.config.syntaxes,
         handle,
-        &previous_entry.name,
-        &next_entry.name,
+        //&previous_entry.name,
+        //&next_entry.name,
+        &previous_name,
+        &next_name,
     );
 }

@@ -15,6 +15,7 @@ use crate::{
     cursor::Cursor,
     editor::{Editor, StatusMessageKind},
     mode::Mode,
+    select::SelectContext,
     syntax::{HighlightedBuffer, TokenKind},
     theme,
 };
@@ -401,9 +402,14 @@ where
     handle_command!(write, SetBackgroundColor(background_color))?;
     handle_command!(write, SetForegroundColor(foreground_color))?;
 
+    let ctx = SelectContext {
+        buffers: &editor.buffers,
+        buffer_views: &editor.buffer_views,
+    };
+
     for (i, entry) in editor
         .selects
-        .entries()
+        .entries(&ctx)
         .enumerate()
         .skip(scroll)
         .take(height)
