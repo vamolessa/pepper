@@ -1,18 +1,27 @@
 use fuzzy_matcher::{skim::SkimMatcherV2, FuzzyMatcher};
 
 pub trait SelectSource {
-    fn entries(&self) -> &[SelectEntryRef];
+    fn len(&self) -> usize;
+    fn entry(&self, index: usize) -> SelectEntryRef;
 }
 
 impl<'a> SelectSource for SelectEntryRef<'a> {
-    fn entries(&self) -> &[SelectEntryRef] {
-        std::slice::from_ref(self)
+    fn len(&self) -> usize {
+        1
+    }
+
+    fn entry(&self, _index: usize) -> SelectEntryRef {
+        *self
     }
 }
 
 impl<'a> SelectSource for &[SelectEntryRef<'a>] {
-    fn entries(&self) -> &[SelectEntryRef] {
-        self
+    fn len(&self) -> usize {
+        <[SelectEntryRef]>::len(self)
+    }
+
+    fn entry(&self, index: usize) -> SelectEntryRef {
+        self[index]
     }
 }
 
@@ -36,6 +45,11 @@ pub struct SelectEntry {
     pub name: String,
     pub description: String,
     pub score: i64,
+}
+
+struct SelectEntryInternal {
+    pub source_index: usize,
+    pub entry_index: usize,
 }
 
 #[derive(Default)]
@@ -114,7 +128,8 @@ impl SelectEntryCollection {
         self.len = 0;
 
         for s in sources {
-            for e in s.entries() {
+            for i in 0..s.len() {
+                let e = s.entry(i);
                 if let Some(score) = self.matcher.fuzzy_match(e.name, pattern) {
                     if self.len == self.entries.len() {
                         self.entries.push(SelectEntry::default());

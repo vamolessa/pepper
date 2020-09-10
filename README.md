@@ -8,7 +8,7 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 - undo/redo
 	- ~~store/apply edit diffs~~
 	- ~~compress history when adding edits~~
-	- fix cursor position on multiple cursors
+	- ~~fix cursor position on multiple cursors~~
 	- limit history size??
 - ~~modes~~
 	- ~~basic implementation~~
