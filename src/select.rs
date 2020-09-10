@@ -1,9 +1,6 @@
 use fuzzy_matcher::{skim::SkimMatcherV2, FuzzyMatcher};
 
-use crate::{
-    buffer::BufferCollection,
-    buffer_view::BufferViewCollection,
-};
+use crate::{buffer::BufferCollection, buffer_view::BufferViewCollection};
 
 pub struct SelectContext<'a> {
     pub buffers: &'a BufferCollection,
