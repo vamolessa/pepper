@@ -21,7 +21,7 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
         Key::Esc | Key::Ctrl('c') => {
             let view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
             view.commit_edits(ctx.buffers);
-            view.collapse_cursors_anchors();
+            view.cursors.collapse_anchors();
             return ModeOperation::EnterMode(Mode::Normal);
         }
         Key::Char('h') => {
@@ -52,9 +52,9 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
                 MovementKind::PositionOnly,
             );
         }
-        Key::Char('o') => {
-            unwrap_or_none!(ctx.buffer_views.get_mut(handle)).swap_cursors_positions_and_anchors()
-        }
+        Key::Char('o') => unwrap_or_none!(ctx.buffer_views.get_mut(handle))
+            .cursors
+            .swap_positions_and_anchors(),
         Key::Char('s') => return ModeOperation::EnterMode(Mode::Search(FromMode::Select)),
         Key::Char('d') => {
             ctx.buffer_views

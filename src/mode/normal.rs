@@ -53,6 +53,13 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
                 MovementKind::PositionWithAnchor,
             );
         }
+        Key::Char(' ') => {
+            let cursors = &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle)).cursors;
+            let main_cursor = *cursors.main_cursor();
+            let mut cursors = cursors.mut_guard();
+            cursors.clear();
+            cursors.add_cursor(main_cursor);
+        }
         Key::Char('J') => {
             let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
             let buffer_handle = buffer_view.buffer_handle;

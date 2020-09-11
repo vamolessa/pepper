@@ -65,14 +65,6 @@ impl BufferView {
         }
     }
 
-    pub fn collapse_cursors_anchors(&mut self) {
-        self.cursors.collapse_anchors();
-    }
-
-    pub fn swap_cursors_positions_and_anchors(&mut self) {
-        self.cursors.swap_positions_and_anchors();
-    }
-
     pub fn move_to_next_search_match(
         &mut self,
         buffers: &BufferCollection,
