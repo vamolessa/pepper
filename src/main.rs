@@ -16,6 +16,7 @@ mod pattern;
 mod script;
 mod script_bindings;
 mod picker;
+mod word_database;
 mod serialization;
 mod syntax;
 mod theme;
