@@ -118,8 +118,8 @@ impl Picker {
         self.cursor = self.cursor.min(self.filtered_entries.len());
     }
 
-    pub fn entry(&self, index: usize) -> PickerEntry {
-        let entry = &self.filtered_entries[index];
+    pub fn current_entry(&self) -> PickerEntry {
+        let entry = &self.filtered_entries[self.cursor];
         match entry.source {
             FiletedEntrySource::Custom(i) => {
                 let entry = &self.custom_entries[i];
