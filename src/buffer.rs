@@ -144,19 +144,6 @@ impl BufferLine {
         (column_range, &self.text[index_range])
     }
 
-    pub fn find_prefix_at<'a>(&'a self, column: usize, text: &str) -> (usize, &'a str) {
-        let line = self.slice(..column);
-        for (i, _c) in line.char_indices() {
-            let slice = &line[i..];
-            if text.starts_with(slice) {
-                let index = self.index_to_column(i);
-                return (index, slice);
-            }
-        }
-
-        (column, "")
-    }
-
     pub fn insert_text(&mut self, column: usize, text: &str) {
         let index = self.column_to_index(column);
         self.text.insert_str(index, text);
@@ -450,15 +437,6 @@ impl BufferContent {
             BufferPosition::line_col(position.line_index, range.end),
         );
         (range, word)
-    }
-
-    pub fn find_prefix_at(&self, position: BufferPosition, text: &str) -> (BufferPosition, &str) {
-        let position = self.clamp_position(position);
-        let (column, prefix) = self
-            .line(position.line_index)
-            .find_prefix_at(position.column_index, text);
-        let position = BufferPosition::line_col(position.line_index, column);
-        (position, prefix)
     }
 }
 
@@ -909,13 +887,5 @@ mod tests {
         assert_eq!((4..8, "word"), line.find_word_at(8, is_word));
         assert_eq!((9..9, ""), line.find_word_at(9, is_word));
         assert_eq!((10..10, ""), line.find_word_at(10, is_word));
-    }
-
-    #[test]
-    fn buffer_line_find_prefix() {
-        let line = BufferLine::new("long line".into());
-        assert_eq!((5, "line"), line.find_prefix_at(9, "lineart"));
-        assert_eq!((0, "long"), line.find_prefix_at(4, "longest"));
-        assert_eq!((0, "lo"), line.find_prefix_at(2, "low"));
     }
 }

@@ -89,17 +89,8 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
 }
 
 fn apply_completion(ctx: &mut ModeContext, handle: BufferViewHandle, cursor_movement: isize) {
-    let previous_cursor = ctx.picker.cursor();
     ctx.picker.move_cursor(cursor_movement);
-
-    let previous_entry = ctx.picker.entry(previous_cursor);
-    let next_entry = ctx.picker.entry(ctx.picker.cursor());
-
-    ctx.buffer_views.apply_completion(
-        ctx.buffers,
-        &ctx.config.syntaxes,
-        handle,
-        &previous_entry.name,
-        &next_entry.name,
-    );
+    let entry = ctx.picker.entry(ctx.picker.cursor());
+    ctx.buffer_views
+        .apply_completion(ctx.buffers, &ctx.config.syntaxes, handle, &entry.name);
 }
