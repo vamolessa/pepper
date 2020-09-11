@@ -29,7 +29,7 @@ pub struct ConfigValues {
     pub visual_tab_first: char,
     pub visual_tab_repeat: char,
 
-    pub select_max_height: NonZeroUsize,
+    pub picker_max_height: NonZeroUsize,
 }
 
 impl ConfigValues {
@@ -61,7 +61,7 @@ impl ConfigValues {
             visual_tab_first,
             visual_tab_repeat,
 
-            select_max_height,
+            picker_max_height,
         }
 
         Ok(())
@@ -78,7 +78,7 @@ impl Default for ConfigValues {
             visual_tab_first: '|',
             visual_tab_repeat: ' ',
 
-            select_max_height: NonZeroUsize::new(8).unwrap(),
+            picker_max_height: NonZeroUsize::new(8).unwrap(),
         }
     }
 }

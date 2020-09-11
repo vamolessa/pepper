@@ -15,7 +15,7 @@ mod mode;
 mod pattern;
 mod script;
 mod script_bindings;
-mod select;
+mod picker;
 mod serialization;
 mod syntax;
 mod theme;

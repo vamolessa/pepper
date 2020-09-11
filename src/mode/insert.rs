@@ -4,25 +4,22 @@ use crate::{
     client_event::Key,
     editor::KeysIterator,
     mode::{Mode, ModeContext, ModeOperation},
-    select::{SelectContext, SelectEntry},
+    picker::CustomPickerEntry,
 };
 
-static AUTOCOMPLETE_ENTRIES: &[SelectEntry] = &[
-    SelectEntry::from_str("matheus"),
-    SelectEntry::from_str("mate"),
-    SelectEntry::from_str("material"),
-    SelectEntry::from_str("materializar"),
-    SelectEntry::from_str("materiale"),
-];
-
 pub fn on_enter(ctx: &mut ModeContext) {
-    ctx.selects.clear();
-    ctx.selects.set_sources(&[|_ctx| &AUTOCOMPLETE_ENTRIES]);
+    ctx.picker.reset();
+    let words = &["mate", "material", "materialize", "materialization"];
+    for word in words {
+        ctx.picker.add_custom_entry(CustomPickerEntry {
+            name: String::from(*word),
+            description: String::new(),
+        });
+    }
 }
 
 pub fn on_exit(ctx: &mut ModeContext) {
-    ctx.selects.clear();
-    ctx.selects.set_sources(&[]);
+    ctx.picker.reset();
 }
 
 pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
@@ -83,40 +80,26 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
     let main_cursor = buffer_view.cursors.main_cursor();
     let (word_range, word) = buffer.content.find_word_at(main_cursor.position);
     if word.is_empty() || main_cursor.position.column_index < word_range.to.column_index {
-        ctx.selects.clear();
+        ctx.picker.clear_filtered();
     } else {
-        let select_ctx = SelectContext {
-            buffers: ctx.buffers,
-            buffer_views: ctx.buffer_views,
-        };
-        ctx.selects.filter(&select_ctx, word);
+        ctx.picker.filter(word);
     }
 
     ModeOperation::None
 }
 
 fn apply_completion(ctx: &mut ModeContext, handle: BufferViewHandle, cursor_movement: isize) {
-    let previous_cursor = ctx.selects.cursor();
-    ctx.selects.move_cursor(cursor_movement);
+    let previous_cursor = ctx.picker.cursor();
+    ctx.picker.move_cursor(cursor_movement);
 
-    let select_ctx = SelectContext {
-        buffers: ctx.buffers,
-        buffer_views: ctx.buffer_views,
-    };
-
-    let previous_entry = ctx.selects.entry(&select_ctx, previous_cursor);
-    let next_entry = ctx.selects.entry(&select_ctx, ctx.selects.cursor());
-
-    let previous_name = previous_entry.name.to_string();
-    let next_name = next_entry.name.to_string();
+    let previous_entry = ctx.picker.entry(previous_cursor);
+    let next_entry = ctx.picker.entry(ctx.picker.cursor());
 
     ctx.buffer_views.apply_completion(
         ctx.buffers,
         &ctx.config.syntaxes,
         handle,
-        //&previous_entry.name,
-        //&next_entry.name,
-        &previous_name,
-        &next_name,
+        &previous_entry.name,
+        &next_entry.name,
     );
 }

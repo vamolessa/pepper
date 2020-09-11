@@ -43,15 +43,15 @@ impl Client {
 
         self.height = self.viewport_size.1.saturating_sub(1);
 
-        let select_height = if has_focus {
+        let picker_height = if has_focus {
             editor
-                .selects
-                .height(editor.config.values.select_max_height.get()) as u16
+                .picker
+                .height(editor.config.values.picker_max_height.get()) as u16
         } else {
             0
         };
 
-        self.height = self.height.saturating_sub(select_height);
+        self.height = self.height.saturating_sub(picker_height);
 
         let cursor_position = main_cursor.position;
         if cursor_position.line_index < self.scroll {

@@ -15,7 +15,6 @@ use crate::{
     cursor::Cursor,
     editor::{Editor, StatusMessageKind},
     mode::Mode,
-    select::SelectContext,
     syntax::{HighlightedBuffer, TokenKind},
     theme,
 };
@@ -108,7 +107,7 @@ where
         let client_view = ClientView::from(editor, client);
 
         draw_text(buffer, editor, &client_view)?;
-        draw_select(buffer, editor)?;
+        draw_picker(buffer, editor)?;
         draw_statusbar(buffer, editor, &client_view, has_focus)?;
         Ok(())
     }
@@ -386,15 +385,15 @@ where
     Ok(())
 }
 
-fn draw_select<W>(write: &mut W, editor: &Editor) -> Result<()>
+fn draw_picker<W>(write: &mut W, editor: &Editor) -> Result<()>
 where
     W: Write,
 {
-    let cursor = editor.selects.cursor();
-    let scroll = editor.selects.scroll();
+    let cursor = editor.picker.cursor();
+    let scroll = editor.picker.scroll();
     let height = editor
-        .selects
-        .height(editor.config.values.select_max_height.get());
+        .picker
+        .height(editor.config.values.picker_max_height.get());
 
     let background_color = convert_color(editor.config.theme.token_whitespace);
     let foreground_color = convert_color(editor.config.theme.token_text);
@@ -402,14 +401,9 @@ where
     handle_command!(write, SetBackgroundColor(background_color))?;
     handle_command!(write, SetForegroundColor(foreground_color))?;
 
-    let ctx = SelectContext {
-        buffers: &editor.buffers,
-        buffer_views: &editor.buffer_views,
-    };
-
     for (i, entry) in editor
-        .selects
-        .entries(&ctx)
+        .picker
+        .entries()
         .enumerate()
         .skip(scroll)
         .take(height)

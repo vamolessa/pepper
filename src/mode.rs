@@ -11,7 +11,7 @@ use crate::{
     editor::{KeysIterator, StatusMessageKind},
     keymap::KeyMapCollection,
     script::ScriptEngine,
-    select::SelectEntryCollection,
+    picker::Picker,
 };
 
 macro_rules! unwrap_or_none {
@@ -47,7 +47,7 @@ pub struct ModeContext<'a> {
     pub buffer_views: &'a mut BufferViewCollection,
 
     pub input: &'a mut String,
-    pub selects: &'a mut SelectEntryCollection,
+    pub picker: &'a mut Picker,
 
     pub status_message_kind: &'a mut StatusMessageKind,
     pub status_message: &'a mut String,

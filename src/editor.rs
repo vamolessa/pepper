@@ -9,8 +9,8 @@ use crate::{
     connection::ConnectionWithClientHandle,
     keymap::{KeyMapCollection, MatchResult},
     mode::{Mode, ModeContext, ModeOperation},
+    picker::Picker,
     script::{ScriptContext, ScriptEngine},
-    select::SelectEntryCollection,
 };
 
 #[derive(Clone, Copy)]
@@ -68,7 +68,7 @@ pub struct Editor {
 
     pub buffered_keys: Vec<Key>,
     pub input: String,
-    pub selects: SelectEntryCollection,
+    pub picker: Picker,
 
     pub focused_client: TargetClient,
     pub status_message: String,
@@ -90,7 +90,7 @@ impl Editor {
 
             buffered_keys: Vec::new(),
             input: String::new(),
-            selects: SelectEntryCollection::default(),
+            picker: Picker::default(),
 
             focused_client: TargetClient::Local,
             status_message: String::new(),
@@ -120,7 +120,7 @@ impl Editor {
             buffers: &mut self.buffers,
             buffer_views: &mut self.buffer_views,
 
-            selects: &mut self.selects,
+            picker: &mut self.picker,
 
             status_message_kind: &mut self.status_message_kind,
             status_message: &mut self.status_message,
@@ -243,7 +243,7 @@ impl Editor {
                         buffer_views: &mut self.buffer_views,
 
                         input: &mut self.input,
-                        selects: &mut self.selects,
+                        picker: &mut self.picker,
 
                         status_message_kind: &mut self.status_message_kind,
                         status_message: &mut self.status_message,
@@ -286,8 +286,8 @@ impl Editor {
             }
         };
 
-        self.selects
-            .update_scroll(self.config.values.select_max_height.get());
+        self.picker
+            .update_scroll(self.config.values.picker_max_height.get());
         for c in clients.client_refs() {
             c.client.update_view(self, self.focused_client == c.target);
         }

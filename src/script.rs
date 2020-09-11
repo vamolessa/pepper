@@ -13,7 +13,7 @@ use crate::{
     editor::{EditorLoop, StatusMessageKind},
     keymap::KeyMapCollection,
     script_bindings,
-    select::SelectEntryCollection,
+    picker::Picker,
 };
 
 pub type ScriptResult<T> = LuaResult<T>;
@@ -141,7 +141,7 @@ pub struct ScriptContext<'a> {
     pub buffers: &'a mut BufferCollection,
     pub buffer_views: &'a mut BufferViewCollection,
 
-    pub selects: &'a mut SelectEntryCollection,
+    pub picker: &'a mut Picker,
 
     pub status_message_kind: &'a mut StatusMessageKind,
     pub status_message: &'a mut String,
