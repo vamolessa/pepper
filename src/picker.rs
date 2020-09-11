@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use fuzzy_matcher::{skim::SkimMatcherV2, FuzzyMatcher};
 
 #[derive(Default, Clone, Copy)]
@@ -13,6 +15,7 @@ pub struct CustomPickerEntry {
 
 enum FiletedEntrySource {
     Custom(usize),
+    WordDatabase(usize),
 }
 
 struct FilteredEntry {
@@ -128,6 +131,9 @@ impl Picker {
                     description: &entry.description,
                 }
             }
+            FiletedEntrySource::WordDatabase(_i) => {
+                unimplemented!();
+            }
         }
     }
 
@@ -140,6 +146,10 @@ impl Picker {
                     description: &entry.description,
                 }
             }
+            FiletedEntrySource::WordDatabase(_i) => PickerEntry {
+                name: "",
+                description: "",
+            },
         })
     }
 }
