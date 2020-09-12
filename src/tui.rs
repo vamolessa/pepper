@@ -474,64 +474,66 @@ where
         handle_command!(write, SetForegroundColor(background_color))?;
     }
 
-    let x = if !editor.status_message.is_empty() {
-        let prefix = match editor.status_message_kind {
-            StatusMessageKind::Info => "",
-            StatusMessageKind::Error => "error:",
-        };
-
-        let line_count = editor.status_message.lines().count();
-        if line_count > 1 {
-            if prefix.is_empty() {
-                handle_command!(write, cursor::MoveUp((line_count - 1) as _))?;
-                handle_command!(write, terminal::Clear(terminal::ClearType::FromCursorDown))?;
-            } else {
-                handle_command!(write, cursor::MoveUp(line_count as _))?;
-                handle_command!(write, Print(prefix))?;
-                handle_command!(write, terminal::Clear(terminal::ClearType::FromCursorDown))?;
-                handle_command!(write, cursor::MoveToNextLine(1))?;
-            }
-
-            for (i, line) in editor.status_message.lines().enumerate() {
-                handle_command!(write, Print(line))?;
-                if i < line_count - 1 {
-                    handle_command!(write, cursor::MoveToNextLine(1))?;
+    let x = if has_focus {
+        if editor.status_message.is_empty() {
+            match editor.mode {
+                Mode::Select => {
+                    let text = "-- SELECT --";
+                    handle_command!(write, Print(text))?;
+                    Some(text.len())
                 }
+                Mode::Insert => {
+                    let text = "-- INSERT --";
+                    handle_command!(write, Print(text))?;
+                    Some(text.len())
+                }
+                Mode::Search(_) => Some(draw_input(
+                    write,
+                    "/",
+                    &editor.input,
+                    background_color,
+                    cursor_color,
+                )?),
+                Mode::Script(_) => Some(draw_input(
+                    write,
+                    ":",
+                    &editor.input,
+                    background_color,
+                    cursor_color,
+                )?),
+                _ => Some(0),
             }
         } else {
-            handle_command!(write, terminal::Clear(terminal::ClearType::CurrentLine))?;
-            handle_command!(write, Print(prefix))?;
-            handle_command!(write, Print(&editor.status_message))?;
-        }
+            let prefix = match editor.status_message_kind {
+                StatusMessageKind::Info => "",
+                StatusMessageKind::Error => "error:",
+            };
 
-        None
-    } else if has_focus {
-        match editor.mode {
-            Mode::Select => {
-                let text = "-- SELECT --";
-                handle_command!(write, Print(text))?;
-                Some(text.len())
+            let line_count = editor.status_message.lines().count();
+            if line_count > 1 {
+                if prefix.is_empty() {
+                    handle_command!(write, cursor::MoveUp((line_count - 1) as _))?;
+                    handle_command!(write, terminal::Clear(terminal::ClearType::FromCursorDown))?;
+                } else {
+                    handle_command!(write, cursor::MoveUp(line_count as _))?;
+                    handle_command!(write, Print(prefix))?;
+                    handle_command!(write, terminal::Clear(terminal::ClearType::FromCursorDown))?;
+                    handle_command!(write, cursor::MoveToNextLine(1))?;
+                }
+
+                for (i, line) in editor.status_message.lines().enumerate() {
+                    handle_command!(write, Print(line))?;
+                    if i < line_count - 1 {
+                        handle_command!(write, cursor::MoveToNextLine(1))?;
+                    }
+                }
+            } else {
+                handle_command!(write, terminal::Clear(terminal::ClearType::CurrentLine))?;
+                handle_command!(write, Print(prefix))?;
+                handle_command!(write, Print(&editor.status_message))?;
             }
-            Mode::Insert => {
-                let text = "-- INSERT --";
-                handle_command!(write, Print(text))?;
-                Some(text.len())
-            }
-            Mode::Search(_) => Some(draw_input(
-                write,
-                "/",
-                &editor.input,
-                background_color,
-                cursor_color,
-            )?),
-            Mode::Script(_) => Some(draw_input(
-                write,
-                ":",
-                &editor.input,
-                background_color,
-                cursor_color,
-            )?),
-            _ => Some(0),
+
+            None
         }
     } else {
         Some(0)
