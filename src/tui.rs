@@ -417,6 +417,8 @@ where
         }
 
         handle_command!(write, Print(&entry.name))?;
+        handle_command!(write, Print(" - "))?;
+        handle_command!(write, Print(entry.score))?;
         handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
         handle_command!(write, cursor::MoveToNextLine(1))?;
     }

@@ -4,18 +4,10 @@ use crate::{
     client_event::Key,
     editor::KeysIterator,
     mode::{Mode, ModeContext, ModeOperation},
-    picker::CustomPickerEntry,
 };
 
 pub fn on_enter(ctx: &mut ModeContext) {
     ctx.picker.reset();
-    let words = &["mate", "material", "materialize", "materialization"];
-    for word in words {
-        ctx.picker.add_custom_entry(CustomPickerEntry {
-            name: String::from(*word),
-            description: String::new(),
-        });
-    }
 }
 
 pub fn on_exit(ctx: &mut ModeContext) {

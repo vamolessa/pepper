@@ -6,6 +6,7 @@ use crate::word_database::WordDatabase;
 pub struct PickerEntry<'a> {
     pub name: &'a str,
     pub description: &'a str,
+    pub score: i64,
 }
 
 pub struct CustomPickerEntry {
@@ -23,7 +24,6 @@ struct FilteredEntry {
     pub score: i64,
 }
 
-#[derive(Default)]
 pub struct Picker {
     matcher: SkimMatcherV2,
     custom_entries: Vec<CustomPickerEntry>,
@@ -36,6 +36,19 @@ pub struct Picker {
 }
 
 impl Picker {
+    pub fn new() -> Self {
+        let mut matcher = SkimMatcherV2::default();
+
+        Self {
+            matcher,
+            custom_entries: Vec::new(),
+            filtered_entries: Vec::new(),
+            cursor: 0,
+            scroll: 0,
+            cached_current_word: String::new(),
+        }
+    }
+
     pub fn cursor(&self) -> usize {
         self.cursor
     }
@@ -155,6 +168,7 @@ impl Picker {
                 PickerEntry {
                     name: &entry.name,
                     description: &entry.description,
+                    score: e.score,
                 }
             }
             FiletedEntrySource::WordDatabase(i) => {
@@ -162,6 +176,7 @@ impl Picker {
                 PickerEntry {
                     name: word,
                     description: "",
+                    score: e.score,
                 }
             }
         })
