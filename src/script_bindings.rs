@@ -23,28 +23,50 @@ impl fmt::Display for QuitError {
 }
 
 pub fn bind_all<'a>(scripts: &'a mut ScriptEngine) -> ScriptResult<()> {
-    macro_rules! register_all {
-        ($($func:ident,)*) => {
-            $(scripts.register_ctx_function(stringify!($func), bindings::$func)?;)*
-        }
+    macro_rules! register {
+        () => {};
+        ($func:ident, $($tokens:tt)*) => {
+            scripts.register_ctx_function(
+                None,
+                stringify!($func),
+                global::$func
+            )?;
+            register!($($tokens)*);
+        };
+        ($namespace:ident :: $func:ident, $($tokens:tt)*) => {
+            scripts.register_ctx_function(
+                Some(stringify!($namespace)),
+                stringify!($func),
+                $namespace::$func
+            )?;
+            register!($($tokens)*);
+        };
     }
 
-    register_all! {
-        client_index,
+    register! {
+        print,
         quit, quit_all, open, close, close_all, save, save_all,
-        selection, replace, print, pipe, spawn,
-        config, syntax_extension, syntax_rule, theme,
-        mapn, maps, mapi,
+        client::index,
+        editor::selection, editor::replace,
+        process::pipe, process::spawn,
+        config::set,
+        keymap::normal, keymap::select, keymap::insert,
+        theme::color,
+        syntax::extension, syntax::rule,
     };
 
     Ok(())
 }
 
-mod bindings {
+mod global {
     use super::*;
 
-    pub fn client_index(ctx: &mut ScriptContext, _: ()) -> ScriptResult<usize> {
-        Ok(ctx.target_client.into_index())
+    pub fn print(ctx: &mut ScriptContext, value: ScriptValue) -> ScriptResult<()> {
+        let message = value.to_string();
+        *ctx.status_message_kind = StatusMessageKind::Info;
+        ctx.status_message.clear();
+        ctx.status_message.push_str(&message);
+        Ok(())
     }
 
     pub fn quit(ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
@@ -121,6 +143,18 @@ mod bindings {
         }
         Ok(())
     }
+}
+
+mod client {
+    use super::*;
+
+    pub fn index(ctx: &mut ScriptContext, _: ()) -> ScriptResult<usize> {
+        Ok(ctx.target_client.into_index())
+    }
+}
+
+mod editor {
+    use super::*;
 
     pub fn selection(ctx: &mut ScriptContext, _: ()) -> ScriptResult<String> {
         let mut selection = String::new();
@@ -140,14 +174,10 @@ mod bindings {
         }
         Ok(())
     }
+}
 
-    pub fn print(ctx: &mut ScriptContext, value: ScriptValue) -> ScriptResult<()> {
-        let message = value.to_string();
-        *ctx.status_message_kind = StatusMessageKind::Info;
-        ctx.status_message.clear();
-        ctx.status_message.push_str(&message);
-        Ok(())
-    }
+mod process {
+    use super::*;
 
     pub fn pipe(
         _ctx: &mut ScriptContext,
@@ -201,11 +231,12 @@ mod bindings {
         child.stdin = None;
         Ok(child)
     }
+}
 
-    pub fn config(
-        ctx: &mut ScriptContext,
-        (name, value): (ScriptStr, ScriptStr),
-    ) -> ScriptResult<()> {
+mod config {
+    use super::*;
+
+    pub fn set(ctx: &mut ScriptContext, (name, value): (ScriptStr, ScriptStr)) -> ScriptResult<()> {
         let name = name.to_str()?;
         let value = value.to_str()?;
 
@@ -218,70 +249,20 @@ mod bindings {
         }
         Ok(())
     }
+}
 
-    pub fn syntax_extension(
-        ctx: &mut ScriptContext,
-        (main_extension, other_extension): (ScriptStr, ScriptStr),
-    ) -> ScriptResult<()> {
-        let main_extension = main_extension.to_str()?;
-        let other_extension = other_extension.to_str()?;
-        ctx.config
-            .syntaxes
-            .get_by_extension(main_extension)
-            .add_extension(other_extension.into());
-        Ok(())
-    }
+mod keymap {
+    use super::*;
 
-    pub fn syntax_rule(
-        ctx: &mut ScriptContext,
-        (main_extension, token_kind, pattern): (ScriptStr, ScriptStr, ScriptStr),
-    ) -> ScriptResult<()> {
-        let main_extension = main_extension.to_str()?;
-        let token_kind = token_kind.to_str()?;
-        let pattern = pattern.to_str()?;
-
-        let token_kind = token_kind.parse().map_err(ScriptError::from)?;
-        let pattern = Pattern::new(pattern).map_err(|e| {
-            let message = helper::parsing_error(e, pattern, 0);
-            ScriptError::from(message)
-        })?;
-
-        ctx.config
-            .syntaxes
-            .get_by_extension(main_extension)
-            .add_rule(token_kind, pattern);
-        Ok(())
-    }
-
-    pub fn theme(
-        ctx: &mut ScriptContext,
-        (name, color): (ScriptStr, ScriptStr),
-    ) -> ScriptResult<()> {
-        let name = name.to_str()?;
-        let color = color.to_str()?;
-
-        if let Err(e) = ctx.config.theme.parse_and_set(name, color) {
-            let context = format!("{} {}", name, color);
-            let error_index = match e {
-                ParseThemeError::ColorNotFound => 0,
-                _ => context.len(),
-            };
-            let message = helper::parsing_error(e, &context[..], error_index);
-            return Err(ScriptError::from(message));
-        }
-
-        Ok(())
-    }
-
-    pub fn mapn(ctx: &mut ScriptContext, (from, to): (ScriptStr, ScriptStr)) -> ScriptResult<()> {
+    pub fn normal(ctx: &mut ScriptContext, (from, to): (ScriptStr, ScriptStr)) -> ScriptResult<()> {
         map_mode(ctx, Mode::Normal, from, to)
     }
 
-    pub fn maps(ctx: &mut ScriptContext, (from, to): (ScriptStr, ScriptStr)) -> ScriptResult<()> {
+    pub fn select(ctx: &mut ScriptContext, (from, to): (ScriptStr, ScriptStr)) -> ScriptResult<()> {
         map_mode(ctx, Mode::Select, from, to)
     }
 
-    pub fn mapi(ctx: &mut ScriptContext, (from, to): (ScriptStr, ScriptStr)) -> ScriptResult<()> {
+    pub fn insert(ctx: &mut ScriptContext, (from, to): (ScriptStr, ScriptStr)) -> ScriptResult<()> {
         map_mode(ctx, Mode::Insert, from, to)
     }
 
@@ -305,6 +286,68 @@ mod bindings {
                 Err(ScriptError::from(message))
             }
         }
+    }
+}
+
+mod theme {
+    use super::*;
+
+    pub fn color(
+        ctx: &mut ScriptContext,
+        (name, color): (ScriptStr, ScriptStr),
+    ) -> ScriptResult<()> {
+        let name = name.to_str()?;
+        let color = color.to_str()?;
+
+        if let Err(e) = ctx.config.theme.parse_and_set(name, color) {
+            let context = format!("{} {}", name, color);
+            let error_index = match e {
+                ParseThemeError::ColorNotFound => 0,
+                _ => context.len(),
+            };
+            let message = helper::parsing_error(e, &context[..], error_index);
+            return Err(ScriptError::from(message));
+        }
+
+        Ok(())
+    }
+}
+
+mod syntax {
+    use super::*;
+
+    pub fn extension(
+        ctx: &mut ScriptContext,
+        (main_extension, other_extension): (ScriptStr, ScriptStr),
+    ) -> ScriptResult<()> {
+        let main_extension = main_extension.to_str()?;
+        let other_extension = other_extension.to_str()?;
+        ctx.config
+            .syntaxes
+            .get_by_extension(main_extension)
+            .add_extension(other_extension.into());
+        Ok(())
+    }
+
+    pub fn rule(
+        ctx: &mut ScriptContext,
+        (main_extension, token_kind, pattern): (ScriptStr, ScriptStr, ScriptStr),
+    ) -> ScriptResult<()> {
+        let main_extension = main_extension.to_str()?;
+        let token_kind = token_kind.to_str()?;
+        let pattern = pattern.to_str()?;
+
+        let token_kind = token_kind.parse().map_err(ScriptError::from)?;
+        let pattern = Pattern::new(pattern).map_err(|e| {
+            let message = helper::parsing_error(e, pattern, 0);
+            ScriptError::from(message)
+        })?;
+
+        ctx.config
+            .syntaxes
+            .get_by_extension(main_extension)
+            .add_rule(token_kind, pattern);
+        Ok(())
     }
 }
 

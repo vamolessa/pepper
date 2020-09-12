@@ -2,7 +2,7 @@ use std::{error::Error, fmt, fs::File, io::Read, path::Path, sync::Arc};
 
 use mlua::prelude::{
     FromLua, FromLuaMulti, Lua, LuaError, LuaFunction, LuaInteger, LuaLightUserData, LuaNumber,
-    LuaResult, LuaString, LuaValue, ToLuaMulti,
+    LuaResult, LuaString, LuaTable, LuaValue, ToLuaMulti,
 };
 
 use crate::{
@@ -12,8 +12,8 @@ use crate::{
     config::Config,
     editor::{EditorLoop, StatusMessageKind},
     keymap::KeyMapCollection,
-    script_bindings,
     picker::Picker,
+    script_bindings,
 };
 
 pub type ScriptResult<T> = LuaResult<T>;
@@ -188,6 +188,7 @@ impl ScriptEngine {
 
     pub fn register_ctx_function<'lua, A, R, F>(
         &'lua mut self,
+        namespace: Option<&str>,
         name: &str,
         func: F,
     ) -> ScriptResult<()>
@@ -201,7 +202,22 @@ impl ScriptEngine {
             let ctx = unsafe { &mut *(ctx.0 as *mut _) };
             func(ctx, args)
         })?;
-        self.lua.globals().set(name, func)?;
+
+        match namespace {
+            Some(namespace) => {
+                let namespace_table: Option<LuaTable> = self.lua.globals().get(namespace)?;
+                match namespace_table {
+                    Some(table) => table.set(name, func)?,
+                    None => {
+                        let table = self.lua.create_table()?;
+                        table.set(name, func)?;
+                        self.lua.globals().set(namespace, table)?;
+                    }
+                }
+            }
+            None => self.lua.globals().set(name, func)?,
+        }
+
         Ok(())
     }
 
