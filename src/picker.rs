@@ -1,5 +1,3 @@
-use std::ops::Range;
-
 use fuzzy_matcher::{skim::SkimMatcherV2, FuzzyMatcher};
 
 #[derive(Default, Clone, Copy)]
