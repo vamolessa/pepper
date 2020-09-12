@@ -31,6 +31,7 @@ pub fn on_event(
 
                 buffers: ctx.buffers,
                 buffer_views: ctx.buffer_views,
+                word_database: ctx.word_database,
 
                 picker: ctx.picker,
 

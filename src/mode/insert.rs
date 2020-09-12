@@ -82,7 +82,7 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
     if word.is_empty() || main_cursor.position.column_index < word_range.to.column_index {
         ctx.picker.clear_filtered();
     } else {
-        ctx.picker.filter(word);
+        ctx.picker.filter(&ctx.word_database, word);
     }
 
     ModeOperation::None
@@ -90,7 +90,7 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
 
 fn apply_completion(ctx: &mut ModeContext, handle: BufferViewHandle, cursor_movement: isize) {
     ctx.picker.move_cursor(cursor_movement);
-    let entry = ctx.picker.current_entry();
+    let entry = ctx.picker.current_entry(&ctx.word_database);
     ctx.buffer_views
         .apply_completion(ctx.buffers, &ctx.config.syntaxes, handle, &entry.name);
 }

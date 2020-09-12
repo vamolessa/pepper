@@ -11,6 +11,7 @@ use crate::{
     mode::{Mode, ModeContext, ModeOperation},
     picker::Picker,
     script::{ScriptContext, ScriptEngine},
+    word_database::WordDatabase,
 };
 
 #[derive(Clone, Copy)]
@@ -65,6 +66,7 @@ pub struct Editor {
 
     pub buffers: BufferCollection,
     pub buffer_views: BufferViewCollection,
+    pub word_database: WordDatabase,
 
     pub buffered_keys: Vec<Key>,
     pub input: String,
@@ -87,6 +89,7 @@ impl Editor {
 
             buffers: Default::default(),
             buffer_views: BufferViewCollection::default(),
+            word_database: WordDatabase::new(),
 
             buffered_keys: Vec::new(),
             input: String::new(),
@@ -119,6 +122,7 @@ impl Editor {
 
             buffers: &mut self.buffers,
             buffer_views: &mut self.buffer_views,
+            word_database: &mut self.word_database,
 
             picker: &mut self.picker,
 
@@ -241,6 +245,7 @@ impl Editor {
 
                         buffers: &mut self.buffers,
                         buffer_views: &mut self.buffer_views,
+                        word_database: &mut self.word_database,
 
                         input: &mut self.input,
                         picker: &mut self.picker,

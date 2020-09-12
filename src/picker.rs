@@ -1,5 +1,7 @@
 use fuzzy_matcher::{skim::SkimMatcherV2, FuzzyMatcher};
 
+use crate::word_database::WordDatabase;
+
 #[derive(Default, Clone, Copy)]
 pub struct PickerEntry<'a> {
     pub name: &'a str,
@@ -102,8 +104,17 @@ impl Picker {
         self.scroll = 0;
     }
 
-    pub fn filter(&mut self, pattern: &str) {
+    pub fn filter(&mut self, word_database: &WordDatabase, pattern: &str) {
         self.filtered_entries.clear();
+
+        for (i, word) in word_database.word_indices() {
+            if let Some(score) = self.matcher.fuzzy_match(word, pattern) {
+                self.filtered_entries.push(FilteredEntry {
+                    source: FiletedEntrySource::WordDatabase(i),
+                    score,
+                });
+            }
+        }
 
         for (i, entry) in self.custom_entries.iter().enumerate() {
             if let Some(score) = self.matcher.fuzzy_match(&entry.name[..], pattern) {
@@ -119,7 +130,7 @@ impl Picker {
         self.cursor = self.cursor.min(self.filtered_entries.len());
     }
 
-    pub fn current_entry(&self) -> PickerEntry {
+    pub fn current_entry<'a>(&'a self, word_database: &'a WordDatabase) -> PickerEntry<'a> {
         let entry = &self.filtered_entries[self.cursor];
         match entry.source {
             FiletedEntrySource::Custom(i) => {
@@ -129,13 +140,20 @@ impl Picker {
                     description: &entry.description,
                 }
             }
-            FiletedEntrySource::WordDatabase(_i) => {
-                unimplemented!();
+            FiletedEntrySource::WordDatabase(i) => {
+                let word = word_database.word_at(i);
+                PickerEntry {
+                    name: word,
+                    description: "",
+                }
             }
         }
     }
 
-    pub fn entries<'a>(&'a self) -> impl 'a + Iterator<Item = PickerEntry<'a>> {
+    pub fn entries<'a>(
+        &'a self,
+        word_database: &'a WordDatabase,
+    ) -> impl 'a + Iterator<Item = PickerEntry<'a>> {
         self.filtered_entries.iter().map(move |e| match e.source {
             FiletedEntrySource::Custom(i) => {
                 let entry = &self.custom_entries[i];
@@ -144,10 +162,13 @@ impl Picker {
                     description: &entry.description,
                 }
             }
-            FiletedEntrySource::WordDatabase(_i) => PickerEntry {
-                name: "",
-                description: "",
-            },
+            FiletedEntrySource::WordDatabase(i) => {
+                let word = word_database.word_at(i);
+                PickerEntry {
+                    name: word,
+                    description: "",
+                }
+            }
         })
     }
 }

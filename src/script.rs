@@ -14,6 +14,7 @@ use crate::{
     keymap::KeyMapCollection,
     picker::Picker,
     script_bindings,
+    word_database::WordDatabase,
 };
 
 pub type ScriptResult<T> = LuaResult<T>;
@@ -140,6 +141,7 @@ pub struct ScriptContext<'a> {
 
     pub buffers: &'a mut BufferCollection,
     pub buffer_views: &'a mut BufferViewCollection,
+    pub word_database: &'a mut WordDatabase,
 
     pub picker: &'a mut Picker,
 

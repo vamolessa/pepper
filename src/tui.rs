@@ -403,7 +403,7 @@ where
 
     for (i, entry) in editor
         .picker
-        .entries()
+        .entries(&editor.word_database)
         .enumerate()
         .skip(scroll)
         .take(height)

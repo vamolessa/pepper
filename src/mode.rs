@@ -10,8 +10,9 @@ use crate::{
     config::Config,
     editor::{KeysIterator, StatusMessageKind},
     keymap::KeyMapCollection,
-    script::ScriptEngine,
     picker::Picker,
+    script::ScriptEngine,
+    word_database::WordDatabase,
 };
 
 macro_rules! unwrap_or_none {
@@ -45,6 +46,7 @@ pub struct ModeContext<'a> {
 
     pub buffers: &'a mut BufferCollection,
     pub buffer_views: &'a mut BufferViewCollection,
+    pub word_database: &'a mut WordDatabase,
 
     pub input: &'a mut String,
     pub picker: &'a mut Picker,
