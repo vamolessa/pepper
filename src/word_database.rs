@@ -143,4 +143,29 @@ mod tests {
         assert_eq!(Some("third"), iter.next());
         assert_eq!(None, iter.next());
     }
+
+    #[test]
+    fn word_database_insert_remove() {
+        let mut words = WordDatabase::new();
+
+        words.add_word("first");
+        assert_eq!(1, words.len);
+
+        words.add_word("first");
+        words.add_word("first");
+        assert_eq!(1, words.len);
+
+        words.add_word("second");
+        assert_eq!(2, words.len);
+
+        words.remove_word("first");
+        assert_eq!(2, words.len);
+
+        words.remove_word("first");
+        words.remove_word("first");
+        assert_eq!(1, words.len);
+
+        words.remove_word("first");
+        assert_eq!(1, words.len);
+    }
 }
