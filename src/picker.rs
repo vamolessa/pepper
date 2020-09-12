@@ -31,6 +31,8 @@ pub struct Picker {
 
     cursor: usize,
     scroll: usize,
+
+    cached_current_word: String,
 }
 
 impl Picker {
@@ -117,7 +119,7 @@ impl Picker {
         }
 
         for (i, entry) in self.custom_entries.iter().enumerate() {
-            if let Some(score) = self.matcher.fuzzy_match(&entry.name[..], pattern) {
+            if let Some(score) = self.matcher.fuzzy_match(&entry.name, pattern) {
                 self.filtered_entries.push(FilteredEntry {
                     source: FiletedEntrySource::Custom(i),
                     score,
@@ -130,22 +132,15 @@ impl Picker {
         self.cursor = self.cursor.min(self.filtered_entries.len());
     }
 
-    pub fn current_entry<'a>(&'a self, word_database: &'a WordDatabase) -> PickerEntry<'a> {
+    pub fn current_entry_name<'a>(&'a mut self, word_database: &WordDatabase) -> &'a str {
         let entry = &self.filtered_entries[self.cursor];
         match entry.source {
-            FiletedEntrySource::Custom(i) => {
-                let entry = &self.custom_entries[i];
-                PickerEntry {
-                    name: &entry.name,
-                    description: &entry.description,
-                }
-            }
+            FiletedEntrySource::Custom(i) => &self.custom_entries[i].name,
             FiletedEntrySource::WordDatabase(i) => {
                 let word = word_database.word_at(i);
-                PickerEntry {
-                    name: word,
-                    description: "",
-                }
+                self.cached_current_word.clear();
+                self.cached_current_word.push_str(word);
+                &self.cached_current_word
             }
         }
     }

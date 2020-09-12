@@ -33,18 +33,30 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
             unwrap_or_none!(ctx.buffer_views.get_mut(handle)).commit_edits(ctx.buffers);
             return ModeOperation::EnterMode(Mode::Normal);
         }
-        Key::Tab => ctx
-            .buffer_views
-            .insert_text(ctx.buffers, &ctx.config.syntaxes, handle, "\t"),
-        Key::Ctrl('m') => {
-            ctx.buffer_views
-                .insert_text(ctx.buffers, &ctx.config.syntaxes, handle, "\n")
-        }
+        Key::Tab => ctx.buffer_views.insert_text(
+            ctx.buffers,
+            ctx.word_database,
+            &ctx.config.syntaxes,
+            handle,
+            "\t",
+        ),
+        Key::Ctrl('m') => ctx.buffer_views.insert_text(
+            ctx.buffers,
+            ctx.word_database,
+            &ctx.config.syntaxes,
+            handle,
+            "\n",
+        ),
         Key::Char(c) => {
             let mut buf = [0; std::mem::size_of::<char>()];
             let s = c.encode_utf8(&mut buf);
-            ctx.buffer_views
-                .insert_text(ctx.buffers, &ctx.config.syntaxes, handle, s);
+            ctx.buffer_views.insert_text(
+                ctx.buffers,
+                ctx.word_database,
+                &ctx.config.syntaxes,
+                handle,
+                s,
+            );
         }
         Key::Ctrl('h') => {
             unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
@@ -52,8 +64,12 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
                 BufferOffset::line_col(0, -1),
                 MovementKind::PositionOnly,
             );
-            ctx.buffer_views
-                .delete_in_selection(ctx.buffers, &ctx.config.syntaxes, handle);
+            ctx.buffer_views.delete_in_selection(
+                ctx.buffers,
+                ctx.word_database,
+                &ctx.config.syntaxes,
+                handle,
+            );
         }
         Key::Delete => {
             unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
@@ -61,8 +77,12 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
                 BufferOffset::line_col(0, 1),
                 MovementKind::PositionOnly,
             );
-            ctx.buffer_views
-                .delete_in_selection(ctx.buffers, &ctx.config.syntaxes, handle);
+            ctx.buffer_views.delete_in_selection(
+                ctx.buffers,
+                ctx.word_database,
+                &ctx.config.syntaxes,
+                handle,
+            );
         }
         Key::Ctrl('n') => {
             apply_completion(ctx, handle, 1);
@@ -90,7 +110,12 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
 
 fn apply_completion(ctx: &mut ModeContext, handle: BufferViewHandle, cursor_movement: isize) {
     ctx.picker.move_cursor(cursor_movement);
-    let entry = ctx.picker.current_entry(&ctx.word_database);
-    ctx.buffer_views
-        .apply_completion(ctx.buffers, &ctx.config.syntaxes, handle, &entry.name);
+    let entry_name = ctx.picker.current_entry_name(&ctx.word_database);
+    ctx.buffer_views.apply_completion(
+        ctx.buffers,
+        ctx.word_database,
+        &ctx.config.syntaxes,
+        handle,
+        &entry_name,
+    );
 }

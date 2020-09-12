@@ -43,7 +43,7 @@ impl WordDatabase {
             self.len = 0;
             for word in &words {
                 if word.count > 0 {
-                    self.add_word(&word.text[..]);
+                    self.add_word(&word.text);
                 }
             }
         }
@@ -73,7 +73,7 @@ impl WordDatabase {
     }
 
     pub fn word_at(&self, index: usize) -> &str {
-        &self.words[index].text[..]
+        &self.words[index].text
     }
 
     pub fn word_indices<'a>(&'a self) -> impl Iterator<Item = (usize, &'a str)> {

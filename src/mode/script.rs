@@ -41,7 +41,7 @@ pub fn on_event(
                 keymaps: ctx.keymaps,
             };
 
-            match ctx.scripts.eval(context, &ctx.input[..]) {
+            match ctx.scripts.eval(context, &ctx.input) {
                 Ok(value) => {
                     let mut kind = StatusMessageKind::Info;
                     let message = match value {

@@ -59,7 +59,7 @@ impl Pattern {
 
     pub fn matches_with_state(&self, text: &str, state: &PatternState) -> MatchResult {
         let bytes = text.as_bytes();
-        let ops = &self.ops[..];
+        let ops = &self.ops;
         let mut op_index = state.op_index;
         let mut bytes_index = 0;
 

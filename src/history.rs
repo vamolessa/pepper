@@ -239,7 +239,7 @@ impl History {
             _ => unreachable!(),
         };
 
-        let texts = &self.texts[..];
+        let texts = &self.texts;
         self.edits[range].iter().rev().map(move |e| {
             let mut edit = e.as_edit_ref(texts);
             edit.kind = match edit.kind {
@@ -266,7 +266,7 @@ impl History {
             _ => unreachable!(),
         };
 
-        let texts = &self.texts[..];
+        let texts = &self.texts;
         self.edits[range].iter().map(move |e| e.as_edit_ref(texts))
     }
 }

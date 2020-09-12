@@ -15,7 +15,7 @@ pub struct ApplicationError(String);
 impl Error for ApplicationError {}
 impl fmt::Display for ApplicationError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str(&self.0[..])
+        f.write_str(&self.0)
     }
 }
 

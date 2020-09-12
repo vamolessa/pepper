@@ -7,6 +7,7 @@ use crate::{
     cursor::{Cursor, CursorCollection},
     history::{Edit, EditKind},
     syntax::SyntaxCollection,
+    word_database::WordDatabase,
 };
 
 pub enum MovementKind {
@@ -219,6 +220,7 @@ impl BufferViewCollection {
     pub fn insert_text(
         &mut self,
         buffers: &mut BufferCollection,
+        word_database: &mut WordDatabase,
         syntaxes: &SyntaxCollection,
         handle: BufferViewHandle,
         text: &str,
@@ -245,6 +247,7 @@ impl BufferViewCollection {
     pub fn delete_in_selection(
         &mut self,
         buffers: &mut BufferCollection,
+        word_database: &mut WordDatabase,
         syntaxes: &SyntaxCollection,
         handle: BufferViewHandle,
     ) {
@@ -271,6 +274,7 @@ impl BufferViewCollection {
     pub fn apply_completion(
         &mut self,
         buffers: &mut BufferCollection,
+        word_database: &mut WordDatabase,
         syntaxes: &SyntaxCollection,
         handle: BufferViewHandle,
         completion: &str,
@@ -450,7 +454,7 @@ impl BufferViewCollection {
                             ))
                         }
                     }
-                    BufferContent::from_str(&content[..])
+                    BufferContent::from_str(&content)
                 }
                 Err(_) => BufferContent::from_str(""),
             };

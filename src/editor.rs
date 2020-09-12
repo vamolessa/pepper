@@ -221,7 +221,7 @@ impl Editor {
 
                 match self
                     .keymaps
-                    .matches(self.mode.discriminant(), &self.buffered_keys[..])
+                    .matches(self.mode.discriminant(), &self.buffered_keys)
                 {
                     MatchResult::None => (),
                     MatchResult::Prefix => return EditorLoop::Continue,

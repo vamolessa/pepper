@@ -47,7 +47,7 @@ pub fn bind_all<'a>(scripts: &'a mut ScriptEngine) -> ScriptResult<()> {
         print,
         quit, quit_all, open, close, close_all, save, save_all,
         client::index,
-        editor::selection, editor::replace,
+        editor::selection, editor::delete_selection, editor::insert_text,
         process::pipe, process::spawn,
         config::set,
         keymap::normal, keymap::select, keymap::insert,
@@ -164,13 +164,28 @@ mod editor {
         Ok(selection)
     }
 
-    pub fn replace(ctx: &mut ScriptContext, text: ScriptStr) -> ScriptResult<()> {
+    pub fn delete_selection(ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
+        if let Some(handle) = ctx.current_buffer_view_handle() {
+            ctx.buffer_views.delete_in_selection(
+                ctx.buffers,
+                ctx.word_database,
+                &ctx.config.syntaxes,
+                handle,
+            );
+        }
+        Ok(())
+    }
+
+    pub fn insert_text(ctx: &mut ScriptContext, text: ScriptStr) -> ScriptResult<()> {
         if let Some(handle) = ctx.current_buffer_view_handle() {
             let text = text.to_str()?;
-            ctx.buffer_views
-                .delete_in_selection(ctx.buffers, &ctx.config.syntaxes, handle);
-            ctx.buffer_views
-                .insert_text(ctx.buffers, &ctx.config.syntaxes, handle, text);
+            ctx.buffer_views.insert_text(
+                ctx.buffers,
+                ctx.word_database,
+                &ctx.config.syntaxes,
+                handle,
+                text,
+            );
         }
         Ok(())
     }
@@ -186,10 +201,10 @@ mod process {
         let child = run_process(name, args, input, Stdio::piped())?;
         let child_output = child.wait_with_output().map_err(ScriptError::from)?;
         if child_output.status.success() {
-            let child_output = String::from_utf8_lossy(&child_output.stdout[..]);
+            let child_output = String::from_utf8_lossy(&child_output.stdout);
             Ok(child_output.into_owned())
         } else {
-            let child_output = String::from_utf8_lossy(&child_output.stdout[..]);
+            let child_output = String::from_utf8_lossy(&child_output.stdout);
             Err(ScriptError::from(child_output.into_owned()))
         }
     }
@@ -305,7 +320,7 @@ mod theme {
                 ParseThemeError::ColorNotFound => 0,
                 _ => context.len(),
             };
-            let message = helper::parsing_error(e, &context[..], error_index);
+            let message = helper::parsing_error(e, &context, error_index);
             return Err(ScriptError::from(message));
         }
 

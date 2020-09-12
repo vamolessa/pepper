@@ -64,7 +64,7 @@ impl KeyMapCollection {
             if map.from.iter().zip(keys.iter()).all(|(a, b)| a == b) {
                 has_prefix = true;
                 if map.from.len() == keys.len() {
-                    return MatchResult::ReplaceWith(&map.to[..]);
+                    return MatchResult::ReplaceWith(&map.to);
                 }
             }
         }

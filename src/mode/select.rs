@@ -57,8 +57,12 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
             .swap_positions_and_anchors(),
         Key::Char('s') => return ModeOperation::EnterMode(Mode::Search(FromMode::Select)),
         Key::Char('d') => {
-            ctx.buffer_views
-                .delete_in_selection(ctx.buffers, &ctx.config.syntaxes, handle);
+            ctx.buffer_views.delete_in_selection(
+                ctx.buffers,
+                ctx.word_database,
+                &ctx.config.syntaxes,
+                handle,
+            );
             unwrap_or_none!(ctx.buffer_views.get_mut(handle)).commit_edits(ctx.buffers);
             return ModeOperation::EnterMode(Mode::Normal);
         }
@@ -71,11 +75,20 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
             }
         }
         Key::Char('p') => {
-            ctx.buffer_views
-                .delete_in_selection(ctx.buffers, &ctx.config.syntaxes, handle);
+            ctx.buffer_views.delete_in_selection(
+                ctx.buffers,
+                ctx.word_database,
+                &ctx.config.syntaxes,
+                handle,
+            );
             if let Ok(text) = ClipboardContext::new().and_then(|mut c| c.get_contents()) {
-                ctx.buffer_views
-                    .insert_text(ctx.buffers, &ctx.config.syntaxes, handle, &text[..]);
+                ctx.buffer_views.insert_text(
+                    ctx.buffers,
+                    ctx.word_database,
+                    &ctx.config.syntaxes,
+                    handle,
+                    &text,
+                );
             }
             unwrap_or_none!(ctx.buffer_views.get_mut(handle)).commit_edits(ctx.buffers);
             return ModeOperation::EnterMode(Mode::Normal);

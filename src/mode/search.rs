@@ -34,6 +34,6 @@ pub fn update_search(ctx: &mut ModeContext) {
         .and_then(|h| buffer_views.get(h))
         .and_then(|v| buffers.get_mut(v.buffer_handle))
     {
-        buffer.set_search(&ctx.input[..]);
+        buffer.set_search(&ctx.input);
     }
 }

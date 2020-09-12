@@ -416,7 +416,7 @@ where
             handle_command!(write, SetForegroundColor(foreground_color))?;
         }
 
-        handle_command!(write, Print(&entry.name[..]))?;
+        handle_command!(write, Print(&entry.name))?;
         handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
         handle_command!(write, cursor::MoveToNextLine(1))?;
     }
@@ -518,14 +518,14 @@ where
             Mode::Search(_) => Some(draw_input(
                 write,
                 "/",
-                &editor.input[..],
+                &editor.input,
                 background_color,
                 cursor_color,
             )?),
             Mode::Script(_) => Some(draw_input(
                 write,
                 ":",
-                &editor.input[..],
+                &editor.input,
                 background_color,
                 cursor_color,
             )?),

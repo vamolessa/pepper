@@ -90,7 +90,7 @@ pub struct SerializationBuf(Vec<u8>);
 
 impl SerializationBuf {
     pub fn as_slice(&self) -> &[u8] {
-        &self.0[..]
+        &self.0
     }
 
     pub fn clear(&mut self) {

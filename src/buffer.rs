@@ -101,7 +101,7 @@ impl BufferLine {
     }
 
     pub fn as_str(&self) -> &str {
-        &self.text[..]
+        &self.text
     }
 
     pub fn slice<R>(&self, range: R) -> &str
@@ -359,7 +359,7 @@ impl BufferContent {
             let mut line_count = 0;
             let mut lines = text.lines();
             if let Some(line) = lines.next() {
-                self.lines[position.line_index].push_text(&line[..]);
+                self.lines[position.line_index].push_text(&line);
             }
             for line in lines {
                 line_count += 1;
@@ -571,7 +571,7 @@ impl Buffer {
     }
 
     pub fn search_ranges(&self) -> &[BufferRange] {
-        &self.search_ranges[..]
+        &self.search_ranges
     }
 
     pub fn save_to_file(&self) -> Result<(), String> {
