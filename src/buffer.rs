@@ -10,7 +10,7 @@ use crate::{
     buffer_position::{BufferPosition, BufferRange},
     history::{Edit, EditKind, History},
     syntax::{self, HighlightedBuffer, SyntaxCollection, SyntaxHandle},
-    word_database::{is_word_char, WordDatabase},
+    word_database::{is_word_char, WordDatabase, WordIter},
 };
 
 #[derive(Debug)]
@@ -266,7 +266,7 @@ impl BufferContent {
         self.lines.iter()
     }
 
-    pub fn line(&self, index: usize) -> &BufferLine {
+    pub fn line_at(&self, index: usize) -> &BufferLine {
         &self.lines[index]
     }
 
@@ -428,7 +428,7 @@ impl BufferContent {
     pub fn find_word_at(&self, position: BufferPosition) -> (BufferRange, &str) {
         let position = self.clamp_position(position);
         let (range, word) = self
-            .line(position.line_index)
+            .line_at(position.line_index)
             .find_word_at(position.column_index);
         let range = BufferRange::between(
             BufferPosition::line_col(position.line_index, range.start),
@@ -493,7 +493,25 @@ impl Buffer {
         cursor_index: usize,
     ) -> BufferRange {
         self.search_ranges.clear();
+
+        for word in WordIter::new(self.content.line_at(position.line_index).as_str()) {
+            word_database.remove_word(word);
+        }
+
         let range = self.content.insert_text(position, text);
+
+        let line_count = range.to.line_index - range.from.line_index + 1;
+        for line in self
+            .content
+            .lines()
+            .skip(range.from.line_index)
+            .take(line_count)
+        {
+            for word in WordIter::new(line.as_str()) {
+                word_database.add_word(word);
+            }
+        }
+
         self.highlighted
             .on_insert(syntaxes.get(self.syntax_handle), &self.content, range);
         self.history.add_edit(Edit {
@@ -513,7 +531,25 @@ impl Buffer {
         cursor_index: usize,
     ) {
         self.search_ranges.clear();
+
+        let line_count = range.to.line_index - range.from.line_index + 1;
+        for line in self
+            .content
+            .lines()
+            .skip(range.from.line_index)
+            .take(line_count)
+        {
+            for word in WordIter::new(line.as_str()) {
+                word_database.remove_word(word);
+            }
+        }
+
         let deleted_text = self.content.delete_range(range);
+
+        for word in WordIter::new(self.content.line_at(range.from.line_index).as_str()) {
+            word_database.add_word(word);
+        }
+
         self.highlighted
             .on_delete(syntaxes.get(self.syntax_handle), &self.content, range);
         self.history.add_edit(Edit {

@@ -274,7 +274,7 @@ impl HighlightedBuffer {
         let previous_line_kind = self.previous_line_kind_at(range.from.line_index);
         self.lines.drain(range.from.line_index..range.to.line_index);
 
-        let bline = buffer.line(range.from.line_index);
+        let bline = buffer.line_at(range.from.line_index);
         let hline = &mut self.lines[range.from.line_index];
         hline.kind = syntax.parse_line(bline.as_str(), previous_line_kind, &mut hline.tokens);
         let previous_line_kind = hline.kind;

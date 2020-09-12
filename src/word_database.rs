@@ -137,8 +137,8 @@ mod tests {
         assert_eq!(Some("third"), iter.next());
         assert_eq!(None, iter.next());
 
-        let mut iter = WordIter::new("  first:second00+?$%third  ^@");
-        assert_eq!(Some("first"), iter.next());
+        let mut iter = WordIter::new("  1first:second00+?$%third  ^@");
+        assert_eq!(Some("1first"), iter.next());
         assert_eq!(Some("second00"), iter.next());
         assert_eq!(Some("third"), iter.next());
         assert_eq!(None, iter.next());

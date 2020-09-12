@@ -56,7 +56,7 @@ impl BufferView {
                 .line_offset
                 .min(buffer.content.line_count() as isize - 1)
                 .max(0);
-            let target_line_len = buffer.content.line(target.line_offset as _).char_count();
+            let target_line_len = buffer.content.line_at(target.line_offset as _).char_count();
             target.column_offset = target.column_offset.min(target_line_len as _);
 
             c.position = target.into();
