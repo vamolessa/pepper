@@ -3,6 +3,33 @@ use std::{
     hash::{Hash, Hasher},
 };
 
+pub fn is_word_char(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
+}
+
+pub struct WordIter<'a>(&'a str);
+
+impl<'a> WordIter<'a> {
+    pub fn new(text: &'a str) -> Self {
+        Self(text)
+    }
+}
+
+impl<'a> Iterator for WordIter<'a> {
+    type Item = &'a str;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let start = self.0.find(is_word_char)?;
+        self.0 = &self.0[start..];
+
+        let end = self.0.find(|c| !is_word_char(c)).unwrap_or(self.0.len());
+        let (word, rest) = self.0.split_at(end);
+
+        self.0 = rest;
+        Some(word)
+    }
+}
+
 #[derive(Default)]
 struct Word {
     text: String,
@@ -91,5 +118,29 @@ impl WordDatabase {
 
         let bucket_count = words.len();
         &mut words[hash % bucket_count]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn word_iter() {
+        let mut iter = WordIter::new("word");
+        assert_eq!(Some("word"), iter.next());
+        assert_eq!(None, iter.next());
+
+        let mut iter = WordIter::new("first second third");
+        assert_eq!(Some("first"), iter.next());
+        assert_eq!(Some("second"), iter.next());
+        assert_eq!(Some("third"), iter.next());
+        assert_eq!(None, iter.next());
+
+        let mut iter = WordIter::new("  first:second00+?$%third  ^@");
+        assert_eq!(Some("first"), iter.next());
+        assert_eq!(Some("second00"), iter.next());
+        assert_eq!(Some("third"), iter.next());
+        assert_eq!(None, iter.next());
     }
 }

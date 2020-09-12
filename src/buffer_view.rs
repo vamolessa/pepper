@@ -236,7 +236,7 @@ impl BufferViewCollection {
 
         self.fix_cursor_ranges.clear();
         for (i, cursor) in current_view.cursors[..].iter().enumerate().rev() {
-            let range = buffer.insert_text(syntaxes, cursor.position, text, i);
+            let range = buffer.insert_text(word_database, syntaxes, cursor.position, text, i);
             self.fix_cursor_ranges.push(range);
         }
 
@@ -263,7 +263,7 @@ impl BufferViewCollection {
         self.fix_cursor_ranges.clear();
         for (i, cursor) in current_view.cursors[..].iter().enumerate().rev() {
             let range = cursor.range();
-            buffer.delete_range(syntaxes, range, i);
+            buffer.delete_range(word_database, syntaxes, range, i);
             self.fix_cursor_ranges.push(range);
         }
 
@@ -294,10 +294,10 @@ impl BufferViewCollection {
 
             if !word.is_empty() {
                 let range = BufferRange::between(word_range.from, cursor.position);
-                buffer.delete_range(syntaxes, range, i);
+                buffer.delete_range(word_database, syntaxes, range, i);
             }
 
-            let insert_range = buffer.insert_text(syntaxes, word_range.from, completion, i);
+            let insert_range = buffer.insert_text(word_database, syntaxes, word_range.from, completion, i);
             let mut range = BufferRange::between(cursor.position, insert_range.to);
             if cursor.position > insert_range.to {
                 std::mem::swap(&mut range.from, &mut range.to);

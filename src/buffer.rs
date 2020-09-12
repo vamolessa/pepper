@@ -10,6 +10,7 @@ use crate::{
     buffer_position::{BufferPosition, BufferRange},
     history::{Edit, EditKind, History},
     syntax::{self, HighlightedBuffer, SyntaxCollection, SyntaxHandle},
+    word_database::{is_word_char, WordDatabase},
 };
 
 #[derive(Debug)]
@@ -118,23 +119,20 @@ impl BufferLine {
         splitted
     }
 
-    pub fn find_word_at<F>(&self, column: usize, mut predicate: F) -> (Range<usize>, &str)
-    where
-        F: FnMut(char) -> bool,
-    {
+    pub fn find_word_at(&self, column: usize) -> (Range<usize>, &str) {
         let index = self.column_to_index(column);
 
         let start_index = self.text[..index]
             .char_indices()
             .rev()
-            .take_while(|(_i, c)| predicate(*c))
+            .take_while(|(_i, c)| is_word_char(*c))
             .last()
             .map(|(i, _c)| i)
             .unwrap_or(index);
 
         let end_index = self.text[index..]
             .char_indices()
-            .take_while(|(_i, c)| predicate(*c))
+            .take_while(|(_i, c)| is_word_char(*c))
             .last()
             .map(|(i, _c)| i + index + 1)
             .unwrap_or(index);
@@ -431,7 +429,7 @@ impl BufferContent {
         let position = self.clamp_position(position);
         let (range, word) = self
             .line(position.line_index)
-            .find_word_at(position.column_index, |c| c.is_alphanumeric() || c == '_');
+            .find_word_at(position.column_index);
         let range = BufferRange::between(
             BufferPosition::line_col(position.line_index, range.start),
             BufferPosition::line_col(position.line_index, range.end),
@@ -488,6 +486,7 @@ impl Buffer {
 
     pub fn insert_text(
         &mut self,
+        word_database: &mut WordDatabase,
         syntaxes: &SyntaxCollection,
         position: BufferPosition,
         text: &str,
@@ -508,6 +507,7 @@ impl Buffer {
 
     pub fn delete_range(
         &mut self,
+        word_database: &mut WordDatabase,
         syntaxes: &SyntaxCollection,
         range: BufferRange,
         cursor_index: usize,
@@ -804,6 +804,7 @@ mod tests {
 
     #[test]
     fn buffer_delete_undo_redo_single_line() {
+        let mut word_database = WordDatabase::new();
         let syntaxes = SyntaxCollection::new();
 
         let mut buffer = Buffer::new(
@@ -815,7 +816,7 @@ mod tests {
             BufferPosition::line_col(0, 7),
             BufferPosition::line_col(0, 12),
         );
-        buffer.delete_range(&syntaxes, range, 0);
+        buffer.delete_range(&mut word_database, &syntaxes, range, 0);
 
         assert_eq!("single content", buffer_to_string(&buffer.content));
         {
@@ -830,6 +831,7 @@ mod tests {
 
     #[test]
     fn buffer_delete_undo_redo_multi_line() {
+        let mut word_database = WordDatabase::new();
         let syntaxes = SyntaxCollection::new();
 
         let mut buffer = Buffer::new(
@@ -841,7 +843,7 @@ mod tests {
             BufferPosition::line_col(0, 1),
             BufferPosition::line_col(1, 3),
         );
-        buffer.delete_range(&syntaxes, range, 0);
+        buffer.delete_range(&mut word_database, &syntaxes, range, 0);
 
         assert_eq!("me\ncontent", buffer_to_string(&buffer.content));
         {
@@ -876,16 +878,16 @@ mod tests {
         }
 
         let line = BufferLine::new("word".into());
-        assert_eq!((0..4, "word"), line.find_word_at(0, is_word));
-        assert_eq!((0..4, "word"), line.find_word_at(2, is_word));
-        assert_eq!((0..4, "word"), line.find_word_at(4, is_word));
+        assert_eq!((0..4, "word"), line.find_word_at(0));
+        assert_eq!((0..4, "word"), line.find_word_at(2));
+        assert_eq!((0..4, "word"), line.find_word_at(4));
 
         let line = BufferLine::new("asd word+? asd".into());
-        assert_eq!((0..3, "asd"), line.find_word_at(3, is_word));
-        assert_eq!((4..8, "word"), line.find_word_at(4, is_word));
-        assert_eq!((4..8, "word"), line.find_word_at(6, is_word));
-        assert_eq!((4..8, "word"), line.find_word_at(8, is_word));
-        assert_eq!((9..9, ""), line.find_word_at(9, is_word));
-        assert_eq!((10..10, ""), line.find_word_at(10, is_word));
+        assert_eq!((0..3, "asd"), line.find_word_at(3));
+        assert_eq!((4..8, "word"), line.find_word_at(4));
+        assert_eq!((4..8, "word"), line.find_word_at(6));
+        assert_eq!((4..8, "word"), line.find_word_at(8));
+        assert_eq!((9..9, ""), line.find_word_at(9));
+        assert_eq!((10..10, ""), line.find_word_at(10));
     }
 }
