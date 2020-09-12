@@ -70,11 +70,11 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- ~~integrate lua to use as command interface~~
 	- ~~config file is lua script~~
 	- ~~builtin bindings~~
-- autocomplete
-	- select/entries ui
-	- selection movements
-	- clear/change entries
-	- completion suggestion as typing word
-	- accept completion
-	- word dictionary
+- ~~autocomplete~~
+	- ~~select/entries ui~~
+	- ~~selection movements~~
+	- ~~clear/change entries~~
+	- ~~completion suggestion as typing word~~
+	- ~~accept completion~~
+	- ~~word database~~
 - lsp
