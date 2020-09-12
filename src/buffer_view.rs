@@ -183,8 +183,12 @@ impl BufferViewCollection {
         handle
     }
 
-    pub fn remove_where<F>(&mut self, buffers: &mut BufferCollection, predicate: F)
-    where
+    pub fn remove_where<F>(
+        &mut self,
+        buffers: &mut BufferCollection,
+        word_database: &mut WordDatabase,
+        predicate: F,
+    ) where
         F: Fn(&BufferView) -> bool,
     {
         for i in 0..self.buffer_views.len() {
@@ -195,7 +199,9 @@ impl BufferViewCollection {
             }
         }
 
-        buffers.remove_where(|h, _b| !self.iter().any(|v| v.buffer_handle == h));
+        buffers.remove_where(word_database, |h, _b| {
+            !self.iter().any(|v| v.buffer_handle == h)
+        });
     }
 
     pub fn get(&self, handle: BufferViewHandle) -> Option<&BufferView> {

@@ -690,14 +690,20 @@ impl BufferCollection {
             .filter_map(|(i, b)| Some(BufferHandle(i)).zip(b.as_ref()))
     }
 
-    pub fn remove_where<F>(&mut self, predicate: F)
+    pub fn remove_where<F>(&mut self, word_database: &mut WordDatabase, predicate: F)
     where
         F: Fn(BufferHandle, &Buffer) -> bool,
     {
         for i in 0..self.buffers.len() {
-            if let Some(buffer) = &self.buffers[i] {
+            if let Some(buffer) = &mut self.buffers[i] {
                 let handle = BufferHandle(i);
-                if predicate(handle, &buffer) {
+                if predicate(handle, buffer) {
+                    for line in buffer.content.lines() {
+                        for word in WordIter::new(line.as_str()) {
+                            word_database.remove_word(word);
+                        }
+                    }
+
                     self.buffers[i] = None;
                 }
             }
