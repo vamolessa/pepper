@@ -123,7 +123,11 @@ impl Picker {
         self.filtered_entries.clear();
 
         for (i, word) in word_database.word_indices() {
-            if let Some(score) = self.matcher.fuzzy_match(word, pattern) {
+            if let Some(mut score) = self.matcher.fuzzy_match(word, pattern) {
+                if word.len() == pattern.len() {
+                    score += 1;
+                }
+
                 self.filtered_entries.push(FilteredEntry {
                     source: FiletedEntrySource::WordDatabase(i),
                     score,
@@ -132,7 +136,11 @@ impl Picker {
         }
 
         for (i, entry) in self.custom_entries.iter().enumerate() {
-            if let Some(score) = self.matcher.fuzzy_match(&entry.name, pattern) {
+            if let Some(mut score) = self.matcher.fuzzy_match(&entry.name, pattern) {
+                if entry.name.len() == pattern.len() {
+                    score += 1;
+                }
+
                 self.filtered_entries.push(FilteredEntry {
                     source: FiletedEntrySource::Custom(i),
                     score,
