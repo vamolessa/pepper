@@ -83,7 +83,13 @@ mod global {
         let path = Path::new(path.to_str()?);
         let buffer_view_handle = ctx
             .buffer_views
-            .new_buffer_from_file(ctx.buffers, &ctx.config.syntaxes, ctx.target_client, path)
+            .new_buffer_from_file(
+                ctx.buffers,
+                ctx.word_database,
+                &ctx.config.syntaxes,
+                ctx.target_client,
+                path,
+            )
             .map_err(ScriptError::from)?;
         ctx.set_current_buffer_view_handle(Some(buffer_view_handle));
         Ok(())

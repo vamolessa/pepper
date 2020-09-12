@@ -297,7 +297,8 @@ impl BufferViewCollection {
                 buffer.delete_range(word_database, syntaxes, range, i);
             }
 
-            let insert_range = buffer.insert_text(word_database, syntaxes, word_range.from, completion, i);
+            let insert_range =
+                buffer.insert_text(word_database, syntaxes, word_range.from, completion, i);
             let mut range = BufferRange::between(cursor.position, insert_range.to);
             if cursor.position > insert_range.to {
                 std::mem::swap(&mut range.from, &mut range.to);
@@ -423,6 +424,7 @@ impl BufferViewCollection {
     pub fn new_buffer_from_file(
         &mut self,
         buffers: &mut BufferCollection,
+        word_database: &mut WordDatabase,
         syntaxes: &SyntaxCollection,
         target_client: TargetClient,
         path: &Path,
@@ -459,7 +461,8 @@ impl BufferViewCollection {
                 Err(_) => BufferContent::from_str(""),
             };
 
-            let buffer_handle = buffers.add(Buffer::new(syntaxes, path.into(), content));
+            let buffer_handle =
+                buffers.add(Buffer::new(word_database, syntaxes, path.into(), content));
             let buffer_view = BufferView::new(target_client, buffer_handle);
             let buffer_view_handle = self.add(buffer_view);
             Ok(buffer_view_handle)

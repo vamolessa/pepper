@@ -448,7 +448,18 @@ pub struct Buffer {
 }
 
 impl Buffer {
-    pub fn new(syntaxes: &SyntaxCollection, path: PathBuf, content: BufferContent) -> Self {
+    pub fn new(
+        word_database: &mut WordDatabase,
+        syntaxes: &SyntaxCollection,
+        path: PathBuf,
+        content: BufferContent,
+    ) -> Self {
+        for line in content.lines() {
+            for word in WordIter::new(line.as_str()) {
+                word_database.add_word(word);
+            }
+        }
+
         let syntax_handle = syntaxes
             .find_handle_by_extension(syntax::get_path_extension(&path))
             .unwrap_or(SyntaxHandle::default());

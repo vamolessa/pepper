@@ -195,6 +195,7 @@ impl Editor {
                 let path = Path::new(path);
                 match self.buffer_views.new_buffer_from_file(
                     &mut self.buffers,
+                    &mut self.word_database,
                     &self.config.syntaxes,
                     target_client,
                     path,
