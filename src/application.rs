@@ -213,15 +213,6 @@ where
         client_events.serialize(event);
     });
 
-    /*
-    let _ = connection.send_serialized_events_blocking(&mut client_events);
-    if editor_loop.is_quit() {
-        connection.receive_display(|_| ())?;
-        connection.close();
-        return Ok(());
-    }
-    */
-
     let event_manager = EventManager::new()?;
     let event_registry = event_manager.registry();
     let event_manager_loop = event_manager.run_event_loop_in_background(event_sender.clone());

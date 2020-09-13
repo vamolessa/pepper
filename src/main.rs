@@ -13,14 +13,14 @@ mod history;
 mod keymap;
 mod mode;
 mod pattern;
+mod picker;
 mod script;
 mod script_bindings;
-mod picker;
-mod word_database;
 mod serialization;
 mod syntax;
 mod theme;
 mod ui;
+mod word_database;
 
 use argh::FromArgs;
 

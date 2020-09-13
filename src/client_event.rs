@@ -1,12 +1,12 @@
 use std::{error::Error, fmt, str::Chars};
 
 use crate::{
-    ui::UiKind,
     event_manager::ConnectionEvent,
     serialization::{
         DeserializationSlice, DeserializeError, Deserializer, SerializationBuf, Serialize,
         Serializer,
     },
+    ui::UiKind,
 };
 
 #[derive(Debug, Clone, Copy)]
