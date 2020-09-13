@@ -79,9 +79,9 @@ where
     if args.as_focused_client {
         func(ClientEvent::Ui(UiKind::None));
         func(ClientEvent::AsFocusedClient);
-    } else if let Some(client_index) = args.as_client {
+    } else if let Some(target_client) = args.as_client {
         func(ClientEvent::Ui(UiKind::None));
-        func(ClientEvent::AsClient(client_index));
+        func(ClientEvent::AsClient(target_client));
     }
 
     for path in &args.files {

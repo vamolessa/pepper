@@ -191,8 +191,8 @@ impl Editor {
                     .map(target_client, self.focused_client);
                 EditorLoop::Continue
             }
-            ClientEvent::AsClient(target_client) => {
-                self.client_target_map.map(target_client, target_client);
+            ClientEvent::AsClient(target) => {
+                self.client_target_map.map(target_client, target);
                 EditorLoop::Continue
             }
             ClientEvent::OpenFile(path) => {
