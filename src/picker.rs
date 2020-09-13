@@ -24,6 +24,7 @@ struct FilteredEntry {
     pub score: i64,
 }
 
+#[derive(Default)]
 pub struct Picker {
     matcher: SkimMatcherV2,
     custom_entries: Vec<CustomPickerEntry>,
@@ -36,19 +37,6 @@ pub struct Picker {
 }
 
 impl Picker {
-    pub fn new() -> Self {
-        let mut matcher = SkimMatcherV2::default();
-
-        Self {
-            matcher,
-            custom_entries: Vec::new(),
-            filtered_entries: Vec::new(),
-            cursor: 0,
-            scroll: 0,
-            cached_current_word: String::new(),
-        }
-    }
-
     pub fn cursor(&self) -> usize {
         self.cursor
     }

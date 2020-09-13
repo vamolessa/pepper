@@ -93,7 +93,7 @@ impl Editor {
 
             buffered_keys: Vec::new(),
             input: String::new(),
-            picker: Picker::new(),
+            picker: Picker::default(),
 
             focused_client: TargetClient::Local,
             status_message: String::new(),
