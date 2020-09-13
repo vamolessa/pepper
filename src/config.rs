@@ -93,6 +93,7 @@ impl Default for Config {
     fn default() -> Self {
         let mut syntaxes = SyntaxCollection::new();
         set_rust_syntax(syntaxes.get_by_extension("rs"));
+        set_lua_syntax(syntaxes.get_by_extension("lua"));
 
         Self {
             values: ConfigValues::default(),
@@ -111,22 +112,25 @@ fn set_rust_syntax(syntax: &mut Syntax) {
     }
 
     for symbol in &[
-        "%(", "%)", "%[", "%]", "%{", "%}", ":", ";", ",", "=", "<", ">", "+", "-", "/", "*", "%.",
+        "%(", "%)", "%[", "%]", "%{", "%}", ":", ";", ",", "=", "<", ">", "+", "-", "/", "*", "%%", "%.",
         "%!", "?", "&", "|", "@",
     ] {
         syntax.add_rule(TokenKind::Symbol, Pattern::new(symbol).unwrap());
     }
 
-    for t in &["bool", "u32", "f32"] {
+    for t in &[
+        "bool", "u8", "u16", "u32", "u64", "i8", "i16", "i32", "i64", "f32", "f64", "str",
+    ] {
         syntax.add_rule(TokenKind::Type, Pattern::new(t).unwrap());
     }
+    syntax.add_rule(TokenKind::Type, Pattern::new("%u{%w}").unwrap());
+
+    syntax.add_rule(TokenKind::Comment, Pattern::new("//{.}").unwrap());
+    syntax.add_rule(TokenKind::Comment, Pattern::new("/*{!(*/).$}").unwrap());
 
     for literal in &["true", "false", "self"] {
         syntax.add_rule(TokenKind::Literal, Pattern::new(literal).unwrap());
     }
-
-    syntax.add_rule(TokenKind::Comment, Pattern::new("//{.}").unwrap());
-    syntax.add_rule(TokenKind::Comment, Pattern::new("/*{!(*/).$}").unwrap());
 
     syntax.add_rule(TokenKind::Literal, Pattern::new("'{(\\')!'.}").unwrap());
     syntax.add_rule(TokenKind::Literal, Pattern::new("%d{%w%._}").unwrap());
@@ -134,6 +138,37 @@ fn set_rust_syntax(syntax: &mut Syntax) {
 
     syntax.add_rule(TokenKind::Type, Pattern::new("'%a{%w_}").unwrap());
     syntax.add_rule(TokenKind::Type, Pattern::new("%u{%w_}").unwrap());
+
+    syntax.add_rule(TokenKind::Text, Pattern::new("%a{%w_}").unwrap());
+    syntax.add_rule(TokenKind::Text, Pattern::new("_{%w_}").unwrap());
+}
+
+fn set_lua_syntax(syntax: &mut Syntax) {
+    for keyword in &[
+        "and", "break", "do", "else", "elseif", "end", "for", "function", "if", "in",
+        "local", "not", "or", "repeat", "return", "then", "until", "while",
+    ] {
+        syntax.add_rule(TokenKind::Keyword, Pattern::new(keyword).unwrap());
+    }
+
+    for symbol in &[
+        "+", "-", "*", "/", "%%", "^", "#", "<", ">", "=", "~", "%(", "%)", "%{",
+        "%}", "%[", "%]", ";", ":", ",", "%.", "%.%.", "%.%.%.",
+    ] {
+        syntax.add_rule(TokenKind::Symbol, Pattern::new(symbol).unwrap());
+    }
+
+    syntax.add_rule(TokenKind::Comment, Pattern::new("--{.}").unwrap());
+    syntax.add_rule(TokenKind::Comment, Pattern::new("--%[%[{!(%]%]).$}").unwrap());
+
+    for literal in &["nil", "false", "true", "_G", "_ENV"] {
+        syntax.add_rule(TokenKind::Literal, Pattern::new(literal).unwrap());
+    }
+
+    syntax.add_rule(TokenKind::Literal, Pattern::new("%d{%w%._}").unwrap());
+    syntax.add_rule(TokenKind::String, Pattern::new("'{(\\')!'.}").unwrap());
+    syntax.add_rule(TokenKind::String, Pattern::new("\"{(\\\")!\".}").unwrap());
+    syntax.add_rule(TokenKind::String, Pattern::new("%[%[{!(%]%]).}").unwrap());
 
     syntax.add_rule(TokenKind::Text, Pattern::new("%a{%w_}").unwrap());
     syntax.add_rule(TokenKind::Text, Pattern::new("_{%w_}").unwrap());
