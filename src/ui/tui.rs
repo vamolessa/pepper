@@ -1,9 +1,10 @@
-use std::{cmp::Ordering, io::Write, iter, path::Path, sync::mpsc, thread};
+use std::{cmp::Ordering, io, io::Write, iter, path::Path, sync::mpsc, thread};
 
 use crossterm::{
     cursor, event, handle_command,
     style::{Color, Print, ResetColor, SetBackgroundColor, SetForegroundColor},
     terminal,
+    tty::IsTty,
 };
 
 use crate::{
@@ -18,7 +19,7 @@ use crate::{
     theme,
 };
 
-use super::{Ui, UiResult};
+use super::{read_keys_from_stdin, Ui, UiResult};
 
 fn convert_event(event: event::Event) -> LocalEvent {
     match event {
@@ -82,23 +83,27 @@ where
         &mut self,
         event_sender: mpsc::Sender<LocalEvent>,
     ) -> thread::JoinHandle<()> {
-        let size = terminal::size().unwrap_or((0, 0));
-        let _ = event_sender.send(LocalEvent::Resize(size.0, size.1));
+        if io::stdin().is_tty() {
+            let size = terminal::size().unwrap_or((0, 0));
+            let _ = event_sender.send(LocalEvent::Resize(size.0, size.1));
 
-        thread::spawn(move || {
-            loop {
-                let event = match event::read() {
-                    Ok(event) => event,
-                    Err(_) => break,
-                };
+            thread::spawn(move || {
+                loop {
+                    let event = match event::read() {
+                        Ok(event) => event,
+                        Err(_) => break,
+                    };
 
-                if event_sender.send(convert_event(event)).is_err() {
-                    break;
+                    if event_sender.send(convert_event(event)).is_err() {
+                        break;
+                    }
                 }
-            }
 
-            let _ = event_sender.send(LocalEvent::EndOfInput);
-        })
+                let _ = event_sender.send(LocalEvent::EndOfInput);
+            })
+        } else {
+            thread::spawn(move || read_keys_from_stdin(event_sender))
+        }
     }
 
     fn init(&mut self) -> UiResult<()> {

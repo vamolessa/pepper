@@ -1,8 +1,8 @@
-use std::{io, sync::mpsc, thread};
+use std::{sync::mpsc, thread};
 
-use crate::client_event::{Key, LocalEvent};
+use crate::client_event::LocalEvent;
 
-use super::{Ui, UiResult};
+use super::{read_keys_from_stdin, Ui, UiResult};
 
 pub struct NoneUi;
 impl Ui for NoneUi {
@@ -10,33 +10,7 @@ impl Ui for NoneUi {
         &mut self,
         event_sender: mpsc::Sender<LocalEvent>,
     ) -> thread::JoinHandle<()> {
-        use io::BufRead;
-        thread::spawn(move || {
-            let stdin = io::stdin();
-            let mut stdin = stdin.lock();
-            let mut line = String::new();
-
-            'main_loop: loop {
-                if stdin.read_line(&mut line).is_err() || line.is_empty() {
-                    break;
-                }
-
-                for key in Key::parse_all(&line) {
-                    match key {
-                        Ok(key) => {
-                            if event_sender.send(LocalEvent::Key(key)).is_err() {
-                                break 'main_loop;
-                            }
-                        }
-                        Err(_) => break,
-                    }
-                }
-
-                line.clear();
-            }
-
-            let _ = event_sender.send(LocalEvent::EndOfInput);
-        })
+        thread::spawn(move || read_keys_from_stdin(event_sender))
     }
 
     fn display(&mut self, _buffer: &[u8]) -> UiResult<()> {

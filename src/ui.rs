@@ -1,8 +1,8 @@
-use std::{error::Error, sync::mpsc, thread};
+use std::{error::Error, io, sync::mpsc, thread};
 
 use crate::{
     client::{Client, TargetClient},
-    client_event::LocalEvent,
+    client_event::{Key, LocalEvent},
     editor::Editor,
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
 };
@@ -79,4 +79,33 @@ pub trait Ui {
     fn shutdown(&mut self) -> UiResult<()> {
         Ok(())
     }
+}
+
+pub fn read_keys_from_stdin(event_sender: mpsc::Sender<LocalEvent>) {
+    use io::BufRead;
+
+    let stdin = io::stdin();
+    let mut stdin = stdin.lock();
+    let mut line = String::new();
+
+    'main_loop: loop {
+        if stdin.read_line(&mut line).is_err() || line.is_empty() {
+            break;
+        }
+
+        for key in Key::parse_all(&line) {
+            match key {
+                Ok(key) => {
+                    if event_sender.send(LocalEvent::Key(key)).is_err() {
+                        break 'main_loop;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+
+        line.clear();
+    }
+
+    let _ = event_sender.send(LocalEvent::EndOfInput);
 }
