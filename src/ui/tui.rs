@@ -98,7 +98,6 @@ where
             }
 
             let _ = event_sender.send(LocalEvent::EndOfInput);
-            println!("CABOO");
         })
     }
 

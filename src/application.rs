@@ -209,7 +209,6 @@ where
     let (event_sender, event_receiver) = mpsc::channel();
 
     let mut client_events = ClientEventSerializer::default();
-    client_events.serialize(ClientEvent::Key(Key::None));
     client_events_from_args(&args, |event| {
         client_events.serialize(event);
     });
@@ -231,16 +230,14 @@ where
     connection.register_connection(&event_registry)?;
 
     ui.init()?;
+
+    client_events.serialize(ClientEvent::Key(Key::None));
     connection.send_serialized_events(&mut client_events)?;
 
     for event in event_receiver.iter() {
         match event {
             LocalEvent::None => (),
-            LocalEvent::EndOfInput => {
-                connection.send_serialized_events_blocking(&mut client_events)?;
-                connection.receive_display(|_| ())?;
-                break;
-            }
+            LocalEvent::EndOfInput => break,
             LocalEvent::Key(key) => {
                 client_events.serialize(ClientEvent::Key(key));
                 if let Err(_) = connection.send_serialized_events(&mut client_events) {

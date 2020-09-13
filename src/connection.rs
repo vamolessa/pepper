@@ -254,6 +254,10 @@ impl ConnectionWithServer {
     }
 
     pub fn close(&mut self) {
+        let _ = self.stream.set_nonblocking(false);
+        let mut read_guard = self.read_buf.guard();
+        let _ = read_guard.read_from(&mut self.stream);
+
         let _ = self.stream.shutdown(Shutdown::Both);
     }
 
@@ -269,16 +273,6 @@ impl ConnectionWithServer {
             &self.stream,
             ConnectionWithClientHandle::from_index(0).into(),
         )
-    }
-
-    pub fn send_serialized_events_blocking(
-        &mut self,
-        serializer: &mut ClientEventSerializer,
-    ) -> io::Result<()> {
-        self.stream.set_nonblocking(false)?;
-        self.send_serialized_events(serializer)?;
-        self.stream.set_nonblocking(false)?;
-        Ok(())
     }
 
     pub fn send_serialized_events(
