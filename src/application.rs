@@ -96,10 +96,8 @@ where
 
     if args.as_focused_client {
         func(ClientEvent::AsFocusedClient);
-        result = EditorLoop::Quit;
     } else if let Some(client_index) = args.as_client {
         func(ClientEvent::AsClient(client_index));
-        result = EditorLoop::Quit;
     }
 
     for path in &args.files {
@@ -184,6 +182,7 @@ where
     for event in event_receiver.iter() {
         match event {
             LocalEvent::None => continue,
+            LocalEvent::EndOfInput => break,
             LocalEvent::Key(key) => {
                 let editor_loop =
                     editor.on_event(&mut clients, TargetClient::Local, ClientEvent::Key(key));
@@ -277,6 +276,7 @@ where
     for event in event_receiver.iter() {
         match event {
             LocalEvent::None => (),
+            LocalEvent::EndOfInput => break,
             LocalEvent::Key(key) => {
                 client_events.serialize(ClientEvent::Key(key));
                 if let Err(_) = connection.send_serialized_events(&mut client_events) {

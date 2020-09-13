@@ -84,6 +84,7 @@ where
     ) -> thread::JoinHandle<Result<()>> {
         thread::spawn(move || {
             while event_sender.send(convert_event(event::read()?)).is_ok() {}
+            let _ = event_sender.send(LocalEvent::EndOfInput);
             Ok(())
         })
     }
@@ -539,30 +540,29 @@ where
         Some(0)
     };
 
-    if let Some(x) = x {
-        if let Some(buffer_path) = client_view
-            .buffer_path
-            .as_os_str()
-            .to_str()
-            .filter(|s| !s.is_empty())
-        {
-            let line_number = client_view.main_cursor.position.line_index + 1;
-            let column_number = client_view.main_cursor.position.column_index + 1;
-            let line_digit_count = find_digit_count(line_number);
-            let column_digit_count = find_digit_count(column_number);
-            let skip = (client_view.client.viewport_size.0 as usize).saturating_sub(
-                x + buffer_path.len() + 1 + line_digit_count + 1 + column_digit_count + 1,
-            );
-            for _ in 0..skip {
-                handle_command!(write, Print(' '))?;
-            }
-
-            handle_command!(write, Print(buffer_path))?;
-            handle_command!(write, Print(':'))?;
-            handle_command!(write, Print(line_number))?;
-            handle_command!(write, Print(','))?;
-            handle_command!(write, Print(column_number))?;
+    if let Some((buffer_path, x)) = client_view
+        .buffer_path
+        .as_os_str()
+        .to_str()
+        .filter(|s| !s.is_empty())
+        .zip(x)
+    {
+        let line_number = client_view.main_cursor.position.line_index + 1;
+        let column_number = client_view.main_cursor.position.column_index + 1;
+        let line_digit_count = find_digit_count(line_number);
+        let column_digit_count = find_digit_count(column_number);
+        let skip = (client_view.client.viewport_size.0 as usize).saturating_sub(
+            x + buffer_path.len() + 1 + line_digit_count + 1 + column_digit_count + 1,
+        );
+        for _ in 0..skip {
+            handle_command!(write, Print(' '))?;
         }
+
+        handle_command!(write, Print(buffer_path))?;
+        handle_command!(write, Print(':'))?;
+        handle_command!(write, Print(line_number))?;
+        handle_command!(write, Print(','))?;
+        handle_command!(write, Print(column_number))?;
     }
 
     handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;

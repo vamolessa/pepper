@@ -11,6 +11,7 @@ use crate::{
 #[derive(Debug, Clone, Copy)]
 pub enum LocalEvent {
     None,
+    EndOfInput,
     Key(Key),
     Resize(u16, u16),
     Connection(ConnectionEvent),
