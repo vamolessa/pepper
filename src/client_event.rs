@@ -1,6 +1,7 @@
 use std::{error::Error, fmt, str::Chars};
 
 use crate::{
+    ui::UiKind,
     event_manager::ConnectionEvent,
     serialization::{
         DeserializationSlice, DeserializeError, Deserializer, SerializationBuf, Serialize,
@@ -19,6 +20,7 @@ pub enum LocalEvent {
 
 #[derive(Debug)]
 pub enum ClientEvent<'a> {
+    Ui(UiKind),
     AsFocusedClient,
     AsClient(usize),
     OpenFile(&'a str),
@@ -32,22 +34,26 @@ impl<'de> Serialize<'de> for ClientEvent<'de> {
         S: Serializer,
     {
         match self {
-            ClientEvent::AsFocusedClient => 0u8.serialize(serializer),
+            ClientEvent::Ui(ui) => {
+                0u8.serialize(serializer);
+                ui.serialize(serializer);
+            }
+            ClientEvent::AsFocusedClient => 1u8.serialize(serializer),
             ClientEvent::AsClient(index) => {
-                1u8.serialize(serializer);
+                2u8.serialize(serializer);
                 let index = *index as u32;
                 index.serialize(serializer);
             }
             ClientEvent::OpenFile(path) => {
-                2u8.serialize(serializer);
+                3u8.serialize(serializer);
                 path.serialize(serializer);
             }
             ClientEvent::Key(key) => {
-                3u8.serialize(serializer);
+                4u8.serialize(serializer);
                 key.serialize(serializer);
             }
             ClientEvent::Resize(width, height) => {
-                4u8.serialize(serializer);
+                5u8.serialize(serializer);
                 width.serialize(serializer);
                 height.serialize(serializer);
             }
@@ -60,20 +66,24 @@ impl<'de> Serialize<'de> for ClientEvent<'de> {
     {
         let discriminant = u8::deserialize(deserializer)?;
         match discriminant {
-            0 => Ok(ClientEvent::AsFocusedClient),
-            1 => {
+            0 => {
+                let ui = UiKind::deserialize(deserializer)?;
+                Ok(ClientEvent::Ui(ui))
+            }
+            1 => Ok(ClientEvent::AsFocusedClient),
+            2 => {
                 let index = u32::deserialize(deserializer)?;
                 Ok(ClientEvent::AsClient(index as _))
             }
-            2 => {
+            3 => {
                 let path = <&str>::deserialize(deserializer)?;
                 Ok(ClientEvent::OpenFile(path))
             }
-            3 => {
+            4 => {
                 let key = Key::deserialize(deserializer)?;
                 Ok(ClientEvent::Key(key))
             }
-            4 => {
+            5 => {
                 let width = u16::deserialize(deserializer)?;
                 let height = u16::deserialize(deserializer)?;
                 Ok(ClientEvent::Resize(width, height))
@@ -271,11 +281,6 @@ impl Key {
         }
 
         let key = match next!() {
-            '\\' => match next!() {
-                '\\' => Key::Char('\\'),
-                '<' => Key::Char('<'),
-                c => return Err(KeyParseError::InvalidCharacter(c)),
-            },
             '<' => match next!() {
                 'b' => {
                     consume_str!("ackspace>");
@@ -304,8 +309,22 @@ impl Key {
                     c => return Err(KeyParseError::InvalidCharacter(c)),
                 },
                 'l' => {
-                    consume_str!("eft>");
-                    Key::Left
+                    consume!('e');
+                    match next!() {
+                        's' => {
+                            consume_str!("s>");
+                            Key::Char('<')
+                        }
+                        'f' => {
+                            consume_str!("t>");
+                            Key::Left
+                        }
+                        c => return Err(KeyParseError::InvalidCharacter(c)),
+                    }
+                }
+                'g' => {
+                    consume_str!("reater>");
+                    Key::Char('>')
                 }
                 'r' => {
                     consume_str!("ight>");
@@ -400,6 +419,7 @@ impl Key {
                 }
                 c => return Err(KeyParseError::InvalidCharacter(c)),
             },
+            c @ '>' => return Err(KeyParseError::InvalidCharacter(c)),
             c => {
                 if c.is_ascii() {
                     Key::Char(c)
@@ -502,8 +522,12 @@ mod tests {
         assert_eq!(Key::Char('0'), Key::parse(&mut "0".chars()).unwrap());
         assert_eq!(Key::Char('9'), Key::parse(&mut "9".chars()).unwrap());
         assert_eq!(Key::Char('_'), Key::parse(&mut "_".chars()).unwrap());
-        assert_eq!(Key::Char('<'), Key::parse(&mut "\\<".chars()).unwrap());
-        assert_eq!(Key::Char('\\'), Key::parse(&mut "\\\\".chars()).unwrap());
+        assert_eq!(Key::Char('<'), Key::parse(&mut "<less>".chars()).unwrap());
+        assert_eq!(
+            Key::Char('>'),
+            Key::parse(&mut "<greater>".chars()).unwrap()
+        );
+        assert_eq!(Key::Char('\\'), Key::parse(&mut "\\".chars()).unwrap());
     }
 
     #[test]

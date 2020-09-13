@@ -1,12 +1,12 @@
-use std::{env, error::Error, fmt, fs, sync::mpsc, thread};
+use std::{env, error::Error, fmt, fs, path::Path, sync::mpsc};
 
 use crate::{
-    client::{Client, ClientCollection, TargetClient},
+    client::{ClientCollection, TargetClient},
     client_event::{ClientEvent, ClientEventSerializer, Key, LocalEvent},
     connection::{ConnectionWithClientCollection, ConnectionWithServer},
     editor::{Editor, EditorLoop},
     event_manager::{ConnectionEvent, EventManager},
-    tui::Tui,
+    ui::{self, Ui, UiKind, UiResult},
     Args,
 };
 
@@ -16,32 +16,6 @@ impl Error for ApplicationError {}
 impl fmt::Display for ApplicationError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str(&self.0)
-    }
-}
-
-pub trait UI {
-    type Error: 'static + Send + Error;
-
-    fn run_event_loop_in_background(
-        event_sender: mpsc::Sender<LocalEvent>,
-    ) -> thread::JoinHandle<Result<(), Self::Error>>;
-
-    fn init(&mut self) -> Result<(u16, u16), Self::Error> {
-        Ok((0, 0))
-    }
-
-    fn render(
-        &mut self,
-        editor: &Editor,
-        client: &Client,
-        target_client: TargetClient,
-        buffer: &mut Vec<u8>,
-    ) -> Result<(), Self::Error>;
-
-    fn display(&mut self, buffer: &[u8]) -> Result<(), Self::Error>;
-
-    fn shutdown(&mut self) -> Result<(), Self::Error> {
-        Ok(())
     }
 }
 
@@ -66,17 +40,27 @@ pub fn run(args: Args) -> Result<(), Box<dyn Error>> {
     session_name.retain(|c| c.is_alphanumeric());
     session_socket_path.push(session_name);
 
-    let stdout = std::io::stdout();
-    let stdout = stdout.lock();
-    let ui = Tui::new(stdout);
+    if args.as_focused_client || args.as_client.is_some() {
+        run_with_ui(args, ui::none_ui::NoneUi, &session_socket_path)
+    } else {
+        let stdout = std::io::stdout();
+        let stdout = stdout.lock();
+        let ui = ui::tui::Tui::new(stdout);
+        run_with_ui(args, ui, &session_socket_path)
+    }
+}
 
-    if let Ok(connection) = ConnectionWithServer::connect(&session_socket_path) {
+fn run_with_ui<I>(args: Args, ui: I, session_socket_path: &Path) -> Result<(), Box<dyn Error>>
+where
+    I: Ui,
+{
+    if let Ok(connection) = ConnectionWithServer::connect(session_socket_path) {
         run_client(args, ui, connection)?;
-    } else if let Ok(listener) = ConnectionWithClientCollection::listen(&session_socket_path) {
+    } else if let Ok(listener) = ConnectionWithClientCollection::listen(session_socket_path) {
         run_server_with_client(args, ui, listener)?;
         fs::remove_file(session_socket_path)?;
-    } else if let Ok(()) = fs::remove_file(&session_socket_path) {
-        let listener = ConnectionWithClientCollection::listen(&session_socket_path)?;
+    } else if let Ok(()) = fs::remove_file(session_socket_path) {
+        let listener = ConnectionWithClientCollection::listen(session_socket_path)?;
         run_server_with_client(args, ui, listener)?;
         fs::remove_file(session_socket_path)?;
     } else {
@@ -88,53 +72,40 @@ pub fn run(args: Args) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn client_events_from_args<F>(args: &Args, mut func: F) -> Result<EditorLoop, Box<dyn Error>>
+fn client_events_from_args<F>(args: &Args, mut func: F)
 where
     F: FnMut(ClientEvent),
 {
-    let mut result = EditorLoop::Continue;
-
     if args.as_focused_client {
+        func(ClientEvent::Ui(UiKind::None));
         func(ClientEvent::AsFocusedClient);
     } else if let Some(client_index) = args.as_client {
+        func(ClientEvent::Ui(UiKind::None));
         func(ClientEvent::AsClient(client_index));
     }
 
     for path in &args.files {
         func(ClientEvent::OpenFile(path));
     }
-
-    if let Some(keys) = args.keys.as_ref() {
-        for key in Key::parse_all(keys) {
-            match key {
-                Ok(key) => func(ClientEvent::Key(key)),
-                Err(error) => return Err(Box::new(error)),
-            }
-        }
-
-        result = EditorLoop::Quit;
-    }
-
-    Ok(result)
 }
 
 fn render_clients<I>(
-    editor: &Editor,
+    editor: &mut Editor,
     clients: &mut ClientCollection,
     ui: &mut I,
     connections: &mut ConnectionWithClientCollection,
-) -> Result<(), I::Error>
+) -> UiResult<()>
 where
-    I: UI,
+    I: Ui,
 {
     for c in clients.client_refs() {
-        c.buffer.clear();
-        ui.render(&editor, c.client, c.target, c.buffer)?;
+        c.client.ui.render(editor, c.client, c.target, c.buffer)?;
         match c.target {
             TargetClient::Local => ui.display(c.buffer)?,
             TargetClient::Remote(handle) => connections.send_serialized_display(handle, c.buffer),
         }
     }
+    editor.status_message.clear();
     Ok(())
 }
 
@@ -144,14 +115,14 @@ fn run_server_with_client<I>(
     mut connections: ConnectionWithClientCollection,
 ) -> Result<(), Box<dyn Error>>
 where
-    I: UI,
+    I: Ui,
 {
     let (event_sender, event_receiver) = mpsc::channel();
 
     let event_manager = EventManager::new()?;
     let event_registry = event_manager.registry();
     let event_manager_loop = event_manager.run_event_loop_in_background(event_sender.clone());
-    let ui_event_loop = I::run_event_loop_in_background(event_sender);
+    let ui_event_loop = ui.run_event_loop_in_background(event_sender);
 
     let mut editor = Editor::new();
     let mut clients = ClientCollection::default();
@@ -160,24 +131,13 @@ where
         editor.load_config(&mut clients, config_path);
     }
 
-    let editor_loop = client_events_from_args(&args, |event| {
+    client_events_from_args(&args, |event| {
         editor.on_event(&mut clients, TargetClient::Local, event);
-    })?;
-    if editor_loop.is_quit() {
-        return Ok(());
-    }
+    });
 
     connections.register_listener(&event_registry)?;
 
-    let (local_width, local_height) = ui.init()?;
-    let _ = editor.on_event(
-        &mut clients,
-        TargetClient::Local,
-        ClientEvent::Resize(local_width, local_height),
-    );
-
-    render_clients(&editor, &mut clients, &mut ui, &mut connections)?;
-    editor.status_message.clear();
+    ui.init()?;
 
     for event in event_receiver.iter() {
         match event {
@@ -227,8 +187,7 @@ where
             }
         }
 
-        render_clients(&editor, &mut clients, &mut ui, &mut connections)?;
-        editor.status_message.clear();
+        render_clients(&mut editor, &mut clients, &mut ui, &mut connections)?;
     }
 
     drop(event_manager_loop);
@@ -245,38 +204,43 @@ fn run_client<I>(
     mut connection: ConnectionWithServer,
 ) -> Result<(), Box<dyn Error>>
 where
-    I: UI,
+    I: Ui,
 {
     let (event_sender, event_receiver) = mpsc::channel();
 
     let mut client_events = ClientEventSerializer::default();
-    let editor_loop = client_events_from_args(&args, |event| {
-        client_events.serialize(event);
-    })?;
-
     client_events.serialize(ClientEvent::Key(Key::None));
+    client_events_from_args(&args, |event| {
+        client_events.serialize(event);
+    });
+
+    /*
     let _ = connection.send_serialized_events_blocking(&mut client_events);
     if editor_loop.is_quit() {
         connection.receive_display(|_| ())?;
         connection.close();
         return Ok(());
     }
+    */
 
     let event_manager = EventManager::new()?;
     let event_registry = event_manager.registry();
     let event_manager_loop = event_manager.run_event_loop_in_background(event_sender.clone());
-    let ui_event_loop = I::run_event_loop_in_background(event_sender);
+    let ui_event_loop = ui.run_event_loop_in_background(event_sender);
 
     connection.register_connection(&event_registry)?;
 
-    let (local_width, local_height) = ui.init()?;
-    client_events.serialize(ClientEvent::Resize(local_width, local_height));
+    ui.init()?;
     connection.send_serialized_events(&mut client_events)?;
 
     for event in event_receiver.iter() {
         match event {
             LocalEvent::None => (),
-            LocalEvent::EndOfInput => break,
+            LocalEvent::EndOfInput => {
+                connection.send_serialized_events_blocking(&mut client_events)?;
+                connection.receive_display(|_| ())?;
+                break;
+            }
             LocalEvent::Key(key) => {
                 client_events.serialize(ClientEvent::Key(key));
                 if let Err(_) = connection.send_serialized_events(&mut client_events) {

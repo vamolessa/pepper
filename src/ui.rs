@@ -1,0 +1,82 @@
+use std::{error::Error, sync::mpsc, thread};
+
+use crate::{
+    client::{Client, TargetClient},
+    client_event::LocalEvent,
+    editor::Editor,
+    serialization::{DeserializeError, Deserializer, Serialize, Serializer},
+};
+
+pub mod none_ui;
+pub mod tui;
+
+pub type UiResult<T> = Result<T, Box<dyn 'static + Error>>;
+
+#[derive(Debug)]
+pub enum UiKind {
+    None,
+    Tui,
+}
+
+impl UiKind {
+    pub fn render(
+        &self,
+        editor: &Editor,
+        client: &Client,
+        target_client: TargetClient,
+        buffer: &mut Vec<u8>,
+    ) -> UiResult<()> {
+        buffer.clear();
+        match self {
+            Self::None => Ok(()),
+            Self::Tui => tui::render(editor, client, target_client, buffer),
+        }
+    }
+}
+
+impl Default for UiKind {
+    fn default() -> Self {
+        Self::Tui
+    }
+}
+
+impl<'de> Serialize<'de> for UiKind {
+    fn serialize<S>(&self, serializer: &mut S)
+    where
+        S: Serializer,
+    {
+        match self {
+            UiKind::None => 0u8.serialize(serializer),
+            UiKind::Tui => 1u8.serialize(serializer),
+        }
+    }
+
+    fn deserialize<D>(deserializer: &mut D) -> Result<Self, DeserializeError>
+    where
+        D: Deserializer<'de>,
+    {
+        let discriminant = u8::deserialize(deserializer)?;
+        match discriminant {
+            0 => Ok(UiKind::None),
+            1 => Ok(UiKind::Tui),
+            _ => Err(DeserializeError),
+        }
+    }
+}
+
+pub trait Ui {
+    fn run_event_loop_in_background(
+        &mut self,
+        event_sender: mpsc::Sender<LocalEvent>,
+    ) -> thread::JoinHandle<()>;
+
+    fn init(&mut self) -> UiResult<()> {
+        Ok(())
+    }
+
+    fn display(&mut self, buffer: &[u8]) -> UiResult<()>;
+
+    fn shutdown(&mut self) -> UiResult<()> {
+        Ok(())
+    }
+}

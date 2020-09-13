@@ -1,6 +1,6 @@
 use crate::{
     buffer_view::BufferViewHandle, connection::ConnectionWithClientHandle, cursor::Cursor,
-    editor::Editor,
+    editor::Editor, ui::UiKind,
 };
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -27,6 +27,7 @@ impl TargetClient {
 
 #[derive(Default)]
 pub struct Client {
+    pub ui: UiKind,
     pub current_buffer_view_handle: Option<BufferViewHandle>,
     pub viewport_size: (u16, u16),
     pub scroll: usize,

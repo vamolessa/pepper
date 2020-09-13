@@ -3,11 +3,10 @@ use std::{cmp::Ordering, io::Write, iter, path::Path, sync::mpsc, thread};
 use crossterm::{
     cursor, event, handle_command,
     style::{Color, Print, ResetColor, SetBackgroundColor, SetForegroundColor},
-    terminal, ErrorKind, Result,
+    terminal,
 };
 
 use crate::{
-    application::UI,
     buffer::BufferContent,
     buffer_position::{BufferPosition, BufferRange},
     client::{Client, TargetClient},
@@ -18,6 +17,8 @@ use crate::{
     syntax::{HighlightedBuffer, TokenKind},
     theme,
 };
+
+use super::{Ui, UiResult};
 
 fn convert_event(event: event::Event) -> LocalEvent {
     match event {
@@ -73,54 +74,50 @@ where
     }
 }
 
-impl<W> UI for Tui<W>
+impl<W> Ui for Tui<W>
 where
     W: Write,
 {
-    type Error = ErrorKind;
-
     fn run_event_loop_in_background(
+        &mut self,
         event_sender: mpsc::Sender<LocalEvent>,
-    ) -> thread::JoinHandle<Result<()>> {
+    ) -> thread::JoinHandle<()> {
+        let size = terminal::size().unwrap_or((0, 0));
+        let _ = event_sender.send(LocalEvent::Resize(size.0, size.1));
+
         thread::spawn(move || {
-            while event_sender.send(convert_event(event::read()?)).is_ok() {}
+            loop {
+                let event = match event::read() {
+                    Ok(event) => event,
+                    Err(_) => break,
+                };
+
+                if event_sender.send(convert_event(event)).is_err() {
+                    break;
+                }
+            }
+
             let _ = event_sender.send(LocalEvent::EndOfInput);
-            Ok(())
+            println!("CABOO");
         })
     }
 
-    fn init(&mut self) -> Result<(u16, u16)> {
+    fn init(&mut self) -> UiResult<()> {
         handle_command!(self.write, terminal::EnterAlternateScreen)?;
         handle_command!(self.write, cursor::Hide)?;
         self.write.flush()?;
         terminal::enable_raw_mode()?;
-        terminal::size()
-    }
-
-    fn render(
-        &mut self,
-        editor: &Editor,
-        client: &Client,
-        target_client: TargetClient,
-        buffer: &mut Vec<u8>,
-    ) -> Result<()> {
-        let has_focus = target_client == editor.focused_client;
-        let client_view = ClientView::from(editor, client);
-
-        draw_text(buffer, editor, &client_view)?;
-        draw_picker(buffer, editor)?;
-        draw_statusbar(buffer, editor, &client_view, has_focus)?;
         Ok(())
     }
 
-    fn display(&mut self, buffer: &[u8]) -> Result<()> {
+    fn display(&mut self, buffer: &[u8]) -> UiResult<()> {
         self.write.write_all(buffer)?;
         handle_command!(self.write, ResetColor)?;
         self.write.flush()?;
         Ok(())
     }
 
-    fn shutdown(&mut self) -> Result<()> {
+    fn shutdown(&mut self) -> UiResult<()> {
         handle_command!(self.write, terminal::Clear(terminal::ClearType::All))?;
         handle_command!(self.write, terminal::LeaveAlternateScreen)?;
         handle_command!(self.write, ResetColor)?;
@@ -129,6 +126,21 @@ where
         terminal::disable_raw_mode()?;
         Ok(())
     }
+}
+
+pub fn render(
+    editor: &Editor,
+    client: &Client,
+    target_client: TargetClient,
+    buffer: &mut Vec<u8>,
+) -> UiResult<()> {
+    let has_focus = target_client == editor.focused_client;
+    let client_view = ClientView::from(editor, client);
+
+    draw_text(buffer, editor, &client_view)?;
+    draw_picker(buffer, editor)?;
+    draw_statusbar(buffer, editor, &client_view, has_focus)?;
+    Ok(())
 }
 
 struct ClientView<'a> {
@@ -197,7 +209,7 @@ impl<'a> ClientView<'a> {
     }
 }
 
-fn draw_text<W>(write: &mut W, editor: &Editor, client_view: &ClientView) -> Result<()>
+fn draw_text<W>(write: &mut W, editor: &Editor, client_view: &ClientView) -> UiResult<()>
 where
     W: Write,
 {
@@ -386,7 +398,7 @@ where
     Ok(())
 }
 
-fn draw_picker<W>(write: &mut W, editor: &Editor) -> Result<()>
+fn draw_picker<W>(write: &mut W, editor: &Editor) -> UiResult<()>
 where
     W: Write,
 {
@@ -432,7 +444,7 @@ fn draw_statusbar<W>(
     editor: &Editor,
     client_view: &ClientView,
     has_focus: bool,
-) -> Result<()>
+) -> UiResult<()>
 where
     W: Write,
 {
@@ -442,7 +454,7 @@ where
         input: &str,
         background_color: Color,
         cursor_color: Color,
-    ) -> Result<usize>
+    ) -> UiResult<usize>
     where
         W: Write,
     {

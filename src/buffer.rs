@@ -861,6 +861,7 @@ mod tests {
         let syntaxes = SyntaxCollection::new();
 
         let mut buffer = Buffer::new(
+            &mut word_database,
             &syntaxes,
             PathBuf::new(),
             BufferContent::from_str("single line content"),
@@ -888,6 +889,7 @@ mod tests {
         let syntaxes = SyntaxCollection::new();
 
         let mut buffer = Buffer::new(
+            &mut word_database,
             &syntaxes,
             PathBuf::new(),
             BufferContent::from_str("multi\nline\ncontent"),

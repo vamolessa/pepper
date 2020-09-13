@@ -20,7 +20,7 @@ mod word_database;
 mod serialization;
 mod syntax;
 mod theme;
-mod tui;
+mod ui;
 
 use argh::FromArgs;
 
@@ -39,17 +39,13 @@ pub struct Args {
     #[argh(option, short = 's')]
     session: Option<String>,
 
-    /// send events on behalf of the currently focused client
+    /// displays no ui and send events on behalf of the currently focused client
     #[argh(switch)]
     as_focused_client: bool,
 
-    /// send events on behalf of the client at index
+    /// displays no ui and send events on behalf of the client at index
     #[argh(option)]
     as_client: Option<usize>,
-
-    /// send keys to server and quit
-    #[argh(option, short = 'k')]
-    keys: Option<String>,
 
     /// open files at paths
     #[argh(positional)]
