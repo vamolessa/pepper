@@ -1,6 +1,12 @@
+use argh::FromArgValue;
+
 use crate::{
-    buffer_view::BufferViewHandle, connection::ConnectionWithClientHandle, cursor::Cursor,
-    editor::Editor, ui::UiKind,
+    buffer_view::BufferViewHandle,
+    connection::ConnectionWithClientHandle,
+    cursor::Cursor,
+    editor::Editor,
+    serialization::{DeserializeError, Deserializer, Serialize, Serializer},
+    ui::UiKind,
 };
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -10,17 +16,49 @@ pub enum TargetClient {
 }
 
 impl TargetClient {
-    pub fn from_index(index: usize) -> Self {
-        match index {
-            0 => TargetClient::Local,
-            _ => TargetClient::Remote(ConnectionWithClientHandle::from_index(index - 1)),
-        }
-    }
-
     pub fn into_index(self) -> usize {
         match self {
             TargetClient::Local => 0,
             TargetClient::Remote(handle) => handle.into_index() + 1,
+        }
+    }
+}
+
+impl<'de> Serialize<'de> for TargetClient {
+    fn serialize<S>(&self, serializer: &mut S)
+    where
+        S: Serializer,
+    {
+        match self {
+            Self::Local => 0u32.serialize(serializer),
+            Self::Remote(handle) => {
+                let index = handle.into_index() as u32 + 1;
+                index.serialize(serializer);
+            }
+        }
+    }
+
+    fn deserialize<D>(deserializer: &mut D) -> Result<Self, DeserializeError>
+    where
+        D: Deserializer<'de>,
+    {
+        let index = u32::deserialize(deserializer)?;
+        match index {
+            0 => Ok(Self::Local),
+            _ => Ok(Self::Remote(ConnectionWithClientHandle::from_index(
+                index as usize - 1,
+            ))),
+        }
+    }
+}
+
+impl FromArgValue for TargetClient {
+    fn from_arg_value(value: &str) -> Result<Self, String> {
+        let index = value.parse::<usize>().map_err(|e| e.to_string())?;
+
+        match index {
+            0 => Ok(Self::Local),
+            _ => Ok(Self::Remote(ConnectionWithClientHandle::from_index(index))),
         }
     }
 }

@@ -45,7 +45,7 @@ pub struct Args {
 
     /// displays no ui and send events on behalf of the client at index
     #[argh(option)]
-    as_client: Option<usize>,
+    as_client: Option<client::TargetClient>,
 
     /// open files at paths
     #[argh(positional)]

@@ -1,6 +1,7 @@
 use std::{error::Error, fmt, str::Chars};
 
 use crate::{
+    client::TargetClient,
     event_manager::ConnectionEvent,
     serialization::{
         DeserializationSlice, DeserializeError, Deserializer, SerializationBuf, Serialize,
@@ -22,7 +23,7 @@ pub enum LocalEvent {
 pub enum ClientEvent<'a> {
     Ui(UiKind),
     AsFocusedClient,
-    AsClient(usize),
+    AsClient(TargetClient),
     OpenFile(&'a str),
     Key(Key),
     Resize(u16, u16),
@@ -39,10 +40,9 @@ impl<'de> Serialize<'de> for ClientEvent<'de> {
                 ui.serialize(serializer);
             }
             ClientEvent::AsFocusedClient => 1u8.serialize(serializer),
-            ClientEvent::AsClient(index) => {
+            ClientEvent::AsClient(target_client) => {
                 2u8.serialize(serializer);
-                let index = *index as u32;
-                index.serialize(serializer);
+                target_client.serialize(serializer);
             }
             ClientEvent::OpenFile(path) => {
                 3u8.serialize(serializer);
@@ -72,8 +72,8 @@ impl<'de> Serialize<'de> for ClientEvent<'de> {
             }
             1 => Ok(ClientEvent::AsFocusedClient),
             2 => {
-                let index = u32::deserialize(deserializer)?;
-                Ok(ClientEvent::AsClient(index as _))
+                let target_client = TargetClient::deserialize(deserializer)?;
+                Ok(ClientEvent::AsClient(target_client))
             }
             3 => {
                 let path = <&str>::deserialize(deserializer)?;
