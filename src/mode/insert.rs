@@ -21,7 +21,7 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
     };
 
     match keys.next() {
-        Key::Esc | Key::Ctrl('c') => {
+        Key::Esc => {
             unwrap_or_none!(ctx.buffer_views.get_mut(handle)).commit_edits(ctx.buffers);
             return ModeOperation::EnterMode(Mode::Normal);
         }
@@ -32,7 +32,7 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
             handle,
             "\t",
         ),
-        Key::Ctrl('m') => ctx.buffer_views.insert_text(
+        Key::Enter => ctx.buffer_views.insert_text(
             ctx.buffers,
             ctx.word_database,
             &ctx.config.syntaxes,

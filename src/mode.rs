@@ -143,11 +143,11 @@ pub enum InputPollResult {
 
 pub fn poll_input(ctx: &mut ModeContext, keys: &mut KeysIterator) -> InputPollResult {
     match keys.next() {
-        Key::Esc | Key::Ctrl('c') => {
+        Key::Esc => {
             ctx.input.clear();
             InputPollResult::Canceled
         }
-        Key::Ctrl('m') => InputPollResult::Submited,
+        Key::Enter => InputPollResult::Submited,
         Key::Ctrl('u') => {
             ctx.input.clear();
             InputPollResult::Pending

@@ -409,7 +409,7 @@ mod keymap {
         let from = from.to_str()?;
         let to = to.to_str()?;
 
-        match ctx.keymaps.parse_map(mode.discriminant(), from, to) {
+        match ctx.keymaps.parse_and_map(mode.discriminant(), from, to) {
             Ok(()) => Ok(()),
             Err(ParseKeyMapError::From(e)) => {
                 let message = helper::parsing_error(e.error, from, e.index);

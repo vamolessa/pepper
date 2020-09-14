@@ -18,7 +18,7 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
     };
 
     match keys.next() {
-        Key::Esc | Key::Ctrl('c') => {
+        Key::Esc => {
             let view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
             view.commit_edits(ctx.buffers);
             view.cursors.collapse_anchors();

@@ -2,7 +2,7 @@ use std::{collections::HashMap, mem::Discriminant};
 
 use crate::{
     client_event::{Key, KeyParseAllError},
-    mode::Mode,
+    mode::{FromMode, Mode},
 };
 
 pub enum MatchResult<'a> {
@@ -21,13 +21,12 @@ struct KeyMap {
     to: Vec<Key>,
 }
 
-#[derive(Default)]
 pub struct KeyMapCollection {
     maps: HashMap<Discriminant<Mode>, Vec<KeyMap>>,
 }
 
 impl KeyMapCollection {
-    pub fn parse_map(
+    pub fn parse_and_map(
         &mut self,
         mode: Discriminant<Mode>,
         from: &str,
@@ -74,5 +73,26 @@ impl KeyMapCollection {
         } else {
             MatchResult::None
         }
+    }
+}
+
+impl Default for KeyMapCollection {
+    fn default() -> Self {
+        let mut this = Self {
+            maps: HashMap::default(),
+        };
+
+        let all_modes = [
+            Mode::Normal,
+            Mode::Select,
+            Mode::Insert,
+            Mode::Search(FromMode::Normal),
+            Mode::Script(FromMode::Normal),
+        ];
+        for mode in &all_modes {
+            let _ = this.parse_and_map(mode.discriminant(), "<c-c>", "<esc>");
+            let _ = this.parse_and_map(mode.discriminant(), "<c-m>", "<enter>");
+        }
+        this
     }
 }
