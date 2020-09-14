@@ -15,6 +15,7 @@ use crate::{
         ScriptContext, ScriptEngineRef, ScriptError, ScriptObject, ScriptResult, ScriptStr,
         ScriptValue,
     },
+    theme::Color,
 };
 
 pub struct QuitError;
@@ -428,14 +429,25 @@ mod theme {
         ctx: &mut ScriptContext,
         (_object, index): (ScriptObject, ScriptStr),
     ) -> ScriptResult<ScriptValue<'script>> {
-        Ok(ScriptValue::Nil)
+        let theme = &mut ctx.config.theme;
+        let index = index.to_str()?;
+        match theme.color_from_name(index) {
+            Some(color) => Ok(ScriptValue::Integer(color.into_u32() as _)),
+            None => Err(ScriptError::from(format!("no such property {}", index))),
+        }
     }
 
     pub fn newindex(
         _engine: ScriptEngineRef,
         ctx: &mut ScriptContext,
-        (_object, index, value): (ScriptObject, ScriptStr, ScriptValue),
+        (_object, index, value): (ScriptObject, ScriptStr, u32),
     ) -> ScriptResult<()> {
+        let theme = &mut ctx.config.theme;
+        let index = index.to_str()?;
+        match theme.color_from_name(index) {
+            Some(color) => *color = Color::from_u32(value),
+            None => return Err(ScriptError::from(format!("no such property {}", index))),
+        }
         Ok(())
     }
 }

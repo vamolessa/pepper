@@ -70,7 +70,7 @@ impl<'lua> FromLua<'lua> for ScriptStr<'lua> {
         } else {
             Err(LuaError::FromLuaConversionError {
                 from: lua_value.type_name(),
-                to: stringify!(ScriptStr),
+                to: std::any::type_name::<Self>(),
                 message: None,
             })
         }
@@ -94,7 +94,7 @@ impl<'lua> FromLua<'lua> for ScriptObject<'lua> {
         } else {
             Err(LuaError::FromLuaConversionError {
                 from: lua_value.type_name(),
-                to: stringify!(ScriptObject),
+                to: std::any::type_name::<Self>(),
                 message: None,
             })
         }
@@ -118,7 +118,7 @@ impl<'lua> FromLua<'lua> for ScriptFunction<'lua> {
         } else {
             Err(LuaError::FromLuaConversionError {
                 from: lua_value.type_name(),
-                to: stringify!(ScriptFunction),
+                to: std::any::type_name::<Self>(),
                 message: None,
             })
         }
@@ -175,7 +175,7 @@ impl<'lua> FromLua<'lua> for ScriptValue<'lua> {
             LuaValue::Function(f) => Ok(Self::Function(ScriptFunction(f))),
             _ => Err(LuaError::FromLuaConversionError {
                 from: lua_value.type_name(),
-                to: stringify!(ScriptValue),
+                to: std::any::type_name::<Self>(),
                 message: None,
             }),
         }

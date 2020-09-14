@@ -1,55 +1,20 @@
-use std::{fmt, str::FromStr};
-
-pub enum ParseThemeError {
-    ColorNotFound,
-    BadColorFormat,
-    ColorHexTooBig,
-    ParseColorError(Box<dyn fmt::Display>),
-}
-
-impl fmt::Display for ParseThemeError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Self::ColorNotFound => write!(f, "could not find color"),
-            Self::BadColorFormat => write!(f, "colors should start with '#'"),
-            Self::ColorHexTooBig => write!(f, "color hex is too big"),
-            Self::ParseColorError(e) => write!(f, "{}", e),
-        }
-    }
-}
-
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Color(pub u8, pub u8, pub u8);
 
 impl Color {
-    pub const fn from_hex(hex: u32) -> Color {
+    pub const fn into_u32(self) -> u32 {
+        let r = self.0 as u32;
+        let g = self.1 as u32;
+        let b = self.2 as u32;
+        r << 16 | g << 8 | b
+    }
+
+    pub const fn from_u32(hex: u32) -> Color {
         Color(
             ((hex >> 16) & 0xff) as _,
             ((hex >> 8) & 0xff) as _,
             (hex & 0xff) as _,
         )
-    }
-}
-
-impl FromStr for Color {
-    type Err = ParseThemeError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let color = s.trim_start_matches('#');
-        if color.len() == s.len() {
-            return Err(ParseThemeError::BadColorFormat);
-        }
-
-        match u32::from_str_radix(color, 16) {
-            Ok(hex) => {
-                if hex <= 0xFFFFFF {
-                    Ok(Color::from_hex(hex))
-                } else {
-                    Err(ParseThemeError::ColorHexTooBig)
-                }
-            }
-            Err(e) => Err(ParseThemeError::ParseColorError(Box::new(e))),
-        }
     }
 }
 
@@ -73,45 +38,54 @@ pub struct Theme {
 }
 
 impl Theme {
-    pub fn parse_and_set(&mut self, name: &str, color: &str) -> Result<(), ParseThemeError> {
-        macro_rules! match_and_parse {
-            ($($name:ident,)*) => {
+    pub fn color_from_name(&mut self, name: &str) -> Option<&mut Color> {
+        macro_rules! match_and_get_property {
+            ($($prop:ident,)*) => {
                 match name {
-                    $(stringify!($name) => self.$name = color.parse()?,)*
-                    _ => return Err(ParseThemeError::ColorNotFound),
+                    $(stringify!($prop) => Some(&mut self.$prop),)*
+                    _ => None
                 }
             }
         }
 
-        match_and_parse! {
-            background, highlight,
-            cursor_normal, cursor_select, cursor_insert,
-            token_whitespace, token_text, token_comment, token_keyword,
-            token_type, token_symbol, token_string, token_literal,
-        }
+        match_and_get_property! {
+            background,
+            highlight,
 
-        Ok(())
+            cursor_normal,
+            cursor_select,
+            cursor_insert,
+
+            token_whitespace,
+            token_text,
+            token_comment,
+            token_keyword,
+            token_type,
+            token_symbol,
+            token_string,
+            token_literal,
+        }
     }
 }
 
 pub fn pico8_theme() -> Theme {
     const COLORS: &[Color] = &[
-        Color::from_hex(0x000000), //  0 black
-        Color::from_hex(0x1d2b53), //  1 storm
-        Color::from_hex(0x7e2553), //  2 wine
-        Color::from_hex(0x008751), //  3 moss
-        Color::from_hex(0xab5236), //  4 tan
-        Color::from_hex(0x5f574f), //  5 slate
-        Color::from_hex(0xc2c3c7), //  6 silver
-        Color::from_hex(0xfff1e8), //  7 white
-        Color::from_hex(0xff004d), //  8 ember
-        Color::from_hex(0xffa300), //  9 orange
-        Color::from_hex(0xffec27), // 10 lemon
-        Color::from_hex(0x00e436), // 11 lime
-        Color::from_hex(0x29adff), // 12 sky
-        Color::from_hex(0x83769c), // 13 dusk
-        Color::from_hex(0xff77a8), // 14 pink
-        Color::from_hex(0xffccaa), // 15 peach
+        Color::from_u32(0x000000), //  0 black
+        Color::from_u32(0x1d2b53), //  1 storm
+        Color::from_u32(0x7e2553), //  2 wine
+        Color::from_u32(0x008751), //  3 moss
+        Color::from_u32(0xab5236), //  4 tan
+        Color::from_u32(0x5f574f), //  5 slate
+        Color::from_u32(0xc2c3c7), //  6 silver
+        Color::from_u32(0xfff1e8), //  7 white
+        Color::from_u32(0xff004d), //  8 ember
+        Color::from_u32(0xffa300), //  9 orange
+        Color::from_u32(0xffec27), // 10 lemon
+        Color::from_u32(0x00e436), // 11 lime
+        Color::from_u32(0x29adff), // 12 sky
+        Color::from_u32(0x83769c), // 13 dusk
+        Color::from_u32(0xff77a8), // 14 pink
+        Color::from_u32(0xffccaa), // 15 peach
     ];
 
     Theme {
