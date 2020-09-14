@@ -95,6 +95,9 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
         ctx.picker.clear_filtered();
     } else {
         ctx.picker.filter(&ctx.word_database, word);
+        if ctx.picker.height(usize::MAX) == 1 {
+            ctx.picker.clear_filtered();
+        }
     }
 
     ModeOperation::None

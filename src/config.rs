@@ -1,24 +1,11 @@
-use std::{fmt, num::NonZeroUsize, str::FromStr};
+use std::num::NonZeroUsize;
 
 use crate::{
     pattern::Pattern,
+    script::{ScriptEngineRef, ScriptResult, ScriptValue},
     syntax::{Syntax, SyntaxCollection, TokenKind},
     theme::{pico8_theme, Theme},
 };
-
-pub enum ParseConfigError {
-    ConfigNotFound,
-    ParseError(Box<dyn fmt::Display>),
-}
-
-impl fmt::Display for ParseConfigError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Self::ConfigNotFound => write!(f, "could not find config"),
-            Self::ParseError(e) => write!(f, "config parse error: {}", e),
-        }
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct ConfigValues {
@@ -33,38 +20,68 @@ pub struct ConfigValues {
 }
 
 impl ConfigValues {
-    pub fn parse_and_set<'a>(&mut self, name: &str, value: &str) -> Result<(), ParseConfigError> {
-        fn parse<T>(value: &str) -> Result<T, ParseConfigError>
-        where
-            T: FromStr,
-            T::Err: 'static + fmt::Display,
-        {
-            value
-                .parse()
-                .map_err(|e| ParseConfigError::ParseError(Box::new(e)))
+    pub fn get_from_name<'script>(
+        &self,
+        engine: ScriptEngineRef<'script>,
+        name: &str,
+    ) -> ScriptResult<ScriptValue<'script>> {
+        macro_rules! char_to_string {
+            ($c:expr) => {{
+                let mut buf = [0; std::mem::size_of::<char>()];
+                ScriptValue::String(engine.create_string($c.encode_utf8(&mut buf).as_bytes())?)
+            }};
         }
 
-        macro_rules! match_and_parse {
-            ($($name:ident,)*) => {
-                match name {
-                    $(stringify!($name) => self.$name = parse(value)?,)*
-                    _ => return Err(ParseConfigError::ConfigNotFound),
-                }
+        match name {
+            stringify!(tab_size) => Ok(ScriptValue::Integer(self.tab_size.get() as _)),
+            stringify!(visual_empty) => Ok(char_to_string!(self.visual_empty)),
+            stringify!(visual_space) => Ok(char_to_string!(self.visual_space)),
+            stringify!(visual_tab_first) => Ok(char_to_string!(self.visual_tab_first)),
+            stringify!(visual_tab_repeat) => Ok(char_to_string!(self.visual_tab_repeat)),
+            stringify!(picker_max_height) => {
+                Ok(ScriptValue::Integer(self.picker_max_height.get() as _))
             }
+            _ => Ok(ScriptValue::Nil),
+        }
+    }
+
+    pub fn set_from_name(&mut self, name: &str, value: ScriptValue) {
+        macro_rules! try_integer {
+            ($value:expr) => {{
+                let integer = match $value {
+                    ScriptValue::Integer(i) if i > 0 => i,
+                    _ => return,
+                };
+                NonZeroUsize::new(integer as _).unwrap()
+            }};
+        }
+        macro_rules! try_char {
+            ($value:expr) => {{
+                match $value {
+                    ScriptValue::String(s) => {
+                        let s = match s.to_str() {
+                            Ok(s) => s,
+                            Err(_) => return,
+                        };
+                        match s.parse() {
+                            Ok(c) => c,
+                            Err(_) => return,
+                        }
+                    }
+                    _ => return,
+                }
+            }};
         }
 
-        match_and_parse! {
-            tab_size,
-
-            visual_empty,
-            visual_space,
-            visual_tab_first,
-            visual_tab_repeat,
-
-            picker_max_height,
+        match name {
+            stringify!(tab_size) => self.tab_size = try_integer!(value),
+            stringify!(visual_empty) => self.visual_empty = try_char!(value),
+            stringify!(visual_space) => self.visual_space = try_char!(value),
+            stringify!(visual_tab_first) => self.visual_tab_first = try_char!(value),
+            stringify!(visual_tab_repeat) => self.visual_tab_repeat = try_char!(value),
+            stringify!(picker_max_height) => self.picker_max_height = try_integer!(value),
+            _ => (),
         }
-
-        Ok(())
     }
 }
 
@@ -112,8 +129,8 @@ fn set_rust_syntax(syntax: &mut Syntax) {
     }
 
     for symbol in &[
-        "%(", "%)", "%[", "%]", "%{", "%}", ":", ";", ",", "=", "<", ">", "+", "-", "/", "*", "%%", "%.",
-        "%!", "?", "&", "|", "@",
+        "%(", "%)", "%[", "%]", "%{", "%}", ":", ";", ",", "=", "<", ">", "+", "-", "/", "*", "%%",
+        "%.", "%!", "?", "&", "|", "@",
     ] {
         syntax.add_rule(TokenKind::Symbol, Pattern::new(symbol).unwrap());
     }
@@ -145,21 +162,24 @@ fn set_rust_syntax(syntax: &mut Syntax) {
 
 fn set_lua_syntax(syntax: &mut Syntax) {
     for keyword in &[
-        "and", "break", "do", "else", "elseif", "end", "for", "function", "if", "in",
-        "local", "not", "or", "repeat", "return", "then", "until", "while",
+        "and", "break", "do", "else", "elseif", "end", "for", "function", "if", "in", "local",
+        "not", "or", "repeat", "return", "then", "until", "while",
     ] {
         syntax.add_rule(TokenKind::Keyword, Pattern::new(keyword).unwrap());
     }
 
     for symbol in &[
-        "+", "-", "*", "/", "%%", "^", "#", "<", ">", "=", "~", "%(", "%)", "%{",
-        "%}", "%[", "%]", ";", ":", ",", "%.", "%.%.", "%.%.%.",
+        "+", "-", "*", "/", "%%", "^", "#", "<", ">", "=", "~", "%(", "%)", "%{", "%}", "%[", "%]",
+        ";", ":", ",", "%.", "%.%.", "%.%.%.",
     ] {
         syntax.add_rule(TokenKind::Symbol, Pattern::new(symbol).unwrap());
     }
 
     syntax.add_rule(TokenKind::Comment, Pattern::new("--{.}").unwrap());
-    syntax.add_rule(TokenKind::Comment, Pattern::new("--%[%[{!(%]%]).$}").unwrap());
+    syntax.add_rule(
+        TokenKind::Comment,
+        Pattern::new("--%[%[{!(%]%]).$}").unwrap(),
+    );
 
     for literal in &["nil", "false", "true", "_G", "_ENV"] {
         syntax.add_rule(TokenKind::Literal, Pattern::new(literal).unwrap());

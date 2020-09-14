@@ -6,13 +6,14 @@ use std::{
 };
 
 use crate::{
-    config::ParseConfigError,
     editor::{EditorLoop, StatusMessageKind},
     keymap::ParseKeyMapError,
     mode::Mode,
     pattern::Pattern,
-    script::{ScriptContext, ScriptEngine, ScriptError, ScriptResult, ScriptStr, ScriptValue},
-    theme::ParseThemeError,
+    script::{
+        ScriptContext, ScriptEngineRef, ScriptError, ScriptObject, ScriptResult, ScriptStr,
+        ScriptValue,
+    },
 };
 
 pub struct QuitError;
@@ -22,38 +23,52 @@ impl fmt::Display for QuitError {
     }
 }
 
-pub fn bind_all<'a>(scripts: &'a mut ScriptEngine) -> ScriptResult<()> {
+pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
     macro_rules! register {
-        () => {};
-        ($func:ident, $($tokens:tt)*) => {
-            scripts.register_ctx_function(
-                None,
-                stringify!($func),
-                global::$func
-            )?;
-            register!($($tokens)*);
+        (global => $($func:ident,)*) => {
+            let globals = scripts.globals_object();
+            $(
+                let func = scripts.create_ctx_function(global::$func)?;
+                globals.set(stringify!($func), ScriptValue::Function(func))?;
+            )*
         };
-        ($namespace:ident :: $func:ident, $($tokens:tt)*) => {
-            scripts.register_ctx_function(
-                Some(stringify!($namespace)),
-                stringify!($func),
-                $namespace::$func
-            )?;
-            register!($($tokens)*);
+        ($obj:ident => $($func:ident,)*) => {
+            let $obj = scripts.create_object()?;
+            $(
+                let func = scripts.create_ctx_function($obj::$func)?;
+                $obj.set(stringify!($func), ScriptValue::Function(func))?;
+            )*
         };
     }
 
-    register! {
-        print,
-        quit, quit_all, open, close, close_all, save, save_all,
-        client::index,
-        editor::selection, editor::delete_selection, editor::insert_text,
-        process::pipe, process::spawn,
-        config::set,
-        keymap::normal, keymap::select, keymap::insert,
-        theme::color,
-        syntax::extension, syntax::rule,
-    };
+    macro_rules! register_object {
+        ($name:ident) => {
+            let $name = scripts.create_object()?;
+            let meta = scripts.create_object()?;
+            meta.set(
+                "__index",
+                ScriptValue::Function(scripts.create_ctx_function($name::index)?),
+            )?;
+            meta.set(
+                "__newindex",
+                ScriptValue::Function(scripts.create_ctx_function($name::newindex)?),
+            )?;
+            $name.set_meta_object(Some(meta));
+            scripts
+                .globals_object()
+                .set(stringify!($name), ScriptValue::Object($name))?;
+        };
+    }
+
+    register!(global => print, quit, quit_all, open, close, close_all, save, save_all,);
+    register!(client => index,);
+    register!(editor => selection, delete_selection, insert_text,);
+    register!(process => pipe, spawn,);
+    register!(keymap => normal, select, insert,);
+    register!(syntax => extension, rule,);
+
+    register_object!(config);
+    register_object!(theme);
 
     Ok(())
 }
@@ -61,7 +76,11 @@ pub fn bind_all<'a>(scripts: &'a mut ScriptEngine) -> ScriptResult<()> {
 mod global {
     use super::*;
 
-    pub fn print(ctx: &mut ScriptContext, value: ScriptValue) -> ScriptResult<()> {
+    pub fn print(
+        _engine: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        value: ScriptValue,
+    ) -> ScriptResult<()> {
         let message = value.to_string();
         *ctx.status_message_kind = StatusMessageKind::Info;
         ctx.status_message.clear();
@@ -69,17 +88,21 @@ mod global {
         Ok(())
     }
 
-    pub fn quit(ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
+    pub fn quit(_engine: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
         *ctx.editor_loop = EditorLoop::Quit;
         Err(ScriptError::from(QuitError))
     }
 
-    pub fn quit_all(ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
+    pub fn quit_all(_engine: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
         *ctx.editor_loop = EditorLoop::QuitAll;
         Err(ScriptError::from(QuitError))
     }
 
-    pub fn open(ctx: &mut ScriptContext, path: ScriptStr) -> ScriptResult<()> {
+    pub fn open(
+        _engine: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        path: ScriptStr,
+    ) -> ScriptResult<()> {
         let path = Path::new(path.to_str()?);
         let buffer_view_handle = ctx
             .buffer_views
@@ -95,7 +118,7 @@ mod global {
         Ok(())
     }
 
-    pub fn close(ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
+    pub fn close(_engine: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
         if let Some(handle) = ctx
             .current_buffer_view_handle()
             .and_then(|h| ctx.buffer_views.get(h))
@@ -111,7 +134,7 @@ mod global {
         Ok(())
     }
 
-    pub fn close_all(ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
+    pub fn close_all(_engine: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
         ctx.buffer_views
             .remove_where(ctx.buffers, ctx.word_database, |_| true);
         for c in ctx.clients.client_refs() {
@@ -120,7 +143,11 @@ mod global {
         Ok(())
     }
 
-    pub fn save(ctx: &mut ScriptContext, path: Option<ScriptStr>) -> ScriptResult<()> {
+    pub fn save(
+        _engine: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        path: Option<ScriptStr>,
+    ) -> ScriptResult<()> {
         let buffer_handle = match ctx
             .current_buffer_view_handle()
             .and_then(|h| ctx.buffer_views.get(h))
@@ -146,7 +173,7 @@ mod global {
         }
     }
 
-    pub fn save_all(ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
+    pub fn save_all(_engine: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
         for buffer in ctx.buffers.iter() {
             buffer.save_to_file().map_err(ScriptError::from)?;
         }
@@ -157,7 +184,7 @@ mod global {
 mod client {
     use super::*;
 
-    pub fn index(ctx: &mut ScriptContext, _: ()) -> ScriptResult<usize> {
+    pub fn index(_engine: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<usize> {
         Ok(ctx.target_client.into_index())
     }
 }
@@ -165,7 +192,11 @@ mod client {
 mod editor {
     use super::*;
 
-    pub fn selection(ctx: &mut ScriptContext, _: ()) -> ScriptResult<String> {
+    pub fn selection(
+        _engine: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        _: (),
+    ) -> ScriptResult<String> {
         let mut selection = String::new();
         ctx.current_buffer_view_handle()
             .and_then(|h| ctx.buffer_views.get(h))
@@ -173,7 +204,11 @@ mod editor {
         Ok(selection)
     }
 
-    pub fn delete_selection(ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
+    pub fn delete_selection(
+        _engine: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        _: (),
+    ) -> ScriptResult<()> {
         if let Some(handle) = ctx.current_buffer_view_handle() {
             ctx.buffer_views.delete_in_selection(
                 ctx.buffers,
@@ -185,7 +220,11 @@ mod editor {
         Ok(())
     }
 
-    pub fn insert_text(ctx: &mut ScriptContext, text: ScriptStr) -> ScriptResult<()> {
+    pub fn insert_text(
+        _engine: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        text: ScriptStr,
+    ) -> ScriptResult<()> {
         if let Some(handle) = ctx.current_buffer_view_handle() {
             let text = text.to_str()?;
             ctx.buffer_views.insert_text(
@@ -204,6 +243,7 @@ mod process {
     use super::*;
 
     pub fn pipe(
+        _engine: ScriptEngineRef,
         _ctx: &mut ScriptContext,
         (name, args, input): (ScriptStr, Vec<ScriptStr>, Option<ScriptStr>),
     ) -> ScriptResult<String> {
@@ -219,6 +259,7 @@ mod process {
     }
 
     pub fn spawn(
+        _engine: ScriptEngineRef,
         _ctx: &mut ScriptContext,
         (name, args, input): (ScriptStr, Vec<ScriptStr>, Option<ScriptStr>),
     ) -> ScriptResult<()> {
@@ -260,17 +301,20 @@ mod process {
 mod config {
     use super::*;
 
-    pub fn set(ctx: &mut ScriptContext, (name, value): (ScriptStr, ScriptStr)) -> ScriptResult<()> {
-        let name = name.to_str()?;
-        let value = value.to_str()?;
+    pub fn index<'script>(
+        engine: ScriptEngineRef<'script>,
+        ctx: &mut ScriptContext,
+        (_object, index): (ScriptObject, ScriptStr),
+    ) -> ScriptResult<ScriptValue<'script>> {
+        ctx.config.values.get_from_name(engine, index.to_str()?)
+    }
 
-        if let Err(e) = ctx.config.values.parse_and_set(name, value) {
-            let message = match e {
-                ParseConfigError::ConfigNotFound => helper::parsing_error(e, name, 0),
-                ParseConfigError::ParseError(e) => helper::parsing_error(e, value, 0),
-            };
-            return Err(ScriptError::from(message));
-        }
+    pub fn newindex(
+        _engine: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        (_object, index, value): (ScriptObject, ScriptStr, ScriptValue),
+    ) -> ScriptResult<()> {
+        ctx.config.values.set_from_name(index.to_str()?, value);
         Ok(())
     }
 }
@@ -278,15 +322,27 @@ mod config {
 mod keymap {
     use super::*;
 
-    pub fn normal(ctx: &mut ScriptContext, (from, to): (ScriptStr, ScriptStr)) -> ScriptResult<()> {
+    pub fn normal(
+        _engine: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        (from, to): (ScriptStr, ScriptStr),
+    ) -> ScriptResult<()> {
         map_mode(ctx, Mode::Normal, from, to)
     }
 
-    pub fn select(ctx: &mut ScriptContext, (from, to): (ScriptStr, ScriptStr)) -> ScriptResult<()> {
+    pub fn select(
+        _engine: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        (from, to): (ScriptStr, ScriptStr),
+    ) -> ScriptResult<()> {
         map_mode(ctx, Mode::Select, from, to)
     }
 
-    pub fn insert(ctx: &mut ScriptContext, (from, to): (ScriptStr, ScriptStr)) -> ScriptResult<()> {
+    pub fn insert(
+        _engine: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        (from, to): (ScriptStr, ScriptStr),
+    ) -> ScriptResult<()> {
         map_mode(ctx, Mode::Insert, from, to)
     }
 
@@ -316,23 +372,19 @@ mod keymap {
 mod theme {
     use super::*;
 
-    pub fn color(
+    pub fn index<'script>(
+        _engine: ScriptEngineRef,
         ctx: &mut ScriptContext,
-        (name, color): (ScriptStr, ScriptStr),
+        (_object, index): (ScriptObject, ScriptStr),
+    ) -> ScriptResult<ScriptValue<'script>> {
+        Ok(ScriptValue::Nil)
+    }
+
+    pub fn newindex(
+        _engine: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        (_object, index, value): (ScriptObject, ScriptStr, ScriptValue),
     ) -> ScriptResult<()> {
-        let name = name.to_str()?;
-        let color = color.to_str()?;
-
-        if let Err(e) = ctx.config.theme.parse_and_set(name, color) {
-            let context = format!("{} {}", name, color);
-            let error_index = match e {
-                ParseThemeError::ColorNotFound => 0,
-                _ => context.len(),
-            };
-            let message = helper::parsing_error(e, &context, error_index);
-            return Err(ScriptError::from(message));
-        }
-
         Ok(())
     }
 }
@@ -341,6 +393,7 @@ mod syntax {
     use super::*;
 
     pub fn extension(
+        _engine: ScriptEngineRef,
         ctx: &mut ScriptContext,
         (main_extension, other_extension): (ScriptStr, ScriptStr),
     ) -> ScriptResult<()> {
@@ -354,6 +407,7 @@ mod syntax {
     }
 
     pub fn rule(
+        _engine: ScriptEngineRef,
         ctx: &mut ScriptContext,
         (main_extension, token_kind, pattern): (ScriptStr, ScriptStr, ScriptStr),
     ) -> ScriptResult<()> {
@@ -378,7 +432,11 @@ mod syntax {
 mod helper {
     use super::*;
 
-    pub fn parsing_error<T>(message: T, text: &str, error_index: usize) -> String
+    pub fn parsing_error<T>(
+        message: T,
+        text: &str,
+        error_index: usize,
+    ) -> String
     where
         T: fmt::Display,
     {

@@ -1,8 +1,8 @@
-use std::{error::Error, fmt, fs::File, io::Read, path::Path, sync::Arc};
+use std::{convert::TryInto, error::Error, fmt, fs::File, io::Read, path::Path, sync::Arc};
 
 use mlua::prelude::{
     FromLua, FromLuaMulti, Lua, LuaError, LuaFunction, LuaInteger, LuaLightUserData, LuaNumber,
-    LuaResult, LuaString, LuaTable, LuaValue, ToLuaMulti,
+    LuaResult, LuaString, LuaTable, LuaValue, ToLua, ToLuaMulti,
 };
 
 use crate::{
@@ -69,6 +69,30 @@ impl<'lua> FromLua<'lua> for ScriptStr<'lua> {
     }
 }
 
+pub struct ScriptObject<'lua>(LuaTable<'lua>);
+impl<'lua> ScriptObject<'lua> {
+    pub fn set(&self, key: &str, value: ScriptValue<'lua>) -> ScriptResult<()> {
+        self.0.set(key, value)
+    }
+
+    pub fn set_meta_object(&self, object: Option<ScriptObject<'lua>>) {
+        self.0.set_metatable(object.map(|o| o.0))
+    }
+}
+impl<'lua> FromLua<'lua> for ScriptObject<'lua> {
+    fn from_lua(lua_value: LuaValue<'lua>, _lua: &'lua Lua) -> LuaResult<Self> {
+        if let LuaValue::Table(t) = lua_value {
+            Ok(Self(t))
+        } else {
+            Err(LuaError::FromLuaConversionError {
+                from: lua_value.type_name(),
+                to: stringify!(ScriptObject),
+                message: None,
+            })
+        }
+    }
+}
+
 pub struct ScriptFunction<'lua>(LuaFunction<'lua>);
 impl<'lua> ScriptFunction<'lua> {
     pub fn call<A, R>(&self, args: A) -> ScriptResult<R>
@@ -99,8 +123,8 @@ pub enum ScriptValue<'lua> {
     Integer(LuaInteger),
     Number(LuaNumber),
     String(ScriptStr<'lua>),
+    Object(ScriptObject<'lua>),
     Function(ScriptFunction<'lua>),
-    Other(LuaValue<'lua>),
 }
 impl<'lua> fmt::Display for ScriptValue<'lua> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -113,8 +137,8 @@ impl<'lua> fmt::Display for ScriptValue<'lua> {
                 Ok(s) => s.fmt(f),
                 Err(_) => Err(fmt::Error),
             },
+            ScriptValue::Object(_) => f.write_str("object"),
             ScriptValue::Function(_) => f.write_str("function"),
-            ScriptValue::Other(_) => Ok(()),
         }
     }
 }
@@ -126,8 +150,43 @@ impl<'lua> FromLua<'lua> for ScriptValue<'lua> {
             LuaValue::Integer(i) => Ok(Self::Integer(i)),
             LuaValue::Number(n) => Ok(Self::Number(n)),
             LuaValue::String(s) => Ok(Self::String(ScriptStr(s))),
+            LuaValue::Table(t) => Ok(Self::Object(ScriptObject(t))),
             LuaValue::Function(f) => Ok(Self::Function(ScriptFunction(f))),
-            _ => Ok(Self::Other(lua_value)),
+            _ => Err(LuaError::FromLuaConversionError {
+                from: lua_value.type_name(),
+                to: stringify!(ScriptValue),
+                message: None,
+            }),
+        }
+    }
+}
+impl<'lua> ToLua<'lua> for ScriptValue<'lua> {
+    fn to_lua(self, _lua: &'lua Lua) -> LuaResult<LuaValue<'lua>> {
+        match self {
+            Self::Nil => Ok(LuaValue::Nil),
+            Self::Boolean(b) => Ok(LuaValue::Boolean(b)),
+            Self::Integer(i) => Ok(LuaValue::Integer(i)),
+            Self::Number(n) => Ok(LuaValue::Number(n)),
+            Self::String(s) => Ok(LuaValue::String(s.0)),
+            Self::Object(o) => Ok(LuaValue::Table(o.0)),
+            Self::Function(f) => Ok(LuaValue::Function(f.0)),
+        }
+    }
+}
+impl<'lua> TryInto<char> for ScriptValue<'lua> {
+    type Error = ();
+
+    fn try_into(self) -> Result<char, Self::Error> {
+        match self {
+            Self::String(s) => {
+                let mut chars = s.to_str().map_err(|_| ())?.chars();
+                let c = chars.next();
+                match (c, chars.next()) {
+                    (Some(c), None) => Ok(c),
+                    _ => Err(()),
+                }
+            }
+            _ => Err(()),
         }
     }
 }
@@ -182,45 +241,14 @@ impl ScriptEngine {
             | mlua::StdLib::PACKAGE;
         let lua = Lua::new_with(libs)?;
 
-        let mut this = Self { lua };
-        script_bindings::bind_all(&mut this)?;
+        let this = Self { lua };
+        script_bindings::bind_all(this.as_ref())?;
 
         Ok(this)
     }
 
-    pub fn register_ctx_function<'lua, A, R, F>(
-        &'lua mut self,
-        namespace: Option<&str>,
-        name: &str,
-        func: F,
-    ) -> ScriptResult<()>
-    where
-        A: FromLuaMulti<'lua>,
-        R: ToLuaMulti<'lua>,
-        F: 'static + Fn(&mut ScriptContext, A) -> ScriptResult<R>,
-    {
-        let func = self.lua.create_function(move |lua, args| {
-            let ctx: LuaLightUserData = lua.named_registry_value("ctx")?;
-            let ctx = unsafe { &mut *(ctx.0 as *mut _) };
-            func(ctx, args)
-        })?;
-
-        match namespace {
-            Some(namespace) => {
-                let namespace_table: Option<LuaTable> = self.lua.globals().get(namespace)?;
-                match namespace_table {
-                    Some(table) => table.set(name, func)?,
-                    None => {
-                        let table = self.lua.create_table()?;
-                        table.set(name, func)?;
-                        self.lua.globals().set(namespace, table)?;
-                    }
-                }
-            }
-            None => self.lua.globals().set(name, func)?,
-        }
-
-        Ok(())
+    pub fn as_ref(&self) -> ScriptEngineRef {
+        ScriptEngineRef { lua: &self.lua }
     }
 
     pub fn eval(&mut self, mut ctx: ScriptContext, source: &str) -> ScriptResult<ScriptValue> {
@@ -252,5 +280,40 @@ impl ScriptEngine {
     fn update_ctx(&mut self, ctx: &mut ScriptContext) -> ScriptResult<()> {
         self.lua
             .set_named_registry_value("ctx", LuaLightUserData(ctx as *mut ScriptContext as _))
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct ScriptEngineRef<'lua> {
+    lua: &'lua Lua,
+}
+
+impl<'lua> ScriptEngineRef<'lua> {
+    pub fn globals_object(&self) -> ScriptObject<'lua> {
+        ScriptObject(self.lua.globals())
+    }
+
+    pub fn create_string(&self, data: &[u8]) -> ScriptResult<ScriptStr<'lua>> {
+        self.lua.create_string(data).map(ScriptStr)
+    }
+
+    pub fn create_object(&self) -> ScriptResult<ScriptObject<'lua>> {
+        self.lua.create_table().map(ScriptObject)
+    }
+
+    pub fn create_ctx_function<A, R, F>(&self, func: F) -> ScriptResult<ScriptFunction<'lua>>
+    where
+        A: FromLuaMulti<'lua>,
+        R: ToLuaMulti<'lua>,
+        F: 'static + Fn(ScriptEngineRef<'lua>, &mut ScriptContext, A) -> ScriptResult<R>,
+    {
+        self.lua
+            .create_function(move |lua, args| {
+                let ctx: LuaLightUserData = lua.named_registry_value("ctx")?;
+                let ctx = unsafe { &mut *(ctx.0 as *mut _) };
+                let engine = ScriptEngineRef { lua };
+                func(engine, ctx, args)
+            })
+            .map(ScriptFunction)
     }
 }
