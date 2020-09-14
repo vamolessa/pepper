@@ -14,7 +14,7 @@ use crate::{
     client_event::{Key, LocalEvent},
     cursor::Cursor,
     editor::{Editor, StatusMessageKind},
-    mode::Mode,
+    mode::{FromMode, Mode},
     syntax::{HighlightedBuffer, TokenKind},
     theme,
 };
@@ -233,7 +233,9 @@ where
     handle_command!(write, cursor::Hide)?;
 
     let cursor_color = match editor.mode {
-        Mode::Select => convert_color(theme.cursor_select),
+        Mode::Select | Mode::Search(FromMode::Select) | Mode::Script(FromMode::Select) => {
+            convert_color(theme.cursor_select)
+        }
         Mode::Insert => convert_color(theme.cursor_insert),
         _ => convert_color(theme.cursor_normal),
     };
@@ -504,20 +506,14 @@ where
                     handle_command!(write, Print(text))?;
                     Some(text.len())
                 }
-                Mode::Search(_) => Some(draw_input(
-                    write,
-                    "/",
-                    &editor.input,
-                    background_color,
-                    cursor_color,
-                )?),
-                Mode::Script(_) => Some(draw_input(
-                    write,
-                    ":",
-                    &editor.input,
-                    background_color,
-                    cursor_color,
-                )?),
+                Mode::Search(_) => {
+                    draw_input(write, "/", &editor.input, background_color, cursor_color)?;
+                    None
+                }
+                Mode::Script(_) => {
+                    draw_input(write, ":", &editor.input, background_color, cursor_color)?;
+                    None
+                }
                 _ => Some(0),
             }
         } else {

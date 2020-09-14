@@ -34,12 +34,14 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
                 globals.set(stringify!($func), ScriptValue::Function(func))?;
             )*
         };
-        ($obj:ident => $($func:ident,)*) => {
-            let $obj = scripts.create_object()?;
+        ($namespace:ident => $($func:ident,)*) => {
+            let globals = scripts.globals_object();
+            let $namespace = scripts.create_object()?;
             $(
-                let func = scripts.create_ctx_function($obj::$func)?;
-                $obj.set(stringify!($func), ScriptValue::Function(func))?;
+                let func = scripts.create_ctx_function($namespace::$func)?;
+                $namespace.set(stringify!($func), ScriptValue::Function(func))?;
             )*
+            globals.set(stringify!($namespace), ScriptValue::Object($namespace))?;
         };
     }
 
