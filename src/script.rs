@@ -24,6 +24,14 @@ impl<T> ScriptError<T>
 where
     T: 'static + fmt::Display,
 {
+    pub fn convert_from_script(from: &ScriptValue) -> LuaError {
+        LuaError::FromLuaConversionError {
+            from: from.type_name(),
+            to: std::any::type_name::<T>(),
+            message: None,
+        }
+    }
+
     pub fn from(e: T) -> LuaError {
         LuaError::ExternalError(Arc::new(ScriptError(e)))
     }
@@ -125,6 +133,19 @@ pub enum ScriptValue<'lua> {
     String(ScriptStr<'lua>),
     Object(ScriptObject<'lua>),
     Function(ScriptFunction<'lua>),
+}
+impl<'lua> ScriptValue<'lua> {
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            Self::Nil => "nil",
+            Self::Boolean(_) => "boolean",
+            Self::Integer(_) => "integer",
+            Self::Number(_) => "number",
+            Self::String(_) => "string",
+            Self::Object(_) => "table",
+            Self::Function(_) => "function",
+        }
+    }
 }
 impl<'lua> fmt::Display for ScriptValue<'lua> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

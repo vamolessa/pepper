@@ -1,6 +1,7 @@
 use std::{
     fmt,
     io::Write,
+    num::NonZeroUsize,
     path::Path,
     process::{Child, Command, Stdio},
 };
@@ -306,7 +307,24 @@ mod config {
         ctx: &mut ScriptContext,
         (_object, index): (ScriptObject, ScriptStr),
     ) -> ScriptResult<ScriptValue<'script>> {
-        ctx.config.values.get_from_name(engine, index.to_str()?)
+        macro_rules! char_to_string {
+            ($c:expr) => {{
+                let mut buf = [0; std::mem::size_of::<char>()];
+                ScriptValue::String(engine.create_string($c.encode_utf8(&mut buf).as_bytes())?)
+            }};
+        }
+
+        let config = &ctx.config.values;
+        let index = index.to_str()?;
+        match index {
+            "tab_size" => Ok(ScriptValue::Integer(config.tab_size.get() as _)),
+            "visual_empty" => Ok(char_to_string!(config.visual_empty)),
+            "visual_space" => Ok(char_to_string!(config.visual_space)),
+            "visual_tab_first" => Ok(char_to_string!(config.visual_tab_first)),
+            "visual_tab_repeat" => Ok(char_to_string!(config.visual_tab_repeat)),
+            "picker_max_height" => Ok(ScriptValue::Integer(config.picker_max_height.get() as _)),
+            _ => Err(ScriptError::from(format!("no such property {}", index))),
+        }
     }
 
     pub fn newindex(
@@ -314,7 +332,40 @@ mod config {
         ctx: &mut ScriptContext,
         (_object, index, value): (ScriptObject, ScriptStr, ScriptValue),
     ) -> ScriptResult<()> {
-        ctx.config.values.set_from_name(index.to_str()?, value);
+        macro_rules! try_integer {
+            ($value:expr) => {{
+                let integer = match $value {
+                    ScriptValue::Integer(i) if i > 0 => i,
+                    _ => {
+                        return Err(ScriptError::<NonZeroUsize>::convert_from_script(&$value));
+                    }
+                };
+                NonZeroUsize::new(integer as _).unwrap()
+            }};
+        }
+        macro_rules! try_char {
+            ($value:expr) => {{
+                match $value {
+                    ScriptValue::String(s) => {
+                        s.to_str()?.parse().map_err(|e| ScriptError::from(e))?
+                    }
+                    _ => return Err(ScriptError::<char>::convert_from_script(&$value)),
+                }
+            }};
+        }
+
+        let config = &mut ctx.config.values;
+        let index = index.to_str()?;
+        match index {
+            "tab_size" => config.tab_size = try_integer!(value),
+            "visual_empty" => config.visual_empty = try_char!(value),
+            "visual_space" => config.visual_space = try_char!(value),
+            "visual_tab_first" => config.visual_tab_first = try_char!(value),
+            "visual_tab_repeat" => config.visual_tab_repeat = try_char!(value),
+            "picker_max_height" => config.picker_max_height = try_integer!(value),
+            _ => return Err(ScriptError::from(format!("no such property {}", index))),
+        }
+
         Ok(())
     }
 }
@@ -432,11 +483,7 @@ mod syntax {
 mod helper {
     use super::*;
 
-    pub fn parsing_error<T>(
-        message: T,
-        text: &str,
-        error_index: usize,
-    ) -> String
+    pub fn parsing_error<T>(message: T, text: &str, error_index: usize) -> String
     where
         T: fmt::Display,
     {
