@@ -49,15 +49,41 @@ impl BufferView {
             None => return,
         };
 
+        let last_line_index = buffer.content.line_count() as isize - 1;
         for c in &mut self.cursors.mut_guard()[..] {
             let mut target = BufferOffset::from(c.position) + offset;
+            macro_rules! line_count {
+                ($index:expr) => {
+                    buffer.content.line_at($index as _).char_count() as isize
+                };
+            }
 
-            target.line_offset = target
-                .line_offset
-                .min(buffer.content.line_count() as isize - 1)
-                .max(0);
-            let target_line_len = buffer.content.line_at(target.line_offset as _).char_count();
-            target.column_offset = target.column_offset.min(target_line_len as _);
+            loop {
+                if target.line_offset < 0 {
+                    target.line_offset = 0;
+                    target.column_offset =
+                        target.column_offset.max(line_count!(target.line_offset));
+                    break;
+                } else if target.line_offset > last_line_index {
+                    target.line_offset = last_line_index;
+                    target.column_offset =
+                        target.column_offset.max(line_count!(target.line_offset));
+                    break;
+                }
+
+                if target.column_offset < 0 {
+                    target.line_offset = 0.max(target.line_offset - 1);
+                    target.column_offset += line_count!(target.line_offset);
+                } else {
+                    let current_line_count = line_count!(target.line_offset);
+                    if target.column_offset > current_line_count {
+                        target.column_offset -= current_line_count;
+                        target.line_offset = last_line_index.min(target.line_offset + 1);
+                    } else {
+                        break;
+                    }
+                }
+            }
 
             c.position = target.into();
             if let MovementKind::PositionWithAnchor = movement_kind {

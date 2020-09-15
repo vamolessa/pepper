@@ -50,8 +50,12 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- ~~reuse buffer if already open~~
 	- ~~remove all buffer views when closing a buffer~~
 - code navigation
+	- word forward/backward
 	- home/end
 	- find char
+	- select current word and search
+	- add cursor on 'next search result' (`ctrl+d`)
+	- remember column when moving between lines
 - text objects
 	- word
 	- balanced braces
@@ -59,6 +63,9 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- ~~buffer name~~
 	- ~~buffer position~~
 	- buffered keys
+- macros (??)
+	- repeat last action (`.`)
+	- record/play custom macros
 - ~~external commands~~
 	- ~~spawn commands (processes) that execute on the server~~
 - ~~cli~~
@@ -66,10 +73,11 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- ~~config path~~
 	- ~~send keys to server~~
 	- ~~open files~~
-- ~~scripting~~
+- scripting
 	- ~~integrate lua to use as command interface~~
 	- ~~config file is lua script~~
 	- ~~builtin bindings~~
+	- full api exposed
 - ~~autocomplete~~
 	- ~~select/entries ui~~
 	- ~~selection movements~~
