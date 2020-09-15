@@ -72,19 +72,23 @@ impl BufferView {
         };
 
         let mut cursors = self.cursors.mut_guard();
-        for c in &mut cursors[..] {
-            match movement {
-                CursorMovement::ColumnsForward(n) => {
+        match movement {
+            CursorMovement::ColumnsForward(n) => {
+                for c in &mut cursors[..] {
                     c.position.column_index = buffer
                         .content
                         .line_at(c.position.line_index)
                         .char_count()
                         .min(c.position.column_index + n);
                 }
-                CursorMovement::ColumnsBackward(n) => {
+            }
+            CursorMovement::ColumnsBackward(n) => {
+                for c in &mut cursors[..] {
                     c.position.column_index = c.position.column_index.saturating_sub(n);
                 }
-                CursorMovement::LinesForward(n) => {
+            }
+            CursorMovement::LinesForward(n) => {
+                for c in &mut cursors[..] {
                     c.position.line_index = buffer
                         .content
                         .line_count()
@@ -92,39 +96,55 @@ impl BufferView {
                         .min(c.position.line_index + n);
                     saturate_column_index(buffer, c);
                 }
-                CursorMovement::LinesBackward(n) => {
+            }
+            CursorMovement::LinesBackward(n) => {
+                for c in &mut cursors[..] {
                     c.position.line_index = c.position.line_index.saturating_sub(n);
                     saturate_column_index(buffer, c);
                 }
-                CursorMovement::WordsForward(mut n) => {
+            }
+            CursorMovement::WordsForward(mut n) => {
+                for c in &mut cursors[..] {
                     while n > 0 {
                         let (word_range, _word) = buffer.content.find_word_at(c.position);
                         c.position = word_range.to;
                         n -= 1;
                     }
                 }
-                CursorMovement::WordsBackward(mut n) => {
+            }
+            CursorMovement::WordsBackward(mut n) => {
+                for c in &mut cursors[..] {
                     while n > 0 {
                         let (word_range, _word) = buffer.content.find_word_at(c.position);
                         c.position = word_range.from;
                         n -= 1;
                     }
                 }
-                CursorMovement::FirstColumn => {
+            }
+            CursorMovement::FirstColumn => {
+                for c in &mut cursors[..] {
                     c.position.column_index = 0;
                 }
-                CursorMovement::Home => {
+            }
+            CursorMovement::Home => {
+                for c in &mut cursors[..] {
                     c.position.column_index = 0;
                 }
-                CursorMovement::End => {
+            }
+            CursorMovement::End => {
+                for c in &mut cursors[..] {
                     c.position.column_index =
                         buffer.content.line_at(c.position.line_index).char_count();
                 }
-                CursorMovement::FirstLine => {
+            }
+            CursorMovement::FirstLine => {
+                for c in &mut cursors[..] {
                     c.position.line_index = 0;
                     saturate_column_index(buffer, c);
                 }
-                CursorMovement::LastLine => {
+            }
+            CursorMovement::LastLine => {
+                for c in &mut cursors[..] {
                     c.position.line_index = buffer.content.line_count() - 1;
                     saturate_column_index(buffer, c);
                 }
