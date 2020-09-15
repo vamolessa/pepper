@@ -928,10 +928,6 @@ mod tests {
 
     #[test]
     fn buffer_line_find_word() {
-        fn is_word(c: char) -> bool {
-            c.is_alphanumeric()
-        }
-
         let line = BufferLine::new("word".into());
         assert_eq!((0..4, "word"), line.find_word_at(0));
         assert_eq!((0..4, "word"), line.find_word_at(2));

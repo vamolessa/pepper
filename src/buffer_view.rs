@@ -2,7 +2,7 @@ use std::{fs::File, io::Read, path::Path};
 
 use crate::{
     buffer::{Buffer, BufferCollection, BufferContent, BufferHandle},
-    buffer_position::{BufferOffset, BufferRange},
+    buffer_position::BufferRange,
     client::TargetClient,
     cursor::{Cursor, CursorCollection},
     history::{Edit, EditKind},
@@ -11,9 +11,12 @@ use crate::{
 };
 
 pub enum CursorMovement {
-    Column(isize),
-    Line(isize),
-    Word(isize),
+    ColumnsForward(usize),
+    ColumnsBackward(usize),
+    LinesForward(usize),
+    LinesBackward(usize),
+    WordsForward(usize),
+    WordsBackward(usize),
     FirstColumn,
     Home,
     End,
@@ -55,6 +58,14 @@ impl BufferView {
         movement: CursorMovement,
         movement_kind: CursorMovementKind,
     ) {
+        fn saturate_column_index(buffer: &Buffer, cursor: &mut Cursor) {
+            cursor.position.column_index = buffer
+                .content
+                .line_at(cursor.position.line_index)
+                .char_count()
+                .min(cursor.position.column_index);
+        }
+
         let buffer = match buffers.get(self.buffer_handle) {
             Some(buffer) => buffer,
             None => return,
@@ -63,22 +74,40 @@ impl BufferView {
         let mut cursors = self.cursors.mut_guard();
         for c in &mut cursors[..] {
             match movement {
-                CursorMovement::Column(n) => {
-                    Self::move_cursor(c, buffer, BufferOffset::line_col(0, n))
+                CursorMovement::ColumnsForward(n) => {
+                    c.position.column_index = buffer
+                        .content
+                        .line_at(c.position.line_index)
+                        .char_count()
+                        .min(c.position.column_index + n);
                 }
-                CursorMovement::Line(n) => {
-                    Self::move_cursor(c, buffer, BufferOffset::line_col(n, 0))
+                CursorMovement::ColumnsBackward(n) => {
+                    c.position.column_index = c.position.column_index.saturating_sub(n);
                 }
-                CursorMovement::Word(mut n) => {
+                CursorMovement::LinesForward(n) => {
+                    c.position.line_index = buffer
+                        .content
+                        .line_count()
+                        .saturating_sub(1)
+                        .min(c.position.line_index + n);
+                    saturate_column_index(buffer, c);
+                }
+                CursorMovement::LinesBackward(n) => {
+                    c.position.line_index = c.position.line_index.saturating_sub(n);
+                    saturate_column_index(buffer, c);
+                }
+                CursorMovement::WordsForward(mut n) => {
                     while n > 0 {
                         let (word_range, _word) = buffer.content.find_word_at(c.position);
                         c.position = word_range.to;
                         n -= 1;
                     }
-                    while n < 0 {
+                }
+                CursorMovement::WordsBackward(mut n) => {
+                    while n > 0 {
                         let (word_range, _word) = buffer.content.find_word_at(c.position);
                         c.position = word_range.from;
-                        n += 1;
+                        n -= 1;
                     }
                 }
                 CursorMovement::FirstColumn => {
@@ -93,17 +122,11 @@ impl BufferView {
                 }
                 CursorMovement::FirstLine => {
                     c.position.line_index = 0;
-                    c.position.column_index = c
-                        .position
-                        .column_index
-                        .min(buffer.content.line_at(c.position.line_index).char_count());
+                    saturate_column_index(buffer, c);
                 }
                 CursorMovement::LastLine => {
                     c.position.line_index = buffer.content.line_count() - 1;
-                    c.position.column_index = c
-                        .position
-                        .column_index
-                        .min(buffer.content.line_at(c.position.line_index).char_count());
+                    saturate_column_index(buffer, c);
                 }
             }
         }
@@ -113,43 +136,6 @@ impl BufferView {
                 c.anchor = c.position;
             }
         }
-    }
-
-    fn move_cursor(cursor: &mut Cursor, buffer: &Buffer, offset: BufferOffset) {
-        let last_line_index = buffer.content.line_count() as isize - 1;
-        let mut target = BufferOffset::from(cursor.position) + offset;
-        macro_rules! line_count {
-            ($index:expr) => {
-                buffer.content.line_at($index as _).char_count() as isize
-            };
-        }
-
-        loop {
-            if target.line_offset < 0 {
-                target.line_offset = 0;
-                target.column_offset = target.column_offset.max(line_count!(target.line_offset));
-                break;
-            } else if target.line_offset > last_line_index {
-                target.line_offset = last_line_index;
-                target.column_offset = target.column_offset.max(line_count!(target.line_offset));
-                break;
-            }
-
-            if target.column_offset < 0 {
-                target.line_offset = 0.max(target.line_offset - 1);
-                target.column_offset += line_count!(target.line_offset);
-            } else {
-                let current_line_count = line_count!(target.line_offset);
-                if target.column_offset > current_line_count {
-                    target.column_offset -= current_line_count;
-                    target.line_offset = last_line_index.min(target.line_offset + 1);
-                } else {
-                    break;
-                }
-            }
-        }
-
-        cursor.position = target.into();
     }
 
     pub fn move_to_next_search_match(

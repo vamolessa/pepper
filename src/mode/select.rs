@@ -26,28 +26,28 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
         Key::Char('h') => {
             unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
                 ctx.buffers,
-                CursorMovement::Column(-1),
+                CursorMovement::ColumnsBackward(1),
                 CursorMovementKind::PositionOnly,
             );
         }
         Key::Char('j') => {
             unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
                 ctx.buffers,
-                CursorMovement::Line(1),
+                CursorMovement::LinesForward(1),
                 CursorMovementKind::PositionOnly,
             );
         }
         Key::Char('k') => {
             unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
                 ctx.buffers,
-                CursorMovement::Line(-1),
+                CursorMovement::LinesBackward(1),
                 CursorMovementKind::PositionOnly,
             );
         }
         Key::Char('l') => {
             unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
                 ctx.buffers,
-                CursorMovement::Column(1),
+                CursorMovement::ColumnsForward(1),
                 CursorMovementKind::PositionOnly,
             );
         }

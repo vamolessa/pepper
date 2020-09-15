@@ -24,48 +24,36 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
     };
 
     match keys.next() {
-        Key::Char('h') => {
-            unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
-                ctx.buffers,
-                CursorMovement::Column(-1),
-                CursorMovementKind::PositionWithAnchor,
-            );
-        }
-        Key::Char('j') => {
-            unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
-                ctx.buffers,
-                CursorMovement::Line(1),
-                CursorMovementKind::PositionWithAnchor,
-            );
-        }
-        Key::Char('k') => {
-            unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
-                ctx.buffers,
-                CursorMovement::Line(-1),
-                CursorMovementKind::PositionWithAnchor,
-            );
-        }
-        Key::Char('l') => {
-            unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
-                ctx.buffers,
-                CursorMovement::Column(1),
-                CursorMovementKind::PositionWithAnchor,
-            );
-        }
-        Key::Char('w') => {
-            unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
-                ctx.buffers,
-                CursorMovement::Word(1),
-                CursorMovementKind::PositionWithAnchor,
-            );
-        }
-        Key::Char('b') => {
-            unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
-                ctx.buffers,
-                CursorMovement::Word(-1),
-                CursorMovementKind::PositionWithAnchor,
-            );
-        }
+        Key::Char('h') => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
+            ctx.buffers,
+            CursorMovement::ColumnsBackward(1),
+            CursorMovementKind::PositionWithAnchor,
+        ),
+        Key::Char('j') => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
+            ctx.buffers,
+            CursorMovement::LinesForward(1),
+            CursorMovementKind::PositionWithAnchor,
+        ),
+        Key::Char('k') => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
+            ctx.buffers,
+            CursorMovement::LinesBackward(1),
+            CursorMovementKind::PositionWithAnchor,
+        ),
+        Key::Char('l') => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
+            ctx.buffers,
+            CursorMovement::ColumnsForward(1),
+            CursorMovementKind::PositionWithAnchor,
+        ),
+        Key::Char('w') => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
+            ctx.buffers,
+            CursorMovement::WordsForward(1),
+            CursorMovementKind::PositionWithAnchor,
+        ),
+        Key::Char('b') => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
+            ctx.buffers,
+            CursorMovement::WordsBackward(1),
+            CursorMovementKind::PositionWithAnchor,
+        ),
         Key::Char('g') => match keys.next() {
             Key::None => return ModeOperation::Pending,
             Key::Char('z') => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
@@ -95,6 +83,32 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
             ),
             _ => (),
         },
+        Key::Ctrl('d') => {
+            let half_height = ctx
+                .clients
+                .get(ctx.target_client)
+                .map(|c| c.height)
+                .unwrap_or(0)
+                / 2;
+            unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
+                ctx.buffers,
+                CursorMovement::LinesForward(half_height as _),
+                CursorMovementKind::PositionWithAnchor,
+            );
+        }
+        Key::Ctrl('u') => {
+            let half_height = ctx
+                .clients
+                .get(ctx.target_client)
+                .map(|c| c.height)
+                .unwrap_or(0)
+                / 2;
+            unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
+                ctx.buffers,
+                CursorMovement::LinesBackward(half_height as _),
+                CursorMovementKind::PositionWithAnchor,
+            );
+        }
         Key::Char(' ') => {
             let cursors = &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle)).cursors;
             let main_cursor = *cursors.main_cursor();

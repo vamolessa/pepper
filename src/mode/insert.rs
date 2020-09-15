@@ -52,7 +52,7 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
         Key::Backspace => {
             unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
                 ctx.buffers,
-                CursorMovement::Column(-1),
+                CursorMovement::ColumnsBackward(1),
                 CursorMovementKind::PositionOnly,
             );
             ctx.buffer_views.delete_in_selection(
@@ -65,7 +65,7 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
         Key::Delete => {
             unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
                 ctx.buffers,
-                CursorMovement::Column(1),
+                CursorMovement::ColumnsForward(1),
                 CursorMovementKind::PositionOnly,
             );
             ctx.buffer_views.delete_in_selection(
