@@ -1,6 +1,5 @@
 use crate::{
-    buffer_position::BufferOffset,
-    buffer_view::{BufferViewHandle, MovementKind},
+    buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     client_event::Key,
     editor::KeysIterator,
     mode::{Mode, ModeContext, ModeOperation},
@@ -50,11 +49,11 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
                 s,
             );
         }
-        Key::Ctrl('h') => {
+        Key::Backspace => {
             unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
                 ctx.buffers,
-                BufferOffset::line_col(0, -1),
-                MovementKind::PositionOnly,
+                CursorMovement::Column(-1),
+                CursorMovementKind::PositionOnly,
             );
             ctx.buffer_views.delete_in_selection(
                 ctx.buffers,
@@ -66,8 +65,8 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
         Key::Delete => {
             unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
                 ctx.buffers,
-                BufferOffset::line_col(0, 1),
-                MovementKind::PositionOnly,
+                CursorMovement::Column(1),
+                CursorMovementKind::PositionOnly,
             );
             ctx.buffer_views.delete_in_selection(
                 ctx.buffers,

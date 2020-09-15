@@ -10,7 +10,13 @@ use crate::{
     word_database::WordDatabase,
 };
 
-pub enum MovementKind {
+pub enum CursorMovement {
+    Column(isize),
+    Line(isize),
+    Word(isize),
+}
+
+pub enum CursorMovementKind {
     PositionWithAnchor,
     PositionOnly,
 }
@@ -41,61 +47,72 @@ impl BufferView {
     pub fn move_cursors(
         &mut self,
         buffers: &BufferCollection,
-        offset: BufferOffset,
-        movement_kind: MovementKind,
+        movement: CursorMovement,
+        movement_kind: CursorMovementKind,
     ) {
         let buffer = match buffers.get(self.buffer_handle) {
             Some(buffer) => buffer,
             None => return,
         };
 
-        let last_line_index = buffer.content.line_count() as isize - 1;
-        for c in &mut self.cursors.mut_guard()[..] {
-            let mut target = BufferOffset::from(c.position) + offset;
-            macro_rules! line_count {
-                ($index:expr) => {
-                    buffer.content.line_at($index as _).char_count() as isize
-                };
-            }
+        let mut cursors = self.cursors.mut_guard();
+        for c in &mut cursors[..] {
+            let offset = match movement {
+                CursorMovement::Column(n) => BufferOffset::line_col(0, n),
+                CursorMovement::Line(n) => BufferOffset::line_col(n, 0),
+                CursorMovement::Word(n) => BufferOffset::line_col(0, 0),
+            };
+            Self::move_cursor(c, buffer, offset);
+        }
 
-            loop {
-                if target.line_offset < 0 {
-                    target.line_offset = 0;
-                    target.column_offset =
-                        target.column_offset.max(line_count!(target.line_offset));
-                    break;
-                } else if target.line_offset > last_line_index {
-                    target.line_offset = last_line_index;
-                    target.column_offset =
-                        target.column_offset.max(line_count!(target.line_offset));
-                    break;
-                }
-
-                if target.column_offset < 0 {
-                    target.line_offset = 0.max(target.line_offset - 1);
-                    target.column_offset += line_count!(target.line_offset);
-                } else {
-                    let current_line_count = line_count!(target.line_offset);
-                    if target.column_offset > current_line_count {
-                        target.column_offset -= current_line_count;
-                        target.line_offset = last_line_index.min(target.line_offset + 1);
-                    } else {
-                        break;
-                    }
-                }
-            }
-
-            c.position = target.into();
-            if let MovementKind::PositionWithAnchor = movement_kind {
+        if let CursorMovementKind::PositionWithAnchor = movement_kind {
+            for c in &mut cursors[..] {
                 c.anchor = c.position;
             }
         }
     }
 
+    fn move_cursor(cursor: &mut Cursor, buffer: &Buffer, offset: BufferOffset) {
+        let last_line_index = buffer.content.line_count() as isize - 1;
+        let mut target = BufferOffset::from(cursor.position) + offset;
+        macro_rules! line_count {
+            ($index:expr) => {
+                buffer.content.line_at($index as _).char_count() as isize
+            };
+        }
+
+        loop {
+            if target.line_offset < 0 {
+                target.line_offset = 0;
+                target.column_offset = target.column_offset.max(line_count!(target.line_offset));
+                break;
+            } else if target.line_offset > last_line_index {
+                target.line_offset = last_line_index;
+                target.column_offset = target.column_offset.max(line_count!(target.line_offset));
+                break;
+            }
+
+            if target.column_offset < 0 {
+                target.line_offset = 0.max(target.line_offset - 1);
+                target.column_offset += line_count!(target.line_offset);
+            } else {
+                let current_line_count = line_count!(target.line_offset);
+                if target.column_offset > current_line_count {
+                    target.column_offset -= current_line_count;
+                    target.line_offset = last_line_index.min(target.line_offset + 1);
+                } else {
+                    break;
+                }
+            }
+        }
+
+        cursor.position = target.into();
+    }
+
     pub fn move_to_next_search_match(
         &mut self,
         buffers: &BufferCollection,
-        movement_kind: MovementKind,
+        movement_kind: CursorMovementKind,
     ) {
         self.move_to_search_match(buffers, movement_kind, |result, len| {
             let next_index = match result {
@@ -109,7 +126,7 @@ impl BufferView {
     pub fn move_to_previous_search_match(
         &mut self,
         buffers: &BufferCollection,
-        movement_kind: MovementKind,
+        movement_kind: CursorMovementKind,
     ) {
         self.move_to_search_match(buffers, movement_kind, |result, len| {
             let next_index = match result {
@@ -123,7 +140,7 @@ impl BufferView {
     fn move_to_search_match<F>(
         &mut self,
         buffers: &BufferCollection,
-        movement_kind: MovementKind,
+        movement_kind: CursorMovementKind,
         index_selector: F,
     ) where
         F: FnOnce(Result<usize, usize>, usize) -> usize,
@@ -148,7 +165,7 @@ impl BufferView {
                 c.position = search_ranges[next_index].from;
             }
 
-            if let MovementKind::PositionWithAnchor = movement_kind {
+            if let CursorMovementKind::PositionWithAnchor = movement_kind {
                 for c in &mut cursors[..] {
                     c.anchor = c.position;
                 }

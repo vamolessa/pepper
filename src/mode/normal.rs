@@ -1,8 +1,7 @@
 use copypasta::{ClipboardContext, ClipboardProvider};
 
 use crate::{
-    buffer_position::BufferOffset,
-    buffer_view::MovementKind,
+    buffer_view::{CursorMovement, CursorMovementKind},
     client_event::Key,
     editor::KeysIterator,
     mode::{FromMode, Mode, ModeContext, ModeOperation},
@@ -28,30 +27,33 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
         Key::Char('h') => {
             unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
                 ctx.buffers,
-                BufferOffset::line_col(0, -1),
-                MovementKind::PositionWithAnchor,
+                CursorMovement::Column(-1),
+                CursorMovementKind::PositionWithAnchor,
             );
         }
         Key::Char('j') => {
             unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
                 ctx.buffers,
-                BufferOffset::line_col(1, 0),
-                MovementKind::PositionWithAnchor,
+                CursorMovement::Line(1),
+                CursorMovementKind::PositionWithAnchor,
             );
         }
         Key::Char('k') => {
             unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
                 ctx.buffers,
-                BufferOffset::line_col(-1, 0),
-                MovementKind::PositionWithAnchor,
+                CursorMovement::Line(-1),
+                CursorMovementKind::PositionWithAnchor,
             );
         }
         Key::Char('l') => {
             unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
                 ctx.buffers,
-                BufferOffset::line_col(0, 1),
-                MovementKind::PositionWithAnchor,
+                CursorMovement::Column(1),
+                CursorMovementKind::PositionWithAnchor,
             );
+        }
+        Key::Char('w') => {
+            unwrap_or_none!(ctx.buffer_views.get_mut(handle));
         }
         Key::Char(' ') => {
             let cursors = &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle)).cursors;
@@ -92,11 +94,11 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
         }
         Key::Char('n') => {
             unwrap_or_none!(ctx.buffer_views.get_mut(handle))
-                .move_to_next_search_match(ctx.buffers, MovementKind::PositionWithAnchor);
+                .move_to_next_search_match(ctx.buffers, CursorMovementKind::PositionWithAnchor);
         }
         Key::Char('N') => {
             unwrap_or_none!(ctx.buffer_views.get_mut(handle))
-                .move_to_previous_search_match(ctx.buffers, MovementKind::PositionWithAnchor);
+                .move_to_previous_search_match(ctx.buffers, CursorMovementKind::PositionWithAnchor);
         }
         Key::Char('u') => ctx
             .buffer_views

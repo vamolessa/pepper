@@ -12,7 +12,7 @@ use crate::{
     mode::Mode,
     pattern::Pattern,
     script::{
-        ScriptContext, ScriptEngineRef, ScriptError, ScriptObject, ScriptResult, ScriptStr,
+        ScriptContext, ScriptEngineRef, ScriptError, ScriptObject, ScriptResult, ScriptString,
         ScriptValue,
     },
     theme::Color,
@@ -105,7 +105,7 @@ mod global {
     pub fn open(
         _engine: ScriptEngineRef,
         ctx: &mut ScriptContext,
-        path: ScriptStr,
+        path: ScriptString,
     ) -> ScriptResult<()> {
         let path = Path::new(path.to_str()?);
         let buffer_view_handle = ctx
@@ -150,7 +150,7 @@ mod global {
     pub fn save(
         _engine: ScriptEngineRef,
         ctx: &mut ScriptContext,
-        path: Option<ScriptStr>,
+        path: Option<ScriptString>,
     ) -> ScriptResult<()> {
         let buffer_handle = match ctx
             .current_buffer_view_handle()
@@ -227,7 +227,7 @@ mod editor {
     pub fn insert_text(
         _engine: ScriptEngineRef,
         ctx: &mut ScriptContext,
-        text: ScriptStr,
+        text: ScriptString,
     ) -> ScriptResult<()> {
         if let Some(handle) = ctx.current_buffer_view_handle() {
             let text = text.to_str()?;
@@ -249,7 +249,7 @@ mod process {
     pub fn pipe(
         _engine: ScriptEngineRef,
         _ctx: &mut ScriptContext,
-        (name, args, input): (ScriptStr, Vec<ScriptStr>, Option<ScriptStr>),
+        (name, args, input): (ScriptString, Vec<ScriptString>, Option<ScriptString>),
     ) -> ScriptResult<String> {
         let child = run_process(name, args, input, Stdio::piped())?;
         let child_output = child.wait_with_output().map_err(ScriptError::from)?;
@@ -265,16 +265,16 @@ mod process {
     pub fn spawn(
         _engine: ScriptEngineRef,
         _ctx: &mut ScriptContext,
-        (name, args, input): (ScriptStr, Vec<ScriptStr>, Option<ScriptStr>),
+        (name, args, input): (ScriptString, Vec<ScriptString>, Option<ScriptString>),
     ) -> ScriptResult<()> {
         run_process(name, args, input, Stdio::null())?;
         Ok(())
     }
 
     fn run_process(
-        name: ScriptStr,
-        args: Vec<ScriptStr>,
-        input: Option<ScriptStr>,
+        name: ScriptString,
+        args: Vec<ScriptString>,
+        input: Option<ScriptString>,
         output: Stdio,
     ) -> ScriptResult<Child> {
         let mut command = Command::new(name.to_str()?);
@@ -308,7 +308,7 @@ mod config {
     pub fn index<'script>(
         engine: ScriptEngineRef<'script>,
         ctx: &mut ScriptContext,
-        (_object, index): (ScriptObject, ScriptStr),
+        (_object, index): (ScriptObject, ScriptString),
     ) -> ScriptResult<ScriptValue<'script>> {
         macro_rules! char_to_string {
             ($c:expr) => {{
@@ -333,7 +333,7 @@ mod config {
     pub fn newindex(
         _engine: ScriptEngineRef,
         ctx: &mut ScriptContext,
-        (_object, index, value): (ScriptObject, ScriptStr, ScriptValue),
+        (_object, index, value): (ScriptObject, ScriptString, ScriptValue),
     ) -> ScriptResult<()> {
         macro_rules! try_integer {
             ($value:expr) => {{
@@ -379,7 +379,7 @@ mod keymap {
     pub fn normal(
         _engine: ScriptEngineRef,
         ctx: &mut ScriptContext,
-        (from, to): (ScriptStr, ScriptStr),
+        (from, to): (ScriptString, ScriptString),
     ) -> ScriptResult<()> {
         map_mode(ctx, Mode::Normal, from, to)
     }
@@ -387,7 +387,7 @@ mod keymap {
     pub fn select(
         _engine: ScriptEngineRef,
         ctx: &mut ScriptContext,
-        (from, to): (ScriptStr, ScriptStr),
+        (from, to): (ScriptString, ScriptString),
     ) -> ScriptResult<()> {
         map_mode(ctx, Mode::Select, from, to)
     }
@@ -395,7 +395,7 @@ mod keymap {
     pub fn insert(
         _engine: ScriptEngineRef,
         ctx: &mut ScriptContext,
-        (from, to): (ScriptStr, ScriptStr),
+        (from, to): (ScriptString, ScriptString),
     ) -> ScriptResult<()> {
         map_mode(ctx, Mode::Insert, from, to)
     }
@@ -403,8 +403,8 @@ mod keymap {
     fn map_mode(
         ctx: &mut ScriptContext,
         mode: Mode,
-        from: ScriptStr,
-        to: ScriptStr,
+        from: ScriptString,
+        to: ScriptString,
     ) -> ScriptResult<()> {
         let from = from.to_str()?;
         let to = to.to_str()?;
@@ -429,7 +429,7 @@ mod theme {
     pub fn index<'script>(
         _engine: ScriptEngineRef,
         ctx: &mut ScriptContext,
-        (_object, index): (ScriptObject, ScriptStr),
+        (_object, index): (ScriptObject, ScriptString),
     ) -> ScriptResult<ScriptValue<'script>> {
         let theme = &mut ctx.config.theme;
         let index = index.to_str()?;
@@ -442,7 +442,7 @@ mod theme {
     pub fn newindex(
         _engine: ScriptEngineRef,
         ctx: &mut ScriptContext,
-        (_object, index, value): (ScriptObject, ScriptStr, u32),
+        (_object, index, value): (ScriptObject, ScriptString, u32),
     ) -> ScriptResult<()> {
         let theme = &mut ctx.config.theme;
         let index = index.to_str()?;
@@ -460,7 +460,7 @@ mod syntax {
     pub fn extension(
         _engine: ScriptEngineRef,
         ctx: &mut ScriptContext,
-        (main_extension, other_extension): (ScriptStr, ScriptStr),
+        (main_extension, other_extension): (ScriptString, ScriptString),
     ) -> ScriptResult<()> {
         let main_extension = main_extension.to_str()?;
         let other_extension = other_extension.to_str()?;
@@ -474,7 +474,7 @@ mod syntax {
     pub fn rule(
         _engine: ScriptEngineRef,
         ctx: &mut ScriptContext,
-        (main_extension, token_kind, pattern): (ScriptStr, ScriptStr, ScriptStr),
+        (main_extension, token_kind, pattern): (ScriptString, ScriptString, ScriptString),
     ) -> ScriptResult<()> {
         let main_extension = main_extension.to_str()?;
         let token_kind = token_kind.to_str()?;

@@ -54,8 +54,8 @@ where
 }
 impl<T> Error for ScriptError<T> where T: fmt::Display {}
 
-pub struct ScriptStr<'lua>(LuaString<'lua>);
-impl<'lua> ScriptStr<'lua> {
+pub struct ScriptString<'lua>(LuaString<'lua>);
+impl<'lua> ScriptString<'lua> {
     pub fn as_bytes(&self) -> &[u8] {
         self.0.as_bytes()
     }
@@ -63,7 +63,7 @@ impl<'lua> ScriptStr<'lua> {
         self.0.to_str()
     }
 }
-impl<'lua> FromLua<'lua> for ScriptStr<'lua> {
+impl<'lua> FromLua<'lua> for ScriptString<'lua> {
     fn from_lua(lua_value: LuaValue<'lua>, _lua: &'lua Lua) -> LuaResult<Self> {
         if let LuaValue::String(s) = lua_value {
             Ok(Self(s))
@@ -130,7 +130,7 @@ pub enum ScriptValue<'lua> {
     Boolean(bool),
     Integer(LuaInteger),
     Number(LuaNumber),
-    String(ScriptStr<'lua>),
+    String(ScriptString<'lua>),
     Object(ScriptObject<'lua>),
     Function(ScriptFunction<'lua>),
 }
@@ -170,7 +170,7 @@ impl<'lua> FromLua<'lua> for ScriptValue<'lua> {
             LuaValue::Boolean(b) => Ok(Self::Boolean(b)),
             LuaValue::Integer(i) => Ok(Self::Integer(i)),
             LuaValue::Number(n) => Ok(Self::Number(n)),
-            LuaValue::String(s) => Ok(Self::String(ScriptStr(s))),
+            LuaValue::String(s) => Ok(Self::String(ScriptString(s))),
             LuaValue::Table(t) => Ok(Self::Object(ScriptObject(t))),
             LuaValue::Function(f) => Ok(Self::Function(ScriptFunction(f))),
             _ => Err(LuaError::FromLuaConversionError {
@@ -314,8 +314,8 @@ impl<'lua> ScriptEngineRef<'lua> {
         ScriptObject(self.lua.globals())
     }
 
-    pub fn create_string(&self, data: &[u8]) -> ScriptResult<ScriptStr<'lua>> {
-        self.lua.create_string(data).map(ScriptStr)
+    pub fn create_string(&self, data: &[u8]) -> ScriptResult<ScriptString<'lua>> {
+        self.lua.create_string(data).map(ScriptString)
     }
 
     pub fn create_object(&self) -> ScriptResult<ScriptObject<'lua>> {

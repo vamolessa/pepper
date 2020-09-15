@@ -11,6 +11,7 @@ pub enum MatchResult<'a> {
     ReplaceWith(&'a [Key]),
 }
 
+#[derive(Debug)]
 pub enum ParseKeyMapError {
     From(KeyParseAllError),
     To(KeyParseAllError),
@@ -89,10 +90,17 @@ impl Default for KeyMapCollection {
             Mode::Search(FromMode::Normal),
             Mode::Script(FromMode::Normal),
         ];
+
         for mode in &all_modes {
-            let _ = this.parse_and_map(mode.discriminant(), "<c-c>", "<esc>");
-            let _ = this.parse_and_map(mode.discriminant(), "<c-m>", "<enter>");
+            this.parse_and_map(mode.discriminant(), "<c-c>", "<esc>")
+                .unwrap();
+            this.parse_and_map(mode.discriminant(), "<c-m>", "<enter>")
+                .unwrap();
         }
+
+        this.parse_and_map(Mode::Insert.discriminant(), "<c-h>", "<backspace>")
+            .unwrap();
+
         this
     }
 }
