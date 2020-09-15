@@ -53,8 +53,48 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
             );
         }
         Key::Char('w') => {
-            unwrap_or_none!(ctx.buffer_views.get_mut(handle));
+            unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
+                ctx.buffers,
+                CursorMovement::Word(1),
+                CursorMovementKind::PositionWithAnchor,
+            );
         }
+        Key::Char('b') => {
+            unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
+                ctx.buffers,
+                CursorMovement::Word(-1),
+                CursorMovementKind::PositionWithAnchor,
+            );
+        }
+        Key::Char('g') => match keys.next() {
+            Key::None => return ModeOperation::Pending,
+            Key::Char('z') => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
+                ctx.buffers,
+                CursorMovement::FirstColumn,
+                CursorMovementKind::PositionWithAnchor,
+            ),
+            Key::Char('h') => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
+                ctx.buffers,
+                CursorMovement::Home,
+                CursorMovementKind::PositionWithAnchor,
+            ),
+            Key::Char('j') => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
+                ctx.buffers,
+                CursorMovement::LastLine,
+                CursorMovementKind::PositionWithAnchor,
+            ),
+            Key::Char('k') => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
+                ctx.buffers,
+                CursorMovement::FirstLine,
+                CursorMovementKind::PositionWithAnchor,
+            ),
+            Key::Char('l') => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
+                ctx.buffers,
+                CursorMovement::End,
+                CursorMovementKind::PositionWithAnchor,
+            ),
+            _ => (),
+        },
         Key::Char(' ') => {
             let cursors = &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle)).cursors;
             let main_cursor = *cursors.main_cursor();
@@ -80,7 +120,7 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
         Key::Char('i') => return ModeOperation::EnterMode(Mode::Insert),
         Key::Char('v') => return ModeOperation::EnterMode(Mode::Select),
         Key::Char('s') => return ModeOperation::EnterMode(Mode::Search(FromMode::Normal)),
-        Key::Char('p') => {
+        Key::Char('Y') => {
             if let Ok(text) = ClipboardContext::new().and_then(|mut c| c.get_contents()) {
                 ctx.buffer_views.insert_text(
                     ctx.buffers,

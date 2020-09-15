@@ -14,6 +14,11 @@ pub enum CursorMovement {
     Column(isize),
     Line(isize),
     Word(isize),
+    FirstColumn,
+    Home,
+    End,
+    FirstLine,
+    LastLine,
 }
 
 pub enum CursorMovementKind {
@@ -57,12 +62,50 @@ impl BufferView {
 
         let mut cursors = self.cursors.mut_guard();
         for c in &mut cursors[..] {
-            let offset = match movement {
-                CursorMovement::Column(n) => BufferOffset::line_col(0, n),
-                CursorMovement::Line(n) => BufferOffset::line_col(n, 0),
-                CursorMovement::Word(n) => BufferOffset::line_col(0, 0),
-            };
-            Self::move_cursor(c, buffer, offset);
+            match movement {
+                CursorMovement::Column(n) => {
+                    Self::move_cursor(c, buffer, BufferOffset::line_col(0, n))
+                }
+                CursorMovement::Line(n) => {
+                    Self::move_cursor(c, buffer, BufferOffset::line_col(n, 0))
+                }
+                CursorMovement::Word(mut n) => {
+                    while n > 0 {
+                        let (word_range, _word) = buffer.content.find_word_at(c.position);
+                        c.position = word_range.to;
+                        n -= 1;
+                    }
+                    while n < 0 {
+                        let (word_range, _word) = buffer.content.find_word_at(c.position);
+                        c.position = word_range.from;
+                        n += 1;
+                    }
+                }
+                CursorMovement::FirstColumn => {
+                    c.position.column_index = 0;
+                }
+                CursorMovement::Home => {
+                    c.position.column_index = 0;
+                }
+                CursorMovement::End => {
+                    c.position.column_index =
+                        buffer.content.line_at(c.position.line_index).char_count();
+                }
+                CursorMovement::FirstLine => {
+                    c.position.line_index = 0;
+                    c.position.column_index = c
+                        .position
+                        .column_index
+                        .min(buffer.content.line_at(c.position.line_index).char_count());
+                }
+                CursorMovement::LastLine => {
+                    c.position.line_index = buffer.content.line_count() - 1;
+                    c.position.column_index = c
+                        .position
+                        .column_index
+                        .min(buffer.content.line_at(c.position.line_index).char_count());
+                }
+            }
         }
 
         if let CursorMovementKind::PositionWithAnchor = movement_kind {
