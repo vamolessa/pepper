@@ -1,8 +1,4 @@
-use std::{
-    cmp::{Ord, Ordering, PartialOrd},
-    convert::From,
-    ops::{Add, Neg, Sub},
-};
+use std::cmp::{Ord, Ordering, PartialOrd};
 
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
 pub struct BufferPosition {
@@ -61,15 +57,6 @@ impl BufferPosition {
     }
 }
 
-impl From<BufferOffset> for BufferPosition {
-    fn from(other: BufferOffset) -> Self {
-        Self {
-            column_index: other.column_offset.max(0) as _,
-            line_index: other.line_offset.max(0) as _,
-        }
-    }
-}
-
 impl Ord for BufferPosition {
     fn cmp(&self, other: &Self) -> Ordering {
         if self.line_index < other.line_index {
@@ -89,69 +76,6 @@ impl Ord for BufferPosition {
 impl PartialOrd for BufferPosition {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
-    }
-}
-
-impl Sub for BufferPosition {
-    type Output = BufferOffset;
-
-    fn sub(self, other: Self) -> Self::Output {
-        BufferOffset::from(self) - BufferOffset::from(other)
-    }
-}
-
-#[derive(Debug, Default, Copy, Clone)]
-pub struct BufferOffset {
-    pub line_offset: isize,
-    pub column_offset: isize,
-}
-
-impl BufferOffset {
-    pub fn line_col(line_offset: isize, column_offset: isize) -> Self {
-        Self {
-            line_offset,
-            column_offset,
-        }
-    }
-}
-
-impl From<BufferPosition> for BufferOffset {
-    fn from(other: BufferPosition) -> Self {
-        Self {
-            line_offset: other.line_index as _,
-            column_offset: other.column_index as _,
-        }
-    }
-}
-
-impl Add for BufferOffset {
-    type Output = Self;
-
-    fn add(mut self, other: Self) -> Self::Output {
-        self.column_offset += other.column_offset;
-        self.line_offset += other.line_offset;
-        self
-    }
-}
-
-impl Sub for BufferOffset {
-    type Output = Self;
-
-    fn sub(mut self, other: Self) -> Self::Output {
-        self.column_offset -= other.column_offset;
-        self.line_offset -= other.line_offset;
-        self
-    }
-}
-
-impl Neg for BufferOffset {
-    type Output = Self;
-
-    fn neg(self) -> Self::Output {
-        Self {
-            column_offset: -self.column_offset,
-            line_offset: -self.line_offset,
-        }
     }
 }
 
