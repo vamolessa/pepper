@@ -103,21 +103,23 @@ impl BufferView {
                     saturate_column_index(buffer, c);
                 }
             }
-            CursorMovement::WordsForward(mut n) => {
+            CursorMovement::WordsForward(n) => {
                 for c in &mut cursors[..] {
-                    while n > 0 {
-                        let (word_range, _word) = buffer.content.find_word_at(c.position);
-                        c.position = word_range.to;
-                        n -= 1;
+                    for _ in 0..n {
+                        c.position.column_index = buffer
+                            .content
+                            .line_at(c.position.line_index)
+                            .next_word_start_from(c.position.column_index);
                     }
                 }
             }
-            CursorMovement::WordsBackward(mut n) => {
+            CursorMovement::WordsBackward(n) => {
                 for c in &mut cursors[..] {
-                    while n > 0 {
-                        let (word_range, _word) = buffer.content.find_word_at(c.position);
-                        c.position = word_range.from;
-                        n -= 1;
+                    for _ in 0..n {
+                        c.position.column_index = buffer
+                            .content
+                            .line_at(c.position.line_index)
+                            .previous_word_start_from(c.position.column_index);
                     }
                 }
             }
@@ -128,7 +130,12 @@ impl BufferView {
             }
             CursorMovement::Home => {
                 for c in &mut cursors[..] {
-                    c.position.column_index = 0;
+                    c.position.column_index = buffer
+                        .content
+                        .line_at(c.position.line_index)
+                        .as_str()
+                        .find(|c: char| !c.is_whitespace())
+                        .unwrap_or(0);
                 }
             }
             CursorMovement::End => {

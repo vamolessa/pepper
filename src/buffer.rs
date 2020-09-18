@@ -119,6 +119,38 @@ impl BufferLine {
         splitted
     }
 
+    pub fn next_word_start_from(&self, column: usize) -> usize {
+        let from_index = self.column_to_index(column);
+
+        let text = &self.text[from_index..];
+
+        text.chars()
+            .next()
+            .and_then(|c| {
+                if is_word_char(c) {
+                    text.find(|c| !is_word_char(c))
+                } else if !c.is_whitespace() {
+                    text.find(|c| is_word_char(c) || c.is_whitespace())
+                } else {
+                    None
+                }
+            })
+            .and_then(|i| {
+                text[i..]
+                    .find(|c: char| !c.is_whitespace())
+                    .map(|j| from_index + i + j)
+            })
+            .unwrap_or(self.text.len())
+    }
+
+    pub fn previous_word_start_from(&self, column: usize) -> usize {
+        let index = self.column_to_index(column);
+        let text = &self.text[..index];
+        text.rfind(|c| !is_word_char(c))
+            .and_then(|i| text[..i].rfind(is_word_char))
+            .unwrap_or(0)
+    }
+
     pub fn find_word_at(&self, column: usize) -> (Range<usize>, &str) {
         let index = self.column_to_index(column);
 

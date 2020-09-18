@@ -73,8 +73,8 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- full api exposed
 - code navigation
 	- word forward/backward
-	- home/end
-	- half-page down/up
+	- ~~home/end/first-column~~
+	- ~~half-page down/up~~
 	- find char
 	- select current word and search
 	- add cursor on 'next search result' (`ctrl+d`)
