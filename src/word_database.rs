@@ -3,6 +3,25 @@ use std::{
     hash::{Hash, Hasher},
 };
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum CharKind {
+    Word,
+    Symbol,
+    Whitespace,
+}
+
+impl CharKind {
+    pub fn new(c: char) -> Self {
+        if c == '_' || c.is_alphanumeric() {
+            Self::Word
+        } else if c.is_whitespace() {
+            Self::Whitespace
+        } else {
+            Self::Symbol
+        }
+    }
+}
+
 pub fn is_word_char(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
 }

@@ -10,7 +10,7 @@ use crate::{
     buffer_position::{BufferPosition, BufferRange},
     history::{Edit, EditKind, History},
     syntax::{self, HighlightedBuffer, SyntaxCollection, SyntaxHandle},
-    word_database::{is_word_char, WordDatabase, WordIter},
+    word_database::{is_word_char, CharKind, WordDatabase, WordIter},
 };
 
 #[derive(Debug)]
@@ -120,51 +120,52 @@ impl BufferLine {
     }
 
     pub fn next_word_start_from(&self, column: usize) -> usize {
-        let from_index = self.column_to_index(column);
-        let text = &self.text[from_index..];
+        let index = self.column_to_index(column);
 
-        text.chars()
+        let mut kinds = self.text[index..]
+            .char_indices()
+            .map(|(i, c)| (i, CharKind::new(c)));
+
+        let (first_index, first_kind) = match kinds.next() {
+            Some((i, k)) => (i, k),
+            None => return self.text.len(),
+        };
+
+        let index = kinds
+            .skip_while(|(_i, k)| *k == first_kind)
+            .skip_while(|(_i, k)| *k == CharKind::Whitespace)
             .next()
-            .and_then(|c| {
-                if is_word_char(c) {
-                    text.find(|c| !is_word_char(c))
-                } else if !c.is_whitespace() {
-                    text.find(|c| is_word_char(c) || c.is_whitespace())
-                } else {
-                    None
-                }
-            })
-            .and_then(|i| {
-                text[i..]
-                    .find(|c: char| !c.is_whitespace())
-                    .map(|j| self.index_to_column(from_index + i + j))
-            })
-            .unwrap_or(self.text.len())
+            .unwrap_or((0, first_kind))
+            .0
+            + index
+            + first_index;
+
+        self.index_to_column(index)
     }
 
     pub fn previous_word_start_from(&self, column: usize) -> usize {
-        let from_index = self.column_to_index(column);
-        let mut chars = self.text[..from_index].char_indices().rev();
-        //for _ in (&mut chars).skip_while(|(_i, c)| c.is_whitespace()) {}
+        let index = self.column_to_index(column);
 
-        chars
+        let mut kinds = self.text[..index]
+            .char_indices()
+            .rev()
+            .map(|(i, c)| (i, CharKind::new(c)));
+
+        let (first_index, first_kind) = match (&mut kinds)
+            .skip_while(|(_i, k)| *k == CharKind::Whitespace)
             .next()
-            .and_then(|(_i, c)| {
-                if is_word_char(c) {
-                    chars
-                        .take_while(|(_i, c)| is_word_char(*c))
-                        .last()
-                        .map(|(i, _c)| self.index_to_column(i))
-                } else if !c.is_whitespace() {
-                    chars
-                        .take_while(|(_i, c)| !c.is_whitespace() && !is_word_char(*c))
-                        .last()
-                        .map(|(i, _c)| self.index_to_column(i))
-                } else {
-                    None
-                }
-            })
-            .unwrap_or(0)
+        {
+            Some((i, k)) => (i, k),
+            None => return 0,
+        };
+
+        let index = kinds
+            .take_while(|(_i, k)| *k == first_kind)
+            .last()
+            .unwrap_or((first_index, first_kind))
+            .0;
+
+        self.index_to_column(index)
     }
 
     pub fn find_word_at(&self, column: usize) -> (Range<usize>, &str) {
