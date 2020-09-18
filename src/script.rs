@@ -64,7 +64,7 @@ impl<'lua> ScriptString<'lua> {
     }
 }
 impl<'lua> FromLua<'lua> for ScriptString<'lua> {
-    fn from_lua(lua_value: LuaValue<'lua>, _lua: &'lua Lua) -> LuaResult<Self> {
+    fn from_lua(lua_value: LuaValue<'lua>, _: &'lua Lua) -> LuaResult<Self> {
         if let LuaValue::String(s) = lua_value {
             Ok(Self(s))
         } else {
@@ -88,7 +88,7 @@ impl<'lua> ScriptObject<'lua> {
     }
 }
 impl<'lua> FromLua<'lua> for ScriptObject<'lua> {
-    fn from_lua(lua_value: LuaValue<'lua>, _lua: &'lua Lua) -> LuaResult<Self> {
+    fn from_lua(lua_value: LuaValue<'lua>, _: &'lua Lua) -> LuaResult<Self> {
         if let LuaValue::Table(t) = lua_value {
             Ok(Self(t))
         } else {
@@ -112,7 +112,7 @@ impl<'lua> ScriptFunction<'lua> {
     }
 }
 impl<'lua> FromLua<'lua> for ScriptFunction<'lua> {
-    fn from_lua(lua_value: LuaValue<'lua>, _lua: &'lua Lua) -> LuaResult<Self> {
+    fn from_lua(lua_value: LuaValue<'lua>, _: &'lua Lua) -> LuaResult<Self> {
         if let LuaValue::Function(f) = lua_value {
             Ok(Self(f))
         } else {
@@ -164,7 +164,7 @@ impl<'lua> fmt::Display for ScriptValue<'lua> {
     }
 }
 impl<'lua> FromLua<'lua> for ScriptValue<'lua> {
-    fn from_lua(lua_value: LuaValue<'lua>, _lua: &'lua Lua) -> LuaResult<Self> {
+    fn from_lua(lua_value: LuaValue<'lua>, _: &'lua Lua) -> LuaResult<Self> {
         match lua_value {
             LuaValue::Nil => Ok(Self::Nil),
             LuaValue::Boolean(b) => Ok(Self::Boolean(b)),
@@ -182,7 +182,7 @@ impl<'lua> FromLua<'lua> for ScriptValue<'lua> {
     }
 }
 impl<'lua> ToLua<'lua> for ScriptValue<'lua> {
-    fn to_lua(self, _lua: &'lua Lua) -> LuaResult<LuaValue<'lua>> {
+    fn to_lua(self, _: &'lua Lua) -> LuaResult<LuaValue<'lua>> {
         match self {
             Self::Nil => Ok(LuaValue::Nil),
             Self::Boolean(b) => Ok(LuaValue::Boolean(b)),

@@ -125,7 +125,7 @@ impl WordDatabase {
         self.words
             .iter()
             .enumerate()
-            .filter(|(_i, w)| w.count > 0)
+            .filter(|(_, w)| w.count > 0)
             .map(|(i, w)| (i, &w.text[..]))
     }
 

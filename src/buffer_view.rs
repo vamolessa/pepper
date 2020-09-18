@@ -298,7 +298,7 @@ impl BufferViewCollection {
             }
         }
 
-        buffers.remove_where(word_database, |h, _b| {
+        buffers.remove_where(word_database, |h, _| {
             !self.iter().any(|v| v.buffer_handle == h)
         });
     }
@@ -537,12 +537,12 @@ impl BufferViewCollection {
         path: &Path,
     ) -> Result<BufferViewHandle, String> {
         if let Some(buffer_handle) = buffers.find_with_path(path) {
-            let mut iter = self.iter_with_handles().filter(|(_handle, view)| {
+            let mut iter = self.iter_with_handles().filter(|(_, view)| {
                 view.buffer_handle == buffer_handle && view.target_client == target_client
             });
 
             let buffer_view_handle = match iter.next() {
-                Some((handle, _view)) => handle,
+                Some((handle, _)) => handle,
                 None => {
                     drop(iter);
                     let view = BufferView::new(target_client, buffer_handle);

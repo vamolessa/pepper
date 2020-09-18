@@ -7,15 +7,15 @@ use crate::{
     mode::{FromMode, Mode, ModeContext, ModeOperation},
 };
 
-fn on_event_no_buffer(_ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
+fn on_event_no_buffer(_: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
     match keys.next() {
         Key::Char(':') => ModeOperation::EnterMode(Mode::Script(FromMode::Normal)),
         _ => ModeOperation::None,
     }
 }
 
-pub fn on_enter(_ctx: &mut ModeContext) {}
-pub fn on_exit(_ctx: &mut ModeContext) {}
+pub fn on_enter(_: &mut ModeContext) {}
+pub fn on_exit(_: &mut ModeContext) {}
 
 pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
     let handle = match ctx.current_buffer_view_handle() {
@@ -81,6 +81,12 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
                 CursorMovement::End,
                 CursorMovementKind::PositionWithAnchor,
             ),
+            Key::Char('n') => {
+                let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
+                let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
+                let main_cursor = buffer_view.cursors.main_cursor();
+                let (_, position) = buffer.content.find_word_at(main_cursor.position);
+            }
             _ => (),
         },
         Key::Ctrl('d') => {

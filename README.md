@@ -72,12 +72,13 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- ~~builtin bindings~~
 	- full api exposed
 - code navigation
-	- word forward/backward
+	- ~~word forward/backward~~
 	- ~~home/end/first-column~~
 	- ~~half-page down/up~~
+	- edit line bellow/above (`o` and `O`)
 	- find char
 	- select current word and search
-	- add cursor on 'next search result' (`ctrl+d`)
+	- add cursor on 'next search result' (`*`)
 	- remember column when moving between lines
 - text objects
 	- word

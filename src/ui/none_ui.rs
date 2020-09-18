@@ -13,7 +13,7 @@ impl Ui for NoneUi {
         thread::spawn(move || read_keys_from_stdin(event_sender))
     }
 
-    fn display(&mut self, _buffer: &[u8]) -> UiResult<()> {
+    fn display(&mut self, _: &[u8]) -> UiResult<()> {
         Ok(())
     }
 }

@@ -81,7 +81,7 @@ mod global {
     use super::*;
 
     pub fn print(
-        _engine: ScriptEngineRef,
+        _: ScriptEngineRef,
         ctx: &mut ScriptContext,
         value: ScriptValue,
     ) -> ScriptResult<()> {
@@ -92,18 +92,18 @@ mod global {
         Ok(())
     }
 
-    pub fn quit(_engine: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
+    pub fn quit(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
         *ctx.editor_loop = EditorLoop::Quit;
         Err(ScriptError::from(QuitError))
     }
 
-    pub fn quit_all(_engine: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
+    pub fn quit_all(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
         *ctx.editor_loop = EditorLoop::QuitAll;
         Err(ScriptError::from(QuitError))
     }
 
     pub fn open(
-        _engine: ScriptEngineRef,
+        _: ScriptEngineRef,
         ctx: &mut ScriptContext,
         path: ScriptString,
     ) -> ScriptResult<()> {
@@ -122,7 +122,7 @@ mod global {
         Ok(())
     }
 
-    pub fn close(_engine: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
+    pub fn close(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
         if let Some(handle) = ctx
             .current_buffer_view_handle()
             .and_then(|h| ctx.buffer_views.get(h))
@@ -138,7 +138,7 @@ mod global {
         Ok(())
     }
 
-    pub fn close_all(_engine: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
+    pub fn close_all(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
         ctx.buffer_views
             .remove_where(ctx.buffers, ctx.word_database, |_| true);
         for c in ctx.clients.client_refs() {
@@ -148,7 +148,7 @@ mod global {
     }
 
     pub fn save(
-        _engine: ScriptEngineRef,
+        _: ScriptEngineRef,
         ctx: &mut ScriptContext,
         path: Option<ScriptString>,
     ) -> ScriptResult<()> {
@@ -177,7 +177,7 @@ mod global {
         }
     }
 
-    pub fn save_all(_engine: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
+    pub fn save_all(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
         for buffer in ctx.buffers.iter() {
             buffer.save_to_file().map_err(ScriptError::from)?;
         }
@@ -188,7 +188,7 @@ mod global {
 mod client {
     use super::*;
 
-    pub fn index(_engine: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<usize> {
+    pub fn index(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<usize> {
         Ok(ctx.target_client.into_index())
     }
 }
@@ -196,11 +196,7 @@ mod client {
 mod editor {
     use super::*;
 
-    pub fn selection(
-        _engine: ScriptEngineRef,
-        ctx: &mut ScriptContext,
-        _: (),
-    ) -> ScriptResult<String> {
+    pub fn selection(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<String> {
         let mut selection = String::new();
         ctx.current_buffer_view_handle()
             .and_then(|h| ctx.buffer_views.get(h))
@@ -209,7 +205,7 @@ mod editor {
     }
 
     pub fn delete_selection(
-        _engine: ScriptEngineRef,
+        _: ScriptEngineRef,
         ctx: &mut ScriptContext,
         _: (),
     ) -> ScriptResult<()> {
@@ -225,7 +221,7 @@ mod editor {
     }
 
     pub fn insert_text(
-        _engine: ScriptEngineRef,
+        _: ScriptEngineRef,
         ctx: &mut ScriptContext,
         text: ScriptString,
     ) -> ScriptResult<()> {
@@ -247,8 +243,8 @@ mod process {
     use super::*;
 
     pub fn pipe(
-        _engine: ScriptEngineRef,
-        _ctx: &mut ScriptContext,
+        _: ScriptEngineRef,
+        _: &mut ScriptContext,
         (name, args, input): (ScriptString, Vec<ScriptString>, Option<ScriptString>),
     ) -> ScriptResult<String> {
         let child = run_process(name, args, input, Stdio::piped())?;
@@ -263,8 +259,8 @@ mod process {
     }
 
     pub fn spawn(
-        _engine: ScriptEngineRef,
-        _ctx: &mut ScriptContext,
+        _: ScriptEngineRef,
+        _: &mut ScriptContext,
         (name, args, input): (ScriptString, Vec<ScriptString>, Option<ScriptString>),
     ) -> ScriptResult<()> {
         run_process(name, args, input, Stdio::null())?;
@@ -308,7 +304,7 @@ mod config {
     pub fn index<'script>(
         engine: ScriptEngineRef<'script>,
         ctx: &mut ScriptContext,
-        (_object, index): (ScriptObject, ScriptString),
+        (_, index): (ScriptObject, ScriptString),
     ) -> ScriptResult<ScriptValue<'script>> {
         macro_rules! char_to_string {
             ($c:expr) => {{
@@ -331,9 +327,9 @@ mod config {
     }
 
     pub fn newindex(
-        _engine: ScriptEngineRef,
+        _: ScriptEngineRef,
         ctx: &mut ScriptContext,
-        (_object, index, value): (ScriptObject, ScriptString, ScriptValue),
+        (_, index, value): (ScriptObject, ScriptString, ScriptValue),
     ) -> ScriptResult<()> {
         macro_rules! try_integer {
             ($value:expr) => {{
@@ -377,7 +373,7 @@ mod keymap {
     use super::*;
 
     pub fn normal(
-        _engine: ScriptEngineRef,
+        _: ScriptEngineRef,
         ctx: &mut ScriptContext,
         (from, to): (ScriptString, ScriptString),
     ) -> ScriptResult<()> {
@@ -385,7 +381,7 @@ mod keymap {
     }
 
     pub fn select(
-        _engine: ScriptEngineRef,
+        _: ScriptEngineRef,
         ctx: &mut ScriptContext,
         (from, to): (ScriptString, ScriptString),
     ) -> ScriptResult<()> {
@@ -393,7 +389,7 @@ mod keymap {
     }
 
     pub fn insert(
-        _engine: ScriptEngineRef,
+        _: ScriptEngineRef,
         ctx: &mut ScriptContext,
         (from, to): (ScriptString, ScriptString),
     ) -> ScriptResult<()> {
@@ -427,9 +423,9 @@ mod theme {
     use super::*;
 
     pub fn index<'script>(
-        _engine: ScriptEngineRef,
+        _: ScriptEngineRef,
         ctx: &mut ScriptContext,
-        (_object, index): (ScriptObject, ScriptString),
+        (_, index): (ScriptObject, ScriptString),
     ) -> ScriptResult<ScriptValue<'script>> {
         let theme = &mut ctx.config.theme;
         let index = index.to_str()?;
@@ -440,9 +436,9 @@ mod theme {
     }
 
     pub fn newindex(
-        _engine: ScriptEngineRef,
+        _: ScriptEngineRef,
         ctx: &mut ScriptContext,
-        (_object, index, value): (ScriptObject, ScriptString, u32),
+        (_, index, value): (ScriptObject, ScriptString, u32),
     ) -> ScriptResult<()> {
         let theme = &mut ctx.config.theme;
         let index = index.to_str()?;
@@ -458,7 +454,7 @@ mod syntax {
     use super::*;
 
     pub fn extension(
-        _engine: ScriptEngineRef,
+        _: ScriptEngineRef,
         ctx: &mut ScriptContext,
         (main_extension, other_extension): (ScriptString, ScriptString),
     ) -> ScriptResult<()> {
@@ -472,7 +468,7 @@ mod syntax {
     }
 
     pub fn rule(
-        _engine: ScriptEngineRef,
+        _: ScriptEngineRef,
         ctx: &mut ScriptContext,
         (main_extension, token_kind, pattern): (ScriptString, ScriptString, ScriptString),
     ) -> ScriptResult<()> {

@@ -126,7 +126,7 @@ impl ConnectionWithClientCollection {
         &mut self,
         event_registry: &EventRegistry,
     ) -> io::Result<ConnectionWithClientHandle> {
-        let (stream, _address) = self.listener.accept()?;
+        let (stream, _) = self.listener.accept()?;
         stream.set_nonblocking(true)?;
         let connection = ConnectionWithClient(stream);
 

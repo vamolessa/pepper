@@ -8,7 +8,7 @@ pub fn on_enter(ctx: &mut ModeContext) {
     update_search(ctx);
 }
 
-pub fn on_exit(_ctx: &mut ModeContext) {}
+pub fn on_exit(_: &mut ModeContext) {}
 
 pub fn on_event(
     mut ctx: &mut ModeContext,
