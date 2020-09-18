@@ -10,7 +10,7 @@ use crate::{
     buffer_position::{BufferPosition, BufferRange},
     history::{Edit, EditKind, History},
     syntax::{self, HighlightedBuffer, SyntaxCollection, SyntaxHandle},
-    word_database::{is_word_char, CharKind, WordDatabase, WordIter},
+    word_database::{CharKind, WordDatabase, WordIter},
 };
 
 #[derive(Debug)]
@@ -132,8 +132,8 @@ impl BufferLine {
         };
 
         let index = kinds
-            .skip_while(|(_i, k)| *k == first_kind)
-            .skip_while(|(_i, k)| *k == CharKind::Whitespace)
+            .skip_while(|(_, k)| *k == first_kind)
+            .skip_while(|(_, k)| *k == CharKind::Whitespace)
             .next()
             .unwrap_or((0, first_kind))
             .0
@@ -152,7 +152,7 @@ impl BufferLine {
             .map(|(i, c)| (i, CharKind::new(c)));
 
         let (first_index, first_kind) = match (&mut kinds)
-            .skip_while(|(_i, k)| *k == CharKind::Whitespace)
+            .skip_while(|(_, k)| *k == CharKind::Whitespace)
             .next()
         {
             Some((i, k)) => (i, k),
@@ -160,7 +160,7 @@ impl BufferLine {
         };
 
         let index = kinds
-            .take_while(|(_i, k)| *k == first_kind)
+            .take_while(|(_, k)| *k == first_kind)
             .last()
             .unwrap_or((first_index, first_kind))
             .0;
@@ -170,21 +170,29 @@ impl BufferLine {
 
     pub fn find_word_at(&self, column: usize) -> (Range<usize>, &str) {
         let index = self.column_to_index(column);
+        let (start, end) = self.text.split_at(index);
 
-        let start_index = self.text[..index]
+        let mut end_kinds = end.char_indices().map(|(i, c)| (i, CharKind::new(c)));
+        let kind = match end_kinds.next() {
+            Some((_, CharKind::Whitespace)) | None => return (column..column, ""),
+            Some((_, k)) => k,
+        };
+        let end_index = end_kinds
+            .take_while(|(_, k)| *k == kind)
+            .last()
+            .unwrap_or((0, CharKind::Whitespace))
+            .0
+            + index
+            + 1;
+
+        let start_index = start
             .char_indices()
             .rev()
-            .take_while(|(_i, c)| is_word_char(*c))
+            .map(|(i, c)| (i, CharKind::new(c)))
+            .take_while(|(_, k)| *k == kind)
             .last()
-            .map(|(i, _c)| i)
-            .unwrap_or(index);
-
-        let end_index = self.text[index..]
-            .char_indices()
-            .take_while(|(_i, c)| is_word_char(*c))
-            .last()
-            .map(|(i, _c)| i + index + 1)
-            .unwrap_or(index);
+            .unwrap_or((index, CharKind::Whitespace))
+            .0;
 
         let index_range = start_index..end_index;
         let column_range = self.index_range_to_column_rangge(index_range.clone());
@@ -980,14 +988,14 @@ mod tests {
         let line = BufferLine::new("word".into());
         assert_eq!((0..4, "word"), line.find_word_at(0));
         assert_eq!((0..4, "word"), line.find_word_at(2));
-        assert_eq!((0..4, "word"), line.find_word_at(4));
+        assert_eq!((4..4, ""), line.find_word_at(4));
 
         let line = BufferLine::new("asd word+? asd".into());
-        assert_eq!((0..3, "asd"), line.find_word_at(3));
+        assert_eq!((3..3, ""), line.find_word_at(3));
         assert_eq!((4..8, "word"), line.find_word_at(4));
         assert_eq!((4..8, "word"), line.find_word_at(6));
-        assert_eq!((4..8, "word"), line.find_word_at(8));
-        assert_eq!((9..9, ""), line.find_word_at(9));
+        assert_eq!((8..10, "+?"), line.find_word_at(8));
+        assert_eq!((8..10, "+?"), line.find_word_at(9));
         assert_eq!((10..10, ""), line.find_word_at(10));
     }
 }

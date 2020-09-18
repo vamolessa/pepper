@@ -88,9 +88,10 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
 
     let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
     let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
-    let main_cursor = buffer_view.cursors.main_cursor();
-    let (word_range, word) = buffer.content.find_word_at(main_cursor.position);
-    if word.is_empty() || main_cursor.position.column_index < word_range.to.column_index {
+    let mut word_position = buffer_view.cursors.main_cursor().position;
+    word_position.column_index = word_position.column_index.saturating_sub(1);
+    let (word_range, word) = buffer.content.find_word_at(word_position);
+    if word.is_empty() || word_position.column_index < word_range.to.column_index {
         ctx.picker.clear_filtered();
     } else {
         ctx.picker.filter(&ctx.word_database, word);

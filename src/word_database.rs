@@ -3,7 +3,7 @@ use std::{
     hash::{Hash, Hasher},
 };
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CharKind {
     Word,
     Symbol,
@@ -22,10 +22,6 @@ impl CharKind {
     }
 }
 
-pub fn is_word_char(c: char) -> bool {
-    c.is_alphanumeric() || c == '_'
-}
-
 pub struct WordIter<'a>(&'a str);
 
 impl<'a> WordIter<'a> {
@@ -38,10 +34,13 @@ impl<'a> Iterator for WordIter<'a> {
     type Item = &'a str;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let start = self.0.find(is_word_char)?;
+        let start = self.0.find(|c| CharKind::new(c) == CharKind::Word)?;
         self.0 = &self.0[start..];
 
-        let end = self.0.find(|c| !is_word_char(c)).unwrap_or(self.0.len());
+        let end = self
+            .0
+            .find(|c| CharKind::new(c) != CharKind::Word)
+            .unwrap_or(self.0.len());
         let (word, rest) = self.0.split_at(end);
 
         self.0 = rest;

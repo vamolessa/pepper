@@ -395,7 +395,9 @@ impl BufferViewCollection {
 
         self.fix_cursor_ranges.clear();
         for (i, cursor) in current_view.cursors[..].iter().enumerate().rev() {
-            let (word_range, word) = buffer.content.find_word_at(cursor.position);
+            let mut word_position = cursor.position;
+            word_position.column_index = word_position.column_index.saturating_sub(1);
+            let (word_range, word) = buffer.content.find_word_at(word_position);
 
             if !word.is_empty() {
                 let range = BufferRange::between(word_range.from, cursor.position);
