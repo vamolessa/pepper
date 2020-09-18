@@ -121,7 +121,6 @@ impl BufferLine {
 
     pub fn next_word_start_from(&self, column: usize) -> usize {
         let from_index = self.column_to_index(column);
-
         let text = &self.text[from_index..];
 
         text.chars()
@@ -138,16 +137,33 @@ impl BufferLine {
             .and_then(|i| {
                 text[i..]
                     .find(|c: char| !c.is_whitespace())
-                    .map(|j| from_index + i + j)
+                    .map(|j| self.index_to_column(from_index + i + j))
             })
             .unwrap_or(self.text.len())
     }
 
     pub fn previous_word_start_from(&self, column: usize) -> usize {
-        let index = self.column_to_index(column);
-        let text = &self.text[..index];
-        text.rfind(|c| !is_word_char(c))
-            .and_then(|i| text[..i].rfind(is_word_char))
+        let from_index = self.column_to_index(column);
+        let mut chars = self.text[..from_index].char_indices().rev();
+        //for _ in (&mut chars).skip_while(|(_i, c)| c.is_whitespace()) {}
+
+        chars
+            .next()
+            .and_then(|(_i, c)| {
+                if is_word_char(c) {
+                    chars
+                        .take_while(|(_i, c)| is_word_char(*c))
+                        .last()
+                        .map(|(i, _c)| self.index_to_column(i))
+                } else if !c.is_whitespace() {
+                    chars
+                        .take_while(|(_i, c)| !c.is_whitespace() && !is_word_char(*c))
+                        .last()
+                        .map(|(i, _c)| self.index_to_column(i))
+                } else {
+                    None
+                }
+            })
             .unwrap_or(0)
     }
 
