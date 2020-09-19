@@ -58,14 +58,6 @@ impl BufferView {
         movement: CursorMovement,
         movement_kind: CursorMovementKind,
     ) {
-        fn saturate_column_index(buffer: &Buffer, cursor: &mut Cursor) {
-            cursor.position.column_index = buffer
-                .content
-                .line_at(cursor.position.line_index)
-                .char_count()
-                .min(cursor.position.column_index);
-        }
-
         let buffer = match buffers.get(self.buffer_handle) {
             Some(buffer) => buffer,
             None => return,
@@ -94,13 +86,13 @@ impl BufferView {
                         .line_count()
                         .saturating_sub(1)
                         .min(c.position.line_index + n);
-                    saturate_column_index(buffer, c);
+                    c.position = buffer.content.saturate_position(c.position);
                 }
             }
             CursorMovement::LinesBackward(n) => {
                 for c in &mut cursors[..] {
                     c.position.line_index = c.position.line_index.saturating_sub(n);
-                    saturate_column_index(buffer, c);
+                    c.position = buffer.content.saturate_position(c.position);
                 }
             }
             CursorMovement::WordsForward(n) => {
@@ -147,13 +139,13 @@ impl BufferView {
             CursorMovement::FirstLine => {
                 for c in &mut cursors[..] {
                     c.position.line_index = 0;
-                    saturate_column_index(buffer, c);
+                    c.position = buffer.content.saturate_position(c.position);
                 }
             }
             CursorMovement::LastLine => {
                 for c in &mut cursors[..] {
                     c.position.line_index = buffer.content.line_count() - 1;
-                    saturate_column_index(buffer, c);
+                    c.position = buffer.content.saturate_position(c.position);
                 }
             }
         }

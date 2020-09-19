@@ -75,6 +75,19 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
                 handle,
             );
         }
+        Key::Ctrl('w') => {
+            unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
+                ctx.buffers,
+                CursorMovement::WordsBackward(1),
+                CursorMovementKind::PositionOnly,
+            );
+            ctx.buffer_views.delete_in_selection(
+                ctx.buffers,
+                ctx.word_database,
+                &ctx.config.syntaxes,
+                handle,
+            );
+        }
         Key::Ctrl('n') => {
             apply_completion(ctx, handle, 1);
             return ModeOperation::None;

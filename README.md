@@ -80,7 +80,7 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- remember column when moving between lines
 - selections
 	- ~~select current word and search~~
-	- add cursor on 'next search result' (`*`)
+	- ~~add cursor on 'next search result' (`*`)~~
 	- select cursor lines
 - text objects
 	- word

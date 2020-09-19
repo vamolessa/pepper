@@ -3,6 +3,7 @@ use copypasta::{ClipboardContext, ClipboardProvider};
 use crate::{
     buffer_view::{CursorMovement, CursorMovementKind},
     client_event::Key,
+    cursor::Cursor,
     editor::KeysIterator,
     mode::{Mode, ModeContext, ModeOperation},
 };
@@ -150,13 +151,13 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
             Key::Char('L') => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
                 ctx.buffers,
                 CursorMovement::End,
-                CursorMovementKind::PositionWithAnchor,
+                CursorMovementKind::PositionOnly,
             ),
             _ => (),
         },
         Key::Char('s') => match keys.next() {
             Key::None => return ModeOperation::Pending,
-            Key::Char('a') => {
+            Key::Char('c') => {
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
                 buffer_view.cursors.collapse_anchors();
             }
@@ -173,13 +174,56 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
             Key::Char('n') => {
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
                 let buffer = unwrap_or_none!(ctx.buffers.get_mut(buffer_view.buffer_handle));
+
                 let main_cursor = buffer_view.cursors.main_cursor();
-                let (_, word) = buffer.content.find_word_at(main_cursor.position);
+                let main_position = buffer_view.cursors.main_cursor().position;
 
-                ctx.input.clear();
-                ctx.input.push_str(word);
+                let search_ranges = buffer.search_ranges();
+                if search_ranges.is_empty() {
+                    let (range, word) = buffer.content.find_word_at(main_cursor.position);
 
-                buffer.set_search(&ctx.input);
+                    ctx.input.clear();
+                    ctx.input.push_str(word);
+                    buffer.set_search(&ctx.input);
+
+                    let mut cursors = buffer_view.cursors.mut_guard();
+                    cursors.clear();
+                    cursors.add_cursor(Cursor {
+                        anchor: range.from,
+                        position: range.from,
+                    });
+                } else {
+                    let range_index =
+                        match search_ranges.binary_search_by_key(&main_position, |r| r.from) {
+                            Ok(index) => index + 1,
+                            Err(index) => index,
+                        };
+                    let range_index = range_index % search_ranges.len();
+                    let cursor_position = search_ranges[range_index].from;
+
+                    buffer_view.cursors.mut_guard().add_cursor(Cursor {
+                        anchor: cursor_position,
+                        position: cursor_position,
+                    });
+                }
+            }
+            Key::Char('j') => {
+                let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
+                let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
+                let mut cursor = *buffer_view.cursors.main_cursor();
+                cursor.position.line_index += 1;
+                cursor.position = buffer.content.saturate_position(cursor.position);
+                cursor.anchor = cursor.position;
+                buffer_view.cursors.mut_guard().add_cursor(cursor);
+            }
+            Key::Char('k') => {
+                let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
+                let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
+                let mut cursor = *buffer_view.cursors.main_cursor();
+                cursor.position.line_index = cursor.position.line_index.saturating_sub(1);
+                cursor.position = buffer.content.saturate_position(cursor.position);
+                cursor.anchor = cursor.position;
+                buffer_view.cursors.mut_guard().add_cursor(cursor);
             }
             _ => (),
         },
@@ -209,30 +253,6 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
                 CursorMovementKind::PositionWithAnchor,
             );
         }
-        Key::Char(' ') => {
-            let cursors = &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle)).cursors;
-            let main_cursor = *cursors.main_cursor();
-            let mut cursors = cursors.mut_guard();
-            cursors.clear();
-            cursors.add_cursor(main_cursor);
-        }
-        /*
-        Key::Char('J') => {
-            let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
-            let buffer_handle = buffer_view.buffer_handle;
-            let buffer_line_count = ctx
-                .buffers
-                .get(buffer_handle)
-                .map(|b| b.content.line_count())
-                .unwrap_or(0);
-            let mut cursor = *buffer_view.cursors.main_cursor();
-            cursor.position.column_index = 0;
-            cursor.position.line_index += 1;
-            cursor.position.line_index = cursor.position.line_index.min(buffer_line_count - 1);
-            cursor.anchor = cursor.position;
-            buffer_view.cursors.mut_guard().add_cursor(cursor);
-        }
-        */
         Key::Char('d') => {
             ctx.buffer_views.delete_in_selection(
                 ctx.buffers,
@@ -242,7 +262,16 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
             );
             unwrap_or_none!(ctx.buffer_views.get_mut(handle)).commit_edits(ctx.buffers);
         }
-        Key::Char('i') => return ModeOperation::EnterMode(Mode::Insert),
+        Key::Char('i') => {
+            ctx.buffer_views.delete_in_selection(
+                ctx.buffers,
+                ctx.word_database,
+                &ctx.config.syntaxes,
+                handle,
+            );
+            unwrap_or_none!(ctx.buffer_views.get_mut(handle)).commit_edits(ctx.buffers);
+            return ModeOperation::EnterMode(Mode::Insert);
+        }
         Key::Char('/') => return ModeOperation::EnterMode(Mode::Search),
         Key::Char('y') => {
             if let Ok(mut clipboard) = ClipboardContext::new() {

@@ -339,6 +339,15 @@ impl BufferContent {
         Ok(())
     }
 
+    pub fn saturate_position(&self, mut position: BufferPosition) -> BufferPosition {
+        position.line_index = position.line_index.min(self.line_count() - 1);
+        position.column_index = self
+            .line_at(position.line_index)
+            .char_count()
+            .min(position.column_index);
+        position
+    }
+
     pub fn append_range_text_to_string(&self, range: BufferRange, text: &mut String) {
         let from = self.clamp_position(range.from);
         let to = self.clamp_position(range.to);

@@ -233,7 +233,6 @@ where
     handle_command!(write, cursor::Hide)?;
 
     let cursor_color = match editor.mode {
-        Mode::Search | Mode::Script => convert_color(theme.cursor_select),
         Mode::Insert => convert_color(theme.cursor_insert),
         _ => convert_color(theme.cursor_normal),
     };

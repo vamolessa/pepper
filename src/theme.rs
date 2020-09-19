@@ -24,7 +24,6 @@ pub struct Theme {
     pub highlight: Color,
 
     pub cursor_normal: Color,
-    pub cursor_select: Color,
     pub cursor_insert: Color,
 
     pub token_whitespace: Color,
@@ -53,7 +52,6 @@ impl Theme {
             highlight,
 
             cursor_normal,
-            cursor_select,
             cursor_insert,
 
             token_whitespace,
@@ -92,7 +90,6 @@ pub fn pico8_theme() -> Theme {
         background: COLORS[0],
 
         cursor_normal: COLORS[8],
-        cursor_select: COLORS[12],
         cursor_insert: COLORS[11],
 
         token_whitespace: COLORS[2],
