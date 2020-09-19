@@ -68,7 +68,7 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
     register!(client => index,);
     register!(editor => selection, delete_selection, insert_text,);
     register!(process => pipe, spawn,);
-    register!(keymap => normal, select, insert,);
+    register!(keymap => normal, insert,);
     register!(syntax => extension, rule,);
 
     register_object!(config);
@@ -378,14 +378,6 @@ mod keymap {
         (from, to): (ScriptString, ScriptString),
     ) -> ScriptResult<()> {
         map_mode(ctx, Mode::Normal, from, to)
-    }
-
-    pub fn select(
-        _: ScriptEngineRef,
-        ctx: &mut ScriptContext,
-        (from, to): (ScriptString, ScriptString),
-    ) -> ScriptResult<()> {
-        map_mode(ctx, Mode::Select, from, to)
     }
 
     pub fn insert(

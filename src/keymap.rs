@@ -2,7 +2,7 @@ use std::{collections::HashMap, mem::Discriminant};
 
 use crate::{
     client_event::{Key, KeyParseAllError},
-    mode::{FromMode, Mode},
+    mode::Mode,
 };
 
 pub enum MatchResult<'a> {
@@ -83,14 +83,7 @@ impl Default for KeyMapCollection {
             maps: HashMap::default(),
         };
 
-        let all_modes = [
-            Mode::Normal,
-            Mode::Select,
-            Mode::Insert,
-            Mode::Search(FromMode::Normal),
-            Mode::Script(FromMode::Normal),
-        ];
-
+        let all_modes = [Mode::Normal, Mode::Insert, Mode::Search, Mode::Script];
         for mode in &all_modes {
             this.parse_and_map(mode.discriminant(), "<c-c>", "<esc>")
                 .unwrap();

@@ -28,7 +28,6 @@ mod insert;
 mod normal;
 mod script;
 mod search;
-mod select;
 
 pub enum ModeOperation {
     Pending,
@@ -66,27 +65,11 @@ impl<'a> ModeContext<'a> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum FromMode {
-    Normal,
-    Select,
-}
-
-impl FromMode {
-    pub fn as_mode(&self) -> Mode {
-        match self {
-            FromMode::Normal => Mode::Normal,
-            FromMode::Select => Mode::Select,
-        }
-    }
-}
-
 pub enum Mode {
     Normal,
-    Select,
     Insert,
-    Search(FromMode),
-    Script(FromMode),
+    Search,
+    Script,
 }
 
 impl Mode {
@@ -97,20 +80,18 @@ impl Mode {
     pub fn on_enter(&mut self, context: &mut ModeContext) {
         match self {
             Mode::Normal => normal::on_enter(context),
-            Mode::Select => select::on_enter(context),
             Mode::Insert => insert::on_enter(context),
-            Mode::Search(_) => search::on_enter(context),
-            Mode::Script(_) => script::on_enter(context),
+            Mode::Search => search::on_enter(context),
+            Mode::Script => script::on_enter(context),
         }
     }
 
     pub fn on_exit(&mut self, context: &mut ModeContext) {
         match self {
             Mode::Normal => normal::on_exit(context),
-            Mode::Select => select::on_exit(context),
             Mode::Insert => insert::on_exit(context),
-            Mode::Search(_) => search::on_exit(context),
-            Mode::Script(_) => script::on_exit(context),
+            Mode::Search => search::on_exit(context),
+            Mode::Script => script::on_exit(context),
         }
     }
 
@@ -121,10 +102,9 @@ impl Mode {
     ) -> ModeOperation {
         match self {
             Mode::Normal => normal::on_event(context, keys),
-            Mode::Select => select::on_event(context, keys),
             Mode::Insert => insert::on_event(context, keys),
-            Mode::Search(from_mode) => search::on_event(context, keys, *from_mode),
-            Mode::Script(from_mode) => script::on_event(context, keys, *from_mode),
+            Mode::Search => search::on_event(context, keys),
+            Mode::Script => script::on_event(context, keys),
         }
     }
 }

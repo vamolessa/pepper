@@ -1,6 +1,6 @@
 use crate::{
     editor::KeysIterator,
-    mode::{poll_input, FromMode, InputPollResult, ModeContext, ModeOperation},
+    mode::{poll_input, InputPollResult, Mode, ModeContext, ModeOperation},
 };
 
 pub fn on_enter(ctx: &mut ModeContext) {
@@ -12,15 +12,11 @@ pub fn on_exit(ctx: &mut ModeContext) {
     ctx.input.clear();
 }
 
-pub fn on_event(
-    mut ctx: &mut ModeContext,
-    keys: &mut KeysIterator,
-    from_mode: FromMode,
-) -> ModeOperation {
+pub fn on_event(mut ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
     let operation = match poll_input(&mut ctx, keys) {
         InputPollResult::Pending => ModeOperation::None,
         InputPollResult::Submited | InputPollResult::Canceled => {
-            ModeOperation::EnterMode(from_mode.as_mode())
+            ModeOperation::EnterMode(Mode::default())
         }
     };
 

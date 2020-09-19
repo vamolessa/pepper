@@ -1,6 +1,6 @@
 use crate::{
     editor::{EditorLoop, KeysIterator, StatusMessageKind},
-    mode::{poll_input, FromMode, InputPollResult, ModeContext, ModeOperation},
+    mode::{poll_input, InputPollResult, Mode, ModeContext, ModeOperation},
     script::{ScriptContext, ScriptValue},
 };
 
@@ -12,14 +12,10 @@ pub fn on_exit(ctx: &mut ModeContext) {
     ctx.input.clear();
 }
 
-pub fn on_event(
-    mut ctx: &mut ModeContext,
-    keys: &mut KeysIterator,
-    from_mode: FromMode,
-) -> ModeOperation {
+pub fn on_event(mut ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
     match poll_input(&mut ctx, keys) {
         InputPollResult::Pending => ModeOperation::None,
-        InputPollResult::Canceled => ModeOperation::EnterMode(from_mode.as_mode()),
+        InputPollResult::Canceled => ModeOperation::EnterMode(Mode::default()),
         InputPollResult::Submited => {
             let mut editor_loop = EditorLoop::Continue;
             let context = ScriptContext {
@@ -67,7 +63,7 @@ pub fn on_event(
                         ctx.status_message.push_str(&message);
                     }
 
-                    ModeOperation::EnterMode(from_mode.as_mode())
+                    ModeOperation::EnterMode(Mode::default())
                 }
                 Err(e) => match editor_loop {
                     EditorLoop::Quit => ModeOperation::Quit,
@@ -88,7 +84,7 @@ pub fn on_event(
                         ctx.status_message.clear();
                         ctx.status_message.push_str(&message);
 
-                        ModeOperation::EnterMode(from_mode.as_mode())
+                        ModeOperation::EnterMode(Mode::default())
                     }
                 },
             }
