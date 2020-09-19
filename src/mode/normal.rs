@@ -83,9 +83,14 @@ pub fn on_event(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation
             ),
             Key::Char('n') => {
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
-                let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
+                let buffer = unwrap_or_none!(ctx.buffers.get_mut(buffer_view.buffer_handle));
                 let main_cursor = buffer_view.cursors.main_cursor();
-                let (_, position) = buffer.content.find_word_at(main_cursor.position);
+                let (_, word) = buffer.content.find_word_at(main_cursor.position);
+
+                ctx.input.clear();
+                ctx.input.push_str(word);
+
+                buffer.set_search(&ctx.input);
             }
             _ => (),
         },

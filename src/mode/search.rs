@@ -1,6 +1,6 @@
 use crate::{
     editor::KeysIterator,
-    mode::{poll_input, FromMode, InputPollResult, Mode, ModeContext, ModeOperation},
+    mode::{poll_input, FromMode, InputPollResult, ModeContext, ModeOperation},
 };
 
 pub fn on_enter(ctx: &mut ModeContext) {
@@ -8,7 +8,9 @@ pub fn on_enter(ctx: &mut ModeContext) {
     update_search(ctx);
 }
 
-pub fn on_exit(_: &mut ModeContext) {}
+pub fn on_exit(ctx: &mut ModeContext) {
+    ctx.input.clear();
+}
 
 pub fn on_event(
     mut ctx: &mut ModeContext,
@@ -17,8 +19,9 @@ pub fn on_event(
 ) -> ModeOperation {
     let operation = match poll_input(&mut ctx, keys) {
         InputPollResult::Pending => ModeOperation::None,
-        InputPollResult::Canceled => ModeOperation::EnterMode(from_mode.as_mode()),
-        InputPollResult::Submited => ModeOperation::EnterMode(Mode::Normal),
+        InputPollResult::Submited | InputPollResult::Canceled => {
+            ModeOperation::EnterMode(from_mode.as_mode())
+        }
     };
 
     update_search(ctx);
