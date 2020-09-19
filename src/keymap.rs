@@ -97,6 +97,8 @@ impl Default for KeyMapCollection {
                 .unwrap();
         }
 
+        this.parse_and_map(Mode::Normal(Default::default()).discriminant(), "s", "/")
+            .unwrap();
         this.parse_and_map(Mode::Insert.discriminant(), "<c-h>", "<backspace>")
             .unwrap();
 

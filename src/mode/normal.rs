@@ -9,7 +9,7 @@ use crate::{
 };
 
 pub struct State {
-    movement_kind: CursorMovementKind,
+    pub movement_kind: CursorMovementKind,
 }
 
 impl Default for State {
@@ -141,43 +141,6 @@ pub fn on_event(
             }
             _ => (),
         },
-        Key::Char('s') => match keys.next() {
-            Key::None => return ModeOperation::Pending,
-            Key::Char('c') => {
-                let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
-                buffer_view.cursors.collapse_anchors();
-                state.movement_kind = CursorMovementKind::PositionThenAnchor;
-            }
-            Key::Char('d') => {
-                let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
-                let main_cursor = buffer_view.cursors.main_cursor().clone();
-                let mut cursors = buffer_view.cursors.mut_guard();
-                cursors.clear();
-                cursors.add_cursor(main_cursor);
-            }
-            Key::Char('o') => unwrap_or_none!(ctx.buffer_views.get_mut(handle))
-                .cursors
-                .swap_positions_and_anchors(),
-            Key::Char('j') => {
-                let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
-                let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
-                let mut cursor = *buffer_view.cursors.main_cursor();
-                cursor.position.line_index += 1;
-                cursor.position = buffer.content.saturate_position(cursor.position);
-                cursor.anchor = cursor.position;
-                buffer_view.cursors.mut_guard().add_cursor(cursor);
-            }
-            Key::Char('k') => {
-                let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
-                let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
-                let mut cursor = *buffer_view.cursors.main_cursor();
-                cursor.position.line_index = cursor.position.line_index.saturating_sub(1);
-                cursor.position = buffer.content.saturate_position(cursor.position);
-                cursor.anchor = cursor.position;
-                buffer_view.cursors.mut_guard().add_cursor(cursor);
-            }
-            _ => (),
-        },
         Key::Char('x') => {
             let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
             let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
@@ -238,11 +201,38 @@ pub fn on_event(
             return ModeOperation::EnterMode(Mode::Insert);
         }
         Key::Char('v') => {
-            state.movement_kind = match state.movement_kind {
-                CursorMovementKind::PositionThenAnchor => CursorMovementKind::PositionOnly,
-                CursorMovementKind::PositionOnly => CursorMovementKind::PositionThenAnchor,
+            let mut cursors = unwrap_or_none!(ctx.buffer_views.get_mut(handle))
+                .cursors
+                .mut_guard();
+
+            let mut had_selection = false;
+            for cursor in &mut cursors[..] {
+                if cursor.anchor != cursor.position {
+                    cursor.anchor = cursor.position;
+                    had_selection = true;
+                }
+            }
+
+            state.movement_kind = if had_selection {
+                CursorMovementKind::PositionThenAnchor
+            } else {
+                CursorMovementKind::PositionOnly
             };
         }
+        Key::Char('V') => {
+            let mut cursors = unwrap_or_none!(ctx.buffer_views.get_mut(handle))
+                .cursors
+                .mut_guard();
+            for cursor in &mut cursors[..] {
+                std::mem::swap(&mut cursor.anchor, &mut cursor.position);
+            }
+        }
+        Key::Char('(') => unwrap_or_none!(ctx.buffer_views.get_mut(handle))
+            .cursors
+            .previous_main_cursor(),
+        Key::Char(')') => unwrap_or_none!(ctx.buffer_views.get_mut(handle))
+            .cursors
+            .next_main_cursor(),
         Key::Char('/') => return ModeOperation::EnterMode(Mode::Search),
         Key::Char('y') => {
             if let Ok(mut clipboard) = ClipboardContext::new() {

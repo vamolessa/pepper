@@ -45,20 +45,17 @@ impl CursorCollection {
         &self.cursors[self.main_cursor_index]
     }
 
-    pub fn collapse_anchors(&mut self) {
-        for cursor in &mut self.cursors {
-            cursor.anchor = cursor.position;
-        }
-    }
-
-    pub fn swap_positions_and_anchors(&mut self) {
-        for cursor in &mut self.cursors {
-            std::mem::swap(&mut cursor.anchor, &mut cursor.position);
-        }
-    }
-
     pub fn mut_guard(&mut self) -> CursorCollectionMutGuard {
         CursorCollectionMutGuard(self)
+    }
+
+    pub fn next_main_cursor(&mut self) {
+        self.main_cursor_index = (self.main_cursor_index + 1) % self.cursors.len();
+    }
+
+    pub fn previous_main_cursor(&mut self) {
+        self.main_cursor_index =
+            (self.main_cursor_index + self.cursors.len() - 1) % self.cursors.len();
     }
 
     fn sort_and_merge(&mut self) {
