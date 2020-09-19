@@ -66,7 +66,7 @@ impl<'a> ModeContext<'a> {
 }
 
 pub enum Mode {
-    Normal,
+    Normal(normal::State),
     Insert,
     Search,
     Script,
@@ -79,7 +79,7 @@ impl Mode {
 
     pub fn on_enter(&mut self, context: &mut ModeContext) {
         match self {
-            Mode::Normal => normal::on_enter(context),
+            Mode::Normal(state) => normal::on_enter(state, context),
             Mode::Insert => insert::on_enter(context),
             Mode::Search => search::on_enter(context),
             Mode::Script => script::on_enter(context),
@@ -88,7 +88,7 @@ impl Mode {
 
     pub fn on_exit(&mut self, context: &mut ModeContext) {
         match self {
-            Mode::Normal => normal::on_exit(context),
+            Mode::Normal(state) => normal::on_exit(state, context),
             Mode::Insert => insert::on_exit(context),
             Mode::Search => search::on_exit(context),
             Mode::Script => script::on_exit(context),
@@ -101,7 +101,7 @@ impl Mode {
         keys: &mut KeysIterator,
     ) -> ModeOperation {
         match self {
-            Mode::Normal => normal::on_event(context, keys),
+            Mode::Normal(state) => normal::on_event(state, context, keys),
             Mode::Insert => insert::on_event(context, keys),
             Mode::Search => search::on_event(context, keys),
             Mode::Script => script::on_event(context, keys),
@@ -111,7 +111,7 @@ impl Mode {
 
 impl Default for Mode {
     fn default() -> Self {
-        Mode::Normal
+        Mode::Normal(Default::default())
     }
 }
 

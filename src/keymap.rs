@@ -83,7 +83,13 @@ impl Default for KeyMapCollection {
             maps: HashMap::default(),
         };
 
-        let all_modes = [Mode::Normal, Mode::Insert, Mode::Search, Mode::Script];
+        let all_modes = [
+            Mode::Normal(Default::default()),
+            Mode::Insert,
+            Mode::Search,
+            Mode::Script,
+        ];
+
         for mode in &all_modes {
             this.parse_and_map(mode.discriminant(), "<c-c>", "<esc>")
                 .unwrap();

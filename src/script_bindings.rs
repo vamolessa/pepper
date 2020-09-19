@@ -377,7 +377,7 @@ mod keymap {
         ctx: &mut ScriptContext,
         (from, to): (ScriptString, ScriptString),
     ) -> ScriptResult<()> {
-        map_mode(ctx, Mode::Normal, from, to)
+        map_mode(ctx, Mode::Normal(Default::default()), from, to)
     }
 
     pub fn insert(

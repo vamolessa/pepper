@@ -17,15 +17,15 @@ pub enum CursorMovement {
     LinesBackward(usize),
     WordsForward(usize),
     WordsBackward(usize),
-    FirstColumn,
     Home,
     End,
     FirstLine,
     LastLine,
 }
 
+#[derive(Clone, Copy)]
 pub enum CursorMovementKind {
-    PositionWithAnchor,
+    PositionThenAnchor,
     PositionOnly,
 }
 
@@ -115,11 +115,6 @@ impl BufferView {
                     }
                 }
             }
-            CursorMovement::FirstColumn => {
-                for c in &mut cursors[..] {
-                    c.position.column_index = 0;
-                }
-            }
             CursorMovement::Home => {
                 for c in &mut cursors[..] {
                     c.position.column_index = buffer
@@ -150,7 +145,7 @@ impl BufferView {
             }
         }
 
-        if let CursorMovementKind::PositionWithAnchor = movement_kind {
+        if let CursorMovementKind::PositionThenAnchor = movement_kind {
             for c in &mut cursors[..] {
                 c.anchor = c.position;
             }
@@ -213,7 +208,7 @@ impl BufferView {
                 c.position = search_ranges[next_index].from;
             }
 
-            if let CursorMovementKind::PositionWithAnchor = movement_kind {
+            if let CursorMovementKind::PositionThenAnchor = movement_kind {
                 for c in &mut cursors[..] {
                     c.anchor = c.position;
                 }
