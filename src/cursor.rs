@@ -46,7 +46,11 @@ impl CursorCollection {
     }
 
     pub fn mut_guard(&mut self) -> CursorCollectionMutGuard {
-        CursorCollectionMutGuard(self)
+        let main_cursor = *self.main_cursor();
+        CursorCollectionMutGuard {
+            collection: self,
+            main_cursor,
+        }
     }
 
     pub fn next_main_cursor(&mut self) {
@@ -108,17 +112,20 @@ where
     }
 }
 
-pub struct CursorCollectionMutGuard<'a>(&'a mut CursorCollection);
+pub struct CursorCollectionMutGuard<'a> {
+    collection: &'a mut CursorCollection,
+    main_cursor: Cursor,
+}
 
 impl<'a> CursorCollectionMutGuard<'a> {
     pub fn clear(&mut self) {
-        self.0.cursors.clear();
-        self.0.main_cursor_index = 0;
+        self.collection.cursors.clear();
+        self.collection.main_cursor_index = 0;
     }
 
     pub fn add(&mut self, cursor: Cursor) {
-        self.0.main_cursor_index = self.0.cursors.len();
-        self.0.cursors.push(cursor);
+        self.collection.main_cursor_index = self.collection.cursors.len();
+        self.collection.cursors.push(cursor);
     }
 }
 
@@ -129,7 +136,7 @@ where
     type Output = Idx::Output;
 
     fn index(&self, index: Idx) -> &Self::Output {
-        &self.0.cursors[index]
+        &self.collection.cursors[index]
     }
 }
 
@@ -138,17 +145,25 @@ where
     Idx: SliceIndex<[Cursor]>,
 {
     fn index_mut(&mut self, index: Idx) -> &mut Self::Output {
-        &mut self.0.cursors[index]
+        &mut self.collection.cursors[index]
     }
 }
 
 impl<'a> Drop for CursorCollectionMutGuard<'a> {
     fn drop(&mut self) {
-        if self.0.cursors.len() == 0 {
-            self.0.cursors.push(Cursor::default());
+        if self.collection.cursors.len() == 0 {
+            self.collection.cursors.push(Cursor::default());
         }
 
-        self.0.sort_and_merge();
+        self.collection.sort_and_merge();
+
+        if let Ok(index) = self
+            .collection
+            .cursors
+            .binary_search_by(|c| c.position.cmp(&self.main_cursor.position))
+        {
+            self.collection.main_cursor_index = index;
+        }
     }
 }
 

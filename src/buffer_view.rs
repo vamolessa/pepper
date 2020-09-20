@@ -120,13 +120,7 @@ impl BufferView {
                     c.position.column_index = buffer
                         .content
                         .line_at(c.position.line_index)
-                        .as_str()
-                        .chars()
-                        .enumerate()
-                        .skip_while(|(_, c)| c.is_whitespace())
-                        .next()
-                        .unwrap_or((0, '\n'))
-                        .0;
+                        .first_word_start();
                 }
             }
             CursorMovement::End => {

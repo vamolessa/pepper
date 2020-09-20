@@ -84,7 +84,7 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- ~~remove selections (set anchor to position)~~
 	- ~~swap anchor and position~~
 	- ~~select cursor lines~~
-	- keep only main cursor
+	- ~~keep only main cursor~~
 	- add cursor to each selection line
 - text objects
 	- word

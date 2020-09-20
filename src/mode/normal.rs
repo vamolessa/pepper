@@ -1,6 +1,7 @@
 use copypasta::{ClipboardContext, ClipboardProvider};
 
 use crate::{
+    buffer_position::BufferPosition,
     buffer_view::{CursorMovement, CursorMovementKind},
     client_event::Key,
     cursor::Cursor,
@@ -152,18 +153,46 @@ pub fn on_event(
 
             let mut cursors = buffer_view.cursors.mut_guard();
             for cursor in &mut cursors[..] {
+                let char_count = buffer
+                    .content
+                    .line_at(cursor.position.line_index)
+                    .char_count();
+
                 if cursor.anchor < cursor.position {
                     cursor.anchor.column_index = 0;
-                    cursor.position.column_index = buffer
-                        .content
-                        .line_at(cursor.position.line_index)
-                        .char_count();
+                    cursor.position.column_index = char_count;
                 } else {
+                    cursor.anchor.column_index = char_count;
                     cursor.position.column_index = 0;
-                    cursor.anchor.column_index = buffer
-                        .content
-                        .line_at(cursor.position.line_index)
-                        .char_count();
+                }
+            }
+        }
+        Key::Char('X') => {
+            let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
+            let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
+
+            let mut cursors = buffer_view.cursors.mut_guard();
+            let cursor_count = cursors[..].len();
+
+            for i in 0..cursor_count {
+                let cursor = &mut cursors[i];
+                let line_range = if cursor.anchor < cursor.position {
+                    cursor.anchor.line_index..cursor.position.line_index
+                } else {
+                    (cursor.position.line_index + 1)..(cursor.anchor.line_index + 1)
+                };
+                cursor.anchor = cursor.position;
+
+                for line_index in line_range {
+                    let position = BufferPosition::line_col(
+                        line_index,
+                        buffer.content.line_at(line_index).first_word_start(),
+                    );
+
+                    cursors.add(Cursor {
+                        anchor: position,
+                        position,
+                    });
                 }
             }
         }

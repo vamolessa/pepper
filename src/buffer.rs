@@ -119,6 +119,16 @@ impl BufferLine {
         splitted
     }
 
+    pub fn first_word_start(&self) -> usize {
+        self.text
+            .chars()
+            .enumerate()
+            .skip_while(|(_, c)| c.is_whitespace())
+            .next()
+            .unwrap_or((0, char::default()))
+            .0
+    }
+
     pub fn next_word_start_from(&self, column: usize) -> usize {
         let index = self.column_to_index(column);
 
