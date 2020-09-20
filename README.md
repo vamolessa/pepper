@@ -81,6 +81,8 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 - selections
 	- ~~select current word and search~~
 	- ~~add cursor on 'next search result' (`*`)~~
+	- ~~remove selections (set anchor to position)~~
+	- ~~swap anchor and position~~
 	- select cursor lines
 - text objects
 	- word

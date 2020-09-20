@@ -147,11 +147,19 @@ pub fn on_event(
 
             let mut cursors = buffer_view.cursors.mut_guard();
             for cursor in &mut cursors[..] {
-                cursor.anchor.column_index = 0;
-                cursor.position.column_index = buffer
-                    .content
-                    .line_at(cursor.position.line_index)
-                    .char_count();
+                if cursor.anchor < cursor.position {
+                    cursor.anchor.column_index = 0;
+                    cursor.position.column_index = buffer
+                        .content
+                        .line_at(cursor.position.line_index)
+                        .char_count();
+                } else {
+                    cursor.position.column_index = 0;
+                    cursor.anchor.column_index = buffer
+                        .content
+                        .line_at(cursor.position.line_index)
+                        .char_count();
+                }
             }
         }
         Key::Ctrl('d') => {
