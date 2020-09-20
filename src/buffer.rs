@@ -509,7 +509,7 @@ pub struct Buffer {
     pub content: BufferContent,
     syntax_handle: SyntaxHandle,
     pub highlighted: HighlightedBuffer,
-    pub history: History,
+    history: History,
     search_ranges: Vec<BufferRange>,
 }
 
@@ -570,6 +570,9 @@ impl Buffer {
         cursor_index: usize,
     ) -> BufferRange {
         self.search_ranges.clear();
+        if text.is_empty() {
+            return BufferRange::between(position, position);
+        }
 
         for word in WordIter::new(self.content.line_at(position.line_index).as_str()) {
             word_database.remove_word(word);
@@ -608,6 +611,9 @@ impl Buffer {
         cursor_index: usize,
     ) {
         self.search_ranges.clear();
+        if range.from == range.to {
+            return;
+        }
 
         let line_count = range.to.line_index - range.from.line_index + 1;
         for line in self
@@ -635,6 +641,10 @@ impl Buffer {
             text: deleted_text.as_str(),
             cursor_index: cursor_index.min(u8::MAX as _) as _,
         });
+    }
+
+    pub fn commit_edits(&mut self) {
+        self.history.commit_edits();
     }
 
     pub fn undo<'a>(

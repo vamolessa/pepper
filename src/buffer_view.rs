@@ -222,7 +222,7 @@ impl BufferView {
 
     pub fn commit_edits(&self, buffers: &mut BufferCollection) {
         if let Some(buffer) = buffers.get_mut(self.buffer_handle) {
-            buffer.history.commit_edits();
+            buffer.commit_edits();
         }
     }
 
