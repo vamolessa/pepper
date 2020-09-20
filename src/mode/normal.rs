@@ -126,7 +126,7 @@ pub fn on_event(
                     let range_index = range_index % search_ranges.len();
                     let cursor_position = search_ranges[range_index].from;
 
-                    buffer_view.cursors.mut_guard().add_cursor(Cursor {
+                    buffer_view.cursors.mut_guard().add(Cursor {
                         anchor: cursor_position,
                         position: cursor_position,
                     });
@@ -137,11 +137,12 @@ pub fn on_event(
 
                     let mut cursors = buffer_view.cursors.mut_guard();
                     cursors.clear();
-                    cursors.add_cursor(Cursor {
+                    cursors.add(Cursor {
                         anchor: range.from,
                         position: range.from,
                     });
                 }
+                state.movement_kind = CursorMovementKind::PositionThenAnchor;
             }
             _ => (),
         },
@@ -211,6 +212,14 @@ pub fn on_event(
             );
             unwrap_or_none!(ctx.buffer_views.get_mut(handle)).commit_edits(ctx.buffers);
             return ModeOperation::EnterMode(Mode::Insert);
+        }
+        Key::Char(';') => {
+            let cursors = &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle)).cursors;
+            let main_cursor = *cursors.main_cursor();
+            let mut cursors = cursors.mut_guard();
+            cursors.clear();
+            cursors.add(main_cursor);
+            state.movement_kind = CursorMovementKind::PositionThenAnchor;
         }
         Key::Char('v') => {
             let mut cursors = unwrap_or_none!(ctx.buffer_views.get_mut(handle))

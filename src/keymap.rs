@@ -49,7 +49,16 @@ impl KeyMapCollection {
             to: parse_keys(to).map_err(|e| ParseKeyMapError::To(e))?,
         };
 
-        self.maps.entry(mode).or_insert_with(Vec::new).push(map);
+        let maps = self.maps.entry(mode).or_insert_with(Vec::new);
+
+        for m in maps.iter_mut() {
+            if m.from == map.from {
+                m.to = map.to;
+                return Ok(());
+            }
+        }
+
+        maps.push(map);
         Ok(())
     }
 
@@ -83,22 +92,24 @@ impl Default for KeyMapCollection {
             maps: HashMap::default(),
         };
 
+        let normal_mode = Mode::Normal(Default::default()).discriminant();
         let all_modes = [
-            Mode::Normal(Default::default()),
-            Mode::Insert,
-            Mode::Search,
-            Mode::Script,
+            normal_mode,
+            Mode::Insert.discriminant(),
+            Mode::Search.discriminant(),
+            Mode::Script.discriminant(),
         ];
 
         for mode in &all_modes {
-            this.parse_and_map(mode.discriminant(), "<c-c>", "<esc>")
-                .unwrap();
-            this.parse_and_map(mode.discriminant(), "<c-m>", "<enter>")
-                .unwrap();
+            let mode = *mode;
+            this.parse_and_map(mode, "<c-c>", "<esc>").unwrap();
+            this.parse_and_map(mode, "<c-m>", "<enter>").unwrap();
         }
 
-        this.parse_and_map(Mode::Normal(Default::default()).discriminant(), "s", "/")
-            .unwrap();
+        this.parse_and_map(normal_mode, "<esc>", "<esc>;/<esc>").unwrap();
+        this.parse_and_map(normal_mode, "<c-c>", "<esc>;/<esc>").unwrap();
+        this.parse_and_map(normal_mode, "s", "/").unwrap();
+
         this.parse_and_map(Mode::Insert.discriminant(), "<c-h>", "<backspace>")
             .unwrap();
 

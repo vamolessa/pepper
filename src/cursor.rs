@@ -116,7 +116,7 @@ impl<'a> CursorCollectionMutGuard<'a> {
         self.0.main_cursor_index = 0;
     }
 
-    pub fn add_cursor(&mut self, cursor: Cursor) {
+    pub fn add(&mut self, cursor: Cursor) {
         self.0.main_cursor_index = self.0.cursors.len();
         self.0.cursors.push(cursor);
     }
@@ -161,7 +161,7 @@ mod tests {
         let mut cursors = CursorCollection::new();
         assert_eq!(1, cursors[..].len());
         let main_cursor = *cursors.main_cursor();
-        cursors.mut_guard().add_cursor(main_cursor);
+        cursors.mut_guard().add(main_cursor);
         let mut cursors = cursors[..].iter();
         let cursor = cursors.next().unwrap();
         assert_eq!(BufferPosition::line_col(0, 0), cursor.position);
@@ -174,7 +174,7 @@ mod tests {
         cursors_mut[0].position = cursors_mut[0].anchor;
         drop(cursors_mut);
         assert_eq!(1, cursors[..].len());
-        cursors.mut_guard().add_cursor(Cursor {
+        cursors.mut_guard().add(Cursor {
             anchor: BufferPosition::line_col(2, 2),
             position: BufferPosition::line_col(2, 4),
         });
@@ -189,7 +189,7 @@ mod tests {
         cursors_mut[0].anchor = BufferPosition::line_col(2, 2);
         cursors_mut[0].position = BufferPosition::line_col(2, 4);
         drop(cursors_mut);
-        cursors.mut_guard().add_cursor(Cursor {
+        cursors.mut_guard().add(Cursor {
             anchor: BufferPosition::line_col(2, 2),
             position: BufferPosition::line_col(2, 2),
         });
@@ -204,7 +204,7 @@ mod tests {
         cursors_mut[0].anchor = BufferPosition::line_col(2, 2);
         cursors_mut[0].position = BufferPosition::line_col(2, 3);
         drop(cursors_mut);
-        cursors.mut_guard().add_cursor(Cursor {
+        cursors.mut_guard().add(Cursor {
             anchor: BufferPosition::line_col(2, 4),
             position: BufferPosition::line_col(2, 3),
         });
@@ -219,7 +219,7 @@ mod tests {
         cursors_mut[0].anchor = BufferPosition::line_col(2, 4);
         cursors_mut[0].position = BufferPosition::line_col(2, 3);
         drop(cursors_mut);
-        cursors.mut_guard().add_cursor(Cursor {
+        cursors.mut_guard().add(Cursor {
             anchor: BufferPosition::line_col(2, 3),
             position: BufferPosition::line_col(2, 2),
         });
@@ -237,7 +237,7 @@ mod tests {
         cursors_mut[0].anchor = BufferPosition::line_col(1, 0);
         cursors_mut[0].position = BufferPosition::line_col(1, 0);
         drop(cursors_mut);
-        cursors.mut_guard().add_cursor(Cursor {
+        cursors.mut_guard().add(Cursor {
             anchor: BufferPosition::line_col(2, 0),
             position: BufferPosition::line_col(2, 0),
         });
@@ -255,7 +255,7 @@ mod tests {
         cursors_mut[0].anchor = BufferPosition::line_col(3, 2);
         cursors_mut[0].position = BufferPosition::line_col(3, 2);
         drop(cursors_mut);
-        cursors.mut_guard().add_cursor(Cursor {
+        cursors.mut_guard().add(Cursor {
             anchor: BufferPosition::line_col(2, 2),
             position: BufferPosition::line_col(2, 2),
         });
@@ -276,11 +276,11 @@ mod tests {
         cursors_mut[0].anchor = BufferPosition::line_col(0, 0);
         cursors_mut[0].position = BufferPosition::line_col(0, 0);
         drop(cursors_mut);
-        cursors.mut_guard().add_cursor(Cursor {
+        cursors.mut_guard().add(Cursor {
             anchor: BufferPosition::line_col(1, 0),
             position: BufferPosition::line_col(1, 0),
         });
-        cursors.mut_guard().add_cursor(Cursor {
+        cursors.mut_guard().add(Cursor {
             anchor: BufferPosition::line_col(2, 0),
             position: BufferPosition::line_col(2, 0),
         });

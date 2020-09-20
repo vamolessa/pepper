@@ -510,7 +510,7 @@ impl BufferViewCollection {
                 cursors.clear();
 
                 for range in &self.fix_cursor_ranges {
-                    cursors.add_cursor(Cursor {
+                    cursors.add(Cursor {
                         anchor: range.from,
                         position: range.from,
                     });
