@@ -117,18 +117,31 @@ impl BufferView {
             }
             CursorMovement::Home => {
                 for c in &mut cursors[..] {
-                    c.position.column_index = buffer
-                        .content
-                        .line_at(c.position.line_index)
+                    let line = buffer.content.line_at(c.position.line_index);
+                    c.position.column_index = line
                         .as_str()
-                        .find(|c: char| !c.is_whitespace())
-                        .unwrap_or(0);
+                        .chars()
+                        .enumerate()
+                        .skip_while(|(_, c)| c.is_whitespace())
+                        .next()
+                        .unwrap_or((0, '\n'))
+                        .0;
                 }
             }
             CursorMovement::End => {
                 for c in &mut cursors[..] {
-                    c.position.column_index =
-                        buffer.content.line_at(c.position.line_index).char_count();
+                    let line = buffer.content.line_at(c.position.line_index);
+                    let whitespace_count_from_end = line
+                        .as_str()
+                        .chars()
+                        .rev()
+                        .enumerate()
+                        .skip_while(|(_, c)| c.is_whitespace())
+                        .next()
+                        .unwrap_or((0, '\0'))
+                        .0;
+
+                    c.position.column_index = line.char_count() - whitespace_count_from_end;
                 }
             }
             CursorMovement::FirstLine => {
