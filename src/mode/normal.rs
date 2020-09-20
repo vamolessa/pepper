@@ -195,6 +195,8 @@ pub fn on_event(
                     });
                 }
             }
+
+            state.movement_kind = CursorMovementKind::PositionThenAnchor;
         }
         Key::Ctrl('d') => {
             let half_height = ctx

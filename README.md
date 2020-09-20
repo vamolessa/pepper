@@ -85,7 +85,7 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- ~~swap anchor and position~~
 	- ~~select cursor lines~~
 	- ~~keep only main cursor~~
-	- add cursor to each selection line
+	- ~~add cursor to each selection line~~
 - text objects
 	- word
 	- balanced braces
