@@ -110,21 +110,14 @@ pub fn on_event(
                 let main_cursor = buffer_view.cursors.main_cursor();
                 let main_position = buffer_view.cursors.main_cursor().position;
 
+                let (range, word) = buffer.content.find_word_at(main_cursor.position);
+
                 let search_ranges = buffer.search_ranges();
-                if search_ranges.is_empty() {
-                    let (range, word) = buffer.content.find_word_at(main_cursor.position);
+                let is_on_search_word = search_ranges
+                    .binary_search_by_key(&range.from, |r| r.from)
+                    .is_ok();
 
-                    ctx.input.clear();
-                    ctx.input.push_str(word);
-                    buffer.set_search(&ctx.input);
-
-                    let mut cursors = buffer_view.cursors.mut_guard();
-                    cursors.clear();
-                    cursors.add_cursor(Cursor {
-                        anchor: range.from,
-                        position: range.from,
-                    });
-                } else {
+                if !search_ranges.is_empty() && is_on_search_word {
                     let range_index =
                         match search_ranges.binary_search_by_key(&main_position, |r| r.from) {
                             Ok(index) => index + 1,
@@ -136,6 +129,17 @@ pub fn on_event(
                     buffer_view.cursors.mut_guard().add_cursor(Cursor {
                         anchor: cursor_position,
                         position: cursor_position,
+                    });
+                } else {
+                    ctx.input.clear();
+                    ctx.input.push_str(word);
+                    buffer.set_search(&ctx.input);
+
+                    let mut cursors = buffer_view.cursors.mut_guard();
+                    cursors.clear();
+                    cursors.add_cursor(Cursor {
+                        anchor: range.from,
+                        position: range.from,
                     });
                 }
             }

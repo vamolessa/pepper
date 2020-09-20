@@ -83,7 +83,9 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- ~~add cursor on 'next search result' (`*`)~~
 	- ~~remove selections (set anchor to position)~~
 	- ~~swap anchor and position~~
-	- select cursor lines
+	- ~~select cursor lines~~
+	- keep only main cursor
+	- add cursor to each selection line
 - text objects
 	- word
 	- balanced braces
