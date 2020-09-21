@@ -13,15 +13,15 @@ pub fn on_exit(ctx: &mut ModeContext) {
 }
 
 pub fn on_event(mut ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
-    let operation = match poll_input(&mut ctx, keys) {
-        InputPollResult::Pending => ModeOperation::None,
+    match poll_input(&mut ctx, keys) {
+        InputPollResult::Pending => {
+            update_search(ctx);
+            ModeOperation::None
+        }
         InputPollResult::Submited | InputPollResult::Canceled => {
             ModeOperation::EnterMode(Mode::default())
         }
-    };
-
-    update_search(ctx);
-    operation
+    }
 }
 
 pub fn update_search(ctx: &mut ModeContext) {

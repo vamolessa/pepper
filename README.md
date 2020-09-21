@@ -78,6 +78,7 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- find char
 	- remember column when moving between lines
 	- go to matching bracket
+	- ~~go to line (new mode)~~
 - selections
 	- ~~select current word and search~~
 	- ~~add cursor on 'next search result' (`*`)~~

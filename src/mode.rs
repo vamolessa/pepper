@@ -24,6 +24,7 @@ macro_rules! unwrap_or_none {
     };
 }
 
+mod goto;
 mod insert;
 mod normal;
 mod script;
@@ -69,6 +70,7 @@ pub enum Mode {
     Normal(normal::State),
     Insert,
     Search,
+    Goto(goto::State),
     Script,
 }
 
@@ -82,15 +84,17 @@ impl Mode {
             Mode::Normal(state) => normal::on_enter(state, context),
             Mode::Insert => insert::on_enter(context),
             Mode::Search => search::on_enter(context),
+            Mode::Goto(state) => goto::on_enter(state, context),
             Mode::Script => script::on_enter(context),
         }
     }
 
     pub fn on_exit(&mut self, context: &mut ModeContext) {
         match self {
-            Mode::Normal(state) => normal::on_exit(state, context),
+            Mode::Normal(_) => normal::on_exit(context),
             Mode::Insert => insert::on_exit(context),
             Mode::Search => search::on_exit(context),
+            Mode::Goto(_) => goto::on_exit(context),
             Mode::Script => script::on_exit(context),
         }
     }
@@ -104,6 +108,7 @@ impl Mode {
             Mode::Normal(state) => normal::on_event(state, context, keys),
             Mode::Insert => insert::on_event(context, keys),
             Mode::Search => search::on_event(context, keys),
+            Mode::Goto(state) => goto::on_event(state, context, keys),
             Mode::Script => script::on_event(context, keys),
         }
     }

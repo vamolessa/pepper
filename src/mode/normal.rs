@@ -10,7 +10,7 @@ use crate::{
 };
 
 pub struct State {
-    pub movement_kind: CursorMovementKind,
+    movement_kind: CursorMovementKind,
 }
 
 impl Default for State {
@@ -21,16 +21,14 @@ impl Default for State {
     }
 }
 
+pub fn on_enter(_: &mut State, _: &mut ModeContext) {}
+pub fn on_exit(_: &mut ModeContext) {}
+
 fn on_event_no_buffer(_: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
     match keys.next() {
         Key::Char(':') => ModeOperation::EnterMode(Mode::Script),
         _ => ModeOperation::None,
     }
-}
-
-pub fn on_enter(_: &mut State, _: &mut ModeContext) {}
-pub fn on_exit(state: &mut State, _: &mut ModeContext) {
-    *state = State::default();
 }
 
 pub fn on_event(
@@ -84,6 +82,7 @@ pub fn on_event(
         }
         Key::Char('g') => match keys.next() {
             Key::None => return ModeOperation::Pending,
+            Key::Char('g') => return ModeOperation::EnterMode(Mode::Goto(Default::default())),
             Key::Char('h') => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
                 ctx.buffers,
                 CursorMovement::Home,

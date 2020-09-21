@@ -502,6 +502,10 @@ where
                     draw_input(write, "/", &editor.input, background_color, cursor_color)?;
                     None
                 }
+                Mode::Goto(_) => {
+                    draw_input(write, "#", &editor.input, background_color, cursor_color)?;
+                    None
+                }
                 Mode::Script => {
                     draw_input(write, ":", &editor.input, background_color, cursor_color)?;
                     None

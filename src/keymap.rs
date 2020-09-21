@@ -97,6 +97,7 @@ impl Default for KeyMapCollection {
             normal_mode,
             Mode::Insert.discriminant(),
             Mode::Search.discriminant(),
+            Mode::Goto(Default::default()).discriminant(),
             Mode::Script.discriminant(),
         ];
 
@@ -106,9 +107,12 @@ impl Default for KeyMapCollection {
             this.parse_and_map(mode, "<c-m>", "<enter>").unwrap();
         }
 
-        this.parse_and_map(normal_mode, "<esc>", "<esc>;_/<esc>").unwrap();
-        this.parse_and_map(normal_mode, "<c-c>", "<esc>;_/<esc>").unwrap();
+        this.parse_and_map(normal_mode, "<esc>", "<esc>;_/<esc>")
+            .unwrap();
+        this.parse_and_map(normal_mode, "<c-c>", "<esc>;_/<esc>")
+            .unwrap();
         this.parse_and_map(normal_mode, "s", "/").unwrap();
+        this.parse_and_map(normal_mode, "#", "gg").unwrap();
         this.parse_and_map(normal_mode, "I", "ghi").unwrap();
         this.parse_and_map(normal_mode, "<c-i>", "gli").unwrap();
 
