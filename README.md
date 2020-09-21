@@ -72,13 +72,13 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- ~~builtin bindings~~
 	- full api exposed
 - code navigation
+	- ~~go to line (new mode)~~
 	- ~~word forward/backward~~
 	- ~~home/end/first-column~~
 	- ~~half-page down/up~~
-	- find char
+	- ~~find char~~
 	- remember column when moving between lines
 	- go to matching bracket
-	- ~~go to line (new mode)~~
 - selections
 	- ~~select current word and search~~
 	- ~~add cursor on 'next search result' (`*`)~~

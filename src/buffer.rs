@@ -119,14 +119,30 @@ impl BufferLine {
         splitted
     }
 
+    pub fn next_char_from(&self, column: usize, c: char) -> Option<usize> {
+        let next_column = self.char_count().min(column + 1);
+        let index = self.column_to_index(next_column);
+        self.text[index..]
+            .find(c)
+            .map(|i| self.index_to_column(index + i))
+    }
+
+    pub fn previous_char_from(&self, column: usize, c: char) -> Option<usize> {
+        let index = self.column_to_index(column);
+        self.text[..index].rfind(c).map(|i| self.index_to_column(i))
+    }
+
     pub fn first_word_start(&self) -> usize {
-        self.text
+        match self
+            .text
             .chars()
             .enumerate()
             .skip_while(|(_, c)| c.is_whitespace())
             .next()
-            .unwrap_or((0, char::default()))
-            .0
+        {
+            Some((i, _)) => i,
+            None => 0,
+        }
     }
 
     pub fn next_word_start_from(&self, column: usize) -> usize {
@@ -136,19 +152,19 @@ impl BufferLine {
             .char_indices()
             .map(|(i, c)| (i, CharKind::new(c)));
 
-        let (first_index, first_kind) = match kinds.next() {
-            Some((i, k)) => (i, k),
-            None => return self.text.len(),
+        let first_kind = match kinds.next() {
+            Some((_, k)) => k,
+            None => return self.index_to_column(self.text.len()),
         };
 
-        let index = kinds
+        let index = match kinds
             .skip_while(|(_, k)| *k == first_kind)
             .skip_while(|(_, k)| *k == CharKind::Whitespace)
             .next()
-            .unwrap_or((0, first_kind))
-            .0
-            + index
-            + first_index;
+        {
+            Some((i, _)) => index + i,
+            None => self.text.len(),
+        };
 
         self.index_to_column(index)
     }
@@ -169,11 +185,10 @@ impl BufferLine {
             None => return 0,
         };
 
-        let index = kinds
-            .take_while(|(_, k)| *k == first_kind)
-            .last()
-            .unwrap_or((first_index, first_kind))
-            .0;
+        let index = match kinds.take_while(|(_, k)| *k == first_kind).last() {
+            Some((i, _)) => i,
+            None => first_index,
+        };
 
         self.index_to_column(index)
     }

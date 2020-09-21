@@ -146,6 +146,94 @@ pub fn on_event(
             }
             _ => (),
         },
+        Key::Char('f') => match keys.next() {
+            Key::None => return ModeOperation::Pending,
+            Key::Char(c) => {
+                let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
+                let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
+
+                let mut cursors = buffer_view.cursors.mut_guard();
+                for cursor in &mut cursors[..] {
+                    cursor.position.column_index = buffer
+                        .content
+                        .line_at(cursor.position.line_index)
+                        .next_char_from(cursor.position.column_index, c)
+                        .unwrap_or(cursor.position.column_index);
+
+                    if let CursorMovementKind::PositionThenAnchor = state.movement_kind {
+                        cursor.anchor = cursor.position;
+                    }
+                }
+            }
+            _ => (),
+        },
+        Key::Char('F') => match keys.next() {
+            Key::None => return ModeOperation::Pending,
+            Key::Char(c) => {
+                let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
+                let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
+
+                let mut cursors = buffer_view.cursors.mut_guard();
+                for cursor in &mut cursors[..] {
+                    cursor.position.column_index = buffer
+                        .content
+                        .line_at(cursor.position.line_index)
+                        .previous_char_from(cursor.position.column_index, c)
+                        .unwrap_or(cursor.position.column_index);
+
+                    if let CursorMovementKind::PositionThenAnchor = state.movement_kind {
+                        cursor.anchor = cursor.position;
+                    }
+                }
+            }
+            _ => (),
+        },
+        Key::Char('t') => match keys.next() {
+            Key::None => return ModeOperation::Pending,
+            Key::Char(c) => {
+                let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
+                let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
+
+                let mut cursors = buffer_view.cursors.mut_guard();
+                for cursor in &mut cursors[..] {
+                    cursor.position.column_index = match buffer
+                        .content
+                        .line_at(cursor.position.line_index)
+                        .next_char_from(cursor.position.column_index, c)
+                    {
+                        Some(i) => i.saturating_sub(1),
+                        None => cursor.position.column_index,
+                    };
+
+                    if let CursorMovementKind::PositionThenAnchor = state.movement_kind {
+                        cursor.anchor = cursor.position;
+                    }
+                }
+            }
+            _ => (),
+        },
+        Key::Char('T') => match keys.next() {
+            Key::None => return ModeOperation::Pending,
+            Key::Char(c) => {
+                let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
+                let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
+
+                let mut cursors = buffer_view.cursors.mut_guard();
+                for cursor in &mut cursors[..] {
+                    let line = buffer.content.line_at(cursor.position.line_index);
+                    cursor.position.column_index =
+                        match line.previous_char_from(cursor.position.column_index, c) {
+                            Some(i) => line.char_count().min(i + 1),
+                            None => cursor.position.column_index,
+                        };
+
+                    if let CursorMovementKind::PositionThenAnchor = state.movement_kind {
+                        cursor.anchor = cursor.position;
+                    }
+                }
+            }
+            _ => (),
+        },
         Key::Char('x') => {
             let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
             let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
