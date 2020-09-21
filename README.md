@@ -75,17 +75,23 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- ~~word forward/backward~~
 	- ~~home/end/first-column~~
 	- ~~half-page down/up~~
-	- edit line bellow/above (`o` and `O`)
 	- find char
 	- remember column when moving between lines
+	- go to matching bracket
 - selections
 	- ~~select current word and search~~
 	- ~~add cursor on 'next search result' (`*`)~~
+	- skip one and add cursor on 'next next search result'
 	- ~~remove selections (set anchor to position)~~
 	- ~~swap anchor and position~~
 	- ~~select cursor lines~~
 	- ~~keep only main cursor~~
 	- ~~add cursor to each selection line~~
+	- cursor movement kind AnchorThenPosition (??)
+- editing
+	- keep previous identation
+	- edit line bellow/above (`o` and `O`)
+	- 
 - text objects
 	- word
 	- balanced braces

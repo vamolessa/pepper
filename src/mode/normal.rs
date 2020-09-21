@@ -279,6 +279,15 @@ pub fn on_event(
                 std::mem::swap(&mut cursor.anchor, &mut cursor.position);
             }
         }
+        Key::Char('_') => {
+            let mut cursors = unwrap_or_none!(ctx.buffer_views.get_mut(handle))
+                .cursors
+                .mut_guard();
+            for cursor in &mut cursors[..] {
+                cursor.anchor = cursor.position;
+            }
+            state.movement_kind = CursorMovementKind::PositionThenAnchor;
+        }
         Key::Char('(') => unwrap_or_none!(ctx.buffer_views.get_mut(handle))
             .cursors
             .previous_main_cursor(),
