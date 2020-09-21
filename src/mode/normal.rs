@@ -80,6 +80,25 @@ pub fn on_event(
             unwrap_or_none!(ctx.buffer_views.get_mut(handle))
                 .move_to_previous_search_match(ctx.buffers, state.movement_kind);
         }
+        Key::Char('a') => match keys.next() {
+            Key::None => return ModeOperation::Pending,
+            Key::Char('w') => {
+                let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
+                let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
+                let mut cursors = buffer_view.cursors.mut_guard();
+                for cursor in &mut cursors[..] {
+                    let (range, _) = buffer.content.find_word_at(cursor.position);
+                    cursor.anchor = range.from;
+                    cursor.position = range.to;
+                }
+                state.movement_kind = CursorMovementKind::PositionThenAnchor;
+            }
+            _ => (),
+        },
+        Key::Char('A') => match keys.next() {
+            Key::None => return ModeOperation::Pending,
+            _ => (),
+        },
         Key::Char('g') => match keys.next() {
             Key::None => return ModeOperation::Pending,
             Key::Char('g') => return ModeOperation::EnterMode(Mode::Goto(Default::default())),
