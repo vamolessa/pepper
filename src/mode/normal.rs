@@ -1,6 +1,7 @@
 use copypasta::{ClipboardContext, ClipboardProvider};
 
 use crate::{
+    buffer::Buffer,
     buffer_position::BufferPosition,
     buffer_view::{CursorMovement, CursorMovementKind},
     client_event::Key,
@@ -80,25 +81,40 @@ pub fn on_event(
             unwrap_or_none!(ctx.buffer_views.get_mut(handle))
                 .move_to_previous_search_match(ctx.buffers, state.movement_kind);
         }
-        Key::Char('a') => match keys.next() {
-            Key::None => return ModeOperation::Pending,
-            Key::Char('w') => {
-                let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
-                let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
-                let mut cursors = buffer_view.cursors.mut_guard();
-                for cursor in &mut cursors[..] {
-                    let (range, _) = buffer.content.find_word_at(cursor.position);
-                    cursor.anchor = range.from;
-                    cursor.position = range.to;
+        Key::Char('a') => {
+            fn balanced_brackets(buffer: &Buffer, cursors: &mut [Cursor], left: char, right: char) {
+                for cursor in cursors {
+                    let range = buffer
+                        .content
+                        .find_balanced_chars_at(cursor.position, left, right);
+                    if let Some(range) = range {
+                        cursor.anchor = range.from;
+                        cursor.position = range.to;
+                    }
                 }
-                state.movement_kind = CursorMovementKind::PositionThenAnchor;
             }
-            _ => (),
-        },
-        Key::Char('A') => match keys.next() {
-            Key::None => return ModeOperation::Pending,
-            _ => (),
-        },
+
+            let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
+            let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
+            let mut cursors = buffer_view.cursors.mut_guard();
+
+            match keys.next() {
+                Key::None => return ModeOperation::Pending,
+                Key::Char('w') => {
+                    for cursor in &mut cursors[..] {
+                        let (range, _) = buffer.content.find_word_at(cursor.position);
+                        cursor.anchor = range.from;
+                        cursor.position = range.to;
+                    }
+                }
+                Key::Char('(') => balanced_brackets(buffer, &mut cursors[..], '(', ')'),
+                Key::Char('[') => balanced_brackets(buffer, &mut cursors[..], '[', ']'),
+                Key::Char('{') => balanced_brackets(buffer, &mut cursors[..], '{', '}'),
+                _ => (),
+            }
+
+            state.movement_kind = CursorMovementKind::PositionThenAnchor;
+        }
         Key::Char('g') => match keys.next() {
             Key::None => return ModeOperation::Pending,
             Key::Char('g') => return ModeOperation::EnterMode(Mode::Goto(Default::default())),

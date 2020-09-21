@@ -527,6 +527,81 @@ impl BufferContent {
         );
         (range, word)
     }
+
+    pub fn find_balanced_chars_at(
+        &self,
+        position: BufferPosition,
+        left: char,
+        right: char,
+    ) -> Option<BufferRange> {
+        fn count_to_char<I>(iter: I, target: char, other: char) -> Option<usize>
+        where
+            I: Iterator<Item = char>,
+        {
+            let mut char_count = 0;
+            let mut balance_count = 0;
+            for c in iter {
+                if c == target {
+                    if balance_count == 0 {
+                        return Some(char_count);
+                    } else {
+                        balance_count -= 1;
+                    }
+                } else if c == other {
+                    balance_count += 1;
+                }
+                char_count += 1;
+            }
+            None
+        }
+
+        let position = self.clamp_position(position);
+        let line = self.line_at(position.line_index);
+        let split_index = line.column_to_index(position.column_index);
+        let (before, after) = line.as_str().split_at(split_index);
+
+        let left_position = match count_to_char(before.chars().rev(), left, right) {
+            Some(column_index) => {
+                let column_index = position.column_index - column_index;
+                BufferPosition::line_col(position.line_index, column_index)
+            }
+            None => {
+                let mut pos = None;
+                for line_index in (0..(position.line_index.saturating_sub(1))).rev() {
+                    let line = self.line_at(line_index);
+                    if let Some(column_index) =
+                        count_to_char(line.as_str().chars().rev(), left, right)
+                    {
+                        let column_index = line.char_count() - column_index;
+                        pos = Some(BufferPosition::line_col(line_index, column_index));
+                        break;
+                    }
+                }
+                pos?
+            }
+        };
+
+        let right_position = match count_to_char(after.chars(), right, left) {
+            Some(column_index) => {
+                let column_index = position.column_index + column_index;
+                BufferPosition::line_col(position.line_index, column_index)
+            }
+            None => {
+                let mut pos = None;
+                for line_index in (position.line_index + 1)..self.line_count() {
+                    let line = self.line_at(line_index);
+                    if let Some(column_index) = count_to_char(line.as_str().chars(), left, right) {
+                        let column_index = line.char_count() - column_index;
+                        pos = Some(BufferPosition::line_col(line_index, column_index));
+                        break;
+                    }
+                }
+                pos?
+            }
+        };
+
+        Some(BufferRange::between(left_position, right_position))
+    }
 }
 
 pub struct Buffer {

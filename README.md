@@ -79,6 +79,7 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- ~~find char~~
 	- remember column when moving between lines
 	- go to matching bracket
+	- cursor history navigation
 - selections
 	- ~~select current word and search~~
 	- ~~add cursor on 'next search result' (`*`)~~
@@ -91,8 +92,7 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- cursor movement kind AnchorThenPosition (??)
 - editing
 	- keep previous identation
-	- edit line bellow/above (`o` and `O`)
-	- 
+	- edit new line bellow/above (`o` and `O`)
 - text objects
 	- word
 	- balanced braces
