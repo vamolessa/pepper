@@ -121,8 +121,7 @@ impl Default for KeyMapCollection {
         this.parse_and_map(normal_mode, "<c-i>", "gli").unwrap();
 
         this.parse_and_map(normal_mode, "o", "gli<enter>").unwrap();
-        this.parse_and_map(normal_mode, "O", "ghi<enter><esc>ki")
-            .unwrap();
+        this.parse_and_map(normal_mode, "O", "kgli<enter>").unwrap();
 
         this.parse_and_map(insert_mode, "<c-h>", "<backspace>")
             .unwrap();
