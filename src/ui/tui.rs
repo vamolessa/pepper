@@ -233,7 +233,7 @@ where
     handle_command!(write, cursor::Hide)?;
 
     let cursor_color = match editor.mode {
-        Mode::Insert => convert_color(theme.cursor_insert),
+        Mode::Insert(_) => convert_color(theme.cursor_insert),
         _ => convert_color(theme.cursor_normal),
     };
 
@@ -493,12 +493,12 @@ where
     let x = if has_focus {
         if editor.status_message.is_empty() {
             match editor.mode {
-                Mode::Insert => {
+                Mode::Insert(_) => {
                     let text = "-- INSERT --";
                     handle_command!(write, Print(text))?;
                     Some(text.len())
                 }
-                Mode::Search => {
+                Mode::Search(_) => {
                     draw_input(write, "/", &editor.input, background_color, cursor_color)?;
                     None
                 }
@@ -506,7 +506,7 @@ where
                     draw_input(write, "#", &editor.input, background_color, cursor_color)?;
                     None
                 }
-                Mode::Script => {
+                Mode::Script(_) => {
                     draw_input(write, ":", &editor.input, background_color, cursor_color)?;
                     None
                 }

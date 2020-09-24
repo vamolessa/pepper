@@ -93,12 +93,14 @@ impl Default for KeyMapCollection {
         };
 
         let normal_mode = Mode::Normal(Default::default()).discriminant();
+        let insert_mode = Mode::Insert(Default::default()).discriminant();
+
         let all_modes = [
             normal_mode,
-            Mode::Insert.discriminant(),
-            Mode::Search.discriminant(),
+            insert_mode,
+            Mode::Search(Default::default()).discriminant(),
             Mode::Goto(Default::default()).discriminant(),
-            Mode::Script.discriminant(),
+            Mode::Script(Default::default()).discriminant(),
         ];
 
         for mode in &all_modes {
@@ -116,7 +118,7 @@ impl Default for KeyMapCollection {
         this.parse_and_map(normal_mode, "I", "ghi").unwrap();
         this.parse_and_map(normal_mode, "<c-i>", "gli").unwrap();
 
-        this.parse_and_map(Mode::Insert.discriminant(), "<c-h>", "<backspace>")
+        this.parse_and_map(insert_mode, "<c-h>", "<backspace>")
             .unwrap();
 
         this

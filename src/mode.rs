@@ -66,12 +66,18 @@ impl<'a> ModeContext<'a> {
     }
 }
 
+pub trait ModeState: Default {
+    fn on_enter(&mut self, _context: &mut ModeContext) {}
+    fn on_exit(&mut self, _context: &mut ModeContext) {}
+    fn on_event(&mut self, context: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation;
+}
+
 pub enum Mode {
     Normal(normal::State),
-    Insert,
-    Search,
+    Insert(insert::State),
+    Search(search::State),
     Goto(goto::State),
-    Script,
+    Script(script::State),
 }
 
 impl Mode {
@@ -81,21 +87,21 @@ impl Mode {
 
     pub fn on_enter(&mut self, context: &mut ModeContext) {
         match self {
-            Mode::Normal(state) => normal::on_enter(state, context),
-            Mode::Insert => insert::on_enter(context),
-            Mode::Search => search::on_enter(context),
-            Mode::Goto(state) => goto::on_enter(state, context),
-            Mode::Script => script::on_enter(context),
+            Mode::Normal(state) => state.on_enter(context),
+            Mode::Insert(state) => state.on_enter(context),
+            Mode::Search(state) => state.on_enter(context),
+            Mode::Goto(state) => state.on_enter(context),
+            Mode::Script(state) => state.on_enter(context),
         }
     }
 
     pub fn on_exit(&mut self, context: &mut ModeContext) {
         match self {
-            Mode::Normal(_) => normal::on_exit(context),
-            Mode::Insert => insert::on_exit(context),
-            Mode::Search => search::on_exit(context),
-            Mode::Goto(_) => goto::on_exit(context),
-            Mode::Script => script::on_exit(context),
+            Mode::Normal(state) => state.on_exit(context),
+            Mode::Insert(state) => state.on_exit(context),
+            Mode::Search(state) => state.on_exit(context),
+            Mode::Goto(state) => state.on_exit(context),
+            Mode::Script(state) => state.on_exit(context),
         }
     }
 
@@ -105,11 +111,11 @@ impl Mode {
         keys: &mut KeysIterator,
     ) -> ModeOperation {
         match self {
-            Mode::Normal(state) => normal::on_event(state, context, keys),
-            Mode::Insert => insert::on_event(context, keys),
-            Mode::Search => search::on_event(context, keys),
-            Mode::Goto(state) => goto::on_event(state, context, keys),
-            Mode::Script => script::on_event(context, keys),
+            Mode::Normal(state) => state.on_event(context, keys),
+            Mode::Insert(state) => state.on_event(context, keys),
+            Mode::Search(state) => state.on_event(context, keys),
+            Mode::Goto(state) => state.on_event(context, keys),
+            Mode::Script(state) => state.on_event(context, keys),
         }
     }
 }

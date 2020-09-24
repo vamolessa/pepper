@@ -60,6 +60,27 @@ pub enum StatusMessageKind {
     Error,
 }
 
+struct A {
+    pub config: Config,
+    //pub mode: Mode,
+
+    pub buffers: BufferCollection,
+    pub buffer_views: BufferViewCollection,
+    pub word_database: WordDatabase,
+
+    //pub buffered_keys: Vec<Key>,
+    pub input: String,
+    pub picker: Picker,
+
+    pub focused_client: TargetClient,
+    pub status_message: String,
+    pub status_message_kind: StatusMessageKind,
+
+    pub keymaps: KeyMapCollection,
+    pub scripts: ScriptEngine,
+    //client_target_map: ClientTargetMap,
+}
+
 pub struct Editor {
     pub config: Config,
     pub mode: Mode,
@@ -112,11 +133,10 @@ impl Editor {
     }
 
     pub fn load_config(&mut self, clients: &mut ClientCollection, path: &Path) {
-        let mut editor_loop = EditorLoop::Continue;
-        let ctx = ScriptContext {
+        let mut ctx = ScriptContext {
             target_client: TargetClient::Local,
             clients,
-            editor_loop: &mut editor_loop,
+            editor_loop: EditorLoop::Continue,
 
             config: &mut self.config,
 
@@ -132,7 +152,7 @@ impl Editor {
             keymaps: &mut self.keymaps,
         };
 
-        if let Err(e) = self.scripts.eval_entry_file(ctx, path) {
+        if let Err(e) = self.scripts.eval_entry_file(&mut ctx, path) {
             let message = e.to_string();
             self.status_message(StatusMessageKind::Error, &message);
         }

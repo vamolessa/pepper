@@ -93,12 +93,12 @@ mod global {
     }
 
     pub fn quit(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
-        *ctx.editor_loop = EditorLoop::Quit;
+        ctx.editor_loop = EditorLoop::Quit;
         Err(ScriptError::from(QuitError))
     }
 
     pub fn quit_all(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
-        *ctx.editor_loop = EditorLoop::QuitAll;
+        ctx.editor_loop = EditorLoop::QuitAll;
         Err(ScriptError::from(QuitError))
     }
 
@@ -385,7 +385,7 @@ mod keymap {
         ctx: &mut ScriptContext,
         (from, to): (ScriptString, ScriptString),
     ) -> ScriptResult<()> {
-        map_mode(ctx, Mode::Insert, from, to)
+        map_mode(ctx, Mode::Insert(Default::default()), from, to)
     }
 
     fn map_mode(

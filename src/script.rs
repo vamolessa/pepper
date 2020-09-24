@@ -215,7 +215,7 @@ impl<'lua> TryInto<char> for ScriptValue<'lua> {
 pub struct ScriptContext<'a> {
     pub target_client: TargetClient,
     pub clients: &'a mut ClientCollection,
-    pub editor_loop: &'a mut EditorLoop,
+    pub editor_loop: EditorLoop,
 
     pub config: &'a mut Config,
 
@@ -272,12 +272,12 @@ impl ScriptEngine {
         ScriptEngineRef { lua: &self.lua }
     }
 
-    pub fn eval(&mut self, mut ctx: ScriptContext, source: &str) -> ScriptResult<ScriptValue> {
-        self.update_ctx(&mut ctx)?;
+    pub fn eval(&mut self, ctx: &mut ScriptContext, source: &str) -> ScriptResult<ScriptValue> {
+        self.update_ctx(ctx)?;
         self.lua.load(source).set_name(source)?.eval()
     }
 
-    pub fn eval_entry_file(&mut self, mut ctx: ScriptContext, path: &Path) -> ScriptResult<()> {
+    pub fn eval_entry_file(&mut self, ctx: &mut ScriptContext, path: &Path) -> ScriptResult<()> {
         let mut file = File::open(path).map_err(|e| LuaError::ExternalError(Arc::new(e)))?;
         let metadata = file
             .metadata()
@@ -286,7 +286,7 @@ impl ScriptEngine {
         file.read_to_string(&mut source)
             .map_err(|e| LuaError::ExternalError(Arc::new(e)))?;
 
-        self.update_ctx(&mut ctx)?;
+        self.update_ctx(ctx)?;
 
         let chunk = self.lua.load(&source);
         if let Some(name) = path.to_str() {
