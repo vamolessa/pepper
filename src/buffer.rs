@@ -111,11 +111,10 @@ impl BufferLine {
 
     pub fn next_char_from(&self, index: usize, c: char) -> Option<usize> {
         let mut matches = self.text[index..].match_indices(c);
-        let first = matches.next()?.0;
-        if first > 0 {
-            Some(index + first)
-        } else {
-            Some(index + matches.next()?.0)
+        match matches.next() {
+            Some((0, _)) => Some(index + matches.next()?.0),
+            Some((i, _)) => Some(index + i),
+            None => None,
         }
     }
 
@@ -462,21 +461,19 @@ impl BufferContent {
     ) -> Option<BufferRange> {
         fn find<I>(iter: I, target: char, other: char) -> Option<usize>
         where
-            I: Iterator<Item = char>,
+            I: Iterator<Item = (usize, char)>,
         {
-            let mut char_count = 0;
-            let mut balance_count = 0;
-            for c in iter {
+            let mut balance = 0;
+            for (i, c) in iter {
                 if c == target {
-                    if balance_count == 0 {
-                        return Some(char_count);
+                    if balance == 0 {
+                        return Some(i);
                     } else {
-                        balance_count -= 1;
+                        balance -= 1;
                     }
                 } else if c == other {
-                    balance_count += 1;
+                    balance += 1;
                 }
-                char_count += 1;
             }
             None
         }
@@ -485,18 +482,19 @@ impl BufferContent {
         let line = self.line_at(position.line_index);
         let (before, after) = line.as_str().split_at(position.column_byte_index);
 
-        let left_position = match find(before.chars().rev(), left, right) {
+        let left_position = match find(before.char_indices().rev(), left, right) {
             Some(column_byte_index) => {
-                let column_byte_index = position.column_byte_index - column_byte_index;
+                let column_byte_index = column_byte_index + left.len_utf8();
                 BufferPosition::line_col(position.line_index, column_byte_index)
             }
             None => {
                 let mut pos = None;
                 for line_index in (0..(position.line_index.saturating_sub(1))).rev() {
                     let line = self.line_at(line_index);
-                    if let Some(column_byte_index) = find(line.as_str().chars().rev(), left, right)
+                    if let Some(column_byte_index) =
+                        find(line.as_str().char_indices().rev(), left, right)
                     {
-                        let column_byte_index = line.as_str().len() - column_byte_index;
+                        let column_byte_index = column_byte_index + left.len_utf8();
                         pos = Some(BufferPosition::line_col(line_index, column_byte_index));
                         break;
                     }
@@ -505,7 +503,7 @@ impl BufferContent {
             }
         };
 
-        let right_position = match find(after.chars(), right, left) {
+        let right_position = match find(after.char_indices(), right, left) {
             Some(column_byte_index) => {
                 let column_byte_index = position.column_byte_index + column_byte_index;
                 BufferPosition::line_col(position.line_index, column_byte_index)
@@ -514,7 +512,8 @@ impl BufferContent {
                 let mut pos = None;
                 for line_index in (position.line_index + 1)..self.line_count() {
                     let line = self.line_at(line_index);
-                    if let Some(column_byte_index) = find(line.as_str().chars(), left, right) {
+                    if let Some(column_byte_index) = find(line.as_str().char_indices(), left, right)
+                    {
                         let column_byte_index = line.as_str().len() - column_byte_index;
                         pos = Some(BufferPosition::line_col(line_index, column_byte_index));
                         break;
