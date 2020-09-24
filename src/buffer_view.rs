@@ -67,14 +67,15 @@ impl BufferView {
         match movement {
             CursorMovement::ColumnsForward(n) => {
                 for c in &mut cursors[..] {
-                    c.position.column_byte_index +=
-                        buffer.content.line_at(c.position.line_index).as_str()
-                            [c.position.column_byte_index..]
-                            .char_indices()
-                            .skip(n)
-                            .next()
-                            .unwrap_or((0, char::default()))
-                            .0;
+                    let line = buffer.content.line_at(c.position.line_index).as_str();
+                    c.position.column_byte_index = match line[c.position.column_byte_index..]
+                        .char_indices()
+                        .skip(n)
+                        .next()
+                    {
+                        Some((i, _)) => c.position.column_byte_index + i,
+                        None => line.len(),
+                    };
                 }
             }
             CursorMovement::ColumnsBackward(n) => {
