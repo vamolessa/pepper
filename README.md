@@ -92,8 +92,8 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- ~~add cursor to each selection line~~
 	- cursor movement kind AnchorThenPosition (??)
 - editing
+	- ~~edit new line bellow/above (`o` and `O`)~~
 	- keep previous identation
-	- edit new line bellow/above (`o` and `O`)
 - text objects
 	- ~~inner word~~
 	- outer word

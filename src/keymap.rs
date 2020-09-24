@@ -113,10 +113,16 @@ impl Default for KeyMapCollection {
             .unwrap();
         this.parse_and_map(normal_mode, "<c-c>", "<esc>;_/<esc>")
             .unwrap();
+
         this.parse_and_map(normal_mode, "s", "/").unwrap();
+
         this.parse_and_map(normal_mode, "#", "gg").unwrap();
         this.parse_and_map(normal_mode, "I", "ghi").unwrap();
         this.parse_and_map(normal_mode, "<c-i>", "gli").unwrap();
+
+        this.parse_and_map(normal_mode, "o", "gli<enter>").unwrap();
+        this.parse_and_map(normal_mode, "O", "ghi<enter><esc>ki")
+            .unwrap();
 
         this.parse_and_map(insert_mode, "<c-h>", "<backspace>")
             .unwrap();
