@@ -39,7 +39,7 @@ pub struct PatternState {
 
 #[derive(Clone)]
 pub struct Pattern {
-    ops: Box<[Op]>,
+    ops: Vec<Op>,
     start_jump: Jump,
 }
 
@@ -297,7 +297,7 @@ impl<'a> PatternCompiler<'a> {
         self.optimize();
 
         Ok(Pattern {
-            ops: self.ops.into_boxed_slice(),
+            ops: self.ops,
             start_jump: self.start_jump,
         })
     }
