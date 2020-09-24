@@ -100,30 +100,54 @@ impl ModeState for State {
                             cursor.position = range.to;
                         }
                     }
-                    Key::Char('(') => balanced_brackets(buffer, &mut cursors[..], '(', ')'),
-                    Key::Char('[') => balanced_brackets(buffer, &mut cursors[..], '[', ']'),
-                    Key::Char('{') => balanced_brackets(buffer, &mut cursors[..], '{', '}'),
+                    Key::Char('(') | Key::Char(')') => {
+                        balanced_brackets(buffer, &mut cursors[..], '(', ')')
+                    }
+                    Key::Char('[') | Key::Char(']') => {
+                        balanced_brackets(buffer, &mut cursors[..], '[', ']')
+                    }
+                    Key::Char('{') | Key::Char('}') => {
+                        balanced_brackets(buffer, &mut cursors[..], '{', '}')
+                    }
+                    Key::Char('<') | Key::Char('>') => {
+                        balanced_brackets(buffer, &mut cursors[..], '<', '>')
+                    }
+                    Key::Char('|') => balanced_brackets(buffer, &mut cursors[..], '|', '|'),
+                    Key::Char('"') => balanced_brackets(buffer, &mut cursors[..], '"', '"'),
+                    Key::Char('\'') => balanced_brackets(buffer, &mut cursors[..], '\'', '\''),
                     _ => (),
                 }
 
                 self.movement_kind = CursorMovementKind::PositionAndAnchor;
             }
             Key::Char('g') => {
+                let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
                 match keys.next() {
                     Key::None => return ModeOperation::Pending,
                     Key::Char('g') => {
                         return ModeOperation::EnterMode(Mode::Goto(Default::default()))
                     }
-                    Key::Char('h') => unwrap_or_none!(ctx.buffer_views.get_mut(handle))
-                        .move_cursors(ctx.buffers, CursorMovement::Home, self.movement_kind),
-                    Key::Char('j') => unwrap_or_none!(ctx.buffer_views.get_mut(handle))
-                        .move_cursors(ctx.buffers, CursorMovement::LastLine, self.movement_kind),
-                    Key::Char('k') => unwrap_or_none!(ctx.buffer_views.get_mut(handle))
-                        .move_cursors(ctx.buffers, CursorMovement::FirstLine, self.movement_kind),
-                    Key::Char('l') => unwrap_or_none!(ctx.buffer_views.get_mut(handle))
-                        .move_cursors(ctx.buffers, CursorMovement::End, self.movement_kind),
+                    Key::Char('h') => buffer_view.move_cursors(
+                        ctx.buffers,
+                        CursorMovement::Home,
+                        self.movement_kind,
+                    ),
+                    Key::Char('j') => buffer_view.move_cursors(
+                        ctx.buffers,
+                        CursorMovement::LastLine,
+                        self.movement_kind,
+                    ),
+                    Key::Char('k') => buffer_view.move_cursors(
+                        ctx.buffers,
+                        CursorMovement::FirstLine,
+                        self.movement_kind,
+                    ),
+                    Key::Char('l') => buffer_view.move_cursors(
+                        ctx.buffers,
+                        CursorMovement::End,
+                        self.movement_kind,
+                    ),
                     Key::Char('n') => {
-                        let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
                         let buffer =
                             unwrap_or_none!(ctx.buffers.get_mut(buffer_view.buffer_handle));
 

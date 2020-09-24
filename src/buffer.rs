@@ -459,22 +459,24 @@ impl BufferContent {
         left: char,
         right: char,
     ) -> Option<BufferRange> {
-        fn find<I>(iter: I, target: char, other: char) -> Option<usize>
+        fn find<I>(iter: I, target: char, other: char, balance: &mut usize) -> Option<usize>
         where
             I: Iterator<Item = (usize, char)>,
         {
-            let mut balance = 0;
+            let mut b = *balance;
             for (i, c) in iter {
                 if c == target {
-                    if balance == 0 {
+                    if b == 0 {
+                        *balance = 0;
                         return Some(i);
                     } else {
-                        balance -= 1;
+                        b -= 1;
                     }
                 } else if c == other {
-                    balance += 1;
+                    b += 1;
                 }
             }
+            *balance = b;
             None
         }
 
@@ -482,41 +484,67 @@ impl BufferContent {
         let line = self.line_at(position.line_index).as_str();
         let (before, after) = line.split_at(position.column_byte_index);
 
-        let left_position = match find(before.char_indices().rev(), left, right) {
-            Some(column_byte_index) => {
-                let column_byte_index = column_byte_index + left.len_utf8();
-                BufferPosition::line_col(position.line_index, column_byte_index)
+        let mut balance = 0;
+
+        let mut left_position = None;
+        let mut right_position = None;
+
+        let mut after_chars = after.char_indices();
+        if let Some((i, c)) = after_chars.next() {
+            if c == left {
+                left_position = Some(position.column_byte_index + i + c.len_utf8());
+            } else if c == right {
+                right_position = Some(position.column_byte_index + i);
             }
-            None => {
-                let mut pos = None;
-                for line_index in (0..position.line_index).rev() {
-                    let line = self.line_at(line_index).as_str();
-                    if let Some(column_byte_index) = find(line.char_indices().rev(), left, right) {
-                        let column_byte_index = column_byte_index + left.len_utf8();
-                        pos = Some(BufferPosition::line_col(line_index, column_byte_index));
-                        break;
-                    }
+        }
+
+        let right_position = match right_position {
+            Some(column_index) => BufferPosition::line_col(position.line_index, column_index),
+            None => match find(after_chars, right, left, &mut balance) {
+                Some(column_byte_index) => {
+                    let column_byte_index = position.column_byte_index + column_byte_index;
+                    BufferPosition::line_col(position.line_index, column_byte_index)
                 }
-                pos?
-            }
+                None => {
+                    let mut pos = None;
+                    for line_index in (position.line_index + 1)..self.line_count() {
+                        let line = self.line_at(line_index).as_str();
+                        if let Some(column_byte_index) =
+                            find(line.char_indices(), right, left, &mut balance)
+                        {
+                            pos = Some(BufferPosition::line_col(line_index, column_byte_index));
+                            break;
+                        }
+                    }
+                    pos?
+                }
+            },
         };
 
-        let right_position = match find(after.char_indices(), right, left) {
-            Some(column_byte_index) => {
-                let column_byte_index = position.column_byte_index + column_byte_index;
-                BufferPosition::line_col(position.line_index, column_byte_index)
-            }
-            None => {
-                let mut pos = None;
-                for line_index in (position.line_index + 1)..self.line_count() {
-                    let line = self.line_at(line_index).as_str();
-                    if let Some(column_byte_index) = find(line.char_indices(), right, left) {
-                        pos = Some(BufferPosition::line_col(line_index, column_byte_index));
-                        break;
-                    }
+        balance = 0;
+
+        let left_position = match left_position {
+            Some(column_index) => BufferPosition::line_col(position.line_index, column_index),
+            None => match find(before.char_indices().rev(), left, right, &mut balance) {
+                Some(column_byte_index) => {
+                    let column_byte_index = column_byte_index + left.len_utf8();
+                    BufferPosition::line_col(position.line_index, column_byte_index)
                 }
-                pos?
-            }
+                None => {
+                    let mut pos = None;
+                    for line_index in (0..position.line_index).rev() {
+                        let line = self.line_at(line_index).as_str();
+                        if let Some(column_byte_index) =
+                            find(line.char_indices().rev(), left, right, &mut balance)
+                        {
+                            let column_byte_index = column_byte_index + left.len_utf8();
+                            pos = Some(BufferPosition::line_col(line_index, column_byte_index));
+                            break;
+                        }
+                    }
+                    pos?
+                }
+            },
         };
 
         Some(BufferRange::between(left_position, right_position))
@@ -1028,18 +1056,87 @@ mod tests {
 
         assert_eq!(
             Some(BufferRange::between(
+                BufferPosition::line_col(0, 1),
+                BufferPosition::line_col(4, 2)
+            )),
+            buffer.find_balanced_chars_at(BufferPosition::line_col(0, 0), '(', ')')
+        );
+        assert_eq!(
+            Some(BufferRange::between(
                 BufferPosition::line_col(1, 1),
                 BufferPosition::line_col(3, 0)
             )),
             buffer.find_balanced_chars_at(BufferPosition::line_col(2, 0), '(', ')')
         );
-
         assert_eq!(
             Some(BufferRange::between(
                 BufferPosition::line_col(0, 1),
                 BufferPosition::line_col(4, 2)
             )),
             buffer.find_balanced_chars_at(BufferPosition::line_col(0, 1), '(', ')')
+        );
+        assert_eq!(
+            Some(BufferRange::between(
+                BufferPosition::line_col(0, 1),
+                BufferPosition::line_col(4, 2)
+            )),
+            buffer.find_balanced_chars_at(BufferPosition::line_col(4, 0), '(', ')')
+        );
+        assert_eq!(
+            Some(BufferRange::between(
+                BufferPosition::line_col(0, 1),
+                BufferPosition::line_col(4, 2)
+            )),
+            buffer.find_balanced_chars_at(BufferPosition::line_col(0, 0), '(', ')')
+        );
+        assert_eq!(
+            Some(BufferRange::between(
+                BufferPosition::line_col(0, 1),
+                BufferPosition::line_col(4, 2)
+            )),
+            buffer.find_balanced_chars_at(BufferPosition::line_col(4, 2), '(', ')')
+        );
+
+        let buffer = BufferContent::from_str("|\n|\na\n|\nbc|");
+
+        assert_eq!(
+            Some(BufferRange::between(
+                BufferPosition::line_col(0, 1),
+                BufferPosition::line_col(1, 0)
+            )),
+            buffer.find_balanced_chars_at(BufferPosition::line_col(0, 0), '|', '|')
+        );
+        assert_eq!(
+            Some(BufferRange::between(
+                BufferPosition::line_col(1, 1),
+                BufferPosition::line_col(3, 0)
+            )),
+            buffer.find_balanced_chars_at(BufferPosition::line_col(2, 0), '|', '|')
+        );
+        assert_eq!(
+            Some(BufferRange::between(
+                BufferPosition::line_col(0, 1),
+                BufferPosition::line_col(1, 0)
+            )),
+            buffer.find_balanced_chars_at(BufferPosition::line_col(0, 1), '|', '|')
+        );
+        assert_eq!(
+            Some(BufferRange::between(
+                BufferPosition::line_col(3, 1),
+                BufferPosition::line_col(4, 2)
+            )),
+            buffer.find_balanced_chars_at(BufferPosition::line_col(4, 0), '|', '|')
+        );
+        assert_eq!(
+            Some(BufferRange::between(
+                BufferPosition::line_col(0, 1),
+                BufferPosition::line_col(1, 0)
+            )),
+            buffer.find_balanced_chars_at(BufferPosition::line_col(0, 0), '|', '|')
+        );
+        assert_eq!(
+            None,
+            buffer.find_balanced_chars_at(BufferPosition::line_col(4, 2), '|', '|')
         );
     }
 }

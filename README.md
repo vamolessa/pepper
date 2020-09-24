@@ -77,6 +77,7 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- ~~home/end/first-column~~
 	- ~~half-page down/up~~
 	- ~~find char~~
+	- center main cursor, main cursor at top, main cursor at bottom (`zz`, `zk`, `zj`)
 	- remember column when moving between lines
 	- go to matching bracket
 	- cursor history navigation
@@ -94,8 +95,10 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- keep previous identation
 	- edit new line bellow/above (`o` and `O`)
 - text objects
-	- word
-	- balanced braces
+	- ~~inner word~~
+	- outer word
+	- ~~inner balanced braces~~
+	- outer balanced braces
 - macros (??)
 	- repeat last action (`.`)
 	- record/play custom macros
