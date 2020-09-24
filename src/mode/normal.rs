@@ -189,11 +189,11 @@ pub fn on_event(
 
                 let mut cursors = buffer_view.cursors.mut_guard();
                 for cursor in &mut cursors[..] {
-                    cursor.position.column_index = buffer
+                    cursor.position.column_byte_index = buffer
                         .content
                         .line_at(cursor.position.line_index)
-                        .next_char_from(cursor.position.column_index, c)
-                        .unwrap_or(cursor.position.column_index);
+                        .next_char_from(cursor.position.column_byte_index, c)
+                        .unwrap_or(cursor.position.column_byte_index);
 
                     if let CursorMovementKind::PositionThenAnchor = state.movement_kind {
                         cursor.anchor = cursor.position;
@@ -210,11 +210,11 @@ pub fn on_event(
 
                 let mut cursors = buffer_view.cursors.mut_guard();
                 for cursor in &mut cursors[..] {
-                    cursor.position.column_index = buffer
+                    cursor.position.column_byte_index = buffer
                         .content
                         .line_at(cursor.position.line_index)
-                        .previous_char_from(cursor.position.column_index, c)
-                        .unwrap_or(cursor.position.column_index);
+                        .previous_char_from(cursor.position.column_byte_index, c)
+                        .unwrap_or(cursor.position.column_byte_index);
 
                     if let CursorMovementKind::PositionThenAnchor = state.movement_kind {
                         cursor.anchor = cursor.position;
@@ -231,13 +231,13 @@ pub fn on_event(
 
                 let mut cursors = buffer_view.cursors.mut_guard();
                 for cursor in &mut cursors[..] {
-                    cursor.position.column_index = match buffer
+                    cursor.position.column_byte_index = match buffer
                         .content
                         .line_at(cursor.position.line_index)
-                        .next_char_from(cursor.position.column_index, c)
+                        .next_char_from(cursor.position.column_byte_index, c)
                     {
                         Some(i) => i.saturating_sub(1),
-                        None => cursor.position.column_index,
+                        None => cursor.position.column_byte_index,
                     };
 
                     if let CursorMovementKind::PositionThenAnchor = state.movement_kind {
@@ -256,10 +256,10 @@ pub fn on_event(
                 let mut cursors = buffer_view.cursors.mut_guard();
                 for cursor in &mut cursors[..] {
                     let line = buffer.content.line_at(cursor.position.line_index);
-                    cursor.position.column_index =
-                        match line.previous_char_from(cursor.position.column_index, c) {
+                    cursor.position.column_byte_index =
+                        match line.previous_char_from(cursor.position.column_byte_index, c) {
                             Some(i) => line.char_count().min(i + 1),
-                            None => cursor.position.column_index,
+                            None => cursor.position.column_byte_index,
                         };
 
                     if let CursorMovementKind::PositionThenAnchor = state.movement_kind {
@@ -281,11 +281,11 @@ pub fn on_event(
                     .char_count();
 
                 if cursor.anchor < cursor.position {
-                    cursor.anchor.column_index = 0;
-                    cursor.position.column_index = char_count;
+                    cursor.anchor.column_byte_index = 0;
+                    cursor.position.column_byte_index = char_count;
                 } else {
-                    cursor.anchor.column_index = char_count;
-                    cursor.position.column_index = 0;
+                    cursor.anchor.column_byte_index = char_count;
+                    cursor.position.column_byte_index = 0;
                 }
             }
         }

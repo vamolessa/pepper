@@ -3,14 +3,14 @@ use std::cmp::{Ord, Ordering, PartialOrd};
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
 pub struct BufferPosition {
     pub line_index: usize,
-    pub column_index: usize,
+    pub column_byte_index: usize,
 }
 
 impl BufferPosition {
-    pub const fn line_col(line_index: usize, column_index: usize) -> Self {
+    pub const fn line_col(line_index: usize, column_byte_index: usize) -> Self {
         Self {
             line_index,
-            column_index,
+            column_byte_index,
         }
     }
 
@@ -19,14 +19,14 @@ impl BufferPosition {
             self
         } else if self.line_index > range.from.line_index {
             Self {
-                column_index: self.column_index,
+                column_byte_index: self.column_byte_index,
                 line_index: self.line_index + range.to.line_index - range.from.line_index,
             }
-        } else if self.column_index < range.from.column_index {
+        } else if self.column_byte_index < range.from.column_byte_index {
             self
         } else {
             Self {
-                column_index: self.column_index + range.to.column_index - range.from.column_index,
+                column_byte_index: self.column_byte_index + range.to.column_byte_index - range.from.column_byte_index,
                 line_index: self.line_index + range.to.line_index - range.from.line_index,
             }
         }
@@ -37,18 +37,18 @@ impl BufferPosition {
             self
         } else if self.line_index > range.to.line_index {
             Self {
-                column_index: self.column_index,
+                column_byte_index: self.column_byte_index,
                 line_index: self.line_index - (range.to.line_index - range.from.line_index),
             }
         } else if self.line_index == range.from.line_index
-            && self.column_index < range.from.column_index
+            && self.column_byte_index < range.from.column_byte_index
         {
             self
         } else if self.line_index == range.to.line_index
-            && self.column_index > range.to.column_index
+            && self.column_byte_index > range.to.column_byte_index
         {
             Self {
-                column_index: range.from.column_index + self.column_index - range.to.column_index,
+                column_byte_index: range.from.column_byte_index + self.column_byte_index - range.to.column_byte_index,
                 line_index: range.from.line_index,
             }
         } else {
@@ -63,9 +63,9 @@ impl Ord for BufferPosition {
             Ordering::Less
         } else if self.line_index > other.line_index {
             Ordering::Greater
-        } else if self.column_index < other.column_index {
+        } else if self.column_byte_index < other.column_byte_index {
             Ordering::Less
-        } else if self.column_index > other.column_index {
+        } else if self.column_byte_index > other.column_byte_index {
             Ordering::Greater
         } else {
             Ordering::Equal
@@ -101,8 +101,8 @@ impl BufferRange {
 mod tests {
     use super::*;
 
-    fn pos(line_index: usize, column_index: usize) -> BufferPosition {
-        BufferPosition::line_col(line_index, column_index)
+    fn pos(line_index: usize, column_byte_index: usize) -> BufferPosition {
+        BufferPosition::line_col(line_index, column_byte_index)
     }
 
     #[test]

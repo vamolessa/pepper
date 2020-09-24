@@ -259,7 +259,7 @@ where
 
     'lines_loop: for line in client_view.buffer_content.lines().skip(line_index) {
         let mut draw_state = DrawState::Token(TokenKind::Text);
-        let mut column_index = 0;
+        let mut column_byte_index = 0;
         let mut x = 0;
 
         handle_command!(write, SetForegroundColor(token_text_color))?;
@@ -276,7 +276,7 @@ where
                 }
             }
 
-            let char_position = BufferPosition::line_col(line_index, column_index);
+            let char_position = BufferPosition::line_col(line_index, column_byte_index);
 
             let token_kind = if c.is_ascii_whitespace() {
                 TokenKind::Whitespace
@@ -372,7 +372,7 @@ where
                 }
             }
 
-            column_index += 1;
+            column_byte_index += 1;
         }
 
         if x < width {
@@ -556,7 +556,7 @@ where
         .zip(x)
     {
         let line_number = client_view.main_cursor.position.line_index + 1;
-        let column_number = client_view.main_cursor.position.column_index + 1;
+        let column_number = client_view.main_cursor.position.column_byte_index + 1;
         let line_digit_count = find_digit_count(line_number);
         let column_digit_count = find_digit_count(column_number);
         let skip = (client_view.client.viewport_size.0 as usize).saturating_sub(

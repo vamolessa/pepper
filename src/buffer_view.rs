@@ -67,16 +67,16 @@ impl BufferView {
         match movement {
             CursorMovement::ColumnsForward(n) => {
                 for c in &mut cursors[..] {
-                    c.position.column_index = buffer
+                    c.position.column_byte_index = buffer
                         .content
                         .line_at(c.position.line_index)
                         .char_count()
-                        .min(c.position.column_index + n);
+                        .min(c.position.column_byte_index + n);
                 }
             }
             CursorMovement::ColumnsBackward(n) => {
                 for c in &mut cursors[..] {
-                    c.position.column_index = c.position.column_index.saturating_sub(n);
+                    c.position.column_byte_index = c.position.column_byte_index.saturating_sub(n);
                 }
             }
             CursorMovement::LinesForward(n) => {
@@ -98,26 +98,26 @@ impl BufferView {
             CursorMovement::WordsForward(n) => {
                 for c in &mut cursors[..] {
                     for _ in 0..n {
-                        c.position.column_index = buffer
+                        c.position.column_byte_index = buffer
                             .content
                             .line_at(c.position.line_index)
-                            .next_word_start_from(c.position.column_index);
+                            .next_word_start_from(c.position.column_byte_index);
                     }
                 }
             }
             CursorMovement::WordsBackward(n) => {
                 for c in &mut cursors[..] {
                     for _ in 0..n {
-                        c.position.column_index = buffer
+                        c.position.column_byte_index = buffer
                             .content
                             .line_at(c.position.line_index)
-                            .previous_word_start_from(c.position.column_index);
+                            .previous_word_start_from(c.position.column_byte_index);
                     }
                 }
             }
             CursorMovement::Home => {
                 for c in &mut cursors[..] {
-                    c.position.column_index = buffer
+                    c.position.column_byte_index = buffer
                         .content
                         .line_at(c.position.line_index)
                         .first_word_start();
@@ -125,7 +125,7 @@ impl BufferView {
             }
             CursorMovement::End => {
                 for c in &mut cursors[..] {
-                    c.position.column_index =
+                    c.position.column_byte_index =
                         buffer.content.line_at(c.position.line_index).char_count();
                 }
             }
@@ -381,7 +381,7 @@ impl BufferViewCollection {
         self.fix_cursor_ranges.clear();
         for (i, cursor) in current_view.cursors[..].iter().enumerate().rev() {
             let mut word_position = cursor.position;
-            word_position.column_index = word_position.column_index.saturating_sub(1);
+            word_position.column_byte_index = word_position.column_byte_index.saturating_sub(1);
             let (word_range, word) = buffer.content.find_word_at(word_position);
 
             if !word.is_empty() {

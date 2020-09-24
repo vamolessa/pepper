@@ -40,7 +40,7 @@ pub fn on_event(
             let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
             let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
 
-            let position = BufferPosition::line_col(line_index, state.saved_position.column_index);
+            let position = BufferPosition::line_col(line_index, state.saved_position.column_byte_index);
             let position = buffer.content.saturate_position(position);
 
             let mut cursors = buffer_view.cursors.mut_guard();
