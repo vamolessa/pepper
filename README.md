@@ -4,9 +4,6 @@ Experimental code editor
 # development thread
 https://twitter.com/ahvamolessa/status/1276978064166182913
 
-# try
-- investigate the need for ModeContext and ScriptContext. maybe we can get away with only exposing a `&mut Editor`
-
 # todo
 - ~~undo/redo~~
 	- ~~store/apply edit diffs~~

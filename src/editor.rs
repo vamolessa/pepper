@@ -60,27 +60,6 @@ pub enum StatusMessageKind {
     Error,
 }
 
-struct A {
-    pub config: Config,
-    //pub mode: Mode,
-
-    pub buffers: BufferCollection,
-    pub buffer_views: BufferViewCollection,
-    pub word_database: WordDatabase,
-
-    //pub buffered_keys: Vec<Key>,
-    pub input: String,
-    pub picker: Picker,
-
-    pub focused_client: TargetClient,
-    pub status_message: String,
-    pub status_message_kind: StatusMessageKind,
-
-    pub keymaps: KeyMapCollection,
-    pub scripts: ScriptEngine,
-    //client_target_map: ClientTargetMap,
-}
-
 pub struct Editor {
     pub config: Config,
     pub mode: Mode,
