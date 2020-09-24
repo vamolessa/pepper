@@ -2,7 +2,7 @@ use std::{
     convert::From,
     fs::File,
     io,
-    ops::{Bound, Range, RangeBounds},
+    ops::{Range, RangeBounds},
     path::{Path, PathBuf},
 };
 
@@ -86,7 +86,6 @@ impl From<String> for Text {
 
 pub struct BufferLine {
     text: String,
-    char_count: usize,
     char_extra_lengths: Vec<(usize, u8)>,
 }
 
@@ -94,7 +93,6 @@ impl BufferLine {
     pub fn new(text: String) -> Self {
         let mut this = Self {
             text,
-            char_count: 0,
             char_extra_lengths: Vec::new(),
         };
         this.sync_state();
@@ -105,73 +103,51 @@ impl BufferLine {
         &self.text
     }
 
-    pub fn slice<R>(&self, range: R) -> &str
-    where
-        R: RangeBounds<usize>,
-    {
-        &self.text[self.column_range_to_index_range(range)]
-    }
-
-    pub fn split_off(&mut self, column: usize) -> BufferLine {
-        let index = self.column_to_index(column);
+    pub fn split_off(&mut self, index: usize) -> BufferLine {
         let splitted = BufferLine::new(self.text.split_off(index));
         self.sync_state();
         splitted
     }
 
-    pub fn next_char_from(&self, column: usize, c: char) -> Option<usize> {
-        let next_column = self.char_count().min(column + 1);
-        let index = self.column_to_index(next_column);
-        self.text[index..]
-            .find(c)
-            .map(|i| self.index_to_column(index + i))
-    }
-
-    pub fn previous_char_from(&self, column: usize, c: char) -> Option<usize> {
-        let index = self.column_to_index(column);
-        self.text[..index].rfind(c).map(|i| self.index_to_column(i))
-    }
-
-    pub fn first_word_start(&self) -> usize {
-        match self
-            .text
-            .chars()
-            .enumerate()
-            .skip_while(|(_, c)| c.is_whitespace())
-            .next()
-        {
-            Some((i, _)) => i,
-            None => 0,
+    pub fn next_char_from(&self, index: usize, c: char) -> Option<usize> {
+        let mut matches = self.text[index..].match_indices(c);
+        let first = matches.next()?.0;
+        if first > 0 {
+            Some(index + first)
+        } else {
+            Some(index + matches.next()?.0)
         }
     }
 
-    pub fn next_word_start_from(&self, column: usize) -> usize {
-        let index = self.column_to_index(column);
+    pub fn previous_char_from(&self, index: usize, c: char) -> Option<usize> {
+        self.text[..index].rfind(c)
+    }
 
+    pub fn first_word_start(&self) -> usize {
+        self.text.find(|c: char| !c.is_whitespace()).unwrap_or(0)
+    }
+
+    pub fn next_word_start_from(&self, index: usize) -> usize {
         let mut kinds = self.text[index..]
             .char_indices()
             .map(|(i, c)| (i, CharKind::new(c)));
 
         let first_kind = match kinds.next() {
             Some((_, k)) => k,
-            None => return self.index_to_column(self.text.len()),
+            None => return self.text.len(),
         };
 
-        let index = match kinds
+        match kinds
             .skip_while(|(_, k)| *k == first_kind)
             .skip_while(|(_, k)| *k == CharKind::Whitespace)
             .next()
         {
             Some((i, _)) => index + i,
             None => self.text.len(),
-        };
-
-        self.index_to_column(index)
+        }
     }
 
-    pub fn previous_word_start_from(&self, column: usize) -> usize {
-        let index = self.column_to_index(column);
-
+    pub fn previous_word_start_from(&self, index: usize) -> usize {
         let mut kinds = self.text[..index]
             .char_indices()
             .rev()
@@ -185,21 +161,18 @@ impl BufferLine {
             None => return 0,
         };
 
-        let index = match kinds.take_while(|(_, k)| *k == first_kind).last() {
+        match kinds.take_while(|(_, k)| *k == first_kind).last() {
             Some((i, _)) => i,
             None => first_index,
-        };
-
-        self.index_to_column(index)
+        }
     }
 
-    pub fn find_word_at(&self, column: usize) -> (Range<usize>, &str) {
-        let index = self.column_to_index(column);
+    pub fn find_word_at(&self, index: usize) -> (Range<usize>, &str) {
         let (start, end) = self.text.split_at(index);
 
         let mut end_kinds = end.char_indices().map(|(i, c)| (i, CharKind::new(c)));
         let kind = match end_kinds.next() {
-            Some((_, CharKind::Whitespace)) | None => return (column..column, ""),
+            Some((_, CharKind::Whitespace)) | None => return (index..index, ""),
             Some((_, k)) => k,
         };
         let end_index = end_kinds
@@ -220,12 +193,10 @@ impl BufferLine {
             .0;
 
         let index_range = start_index..end_index;
-        let column_range = self.index_range_to_column_rangge(index_range.clone());
-        (column_range, &self.text[index_range])
+        (index_range.clone(), &self.text[index_range])
     }
 
-    pub fn insert_text(&mut self, column: usize, text: &str) {
-        let index = self.column_to_index(column);
+    pub fn insert_text(&mut self, index: usize, text: &str) {
         self.text.insert_str(index, text);
         self.sync_state();
     }
@@ -239,16 +210,11 @@ impl BufferLine {
     where
         R: RangeBounds<usize>,
     {
-        self.text.drain(self.column_range_to_index_range(range));
+        self.text.drain(range);
         self.sync_state();
     }
 
-    pub fn char_count(&self) -> usize {
-        self.char_count
-    }
-
     fn sync_state(&mut self) {
-        self.char_count = 0;
         self.char_extra_lengths.clear();
 
         for (i, c) in self.text.char_indices() {
@@ -256,8 +222,6 @@ impl BufferLine {
             if char_len > 1 {
                 self.char_extra_lengths.push((i, (char_len - 1) as _));
             }
-
-            self.char_count += 1;
         }
     }
 
@@ -285,42 +249,6 @@ impl BufferLine {
         }
 
         column
-    }
-
-    fn column_range_to_index_range<R>(&self, range: R) -> Range<usize>
-    where
-        R: RangeBounds<usize>,
-    {
-        let start = match range.start_bound() {
-            Bound::Included(&c) => self.column_to_index(c),
-            Bound::Excluded(&c) => self.column_to_index(c + 1),
-            Bound::Unbounded => 0,
-        };
-        let end = match range.end_bound() {
-            Bound::Included(&c) => self.column_to_index(c + 1),
-            Bound::Excluded(&c) => self.column_to_index(c),
-            Bound::Unbounded => self.text.len(),
-        };
-
-        Range { start, end }
-    }
-
-    fn index_range_to_column_rangge<R>(&self, range: R) -> Range<usize>
-    where
-        R: RangeBounds<usize>,
-    {
-        let start = match range.start_bound() {
-            Bound::Included(&i) => self.index_to_column(i),
-            Bound::Excluded(&i) => self.index_to_column(i) + 1,
-            Bound::Unbounded => 0,
-        };
-        let end = match range.end_bound() {
-            Bound::Included(&i) => self.column_to_index(i) + 1,
-            Bound::Excluded(&i) => self.column_to_index(i),
-            Bound::Unbounded => self.text.len(),
-        };
-
-        Range { start, end }
     }
 }
 
@@ -368,7 +296,8 @@ impl BufferContent {
         position.line_index = position.line_index.min(self.line_count() - 1);
         position.column_byte_index = self
             .line_at(position.line_index)
-            .char_count()
+            .as_str()
+            .len()
             .min(position.column_byte_index);
         position
     }
@@ -378,10 +307,11 @@ impl BufferContent {
         let to = self.clamp_position(range.to);
 
         if from.line_index == to.line_index {
-            let range_text = &self.lines[from.line_index].slice(from.column_byte_index..to.column_byte_index);
+            let range_text =
+                &self.lines[from.line_index].as_str()[from.column_byte_index..to.column_byte_index];
             text.push_str(range_text);
         } else {
-            text.push_str(&self.lines[from.line_index].slice(from.column_byte_index..));
+            text.push_str(&self.lines[from.line_index].as_str()[from.column_byte_index..]);
             let lines_range = (from.line_index + 1)..to.line_index;
             if lines_range.start < lines_range.end {
                 for line in &self.lines[lines_range] {
@@ -393,14 +323,13 @@ impl BufferContent {
             if to_line_index < self.lines.len() {
                 let to_line = &self.lines[to_line_index];
                 text.push('\n');
-                text.push_str(&to_line.slice(..to.column_byte_index));
+                text.push_str(&to_line.as_str()[..to.column_byte_index]);
             }
         }
     }
 
     pub fn find_search_ranges(&self, text: &str, ranges: &mut Vec<BufferRange>) {
-        let char_count = text.chars().count();
-        if char_count == 0 {
+        if text.is_empty() {
             return;
         }
 
@@ -408,22 +337,17 @@ impl BufferContent {
             for (j, _) in line.as_str().match_indices(text) {
                 ranges.push(BufferRange::between(
                     BufferPosition::line_col(i, j),
-                    BufferPosition::line_col(i, j + char_count - 1),
+                    BufferPosition::line_col(i, text.len() + j - 1),
                 ));
             }
         }
     }
 
     fn clamp_position(&self, mut position: BufferPosition) -> BufferPosition {
-        let line_count = self.line_count();
-        if position.line_index >= line_count {
-            position.line_index = line_count - 1;
-        }
-
-        let char_count = self.lines[position.line_index].char_count();
-        if position.column_byte_index > char_count {
-            position.column_byte_index = char_count;
-        }
+        position.line_index = position.line_index.min(self.line_count() - 1);
+        position.column_byte_index = position
+            .column_byte_index
+            .min(self.lines[position.line_index].as_str().len());
 
         position
     }
@@ -433,13 +357,13 @@ impl BufferContent {
 
         if let None = text.find('\n') {
             let line = &mut self.lines[position.line_index];
-            let previous_char_count = line.char_count();
+            let previous_len = line.as_str().len();
             line.insert_text(position.column_byte_index, text);
-            let char_count_diff = line.char_count() - previous_char_count;
+            let len_diff = line.as_str().len() - previous_len;
 
             let end_position = BufferPosition::line_col(
                 position.line_index,
-                position.column_byte_index + char_count_diff,
+                position.column_byte_index + len_diff,
             );
             BufferRange::between(position, end_position)
         } else {
@@ -466,7 +390,7 @@ impl BufferContent {
                 BufferPosition::line_col(position.line_index + line_count, 0)
             } else {
                 let line = &mut self.lines[position.line_index + line_count];
-                let column_byte_index = line.char_count();
+                let column_byte_index = line.as_str().len();
                 line.push_text(split_line.as_str());
 
                 BufferPosition::line_col(position.line_index + line_count, column_byte_index)
@@ -483,7 +407,7 @@ impl BufferContent {
         if from.line_index == to.line_index {
             let line = &mut self.lines[from.line_index];
             let range = from.column_byte_index..to.column_byte_index;
-            let deleted_text = line.slice(range.clone());
+            let deleted_text = &line.as_str()[range.clone()];
             let text = Text::from(deleted_text);
             line.delete_range(range);
 
@@ -493,7 +417,7 @@ impl BufferContent {
 
             let line = &mut self.lines[from.line_index];
             let delete_range = from.column_byte_index..;
-            deleted_text.push_str(line.slice(delete_range.clone()));
+            deleted_text.push_str(&line.as_str()[delete_range.clone()]);
             line.delete_range(delete_range);
             drop(line);
 
@@ -507,9 +431,9 @@ impl BufferContent {
             let to_line_index = from.line_index + 1;
             if to_line_index < self.lines.len() {
                 let to_line = self.lines.remove(to_line_index);
-                self.lines[from.line_index].push_text(&to_line.slice(to.column_byte_index..));
+                self.lines[from.line_index].push_text(&to_line.as_str()[to.column_byte_index..]);
                 deleted_text.push_str("\n");
-                deleted_text.push_str(&to_line.slice(..to.column_byte_index));
+                deleted_text.push_str(&to_line.as_str()[..to.column_byte_index]);
             }
 
             deleted_text
@@ -534,7 +458,7 @@ impl BufferContent {
         left: char,
         right: char,
     ) -> Option<BufferRange> {
-        fn count_to_char<I>(iter: I, target: char, other: char) -> Option<usize>
+        fn find<I>(iter: I, target: char, other: char) -> Option<usize>
         where
             I: Iterator<Item = char>,
         {
@@ -557,10 +481,9 @@ impl BufferContent {
 
         let position = self.clamp_position(position);
         let line = self.line_at(position.line_index);
-        let split_index = line.column_to_index(position.column_byte_index);
-        let (before, after) = line.as_str().split_at(split_index);
+        let (before, after) = line.as_str().split_at(position.column_byte_index);
 
-        let left_position = match count_to_char(before.chars().rev(), left, right) {
+        let left_position = match find(before.chars().rev(), left, right) {
             Some(column_byte_index) => {
                 let column_byte_index = position.column_byte_index - column_byte_index;
                 BufferPosition::line_col(position.line_index, column_byte_index)
@@ -569,10 +492,9 @@ impl BufferContent {
                 let mut pos = None;
                 for line_index in (0..(position.line_index.saturating_sub(1))).rev() {
                     let line = self.line_at(line_index);
-                    if let Some(column_byte_index) =
-                        count_to_char(line.as_str().chars().rev(), left, right)
+                    if let Some(column_byte_index) = find(line.as_str().chars().rev(), left, right)
                     {
-                        let column_byte_index = line.char_count() - column_byte_index;
+                        let column_byte_index = line.as_str().len() - column_byte_index;
                         pos = Some(BufferPosition::line_col(line_index, column_byte_index));
                         break;
                     }
@@ -581,7 +503,7 @@ impl BufferContent {
             }
         };
 
-        let right_position = match count_to_char(after.chars(), right, left) {
+        let right_position = match find(after.chars(), right, left) {
             Some(column_byte_index) => {
                 let column_byte_index = position.column_byte_index + column_byte_index;
                 BufferPosition::line_col(position.line_index, column_byte_index)
@@ -590,8 +512,8 @@ impl BufferContent {
                 let mut pos = None;
                 for line_index in (position.line_index + 1)..self.line_count() {
                     let line = self.line_at(line_index);
-                    if let Some(column_byte_index) = count_to_char(line.as_str().chars(), left, right) {
-                        let column_byte_index = line.char_count() - column_byte_index;
+                    if let Some(column_byte_index) = find(line.as_str().chars(), left, right) {
+                        let column_byte_index = line.as_str().len() - column_byte_index;
                         pos = Some(BufferPosition::line_col(line_index, column_byte_index));
                         break;
                     }
@@ -1087,8 +1009,10 @@ mod tests {
         assert_eq!("me\ncontent", buffer_to_string(&buffer.content));
     }
 
-    //#[test]
+    #[test]
     fn utf8_support() {
+        // TODO
+        /*
         let mut line = BufferLine::new("0ñà".into());
         assert_eq!(3, line.char_count());
         line.delete_range(1..2);
@@ -1100,6 +1024,7 @@ mod tests {
         let other_line = line.split_off(3);
         assert_eq!("àè", line.slice(1..));
         assert_eq!("éç", other_line.as_str());
+        */
     }
 
     #[test]

@@ -372,7 +372,7 @@ where
                 }
             }
 
-            column_byte_index += 1;
+            column_byte_index += c.len_utf8();
         }
 
         if x < width {

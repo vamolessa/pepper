@@ -258,7 +258,7 @@ pub fn on_event(
                     let line = buffer.content.line_at(cursor.position.line_index);
                     cursor.position.column_byte_index =
                         match line.previous_char_from(cursor.position.column_byte_index, c) {
-                            Some(i) => line.char_count().min(i + 1),
+                            Some(i) => line.as_str().len().min(i + 1),
                             None => cursor.position.column_byte_index,
                         };
 
@@ -275,16 +275,17 @@ pub fn on_event(
 
             let mut cursors = buffer_view.cursors.mut_guard();
             for cursor in &mut cursors[..] {
-                let char_count = buffer
+                let line_len = buffer
                     .content
                     .line_at(cursor.position.line_index)
-                    .char_count();
+                    .as_str()
+                    .len();
 
                 if cursor.anchor < cursor.position {
                     cursor.anchor.column_byte_index = 0;
-                    cursor.position.column_byte_index = char_count;
+                    cursor.position.column_byte_index = line_len;
                 } else {
-                    cursor.anchor.column_byte_index = char_count;
+                    cursor.anchor.column_byte_index = line_len;
                     cursor.position.column_byte_index = 0;
                 }
             }

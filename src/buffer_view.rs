@@ -70,7 +70,8 @@ impl BufferView {
                     c.position.column_byte_index = buffer
                         .content
                         .line_at(c.position.line_index)
-                        .char_count()
+                        .as_str()
+                        .len()
                         .min(c.position.column_byte_index + n);
                 }
             }
@@ -126,7 +127,7 @@ impl BufferView {
             CursorMovement::End => {
                 for c in &mut cursors[..] {
                     c.position.column_byte_index =
-                        buffer.content.line_at(c.position.line_index).char_count();
+                        buffer.content.line_at(c.position.line_index).as_str().len();
                 }
             }
             CursorMovement::FirstLine => {
