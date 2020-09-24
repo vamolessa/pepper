@@ -2,7 +2,7 @@ use copypasta::{ClipboardContext, ClipboardProvider};
 
 use crate::{
     buffer::Buffer,
-    buffer_position::BufferPosition,
+    buffer_position::{BufferPosition, BufferRange},
     buffer_view::{CursorMovement, CursorMovementKind},
     client_event::Key,
     cursor::Cursor,
@@ -118,7 +118,7 @@ impl ModeState for State {
                     _ => (),
                 }
 
-                self.movement_kind = CursorMovementKind::PositionAndAnchor;
+                self.movement_kind = CursorMovementKind::PositionOnly;
             }
             Key::Char('g') => {
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
@@ -282,55 +282,65 @@ impl ModeState for State {
             },
             Key::Char('x') => {
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
-                let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
+                let buffer = &unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle)).content;
 
+                let line_count = buffer.line_count();
                 let mut cursors = buffer_view.cursors.mut_guard();
                 for cursor in &mut cursors[..] {
-                    let line_len = buffer
-                        .content
-                        .line_at(cursor.position.line_index)
-                        .as_str()
-                        .len();
-
-                    if cursor.anchor < cursor.position {
+                    if cursor.anchor <= cursor.position {
                         cursor.anchor.column_byte_index = 0;
-                        cursor.position.column_byte_index = line_len;
+                        if cursor.position.line_index < line_count {
+                            cursor.position.line_index += 1;
+                            cursor.position.column_byte_index = 0;
+                        } else {
+                            cursor.position.column_byte_index =
+                                buffer.line_at(cursor.position.line_index).as_str().len();
+                        }
                     } else {
-                        cursor.anchor.column_byte_index = line_len;
+                        if cursor.anchor.line_index < line_count {
+                            cursor.anchor.line_index += 1;
+                            cursor.anchor.column_byte_index = 0;
+                        } else {
+                            cursor.anchor.column_byte_index =
+                                buffer.line_at(cursor.position.line_index).as_str().len();
+                        }
                         cursor.position.column_byte_index = 0;
                     }
                 }
             }
             Key::Char('X') => {
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
-                let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
+                let buffer = &unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle)).content;
 
                 let mut cursors = buffer_view.cursors.mut_guard();
                 let cursor_count = cursors[..].len();
 
                 for i in 0..cursor_count {
                     let cursor = &mut cursors[i];
-                    let line_range = if cursor.anchor < cursor.position {
-                        cursor.anchor.line_index..cursor.position.line_index
-                    } else {
-                        (cursor.position.line_index + 1)..(cursor.anchor.line_index + 1)
-                    };
-                    cursor.anchor = cursor.position;
+                    if cursor.anchor.line_index == cursor.position.line_index {
+                        continue;
+                    }
 
-                    for line_index in line_range {
-                        let position = BufferPosition::line_col(
-                            line_index,
-                            buffer.content.line_at(line_index).first_word_start(),
-                        );
+                    let range = BufferRange::between(cursor.anchor, cursor.position);
+                    cursor.anchor = range.from;
+                    cursor.position = BufferPosition::line_col(
+                        range.from.line_index,
+                        buffer.line_at(cursor.position.line_index).as_str().len(),
+                    );
 
+                    for line_index in (range.from.line_index + 1)..range.to.line_index {
+                        let line_len = buffer.line_at(line_index).as_str().len();
                         cursors.add(Cursor {
-                            anchor: position,
-                            position,
+                            anchor: BufferPosition::line_col(line_index, 0),
+                            position: BufferPosition::line_col(line_index, line_len),
                         });
                     }
-                }
 
-                self.movement_kind = CursorMovementKind::PositionAndAnchor;
+                    cursors.add(Cursor {
+                        anchor: BufferPosition::line_col(range.to.line_index, 0),
+                        position: range.to,
+                    });
+                }
             }
             Key::Ctrl('d') => {
                 let half_height = ctx
