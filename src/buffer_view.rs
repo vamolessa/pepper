@@ -25,7 +25,7 @@ pub enum CursorMovement {
 
 #[derive(Clone, Copy)]
 pub enum CursorMovementKind {
-    PositionThenAnchor,
+    PositionAndAnchor,
     PositionOnly,
 }
 
@@ -155,7 +155,7 @@ impl BufferView {
             }
         }
 
-        if let CursorMovementKind::PositionThenAnchor = movement_kind {
+        if let CursorMovementKind::PositionAndAnchor = movement_kind {
             for c in &mut cursors[..] {
                 c.anchor = c.position;
             }
@@ -218,7 +218,7 @@ impl BufferView {
                 c.position = search_ranges[next_index].from;
             }
 
-            if let CursorMovementKind::PositionThenAnchor = movement_kind {
+            if let CursorMovementKind::PositionAndAnchor = movement_kind {
                 for c in &mut cursors[..] {
                     c.anchor = c.position;
                 }

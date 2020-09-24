@@ -17,7 +17,7 @@ pub struct State {
 impl Default for State {
     fn default() -> Self {
         Self {
-            movement_kind: CursorMovementKind::PositionThenAnchor,
+            movement_kind: CursorMovementKind::PositionAndAnchor,
         }
     }
 }
@@ -106,7 +106,7 @@ impl ModeState for State {
                     _ => (),
                 }
 
-                self.movement_kind = CursorMovementKind::PositionThenAnchor;
+                self.movement_kind = CursorMovementKind::PositionAndAnchor;
             }
             Key::Char('g') => {
                 match keys.next() {
@@ -163,7 +163,7 @@ impl ModeState for State {
                                 position: range.from,
                             });
                         }
-                        self.movement_kind = CursorMovementKind::PositionThenAnchor;
+                        self.movement_kind = CursorMovementKind::PositionAndAnchor;
                     }
                     _ => (),
                 }
@@ -182,7 +182,7 @@ impl ModeState for State {
                             .next_char_from(cursor.position.column_byte_index, c)
                             .unwrap_or(cursor.position.column_byte_index);
 
-                        if let CursorMovementKind::PositionThenAnchor = self.movement_kind {
+                        if let CursorMovementKind::PositionAndAnchor = self.movement_kind {
                             cursor.anchor = cursor.position;
                         }
                     }
@@ -203,7 +203,7 @@ impl ModeState for State {
                             .previous_char_from(cursor.position.column_byte_index, c)
                             .unwrap_or(cursor.position.column_byte_index);
 
-                        if let CursorMovementKind::PositionThenAnchor = self.movement_kind {
+                        if let CursorMovementKind::PositionAndAnchor = self.movement_kind {
                             cursor.anchor = cursor.position;
                         }
                     }
@@ -227,7 +227,7 @@ impl ModeState for State {
                             None => cursor.position.column_byte_index,
                         };
 
-                        if let CursorMovementKind::PositionThenAnchor = self.movement_kind {
+                        if let CursorMovementKind::PositionAndAnchor = self.movement_kind {
                             cursor.anchor = cursor.position;
                         }
                     }
@@ -249,7 +249,7 @@ impl ModeState for State {
                                 None => cursor.position.column_byte_index,
                             };
 
-                        if let CursorMovementKind::PositionThenAnchor = self.movement_kind {
+                        if let CursorMovementKind::PositionAndAnchor = self.movement_kind {
                             cursor.anchor = cursor.position;
                         }
                     }
@@ -306,7 +306,7 @@ impl ModeState for State {
                     }
                 }
 
-                self.movement_kind = CursorMovementKind::PositionThenAnchor;
+                self.movement_kind = CursorMovementKind::PositionAndAnchor;
             }
             Key::Ctrl('d') => {
                 let half_height = ctx
@@ -342,7 +342,7 @@ impl ModeState for State {
                     handle,
                 );
                 unwrap_or_none!(ctx.buffer_views.get_mut(handle)).commit_edits(ctx.buffers);
-                self.movement_kind = CursorMovementKind::PositionThenAnchor;
+                self.movement_kind = CursorMovementKind::PositionAndAnchor;
             }
             Key::Char('i') => {
                 ctx.buffer_views.delete_in_selection(
@@ -360,7 +360,7 @@ impl ModeState for State {
                 let mut cursors = cursors.mut_guard();
                 cursors.clear();
                 cursors.add(main_cursor);
-                self.movement_kind = CursorMovementKind::PositionThenAnchor;
+                self.movement_kind = CursorMovementKind::PositionAndAnchor;
             }
             Key::Char('v') => {
                 let mut cursors = unwrap_or_none!(ctx.buffer_views.get_mut(handle))
@@ -376,7 +376,7 @@ impl ModeState for State {
                 }
 
                 self.movement_kind = if had_selection {
-                    CursorMovementKind::PositionThenAnchor
+                    CursorMovementKind::PositionAndAnchor
                 } else {
                     CursorMovementKind::PositionOnly
                 };
@@ -396,7 +396,7 @@ impl ModeState for State {
                 for cursor in &mut cursors[..] {
                     cursor.anchor = cursor.position;
                 }
-                self.movement_kind = CursorMovementKind::PositionThenAnchor;
+                self.movement_kind = CursorMovementKind::PositionAndAnchor;
             }
             Key::Char('(') => unwrap_or_none!(ctx.buffer_views.get_mut(handle))
                 .cursors
@@ -412,7 +412,7 @@ impl ModeState for State {
                     buffer_view.get_selection_text(ctx.buffers, &mut text);
                     let _ = clipboard.set_contents(text);
                 }
-                self.movement_kind = CursorMovementKind::PositionThenAnchor;
+                self.movement_kind = CursorMovementKind::PositionAndAnchor;
             }
             Key::Char('Y') => {
                 ctx.buffer_views.delete_in_selection(
@@ -431,17 +431,17 @@ impl ModeState for State {
                     );
                 }
                 unwrap_or_none!(ctx.buffer_views.get_mut(handle)).commit_edits(ctx.buffers);
-                self.movement_kind = CursorMovementKind::PositionThenAnchor;
+                self.movement_kind = CursorMovementKind::PositionAndAnchor;
             }
             Key::Char('u') => {
                 ctx.buffer_views
                     .undo(ctx.buffers, &ctx.config.syntaxes, handle);
-                self.movement_kind = CursorMovementKind::PositionThenAnchor;
+                self.movement_kind = CursorMovementKind::PositionAndAnchor;
             }
             Key::Char('U') => {
                 ctx.buffer_views
                     .redo(ctx.buffers, &ctx.config.syntaxes, handle);
-                self.movement_kind = CursorMovementKind::PositionThenAnchor;
+                self.movement_kind = CursorMovementKind::PositionAndAnchor;
             }
             _ => {
                 keys.put_back();
