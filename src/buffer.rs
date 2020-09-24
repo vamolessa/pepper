@@ -1012,24 +1012,6 @@ mod tests {
     }
 
     #[test]
-    fn utf8_support() {
-        // TODO
-        /*
-        let mut line = BufferLine::new("0ñà".into());
-        assert_eq!(3, line.char_count());
-        line.delete_range(1..2);
-        assert_eq!(2, line.char_count());
-        line.push_text("éç");
-        assert_eq!(4, line.char_count());
-        line.insert_text(2, "è");
-        assert_eq!(5, line.char_count());
-        let other_line = line.split_off(3);
-        assert_eq!("àè", line.slice(1..));
-        assert_eq!("éç", other_line.as_str());
-        */
-    }
-
-    #[test]
     fn buffer_line_find_word() {
         let line = BufferLine::new("word".into());
         assert_eq!((0..4, "word"), line.find_word_at(0));

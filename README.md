@@ -5,7 +5,6 @@ Experimental code editor
 https://twitter.com/ahvamolessa/status/1276978064166182913
 
 # try
-- investigate making `BufferPosition` store a `collumn_byte_index` (or something) to simplify operations
 - investigate the need for ModeContext and ScriptContext. maybe we can get away with only exposing a `&mut Editor`
 
 # todo
