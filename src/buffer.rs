@@ -225,6 +225,7 @@ impl BufferLine {
         }
     }
 
+    /*
     fn column_to_index(&self, column: usize) -> usize {
         let mut index = column;
         for &(i, len) in &self.char_extra_lengths {
@@ -250,6 +251,7 @@ impl BufferLine {
 
         column
     }
+    */
 }
 
 pub struct BufferContent {
