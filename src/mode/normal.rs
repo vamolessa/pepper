@@ -325,7 +325,7 @@ impl ModeState for State {
                     cursor.anchor = range.from;
                     cursor.position = BufferPosition::line_col(
                         range.from.line_index,
-                        buffer.line_at(cursor.position.line_index).as_str().len(),
+                        buffer.line_at(range.from.line_index).as_str().len(),
                     );
 
                     for line_index in (range.from.line_index + 1)..range.to.line_index {
