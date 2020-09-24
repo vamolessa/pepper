@@ -307,6 +307,7 @@ impl ModeState for State {
                         cursor.position.column_byte_index = 0;
                     }
                 }
+                self.movement_kind = CursorMovementKind::PositionOnly;
             }
             Key::Char('X') => {
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
@@ -341,6 +342,7 @@ impl ModeState for State {
                         position: range.to,
                     });
                 }
+                self.movement_kind = CursorMovementKind::PositionOnly;
             }
             Key::Ctrl('d') => {
                 let half_height = ctx
