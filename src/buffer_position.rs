@@ -26,7 +26,8 @@ impl BufferPosition {
             self
         } else {
             Self {
-                column_byte_index: self.column_byte_index + range.to.column_byte_index - range.from.column_byte_index,
+                column_byte_index: self.column_byte_index + range.to.column_byte_index
+                    - range.from.column_byte_index,
                 line_index: self.line_index + range.to.line_index - range.from.line_index,
             }
         }
@@ -48,7 +49,8 @@ impl BufferPosition {
             && self.column_byte_index > range.to.column_byte_index
         {
             Self {
-                column_byte_index: range.from.column_byte_index + self.column_byte_index - range.to.column_byte_index,
+                column_byte_index: range.from.column_byte_index + self.column_byte_index
+                    - range.to.column_byte_index,
                 line_index: range.from.line_index,
             }
         } else {

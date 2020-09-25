@@ -2,7 +2,7 @@ use std::{fs::File, io::Read, path::Path};
 
 use crate::{
     buffer::{Buffer, BufferCollection, BufferContent, BufferHandle},
-    buffer_position::BufferRange,
+    buffer_position::{BufferPosition, BufferRange},
     client::TargetClient,
     cursor::{Cursor, CursorCollection},
     history::{Edit, EditKind},
@@ -339,6 +339,45 @@ impl BufferViewCollection {
         self.fix_cursor_ranges.clear();
         for (i, cursor) in current_view.cursors[..].iter().enumerate().rev() {
             let range = buffer.insert_text(word_database, syntaxes, cursor.position, text, i);
+            self.fix_cursor_ranges.push(range);
+        }
+
+        let current_buffer_handle = current_view.buffer_handle;
+        self.fix_buffer_cursors(current_buffer_handle, |cursor, range| cursor.insert(range));
+    }
+
+    pub fn insert_line_break_with_identation(
+        &mut self,
+        buffers: &mut BufferCollection,
+        word_database: &mut WordDatabase,
+        syntaxes: &SyntaxCollection,
+        handle: BufferViewHandle,
+    ) {
+        let current_view = match &mut self.buffer_views[handle.0] {
+            Some(view) => view,
+            None => return,
+        };
+        let buffer = match buffers.get_mut(current_view.buffer_handle) {
+            Some(buffer) => buffer,
+            None => return,
+        };
+
+        self.fix_cursor_ranges.clear();
+        for (i, cursor) in current_view.cursors[..].iter().enumerate().rev() {
+            let indentation_word = buffer
+                .content
+                .word_at(BufferPosition::line_col(cursor.position.line_index, 0));
+
+            let range = match indentation_word.kind {
+                WordKind::Whitespace => {
+                    let mut text = String::with_capacity(indentation_word.text.len() + 1);
+                    text.push('\n');
+                    text.push_str(indentation_word.text);
+                    buffer.insert_text(word_database, syntaxes, cursor.position, &text, i)
+                }
+                _ => buffer.insert_text(word_database, syntaxes, cursor.position, "\n", i),
+            };
+
             self.fix_cursor_ranges.push(range);
         }
 

@@ -36,12 +36,11 @@ impl ModeState for State {
                 handle,
                 "\t",
             ),
-            Key::Enter => ctx.buffer_views.insert_text(
+            Key::Enter => ctx.buffer_views.insert_line_break_with_identation(
                 ctx.buffers,
                 ctx.word_database,
                 &ctx.config.syntaxes,
                 handle,
-                "\n",
             ),
             Key::Char(c) => {
                 let mut buf = [0; std::mem::size_of::<char>()];

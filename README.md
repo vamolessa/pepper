@@ -62,6 +62,11 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- ~~completion suggestion as typing word~~
 	- ~~accept completion~~
 	- ~~word database~~
+- ~~text objects~~
+	- ~~inner word~~
+	- ~~outer word~~
+	- ~~inner balanced braces~~
+	- ~~outer balanced braces~~
 - status bar
 	- ~~buffer name~~
 	- ~~buffer position~~
@@ -95,12 +100,8 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- cursor movement kind AnchorThenPosition (??)
 - editing
 	- ~~edit new line bellow/above (`o` and `O`)~~
-	- keep previous identation
-- text objects
-	- ~~inner word~~
-	- ~~outer word~~
-	- ~~inner balanced braces~~
-	- ~~outer balanced braces~~
+	- ~~keep current identation~~
+	- delete identation
 - macros (??)
 	- repeat last action (`.`)
 	- record/play custom macros
