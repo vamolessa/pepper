@@ -128,7 +128,7 @@ impl ModeState for State {
 
                 match keys.next() {
                     Key::None => return ModeOperation::Pending,
-                    Key::Char('w') => {
+                    Key::Char('w') | Key::Char('W') => {
                         for cursor in &mut cursors[..] {
                             let word = buffer.word_at(cursor.position);
                             cursor.anchor = word.position;
@@ -183,7 +183,7 @@ impl ModeState for State {
 
                 match keys.next() {
                     Key::None => return ModeOperation::Pending,
-                    Key::Char('w') => {
+                    Key::Char('w') | Key::Char('W') => {
                         for cursor in &mut cursors[..] {
                             let (word, mut left_words, mut right_words) =
                                 buffer.words_from(cursor.position);

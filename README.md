@@ -98,9 +98,9 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- keep previous identation
 - text objects
 	- ~~inner word~~
-	- outer word
+	- ~~outer word~~
 	- ~~inner balanced braces~~
-	- outer balanced braces
+	- ~~outer balanced braces~~
 - macros (??)
 	- repeat last action (`.`)
 	- record/play custom macros
