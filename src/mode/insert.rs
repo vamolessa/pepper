@@ -3,6 +3,7 @@ use crate::{
     client_event::Key,
     editor::KeysIterator,
     mode::{Mode, ModeContext, ModeOperation, ModeState},
+    word_database::WordKind,
 };
 
 #[derive(Default)]
@@ -107,16 +108,18 @@ impl ModeState for State {
         let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
         let mut word_position = buffer_view.cursors.main_cursor().position;
         word_position.column_byte_index = word_position.column_byte_index.saturating_sub(1);
-        let (word_range, word) = buffer.content.find_word_at(word_position);
-        if word.is_empty()
-            || word_position.column_byte_index < word_range.to.column_byte_index.saturating_sub(1)
+        let word = buffer.content.word_at(word_position);
+
+        if matches!(word.kind, WordKind::Identifier)
+            && word_position.column_byte_index
+                >= word.end_position().column_byte_index.saturating_sub(1)
         {
-            ctx.picker.clear_filtered();
-        } else {
-            ctx.picker.filter(&ctx.word_database, word);
+            ctx.picker.filter(&ctx.word_database, word.text);
             if ctx.picker.height(usize::MAX) == 1 {
                 ctx.picker.clear_filtered();
             }
+        } else {
+            ctx.picker.clear_filtered();
         }
 
         ModeOperation::None

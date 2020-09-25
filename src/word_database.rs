@@ -22,6 +22,12 @@ impl WordKind {
     }
 }
 
+pub struct WordRef<'a> {
+    pub kind: WordKind,
+    pub text: &'a str,
+}
+
+#[derive(Clone)]
 pub struct WordIter<'a>(&'a str);
 impl<'a> WordIter<'a> {
     pub fn new(text: &'a str) -> Self {
@@ -30,11 +36,11 @@ impl<'a> WordIter<'a> {
 
     #[inline]
     pub fn of_kind(self, kind: WordKind) -> impl DoubleEndedIterator<Item = &'a str> {
-        self.filter_map(move |(k, w)| if k == kind { Some(w) } else { None })
+        self.filter_map(move |w| if kind == w.kind { Some(w.text) } else { None })
     }
 }
 impl<'a> Iterator for WordIter<'a> {
-    type Item = (WordKind, &'a str);
+    type Item = WordRef<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut chars = self.0.chars();
@@ -44,13 +50,13 @@ impl<'a> Iterator for WordIter<'a> {
                 let rest_len = chars.as_str().len();
                 let (word, rest) = self.0.split_at(self.0.len() - rest_len - c.len_utf8());
                 self.0 = rest;
-                return Some((kind, word));
+                return Some(WordRef { kind, text: word });
             }
         }
 
-        let word = self.0;
+        let word = WordRef { kind, text: self.0 };
         self.0 = "";
-        Some((kind, word))
+        Some(word)
     }
 }
 impl<'a> DoubleEndedIterator for WordIter<'a> {
@@ -62,13 +68,13 @@ impl<'a> DoubleEndedIterator for WordIter<'a> {
                 let rest_len = chars.as_str().len();
                 let (rest, word) = self.0.split_at(rest_len + c.len_utf8());
                 self.0 = rest;
-                return Some((kind, word));
+                return Some(WordRef { kind, text: word });
             }
         }
 
-        let word = self.0;
+        let word = WordRef { kind, text: self.0 };
         self.0 = "";
-        Some((kind, word))
+        Some(word)
     }
 }
 
@@ -169,29 +175,37 @@ mod tests {
 
     #[test]
     fn word_iter() {
+        macro_rules! assert_word {
+            ($next:expr, $kind:expr, $text:expr) => {
+                let word = $next.map(|w| (w.kind, w.text));
+                assert_eq!(Some($kind), word.map(|w| w.0));
+                assert_eq!(Some($text), word.map(|w| w.1));
+            };
+        }
+
         let mut iter = WordIter::new("word");
-        assert_eq!(Some((WordKind::Identifier, "word")), iter.next());
-        assert_eq!(None, iter.next());
+        assert_word!(iter.next(), WordKind::Identifier, "word");
+        assert!(iter.next().is_none());
 
         let mut iter = WordIter::new("first  $#second \tthird!?+");
-        assert_eq!(Some((WordKind::Identifier, "first")), iter.next());
-        assert_eq!(Some((WordKind::Whitespace, "  ")), iter.next());
-        assert_eq!(Some((WordKind::Symbol, "$#")), iter.next());
-        assert_eq!(Some((WordKind::Identifier, "second")), iter.next());
-        assert_eq!(Some((WordKind::Whitespace, " \t")), iter.next());
-        assert_eq!(Some((WordKind::Identifier, "third")), iter.next());
-        assert_eq!(Some((WordKind::Symbol, "!?+")), iter.next());
-        assert_eq!(None, iter.next());
+        assert_word!(iter.next(), WordKind::Identifier, "first");
+        assert_word!(iter.next(), WordKind::Whitespace, "  ");
+        assert_word!(iter.next(), WordKind::Symbol, "$#");
+        assert_word!(iter.next(), WordKind::Identifier, "second");
+        assert_word!(iter.next(), WordKind::Whitespace, " \t");
+        assert_word!(iter.next(), WordKind::Identifier, "third");
+        assert_word!(iter.next(), WordKind::Symbol, "!?+");
+        assert!(iter.next().is_none());
 
         let mut iter = WordIter::new("first  $#second \tthird!?+");
-        assert_eq!(Some((WordKind::Symbol, "!?+")), iter.next_back());
-        assert_eq!(Some((WordKind::Identifier, "third")), iter.next_back());
-        assert_eq!(Some((WordKind::Whitespace, " \t")), iter.next_back());
-        assert_eq!(Some((WordKind::Identifier, "second")), iter.next_back());
-        assert_eq!(Some((WordKind::Symbol, "$#")), iter.next_back());
-        assert_eq!(Some((WordKind::Whitespace, "  ")), iter.next_back());
-        assert_eq!(Some((WordKind::Identifier, "first")), iter.next_back());
-        assert_eq!(None, iter.next_back());
+        assert_word!(iter.next_back(), WordKind::Symbol, "!?+");
+        assert_word!(iter.next_back(), WordKind::Identifier, "third");
+        assert_word!(iter.next_back(), WordKind::Whitespace, " \t");
+        assert_word!(iter.next_back(), WordKind::Identifier, "second");
+        assert_word!(iter.next_back(), WordKind::Symbol, "$#");
+        assert_word!(iter.next_back(), WordKind::Whitespace, "  ");
+        assert_word!(iter.next_back(), WordKind::Identifier, "first");
+        assert!(iter.next_back().is_none());
     }
 
     #[test]

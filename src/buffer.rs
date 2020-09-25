@@ -2,7 +2,7 @@ use std::{
     convert::From,
     fs::File,
     io,
-    ops::{Range, RangeBounds},
+    ops::RangeBounds,
     path::{Path, PathBuf},
 };
 
@@ -81,6 +81,20 @@ impl From<String> for Text {
         } else {
             Self(TextImpl::String(s))
         }
+    }
+}
+
+pub struct WordRefWithPosition<'a> {
+    pub kind: WordKind,
+    pub text: &'a str,
+    pub position: BufferPosition,
+}
+impl<'a> WordRefWithPosition<'a> {
+    pub fn end_position(&self) -> BufferPosition {
+        BufferPosition::line_col(
+            self.position.line_index,
+            self.position.column_byte_index + self.text.len(),
+        )
     }
 }
 
@@ -164,35 +178,6 @@ impl BufferLine {
             Some((i, _)) => i,
             None => first_index,
         }
-    }
-
-    pub fn find_word_at(&self, index: usize) -> (Range<usize>, &str) {
-        let (start, end) = self.text.split_at(index);
-
-        let mut end_kinds = end.char_indices().map(|(i, c)| (i, WordKind::from_char(c)));
-        let kind = match end_kinds.next() {
-            Some((_, WordKind::Whitespace)) | None => return (index..index, ""),
-            Some((_, k)) => k,
-        };
-        let end_index = end_kinds
-            .take_while(|(_, k)| *k == kind)
-            .last()
-            .unwrap_or((0, WordKind::Whitespace))
-            .0
-            + index
-            + 1;
-
-        let start_index = start
-            .char_indices()
-            .rev()
-            .map(|(i, c)| (i, WordKind::from_char(c)))
-            .take_while(|(_, k)| *k == kind)
-            .last()
-            .unwrap_or((index, WordKind::Whitespace))
-            .0;
-
-        let index_range = start_index..end_index;
-        (index_range.clone(), &self.text[index_range])
     }
 
     pub fn insert_text(&mut self, index: usize, text: &str) {
@@ -441,16 +426,85 @@ impl BufferContent {
         }
     }
 
-    pub fn find_word_at(&self, position: BufferPosition) -> (BufferRange, &str) {
+    pub fn words_from<'a>(
+        &'a self,
+        position: BufferPosition,
+    ) -> (
+        WordRefWithPosition<'a>,
+        impl Iterator<Item = WordRefWithPosition<'a>>,
+        impl Iterator<Item = WordRefWithPosition<'a>>,
+    ) {
         let position = self.clamp_position(position);
-        let (range, word) = self
-            .line_at(position.line_index)
-            .find_word_at(position.column_byte_index);
-        let range = BufferRange::between(
-            BufferPosition::line_col(position.line_index, range.start),
-            BufferPosition::line_col(position.line_index, range.end),
-        );
-        (range, word)
+        let mid_word = self.word_at(position);
+
+        let line = self.line_at(position.line_index).as_str();
+        let left = &line[..mid_word.position.column_byte_index];
+        let right = &line[(mid_word.position.column_byte_index + mid_word.text.len())..];
+
+        let mut left_column_index = position.column_byte_index;
+        let left_words = WordIter::new(left).rev().map(move |w| {
+            left_column_index -= w.text.len();
+            let position = BufferPosition::line_col(position.line_index, left_column_index);
+            WordRefWithPosition {
+                kind: w.kind,
+                text: w.text,
+                position,
+            }
+        });
+
+        let mut right_column_index = position.column_byte_index;
+        let right_words = WordIter::new(right).map(move |w| {
+            let position = BufferPosition::line_col(position.line_index, right_column_index);
+            right_column_index += w.text.len();
+            WordRefWithPosition {
+                kind: w.kind,
+                text: w.text,
+                position,
+            }
+        });
+
+        (mid_word, left_words, right_words)
+    }
+
+    pub fn word_at(&self, position: BufferPosition) -> WordRefWithPosition {
+        let position = self.clamp_position(position);
+        let line = self.line_at(position.line_index).as_str();
+        let (before, after) = line.split_at(position.column_byte_index);
+
+        match WordIter::new(after).next() {
+            Some(right) => match WordIter::new(before).next_back() {
+                Some(left) => {
+                    if left.kind == right.kind {
+                        let position = BufferPosition::line_col(
+                            position.line_index,
+                            position.column_byte_index - left.text.len(),
+                        );
+                        let end_index = position.column_byte_index + right.text.len();
+                        WordRefWithPosition {
+                            kind: left.kind,
+                            text: &line[position.column_byte_index..end_index],
+                            position,
+                        }
+                    } else {
+                        WordRefWithPosition {
+                            kind: right.kind,
+                            text: right.text,
+                            position,
+                        }
+                    }
+                }
+                None => WordRefWithPosition {
+                    kind: right.kind,
+                    text: right.text,
+                    position,
+                },
+            },
+            None => WordRefWithPosition {
+                kind: WordKind::Whitespace,
+                text: "",
+                position,
+            },
+        }
     }
 
     pub fn find_balanced_chars_at(
@@ -1049,19 +1103,40 @@ mod tests {
     }
 
     #[test]
-    fn buffer_line_find_word() {
+    fn buffer_content_word_at() {
+        macro_rules! assert_word {
+            ($word:expr, $pos:expr, $kind:expr, $text:expr) => {
+                assert_eq!($pos, $word.position);
+                assert_eq!($kind, $word.kind);
+                assert_eq!($text, $word.text);
+            };
+        };
+        fn pos(line: usize, column: usize) -> BufferPosition {
+            BufferPosition::line_col(line, column)
+        }
+
+        let buffer = BufferContent::from_str("word");
+        assert_word!(
+            buffer.word_at(pos(0, 0)),
+            pos(0, 0),
+            WordKind::Identifier,
+            "word"
+        );
+
+        /*
         let line = BufferLine::new("word".into());
-        assert_eq!((0..4, "word"), line.find_word_at(0));
-        assert_eq!((0..4, "word"), line.find_word_at(2));
-        assert_eq!((4..4, ""), line.find_word_at(4));
+        assert_eq!((WordKind::Identifier, 0..4, "word"), line.word_at(0));
+        assert_eq!((WordKind::Identifier, 0..4, "word"), line.word_at(2));
+        assert_eq!((WordKind::Whitespace, 4..4, ""), line.word_at(4));
 
         let line = BufferLine::new("asd word+? asd".into());
-        assert_eq!((3..3, ""), line.find_word_at(3));
-        assert_eq!((4..8, "word"), line.find_word_at(4));
-        assert_eq!((4..8, "word"), line.find_word_at(6));
-        assert_eq!((8..10, "+?"), line.find_word_at(8));
-        assert_eq!((8..10, "+?"), line.find_word_at(9));
-        assert_eq!((10..10, ""), line.find_word_at(10));
+        assert_eq!((WordKind::Whitespace, 3..4, " "), line.word_at(3));
+        assert_eq!((WordKind::Identifier, 4..8, "word"), line.word_at(4));
+        assert_eq!((WordKind::Identifier, 4..8, "word"), line.word_at(6));
+        assert_eq!((WordKind::Symbol, 8..10, "+?"), line.word_at(8));
+        assert_eq!((WordKind::Symbol, 8..10, "+?"), line.word_at(9));
+        assert_eq!((WordKind::Whitespace, 10..11, " "), line.word_at(10));
+        */
     }
 
     #[test]

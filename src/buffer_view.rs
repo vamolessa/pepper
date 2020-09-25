@@ -7,7 +7,7 @@ use crate::{
     cursor::{Cursor, CursorCollection},
     history::{Edit, EditKind},
     syntax::SyntaxCollection,
-    word_database::WordDatabase,
+    word_database::{WordDatabase, WordKind},
 };
 
 pub enum CursorMovement {
@@ -394,15 +394,17 @@ impl BufferViewCollection {
         for (i, cursor) in current_view.cursors[..].iter().enumerate().rev() {
             let mut word_position = cursor.position;
             word_position.column_byte_index = word_position.column_byte_index.saturating_sub(1);
-            let (word_range, word) = buffer.content.find_word_at(word_position);
+            let word = buffer.content.word_at(word_position);
+            let word_kind = word.kind;
+            let word_position = word.position;
 
-            if !word.is_empty() {
-                let range = BufferRange::between(word_range.from, cursor.position);
+            if let WordKind::Identifier = word_kind {
+                let range = BufferRange::between(word_position, cursor.position);
                 buffer.delete_range(word_database, syntaxes, range, i);
             }
 
             let insert_range =
-                buffer.insert_text(word_database, syntaxes, word_range.from, completion, i);
+                buffer.insert_text(word_database, syntaxes, word_position, completion, i);
             let mut range = BufferRange::between(cursor.position, insert_range.to);
             if cursor.position > insert_range.to {
                 std::mem::swap(&mut range.from, &mut range.to);

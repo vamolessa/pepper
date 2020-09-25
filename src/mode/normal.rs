@@ -79,16 +79,16 @@ impl ModeState for State {
 
                 if search_ranges.is_empty() || current_range_index.is_err() {
                     buffer.set_search_with(|c| {
-                        let (range, word) = c.find_word_at(main_position);
+                        let word = c.word_at(main_position);
 
                         let mut cursors = buffer_view.cursors.mut_guard();
                         cursors.clear();
                         cursors.add(Cursor {
-                            anchor: range.from,
-                            position: range.from,
+                            anchor: word.position,
+                            position: word.position,
                         });
 
-                        word
+                        word.text
                     });
                 } else {
                     let range_index = match current_range_index {
@@ -129,9 +129,64 @@ impl ModeState for State {
                     Key::None => return ModeOperation::Pending,
                     Key::Char('w') => {
                         for cursor in &mut cursors[..] {
-                            let (range, _) = buffer.find_word_at(cursor.position);
-                            cursor.anchor = range.from;
-                            cursor.position = range.to;
+                            let word = buffer.word_at(cursor.position);
+                            cursor.anchor = word.position;
+                            cursor.position = word.position;
+                        }
+                    }
+                    Key::Char('(') | Key::Char(')') => {
+                        balanced_brackets(buffer, &mut cursors[..], '(', ')')
+                    }
+                    Key::Char('[') | Key::Char(']') => {
+                        balanced_brackets(buffer, &mut cursors[..], '[', ']')
+                    }
+                    Key::Char('{') | Key::Char('}') => {
+                        balanced_brackets(buffer, &mut cursors[..], '{', '}')
+                    }
+                    Key::Char('<') | Key::Char('>') => {
+                        balanced_brackets(buffer, &mut cursors[..], '<', '>')
+                    }
+                    Key::Char('|') => balanced_brackets(buffer, &mut cursors[..], '|', '|'),
+                    Key::Char('"') => balanced_brackets(buffer, &mut cursors[..], '"', '"'),
+                    Key::Char('\'') => balanced_brackets(buffer, &mut cursors[..], '\'', '\''),
+                    _ => (),
+                }
+
+                self.movement_kind = CursorMovementKind::PositionOnly;
+            }
+            Key::Char('A') => {
+                fn balanced_brackets(
+                    buffer: &BufferContent,
+                    cursors: &mut [Cursor],
+                    left: char,
+                    right: char,
+                ) {
+                    for cursor in cursors {
+                        let range = buffer.find_balanced_chars_at(cursor.position, left, right);
+                        if let Some(range) = range {
+                            cursor.anchor = BufferPosition::line_col(
+                                range.from.line_index,
+                                range.from.column_byte_index - left.len_utf8(),
+                            );
+                            cursor.position = BufferPosition::line_col(
+                                range.to.line_index,
+                                range.to.column_byte_index + right.len_utf8(),
+                            );
+                        }
+                    }
+                }
+
+                let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
+                let buffer = &unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle)).content;
+                let mut cursors = buffer_view.cursors.mut_guard();
+
+                match keys.next() {
+                    Key::None => return ModeOperation::Pending,
+                    Key::Char('w') => {
+                        for cursor in &mut cursors[..] {
+                            let word = buffer.word_at(cursor.position);
+                            cursor.anchor = word.position;
+                            cursor.position = word.position;
                         }
                     }
                     Key::Char('(') | Key::Char(')') => {
