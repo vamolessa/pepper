@@ -4,16 +4,16 @@ use std::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CharKind {
-    Word,
+pub enum WordKind {
+    Identifier,
     Symbol,
     Whitespace,
 }
 
-impl CharKind {
-    pub fn new(c: char) -> Self {
+impl WordKind {
+    pub fn from_char(c: char) -> Self {
         if c == '_' || c.is_alphanumeric() {
-            Self::Word
+            Self::Identifier
         } else if c.is_whitespace() {
             Self::Whitespace
         } else {
@@ -22,24 +22,66 @@ impl CharKind {
     }
 }
 
-pub struct WordIter<'a>(&'a str);
-
+pub struct WordIter<'a> {
+    text: &'a str,
+    kind: WordKind,
+}
 impl<'a> WordIter<'a> {
+    pub fn new(text: &'a str) -> Self {
+        let kind = match text.chars().next() {
+            Some(c) => WordKind::from_char(c),
+            None => WordKind::Whitespace,
+        };
+        Self { text, kind }
+    }
+}
+impl<'a> Iterator for WordIter<'a> {
+    type Item = (WordKind, &'a str);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut chars = self.text.chars();
+        while let Some(c) = chars.next() {
+            let kind = WordKind::from_char(c);
+            if kind != self.kind {
+                let rest_len = chars.as_str().len();
+                let (before, after) = self
+                    .text
+                    .split_at(self.text.len() - rest_len - c.len_utf8());
+                let word_kind = self.kind;
+                self.text = after;
+                self.kind = kind;
+                return Some((word_kind, before));
+            }
+        }
+
+        if self.text.is_empty() {
+            None
+        } else {
+            let word = self.text;
+            self.text = "";
+            Some((self.kind, word))
+        }
+    }
+}
+
+pub struct IdentifierWordIter<'a>(&'a str);
+impl<'a> IdentifierWordIter<'a> {
     pub fn new(text: &'a str) -> Self {
         Self(text)
     }
 }
-
-impl<'a> Iterator for WordIter<'a> {
+impl<'a> Iterator for IdentifierWordIter<'a> {
     type Item = &'a str;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let start = self.0.find(|c| CharKind::new(c) == CharKind::Word)?;
+        let start = self
+            .0
+            .find(|c| WordKind::from_char(c) == WordKind::Identifier)?;
         self.0 = &self.0[start..];
 
         let end = self
             .0
-            .find(|c| CharKind::new(c) != CharKind::Word)
+            .find(|c| WordKind::from_char(c) != WordKind::Identifier)
             .unwrap_or(self.0.len());
         let (word, rest) = self.0.split_at(end);
 
@@ -146,16 +188,33 @@ mod tests {
     #[test]
     fn word_iter() {
         let mut iter = WordIter::new("word");
+        assert_eq!(Some((WordKind::Identifier, "word")), iter.next());
+        assert_eq!(None, iter.next());
+
+        let mut iter = WordIter::new("first  $#second \tthird!?+");
+        assert_eq!(Some((WordKind::Identifier, "first")), iter.next());
+        assert_eq!(Some((WordKind::Whitespace, "  ")), iter.next());
+        assert_eq!(Some((WordKind::Symbol, "$#")), iter.next());
+        assert_eq!(Some((WordKind::Identifier, "second")), iter.next());
+        assert_eq!(Some((WordKind::Whitespace, " \t")), iter.next());
+        assert_eq!(Some((WordKind::Identifier, "third")), iter.next());
+        assert_eq!(Some((WordKind::Symbol, "!?+")), iter.next());
+        assert_eq!(None, iter.next());
+    }
+
+    #[test]
+    fn identifier_word_iter() {
+        let mut iter = IdentifierWordIter::new("word");
         assert_eq!(Some("word"), iter.next());
         assert_eq!(None, iter.next());
 
-        let mut iter = WordIter::new("first second third");
+        let mut iter = IdentifierWordIter::new("first second third");
         assert_eq!(Some("first"), iter.next());
         assert_eq!(Some("second"), iter.next());
         assert_eq!(Some("third"), iter.next());
         assert_eq!(None, iter.next());
 
-        let mut iter = WordIter::new("  1first:second00+?$%third  ^@");
+        let mut iter = IdentifierWordIter::new("  1first:second00+?$%third  ^@");
         assert_eq!(Some("1first"), iter.next());
         assert_eq!(Some("second00"), iter.next());
         assert_eq!(Some("third"), iter.next());

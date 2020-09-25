@@ -10,7 +10,7 @@ use crate::{
     buffer_position::{BufferPosition, BufferRange},
     history::{Edit, EditKind, History},
     syntax::{self, HighlightedBuffer, SyntaxCollection, SyntaxHandle},
-    word_database::{CharKind, WordDatabase, WordIter},
+    word_database::{WordKind, WordDatabase, IdentifierWordIter},
 };
 
 #[derive(Debug)]
@@ -129,7 +129,7 @@ impl BufferLine {
     pub fn next_word_start_from(&self, index: usize) -> usize {
         let mut kinds = self.text[index..]
             .char_indices()
-            .map(|(i, c)| (i, CharKind::new(c)));
+            .map(|(i, c)| (i, WordKind::from_char(c)));
 
         let first_kind = match kinds.next() {
             Some((_, k)) => k,
@@ -138,7 +138,7 @@ impl BufferLine {
 
         match kinds
             .skip_while(|(_, k)| *k == first_kind)
-            .skip_while(|(_, k)| *k == CharKind::Whitespace)
+            .skip_while(|(_, k)| *k == WordKind::Whitespace)
             .next()
         {
             Some((i, _)) => index + i,
@@ -150,10 +150,10 @@ impl BufferLine {
         let mut kinds = self.text[..index]
             .char_indices()
             .rev()
-            .map(|(i, c)| (i, CharKind::new(c)));
+            .map(|(i, c)| (i, WordKind::from_char(c)));
 
         let (first_index, first_kind) = match (&mut kinds)
-            .skip_while(|(_, k)| *k == CharKind::Whitespace)
+            .skip_while(|(_, k)| *k == WordKind::Whitespace)
             .next()
         {
             Some((i, k)) => (i, k),
@@ -169,15 +169,15 @@ impl BufferLine {
     pub fn find_word_at(&self, index: usize) -> (Range<usize>, &str) {
         let (start, end) = self.text.split_at(index);
 
-        let mut end_kinds = end.char_indices().map(|(i, c)| (i, CharKind::new(c)));
+        let mut end_kinds = end.char_indices().map(|(i, c)| (i, WordKind::from_char(c)));
         let kind = match end_kinds.next() {
-            Some((_, CharKind::Whitespace)) | None => return (index..index, ""),
+            Some((_, WordKind::Whitespace)) | None => return (index..index, ""),
             Some((_, k)) => k,
         };
         let end_index = end_kinds
             .take_while(|(_, k)| *k == kind)
             .last()
-            .unwrap_or((0, CharKind::Whitespace))
+            .unwrap_or((0, WordKind::Whitespace))
             .0
             + index
             + 1;
@@ -185,10 +185,10 @@ impl BufferLine {
         let start_index = start
             .char_indices()
             .rev()
-            .map(|(i, c)| (i, CharKind::new(c)))
+            .map(|(i, c)| (i, WordKind::from_char(c)))
             .take_while(|(_, k)| *k == kind)
             .last()
-            .unwrap_or((index, CharKind::Whitespace))
+            .unwrap_or((index, WordKind::Whitespace))
             .0;
 
         let index_range = start_index..end_index;
@@ -568,7 +568,7 @@ impl Buffer {
         content: BufferContent,
     ) -> Self {
         for line in content.lines() {
-            for word in WordIter::new(line.as_str()) {
+            for word in IdentifierWordIter::new(line.as_str()) {
                 word_database.add_word(word);
             }
         }
@@ -621,7 +621,7 @@ impl Buffer {
             return BufferRange::between(position, position);
         }
 
-        for word in WordIter::new(self.content.line_at(position.line_index).as_str()) {
+        for word in IdentifierWordIter::new(self.content.line_at(position.line_index).as_str()) {
             word_database.remove_word(word);
         }
 
@@ -634,7 +634,7 @@ impl Buffer {
             .skip(range.from.line_index)
             .take(line_count)
         {
-            for word in WordIter::new(line.as_str()) {
+            for word in IdentifierWordIter::new(line.as_str()) {
                 word_database.add_word(word);
             }
         }
@@ -669,14 +669,14 @@ impl Buffer {
             .skip(range.from.line_index)
             .take(line_count)
         {
-            for word in WordIter::new(line.as_str()) {
+            for word in IdentifierWordIter::new(line.as_str()) {
                 word_database.remove_word(word);
             }
         }
 
         let deleted_text = self.content.delete_range(range);
 
-        for word in WordIter::new(self.content.line_at(range.from.line_index).as_str()) {
+        for word in IdentifierWordIter::new(self.content.line_at(range.from.line_index).as_str()) {
             word_database.add_word(word);
         }
 
@@ -822,7 +822,7 @@ impl BufferCollection {
                 let handle = BufferHandle(i);
                 if predicate(handle, buffer) {
                     for line in buffer.content.lines() {
-                        for word in WordIter::new(line.as_str()) {
+                        for word in IdentifierWordIter::new(line.as_str()) {
                             word_database.remove_word(word);
                         }
                     }
