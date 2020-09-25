@@ -3,7 +3,6 @@ use argh::FromArgValue;
 use crate::{
     buffer_view::BufferViewHandle,
     connection::ConnectionWithClientHandle,
-    cursor::Cursor,
     editor::Editor,
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
     ui::UiKind,
@@ -74,11 +73,11 @@ pub struct Client {
 
 impl Client {
     pub fn update_view(&mut self, editor: &Editor, has_focus: bool) {
-        let main_cursor = self
+        let focused_line_index = self
             .current_buffer_view_handle
             .and_then(|h| editor.buffer_views.get(h))
-            .map(|v| v.cursors.main_cursor().clone())
-            .unwrap_or(Cursor::default());
+            .map(|v| v.cursors.main_cursor().position.line_index)
+            .unwrap_or(0);
 
         self.height = self.viewport_size.1.saturating_sub(1);
 
@@ -92,11 +91,10 @@ impl Client {
 
         self.height = self.height.saturating_sub(picker_height);
 
-        let cursor_position = main_cursor.position;
-        if cursor_position.line_index < self.scroll {
-            self.scroll = cursor_position.line_index;
-        } else if cursor_position.line_index >= self.scroll + self.height as usize {
-            self.scroll = cursor_position.line_index + 1 - self.height as usize;
+        if focused_line_index < self.scroll {
+            self.scroll = focused_line_index;
+        } else if focused_line_index >= self.scroll + self.height as usize {
+            self.scroll = focused_line_index + 1 - self.height as usize;
         }
     }
 }

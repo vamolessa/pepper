@@ -77,7 +77,7 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- ~~home/end/first-column~~
 	- ~~half-page down/up~~
 	- ~~find char~~
-	- center main cursor, main cursor at top, main cursor at bottom (`zz`, `zk`, `zj`)
+	- ~~center main cursor, main cursor at top, main cursor at bottom (`zz`, `zk`, `zj`)~~
 	- remember column when moving between lines
 	- go to matching bracket
 	- cursor history navigation

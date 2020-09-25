@@ -48,9 +48,7 @@ impl<'a> KeysIterator<'a> {
     }
 
     pub fn put_back(&mut self) {
-        if self.index > 0 {
-            self.index -= 1;
-        }
+        self.index = self.index.saturating_sub(1);
     }
 }
 

@@ -343,13 +343,20 @@ impl ModeState for State {
                 }
                 self.movement_kind = CursorMovementKind::PositionOnly;
             }
-            Key::Char('z') => match keys.next() {
-                Key::None => return ModeOperation::Pending,
-                Key::Char('z') => {
-                    let client = unwrap_or_none!(ctx.clients.get_mut(ctx.target_client));
+            Key::Char('z') => {
+                let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
+                let focused_line_index = buffer_view.cursors.main_cursor().position.line_index;
+                let client = unwrap_or_none!(ctx.clients.get_mut(ctx.target_client));
+                let height = client.height as usize;
+
+                match keys.next() {
+                    Key::None => return ModeOperation::Pending,
+                    Key::Char('z') => client.scroll = focused_line_index.saturating_sub(height / 2),
+                    Key::Char('j') => client.scroll = focused_line_index.saturating_sub(height),
+                    Key::Char('k') => client.scroll = focused_line_index,
+                    _ => (),
                 }
-                _ => (),
-            },
+            }
             Key::Ctrl('d') => {
                 let half_height = ctx
                     .clients
