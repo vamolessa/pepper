@@ -22,45 +22,48 @@ impl WordKind {
     }
 }
 
-pub struct WordIter<'a> {
-    text: &'a str,
-    kind: WordKind,
-}
+pub struct WordIter<'a>(&'a str);
 impl<'a> WordIter<'a> {
     pub fn new(text: &'a str) -> Self {
-        let kind = match text.chars().next() {
-            Some(c) => WordKind::from_char(c),
-            None => WordKind::Whitespace,
-        };
-        Self { text, kind }
+        Self(text)
     }
 }
 impl<'a> Iterator for WordIter<'a> {
     type Item = (WordKind, &'a str);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let mut chars = self.text.chars();
+        let mut chars = self.0.chars();
+        let kind = WordKind::from_char(chars.next()?);
         while let Some(c) = chars.next() {
-            let kind = WordKind::from_char(c);
-            if kind != self.kind {
+            if kind != WordKind::from_char(c) {
                 let rest_len = chars.as_str().len();
-                let (before, after) = self
-                    .text
-                    .split_at(self.text.len() - rest_len - c.len_utf8());
-                let word_kind = self.kind;
-                self.text = after;
-                self.kind = kind;
-                return Some((word_kind, before));
+                let (word, rest) = self.0.split_at(self.0.len() - rest_len - c.len_utf8());
+                self.0 = rest;
+                return Some((kind, word));
             }
         }
 
-        if self.text.is_empty() {
-            None
-        } else {
-            let word = self.text;
-            self.text = "";
-            Some((self.kind, word))
+        let word = self.0;
+        self.0 = "";
+        Some((kind, word))
+    }
+}
+impl<'a> DoubleEndedIterator for WordIter<'a> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        let mut chars = self.0.chars();
+        let kind = WordKind::from_char(chars.next_back()?);
+        while let Some(c) = chars.next_back() {
+            if kind != WordKind::from_char(c) {
+                let rest_len = chars.as_str().len();
+                let (rest, word) = self.0.split_at(rest_len + c.len_utf8());
+                self.0 = rest;
+                return Some((kind, word));
+            }
         }
+
+        let word = self.0;
+        self.0 = "";
+        Some((kind, word))
     }
 }
 
@@ -200,6 +203,16 @@ mod tests {
         assert_eq!(Some((WordKind::Identifier, "third")), iter.next());
         assert_eq!(Some((WordKind::Symbol, "!?+")), iter.next());
         assert_eq!(None, iter.next());
+
+        let mut iter = WordIter::new("first  $#second \tthird!?+");
+        assert_eq!(Some((WordKind::Symbol, "!?+")), iter.next_back());
+        assert_eq!(Some((WordKind::Identifier, "third")), iter.next_back());
+        assert_eq!(Some((WordKind::Whitespace, " \t")), iter.next_back());
+        assert_eq!(Some((WordKind::Identifier, "second")), iter.next_back());
+        assert_eq!(Some((WordKind::Symbol, "$#")), iter.next_back());
+        assert_eq!(Some((WordKind::Whitespace, "  ")), iter.next_back());
+        assert_eq!(Some((WordKind::Identifier, "first")), iter.next_back());
+        assert_eq!(None, iter.next_back());
     }
 
     #[test]
