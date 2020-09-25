@@ -79,6 +79,7 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- ~~find char~~
 	- ~~center main cursor, main cursor at top, main cursor at bottom (`zz`, `zk`, `zj`)~~
 	- ~~go to matching bracket (`gm`)~~
+	- ~~select all text in buffer~~
 	- limit selections to search ranges (or cursor = search ranges if empty) (`?`)
 	- remember column when moving between lines
 	- cursor history navigation

@@ -322,12 +322,12 @@ impl ModeState for State {
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
                 let buffer = &unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle)).content;
 
-                let line_count = buffer.line_count();
+                let last_line_index = buffer.line_count().saturating_sub(1);
                 let mut cursors = buffer_view.cursors.mut_guard();
                 for cursor in &mut cursors[..] {
                     if cursor.anchor <= cursor.position {
                         cursor.anchor.column_byte_index = 0;
-                        if cursor.position.line_index < line_count {
+                        if cursor.position.line_index < last_line_index {
                             cursor.position.line_index += 1;
                             cursor.position.column_byte_index = 0;
                         } else {
@@ -335,7 +335,7 @@ impl ModeState for State {
                                 buffer.line_at(cursor.position.line_index).as_str().len();
                         }
                     } else {
-                        if cursor.anchor.line_index < line_count {
+                        if cursor.anchor.line_index < last_line_index {
                             cursor.anchor.line_index += 1;
                             cursor.anchor.column_byte_index = 0;
                         } else {
@@ -493,6 +493,14 @@ impl ModeState for State {
                 .cursors
                 .next_main_cursor(),
             Key::Char('/') => return ModeOperation::EnterMode(Mode::Search(Default::default())),
+            Key::Char('?') => {
+                let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
+                let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
+                let search_ranges = buffer.search_ranges();
+                if search_ranges.is_empty() {
+                    return ModeOperation::None;
+                }
+            }
             Key::Char('y') => {
                 if let Ok(mut clipboard) = ClipboardContext::new() {
                     let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
