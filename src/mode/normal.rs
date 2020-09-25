@@ -8,6 +8,7 @@ use crate::{
     cursor::Cursor,
     editor::KeysIterator,
     mode::{Mode, ModeContext, ModeOperation, ModeState},
+    word_database::WordKind,
 };
 
 pub struct State {
@@ -131,7 +132,7 @@ impl ModeState for State {
                         for cursor in &mut cursors[..] {
                             let word = buffer.word_at(cursor.position);
                             cursor.anchor = word.position;
-                            cursor.position = word.position;
+                            cursor.position = word.end_position();
                         }
                     }
                     Key::Char('(') | Key::Char(')') => {
@@ -184,9 +185,18 @@ impl ModeState for State {
                     Key::None => return ModeOperation::Pending,
                     Key::Char('w') => {
                         for cursor in &mut cursors[..] {
-                            let word = buffer.word_at(cursor.position);
-                            cursor.anchor = word.position;
-                            cursor.position = word.position;
+                            let (word, mut left_words, mut right_words) =
+                                buffer.words_from(cursor.position);
+                            cursor.anchor = match left_words.next() {
+                                Some(word) if word.kind == WordKind::Whitespace => word.position,
+                                _ => word.position,
+                            };
+                            cursor.position = match right_words.next() {
+                                Some(word) if word.kind == WordKind::Whitespace => {
+                                    word.end_position()
+                                }
+                                _ => word.end_position(),
+                            };
                         }
                     }
                     Key::Char('(') | Key::Char(')') => {
