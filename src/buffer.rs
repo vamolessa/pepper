@@ -475,11 +475,11 @@ impl BufferContent {
             Some(right) => match WordIter::new(before).next_back() {
                 Some(left) => {
                     if left.kind == right.kind {
+                        let end_index = position.column_byte_index + right.text.len();
                         let position = BufferPosition::line_col(
                             position.line_index,
                             position.column_byte_index - left.text.len(),
                         );
-                        let end_index = position.column_byte_index + right.text.len();
                         WordRefWithPosition {
                             kind: left.kind,
                             text: &line[position.column_byte_index..end_index],
@@ -1122,21 +1122,56 @@ mod tests {
             WordKind::Identifier,
             "word"
         );
+        assert_word!(
+            buffer.word_at(pos(0, 2)),
+            pos(0, 0),
+            WordKind::Identifier,
+            "word"
+        );
+        assert_word!(
+            buffer.word_at(pos(0, 4)),
+            pos(0, 4),
+            WordKind::Whitespace,
+            ""
+        );
 
-        /*
-        let line = BufferLine::new("word".into());
-        assert_eq!((WordKind::Identifier, 0..4, "word"), line.word_at(0));
-        assert_eq!((WordKind::Identifier, 0..4, "word"), line.word_at(2));
-        assert_eq!((WordKind::Whitespace, 4..4, ""), line.word_at(4));
-
-        let line = BufferLine::new("asd word+? asd".into());
-        assert_eq!((WordKind::Whitespace, 3..4, " "), line.word_at(3));
-        assert_eq!((WordKind::Identifier, 4..8, "word"), line.word_at(4));
-        assert_eq!((WordKind::Identifier, 4..8, "word"), line.word_at(6));
-        assert_eq!((WordKind::Symbol, 8..10, "+?"), line.word_at(8));
-        assert_eq!((WordKind::Symbol, 8..10, "+?"), line.word_at(9));
-        assert_eq!((WordKind::Whitespace, 10..11, " "), line.word_at(10));
-        */
+        let buffer = BufferContent::from_str("asd word+? asd");
+        assert_word!(
+            buffer.word_at(pos(0, 3)),
+            pos(0, 3),
+            WordKind::Whitespace,
+            " "
+        );
+        assert_word!(
+            buffer.word_at(pos(0, 4)),
+            pos(0, 4),
+            WordKind::Identifier,
+            "word"
+        );
+        assert_word!(
+            buffer.word_at(pos(0, 6)),
+            pos(0, 4),
+            WordKind::Identifier,
+            "word"
+        );
+        assert_word!(
+            buffer.word_at(pos(0, 8)),
+            pos(0, 8),
+            WordKind::Symbol,
+            "+?"
+        );
+        assert_word!(
+            buffer.word_at(pos(0, 9)),
+            pos(0, 8),
+            WordKind::Symbol,
+            "+?"
+        );
+        assert_word!(
+            buffer.word_at(pos(0, 10)),
+            pos(0, 10),
+            WordKind::Whitespace,
+            " "
+        );
     }
 
     #[test]
