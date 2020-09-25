@@ -1,7 +1,7 @@
 use copypasta::{ClipboardContext, ClipboardProvider};
 
 use crate::{
-    buffer::Buffer,
+    buffer::BufferContent,
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{CursorMovement, CursorMovementKind},
     client_event::Key,
@@ -111,16 +111,13 @@ impl ModeState for State {
             }
             Key::Char('a') => {
                 fn balanced_brackets(
-                    buffer: &Buffer,
+                    buffer: &BufferContent,
                     cursors: &mut [Cursor],
                     left: char,
                     right: char,
                 ) {
                     for cursor in cursors {
-                        let range =
-                            buffer
-                                .content
-                                .find_balanced_chars_at(cursor.position, left, right);
+                        let range = buffer.find_balanced_chars_at(cursor.position, left, right);
                         if let Some(range) = range {
                             cursor.anchor = range.from;
                             cursor.position = range.to;
@@ -129,14 +126,14 @@ impl ModeState for State {
                 }
 
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
-                let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
+                let buffer = &unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle)).content;
                 let mut cursors = buffer_view.cursors.mut_guard();
 
                 match keys.next() {
                     Key::None => return ModeOperation::Pending,
                     Key::Char('w') => {
                         for cursor in &mut cursors[..] {
-                            let (range, _) = buffer.content.find_word_at(cursor.position);
+                            let (range, _) = buffer.find_word_at(cursor.position);
                             cursor.anchor = range.from;
                             cursor.position = range.to;
                         }
@@ -188,6 +185,48 @@ impl ModeState for State {
                         CursorMovement::End,
                         self.movement_kind,
                     ),
+                    Key::Char('m') => {
+                        let buffer =
+                            &unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle)).content;
+                        let mut cursors = buffer_view.cursors.mut_guard();
+                        for cursor in &mut cursors[..] {
+                            let position = cursor.position;
+                            let (left, right) = match buffer.line_at(position.line_index).as_str()
+                                [position.column_byte_index..]
+                                .chars()
+                                .next()
+                            {
+                                Some('(') | Some(')') => ('(', ')'),
+                                Some('[') | Some(']') => ('[', ']'),
+                                Some('{') | Some('}') => ('{', '}'),
+                                Some('<') | Some('>') => ('<', '>'),
+                                Some('|') => ('|', '|'),
+                                Some('"') => ('"', '"'),
+                                Some('\'') => ('\'', '\''),
+                                _ => continue,
+                            };
+
+                            if let Some(range) =
+                                buffer.find_balanced_chars_at(position, left, right)
+                            {
+                                let from = BufferPosition::line_col(
+                                    range.from.line_index,
+                                    range.from.column_byte_index - left.len_utf8(),
+                                );
+                                let to = range.to;
+
+                                if position == from {
+                                    cursor.position = to;
+                                } else if position == to {
+                                    cursor.position = from;
+                                }
+
+                                if let CursorMovementKind::PositionAndAnchor = self.movement_kind {
+                                    cursor.anchor = cursor.position;
+                                }
+                            }
+                        }
+                    }
                     _ => (),
                 }
             }

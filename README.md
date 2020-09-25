@@ -78,13 +78,14 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- ~~half-page down/up~~
 	- ~~find char~~
 	- ~~center main cursor, main cursor at top, main cursor at bottom (`zz`, `zk`, `zj`)~~
+	- ~~go to matching bracket (`gm`)~~
+	- limit selections to search ranges (or cursor = search ranges if empty) (`?`)
 	- remember column when moving between lines
-	- go to matching bracket
 	- cursor history navigation
 - selections
 	- ~~select current word and search~~
 	- ~~add cursor on 'next search result' (`*`)~~
-	- skip one and add cursor on 'next next search result'
+	- ~~skip one and add cursor on 'next next search result'~~
 	- ~~remove selections (set anchor to position)~~
 	- ~~swap anchor and position~~
 	- ~~select cursor lines~~
