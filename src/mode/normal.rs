@@ -188,8 +188,7 @@ impl ModeState for State {
                     Key::Char('m') => {
                         let buffer =
                             &unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle)).content;
-                        let mut cursors = buffer_view.cursors.mut_guard();
-                        for cursor in &mut cursors[..] {
+                        for cursor in &mut buffer_view.cursors.mut_guard()[..] {
                             let position = cursor.position;
                             let (left, right) = match buffer.line_at(position.line_index).as_str()
                                 [position.column_byte_index..]
@@ -236,8 +235,7 @@ impl ModeState for State {
                     let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
                     let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
 
-                    let mut cursors = buffer_view.cursors.mut_guard();
-                    for cursor in &mut cursors[..] {
+                    for cursor in &mut buffer_view.cursors.mut_guard()[..] {
                         cursor.position.column_byte_index = buffer
                             .content
                             .line_at(cursor.position.line_index)
@@ -257,8 +255,7 @@ impl ModeState for State {
                     let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
                     let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
 
-                    let mut cursors = buffer_view.cursors.mut_guard();
-                    for cursor in &mut cursors[..] {
+                    for cursor in &mut buffer_view.cursors.mut_guard()[..] {
                         cursor.position.column_byte_index = buffer
                             .content
                             .line_at(cursor.position.line_index)
@@ -278,8 +275,7 @@ impl ModeState for State {
                     let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
                     let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
 
-                    let mut cursors = buffer_view.cursors.mut_guard();
-                    for cursor in &mut cursors[..] {
+                    for cursor in &mut buffer_view.cursors.mut_guard()[..] {
                         cursor.position.column_byte_index = match buffer
                             .content
                             .line_at(cursor.position.line_index)
@@ -302,8 +298,7 @@ impl ModeState for State {
                     let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
                     let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
 
-                    let mut cursors = buffer_view.cursors.mut_guard();
-                    for cursor in &mut cursors[..] {
+                    for cursor in &mut buffer_view.cursors.mut_guard()[..] {
                         let line = buffer.content.line_at(cursor.position.line_index);
                         cursor.position.column_byte_index =
                             match line.previous_char_from(cursor.position.column_byte_index, c) {
@@ -323,8 +318,7 @@ impl ModeState for State {
                 let buffer = &unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle)).content;
 
                 let last_line_index = buffer.line_count().saturating_sub(1);
-                let mut cursors = buffer_view.cursors.mut_guard();
-                for cursor in &mut cursors[..] {
+                for cursor in &mut buffer_view.cursors.mut_guard()[..] {
                     if cursor.anchor <= cursor.position {
                         cursor.anchor.column_byte_index = 0;
                         if cursor.position.line_index < last_line_index {
@@ -451,12 +445,11 @@ impl ModeState for State {
                 self.movement_kind = CursorMovementKind::PositionAndAnchor;
             }
             Key::Char('v') => {
-                let mut cursors = unwrap_or_none!(ctx.buffer_views.get_mut(handle))
-                    .cursors
-                    .mut_guard();
-
                 let mut had_selection = false;
-                for cursor in &mut cursors[..] {
+                for cursor in &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle))
+                    .cursors
+                    .mut_guard()[..]
+                {
                     if cursor.anchor != cursor.position {
                         cursor.anchor = cursor.position;
                         had_selection = true;
@@ -470,18 +463,18 @@ impl ModeState for State {
                 };
             }
             Key::Char('V') => {
-                let mut cursors = unwrap_or_none!(ctx.buffer_views.get_mut(handle))
+                for cursor in &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle))
                     .cursors
-                    .mut_guard();
-                for cursor in &mut cursors[..] {
+                    .mut_guard()[..]
+                {
                     std::mem::swap(&mut cursor.anchor, &mut cursor.position);
                 }
             }
             Key::Char('_') => {
-                let mut cursors = unwrap_or_none!(ctx.buffer_views.get_mut(handle))
+                for cursor in &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle))
                     .cursors
-                    .mut_guard();
-                for cursor in &mut cursors[..] {
+                    .mut_guard()[..]
+                {
                     cursor.anchor = cursor.position;
                 }
                 self.movement_kind = CursorMovementKind::PositionAndAnchor;
@@ -499,6 +492,10 @@ impl ModeState for State {
                 let search_ranges = buffer.search_ranges();
                 if search_ranges.is_empty() {
                     return ModeOperation::None;
+                }
+
+                for cursor in &mut buffer_view.cursors.mut_guard()[..] {
+                    //
                 }
             }
             Key::Char('y') => {
