@@ -72,39 +72,35 @@ impl ModeState for State {
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
                 let buffer = unwrap_or_none!(ctx.buffers.get_mut(buffer_view.buffer_handle));
 
-                let main_cursor = buffer_view.cursors.main_cursor();
                 let main_position = buffer_view.cursors.main_cursor().position;
-
                 let search_ranges = buffer.search_ranges();
-                let is_on_search_word = search_ranges
-                    .binary_search_by_key(&main_position, |r| r.from)
-                    .is_ok();
+                let current_range_index =
+                    search_ranges.binary_search_by_key(&main_position, |r| r.from);
 
-                if search_ranges.is_empty() || !is_on_search_word {
-                    let (range, word) = buffer.content.find_word_at(main_cursor.position);
+                if search_ranges.is_empty() || current_range_index.is_err() {
+                    buffer.set_search_with(|c| {
+                        let (range, word) = c.find_word_at(main_position);
 
-                    ctx.input.clear();
-                    ctx.input.push_str(word);
-                    buffer.set_search(&ctx.input);
+                        let mut cursors = buffer_view.cursors.mut_guard();
+                        cursors.clear();
+                        cursors.add(Cursor {
+                            anchor: range.from,
+                            position: range.from,
+                        });
 
-                    let mut cursors = buffer_view.cursors.mut_guard();
-                    cursors.clear();
-                    cursors.add(Cursor {
-                        anchor: range.from,
-                        position: range.from,
+                        word
                     });
                 } else {
-                    let range_index =
-                        match search_ranges.binary_search_by_key(&main_position, |r| r.from) {
-                            Ok(index) => index + 1,
-                            Err(index) => index,
-                        };
+                    let range_index = match current_range_index {
+                        Ok(index) => index + 1,
+                        Err(index) => index,
+                    };
                     let range_index = range_index % search_ranges.len();
-                    let cursor_position = search_ranges[range_index].from;
+                    let range = search_ranges[range_index];
 
                     buffer_view.cursors.mut_guard().add(Cursor {
-                        anchor: cursor_position,
-                        position: cursor_position,
+                        anchor: range.from,
+                        position: range.from,
                     });
                 }
                 self.movement_kind = CursorMovementKind::PositionAndAnchor;

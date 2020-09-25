@@ -744,6 +744,16 @@ impl Buffer {
             .find_search_ranges(text, &mut self.search_ranges);
     }
 
+    pub fn set_search_with<F>(&mut self, selector: F)
+    where
+        F: FnOnce(&BufferContent) -> &str,
+    {
+        self.search_ranges.clear();
+        let text = selector(&self.content);
+        self.content
+            .find_search_ranges(text, &mut self.search_ranges);
+    }
+
     pub fn search_ranges(&self) -> &[BufferRange] {
         &self.search_ranges
     }
