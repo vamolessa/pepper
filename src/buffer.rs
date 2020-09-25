@@ -10,7 +10,7 @@ use crate::{
     buffer_position::{BufferPosition, BufferRange},
     history::{Edit, EditKind, History},
     syntax::{self, HighlightedBuffer, SyntaxCollection, SyntaxHandle},
-    word_database::{WordKind, WordDatabase, IdentifierWordIter},
+    word_database::{WordDatabase, WordIter, WordKind},
 };
 
 #[derive(Debug)]
@@ -568,7 +568,7 @@ impl Buffer {
         content: BufferContent,
     ) -> Self {
         for line in content.lines() {
-            for word in IdentifierWordIter::new(line.as_str()) {
+            for word in WordIter::new(line.as_str()).of_kind(WordKind::Identifier) {
                 word_database.add_word(word);
             }
         }
@@ -621,7 +621,9 @@ impl Buffer {
             return BufferRange::between(position, position);
         }
 
-        for word in IdentifierWordIter::new(self.content.line_at(position.line_index).as_str()) {
+        for word in WordIter::new(self.content.line_at(position.line_index).as_str())
+            .of_kind(WordKind::Identifier)
+        {
             word_database.remove_word(word);
         }
 
@@ -634,7 +636,7 @@ impl Buffer {
             .skip(range.from.line_index)
             .take(line_count)
         {
-            for word in IdentifierWordIter::new(line.as_str()) {
+            for word in WordIter::new(line.as_str()).of_kind(WordKind::Identifier) {
                 word_database.add_word(word);
             }
         }
@@ -669,14 +671,16 @@ impl Buffer {
             .skip(range.from.line_index)
             .take(line_count)
         {
-            for word in IdentifierWordIter::new(line.as_str()) {
+            for word in WordIter::new(line.as_str()).of_kind(WordKind::Identifier) {
                 word_database.remove_word(word);
             }
         }
 
         let deleted_text = self.content.delete_range(range);
 
-        for word in IdentifierWordIter::new(self.content.line_at(range.from.line_index).as_str()) {
+        for word in WordIter::new(self.content.line_at(range.from.line_index).as_str())
+            .of_kind(WordKind::Identifier)
+        {
             word_database.add_word(word);
         }
 
@@ -822,7 +826,7 @@ impl BufferCollection {
                 let handle = BufferHandle(i);
                 if predicate(handle, buffer) {
                     for line in buffer.content.lines() {
-                        for word in IdentifierWordIter::new(line.as_str()) {
+                        for word in WordIter::new(line.as_str()).of_kind(WordKind::Identifier) {
                             word_database.remove_word(word);
                         }
                     }

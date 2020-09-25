@@ -27,6 +27,11 @@ impl<'a> WordIter<'a> {
     pub fn new(text: &'a str) -> Self {
         Self(text)
     }
+
+    #[inline]
+    pub fn of_kind(self, kind: WordKind) -> impl DoubleEndedIterator<Item = &'a str> {
+        self.filter_map(move |(k, w)| if k == kind { Some(w) } else { None })
+    }
 }
 impl<'a> Iterator for WordIter<'a> {
     type Item = (WordKind, &'a str);
@@ -64,32 +69,6 @@ impl<'a> DoubleEndedIterator for WordIter<'a> {
         let word = self.0;
         self.0 = "";
         Some((kind, word))
-    }
-}
-
-pub struct IdentifierWordIter<'a>(&'a str);
-impl<'a> IdentifierWordIter<'a> {
-    pub fn new(text: &'a str) -> Self {
-        Self(text)
-    }
-}
-impl<'a> Iterator for IdentifierWordIter<'a> {
-    type Item = &'a str;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let start = self
-            .0
-            .find(|c| WordKind::from_char(c) == WordKind::Identifier)?;
-        self.0 = &self.0[start..];
-
-        let end = self
-            .0
-            .find(|c| WordKind::from_char(c) != WordKind::Identifier)
-            .unwrap_or(self.0.len());
-        let (word, rest) = self.0.split_at(end);
-
-        self.0 = rest;
-        Some(word)
     }
 }
 
@@ -217,17 +196,18 @@ mod tests {
 
     #[test]
     fn identifier_word_iter() {
-        let mut iter = IdentifierWordIter::new("word");
+        let mut iter = WordIter::new("word").of_kind(WordKind::Identifier);
         assert_eq!(Some("word"), iter.next());
         assert_eq!(None, iter.next());
 
-        let mut iter = IdentifierWordIter::new("first second third");
+        let mut iter = WordIter::new("first second third").of_kind(WordKind::Identifier);
         assert_eq!(Some("first"), iter.next());
         assert_eq!(Some("second"), iter.next());
         assert_eq!(Some("third"), iter.next());
         assert_eq!(None, iter.next());
 
-        let mut iter = IdentifierWordIter::new("  1first:second00+?$%third  ^@");
+        let mut iter =
+            WordIter::new("  1first:second00+?$%third  ^@").of_kind(WordKind::Identifier);
         assert_eq!(Some("1first"), iter.next());
         assert_eq!(Some("second00"), iter.next());
         assert_eq!(Some("third"), iter.next());
