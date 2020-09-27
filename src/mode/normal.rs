@@ -374,7 +374,7 @@ impl ModeState for State {
                 }
                 _ => (),
             },
-            Key::Char('x') => {
+            Key::Char('v') => {
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
                 let buffer = &unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle)).content;
 
@@ -403,40 +403,23 @@ impl ModeState for State {
                 }
                 self.movement_kind = CursorMovementKind::PositionOnly;
             }
-            Key::Char('X') => {
-                let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
-                let buffer = &unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle)).content;
-
-                let mut cursors = buffer_view.cursors.mut_guard();
-                let cursor_count = cursors[..].len();
-
-                for i in 0..cursor_count {
-                    let cursor = &mut cursors[i];
-                    if cursor.anchor.line_index == cursor.position.line_index {
-                        continue;
+            Key::Char('V') => {
+                let mut had_selection = false;
+                for cursor in &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle))
+                    .cursors
+                    .mut_guard()[..]
+                {
+                    if cursor.anchor != cursor.position {
+                        cursor.anchor = cursor.position;
+                        had_selection = true;
                     }
-
-                    let range = BufferRange::between(cursor.anchor, cursor.position);
-                    cursor.anchor = range.from;
-                    cursor.position = BufferPosition::line_col(
-                        range.from.line_index,
-                        buffer.line_at(range.from.line_index).as_str().len(),
-                    );
-
-                    for line_index in (range.from.line_index + 1)..range.to.line_index {
-                        let line_len = buffer.line_at(line_index).as_str().len();
-                        cursors.add(Cursor {
-                            anchor: BufferPosition::line_col(line_index, 0),
-                            position: BufferPosition::line_col(line_index, line_len),
-                        });
-                    }
-
-                    cursors.add(Cursor {
-                        anchor: BufferPosition::line_col(range.to.line_index, 0),
-                        position: range.to,
-                    });
                 }
-                self.movement_kind = CursorMovementKind::PositionOnly;
+
+                self.movement_kind = if had_selection {
+                    CursorMovementKind::PositionAndAnchor
+                } else {
+                    CursorMovementKind::PositionOnly
+                };
             }
             Key::Char('z') => {
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
@@ -498,55 +481,77 @@ impl ModeState for State {
                 unwrap_or_none!(ctx.buffer_views.get_mut(handle)).commit_edits(ctx.buffers);
                 return ModeOperation::EnterMode(Mode::Insert(Default::default()));
             }
-            Key::Char(';') => {
-                let cursors = &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle)).cursors;
-                let main_cursor = *cursors.main_cursor();
-                let mut cursors = cursors.mut_guard();
-                cursors.clear();
-                cursors.add(main_cursor);
-                self.movement_kind = CursorMovementKind::PositionAndAnchor;
-            }
-            Key::Char('v') => {
-                let mut had_selection = false;
-                for cursor in &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle))
-                    .cursors
-                    .mut_guard()[..]
-                {
-                    if cursor.anchor != cursor.position {
+            Key::Char('x') => match keys.next() {
+                Key::None => return ModeOperation::Pending,
+                Key::Char('m') => {
+                    let cursors = &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle)).cursors;
+                    let main_cursor = *cursors.main_cursor();
+                    let mut cursors = cursors.mut_guard();
+                    cursors.clear();
+                    cursors.add(main_cursor);
+                    self.movement_kind = CursorMovementKind::PositionAndAnchor;
+                }
+                Key::Char('v') => {
+                    for cursor in &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle))
+                        .cursors
+                        .mut_guard()[..]
+                    {
                         cursor.anchor = cursor.position;
-                        had_selection = true;
+                    }
+                    self.movement_kind = CursorMovementKind::PositionAndAnchor;
+                }
+                Key::Char('o') => {
+                    for cursor in &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle))
+                        .cursors
+                        .mut_guard()[..]
+                    {
+                        std::mem::swap(&mut cursor.anchor, &mut cursor.position);
                     }
                 }
+                Key::Char('n') => unwrap_or_none!(ctx.buffer_views.get_mut(handle))
+                    .cursors
+                    .next_main_cursor(),
+                Key::Char('p') => unwrap_or_none!(ctx.buffer_views.get_mut(handle))
+                    .cursors
+                    .previous_main_cursor(),
+                Key::Char('s') => {
+                    let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
+                    let buffer =
+                        &unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle)).content;
 
-                self.movement_kind = if had_selection {
-                    CursorMovementKind::PositionAndAnchor
-                } else {
-                    CursorMovementKind::PositionOnly
-                };
-            }
-            Key::Char('V') => {
-                for cursor in &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle))
-                    .cursors
-                    .mut_guard()[..]
-                {
-                    std::mem::swap(&mut cursor.anchor, &mut cursor.position);
+                    let mut cursors = buffer_view.cursors.mut_guard();
+                    let cursor_count = cursors[..].len();
+
+                    for i in 0..cursor_count {
+                        let cursor = &mut cursors[i];
+                        if cursor.anchor.line_index == cursor.position.line_index {
+                            continue;
+                        }
+
+                        let range = BufferRange::between(cursor.anchor, cursor.position);
+                        cursor.anchor = range.from;
+                        cursor.position = BufferPosition::line_col(
+                            range.from.line_index,
+                            buffer.line_at(range.from.line_index).as_str().len(),
+                        );
+
+                        for line_index in (range.from.line_index + 1)..range.to.line_index {
+                            let line_len = buffer.line_at(line_index).as_str().len();
+                            cursors.add(Cursor {
+                                anchor: BufferPosition::line_col(line_index, 0),
+                                position: BufferPosition::line_col(line_index, line_len),
+                            });
+                        }
+
+                        cursors.add(Cursor {
+                            anchor: BufferPosition::line_col(range.to.line_index, 0),
+                            position: range.to,
+                        });
+                    }
+                    self.movement_kind = CursorMovementKind::PositionOnly;
                 }
-            }
-            Key::Char('_') => {
-                for cursor in &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle))
-                    .cursors
-                    .mut_guard()[..]
-                {
-                    cursor.anchor = cursor.position;
-                }
-                self.movement_kind = CursorMovementKind::PositionAndAnchor;
-            }
-            Key::Char('(') => unwrap_or_none!(ctx.buffer_views.get_mut(handle))
-                .cursors
-                .previous_main_cursor(),
-            Key::Char(')') => unwrap_or_none!(ctx.buffer_views.get_mut(handle))
-                .cursors
-                .next_main_cursor(),
+                _ => (),
+            },
             Key::Char('/') => return ModeOperation::EnterMode(Mode::Search(Default::default())),
             Key::Char('?') => {
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
@@ -615,7 +620,9 @@ impl ModeState for State {
                     let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
                     let mut text = String::new();
                     buffer_view.get_selection_text(ctx.buffers, &mut text);
-                    let _ = clipboard.set_contents(text);
+                    if !text.is_empty() {
+                        let _ = clipboard.set_contents(text);
+                    }
                 }
                 self.movement_kind = CursorMovementKind::PositionAndAnchor;
             }
