@@ -15,6 +15,15 @@ use crate::{
     word_database::WordDatabase,
 };
 
+macro_rules! unwrap_or_return {
+    ($e:expr) => {
+        match $e {
+            Some(v) => v,
+            None => return,
+        }
+    };
+}
+
 macro_rules! unwrap_or_none {
     ($e:expr) => {
         match $e {

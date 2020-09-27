@@ -118,6 +118,10 @@ impl<'a> CursorCollectionMutGuard<'a> {
     pub fn set_main_cursor_index(&mut self, index: usize) {
         self.0.main_cursor_index = index;
     }
+
+    pub fn main_cursor(&mut self) -> &mut Cursor {
+        &mut self.0.cursors[self.0.main_cursor_index]
+    }
 }
 
 impl<'a, Idx> Index<Idx> for CursorCollectionMutGuard<'a>

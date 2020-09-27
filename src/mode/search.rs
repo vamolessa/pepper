@@ -30,14 +30,8 @@ impl ModeState for State {
 }
 
 fn update_search(ctx: &mut ModeContext) {
-    let view_handle = ctx.current_buffer_view_handle();
-    let buffer_views = &ctx.buffer_views;
-    let buffers = &mut ctx.buffers;
-
-    if let Some(buffer) = view_handle
-        .and_then(|h| buffer_views.get(h))
-        .and_then(|v| buffers.get_mut(v.buffer_handle))
-    {
-        buffer.set_search(&ctx.input);
-    }
+    let handle = unwrap_or_return!(ctx.current_buffer_view_handle());
+    let buffer_view = unwrap_or_return!(ctx.buffer_views.get(handle));
+    let buffer = unwrap_or_return!(ctx.buffers.get_mut(buffer_view.buffer_handle));
+    buffer.set_search(&ctx.input);
 }

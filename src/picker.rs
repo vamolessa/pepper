@@ -50,7 +50,7 @@ impl Picker {
     }
 
     pub fn move_cursor(&mut self, offset: isize) {
-        if self.filtered_entries.len() == 0 {
+        if self.filtered_entries.is_empty() {
             return;
         }
 
@@ -141,15 +141,19 @@ impl Picker {
         self.cursor = self.cursor.min(self.filtered_entries.len());
     }
 
-    pub fn current_entry_name<'a>(&'a mut self, word_database: &WordDatabase) -> &'a str {
+    pub fn current_entry_name<'a>(&'a mut self, word_database: &WordDatabase) -> Option<&'a str> {
+        if self.filtered_entries.is_empty() {
+            return None;
+        }
+
         let entry = &self.filtered_entries[self.cursor];
         match entry.source {
-            FiletedEntrySource::Custom(i) => &self.custom_entries[i].name,
+            FiletedEntrySource::Custom(i) => Some(&self.custom_entries[i].name),
             FiletedEntrySource::WordDatabase(i) => {
                 let word = word_database.word_at(i);
                 self.cached_current_word.clear();
                 self.cached_current_word.push_str(word);
-                &self.cached_current_word
+                Some(&self.cached_current_word)
             }
         }
     }
