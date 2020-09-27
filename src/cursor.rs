@@ -41,21 +41,16 @@ impl CursorCollection {
         }
     }
 
+    pub fn main_cursor_index(&self) -> usize {
+        self.main_cursor_index
+    }
+
     pub fn main_cursor(&self) -> &Cursor {
         &self.cursors[self.main_cursor_index]
     }
 
     pub fn mut_guard(&mut self) -> CursorCollectionMutGuard {
         CursorCollectionMutGuard(self)
-    }
-
-    pub fn next_main_cursor(&mut self) {
-        self.main_cursor_index = (self.main_cursor_index + 1) % self.cursors.len();
-    }
-
-    pub fn previous_main_cursor(&mut self) {
-        self.main_cursor_index =
-            (self.main_cursor_index + self.cursors.len() - 1) % self.cursors.len();
     }
 
     fn sort_and_merge(&mut self) {
@@ -118,6 +113,10 @@ impl<'a> CursorCollectionMutGuard<'a> {
     pub fn add(&mut self, cursor: Cursor) {
         self.0.main_cursor_index = self.0.cursors.len();
         self.0.cursors.push(cursor);
+    }
+
+    pub fn set_main_cursor_index(&mut self, index: usize) {
+        self.0.main_cursor_index = index;
     }
 }
 

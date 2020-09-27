@@ -70,41 +70,22 @@ impl ModeState for State {
                     .move_to_previous_search_match(ctx.buffers, self.movement_kind);
             }
             Key::Char('N') => {
-                let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
-                let buffer = unwrap_or_none!(ctx.buffers.get_mut(buffer_view.buffer_handle));
-
-                let main_position = buffer_view.cursors.main_cursor().position;
-                let search_ranges = buffer.search_ranges();
-                let current_range_index =
-                    search_ranges.binary_search_by_key(&main_position, |r| r.from);
-
-                if search_ranges.is_empty() || current_range_index.is_err() {
-                    buffer.set_search_with(|c| {
-                        let word = c.word_at(main_position);
-
-                        let mut cursors = buffer_view.cursors.mut_guard();
-                        cursors.clear();
-                        cursors.add(Cursor {
-                            anchor: word.position,
-                            position: word.position,
-                        });
-
-                        word.text
-                    });
-                } else {
-                    let range_index = match current_range_index {
+                search_word_or_goto_next(self, ctx, |len, r| {
+                    let index = match r {
                         Ok(index) => index + 1,
                         Err(index) => index,
                     };
-                    let range_index = range_index % search_ranges.len();
-                    let range = search_ranges[range_index];
-
-                    buffer_view.cursors.mut_guard().add(Cursor {
-                        anchor: range.from,
-                        position: range.from,
-                    });
-                }
-                self.movement_kind = CursorMovementKind::PositionAndAnchor;
+                    index % len
+                });
+            }
+            Key::Char('P') => {
+                search_word_or_goto_next(self, ctx, |len, r| {
+                    let index = match r {
+                        Ok(index) => index,
+                        Err(index) => index,
+                    };
+                    (index + len - 1) % len
+                });
             }
             Key::Char('a') => {
                 fn balanced_brackets(
@@ -544,12 +525,20 @@ impl ModeState for State {
                         std::mem::swap(&mut cursor.anchor, &mut cursor.position);
                     }
                 }
-                Key::Char('n') => unwrap_or_none!(ctx.buffer_views.get_mut(handle))
-                    .cursors
-                    .next_main_cursor(),
-                Key::Char('p') => unwrap_or_none!(ctx.buffer_views.get_mut(handle))
-                    .cursors
-                    .previous_main_cursor(),
+                Key::Char('n') => {
+                    let cursors = &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle)).cursors;
+                    let index = cursors.main_cursor_index();
+                    let mut cursors = cursors.mut_guard();
+                    let cursor_count = cursors[..].len();
+                    cursors.set_main_cursor_index((index + 1) % cursor_count);
+                }
+                Key::Char('p') => {
+                    let cursors = &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle)).cursors;
+                    let index = cursors.main_cursor_index();
+                    let mut cursors = cursors.mut_guard();
+                    let cursor_count = cursors[..].len();
+                    cursors.set_main_cursor_index((index + cursor_count - 1) % cursor_count);
+                }
                 Key::Char('/') => {
                     let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
                     let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
@@ -670,4 +659,52 @@ fn on_event_no_buffer(_: &mut ModeContext, keys: &mut KeysIterator) -> ModeOpera
         Key::Char(':') => ModeOperation::EnterMode(Mode::Script(Default::default())),
         _ => ModeOperation::None,
     }
+}
+
+fn search_word_or_goto_next(
+    state: &mut State,
+    ctx: &mut ModeContext,
+    index_selector: fn(usize, Result<usize, usize>) -> usize,
+) {
+    let handle = match ctx.current_buffer_view_handle() {
+        Some(handle) => handle,
+        None => return,
+    };
+    let buffer_view = match ctx.buffer_views.get_mut(handle) {
+        Some(buffer_view) => buffer_view,
+        None => return,
+    };
+    let buffer = match ctx.buffers.get_mut(buffer_view.buffer_handle) {
+        Some(buffer) => buffer,
+        None => return,
+    };
+
+    let main_position = buffer_view.cursors.main_cursor().position;
+    let search_ranges = buffer.search_ranges();
+    let current_range_index = search_ranges.binary_search_by_key(&main_position, |r| r.from);
+
+    if search_ranges.is_empty() || current_range_index.is_err() {
+        buffer.set_search_with(|c| {
+            let word = c.word_at(main_position);
+
+            let mut cursors = buffer_view.cursors.mut_guard();
+            cursors.clear();
+            cursors.add(Cursor {
+                anchor: word.position,
+                position: word.position,
+            });
+
+            word.text
+        });
+    } else {
+        let range_index = index_selector(search_ranges.len(), current_range_index);
+        let range = search_ranges[range_index];
+
+        buffer_view.cursors.mut_guard().add(Cursor {
+            anchor: range.from,
+            position: range.from,
+        });
+    }
+
+    state.movement_kind = CursorMovementKind::PositionAndAnchor;
 }
