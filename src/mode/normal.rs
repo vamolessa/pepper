@@ -734,3 +734,14 @@ fn search_word_or_move_to_it(
 
     state.movement_kind = CursorMovementKind::PositionAndAnchor;
 }
+
+fn move_to_navigation_position(state: &mut State, ctx: &mut ModeContext, forward: bool) {
+    let client = unwrap_or_return!(ctx.clients.get_mut(ctx.target_client));
+    let navigation_position = if forward {
+        client.navigation_history.navigate_forward()
+    } else {
+        client.navigation_history.navigate_backward()
+    };
+
+    //ctx.buffer_views.new_buffer_view_from_path(
+}

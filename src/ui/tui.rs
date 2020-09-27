@@ -175,7 +175,7 @@ impl<'a> ClientView<'a> {
         let search_ranges;
         match maybe_buffer {
             Some(buffer) => {
-                buffer_path = buffer.path();
+                buffer_path = buffer.path().unwrap_or(Path::new(""));
                 buffer_content = &buffer.content;
                 highlighted_buffer = &buffer.highlighted;
                 search_ranges = buffer.search_ranges();

@@ -196,7 +196,7 @@ impl Editor {
                 let target_client = self.client_target_map.get(target_client);
 
                 let path = Path::new(path);
-                match self.buffer_views.new_buffer_from_file(
+                match self.buffer_views.new_buffer_view_from_path(
                     &mut self.buffers,
                     &mut self.word_database,
                     &self.config.syntaxes,

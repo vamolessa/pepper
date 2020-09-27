@@ -501,7 +501,7 @@ impl BufferViewCollection {
         }
     }
 
-    pub fn new_buffer_from_file(
+    pub fn new_buffer_view_from_path(
         &mut self,
         buffers: &mut BufferCollection,
         word_database: &mut WordDatabase,
@@ -541,8 +541,12 @@ impl BufferViewCollection {
                 Err(_) => BufferContent::from_str(""),
             };
 
-            let buffer_handle =
-                buffers.add(Buffer::new(word_database, syntaxes, path.into(), content));
+            let buffer_handle = buffers.add(Buffer::new(
+                word_database,
+                syntaxes,
+                Some(path.into()),
+                content,
+            ));
             let buffer_view = BufferView::new(target_client, buffer_handle);
             let buffer_view_handle = self.add(buffer_view);
             Ok(buffer_view_handle)

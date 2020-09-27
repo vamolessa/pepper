@@ -620,7 +620,7 @@ impl Buffer {
     pub fn new(
         word_database: &mut WordDatabase,
         syntaxes: &SyntaxCollection,
-        path: PathBuf,
+        path: Option<PathBuf>,
         content: BufferContent,
     ) -> Self {
         for line in content.lines() {
@@ -629,12 +629,15 @@ impl Buffer {
             }
         }
 
-        let syntax_handle = syntaxes
-            .find_handle_by_extension(syntax::get_path_extension(&path))
+        let syntax_handle = path
+            .as_ref()
+            .and_then(|p| syntaxes.find_handle_by_extension(syntax::get_path_extension(p)))
             .unwrap_or(SyntaxHandle::default());
 
         let mut highlighted = HighlightedBuffer::new();
         highlighted.highligh_all(syntaxes.get(syntax_handle), &content);
+
+        let path = path.unwrap_or(PathBuf::new());
 
         Self {
             path,
@@ -646,17 +649,25 @@ impl Buffer {
         }
     }
 
-    pub fn path(&self) -> &Path {
-        &self.path
+    pub fn path(&self) -> Option<&Path> {
+        if self.path.as_os_str().is_empty() {
+            None
+        } else {
+            Some(&self.path)
+        }
     }
 
-    pub fn set_path(&mut self, syntaxes: &SyntaxCollection, path: &Path) {
+    pub fn set_path(&mut self, syntaxes: &SyntaxCollection, path: Option<&Path>) {
         self.path.clear();
-        self.path.push(path);
 
-        let syntax_handle = syntaxes
-            .find_handle_by_extension(syntax::get_path_extension(&path))
+        if let Some(path) = path {
+            self.path.push(path);
+        }
+
+        let syntax_handle = path
+            .and_then(|p| syntaxes.find_handle_by_extension(syntax::get_path_extension(p)))
             .unwrap_or(SyntaxHandle::default());
+
         if self.syntax_handle != syntax_handle {
             self.syntax_handle = syntax_handle;
             self.highlighted
@@ -815,16 +826,17 @@ impl Buffer {
     }
 
     pub fn save_to_file(&self) -> Result<(), String> {
-        if self.path.as_os_str().is_empty() {
-            return Err("buffer has no path".into());
+        match self.path() {
+            Some(path) => {
+                let mut file = File::create(path)
+                    .map_err(|e| format!("could not create file {:?}: {:?}", path, e))?;
+
+                self.content
+                    .write(&mut file)
+                    .map_err(|e| format!("could not write to file {:?}: {:?}", path, e))
+            }
+            None => Err("buffer has no path".into()),
         }
-
-        let mut file = File::create(&self.path)
-            .map_err(|e| format!("could not create file {:?}: {:?}", &self.path, e))?;
-
-        self.content
-            .write(&mut file)
-            .map_err(|e| format!("could not write to file {:?}: {:?}", &self.path, e))
     }
 }
 
@@ -1056,7 +1068,7 @@ mod tests {
         let mut buffer = Buffer::new(
             &mut word_database,
             &syntaxes,
-            PathBuf::new(),
+            None,
             BufferContent::from_str("single line content"),
         );
         let range = BufferRange::between(
@@ -1084,7 +1096,7 @@ mod tests {
         let mut buffer = Buffer::new(
             &mut word_database,
             &syntaxes,
-            PathBuf::new(),
+            None,
             BufferContent::from_str("multi\nline\ncontent"),
         );
         let range = BufferRange::between(

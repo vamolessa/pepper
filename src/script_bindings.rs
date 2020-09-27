@@ -110,7 +110,7 @@ mod global {
         let path = Path::new(path.to_str()?);
         let buffer_view_handle = ctx
             .buffer_views
-            .new_buffer_from_file(
+            .new_buffer_view_from_path(
                 ctx.buffers,
                 ctx.word_database,
                 &ctx.config.syntaxes,
@@ -169,7 +169,7 @@ mod global {
         match path {
             Some(path) => {
                 let path = Path::new(path.to_str()?);
-                buffer.set_path(&ctx.config.syntaxes, path);
+                buffer.set_path(&ctx.config.syntaxes, Some(path));
                 buffer.save_to_file().map_err(ScriptError::from)?;
                 Ok(())
             }

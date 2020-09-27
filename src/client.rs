@@ -5,6 +5,7 @@ use crate::{
     connection::ConnectionWithClientHandle,
     editor::Editor,
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
+    navigation_history::NavigationHistory,
     ui::UiKind,
 };
 
@@ -69,6 +70,7 @@ pub struct Client {
     pub viewport_size: (u16, u16),
     pub scroll: usize,
     pub height: u16,
+    pub navigation_history: NavigationHistory,
 }
 
 impl Client {
