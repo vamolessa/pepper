@@ -390,14 +390,15 @@ impl ModeState for State {
                                 buffer.line_at(cursor.position.line_index).as_str().len();
                         }
                     } else {
-                        if cursor.anchor.line_index < last_line_index {
-                            cursor.anchor.line_index += 1;
-                            cursor.anchor.column_byte_index = 0;
-                        } else {
-                            cursor.anchor.column_byte_index =
+                        cursor.anchor.column_byte_index =
+                            buffer.line_at(cursor.anchor.line_index).as_str().len();
+                        if cursor.position.line_index > 0 {
+                            cursor.position.line_index -= 1;
+                            cursor.position.column_byte_index =
                                 buffer.line_at(cursor.position.line_index).as_str().len();
+                        } else {
+                            cursor.position.column_byte_index = 0;
                         }
-                        cursor.position.column_byte_index = 0;
                     }
                 }
                 self.movement_kind = CursorMovementKind::PositionOnly;
