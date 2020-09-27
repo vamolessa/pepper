@@ -110,7 +110,7 @@ mod global {
         let path = Path::new(path.to_str()?);
         let buffer_view_handle = ctx
             .buffer_views
-            .new_buffer_view_from_path(
+            .buffer_view_handle_from_path(
                 ctx.buffers,
                 ctx.word_database,
                 &ctx.config.syntaxes,

@@ -501,7 +501,7 @@ impl BufferViewCollection {
         }
     }
 
-    pub fn new_buffer_view_from_path(
+    pub fn buffer_view_handle_from_path(
         &mut self,
         buffers: &mut BufferCollection,
         word_database: &mut WordDatabase,
