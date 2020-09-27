@@ -550,46 +550,55 @@ impl ModeState for State {
                 Key::Char('p') => unwrap_or_none!(ctx.buffer_views.get_mut(handle))
                     .cursors
                     .previous_main_cursor(),
-                _ => (),
-            },
-            Key::Char('/') => return ModeOperation::EnterMode(Mode::Search(Default::default())),
-            Key::Char('?') => {
-                let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
-                let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
-                let search_ranges = buffer.search_ranges();
-                if search_ranges.is_empty() {
-                    return ModeOperation::None;
-                }
-
-                let mut cursors = buffer_view.cursors.mut_guard();
-                let cursor_count = cursors[..].len();
-
-                let mut has_selection = false;
-                for cursor in &cursors[..] {
-                    if cursor.anchor != cursor.position {
-                        has_selection = true;
-                        break;
+                Key::Char('/') => {
+                    let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
+                    let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
+                    let search_ranges = buffer.search_ranges();
+                    if search_ranges.is_empty() {
+                        return ModeOperation::None;
                     }
-                }
 
-                if has_selection {
-                    for i in 0..cursor_count {
-                        let cursor = &mut cursors[i];
-                        let cursor_range = BufferRange::between(cursor.anchor, cursor.position);
+                    let mut cursors = buffer_view.cursors.mut_guard();
+                    let cursor_count = cursors[..].len();
 
-                        let mut search_ranges = search_ranges.iter().filter(|r| {
-                            r.from >= cursor_range.from && r.from <= cursor_range.to
-                                || r.to >= cursor_range.from && r.to <= cursor_range.to
-                        });
-
-                        if let Some(range) = search_ranges.next() {
-                            cursor.anchor = range.from;
-                            cursor.position = BufferPosition::line_col(
-                                range.to.line_index,
-                                range.to.column_byte_index + 1,
-                            );
+                    let mut has_selection = false;
+                    for cursor in &cursors[..] {
+                        if cursor.anchor != cursor.position {
+                            has_selection = true;
+                            break;
                         }
+                    }
 
+                    if has_selection {
+                        for i in 0..cursor_count {
+                            let cursor = &mut cursors[i];
+                            let cursor_range = BufferRange::between(cursor.anchor, cursor.position);
+
+                            let mut search_ranges = search_ranges.iter().filter(|r| {
+                                r.from >= cursor_range.from && r.from <= cursor_range.to
+                                    || r.to >= cursor_range.from && r.to <= cursor_range.to
+                            });
+
+                            if let Some(range) = search_ranges.next() {
+                                cursor.anchor = range.from;
+                                cursor.position = BufferPosition::line_col(
+                                    range.to.line_index,
+                                    range.to.column_byte_index + 1,
+                                );
+                            }
+
+                            for range in search_ranges {
+                                cursors.add(Cursor {
+                                    anchor: range.from,
+                                    position: BufferPosition::line_col(
+                                        range.to.line_index,
+                                        range.to.column_byte_index + 1,
+                                    ),
+                                });
+                            }
+                        }
+                    } else {
+                        cursors.clear();
                         for range in search_ranges {
                             cursors.add(Cursor {
                                 anchor: range.from,
@@ -600,21 +609,12 @@ impl ModeState for State {
                             });
                         }
                     }
-                } else {
-                    cursors.clear();
-                    for range in search_ranges {
-                        cursors.add(Cursor {
-                            anchor: range.from,
-                            position: BufferPosition::line_col(
-                                range.to.line_index,
-                                range.to.column_byte_index + 1,
-                            ),
-                        });
-                    }
-                }
 
-                self.movement_kind = CursorMovementKind::PositionOnly;
-            }
+                    self.movement_kind = CursorMovementKind::PositionOnly;
+                }
+                _ => (),
+            },
+            Key::Char('/') => return ModeOperation::EnterMode(Mode::Search(Default::default())),
             Key::Char('y') => {
                 if let Ok(mut clipboard) = ClipboardContext::new() {
                     let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));

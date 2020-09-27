@@ -126,6 +126,7 @@ impl Default for KeyMapCollection {
             .unwrap();
 
         this.parse_and_map(normal_mode, "xa", "xmgkVgjv").unwrap();
+        this.parse_and_map(normal_mode, "xs", "x/").unwrap();
 
         this.parse_and_map(insert_mode, "<c-h>", "<backspace>")
             .unwrap();
