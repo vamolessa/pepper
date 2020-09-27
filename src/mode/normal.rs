@@ -519,7 +519,7 @@ impl ModeState for State {
                     }
                     self.movement_kind = CursorMovementKind::PositionOnly;
                 }
-                Key::Char('m') => {
+                Key::Char('c') => {
                     let cursors = &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle)).cursors;
                     let main_cursor = *cursors.main_cursor();
                     let mut cursors = cursors.mut_guard();
