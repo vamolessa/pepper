@@ -103,7 +103,7 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- ~~keep current identation~~
 	- delete identation
 - macros (??)
-	- repeat last action (`.`)
+	- repeat last insert (`.`)
 	- record/play custom macros
 - language server protocol
 - debug adapter protocol
