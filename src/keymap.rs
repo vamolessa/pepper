@@ -122,7 +122,7 @@ impl Default for KeyMapCollection {
         this.parse_and_map(normal_mode, "<c-i>", "gli").unwrap();
 
         this.parse_and_map(normal_mode, "o", "gli<enter>").unwrap();
-        this.parse_and_map(normal_mode, "O", "kgli<enter>").unwrap();
+        this.parse_and_map(normal_mode, "O", "ghi<enter><up>").unwrap();
 
         this.parse_and_map(normal_mode, "ga", ";gkvgjx").unwrap();
 

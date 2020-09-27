@@ -29,6 +29,26 @@ impl ModeState for State {
                 unwrap_or_none!(ctx.buffer_views.get_mut(handle)).commit_edits(ctx.buffers);
                 return ModeOperation::EnterMode(Mode::default());
             }
+            Key::Left => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
+                ctx.buffers,
+                CursorMovement::ColumnsBackward(1),
+                CursorMovementKind::PositionAndAnchor,
+            ),
+            Key::Down => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
+                ctx.buffers,
+                CursorMovement::LinesForward(1),
+                CursorMovementKind::PositionAndAnchor,
+            ),
+            Key::Up => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
+                ctx.buffers,
+                CursorMovement::LinesBackward(1),
+                CursorMovementKind::PositionAndAnchor,
+            ),
+            Key::Right => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
+                ctx.buffers,
+                CursorMovement::ColumnsForward(1),
+                CursorMovementKind::PositionAndAnchor,
+            ),
             Key::Tab => ctx.buffer_views.insert_text(
                 ctx.buffers,
                 ctx.word_database,
