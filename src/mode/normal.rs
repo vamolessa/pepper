@@ -483,38 +483,7 @@ impl ModeState for State {
             }
             Key::Char('x') => match keys.next() {
                 Key::None => return ModeOperation::Pending,
-                Key::Char('m') => {
-                    let cursors = &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle)).cursors;
-                    let main_cursor = *cursors.main_cursor();
-                    let mut cursors = cursors.mut_guard();
-                    cursors.clear();
-                    cursors.add(main_cursor);
-                    self.movement_kind = CursorMovementKind::PositionAndAnchor;
-                }
-                Key::Char('v') => {
-                    for cursor in &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle))
-                        .cursors
-                        .mut_guard()[..]
-                    {
-                        cursor.anchor = cursor.position;
-                    }
-                    self.movement_kind = CursorMovementKind::PositionAndAnchor;
-                }
-                Key::Char('o') => {
-                    for cursor in &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle))
-                        .cursors
-                        .mut_guard()[..]
-                    {
-                        std::mem::swap(&mut cursor.anchor, &mut cursor.position);
-                    }
-                }
-                Key::Char('n') => unwrap_or_none!(ctx.buffer_views.get_mut(handle))
-                    .cursors
-                    .next_main_cursor(),
-                Key::Char('p') => unwrap_or_none!(ctx.buffer_views.get_mut(handle))
-                    .cursors
-                    .previous_main_cursor(),
-                Key::Char('s') => {
+                Key::Char('x') => {
                     let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
                     let buffer =
                         &unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle)).content;
@@ -550,6 +519,37 @@ impl ModeState for State {
                     }
                     self.movement_kind = CursorMovementKind::PositionOnly;
                 }
+                Key::Char('m') => {
+                    let cursors = &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle)).cursors;
+                    let main_cursor = *cursors.main_cursor();
+                    let mut cursors = cursors.mut_guard();
+                    cursors.clear();
+                    cursors.add(main_cursor);
+                    self.movement_kind = CursorMovementKind::PositionAndAnchor;
+                }
+                Key::Char('v') => {
+                    for cursor in &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle))
+                        .cursors
+                        .mut_guard()[..]
+                    {
+                        cursor.anchor = cursor.position;
+                    }
+                    self.movement_kind = CursorMovementKind::PositionAndAnchor;
+                }
+                Key::Char('o') => {
+                    for cursor in &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle))
+                        .cursors
+                        .mut_guard()[..]
+                    {
+                        std::mem::swap(&mut cursor.anchor, &mut cursor.position);
+                    }
+                }
+                Key::Char('n') => unwrap_or_none!(ctx.buffer_views.get_mut(handle))
+                    .cursors
+                    .next_main_cursor(),
+                Key::Char('p') => unwrap_or_none!(ctx.buffer_views.get_mut(handle))
+                    .cursors
+                    .previous_main_cursor(),
                 _ => (),
             },
             Key::Char('/') => return ModeOperation::EnterMode(Mode::Search(Default::default())),
