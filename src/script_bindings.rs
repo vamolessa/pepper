@@ -129,7 +129,7 @@ mod global {
             .map(|v| v.buffer_handle)
         {
             ctx.buffer_views
-                .remove_where(ctx.buffers, ctx.word_database, |view| {
+                .remove_where(ctx.buffers, ctx.clients, ctx.word_database, |view| {
                     view.buffer_handle == handle
                 });
         }
@@ -140,7 +140,7 @@ mod global {
 
     pub fn close_all(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
         ctx.buffer_views
-            .remove_where(ctx.buffers, ctx.word_database, |_| true);
+            .remove_where(ctx.buffers, ctx.clients, ctx.word_database, |_| true);
         for c in ctx.clients.client_refs() {
             c.client.current_buffer_view_handle = None;
         }

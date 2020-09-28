@@ -40,8 +40,7 @@ impl ModeState for State {
                     keymaps: ctx.keymaps,
                 };
 
-                let result = ctx.scripts.eval(&mut context, &ctx.input);
-                match &result {
+                match ctx.scripts.eval(&mut context, &ctx.input) {
                     Ok(value) => {
                         let mut kind = StatusMessageKind::Info;
                         let message = match value {
@@ -61,9 +60,10 @@ impl ModeState for State {
                             _ => Some(value.to_string()),
                         };
 
-                        drop(result);
                         if let Some(message) = message {
-                            ctx.status_message(kind, &message);
+                            *ctx.status_message_kind = kind;
+                            ctx.status_message.clear();
+                            ctx.status_message.push_str(&message);
                         }
 
                         ModeOperation::EnterMode(Mode::default())
@@ -83,8 +83,9 @@ impl ModeState for State {
                                 error = e.source();
                             }
 
-                            drop(result);
-                            ctx.status_message(StatusMessageKind::Error, &message);
+                            *ctx.status_message_kind = StatusMessageKind::Error;
+                            ctx.status_message.clear();
+                            ctx.status_message.push_str(&message);
                             ModeOperation::EnterMode(Mode::default())
                         }
                     },

@@ -8,6 +8,7 @@ use std::{
 
 use crate::{
     buffer_position::{BufferPosition, BufferRange},
+    client::ClientCollection,
     history::{Edit, EditKind, History},
     syntax::{self, HighlightedBuffer, SyntaxCollection, SyntaxHandle},
     word_database::{WordDatabase, WordIter, WordKind},
@@ -134,10 +135,6 @@ impl BufferLine {
 
     pub fn previous_char_from(&self, index: usize, c: char) -> Option<usize> {
         self.text[..index].rfind(c)
-    }
-
-    pub fn first_word_start(&self) -> usize {
-        self.text.find(|c: char| !c.is_whitespace()).unwrap_or(0)
     }
 
     pub fn next_word_start_from(&self, index: usize) -> usize {
@@ -895,8 +892,12 @@ impl BufferCollection {
             .filter_map(|(i, b)| Some(BufferHandle(i)).zip(b.as_ref()))
     }
 
-    pub fn remove_where<F>(&mut self, word_database: &mut WordDatabase, predicate: F)
-    where
+    pub fn remove_where<F>(
+        &mut self,
+        clients: &mut ClientCollection,
+        word_database: &mut WordDatabase,
+        predicate: F,
+    ) where
         F: Fn(BufferHandle, &Buffer) -> bool,
     {
         for i in 0..self.buffers.len() {
@@ -907,6 +908,12 @@ impl BufferCollection {
                         for word in WordIter::new(line.as_str()).of_kind(WordKind::Identifier) {
                             word_database.remove_word(word);
                         }
+                    }
+
+                    for client in clients.iter_mut() {
+                        client
+                            .navigation_history
+                            .remove_snapshots_with_buffer_handle(handle);
                     }
 
                     self.buffers[i] = None;

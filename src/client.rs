@@ -4,8 +4,8 @@ use crate::{
     buffer_view::BufferViewHandle,
     connection::ConnectionWithClientHandle,
     editor::Editor,
-    serialization::{DeserializeError, Deserializer, Serialize, Serializer},
     navigation_history::NavigationHistory,
+    serialization::{DeserializeError, Deserializer, Serialize, Serializer},
     ui::UiKind,
 };
 
@@ -146,6 +146,11 @@ impl ClientCollection {
             TargetClient::Local => Some(&mut self.local),
             TargetClient::Remote(handle) => self.remotes[handle.into_index()].as_mut(),
         }
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Client> {
+        let remotes = self.remotes.iter_mut().flatten();
+        std::iter::once(&mut self.local).chain(remotes)
     }
 
     pub fn client_refs<'a>(&'a mut self) -> impl Iterator<Item = ClientRef<'a>> {

@@ -3,6 +3,7 @@ use std::{fs::File, io::Read, path::Path};
 use crate::{
     buffer::{Buffer, BufferCollection, BufferContent, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
+    client::ClientCollection,
     client::TargetClient,
     cursor::{Cursor, CursorCollection},
     history::{Edit, EditKind},
@@ -129,10 +130,13 @@ impl BufferView {
             }
             CursorMovement::Home => {
                 for c in &mut cursors[..] {
-                    c.position.column_byte_index = buffer
+                    c.position = buffer
                         .content
-                        .line_at(c.position.line_index)
-                        .first_word_start();
+                        .words_from(c.position)
+                        .2
+                        .next()
+                        .map(|w| w.position)
+                        .unwrap_or(c.position);
                 }
             }
             CursorMovement::End => {
@@ -218,6 +222,7 @@ impl BufferViewCollection {
     pub fn remove_where<F>(
         &mut self,
         buffers: &mut BufferCollection,
+        clients: &mut ClientCollection,
         word_database: &mut WordDatabase,
         predicate: F,
     ) where
@@ -231,7 +236,7 @@ impl BufferViewCollection {
             }
         }
 
-        buffers.remove_where(word_database, |h, _| {
+        buffers.remove_where(clients, word_database, |h, _| {
             !self.iter().any(|v| v.buffer_handle == h)
         });
     }
@@ -501,6 +506,25 @@ impl BufferViewCollection {
         }
     }
 
+    pub fn buffer_view_handle_from_buffer_handle(
+        &mut self,
+        target_client: TargetClient,
+        buffer_handle: BufferHandle,
+    ) -> BufferViewHandle {
+        let current_buffer_view_handle = self
+            .iter_with_handles()
+            .filter(|(_, view)| {
+                view.buffer_handle == buffer_handle && view.target_client == target_client
+            })
+            .map(|(h, _)| h)
+            .next();
+
+        match current_buffer_view_handle {
+            Some(handle) => handle,
+            None => self.add(BufferView::new(target_client, buffer_handle)),
+        }
+    }
+
     pub fn buffer_view_handle_from_path(
         &mut self,
         buffers: &mut BufferCollection,
@@ -510,19 +534,7 @@ impl BufferViewCollection {
         path: &Path,
     ) -> Result<BufferViewHandle, String> {
         if let Some(buffer_handle) = buffers.find_with_path(path) {
-            let current_buffer_view_handle = self
-                .iter_with_handles()
-                .filter(|(_, view)| {
-                    view.buffer_handle == buffer_handle && view.target_client == target_client
-                })
-                .map(|(h, _)| h)
-                .next();
-
-            let buffer_view_handle = match current_buffer_view_handle {
-                Some(handle) => handle,
-                None => self.add(BufferView::new(target_client, buffer_handle)),
-            };
-            Ok(buffer_view_handle)
+            Ok(self.buffer_view_handle_from_buffer_handle(target_client, buffer_handle))
         } else if path.to_str().map(|s| s.trim().len()).unwrap_or(0) > 0 {
             let content = match File::open(&path) {
                 Ok(mut file) => {

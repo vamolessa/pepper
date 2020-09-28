@@ -6,17 +6,11 @@ use crate::{
 };
 
 #[derive(Default)]
-pub struct State {
-    saved_position: BufferPosition,
-}
+pub struct State;
 
 impl ModeState for State {
     fn on_enter(&mut self, ctx: &mut ModeContext) {
-        self.saved_position = ctx
-            .current_buffer_view_handle()
-            .and_then(|h| ctx.buffer_views.get(h))
-            .map(|v| v.cursors.main_cursor().position)
-            .unwrap_or(Default::default());
+        ctx.save_snapshot_to_navigation_history();
         ctx.input.clear();
     }
 
@@ -37,9 +31,14 @@ impl ModeState for State {
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
                 let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
 
-                let position =
-                    BufferPosition::line_col(line_index, self.saved_position.column_byte_index);
-                let position = buffer.content.saturate_position(position);
+                let position = BufferPosition::line_col(line_index, 0);
+                let position = buffer
+                    .content
+                    .words_from(position)
+                    .2
+                    .next()
+                    .map(|w| w.position)
+                    .unwrap_or(position);
 
                 let mut cursors = buffer_view.cursors.mut_guard();
                 cursors.clear();
@@ -50,19 +49,21 @@ impl ModeState for State {
 
                 ModeOperation::None
             }
-            InputPollResult::Submited => {
-                ctx.save_current_position_to_navigation_history();
-                ModeOperation::EnterMode(Mode::default())
-            }
+            InputPollResult::Submited => ModeOperation::EnterMode(Mode::default()),
             InputPollResult::Canceled => {
-                let handle = unwrap_or_none!(ctx.current_buffer_view_handle());
+                let client = unwrap_or_none!(ctx.clients.get_mut(ctx.target_client));
+                let handle = unwrap_or_none!(client.current_buffer_view_handle);
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
+
+                let navigation_snapshot =
+                    unwrap_or_none!(client.navigation_history.navigate_backward());
+
                 let mut cursors = buffer_view.cursors.mut_guard();
                 cursors.clear();
-                cursors.add(Cursor {
-                    anchor: self.saved_position,
-                    position: self.saved_position,
-                });
+                for cursor in navigation_snapshot.cursors {
+                    cursors.add(*cursor);
+                }
+
                 ModeOperation::EnterMode(Mode::default())
             }
         }

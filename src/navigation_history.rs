@@ -1,89 +1,78 @@
-use std::path::{Path, PathBuf};
+use crate::{buffer::BufferHandle, buffer_view::BufferView, cursor::Cursor};
 
-use crate::{buffer::BufferCollection, buffer_position::BufferPosition, buffer_view::BufferView};
-
-pub struct NavigationHistoryPositionRef<'a> {
-    pub buffer_path: &'a Path,
-    pub position: BufferPosition,
+#[derive(Clone, Copy)]
+pub struct NavigationHistorySnapshotRef<'a> {
+    pub buffer_handle: BufferHandle,
+    pub cursors: &'a [Cursor],
 }
 
-struct NavigationHistoryPosition {
-    buffer_path_index: usize,
-    position: BufferPosition,
+struct NavigationHistorySnapshot {
+    buffer_handle: BufferHandle,
+    cursor: Cursor,
 }
 
 #[derive(Default)]
 pub struct NavigationHistory {
-    buffer_paths: Vec<PathBuf>,
-    positions: Vec<NavigationHistoryPosition>,
+    snapshots: Vec<NavigationHistorySnapshot>,
     current_index: usize,
 }
 
 impl NavigationHistory {
-    pub fn add_position(&mut self, buffer_path: &Path, position: BufferPosition) {
-        let buffer_path_index = match self.buffer_paths.iter().position(|p| p == buffer_path) {
-            Some(index) => index,
-            None => {
-                let index = self.buffer_paths.len();
-                self.buffer_paths.push(buffer_path.into());
-                index
-            }
-        };
+    pub fn add_snapshot(&mut self, buffer_view: &BufferView) {
+        let buffer_handle = buffer_view.buffer_handle;
+        let cursor = *buffer_view.cursors.main_cursor();
 
-        self.positions.truncate(self.current_index);
+        self.snapshots.truncate(self.current_index);
 
-        if let Some(last) = self.positions.last() {
-            if last.buffer_path_index == buffer_path_index && last.position == position {
+        if let Some(last) = self.snapshots.last() {
+            if last.buffer_handle == buffer_handle && last.cursor == cursor {
                 return;
             }
         }
 
-        self.positions.push(NavigationHistoryPosition {
-            buffer_path_index,
-            position,
+        self.snapshots.push(NavigationHistorySnapshot {
+            buffer_handle,
+            cursor,
         });
-        self.current_index = self.positions.len();
+        self.current_index = self.snapshots.len();
     }
 
-    pub fn add_position_from_buffer_view(
-        &mut self,
-        buffer_view: &BufferView,
-        buffers: &BufferCollection,
-    ) {
-        if let Some(buffer_path) = buffers
-            .get(buffer_view.buffer_handle)
-            .and_then(|b| b.path())
-        {
-            let main_cursor_position = buffer_view.cursors.main_cursor().position;
-            self.add_position(buffer_path, main_cursor_position);
+    pub fn remove_snapshots_with_buffer_handle(&mut self, buffer_handle: BufferHandle) {
+        for i in (0..self.snapshots.len()).rev() {
+            if self.snapshots[i].buffer_handle == buffer_handle {
+                self.snapshots.remove(i);
+                if i <= self.current_index && self.current_index > 0 {
+                    self.current_index -= 1;
+                }
+            }
         }
     }
 
-    pub fn navigate_backward(&mut self) -> Option<NavigationHistoryPositionRef> {
+    pub fn navigate_backward(&mut self) -> Option<NavigationHistorySnapshotRef> {
         if self.current_index == 0 {
             return None;
         }
 
         self.current_index -= 1;
-        let position = &self.positions[self.current_index];
+        let snapshot = &self.snapshots[self.current_index];
 
-        Some(NavigationHistoryPositionRef {
-            buffer_path: &self.buffer_paths[position.buffer_path_index],
-            position: position.position,
+        Some(NavigationHistorySnapshotRef {
+            buffer_handle: snapshot.buffer_handle,
+            cursors: std::slice::from_ref(&snapshot.cursor),
         })
     }
 
-    pub fn navigate_forward(&mut self) -> Option<NavigationHistoryPositionRef> {
-        if self.current_index == self.positions.len() {
+    pub fn navigate_forward(&mut self) -> Option<NavigationHistorySnapshotRef> {
+        if self.current_index == self.snapshots.len() {
             return None;
         }
 
-        let position = &self.positions[self.current_index];
+        let snapshot = &self.snapshots[self.current_index];
         self.current_index += 1;
 
-        Some(NavigationHistoryPositionRef {
-            buffer_path: &self.buffer_paths[position.buffer_path_index],
-            position: position.position,
+        Some(NavigationHistorySnapshotRef {
+            buffer_handle: snapshot.buffer_handle,
+            cursors: std::slice::from_ref(&snapshot.cursor),
         })
     }
 }

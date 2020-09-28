@@ -5,7 +5,7 @@ use std::{
 
 use crate::buffer_position::{BufferPosition, BufferRange};
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Cursor {
     pub anchor: BufferPosition,
     pub position: BufferPosition,
