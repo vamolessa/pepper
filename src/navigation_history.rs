@@ -16,10 +16,14 @@ struct NavigationHistorySnapshot {
     cursor: Cursor,
 }
 
-#[derive(Default)]
+enum NavigationState {
+    IterIndex(usize),
+    Insert,
+}
+
 pub struct NavigationHistory {
     snapshots: Vec<NavigationHistorySnapshot>,
-    current_index: usize,
+    state: NavigationState,
 }
 
 impl NavigationHistory {
@@ -48,7 +52,10 @@ impl NavigationHistory {
         let buffer_handle = buffer_view.buffer_handle;
         let cursor = *buffer_view.cursors.main_cursor();
 
-        self.snapshots.truncate(self.current_index);
+        if let NavigationState::IterIndex(index) = self.state {
+            self.snapshots.truncate(index);
+        }
+        self.state = NavigationState::Insert;
 
         if let Some(last) = self.snapshots.last() {
             if last.buffer_handle == buffer_handle && last.cursor == cursor {
@@ -60,7 +67,6 @@ impl NavigationHistory {
             buffer_handle,
             cursor,
         });
-        self.current_index = self.snapshots.len();
     }
 
     pub fn move_in_history(
@@ -75,23 +81,27 @@ impl NavigationHistory {
         };
 
         let history = &mut client.navigation_history;
+        let mut history_index = match history.state {
+            NavigationState::IterIndex(index) => index,
+            NavigationState::Insert => history.snapshots.len(),
+        };
+
         let snapshot = match direction {
             NavigationDirection::Forward => {
-                if history.current_index == history.snapshots.len() {
+                if history_index + 1 >= history.snapshots.len() {
                     return;
                 }
 
-                let snapshot = history.snapshots[history.current_index];
-                history.current_index += 1;
+                history_index += 1;
+                let snapshot = history.snapshots[history_index];
                 snapshot
             }
             NavigationDirection::Backward => {
-                if history.current_index == 0 {
+                if history_index == 0 {
                     return;
                 }
 
-                let previous_index = history.current_index;
-                if history.current_index == history.snapshots.len() {
+                if history_index == history.snapshots.len() {
                     if let Some(buffer_view) = client
                         .current_buffer_view_handle
                         .and_then(|h| buffer_views.get(h))
@@ -100,10 +110,12 @@ impl NavigationHistory {
                     }
                 }
 
-                history.current_index = previous_index - 1;
-                history.snapshots[history.current_index]
+                history_index -= 1;
+                history.snapshots[history_index]
             }
         };
+
+        history.state = NavigationState::IterIndex(history_index);
 
         let view_handle = buffer_views
             .buffer_view_handle_from_buffer_handle(target_client, snapshot.buffer_handle);
@@ -123,10 +135,22 @@ impl NavigationHistory {
         for i in (0..self.snapshots.len()).rev() {
             if self.snapshots[i].buffer_handle == buffer_handle {
                 self.snapshots.remove(i);
-                if i <= self.current_index && self.current_index > 0 {
-                    self.current_index -= 1;
+
+                if let NavigationState::IterIndex(index) = &mut self.state {
+                    if i <= *index && *index > 0 {
+                        *index -= 1;
+                    }
                 }
             }
+        }
+    }
+}
+
+impl Default for NavigationHistory {
+    fn default() -> Self {
+        Self {
+            snapshots: Vec::default(),
+            state: NavigationState::IterIndex(0),
         }
     }
 }
