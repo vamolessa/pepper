@@ -73,13 +73,6 @@ impl<'a> ModeContext<'a> {
             .get(self.target_client)
             .and_then(|c| c.current_buffer_view_handle)
     }
-
-    pub fn save_snapshot_to_navigation_history(&mut self) {
-        let client = unwrap_or_return!(self.clients.get_mut(self.target_client));
-        let handle = unwrap_or_return!(client.current_buffer_view_handle);
-        let buffer_view = unwrap_or_return!(self.buffer_views.get(handle));
-        client.navigation_history.add_snapshot(buffer_view);
-    }
 }
 
 pub trait ModeState: Default {

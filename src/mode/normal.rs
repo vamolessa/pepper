@@ -8,7 +8,7 @@ use crate::{
     cursor::Cursor,
     editor::KeysIterator,
     mode::{Mode, ModeContext, ModeOperation, ModeState},
-    navigation_history::{NavigationHistory, NavigationHistorySnapshotRef},
+    navigation_history::{NavigationDirection, NavigationHistory},
     word_database::WordKind,
 };
 
@@ -63,7 +63,11 @@ impl ModeState for State {
                 self.movement_kind,
             ),
             Key::Char('n') => {
-                ctx.save_snapshot_to_navigation_history();
+                NavigationHistory::save_client_snapshot(
+                    ctx.clients,
+                    ctx.buffer_views,
+                    ctx.target_client,
+                );
                 move_to_search_match(self, ctx, |len, r| {
                     let index = match r {
                         Ok(index) => index + 1,
@@ -73,7 +77,11 @@ impl ModeState for State {
                 });
             }
             Key::Char('p') => {
-                ctx.save_snapshot_to_navigation_history();
+                NavigationHistory::save_client_snapshot(
+                    ctx.clients,
+                    ctx.buffer_views,
+                    ctx.target_client,
+                );
                 move_to_search_match(self, ctx, |len, r| {
                     let index = match r {
                         Ok(index) => index,
@@ -100,8 +108,24 @@ impl ModeState for State {
                     (index + len - 1) % len
                 });
             }
-            Key::Ctrl('n') => move_to_navigation_position(self, ctx, |h| h.navigate_forward()),
-            Key::Ctrl('p') => move_to_navigation_position(self, ctx, |h| h.navigate_backward()),
+            Key::Ctrl('n') => {
+                NavigationHistory::move_in_history(
+                    ctx.clients,
+                    ctx.buffer_views,
+                    ctx.target_client,
+                    NavigationDirection::Forward,
+                );
+                self.movement_kind = CursorMovementKind::PositionAndAnchor;
+            }
+            Key::Ctrl('p') => {
+                NavigationHistory::move_in_history(
+                    ctx.clients,
+                    ctx.buffer_views,
+                    ctx.target_client,
+                    NavigationDirection::Backward,
+                );
+                self.movement_kind = CursorMovementKind::PositionAndAnchor;
+            }
             Key::Char('a') => {
                 fn balanced_brackets(
                     buffer: &BufferContent,
@@ -739,33 +763,6 @@ fn search_word_or_move_to_it(
             anchor: range.from,
             position: range.from,
         });
-    }
-
-    state.movement_kind = CursorMovementKind::PositionAndAnchor;
-}
-
-fn move_to_navigation_position(
-    state: &mut State,
-    ctx: &mut ModeContext,
-    history_selector: fn(&mut NavigationHistory) -> Option<NavigationHistorySnapshotRef>,
-) {
-    let client = unwrap_or_return!(ctx.clients.get_mut(ctx.target_client));
-    let navigation_snapshot = history_selector(&mut client.navigation_history);
-    let navigation_snapshot = unwrap_or_return!(navigation_snapshot);
-
-    let view_handle = ctx.buffer_views.buffer_view_handle_from_buffer_handle(
-        ctx.target_client,
-        navigation_snapshot.buffer_handle,
-    );
-
-    client.current_buffer_view_handle = Some(view_handle);
-    let mut cursors = unwrap_or_return!(ctx.buffer_views.get_mut(view_handle))
-        .cursors
-        .mut_guard();
-
-    cursors.clear();
-    for cursor in navigation_snapshot.cursors {
-        cursors.add(*cursor);
     }
 
     state.movement_kind = CursorMovementKind::PositionAndAnchor;

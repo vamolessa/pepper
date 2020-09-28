@@ -3,6 +3,7 @@ use crate::{
     cursor::Cursor,
     editor::KeysIterator,
     mode::{poll_input, InputPollResult, Mode, ModeContext, ModeOperation, ModeState},
+    navigation_history::{NavigationDirection, NavigationHistory},
 };
 
 #[derive(Default)]
@@ -10,7 +11,7 @@ pub struct State;
 
 impl ModeState for State {
     fn on_enter(&mut self, ctx: &mut ModeContext) {
-        ctx.save_snapshot_to_navigation_history();
+        NavigationHistory::save_client_snapshot(ctx.clients, ctx.buffer_views, ctx.target_client);
         ctx.input.clear();
     }
 
@@ -51,19 +52,12 @@ impl ModeState for State {
             }
             InputPollResult::Submited => ModeOperation::EnterMode(Mode::default()),
             InputPollResult::Canceled => {
-                let client = unwrap_or_none!(ctx.clients.get_mut(ctx.target_client));
-                let handle = unwrap_or_none!(client.current_buffer_view_handle);
-                let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
-
-                let navigation_snapshot =
-                    unwrap_or_none!(client.navigation_history.navigate_backward());
-
-                let mut cursors = buffer_view.cursors.mut_guard();
-                cursors.clear();
-                for cursor in navigation_snapshot.cursors {
-                    cursors.add(*cursor);
-                }
-
+                NavigationHistory::move_in_history(
+                    ctx.clients,
+                    ctx.buffer_views,
+                    ctx.target_client,
+                    NavigationDirection::Backward,
+                );
                 ModeOperation::EnterMode(Mode::default())
             }
         }
