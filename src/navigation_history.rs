@@ -86,6 +86,11 @@ impl NavigationHistory {
                 snapshot
             }
             NavigationDirection::Backward => {
+                if history.current_index == 0 {
+                    return;
+                }
+
+                let previous_index = history.current_index;
                 if history.current_index == history.snapshots.len() {
                     if let Some(buffer_view) = client
                         .current_buffer_view_handle
@@ -95,11 +100,7 @@ impl NavigationHistory {
                     }
                 }
 
-                if history.current_index == 0 {
-                    return;
-                }
-
-                history.current_index -= 1;
+                history.current_index = previous_index - 1;
                 history.snapshots[history.current_index]
             }
         };

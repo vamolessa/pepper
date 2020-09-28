@@ -10,6 +10,7 @@ use crate::{
     editor::{EditorLoop, StatusMessageKind},
     keymap::ParseKeyMapError,
     mode::Mode,
+    navigation_history::NavigationHistory,
     pattern::Pattern,
     script::{
         ScriptContext, ScriptEngineRef, ScriptError, ScriptObject, ScriptResult, ScriptString,
@@ -107,6 +108,8 @@ mod global {
         ctx: &mut ScriptContext,
         path: ScriptString,
     ) -> ScriptResult<()> {
+        NavigationHistory::save_client_snapshot(ctx.clients, ctx.buffer_views, ctx.target_client);
+
         let path = Path::new(path.to_str()?);
         let buffer_view_handle = ctx
             .buffer_views

@@ -4,6 +4,7 @@ use crate::{
     editor::KeysIterator,
     mode::{poll_input, InputPollResult, Mode, ModeContext, ModeOperation, ModeState},
     navigation_history::{NavigationDirection, NavigationHistory},
+    word_database::WordKind,
 };
 
 #[derive(Default)]
@@ -32,14 +33,13 @@ impl ModeState for State {
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
                 let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
 
-                let position = BufferPosition::line_col(line_index, 0);
-                let position = buffer
-                    .content
-                    .words_from(position)
-                    .2
-                    .next()
-                    .map(|w| w.position)
-                    .unwrap_or(position);
+                let mut position = BufferPosition::line_col(line_index, 0);
+                let (first_word, _, mut right_words) = buffer.content.words_from(position);
+                if first_word.kind == WordKind::Whitespace {
+                    if let Some(word) = right_words.next() {
+                        position = word.position;
+                    }
+                }
 
                 let mut cursors = buffer_view.cursors.mut_guard();
                 cursors.clear();
