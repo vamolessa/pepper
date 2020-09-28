@@ -50,7 +50,10 @@ impl ModeState for State {
 
                 ModeOperation::None
             }
-            InputPollResult::Submited => ModeOperation::EnterMode(Mode::default()),
+            InputPollResult::Submited => {
+                ctx.save_current_position_to_navigation_history();
+                ModeOperation::EnterMode(Mode::default())
+            }
             InputPollResult::Canceled => {
                 let handle = unwrap_or_none!(ctx.current_buffer_view_handle());
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));

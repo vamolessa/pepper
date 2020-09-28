@@ -73,6 +73,21 @@ impl<'a> ModeContext<'a> {
             .get(self.target_client)
             .and_then(|c| c.current_buffer_view_handle)
     }
+
+    pub fn status_message(&mut self, kind: StatusMessageKind, message: &str) {
+        *self.status_message_kind = kind;
+        self.status_message.clear();
+        self.status_message.push_str(message);
+    }
+
+    pub fn save_current_position_to_navigation_history(&mut self) {
+        let client = unwrap_or_return!(self.clients.get_mut(self.target_client));
+        let handle = unwrap_or_return!(client.current_buffer_view_handle);
+        let buffer_view = unwrap_or_return!(self.buffer_views.get(handle));
+        client
+            .navigation_history
+            .add_position_from_buffer_view(buffer_view, self.buffers);
+    }
 }
 
 pub trait ModeState: Default {

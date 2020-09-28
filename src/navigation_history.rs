@@ -1,15 +1,10 @@
 use std::path::{Path, PathBuf};
 
-use crate::{
-    buffer::BufferCollection,
-    buffer_position::BufferPosition,
-    buffer_view::{BufferView, BufferViewCollection},
-    client::Client,
-};
+use crate::{buffer::BufferCollection, buffer_position::BufferPosition, buffer_view::BufferView};
 
 pub struct NavigationHistoryPositionRef<'a> {
-    buffer_path: &'a Path,
-    position: BufferPosition,
+    pub buffer_path: &'a Path,
+    pub position: BufferPosition,
 }
 
 struct NavigationHistoryPosition {
@@ -36,12 +31,32 @@ impl NavigationHistory {
         };
 
         self.positions.truncate(self.current_index);
-        self.current_index = self.positions.len();
+
+        if let Some(last) = self.positions.last() {
+            if last.buffer_path_index == buffer_path_index && last.position == position {
+                return;
+            }
+        }
 
         self.positions.push(NavigationHistoryPosition {
             buffer_path_index,
             position,
-        })
+        });
+        self.current_index = self.positions.len();
+    }
+
+    pub fn add_position_from_buffer_view(
+        &mut self,
+        buffer_view: &BufferView,
+        buffers: &BufferCollection,
+    ) {
+        if let Some(buffer_path) = buffers
+            .get(buffer_view.buffer_handle)
+            .and_then(|b| b.path())
+        {
+            let main_cursor_position = buffer_view.cursors.main_cursor().position;
+            self.add_position(buffer_path, main_cursor_position);
+        }
     }
 
     pub fn navigate_backward(&mut self) -> Option<NavigationHistoryPositionRef> {
@@ -49,8 +64,8 @@ impl NavigationHistory {
             return None;
         }
 
-        let position = &self.positions[self.current_index];
         self.current_index -= 1;
+        let position = &self.positions[self.current_index];
 
         Some(NavigationHistoryPositionRef {
             buffer_path: &self.buffer_paths[position.buffer_path_index],
@@ -59,7 +74,7 @@ impl NavigationHistory {
     }
 
     pub fn navigate_forward(&mut self) -> Option<NavigationHistoryPositionRef> {
-        if self.current_index == self.positions.len() - 1 {
+        if self.current_index == self.positions.len() {
             return None;
         }
 

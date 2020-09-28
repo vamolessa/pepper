@@ -6,8 +6,9 @@ use crate::{
     buffer_view::{CursorMovement, CursorMovementKind},
     client_event::Key,
     cursor::Cursor,
-    editor::KeysIterator,
+    editor::{KeysIterator, StatusMessageKind},
     mode::{Mode, ModeContext, ModeOperation, ModeState},
+    navigation_history::{NavigationHistory, NavigationHistoryPositionRef},
     word_database::WordKind,
 };
 
@@ -93,6 +94,8 @@ impl ModeState for State {
                     (index + len - 1) % len
                 });
             }
+            Key::Ctrl('n') => move_to_navigation_position(self, ctx, |h| h.navigate_forward()),
+            Key::Ctrl('p') => move_to_navigation_position(self, ctx, |h| h.navigate_backward()),
             Key::Char('a') => {
                 fn balanced_brackets(
                     buffer: &BufferContent,
@@ -735,13 +738,38 @@ fn search_word_or_move_to_it(
     state.movement_kind = CursorMovementKind::PositionAndAnchor;
 }
 
-fn move_to_navigation_position(state: &mut State, ctx: &mut ModeContext, forward: bool) {
+fn move_to_navigation_position(
+    state: &mut State,
+    ctx: &mut ModeContext,
+    history_selector: fn(&mut NavigationHistory) -> Option<NavigationHistoryPositionRef>,
+) {
     let client = unwrap_or_return!(ctx.clients.get_mut(ctx.target_client));
-    let navigation_position = if forward {
-        client.navigation_history.navigate_forward()
-    } else {
-        client.navigation_history.navigate_backward()
+    let navigation_position = history_selector(&mut client.navigation_history);
+    let navigation_position = unwrap_or_return!(navigation_position);
+
+    let view_handle = match ctx.buffer_views.buffer_view_handle_from_path(
+        ctx.buffers,
+        ctx.word_database,
+        &ctx.config.syntaxes,
+        ctx.target_client,
+        navigation_position.buffer_path,
+    ) {
+        Ok(handle) => handle,
+        Err(message) => {
+            ctx.status_message(StatusMessageKind::Error, &message);
+            return;
+        }
     };
 
-    //ctx.buffer_views.new_buffer_view_from_path(
+    let mut cursors = unwrap_or_return!(ctx.buffer_views.get_mut(view_handle))
+        .cursors
+        .mut_guard();
+
+    cursors.clear();
+    cursors.add(Cursor {
+        anchor: navigation_position.position,
+        position: navigation_position.position,
+    });
+
+    state.movement_kind = CursorMovementKind::PositionAndAnchor;
 }

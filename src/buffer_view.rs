@@ -510,17 +510,17 @@ impl BufferViewCollection {
         path: &Path,
     ) -> Result<BufferViewHandle, String> {
         if let Some(buffer_handle) = buffers.find_with_path(path) {
-            let mut iter = self.iter_with_handles().filter(|(_, view)| {
-                view.buffer_handle == buffer_handle && view.target_client == target_client
-            });
+            let current_buffer_view_handle = self
+                .iter_with_handles()
+                .filter(|(_, view)| {
+                    view.buffer_handle == buffer_handle && view.target_client == target_client
+                })
+                .map(|(h, _)| h)
+                .next();
 
-            let buffer_view_handle = match iter.next() {
-                Some((handle, _)) => handle,
-                None => {
-                    drop(iter);
-                    let view = BufferView::new(target_client, buffer_handle);
-                    self.add(view)
-                }
+            let buffer_view_handle = match current_buffer_view_handle {
+                Some(handle) => handle,
+                None => self.add(BufferView::new(target_client, buffer_handle)),
             };
             Ok(buffer_view_handle)
         } else if path.to_str().map(|s| s.trim().len()).unwrap_or(0) > 0 {
