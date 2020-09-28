@@ -9,11 +9,11 @@ pub struct State;
 
 impl ModeState for State {
     fn on_enter(&mut self, ctx: &mut ModeContext) {
-        ctx.input.clear();
+        ctx.prompt.clear();
     }
 
     fn on_exit(&mut self, ctx: &mut ModeContext) {
-        ctx.input.clear();
+        ctx.prompt.clear();
     }
 
     fn on_event(&mut self, mut ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
@@ -40,7 +40,7 @@ impl ModeState for State {
                     keymaps: ctx.keymaps,
                 };
 
-                match ctx.scripts.eval(&mut context, &ctx.input) {
+                match ctx.scripts.eval(&mut context, &ctx.prompt) {
                     Ok(value) => {
                         let mut kind = StatusMessageKind::Info;
                         let message = match value {

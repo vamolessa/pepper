@@ -57,7 +57,7 @@ pub struct ModeContext<'a> {
     pub buffer_views: &'a mut BufferViewCollection,
     pub word_database: &'a mut WordDatabase,
 
-    pub input: &'a mut String,
+    pub prompt: &'a mut String,
     pub picker: &'a mut Picker,
 
     pub status_message_kind: &'a mut StatusMessageKind,
@@ -144,18 +144,18 @@ pub enum InputPollResult {
 pub fn poll_input(ctx: &mut ModeContext, keys: &mut KeysIterator) -> InputPollResult {
     match keys.next() {
         Key::Esc => {
-            ctx.input.clear();
+            ctx.prompt.clear();
             InputPollResult::Canceled
         }
         Key::Enter => InputPollResult::Submited,
         Key::Ctrl('u') => {
-            ctx.input.clear();
+            ctx.prompt.clear();
             InputPollResult::Pending
         }
         Key::Ctrl('w') => {
             let mut found_space = false;
             let mut last_index = 0;
-            for (i, c) in ctx.input.char_indices().rev() {
+            for (i, c) in ctx.prompt.char_indices().rev() {
                 if found_space {
                     if c != ' ' {
                         break;
@@ -166,17 +166,17 @@ pub fn poll_input(ctx: &mut ModeContext, keys: &mut KeysIterator) -> InputPollRe
                 last_index = i;
             }
 
-            ctx.input.truncate(last_index);
+            ctx.prompt.truncate(last_index);
             InputPollResult::Pending
         }
         Key::Ctrl('h') => {
-            if let Some((last_char_index, _)) = ctx.input.char_indices().rev().next() {
-                ctx.input.truncate(last_char_index);
+            if let Some((last_char_index, _)) = ctx.prompt.char_indices().rev().next() {
+                ctx.prompt.truncate(last_char_index);
             }
             InputPollResult::Pending
         }
         Key::Char(c) => {
-            ctx.input.push(c);
+            ctx.prompt.push(c);
             InputPollResult::Pending
         }
         _ => InputPollResult::Pending,

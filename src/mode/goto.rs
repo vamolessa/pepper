@@ -13,17 +13,17 @@ pub struct State;
 impl ModeState for State {
     fn on_enter(&mut self, ctx: &mut ModeContext) {
         NavigationHistory::save_client_snapshot(ctx.clients, ctx.buffer_views, ctx.target_client);
-        ctx.input.clear();
+        ctx.prompt.clear();
     }
 
     fn on_exit(&mut self, ctx: &mut ModeContext) {
-        ctx.input.clear();
+        ctx.prompt.clear();
     }
 
     fn on_event(&mut self, mut ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
         match poll_input(&mut ctx, keys) {
             InputPollResult::Pending => {
-                let line_number: usize = match ctx.input.parse() {
+                let line_number: usize = match ctx.prompt.parse() {
                     Ok(number) => number,
                     Err(_) => return ModeOperation::None,
                 };

@@ -499,15 +499,15 @@ where
                     Some(text.len())
                 }
                 Mode::Search(_) => {
-                    draw_input(write, "/", &editor.input, background_color, cursor_color)?;
+                    draw_input(write, "/", &editor.prompt, background_color, cursor_color)?;
                     None
                 }
                 Mode::Goto(_) => {
-                    draw_input(write, "#", &editor.input, background_color, cursor_color)?;
+                    draw_input(write, "#", &editor.prompt, background_color, cursor_color)?;
                     None
                 }
                 Mode::Script(_) => {
-                    draw_input(write, ":", &editor.input, background_color, cursor_color)?;
+                    draw_input(write, ":", &editor.prompt, background_color, cursor_color)?;
                     None
                 }
                 _ => Some(0),

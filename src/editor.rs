@@ -67,7 +67,7 @@ pub struct Editor {
     pub word_database: WordDatabase,
 
     pub buffered_keys: Vec<Key>,
-    pub input: String,
+    pub prompt: String,
     pub picker: Picker,
 
     pub focused_client: TargetClient,
@@ -90,7 +90,7 @@ impl Editor {
             word_database: WordDatabase::new(),
 
             buffered_keys: Vec::new(),
-            input: String::new(),
+            prompt: String::new(),
             picker: Picker::default(),
 
             focused_client: TargetClient::Local,
@@ -251,7 +251,7 @@ impl Editor {
                         buffer_views: &mut self.buffer_views,
                         word_database: &mut self.word_database,
 
-                        input: &mut self.input,
+                        prompt: &mut self.prompt,
                         picker: &mut self.picker,
 
                         status_message_kind: &mut self.status_message_kind,
