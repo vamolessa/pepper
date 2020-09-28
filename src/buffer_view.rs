@@ -109,22 +109,41 @@ impl BufferView {
                 }
             }
             CursorMovement::WordsForward(n) => {
+                if n == 0 {
+                    return;
+                }
+
                 for c in &mut cursors[..] {
-                    for _ in 0..n {
-                        c.position.column_byte_index = buffer
-                            .content
-                            .line_at(c.position.line_index)
-                            .next_word_start_from(c.position.column_byte_index);
+                    let (_, _, right_words) = buffer.content.words_from(c.position);
+                    match right_words
+                        .filter(|w| w.kind != WordKind::Whitespace)
+                        .nth(n - 1)
+                    {
+                        Some(word) => c.position = word.position,
+                        None => {
+                            c.position.column_byte_index =
+                                buffer.content.line_at(c.position.line_index).as_str().len()
+                        }
                     }
                 }
             }
-            CursorMovement::WordsBackward(n) => {
+            CursorMovement::WordsBackward(mut n) => {
+                if n == 0 {
+                    return;
+                }
+
                 for c in &mut cursors[..] {
-                    for _ in 0..n {
-                        c.position.column_byte_index = buffer
-                            .content
-                            .line_at(c.position.line_index)
-                            .previous_word_start_from(c.position.column_byte_index);
+                    let (word, left_words, _) = buffer.content.words_from(c.position);
+                    if c.position.column_byte_index != word.position.column_byte_index {
+                        c.position = word.position;
+                        n -= 1;
+                    }
+
+                    if let Some(word) = left_words
+                        .filter(|w| w.kind != WordKind::Whitespace)
+                        .nth(n.saturating_sub(1))
+                    {
+                        c.position = word.position;
                     }
                 }
             }

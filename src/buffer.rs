@@ -137,46 +137,6 @@ impl BufferLine {
         self.text[..index].rfind(c)
     }
 
-    pub fn next_word_start_from(&self, index: usize) -> usize {
-        let mut kinds = self.text[index..]
-            .char_indices()
-            .map(|(i, c)| (i, WordKind::from_char(c)));
-
-        let first_kind = match kinds.next() {
-            Some((_, k)) => k,
-            None => return self.text.len(),
-        };
-
-        match kinds
-            .skip_while(|(_, k)| *k == first_kind)
-            .skip_while(|(_, k)| *k == WordKind::Whitespace)
-            .next()
-        {
-            Some((i, _)) => index + i,
-            None => self.text.len(),
-        }
-    }
-
-    pub fn previous_word_start_from(&self, index: usize) -> usize {
-        let mut kinds = self.text[..index]
-            .char_indices()
-            .rev()
-            .map(|(i, c)| (i, WordKind::from_char(c)));
-
-        let (first_index, first_kind) = match (&mut kinds)
-            .skip_while(|(_, k)| *k == WordKind::Whitespace)
-            .next()
-        {
-            Some((i, k)) => (i, k),
-            None => return 0,
-        };
-
-        match kinds.take_while(|(_, k)| *k == first_kind).last() {
-            Some((i, _)) => i,
-            None => first_index,
-        }
-    }
-
     pub fn insert_text(&mut self, index: usize, text: &str) {
         self.text.insert_str(index, text);
         self.sync_state();
