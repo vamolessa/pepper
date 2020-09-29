@@ -139,11 +139,12 @@ impl BufferView {
                         n -= 1;
                     }
 
-                    if let Some(word) = left_words
+                    match left_words
                         .filter(|w| w.kind != WordKind::Whitespace)
                         .nth(n.saturating_sub(1))
                     {
-                        c.position = word.position;
+                        Some(word) => c.position = word.position,
+                        None => c.position.column_byte_index = 0,
                     }
                 }
             }
