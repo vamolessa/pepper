@@ -75,14 +75,6 @@ pub struct Client {
 
 impl Client {
     pub fn update_view(&mut self, editor: &Editor, has_focus: bool) {
-        let focused_line_index = self
-            .current_buffer_view_handle
-            .and_then(|h| editor.buffer_views.get(h))
-            .map(|v| v.cursors.main_cursor().position.line_index)
-            .unwrap_or(0);
-
-        self.height = self.viewport_size.1.saturating_sub(1);
-
         let picker_height = if has_focus {
             editor
                 .picker
@@ -91,13 +83,42 @@ impl Client {
             0
         };
 
-        self.height = self.height.saturating_sub(picker_height);
+        self.height = self.viewport_size.1.saturating_sub(1 + picker_height);
+        if let Some(scroll) = self.calculate_scroll(editor) {
+            self.scroll = scroll;
+        }
+    }
+
+    fn calculate_scroll(&self, editor: &Editor) -> Option<usize> {
+        let buffer_view = editor.buffer_views.get(self.current_buffer_view_handle?)?;
+        let buffer = editor.buffers.get(buffer_view.buffer_handle)?;
+        let focused_line_index = buffer_view.cursors.main_cursor().position.line_index;
+
+        let height = self.height as usize;
+
+        let mut scroll = self.scroll;
 
         if focused_line_index < self.scroll {
-            self.scroll = focused_line_index;
-        } else if focused_line_index >= self.scroll + self.height as usize {
-            self.scroll = focused_line_index + 1 - self.height as usize;
+            scroll = focused_line_index;
+        } else if focused_line_index >= self.scroll + height {
+            scroll = focused_line_index + 1 - height;
         }
+
+        let mut extra_line_count = 0;
+        for line in buffer
+            .content
+            .lines()
+            .skip(scroll)
+            .take(focused_line_index - scroll)
+        {
+            extra_line_count += line.char_count() / self.viewport_size.0 as usize;
+        }
+
+        if focused_line_index + extra_line_count >= scroll + height {
+            scroll = focused_line_index + extra_line_count + 1 - height;
+        }
+
+        Some(scroll)
     }
 }
 

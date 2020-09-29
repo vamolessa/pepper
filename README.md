@@ -5,8 +5,6 @@ Experimental code editor
 https://twitter.com/ahvamolessa/status/1276978064166182913
 
 # usando
-- `N` e `P` tem que levar em conta a palavra e nao apenas se ta na mesma posicao (pode ter uma busca que eh so comeco da palavra me questao)
-- scrolling nao ta certo quando tem linhas longas acima do cursor
 - fazer o cursor pular pra busca mais proxima enquanto busca (??)
 
 # todo

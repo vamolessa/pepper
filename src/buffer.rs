@@ -101,11 +101,17 @@ impl<'a> WordRefWithPosition<'a> {
 
 pub struct BufferLine {
     text: String,
+    char_count: usize,
 }
 
 impl BufferLine {
     pub fn new(text: String) -> Self {
-        Self { text }
+        let char_count = text.chars().count();
+        Self { text, char_count }
+    }
+
+    pub fn char_count(&self) -> usize {
+        self.char_count
     }
 
     pub fn as_str(&self) -> &str {
@@ -113,23 +119,31 @@ impl BufferLine {
     }
 
     pub fn split_off(&mut self, index: usize) -> BufferLine {
-        let splitted = BufferLine::new(self.text.split_off(index));
-        splitted
+        let splitted = self.text.split_off(index);
+        let splitted_char_count = splitted.chars().count();
+        self.char_count -= splitted_char_count;
+
+        BufferLine {
+            text: splitted,
+            char_count: splitted_char_count,
+        }
     }
 
     pub fn insert_text(&mut self, index: usize, text: &str) {
         self.text.insert_str(index, text);
+        self.char_count += text.chars().count();
     }
 
-    pub fn push_text(&mut self, s: &str) {
-        self.text.push_str(s);
+    pub fn push_text(&mut self, text: &str) {
+        self.text.push_str(text);
+        self.char_count += text.chars().count();
     }
 
     pub fn delete_range<R>(&mut self, range: R)
     where
         R: RangeBounds<usize>,
     {
-        self.text.drain(range);
+        self.char_count -= self.text.drain(range).count();
     }
 }
 
@@ -873,6 +887,18 @@ mod tests {
         s.push_str(S1);
         s.push_str(S2);
         assert_eq!(s, text.as_str());
+    }
+
+    #[test]
+    fn buffer_line_char_count() {
+        let mut line = BufferLine::new("abc".into());
+        assert_eq!(3, line.char_count());
+        line.insert_text(1, "def");
+        assert_eq!(6, line.char_count());
+        line.delete_range(1..3);
+        assert_eq!(4, line.char_count());
+        line.push_text("ghi");
+        assert_eq!(7, line.char_count());
     }
 
     #[test]
