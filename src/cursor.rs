@@ -66,7 +66,7 @@ impl CursorCollection {
             let mut range = self.cursors[i].range();
             for j in ((i + 1)..self.cursors.len()).rev() {
                 let other_range = self.cursors[j].range();
-                if range.contains(other_range.from) {
+                if range.from <= other_range.from && other_range.from <= range.to {
                     range.to = range.to.max(other_range.to);
                     self.cursors.remove(j);
                     if j <= self.main_cursor_index {

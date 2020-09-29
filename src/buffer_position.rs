@@ -93,10 +93,6 @@ impl BufferRange {
         let (from, to) = if from <= to { (from, to) } else { (to, from) };
         Self { from, to, __: () }
     }
-
-    pub fn contains(&self, position: BufferPosition) -> bool {
-        self.from <= position && position <= self.to
-    }
 }
 
 #[cfg(test)]
@@ -160,30 +156,5 @@ mod tests {
         assert_eq!(pos(3, 3), pos42.delete(range33_51));
         assert_eq!(pos(3, 5), pos53.delete(range33_51));
         assert_eq!(pos(4, 6), pos66.delete(range33_51));
-    }
-
-    #[test]
-    fn buffer_range_contains() {
-        let range = BufferRange::between(pos(3, 3), pos(5, 5));
-        assert_eq!(false, range.contains(pos(1, 4)));
-        assert_eq!(false, range.contains(pos(3, 2)));
-
-        assert_eq!(true, range.contains(pos(3, 3)));
-        assert_eq!(true, range.contains(pos(3, 7)));
-        assert_eq!(true, range.contains(pos(4, 1)));
-        assert_eq!(true, range.contains(pos(4, 7)));
-        assert_eq!(true, range.contains(pos(5, 1)));
-        assert_eq!(true, range.contains(pos(5, 5)));
-
-        assert_eq!(false, range.contains(pos(5, 6)));
-        assert_eq!(false, range.contains(pos(7, 2)));
-
-        let range = BufferRange::between(pos(2, 0), pos(2, 0));
-        assert_eq!(true, range.contains(pos(2, 0)));
-        assert_eq!(false, range.contains(pos(2, 1)));
-
-        let range = BufferRange::between(pos(2, 1), pos(2, 1));
-        assert_eq!(false, range.contains(pos(2, 0)));
-        assert_eq!(true, range.contains(pos(2, 1)));
     }
 }

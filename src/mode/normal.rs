@@ -12,14 +12,22 @@ use crate::{
     word_database::WordKind,
 };
 
+enum CharJump {
+    None,
+    Inclusive(char),
+    Exclusive(char),
+}
+
 pub struct State {
     movement_kind: CursorMovementKind,
+    last_char_jump: CharJump,
 }
 
 impl Default for State {
     fn default() -> Self {
         Self {
             movement_kind: CursorMovementKind::PositionAndAnchor,
+            last_char_jump: CharJump::None,
         }
     }
 }
@@ -312,88 +320,38 @@ impl ModeState for State {
             }
             Key::Char('f') => match keys.next() {
                 Key::None => return ModeOperation::Pending,
-                Key::Char(c) => {
-                    let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
-                    let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
-
-                    for cursor in &mut buffer_view.cursors.mut_guard()[..] {
-                        cursor.position.column_byte_index = buffer
-                            .content
-                            .line_at(cursor.position.line_index)
-                            .next_char_from(cursor.position.column_byte_index, c)
-                            .unwrap_or(cursor.position.column_byte_index);
-
-                        if let CursorMovementKind::PositionAndAnchor = self.movement_kind {
-                            cursor.anchor = cursor.position;
-                        }
-                    }
+                Key::Char(ch) => {
+                    self.last_char_jump = CharJump::Inclusive(ch);
+                    find_char(self, ctx, true);
                 }
                 _ => (),
             },
             Key::Char('F') => match keys.next() {
                 Key::None => return ModeOperation::Pending,
-                Key::Char(c) => {
-                    let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
-                    let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
-
-                    for cursor in &mut buffer_view.cursors.mut_guard()[..] {
-                        cursor.position.column_byte_index = buffer
-                            .content
-                            .line_at(cursor.position.line_index)
-                            .previous_char_from(cursor.position.column_byte_index, c)
-                            .unwrap_or(cursor.position.column_byte_index);
-
-                        if let CursorMovementKind::PositionAndAnchor = self.movement_kind {
-                            cursor.anchor = cursor.position;
-                        }
-                    }
+                Key::Char(ch) => {
+                    self.last_char_jump = CharJump::Inclusive(ch);
+                    find_char(self, ctx, false);
                 }
                 _ => (),
             },
             Key::Char('t') => match keys.next() {
                 Key::None => return ModeOperation::Pending,
-                Key::Char(c) => {
-                    let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
-                    let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
-
-                    for cursor in &mut buffer_view.cursors.mut_guard()[..] {
-                        cursor.position.column_byte_index = match buffer
-                            .content
-                            .line_at(cursor.position.line_index)
-                            .next_char_from(cursor.position.column_byte_index, c)
-                        {
-                            Some(i) => i.saturating_sub(1),
-                            None => cursor.position.column_byte_index,
-                        };
-
-                        if let CursorMovementKind::PositionAndAnchor = self.movement_kind {
-                            cursor.anchor = cursor.position;
-                        }
-                    }
+                Key::Char(ch) => {
+                    self.last_char_jump = CharJump::Exclusive(ch);
+                    find_char(self, ctx, true);
                 }
                 _ => (),
             },
             Key::Char('T') => match keys.next() {
                 Key::None => return ModeOperation::Pending,
-                Key::Char(c) => {
-                    let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
-                    let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
-
-                    for cursor in &mut buffer_view.cursors.mut_guard()[..] {
-                        let line = buffer.content.line_at(cursor.position.line_index);
-                        cursor.position.column_byte_index =
-                            match line.previous_char_from(cursor.position.column_byte_index, c) {
-                                Some(i) => line.as_str().len().min(i + 1),
-                                None => cursor.position.column_byte_index,
-                            };
-
-                        if let CursorMovementKind::PositionAndAnchor = self.movement_kind {
-                            cursor.anchor = cursor.position;
-                        }
-                    }
+                Key::Char(ch) => {
+                    self.last_char_jump = CharJump::Exclusive(ch);
+                    find_char(self, ctx, false);
                 }
                 _ => (),
             },
+            Key::Char(';') => find_char(self, ctx, true),
+            Key::Char(',') => find_char(self, ctx, false),
             Key::Char('v') => {
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
                 let buffer = &unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle)).content;
@@ -700,6 +658,44 @@ fn on_event_no_buffer(_: &mut ModeContext, keys: &mut KeysIterator) -> ModeOpera
     }
 }
 
+fn find_char(state: &State, ctx: &mut ModeContext, forward: bool) {
+    let ch;
+    let next_ch;
+    match state.last_char_jump {
+        CharJump::None => return,
+        CharJump::Inclusive(c) => {
+            ch = c;
+            next_ch = forward;
+        }
+        CharJump::Exclusive(c) => {
+            ch = c;
+            next_ch = !forward;
+        }
+    };
+
+    let handle = unwrap_or_return!(ctx.current_buffer_view_handle());
+    let buffer_view = unwrap_or_return!(ctx.buffer_views.get_mut(handle));
+    let buffer = unwrap_or_return!(ctx.buffers.get(buffer_view.buffer_handle));
+
+    for cursor in &mut buffer_view.cursors.mut_guard()[..] {
+        let mut chars = buffer.content.chars_from(cursor.position);
+        let element = match forward {
+            false => chars.0.find(|(_, c)| *c == ch),
+            true => chars.1.find(|(_, c)| *c == ch),
+        };
+        if let Some((i, c)) = element {
+            cursor.position.column_byte_index = i;
+            if next_ch {
+                cursor.position.column_byte_index += c.len_utf8();
+            }
+
+            if let CursorMovementKind::PositionAndAnchor = state.movement_kind {
+                cursor.anchor = cursor.position;
+            }
+        }
+    }
+}
+
 fn move_to_search_match(
     state: &State,
     ctx: &mut ModeContext,
@@ -742,7 +738,15 @@ fn search_word_or_move_to_it(
     let search_ranges = buffer.search_ranges();
     let current_range_index = search_ranges.binary_search_by_key(&main_position, |r| r.from);
 
-    if search_ranges.is_empty() || current_range_index.is_err() {
+    if search_ranges.is_empty()
+        || current_range_index
+            .map(|i| {
+                let word = buffer.content.word_at(main_position);
+                let word_range = BufferRange::between(word.position, word.end_position());
+                search_ranges[i] != word_range
+            })
+            .unwrap_or(true)
+    {
         buffer.set_search_with(|c| {
             let word = c.word_at(main_position);
 

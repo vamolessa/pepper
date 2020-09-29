@@ -327,7 +327,7 @@ where
             } else if client_view
                 .search_ranges
                 .binary_search_by(|r| {
-                    if r.to < char_position {
+                    if r.to <= char_position {
                         Ordering::Less
                     } else if r.from > char_position {
                         Ordering::Greater

@@ -101,17 +101,11 @@ impl<'a> WordRefWithPosition<'a> {
 
 pub struct BufferLine {
     text: String,
-    char_extra_lengths: Vec<(usize, u8)>,
 }
 
 impl BufferLine {
     pub fn new(text: String) -> Self {
-        let mut this = Self {
-            text,
-            char_extra_lengths: Vec::new(),
-        };
-        this.sync_state();
-        this
+        Self { text }
     }
 
     pub fn as_str(&self) -> &str {
@@ -120,31 +114,15 @@ impl BufferLine {
 
     pub fn split_off(&mut self, index: usize) -> BufferLine {
         let splitted = BufferLine::new(self.text.split_off(index));
-        self.sync_state();
         splitted
-    }
-
-    pub fn next_char_from(&self, index: usize, c: char) -> Option<usize> {
-        let mut matches = self.text[index..].match_indices(c);
-        match matches.next() {
-            Some((0, _)) => Some(index + matches.next()?.0),
-            Some((i, _)) => Some(index + i),
-            None => None,
-        }
-    }
-
-    pub fn previous_char_from(&self, index: usize, c: char) -> Option<usize> {
-        self.text[..index].rfind(c)
     }
 
     pub fn insert_text(&mut self, index: usize, text: &str) {
         self.text.insert_str(index, text);
-        self.sync_state();
     }
 
     pub fn push_text(&mut self, s: &str) {
         self.text.push_str(s);
-        self.sync_state();
     }
 
     pub fn delete_range<R>(&mut self, range: R)
@@ -152,47 +130,7 @@ impl BufferLine {
         R: RangeBounds<usize>,
     {
         self.text.drain(range);
-        self.sync_state();
     }
-
-    fn sync_state(&mut self) {
-        self.char_extra_lengths.clear();
-
-        for (i, c) in self.text.char_indices() {
-            let char_len = c.len_utf8();
-            if char_len > 1 {
-                self.char_extra_lengths.push((i, (char_len - 1) as _));
-            }
-        }
-    }
-
-    /*
-    fn column_to_index(&self, column: usize) -> usize {
-        let mut index = column;
-        for &(i, len) in &self.char_extra_lengths {
-            if i >= index {
-                break;
-            }
-
-            index += len as usize;
-        }
-
-        index
-    }
-
-    fn index_to_column(&self, index: usize) -> usize {
-        let mut column = index;
-        for &(i, len) in &self.char_extra_lengths {
-            if i >= index {
-                break;
-            }
-
-            column -= len as usize;
-        }
-
-        column
-    }
-    */
 }
 
 pub struct BufferContent {
@@ -280,7 +218,7 @@ impl BufferContent {
             for (j, _) in line.as_str().match_indices(text) {
                 ranges.push(BufferRange::between(
                     BufferPosition::line_col(i, j),
-                    BufferPosition::line_col(i, text.len() + j - 1),
+                    BufferPosition::line_col(i, j + text.len()),
                 ));
             }
         }
@@ -381,6 +319,28 @@ impl BufferContent {
 
             deleted_text
         }
+    }
+
+    pub fn chars_from<'a>(
+        &'a self,
+        position: BufferPosition,
+    ) -> (
+        impl 'a + Iterator<Item = (usize, char)>,
+        impl 'a + Iterator<Item = (usize, char)>,
+    ) {
+        let BufferPosition {
+            line_index,
+            column_byte_index,
+        } = position;
+        let (left, right) = self
+            .line_at(line_index)
+            .as_str()
+            .split_at(column_byte_index);
+        let left_chars = left.char_indices().rev();
+        let right_chars = right
+            .char_indices()
+            .map(move |(i, c)| (column_byte_index + i, c));
+        (left_chars, right_chars)
     }
 
     pub fn words_from<'a>(
