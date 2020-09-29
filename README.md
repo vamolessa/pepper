@@ -5,6 +5,7 @@ Experimental code editor
 https://twitter.com/ahvamolessa/status/1276978064166182913
 
 # usando
+- trackear que um buffer está 'sujo' e adicionar checagem nas funções `quit` e `quit_all`
 - fazer o cursor pular pra busca mais proxima enquanto busca (??)
 
 # todo
