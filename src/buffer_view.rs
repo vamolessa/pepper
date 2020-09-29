@@ -586,3 +586,43 @@ impl BufferViewCollection {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn buffer_view_utf8_support() {
+        let mut word_database = WordDatabase::new();
+        let syntaxes = SyntaxCollection::new();
+
+        let mut buffers = BufferCollection::default();
+        let buffer_content = BufferContent::from_str("");
+        let buffer_handle = buffers.add(Buffer::new(
+            &mut word_database,
+            &syntaxes,
+            None,
+            buffer_content,
+        ));
+
+        let buffer_view = BufferView::new(TargetClient::Local, buffer_handle);
+        let main_cursor = buffer_view.cursors.main_cursor();
+        assert_eq!(BufferPosition::line_col(0, 0), main_cursor.anchor);
+        assert_eq!(BufferPosition::line_col(0, 0), main_cursor.position);
+
+        let mut buffer_views = BufferViewCollection::default();
+        let buffer_view_handle = buffer_views.add(buffer_view);
+        buffer_views.insert_text(
+            &mut buffers,
+            &mut word_database,
+            &syntaxes,
+            buffer_view_handle,
+            "ç",
+        );
+
+        let buffer_view = buffer_views.get(buffer_view_handle).unwrap();
+        let main_cursor = buffer_view.cursors.main_cursor();
+        assert_eq!(BufferPosition::line_col(0, 2), main_cursor.anchor);
+        assert_eq!(BufferPosition::line_col(0, 2), main_cursor.position);
+    }
+}

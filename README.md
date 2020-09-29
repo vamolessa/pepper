@@ -4,6 +4,15 @@ Experimental code editor
 # development thread
 https://twitter.com/ahvamolessa/status/1276978064166182913
 
+# usando
+- utf8 nao ta funfando!!
+- f/t/F/T tem que levar em conta que insercoes sao feitas *antes* dos cursores
+- botar um <esc> na frente de `I` e `<c-i>`
+- `N` e `P` tem que levar em conta a palavra e nao apenas se ta na mesma posicao (pode ter uma busca que eh so comeco da palavra me questao)
+- scrolling nao ta certo quando tem linhas longas acima do cursor
+- juntar linhas (`J` ??)
+- fazer o cursor pular pra busca mais proxima enquanto busca (??)
+
 # todo
 - ~~undo/redo~~
 	- ~~store/apply edit diffs~~

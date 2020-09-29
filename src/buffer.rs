@@ -916,6 +916,19 @@ mod tests {
     }
 
     #[test]
+    fn buffer_utf8_support() {
+        let mut buffer = BufferContent::from_str("abd");
+        let range = buffer.insert_text(BufferPosition::line_col(0, 2), "ç");
+        assert_eq!(
+            BufferRange::between(
+                BufferPosition::line_col(0, 2),
+                BufferPosition::line_col(0, 2 + 'ç'.len_utf8())
+            ),
+            range
+        );
+    }
+
+    #[test]
     fn buffer_content_insert_text() {
         let mut buffer = BufferContent::from_str("");
 
