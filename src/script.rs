@@ -344,3 +344,19 @@ impl<'lua> ScriptEngineRef<'lua> {
             .map(ScriptFunction)
     }
 }
+
+pub fn get_full_error_message<E>(error: E) -> String
+where
+    E: Error,
+{
+    let mut message = error.to_string();
+    let mut error = error.source();
+    while let Some(e) = error {
+        message.push('\n');
+        let s = e.to_string();
+        message.push_str(&s);
+        error = e.source();
+    }
+
+    message
+}

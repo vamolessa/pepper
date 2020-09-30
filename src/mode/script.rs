@@ -1,7 +1,7 @@
 use crate::{
     editor::{EditorLoop, KeysIterator, StatusMessageKind},
     mode::{poll_input, InputPollResult, Mode, ModeContext, ModeOperation, ModeState},
-    script::{ScriptContext, ScriptValue},
+    script::{get_full_error_message, ScriptContext, ScriptValue},
 };
 
 #[derive(Default)]
@@ -72,16 +72,7 @@ impl ModeState for State {
                         EditorLoop::Quit => ModeOperation::Quit,
                         EditorLoop::QuitAll => ModeOperation::QuitAll,
                         EditorLoop::Continue => {
-                            use std::error::Error;
-
-                            let mut message = e.to_string();
-                            let mut error = e.source();
-                            while let Some(e) = error {
-                                message.push('\n');
-                                let s = e.to_string();
-                                message.push_str(&s);
-                                error = e.source();
-                            }
+                            let message = get_full_error_message(e);
 
                             *ctx.status_message_kind = StatusMessageKind::Error;
                             ctx.status_message.clear();

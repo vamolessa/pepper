@@ -10,7 +10,7 @@ use crate::{
     keymap::{KeyMapCollection, MatchResult},
     mode::{Mode, ModeContext, ModeOperation},
     picker::Picker,
-    script::{ScriptContext, ScriptEngine},
+    script::{get_full_error_message, ScriptContext, ScriptEngine},
     word_database::WordDatabase,
 };
 
@@ -130,7 +130,7 @@ impl Editor {
         };
 
         if let Err(e) = self.scripts.eval_entry_file(&mut ctx, path) {
-            let message = e.to_string();
+            let message = get_full_error_message(e);
             self.status_message(StatusMessageKind::Error, &message);
         }
     }
