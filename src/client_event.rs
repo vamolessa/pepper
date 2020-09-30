@@ -433,6 +433,34 @@ impl Key {
     }
 }
 
+impl fmt::Display for Key {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Key::None => Ok(()),
+            Key::Backspace => f.write_str("<backspace>"),
+            Key::Enter => f.write_str("<enter>"),
+            Key::Left => f.write_str("<left>"),
+            Key::Right => f.write_str("<right>"),
+            Key::Up => f.write_str("<up>"),
+            Key::Down => f.write_str("<down>"),
+            Key::Home => f.write_str("<home>"),
+            Key::End => f.write_str("<end>"),
+            Key::PageUp => f.write_str("<pageup>"),
+            Key::PageDown => f.write_str("<pagedown>"),
+            Key::Tab => f.write_str("<tab>"),
+            Key::Delete => f.write_str("<delete>"),
+            Key::F(n) => f.write_fmt(format_args!("<f{}>", n)),
+            Key::Char(' ') => f.write_str("<space>"),
+            Key::Char('<') => f.write_str("<less>"),
+            Key::Char('>') => f.write_str("<greater>"),
+            Key::Char(c) => f.write_fmt(format_args!("{}", c)),
+            Key::Ctrl(c) => f.write_fmt(format_args!("<c-{}>", c)),
+            Key::Alt(c) => f.write_fmt(format_args!("<a-{}>", c)),
+            Key::Esc => f.write_str("<esc>"),
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct ClientEventSerializer(SerializationBuf);
 
@@ -528,6 +556,56 @@ mod tests {
             Key::parse(&mut "<greater>".chars()).unwrap()
         );
         assert_eq!(Key::Char('\\'), Key::parse(&mut "\\".chars()).unwrap());
+    }
+
+    #[test]
+    fn parse_key_display() {
+        macro_rules! assert_key {
+            ($key:expr) => {
+                let s = $key.to_string();
+                assert_eq!($key, Key::parse(&mut s.chars()).unwrap());
+            };
+        }
+
+        assert_eq!("", Key::None.to_string());
+        assert_key!(Key::Backspace);
+        assert_key!(Key::Enter);
+        assert_key!(Key::Left);
+        assert_key!(Key::Right);
+        assert_key!(Key::Up);
+        assert_key!(Key::Down);
+        assert_key!(Key::Home);
+        assert_key!(Key::End);
+        assert_key!(Key::PageUp);
+        assert_key!(Key::PageDown);
+        assert_key!(Key::Tab);
+        assert_key!(Key::Delete);
+        assert_key!(Key::Esc);
+
+        for i in 1..=12 {
+            assert_key!(Key::F(i));
+        }
+
+        assert_key!(Key::Char(' '));
+        for b in 0..u8::MAX {
+            if b.is_ascii_graphic() {
+                assert_key!(Key::Char(b as char));
+            }
+        }
+
+        for c in 'a'..='z' {
+            assert_key!(Key::Ctrl(c));
+            assert_key!(Key::Alt(c));
+        }
+        for c in 'A'..='Z' {
+            assert_key!(Key::Char(c));
+            assert_key!(Key::Ctrl(c));
+            assert_key!(Key::Alt(c));
+        }
+        for c in '0'..='9' {
+            assert_key!(Key::Char(c));
+            assert_key!(Key::Alt(c));
+        }
     }
 
     #[test]
