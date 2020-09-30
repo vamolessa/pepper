@@ -1,5 +1,4 @@
 mod application;
-mod navigation_history;
 mod buffer;
 mod buffer_position;
 mod buffer_view;
@@ -13,6 +12,7 @@ mod event_manager;
 mod history;
 mod keymap;
 mod mode;
+mod navigation_history;
 mod pattern;
 mod picker;
 mod script;

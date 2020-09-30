@@ -93,7 +93,7 @@ impl Client {
         if self.viewport_size.0 == 0 {
             return None;
         }
-        
+
         let buffer_view = editor.buffer_views.get(self.current_buffer_view_handle?)?;
         let buffer = editor.buffers.get(buffer_view.buffer_handle)?;
         let focused_line_index = buffer_view.cursors.main_cursor().position.line_index;
