@@ -40,9 +40,11 @@ impl ModeState for State {
                     keymaps: ctx.keymaps,
                 };
 
-                match ctx.scripts.eval(&mut context, &ctx.prompt) {
+                let mut status_message_kind = StatusMessageKind::Info;
+                let mut status_message = None;
+
+                let operation = match ctx.scripts.eval(&mut context, &ctx.prompt) {
                     Ok(value) => {
-                        let mut kind = StatusMessageKind::Info;
                         let message = match value {
                             ScriptValue::Nil => None,
                             ScriptValue::Function(f) => match f.call(()) {
@@ -52,7 +54,7 @@ impl ModeState for State {
                                     EditorLoop::Quit => return ModeOperation::Quit,
                                     EditorLoop::QuitAll => return ModeOperation::QuitAll,
                                     EditorLoop::Continue => {
-                                        kind = StatusMessageKind::Error;
+                                        status_message_kind = StatusMessageKind::Error;
                                         Some(error.to_string())
                                     }
                                 },
@@ -60,27 +62,25 @@ impl ModeState for State {
                             _ => Some(value.to_string()),
                         };
 
-                        if let Some(message) = message {
-                            *ctx.status_message_kind = kind;
-                            ctx.status_message.clear();
-                            ctx.status_message.push_str(&message);
-                        }
-
+                        status_message = message;
                         ModeOperation::EnterMode(Mode::default())
                     }
                     Err(e) => match context.editor_loop {
                         EditorLoop::Quit => ModeOperation::Quit,
                         EditorLoop::QuitAll => ModeOperation::QuitAll,
                         EditorLoop::Continue => {
-                            let message = get_full_error_message(e);
-
-                            *ctx.status_message_kind = StatusMessageKind::Error;
-                            ctx.status_message.clear();
-                            ctx.status_message.push_str(&message);
+                            status_message_kind = StatusMessageKind::Error;
+                            status_message = Some(get_full_error_message(e));
                             ModeOperation::EnterMode(Mode::default())
                         }
                     },
+                };
+
+                if let Some(message) = status_message {
+                    ctx.status_message(status_message_kind, &message);
                 }
+
+                operation
             }
         }
     }

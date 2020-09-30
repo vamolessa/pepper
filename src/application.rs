@@ -105,7 +105,7 @@ where
             TargetClient::Remote(handle) => connections.send_serialized_display(handle, c.buffer),
         }
     }
-    editor.status_message.clear();
+
     Ok(())
 }
 
@@ -144,6 +144,7 @@ where
             LocalEvent::None => continue,
             LocalEvent::EndOfInput => break,
             LocalEvent::Key(key) => {
+                editor.status_message.clear();
                 let editor_loop =
                     editor.on_event(&mut clients, TargetClient::Local, ClientEvent::Key(key));
                 if editor_loop.is_quit() {
@@ -158,6 +159,7 @@ where
                 }
             }
             LocalEvent::Connection(event) => {
+                editor.status_message.clear();
                 match event {
                     ConnectionEvent::NewConnection => {
                         let handle = connections.accept_connection(&event_registry)?;
@@ -182,7 +184,6 @@ where
                         }
                     }
                 }
-
                 connections.unregister_closed_connections(&event_registry)?;
             }
         }
