@@ -202,10 +202,10 @@ impl BufferView {
 
         let mut iter = self.cursors[..].iter();
         if let Some(cursor) = iter.next() {
-            let mut last_range = cursor.range();
+            let mut last_range = cursor.as_range();
             buffer.content.append_range_text_to_string(last_range, text);
             for cursor in iter {
-                let range = cursor.range();
+                let range = cursor.as_range();
                 if range.from.line_index > last_range.to.line_index {
                     text.push('\n');
                 }
@@ -364,7 +364,7 @@ impl BufferViewCollection {
 
         self.fix_cursor_ranges.clear();
         for (i, cursor) in current_view.cursors[..].iter().enumerate().rev() {
-            let range = cursor.range();
+            let range = cursor.as_range();
             buffer.delete_range(word_database, syntaxes, range, i);
             self.fix_cursor_ranges.push(range);
         }

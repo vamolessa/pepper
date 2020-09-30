@@ -7,6 +7,7 @@ use std::{
 };
 
 use crate::{
+    client::TargetClient,
     editor::{EditorLoop, StatusMessageKind},
     keymap::ParseKeyMapError,
     mode::Mode,
@@ -65,7 +66,7 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
         };
     }
 
-    register!(global => print, quit, quit_all, open, close, close_all, save, save_all,);
+    register!(global => print, quit, quit_all, quit_all_force, open, close, close_all, save, save_all,);
     register!(client => index,);
     register!(editor => selection, delete_selection, insert_text,);
     register!(process => pipe, spawn,);
@@ -94,11 +95,35 @@ mod global {
     }
 
     pub fn quit(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
-        ctx.editor_loop = EditorLoop::Quit;
-        Err(ScriptError::from(QuitError))
+        let can_quit =
+            ctx.target_client != TargetClient::Local || ctx.buffers.iter().all(|b| !b.needs_save());
+        if can_quit {
+            ctx.editor_loop = EditorLoop::Quit;
+            Err(ScriptError::from(QuitError))
+        } else {
+            ctx.status_message(
+                StatusMessageKind::Error,
+                "there are unsaved buffers. try 'quit_all_force' to force quit",
+            );
+            Ok(())
+        }
     }
 
     pub fn quit_all(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
+        let can_quit = ctx.buffers.iter().all(|b| !b.needs_save());
+        if can_quit {
+            ctx.editor_loop = EditorLoop::QuitAll;
+            Err(ScriptError::from(QuitError))
+        } else {
+            ctx.status_message(
+                StatusMessageKind::Error,
+                "there are unsaved buffers. try 'quit_all_force' to force quit",
+            );
+            Ok(())
+        }
+    }
+
+    pub fn quit_all_force(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
         ctx.editor_loop = EditorLoop::QuitAll;
         Err(ScriptError::from(QuitError))
     }
@@ -169,19 +194,16 @@ mod global {
             None => return Err(ScriptError::from("no buffer opened")),
         };
 
-        match path {
-            Some(path) => {
-                let path = Path::new(path.to_str()?);
-                buffer.set_path(&ctx.config.syntaxes, Some(path));
-                buffer.save_to_file().map_err(ScriptError::from)?;
-                Ok(())
-            }
-            None => buffer.save_to_file().map_err(ScriptError::from),
+        if let Some(path) = path {
+            let path = Path::new(path.to_str()?);
+            buffer.set_path(&ctx.config.syntaxes, Some(path));
         }
+
+        buffer.save_to_file().map_err(ScriptError::from)
     }
 
     pub fn save_all(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
-        for buffer in ctx.buffers.iter() {
+        for buffer in ctx.buffers.iter_mut() {
             buffer.save_to_file().map_err(ScriptError::from)?;
         }
         Ok(())

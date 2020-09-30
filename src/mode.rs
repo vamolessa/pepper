@@ -73,6 +73,12 @@ impl<'a> ModeContext<'a> {
             .get(self.target_client)
             .and_then(|c| c.current_buffer_view_handle)
     }
+
+    pub fn status_message(&mut self, kind: StatusMessageKind, message: &str) {
+        *self.status_message_kind = kind;
+        self.status_message.clear();
+        self.status_message.push_str(message);
+    }
 }
 
 pub trait ModeState: Default {

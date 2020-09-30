@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, io, io::Write, iter, path::Path, sync::mpsc, thread};
+use std::{cmp::Ordering, io, io::Write, iter, sync::mpsc, thread};
 
 use crossterm::{
     cursor, event, handle_command,
@@ -8,8 +8,8 @@ use crossterm::{
 };
 
 use crate::{
-    buffer::BufferContent,
-    buffer_position::{BufferPosition, BufferRange},
+    buffer::{Buffer, BufferContent},
+    buffer_position::BufferPosition,
     client::{Client, TargetClient},
     client_event::{Key, LocalEvent},
     cursor::Cursor,
@@ -149,44 +149,19 @@ pub fn render(
 
 struct ClientView<'a> {
     client: &'a Client,
-    buffer_path: &'a Path,
-    buffer_content: &'a BufferContent,
-    highlighted_buffer: &'a HighlightedBuffer,
+    buffer: Option<&'a Buffer>,
     main_cursor: Cursor,
     cursors: &'a [Cursor],
-    search_ranges: &'a [BufferRange],
 }
 
 impl<'a> ClientView<'a> {
     pub fn from(editor: &'a Editor, client: &'a Client) -> ClientView<'a> {
-        static EMPTY_BUFFER: BufferContent = BufferContent::empty();
-        static EMPTY_HIGHLIGHTED_BUFFER: HighlightedBuffer = HighlightedBuffer::new();
-
         let buffer_view = client
             .current_buffer_view_handle
             .and_then(|h| editor.buffer_views.get(h));
-        let maybe_buffer = buffer_view
+        let buffer = buffer_view
             .map(|v| v.buffer_handle)
             .and_then(|h| editor.buffers.get(h));
-
-        let buffer_path;
-        let buffer_content;
-        let highlighted_buffer;
-        let search_ranges;
-        match maybe_buffer {
-            Some(buffer) => {
-                buffer_path = buffer.path().unwrap_or(Path::new(""));
-                buffer_content = &buffer.content;
-                highlighted_buffer = &buffer.highlighted;
-                search_ranges = buffer.search_ranges();
-            }
-            None => {
-                buffer_path = Path::new("");
-                buffer_content = &EMPTY_BUFFER;
-                highlighted_buffer = &EMPTY_HIGHLIGHTED_BUFFER;
-                search_ranges = &[];
-            }
-        }
 
         let main_cursor;
         let cursors;
@@ -203,12 +178,9 @@ impl<'a> ClientView<'a> {
 
         ClientView {
             client,
-            buffer_path,
-            buffer_content,
-            highlighted_buffer,
+            buffer,
             main_cursor,
             cursors,
-            search_ranges,
         }
     }
 }
@@ -217,6 +189,9 @@ fn draw_text<W>(write: &mut W, editor: &Editor, client_view: &ClientView) -> UiR
 where
     W: Write,
 {
+    static EMPTY_BUFFER: BufferContent = BufferContent::empty();
+    static EMPTY_HIGHLIGHTED_BUFFER: HighlightedBuffer = HighlightedBuffer::new();
+
     #[derive(Clone, Copy, PartialEq, Eq)]
     enum DrawState {
         Token(TokenKind),
@@ -257,7 +232,23 @@ where
     let mut line_index = scroll;
     let mut drawn_line_count = 0;
 
-    'lines_loop: for line in client_view.buffer_content.lines().skip(line_index) {
+    let buffer_content;
+    let highlighted_buffer;
+    let search_ranges;
+    match client_view.buffer {
+        Some(buffer) => {
+            buffer_content = &buffer.content;
+            highlighted_buffer = &buffer.highlighted;
+            search_ranges = buffer.search_ranges();
+        }
+        None => {
+            buffer_content = &EMPTY_BUFFER;
+            highlighted_buffer = &EMPTY_HIGHLIGHTED_BUFFER;
+            search_ranges = &[];
+        }
+    }
+
+    'lines_loop: for line in buffer_content.lines().skip(line_index) {
         let mut draw_state = DrawState::Token(TokenKind::Text);
         let mut column_byte_index = 0;
         let mut x = 0;
@@ -281,9 +272,7 @@ where
             let token_kind = if c.is_ascii_whitespace() {
                 TokenKind::Whitespace
             } else {
-                client_view
-                    .highlighted_buffer
-                    .find_token_kind_at(line_index, raw_char_index)
+                highlighted_buffer.find_token_kind_at(line_index, raw_char_index)
             };
 
             text_color = match token_kind {
@@ -308,7 +297,7 @@ where
                 }
             } else if client_view.cursors[..]
                 .binary_search_by(|c| {
-                    let range = c.range();
+                    let range = c.as_range();
                     if range.to < char_position {
                         Ordering::Less
                     } else if range.from > char_position {
@@ -324,8 +313,7 @@ where
                     handle_command!(write, SetBackgroundColor(text_color))?;
                     handle_command!(write, SetForegroundColor(background_color))?;
                 }
-            } else if client_view
-                .search_ranges
+            } else if search_ranges
                 .binary_search_by(|r| {
                     if r.to <= char_position {
                         Ordering::Less
@@ -546,24 +534,30 @@ where
         Some(0)
     };
 
-    if let Some((buffer_path, x)) = client_view
-        .buffer_path
-        .as_os_str()
-        .to_str()
-        .filter(|s| !s.is_empty())
-        .zip(x)
-    {
+    if let Some((buffer, x)) = client_view.buffer.zip(x) {
+        let buffer_path = buffer.path().and_then(|p| p.to_str()).unwrap_or("");
+        let needs_save_text = if buffer.needs_save() { "*" } else { "" };
+
         let line_number = client_view.main_cursor.position.line_index + 1;
         let column_number = client_view.main_cursor.position.column_byte_index + 1;
+
         let line_digit_count = find_digit_count(line_number);
         let column_digit_count = find_digit_count(column_number);
-        let skip = (client_view.client.viewport_size.0 as usize).saturating_sub(
-            x + buffer_path.len() + 1 + line_digit_count + 1 + column_digit_count + 1,
-        );
+        let buffer_status_len = x
+            + needs_save_text.len()
+            + buffer_path.len()
+            + 1
+            + line_digit_count
+            + 1
+            + column_digit_count
+            + 1;
+
+        let skip = (client_view.client.viewport_size.0 as usize).saturating_sub(buffer_status_len);
         for _ in 0..skip {
             handle_command!(write, Print(' '))?;
         }
 
+        handle_command!(write, Print(needs_save_text))?;
         handle_command!(write, Print(buffer_path))?;
         handle_command!(write, Print(':'))?;
         handle_command!(write, Print(line_number))?;

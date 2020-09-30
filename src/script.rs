@@ -243,6 +243,12 @@ impl<'a> ScriptContext<'a> {
             client.current_buffer_view_handle = handle;
         }
     }
+
+    pub fn status_message(&mut self, kind: StatusMessageKind, message: &str) {
+        *self.status_message_kind = kind;
+        self.status_message.clear();
+        self.status_message.push_str(message);
+    }
 }
 
 pub struct ScriptEngine {

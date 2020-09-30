@@ -545,6 +545,7 @@ pub struct Buffer {
     pub highlighted: HighlightedBuffer,
     history: History,
     search_ranges: Vec<BufferRange>,
+    needs_save: bool,
 }
 
 impl Buffer {
@@ -577,6 +578,7 @@ impl Buffer {
             highlighted,
             history: History::new(),
             search_ranges: Vec::new(),
+            needs_save: false,
         }
     }
 
@@ -606,6 +608,10 @@ impl Buffer {
         }
     }
 
+    pub fn needs_save(&self) -> bool {
+        self.needs_save
+    }
+
     pub fn insert_text(
         &mut self,
         word_database: &mut WordDatabase,
@@ -618,6 +624,7 @@ impl Buffer {
         if text.is_empty() {
             return BufferRange::between(position, position);
         }
+        self.needs_save = true;
 
         for word in WordIter::new(self.content.line_at(position.line_index).as_str())
             .of_kind(WordKind::Identifier)
@@ -661,6 +668,7 @@ impl Buffer {
         if range.from == range.to {
             return;
         }
+        self.needs_save = true;
 
         let line_count = range.to.line_index - range.from.line_index + 1;
         for line in self
@@ -716,6 +724,8 @@ impl Buffer {
         I: 'a + Clone + Iterator<Item = Edit<'a>>,
     {
         self.search_ranges.clear();
+        self.needs_save = true;
+
         let syntax = syntaxes.get(self.syntax_handle);
         let edits = selector(&mut self.history);
 
@@ -756,7 +766,7 @@ impl Buffer {
         &self.search_ranges
     }
 
-    pub fn save_to_file(&self) -> Result<(), String> {
+    pub fn save_to_file(&mut self) -> Result<(), String> {
         match self.path() {
             Some(path) => {
                 let mut file = File::create(path)
@@ -764,7 +774,10 @@ impl Buffer {
 
                 self.content
                     .write(&mut file)
-                    .map_err(|e| format!("could not write to file {:?}: {:?}", path, e))
+                    .map_err(|e| format!("could not write to file {:?}: {:?}", path, e))?;
+
+                self.needs_save = false;
+                Ok(())
             }
             None => Err("buffer has no path".into()),
         }
@@ -817,6 +830,10 @@ impl BufferCollection {
 
     pub fn iter(&self) -> impl Iterator<Item = &Buffer> {
         self.buffers.iter().filter_map(|b| b.as_ref())
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Buffer> {
+        self.buffers.iter_mut().filter_map(|b| b.as_mut())
     }
 
     pub fn iter_with_handles(&self) -> impl Iterator<Item = (BufferHandle, &Buffer)> {

@@ -12,7 +12,7 @@ pub struct Cursor {
 }
 
 impl Cursor {
-    pub fn range(&self) -> BufferRange {
+    pub fn as_range(&self) -> BufferRange {
         BufferRange::between(self.anchor, self.position)
     }
 
@@ -55,17 +55,17 @@ impl CursorCollection {
 
     fn sort_and_merge(&mut self) {
         let main_cursor = self.cursors[self.main_cursor_index];
-        self.cursors.sort_by_key(|c| c.range().from);
+        self.cursors.sort_by_key(|c| c.as_range().from);
         self.main_cursor_index = self
             .cursors
-            .binary_search_by(|c| c.position.cmp(&main_cursor.position))
+            .binary_search_by_key(&main_cursor.position, |c| c.position)
             .unwrap_or(0);
 
         let mut i = 0;
         while i < self.cursors.len() {
-            let mut range = self.cursors[i].range();
+            let mut range = self.cursors[i].as_range();
             for j in ((i + 1)..self.cursors.len()).rev() {
-                let other_range = self.cursors[j].range();
+                let other_range = self.cursors[j].as_range();
                 if range.from <= other_range.from && other_range.from <= range.to {
                     range.to = range.to.max(other_range.to);
                     self.cursors.remove(j);

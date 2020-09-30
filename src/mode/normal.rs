@@ -7,6 +7,7 @@ use crate::{
     client_event::Key,
     cursor::Cursor,
     editor::KeysIterator,
+    editor::StatusMessageKind,
     mode::{Mode, ModeContext, ModeOperation, ModeState},
     navigation_history::{NavigationDirection, NavigationHistory},
     word_database::WordKind,
@@ -707,6 +708,7 @@ fn move_to_search_match(
 
     let search_ranges = buffer.search_ranges();
     if search_ranges.is_empty() {
+        ctx.status_message(StatusMessageKind::Error, "no search result");
         return;
     }
 
