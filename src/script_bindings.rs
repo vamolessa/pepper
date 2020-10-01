@@ -66,7 +66,10 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
         };
     }
 
-    register!(global => print, quit, quit_all, quit_all_force, open, close, close_all, save, save_all,);
+    register!(global =>
+        print, quit, quit_all, force_quit_all, open, close, close_all, force_close,
+        force_close_all, save, save_all,
+    );
     register!(client => index,);
     register!(editor => selection, delete_selection, insert_text,);
     register!(process => pipe, spawn,);
@@ -103,7 +106,7 @@ mod global {
         } else {
             ctx.status_message(
                 StatusMessageKind::Error,
-                "there are unsaved buffers. try 'quit_all_force' to force quit",
+                "there are unsaved changes in buffers. try 'force_quit_all' to force quit",
             );
             Ok(())
         }
@@ -117,13 +120,13 @@ mod global {
         } else {
             ctx.status_message(
                 StatusMessageKind::Error,
-                "there are unsaved buffers. try 'quit_all_force' to force quit",
+                "there are unsaved changes in buffers. try 'force_quit_all' to force quit all",
             );
             Ok(())
         }
     }
 
-    pub fn quit_all_force(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
+    pub fn force_quit_all(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
         ctx.editor_loop = EditorLoop::QuitAll;
         Err(ScriptError::from(QuitError))
     }
@@ -156,6 +159,35 @@ mod global {
             .and_then(|h| ctx.buffer_views.get(h))
             .map(|v| v.buffer_handle)
         {
+            let unsaved = ctx
+                .buffers
+                .get(handle)
+                .map(|b| b.needs_save())
+                .unwrap_or(false);
+            if unsaved {
+                ctx.status_message(
+                    StatusMessageKind::Error,
+                    "there are unsaved changes in buffer. try 'force_close' to force close",
+                );
+                return Ok(());
+            }
+
+            ctx.buffer_views
+                .remove_where(ctx.buffers, ctx.clients, ctx.word_database, |view| {
+                    view.buffer_handle == handle
+                });
+        }
+
+        ctx.set_current_buffer_view_handle(None);
+        Ok(())
+    }
+
+    pub fn force_close(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
+        if let Some(handle) = ctx
+            .current_buffer_view_handle()
+            .and_then(|h| ctx.buffer_views.get(h))
+            .map(|v| v.buffer_handle)
+        {
             ctx.buffer_views
                 .remove_where(ctx.buffers, ctx.clients, ctx.word_database, |view| {
                     view.buffer_handle == handle
@@ -167,6 +199,24 @@ mod global {
     }
 
     pub fn close_all(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
+        let unsaved_buffers = ctx.buffers.iter().any(|b| b.needs_save());
+        if unsaved_buffers {
+            ctx.status_message(
+                StatusMessageKind::Error,
+                "there are unsaved changes in buffers. try 'force_close_all' to force close all",
+            );
+            Ok(())
+        } else {
+            ctx.buffer_views
+                .remove_where(ctx.buffers, ctx.clients, ctx.word_database, |_| true);
+            for c in ctx.clients.client_refs() {
+                c.client.current_buffer_view_handle = None;
+            }
+            Ok(())
+        }
+    }
+
+    pub fn force_close_all(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
         ctx.buffer_views
             .remove_where(ctx.buffers, ctx.clients, ctx.word_database, |_| true);
         for c in ctx.clients.client_refs() {

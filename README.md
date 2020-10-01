@@ -67,10 +67,11 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- ~~outer word~~
 	- ~~inner balanced braces~~
 	- ~~outer balanced braces~~
-- status bar
+- ~~status bar~~
 	- ~~buffer name~~
 	- ~~buffer position~~
-	- buffered keys
+	- ~~buffered keys~~
+	- ~~show dirty buffer~~
 - scripting
 	- ~~integrate lua to use as command interface~~
 	- ~~config file is lua script~~
