@@ -10,6 +10,7 @@ use crate::{
     buffer_position::{BufferPosition, BufferRange},
     client::ClientCollection,
     history::{Edit, EditKind, History},
+    script::ScriptValue,
     syntax::{self, HighlightedBuffer, SyntaxCollection, SyntaxHandle},
     word_database::{WordDatabase, WordIter, WordKind},
 };
@@ -786,6 +787,12 @@ impl Buffer {
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct BufferHandle(usize);
+
+impl_from_script!(BufferHandle, from => match from {
+    ScriptValue::Integer(n) if n >= 0 => Some(Self(n as _)),
+    _ => None,
+});
+impl_to_script!(BufferHandle, self => ScriptValue::Integer(self.0 as _));
 
 #[derive(Default)]
 pub struct BufferCollection {

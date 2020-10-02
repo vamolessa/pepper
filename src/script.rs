@@ -1,3 +1,5 @@
+#![macro_use]
+
 use std::{convert::TryInto, error::Error, fmt, fs::File, io::Read, path::Path, sync::Arc};
 
 use mlua::prelude::{
@@ -10,12 +12,40 @@ use crate::{
     buffer_view::{BufferViewCollection, BufferViewHandle},
     client::{ClientCollection, TargetClient},
     config::Config,
-    editor::{StatusMessage, EditorLoop},
+    editor::{EditorLoop, StatusMessage},
     keymap::KeyMapCollection,
     picker::Picker,
     script_bindings,
     word_database::WordDatabase,
 };
+
+macro_rules! impl_from_script {
+    ($type:ty, $from_value:ident => $from:expr) => {
+        impl<'lua> mlua::FromLua<'lua> for $type {
+            fn from_lua(lua_value: mlua::Value<'lua>, lua: &'lua mlua::Lua) -> mlua::Result<Self> {
+                let $from_value = ScriptValue::from_lua(lua_value, lua)?;
+                match $from {
+                    Some(value) => Ok(value),
+                    None => Err(mlua::Error::FromLuaConversionError {
+                        from: $from_value.type_name(),
+                        to: std::any::type_name::<$type>(),
+                        message: None,
+                    }),
+                }
+            }
+        }
+    };
+}
+
+macro_rules! impl_to_script {
+    ($type:ty, $to_value:ident => $to:expr) => {
+        impl<'lua> mlua::ToLua<'lua> for $type {
+            fn to_lua($to_value: Self, lua: &'lua mlua::Lua) -> mlua::Result<mlua::Value> {
+                $to.to_lua(lua)
+            }
+        }
+    };
+}
 
 pub type ScriptResult<T> = LuaResult<T>;
 

@@ -1,3 +1,6 @@
+// first because of macros
+mod script;
+
 mod application;
 mod buffer;
 mod buffer_position;
@@ -15,7 +18,6 @@ mod mode;
 mod navigation_history;
 mod pattern;
 mod picker;
-mod script;
 mod script_bindings;
 mod serialization;
 mod syntax;
