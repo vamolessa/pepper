@@ -137,11 +137,15 @@ impl BufferView {
                     if c.position.column_byte_index != word.position.column_byte_index {
                         c.position = word.position;
                         n -= 1;
+
+                        if n == 0 {
+                            continue;
+                        }
                     }
 
                     match left_words
                         .filter(|w| w.kind != WordKind::Whitespace)
-                        .nth(n.saturating_sub(1))
+                        .nth(n - 1)
                     {
                         Some(word) => c.position = word.position,
                         None => c.position.column_byte_index = 0,
