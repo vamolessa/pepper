@@ -478,6 +478,8 @@ where
 
     let x = if has_focus {
         let (status_message_kind, status_message) = editor.status_message.message();
+        let status_message = status_message.trim();
+
         if status_message.is_empty() {
             match editor.mode {
                 Mode::Insert(_) => {
