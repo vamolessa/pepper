@@ -332,8 +332,9 @@ mod process {
     pub fn pipe(
         _: ScriptEngineRef,
         _: &mut ScriptContext,
-        (name, args, input): (ScriptString, Vec<ScriptString>, Option<ScriptString>),
+        (name, args, input): (ScriptString, Option<Vec<ScriptString>>, Option<ScriptString>),
     ) -> ScriptResult<String> {
+        let args = args.unwrap_or(Vec::new());
         let child = run_process(name, args, input, Stdio::piped())?;
         let child_output = child.wait_with_output().map_err(ScriptError::from)?;
         if child_output.status.success() {
@@ -348,8 +349,9 @@ mod process {
     pub fn spawn(
         _: ScriptEngineRef,
         _: &mut ScriptContext,
-        (name, args, input): (ScriptString, Vec<ScriptString>, Option<ScriptString>),
+        (name, args, input): (ScriptString, Option<Vec<ScriptString>>, Option<ScriptString>),
     ) -> ScriptResult<()> {
+        let args = args.unwrap_or(Vec::new());
         run_process(name, args, input, Stdio::null())?;
         Ok(())
     }
