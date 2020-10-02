@@ -477,7 +477,8 @@ where
     }
 
     let x = if has_focus {
-        if editor.status_message.is_empty() {
+        let (status_message_kind, status_message) = editor.status_message.message();
+        if status_message.is_empty() {
             match editor.mode {
                 Mode::Insert(_) => {
                     let text = "-- INSERT --";
@@ -499,12 +500,12 @@ where
                 _ => Some(0),
             }
         } else {
-            let prefix = match editor.status_message_kind {
+            let prefix = match status_message_kind {
                 StatusMessageKind::Info => "",
                 StatusMessageKind::Error => "error:",
             };
 
-            let line_count = editor.status_message.lines().count();
+            let line_count = status_message.lines().count();
             if line_count > 1 {
                 if prefix.is_empty() {
                     handle_command!(write, cursor::MoveUp((line_count - 1) as _))?;
@@ -516,7 +517,7 @@ where
                     handle_command!(write, cursor::MoveToNextLine(1))?;
                 }
 
-                for (i, line) in editor.status_message.lines().enumerate() {
+                for (i, line) in status_message.lines().enumerate() {
                     handle_command!(write, Print(line))?;
                     if i < line_count - 1 {
                         handle_command!(write, cursor::MoveToNextLine(1))?;
@@ -525,7 +526,7 @@ where
             } else {
                 handle_command!(write, terminal::Clear(terminal::ClearType::CurrentLine))?;
                 handle_command!(write, Print(prefix))?;
-                handle_command!(write, Print(&editor.status_message))?;
+                handle_command!(write, Print(status_message))?;
             }
 
             None

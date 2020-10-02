@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{error::Error, fmt, path::Path};
 
 use crate::{
     buffer::BufferCollection,
@@ -10,7 +10,7 @@ use crate::{
     keymap::{KeyMapCollection, MatchResult},
     mode::{Mode, ModeContext, ModeOperation},
     picker::Picker,
-    script::{get_full_error_message, ScriptContext, ScriptEngine},
+    script::{ScriptContext, ScriptEngine},
     word_database::WordDatabase,
 };
 
@@ -58,6 +58,54 @@ pub enum StatusMessageKind {
     Error,
 }
 
+pub struct StatusMessage {
+    kind: StatusMessageKind,
+    message: String,
+}
+
+impl StatusMessage {
+    pub fn new() -> Self {
+        Self {
+            kind: StatusMessageKind::Info,
+            message: String::new(),
+        }
+    }
+
+    pub fn message(&self) -> (StatusMessageKind, &str) {
+        (self.kind, &self.message)
+    }
+
+    pub fn clear(&mut self) {
+        self.message.clear();
+    }
+
+    pub fn write_str(&mut self, kind: StatusMessageKind, message: &str) {
+        self.kind = kind;
+        self.message.clear();
+        self.message.push_str(message);
+    }
+
+    pub fn write_fmt(&mut self, kind: StatusMessageKind, args: fmt::Arguments) {
+        self.kind = kind;
+        self.message.clear();
+        let _ = fmt::write(&mut self.message, args);
+    }
+
+    pub fn write_error(&mut self, error: &dyn Error) {
+        use std::fmt::Write;
+
+        self.kind = StatusMessageKind::Error;
+        self.message.clear();
+        let _ = write!(&mut self.message, "{}", error);
+        let mut error = error.source();
+        while let Some(e) = error {
+            self.message.push('\n');
+            let _ = write!(&mut self.message, "{}", e);
+            error = e.source();
+        }
+    }
+}
+
 pub struct Editor {
     pub config: Config,
     pub mode: Mode,
@@ -71,8 +119,7 @@ pub struct Editor {
     pub picker: Picker,
 
     pub focused_client: TargetClient,
-    pub status_message: String,
-    pub status_message_kind: StatusMessageKind,
+    pub status_message: StatusMessage,
 
     keymaps: KeyMapCollection,
     scripts: ScriptEngine,
@@ -94,19 +141,12 @@ impl Editor {
             picker: Picker::default(),
 
             focused_client: TargetClient::Local,
-            status_message: String::new(),
-            status_message_kind: StatusMessageKind::Info,
+            status_message: StatusMessage::new(),
 
             keymaps: KeyMapCollection::default(),
             scripts: ScriptEngine::new(),
             client_target_map: ClientTargetMap::default(),
         }
-    }
-
-    pub fn status_message(&mut self, kind: StatusMessageKind, message: &str) {
-        self.status_message_kind = kind;
-        self.status_message.clear();
-        self.status_message.push_str(message);
     }
 
     pub fn load_config(&mut self, clients: &mut ClientCollection, path: &Path) {
@@ -123,15 +163,13 @@ impl Editor {
 
             picker: &mut self.picker,
 
-            status_message_kind: &mut self.status_message_kind,
             status_message: &mut self.status_message,
 
             keymaps: &mut self.keymaps,
         };
 
         if let Err(e) = self.scripts.eval_entry_file(&mut ctx, path) {
-            let message = get_full_error_message(e);
-            self.status_message(StatusMessageKind::Error, &message);
+            self.status_message.write_error(&e);
         }
     }
 
@@ -208,7 +246,9 @@ impl Editor {
                             client.current_buffer_view_handle = Some(buffer_view_handle);
                         }
                     }
-                    Err(error) => self.status_message(StatusMessageKind::Error, &error),
+                    Err(error) => self
+                        .status_message
+                        .write_str(StatusMessageKind::Error, &error),
                 }
 
                 EditorLoop::Continue
@@ -254,7 +294,6 @@ impl Editor {
                         prompt: &mut self.prompt,
                         picker: &mut self.picker,
 
-                        status_message_kind: &mut self.status_message_kind,
                         status_message: &mut self.status_message,
 
                         keymaps: &mut self.keymaps,

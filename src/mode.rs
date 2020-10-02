@@ -8,7 +8,7 @@ use crate::{
     client::{ClientCollection, TargetClient},
     client_event::Key,
     config::Config,
-    editor::{KeysIterator, StatusMessageKind},
+    editor::{KeysIterator, StatusMessage},
     keymap::KeyMapCollection,
     picker::Picker,
     script::ScriptEngine,
@@ -60,8 +60,7 @@ pub struct ModeContext<'a> {
     pub prompt: &'a mut String,
     pub picker: &'a mut Picker,
 
-    pub status_message_kind: &'a mut StatusMessageKind,
-    pub status_message: &'a mut String,
+    pub status_message: &'a mut StatusMessage,
 
     pub keymaps: &'a mut KeyMapCollection,
     pub scripts: &'a mut ScriptEngine,
@@ -72,12 +71,6 @@ impl<'a> ModeContext<'a> {
         self.clients
             .get(self.target_client)
             .and_then(|c| c.current_buffer_view_handle)
-    }
-
-    pub fn status_message(&mut self, kind: StatusMessageKind, message: &str) {
-        *self.status_message_kind = kind;
-        self.status_message.clear();
-        self.status_message.push_str(message);
     }
 }
 

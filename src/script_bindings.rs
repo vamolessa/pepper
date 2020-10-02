@@ -91,9 +91,8 @@ mod global {
         value: ScriptValue,
     ) -> ScriptResult<()> {
         let message = value.to_string();
-        *ctx.status_message_kind = StatusMessageKind::Info;
-        ctx.status_message.clear();
-        ctx.status_message.push_str(&message);
+        ctx.status_message
+            .write_str(StatusMessageKind::Info, &message);
         Ok(())
     }
 
@@ -104,7 +103,7 @@ mod global {
             ctx.editor_loop = EditorLoop::Quit;
             Err(ScriptError::from(QuitError))
         } else {
-            ctx.status_message(
+            ctx.status_message.write_str(
                 StatusMessageKind::Error,
                 "there are unsaved changes in buffers. try 'force_quit_all' to force quit",
             );
@@ -118,7 +117,7 @@ mod global {
             ctx.editor_loop = EditorLoop::QuitAll;
             Err(ScriptError::from(QuitError))
         } else {
-            ctx.status_message(
+            ctx.status_message.write_str(
                 StatusMessageKind::Error,
                 "there are unsaved changes in buffers. try 'force_quit_all' to force quit all",
             );
@@ -165,7 +164,7 @@ mod global {
                 .map(|b| b.needs_save())
                 .unwrap_or(false);
             if unsaved {
-                ctx.status_message(
+                ctx.status_message.write_str(
                     StatusMessageKind::Error,
                     "there are unsaved changes in buffer. try 'force_close' to force close",
                 );
@@ -201,7 +200,7 @@ mod global {
     pub fn close_all(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
         let unsaved_buffers = ctx.buffers.iter().any(|b| b.needs_save());
         if unsaved_buffers {
-            ctx.status_message(
+            ctx.status_message.write_str(
                 StatusMessageKind::Error,
                 "there are unsaved changes in buffers. try 'force_close_all' to force close all",
             );
@@ -249,13 +248,26 @@ mod global {
             buffer.set_path(&ctx.config.syntaxes, Some(path));
         }
 
+        if let Some(path) = buffer.path().and_then(|p| p.to_str()) {
+            ctx.status_message
+                .write_fmt(StatusMessageKind::Info, format_args!("saved to '{}'", path));
+        }
+
         buffer.save_to_file().map_err(ScriptError::from)
     }
 
     pub fn save_all(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
+        let mut buffer_count = 0;
         for buffer in ctx.buffers.iter_mut() {
             buffer.save_to_file().map_err(ScriptError::from)?;
+            buffer_count += 1;
         }
+
+        ctx.status_message.write_fmt(
+            StatusMessageKind::Info,
+            format_args!("{} buffers saved", buffer_count),
+        );
+
         Ok(())
     }
 }

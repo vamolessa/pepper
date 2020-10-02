@@ -10,7 +10,7 @@ use crate::{
     buffer_view::{BufferViewCollection, BufferViewHandle},
     client::{ClientCollection, TargetClient},
     config::Config,
-    editor::{EditorLoop, StatusMessageKind},
+    editor::{StatusMessage, EditorLoop},
     keymap::KeyMapCollection,
     picker::Picker,
     script_bindings,
@@ -225,8 +225,7 @@ pub struct ScriptContext<'a> {
 
     pub picker: &'a mut Picker,
 
-    pub status_message_kind: &'a mut StatusMessageKind,
-    pub status_message: &'a mut String,
+    pub status_message: &'a mut StatusMessage,
 
     pub keymaps: &'a mut KeyMapCollection,
 }
@@ -242,12 +241,6 @@ impl<'a> ScriptContext<'a> {
         if let Some(client) = self.clients.get_mut(self.target_client) {
             client.current_buffer_view_handle = handle;
         }
-    }
-
-    pub fn status_message(&mut self, kind: StatusMessageKind, message: &str) {
-        *self.status_message_kind = kind;
-        self.status_message.clear();
-        self.status_message.push_str(message);
     }
 }
 
@@ -343,20 +336,4 @@ impl<'lua> ScriptEngineRef<'lua> {
             })
             .map(ScriptFunction)
     }
-}
-
-pub fn get_full_error_message<E>(error: E) -> String
-where
-    E: Error,
-{
-    let mut message = error.to_string();
-    let mut error = error.source();
-    while let Some(e) = error {
-        message.push('\n');
-        let s = e.to_string();
-        message.push_str(&s);
-        error = e.source();
-    }
-
-    message
 }

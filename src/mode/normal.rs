@@ -708,7 +708,8 @@ fn move_to_search_match(
 
     let search_ranges = buffer.search_ranges();
     if search_ranges.is_empty() {
-        ctx.status_message(StatusMessageKind::Error, "no search result");
+        ctx.status_message
+            .write_str(StatusMessageKind::Error, "no search result");
         return;
     }
 
