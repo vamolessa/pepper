@@ -679,7 +679,10 @@ fn find_char(state: &State, ctx: &mut ModeContext, forward: bool) {
     let buffer = unwrap_or_return!(ctx.buffers.get(buffer_view.buffer_handle));
 
     for cursor in &mut buffer_view.cursors.mut_guard()[..] {
-        let mut chars = buffer.content.chars_from(cursor.position);
+        let mut chars = buffer
+            .content
+            .line_at(cursor.position.line_index)
+            .chars_from(cursor.position.column_byte_index);
         let element = match forward {
             false => chars.0.find(|(_, c)| *c == ch),
             true => chars.1.find(|(_, c)| *c == ch),

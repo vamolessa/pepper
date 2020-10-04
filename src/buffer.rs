@@ -86,6 +86,21 @@ impl From<String> for Text {
     }
 }
 
+pub struct WordRefWithIndex<'a> {
+    pub kind: WordKind,
+    pub text: &'a str,
+    pub index: usize,
+}
+impl<'a> WordRefWithIndex<'a> {
+    pub fn to_word_ref_with_position(self, line_index: usize) -> WordRefWithPosition<'a> {
+        WordRefWithPosition {
+            kind: self.kind,
+            text: self.text,
+            position: BufferPosition::line_col(line_index, self.index),
+        }
+    }
+}
+
 pub struct WordRefWithPosition<'a> {
     pub kind: WordKind,
     pub text: &'a str,
@@ -117,6 +132,97 @@ impl BufferLine {
 
     pub fn as_str(&self) -> &str {
         &self.text
+    }
+
+    pub fn chars_from<'a>(
+        &'a self,
+        index: usize,
+    ) -> (
+        impl 'a + Iterator<Item = (usize, char)>,
+        impl 'a + Iterator<Item = (usize, char)>,
+    ) {
+        let (left, right) = self.text.split_at(index);
+        let left_chars = left.char_indices().rev();
+        let right_chars = right.char_indices().map(move |(i, c)| (index + i, c));
+        (left_chars, right_chars)
+    }
+
+    pub fn words_from<'a>(
+        &'a self,
+        index: usize,
+    ) -> (
+        WordRefWithIndex<'a>,
+        impl Iterator<Item = WordRefWithIndex<'a>>,
+        impl Iterator<Item = WordRefWithIndex<'a>>,
+    ) {
+        let mid_word = self.word_at(index);
+        let mid_start_index = mid_word.index;
+        let mid_end_index = mid_start_index + mid_word.text.len();
+
+        let left = &self.text[..mid_start_index];
+        let right = &self.text[mid_end_index..];
+
+        let mut left_column_index = mid_start_index;
+        let left_words = WordIter::new(left).rev().map(move |w| {
+            left_column_index -= w.text.len();
+            WordRefWithIndex {
+                kind: w.kind,
+                text: w.text,
+                index: left_column_index,
+            }
+        });
+
+        let mut right_column_index = mid_end_index;
+        let right_words = WordIter::new(right).map(move |w| {
+            let index = right_column_index;
+            right_column_index += w.text.len();
+            WordRefWithIndex {
+                kind: w.kind,
+                text: w.text,
+                index,
+            }
+        });
+
+        (mid_word, left_words, right_words)
+    }
+
+    pub fn word_at(&self, index: usize) -> WordRefWithIndex {
+        let (before, after) = self.text.split_at(index);
+        match WordIter::new(after).next() {
+            Some(right) => match WordIter::new(before).next_back() {
+                Some(left) => {
+                    if left.kind == right.kind {
+                        let end_index = index + right.text.len();
+                        let index = index - left.text.len();
+                        WordRefWithIndex {
+                            kind: left.kind,
+                            text: &self.text[index..end_index],
+                            index,
+                        }
+                    } else {
+                        WordRefWithIndex {
+                            kind: right.kind,
+                            text: right.text,
+                            index,
+                        }
+                    }
+                }
+                None => WordRefWithIndex {
+                    kind: right.kind,
+                    text: right.text,
+                    index,
+                },
+            },
+            None => WordRefWithIndex {
+                kind: WordKind::Whitespace,
+                text: "",
+                index,
+            },
+        }
+    }
+
+    pub fn indentation<'a>(&'a self) -> impl 'a + Iterator<Item = (usize, &'a str)> {
+        std::iter::once((0, ""))
     }
 
     pub fn split_off(&mut self, index: usize) -> BufferLine {
@@ -336,28 +442,6 @@ impl BufferContent {
         }
     }
 
-    pub fn chars_from<'a>(
-        &'a self,
-        position: BufferPosition,
-    ) -> (
-        impl 'a + Iterator<Item = (usize, char)>,
-        impl 'a + Iterator<Item = (usize, char)>,
-    ) {
-        let BufferPosition {
-            line_index,
-            column_byte_index,
-        } = position;
-        let (left, right) = self
-            .line_at(line_index)
-            .as_str()
-            .split_at(column_byte_index);
-        let left_chars = left.char_indices().rev();
-        let right_chars = right
-            .char_indices()
-            .map(move |(i, c)| (column_byte_index + i, c));
-        (left_chars, right_chars)
-    }
-
     pub fn words_from<'a>(
         &'a self,
         position: BufferPosition,
@@ -366,79 +450,26 @@ impl BufferContent {
         impl Iterator<Item = WordRefWithPosition<'a>>,
         impl Iterator<Item = WordRefWithPosition<'a>>,
     ) {
-        let position = self.clamp_position(position);
-        let mid_word = self.word_at(position);
-        let mid_start_index = mid_word.position.column_byte_index;
-        let mid_end_index = mid_start_index + mid_word.text.len();
+        let BufferPosition {
+            line_index,
+            column_byte_index,
+        } = self.clamp_position(position);
 
-        let line = self.line_at(position.line_index).as_str();
-        let left = &line[..mid_start_index];
-        let right = &line[mid_end_index..];
+        let (mid_word, left_words, right_words) =
+            self.line_at(line_index).words_from(column_byte_index);
 
-        let mut left_column_index = mid_start_index;
-        let left_words = WordIter::new(left).rev().map(move |w| {
-            left_column_index -= w.text.len();
-            let position = BufferPosition::line_col(position.line_index, left_column_index);
-            WordRefWithPosition {
-                kind: w.kind,
-                text: w.text,
-                position,
-            }
-        });
-
-        let mut right_column_index = mid_end_index;
-        let right_words = WordIter::new(right).map(move |w| {
-            let position = BufferPosition::line_col(position.line_index, right_column_index);
-            right_column_index += w.text.len();
-            WordRefWithPosition {
-                kind: w.kind,
-                text: w.text,
-                position,
-            }
-        });
-
-        (mid_word, left_words, right_words)
+        (
+            mid_word.to_word_ref_with_position(line_index),
+            left_words.map(move |w| w.to_word_ref_with_position(line_index)),
+            right_words.map(move |w| w.to_word_ref_with_position(line_index)),
+        )
     }
 
     pub fn word_at(&self, position: BufferPosition) -> WordRefWithPosition {
         let position = self.clamp_position(position);
-        let line = self.line_at(position.line_index).as_str();
-        let (before, after) = line.split_at(position.column_byte_index);
-
-        match WordIter::new(after).next() {
-            Some(right) => match WordIter::new(before).next_back() {
-                Some(left) => {
-                    if left.kind == right.kind {
-                        let end_index = position.column_byte_index + right.text.len();
-                        let position = BufferPosition::line_col(
-                            position.line_index,
-                            position.column_byte_index - left.text.len(),
-                        );
-                        WordRefWithPosition {
-                            kind: left.kind,
-                            text: &line[position.column_byte_index..end_index],
-                            position,
-                        }
-                    } else {
-                        WordRefWithPosition {
-                            kind: right.kind,
-                            text: right.text,
-                            position,
-                        }
-                    }
-                }
-                None => WordRefWithPosition {
-                    kind: right.kind,
-                    text: right.text,
-                    position,
-                },
-            },
-            None => WordRefWithPosition {
-                kind: WordKind::Whitespace,
-                text: "",
-                position,
-            },
-        }
+        self.line_at(position.line_index)
+            .word_at(position.column_byte_index)
+            .to_word_ref_with_position(position.line_index)
     }
 
     pub fn find_balanced_chars_at(
