@@ -74,7 +74,7 @@ impl BufferView {
         }
 
         let buffer = match buffers.get(self.buffer_handle) {
-            Some(buffer) => buffer,
+            Some(buffer) => &buffer.content,
             None => return,
         };
 
@@ -82,23 +82,22 @@ impl BufferView {
         match movement {
             CursorMovement::ColumnsForward(n) => {
                 for c in &mut cursors[..] {
-                    let BufferPosition {
-                        mut line_index,
-                        column_byte_index,
-                    } = c.position;
-
-                    let line = buffer.content.line_at(line_index).as_str();
-                    match try_nth(line[column_byte_index..].char_indices(), n) {
+                    let line = buffer.line_at(c.position.line_index).as_str();
+                    match try_nth(line[c.position.column_byte_index..].char_indices(), n) {
                         Ok((i, _)) => c.position.column_byte_index += i,
                         Err(0) => c.position.column_byte_index = line.len(),
                         Err(mut n) => {
                             n -= 1;
-                            c.position.column_byte_index =
-                                buffer.content.line_at(line_index).as_str().len();
-                            let last_line_index = buffer.content.line_count() - 1;
-                            while line_index < last_line_index {
-                                line_index += 1;
-                                let line = buffer.content.line_at(line_index).as_str();
+                            let last_line_index = buffer.line_count() - 1;
+                            loop {
+                                if c.position.line_index == last_line_index {
+                                    c.position.column_byte_index =
+                                        buffer.line_at(last_line_index).as_str().len();
+                                    break;
+                                }
+
+                                c.position.line_index += 1;
+                                let line = buffer.line_at(c.position.line_index).as_str();
                                 match try_nth(line.char_indices(), n) {
                                     Ok((i, _)) => {
                                         c.position.column_byte_index = i;
@@ -111,7 +110,6 @@ impl BufferView {
                                     Err(rest) => n = rest - 1,
                                 }
                             }
-                            c.position.line_index = line_index;
                         }
                     }
                 }
@@ -123,28 +121,46 @@ impl BufferView {
                 let n = n - 1;
 
                 for c in &mut cursors[..] {
-                    let BufferPosition {
-                        mut line_index,
-                        column_byte_index,
-                    } = c.position;
-
-                    let line = buffer.content.line_at(line_index).as_str();
-                    match try_nth(line[..column_byte_index].char_indices().rev(), n) {
+                    let line = buffer.line_at(c.position.line_index).as_str();
+                    match try_nth(line[..c.position.column_byte_index].char_indices().rev(), n) {
                         Ok((i, _)) => c.position.column_byte_index = i,
+                        Err(0) => {
+                            if c.position.line_index == 0 {
+                                c.position.column_byte_index = 0;
+                            } else {
+                                c.position.line_index -= 1;
+                                c.position.column_byte_index =
+                                    buffer.line_at(c.position.line_index).as_str().len();
+                            }
+                        }
                         Err(mut n) => {
-                            c.position.column_byte_index = 0;
-                            while line_index > 0 {
-                                line_index -= 1;
-                                let line = buffer.content.line_at(line_index).as_str();
+                            n -= 1;
+                            loop {
+                                if c.position.line_index == 0 {
+                                    c.position.column_byte_index = 0;
+                                    break;
+                                }
+
+                                c.position.line_index -= 1;
+                                let line = buffer.line_at(c.position.line_index).as_str();
                                 match try_nth(line.char_indices().rev(), n) {
                                     Ok((i, _)) => {
                                         c.position.column_byte_index = i;
                                         break;
                                     }
-                                    Err(rest) => n = rest,
+                                    Err(0) => {
+                                        if c.position.line_index == 0 {
+                                            c.position.column_byte_index = 0;
+                                        } else {
+                                            c.position.line_index -= 1;
+                                            c.position.column_byte_index =
+                                                buffer.line_at(c.position.line_index).as_str().len();
+                                        }
+                                        break;
+                                    }
+                                    Err(rest) => n = rest - 1,
                                 }
                             }
-                            c.position.line_index = line_index;
                         }
                     }
                 }
@@ -152,17 +168,16 @@ impl BufferView {
             CursorMovement::LinesForward(n) => {
                 for c in &mut cursors[..] {
                     c.position.line_index = buffer
-                        .content
                         .line_count()
                         .saturating_sub(1)
                         .min(c.position.line_index + n);
-                    c.position = buffer.content.saturate_position(c.position);
+                    c.position = buffer.saturate_position(c.position);
                 }
             }
             CursorMovement::LinesBackward(n) => {
                 for c in &mut cursors[..] {
                     c.position.line_index = c.position.line_index.saturating_sub(n);
-                    c.position = buffer.content.saturate_position(c.position);
+                    c.position = buffer.saturate_position(c.position);
                 }
             }
             CursorMovement::WordsForward(n) => {
@@ -171,7 +186,7 @@ impl BufferView {
                 }
 
                 for c in &mut cursors[..] {
-                    let (_, _, right_words) = buffer.content.words_from(c.position);
+                    let (_, _, right_words) = buffer.words_from(c.position);
                     match right_words
                         .filter(|w| w.kind != WordKind::Whitespace)
                         .nth(n - 1)
@@ -179,7 +194,7 @@ impl BufferView {
                         Some(word) => c.position = word.position,
                         None => {
                             c.position.column_byte_index =
-                                buffer.content.line_at(c.position.line_index).as_str().len()
+                                buffer.line_at(c.position.line_index).as_str().len()
                         }
                     }
                 }
@@ -190,7 +205,7 @@ impl BufferView {
                 }
 
                 for c in &mut cursors[..] {
-                    let (word, left_words, _) = buffer.content.words_from(c.position);
+                    let (word, left_words, _) = buffer.words_from(c.position);
                     if c.position.column_byte_index != word.position.column_byte_index {
                         c.position = word.position;
                         n -= 1;
@@ -217,19 +232,19 @@ impl BufferView {
             CursorMovement::End => {
                 for c in &mut cursors[..] {
                     c.position.column_byte_index =
-                        buffer.content.line_at(c.position.line_index).as_str().len();
+                        buffer.line_at(c.position.line_index).as_str().len();
                 }
             }
             CursorMovement::FirstLine => {
                 for c in &mut cursors[..] {
                     c.position.line_index = 0;
-                    c.position = buffer.content.saturate_position(c.position);
+                    c.position = buffer.saturate_position(c.position);
                 }
             }
             CursorMovement::LastLine => {
                 for c in &mut cursors[..] {
-                    c.position.line_index = buffer.content.line_count() - 1;
-                    c.position = buffer.content.saturate_position(c.position);
+                    c.position.line_index = buffer.line_count() - 1;
+                    c.position = buffer.saturate_position(c.position);
                 }
             }
         }
@@ -653,38 +668,120 @@ impl BufferViewCollection {
 mod tests {
     use super::*;
 
+    struct TestContext {
+        pub word_database: WordDatabase,
+        pub syntaxes: SyntaxCollection,
+        pub buffers: BufferCollection,
+        pub buffer_views: BufferViewCollection,
+        pub buffer_view_handle: BufferViewHandle,
+    }
+
+    impl TestContext {
+        pub fn with_buffer(text: &str) -> Self {
+            let mut word_database = WordDatabase::new();
+            let syntaxes = SyntaxCollection::new();
+
+            let mut buffers = BufferCollection::default();
+            let buffer_content = BufferContent::from_str(text);
+            let buffer_handle = buffers.add(Buffer::new(
+                &mut word_database,
+                &syntaxes,
+                None,
+                buffer_content,
+            ));
+
+            let buffer_view = BufferView::new(TargetClient::Local, buffer_handle);
+
+            let mut buffer_views = BufferViewCollection::default();
+            let buffer_view_handle = buffer_views.add(buffer_view);
+
+            Self {
+                word_database,
+                syntaxes,
+                buffers,
+                buffer_views,
+                buffer_view_handle,
+            }
+        }
+    }
+
     #[test]
     fn buffer_view_utf8_support() {
-        let mut word_database = WordDatabase::new();
-        let syntaxes = SyntaxCollection::new();
+        let mut ctx = TestContext::with_buffer("");
 
-        let mut buffers = BufferCollection::default();
-        let buffer_content = BufferContent::from_str("");
-        let buffer_handle = buffers.add(Buffer::new(
-            &mut word_database,
-            &syntaxes,
-            None,
-            buffer_content,
-        ));
-
-        let buffer_view = BufferView::new(TargetClient::Local, buffer_handle);
+        let buffer_view = ctx.buffer_views.get(ctx.buffer_view_handle).unwrap();
         let main_cursor = buffer_view.cursors.main_cursor();
         assert_eq!(BufferPosition::line_col(0, 0), main_cursor.anchor);
         assert_eq!(BufferPosition::line_col(0, 0), main_cursor.position);
 
-        let mut buffer_views = BufferViewCollection::default();
-        let buffer_view_handle = buffer_views.add(buffer_view);
-        buffer_views.insert_text(
-            &mut buffers,
-            &mut word_database,
-            &syntaxes,
-            buffer_view_handle,
+        ctx.buffer_views.insert_text(
+            &mut ctx.buffers,
+            &mut ctx.word_database,
+            &ctx.syntaxes,
+            ctx.buffer_view_handle,
             "ç",
         );
 
-        let buffer_view = buffer_views.get(buffer_view_handle).unwrap();
+        let buffer_view = ctx.buffer_views.get(ctx.buffer_view_handle).unwrap();
         let main_cursor = buffer_view.cursors.main_cursor();
         assert_eq!(BufferPosition::line_col(0, 2), main_cursor.anchor);
         assert_eq!(BufferPosition::line_col(0, 2), main_cursor.position);
+    }
+
+    #[test]
+    fn buffer_view_cursor_movement() {
+        fn set_cursor(ctx: &mut TestContext, position: BufferPosition) {
+            let buffer_view = ctx.buffer_views.get_mut(ctx.buffer_view_handle).unwrap();
+            let mut cursors = buffer_view.cursors.mut_guard();
+            cursors.clear();
+            cursors.add(Cursor {
+                anchor: position,
+                position,
+            });
+        }
+
+        fn main_cursor_position(ctx: &TestContext) -> BufferPosition {
+            ctx.buffer_views
+                .get(ctx.buffer_view_handle)
+                .unwrap()
+                .cursors
+                .main_cursor()
+                .position
+        }
+
+        let mut ctx = TestContext::with_buffer("ab\ncde\nefgh\nijk\nlm");
+
+        macro_rules! assert_movement {
+            (($from_line:expr, $from_col:expr) => $movement:expr => ($to_line:expr, $to_col:expr)) => {
+                set_cursor(&mut ctx, BufferPosition::line_col($from_line, $from_col));
+                ctx.buffer_views
+                    .get_mut(ctx.buffer_view_handle)
+                    .unwrap()
+                    .move_cursors(
+                        &ctx.buffers,
+                        $movement,
+                        CursorMovementKind::PositionAndAnchor,
+                    );
+                assert_eq!(
+                    BufferPosition::line_col($to_line, $to_col),
+                    main_cursor_position(&ctx)
+                );
+            };
+        }
+
+        assert_movement!((2, 2) => CursorMovement::ColumnsForward(0) => (2, 2));
+        assert_movement!((2, 2) => CursorMovement::ColumnsForward(1) => (2, 3));
+        assert_movement!((2, 2) => CursorMovement::ColumnsForward(2) => (2, 4));
+        assert_movement!((2, 2) => CursorMovement::ColumnsForward(3) => (3, 0));
+        assert_movement!((2, 2) => CursorMovement::ColumnsForward(6) => (3, 3));
+        assert_movement!((2, 2) => CursorMovement::ColumnsForward(7) => (4, 0));
+        assert_movement!((2, 2) => CursorMovement::ColumnsForward(999) => (4, 2));
+
+        assert_movement!((2, 2) => CursorMovement::ColumnsBackward(0) => (2, 2));
+        assert_movement!((2, 2) => CursorMovement::ColumnsBackward(1) => (2, 1));
+        assert_movement!((2, 0) => CursorMovement::ColumnsBackward(1) => (1, 3));
+        assert_movement!((2, 2) => CursorMovement::ColumnsBackward(3) => (1, 3));
+        assert_movement!((2, 2) => CursorMovement::ColumnsBackward(7) => (0, 2));
+        assert_movement!((2, 2) => CursorMovement::ColumnsBackward(999) => (0, 0));
     }
 }
