@@ -1,4 +1,4 @@
-use std::{env, error::Error, fmt, fs, path::Path, sync::mpsc};
+use std::{env, error::Error, fmt, fs, path::Path, sync::mpsc, time::Instant};
 
 use crate::{
     client::{ClientCollection, TargetClient},
@@ -9,6 +9,34 @@ use crate::{
     ui::{self, Ui, UiKind, UiResult},
     Args,
 };
+
+trait Profiler {
+    fn begin_frame(&mut self) {}
+    fn end_frame(&mut self) {}
+}
+
+struct DummyProfiler;
+impl Profiler for DummyProfiler {}
+
+struct SimpleProfiler(Option<Instant>);
+impl SimpleProfiler {
+    pub fn new() -> Self {
+        Self(None)
+    }
+}
+impl Profiler for SimpleProfiler {
+    fn begin_frame(&mut self) {
+        if let None = self.0 {
+            self.0 = Some(Instant::now())
+        }
+    }
+
+    fn end_frame(&mut self) {
+        if let Some(instant) = self.0.take() {
+            eprintln!("{}", instant.elapsed().as_millis());
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct ApplicationError(String);
@@ -55,13 +83,25 @@ where
     I: Ui,
 {
     if let Ok(connection) = ConnectionWithServer::connect(session_socket_path) {
-        run_client(args, ui, connection)?;
+        if args.profile {
+            run_client(args, SimpleProfiler::new(), ui, connection)?;
+        } else {
+            run_client(args, DummyProfiler, ui, connection)?;
+        }
     } else if let Ok(listener) = ConnectionWithClientCollection::listen(session_socket_path) {
-        run_server_with_client(args, ui, listener)?;
+        if args.profile {
+            run_server_with_client(args, SimpleProfiler::new(), ui, listener)?;
+        } else {
+            run_server_with_client(args, DummyProfiler, ui, listener)?;
+        }
         fs::remove_file(session_socket_path)?;
     } else if let Ok(()) = fs::remove_file(session_socket_path) {
         let listener = ConnectionWithClientCollection::listen(session_socket_path)?;
-        run_server_with_client(args, ui, listener)?;
+        if args.profile {
+            run_server_with_client(args, SimpleProfiler::new(), ui, listener)?;
+        } else {
+            run_server_with_client(args, DummyProfiler, ui, listener)?;
+        }
         fs::remove_file(session_socket_path)?;
     } else {
         return Err(Box::new(ApplicationError(
@@ -109,12 +149,14 @@ where
     Ok(())
 }
 
-fn run_server_with_client<I>(
+fn run_server_with_client<P, I>(
     args: Args,
+    mut profiler: P,
     mut ui: I,
     mut connections: ConnectionWithClientCollection,
 ) -> Result<(), Box<dyn Error>>
 where
+    P: Profiler,
     I: Ui,
 {
     let (event_sender, event_receiver) = mpsc::channel();
@@ -140,6 +182,8 @@ where
     ui.init()?;
 
     for event in event_receiver.iter() {
+        profiler.begin_frame();
+
         match event {
             LocalEvent::None => continue,
             LocalEvent::EndOfInput => break,
@@ -189,6 +233,7 @@ where
         }
 
         render_clients(&mut editor, &mut clients, &mut ui, &mut connections)?;
+        profiler.end_frame();
     }
 
     drop(event_manager_loop);
@@ -199,12 +244,14 @@ where
     Ok(())
 }
 
-fn run_client<I>(
+fn run_client<P, I>(
     args: Args,
+    mut profiler: P,
     mut ui: I,
     mut connection: ConnectionWithServer,
 ) -> Result<(), Box<dyn Error>>
 where
+    P: Profiler,
     I: Ui,
 {
     let (event_sender, event_receiver) = mpsc::channel();
@@ -231,28 +278,36 @@ where
             LocalEvent::None => (),
             LocalEvent::EndOfInput => break,
             LocalEvent::Key(key) => {
+                profiler.begin_frame();
+
                 client_events.serialize(ClientEvent::Key(key));
                 if let Err(_) = connection.send_serialized_events(&mut client_events) {
                     break;
                 }
             }
             LocalEvent::Resize(w, h) => {
+                profiler.begin_frame();
+
                 client_events.serialize(ClientEvent::Resize(w, h));
                 if let Err(_) = connection.send_serialized_events(&mut client_events) {
                     break;
                 }
             }
-            LocalEvent::Connection(event) => match event {
-                ConnectionEvent::NewConnection => (),
-                ConnectionEvent::Stream(_) => {
-                    let empty = connection
-                        .receive_display(|bytes| ui.display(bytes).map(|_| bytes.is_empty()))??;
-                    if empty {
-                        break;
-                    }
+            LocalEvent::Connection(event) => {
+                match event {
+                    ConnectionEvent::NewConnection => (),
+                    ConnectionEvent::Stream(_) => {
+                        let empty = connection
+                            .receive_display(|bytes| ui.display(bytes).map(|_| bytes.is_empty()))??;
+                        if empty {
+                            break;
+                        }
 
-                    connection.listen_next_event(&event_registry)?;
+                        connection.listen_next_event(&event_registry)?;
+                    }
                 }
+
+                profiler.end_frame();
             },
         }
     }

@@ -50,6 +50,10 @@ pub struct Args {
     #[argh(option)]
     as_client: Option<client::TargetClient>,
 
+    #[argh(switch)]
+    /// will print to stderr frames latency
+    profile: bool,
+
     /// open files at paths
     #[argh(positional)]
     files: Vec<String>,
