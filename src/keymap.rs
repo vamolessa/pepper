@@ -117,6 +117,7 @@ impl Default for KeyMapCollection {
         this.parse_and_map(normal_mode, "s", "/").unwrap();
         this.parse_and_map(normal_mode, "S", "?").unwrap();
 
+        this.parse_and_map(normal_mode, "gi", "ghw").unwrap();
         this.parse_and_map(normal_mode, "#", "gg").unwrap();
         this.parse_and_map(normal_mode, "I", "xvghi").unwrap();
         this.parse_and_map(normal_mode, "<c-i>", "xvgli").unwrap();

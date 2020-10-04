@@ -156,12 +156,6 @@ impl BufferView {
             CursorMovement::Home => {
                 for c in &mut cursors[..] {
                     c.position.column_byte_index = 0;
-                    let (first_word, _, mut right_words) = buffer.content.words_from(c.position);
-                    if first_word.kind == WordKind::Whitespace {
-                        if let Some(word) = right_words.next() {
-                            c.position = word.position;
-                        }
-                    }
                 }
             }
             CursorMovement::End => {
