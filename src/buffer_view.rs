@@ -60,6 +60,19 @@ impl BufferView {
         movement: CursorMovement,
         movement_kind: CursorMovementKind,
     ) {
+        fn try_nth<I, E>(iter: I, mut n: usize) -> Result<E, usize>
+        where
+            I: Iterator<Item = E>,
+        {
+            for e in iter {
+                if n == 0 {
+                    return Ok(e);
+                }
+                n -= 1;
+            }
+            Err(n)
+        }
+
         let buffer = match buffers.get(self.buffer_handle) {
             Some(buffer) => buffer,
             None => return,
@@ -69,28 +82,71 @@ impl BufferView {
         match movement {
             CursorMovement::ColumnsForward(n) => {
                 for c in &mut cursors[..] {
-                    let line = buffer.content.line_at(c.position.line_index).as_str();
-                    c.position.column_byte_index = match line[c.position.column_byte_index..]
-                        .char_indices()
-                        .skip(n)
-                        .next()
-                    {
-                        Some((i, _)) => c.position.column_byte_index + i,
-                        None => line.len(),
-                    };
+                    let BufferPosition {
+                        mut line_index,
+                        column_byte_index,
+                    } = c.position;
+
+                    let line = buffer.content.line_at(line_index).as_str();
+                    match try_nth(line[column_byte_index..].char_indices(), n) {
+                        Ok((i, _)) => c.position.column_byte_index += i,
+                        Err(0) => c.position.column_byte_index = line.len(),
+                        Err(mut n) => {
+                            n -= 1;
+                            c.position.column_byte_index =
+                                buffer.content.line_at(line_index).as_str().len();
+                            let last_line_index = buffer.content.line_count() - 1;
+                            while line_index < last_line_index {
+                                line_index += 1;
+                                let line = buffer.content.line_at(line_index).as_str();
+                                match try_nth(line.char_indices(), n) {
+                                    Ok((i, _)) => {
+                                        c.position.column_byte_index = i;
+                                        break;
+                                    }
+                                    Err(0) => {
+                                        c.position.column_byte_index = line.len();
+                                        break;
+                                    }
+                                    Err(rest) => n = rest - 1,
+                                }
+                            }
+                            c.position.line_index = line_index;
+                        }
+                    }
                 }
             }
             CursorMovement::ColumnsBackward(n) => {
+                if n == 0 {
+                    return;
+                }
+                let n = n - 1;
+
                 for c in &mut cursors[..] {
-                    c.position.column_byte_index =
-                        buffer.content.line_at(c.position.line_index).as_str()
-                            [..c.position.column_byte_index]
-                            .char_indices()
-                            .rev()
-                            .skip(n.saturating_sub(1))
-                            .next()
-                            .unwrap_or((c.position.column_byte_index, char::default()))
-                            .0;
+                    let BufferPosition {
+                        mut line_index,
+                        column_byte_index,
+                    } = c.position;
+
+                    let line = buffer.content.line_at(line_index).as_str();
+                    match try_nth(line[..column_byte_index].char_indices().rev(), n) {
+                        Ok((i, _)) => c.position.column_byte_index = i,
+                        Err(mut n) => {
+                            c.position.column_byte_index = 0;
+                            while line_index > 0 {
+                                line_index -= 1;
+                                let line = buffer.content.line_at(line_index).as_str();
+                                match try_nth(line.char_indices().rev(), n) {
+                                    Ok((i, _)) => {
+                                        c.position.column_byte_index = i;
+                                        break;
+                                    }
+                                    Err(rest) => n = rest,
+                                }
+                            }
+                            c.position.line_index = line_index;
+                        }
+                    }
                 }
             }
             CursorMovement::LinesForward(n) => {
