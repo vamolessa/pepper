@@ -81,6 +81,7 @@ impl BufferView {
         let mut cursors = self.cursors.mut_guard();
         match movement {
             CursorMovement::ColumnsForward(n) => {
+                let last_line_index = buffer.line_count() - 1;
                 for c in &mut cursors[..] {
                     let line = buffer.line_at(c.position.line_index).as_str();
                     match try_nth(line[c.position.column_byte_index..].char_indices(), n) {
@@ -88,7 +89,6 @@ impl BufferView {
                         Err(0) => c.position.column_byte_index = line.len(),
                         Err(mut n) => {
                             n -= 1;
-                            let last_line_index = buffer.line_count() - 1;
                             loop {
                                 if c.position.line_index == last_line_index {
                                     c.position.column_byte_index =
@@ -153,8 +153,10 @@ impl BufferView {
                                             c.position.column_byte_index = 0;
                                         } else {
                                             c.position.line_index -= 1;
-                                            c.position.column_byte_index =
-                                                buffer.line_at(c.position.line_index).as_str().len();
+                                            c.position.column_byte_index = buffer
+                                                .line_at(c.position.line_index)
+                                                .as_str()
+                                                .len();
                                         }
                                         break;
                                     }
@@ -185,16 +187,41 @@ impl BufferView {
                     return;
                 }
 
+                let last_line_index = buffer.line_count() - 1;
                 for c in &mut cursors[..] {
-                    let (_, _, right_words) = buffer.words_from(c.position);
-                    match right_words
-                        .filter(|w| w.kind != WordKind::Whitespace)
-                        .nth(n - 1)
-                    {
-                        Some(word) => c.position = word.position,
-                        None => {
-                            c.position.column_byte_index =
-                                buffer.line_at(c.position.line_index).as_str().len()
+                    let mut n = n;
+
+                    loop {
+                        let (word, _, right_words) = buffer.words_from(c.position);
+                        if word.kind != WordKind::Whitespace {
+                            if n == 0 {
+                                c.position = word.position;
+                                break;
+                            }
+                            n -= 1;
+                        }
+
+                        match try_nth(right_words.filter(|w| w.kind != WordKind::Whitespace), n) {
+                            Ok(word) => {
+                                c.position = word.position;
+                                break;
+                            }
+                            Err(0) => {
+                                c.position.column_byte_index =
+                                    buffer.line_at(c.position.line_index).as_str().len();
+                                break;
+                            }
+                            Err(rest) => {
+                                if c.position.line_index == last_line_index {
+                                    c.position.column_byte_index =
+                                        buffer.line_at(last_line_index).as_str().len();
+                                    break;
+                                }
+
+                                n = rest - 1;
+                                c.position.line_index += 1;
+                                c.position.column_byte_index = 0;
+                            }
                         }
                     }
                 }
@@ -749,7 +776,7 @@ mod tests {
                 .position
         }
 
-        let mut ctx = TestContext::with_buffer("ab\ncde\nefgh\nijk\nlm");
+        let mut ctx = TestContext::with_buffer("ab\nc e\nefgh\ni k\nlm");
 
         macro_rules! assert_movement {
             (($from_line:expr, $from_col:expr) => $movement:expr => ($to_line:expr, $to_col:expr)) => {
@@ -783,5 +810,17 @@ mod tests {
         assert_movement!((2, 2) => CursorMovement::ColumnsBackward(3) => (1, 3));
         assert_movement!((2, 2) => CursorMovement::ColumnsBackward(7) => (0, 2));
         assert_movement!((2, 2) => CursorMovement::ColumnsBackward(999) => (0, 0));
+
+        assert_movement!((2, 2) => CursorMovement::WordsForward(0) => (2, 2));
+        assert_movement!((2, 0) => CursorMovement::WordsForward(1) => (2, 4));
+        assert_movement!((2, 0) => CursorMovement::WordsForward(2) => (3, 0));
+        assert_movement!((2, 2) => CursorMovement::WordsForward(3) => (3, 2));
+        assert_movement!((2, 2) => CursorMovement::WordsForward(4) => (3, 3));
+        assert_movement!((2, 2) => CursorMovement::WordsForward(5) => (4, 0));
+        assert_movement!((2, 2) => CursorMovement::WordsForward(6) => (4, 2));
+        assert_movement!((2, 2) => CursorMovement::WordsForward(999) => (4, 2));
+
+        assert_movement!((2, 2) => CursorMovement::WordsBackward(0) => (2, 2));
+        assert_movement!((2, 2) => CursorMovement::WordsBackward(1) => (2, 0));
     }
 }
