@@ -52,8 +52,10 @@ impl ModeState for State {
                                     EditorLoop::Quit => return ModeOperation::Quit,
                                     EditorLoop::QuitAll => return ModeOperation::QuitAll,
                                     EditorLoop::Continue => {
-                                        ctx.status_message
-                                            .write_str(StatusMessageKind::Error, &error.to_string());
+                                        ctx.status_message.write_str(
+                                            StatusMessageKind::Error,
+                                            &error.to_string(),
+                                        );
                                     }
                                 },
                             },

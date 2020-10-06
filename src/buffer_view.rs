@@ -226,28 +226,52 @@ impl BufferView {
                     }
                 }
             }
-            CursorMovement::WordsBackward(mut n) => {
+            CursorMovement::WordsBackward(n) => {
                 if n == 0 {
                     return;
                 }
+                let n = n - 1;
 
                 for c in &mut cursors[..] {
-                    let (word, left_words, _) = buffer.words_from(c.position);
-                    if c.position.column_byte_index != word.position.column_byte_index {
-                        c.position = word.position;
-                        n -= 1;
+                    let mut n = n;
 
-                        if n == 0 {
-                            continue;
+                    loop {
+                        let (word, left_words, _) = buffer.words_from(c.position);
+                        if word.kind != WordKind::Whitespace
+                            && c.position.column_byte_index != word.position.column_byte_index
+                        {
+                            if n == 0 {
+                                c.position = word.position;
+                                break;
+                            }
+                            n -= 1;
                         }
-                    }
 
-                    match left_words
-                        .filter(|w| w.kind != WordKind::Whitespace)
-                        .nth(n - 1)
-                    {
-                        Some(word) => c.position = word.position,
-                        None => c.position.column_byte_index = 0,
+                        match try_nth(left_words.filter(|w| w.kind != WordKind::Whitespace), n) {
+                            Ok(word) => {
+                                c.position = word.position;
+                                break;
+                            }
+                            Err(0) => {
+                                if c.position.line_index > 0 {
+                                    c.position.line_index -= 1;
+                                    c.position.column_byte_index =
+                                        buffer.line_at(c.position.line_index).as_str().len()
+                                }
+                                break;
+                            }
+                            Err(rest) => {
+                                if c.position.line_index == 0 {
+                                    c.position.column_byte_index = 0;
+                                    break;
+                                }
+
+                                n = rest - 1;
+                                c.position.line_index -= 1;
+                                c.position.column_byte_index =
+                                    buffer.line_at(c.position.line_index).as_str().len();
+                            }
+                        }
                     }
                 }
             }
@@ -821,6 +845,14 @@ mod tests {
         assert_movement!((2, 2) => CursorMovement::WordsForward(999) => (4, 2));
 
         assert_movement!((2, 2) => CursorMovement::WordsBackward(0) => (2, 2));
+        assert_movement!((2, 0) => CursorMovement::WordsBackward(1) => (1, 3));
+        assert_movement!((2, 0) => CursorMovement::WordsBackward(2) => (1, 2));
         assert_movement!((2, 2) => CursorMovement::WordsBackward(1) => (2, 0));
+        assert_movement!((2, 2) => CursorMovement::WordsBackward(2) => (1, 3));
+        assert_movement!((2, 2) => CursorMovement::WordsBackward(3) => (1, 2));
+        assert_movement!((2, 2) => CursorMovement::WordsBackward(4) => (1, 0));
+        assert_movement!((2, 2) => CursorMovement::WordsBackward(5) => (0, 2));
+        assert_movement!((2, 2) => CursorMovement::WordsBackward(6) => (0, 0));
+        assert_movement!((2, 2) => CursorMovement::WordsBackward(999) => (0, 0));
     }
 }

@@ -88,9 +88,7 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- ~~select all text in buffer~~
 	- ~~limit selections to search ranges (or cursor = search ranges if empty) (`?`)~~
 	- ~~cursor history navigation~~
-	- continue movement to next/previous line when on line borders
-		- ~~by columns~~
-		- by words
+	- ~~continue movement to next/previous line when on line borders~~
 	- remember column when moving between lines
 - selections
 	- ~~select current word and search~~
