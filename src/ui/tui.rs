@@ -544,10 +544,21 @@ where
         let line_number = client_view.main_cursor.position.line_index + 1;
         let column_number = client_view.main_cursor.position.column_byte_index + 1;
 
+        let param_count = match &editor.mode {
+            Mode::Normal(state) => state.count,
+            _ => 0,
+        };
+        let param_count_digit_count = if param_count > 0 {
+            find_digit_count(param_count)
+        } else {
+            0
+        };
+
         let line_digit_count = find_digit_count(line_number);
         let column_digit_count = find_digit_count(column_number);
         let buffer_status_len = x
             + 1
+            + param_count_digit_count
             + editor
                 .buffered_keys
                 .iter()
@@ -566,6 +577,9 @@ where
             handle_command!(write, Print(' '))?;
         }
 
+        if param_count > 0 {
+            handle_command!(write, Print(param_count))?;
+        }
         for key in editor.buffered_keys.iter() {
             handle_command!(write, Print(key))?;
         }

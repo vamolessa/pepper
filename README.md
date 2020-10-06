@@ -104,7 +104,7 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- ~~edit new line bellow/above (`o` and `O`)~~
 	- ~~keep current identation~~
 	- ~~indent/deindent~~
-	- count before actions
+	- ~~count before actions~~
 	- delete identation
 - macros (??)
 	- repeat last insert (`.`)
