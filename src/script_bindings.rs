@@ -297,7 +297,7 @@ mod editor {
         _: (),
     ) -> ScriptResult<()> {
         if let Some(handle) = ctx.current_buffer_view_handle() {
-            ctx.buffer_views.delete_in_selection(
+            ctx.buffer_views.delete_in_cursor_ranges(
                 ctx.buffers,
                 ctx.word_database,
                 &ctx.config.syntaxes,
@@ -314,7 +314,7 @@ mod editor {
     ) -> ScriptResult<()> {
         if let Some(handle) = ctx.current_buffer_view_handle() {
             let text = text.to_str()?;
-            ctx.buffer_views.insert_text(
+            ctx.buffer_views.insert_text_at_cursor_positions(
                 ctx.buffers,
                 ctx.word_database,
                 &ctx.config.syntaxes,
@@ -414,6 +414,7 @@ mod config {
         let index = index.to_str()?;
         match index {
             "tab_size" => Ok(ScriptValue::Integer(config.tab_size.get() as _)),
+            "indent_with_tabs" => Ok(ScriptValue::Boolean(config.indent_with_tabs)),
             "visual_empty" => Ok(char_to_string!(config.visual_empty)),
             "visual_space" => Ok(char_to_string!(config.visual_space)),
             "visual_tab_first" => Ok(char_to_string!(config.visual_tab_first)),
@@ -428,7 +429,15 @@ mod config {
         ctx: &mut ScriptContext,
         (_, index, value): (ScriptObject, ScriptString, ScriptValue),
     ) -> ScriptResult<()> {
-        macro_rules! try_integer {
+        macro_rules! try_bool {
+            ($value:expr) => {{
+                match $value {
+                    ScriptValue::Boolean(b) => b,
+                    _ => return Err(ScriptError::<bool>::convert_from_script(&$value)),
+                }
+            }};
+        }
+        macro_rules! try_non_zero_usize {
             ($value:expr) => {{
                 let integer = match $value {
                     ScriptValue::Integer(i) if i > 0 => i,
@@ -453,12 +462,13 @@ mod config {
         let config = &mut ctx.config.values;
         let index = index.to_str()?;
         match index {
-            "tab_size" => config.tab_size = try_integer!(value),
+            "tab_size" => config.tab_size = try_non_zero_usize!(value),
+            "indent_with_tabs" => config.indent_with_tabs = try_bool!(value),
             "visual_empty" => config.visual_empty = try_char!(value),
             "visual_space" => config.visual_space = try_char!(value),
             "visual_tab_first" => config.visual_tab_first = try_char!(value),
             "visual_tab_repeat" => config.visual_tab_repeat = try_char!(value),
-            "picker_max_height" => config.picker_max_height = try_integer!(value),
+            "picker_max_height" => config.picker_max_height = try_non_zero_usize!(value),
             _ => return Err(ScriptError::from(format!("no such property {}", index))),
         }
 

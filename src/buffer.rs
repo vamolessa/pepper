@@ -221,10 +221,6 @@ impl BufferLine {
         }
     }
 
-    pub fn indentation<'a>(&'a self) -> impl 'a + Iterator<Item = (usize, &'a str)> {
-        std::iter::once((0, ""))
-    }
-
     pub fn split_off(&mut self, index: usize) -> BufferLine {
         let splitted = self.text.split_off(index);
         let splitted_char_count = splitted.chars().count();

@@ -9,6 +9,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct ConfigValues {
     pub tab_size: NonZeroUsize,
+    pub indent_with_tabs: bool,
 
     pub visual_empty: char,
     pub visual_space: char,
@@ -22,6 +23,7 @@ impl Default for ConfigValues {
     fn default() -> Self {
         Self {
             tab_size: NonZeroUsize::new(4).unwrap(),
+            indent_with_tabs: true,
 
             visual_empty: '~',
             visual_space: '.',

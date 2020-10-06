@@ -121,7 +121,7 @@ impl Default for KeyMapCollection {
         this.parse_and_map(normal_mode, "#", "gg").unwrap();
         this.parse_and_map(normal_mode, "I", "xvghi").unwrap();
         this.parse_and_map(normal_mode, "<c-i>", "xvgli").unwrap();
-        this.parse_and_map(normal_mode, "J", "xvjghVkgli <esc>")
+        this.parse_and_map(normal_mode, "J", "xvjghVkgli<space><esc>")
             .unwrap();
 
         this.parse_and_map(normal_mode, "o", "xvgli<enter>")
@@ -129,7 +129,7 @@ impl Default for KeyMapCollection {
         this.parse_and_map(normal_mode, "O", "xvghi<enter><up>")
             .unwrap();
 
-        this.parse_and_map(normal_mode, "xa", "xcxvgkVgjv").unwrap();
+        this.parse_and_map(normal_mode, "aa", "xcxvgkVgjv").unwrap();
         this.parse_and_map(normal_mode, "xs", "x/").unwrap();
 
         this.parse_and_map(insert_mode, "<c-h>", "<backspace>")

@@ -441,7 +441,7 @@ impl ModeState for State {
                 );
             }
             Key::Char('d') => {
-                ctx.buffer_views.delete_in_selection(
+                ctx.buffer_views.delete_in_cursor_ranges(
                     ctx.buffers,
                     ctx.word_database,
                     &ctx.config.syntaxes,
@@ -451,7 +451,7 @@ impl ModeState for State {
                 self.movement_kind = CursorMovementKind::PositionAndAnchor;
             }
             Key::Char('i') => {
-                ctx.buffer_views.delete_in_selection(
+                ctx.buffer_views.delete_in_cursor_ranges(
                     ctx.buffers,
                     ctx.word_database,
                     &ctx.config.syntaxes,
@@ -459,6 +459,71 @@ impl ModeState for State {
                 );
                 unwrap_or_none!(ctx.buffer_views.get_mut(handle)).commit_edits(ctx.buffers);
                 return ModeOperation::EnterMode(Mode::Insert(Default::default()));
+            }
+            Key::Char('<') => {
+                let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
+                let cursor_count = buffer_view.cursors[..].len();
+                let buffer_handle = buffer_view.buffer_handle;
+
+                for i in 0..cursor_count {
+                    let range = unwrap_or_none!(ctx.buffer_views.get(handle)).cursors[i].as_range();
+                    for line_index in range.from.line_index..=range.to.line_index {
+                        let buffer = unwrap_or_none!(ctx.buffers.get(buffer_handle));
+                        let mut chars = buffer.content.line_at(line_index).as_str().char_indices();
+                        let indentation_column_index = match chars.next() {
+                            Some((i, c @ '\t')) => i + c.len_utf8(),
+                            Some((i, c @ ' ')) => {
+                                match chars
+                                    .take(ctx.config.values.tab_size.get() - 1)
+                                    .take_while(|(_, c)| *c == ' ')
+                                    .last()
+                                {
+                                    Some((i, _)) => i + c.len_utf8(),
+                                    None => i + c.len_utf8(),
+                                }
+                            }
+                            _ => continue,
+                        };
+                        let range = BufferRange::between(
+                            BufferPosition::line_col(line_index, 0),
+                            BufferPosition::line_col(line_index, indentation_column_index),
+                        );
+                        ctx.buffer_views.delete_in_range(
+                            ctx.buffers,
+                            ctx.word_database,
+                            &ctx.config.syntaxes,
+                            handle,
+                            range,
+                            i,
+                        );
+                    }
+                }
+                unwrap_or_none!(ctx.buffer_views.get_mut(handle)).commit_edits(ctx.buffers);
+            }
+            Key::Char('>') => {
+                let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
+                let cursor_count = buffer_view.cursors[..].len();
+                let indentation = if ctx.config.values.indent_with_tabs {
+                    "\t"
+                } else {
+                    ""
+                };
+
+                for i in 0..cursor_count {
+                    let range = unwrap_or_none!(ctx.buffer_views.get(handle)).cursors[i].as_range();
+                    for line_index in range.from.line_index..=range.to.line_index {
+                        ctx.buffer_views.insert_text_at_position(
+                            ctx.buffers,
+                            ctx.word_database,
+                            &ctx.config.syntaxes,
+                            handle,
+                            BufferPosition::line_col(line_index, 0),
+                            indentation,
+                            i,
+                        );
+                    }
+                }
+                unwrap_or_none!(ctx.buffer_views.get_mut(handle)).commit_edits(ctx.buffers);
             }
             Key::Char('x') => match keys.next() {
                 Key::None => return ModeOperation::Pending,
@@ -614,14 +679,14 @@ impl ModeState for State {
                 self.movement_kind = CursorMovementKind::PositionAndAnchor;
             }
             Key::Char('Y') => {
-                ctx.buffer_views.delete_in_selection(
+                ctx.buffer_views.delete_in_cursor_ranges(
                     ctx.buffers,
                     ctx.word_database,
                     &ctx.config.syntaxes,
                     handle,
                 );
                 if let Ok(text) = ClipboardContext::new().and_then(|mut c| c.get_contents()) {
-                    ctx.buffer_views.insert_text(
+                    ctx.buffer_views.insert_text_at_cursor_positions(
                         ctx.buffers,
                         ctx.word_database,
                         &ctx.config.syntaxes,

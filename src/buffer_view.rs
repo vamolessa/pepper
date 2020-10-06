@@ -407,7 +407,34 @@ impl BufferViewCollection {
             .filter_map(|(i, v)| Some(BufferViewHandle(i)).zip(v.as_ref()))
     }
 
-    pub fn insert_text(
+    pub fn insert_text_at_position(
+        &mut self,
+        buffers: &mut BufferCollection,
+        word_database: &mut WordDatabase,
+        syntaxes: &SyntaxCollection,
+        handle: BufferViewHandle,
+        position: BufferPosition,
+        text: &str,
+        cursor_index: usize,
+    ) {
+        let current_view = match &mut self.buffer_views[handle.0] {
+            Some(view) => view,
+            None => return,
+        };
+        let buffer = match buffers.get_mut(current_view.buffer_handle) {
+            Some(buffer) => buffer,
+            None => return,
+        };
+
+        self.fix_cursor_ranges.clear();
+        let range = buffer.insert_text(word_database, syntaxes, position, text, cursor_index);
+        self.fix_cursor_ranges.push(range);
+
+        let current_buffer_handle = current_view.buffer_handle;
+        self.fix_buffer_cursors(current_buffer_handle, |cursor, range| cursor.insert(range));
+    }
+
+    pub fn insert_text_at_cursor_positions(
         &mut self,
         buffers: &mut BufferCollection,
         word_database: &mut WordDatabase,
@@ -434,12 +461,14 @@ impl BufferViewCollection {
         self.fix_buffer_cursors(current_buffer_handle, |cursor, range| cursor.insert(range));
     }
 
-    pub fn insert_line_break_with_identation(
+    pub fn delete_in_range(
         &mut self,
         buffers: &mut BufferCollection,
         word_database: &mut WordDatabase,
         syntaxes: &SyntaxCollection,
         handle: BufferViewHandle,
+        range: BufferRange,
+        cursor_index: usize,
     ) {
         let current_view = match &mut self.buffer_views[handle.0] {
             Some(view) => view,
@@ -451,29 +480,14 @@ impl BufferViewCollection {
         };
 
         self.fix_cursor_ranges.clear();
-        for (i, cursor) in current_view.cursors[..].iter().enumerate().rev() {
-            let indentation_word = buffer
-                .content
-                .word_at(BufferPosition::line_col(cursor.position.line_index, 0));
-
-            let range = match indentation_word.kind {
-                WordKind::Whitespace => {
-                    let mut text = String::with_capacity(indentation_word.text.len() + 1);
-                    text.push('\n');
-                    text.push_str(indentation_word.text);
-                    buffer.insert_text(word_database, syntaxes, cursor.position, &text, i)
-                }
-                _ => buffer.insert_text(word_database, syntaxes, cursor.position, "\n", i),
-            };
-
-            self.fix_cursor_ranges.push(range);
-        }
+        self.fix_cursor_ranges.push(range);
+        buffer.delete_range(word_database, syntaxes, range, cursor_index);
 
         let current_buffer_handle = current_view.buffer_handle;
-        self.fix_buffer_cursors(current_buffer_handle, |cursor, range| cursor.insert(range));
+        self.fix_buffer_cursors(current_buffer_handle, |cursor, range| cursor.delete(range));
     }
 
-    pub fn delete_in_selection(
+    pub fn delete_in_cursor_ranges(
         &mut self,
         buffers: &mut BufferCollection,
         word_database: &mut WordDatabase,
@@ -765,7 +779,7 @@ mod tests {
         assert_eq!(BufferPosition::line_col(0, 0), main_cursor.anchor);
         assert_eq!(BufferPosition::line_col(0, 0), main_cursor.position);
 
-        ctx.buffer_views.insert_text(
+        ctx.buffer_views.insert_text_at_cursor_positions(
             &mut ctx.buffers,
             &mut ctx.word_database,
             &ctx.syntaxes,

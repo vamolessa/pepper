@@ -1,4 +1,5 @@
 use crate::{
+    buffer_position::BufferPosition,
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     client_event::Key,
     editor::KeysIterator,
@@ -49,23 +50,49 @@ impl ModeState for State {
                 CursorMovement::ColumnsForward(1),
                 CursorMovementKind::PositionAndAnchor,
             ),
-            Key::Tab => ctx.buffer_views.insert_text(
+            Key::Tab => ctx.buffer_views.insert_text_at_cursor_positions(
                 ctx.buffers,
                 ctx.word_database,
                 &ctx.config.syntaxes,
                 handle,
                 "\t",
             ),
-            Key::Enter => ctx.buffer_views.insert_line_break_with_identation(
-                ctx.buffers,
-                ctx.word_database,
-                &ctx.config.syntaxes,
-                handle,
-            ),
+            Key::Enter => {
+                let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
+                let cursor_count = buffer_view.cursors[..].len();
+                let buffer_handle = buffer_view.buffer_handle;
+
+                let mut scratch = String::new();
+
+                for i in 0..cursor_count {
+                    let position =
+                        unwrap_or_none!(ctx.buffer_views.get(handle)).cursors[i].position;
+                    let buffer = unwrap_or_none!(ctx.buffers.get(buffer_handle));
+
+                    scratch.clear();
+                    scratch.push('\n');
+                    let indentation_word = buffer
+                        .content
+                        .word_at(BufferPosition::line_col(position.line_index, 0));
+                    if indentation_word.kind == WordKind::Whitespace {
+                        scratch.push_str(indentation_word.text);
+                    }
+
+                    ctx.buffer_views.insert_text_at_position(
+                        ctx.buffers,
+                        ctx.word_database,
+                        &ctx.config.syntaxes,
+                        handle,
+                        position,
+                        &scratch,
+                        i,
+                    );
+                }
+            }
             Key::Char(c) => {
                 let mut buf = [0; std::mem::size_of::<char>()];
                 let s = c.encode_utf8(&mut buf);
-                ctx.buffer_views.insert_text(
+                ctx.buffer_views.insert_text_at_cursor_positions(
                     ctx.buffers,
                     ctx.word_database,
                     &ctx.config.syntaxes,
@@ -79,7 +106,7 @@ impl ModeState for State {
                     CursorMovement::ColumnsBackward(1),
                     CursorMovementKind::PositionOnly,
                 );
-                ctx.buffer_views.delete_in_selection(
+                ctx.buffer_views.delete_in_cursor_ranges(
                     ctx.buffers,
                     ctx.word_database,
                     &ctx.config.syntaxes,
@@ -92,7 +119,7 @@ impl ModeState for State {
                     CursorMovement::ColumnsForward(1),
                     CursorMovementKind::PositionOnly,
                 );
-                ctx.buffer_views.delete_in_selection(
+                ctx.buffer_views.delete_in_cursor_ranges(
                     ctx.buffers,
                     ctx.word_database,
                     &ctx.config.syntaxes,
@@ -105,7 +132,7 @@ impl ModeState for State {
                     CursorMovement::WordsBackward(1),
                     CursorMovementKind::PositionOnly,
                 );
-                ctx.buffer_views.delete_in_selection(
+                ctx.buffer_views.delete_in_cursor_ranges(
                     ctx.buffers,
                     ctx.word_database,
                     &ctx.config.syntaxes,
