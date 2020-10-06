@@ -147,7 +147,8 @@ impl NavigationHistory {
         for i in (0..self.snapshots.len()).rev() {
             let snapshot = self.snapshots[i];
             if snapshot.buffer_handle == buffer_handle {
-                self.cursors.drain(snapshot.cursor_range.0..snapshot.cursor_range.1);
+                self.cursors
+                    .drain(snapshot.cursor_range.0..snapshot.cursor_range.1);
                 self.snapshots.remove(i);
 
                 let cursor_range_len = snapshot.cursor_range.1 - snapshot.cursor_range.0;
