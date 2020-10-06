@@ -168,17 +168,29 @@ impl BufferView {
                 }
             }
             CursorMovement::LinesForward(n) => {
-                for c in &mut cursors[..] {
+                cursors.save_column_byte_indices();
+                for i in 0..cursors[..].len() {
+                    let saved_column_byte_index = cursors.get_saved_column_byte_index(i);
+                    let c = &mut cursors[i];
                     c.position.line_index = buffer
                         .line_count()
                         .saturating_sub(1)
                         .min(c.position.line_index + n);
+                    if let Some(index) = saved_column_byte_index {
+                        c.position.column_byte_index = index;
+                    }
                     c.position = buffer.saturate_position(c.position);
                 }
             }
             CursorMovement::LinesBackward(n) => {
-                for c in &mut cursors[..] {
+                cursors.save_column_byte_indices();
+                for i in 0..cursors[..].len() {
+                    let saved_column_byte_index = cursors.get_saved_column_byte_index(i);
+                    let c = &mut cursors[i];
                     c.position.line_index = c.position.line_index.saturating_sub(n);
+                    if let Some(index) = saved_column_byte_index {
+                        c.position.column_byte_index = index;
+                    }
                     c.position = buffer.saturate_position(c.position);
                 }
             }

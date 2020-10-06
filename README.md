@@ -77,7 +77,7 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- ~~config file is lua script~~
 	- ~~builtin bindings~~
 	- full api exposed
-- code navigation
+- ~~code navigation~~
 	- ~~go to line (new mode)~~
 	- ~~word forward/backward~~
 	- ~~home/end/first-column~~
@@ -89,7 +89,7 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 	- ~~limit selections to search ranges (or cursor = search ranges if empty) (`?`)~~
 	- ~~cursor history navigation~~
 	- ~~continue movement to next/previous line when on line borders~~
-	- remember column when moving between lines
+	- ~~remember column when moving between lines~~
 - selections
 	- ~~select current word and search~~
 	- ~~add cursor on 'next search result' (`*`)~~

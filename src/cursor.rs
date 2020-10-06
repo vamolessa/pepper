@@ -30,6 +30,7 @@ impl Cursor {
 #[derive(Clone)]
 pub struct CursorCollection {
     cursors: Vec<Cursor>,
+    saved_column_byte_indices: Vec<usize>,
     main_cursor_index: usize,
 }
 
@@ -37,6 +38,7 @@ impl CursorCollection {
     pub fn new() -> Self {
         Self {
             cursors: vec![Cursor::default()],
+            saved_column_byte_indices: Vec::new(),
             main_cursor_index: 0,
         }
     }
@@ -50,7 +52,10 @@ impl CursorCollection {
     }
 
     pub fn mut_guard(&mut self) -> CursorCollectionMutGuard {
-        CursorCollectionMutGuard(self)
+        CursorCollectionMutGuard {
+            inner: self,
+            clear_column_byte_indices: true,
+        }
     }
 
     fn sort_and_merge(&mut self) {
@@ -103,24 +108,44 @@ where
     }
 }
 
-pub struct CursorCollectionMutGuard<'a>(&'a mut CursorCollection);
+pub struct CursorCollectionMutGuard<'a> {
+    inner: &'a mut CursorCollection,
+    clear_column_byte_indices: bool,
+}
 
 impl<'a> CursorCollectionMutGuard<'a> {
     pub fn clear(&mut self) {
-        self.0.cursors.clear();
+        self.inner.cursors.clear();
     }
 
     pub fn add(&mut self, cursor: Cursor) {
-        self.0.main_cursor_index = self.0.cursors.len();
-        self.0.cursors.push(cursor);
+        self.inner.main_cursor_index = self.inner.cursors.len();
+        self.inner.cursors.push(cursor);
+    }
+
+    pub fn save_column_byte_indices(&mut self) {
+        self.clear_column_byte_indices = false;
+
+        if self.inner.saved_column_byte_indices.is_empty() {
+            self.inner.saved_column_byte_indices.clear();
+            for c in &self.inner.cursors {
+                self.inner
+                    .saved_column_byte_indices
+                    .push(c.position.column_byte_index);
+            }
+        }
+    }
+
+    pub fn get_saved_column_byte_index(&self, index: usize) -> Option<usize> {
+        self.inner.saved_column_byte_indices.get(index).cloned()
     }
 
     pub fn set_main_cursor_index(&mut self, index: usize) {
-        self.0.main_cursor_index = index;
+        self.inner.main_cursor_index = index;
     }
 
     pub fn main_cursor(&mut self) -> &mut Cursor {
-        &mut self.0.cursors[self.0.main_cursor_index]
+        &mut self.inner.cursors[self.inner.main_cursor_index]
     }
 }
 
@@ -131,7 +156,7 @@ where
     type Output = Idx::Output;
 
     fn index(&self, index: Idx) -> &Self::Output {
-        &self.0.cursors[index]
+        &self.inner.cursors[index]
     }
 }
 
@@ -140,17 +165,21 @@ where
     Idx: SliceIndex<[Cursor]>,
 {
     fn index_mut(&mut self, index: Idx) -> &mut Self::Output {
-        &mut self.0.cursors[index]
+        &mut self.inner.cursors[index]
     }
 }
 
 impl<'a> Drop for CursorCollectionMutGuard<'a> {
     fn drop(&mut self) {
-        if self.0.cursors.len() == 0 {
-            self.0.cursors.push(Cursor::default());
+        if self.inner.cursors.len() == 0 {
+            self.inner.cursors.push(Cursor::default());
         }
 
-        self.0.sort_and_merge();
+        self.inner.sort_and_merge();
+
+        if self.clear_column_byte_indices {
+            self.inner.saved_column_byte_indices.clear();
+        }
     }
 }
 
