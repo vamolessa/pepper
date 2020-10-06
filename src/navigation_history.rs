@@ -13,7 +13,7 @@ pub enum NavigationDirection {
 #[derive(Clone, Copy)]
 struct NavigationHistorySnapshot {
     buffer_handle: BufferHandle,
-    cursor: Cursor,
+    cursor_range: (usize, usize),
 }
 
 enum NavigationState {
@@ -22,6 +22,7 @@ enum NavigationState {
 }
 
 pub struct NavigationHistory {
+    cursors: Vec<Cursor>,
     snapshots: Vec<NavigationHistorySnapshot>,
     state: NavigationState,
 }
@@ -50,7 +51,7 @@ impl NavigationHistory {
 
     fn add_snapshot(&mut self, buffer_view: &BufferView) {
         let buffer_handle = buffer_view.buffer_handle;
-        let cursor = *buffer_view.cursors.main_cursor();
+        let cursors = &buffer_view.cursors[..];
 
         if let NavigationState::IterIndex(index) = self.state {
             self.snapshots.truncate(index);
@@ -58,14 +59,25 @@ impl NavigationHistory {
         self.state = NavigationState::Insert;
 
         if let Some(last) = self.snapshots.last() {
-            if last.buffer_handle == buffer_handle && last.cursor == cursor {
-                return;
+            if last.buffer_handle == buffer_handle {
+                let same_cursors = cursors
+                    .iter()
+                    .zip(self.cursors[last.cursor_range.0..last.cursor_range.1].iter())
+                    .all(|(a, b)| *a == *b);
+                if same_cursors {
+                    return;
+                }
             }
+        }
+
+        let cursors_start_index = self.cursors.len();
+        for c in cursors {
+            self.cursors.push(*c);
         }
 
         self.snapshots.push(NavigationHistorySnapshot {
             buffer_handle,
-            cursor,
+            cursor_range: (cursors_start_index, self.cursors.len()),
         });
     }
 
@@ -126,15 +138,25 @@ impl NavigationHistory {
             None => return,
         };
         cursors.clear();
-        for cursor in std::slice::from_ref(&snapshot.cursor) {
+        for cursor in history.cursors[snapshot.cursor_range.0..snapshot.cursor_range.1].iter() {
             cursors.add(*cursor);
         }
     }
 
     pub fn remove_snapshots_with_buffer_handle(&mut self, buffer_handle: BufferHandle) {
         for i in (0..self.snapshots.len()).rev() {
-            if self.snapshots[i].buffer_handle == buffer_handle {
+            let snapshot = self.snapshots[i];
+            if snapshot.buffer_handle == buffer_handle {
+                self.cursors.drain(snapshot.cursor_range.0..snapshot.cursor_range.1);
                 self.snapshots.remove(i);
+
+                let cursor_range_len = snapshot.cursor_range.1 - snapshot.cursor_range.0;
+                for s in &mut self.snapshots[i..] {
+                    if s.cursor_range.0 >= snapshot.cursor_range.1 {
+                        s.cursor_range.0 -= cursor_range_len;
+                        s.cursor_range.1 -= cursor_range_len;
+                    }
+                }
 
                 if let NavigationState::IterIndex(index) = &mut self.state {
                     if i <= *index && *index > 0 {
@@ -149,6 +171,7 @@ impl NavigationHistory {
 impl Default for NavigationHistory {
     fn default() -> Self {
         Self {
+            cursors: Vec::default(),
             snapshots: Vec::default(),
             state: NavigationState::IterIndex(0),
         }
