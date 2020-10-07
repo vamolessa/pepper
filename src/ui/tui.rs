@@ -303,28 +303,24 @@ where
                 TokenKind::Literal => token_literal_color,
             };
 
-            let mut inside_current_cursor_range = current_cursor_range.from <= char_position
-                && char_position <= current_cursor_range.to;
-            if !inside_current_cursor_range && current_cursor_index < cursors_last_index {
+            if current_cursor_range.to < char_position && current_cursor_index < cursors_last_index
+            {
                 current_cursor_index += 1;
                 let cursor = cursors[current_cursor_index];
                 current_cursor_position = cursor.position;
                 current_cursor_range = cursor.as_range();
-
-                inside_current_cursor_range = current_cursor_range.from <= char_position
-                    && char_position <= current_cursor_range.to;
             }
+            let inside_current_cursor_range = current_cursor_range.from <= char_position
+                && char_position <= current_cursor_range.to;
 
-            let mut inside_current_search_range = current_search_range.from <= char_position
-                && char_position < current_search_range.to;
-            if !inside_current_search_range && current_search_range_index < search_ranges_last_index
+            if current_search_range.to <= char_position
+                && current_search_range_index < search_ranges_last_index
             {
                 current_search_range_index += 1;
                 current_search_range = search_ranges[current_search_range_index];
-
-                inside_current_search_range = current_search_range.from <= char_position
-                    && char_position < current_search_range.to;
             }
+            let inside_current_search_range = current_search_range.from <= char_position
+                && char_position < current_search_range.to;
 
             if char_position == current_cursor_position {
                 if draw_state != DrawState::Cursor {
