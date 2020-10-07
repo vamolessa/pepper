@@ -534,13 +534,14 @@ impl ModeState for State {
             }
             Key::Char('>') => {
                 let cursor_count = unwrap_or_none!(ctx.buffer_views.get(handle)).cursors[..].len();
+                let count = self.count.max(1);
                 let mut indentation = Text::new();
                 if ctx.config.values.indent_with_tabs {
-                    for _ in 0..self.count.max(1) {
+                    for _ in 0..count {
                         indentation.push_str("\t");
                     }
                 } else {
-                    let count = ctx.config.values.tab_size.get() * self.count.max(1);
+                    let count = ctx.config.values.tab_size.get() * count;
                     for _ in 0..count {
                         indentation.push_str(" ");
                     }
