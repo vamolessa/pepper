@@ -43,6 +43,13 @@ impl Text {
         }
     }
 
+    pub fn clear(&mut self) {
+        match &mut self.0 {
+            TextImpl::Inline(len, _) => *len = 0,
+            TextImpl::String(s) => s.clear(),
+        }
+    }
+
     pub fn push_str(&mut self, text: &str) {
         match &mut self.0 {
             TextImpl::Inline(len, buf) => {

@@ -1,4 +1,5 @@
 use crate::{
+    buffer::Text,
     buffer_position::BufferPosition,
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     client_event::Key,
@@ -62,20 +63,20 @@ impl ModeState for State {
                 let cursor_count = buffer_view.cursors[..].len();
                 let buffer_handle = buffer_view.buffer_handle;
 
-                let mut scratch = String::new();
+                let mut text = Text::new();
 
                 for i in 0..cursor_count {
                     let position =
                         unwrap_or_none!(ctx.buffer_views.get(handle)).cursors[i].position;
                     let buffer = unwrap_or_none!(ctx.buffers.get(buffer_handle));
 
-                    scratch.clear();
-                    scratch.push('\n');
+                    text.clear();
+                    text.push_str("\n");
                     let indentation_word = buffer
                         .content
                         .word_at(BufferPosition::line_col(position.line_index, 0));
                     if indentation_word.kind == WordKind::Whitespace {
-                        scratch.push_str(indentation_word.text);
+                        text.push_str(indentation_word.text);
                     }
 
                     ctx.buffer_views.insert_text_at_position(
@@ -84,7 +85,7 @@ impl ModeState for State {
                         &ctx.config.syntaxes,
                         handle,
                         position,
-                        &scratch,
+                        text.as_str(),
                         i,
                     );
                 }

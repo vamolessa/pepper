@@ -1,7 +1,7 @@
 use copypasta::{ClipboardContext, ClipboardProvider};
 
 use crate::{
-    buffer::BufferContent,
+    buffer::{Text, BufferContent},
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{CursorMovement, CursorMovementKind},
     client_event::Key,
@@ -540,10 +540,14 @@ impl ModeState for State {
                 for _ in 0..self.count.max(1) {
                     let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
                     let cursor_count = buffer_view.cursors[..].len();
-                    let indentation = if ctx.config.values.indent_with_tabs {
-                        "\t"
+
+                    let mut indentation = Text::new();
+                    if ctx.config.values.indent_with_tabs {
+                        indentation.push_str("\t");
                     } else {
-                        ""
+                        for _ in 0..ctx.config.values.tab_size.get() {
+                            indentation.push_str(" ");
+                        }
                     };
 
                     for i in 0..cursor_count {
@@ -556,7 +560,7 @@ impl ModeState for State {
                                 &ctx.config.syntaxes,
                                 handle,
                                 BufferPosition::line_col(line_index, 0),
-                                indentation,
+                                indentation.as_str(),
                                 i,
                             );
                         }
