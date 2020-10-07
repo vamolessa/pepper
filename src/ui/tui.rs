@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, io, io::Write, iter, sync::mpsc, thread};
+use std::{io, io::Write, iter, sync::mpsc, thread};
 
 use crossterm::{
     cursor, event, handle_command,
@@ -9,7 +9,7 @@ use crossterm::{
 
 use crate::{
     buffer::{Buffer, BufferContent},
-    buffer_position::BufferPosition,
+    buffer_position::{BufferPosition, BufferRange},
     client::{Client, TargetClient},
     client_event::{Key, LocalEvent},
     cursor::Cursor,
@@ -232,6 +232,9 @@ where
     let mut line_index = scroll;
     let mut drawn_line_count = 0;
 
+    let cursors = &client_view.cursors[..];
+    let cursors_last_index = cursors.len() - 1;
+
     let buffer_content;
     let highlighted_buffer;
     let search_ranges;
@@ -247,6 +250,18 @@ where
             search_ranges = &[];
         }
     }
+    let search_ranges_last_index = search_ranges.len().saturating_sub(1);
+
+    let mut current_cursor_index = 0;
+    let current_cursor = cursors[current_cursor_index];
+    let mut current_cursor_position = current_cursor.position;
+    let mut current_cursor_range = current_cursor.as_range();
+
+    let mut current_search_range_index = 0;
+    let mut current_search_range = match search_ranges.get(current_search_range_index) {
+        Some(&range) => range,
+        None => BufferRange::default(),
+    };
 
     'lines_loop: for line in buffer_content.lines().skip(line_index) {
         let mut draw_state = DrawState::Token(TokenKind::Text);
@@ -286,45 +301,42 @@ where
                 TokenKind::Literal => token_literal_color,
             };
 
-            if client_view.cursors[..]
-                .binary_search_by_key(&char_position, |c| c.position)
-                .is_ok()
+            let mut inside_current_cursor_range = current_cursor_range.from <= char_position
+                && char_position <= current_cursor_range.to;
+            if !inside_current_cursor_range && current_cursor_index < cursors_last_index {
+                current_cursor_index += 1;
+                let cursor = cursors[current_cursor_index];
+                current_cursor_position = cursor.position;
+                current_cursor_range = cursor.as_range();
+
+                inside_current_cursor_range = current_cursor_range.from <= char_position
+                    && char_position <= current_cursor_range.to;
+            }
+
+            let mut inside_current_search_range = current_search_range.from <= char_position
+                && char_position < current_search_range.to;
+            if !inside_current_search_range && current_search_range_index < search_ranges_last_index
             {
+                current_search_range_index += 1;
+                current_search_range = search_ranges[current_search_range_index];
+
+                inside_current_search_range = current_search_range.from <= char_position
+                    && char_position < current_search_range.to;
+            }
+
+            if char_position == current_cursor_position {
                 if draw_state != DrawState::Cursor {
                     draw_state = DrawState::Cursor;
                     handle_command!(write, SetBackgroundColor(cursor_color))?;
                     handle_command!(write, SetForegroundColor(text_color))?;
                 }
-            } else if client_view.cursors[..]
-                .binary_search_by(|c| {
-                    let range = c.as_range();
-                    if range.to < char_position {
-                        Ordering::Less
-                    } else if range.from > char_position {
-                        Ordering::Greater
-                    } else {
-                        Ordering::Equal
-                    }
-                })
-                .is_ok()
-            {
+            } else if inside_current_cursor_range {
                 if draw_state != DrawState::Selection(token_kind) {
                     draw_state = DrawState::Selection(token_kind);
                     handle_command!(write, SetBackgroundColor(text_color))?;
                     handle_command!(write, SetForegroundColor(background_color))?;
                 }
-            } else if search_ranges
-                .binary_search_by(|r| {
-                    if r.to <= char_position {
-                        Ordering::Less
-                    } else if r.from > char_position {
-                        Ordering::Greater
-                    } else {
-                        Ordering::Equal
-                    }
-                })
-                .is_ok()
-            {
+            } else if inside_current_search_range {
                 if draw_state != DrawState::Highlight {
                     draw_state = DrawState::Highlight;
                     handle_command!(write, SetBackgroundColor(highlight_color))?;
