@@ -1,7 +1,7 @@
 use copypasta::{ClipboardContext, ClipboardProvider};
 
 use crate::{
-    buffer::{Text, BufferContent},
+    buffer::{BufferContent, Text},
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{CursorMovement, CursorMovementKind},
     client_event::Key,
@@ -100,9 +100,10 @@ impl ModeState for State {
                     ctx.target_client,
                 );
                 move_to_search_match(self, ctx, |len, r| {
+                    let count = self.count.max(1);
                     let index = match r {
-                        Ok(index) => index + 1,
-                        Err(index) => index,
+                        Ok(index) => index + count,
+                        Err(index) => index + count - 1,
                     };
                     index % len
                 });
@@ -118,7 +119,7 @@ impl ModeState for State {
                         Ok(index) => index,
                         Err(index) => index,
                     };
-                    (index + len - 1) % len
+                    (index + len - self.count.max(1) % len) % len
                 });
             }
             Key::Char('N') => {
@@ -345,9 +346,7 @@ impl ModeState for State {
                 Key::None => return ModeOperation::Pending,
                 Key::Char(ch) => {
                     self.last_char_jump = CharJump::Inclusive(ch);
-                    for _ in 0..self.count.max(1) {
-                        find_char(self, ctx, true);
-                    }
+                    find_char(self, ctx, self.count.max(1), true);
                 }
                 _ => (),
             },
@@ -355,9 +354,7 @@ impl ModeState for State {
                 Key::None => return ModeOperation::Pending,
                 Key::Char(ch) => {
                     self.last_char_jump = CharJump::Inclusive(ch);
-                    for _ in 0..self.count.max(1) {
-                        find_char(self, ctx, true);
-                    }
+                    find_char(self, ctx, self.count.max(1), true);
                 }
                 _ => (),
             },
@@ -365,9 +362,7 @@ impl ModeState for State {
                 Key::None => return ModeOperation::Pending,
                 Key::Char(ch) => {
                     self.last_char_jump = CharJump::Exclusive(ch);
-                    for _ in 0..self.count.max(1) {
-                        find_char(self, ctx, true);
-                    }
+                    find_char(self, ctx, self.count.max(1), true);
                 }
                 _ => (),
             },
@@ -375,40 +370,39 @@ impl ModeState for State {
                 Key::None => return ModeOperation::Pending,
                 Key::Char(ch) => {
                     self.last_char_jump = CharJump::Exclusive(ch);
-                    for _ in 0..self.count.max(1) {
-                        find_char(self, ctx, true);
-                    }
+                    find_char(self, ctx, self.count.max(1), true);
                 }
                 _ => (),
             },
-            Key::Char(';') => find_char(self, ctx, true),
-            Key::Char(',') => find_char(self, ctx, false),
+            Key::Char(';') => find_char(self, ctx, self.count.max(1), true),
+            Key::Char(',') => find_char(self, ctx, self.count.max(1), false),
             Key::Char('v') => {
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
                 let buffer = &unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle)).content;
 
+                let count = self.count.max(1);
                 let last_line_index = buffer.line_count().saturating_sub(1);
-                for _ in 0..self.count.max(1) {
-                    for cursor in &mut buffer_view.cursors.mut_guard()[..] {
-                        if cursor.anchor <= cursor.position {
-                            cursor.anchor.column_byte_index = 0;
-                            if cursor.position.line_index < last_line_index {
-                                cursor.position.line_index += 1;
-                                cursor.position.column_byte_index = 0;
-                            } else {
-                                cursor.position.column_byte_index =
-                                    buffer.line_at(cursor.position.line_index).as_str().len();
-                            }
+                for cursor in &mut buffer_view.cursors.mut_guard()[..] {
+                    if cursor.anchor <= cursor.position {
+                        cursor.anchor.column_byte_index = 0;
+                        cursor.position.line_index += count;
+                        if cursor.position.line_index <= last_line_index {
+                            cursor.position.column_byte_index = 0;
                         } else {
-                            cursor.anchor.column_byte_index =
-                                buffer.line_at(cursor.anchor.line_index).as_str().len();
-                            if cursor.position.line_index > 0 {
-                                cursor.position.line_index -= 1;
-                                cursor.position.column_byte_index =
-                                    buffer.line_at(cursor.position.line_index).as_str().len();
-                            } else {
-                                cursor.position.column_byte_index = 0;
-                            }
+                            cursor.position.line_index = last_line_index;
+                            cursor.position.column_byte_index =
+                                buffer.line_at(cursor.position.line_index).as_str().len();
+                        }
+                    } else {
+                        cursor.anchor.column_byte_index =
+                            buffer.line_at(cursor.anchor.line_index).as_str().len();
+                        if cursor.position.line_index >= count {
+                            cursor.position.line_index -= count;
+                            cursor.position.column_byte_index =
+                                buffer.line_at(cursor.position.line_index).as_str().len();
+                        } else {
+                            cursor.position.line_index = 0;
+                            cursor.position.column_byte_index = 0;
                         }
                     }
                 }
@@ -493,11 +487,10 @@ impl ModeState for State {
                 return ModeOperation::EnterMode(Mode::Insert(Default::default()));
             }
             Key::Char('<') => {
+                let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
+                let cursor_count = buffer_view.cursors[..].len();
+                let buffer_handle = buffer_view.buffer_handle;
                 for _ in 0..self.count.max(1) {
-                    let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
-                    let cursor_count = buffer_view.cursors[..].len();
-                    let buffer_handle = buffer_view.buffer_handle;
-
                     for i in 0..cursor_count {
                         let range =
                             unwrap_or_none!(ctx.buffer_views.get(handle)).cursors[i].as_range();
@@ -537,10 +530,8 @@ impl ModeState for State {
                 unwrap_or_none!(ctx.buffer_views.get_mut(handle)).commit_edits(ctx.buffers);
             }
             Key::Char('>') => {
+                let cursor_count = unwrap_or_none!(ctx.buffer_views.get(handle)).cursors[..].len();
                 for _ in 0..self.count.max(1) {
-                    let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
-                    let cursor_count = buffer_view.cursors[..].len();
-
                     let mut indentation = Text::new();
                     if ctx.config.values.indent_with_tabs {
                         indentation.push_str("\t");
@@ -761,7 +752,7 @@ impl ModeState for State {
     }
 }
 
-fn find_char(state: &State, ctx: &mut ModeContext, forward: bool) {
+fn find_char(state: &State, ctx: &mut ModeContext, count: usize, forward: bool) {
     let ch;
     let next_ch;
     match state.last_char_jump {
@@ -781,13 +772,14 @@ fn find_char(state: &State, ctx: &mut ModeContext, forward: bool) {
     let buffer = unwrap_or_return!(ctx.buffers.get(buffer_view.buffer_handle));
 
     for cursor in &mut buffer_view.cursors.mut_guard()[..] {
-        let mut chars = buffer
+        let (left_chars, right_chars) = buffer
             .content
             .line_at(cursor.position.line_index)
             .chars_from(cursor.position.column_byte_index);
+
         let element = match forward {
-            false => chars.0.find(|(_, c)| *c == ch),
-            true => chars.1.find(|(_, c)| *c == ch),
+            false => left_chars.filter(|(_, c)| *c == ch).take(count).last(),
+            true => right_chars.filter(|(_, c)| *c == ch).take(count).last(),
         };
         if let Some((i, c)) = element {
             cursor.position.column_byte_index = i;
@@ -802,11 +794,10 @@ fn find_char(state: &State, ctx: &mut ModeContext, forward: bool) {
     }
 }
 
-fn move_to_search_match(
-    state: &State,
-    ctx: &mut ModeContext,
-    index_selector: fn(usize, Result<usize, usize>) -> usize,
-) {
+fn move_to_search_match<F>(state: &State, ctx: &mut ModeContext, index_selector: F)
+where
+    F: FnOnce(usize, Result<usize, usize>) -> usize,
+{
     let handle = unwrap_or_return!(ctx.current_buffer_view_handle());
     let buffer_view = unwrap_or_return!(ctx.buffer_views.get_mut(handle));
     let buffer = unwrap_or_return!(ctx.buffers.get_mut(buffer_view.buffer_handle));
@@ -819,8 +810,8 @@ fn move_to_search_match(
     }
 
     let cursors = &mut buffer_view.cursors;
-    let main_position = cursors.main_cursor().position;
 
+    let main_position = cursors.main_cursor().position;
     let search_result = search_ranges.binary_search_by_key(&main_position, |r| r.from);
     let next_index = index_selector(search_ranges.len(), search_result);
 
