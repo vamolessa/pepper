@@ -233,7 +233,7 @@ where
     let mut drawn_line_count = 0;
 
     let cursors = &client_view.cursors[..];
-    let cursors_last_index = cursors.len() - 1;
+    let cursors_last_index = cursors.len().saturating_sub(1);
 
     let buffer_content;
     let highlighted_buffer;
@@ -253,9 +253,11 @@ where
     let search_ranges_last_index = search_ranges.len().saturating_sub(1);
 
     let mut current_cursor_index = 0;
-    let current_cursor = cursors[current_cursor_index];
-    let mut current_cursor_position = current_cursor.position;
-    let mut current_cursor_range = current_cursor.as_range();
+    let (mut current_cursor_position, mut current_cursor_range) =
+        match cursors.get(current_cursor_index) {
+            Some(cursor) => (cursor.position, cursor.as_range()),
+            None => Default::default(),
+        };
 
     let mut current_search_range_index = 0;
     let mut current_search_range = match search_ranges.get(current_search_range_index) {
