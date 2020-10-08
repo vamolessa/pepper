@@ -198,11 +198,22 @@ impl BufferView {
                 let last_line_index = buffer.line_count() - 1;
                 for c in &mut cursors[..] {
                     let mut n = n;
-                    let mut line = &buffer.line_at(c.position.line_index).as_str()
-                        [c.position.column_byte_index..];
+                    let mut line = buffer.line_at(c.position.line_index).as_str();
 
                     while n > 0 {
-                        let words = WordIter::new(line)
+                        if c.position.column_byte_index == line.len() {
+                            if c.position.line_index == last_line_index {
+                                break;
+                            }
+
+                            c.position.line_index += 1;
+                            c.position.column_byte_index = 0;
+                            line = buffer.line_at(c.position.line_index).as_str();
+                            n -= 1;
+                            continue;
+                        }
+
+                        let words = WordIter::new(&line[c.position.column_byte_index..])
                             .inspect(|w| c.position.column_byte_index += w.text.len())
                             .skip(1)
                             .filter(|w| w.kind != WordKind::Whitespace);
@@ -212,23 +223,11 @@ impl BufferView {
                                 c.position.column_byte_index -= word.text.len();
                                 break;
                             }
-                            Err(0) => {
-                                c.position.column_byte_index =
-                                    buffer.line_at(c.position.line_index).as_str().len();
-                                break;
+                            Err(rest) => {
+                                n = rest;
+                                c.position.column_byte_index = line.len();
                             }
-                            Err(rest) => n = rest,
                         }
-
-                        if c.position.line_index == last_line_index {
-                            break;
-                        }
-
-                        c.position.line_index += 1;
-                        c.position.column_byte_index = 0;
-
-                        line = buffer.line_at(c.position.line_index).as_str();
-                        n -= 1;
                     }
                 }
             }
@@ -862,8 +861,10 @@ mod tests {
         assert_movement!((2, 2) => CursorMovement::WordsBackward(6) => (0, 0));
         assert_movement!((2, 2) => CursorMovement::WordsBackward(999) => (0, 0));
 
-        ctx = TestContext::with_buffer("   abc def");
-        assert_movement!((0, 0) => CursorMovement::WordsForward(1) => (0, 3));
-        assert_movement!((0, 3) => CursorMovement::WordsBackward(1) => (0, 0));
+        ctx = TestContext::with_buffer("  abc def\nghi");
+        assert_movement!((0, 0) => CursorMovement::WordsForward(1) => (0, 2));
+        assert_movement!((0, 9) => CursorMovement::WordsForward(1) => (1, 0));
+        assert_movement!((0, 2) => CursorMovement::WordsBackward(1) => (0, 0));
+        assert_movement!((1, 0) => CursorMovement::WordsBackward(1) => (0, 9));
     }
 }
