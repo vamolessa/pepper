@@ -195,25 +195,21 @@ impl BufferView {
                 }
             }
             CursorMovement::WordsForward(n) => {
-                if n == 0 {
-                    return;
-                }
-
                 let last_line_index = buffer.line_count() - 1;
                 for c in &mut cursors[..] {
                     let mut n = n;
+                    let mut line = &buffer.line_at(c.position.line_index).as_str()
+                        [c.position.column_byte_index..];
 
-                    loop {
-                        let (word, _, right_words) = buffer.words_from(c.position);
-                        if n == 0 && word.kind != WordKind::Whitespace {
-                            c.position.column_byte_index = word.position.column_byte_index;
-                            break;
-                        }
-                        n = n.saturating_sub(1);
+                    while n > 0 {
+                        let words = WordIter::new(line)
+                            .inspect(|w| c.position.column_byte_index += w.text.len())
+                            .skip(1)
+                            .filter(|w| w.kind != WordKind::Whitespace);
 
-                        match try_nth(right_words.filter(|w| w.kind != WordKind::Whitespace), n) {
+                        match try_nth(words, n - 1) {
                             Ok(word) => {
-                                c.position = word.position;
+                                c.position.column_byte_index -= word.text.len();
                                 break;
                             }
                             Err(0) => {
@@ -221,36 +217,32 @@ impl BufferView {
                                     buffer.line_at(c.position.line_index).as_str().len();
                                 break;
                             }
-                            Err(rest) => {
-                                if c.position.line_index == last_line_index {
-                                    c.position.column_byte_index =
-                                        buffer.line_at(last_line_index).as_str().len();
-                                    break;
-                                }
-
-                                n = rest - 1;
-                                c.position.line_index += 1;
-                                c.position.column_byte_index = 0;
-                            }
+                            Err(rest) => n = rest,
                         }
+
+                        if c.position.line_index == last_line_index {
+                            break;
+                        }
+
+                        c.position.line_index += 1;
+                        c.position.column_byte_index = 0;
+
+                        line = buffer.line_at(c.position.line_index).as_str();
+                        n -= 1;
                     }
                 }
             }
             CursorMovement::WordsBackward(n) => {
-                if n == 0 {
-                    return;
-                }
-
                 for c in &mut cursors[..] {
                     let mut n = n;
-                    loop {
-                        let words = WordIter::new(
-                            &buffer.line_at(c.position.line_index).as_str()
-                                [..c.position.column_byte_index],
-                        )
-                        .rev()
-                        .inspect(|w| c.position.column_byte_index -= w.text.len())
-                        .filter(|w| w.kind != WordKind::Whitespace);
+                    let mut line = &buffer.line_at(c.position.line_index).as_str()
+                        [..c.position.column_byte_index];
+
+                    while n > 0 {
+                        let words = WordIter::new(line)
+                            .rev()
+                            .inspect(|w| c.position.column_byte_index -= w.text.len())
+                            .filter(|w| w.kind != WordKind::Whitespace);
 
                         match try_nth(words, n - 1) {
                             Ok(_) => break,
@@ -270,12 +262,9 @@ impl BufferView {
                         }
 
                         c.position.line_index -= 1;
-                        c.position.column_byte_index =
-                            buffer.line_at(c.position.line_index).as_str().len();
+                        line = buffer.line_at(c.position.line_index).as_str();
+                        c.position.column_byte_index = line.len();
                         n -= 1;
-                        if n == 0 {
-                            break;
-                        }
                     }
                 }
             }
