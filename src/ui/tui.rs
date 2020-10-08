@@ -272,7 +272,7 @@ where
 
         handle_command!(write, SetForegroundColor(token_text_color))?;
 
-        for (raw_char_index, c) in line.as_str().char_indices().chain(iter::once((0, '\0'))) {
+        for (char_index, c) in line.as_str().char_indices().chain(iter::once((0, '\0'))) {
             if x >= width {
                 handle_command!(write, cursor::MoveToNextLine(1))?;
 
@@ -289,7 +289,7 @@ where
             let token_kind = if c.is_ascii_whitespace() {
                 TokenKind::Whitespace
             } else {
-                highlighted_buffer.find_token_kind_at(line_index, raw_char_index)
+                highlighted_buffer.find_token_kind_at(line_index, char_index)
             };
 
             text_color = match token_kind {

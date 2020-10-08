@@ -205,13 +205,11 @@ impl BufferView {
 
                     loop {
                         let (word, _, right_words) = buffer.words_from(c.position);
-                        if word.kind != WordKind::Whitespace {
-                            if n == 0 {
-                                c.position = word.position;
-                                break;
-                            }
-                            n -= 1;
+                        if n == 0 && word.kind != WordKind::Whitespace {
+                            c.position = word.position;
+                            break;
                         }
+                        n = n.saturating_sub(1);
 
                         match try_nth(right_words.filter(|w| w.kind != WordKind::Whitespace), n) {
                             Ok(word) => {
@@ -880,5 +878,9 @@ mod tests {
         assert_movement!((2, 2) => CursorMovement::WordsBackward(5) => (0, 2));
         assert_movement!((2, 2) => CursorMovement::WordsBackward(6) => (0, 0));
         assert_movement!((2, 2) => CursorMovement::WordsBackward(999) => (0, 0));
+
+        ctx = TestContext::with_buffer("   abc def");
+        assert_movement!((0, 0) => CursorMovement::WordsForward(1) => (0, 3));
+        assert_movement!((0, 3) => CursorMovement::WordsForward(1) => (0, 0));
     }
 }
