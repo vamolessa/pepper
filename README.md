@@ -5,7 +5,6 @@ Experimental code editor
 https://twitter.com/ahvamolessa/status/1276978064166182913
 
 # issues
-- fix `w` and `b` at begining of line
 - fix highlighting
 
 # todo
