@@ -9,7 +9,7 @@ use crate::{
     history::{Edit, EditKind},
     script::ScriptValue,
     syntax::SyntaxCollection,
-    word_database::{WordDatabase, WordKind},
+    word_database::{WordDatabase, WordIter, WordKind},
 };
 
 pub enum CursorMovement {
@@ -206,7 +206,7 @@ impl BufferView {
                     loop {
                         let (word, _, right_words) = buffer.words_from(c.position);
                         if n == 0 && word.kind != WordKind::Whitespace {
-                            c.position = word.position;
+                            c.position.column_byte_index = word.position.column_byte_index;
                             break;
                         }
                         n = n.saturating_sub(1);
@@ -240,47 +240,41 @@ impl BufferView {
                 if n == 0 {
                     return;
                 }
-                let n = n - 1;
 
                 for c in &mut cursors[..] {
                     let mut n = n;
-
                     loop {
-                        let (word, left_words, _) = buffer.words_from(c.position);
-                        if word.kind != WordKind::Whitespace
-                            && c.position.column_byte_index != word.position.column_byte_index
-                        {
-                            if n == 0 {
-                                c.position = word.position;
-                                break;
-                            }
-                            n -= 1;
+                        let words = WordIter::new(
+                            &buffer.line_at(c.position.line_index).as_str()
+                                [..c.position.column_byte_index],
+                        )
+                        .rev()
+                        .inspect(|w| c.position.column_byte_index -= w.text.len())
+                        .filter(|w| w.kind != WordKind::Whitespace);
+
+                        match try_nth(words, n - 1) {
+                            Ok(_) => break,
+                            Err(rest) => n = rest + 1,
                         }
 
-                        match try_nth(left_words.filter(|w| w.kind != WordKind::Whitespace), n) {
-                            Ok(word) => {
-                                c.position = word.position;
+                        if c.position.column_byte_index > 0 {
+                            n -= 1;
+                            if n == 0 {
+                                c.position.column_byte_index = 0;
                                 break;
                             }
-                            Err(0) => {
-                                if c.position.line_index > 0 {
-                                    c.position.line_index -= 1;
-                                    c.position.column_byte_index =
-                                        buffer.line_at(c.position.line_index).as_str().len()
-                                }
-                                break;
-                            }
-                            Err(rest) => {
-                                if c.position.line_index == 0 {
-                                    c.position.column_byte_index = 0;
-                                    break;
-                                }
+                        }
 
-                                n = rest - 1;
-                                c.position.line_index -= 1;
-                                c.position.column_byte_index =
-                                    buffer.line_at(c.position.line_index).as_str().len();
-                            }
+                        if c.position.line_index == 0 {
+                            break;
+                        }
+
+                        c.position.line_index -= 1;
+                        c.position.column_byte_index =
+                            buffer.line_at(c.position.line_index).as_str().len();
+                        n -= 1;
+                        if n == 0 {
+                            break;
                         }
                     }
                 }
@@ -881,6 +875,6 @@ mod tests {
 
         ctx = TestContext::with_buffer("   abc def");
         assert_movement!((0, 0) => CursorMovement::WordsForward(1) => (0, 3));
-        assert_movement!((0, 3) => CursorMovement::WordsForward(1) => (0, 0));
+        assert_movement!((0, 3) => CursorMovement::WordsBackward(1) => (0, 0));
     }
 }
