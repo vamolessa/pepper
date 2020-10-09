@@ -463,11 +463,7 @@ mod tests {
         let mut highlighted = HighlightedBuffer::new();
         highlighted.highligh_all(&syntax, &buffer);
 
-        let mut tokens = highlighted
-            .lines
-            .iter()
-            .map(|l| l.tokens.iter())
-            .flatten();
+        let mut tokens = highlighted.lines.iter().map(|l| l.tokens.iter()).flatten();
         assert_next_token!(tokens, TokenKind::Comment, 0..2);
         assert_next_token!(tokens, TokenKind::Comment, 0..2);
         assert_eq!(None, tokens.next());
@@ -475,11 +471,7 @@ mod tests {
         let range = buffer.insert_text(BufferPosition::line_col(1, 0), "'");
         highlighted.on_insert(&syntax, &buffer, range);
 
-        let mut tokens = highlighted
-            .lines
-            .iter()
-            .map(|l| l.tokens.iter())
-            .flatten();
+        let mut tokens = highlighted.lines.iter().map(|l| l.tokens.iter()).flatten();
         assert_next_token!(tokens, TokenKind::Comment, 0..2);
         assert_next_token!(tokens, TokenKind::Comment, 0..3);
         assert_eq!(None, tokens.next());
