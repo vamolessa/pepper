@@ -283,10 +283,9 @@ impl HighlightedBuffer {
     }
 
     fn previous_line_kind_at(&self, index: usize) -> LineKind {
-        if index > 0 {
-            self.lines[index].kind
-        } else {
-            LineKind::Finished
+        match index.checked_sub(1) {
+            Some(i) => self.lines[i].kind,
+            None => LineKind::Finished,
         }
     }
 
