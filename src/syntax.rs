@@ -470,6 +470,7 @@ mod tests {
 
         let range = buffer.insert_text(BufferPosition::line_col(1, 0), "'");
         highlighted.on_insert(&syntax, &buffer, range);
+        //highlighted.fix_highlight_from(&syntax, &buffer, highlighted.lines[0].kind, 1);
 
         let mut tokens = highlighted.lines.iter().map(|l| l.tokens.iter()).flatten();
         assert_next_token!(tokens, TokenKind::Comment, 0..2);
