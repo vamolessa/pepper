@@ -830,6 +830,14 @@ where
     let main_cursor = cursors.main_cursor();
     main_cursor.position = search_ranges[next_index].from;
 
+    if let Some(client) = ctx.clients.get_mut(ctx.target_client) {
+        let line_index = main_cursor.position.line_index;
+        let height = client.height as usize;
+        if line_index < client.scroll || line_index >= client.scroll + height {
+            client.scroll = line_index.saturating_sub(height / 2);
+        }
+    }
+
     if let CursorMovementKind::PositionAndAnchor = state.movement_kind {
         main_cursor.anchor = main_cursor.position;
     }
