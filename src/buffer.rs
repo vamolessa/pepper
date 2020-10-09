@@ -338,12 +338,39 @@ impl BufferContent {
             return;
         }
 
-        for (i, line) in self.lines.iter().enumerate() {
-            for (j, _) in line.as_str().match_indices(text) {
-                ranges.push(BufferRange::between(
-                    BufferPosition::line_col(i, j),
-                    BufferPosition::line_col(i, j + text.len()),
-                ));
+        if text.as_bytes().iter().any(|c| c.is_ascii_uppercase()) {
+            for (i, line) in self.lines.iter().enumerate() {
+                for (j, _) in line.as_str().match_indices(text) {
+                    ranges.push(BufferRange::between(
+                        BufferPosition::line_col(i, j),
+                        BufferPosition::line_col(i, j + text.len()),
+                    ));
+                }
+            }
+        } else {
+            let bytes = text.as_bytes();
+            let bytes_len = bytes.len();
+
+            for (i, line) in self.lines.iter().enumerate() {
+                let mut column_index = 0;
+                let mut line = line.as_str();
+                while line.len() >= bytes_len {
+                    if line
+                        .as_bytes()
+                        .iter()
+                        .zip(bytes.iter())
+                        .all(|(a, b)| a.eq_ignore_ascii_case(b))
+                    {
+                        let from = BufferPosition::line_col(i, column_index);
+                        column_index += bytes_len;
+                        let to = BufferPosition::line_col(i, column_index);
+                        ranges.push(BufferRange::between(from, to));
+                        line = &line[bytes_len..];
+                    } else {
+                        column_index += 1;
+                        line = &line[1..];
+                    }
+                }
             }
         }
     }
