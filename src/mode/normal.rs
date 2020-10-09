@@ -806,11 +806,18 @@ where
     let buffer_view = unwrap_or_return!(ctx.buffer_views.get_mut(handle));
     let buffer = unwrap_or_return!(ctx.buffers.get_mut(buffer_view.buffer_handle));
 
-    let search_ranges = buffer.search_ranges();
+    let mut search_ranges = buffer.search_ranges();
     if search_ranges.is_empty() {
-        ctx.status_message
-            .write_str(StatusMessageKind::Error, "no search result");
-        return;
+        if !ctx.search.is_empty() {
+            buffer.set_search(&ctx.search);
+            search_ranges = buffer.search_ranges();
+        }
+
+        if search_ranges.is_empty() {
+            ctx.status_message
+                .write_str(StatusMessageKind::Error, "no search result");
+            return;
+        }
     }
 
     let cursors = &mut buffer_view.cursors;

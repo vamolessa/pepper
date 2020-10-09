@@ -115,6 +115,7 @@ pub struct Editor {
     pub word_database: WordDatabase,
 
     pub buffered_keys: Vec<Key>,
+    pub search: String,
     pub prompt: String,
     pub picker: Picker,
 
@@ -137,6 +138,7 @@ impl Editor {
             word_database: WordDatabase::new(),
 
             buffered_keys: Vec::new(),
+            search: String::new(),
             prompt: String::new(),
             picker: Picker::default(),
 
@@ -291,6 +293,7 @@ impl Editor {
                         buffer_views: &mut self.buffer_views,
                         word_database: &mut self.word_database,
 
+                        search: &mut self.search,
                         prompt: &mut self.prompt,
                         picker: &mut self.picker,
 

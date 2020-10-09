@@ -20,8 +20,8 @@ impl ModeState for State {
         ctx.prompt.clear();
     }
 
-    fn on_event(&mut self, mut ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
-        match poll_input(&mut ctx, keys) {
+    fn on_event(&mut self, ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
+        match poll_input(&mut ctx.prompt, keys) {
             InputPollResult::Pending => {
                 let line_number: usize = match ctx.prompt.parse() {
                     Ok(number) => number,
