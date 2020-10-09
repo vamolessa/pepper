@@ -856,15 +856,7 @@ fn search_word_or_move_to_it(
     let search_ranges = buffer.search_ranges();
     let current_range_index = search_ranges.binary_search_by_key(&main_position, |r| r.from);
 
-    if search_ranges.is_empty()
-        || current_range_index
-            .map(|i| {
-                let word = buffer.content().word_at(main_position);
-                let word_range = BufferRange::between(word.position, word.end_position());
-                search_ranges[i] != word_range
-            })
-            .unwrap_or(true)
-    {
+    if search_ranges.is_empty() || current_range_index.is_err() {
         buffer.set_search_with(|c| {
             let word = c.word_at(main_position);
 
