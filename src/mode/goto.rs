@@ -34,7 +34,7 @@ impl ModeState for State {
                 let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
 
                 let mut position = BufferPosition::line_col(line_index, 0);
-                let (first_word, _, mut right_words) = buffer.content.words_from(position);
+                let (first_word, _, mut right_words) = buffer.content().words_from(position);
                 if first_word.kind == WordKind::Whitespace {
                     if let Some(word) = right_words.next() {
                         position = word.position;

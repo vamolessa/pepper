@@ -175,7 +175,7 @@ impl ModeState for State {
                 }
 
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
-                let buffer = &unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle)).content;
+                let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle)).content();
                 let mut cursors = buffer_view.cursors.mut_guard();
 
                 match keys.next() {
@@ -230,7 +230,7 @@ impl ModeState for State {
                 }
 
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
-                let buffer = &unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle)).content;
+                let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle)).content();
                 let mut cursors = buffer_view.cursors.mut_guard();
 
                 match keys.next() {
@@ -300,7 +300,7 @@ impl ModeState for State {
                     ),
                     Key::Char('m') => {
                         let buffer =
-                            &unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle)).content;
+                            unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle)).content();
                         for cursor in &mut buffer_view.cursors.mut_guard()[..] {
                             let position = cursor.position;
                             let (left, right) = match buffer.line_at(position.line_index).as_str()
@@ -378,7 +378,7 @@ impl ModeState for State {
             Key::Char(',') => find_char(self, ctx, self.count.max(1), false),
             Key::Char('v') => {
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
-                let buffer = &unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle)).content;
+                let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle)).content();
 
                 let count = self.count.max(1);
                 let last_line_index = buffer.line_count().saturating_sub(1);
@@ -496,7 +496,7 @@ impl ModeState for State {
                     let range = unwrap_or_none!(ctx.buffer_views.get(handle)).cursors[i].as_range();
                     for line_index in range.from.line_index..=range.to.line_index {
                         let buffer = unwrap_or_none!(ctx.buffers.get(buffer_handle));
-                        let line = buffer.content.line_at(line_index).as_str();
+                        let line = buffer.content().line_at(line_index).as_str();
                         let mut indentation_column_index = 0;
 
                         for _ in 0..count {
@@ -568,7 +568,7 @@ impl ModeState for State {
                 Key::Char('x') => {
                     let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
                     let buffer =
-                        &unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle)).content;
+                        unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle)).content();
 
                     let mut cursors = buffer_view.cursors.mut_guard();
                     let cursor_count = cursors[..].len();
@@ -777,7 +777,7 @@ fn find_char(state: &State, ctx: &mut ModeContext, count: usize, forward: bool) 
 
     for cursor in &mut buffer_view.cursors.mut_guard()[..] {
         let (left_chars, right_chars) = buffer
-            .content
+            .content()
             .line_at(cursor.position.line_index)
             .chars_from(cursor.position.column_byte_index);
 
@@ -844,7 +844,7 @@ fn search_word_or_move_to_it(
     if search_ranges.is_empty()
         || current_range_index
             .map(|i| {
-                let word = buffer.content.word_at(main_position);
+                let word = buffer.content().word_at(main_position);
                 let word_range = BufferRange::between(word.position, word.end_position());
                 search_ranges[i] != word_range
             })

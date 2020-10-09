@@ -110,7 +110,7 @@ impl Client {
 
         let mut extra_line_count = 0;
         for line in buffer
-            .content
+            .content()
             .lines()
             .skip(scroll)
             .take(focused_line_index - scroll)

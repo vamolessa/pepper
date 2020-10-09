@@ -357,7 +357,7 @@ impl BufferContent {
         position
     }
 
-    fn insert_text(&mut self, position: BufferPosition, text: &str) -> BufferRange {
+    pub fn insert_text(&mut self, position: BufferPosition, text: &str) -> BufferRange {
         let position = self.clamp_position(position);
 
         if let None = text.find('\n') {
@@ -405,7 +405,7 @@ impl BufferContent {
         }
     }
 
-    fn delete_range(&mut self, range: BufferRange) -> Text {
+    pub fn delete_range(&mut self, range: BufferRange) -> Text {
         let from = self.clamp_position(range.from);
         let to = self.clamp_position(range.to);
 
@@ -575,9 +575,9 @@ impl BufferContent {
 
 pub struct Buffer {
     path: PathBuf,
-    pub content: BufferContent,
+    content: BufferContent,
     syntax_handle: SyntaxHandle,
-    pub highlighted: HighlightedBuffer,
+    highlighted: HighlightedBuffer,
     history: History,
     search_ranges: Vec<BufferRange>,
     needs_save: bool,
@@ -641,6 +641,14 @@ impl Buffer {
             self.highlighted
                 .highligh_all(syntaxes.get(self.syntax_handle), &self.content);
         }
+    }
+
+    pub fn content(&self) -> &BufferContent {
+        &self.content
+    }
+
+    pub fn highlighted(&self) -> &HighlightedBuffer {
+        &self.highlighted
     }
 
     pub fn needs_save(&self) -> bool {

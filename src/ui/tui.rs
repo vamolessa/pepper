@@ -240,8 +240,8 @@ where
     let search_ranges;
     match client_view.buffer {
         Some(buffer) => {
-            buffer_content = &buffer.content;
-            highlighted_buffer = &buffer.highlighted;
+            buffer_content = buffer.content();
+            highlighted_buffer = buffer.highlighted();
             search_ranges = buffer.search_ranges();
         }
         None => {

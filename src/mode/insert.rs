@@ -73,7 +73,7 @@ impl ModeState for State {
                     text.clear();
                     text.push_str("\n");
                     let indentation_word = buffer
-                        .content
+                        .content()
                         .word_at(BufferPosition::line_col(position.line_index, 0));
                     if indentation_word.kind == WordKind::Whitespace {
                         let indentation_len =
@@ -156,13 +156,14 @@ impl ModeState for State {
         let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
         let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
         let mut word_position = buffer_view.cursors.main_cursor().position;
-        word_position.column_byte_index = buffer.content.line_at(word_position.line_index).as_str()
-            [..word_position.column_byte_index]
-            .char_indices()
-            .next_back()
-            .unwrap_or((0, char::default()))
-            .0;
-        let word = buffer.content.word_at(word_position);
+        word_position.column_byte_index =
+            buffer.content().line_at(word_position.line_index).as_str()
+                [..word_position.column_byte_index]
+                .char_indices()
+                .next_back()
+                .unwrap_or((0, char::default()))
+                .0;
+        let word = buffer.content().word_at(word_position);
 
         if matches!(word.kind, WordKind::Identifier)
             && word_position.column_byte_index

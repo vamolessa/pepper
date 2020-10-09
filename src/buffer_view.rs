@@ -74,7 +74,7 @@ impl BufferView {
         }
 
         let buffer = match buffers.get(self.buffer_handle) {
-            Some(buffer) => &buffer.content,
+            Some(buffer) => buffer.content(),
             None => return,
         };
 
@@ -309,20 +309,20 @@ impl BufferView {
         text.clear();
 
         let buffer = match buffers.get(self.buffer_handle) {
-            Some(buffer) => buffer,
+            Some(buffer) => buffer.content(),
             None => return,
         };
 
         let mut iter = self.cursors[..].iter();
         if let Some(cursor) = iter.next() {
             let mut last_range = cursor.as_range();
-            buffer.content.append_range_text_to_string(last_range, text);
+            buffer.append_range_text_to_string(last_range, text);
             for cursor in iter {
                 let range = cursor.as_range();
                 if range.from.line_index > last_range.to.line_index {
                     text.push('\n');
                 }
-                buffer.content.append_range_text_to_string(range, text);
+                buffer.append_range_text_to_string(range, text);
                 last_range = range;
             }
         }
@@ -527,7 +527,7 @@ impl BufferViewCollection {
         for (i, cursor) in current_view.cursors[..].iter().enumerate().rev() {
             let mut word_position = cursor.position;
             word_position.column_byte_index = word_position.column_byte_index.saturating_sub(1);
-            let word = buffer.content.word_at(word_position);
+            let word = buffer.content().word_at(word_position);
             let word_kind = word.kind;
             let word_position = word.position;
 

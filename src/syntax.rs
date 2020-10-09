@@ -347,6 +347,8 @@ pub fn get_path_extension(path: &Path) -> &str {
 mod tests {
     use super::*;
 
+    use crate::buffer_position::BufferPosition;
+
     fn assert_token(slice: &str, kind: TokenKind, line: &str, token: &Token) {
         assert_eq!(kind, token.kind);
         assert_eq!(slice, &line[token.range.clone()]);
@@ -436,5 +438,50 @@ mod tests {
         assert_eq!(2, tokens.len());
         assert_token("still comment */", TokenKind::Comment, line2, &tokens[0]);
         assert_token(" after", TokenKind::Text, line2, &tokens[1]);
+    }
+
+    #[test]
+    fn test_editing_highlighted_buffer() {
+        macro_rules! assert_next_token {
+            ($iter:expr, $kind:expr, $range:expr) => {
+                assert_eq!(
+                    Some(Token {
+                        kind: $kind,
+                        range: $range,
+                    }),
+                    $iter.next().cloned(),
+                );
+            };
+        }
+
+        let mut syntax = Syntax::default();
+        syntax.add_rule(TokenKind::Comment, Pattern::new("/*{!(*/).$}").unwrap());
+        syntax.add_rule(TokenKind::String, Pattern::new("'{!'.$}").unwrap());
+
+        let mut buffer = BufferContent::from_str("/*\n*/");
+
+        let mut highlighted = HighlightedBuffer::new();
+        highlighted.highligh_all(&syntax, &buffer);
+
+        let mut tokens = highlighted
+            .lines
+            .iter()
+            .map(|l| l.tokens.iter())
+            .flatten();
+        assert_next_token!(tokens, TokenKind::Comment, 0..2);
+        assert_next_token!(tokens, TokenKind::Comment, 0..2);
+        assert_eq!(None, tokens.next());
+
+        let range = buffer.insert_text(BufferPosition::line_col(1, 0), "'");
+        highlighted.on_insert(&syntax, &buffer, range);
+
+        let mut tokens = highlighted
+            .lines
+            .iter()
+            .map(|l| l.tokens.iter())
+            .flatten();
+        assert_next_token!(tokens, TokenKind::Comment, 0..2);
+        assert_next_token!(tokens, TokenKind::Comment, 0..3);
+        assert_eq!(None, tokens.next());
     }
 }
