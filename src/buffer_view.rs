@@ -238,9 +238,13 @@ impl BufferView {
                         [..c.position.column_byte_index];
 
                     while n > 0 {
+                        let mut last_kind = WordKind::Identifier;
                         let words = WordIter::new(line)
                             .rev()
-                            .inspect(|w| c.position.column_byte_index -= w.text.len())
+                            .inspect(|w| {
+                                c.position.column_byte_index -= w.text.len();
+                                last_kind = w.kind;
+                            })
                             .filter(|w| w.kind != WordKind::Whitespace);
 
                         match try_nth(words, n - 1) {
@@ -248,10 +252,9 @@ impl BufferView {
                             Err(rest) => n = rest + 1,
                         }
 
-                        if c.position.column_byte_index > 0 {
+                        if last_kind == WordKind::Whitespace {
                             n -= 1;
                             if n == 0 {
-                                c.position.column_byte_index = 0;
                                 break;
                             }
                         }
