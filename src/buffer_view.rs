@@ -861,10 +861,10 @@ mod tests {
         assert_movement!((2, 2) => CursorMovement::WordsBackward(6) => (0, 0));
         assert_movement!((2, 2) => CursorMovement::WordsBackward(999) => (0, 0));
 
-        ctx = TestContext::with_buffer("  abc def\nghi");
-        assert_movement!((0, 0) => CursorMovement::WordsForward(1) => (0, 2));
-        assert_movement!((0, 9) => CursorMovement::WordsForward(1) => (1, 0));
-        assert_movement!((0, 2) => CursorMovement::WordsBackward(1) => (0, 0));
-        assert_movement!((1, 0) => CursorMovement::WordsBackward(1) => (0, 9));
+        ctx = TestContext::with_buffer("123\n  abc def\nghi");
+        assert_movement!((1, 0) => CursorMovement::WordsForward(1) => (1, 2));
+        assert_movement!((1, 9) => CursorMovement::WordsForward(1) => (2, 0));
+        assert_movement!((1, 2) => CursorMovement::WordsBackward(1) => (1, 0));
+        assert_movement!((2, 0) => CursorMovement::WordsBackward(1) => (1, 9));
     }
 }
