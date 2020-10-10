@@ -353,10 +353,9 @@ impl BufferContent {
 
             for (i, line) in self.lines.iter().enumerate() {
                 let mut column_index = 0;
-                let mut line = line.as_str();
+                let mut line = line.as_str().as_bytes();
                 while line.len() >= bytes_len {
                     if line
-                        .as_bytes()
                         .iter()
                         .zip(bytes.iter())
                         .all(|(a, b)| a.eq_ignore_ascii_case(b))
