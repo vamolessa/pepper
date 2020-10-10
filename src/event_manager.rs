@@ -63,17 +63,23 @@ impl EventManager {
         self,
         event_sender: mpsc::Sender<LocalEvent>,
     ) -> thread::JoinHandle<io::Result<()>> {
-        let mut events = Vec::new();
-        thread::spawn(move || 'event_loop: loop {
-            self.poller.wait(&mut events, None)?;
-            for event in &events {
-                let event = ConnectionEvent::from_raw_id(event.key);
-                if event_sender.send(LocalEvent::Connection(event)).is_err() {
-                    break 'event_loop Ok(());
-                }
-            }
+        use std::borrow::Borrow;
 
-            events.clear();
+        thread::spawn(move || {
+            let mut events = Vec::new();
+            let poller: &polling::Poller = self.poller.borrow();
+
+            'event_loop: loop {
+                poller.wait(&mut events, None)?;
+                for event in &events {
+                    let event = ConnectionEvent::from_raw_id(event.key);
+                    if event_sender.send(LocalEvent::Connection(event)).is_err() {
+                        break 'event_loop Ok(());
+                    }
+                }
+
+                events.clear();
+            }
         })
     }
 
