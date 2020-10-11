@@ -10,7 +10,7 @@ use crate::{
     client::TargetClient,
     editor::{EditorLoop, StatusMessageKind},
     keymap::ParseKeyMapError,
-    mode::{self, Mode},
+    mode::{self, Mode, ModeContext},
     navigation_history::NavigationHistory,
     pattern::Pattern,
     picker::CustomPickerEntry,
@@ -375,6 +375,7 @@ mod picker {
             name: "pepper".into(),
             description: String::new(),
         });
+        ctx.picker.filter(WordDatabase::empty(), "");
 
         ctx.next_mode = Mode::Picker(mode::picker::State {
             on_pick: |ctx| {
@@ -396,32 +397,34 @@ mod picker {
         callback: ScriptFunction,
     ) -> ScriptResult<()> {
         const PICKER_CALLBACK_REGISTRY_KEY: &str = "picker_callback";
+
+        fn on_pick(ctx: &mut ModeContext) {
+            let current_entry_name = ctx
+                .picker
+                .current_entry_name(WordDatabase::empty())
+                .map(|e| String::from(e));
+
+            let (engine, _, mut ctx) = ctx.script_context();
+            let engine = engine.as_ref();
+
+            match engine
+                .take_from_registry::<ScriptFunction>(PICKER_CALLBACK_REGISTRY_KEY)
+                .and_then(|c| c.call(&mut ctx, current_entry_name))
+            {
+                Ok(()) => (),
+                Err(error) => {
+                    ctx.status_message.write_error(&error);
+                }
+            }
+        }
+
         engine.save_to_registry(
             PICKER_CALLBACK_REGISTRY_KEY,
             ScriptValue::Function(callback),
         )?;
 
-        ctx.next_mode = Mode::Picker(mode::picker::State {
-            on_pick: |ctx| {
-                let current_entry_name = ctx
-                    .picker
-                    .current_entry_name(WordDatabase::empty())
-                    .map(|e| String::from(e));
-
-                let (engine, _, mut ctx) = ctx.script_context();
-                let engine = engine.as_ref();
-
-                match engine
-                    .take_from_registry::<ScriptFunction>(PICKER_CALLBACK_REGISTRY_KEY)
-                    .and_then(|c| c.call(&mut ctx, current_entry_name))
-                {
-                    Ok(()) => (),
-                    Err(error) => {
-                        ctx.status_message.write_error(&error);
-                    }
-                }
-            },
-        });
+        ctx.picker.filter(WordDatabase::empty(), "");
+        ctx.next_mode = Mode::Picker(mode::picker::State { on_pick });
         Ok(())
     }
 }

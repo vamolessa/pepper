@@ -142,11 +142,7 @@ impl Picker {
     }
 
     pub fn current_entry_name<'a>(&'a mut self, word_database: &WordDatabase) -> Option<&'a str> {
-        if self.filtered_entries.is_empty() {
-            return None;
-        }
-
-        let entry = &self.filtered_entries[self.cursor];
+        let entry = self.filtered_entries.get(self.cursor)?;
         match entry.source {
             FiletedEntrySource::Custom(i) => Some(&self.custom_entries[i].name),
             FiletedEntrySource::WordDatabase(i) => {
