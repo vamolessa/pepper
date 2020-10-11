@@ -109,6 +109,8 @@ impl Default for KeyMapCollection {
             this.parse_and_map(mode, "<c-m>", "<enter>").unwrap();
         }
 
+        this.parse_and_map(normal_mode, "<c-q>", "<esc>:editor.quit<enter>")
+            .unwrap();
         this.parse_and_map(normal_mode, "<esc>", "<esc>xcxv/<esc>")
             .unwrap();
         this.parse_and_map(normal_mode, "<c-c>", "<esc>xcxv/<esc>")

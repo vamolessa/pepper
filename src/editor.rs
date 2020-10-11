@@ -10,7 +10,7 @@ use crate::{
     keymap::{KeyMapCollection, MatchResult},
     mode::{Mode, ModeContext, ModeOperation},
     picker::Picker,
-    script::{ScriptContext, ScriptEngine},
+    script::ScriptEngine,
     word_database::WordDatabase,
 };
 
@@ -152,27 +152,15 @@ impl Editor {
     }
 
     pub fn load_config(&mut self, clients: &mut ClientCollection, path: &Path) {
-        let mut ctx = ScriptContext {
-            target_client: TargetClient::Local,
-            clients,
-            editor_loop: EditorLoop::Continue,
+        let (mode, _, mut mode_ctx) = self.mode_context(clients, TargetClient::Local);
+        let (scripts, _, mut script_ctx) = mode_ctx.script_context();
 
-            config: &mut self.config,
-
-            buffers: &mut self.buffers,
-            buffer_views: &mut self.buffer_views,
-            word_database: &mut self.word_database,
-
-            picker: &mut self.picker,
-
-            status_message: &mut self.status_message,
-
-            keymaps: &mut self.keymaps,
-        };
-
-        if let Err(e) = self.scripts.eval_entry_file(&mut ctx, path) {
-            self.status_message.write_error(&e);
+        if let Err(e) = scripts.eval_entry_file(&mut script_ctx, path) {
+            script_ctx.status_message.write_error(&e);
         }
+
+        let next_mode = script_ctx.next_mode;
+        mode.change_to(&mut mode_ctx, next_mode);
     }
 
     pub fn on_client_joined(
@@ -277,39 +265,19 @@ impl Editor {
                     }
                 }
 
-                let mut keys = KeysIterator::new(&self.buffered_keys);
+                let (mode, buffered_keys, mut mode_ctx) = self.mode_context(clients, target_client);
+                let mut keys = KeysIterator::new(&buffered_keys);
+
                 let result = loop {
-                    if keys.index >= self.buffered_keys.len() {
+                    if keys.index >= buffered_keys.len() {
                         break EditorLoop::Continue;
                     }
 
-                    let mut mode_context = ModeContext {
-                        target_client,
-                        clients,
-
-                        config: &mut self.config,
-
-                        buffers: &mut self.buffers,
-                        buffer_views: &mut self.buffer_views,
-                        word_database: &mut self.word_database,
-
-                        search: &mut self.search,
-                        prompt: &mut self.prompt,
-                        picker: &mut self.picker,
-
-                        status_message: &mut self.status_message,
-
-                        keymaps: &mut self.keymaps,
-                        scripts: &mut self.scripts,
-                    };
-
-                    match self.mode.on_event(&mut mode_context, &mut keys) {
+                    match mode.on_event(&mut mode_ctx, &mut keys) {
                         ModeOperation::Pending => return EditorLoop::Continue,
                         ModeOperation::None => (),
                         ModeOperation::Quit => {
-                            self.mode.on_exit(&mut mode_context);
-                            self.mode = Mode::default();
-                            self.mode.on_enter(&mut mode_context);
+                            mode.change_to(&mut mode_ctx, Mode::default());
                             self.buffered_keys.clear();
                             return EditorLoop::Quit;
                         }
@@ -318,9 +286,7 @@ impl Editor {
                             return EditorLoop::QuitAll;
                         }
                         ModeOperation::EnterMode(next_mode) => {
-                            self.mode.on_exit(&mut mode_context);
-                            self.mode = next_mode;
-                            self.mode.on_enter(&mut mode_context);
+                            mode.change_to(&mut mode_ctx, next_mode);
                         }
                     }
                 };
@@ -344,5 +310,32 @@ impl Editor {
         }
 
         result
+    }
+
+    fn mode_context<'a>(
+        &'a mut self,
+        clients: &'a mut ClientCollection,
+        target_client: TargetClient,
+    ) -> (&'a mut Mode, &'a [Key], ModeContext<'a>) {
+        let mode_context = ModeContext {
+            target_client,
+            clients,
+
+            config: &mut self.config,
+
+            buffers: &mut self.buffers,
+            buffer_views: &mut self.buffer_views,
+            word_database: &mut self.word_database,
+
+            search: &mut self.search,
+            prompt: &mut self.prompt,
+            picker: &mut self.picker,
+
+            status_message: &mut self.status_message,
+
+            keymaps: &mut self.keymaps,
+            scripts: &mut self.scripts,
+        };
+        (&mut self.mode, &self.buffered_keys, mode_context)
     }
 }

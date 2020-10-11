@@ -14,6 +14,7 @@ use crate::{
     config::Config,
     editor::{EditorLoop, StatusMessage},
     keymap::KeyMapCollection,
+    mode::Mode,
     picker::Picker,
     script_bindings,
     word_database::WordDatabase,
@@ -109,7 +110,17 @@ impl<'lua> FromLua<'lua> for ScriptString<'lua> {
 
 pub struct ScriptObject<'lua>(LuaTable<'lua>);
 impl<'lua> ScriptObject<'lua> {
-    pub fn set(&self, key: &str, value: ScriptValue<'lua>) -> ScriptResult<()> {
+    pub fn get<T>(&self, key: &str) -> ScriptResult<T>
+    where
+        T: FromLua<'lua>,
+    {
+        self.0.get(key)
+    }
+
+    pub fn set<T>(&self, key: &str, value: T) -> ScriptResult<()>
+    where
+        T: ToLua<'lua>,
+    {
         self.0.set(key, value)
     }
 
@@ -133,7 +144,8 @@ impl<'lua> FromLua<'lua> for ScriptObject<'lua> {
 
 pub struct ScriptFunction<'lua>(LuaFunction<'lua>);
 impl<'lua> ScriptFunction<'lua> {
-    pub fn call<A, R>(&self, args: A) -> ScriptResult<R>
+    // it mutably borrows ScriptContext to make sure it does not alias
+    pub fn call<A, R>(&self, _: &mut ScriptContext, args: A) -> ScriptResult<R>
     where
         A: ToLuaMulti<'lua>,
         R: FromLuaMulti<'lua>,
@@ -246,6 +258,7 @@ pub struct ScriptContext<'a> {
     pub target_client: TargetClient,
     pub clients: &'a mut ClientCollection,
     pub editor_loop: EditorLoop,
+    pub next_mode: Mode,
 
     pub config: &'a mut Config,
 
@@ -365,5 +378,21 @@ impl<'lua> ScriptEngineRef<'lua> {
                 func(engine, ctx, args)
             })
             .map(ScriptFunction)
+    }
+
+    pub fn save_to_registry<T>(&self, key: &str, value: T) -> ScriptResult<()>
+    where
+        T: ToLua<'lua>,
+    {
+        self.lua.set_named_registry_value(key, value)
+    }
+
+    pub fn take_from_registry<T>(&self, key: &str) -> ScriptResult<T>
+    where
+        T: FromLua<'lua>,
+    {
+        let value = self.lua.named_registry_value(key)?;
+        self.lua.unset_named_registry_value(key)?;
+        Ok(value)
     }
 }

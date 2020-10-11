@@ -10,14 +10,16 @@ use crate::{
     client::TargetClient,
     editor::{EditorLoop, StatusMessageKind},
     keymap::ParseKeyMapError,
-    mode::Mode,
+    mode::{self, Mode, ModeOperation},
     navigation_history::NavigationHistory,
     pattern::Pattern,
+    picker::CustomPickerEntry,
     script::{
-        ScriptContext, ScriptEngineRef, ScriptError, ScriptObject, ScriptResult, ScriptString,
-        ScriptValue,
+        ScriptContext, ScriptEngineRef, ScriptError, ScriptFunction, ScriptObject, ScriptResult,
+        ScriptString, ScriptValue,
     },
     theme::Color,
+    word_database::WordDatabase,
 };
 
 pub struct QuitError;
@@ -29,13 +31,6 @@ impl fmt::Display for QuitError {
 
 pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
     macro_rules! register {
-        (global => $($func:ident,)*) => {
-            let globals = scripts.globals_object();
-            $(
-                let func = scripts.create_ctx_function(global::$func)?;
-                globals.set(stringify!($func), ScriptValue::Function(func))?;
-            )*
-        };
         ($namespace:ident => $($func:ident,)*) => {
             let globals = scripts.globals_object();
             let $namespace = scripts.create_object()?;
@@ -66,15 +61,32 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
         };
     }
 
-    register!(global =>
-        print, quit, quit_all, force_quit_all, open, close, close_all, force_close,
-        force_close_all, save, save_all,
-    );
     register!(client => index,);
-    register!(editor => selection, delete_selection, insert_text,);
+    register!(editor => quit, quit_all, force_quit_all, print,
+        selection, delete_selection, insert_text,
+    );
+    register!(buffer => open, close, close_all, force_close, force_close_all, save, save_all,);
+    register!(picker => reset, entry, pick,);
     register!(process => pipe, spawn,);
     register!(keymap => normal, insert,);
     register!(syntax => extension, rule,);
+
+    {
+        let globals = scripts.globals_object();
+
+        let editor = globals.get::<ScriptObject>("editor")?;
+        globals.set("print", editor.get::<ScriptValue>("print")?)?;
+        globals.set("q", editor.get::<ScriptValue>("quit")?)?;
+        globals.set("qa", editor.get::<ScriptValue>("quit_all")?)?;
+        globals.set("fqa", editor.get::<ScriptValue>("force_quit_all")?)?;
+
+        let buffer = globals.get::<ScriptObject>("buffer")?;
+        globals.set("o", buffer.get::<ScriptValue>("open")?)?;
+        globals.set("c", buffer.get::<ScriptValue>("close")?)?;
+        globals.set("ca", buffer.get::<ScriptValue>("close_all")?)?;
+        globals.set("fc", buffer.get::<ScriptValue>("force_close")?)?;
+        globals.set("fca", buffer.get::<ScriptValue>("force_close_all")?)?;
+    }
 
     register_object!(config);
     register_object!(theme);
@@ -82,19 +94,16 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
     Ok(())
 }
 
-mod global {
+mod client {
     use super::*;
 
-    pub fn print(
-        _: ScriptEngineRef,
-        ctx: &mut ScriptContext,
-        value: ScriptValue,
-    ) -> ScriptResult<()> {
-        let message = value.to_string();
-        ctx.status_message
-            .write_str(StatusMessageKind::Info, &message);
-        Ok(())
+    pub fn index(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<usize> {
+        Ok(ctx.target_client.into_index())
     }
+}
+
+mod editor {
+    use super::*;
 
     pub fn quit(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
         let can_quit =
@@ -129,6 +138,63 @@ mod global {
         ctx.editor_loop = EditorLoop::QuitAll;
         Err(ScriptError::from(QuitError))
     }
+
+    pub fn print(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        value: ScriptValue,
+    ) -> ScriptResult<()> {
+        let message = value.to_string();
+        ctx.status_message
+            .write_str(StatusMessageKind::Info, &message);
+        Ok(())
+    }
+
+    pub fn selection(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<String> {
+        let mut selection = String::new();
+        ctx.current_buffer_view_handle()
+            .and_then(|h| ctx.buffer_views.get(h))
+            .map(|v| v.get_selection_text(ctx.buffers, &mut selection));
+        Ok(selection)
+    }
+
+    pub fn delete_selection(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        _: (),
+    ) -> ScriptResult<()> {
+        if let Some(handle) = ctx.current_buffer_view_handle() {
+            ctx.buffer_views.delete_in_cursor_ranges(
+                ctx.buffers,
+                ctx.word_database,
+                &ctx.config.syntaxes,
+                handle,
+            );
+        }
+        Ok(())
+    }
+
+    pub fn insert_text(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        text: ScriptString,
+    ) -> ScriptResult<()> {
+        if let Some(handle) = ctx.current_buffer_view_handle() {
+            let text = text.to_str()?;
+            ctx.buffer_views.insert_text_at_cursor_positions(
+                ctx.buffers,
+                ctx.word_database,
+                &ctx.config.syntaxes,
+                handle,
+                text,
+            );
+        }
+        Ok(())
+    }
+}
+
+mod buffer {
+    use super::*;
 
     pub fn open(
         _: ScriptEngineRef,
@@ -272,56 +338,63 @@ mod global {
     }
 }
 
-mod client {
+mod picker {
     use super::*;
 
-    pub fn index(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<usize> {
-        Ok(ctx.target_client.into_index())
-    }
-}
-
-mod editor {
-    use super::*;
-
-    pub fn selection(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<String> {
-        let mut selection = String::new();
-        ctx.current_buffer_view_handle()
-            .and_then(|h| ctx.buffer_views.get(h))
-            .map(|v| v.get_selection_text(ctx.buffers, &mut selection));
-        Ok(selection)
-    }
-
-    pub fn delete_selection(
-        _: ScriptEngineRef,
-        ctx: &mut ScriptContext,
-        _: (),
-    ) -> ScriptResult<()> {
-        if let Some(handle) = ctx.current_buffer_view_handle() {
-            ctx.buffer_views.delete_in_cursor_ranges(
-                ctx.buffers,
-                ctx.word_database,
-                &ctx.config.syntaxes,
-                handle,
-            );
-        }
+    pub fn reset(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
+        ctx.picker.reset();
         Ok(())
     }
 
-    pub fn insert_text(
+    pub fn entry(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
-        text: ScriptString,
+        (name, description): (ScriptString, Option<ScriptString>),
     ) -> ScriptResult<()> {
-        if let Some(handle) = ctx.current_buffer_view_handle() {
-            let text = text.to_str()?;
-            ctx.buffer_views.insert_text_at_cursor_positions(
-                ctx.buffers,
-                ctx.word_database,
-                &ctx.config.syntaxes,
-                handle,
-                text,
-            );
-        }
+        ctx.picker.add_custom_entry(CustomPickerEntry {
+            name: name.to_str()?.into(),
+            description: match description {
+                Some(d) => d.to_str()?.into(),
+                None => String::new(),
+            },
+        });
+        Ok(())
+    }
+
+    pub fn pick(
+        engine: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        callback: ScriptFunction,
+    ) -> ScriptResult<()> {
+        const PICKER_CALLBACK_REGISTRY_KEY: &str = "picker_callback";
+        engine.save_to_registry(
+            PICKER_CALLBACK_REGISTRY_KEY,
+            ScriptValue::Function(callback),
+        )?;
+
+        ctx.next_mode = Mode::Picker(mode::picker::State {
+            on_pick: |ctx| {
+                let current_entry_name = ctx
+                    .picker
+                    .current_entry_name(WordDatabase::empty())
+                    .map(|e| String::from(e));
+
+                let (engine, _, mut ctx) = ctx.script_context();
+                let engine = engine.as_ref();
+
+                match engine
+                    .take_from_registry::<ScriptFunction>(PICKER_CALLBACK_REGISTRY_KEY)
+                    .and_then(|c| c.call(&mut ctx, current_entry_name))
+                {
+                    Ok(()) => (),
+                    Err(error) => {
+                        ctx.status_message.write_error(&error);
+                    }
+                }
+
+                ModeOperation::None
+            },
+        });
         Ok(())
     }
 }
