@@ -502,7 +502,7 @@ where
                     None
                 }
                 Mode::Picker(_) => {
-                    draw_input(write, ">", &editor.prompt, background_color, cursor_color)?;
+                    draw_input(write, "", &editor.prompt, background_color, cursor_color)?;
                     None
                 }
                 Mode::Goto(_) => {

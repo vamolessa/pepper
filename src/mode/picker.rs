@@ -18,7 +18,6 @@ impl Default for State {
 impl ModeState for State {
     fn on_enter(&mut self, ctx: &mut ModeContext) {
         ctx.prompt.clear();
-        ctx.picker.clear_filtered();
     }
 
     fn on_exit(&mut self, ctx: &mut ModeContext) {
@@ -29,8 +28,6 @@ impl ModeState for State {
     fn on_event(&mut self, ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
         match poll_input(&mut ctx.prompt, keys) {
             InputPollResult::Pending => {
-                ctx.picker.filter(WordDatabase::empty(), &ctx.prompt);
-
                 keys.put_back();
                 match keys.next() {
                     Key::Ctrl('n') | Key::Ctrl('j') => {
@@ -39,7 +36,7 @@ impl ModeState for State {
                     Key::Ctrl('p') | Key::Ctrl('k') => {
                         ctx.picker.move_cursor(-1);
                     }
-                    _ => (),
+                    _ => ctx.picker.filter(WordDatabase::empty(), &ctx.prompt),
                 }
 
                 ModeOperation::None

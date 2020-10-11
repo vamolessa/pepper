@@ -66,7 +66,7 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
         selection, delete_selection, insert_text,
     );
     register!(buffer => open, close, close_all, force_close, force_close_all, save, save_all,);
-    register!(picker => reset, entry, test, pick,);
+    register!(picker => reset, entry, pick,);
     register!(process => pipe, spawn,);
     register!(keymap => normal, insert,);
     register!(syntax => extension, rule,);
@@ -358,36 +358,6 @@ mod picker {
                 None => String::new(),
             },
         });
-        Ok(())
-    }
-
-    pub fn test(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
-        ctx.picker.reset();
-        ctx.picker.add_custom_entry(CustomPickerEntry {
-            name: "matheus".into(),
-            description: String::new(),
-        });
-        ctx.picker.add_custom_entry(CustomPickerEntry {
-            name: "nuria".into(),
-            description: String::new(),
-        });
-        ctx.picker.add_custom_entry(CustomPickerEntry {
-            name: "pepper".into(),
-            description: String::new(),
-        });
-        ctx.picker.filter(WordDatabase::empty(), "");
-
-        ctx.next_mode = Mode::Picker(mode::picker::State {
-            on_pick: |ctx| {
-                let message = match ctx.picker.current_entry_name(WordDatabase::empty()) {
-                    Some(entry) => entry,
-                    None => "<nada>",
-                };
-                ctx.status_message
-                    .write_str(StatusMessageKind::Info, message);
-            },
-        });
-
         Ok(())
     }
 
