@@ -10,7 +10,7 @@ use crate::{
     client::TargetClient,
     editor::{EditorLoop, StatusMessageKind},
     keymap::ParseKeyMapError,
-    mode::{self, Mode, ModeOperation},
+    mode::{self, Mode},
     navigation_history::NavigationHistory,
     pattern::Pattern,
     picker::CustomPickerEntry,
@@ -391,8 +391,6 @@ mod picker {
                         ctx.status_message.write_error(&error);
                     }
                 }
-
-                ModeOperation::None
             },
         });
         Ok(())
