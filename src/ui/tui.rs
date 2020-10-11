@@ -501,6 +501,10 @@ where
                     draw_input(write, "/", &editor.search, background_color, cursor_color)?;
                     None
                 }
+                Mode::Picker(_) => {
+                    draw_input(write, ">", &editor.prompt, background_color, cursor_color)?;
+                    None
+                }
                 Mode::Goto(_) => {
                     draw_input(write, "#", &editor.prompt, background_color, cursor_color)?;
                     None

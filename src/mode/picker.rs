@@ -18,6 +18,7 @@ impl Default for State {
 impl ModeState for State {
     fn on_enter(&mut self, ctx: &mut ModeContext) {
         ctx.prompt.clear();
+        ctx.picker.clear_filtered();
     }
 
     fn on_exit(&mut self, ctx: &mut ModeContext) {
