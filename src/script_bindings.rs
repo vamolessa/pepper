@@ -66,6 +66,7 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
         selection, delete_selection, insert_text,
     );
     register!(buffer => open, close, close_all, force_close, force_close_all, save, save_all,);
+    register!(read_line => read,);
     register!(picker => reset, entry, pick,);
     register!(process => pipe, spawn,);
     register!(keymap => normal, insert,);
@@ -338,6 +339,28 @@ mod buffer {
     }
 }
 
+mod read_line {
+    use super::*;
+
+    pub fn read(
+        engine: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        (prompt, callback): (ScriptString, ScriptFunction),
+    ) -> ScriptResult<()> {
+        engine.save_to_registry(
+            mode::script_read_line::PROMPT_REGISTRY_KEY,
+            ScriptValue::String(prompt),
+        )?;
+        engine.save_to_registry(
+            mode::script_read_line::CALLBACK_REGISTRY_KEY,
+            ScriptValue::Function(callback),
+        )?;
+
+        ctx.next_mode = Mode::ScriptReadLine(Default::default());
+        Ok(())
+    }
+}
+
 mod picker {
     use super::*;
 
@@ -375,9 +398,9 @@ mod picker {
                 .map(|e| String::from(e));
 
             let (engine, _, mut ctx) = ctx.script_context();
-            let engine = engine.as_ref();
 
             match engine
+                .as_ref()
                 .take_from_registry::<ScriptFunction>(PICKER_CALLBACK_REGISTRY_KEY)
                 .and_then(|c| c.call(&mut ctx, current_entry_name))
             {
