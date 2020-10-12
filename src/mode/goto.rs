@@ -50,7 +50,7 @@ impl ModeState for State {
 
                 ModeOperation::None
             }
-            ReadLinePoll::Submited => ModeOperation::EnterMode(Mode::default()),
+            ReadLinePoll::Submitted => ModeOperation::EnterMode(Mode::default()),
             ReadLinePoll::Canceled => {
                 NavigationHistory::move_in_history(
                     ctx.clients,

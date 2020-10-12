@@ -70,7 +70,7 @@ impl SearchText {
 
 pub enum ReadLinePoll {
     Pending,
-    Submited,
+    Submitted,
     Canceled,
 }
 
@@ -98,7 +98,7 @@ impl ReadLine {
     pub fn poll(&mut self, keys: &mut KeysIterator) -> ReadLinePoll {
         match keys.next() {
             Key::Esc => ReadLinePoll::Canceled,
-            Key::Enter => ReadLinePoll::Submited,
+            Key::Enter => ReadLinePoll::Submitted,
             Key::Ctrl('u') => {
                 self.input.clear();
                 ReadLinePoll::Pending

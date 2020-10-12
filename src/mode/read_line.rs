@@ -6,12 +6,12 @@ use crate::{
 };
 
 pub struct State {
-    pub on_pick: fn(&mut ModeContext),
+    pub on_submited: fn(&mut ModeContext),
 }
 
 impl Default for State {
     fn default() -> Self {
-        Self { on_pick: |_| () }
+        Self { on_submited: |_| () }
     }
 }
 
@@ -44,7 +44,7 @@ impl ModeState for State {
                 ModeOperation::None
             }
             ReadLinePoll::Submitted => {
-                (self.on_pick)(ctx);
+                (self.on_submited)(ctx);
                 ModeOperation::EnterMode(Mode::default())
             }
             ReadLinePoll::Canceled => ModeOperation::EnterMode(Mode::default()),

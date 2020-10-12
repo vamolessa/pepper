@@ -7,7 +7,7 @@ use crate::{
     buffer_view::{BufferViewCollection, BufferViewHandle},
     client::{ClientCollection, TargetClient},
     config::Config,
-    editor::{ReadLine, SearchText, EditorLoop, KeysIterator, StatusMessage},
+    editor::{EditorLoop, KeysIterator, ReadLine, SearchText, StatusMessage},
     keymap::KeyMapCollection,
     picker::Picker,
     script::{ScriptContext, ScriptEngine},
@@ -36,6 +36,7 @@ mod goto;
 mod insert;
 mod normal;
 pub mod picker;
+pub mod read_line;
 mod script;
 mod search;
 

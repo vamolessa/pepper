@@ -20,7 +20,7 @@ impl ModeState for State {
         match ctx.read_line.poll(keys) {
             ReadLinePoll::Pending => ModeOperation::None,
             ReadLinePoll::Canceled => ModeOperation::EnterMode(Mode::default()),
-            ReadLinePoll::Submited => {
+            ReadLinePoll::Submitted => {
                 let (scripts, read_line, mut context) = ctx.script_context();
                 match scripts.eval(&mut context, read_line.input()) {
                     Ok(value) => {
