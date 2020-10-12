@@ -142,21 +142,21 @@ impl<'lua> FromLua<'lua> for ScriptObject<'lua> {
     }
 }
 
-pub struct ScriptFunction<'lua>(LuaFunction<'lua>);
+pub struct ScriptFunction<'lua>(&'lua Lua, LuaFunction<'lua>);
 impl<'lua> ScriptFunction<'lua> {
-    // it mutably borrows ScriptContext to make sure it does not alias
-    pub fn call<A, R>(&self, _: &mut ScriptContext, args: A) -> ScriptResult<R>
+    pub fn call<A, R>(&self, ctx: &mut ScriptContext, args: A) -> ScriptResult<R>
     where
         A: ToLuaMulti<'lua>,
         R: FromLuaMulti<'lua>,
     {
-        self.0.call(args)
+        let _scope = ScriptContextScope::new(self.0, ctx)?;
+        self.1.call(args)
     }
 }
 impl<'lua> FromLua<'lua> for ScriptFunction<'lua> {
-    fn from_lua(lua_value: LuaValue<'lua>, _: &'lua Lua) -> LuaResult<Self> {
+    fn from_lua(lua_value: LuaValue<'lua>, lua: &'lua Lua) -> LuaResult<Self> {
         if let LuaValue::Function(f) = lua_value {
-            Ok(Self(f))
+            Ok(Self(lua, f))
         } else {
             Err(LuaError::FromLuaConversionError {
                 from: lua_value.type_name(),
@@ -206,7 +206,7 @@ impl<'lua> fmt::Display for ScriptValue<'lua> {
     }
 }
 impl<'lua> FromLua<'lua> for ScriptValue<'lua> {
-    fn from_lua(lua_value: LuaValue<'lua>, _: &'lua Lua) -> LuaResult<Self> {
+    fn from_lua(lua_value: LuaValue<'lua>, lua: &'lua Lua) -> LuaResult<Self> {
         match lua_value {
             LuaValue::Nil => Ok(Self::Nil),
             LuaValue::Boolean(b) => Ok(Self::Boolean(b)),
@@ -214,7 +214,7 @@ impl<'lua> FromLua<'lua> for ScriptValue<'lua> {
             LuaValue::Number(n) => Ok(Self::Number(n)),
             LuaValue::String(s) => Ok(Self::String(ScriptString(s))),
             LuaValue::Table(t) => Ok(Self::Object(ScriptObject(t))),
-            LuaValue::Function(f) => Ok(Self::Function(ScriptFunction(f))),
+            LuaValue::Function(f) => Ok(Self::Function(ScriptFunction(lua, f))),
             _ => Err(LuaError::FromLuaConversionError {
                 from: lua_value.type_name(),
                 to: std::any::type_name::<Self>(),
@@ -232,7 +232,7 @@ impl<'lua> ToLua<'lua> for ScriptValue<'lua> {
             Self::Number(n) => Ok(LuaValue::Number(n)),
             Self::String(s) => Ok(LuaValue::String(s.0)),
             Self::Object(o) => Ok(LuaValue::Table(o.0)),
-            Self::Function(f) => Ok(LuaValue::Function(f.0)),
+            Self::Function(f) => Ok(LuaValue::Function(f.1)),
         }
     }
 }
@@ -287,6 +287,19 @@ impl<'a> ScriptContext<'a> {
     }
 }
 
+struct ScriptContextScope<'lua>(&'lua Lua);
+impl<'lua> ScriptContextScope<'lua> {
+    pub fn new(lua: &'lua Lua, ctx: &mut ScriptContext) -> ScriptResult<Self> {
+        lua.set_named_registry_value("ctx", LuaLightUserData(ctx as *mut ScriptContext as _))?;
+        Ok(Self(lua))
+    }
+}
+impl<'a> Drop for ScriptContextScope<'a> {
+    fn drop(&mut self) {
+        let _ = self.0.unset_named_registry_value("ctx");
+    }
+}
+
 pub struct ScriptEngine {
     lua: Lua,
 }
@@ -315,7 +328,7 @@ impl ScriptEngine {
     }
 
     pub fn eval(&mut self, ctx: &mut ScriptContext, source: &str) -> ScriptResult<ScriptValue> {
-        self.update_ctx(ctx)?;
+        let _scope = ScriptContextScope::new(&self.lua, ctx)?;
         self.lua.load(source).set_name(source)?.eval()
     }
 
@@ -328,8 +341,7 @@ impl ScriptEngine {
         file.read_to_string(&mut source)
             .map_err(|e| LuaError::ExternalError(Arc::new(e)))?;
 
-        self.update_ctx(ctx)?;
-
+        let _scope = ScriptContextScope::new(&self.lua, ctx)?;
         let chunk = self.lua.load(&source);
         if let Some(name) = path.to_str() {
             chunk.set_name(name)?.exec()?;
@@ -338,11 +350,6 @@ impl ScriptEngine {
         }
 
         Ok(())
-    }
-
-    fn update_ctx(&mut self, ctx: &mut ScriptContext) -> ScriptResult<()> {
-        self.lua
-            .set_named_registry_value("ctx", LuaLightUserData(ctx as *mut ScriptContext as _))
     }
 }
 
@@ -377,7 +384,7 @@ impl<'lua> ScriptEngineRef<'lua> {
                 let engine = ScriptEngineRef { lua };
                 func(engine, ctx, args)
             })
-            .map(ScriptFunction)
+            .map(|f| ScriptFunction(self.lua, f))
     }
 
     pub fn save_to_registry<T>(&self, key: &str, value: T) -> ScriptResult<()>
