@@ -26,9 +26,7 @@ impl ModeState for State {
                 ModeOperation::None
             }
             ReadLinePoll::Submited => {
-                ctx.search.clear();
-                ctx.search.push_str(&ctx.read_line.input());
-
+                ctx.search.set_text(ctx.read_line.input());
                 ModeOperation::EnterMode(Mode::default())
             }
             ReadLinePoll::Canceled => {

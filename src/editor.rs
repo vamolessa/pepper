@@ -52,57 +52,19 @@ impl<'a> KeysIterator<'a> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum StatusMessageKind {
-    Info,
-    Error,
+#[derive(Default)]
+pub struct SearchText {
+    text: String,
 }
 
-pub struct StatusMessage {
-    kind: StatusMessageKind,
-    message: String,
-}
-
-impl StatusMessage {
-    pub fn new() -> Self {
-        Self {
-            kind: StatusMessageKind::Info,
-            message: String::new(),
-        }
+impl SearchText {
+    pub fn text(&self) -> &str {
+        &self.text
     }
 
-    pub fn message(&self) -> (StatusMessageKind, &str) {
-        (self.kind, &self.message)
-    }
-
-    pub fn clear(&mut self) {
-        self.message.clear();
-    }
-
-    pub fn write_str(&mut self, kind: StatusMessageKind, message: &str) {
-        self.kind = kind;
-        self.message.clear();
-        self.message.push_str(message);
-    }
-
-    pub fn write_fmt(&mut self, kind: StatusMessageKind, args: fmt::Arguments) {
-        self.kind = kind;
-        self.message.clear();
-        let _ = fmt::write(&mut self.message, args);
-    }
-
-    pub fn write_error(&mut self, error: &dyn Error) {
-        use std::fmt::Write;
-
-        self.kind = StatusMessageKind::Error;
-        self.message.clear();
-        let _ = write!(&mut self.message, "{}", error);
-        let mut error = error.source();
-        while let Some(e) = error {
-            self.message.push('\n');
-            let _ = write!(&mut self.message, "{}", e);
-            error = e.source();
-        }
+    pub fn set_text(&mut self, text: &str) {
+        self.text.clear();
+        self.text.push_str(text);
     }
 }
 
@@ -173,6 +135,60 @@ impl ReadLine {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum StatusMessageKind {
+    Info,
+    Error,
+}
+
+pub struct StatusMessage {
+    kind: StatusMessageKind,
+    message: String,
+}
+
+impl StatusMessage {
+    pub fn new() -> Self {
+        Self {
+            kind: StatusMessageKind::Info,
+            message: String::new(),
+        }
+    }
+
+    pub fn message(&self) -> (StatusMessageKind, &str) {
+        (self.kind, &self.message)
+    }
+
+    pub fn clear(&mut self) {
+        self.message.clear();
+    }
+
+    pub fn write_str(&mut self, kind: StatusMessageKind, message: &str) {
+        self.kind = kind;
+        self.message.clear();
+        self.message.push_str(message);
+    }
+
+    pub fn write_fmt(&mut self, kind: StatusMessageKind, args: fmt::Arguments) {
+        self.kind = kind;
+        self.message.clear();
+        let _ = fmt::write(&mut self.message, args);
+    }
+
+    pub fn write_error(&mut self, error: &dyn Error) {
+        use std::fmt::Write;
+
+        self.kind = StatusMessageKind::Error;
+        self.message.clear();
+        let _ = write!(&mut self.message, "{}", error);
+        let mut error = error.source();
+        while let Some(e) = error {
+            self.message.push('\n');
+            let _ = write!(&mut self.message, "{}", e);
+            error = e.source();
+        }
+    }
+}
+
 pub struct Editor {
     pub config: Config,
     pub mode: Mode,
@@ -182,7 +198,7 @@ pub struct Editor {
     pub word_database: WordDatabase,
 
     pub buffered_keys: Vec<Key>,
-    pub search: String,
+    pub search: SearchText,
     pub read_line: ReadLine,
     pub picker: Picker,
 
@@ -205,7 +221,7 @@ impl Editor {
             word_database: WordDatabase::new(),
 
             buffered_keys: Vec::new(),
-            search: String::new(),
+            search: SearchText::default(),
             read_line: ReadLine::default(),
             picker: Picker::default(),
 
