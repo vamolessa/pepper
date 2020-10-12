@@ -1,6 +1,6 @@
 use crate::{
-    editor::{EditorLoop, KeysIterator, StatusMessageKind},
-    mode::{poll_input, InputPollResult, Mode, ModeContext, ModeOperation, ModeState},
+    editor::{ReadLinePoll, EditorLoop, KeysIterator, StatusMessageKind},
+    mode::{ Mode, ModeContext, ModeOperation, ModeState},
     script::ScriptValue,
 };
 
@@ -9,20 +9,20 @@ pub struct State;
 
 impl ModeState for State {
     fn on_enter(&mut self, ctx: &mut ModeContext) {
-        ctx.prompt.clear();
+        ctx.read_line.reset(":");
     }
 
     fn on_exit(&mut self, ctx: &mut ModeContext) {
-        ctx.prompt.clear();
+        ctx.read_line.reset("");
     }
 
     fn on_event(&mut self, ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
-        match poll_input(&mut ctx.prompt, keys) {
-            InputPollResult::Pending => ModeOperation::None,
-            InputPollResult::Canceled => ModeOperation::EnterMode(Mode::default()),
-            InputPollResult::Submited => {
-                let (scripts, prompt, mut context) = ctx.script_context();
-                match scripts.eval(&mut context, prompt) {
+        match ctx.read_line.poll(keys) {
+            ReadLinePoll::Pending => ModeOperation::None,
+            ReadLinePoll::Canceled => ModeOperation::EnterMode(Mode::default()),
+            ReadLinePoll::Submited => {
+                let (scripts, read_line, mut context) = ctx.script_context();
+                match scripts.eval(&mut context, read_line.input()) {
                     Ok(value) => {
                         match value {
                             ScriptValue::Nil => (),

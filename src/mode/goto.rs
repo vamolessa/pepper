@@ -1,8 +1,8 @@
 use crate::{
     buffer_position::BufferPosition,
     cursor::Cursor,
-    editor::KeysIterator,
-    mode::{poll_input, InputPollResult, Mode, ModeContext, ModeOperation, ModeState},
+    editor::{ReadLinePoll, KeysIterator},
+    mode::{Mode, ModeContext, ModeOperation, ModeState},
     navigation_history::{NavigationDirection, NavigationHistory},
     word_database::WordKind,
 };
@@ -13,17 +13,17 @@ pub struct State;
 impl ModeState for State {
     fn on_enter(&mut self, ctx: &mut ModeContext) {
         NavigationHistory::save_client_snapshot(ctx.clients, ctx.buffer_views, ctx.target_client);
-        ctx.prompt.clear();
+        ctx.read_line.reset("#");
     }
 
     fn on_exit(&mut self, ctx: &mut ModeContext) {
-        ctx.prompt.clear();
+        ctx.read_line.reset("");
     }
 
     fn on_event(&mut self, ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
-        match poll_input(&mut ctx.prompt, keys) {
-            InputPollResult::Pending => {
-                let line_number: usize = match ctx.prompt.parse() {
+        match ctx.read_line.poll(keys) {
+            ReadLinePoll::Pending => {
+                let line_number: usize = match ctx.read_line.input().parse() {
                     Ok(number) => number,
                     Err(_) => return ModeOperation::None,
                 };
@@ -50,8 +50,8 @@ impl ModeState for State {
 
                 ModeOperation::None
             }
-            InputPollResult::Submited => ModeOperation::EnterMode(Mode::default()),
-            InputPollResult::Canceled => {
+            ReadLinePoll::Submited => ModeOperation::EnterMode(Mode::default()),
+            ReadLinePoll::Canceled => {
                 NavigationHistory::move_in_history(
                     ctx.clients,
                     ctx.buffer_views,

@@ -106,6 +106,73 @@ impl StatusMessage {
     }
 }
 
+pub enum ReadLinePoll {
+    Pending,
+    Submited,
+    Canceled,
+}
+
+#[derive(Default)]
+pub struct ReadLine {
+    prompt: String,
+    input: String,
+}
+
+impl ReadLine {
+    pub fn prompt(&self) -> &str {
+        &self.prompt
+    }
+
+    pub fn input(&self) -> &str {
+        &self.input
+    }
+
+    pub fn reset(&mut self, prompt: &str) {
+        self.prompt.clear();
+        self.prompt.push_str(prompt);
+        self.input.clear();
+    }
+
+    pub fn poll(&mut self, keys: &mut KeysIterator) -> ReadLinePoll {
+        match keys.next() {
+            Key::Esc => ReadLinePoll::Canceled,
+            Key::Enter => ReadLinePoll::Submited,
+            Key::Ctrl('u') => {
+                self.input.clear();
+                ReadLinePoll::Pending
+            }
+            Key::Ctrl('w') => {
+                let mut found_space = false;
+                let mut last_index = 0;
+                for (i, c) in self.input.char_indices().rev() {
+                    if found_space {
+                        if c != ' ' {
+                            break;
+                        }
+                    } else if c == ' ' {
+                        found_space = true;
+                    }
+                    last_index = i;
+                }
+
+                self.input.truncate(last_index);
+                ReadLinePoll::Pending
+            }
+            Key::Ctrl('h') => {
+                if let Some((last_char_index, _)) = self.input.char_indices().rev().next() {
+                    self.input.truncate(last_char_index);
+                }
+                ReadLinePoll::Pending
+            }
+            Key::Char(c) => {
+                self.input.push(c);
+                ReadLinePoll::Pending
+            }
+            _ => ReadLinePoll::Pending,
+        }
+    }
+}
+
 pub struct Editor {
     pub config: Config,
     pub mode: Mode,
@@ -116,7 +183,7 @@ pub struct Editor {
 
     pub buffered_keys: Vec<Key>,
     pub search: String,
-    pub prompt: String,
+    pub read_line: ReadLine,
     pub picker: Picker,
 
     pub focused_client: TargetClient,
@@ -139,7 +206,7 @@ impl Editor {
 
             buffered_keys: Vec::new(),
             search: String::new(),
-            prompt: String::new(),
+            read_line: ReadLine::default(),
             picker: Picker::default(),
 
             focused_client: TargetClient::Local,
@@ -328,7 +395,7 @@ impl Editor {
             word_database: &mut self.word_database,
 
             search: &mut self.search,
-            prompt: &mut self.prompt,
+            read_line: &mut self.read_line,
             picker: &mut self.picker,
 
             status_message: &mut self.status_message,

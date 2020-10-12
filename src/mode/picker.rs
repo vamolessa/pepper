@@ -1,7 +1,7 @@
 use crate::{
     client_event::Key,
-    editor::KeysIterator,
-    mode::{poll_input, InputPollResult, Mode, ModeContext, ModeOperation, ModeState},
+    editor::{KeysIterator, ReadLinePoll},
+    mode::{Mode, ModeContext, ModeOperation, ModeState},
     word_database::WordDatabase,
 };
 
@@ -17,17 +17,17 @@ impl Default for State {
 
 impl ModeState for State {
     fn on_enter(&mut self, ctx: &mut ModeContext) {
-        ctx.prompt.clear();
+        ctx.read_line.reset(">");
     }
 
     fn on_exit(&mut self, ctx: &mut ModeContext) {
-        ctx.prompt.clear();
+        ctx.read_line.reset("");
         ctx.picker.reset();
     }
 
     fn on_event(&mut self, ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
-        match poll_input(&mut ctx.prompt, keys) {
-            InputPollResult::Pending => {
+        match ctx.read_line.poll(keys) {
+            ReadLinePoll::Pending => {
                 keys.put_back();
                 match keys.next() {
                     Key::Ctrl('n') | Key::Ctrl('j') => {
@@ -36,16 +36,18 @@ impl ModeState for State {
                     Key::Ctrl('p') | Key::Ctrl('k') => {
                         ctx.picker.move_cursor(-1);
                     }
-                    _ => ctx.picker.filter(WordDatabase::empty(), &ctx.prompt),
+                    _ => ctx
+                        .picker
+                        .filter(WordDatabase::empty(), ctx.read_line.input()),
                 }
 
                 ModeOperation::None
             }
-            InputPollResult::Submited => {
+            ReadLinePoll::Submited => {
                 (self.on_pick)(ctx);
                 ModeOperation::EnterMode(Mode::default())
             }
-            InputPollResult::Canceled => ModeOperation::EnterMode(Mode::default()),
+            ReadLinePoll::Canceled => ModeOperation::EnterMode(Mode::default()),
         }
     }
 }

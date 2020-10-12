@@ -6,9 +6,8 @@ use crate::{
     buffer::BufferCollection,
     buffer_view::{BufferViewCollection, BufferViewHandle},
     client::{ClientCollection, TargetClient},
-    client_event::Key,
     config::Config,
-    editor::{EditorLoop, KeysIterator, StatusMessage},
+    editor::{ReadLine, EditorLoop, KeysIterator, StatusMessage},
     keymap::KeyMapCollection,
     picker::Picker,
     script::{ScriptContext, ScriptEngine},
@@ -59,7 +58,7 @@ pub struct ModeContext<'a> {
     pub word_database: &'a mut WordDatabase,
 
     pub search: &'a mut String,
-    pub prompt: &'a mut String,
+    pub read_line: &'a mut ReadLine,
     pub picker: &'a mut Picker,
 
     pub status_message: &'a mut StatusMessage,
@@ -75,7 +74,7 @@ impl<'a> ModeContext<'a> {
             .and_then(|c| c.current_buffer_view_handle)
     }
 
-    pub fn script_context(&mut self) -> (&mut ScriptEngine, &mut String, ScriptContext) {
+    pub fn script_context(&mut self) -> (&mut ScriptEngine, &mut ReadLine, ScriptContext) {
         let context = ScriptContext {
             target_client: self.target_client,
             clients: self.clients,
@@ -95,7 +94,7 @@ impl<'a> ModeContext<'a> {
             keymaps: self.keymaps,
         };
 
-        (self.scripts, self.prompt, context)
+        (self.scripts, self.read_line, context)
     }
 }
 
@@ -156,53 +155,5 @@ impl Mode {
 impl Default for Mode {
     fn default() -> Self {
         Mode::Normal(Default::default())
-    }
-}
-
-pub enum InputPollResult {
-    Pending,
-    Submited,
-    Canceled,
-}
-
-pub fn poll_input(prompt: &mut String, keys: &mut KeysIterator) -> InputPollResult {
-    match keys.next() {
-        Key::Esc => {
-            prompt.clear();
-            InputPollResult::Canceled
-        }
-        Key::Enter => InputPollResult::Submited,
-        Key::Ctrl('u') => {
-            prompt.clear();
-            InputPollResult::Pending
-        }
-        Key::Ctrl('w') => {
-            let mut found_space = false;
-            let mut last_index = 0;
-            for (i, c) in prompt.char_indices().rev() {
-                if found_space {
-                    if c != ' ' {
-                        break;
-                    }
-                } else if c == ' ' {
-                    found_space = true;
-                }
-                last_index = i;
-            }
-
-            prompt.truncate(last_index);
-            InputPollResult::Pending
-        }
-        Key::Ctrl('h') => {
-            if let Some((last_char_index, _)) = prompt.char_indices().rev().next() {
-                prompt.truncate(last_char_index);
-            }
-            InputPollResult::Pending
-        }
-        Key::Char(c) => {
-            prompt.push(c);
-            InputPollResult::Pending
-        }
-        _ => InputPollResult::Pending,
     }
 }

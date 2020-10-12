@@ -447,24 +447,6 @@ fn draw_statusbar<W>(
 where
     W: Write,
 {
-    fn draw_input<W>(
-        write: &mut W,
-        prefix: &str,
-        input: &str,
-        background_color: Color,
-        cursor_color: Color,
-    ) -> UiResult<usize>
-    where
-        W: Write,
-    {
-        handle_command!(write, Print(prefix))?;
-        handle_command!(write, Print(input))?;
-        handle_command!(write, SetBackgroundColor(cursor_color))?;
-        handle_command!(write, Print(' '))?;
-        handle_command!(write, SetBackgroundColor(background_color))?;
-        Ok(prefix.len() + input.len() + 1)
-    }
-
     fn find_digit_count(mut number: usize) -> usize {
         let mut count = 0;
         while number > 0 {
@@ -492,28 +474,22 @@ where
 
         if status_message.is_empty() {
             match editor.mode {
+                Mode::Normal(_) => Some(0),
                 Mode::Insert(_) => {
                     let text = "-- INSERT --";
                     handle_command!(write, Print(text))?;
                     Some(text.len())
                 }
-                Mode::Search(_) => {
-                    draw_input(write, "/", &editor.search, background_color, cursor_color)?;
+                Mode::Search(_) | Mode::Picker(_) | Mode::Goto(_) | Mode::Script(_) => {
+                    let read_line = &editor.read_line;
+
+                    handle_command!(write, Print(read_line.prompt()))?;
+                    handle_command!(write, Print(read_line.input()))?;
+                    handle_command!(write, SetBackgroundColor(cursor_color))?;
+                    handle_command!(write, Print(' '))?;
+                    handle_command!(write, SetBackgroundColor(background_color))?;
                     None
                 }
-                Mode::Picker(_) => {
-                    draw_input(write, "", &editor.prompt, background_color, cursor_color)?;
-                    None
-                }
-                Mode::Goto(_) => {
-                    draw_input(write, "#", &editor.prompt, background_color, cursor_color)?;
-                    None
-                }
-                Mode::Script(_) => {
-                    draw_input(write, ":", &editor.prompt, background_color, cursor_color)?;
-                    None
-                }
-                _ => Some(0),
             }
         } else {
             let prefix = match status_message_kind {

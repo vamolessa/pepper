@@ -857,7 +857,7 @@ fn search_word_or_move_to_it(
     let current_range_index = search_ranges.binary_search_by_key(&main_position, |r| r.from);
 
     if search_ranges.is_empty() || current_range_index.is_err() {
-        buffer.set_search_with(|c| {
+        let search_word = buffer.set_search_with(|c| {
             let word = c.word_at(main_position);
 
             let mut cursors = buffer_view.cursors.mut_guard();
@@ -869,6 +869,9 @@ fn search_word_or_move_to_it(
 
             word.text
         });
+
+        ctx.search.clear();
+        ctx.search.push_str(search_word);
     } else {
         let range_index = index_selector(search_ranges.len(), current_range_index);
         let range = search_ranges[range_index];
