@@ -10,7 +10,7 @@ use crate::{
     client::TargetClient,
     editor::{EditorLoop, StatusMessageKind},
     keymap::ParseKeyMapError,
-    mode::{self, Mode, ModeContext},
+    mode::{self, Mode},
     navigation_history::NavigationHistory,
     pattern::Pattern,
     picker::CustomPickerEntry,
@@ -19,7 +19,6 @@ use crate::{
         ScriptString, ScriptValue,
     },
     theme::Color,
-    word_database::WordDatabase,
 };
 
 pub struct QuitError;
@@ -66,8 +65,8 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
         selection, delete_selection, insert_text,
     );
     register!(buffer => open, close, close_all, force_close, force_close_all, save, save_all,);
-    register!(read_line => read,);
-    register!(picker => reset, entry, pick,);
+    register!(read_line => prompt, read,);
+    register!(picker => prompt, reset, entry, pick,);
     register!(process => pipe, spawn,);
     register!(keymap => normal, insert,);
     register!(syntax => extension, rule,);
@@ -342,15 +341,22 @@ mod buffer {
 mod read_line {
     use super::*;
 
-    pub fn read(
+    pub fn prompt(
         engine: ScriptEngineRef,
-        ctx: &mut ScriptContext,
-        (prompt, callback): (ScriptString, ScriptFunction),
+        _: &mut ScriptContext,
+        prompt: ScriptString,
     ) -> ScriptResult<()> {
         engine.save_to_registry(
             mode::script_read_line::PROMPT_REGISTRY_KEY,
             ScriptValue::String(prompt),
-        )?;
+        )
+    }
+
+    pub fn read(
+        engine: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        callback: ScriptFunction,
+    ) -> ScriptResult<()> {
         engine.save_to_registry(
             mode::script_read_line::CALLBACK_REGISTRY_KEY,
             ScriptValue::Function(callback),
@@ -363,6 +369,17 @@ mod read_line {
 
 mod picker {
     use super::*;
+
+    pub fn prompt(
+        engine: ScriptEngineRef,
+        _: &mut ScriptContext,
+        prompt: ScriptString,
+    ) -> ScriptResult<()> {
+        engine.save_to_registry(
+            mode::script_picker::PROMPT_REGISTRY_KEY,
+            ScriptValue::String(prompt),
+        )
+    }
 
     pub fn reset(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
         ctx.picker.reset();
@@ -389,35 +406,12 @@ mod picker {
         ctx: &mut ScriptContext,
         callback: ScriptFunction,
     ) -> ScriptResult<()> {
-        const PICKER_CALLBACK_REGISTRY_KEY: &str = "picker_callback";
-
-        fn on_pick(ctx: &mut ModeContext) {
-            let current_entry_name = ctx
-                .picker
-                .current_entry_name(WordDatabase::empty())
-                .map(|e| String::from(e));
-
-            let (engine, _, mut ctx) = ctx.script_context();
-
-            match engine
-                .as_ref()
-                .take_from_registry::<ScriptFunction>(PICKER_CALLBACK_REGISTRY_KEY)
-                .and_then(|c| c.call(&mut ctx, current_entry_name))
-            {
-                Ok(()) => (),
-                Err(error) => {
-                    ctx.status_message.write_error(&error);
-                }
-            }
-        }
-
         engine.save_to_registry(
-            PICKER_CALLBACK_REGISTRY_KEY,
+            mode::script_picker::CALLBACK_REGISTRY_KEY,
             ScriptValue::Function(callback),
         )?;
 
-        ctx.picker.filter(WordDatabase::empty(), "");
-        ctx.next_mode = Mode::Picker(mode::picker::State { on_pick });
+        ctx.next_mode = Mode::ScriptPicker(Default::default());
         Ok(())
     }
 }

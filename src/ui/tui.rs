@@ -481,7 +481,7 @@ where
                     Some(text.len())
                 }
                 Mode::Search(_)
-                | Mode::Picker(_)
+                | Mode::ScriptPicker(_)
                 | Mode::Goto(_)
                 | Mode::Script(_)
                 | Mode::ScriptReadLine(_) => {

@@ -35,7 +35,7 @@ macro_rules! unwrap_or_none {
 mod goto;
 mod insert;
 mod normal;
-pub mod picker;
+pub mod script_picker;
 pub mod script_read_line;
 mod script;
 mod search;
@@ -109,10 +109,10 @@ pub enum Mode {
     Normal(normal::State),
     Insert(insert::State),
     Search(search::State),
-    ScriptReadLine(script_read_line::State),
-    Picker(picker::State),
     Goto(goto::State),
     Script(script::State),
+    ScriptReadLine(script_read_line::State),
+    ScriptPicker(script_picker::State),
 }
 
 impl Mode {
@@ -125,10 +125,10 @@ impl Mode {
             Mode::Normal(state) => state.on_exit(ctx),
             Mode::Insert(state) => state.on_exit(ctx),
             Mode::Search(state) => state.on_exit(ctx),
-            Mode::ScriptReadLine(state) => state.on_exit(ctx),
-            Mode::Picker(state) => state.on_exit(ctx),
             Mode::Goto(state) => state.on_exit(ctx),
             Mode::Script(state) => state.on_exit(ctx),
+            Mode::ScriptReadLine(state) => state.on_exit(ctx),
+            Mode::ScriptPicker(state) => state.on_exit(ctx),
         }
 
         *self = next;
@@ -137,10 +137,10 @@ impl Mode {
             Mode::Normal(state) => state.on_enter(ctx),
             Mode::Insert(state) => state.on_enter(ctx),
             Mode::Search(state) => state.on_enter(ctx),
-            Mode::ScriptReadLine(state) => state.on_enter(ctx),
-            Mode::Picker(state) => state.on_enter(ctx),
             Mode::Goto(state) => state.on_enter(ctx),
             Mode::Script(state) => state.on_enter(ctx),
+            Mode::ScriptReadLine(state) => state.on_enter(ctx),
+            Mode::ScriptPicker(state) => state.on_enter(ctx),
         }
     }
 
@@ -149,10 +149,10 @@ impl Mode {
             Mode::Normal(state) => state.on_event(ctx, keys),
             Mode::Insert(state) => state.on_event(ctx, keys),
             Mode::Search(state) => state.on_event(ctx, keys),
-            Mode::ScriptReadLine(state) => state.on_event(ctx, keys),
-            Mode::Picker(state) => state.on_event(ctx, keys),
             Mode::Goto(state) => state.on_event(ctx, keys),
             Mode::Script(state) => state.on_event(ctx, keys),
+            Mode::ScriptReadLine(state) => state.on_event(ctx, keys),
+            Mode::ScriptPicker(state) => state.on_event(ctx, keys),
         }
     }
 }

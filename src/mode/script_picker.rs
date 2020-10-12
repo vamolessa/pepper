@@ -1,11 +1,13 @@
 use crate::{
+    client_event::Key,
     editor::{KeysIterator, ReadLinePoll},
     mode::{Mode, ModeContext, ModeOperation, ModeState},
     script::{ScriptFunction, ScriptString},
+    word_database::WordDatabase,
 };
 
-pub const PROMPT_REGISTRY_KEY: &str = "read_line_prompt";
-pub const CALLBACK_REGISTRY_KEY: &str = "read_line_callback";
+pub const PROMPT_REGISTRY_KEY: &str = "picker_prompt";
+pub const CALLBACK_REGISTRY_KEY: &str = "picker_callback";
 
 #[derive(Default)]
 pub struct State;
@@ -20,16 +22,37 @@ impl ModeState for State {
             Ok(prompt) => ctx.read_line.reset(prompt.to_str().unwrap_or(">")),
             Err(_) => ctx.read_line.reset(">"),
         }
+
+        ctx.picker.filter(WordDatabase::empty(), "");
     }
 
     fn on_exit(&mut self, ctx: &mut ModeContext) {
         ctx.read_line.reset("");
+        ctx.picker.reset();
     }
 
     fn on_event(&mut self, ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
-        let input = match ctx.read_line.poll(keys) {
-            ReadLinePoll::Pending => return ModeOperation::None,
-            ReadLinePoll::Submitted => Some(String::from(ctx.read_line.input())),
+        let entry = match ctx.read_line.poll(keys) {
+            ReadLinePoll::Pending => {
+                keys.put_back();
+                match keys.next() {
+                    Key::Ctrl('n') | Key::Ctrl('j') => {
+                        ctx.picker.move_cursor(1);
+                    }
+                    Key::Ctrl('p') | Key::Ctrl('k') => {
+                        ctx.picker.move_cursor(-1);
+                    }
+                    _ => ctx
+                        .picker
+                        .filter(WordDatabase::empty(), ctx.read_line.input()),
+                }
+
+                return ModeOperation::None;
+            }
+            ReadLinePoll::Submitted => ctx
+                .picker
+                .current_entry_name(WordDatabase::empty())
+                .map(|e| String::from(e)),
             ReadLinePoll::Canceled => None,
         };
 
@@ -37,7 +60,7 @@ impl ModeState for State {
         match engine
             .as_ref()
             .take_from_registry::<ScriptFunction>(CALLBACK_REGISTRY_KEY)
-            .and_then(|c| c.call(&mut ctx, input))
+            .and_then(|c| c.call(&mut ctx, entry))
         {
             Ok(()) => (),
             Err(error) => {
