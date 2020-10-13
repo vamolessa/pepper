@@ -1,6 +1,14 @@
 #![macro_use]
 
-use std::{convert::TryInto, error::Error, fmt, fs::File, io::Read, path::Path, sync::Arc};
+use std::{
+    convert::TryInto,
+    error::Error,
+    fmt,
+    fs::File,
+    io::Read,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use mlua::prelude::{
     FromLua, FromLuaMulti, Lua, LuaError, LuaFunction, LuaInteger, LuaLightUserData, LuaNumber,
@@ -149,7 +157,7 @@ impl<'lua> ScriptArray<'lua> {
     where
         T: ToLua<'lua>,
     {
-        self.0.set(self.0.len()?, value)
+        self.0.set(self.0.len()? + 1, value)
     }
 
     pub fn iter<T>(self) -> LuaTableSequence<'lua, T>
@@ -223,39 +231,54 @@ impl<'lua> ScriptValue<'lua> {
 }
 impl<'lua> fmt::Display for ScriptValue<'lua> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            ScriptValue::Nil => f.write_str("nil"),
-            ScriptValue::Boolean(b) => b.fmt(f),
-            ScriptValue::Integer(i) => i.fmt(f),
-            ScriptValue::Number(n) => n.fmt(f),
-            ScriptValue::String(s) => match s.to_str() {
-                Ok(s) => s.fmt(f),
-                Err(_) => Err(fmt::Error),
-            },
-            ScriptValue::Object(o) => {
-                f.write_str("{")?;
-                let o = o.0.clone();
-                for pair in o.pairs::<ScriptValue, ScriptValue>() {
-                    if let Ok((key, value)) = pair {
-                        f.write_fmt(format_args!("{}:{},", key, value))?;
+        fn fmt_recursive(value: &ScriptValue, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
+            match value {
+                ScriptValue::Nil => f.write_str("nil"),
+                ScriptValue::Boolean(b) => b.fmt(f),
+                ScriptValue::Integer(i) => i.fmt(f),
+                ScriptValue::Number(n) => n.fmt(f),
+                ScriptValue::String(s) => match s.to_str() {
+                    Ok(s) => s.fmt(f),
+                    Err(_) => Err(fmt::Error),
+                },
+                ScriptValue::Object(o) => {
+                    f.write_str("{")?;
+                    if depth == 0 {
+                        f.write_str("...")?;
+                    } else {
+                        let o = o.0.clone();
+                        for pair in o.pairs::<ScriptValue, ScriptValue>() {
+                            if let Ok((key, value)) = pair {
+                                fmt_recursive(&key, f, depth - 1)?;
+                                f.write_str(":")?;
+                                fmt_recursive(&value, f, depth - 1)?;
+                                f.write_str(",")?;
+                            }
+                        }
                     }
+                    f.write_str("}")?;
+                    Ok(())
                 }
-                f.write_str("}")?;
-                Ok(())
-            }
-            ScriptValue::Array(a) => {
-                f.write_str("[")?;
-                let a = a.0.clone();
-                for value in a.sequence_values::<ScriptValue>() {
-                    if let Ok(value) = value {
-                        f.write_fmt(format_args!("{},", value))?;
+                ScriptValue::Array(a) => {
+                    f.write_str("[")?;
+                    if depth == 0 {
+                        f.write_str("...")?;
+                    } else {
+                        let a = a.0.clone();
+                        for value in a.sequence_values::<ScriptValue>() {
+                            if let Ok(value) = value {
+                                fmt_recursive(&value, f, depth - 1)?;
+                            }
+                        }
                     }
+                    f.write_str("]")?;
+                    Ok(())
                 }
-                f.write_str("]")?;
-                Ok(())
+                ScriptValue::Function(_) => f.write_str("function"),
             }
-            ScriptValue::Function(_) => f.write_str("function"),
         }
+
+        fmt_recursive(self, f, 2)
     }
 }
 impl<'lua> FromLua<'lua> for ScriptValue<'lua> {
@@ -360,6 +383,9 @@ impl<'a> Drop for ScriptContextScope<'a> {
     }
 }
 
+const MODULE_SEARCH_PATHS_REGISTRY_KEY: &str = "module_search_paths";
+const MODULE_LOADER_REGISTRY_KEY: &str = "module_loader";
+
 pub struct ScriptEngine {
     lua: Lua,
 }
@@ -382,7 +408,7 @@ impl ScriptEngine {
                 lua: &'lua Lua,
                 (module_name, file_path): (LuaString<'lua>, LuaString<'lua>),
             ) -> LuaResult<LuaValue<'lua>> {
-                eprintln!("epa {}", file_path.to_str()?);
+                eprintln!("esse ai existe! {}", file_path.to_str()?);
                 Ok(LuaValue::Nil)
             }
 
@@ -390,10 +416,48 @@ impl ScriptEngine {
                 lua: &'lua Lua,
                 module_name: LuaString<'lua>,
             ) -> LuaResult<(LuaValue<'lua>, Option<LuaString<'lua>>)> {
-                let loader = lua.create_function(load_module)?;
-                let path = lua.create_string(b"path")?;
-                Ok((LuaValue::Function(loader), Some(path)))
+                let mut module_path = PathBuf::new();
+                let module_name = module_name.to_str()?;
+                module_path.reserve(module_name.len());
+                for module_part in module_name.split('.') {
+                    module_path.push(module_part);
+                }
+                let module_path = module_path.as_path();
+
+                let mut final_path = PathBuf::new();
+                let module_search_paths: LuaTable =
+                    lua.named_registry_value(MODULE_SEARCH_PATHS_REGISTRY_KEY)?;
+                for module_search_path in module_search_paths.sequence_values::<LuaString>() {
+                    let module_search_path = module_search_path?;
+                    let module_search_path = Path::new(module_search_path.to_str()?);
+
+                    final_path.clear();
+                    final_path.push(module_search_path);
+                    final_path.push(module_path);
+                    final_path.set_extension("lua");
+
+                    if final_path.exists() {
+                        let loader: LuaFunction =
+                            lua.named_registry_value(MODULE_LOADER_REGISTRY_KEY)?;
+                        let loader = LuaValue::Function(loader);
+                        match final_path.to_str() {
+                            Some(path) => {
+                                let path = lua.create_string(path.as_bytes())?;
+                                return Ok((loader, Some(path)));
+                            }
+                            None => break,
+                        }
+                    }
+                }
+
+                Ok((LuaValue::Nil, None))
             }
+
+            lua.set_named_registry_value(MODULE_SEARCH_PATHS_REGISTRY_KEY, lua.create_table()?)?;
+            lua.set_named_registry_value(
+                MODULE_LOADER_REGISTRY_KEY,
+                lua.create_function(load_module)?,
+            )?;
 
             let searcher = lua.create_function(search_module)?;
             let searchers = lua.create_table()?;
@@ -413,6 +477,30 @@ impl ScriptEngine {
         ScriptEngineRef::from_lua(&self.lua)
     }
 
+    pub fn add_module_search_path(&mut self, path: &Path) -> ScriptResult<()> {
+        let path = path
+            .canonicalize()
+            .map_err(|e| LuaError::ExternalError(Arc::new(e)))?;
+        let path = if path.is_file() {
+            match path.parent() {
+                Some(path) => path,
+                None => return Ok(()),
+            }
+        } else {
+            path.as_path()
+        };
+
+        if let Some(path) = path.to_str() {
+            let path = self.lua.create_string(path.as_bytes())?;
+            let module_search_paths: LuaTable = self
+                .lua
+                .named_registry_value(MODULE_SEARCH_PATHS_REGISTRY_KEY)?;
+            module_search_paths.set(module_search_paths.len()? + 1, path)?;
+        }
+
+        Ok(())
+    }
+
     pub fn eval(&mut self, ctx: &mut ScriptContext, source: &str) -> ScriptResult<ScriptValue> {
         let _scope = ScriptContextScope::new(&self.lua, ctx)?;
         self.lua.load(source).set_name(source)?.eval()
@@ -426,6 +514,8 @@ impl ScriptEngine {
         let mut source = String::with_capacity(metadata.len() as _);
         file.read_to_string(&mut source)
             .map_err(|e| LuaError::ExternalError(Arc::new(e)))?;
+
+        self.add_module_search_path(path)?;
 
         let _scope = ScriptContextScope::new(&self.lua, ctx)?;
         let chunk = self.lua.load(&source);
