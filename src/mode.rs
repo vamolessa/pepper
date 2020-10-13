@@ -35,9 +35,9 @@ macro_rules! unwrap_or_none {
 mod goto;
 mod insert;
 mod normal;
+mod script;
 pub mod script_picker;
 pub mod script_read_line;
-mod script;
 mod search;
 
 pub enum ModeOperation {

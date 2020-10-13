@@ -1,7 +1,7 @@
 use crate::{
     buffer_position::BufferPosition,
     cursor::Cursor,
-    editor::{ReadLinePoll, KeysIterator},
+    editor::{KeysIterator, ReadLinePoll},
     mode::{Mode, ModeContext, ModeOperation, ModeState},
     navigation_history::{NavigationDirection, NavigationHistory},
     word_database::WordKind,

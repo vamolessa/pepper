@@ -378,19 +378,29 @@ impl ScriptEngine {
         let lua = Lua::new_with(libs)?;
 
         {
-            fn search_module<'lua>(
+            fn load_module<'lua>(
                 lua: &'lua Lua,
-                module_name: LuaString<'lua>,
+                (module_name, file_path): (LuaString<'lua>, LuaString<'lua>),
             ) -> LuaResult<LuaValue<'lua>> {
+                eprintln!("epa {}", file_path.to_str()?);
                 Ok(LuaValue::Nil)
             }
 
-            let loader = lua.create_function(search_module)?;
-            let loaders = lua.create_table()?;
-            loaders.set(1, loader)?;
+            fn search_module<'lua>(
+                lua: &'lua Lua,
+                module_name: LuaString<'lua>,
+            ) -> LuaResult<(LuaValue<'lua>, Option<LuaString<'lua>>)> {
+                let loader = lua.create_function(load_module)?;
+                let path = lua.create_string(b"path")?;
+                Ok((LuaValue::Function(loader), Some(path)))
+            }
+
+            let searcher = lua.create_function(search_module)?;
+            let searchers = lua.create_table()?;
+            searchers.set(1, searcher)?;
             let globals = lua.globals();
             let package: LuaTable = globals.get("package")?;
-            package.set("loaders", loaders)?;
+            package.set("searchers", searchers)?;
         }
 
         let this = Self { lua };

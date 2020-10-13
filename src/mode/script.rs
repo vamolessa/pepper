@@ -1,6 +1,6 @@
 use crate::{
-    editor::{ReadLinePoll, EditorLoop, KeysIterator, StatusMessageKind},
-    mode::{ Mode, ModeContext, ModeOperation, ModeState},
+    editor::{EditorLoop, KeysIterator, ReadLinePoll, StatusMessageKind},
+    mode::{Mode, ModeContext, ModeOperation, ModeState},
     script::ScriptValue,
 };
 
@@ -26,24 +26,22 @@ impl ModeState for State {
                     Ok(value) => {
                         match value {
                             ScriptValue::Nil => (),
-                            ScriptValue::Function(f) => {
-                                match f.call(&mut context, ()) {
-                                    Ok(ScriptValue::Nil) => (),
-                                    Ok(value) => context
-                                        .status_message
-                                        .write_str(StatusMessageKind::Info, &value.to_string()),
-                                    Err(error) => match context.editor_loop {
-                                        EditorLoop::Quit => return ModeOperation::Quit,
-                                        EditorLoop::QuitAll => return ModeOperation::QuitAll,
-                                        EditorLoop::Continue => {
-                                            context.status_message.write_str(
-                                                StatusMessageKind::Error,
-                                                &error.to_string(),
-                                            );
-                                        }
-                                    },
-                                }
-                            }
+                            ScriptValue::Function(f) => match f.call(&mut context, ()) {
+                                Ok(ScriptValue::Nil) => (),
+                                Ok(value) => context
+                                    .status_message
+                                    .write_str(StatusMessageKind::Info, &value.to_string()),
+                                Err(error) => match context.editor_loop {
+                                    EditorLoop::Quit => return ModeOperation::Quit,
+                                    EditorLoop::QuitAll => return ModeOperation::QuitAll,
+                                    EditorLoop::Continue => {
+                                        context.status_message.write_str(
+                                            StatusMessageKind::Error,
+                                            &error.to_string(),
+                                        );
+                                    }
+                                },
+                            },
                             _ => context
                                 .status_message
                                 .write_str(StatusMessageKind::Info, &value.to_string()),
