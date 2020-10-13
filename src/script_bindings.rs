@@ -18,8 +18,8 @@ use crate::{
     pattern::Pattern,
     picker::CustomPickerEntry,
     script::{
-        ScriptContext, ScriptEngineRef, ScriptError, ScriptFunction, ScriptObject, ScriptResult,
-        ScriptString, ScriptValue,
+        ScriptArray, ScriptContext, ScriptEngineRef, ScriptError, ScriptFunction, ScriptObject,
+        ScriptResult, ScriptString, ScriptValue,
     },
     theme::Color,
 };
@@ -703,14 +703,19 @@ mod process {
     pub fn pipe(
         _: ScriptEngineRef,
         _: &mut ScriptContext,
-        (name, args, input): (
-            ScriptString,
-            Option<Vec<ScriptString>>,
-            Option<ScriptString>,
-        ),
+        (name, args, input): (ScriptString, Option<ScriptArray>, Option<ScriptString>),
     ) -> ScriptResult<String> {
-        let args = args.unwrap_or(Vec::new());
-        let child = run_process(name, args, input, Stdio::piped())?;
+        let child = match args {
+            Some(args) => {
+                let args = args.iter().filter_map(|i| match i {
+                    Ok(i) => Some(i),
+                    Err(_) => None,
+                });
+                run_process(name, args, input, Stdio::piped())?
+            }
+            None => run_process(name, std::iter::empty(), input, Stdio::piped())?,
+        };
+
         let child_output = child.wait_with_output().map_err(ScriptError::from)?;
         if child_output.status.success() {
             let child_output = String::from_utf8_lossy(&child_output.stdout);
@@ -724,23 +729,32 @@ mod process {
     pub fn spawn(
         _: ScriptEngineRef,
         _: &mut ScriptContext,
-        (name, args, input): (
-            ScriptString,
-            Option<Vec<ScriptString>>,
-            Option<ScriptString>,
-        ),
+        (name, args, input): (ScriptString, Option<ScriptArray>, Option<ScriptString>),
     ) -> ScriptResult<()> {
-        let args = args.unwrap_or(Vec::new());
-        run_process(name, args, input, Stdio::null())?;
+        match args {
+            Some(args) => {
+                let args = args.iter().filter_map(|i| match i {
+                    Ok(i) => Some(i),
+                    Err(_) => None,
+                });
+                run_process(name, args, input, Stdio::null())?;
+            }
+            None => {
+                run_process(name, std::iter::empty(), input, Stdio::null())?;
+            }
+        }
         Ok(())
     }
 
-    fn run_process(
+    fn run_process<'a, I>(
         name: ScriptString,
-        args: Vec<ScriptString>,
+        args: I,
         input: Option<ScriptString>,
         output: Stdio,
-    ) -> ScriptResult<Child> {
+    ) -> ScriptResult<Child>
+    where
+        I: Iterator<Item = ScriptString<'a>>,
+    {
         let mut command = Command::new(name.to_str()?);
         command.stdin(if input.is_some() {
             Stdio::piped()

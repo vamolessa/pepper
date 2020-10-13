@@ -4,7 +4,7 @@ use std::{convert::TryInto, error::Error, fmt, fs::File, io::Read, path::Path, s
 
 use mlua::prelude::{
     FromLua, FromLuaMulti, Lua, LuaError, LuaFunction, LuaInteger, LuaLightUserData, LuaNumber,
-    LuaResult, LuaString, LuaTable, LuaValue, ToLua, ToLuaMulti,
+    LuaResult, LuaString, LuaTable, LuaTableSequence, LuaValue, ToLua, ToLuaMulti,
 };
 
 use crate::{
@@ -178,6 +178,13 @@ impl<'lua> ScriptArray<'lua> {
 
     pub fn remove(&self, index: usize) -> ScriptResult<()> {
         self.0.raw_remove(index + 1)
+    }
+
+    pub fn iter<T>(self) -> LuaTableSequence<'lua, T>
+    where
+        T: FromLua<'lua>,
+    {
+        self.0.sequence_values()
     }
 }
 impl<'lua> FromLua<'lua> for ScriptArray<'lua> {
