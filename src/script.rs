@@ -406,10 +406,10 @@ impl ScriptEngine {
         {
             fn load_module<'lua>(
                 lua: &'lua Lua,
-                (module_name, file_path): (LuaString<'lua>, LuaString<'lua>),
+                (_module_name, file_path): (LuaString<'lua>, LuaString<'lua>),
             ) -> LuaResult<LuaValue<'lua>> {
-                eprintln!("esse ai existe! {}", file_path.to_str()?);
-                Ok(LuaValue::Nil)
+                let path = Path::new(file_path.to_str()?);
+                eval_file(lua, path)
             }
 
             fn search_module<'lua>(
@@ -507,25 +507,30 @@ impl ScriptEngine {
     }
 
     pub fn eval_entry_file(&mut self, ctx: &mut ScriptContext, path: &Path) -> ScriptResult<()> {
-        let mut file = File::open(path).map_err(|e| LuaError::ExternalError(Arc::new(e)))?;
-        let metadata = file
-            .metadata()
-            .map_err(|e| LuaError::ExternalError(Arc::new(e)))?;
-        let mut source = String::with_capacity(metadata.len() as _);
-        file.read_to_string(&mut source)
-            .map_err(|e| LuaError::ExternalError(Arc::new(e)))?;
-
         self.add_module_search_path(path)?;
-
         let _scope = ScriptContextScope::new(&self.lua, ctx)?;
-        let chunk = self.lua.load(&source);
-        if let Some(name) = path.to_str() {
-            chunk.set_name(name)?.exec()?;
-        } else {
-            chunk.exec()?;
-        }
-
+        let _: LuaValue = eval_file(&self.lua, path)?;
         Ok(())
+    }
+}
+
+fn eval_file<'lua, T>(lua: &'lua Lua, path: &Path) -> LuaResult<T>
+where
+    T: FromLua<'lua>,
+{
+    let mut file = File::open(path).map_err(|e| LuaError::ExternalError(Arc::new(e)))?;
+    let metadata = file
+        .metadata()
+        .map_err(|e| LuaError::ExternalError(Arc::new(e)))?;
+    let mut source = String::with_capacity(metadata.len() as _);
+    file.read_to_string(&mut source)
+        .map_err(|e| LuaError::ExternalError(Arc::new(e)))?;
+
+    let chunk = lua.load(&source);
+    if let Some(name) = path.to_str() {
+        chunk.set_name(name)?.eval()
+    } else {
+        chunk.eval()
     }
 }
 
