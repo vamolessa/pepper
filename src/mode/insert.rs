@@ -28,7 +28,8 @@ impl ModeState for State {
 
         match keys.next() {
             Key::Esc => {
-                unwrap_or_none!(ctx.buffer_views.get_mut(handle)).commit_edits(ctx.buffers);
+                let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
+                unwrap_or_none!(ctx.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
                 return ModeOperation::EnterMode(Mode::default());
             }
             Key::Left => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(

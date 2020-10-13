@@ -473,7 +473,8 @@ impl ModeState for State {
                     &ctx.config.syntaxes,
                     handle,
                 );
-                unwrap_or_none!(ctx.buffer_views.get_mut(handle)).commit_edits(ctx.buffers);
+                let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
+                unwrap_or_none!(ctx.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
                 self.movement_kind = CursorMovementKind::PositionAndAnchor;
             }
             Key::Char('i') => {
@@ -483,7 +484,8 @@ impl ModeState for State {
                     &ctx.config.syntaxes,
                     handle,
                 );
-                unwrap_or_none!(ctx.buffer_views.get_mut(handle)).commit_edits(ctx.buffers);
+                let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
+                unwrap_or_none!(ctx.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
                 return ModeOperation::EnterMode(Mode::Insert(Default::default()));
             }
             Key::Char('<') => {
@@ -530,7 +532,8 @@ impl ModeState for State {
                         );
                     }
                 }
-                unwrap_or_none!(ctx.buffer_views.get_mut(handle)).commit_edits(ctx.buffers);
+                let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
+                unwrap_or_none!(ctx.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
             }
             Key::Char('>') => {
                 let cursor_count = unwrap_or_none!(ctx.buffer_views.get(handle)).cursors[..].len();
@@ -561,7 +564,8 @@ impl ModeState for State {
                         );
                     }
                 }
-                unwrap_or_none!(ctx.buffer_views.get_mut(handle)).commit_edits(ctx.buffers);
+                let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
+                unwrap_or_none!(ctx.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
             }
             Key::Char('x') => match keys.next() {
                 Key::None => return ModeOperation::Pending,
@@ -732,7 +736,8 @@ impl ModeState for State {
                         &text,
                     );
                 }
-                unwrap_or_none!(ctx.buffer_views.get_mut(handle)).commit_edits(ctx.buffers);
+                let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
+                unwrap_or_none!(ctx.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
                 self.movement_kind = CursorMovementKind::PositionAndAnchor;
             }
             Key::Char('u') => {

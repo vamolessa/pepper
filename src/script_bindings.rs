@@ -7,6 +7,9 @@ use std::{
 };
 
 use crate::{
+    buffer::BufferHandle,
+    buffer_position::{BufferPosition, BufferRange},
+    buffer_view::BufferViewHandle,
     client::TargetClient,
     editor::{EditorLoop, StatusMessageKind},
     keymap::ParseKeyMapError,
@@ -60,11 +63,14 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
         };
     }
 
-    register!(client => index,);
+    register!(client => index, current_buffer_view_handle,);
     register!(editor => quit, quit_all, force_quit_all, print,
-        selection, delete_selection, insert_text,
+         delete_selection, insert_text,
     );
-    register!(buffer => open, close, close_all, force_close, force_close_all, save, save_all,);
+    register!(buffer => all_handles, line_count, line_at, path, open, close, force_close, close_all,
+        force_close_all, save, save_all, commit_edits,);
+    register!(buffer_view => buffer_handle, all_handles, handle_from_path, selection_text, insert_text,
+        insert_text_at, delete_selection, delete_in, undo, redo,);
     register!(read_line => prompt, read,);
     register!(picker => prompt, reset, entry, pick,);
     register!(process => pipe, spawn,);
@@ -99,6 +105,21 @@ mod client {
 
     pub fn index(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<usize> {
         Ok(ctx.target_client.into_index())
+    }
+
+    pub fn current_buffer_view_handle(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        target: Option<usize>,
+    ) -> ScriptResult<Option<BufferViewHandle>> {
+        let target = target
+            .map(|i| TargetClient::from_index(i))
+            .unwrap_or(ctx.target_client);
+
+        Ok(ctx
+            .clients
+            .get(target)
+            .and_then(|c| c.current_buffer_view_handle))
     }
 }
 
@@ -150,14 +171,6 @@ mod editor {
         Ok(())
     }
 
-    pub fn selection(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<String> {
-        let mut selection = String::new();
-        ctx.current_buffer_view_handle()
-            .and_then(|h| ctx.buffer_views.get(h))
-            .map(|v| v.get_selection_text(ctx.buffers, &mut selection));
-        Ok(selection)
-    }
-
     pub fn delete_selection(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
@@ -196,6 +209,63 @@ mod editor {
 mod buffer {
     use super::*;
 
+    pub fn all_handles(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        _: (),
+    ) -> ScriptResult<Vec<BufferHandle>> {
+        Ok(ctx.buffers.iter_with_handles().map(|(h, _)| h).collect())
+    }
+
+    pub fn line_count(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        handle: Option<BufferHandle>,
+    ) -> ScriptResult<Option<usize>> {
+        Ok(handle
+            .or_else(|| ctx.current_buffer_handle())
+            .and_then(|h| ctx.buffers.get(h))
+            .map(|b| b.content().line_count()))
+    }
+
+    pub fn line_at<'a>(
+        engine: ScriptEngineRef<'a>,
+        ctx: &mut ScriptContext,
+        (index, handle): (usize, Option<BufferHandle>),
+    ) -> ScriptResult<ScriptValue<'a>> {
+        match handle
+            .or_else(|| ctx.current_buffer_handle())
+            .and_then(|h| ctx.buffers.get(h))
+        {
+            Some(buffer) => {
+                if index < buffer.content().line_count() {
+                    let line_bytes = buffer.content().line_at(index).as_str().as_bytes();
+                    Ok(ScriptValue::String(engine.create_string(line_bytes)?))
+                } else {
+                    Ok(ScriptValue::Nil)
+                }
+            }
+            None => Ok(ScriptValue::Nil),
+        }
+    }
+
+    pub fn path<'a>(
+        engine: ScriptEngineRef<'a>,
+        ctx: &mut ScriptContext,
+        handle: Option<BufferHandle>,
+    ) -> ScriptResult<ScriptValue<'a>> {
+        match handle
+            .or_else(|| ctx.current_buffer_handle())
+            .and_then(|h| ctx.buffers.get(h))
+            .and_then(|b| b.path())
+            .and_then(|p| p.to_str())
+            .map(|p| p.as_bytes())
+        {
+            Some(bytes) => Ok(ScriptValue::String(engine.create_string(bytes)?)),
+            None => Ok(ScriptValue::Nil),
+        }
+    }
+
     pub fn open(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
@@ -218,12 +288,12 @@ mod buffer {
         Ok(())
     }
 
-    pub fn close(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
-        if let Some(handle) = ctx
-            .current_buffer_view_handle()
-            .and_then(|h| ctx.buffer_views.get(h))
-            .map(|v| v.buffer_handle)
-        {
+    pub fn close(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        handle: Option<BufferHandle>,
+    ) -> ScriptResult<()> {
+        if let Some(handle) = handle.or_else(|| ctx.current_buffer_handle()) {
             let unsaved = ctx
                 .buffers
                 .get(handle)
@@ -247,12 +317,12 @@ mod buffer {
         Ok(())
     }
 
-    pub fn force_close(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
-        if let Some(handle) = ctx
-            .current_buffer_view_handle()
-            .and_then(|h| ctx.buffer_views.get(h))
-            .map(|v| v.buffer_handle)
-        {
+    pub fn force_close(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        handle: Option<BufferHandle>,
+    ) -> ScriptResult<()> {
+        if let Some(handle) = handle.or_else(|| ctx.current_buffer_handle()) {
             ctx.buffer_views
                 .remove_where(ctx.buffers, ctx.clients, ctx.word_database, |view| {
                     view.buffer_handle == handle
@@ -293,18 +363,14 @@ mod buffer {
     pub fn save(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
-        path: Option<ScriptString>,
+        (path, handle): (Option<ScriptString>, Option<BufferHandle>),
     ) -> ScriptResult<()> {
-        let buffer_handle = match ctx
-            .current_buffer_view_handle()
-            .and_then(|h| ctx.buffer_views.get(h))
-            .map(|v| v.buffer_handle)
-        {
+        let handle = match handle.or_else(|| ctx.current_buffer_handle()) {
             Some(handle) => handle,
             None => return Err(ScriptError::from("no buffer opened")),
         };
 
-        let buffer = match ctx.buffers.get_mut(buffer_handle) {
+        let buffer = match ctx.buffers.get_mut(handle) {
             Some(buffer) => buffer,
             None => return Err(ScriptError::from("no buffer opened")),
         };
@@ -334,6 +400,189 @@ mod buffer {
             format_args!("{} buffers saved", buffer_count),
         );
 
+        Ok(())
+    }
+
+    pub fn commit_edits(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        handle: Option<BufferHandle>,
+    ) -> ScriptResult<()> {
+        let buffer_handle = handle.or_else(|| {
+            ctx.current_buffer_view_handle()
+                .and_then(|h| ctx.buffer_views.get(h))
+                .map(|v| v.buffer_handle)
+        });
+        if let Some(buffer) = buffer_handle.and_then(|h| ctx.buffers.get_mut(h)) {
+            buffer.commit_edits();
+        }
+        Ok(())
+    }
+}
+
+mod buffer_view {
+    use super::*;
+
+    pub fn buffer_handle(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        handle: BufferViewHandle,
+    ) -> ScriptResult<Option<BufferHandle>> {
+        Ok(ctx.buffer_views.get(handle).map(|v| v.buffer_handle))
+    }
+
+    pub fn all_handles(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        _: (),
+    ) -> ScriptResult<Vec<BufferViewHandle>> {
+        Ok(ctx
+            .buffer_views
+            .iter_with_handles()
+            .map(|(h, _)| h)
+            .collect())
+    }
+
+    pub fn handle_from_path(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        path: ScriptString,
+    ) -> ScriptResult<Option<BufferViewHandle>> {
+        let path = path.to_str()?;
+        match ctx.buffer_views.buffer_view_handle_from_path(
+            ctx.buffers,
+            ctx.word_database,
+            &ctx.config.syntaxes,
+            ctx.target_client,
+            Path::new(path),
+        ) {
+            Ok(handle) => Ok(Some(handle)),
+            Err(error) => {
+                ctx.status_message
+                    .write_str(StatusMessageKind::Error, &error);
+                Ok(None)
+            }
+        }
+    }
+
+    pub fn selection_text(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        handle: Option<BufferViewHandle>,
+    ) -> ScriptResult<String> {
+        let mut text = String::new();
+        if let Some(view) = handle
+            .or_else(|| ctx.current_buffer_view_handle())
+            .and_then(|h| ctx.buffer_views.get(h))
+        {
+            view.get_selection_text(ctx.buffers, &mut text);
+        }
+
+        Ok(text)
+    }
+
+    pub fn insert_text(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        (text, handle): (ScriptString, Option<BufferViewHandle>),
+    ) -> ScriptResult<()> {
+        if let Some(handle) = handle.or_else(|| ctx.current_buffer_view_handle()) {
+            let text = text.to_str()?;
+            ctx.buffer_views.insert_text_at_cursor_positions(
+                ctx.buffers,
+                ctx.word_database,
+                &ctx.config.syntaxes,
+                handle,
+                text,
+            );
+        }
+        Ok(())
+    }
+
+    pub fn insert_text_at(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        (text, line, column, handle): (ScriptString, usize, usize, Option<BufferViewHandle>),
+    ) -> ScriptResult<()> {
+        if let Some(handle) = handle.or_else(|| ctx.current_buffer_view_handle()) {
+            let text = text.to_str()?;
+            ctx.buffer_views.insert_text_at_position(
+                ctx.buffers,
+                ctx.word_database,
+                &ctx.config.syntaxes,
+                handle,
+                BufferPosition::line_col(line, column),
+                text,
+                0,
+            );
+        }
+        Ok(())
+    }
+
+    pub fn delete_selection(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        handle: Option<BufferViewHandle>,
+    ) -> ScriptResult<()> {
+        if let Some(handle) = handle.or_else(|| ctx.current_buffer_view_handle()) {
+            ctx.buffer_views.delete_in_cursor_ranges(
+                ctx.buffers,
+                ctx.word_database,
+                &ctx.config.syntaxes,
+                handle,
+            );
+        }
+        Ok(())
+    }
+
+    pub fn delete_in(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        (from_line, from_column, to_line, to_column, handle): (
+            usize,
+            usize,
+            usize,
+            usize,
+            Option<BufferViewHandle>,
+        ),
+    ) -> ScriptResult<()> {
+        if let Some(handle) = handle.or_else(|| ctx.current_buffer_view_handle()) {
+            ctx.buffer_views.delete_in_range(
+                ctx.buffers,
+                ctx.word_database,
+                &ctx.config.syntaxes,
+                handle,
+                BufferRange::between(
+                    BufferPosition::line_col(from_line, from_column),
+                    BufferPosition::line_col(to_line, to_column),
+                ),
+                0,
+            );
+        }
+        Ok(())
+    }
+
+    pub fn undo(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        handle: Option<BufferViewHandle>,
+    ) -> ScriptResult<()> {
+        if let Some(handle) = handle.or_else(|| ctx.current_buffer_view_handle()) {
+            ctx.buffer_views
+                .undo(ctx.buffers, &ctx.config.syntaxes, handle);
+        }
+        Ok(())
+    }
+
+    pub fn redo(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        handle: Option<BufferViewHandle>,
+    ) -> ScriptResult<()> {
+        if let Some(handle) = handle.or_else(|| ctx.current_buffer_view_handle()) {
+            ctx.buffer_views
+                .redo(ctx.buffers, &ctx.config.syntaxes, handle);
+        }
         Ok(())
     }
 }

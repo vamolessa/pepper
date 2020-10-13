@@ -16,6 +16,13 @@ pub enum TargetClient {
 }
 
 impl TargetClient {
+    pub fn from_index(index: usize) -> Self {
+        match index {
+            0 => TargetClient::Local,
+            _ => TargetClient::Remote(ConnectionWithClientHandle::from_index(index + 1)),
+        }
+    }
+
     pub fn into_index(self) -> usize {
         match self {
             TargetClient::Local => 0,

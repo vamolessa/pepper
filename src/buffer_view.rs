@@ -302,12 +302,6 @@ impl BufferView {
         }
     }
 
-    pub fn commit_edits(&self, buffers: &mut BufferCollection) {
-        if let Some(buffer) = buffers.get_mut(self.buffer_handle) {
-            buffer.commit_edits();
-        }
-    }
-
     pub fn get_selection_text(&self, buffers: &BufferCollection, text: &mut String) {
         text.clear();
 
@@ -395,7 +389,7 @@ impl BufferViewCollection {
         self.buffer_views.iter().flatten()
     }
 
-    fn iter_with_handles(&self) -> impl Iterator<Item = (BufferViewHandle, &BufferView)> {
+    pub fn iter_with_handles(&self) -> impl Iterator<Item = (BufferViewHandle, &BufferView)> {
         self.buffer_views
             .iter()
             .enumerate()
