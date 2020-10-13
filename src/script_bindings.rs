@@ -67,8 +67,8 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
     register!(editor => quit, quit_all, force_quit_all, print,
          delete_selection, insert_text,
     );
-    register!(buffer => all_handles, line_count, line_at, path, open, close, force_close, close_all,
-        force_close_all, save, save_all, commit_edits,);
+    register!(buffer => all_handles, line_count, line_at, path, needs_save, set_search, open, close,
+        force_close, close_all, force_close_all, save, save_all, commit_edits,);
     register!(buffer_view => buffer_handle, all_handles, handle_from_path, selection_text, insert_text,
         insert_text_at, delete_selection, delete_in, undo, redo,);
     register!(read_line => prompt, read,);
@@ -264,6 +264,34 @@ mod buffer {
             Some(bytes) => Ok(ScriptValue::String(engine.create_string(bytes)?)),
             None => Ok(ScriptValue::Nil),
         }
+    }
+
+    pub fn needs_save(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        handle: Option<BufferHandle>,
+    ) -> ScriptResult<bool> {
+        Ok(handle
+            .or_else(|| ctx.current_buffer_handle())
+            .and_then(|h| ctx.buffers.get(h))
+            .map(|b| b.needs_save())
+            .unwrap_or(false))
+    }
+
+    pub fn set_search(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        (search, handle): (ScriptString, Option<BufferHandle>),
+    ) -> ScriptResult<()> {
+        let search = search.to_str()?;
+        if let Some(buffer) = handle
+            .or_else(|| ctx.current_buffer_handle())
+            .and_then(|h| ctx.buffers.get_mut(h))
+        {
+            buffer.set_search(search);
+        }
+
+        Ok(())
     }
 
     pub fn open(
