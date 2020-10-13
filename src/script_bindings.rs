@@ -9,7 +9,7 @@ use std::{
 use crate::{
     buffer::BufferHandle,
     buffer_position::{BufferPosition, BufferRange},
-    buffer_view::BufferViewHandle,
+    buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     client::TargetClient,
     editor::{EditorLoop, StatusMessageKind},
     keymap::ParseKeyMapError,
@@ -70,7 +70,8 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
     register!(buffer => all_handles, line_count, line_at, path, needs_save, set_search, open, close,
         force_close, close_all, force_close_all, save, save_all, commit_edits,);
     register!(buffer_view => buffer_handle, all_handles, handle_from_path, selection_text, insert_text,
-        insert_text_at, delete_selection, delete_in, undo, redo,);
+        insert_text_at, delete_selection, delete_in, undo, redo, move_cursors_columns, move_cursors_lines,
+        move_cursors_words, move_cursors_home, move_cursors_end, move_cursors_first_line, move_cursors_last_line,);
     register!(read_line => prompt, read,);
     register!(picker => prompt, reset, entry, pick,);
     register!(process => pipe, spawn,);
@@ -616,6 +617,106 @@ mod buffer_view {
                 .redo(ctx.buffers, &ctx.config.syntaxes, handle);
         }
         Ok(())
+    }
+
+    pub fn move_cursors_columns(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        (count, selecting, handle): (isize, bool, Option<BufferViewHandle>),
+    ) -> ScriptResult<()> {
+        let movement = if count > 0 {
+            CursorMovement::ColumnsForward(count as _)
+        } else {
+            CursorMovement::ColumnsBackward(-count as _)
+        };
+        move_cursors(ctx, movement, selecting, handle);
+        Ok(())
+    }
+
+    pub fn move_cursors_lines(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        (count, selecting, handle): (isize, bool, Option<BufferViewHandle>),
+    ) -> ScriptResult<()> {
+        let movement = if count > 0 {
+            CursorMovement::LinesForward(count as _)
+        } else {
+            CursorMovement::LinesBackward(-count as _)
+        };
+        move_cursors(ctx, movement, selecting, handle);
+        Ok(())
+    }
+
+    pub fn move_cursors_words(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        (count, selecting, handle): (isize, bool, Option<BufferViewHandle>),
+    ) -> ScriptResult<()> {
+        let movement = if count > 0 {
+            CursorMovement::WordsForward(count as _)
+        } else {
+            CursorMovement::WordsBackward(-count as _)
+        };
+        move_cursors(ctx, movement, selecting, handle);
+        Ok(())
+    }
+
+    pub fn move_cursors_home(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        (selecting, handle): (bool, Option<BufferViewHandle>),
+    ) -> ScriptResult<()> {
+        move_cursors(ctx, CursorMovement::Home, selecting, handle);
+        Ok(())
+    }
+
+    pub fn move_cursors_end(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        (selecting, handle): (bool, Option<BufferViewHandle>),
+    ) -> ScriptResult<()> {
+        move_cursors(ctx, CursorMovement::End, selecting, handle);
+        Ok(())
+    }
+
+    pub fn move_cursors_first_line(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        (selecting, handle): (bool, Option<BufferViewHandle>),
+    ) -> ScriptResult<()> {
+        move_cursors(ctx, CursorMovement::FirstLine, selecting, handle);
+        Ok(())
+    }
+
+    pub fn move_cursors_last_line(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        (selecting, handle): (bool, Option<BufferViewHandle>),
+    ) -> ScriptResult<()> {
+        move_cursors(ctx, CursorMovement::LastLine, selecting, handle);
+        Ok(())
+    }
+
+    fn move_cursors(
+        ctx: &mut ScriptContext,
+        movement: CursorMovement,
+        selecting: bool,
+        handle: Option<BufferViewHandle>,
+    ) {
+        let handle = match handle.or_else(|| ctx.current_buffer_view_handle()) {
+            Some(handle) => handle,
+            None => return,
+        };
+        let view = match ctx.buffer_views.get_mut(handle) {
+            Some(view) => view,
+            None => return,
+        };
+
+        let kind = match selecting {
+            false => CursorMovementKind::PositionAndAnchor,
+            true => CursorMovementKind::PositionOnly,
+        };
+        view.move_cursors(ctx.buffers, movement, kind);
     }
 }
 
