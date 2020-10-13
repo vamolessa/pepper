@@ -857,11 +857,11 @@ impl Buffer {
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct BufferHandle(usize);
 
-impl_from_script!(BufferHandle, from => match from {
+impl_from_script!(BufferHandle, value => match value {
     ScriptValue::Integer(n) if n >= 0 => Some(Self(n as _)),
     _ => None,
 });
-impl_to_script!(BufferHandle, self => ScriptValue::Integer(self.0 as _));
+impl_to_script!(BufferHandle, (self, _engine) => ScriptValue::Integer(self.0 as _));
 
 #[derive(Default)]
 pub struct BufferCollection {

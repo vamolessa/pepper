@@ -39,9 +39,10 @@ macro_rules! impl_from_script {
 }
 
 macro_rules! impl_to_script {
-    ($type:ty, $to_value:ident => $to:expr) => {
+    ($type:ty, ($to_value:ident, $engine:ident) => $to:expr) => {
         impl<'lua> mlua::ToLua<'lua> for $type {
             fn to_lua($to_value: Self, lua: &'lua mlua::Lua) -> mlua::Result<mlua::Value> {
+                let $engine = $crate::script::ScriptEngineRef::from_lua(lua);
                 $to.to_lua(lua)
             }
         }
@@ -144,40 +145,11 @@ impl<'lua> FromLua<'lua> for ScriptObject<'lua> {
 
 pub struct ScriptArray<'lua>(LuaTable<'lua>);
 impl<'lua> ScriptArray<'lua> {
-    pub fn len(&self) -> ScriptResult<usize> {
-        self.0.len().map(|i| i as usize)
-    }
-
-    pub fn get<T>(&self, index: usize) -> ScriptResult<T>
-    where
-        T: FromLua<'lua>,
-    {
-        self.0.get(index + 1)
-    }
-
-    pub fn set<T>(&self, index: usize, value: T) -> ScriptResult<()>
-    where
-        T: ToLua<'lua>,
-    {
-        self.0.set(index + 1, value)
-    }
-
     pub fn push<T>(&self, value: T) -> ScriptResult<()>
     where
         T: ToLua<'lua>,
     {
         self.0.set(self.0.len()?, value)
-    }
-
-    pub fn insert<T>(&self, index: usize, value: T) -> ScriptResult<()>
-    where
-        T: ToLua<'lua>,
-    {
-        self.0.raw_insert((index + 1) as _, value)
-    }
-
-    pub fn remove(&self, index: usize) -> ScriptResult<()> {
-        self.0.raw_remove(index + 1)
     }
 
     pub fn iter<T>(self) -> LuaTableSequence<'lua, T>
@@ -392,7 +364,7 @@ impl ScriptEngine {
     }
 
     pub fn as_ref(&self) -> ScriptEngineRef {
-        ScriptEngineRef { lua: &self.lua }
+        ScriptEngineRef::from_lua(&self.lua)
     }
 
     pub fn eval(&mut self, ctx: &mut ScriptContext, source: &str) -> ScriptResult<ScriptValue> {
@@ -427,6 +399,10 @@ pub struct ScriptEngineRef<'lua> {
 }
 
 impl<'lua> ScriptEngineRef<'lua> {
+    pub fn from_lua(lua: &'lua Lua) -> Self {
+        Self { lua }
+    }
+
     pub fn globals_object(&self) -> ScriptObject<'lua> {
         ScriptObject(self.lua.globals())
     }

@@ -11,6 +11,7 @@ use crate::{
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     client::TargetClient,
+    cursor::Cursor,
     editor::{EditorLoop, StatusMessageKind},
     keymap::ParseKeyMapError,
     mode::{self, Mode},
@@ -64,14 +65,13 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
     }
 
     register!(client => index, current_buffer_view_handle,);
-    register!(editor => quit, quit_all, force_quit_all, print,
-         delete_selection, insert_text,
-    );
+    register!(editor => quit, quit_all, force_quit_all, print, delete_selection, insert_text,);
     register!(buffer => all_handles, line_count, line_at, path, needs_save, set_search, open, close,
         force_close, close_all, force_close_all, save, save_all, commit_edits,);
     register!(buffer_view => buffer_handle, all_handles, handle_from_path, selection_text, insert_text,
         insert_text_at, delete_selection, delete_in, undo, redo,);
-    register!(cursors => move_columns, move_lines, move_words, move_home, move_end, move_first_line, move_last_line,);
+    register!(cursors => len, all, set_all, main_index, main, set, move_columns, move_lines, move_words,
+        move_home, move_end, move_first_line, move_last_line,);
     register!(read_line => prompt, read,);
     register!(picker => prompt, reset, entry, pick,);
     register!(process => pipe, spawn,);
@@ -622,6 +622,94 @@ mod buffer_view {
 
 mod cursors {
     use super::*;
+
+    pub fn len<'a>(
+        _: ScriptEngineRef<'a>,
+        ctx: &mut ScriptContext,
+        handle: Option<BufferViewHandle>,
+    ) -> ScriptResult<Option<usize>> {
+        Ok(handle
+            .or_else(|| ctx.current_buffer_view_handle())
+            .and_then(|h| ctx.buffer_views.get(h))
+            .map(|v| v.cursors[..].len()))
+    }
+
+    pub fn all<'a>(
+        engine: ScriptEngineRef<'a>,
+        ctx: &mut ScriptContext,
+        handle: Option<BufferViewHandle>,
+    ) -> ScriptResult<ScriptValue<'a>> {
+        let script_cursors = engine.create_array()?;
+        if let Some(cursors) = handle
+            .or_else(|| ctx.current_buffer_view_handle())
+            .and_then(|h| ctx.buffer_views.get(h))
+            .map(|v| &v.cursors)
+        {
+            for cursor in &cursors[..] {
+                script_cursors.push(*cursor)?;
+            }
+        }
+        Ok(ScriptValue::Array(script_cursors))
+    }
+
+    pub fn set_all(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        (script_cursors, handle): (ScriptArray, Option<BufferViewHandle>),
+    ) -> ScriptResult<()> {
+        if let Some(cursors) = handle
+            .or_else(|| ctx.current_buffer_view_handle())
+            .and_then(|h| ctx.buffer_views.get_mut(h))
+            .map(|v| &mut v.cursors)
+        {
+            let mut cursors = cursors.mut_guard();
+            cursors.clear();
+            for cursor in script_cursors.iter() {
+                cursors.add(cursor?);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn main_index(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        handle: Option<BufferViewHandle>,
+    ) -> ScriptResult<Option<usize>> {
+        Ok(handle
+            .or_else(|| ctx.current_buffer_view_handle())
+            .and_then(|h| ctx.buffer_views.get_mut(h))
+            .map(|v| v.cursors.main_cursor_index()))
+    }
+
+    pub fn main(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        handle: Option<BufferViewHandle>,
+    ) -> ScriptResult<Option<Cursor>> {
+        Ok(handle
+            .or_else(|| ctx.current_buffer_view_handle())
+            .and_then(|h| ctx.buffer_views.get_mut(h))
+            .map(|v| *v.cursors.main_cursor()))
+    }
+
+    pub fn set(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        (index, cursor, handle): (usize, Cursor, Option<BufferViewHandle>),
+    ) -> ScriptResult<()> {
+        if let Some(cursors) = handle
+            .or_else(|| ctx.current_buffer_view_handle())
+            .and_then(|h| ctx.buffer_views.get_mut(h))
+            .map(|v| &mut v.cursors)
+        {
+            let mut cursors = cursors.mut_guard();
+            if index < cursors[..].len() {
+                cursors[index] = cursor;
+            }
+        }
+        Ok(())
+    }
 
     pub fn move_columns(
         _: ScriptEngineRef,

@@ -329,11 +329,11 @@ impl BufferView {
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub struct BufferViewHandle(usize);
 
-impl_from_script!(BufferViewHandle, from => match from {
+impl_from_script!(BufferViewHandle, value => match value {
     ScriptValue::Integer(n) if n >= 0 => Some(Self(n as _)),
     _ => None,
 });
-impl_to_script!(BufferViewHandle, self => ScriptValue::Integer(self.0 as _));
+impl_to_script!(BufferViewHandle, (self, _engine) => ScriptValue::Integer(self.0 as _));
 
 #[derive(Default)]
 pub struct BufferViewCollection {
