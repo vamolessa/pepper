@@ -166,9 +166,8 @@ mod editor {
         ctx: &mut ScriptContext,
         value: ScriptValue,
     ) -> ScriptResult<()> {
-        let message = value.to_string();
         ctx.status_message
-            .write_str(StatusMessageKind::Info, &message);
+            .write_fmt(StatusMessageKind::Info, format_args!("{}", value));
         Ok(())
     }
 

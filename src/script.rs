@@ -232,8 +232,28 @@ impl<'lua> fmt::Display for ScriptValue<'lua> {
                 Ok(s) => s.fmt(f),
                 Err(_) => Err(fmt::Error),
             },
-            ScriptValue::Object(_) => f.write_str("object"),
-            ScriptValue::Array(_) => f.write_str("array"),
+            ScriptValue::Object(o) => {
+                f.write_str("{")?;
+                let o = o.0.clone();
+                for pair in o.pairs::<ScriptValue, ScriptValue>() {
+                    if let Ok((key, value)) = pair {
+                        f.write_fmt(format_args!("{}:{},", key, value))?;
+                    }
+                }
+                f.write_str("}")?;
+                Ok(())
+            }
+            ScriptValue::Array(a) => {
+                f.write_str("[")?;
+                let a = a.0.clone();
+                for value in a.sequence_values::<ScriptValue>() {
+                    if let Ok(value) = value {
+                        f.write_fmt(format_args!("{},", value))?;
+                    }
+                }
+                f.write_str("]")?;
+                Ok(())
+            }
             ScriptValue::Function(_) => f.write_str("function"),
         }
     }
@@ -356,6 +376,22 @@ impl ScriptEngine {
             | mlua::StdLib::MATH
             | mlua::StdLib::PACKAGE;
         let lua = Lua::new_with(libs)?;
+
+        {
+            fn search_module<'lua>(
+                lua: &'lua Lua,
+                module_name: LuaString<'lua>,
+            ) -> LuaResult<LuaValue<'lua>> {
+                Ok(LuaValue::Nil)
+            }
+
+            let loader = lua.create_function(search_module)?;
+            let loaders = lua.create_table()?;
+            loaders.set(1, loader)?;
+            let globals = lua.globals();
+            let package: LuaTable = globals.get("package")?;
+            package.set("loaders", loaders)?;
+        }
 
         let this = Self { lua };
         script_bindings::bind_all(this.as_ref())?;
