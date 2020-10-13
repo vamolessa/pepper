@@ -93,6 +93,8 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
         globals.set("ca", buffer.get::<ScriptValue>("close_all")?)?;
         globals.set("fc", buffer.get::<ScriptValue>("force_close")?)?;
         globals.set("fca", buffer.get::<ScriptValue>("force_close_all")?)?;
+        globals.set("s", buffer.get::<ScriptValue>("save")?)?;
+        globals.set("sa", buffer.get::<ScriptValue>("save_all")?)?;
     }
 
     register_object!(config);
