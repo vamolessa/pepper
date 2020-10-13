@@ -70,8 +70,8 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
     register!(buffer => all_handles, line_count, line_at, path, needs_save, set_search, open, close,
         force_close, close_all, force_close_all, save, save_all, commit_edits,);
     register!(buffer_view => buffer_handle, all_handles, handle_from_path, selection_text, insert_text,
-        insert_text_at, delete_selection, delete_in, undo, redo, move_cursors_columns, move_cursors_lines,
-        move_cursors_words, move_cursors_home, move_cursors_end, move_cursors_first_line, move_cursors_last_line,);
+        insert_text_at, delete_selection, delete_in, undo, redo,);
+    register!(cursors => move_columns, move_lines, move_words, move_home, move_end, move_first_line, move_last_line,);
     register!(read_line => prompt, read,);
     register!(picker => prompt, reset, entry, pick,);
     register!(process => pipe, spawn,);
@@ -618,8 +618,12 @@ mod buffer_view {
         }
         Ok(())
     }
+}
 
-    pub fn move_cursors_columns(
+mod cursors {
+    use super::*;
+
+    pub fn move_columns(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
         (count, selecting, handle): (isize, bool, Option<BufferViewHandle>),
@@ -633,7 +637,7 @@ mod buffer_view {
         Ok(())
     }
 
-    pub fn move_cursors_lines(
+    pub fn move_lines(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
         (count, selecting, handle): (isize, bool, Option<BufferViewHandle>),
@@ -647,7 +651,7 @@ mod buffer_view {
         Ok(())
     }
 
-    pub fn move_cursors_words(
+    pub fn move_words(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
         (count, selecting, handle): (isize, bool, Option<BufferViewHandle>),
@@ -661,7 +665,7 @@ mod buffer_view {
         Ok(())
     }
 
-    pub fn move_cursors_home(
+    pub fn move_home(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
         (selecting, handle): (bool, Option<BufferViewHandle>),
@@ -670,7 +674,7 @@ mod buffer_view {
         Ok(())
     }
 
-    pub fn move_cursors_end(
+    pub fn move_end(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
         (selecting, handle): (bool, Option<BufferViewHandle>),
@@ -679,7 +683,7 @@ mod buffer_view {
         Ok(())
     }
 
-    pub fn move_cursors_first_line(
+    pub fn move_first_line(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
         (selecting, handle): (bool, Option<BufferViewHandle>),
@@ -688,7 +692,7 @@ mod buffer_view {
         Ok(())
     }
 
-    pub fn move_cursors_last_line(
+    pub fn move_last_line(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
         (selecting, handle): (bool, Option<BufferViewHandle>),
