@@ -209,12 +209,16 @@ mod editor {
 mod buffer {
     use super::*;
 
-    pub fn all_handles(
-        _: ScriptEngineRef,
+    pub fn all_handles<'a>(
+        engine: ScriptEngineRef<'a>,
         ctx: &mut ScriptContext,
         _: (),
-    ) -> ScriptResult<Vec<BufferHandle>> {
-        Ok(ctx.buffers.iter_with_handles().map(|(h, _)| h).collect())
+    ) -> ScriptResult<ScriptValue<'a>> {
+        let handles = engine.create_array()?;
+        for (h, _) in ctx.buffers.iter_with_handles() {
+            handles.push(h)?;
+        }
+        Ok(ScriptValue::Array(handles))
     }
 
     pub fn line_count(
@@ -459,16 +463,16 @@ mod buffer_view {
         Ok(ctx.buffer_views.get(handle).map(|v| v.buffer_handle))
     }
 
-    pub fn all_handles(
-        _: ScriptEngineRef,
+    pub fn all_handles<'a>(
+        engine: ScriptEngineRef<'a>,
         ctx: &mut ScriptContext,
         _: (),
-    ) -> ScriptResult<Vec<BufferViewHandle>> {
-        Ok(ctx
-            .buffer_views
-            .iter_with_handles()
-            .map(|(h, _)| h)
-            .collect())
+    ) -> ScriptResult<ScriptValue<'a>> {
+        let handles = engine.create_array()?;
+        for (h, _) in ctx.buffer_views.iter_with_handles() {
+            handles.push(h)?;
+        }
+        Ok(ScriptValue::Array(handles))
     }
 
     pub fn handle_from_path(

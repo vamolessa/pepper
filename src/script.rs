@@ -8,7 +8,7 @@ use mlua::prelude::{
 };
 
 use crate::{
-    buffer::{BufferHandle, BufferCollection},
+    buffer::{BufferCollection, BufferHandle},
     buffer_view::{BufferViewCollection, BufferViewHandle},
     client::{ClientCollection, TargetClient},
     config::Config,
@@ -142,6 +142,58 @@ impl<'lua> FromLua<'lua> for ScriptObject<'lua> {
     }
 }
 
+pub struct ScriptArray<'lua>(LuaTable<'lua>);
+impl<'lua> ScriptArray<'lua> {
+    pub fn len(&self) -> ScriptResult<usize> {
+        self.0.len().map(|i| i as usize)
+    }
+
+    pub fn get<T>(&self, index: usize) -> ScriptResult<T>
+    where
+        T: FromLua<'lua>,
+    {
+        self.0.get(index + 1)
+    }
+
+    pub fn set<T>(&self, index: usize, value: T) -> ScriptResult<()>
+    where
+        T: ToLua<'lua>,
+    {
+        self.0.set(index + 1, value)
+    }
+
+    pub fn push<T>(&self, value: T) -> ScriptResult<()>
+    where
+        T: ToLua<'lua>,
+    {
+        self.0.set(self.0.len()?, value)
+    }
+
+    pub fn insert<T>(&self, index: usize, value: T) -> ScriptResult<()>
+    where
+        T: ToLua<'lua>,
+    {
+        self.0.raw_insert((index + 1) as _, value)
+    }
+
+    pub fn remove(&self, index: usize) -> ScriptResult<()> {
+        self.0.raw_remove(index + 1)
+    }
+}
+impl<'lua> FromLua<'lua> for ScriptArray<'lua> {
+    fn from_lua(lua_value: LuaValue<'lua>, _: &'lua Lua) -> LuaResult<Self> {
+        if let LuaValue::Table(t) = lua_value {
+            Ok(Self(t))
+        } else {
+            Err(LuaError::FromLuaConversionError {
+                from: lua_value.type_name(),
+                to: std::any::type_name::<Self>(),
+                message: None,
+            })
+        }
+    }
+}
+
 pub struct ScriptFunction<'lua>(&'lua Lua, LuaFunction<'lua>);
 impl<'lua> ScriptFunction<'lua> {
     pub fn call<A, R>(&self, ctx: &mut ScriptContext, args: A) -> ScriptResult<R>
@@ -174,6 +226,7 @@ pub enum ScriptValue<'lua> {
     Number(LuaNumber),
     String(ScriptString<'lua>),
     Object(ScriptObject<'lua>),
+    Array(ScriptArray<'lua>),
     Function(ScriptFunction<'lua>),
 }
 impl<'lua> ScriptValue<'lua> {
@@ -184,7 +237,7 @@ impl<'lua> ScriptValue<'lua> {
             Self::Integer(_) => "integer",
             Self::Number(_) => "number",
             Self::String(_) => "string",
-            Self::Object(_) => "table",
+            Self::Object(_) | Self::Array(_) => "table",
             Self::Function(_) => "function",
         }
     }
@@ -201,6 +254,7 @@ impl<'lua> fmt::Display for ScriptValue<'lua> {
                 Err(_) => Err(fmt::Error),
             },
             ScriptValue::Object(_) => f.write_str("object"),
+            ScriptValue::Array(_) => f.write_str("array"),
             ScriptValue::Function(_) => f.write_str("function"),
         }
     }
@@ -232,6 +286,7 @@ impl<'lua> ToLua<'lua> for ScriptValue<'lua> {
             Self::Number(n) => Ok(LuaValue::Number(n)),
             Self::String(s) => Ok(LuaValue::String(s.0)),
             Self::Object(o) => Ok(LuaValue::Table(o.0)),
+            Self::Array(a) => Ok(LuaValue::Table(a.0)),
             Self::Function(f) => Ok(LuaValue::Function(f.1)),
         }
     }
@@ -375,6 +430,10 @@ impl<'lua> ScriptEngineRef<'lua> {
 
     pub fn create_object(&self) -> ScriptResult<ScriptObject<'lua>> {
         self.lua.create_table().map(ScriptObject)
+    }
+
+    pub fn create_array(&self) -> ScriptResult<ScriptArray<'lua>> {
+        self.lua.create_table().map(ScriptArray)
     }
 
     pub fn create_ctx_function<A, R, F>(&self, func: F) -> ScriptResult<ScriptFunction<'lua>>
