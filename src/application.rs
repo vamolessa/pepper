@@ -169,6 +169,10 @@ where
     let mut editor = Editor::new();
     let mut clients = ClientCollection::default();
 
+    for path in &args.module_search_path {
+        editor.add_module_search_path(path);
+    }
+
     if let Some(config_path) = args.config.as_ref() {
         editor.load_config(&mut clients, config_path);
     }
