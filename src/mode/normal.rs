@@ -511,8 +511,6 @@ impl ModeState for State {
                     &ctx.config.syntaxes,
                     handle,
                 );
-                let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
-                unwrap_or_none!(ctx.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
                 return ModeOperation::EnterMode(Mode::Insert(Default::default()));
             }
             Key::Char('<') => {
