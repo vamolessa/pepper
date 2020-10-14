@@ -2,20 +2,18 @@ use crate::{
     client_event::Key,
     editor::{KeysIterator, ReadLinePoll},
     mode::{Mode, ModeContext, ModeOperation, ModeState},
-    script::{ScriptFunction, ScriptString},
     word_database::WordDatabase,
 };
 
-pub const PROMPT_REGISTRY_KEY: &str = "picker_prompt";
-pub const CALLBACK_REGISTRY_KEY: &str = "picker_callback";
-
 pub struct State {
+    on_enter: fn(&mut ModeContext),
     on_event: fn(&mut ModeContext, &mut KeysIterator, ReadLinePoll),
 }
 
 impl Default for State {
     fn default() -> Self {
         Self {
+            on_enter: |_| (),
             on_event: |_, _, _| (),
         }
     }
@@ -23,16 +21,8 @@ impl Default for State {
 
 impl ModeState for State {
     fn on_enter(&mut self, ctx: &mut ModeContext) {
-        match ctx
-            .scripts
-            .as_ref()
-            .take_from_registry::<ScriptString>(PROMPT_REGISTRY_KEY)
-        {
-            Ok(prompt) => ctx.read_line.reset(prompt.to_str().unwrap_or(">")),
-            Err(_) => ctx.read_line.reset(">"),
-        }
-
         ctx.picker.filter(WordDatabase::empty(), "");
+        (self.on_enter)(ctx);
     }
 
     fn on_exit(&mut self, ctx: &mut ModeContext) {
@@ -41,10 +31,7 @@ impl ModeState for State {
     }
 
     fn on_event(&mut self, ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
-        let poll = ctx.read_line.poll(keys);
-        (self.on_event)(ctx, keys, poll);
-
-        let entry = match poll {
+        match ctx.read_line.poll(keys) {
             ReadLinePoll::Pending => {
                 keys.put_back();
                 match keys.next() {
@@ -59,27 +46,67 @@ impl ModeState for State {
                         .filter(WordDatabase::empty(), ctx.read_line.input()),
                 }
 
-                return ModeOperation::None;
+                (self.on_event)(ctx, keys, ReadLinePoll::Pending);
+                ModeOperation::None
             }
-            ReadLinePoll::Submitted => ctx
-                .picker
-                .current_entry_name(WordDatabase::empty())
-                .map(|e| String::from(e)),
-            ReadLinePoll::Canceled => None,
-        };
+            poll => {
+                (self.on_event)(ctx, keys, poll);
+                ModeOperation::EnterMode(Mode::default())
+            }
+        }
+    }
+}
 
-        let (engine, _, mut ctx) = ctx.script_context();
-        match engine
-            .as_ref()
-            .take_from_registry::<ScriptFunction>(CALLBACK_REGISTRY_KEY)
-            .and_then(|c| c.call(&mut ctx, entry))
-        {
-            Ok(()) => (),
-            Err(error) => {
-                ctx.status_message.write_error(&error);
+pub mod script {
+    use super::*;
+
+    use crate::script::{ScriptEngineRef, ScriptFunction, ScriptResult, ScriptString, ScriptValue};
+
+    pub const PROMPT_REGISTRY_KEY: &str = "picker_prompt";
+    pub const CALLBACK_REGISTRY_KEY: &str = "picker_callback";
+
+    pub fn mode(engine: ScriptEngineRef, callback: ScriptFunction) -> ScriptResult<Mode> {
+        fn on_enter(ctx: &mut ModeContext) {
+            let engine = ctx.scripts.as_ref();
+            match engine.take_from_registry::<ScriptString>(PROMPT_REGISTRY_KEY) {
+                Ok(prompt) => ctx.read_line.reset(prompt.to_str().unwrap_or(">")),
+                Err(_) => ctx.read_line.reset(">"),
             }
         }
 
-        ModeOperation::EnterMode(Mode::default())
+        fn on_event(ctx: &mut ModeContext, _: &mut KeysIterator, poll: ReadLinePoll) {
+            let (engine, _, mut ctx) = ctx.script_context();
+            let engine = engine.as_ref();
+
+            let entry = match poll {
+                ReadLinePoll::Pending => return,
+                ReadLinePoll::Submitted => {
+                    match ctx.picker.current_entry_name(WordDatabase::empty()) {
+                        Some(entry) => match engine.create_string(entry.as_bytes()) {
+                            Ok(entry) => ScriptValue::String(entry),
+                            Err(error) => {
+                                ctx.status_message.write_error(&error);
+                                return;
+                            }
+                        },
+                        None => ScriptValue::Nil,
+                    }
+                }
+                ReadLinePoll::Canceled => ScriptValue::Nil,
+            };
+
+            match engine
+                .take_from_registry::<ScriptFunction>(CALLBACK_REGISTRY_KEY)
+                .and_then(|c| c.call(&mut ctx, entry))
+            {
+                Ok(()) => (),
+                Err(error) => {
+                    ctx.status_message.write_error(&error);
+                }
+            }
+        }
+
+        engine.save_to_registry(CALLBACK_REGISTRY_KEY, ScriptValue::Function(callback))?;
+        Ok(Mode::Picker(State { on_enter, on_event }))
     }
 }

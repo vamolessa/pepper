@@ -99,7 +99,7 @@ impl<'a> ModeContext<'a> {
     }
 }
 
-pub trait ModeState: Default {
+pub trait ModeState {
     fn on_enter(&mut self, _context: &mut ModeContext) {}
     fn on_exit(&mut self, _context: &mut ModeContext) {}
     fn on_event(&mut self, ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation;

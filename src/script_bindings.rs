@@ -851,7 +851,7 @@ mod picker {
         prompt: ScriptString,
     ) -> ScriptResult<()> {
         engine.save_to_registry(
-            mode::picker::PROMPT_REGISTRY_KEY,
+            mode::picker::script::PROMPT_REGISTRY_KEY,
             ScriptValue::String(prompt),
         )
     }
@@ -881,12 +881,7 @@ mod picker {
         ctx: &mut ScriptContext,
         callback: ScriptFunction,
     ) -> ScriptResult<()> {
-        engine.save_to_registry(
-            mode::picker::CALLBACK_REGISTRY_KEY,
-            ScriptValue::Function(callback),
-        )?;
-
-        ctx.next_mode = Mode::Picker(Default::default());
+        ctx.next_mode = mode::picker::script::mode(engine, callback)?;
         Ok(())
     }
 }
