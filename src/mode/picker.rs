@@ -76,25 +76,28 @@ pub mod buffer {
                 return;
             }
 
-            if let Some(path) = ctx.picker.current_entry_name(WordDatabase::empty()) {
-                NavigationHistory::save_client_snapshot(
-                    ctx.clients,
-                    ctx.buffer_views,
-                    ctx.target_client,
-                );
+            let path = ctx
+                .picker
+                .current_entry_name(WordDatabase::empty())
+                .unwrap_or(ctx.read_line.input());
 
-                match ctx.buffer_views.buffer_view_handle_from_path(
-                    ctx.buffers,
-                    ctx.word_database,
-                    &ctx.config.syntaxes,
-                    ctx.target_client,
-                    Path::new(path),
-                ) {
-                    Ok(handle) => ctx.set_current_buffer_view_handle(Some(handle)),
-                    Err(error) => ctx
-                        .status_message
-                        .write_str(StatusMessageKind::Error, &error),
-                }
+            NavigationHistory::save_client_snapshot(
+                ctx.clients,
+                ctx.buffer_views,
+                ctx.target_client,
+            );
+
+            match ctx.buffer_views.buffer_view_handle_from_path(
+                ctx.buffers,
+                ctx.word_database,
+                &ctx.config.syntaxes,
+                ctx.target_client,
+                Path::new(path),
+            ) {
+                Ok(handle) => ctx.set_current_buffer_view_handle(Some(handle)),
+                Err(error) => ctx
+                    .status_message
+                    .write_str(StatusMessageKind::Error, &error),
             }
         }
 
