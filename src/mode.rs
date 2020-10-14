@@ -37,7 +37,6 @@ mod normal;
 pub mod picker;
 pub mod read_line;
 mod script;
-mod search;
 
 pub enum ModeOperation {
     Pending,
@@ -107,10 +106,9 @@ pub trait ModeState {
 pub enum Mode {
     Normal(normal::State),
     Insert(insert::State),
-    Search(search::State),
-    Script(script::State),
     ReadLine(read_line::State),
     Picker(picker::State),
+    Script(script::State),
 }
 
 impl Mode {
@@ -122,10 +120,9 @@ impl Mode {
         match self {
             Mode::Normal(state) => state.on_exit(ctx),
             Mode::Insert(state) => state.on_exit(ctx),
-            Mode::Search(state) => state.on_exit(ctx),
-            Mode::Script(state) => state.on_exit(ctx),
             Mode::ReadLine(state) => state.on_exit(ctx),
             Mode::Picker(state) => state.on_exit(ctx),
+            Mode::Script(state) => state.on_exit(ctx),
         }
 
         *self = next;
@@ -133,10 +130,9 @@ impl Mode {
         match self {
             Mode::Normal(state) => state.on_enter(ctx),
             Mode::Insert(state) => state.on_enter(ctx),
-            Mode::Search(state) => state.on_enter(ctx),
-            Mode::Script(state) => state.on_enter(ctx),
             Mode::ReadLine(state) => state.on_enter(ctx),
             Mode::Picker(state) => state.on_enter(ctx),
+            Mode::Script(state) => state.on_enter(ctx),
         }
     }
 
@@ -144,10 +140,9 @@ impl Mode {
         match self {
             Mode::Normal(state) => state.on_event(ctx, keys),
             Mode::Insert(state) => state.on_event(ctx, keys),
-            Mode::Search(state) => state.on_event(ctx, keys),
-            Mode::Script(state) => state.on_event(ctx, keys),
             Mode::ReadLine(state) => state.on_event(ctx, keys),
             Mode::Picker(state) => state.on_event(ctx, keys),
+            Mode::Script(state) => state.on_event(ctx, keys),
         }
     }
 }

@@ -98,10 +98,9 @@ impl Default for KeyMapCollection {
         let all_modes = [
             normal_mode,
             insert_mode,
-            Mode::Search(Default::default()).discriminant(),
-            Mode::Script(Default::default()).discriminant(),
             Mode::ReadLine(Default::default()).discriminant(),
             Mode::Picker(Default::default()).discriminant(),
+            Mode::Script(Default::default()).discriminant(),
         ];
 
         for mode in &all_modes {

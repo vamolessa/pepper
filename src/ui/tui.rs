@@ -480,10 +480,7 @@ where
                     handle_command!(write, Print(text))?;
                     Some(text.len())
                 }
-                Mode::Search(_)
-                | Mode::Picker(_)
-                | Mode::Script(_)
-                | Mode::ReadLine(_) => {
+                Mode::Picker(_) | Mode::ReadLine(_) | Mode::Script(_) => {
                     let read_line = &editor.read_line;
 
                     handle_command!(write, Print(read_line.prompt()))?;

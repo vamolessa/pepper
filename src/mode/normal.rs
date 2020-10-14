@@ -726,7 +726,7 @@ impl ModeState for State {
                 }
                 _ => (),
             },
-            Key::Char('/') => return ModeOperation::EnterMode(Mode::Search(Default::default())),
+            Key::Char('/') => return ModeOperation::EnterMode(read_line::search::mode()),
             Key::Char('y') => {
                 if let Ok(mut clipboard) = ClipboardContext::new() {
                     let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
