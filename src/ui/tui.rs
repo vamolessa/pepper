@@ -580,6 +580,8 @@ where
         handle_command!(write, Print(line_number))?;
         handle_command!(write, Print(','))?;
         handle_command!(write, Print(column_number))?;
+
+        handle_command!(write, terminal::SetTitle(buffer_path))?;
     }
 
     handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
