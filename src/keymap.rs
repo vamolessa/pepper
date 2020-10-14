@@ -101,8 +101,8 @@ impl Default for KeyMapCollection {
             Mode::Search(Default::default()).discriminant(),
             Mode::Goto(Default::default()).discriminant(),
             Mode::Script(Default::default()).discriminant(),
-            Mode::ScriptReadLine(Default::default()).discriminant(),
-            Mode::ScriptPicker(Default::default()).discriminant(),
+            Mode::ReadLine(Default::default()).discriminant(),
+            Mode::Picker(Default::default()).discriminant(),
         ];
 
         for mode in &all_modes {

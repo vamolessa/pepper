@@ -822,7 +822,7 @@ mod read_line {
         prompt: ScriptString,
     ) -> ScriptResult<()> {
         engine.save_to_registry(
-            mode::script_read_line::PROMPT_REGISTRY_KEY,
+            mode::read_line::PROMPT_REGISTRY_KEY,
             ScriptValue::String(prompt),
         )
     }
@@ -833,11 +833,11 @@ mod read_line {
         callback: ScriptFunction,
     ) -> ScriptResult<()> {
         engine.save_to_registry(
-            mode::script_read_line::CALLBACK_REGISTRY_KEY,
+            mode::read_line::CALLBACK_REGISTRY_KEY,
             ScriptValue::Function(callback),
         )?;
 
-        ctx.next_mode = Mode::ScriptReadLine(Default::default());
+        ctx.next_mode = Mode::ReadLine(Default::default());
         Ok(())
     }
 }
@@ -851,7 +851,7 @@ mod picker {
         prompt: ScriptString,
     ) -> ScriptResult<()> {
         engine.save_to_registry(
-            mode::script_picker::PROMPT_REGISTRY_KEY,
+            mode::picker::PROMPT_REGISTRY_KEY,
             ScriptValue::String(prompt),
         )
     }
@@ -882,11 +882,11 @@ mod picker {
         callback: ScriptFunction,
     ) -> ScriptResult<()> {
         engine.save_to_registry(
-            mode::script_picker::CALLBACK_REGISTRY_KEY,
+            mode::picker::CALLBACK_REGISTRY_KEY,
             ScriptValue::Function(callback),
         )?;
 
-        ctx.next_mode = Mode::ScriptPicker(Default::default());
+        ctx.next_mode = Mode::Picker(Default::default());
         Ok(())
     }
 }

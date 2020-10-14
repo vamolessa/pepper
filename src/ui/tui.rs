@@ -481,10 +481,10 @@ where
                     Some(text.len())
                 }
                 Mode::Search(_)
-                | Mode::ScriptPicker(_)
+                | Mode::Picker(_)
                 | Mode::Goto(_)
                 | Mode::Script(_)
-                | Mode::ScriptReadLine(_) => {
+                | Mode::ReadLine(_) => {
                     let read_line = &editor.read_line;
 
                     handle_command!(write, Print(read_line.prompt()))?;

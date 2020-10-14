@@ -7,8 +7,17 @@ use crate::{
 pub const PROMPT_REGISTRY_KEY: &str = "read_line_prompt";
 pub const CALLBACK_REGISTRY_KEY: &str = "read_line_callback";
 
-#[derive(Default)]
-pub struct State;
+pub struct State {
+    on_event: fn(&mut ModeContext, &mut KeysIterator, ReadLinePoll),
+}
+
+impl Default for State {
+    fn default() -> Self {
+        Self {
+            on_event: |_, _, _| (),
+        }
+    }
+}
 
 impl ModeState for State {
     fn on_enter(&mut self, ctx: &mut ModeContext) {
@@ -27,7 +36,10 @@ impl ModeState for State {
     }
 
     fn on_event(&mut self, ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
-        let input = match ctx.read_line.poll(keys) {
+        let poll = ctx.read_line.poll(keys);
+        (self.on_event)(ctx, keys, poll);
+
+        let input = match poll {
             ReadLinePoll::Pending => return ModeOperation::None,
             ReadLinePoll::Submitted => Some(String::from(ctx.read_line.input())),
             ReadLinePoll::Canceled => None,

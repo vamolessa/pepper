@@ -68,6 +68,7 @@ impl SearchText {
     }
 }
 
+#[derive(Clone, Copy)]
 pub enum ReadLinePoll {
     Pending,
     Submitted,
