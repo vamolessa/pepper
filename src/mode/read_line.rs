@@ -36,6 +36,68 @@ impl ModeState for State {
     }
 }
 
+pub mod goto {
+    use super::*;
+
+    use crate::{
+        buffer_position::BufferPosition,
+        cursor::Cursor,
+        navigation_history::{NavigationDirection, NavigationHistory},
+        word_database::WordKind,
+    };
+
+    pub fn mode() -> Mode {
+        fn on_enter(ctx: &mut ModeContext) {
+            NavigationHistory::save_client_snapshot(
+                ctx.clients,
+                ctx.buffer_views,
+                ctx.target_client,
+            );
+            ctx.read_line.reset("#");
+        }
+
+        fn on_event(ctx: &mut ModeContext, _: &mut KeysIterator, poll: ReadLinePoll) {
+            match poll {
+                ReadLinePoll::Pending => {
+                    let line_number: usize = match ctx.read_line.input().parse() {
+                        Ok(number) => number,
+                        Err(_) => return,
+                    };
+                    let line_index = line_number.saturating_sub(1);
+
+                    let handle = unwrap_or_return!(ctx.current_buffer_view_handle());
+                    let buffer_view = unwrap_or_return!(ctx.buffer_views.get_mut(handle));
+                    let buffer = unwrap_or_return!(ctx.buffers.get(buffer_view.buffer_handle));
+
+                    let mut position = BufferPosition::line_col(line_index, 0);
+                    let (first_word, _, mut right_words) = buffer.content().words_from(position);
+                    if first_word.kind == WordKind::Whitespace {
+                        if let Some(word) = right_words.next() {
+                            position = word.position;
+                        }
+                    }
+
+                    let mut cursors = buffer_view.cursors.mut_guard();
+                    cursors.clear();
+                    cursors.add(Cursor {
+                        anchor: position,
+                        position,
+                    });
+                }
+                ReadLinePoll::Submitted => (),
+                ReadLinePoll::Canceled => NavigationHistory::move_in_history(
+                    ctx.clients,
+                    ctx.buffer_views,
+                    ctx.target_client,
+                    NavigationDirection::Backward,
+                ),
+            }
+        }
+
+        Mode::ReadLine(State { on_enter, on_event })
+    }
+}
+
 pub mod script {
     use super::*;
 

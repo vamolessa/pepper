@@ -99,7 +99,6 @@ impl Default for KeyMapCollection {
             normal_mode,
             insert_mode,
             Mode::Search(Default::default()).discriminant(),
-            Mode::Goto(Default::default()).discriminant(),
             Mode::Script(Default::default()).discriminant(),
             Mode::ReadLine(Default::default()).discriminant(),
             Mode::Picker(Default::default()).discriminant(),

@@ -482,7 +482,6 @@ where
                 }
                 Mode::Search(_)
                 | Mode::Picker(_)
-                | Mode::Goto(_)
                 | Mode::Script(_)
                 | Mode::ReadLine(_) => {
                     let read_line = &editor.read_line;

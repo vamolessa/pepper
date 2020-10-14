@@ -8,7 +8,7 @@ use crate::{
     cursor::Cursor,
     editor::KeysIterator,
     editor::StatusMessageKind,
-    mode::{Mode, ModeContext, ModeOperation, ModeState},
+    mode::{read_line, Mode, ModeContext, ModeOperation, ModeState},
     navigation_history::{NavigationDirection, NavigationHistory},
     word_database::WordKind,
 };
@@ -295,9 +295,7 @@ impl ModeState for State {
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
                 match keys.next() {
                     Key::None => return ModeOperation::Pending,
-                    Key::Char('g') => {
-                        return ModeOperation::EnterMode(Mode::Goto(Default::default()))
-                    }
+                    Key::Char('g') => return ModeOperation::EnterMode(read_line::goto::mode()),
                     Key::Char('h') => buffer_view.move_cursors(
                         ctx.buffers,
                         CursorMovement::Home,
