@@ -187,6 +187,16 @@ impl ModeState for State {
                             cursor.position = word.end_position();
                         }
                     }
+                    Key::Char('a') | Key::Char('A') => {
+                        let last_line_index = buffer.line_count() - 1;
+                        let last_line_len = buffer.line_at(last_line_index).as_str().len();
+
+                        cursors.clear();
+                        cursors.add(Cursor {
+                            anchor: BufferPosition::line_col(0, 0),
+                            position: BufferPosition::line_col(last_line_index, last_line_len),
+                        });
+                    }
                     Key::Char('(') | Key::Char(')') => {
                         balanced_brackets(buffer, &mut cursors[..], '(', ')')
                     }
@@ -250,6 +260,16 @@ impl ModeState for State {
                                 _ => word.end_position(),
                             };
                         }
+                    }
+                    Key::Char('a') | Key::Char('A') => {
+                        let last_line_index = buffer.line_count() - 1;
+                        let last_line_len = buffer.line_at(last_line_index).as_str().len();
+
+                        cursors.clear();
+                        cursors.add(Cursor {
+                            anchor: BufferPosition::line_col(0, 0),
+                            position: BufferPosition::line_col(last_line_index, last_line_len),
+                        });
                     }
                     Key::Char('(') | Key::Char(')') => {
                         balanced_brackets(buffer, &mut cursors[..], '(', ')')
@@ -377,6 +397,24 @@ impl ModeState for State {
             Key::Char(';') => find_char(self, ctx, self.count.max(1), true),
             Key::Char(',') => find_char(self, ctx, self.count.max(1), false),
             Key::Char('v') => {
+                let mut had_selection = false;
+                for cursor in &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle))
+                    .cursors
+                    .mut_guard()[..]
+                {
+                    if cursor.anchor != cursor.position {
+                        cursor.anchor = cursor.position;
+                        had_selection = true;
+                    }
+                }
+
+                self.movement_kind = if had_selection {
+                    CursorMovementKind::PositionAndAnchor
+                } else {
+                    CursorMovementKind::PositionOnly
+                };
+            }
+            Key::Char('V') => {
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
                 let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle)).content();
 
@@ -407,24 +445,6 @@ impl ModeState for State {
                     }
                 }
                 self.movement_kind = CursorMovementKind::PositionOnly;
-            }
-            Key::Char('V') => {
-                let mut had_selection = false;
-                for cursor in &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle))
-                    .cursors
-                    .mut_guard()[..]
-                {
-                    if cursor.anchor != cursor.position {
-                        cursor.anchor = cursor.position;
-                        had_selection = true;
-                    }
-                }
-
-                self.movement_kind = if had_selection {
-                    CursorMovementKind::PositionAndAnchor
-                } else {
-                    CursorMovementKind::PositionOnly
-                };
             }
             Key::Char('z') => {
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
@@ -677,7 +697,7 @@ impl ModeState for State {
                                 cursor.anchor = range.from;
                                 cursor.position = BufferPosition::line_col(
                                     range.to.line_index,
-                                    range.to.column_byte_index + 1,
+                                    range.to.column_byte_index,
                                 );
                             }
 
@@ -686,7 +706,7 @@ impl ModeState for State {
                                     anchor: range.from,
                                     position: BufferPosition::line_col(
                                         range.to.line_index,
-                                        range.to.column_byte_index + 1,
+                                        range.to.column_byte_index,
                                     ),
                                 });
                             }
@@ -698,7 +718,7 @@ impl ModeState for State {
                                 anchor: range.from,
                                 position: BufferPosition::line_col(
                                     range.to.line_index,
-                                    range.to.column_byte_index + 1,
+                                    range.to.column_byte_index,
                                 ),
                             });
                         }

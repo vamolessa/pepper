@@ -65,14 +65,18 @@ fn update_search(ctx: &mut ModeContext) {
         Ok(i) => main_cursor.position = search_ranges[i].from,
         Err(0) => main_cursor.position = search_ranges[0].from,
         Err(i) => {
-            let before = search_ranges[i - 1].from;
-            let after = search_ranges[i].from;
-
-            let main_line_index = main_cursor.position.line_index;
-            if main_line_index - before.line_index < after.line_index - main_line_index {
-                main_cursor.position = before;
+            if i == search_ranges.len() {
+                main_cursor.position = search_ranges[search_ranges.len() - 1].from;
             } else {
-                main_cursor.position = after;
+                let before = search_ranges[i - 1].from;
+                let after = search_ranges[i].from;
+
+                let main_line_index = main_cursor.position.line_index;
+                if main_line_index - before.line_index < after.line_index - main_line_index {
+                    main_cursor.position = before;
+                } else {
+                    main_cursor.position = after;
+                }
             }
         }
     }
