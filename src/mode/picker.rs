@@ -57,6 +57,61 @@ impl ModeState for State {
     }
 }
 
+pub mod buffer {
+    use super::*;
+
+    use std::path::Path;
+
+    use crate::{
+        editor::StatusMessageKind, navigation_history::NavigationHistory, picker::CustomPickerEntry,
+    };
+
+    pub fn mode(ctx: &mut ModeContext) -> Mode {
+        fn on_enter(ctx: &mut ModeContext) {
+            ctx.read_line.reset(">");
+        }
+
+        fn on_event(ctx: &mut ModeContext, _: &mut KeysIterator, poll: ReadLinePoll) {
+            if !matches!(poll, ReadLinePoll::Submitted) {
+                return;
+            }
+
+            if let Some(path) = ctx.picker.current_entry_name(WordDatabase::empty()) {
+                NavigationHistory::save_client_snapshot(
+                    ctx.clients,
+                    ctx.buffer_views,
+                    ctx.target_client,
+                );
+
+                match ctx.buffer_views.buffer_view_handle_from_path(
+                    ctx.buffers,
+                    ctx.word_database,
+                    &ctx.config.syntaxes,
+                    ctx.target_client,
+                    Path::new(path),
+                ) {
+                    Ok(handle) => ctx.set_current_buffer_view_handle(Some(handle)),
+                    Err(error) => ctx
+                        .status_message
+                        .write_str(StatusMessageKind::Error, &error),
+                }
+            }
+        }
+
+        ctx.picker.reset();
+        for buffer in ctx.buffers.iter() {
+            if let Some(path) = buffer.path().and_then(|p| p.to_str()) {
+                ctx.picker.add_custom_entry(CustomPickerEntry {
+                    name: path.into(),
+                    description: String::new(),
+                });
+            }
+        }
+
+        Mode::Picker(State { on_enter, on_event })
+    }
+}
+
 pub mod script {
     use super::*;
 

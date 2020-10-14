@@ -73,6 +73,12 @@ impl<'a> ModeContext<'a> {
             .and_then(|c| c.current_buffer_view_handle)
     }
 
+    pub fn set_current_buffer_view_handle(&mut self, handle: Option<BufferViewHandle>) {
+        if let Some(client) = self.clients.get_mut(self.target_client) {
+            client.current_buffer_view_handle = handle;
+        }
+    }
+
     pub fn script_context(&mut self) -> (&mut ScriptEngine, &mut ReadLine, ScriptContext) {
         let context = ScriptContext {
             target_client: self.target_client,

@@ -8,7 +8,7 @@ use crate::{
     cursor::Cursor,
     editor::KeysIterator,
     editor::StatusMessageKind,
-    mode::{read_line, Mode, ModeContext, ModeOperation, ModeState},
+    mode::{picker, read_line, Mode, ModeContext, ModeOperation, ModeState},
     navigation_history::{NavigationDirection, NavigationHistory},
     word_database::WordKind,
 };
@@ -28,11 +28,16 @@ pub struct State {
 impl State {
     fn on_event_no_buffer(
         &mut self,
-        _: &mut ModeContext,
+        ctx: &mut ModeContext,
         keys: &mut KeysIterator,
     ) -> ModeOperation {
         match keys.next() {
             Key::Char(':') => ModeOperation::EnterMode(Mode::Script(Default::default())),
+            Key::Char('g') => match keys.next() {
+                Key::None => ModeOperation::Pending,
+                Key::Char('b') => ModeOperation::EnterMode(picker::buffer::mode(ctx)),
+                _ => ModeOperation::None,
+            },
             Key::Char(c) => {
                 if let Some(n) = c.to_digit(10) {
                     self.count *= 10;
@@ -357,7 +362,11 @@ impl ModeState for State {
                             }
                         }
                     }
-                    _ => (),
+                    _ => {
+                        keys.put_back();
+                        keys.put_back();
+                        return self.on_event_no_buffer(ctx, keys);
+                    }
                 }
             }
             Key::Char('f') => match keys.next() {
