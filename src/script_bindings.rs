@@ -821,10 +821,7 @@ mod read_line {
         _: &mut ScriptContext,
         prompt: ScriptString,
     ) -> ScriptResult<()> {
-        engine.save_to_registry(
-            mode::read_line::PROMPT_REGISTRY_KEY,
-            ScriptValue::String(prompt),
-        )
+        mode::read_line::script::prompt(engine, prompt)
     }
 
     pub fn read(
@@ -832,12 +829,7 @@ mod read_line {
         ctx: &mut ScriptContext,
         callback: ScriptFunction,
     ) -> ScriptResult<()> {
-        engine.save_to_registry(
-            mode::read_line::CALLBACK_REGISTRY_KEY,
-            ScriptValue::Function(callback),
-        )?;
-
-        ctx.next_mode = Mode::ReadLine(Default::default());
+        ctx.next_mode = mode::read_line::script::mode(engine, callback)?;
         Ok(())
     }
 }
@@ -850,10 +842,7 @@ mod picker {
         _: &mut ScriptContext,
         prompt: ScriptString,
     ) -> ScriptResult<()> {
-        engine.save_to_registry(
-            mode::picker::script::PROMPT_REGISTRY_KEY,
-            ScriptValue::String(prompt),
-        )
+        mode::picker::script::prompt(engine, prompt)
     }
 
     pub fn reset(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {

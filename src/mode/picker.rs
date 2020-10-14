@@ -62,13 +62,20 @@ pub mod script {
 
     use crate::script::{ScriptEngineRef, ScriptFunction, ScriptResult, ScriptString, ScriptValue};
 
-    pub const PROMPT_REGISTRY_KEY: &str = "picker_prompt";
-    pub const CALLBACK_REGISTRY_KEY: &str = "picker_callback";
+    const PROMPT_REGISTRY_KEY: &str = "picker_prompt";
+    const CALLBACK_REGISTRY_KEY: &str = "picker_callback";
+
+    pub fn prompt(engine: ScriptEngineRef, prompt: ScriptString) -> ScriptResult<()> {
+        engine.save_to_registry(PROMPT_REGISTRY_KEY, ScriptValue::String(prompt))
+    }
 
     pub fn mode(engine: ScriptEngineRef, callback: ScriptFunction) -> ScriptResult<Mode> {
         fn on_enter(ctx: &mut ModeContext) {
-            let engine = ctx.scripts.as_ref();
-            match engine.take_from_registry::<ScriptString>(PROMPT_REGISTRY_KEY) {
+            match ctx
+                .scripts
+                .as_ref()
+                .take_from_registry::<ScriptString>(PROMPT_REGISTRY_KEY)
+            {
                 Ok(prompt) => ctx.read_line.reset(prompt.to_str().unwrap_or(">")),
                 Err(_) => ctx.read_line.reset(">"),
             }
