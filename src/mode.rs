@@ -32,7 +32,6 @@ macro_rules! unwrap_or_none {
     };
 }
 
-mod goto;
 mod insert;
 mod normal;
 pub mod picker;
