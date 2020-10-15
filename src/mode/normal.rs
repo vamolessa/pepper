@@ -381,7 +381,7 @@ impl ModeState for State {
                 Key::None => return ModeOperation::Pending,
                 Key::Char(ch) => {
                     self.last_char_jump = CharJump::Inclusive(ch);
-                    find_char(self, ctx, self.count.max(1), true);
+                    find_char(self, ctx, self.count.max(1), false);
                 }
                 _ => (),
             },
@@ -397,7 +397,7 @@ impl ModeState for State {
                 Key::None => return ModeOperation::Pending,
                 Key::Char(ch) => {
                     self.last_char_jump = CharJump::Exclusive(ch);
-                    find_char(self, ctx, self.count.max(1), true);
+                    find_char(self, ctx, self.count.max(1), false);
                 }
                 _ => (),
             },
