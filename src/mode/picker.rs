@@ -35,12 +35,8 @@ impl ModeState for State {
             ReadLinePoll::Pending => {
                 keys.put_back();
                 match keys.next() {
-                    Key::Ctrl('n') | Key::Ctrl('j') => {
-                        ctx.picker.move_cursor(1)
-                    }
-                    Key::Ctrl('p') | Key::Ctrl('k') => {
-                        ctx.picker.move_cursor(-1)
-                    }
+                    Key::Ctrl('n') | Key::Ctrl('j') => ctx.picker.move_cursor(1),
+                    Key::Ctrl('p') | Key::Ctrl('k') => ctx.picker.move_cursor(-1),
                     _ => ctx
                         .picker
                         .filter(WordDatabase::empty(), ctx.read_line.input()),
