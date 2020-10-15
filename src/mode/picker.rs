@@ -115,7 +115,7 @@ pub mod buffer {
     }
 }
 
-pub mod script {
+pub mod custom {
     use super::*;
 
     use crate::script::{ScriptEngineRef, ScriptFunction, ScriptResult, ScriptString, ScriptValue};

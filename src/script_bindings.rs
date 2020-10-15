@@ -846,7 +846,7 @@ mod picker {
         _: &mut ScriptContext,
         prompt: ScriptString,
     ) -> ScriptResult<()> {
-        mode::picker::script::prompt(engine, prompt)
+        mode::picker::custom::prompt(engine, prompt)
     }
 
     pub fn reset(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
@@ -874,7 +874,7 @@ mod picker {
         ctx: &mut ScriptContext,
         callback: ScriptFunction,
     ) -> ScriptResult<()> {
-        ctx.next_mode = mode::picker::script::mode(engine, callback)?;
+        ctx.next_mode = mode::picker::custom::mode(engine, callback)?;
         Ok(())
     }
 }
