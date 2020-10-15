@@ -1050,6 +1050,18 @@ mod tests {
 
     #[test]
     fn buffer_content_delete_range() {
+        let mut buffer = BufferContent::from_str("abc");
+        buffer.delete_range(BufferRange::between(
+            BufferPosition::line_col(0, 1),
+            BufferPosition::line_col(0, 1),
+        ));
+        assert_eq!("abc", buffer_to_string(&buffer));
+        buffer.delete_range(BufferRange::between(
+            BufferPosition::line_col(0, 1),
+            BufferPosition::line_col(0, 2),
+        ));
+        assert_eq!("ac", buffer_to_string(&buffer));
+
         let mut buffer = BufferContent::from_str("this is the initial\ncontent of the buffer");
 
         assert_eq!(2, buffer.line_count());

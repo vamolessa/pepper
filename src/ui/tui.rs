@@ -311,7 +311,7 @@ where
                 current_cursor_range = cursor.as_range();
             }
             let inside_current_cursor_range = current_cursor_range.from <= char_position
-                && char_position <= current_cursor_range.to;
+                && char_position < current_cursor_range.to;
 
             if current_search_range.to <= char_position
                 && current_search_range_index < search_ranges_last_index
