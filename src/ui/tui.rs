@@ -422,7 +422,9 @@ where
         .skip(scroll)
         .take(height)
     {
+        let mut prefix = "  ";
         if i == cursor {
+            prefix = "> ";
             handle_command!(write, SetForegroundColor(background_color))?;
             handle_command!(write, SetBackgroundColor(foreground_color))?;
         } else if i == cursor + 1 {
@@ -430,6 +432,7 @@ where
             handle_command!(write, SetForegroundColor(foreground_color))?;
         }
 
+        handle_command!(write, Print(prefix))?;
         handle_command!(write, Print(&entry.name))?;
         handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
         handle_command!(write, cursor::MoveToNextLine(1))?;

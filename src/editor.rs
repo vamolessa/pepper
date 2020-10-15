@@ -96,6 +96,11 @@ impl ReadLine {
         self.input.clear();
     }
 
+    pub fn set_input(&mut self, input: &str) {
+        self.input.clear();
+        self.input.push_str(input);
+    }
+
     pub fn poll(&mut self, keys: &mut KeysIterator) -> ReadLinePoll {
         match keys.next() {
             Key::Esc => ReadLinePoll::Canceled,

@@ -1,6 +1,7 @@
 #![macro_use]
 
 use std::{
+    collections::VecDeque,
     convert::TryInto,
     error::Error,
     fmt,
@@ -388,6 +389,7 @@ const MODULE_LOADER_REGISTRY_KEY: &str = "module_loader";
 
 pub struct ScriptEngine {
     lua: Lua,
+    history: VecDeque<String>,
 }
 
 impl ScriptEngine {
@@ -395,7 +397,7 @@ impl ScriptEngine {
         Self::try_new().unwrap()
     }
 
-    pub fn try_new() -> ScriptResult<Self> {
+    fn try_new() -> ScriptResult<Self> {
         let libs = mlua::StdLib::TABLE
             | mlua::StdLib::STRING
             | mlua::StdLib::UTF8
@@ -467,7 +469,11 @@ impl ScriptEngine {
             package.set("searchers", searchers)?;
         }
 
-        let this = Self { lua };
+        let this = Self {
+            lua,
+            history: VecDeque::with_capacity(10),
+        };
+
         script_bindings::bind_all(this.as_ref())?;
 
         Ok(this)
@@ -511,6 +517,18 @@ impl ScriptEngine {
         let _scope = ScriptContextScope::new(&self.lua, ctx)?;
         let _: LuaValue = eval_file(&self.lua, path)?;
         Ok(())
+    }
+
+    pub fn history(&self) -> impl Iterator<Item = &str> {
+        self.history.iter().map(String::as_str)
+    }
+
+    pub fn add_to_history(&mut self, entry: &str) {
+        if self.history.len() == self.history.capacity() {
+            self.history.pop_back();
+        }
+
+        self.history.push_front(entry.into());
     }
 }
 

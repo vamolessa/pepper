@@ -36,10 +36,10 @@ impl ModeState for State {
                 keys.put_back();
                 match keys.next() {
                     Key::Ctrl('n') | Key::Ctrl('j') => {
-                        ctx.picker.move_cursor(1);
+                        ctx.picker.move_cursor(1)
                     }
                     Key::Ctrl('p') | Key::Ctrl('k') => {
-                        ctx.picker.move_cursor(-1);
+                        ctx.picker.move_cursor(-1)
                     }
                     _ => ctx
                         .picker
