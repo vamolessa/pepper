@@ -311,12 +311,12 @@ impl BufferContent {
         let from = self.clamp_position(range.from);
         let to = self.clamp_position(range.to);
 
+        let first_line = self.lines[from.line_index].as_str();
         if from.line_index == to.line_index {
-            let range_text =
-                &self.lines[from.line_index].as_str()[from.column_byte_index..to.column_byte_index];
+            let range_text = &first_line[from.column_byte_index..to.column_byte_index];
             text.push_str(range_text);
         } else {
-            text.push_str(&self.lines[from.line_index].as_str()[from.column_byte_index..]);
+            text.push_str(&first_line[from.column_byte_index..]);
             let lines_range = (from.line_index + 1)..to.line_index;
             if lines_range.start < lines_range.end {
                 for line in &self.lines[lines_range] {
@@ -324,12 +324,10 @@ impl BufferContent {
                     text.push_str(line.as_str());
                 }
             }
-            let to_line_index = from.line_index + 1;
-            if to_line_index < self.lines.len() {
-                let to_line = &self.lines[to_line_index];
-                text.push('\n');
-                text.push_str(&to_line.as_str()[..to.column_byte_index]);
-            }
+
+            let to_line = &self.lines[to.line_index];
+            text.push('\n');
+            text.push_str(&to_line.as_str()[..to.column_byte_index]);
         }
     }
 
@@ -1185,6 +1183,17 @@ mod tests {
         assert_eq!("multi\nline\ncontent", buffer_to_string(&buffer.content));
         for _ in buffer.redo(&syntaxes) {}
         assert_eq!("me\ncontent", buffer_to_string(&buffer.content));
+    }
+
+    #[test]
+    fn buffer_content_range_text() {
+        let buffer = BufferContent::from_str("abc\ndef\nghi");
+        let mut text = String::new();
+        buffer.append_range_text_to_string(BufferRange::between(
+            BufferPosition::line_col(0, 2),
+            BufferPosition::line_col(2, 1),
+        ), &mut text);
+        assert_eq!("c\ndef\ng", &text);
     }
 
     #[test]
