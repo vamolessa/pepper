@@ -694,9 +694,42 @@ impl BufferViewCollection {
         syntaxes: &SyntaxCollection,
         target_client: TargetClient,
         path: &Path,
+        line_index: Option<usize>,
     ) -> Result<BufferViewHandle, String> {
+        pub fn try_set_line_index(
+            buffer_views: &mut BufferViewCollection,
+            buffers: &mut BufferCollection,
+            handle: BufferViewHandle,
+            line_index: Option<usize>,
+        ) {
+            let line_index = match line_index {
+                Some(line_index) => line_index,
+                None => return,
+            };
+            let view = match buffer_views.get_mut(handle) {
+                Some(view) => view,
+                None => return,
+            };
+
+            let mut cursors = view.cursors.mut_guard();
+            let mut position = BufferPosition::line_col(line_index, 0);
+            position.line_index = position.line_index.saturating_sub(1);
+
+            if let Some(buffer) = buffers.get(view.buffer_handle) {
+                position = buffer.content().saturate_position(position);
+            }
+
+            cursors.clear();
+            cursors.add(Cursor {
+                anchor: position,
+                position,
+            });
+        }
+
         if let Some(buffer_handle) = buffers.find_with_path(path) {
-            Ok(self.buffer_view_handle_from_buffer_handle(target_client, buffer_handle))
+            let handle = self.buffer_view_handle_from_buffer_handle(target_client, buffer_handle);
+            try_set_line_index(self, buffers, handle, line_index);
+            Ok(handle)
         } else if path.to_str().map(|s| s.trim().len()).unwrap_or(0) > 0 {
             let content = match File::open(&path) {
                 Ok(mut file) => {
@@ -722,8 +755,10 @@ impl BufferViewCollection {
                 content,
             ));
             let buffer_view = BufferView::new(target_client, buffer_handle);
-            let buffer_view_handle = self.add(buffer_view);
-            Ok(buffer_view_handle)
+            let handle = self.add(buffer_view);
+
+            try_set_line_index(self, buffers, handle, line_index);
+            Ok(handle)
         } else {
             Err(format!("invalid path {:?}", path))
         }

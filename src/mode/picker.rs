@@ -89,6 +89,7 @@ pub mod buffer {
                 &ctx.config.syntaxes,
                 ctx.target_client,
                 Path::new(path),
+                None,
             ) {
                 Ok(handle) => ctx.set_current_buffer_view_handle(Some(handle)),
                 Err(error) => ctx

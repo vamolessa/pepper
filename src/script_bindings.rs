@@ -313,7 +313,7 @@ mod buffer {
     pub fn open(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
-        path: ScriptString,
+        (path, line_number): (ScriptString, Option<usize>),
     ) -> ScriptResult<()> {
         NavigationHistory::save_client_snapshot(ctx.clients, ctx.buffer_views, ctx.target_client);
 
@@ -326,6 +326,7 @@ mod buffer {
                 &ctx.config.syntaxes,
                 ctx.target_client,
                 path,
+                line_number.map(|l| l.saturating_sub(1)),
             )
             .map_err(ScriptError::from)?;
         ctx.set_current_buffer_view_handle(Some(buffer_view_handle));
@@ -499,6 +500,7 @@ mod buffer_view {
             &ctx.config.syntaxes,
             ctx.target_client,
             Path::new(path),
+            None,
         ) {
             Ok(handle) => Ok(Some(handle)),
             Err(error) => {
