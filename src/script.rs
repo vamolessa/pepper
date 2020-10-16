@@ -524,11 +524,19 @@ impl ScriptEngine {
     }
 
     pub fn add_to_history(&mut self, entry: &str) {
-        if self.history.len() == self.history.capacity() {
-            self.history.pop_back();
+        if entry.is_empty() {
+            return;
         }
 
-        self.history.push_front(entry.into());
+        let mut s = if self.history.len() == self.history.capacity() {
+            self.history.pop_back().unwrap()
+        } else {
+            String::new()
+        };
+
+        s.clear();
+        s.push_str(entry);
+        self.history.push_front(s);
     }
 }
 
