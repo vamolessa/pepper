@@ -2,11 +2,13 @@ use std::{error::Error, fmt, path::Path};
 
 use crate::{
     buffer::BufferCollection,
+    buffer_position::BufferPosition,
     buffer_view::BufferViewCollection,
     client::{ClientCollection, ClientTargetMap, TargetClient},
     client_event::{ClientEvent, Key},
     config::Config,
     connection::ConnectionWithClientHandle,
+    cursor::Cursor,
     keymap::{KeyMapCollection, MatchResult},
     mode::{Mode, ModeContext, ModeOperation},
     picker::Picker,
@@ -315,8 +317,16 @@ impl Editor {
                 self.client_target_map.map(target_client, target);
                 EditorLoop::Continue
             }
-            ClientEvent::OpenFile(path) => {
+            ClientEvent::OpenFile(mut path) => {
                 let target_client = self.client_target_map.get(target_client);
+
+                let mut line_number = None;
+                if let Some(separator_index) = path.rfind(':') {
+                    if let Ok(n) = path[(separator_index + 1)..].parse() {
+                        line_number = Some(n);
+                        path = &path[..separator_index];
+                    }
+                }
 
                 let path = Path::new(path);
                 match self.buffer_views.buffer_view_handle_from_path(
@@ -326,9 +336,27 @@ impl Editor {
                     target_client,
                     path,
                 ) {
-                    Ok(buffer_view_handle) => {
+                    Ok(handle) => {
                         if let Some(client) = clients.get_mut(target_client) {
-                            client.current_buffer_view_handle = Some(buffer_view_handle);
+                            client.current_buffer_view_handle = Some(handle);
+                        }
+
+                        if let Some((line_number, view)) =
+                            line_number.zip(self.buffer_views.get_mut(handle))
+                        {
+                            let mut cursors = view.cursors.mut_guard();
+                            let mut position = BufferPosition::line_col(line_number, 0);
+                            position.line_index = position.line_index.saturating_sub(1);
+
+                            if let Some(buffer) = self.buffers.get(view.buffer_handle) {
+                                position = buffer.content().saturate_position(position);
+                            }
+
+                            cursors.clear();
+                            cursors.add(Cursor {
+                                anchor: position,
+                                position,
+                            });
                         }
                     }
                     Err(error) => self

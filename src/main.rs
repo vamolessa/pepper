@@ -59,6 +59,7 @@ pub struct Args {
     profile: bool,
 
     /// open files at paths
+    /// you can append ':<line-number>' to a path to open it at that line
     #[argh(positional)]
     files: Vec<String>,
 }
