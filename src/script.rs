@@ -374,13 +374,27 @@ impl<'a> ScriptContext<'a> {
 struct ScriptContextScope<'lua>(&'lua Lua);
 impl<'lua> ScriptContextScope<'lua> {
     pub fn new(lua: &'lua Lua, ctx: &mut ScriptContext) -> ScriptResult<Self> {
-        lua.set_named_registry_value("ctx", LuaLightUserData(ctx as *mut ScriptContext as _))?;
-        Ok(Self(lua))
+        let this = Self(lua);
+        if this.update_ref_count(|rc| rc + 1)? == 1 {
+            lua.set_named_registry_value("ctx", LuaLightUserData(ctx as *mut ScriptContext as _))?;
+        }
+
+        Ok(this)
+    }
+
+    fn update_ref_count(&self, change: fn(usize) -> usize) -> ScriptResult<usize> {
+        const REF_COUNT_KEY: &str = "ctx_ref_count";
+        let ref_count = self.0.named_registry_value(REF_COUNT_KEY).unwrap_or(0);
+        let ref_count = change(ref_count);
+        self.0.set_named_registry_value(REF_COUNT_KEY, ref_count)?;
+        Ok(ref_count)
     }
 }
 impl<'a> Drop for ScriptContextScope<'a> {
     fn drop(&mut self) {
-        let _ = self.0.unset_named_registry_value("ctx");
+        if self.update_ref_count(|rc| rc - 1).unwrap() == 0 {
+            self.0.unset_named_registry_value("ctx").unwrap();
+        }
     }
 }
 
