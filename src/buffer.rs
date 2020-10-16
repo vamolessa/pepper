@@ -805,7 +805,7 @@ impl Buffer {
                 EditKind::Delete => {
                     self.content.delete_range(edit.range);
                     self.highlighted
-                        .on_insert(syntax, &self.content, edit.range);
+                        .on_delete(syntax, &self.content, edit.range);
                 }
             }
         }
@@ -1189,10 +1189,13 @@ mod tests {
     fn buffer_content_range_text() {
         let buffer = BufferContent::from_str("abc\ndef\nghi");
         let mut text = String::new();
-        buffer.append_range_text_to_string(BufferRange::between(
-            BufferPosition::line_col(0, 2),
-            BufferPosition::line_col(2, 1),
-        ), &mut text);
+        buffer.append_range_text_to_string(
+            BufferRange::between(
+                BufferPosition::line_col(0, 2),
+                BufferPosition::line_col(2, 1),
+            ),
+            &mut text,
+        );
         assert_eq!("c\ndef\ng", &text);
     }
 
