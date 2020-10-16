@@ -321,6 +321,11 @@ impl ModeState for State {
                         CursorMovement::End,
                         self.movement_kind,
                     ),
+                    Key::Char('i') => buffer_view.move_cursors(
+                        ctx.buffers,
+                        CursorMovement::HomeNonWhitespace,
+                        self.movement_kind,
+                    ),
                     Key::Char('m') => {
                         let buffer =
                             unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle)).content();

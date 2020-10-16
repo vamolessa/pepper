@@ -20,6 +20,7 @@ pub enum CursorMovement {
     WordsForward(usize),
     WordsBackward(usize),
     Home,
+    HomeNonWhitespace,
     End,
     FirstLine,
     LastLine,
@@ -273,6 +274,17 @@ impl BufferView {
             CursorMovement::Home => {
                 for c in &mut cursors[..] {
                     c.position.column_byte_index = 0;
+                }
+            }
+            CursorMovement::HomeNonWhitespace => {
+                for c in &mut cursors[..] {
+                    let first_word = buffer.line_at(c.position.line_index).word_at(0);
+                    match first_word.kind {
+                        WordKind::Whitespace => {
+                            c.position.column_byte_index = first_word.text.len()
+                        }
+                        _ => c.position.column_byte_index = 0,
+                    }
                 }
             }
             CursorMovement::End => {

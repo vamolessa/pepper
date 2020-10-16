@@ -129,8 +129,14 @@ mod client {
 mod editor {
     use super::*;
 
-    pub fn version<'a>(engine: ScriptEngineRef<'a>, _: &mut ScriptContext, _: ()) -> ScriptResult<ScriptValue<'a>> {
-        engine.create_string(env!("CARGO_PKG_VERSION").as_bytes()).map(ScriptValue::String)
+    pub fn version<'a>(
+        engine: ScriptEngineRef<'a>,
+        _: &mut ScriptContext,
+        _: (),
+    ) -> ScriptResult<ScriptValue<'a>> {
+        engine
+            .create_string(env!("CARGO_PKG_VERSION").as_bytes())
+            .map(ScriptValue::String)
     }
 
     pub fn quit(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
