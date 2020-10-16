@@ -66,8 +66,8 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
 
     register!(client => index, current_buffer_view_handle,);
     register!(editor => version, quit, quit_all, force_quit_all, print, delete_selection, insert_text,);
-    register!(buffer => all_handles, line_count, line_at, path, needs_save, set_search, open, close,
-        force_close, close_all, force_close_all, save, save_all, commit_edits,);
+    register!(buffer => all_handles, line_count, line_at, path, extension, needs_save, set_search, open,
+        close, force_close, close_all, force_close_all, save, save_all, commit_edits,);
     register!(buffer_view => buffer_handle, all_handles, handle_from_path, selection_text, insert_text,
         insert_text_at, delete_selection, delete_in, undo, redo,);
     register!(cursors => len, all, set_all, main_index, main, set, move_columns, move_lines, move_words,
@@ -274,6 +274,24 @@ mod buffer {
             .or_else(|| ctx.current_buffer_handle())
             .and_then(|h| ctx.buffers.get(h))
             .and_then(|b| b.path())
+            .and_then(|p| p.to_str())
+            .map(|p| p.as_bytes())
+        {
+            Some(bytes) => Ok(ScriptValue::String(engine.create_string(bytes)?)),
+            None => Ok(ScriptValue::Nil),
+        }
+    }
+
+    pub fn extension<'a>(
+        engine: ScriptEngineRef<'a>,
+        ctx: &mut ScriptContext,
+        handle: Option<BufferHandle>,
+    ) -> ScriptResult<ScriptValue<'a>> {
+        match handle
+            .or_else(|| ctx.current_buffer_handle())
+            .and_then(|h| ctx.buffers.get(h))
+            .and_then(|b| b.path())
+            .and_then(|p| p.extension())
             .and_then(|p| p.to_str())
             .map(|p| p.as_bytes())
         {
