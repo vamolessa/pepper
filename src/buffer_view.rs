@@ -713,7 +713,6 @@ impl BufferViewCollection {
 
             let mut cursors = view.cursors.mut_guard();
             let mut position = BufferPosition::line_col(line_index, 0);
-            position.line_index = position.line_index.saturating_sub(1);
 
             if let Some(buffer) = buffers.get(view.buffer_handle) {
                 position = buffer.content().saturate_position(position);
