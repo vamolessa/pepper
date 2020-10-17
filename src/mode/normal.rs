@@ -792,6 +792,7 @@ impl ModeState for State {
 }
 
 fn find_char(state: &State, ctx: &mut ModeContext, count: usize, forward: bool) {
+    let skip;
     let ch;
     let next_ch;
     match state.last_char_jump {
@@ -799,10 +800,12 @@ fn find_char(state: &State, ctx: &mut ModeContext, count: usize, forward: bool) 
         CharJump::Inclusive(c) => {
             ch = c;
             next_ch = forward;
+            skip = 0;
         }
         CharJump::Exclusive(c) => {
             ch = c;
             next_ch = !forward;
+            skip = 1;
         }
     };
 
@@ -817,8 +820,16 @@ fn find_char(state: &State, ctx: &mut ModeContext, count: usize, forward: bool) 
             .chars_from(cursor.position.column_byte_index);
 
         let element = match forward {
-            false => left_chars.filter(|(_, c)| *c == ch).take(count).last(),
-            true => right_chars.filter(|(_, c)| *c == ch).take(count).last(),
+            false => left_chars
+                .skip(skip)
+                .filter(|(_, c)| *c == ch)
+                .take(count)
+                .last(),
+            true => right_chars
+                .skip(skip)
+                .filter(|(_, c)| *c == ch)
+                .take(count)
+                .last(),
         };
         if let Some((i, c)) = element {
             cursor.position.column_byte_index = i;
