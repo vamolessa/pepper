@@ -538,7 +538,7 @@ where
         let column_number = client_view.main_cursor.position.column_byte_index + 1;
 
         let param_count = match &editor.mode {
-            Mode::Normal(state) => state.count,
+            Mode::Normal(state) if has_focus => state.count,
             _ => 0,
         };
         let param_count_digit_count = if param_count > 0 {
@@ -549,14 +549,21 @@ where
 
         let line_digit_count = find_digit_count(line_number);
         let column_digit_count = find_digit_count(column_number);
-        let buffer_status_len = x
-            + 1
-            + param_count_digit_count
-            + editor
+
+        let buffer_keys_len = if has_focus {
+            editor
                 .buffered_keys
                 .iter()
                 .map(|k| k.display_len())
                 .fold(0, std::ops::Add::add)
+        } else {
+            0
+        };
+
+        let buffer_status_len = x
+            + 1
+            + param_count_digit_count
+            + buffer_keys_len
             + needs_save_text.len()
             + buffer_path.len()
             + 1
@@ -573,9 +580,12 @@ where
         if param_count > 0 {
             handle_command!(write, Print(param_count))?;
         }
-        for key in editor.buffered_keys.iter() {
-            handle_command!(write, Print(key))?;
+        if has_focus {
+            for key in editor.buffered_keys.iter() {
+                handle_command!(write, Print(key))?;
+            }
         }
+
         handle_command!(write, Print(' '))?;
         handle_command!(write, Print(needs_save_text))?;
         handle_command!(write, Print(buffer_path))?;
