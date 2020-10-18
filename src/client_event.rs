@@ -24,7 +24,7 @@ pub enum ClientEvent<'a> {
     Ui(UiKind),
     AsFocusedClient,
     AsClient(TargetClient),
-    OpenFile(&'a str),
+    OpenBuffer(&'a str),
     Key(Key),
     Resize(u16, u16),
 }
@@ -44,7 +44,7 @@ impl<'de> Serialize<'de> for ClientEvent<'de> {
                 2u8.serialize(serializer);
                 target_client.serialize(serializer);
             }
-            ClientEvent::OpenFile(path) => {
+            ClientEvent::OpenBuffer(path) => {
                 3u8.serialize(serializer);
                 path.serialize(serializer);
             }
@@ -77,7 +77,7 @@ impl<'de> Serialize<'de> for ClientEvent<'de> {
             }
             3 => {
                 let path = <&str>::deserialize(deserializer)?;
-                Ok(ClientEvent::OpenFile(path))
+                Ok(ClientEvent::OpenBuffer(path))
             }
             4 => {
                 let key = Key::deserialize(deserializer)?;

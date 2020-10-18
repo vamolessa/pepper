@@ -315,7 +315,7 @@ impl Editor {
                 self.client_target_map.map(target_client, target);
                 EditorLoop::Continue
             }
-            ClientEvent::OpenFile(mut path) => {
+            ClientEvent::OpenBuffer(mut path) => {
                 let target_client = self.client_target_map.get(target_client);
 
                 let mut line_index = None;
@@ -339,6 +339,23 @@ impl Editor {
                     Ok(handle) => {
                         if let Some(client) = clients.get_mut(target_client) {
                             client.current_buffer_view_handle = Some(handle);
+                        }
+
+                        if let Some(handle) = self.buffer_views.get(handle).map(|v| v.buffer_handle)
+                        {
+                            let (_, _, mut ctx) = self.mode_context(clients, target_client);
+                            let (engine, _, mut ctx) = ctx.script_context();
+                            if let Err(error) =
+                                engine.as_ref_with_ctx(&mut ctx, |engine, _, mut guard| {
+                                    engine.call_function_array_in_registry(
+                                        "buffer_on_open",
+                                        &mut guard,
+                                        handle,
+                                    )
+                                })
+                            {
+                                ctx.status_message.write_error(&error);
+                            }
                         }
                     }
                     Err(error) => self

@@ -125,7 +125,7 @@ where
     }
 
     for path in &args.files {
-        func(ClientEvent::OpenFile(path));
+        func(ClientEvent::OpenBuffer(path));
     }
 }
 
