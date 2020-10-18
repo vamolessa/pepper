@@ -375,11 +375,7 @@ impl<'a> ScriptContext<'a> {
         guard: &mut ScriptContextGuard,
         handle: BufferHandle,
     ) -> ScriptResult<()> {
-        let callbacks: ScriptArray = engine.get_from_registry("on_open_buffer")?;
-        for callback in callbacks.iter::<ScriptFunction>() {
-            callback?.call(guard, handle)?;
-        }
-        Ok(())
+        engine.call_function_array_in_registry("on_open_buffer", guard, handle)
     }
 }
 
@@ -535,7 +531,12 @@ impl ScriptEngine {
         Ok(())
     }
 
-    pub fn eval<'a, F, R>(&'a mut self, ctx: &mut ScriptContext<'a>, source: &str, scope: F) -> ScriptResult<R>
+    pub fn eval<'a, F, R>(
+        &'a mut self,
+        ctx: &mut ScriptContext<'a>,
+        source: &str,
+        scope: F,
+    ) -> ScriptResult<R>
     where
         F: FnOnce(
             ScriptEngineRef<'a>,
@@ -654,11 +655,25 @@ impl<'lua> ScriptEngineRef<'lua> {
         self.lua.set_named_registry_value(key, value)
     }
 
-    pub fn get_from_registry<T>(&self, key: &str) -> ScriptResult<T>
+    pub fn call_function_array_in_registry<A>(
+        &self,
+        key: &str,
+        guard: &mut ScriptContextGuard,
+        args: A,
+    ) -> ScriptResult<()>
     where
-        T: FromLua<'lua>,
+        A: Clone + ToLuaMulti<'lua>,
     {
-        self.lua.named_registry_value(key)
+        let callbacks: ScriptArray = match self.lua.named_registry_value(key) {
+            Ok(callbacks) => callbacks,
+            Err(_) => return Ok(()),
+        };
+
+        for callback in callbacks.iter::<ScriptFunction>() {
+            callback?.call(guard, args.clone())?;
+        }
+
+        Ok(())
     }
 
     pub fn take_from_registry<T>(&self, key: &str) -> ScriptResult<T>
