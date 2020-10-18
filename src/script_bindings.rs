@@ -65,7 +65,7 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
 
     register!(client => index, current_buffer_view_handle,);
     register!(editor => version, quit, quit_all, force_quit_all, print, delete_selection, insert_text,);
-    register!(buffer => all_handles, line_count, line_at, path, extension, needs_save, set_search, open,
+    register!(buffer => all_handles, line_count, line_at, path, extension, refresh_syntax, needs_save, set_search, open,
         close, force_close, close_all, force_close_all, save, save_all, commit_edits, on_open,);
     register!(buffer_view => buffer_handle, all_handles, handle_from_path, selection_text, insert_text,
         insert_text_at, delete_selection, delete_in, undo, redo,);
@@ -327,6 +327,21 @@ mod buffer {
             Some(bytes) => Ok(ScriptValue::String(engine.create_string(bytes)?)),
             None => Ok(ScriptValue::Nil),
         }
+    }
+
+    pub fn refresh_syntax(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        handle: Option<BufferHandle>,
+    ) -> ScriptResult<()> {
+        let handle = handle.or_else(|| ctx.current_buffer_handle());
+        let buffers = &mut ctx.buffers;
+        if let Some(buffer) = handle.and_then(|h| buffers.get_mut(h)) {
+            buffer.refresh_syntax(&ctx.config.syntaxes);
+        }
+
+        Ok(())
     }
 
     pub fn needs_save(

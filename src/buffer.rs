@@ -651,13 +651,15 @@ impl Buffer {
 
     pub fn set_path(&mut self, syntaxes: &SyntaxCollection, path: Option<&Path>) {
         self.path.clear();
-
         if let Some(path) = path {
             self.path.push(path);
         }
+        self.refresh_syntax(syntaxes);
+    }
 
-        let syntax_handle = path
-            .and_then(|p| syntaxes.find_handle_by_extension(syntax::get_path_extension(p)))
+    pub fn refresh_syntax(&mut self, syntaxes: &SyntaxCollection) {
+        let syntax_handle = syntaxes
+            .find_handle_by_extension(syntax::get_path_extension(&self.path))
             .unwrap_or(SyntaxHandle::default());
 
         if self.syntax_handle != syntax_handle {
