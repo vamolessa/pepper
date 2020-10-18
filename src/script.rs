@@ -189,7 +189,7 @@ impl<'lua> ScriptFunction<'lua> {
         A: ToLuaMulti<'lua>,
         R: FromLuaMulti<'lua>,
     {
-        let _scope = ScriptContextScope::new(self.0, ctx)?;
+        let _scope = ScriptExecutionGuard::new(self.0, ctx)?;
         self.1.call(args)
     }
 }
@@ -369,32 +369,32 @@ impl<'a> ScriptContext<'a> {
             client.current_buffer_view_handle = handle;
         }
     }
+
+    pub fn call_open_buffer_hooks(
+        &mut self,
+        engine: ScriptEngineRef,
+        handle: BufferHandle,
+    ) -> ScriptResult<()> {
+        let callbacks: ScriptArray = engine.get_from_registry("on_open_buffer")?;
+        for callback in callbacks.iter::<ScriptFunction>() {
+            let callback = callback?;
+            callback.call(self, handle)?;
+        }
+        Ok(())
+    }
 }
 
-struct ScriptContextScope<'lua>(&'lua Lua);
-impl<'lua> ScriptContextScope<'lua> {
+pub struct ScriptExecutionGuard<'lua>(&'lua Lua);
+impl<'lua> ScriptExecutionGuard<'lua> {
     pub fn new(lua: &'lua Lua, ctx: &mut ScriptContext) -> ScriptResult<Self> {
         let this = Self(lua);
-        if this.update_ref_count(|rc| rc + 1)? == 1 {
-            lua.set_named_registry_value("ctx", LuaLightUserData(ctx as *mut ScriptContext as _))?;
-        }
-
+        lua.set_named_registry_value("ctx", LuaLightUserData(ctx as *mut ScriptContext as _))?;
         Ok(this)
     }
-
-    fn update_ref_count(&self, change: fn(usize) -> usize) -> ScriptResult<usize> {
-        const REF_COUNT_KEY: &str = "ctx_ref_count";
-        let ref_count = self.0.named_registry_value(REF_COUNT_KEY).unwrap_or(0);
-        let ref_count = change(ref_count);
-        self.0.set_named_registry_value(REF_COUNT_KEY, ref_count)?;
-        Ok(ref_count)
-    }
 }
-impl<'a> Drop for ScriptContextScope<'a> {
+impl<'a> Drop for ScriptExecutionGuard<'a> {
     fn drop(&mut self) {
-        if self.update_ref_count(|rc| rc - 1).unwrap() == 0 {
-            self.0.unset_named_registry_value("ctx").unwrap();
-        }
+        self.0.unset_named_registry_value("ctx").unwrap();
     }
 }
 
@@ -483,7 +483,7 @@ impl ScriptEngine {
             package.set("searchers", searchers)?;
         }
 
-        let this = Self {
+        let mut this = Self {
             lua,
             history: VecDeque::with_capacity(10),
         };
@@ -493,7 +493,7 @@ impl ScriptEngine {
         Ok(this)
     }
 
-    pub fn as_ref(&self) -> ScriptEngineRef {
+    pub fn as_ref(&mut self) -> ScriptEngineRef {
         ScriptEngineRef::from_lua(&self.lua)
     }
 
@@ -522,13 +522,13 @@ impl ScriptEngine {
     }
 
     pub fn eval(&mut self, ctx: &mut ScriptContext, source: &str) -> ScriptResult<ScriptValue> {
-        let _scope = ScriptContextScope::new(&self.lua, ctx)?;
+        let _scope = ScriptExecutionGuard::new(&self.lua, ctx)?;
         self.lua.load(source).set_name(source)?.eval()
     }
 
     pub fn eval_entry_file(&mut self, ctx: &mut ScriptContext, path: &Path) -> ScriptResult<()> {
         self.add_module_search_path(path)?;
-        let _scope = ScriptContextScope::new(&self.lua, ctx)?;
+        let _scope = ScriptExecutionGuard::new(&self.lua, ctx)?;
         let _: LuaValue = eval_file(&self.lua, path)?;
         Ok(())
     }
@@ -574,13 +574,13 @@ where
     }
 }
 
-#[derive(Clone, Copy)]
 pub struct ScriptEngineRef<'lua> {
     lua: &'lua Lua,
 }
 
 impl<'lua> ScriptEngineRef<'lua> {
     pub fn from_lua(lua: &'lua Lua) -> Self {
+        //lua.set_named_registry_value("ctx", LuaLightUserData(ctx as *mut ScriptContext as _))?;
         Self { lua }
     }
 
@@ -623,6 +623,13 @@ impl<'lua> ScriptEngineRef<'lua> {
         self.lua.set_named_registry_value(key, value)
     }
 
+    pub fn get_from_registry<T>(&self, key: &str) -> ScriptResult<T>
+    where
+        T: FromLua<'lua>,
+    {
+        self.lua.named_registry_value(key)
+    }
+
     pub fn take_from_registry<T>(&self, key: &str) -> ScriptResult<T>
     where
         T: FromLua<'lua>,
@@ -630,5 +637,10 @@ impl<'lua> ScriptEngineRef<'lua> {
         let value = self.lua.named_registry_value(key)?;
         self.lua.unset_named_registry_value(key)?;
         Ok(value)
+    }
+}
+impl<'a> Drop for ScriptEngineRef<'a> {
+    fn drop(&mut self) {
+        //self.lua.unset_named_registry_value("ctx").unwrap();
     }
 }
