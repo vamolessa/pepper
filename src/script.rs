@@ -368,15 +368,6 @@ impl<'a> ScriptContext<'a> {
             client.current_buffer_view_handle = handle;
         }
     }
-
-    pub fn call_open_buffer_hooks(
-        &mut self,
-        engine: ScriptEngineRef,
-        guard: &mut ScriptContextGuard,
-        handle: BufferHandle,
-    ) -> ScriptResult<()> {
-        engine.call_function_array_in_registry("buffer_on_open", guard, handle)
-    }
 }
 
 const MODULE_SEARCH_PATHS_REGISTRY_KEY: &str = "module_search_paths";

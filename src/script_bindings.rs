@@ -386,7 +386,7 @@ mod buffer {
             .get(buffer_view_handle)
             .map(|v| v.buffer_handle)
         {
-            ctx.call_open_buffer_hooks(engine, &mut guard, handle)?;
+            engine.call_function_array_in_registry("buffer_on_open", &mut guard, handle)?;
         }
 
         Ok(())
