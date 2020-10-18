@@ -2,7 +2,7 @@ use crate::{
     client_event::Key,
     editor::{EditorLoop, KeysIterator, ReadLinePoll, StatusMessageKind},
     mode::{Mode, ModeContext, ModeOperation, ModeState},
-    script::ScriptValue,
+    script::{ScriptContext, ScriptEngine, ScriptResult, ScriptValue},
     word_database::WordDatabase,
 };
 
@@ -53,44 +53,42 @@ impl ModeState for State {
             ReadLinePoll::Canceled => ModeOperation::EnterMode(Mode::default()),
             ReadLinePoll::Submitted => {
                 ctx.scripts.add_to_history(ctx.read_line.input());
-                let (scripts, read_line, mut context) = ctx.script_context();
-                match scripts.eval(&mut context, read_line.input()) {
-                    Ok(value) => {
-                        match value {
-                            ScriptValue::Nil => (),
-                            ScriptValue::Function(f) => match f.call(&mut context, ()) {
-                                Ok(ScriptValue::Nil) => (),
-                                Ok(value) => context
-                                    .status_message
-                                    .write_str(StatusMessageKind::Info, &value.to_string()),
-                                Err(error) => match context.editor_loop {
-                                    EditorLoop::Quit => return ModeOperation::Quit,
-                                    EditorLoop::QuitAll => return ModeOperation::QuitAll,
-                                    EditorLoop::Continue => {
-                                        context.status_message.write_str(
-                                            StatusMessageKind::Error,
-                                            &error.to_string(),
-                                        );
-                                    }
-                                },
-                            },
-                            _ => context
-                                .status_message
-                                .write_str(StatusMessageKind::Info, &value.to_string()),
-                        }
+                let (engine, read_line, mut context) = ctx.script_context();
 
-                        ModeOperation::EnterMode(context.next_mode)
-                    }
-                    Err(e) => match context.editor_loop {
-                        EditorLoop::Quit => ModeOperation::Quit,
-                        EditorLoop::QuitAll => ModeOperation::QuitAll,
+                if let Err(error) = eval(engine, &mut context, read_line.input()) {
+                    match context.editor_loop {
+                        EditorLoop::Quit => return ModeOperation::Quit,
+                        EditorLoop::QuitAll => return ModeOperation::QuitAll,
                         EditorLoop::Continue => {
-                            context.status_message.write_error(&e);
-                            ModeOperation::EnterMode(Mode::default())
+                            context
+                                .status_message
+                                .write_str(StatusMessageKind::Error, &error.to_string());
                         }
-                    },
+                    }
                 }
+
+                ModeOperation::EnterMode(context.next_mode)
             }
         }
     }
+}
+
+fn eval<'a>(
+    engine: &'a mut ScriptEngine,
+    ctx: &mut ScriptContext<'a>,
+    code: &str,
+) -> ScriptResult<()> {
+    let value = engine.eval(ctx, code, |_, _, mut guard, value| match value {
+        ScriptValue::Function(f) => f.call(&mut guard, ()),
+        value => Ok(value),
+    })?;
+
+    match value {
+        ScriptValue::Nil => (),
+        value => ctx
+            .status_message
+            .write_str(StatusMessageKind::Info, &value.to_string()),
+    }
+
+    Ok(())
 }

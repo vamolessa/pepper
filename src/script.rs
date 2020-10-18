@@ -182,21 +182,20 @@ impl<'lua> FromLua<'lua> for ScriptArray<'lua> {
     }
 }
 
-pub struct ScriptFunction<'lua>(&'lua Lua, LuaFunction<'lua>);
+pub struct ScriptFunction<'lua>(LuaFunction<'lua>);
 impl<'lua> ScriptFunction<'lua> {
-    pub fn call<A, R>(&self, ctx: &mut ScriptContext, args: A) -> ScriptResult<R>
+    pub fn call<A, R>(&self, _: &mut ScriptContextGuard, args: A) -> ScriptResult<R>
     where
         A: ToLuaMulti<'lua>,
         R: FromLuaMulti<'lua>,
     {
-        let _scope = ScriptExecutionGuard::new(self.0, ctx)?;
-        self.1.call(args)
+        self.0.call(args)
     }
 }
 impl<'lua> FromLua<'lua> for ScriptFunction<'lua> {
-    fn from_lua(lua_value: LuaValue<'lua>, lua: &'lua Lua) -> LuaResult<Self> {
+    fn from_lua(lua_value: LuaValue<'lua>, _: &'lua Lua) -> LuaResult<Self> {
         if let LuaValue::Function(f) = lua_value {
-            Ok(Self(lua, f))
+            Ok(Self(f))
         } else {
             Err(LuaError::FromLuaConversionError {
                 from: lua_value.type_name(),
@@ -283,7 +282,7 @@ impl<'lua> fmt::Display for ScriptValue<'lua> {
     }
 }
 impl<'lua> FromLua<'lua> for ScriptValue<'lua> {
-    fn from_lua(lua_value: LuaValue<'lua>, lua: &'lua Lua) -> LuaResult<Self> {
+    fn from_lua(lua_value: LuaValue<'lua>, _: &'lua Lua) -> LuaResult<Self> {
         match lua_value {
             LuaValue::Nil => Ok(Self::Nil),
             LuaValue::Boolean(b) => Ok(Self::Boolean(b)),
@@ -291,7 +290,7 @@ impl<'lua> FromLua<'lua> for ScriptValue<'lua> {
             LuaValue::Number(n) => Ok(Self::Number(n)),
             LuaValue::String(s) => Ok(Self::String(ScriptString(s))),
             LuaValue::Table(t) => Ok(Self::Object(ScriptObject(t))),
-            LuaValue::Function(f) => Ok(Self::Function(ScriptFunction(lua, f))),
+            LuaValue::Function(f) => Ok(Self::Function(ScriptFunction(f))),
             _ => Err(LuaError::FromLuaConversionError {
                 from: lua_value.type_name(),
                 to: std::any::type_name::<Self>(),
@@ -310,7 +309,7 @@ impl<'lua> ToLua<'lua> for ScriptValue<'lua> {
             Self::String(s) => Ok(LuaValue::String(s.0)),
             Self::Object(o) => Ok(LuaValue::Table(o.0)),
             Self::Array(a) => Ok(LuaValue::Table(a.0)),
-            Self::Function(f) => Ok(LuaValue::Function(f.1)),
+            Self::Function(f) => Ok(LuaValue::Function(f.0)),
         }
     }
 }
@@ -373,33 +372,34 @@ impl<'a> ScriptContext<'a> {
     pub fn call_open_buffer_hooks(
         &mut self,
         engine: ScriptEngineRef,
+        guard: &mut ScriptContextGuard,
         handle: BufferHandle,
     ) -> ScriptResult<()> {
         let callbacks: ScriptArray = engine.get_from_registry("on_open_buffer")?;
         for callback in callbacks.iter::<ScriptFunction>() {
-            let callback = callback?;
-            callback.call(self, handle)?;
+            callback?.call(guard, handle)?;
         }
         Ok(())
     }
 }
 
-pub struct ScriptExecutionGuard<'lua>(&'lua Lua);
-impl<'lua> ScriptExecutionGuard<'lua> {
+const MODULE_SEARCH_PATHS_REGISTRY_KEY: &str = "module_search_paths";
+const MODULE_LOADER_REGISTRY_KEY: &str = "module_loader";
+
+pub struct ScriptContextGuard(());
+
+struct ScriptContextRegistryScope<'lua>(&'lua Lua);
+impl<'lua> ScriptContextRegistryScope<'lua> {
     pub fn new(lua: &'lua Lua, ctx: &mut ScriptContext) -> ScriptResult<Self> {
-        let this = Self(lua);
         lua.set_named_registry_value("ctx", LuaLightUserData(ctx as *mut ScriptContext as _))?;
-        Ok(this)
+        Ok(Self(lua))
     }
 }
-impl<'a> Drop for ScriptExecutionGuard<'a> {
+impl<'lua> Drop for ScriptContextRegistryScope<'lua> {
     fn drop(&mut self) {
         self.0.unset_named_registry_value("ctx").unwrap();
     }
 }
-
-const MODULE_SEARCH_PATHS_REGISTRY_KEY: &str = "module_search_paths";
-const MODULE_LOADER_REGISTRY_KEY: &str = "module_loader";
 
 pub struct ScriptEngine {
     lua: Lua,
@@ -497,6 +497,20 @@ impl ScriptEngine {
         ScriptEngineRef::from_lua(&self.lua)
     }
 
+    pub fn as_ref_with_ctx<F, R>(&mut self, ctx: &mut ScriptContext, scope: F) -> ScriptResult<R>
+    where
+        F: FnOnce(ScriptEngineRef, &mut ScriptContext, ScriptContextGuard) -> ScriptResult<R>,
+    {
+        let s = ScriptContextRegistryScope::new(&self.lua, ctx)?;
+        let value = scope(
+            ScriptEngineRef::from_lua(&self.lua),
+            ctx,
+            ScriptContextGuard(()),
+        )?;
+        drop(s);
+        Ok(value)
+    }
+
     pub fn add_module_search_path(&mut self, path: &Path) -> ScriptResult<()> {
         let path = path
             .canonicalize()
@@ -521,15 +535,32 @@ impl ScriptEngine {
         Ok(())
     }
 
-    pub fn eval(&mut self, ctx: &mut ScriptContext, source: &str) -> ScriptResult<ScriptValue> {
-        let _scope = ScriptExecutionGuard::new(&self.lua, ctx)?;
-        self.lua.load(source).set_name(source)?.eval()
+    pub fn eval<'a, F, R>(&'a mut self, ctx: &mut ScriptContext<'a>, source: &str, scope: F) -> ScriptResult<R>
+    where
+        F: FnOnce(
+            ScriptEngineRef<'a>,
+            &mut ScriptContext<'a>,
+            ScriptContextGuard,
+            ScriptValue<'a>,
+        ) -> ScriptResult<R>,
+    {
+        let s = ScriptContextRegistryScope::new(&self.lua, ctx)?;
+        let value = self.lua.load(source).set_name(source)?.eval()?;
+        let value = scope(
+            ScriptEngineRef::from_lua(&self.lua),
+            ctx,
+            ScriptContextGuard(()),
+            value,
+        )?;
+        drop(s);
+        Ok(value)
     }
 
     pub fn eval_entry_file(&mut self, ctx: &mut ScriptContext, path: &Path) -> ScriptResult<()> {
         self.add_module_search_path(path)?;
-        let _scope = ScriptExecutionGuard::new(&self.lua, ctx)?;
+        let s = ScriptContextRegistryScope::new(&self.lua, ctx)?;
         let _: LuaValue = eval_file(&self.lua, path)?;
+        drop(s);
         Ok(())
     }
 
@@ -580,7 +611,6 @@ pub struct ScriptEngineRef<'lua> {
 
 impl<'lua> ScriptEngineRef<'lua> {
     pub fn from_lua(lua: &'lua Lua) -> Self {
-        //lua.set_named_registry_value("ctx", LuaLightUserData(ctx as *mut ScriptContext as _))?;
         Self { lua }
     }
 
@@ -604,16 +634,17 @@ impl<'lua> ScriptEngineRef<'lua> {
     where
         A: FromLuaMulti<'lua>,
         R: ToLuaMulti<'lua>,
-        F: 'static + Fn(ScriptEngineRef<'lua>, &mut ScriptContext, A) -> ScriptResult<R>,
+        F: 'static
+            + Fn(ScriptEngineRef<'lua>, &mut ScriptContext, ScriptContextGuard, A) -> ScriptResult<R>,
     {
         self.lua
             .create_function(move |lua, args| {
+                let engine = ScriptEngineRef { lua };
                 let ctx: LuaLightUserData = lua.named_registry_value("ctx")?;
                 let ctx = unsafe { &mut *(ctx.0 as *mut _) };
-                let engine = ScriptEngineRef { lua };
-                func(engine, ctx, args)
+                func(engine, ctx, ScriptContextGuard(()), args)
             })
-            .map(|f| ScriptFunction(self.lua, f))
+            .map(|f| ScriptFunction(f))
     }
 
     pub fn save_to_registry<T>(&self, key: &str, value: T) -> ScriptResult<()>
@@ -637,10 +668,5 @@ impl<'lua> ScriptEngineRef<'lua> {
         let value = self.lua.named_registry_value(key)?;
         self.lua.unset_named_registry_value(key)?;
         Ok(value)
-    }
-}
-impl<'a> Drop for ScriptEngineRef<'a> {
-    fn drop(&mut self) {
-        //self.lua.unset_named_registry_value("ctx").unwrap();
     }
 }

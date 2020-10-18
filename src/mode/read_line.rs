@@ -204,29 +204,23 @@ pub mod script {
 
         fn on_event(ctx: &mut ModeContext, _: &mut KeysIterator, poll: ReadLinePoll) {
             let (engine, read_line, mut ctx) = ctx.script_context();
-            let engine = engine.as_ref();
-
-            let input = match poll {
-                ReadLinePoll::Pending => return,
-                ReadLinePoll::Submitted => match engine.create_string(read_line.input().as_bytes())
-                {
-                    Ok(input) => ScriptValue::String(input),
-                    Err(error) => {
-                        ctx.status_message.write_error(&error);
-                        return;
+            let result = engine.as_ref_with_ctx(&mut ctx, |engine, _, mut guard| {
+                let input = match poll {
+                    ReadLinePoll::Pending => return Ok(()),
+                    ReadLinePoll::Submitted => {
+                        ScriptValue::String(engine.create_string(read_line.input().as_bytes())?)
                     }
-                },
-                ReadLinePoll::Canceled => ScriptValue::Nil,
-            };
+                    ReadLinePoll::Canceled => ScriptValue::Nil,
+                };
 
-            match engine
-                .take_from_registry::<ScriptFunction>(CALLBACK_REGISTRY_KEY)
-                .and_then(|c| c.call(&mut ctx, input))
-            {
-                Ok(()) => (),
-                Err(error) => {
-                    ctx.status_message.write_error(&error);
-                }
+                engine
+                    .take_from_registry::<ScriptFunction>(CALLBACK_REGISTRY_KEY)?
+                    .call(&mut guard, input)?;
+                Ok(())
+            });
+
+            if let Err(error) = result {
+                ctx.status_message.write_error(&error);
             }
         }
 

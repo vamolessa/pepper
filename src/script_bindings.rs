@@ -18,8 +18,8 @@ use crate::{
     navigation_history::NavigationHistory,
     pattern::Pattern,
     script::{
-        ScriptArray, ScriptContext, ScriptEngineRef, ScriptError, ScriptFunction, ScriptObject,
-        ScriptResult, ScriptString, ScriptValue,
+        ScriptArray, ScriptContext, ScriptContextGuard, ScriptEngineRef, ScriptError,
+        ScriptFunction, ScriptObject, ScriptResult, ScriptString, ScriptValue,
     },
     theme::Color,
 };
@@ -105,13 +105,19 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
 mod client {
     use super::*;
 
-    pub fn index(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<usize> {
+    pub fn index(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        _: (),
+    ) -> ScriptResult<usize> {
         Ok(ctx.target_client.into_index())
     }
 
     pub fn current_buffer_view_handle(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         target: Option<usize>,
     ) -> ScriptResult<Option<BufferViewHandle>> {
         let target = target
@@ -131,6 +137,7 @@ mod editor {
     pub fn version<'a>(
         engine: ScriptEngineRef<'a>,
         _: &mut ScriptContext,
+        _: ScriptContextGuard,
         _: (),
     ) -> ScriptResult<ScriptValue<'a>> {
         engine
@@ -138,7 +145,12 @@ mod editor {
             .map(ScriptValue::String)
     }
 
-    pub fn quit(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
+    pub fn quit(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        _: (),
+    ) -> ScriptResult<()> {
         let can_quit =
             ctx.target_client != TargetClient::Local || ctx.buffers.iter().all(|b| !b.needs_save());
         if can_quit {
@@ -153,7 +165,12 @@ mod editor {
         }
     }
 
-    pub fn quit_all(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
+    pub fn quit_all(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        _: (),
+    ) -> ScriptResult<()> {
         let can_quit = ctx.buffers.iter().all(|b| !b.needs_save());
         if can_quit {
             ctx.editor_loop = EditorLoop::QuitAll;
@@ -167,7 +184,12 @@ mod editor {
         }
     }
 
-    pub fn force_quit_all(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
+    pub fn force_quit_all(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        _: (),
+    ) -> ScriptResult<()> {
         ctx.editor_loop = EditorLoop::QuitAll;
         Err(ScriptError::from(QuitError))
     }
@@ -175,6 +197,7 @@ mod editor {
     pub fn print(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         value: ScriptValue,
     ) -> ScriptResult<()> {
         ctx.status_message
@@ -185,6 +208,7 @@ mod editor {
     pub fn delete_selection(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         _: (),
     ) -> ScriptResult<()> {
         if let Some(handle) = ctx.current_buffer_view_handle() {
@@ -201,6 +225,7 @@ mod editor {
     pub fn insert_text(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         text: ScriptString,
     ) -> ScriptResult<()> {
         if let Some(handle) = ctx.current_buffer_view_handle() {
@@ -223,6 +248,7 @@ mod buffer {
     pub fn all_handles<'a>(
         engine: ScriptEngineRef<'a>,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         _: (),
     ) -> ScriptResult<ScriptValue<'a>> {
         let handles = engine.create_array()?;
@@ -235,6 +261,7 @@ mod buffer {
     pub fn line_count(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         handle: Option<BufferHandle>,
     ) -> ScriptResult<Option<usize>> {
         Ok(handle
@@ -246,6 +273,7 @@ mod buffer {
     pub fn line_at<'a>(
         engine: ScriptEngineRef<'a>,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         (index, handle): (usize, Option<BufferHandle>),
     ) -> ScriptResult<ScriptValue<'a>> {
         match handle
@@ -267,6 +295,7 @@ mod buffer {
     pub fn path<'a>(
         engine: ScriptEngineRef<'a>,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         handle: Option<BufferHandle>,
     ) -> ScriptResult<ScriptValue<'a>> {
         match handle
@@ -284,6 +313,7 @@ mod buffer {
     pub fn extension<'a>(
         engine: ScriptEngineRef<'a>,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         handle: Option<BufferHandle>,
     ) -> ScriptResult<ScriptValue<'a>> {
         match handle
@@ -302,6 +332,7 @@ mod buffer {
     pub fn needs_save(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         handle: Option<BufferHandle>,
     ) -> ScriptResult<bool> {
         Ok(handle
@@ -314,6 +345,7 @@ mod buffer {
     pub fn set_search(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         (search, handle): (ScriptString, Option<BufferHandle>),
     ) -> ScriptResult<()> {
         let search = search.to_str()?;
@@ -330,6 +362,7 @@ mod buffer {
     pub fn open(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         (path, line_number): (ScriptString, Option<usize>),
     ) -> ScriptResult<()> {
         NavigationHistory::save_client_snapshot(ctx.clients, ctx.buffer_views, ctx.target_client);
@@ -353,6 +386,7 @@ mod buffer {
     pub fn close(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         handle: Option<BufferHandle>,
     ) -> ScriptResult<()> {
         if let Some(handle) = handle.or_else(|| ctx.current_buffer_handle()) {
@@ -382,6 +416,7 @@ mod buffer {
     pub fn force_close(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         handle: Option<BufferHandle>,
     ) -> ScriptResult<()> {
         if let Some(handle) = handle.or_else(|| ctx.current_buffer_handle()) {
@@ -395,7 +430,12 @@ mod buffer {
         Ok(())
     }
 
-    pub fn close_all(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
+    pub fn close_all(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        _: (),
+    ) -> ScriptResult<()> {
         let unsaved_buffers = ctx.buffers.iter().any(|b| b.needs_save());
         if unsaved_buffers {
             ctx.status_message.write_str(
@@ -413,7 +453,12 @@ mod buffer {
         }
     }
 
-    pub fn force_close_all(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
+    pub fn force_close_all(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        _: (),
+    ) -> ScriptResult<()> {
         ctx.buffer_views
             .remove_where(ctx.buffers, ctx.clients, ctx.word_database, |_| true);
         for c in ctx.clients.client_refs() {
@@ -425,6 +470,7 @@ mod buffer {
     pub fn save(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         (path, handle): (Option<ScriptString>, Option<BufferHandle>),
     ) -> ScriptResult<()> {
         let handle = match handle.or_else(|| ctx.current_buffer_handle()) {
@@ -450,7 +496,12 @@ mod buffer {
         buffer.save_to_file().map_err(ScriptError::from)
     }
 
-    pub fn save_all(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
+    pub fn save_all(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        _: (),
+    ) -> ScriptResult<()> {
         let mut buffer_count = 0;
         for buffer in ctx.buffers.iter_mut() {
             buffer.save_to_file().map_err(ScriptError::from)?;
@@ -468,6 +519,7 @@ mod buffer {
     pub fn commit_edits(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         handle: Option<BufferHandle>,
     ) -> ScriptResult<()> {
         let buffer_handle = handle.or_else(|| {
@@ -488,6 +540,7 @@ mod buffer_view {
     pub fn buffer_handle(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         handle: BufferViewHandle,
     ) -> ScriptResult<Option<BufferHandle>> {
         Ok(ctx.buffer_views.get(handle).map(|v| v.buffer_handle))
@@ -496,6 +549,7 @@ mod buffer_view {
     pub fn all_handles<'a>(
         engine: ScriptEngineRef<'a>,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         _: (),
     ) -> ScriptResult<ScriptValue<'a>> {
         let handles = engine.create_array()?;
@@ -508,6 +562,7 @@ mod buffer_view {
     pub fn handle_from_path(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         path: ScriptString,
     ) -> ScriptResult<Option<BufferViewHandle>> {
         let path = path.to_str()?;
@@ -531,6 +586,7 @@ mod buffer_view {
     pub fn selection_text(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         handle: Option<BufferViewHandle>,
     ) -> ScriptResult<String> {
         let mut text = String::new();
@@ -547,6 +603,7 @@ mod buffer_view {
     pub fn insert_text(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         (text, handle): (ScriptString, Option<BufferViewHandle>),
     ) -> ScriptResult<()> {
         if let Some(handle) = handle.or_else(|| ctx.current_buffer_view_handle()) {
@@ -565,6 +622,7 @@ mod buffer_view {
     pub fn insert_text_at(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         (text, line, column, handle): (ScriptString, usize, usize, Option<BufferViewHandle>),
     ) -> ScriptResult<()> {
         if let Some(handle) = handle.or_else(|| ctx.current_buffer_view_handle()) {
@@ -585,6 +643,7 @@ mod buffer_view {
     pub fn delete_selection(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         handle: Option<BufferViewHandle>,
     ) -> ScriptResult<()> {
         if let Some(handle) = handle.or_else(|| ctx.current_buffer_view_handle()) {
@@ -601,6 +660,7 @@ mod buffer_view {
     pub fn delete_in(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         (from_line, from_column, to_line, to_column, handle): (
             usize,
             usize,
@@ -628,6 +688,7 @@ mod buffer_view {
     pub fn undo(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         handle: Option<BufferViewHandle>,
     ) -> ScriptResult<()> {
         if let Some(handle) = handle.or_else(|| ctx.current_buffer_view_handle()) {
@@ -640,6 +701,7 @@ mod buffer_view {
     pub fn redo(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         handle: Option<BufferViewHandle>,
     ) -> ScriptResult<()> {
         if let Some(handle) = handle.or_else(|| ctx.current_buffer_view_handle()) {
@@ -656,6 +718,7 @@ mod cursors {
     pub fn len<'a>(
         _: ScriptEngineRef<'a>,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         handle: Option<BufferViewHandle>,
     ) -> ScriptResult<Option<usize>> {
         Ok(handle
@@ -667,6 +730,7 @@ mod cursors {
     pub fn all<'a>(
         engine: ScriptEngineRef<'a>,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         handle: Option<BufferViewHandle>,
     ) -> ScriptResult<ScriptValue<'a>> {
         let script_cursors = engine.create_array()?;
@@ -685,6 +749,7 @@ mod cursors {
     pub fn set_all(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         (script_cursors, handle): (ScriptArray, Option<BufferViewHandle>),
     ) -> ScriptResult<()> {
         if let Some(cursors) = handle
@@ -704,6 +769,7 @@ mod cursors {
     pub fn main_index(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         handle: Option<BufferViewHandle>,
     ) -> ScriptResult<Option<usize>> {
         Ok(handle
@@ -715,6 +781,7 @@ mod cursors {
     pub fn main(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         handle: Option<BufferViewHandle>,
     ) -> ScriptResult<Option<Cursor>> {
         Ok(handle
@@ -726,6 +793,7 @@ mod cursors {
     pub fn set(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         (index, cursor, handle): (usize, Cursor, Option<BufferViewHandle>),
     ) -> ScriptResult<()> {
         if let Some(cursors) = handle
@@ -744,6 +812,7 @@ mod cursors {
     pub fn move_columns(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         (count, selecting, handle): (isize, bool, Option<BufferViewHandle>),
     ) -> ScriptResult<()> {
         let movement = if count > 0 {
@@ -758,6 +827,7 @@ mod cursors {
     pub fn move_lines(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         (count, selecting, handle): (isize, bool, Option<BufferViewHandle>),
     ) -> ScriptResult<()> {
         let movement = if count > 0 {
@@ -772,6 +842,7 @@ mod cursors {
     pub fn move_words(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         (count, selecting, handle): (isize, bool, Option<BufferViewHandle>),
     ) -> ScriptResult<()> {
         let movement = if count > 0 {
@@ -786,6 +857,7 @@ mod cursors {
     pub fn move_home(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         (selecting, handle): (bool, Option<BufferViewHandle>),
     ) -> ScriptResult<()> {
         move_cursors(ctx, CursorMovement::Home, selecting, handle);
@@ -795,6 +867,7 @@ mod cursors {
     pub fn move_end(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         (selecting, handle): (bool, Option<BufferViewHandle>),
     ) -> ScriptResult<()> {
         move_cursors(ctx, CursorMovement::End, selecting, handle);
@@ -804,6 +877,7 @@ mod cursors {
     pub fn move_first_line(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         (selecting, handle): (bool, Option<BufferViewHandle>),
     ) -> ScriptResult<()> {
         move_cursors(ctx, CursorMovement::FirstLine, selecting, handle);
@@ -813,6 +887,7 @@ mod cursors {
     pub fn move_last_line(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         (selecting, handle): (bool, Option<BufferViewHandle>),
     ) -> ScriptResult<()> {
         move_cursors(ctx, CursorMovement::LastLine, selecting, handle);
@@ -848,6 +923,7 @@ mod read_line {
     pub fn prompt(
         engine: ScriptEngineRef,
         _: &mut ScriptContext,
+        _: ScriptContextGuard,
         prompt: ScriptString,
     ) -> ScriptResult<()> {
         mode::read_line::script::prompt(engine, prompt)
@@ -856,6 +932,7 @@ mod read_line {
     pub fn read(
         engine: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         callback: ScriptFunction,
     ) -> ScriptResult<()> {
         ctx.next_mode = mode::read_line::script::mode(engine, callback)?;
@@ -869,12 +946,18 @@ mod picker {
     pub fn prompt(
         engine: ScriptEngineRef,
         _: &mut ScriptContext,
+        _: ScriptContextGuard,
         prompt: ScriptString,
     ) -> ScriptResult<()> {
         mode::picker::custom::prompt(engine, prompt)
     }
 
-    pub fn reset(_: ScriptEngineRef, ctx: &mut ScriptContext, _: ()) -> ScriptResult<()> {
+    pub fn reset(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        _: (),
+    ) -> ScriptResult<()> {
         ctx.picker.reset();
         Ok(())
     }
@@ -882,6 +965,7 @@ mod picker {
     pub fn entry(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         (name, description): (ScriptString, Option<ScriptString>),
     ) -> ScriptResult<()> {
         let description = match description {
@@ -895,6 +979,7 @@ mod picker {
     pub fn pick(
         engine: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         callback: ScriptFunction,
     ) -> ScriptResult<()> {
         ctx.next_mode = mode::picker::custom::mode(engine, callback)?;
@@ -908,6 +993,7 @@ mod process {
     pub fn pipe(
         _: ScriptEngineRef,
         _: &mut ScriptContext,
+        _: ScriptContextGuard,
         (name, args, input): (ScriptString, Option<ScriptArray>, Option<ScriptString>),
     ) -> ScriptResult<String> {
         let child = match args {
@@ -934,6 +1020,7 @@ mod process {
     pub fn spawn(
         _: ScriptEngineRef,
         _: &mut ScriptContext,
+        _: ScriptContextGuard,
         (name, args, input): (ScriptString, Option<ScriptArray>, Option<ScriptString>),
     ) -> ScriptResult<()> {
         match args {
@@ -991,6 +1078,7 @@ mod config {
     pub fn index<'script>(
         engine: ScriptEngineRef<'script>,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         (_, index): (ScriptObject, ScriptString),
     ) -> ScriptResult<ScriptValue<'script>> {
         macro_rules! char_to_string {
@@ -1017,6 +1105,7 @@ mod config {
     pub fn newindex(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         (_, index, value): (ScriptObject, ScriptString, ScriptValue),
     ) -> ScriptResult<()> {
         macro_rules! try_bool {
@@ -1072,6 +1161,7 @@ mod keymap {
     pub fn normal(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         (from, to): (ScriptString, ScriptString),
     ) -> ScriptResult<()> {
         map_mode(ctx, Mode::Normal(Default::default()), from, to)
@@ -1080,6 +1170,7 @@ mod keymap {
     pub fn insert(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         (from, to): (ScriptString, ScriptString),
     ) -> ScriptResult<()> {
         map_mode(ctx, Mode::Insert(Default::default()), from, to)
@@ -1114,6 +1205,7 @@ mod theme {
     pub fn index<'script>(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         (_, index): (ScriptObject, ScriptString),
     ) -> ScriptResult<ScriptValue<'script>> {
         let theme = &mut ctx.config.theme;
@@ -1127,6 +1219,7 @@ mod theme {
     pub fn newindex(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         (_, index, value): (ScriptObject, ScriptString, u32),
     ) -> ScriptResult<()> {
         let theme = &mut ctx.config.theme;
@@ -1145,6 +1238,7 @@ mod syntax {
     pub fn extension(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         (main_extension, other_extension): (ScriptString, ScriptString),
     ) -> ScriptResult<()> {
         let main_extension = main_extension.to_str()?;
@@ -1159,6 +1253,7 @@ mod syntax {
     pub fn rule(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
         (main_extension, token_kind, pattern): (ScriptString, ScriptString, ScriptString),
     ) -> ScriptResult<()> {
         let main_extension = main_extension.to_str()?;

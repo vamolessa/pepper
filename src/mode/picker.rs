@@ -135,31 +135,28 @@ pub mod custom {
 
         fn on_event(ctx: &mut ModeContext, _: &mut KeysIterator, poll: ReadLinePoll) {
             let (engine, _, mut ctx) = ctx.script_context();
-            let engine = engine.as_ref();
-
-            let entry = match poll {
-                ReadLinePoll::Pending => return,
-                ReadLinePoll::Submitted => match ctx.picker.current_entry(WordDatabase::empty()) {
-                    Some(entry) => match engine.create_string(entry.name.as_bytes()) {
-                        Ok(entry) => ScriptValue::String(entry),
-                        Err(error) => {
-                            ctx.status_message.write_error(&error);
-                            return;
+            let result = engine.as_ref_with_ctx(&mut ctx, |engine, ctx, mut guard| {
+                let entry = match poll {
+                    ReadLinePoll::Pending => return Ok(()),
+                    ReadLinePoll::Submitted => {
+                        match ctx.picker.current_entry(WordDatabase::empty()) {
+                            Some(entry) => {
+                                ScriptValue::String(engine.create_string(entry.name.as_bytes())?)
+                            }
+                            None => ScriptValue::Nil,
                         }
-                    },
-                    None => ScriptValue::Nil,
-                },
-                ReadLinePoll::Canceled => ScriptValue::Nil,
-            };
+                    }
+                    ReadLinePoll::Canceled => ScriptValue::Nil,
+                };
 
-            match engine
-                .take_from_registry::<ScriptFunction>(CALLBACK_REGISTRY_KEY)
-                .and_then(|c| c.call(&mut ctx, entry))
-            {
-                Ok(()) => (),
-                Err(error) => {
-                    ctx.status_message.write_error(&error);
-                }
+                engine
+                    .take_from_registry::<ScriptFunction>(CALLBACK_REGISTRY_KEY)?
+                    .call(&mut guard, entry)?;
+                Ok(())
+            });
+
+            if let Err(error) = result {
+                ctx.status_message.write_error(&error);
             }
         }
 
