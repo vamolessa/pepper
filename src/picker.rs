@@ -9,7 +9,7 @@ pub struct PickerEntry<'a> {
     pub score: i64,
 }
 
-pub struct CustomPickerEntry {
+struct CustomPickerEntry {
     pub name: String,
     pub description: String,
 }
@@ -27,7 +27,9 @@ struct FilteredEntry {
 #[derive(Default)]
 pub struct Picker {
     matcher: SkimMatcherV2,
-    custom_entries: Vec<CustomPickerEntry>,
+
+    custom_entries_len: usize,
+    custom_entries_buffer: Vec<CustomPickerEntry>,
     filtered_entries: Vec<FilteredEntry>,
 
     cursor: usize,
@@ -94,11 +96,23 @@ impl Picker {
 
     pub fn reset(&mut self) {
         self.clear_filtered();
-        self.custom_entries.clear();
+        self.custom_entries_len = 0;
     }
 
-    pub fn add_custom_entry(&mut self, entry: CustomPickerEntry) {
-        self.custom_entries.push(entry);
+    pub fn add_custom_entry(&mut self, name: &str, description: &str) {
+        if self.custom_entries_len < self.custom_entries_buffer.len() {
+            let entry = &mut self.custom_entries_buffer[self.custom_entries_len];
+            entry.name.clear();
+            entry.name.push_str(name);
+        } else {
+            let entry = CustomPickerEntry {
+                name: name.into(),
+                description: description.into(),
+            };
+            self.custom_entries_buffer.push(entry);
+        }
+
+        self.custom_entries_len += 1;
     }
 
     pub fn clear_filtered(&mut self) {
@@ -123,7 +137,10 @@ impl Picker {
             }
         }
 
-        for (i, entry) in self.custom_entries.iter().enumerate() {
+        for (i, entry) in self.custom_entries_buffer[..self.custom_entries_len]
+            .iter()
+            .enumerate()
+        {
             if let Some(mut score) = self.matcher.fuzzy_match(&entry.name, pattern) {
                 if entry.name.len() == pattern.len() {
                     score += 1;
@@ -148,7 +165,7 @@ impl Picker {
         let entry = self.filtered_entries.get(self.cursor)?;
         match entry.source {
             FiletedEntrySource::Custom(i) => {
-                let e = &self.custom_entries[i];
+                let e = &self.custom_entries_buffer[i];
                 Some(PickerEntry {
                     name: &e.name,
                     description: &e.description,
@@ -173,7 +190,7 @@ impl Picker {
     ) -> impl 'a + Iterator<Item = PickerEntry<'a>> {
         self.filtered_entries.iter().map(move |e| match e.source {
             FiletedEntrySource::Custom(i) => {
-                let entry = &self.custom_entries[i];
+                let entry = &self.custom_entries_buffer[i];
                 PickerEntry {
                     name: &entry.name,
                     description: &entry.description,

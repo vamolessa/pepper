@@ -17,7 +17,6 @@ use crate::{
     mode::{self, Mode},
     navigation_history::NavigationHistory,
     pattern::Pattern,
-    picker::CustomPickerEntry,
     script::{
         ScriptArray, ScriptContext, ScriptEngineRef, ScriptError, ScriptFunction, ScriptObject,
         ScriptResult, ScriptString, ScriptValue,
@@ -885,13 +884,11 @@ mod picker {
         ctx: &mut ScriptContext,
         (name, description): (ScriptString, Option<ScriptString>),
     ) -> ScriptResult<()> {
-        ctx.picker.add_custom_entry(CustomPickerEntry {
-            name: name.to_str()?.into(),
-            description: match description {
-                Some(d) => d.to_str()?.into(),
-                None => String::new(),
-            },
-        });
+        let description = match description {
+            Some(ref d) => d.to_str()?,
+            None => "",
+        };
+        ctx.picker.add_custom_entry(name.to_str()?, description);
         Ok(())
     }
 
@@ -977,8 +974,8 @@ mod process {
 
         let mut child = command.spawn().map_err(ScriptError::from)?;
         if let Some(stdin) = child.stdin.as_mut() {
-            let bytes = match input.as_ref() {
-                Some(input) => input.as_bytes(),
+            let bytes = match input {
+                Some(ref input) => input.as_bytes(),
                 None => &[],
             };
             let _ = stdin.write_all(bytes);

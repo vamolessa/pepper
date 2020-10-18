@@ -58,9 +58,7 @@ pub mod buffer {
 
     use std::path::Path;
 
-    use crate::{
-        editor::StatusMessageKind, navigation_history::NavigationHistory, picker::CustomPickerEntry,
-    };
+    use crate::{editor::StatusMessageKind, navigation_history::NavigationHistory};
 
     pub fn mode(ctx: &mut ModeContext) -> Mode {
         fn on_enter(ctx: &mut ModeContext) {
@@ -102,10 +100,8 @@ pub mod buffer {
         ctx.picker.reset();
         for buffer in ctx.buffers.iter() {
             if let Some(path) = buffer.path().and_then(|p| p.to_str()) {
-                ctx.picker.add_custom_entry(CustomPickerEntry {
-                    name: path.into(),
-                    description: String::new(),
-                });
+                ctx.picker
+                    .add_custom_entry(path, if buffer.needs_save() { "*" } else { "" });
             }
         }
 

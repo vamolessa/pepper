@@ -2,7 +2,6 @@ use crate::{
     client_event::Key,
     editor::{EditorLoop, KeysIterator, ReadLinePoll, StatusMessageKind},
     mode::{Mode, ModeContext, ModeOperation, ModeState},
-    picker::CustomPickerEntry,
     script::ScriptValue,
     word_database::WordDatabase,
 };
@@ -13,19 +12,11 @@ pub struct State;
 impl ModeState for State {
     fn on_enter(&mut self, ctx: &mut ModeContext) {
         ctx.picker.reset();
-
         if ctx.scripts.history().count() > 0 {
-            ctx.picker.add_custom_entry(CustomPickerEntry {
-                name: String::new(),
-                description: String::new(),
-            });
+            ctx.picker.add_custom_entry("", "");
         }
-
         for entry in ctx.scripts.history() {
-            ctx.picker.add_custom_entry(CustomPickerEntry {
-                name: entry.into(),
-                description: String::new(),
-            });
+            ctx.picker.add_custom_entry(entry, "");
         }
 
         ctx.picker.filter(WordDatabase::empty(), "");
