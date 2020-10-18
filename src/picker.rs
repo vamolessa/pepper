@@ -141,15 +141,28 @@ impl Picker {
         self.cursor = self.cursor.min(self.filtered_entries.len());
     }
 
-    pub fn current_entry_name<'a>(&'a mut self, word_database: &WordDatabase) -> Option<&'a str> {
+    pub fn current_entry<'a>(
+        &'a mut self,
+        word_database: &WordDatabase,
+    ) -> Option<PickerEntry<'a>> {
         let entry = self.filtered_entries.get(self.cursor)?;
         match entry.source {
-            FiletedEntrySource::Custom(i) => Some(&self.custom_entries[i].name),
+            FiletedEntrySource::Custom(i) => {
+                let e = &self.custom_entries[i];
+                Some(PickerEntry {
+                    name: &e.name,
+                    description: &e.description,
+                    score: entry.score,
+                })
+            }
             FiletedEntrySource::WordDatabase(i) => {
-                let word = word_database.word_at(i);
                 self.cached_current_word.clear();
-                self.cached_current_word.push_str(word);
-                Some(&self.cached_current_word)
+                self.cached_current_word.push_str(word_database.word_at(i));
+                Some(PickerEntry {
+                    name: &self.cached_current_word,
+                    description: "",
+                    score: entry.score,
+                })
             }
         }
     }
@@ -167,14 +180,11 @@ impl Picker {
                     score: e.score,
                 }
             }
-            FiletedEntrySource::WordDatabase(i) => {
-                let word = word_database.word_at(i);
-                PickerEntry {
-                    name: word,
-                    description: "",
-                    score: e.score,
-                }
-            }
+            FiletedEntrySource::WordDatabase(i) => PickerEntry {
+                name: word_database.word_at(i),
+                description: "",
+                score: e.score,
+            },
         })
     }
 }

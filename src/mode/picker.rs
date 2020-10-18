@@ -74,7 +74,8 @@ pub mod buffer {
 
             let path = ctx
                 .picker
-                .current_entry_name(WordDatabase::empty())
+                .current_entry(WordDatabase::empty())
+                .map(|e| e.name)
                 .unwrap_or(ctx.read_line.input());
 
             NavigationHistory::save_client_snapshot(
@@ -142,18 +143,16 @@ pub mod custom {
 
             let entry = match poll {
                 ReadLinePoll::Pending => return,
-                ReadLinePoll::Submitted => {
-                    match ctx.picker.current_entry_name(WordDatabase::empty()) {
-                        Some(entry) => match engine.create_string(entry.as_bytes()) {
-                            Ok(entry) => ScriptValue::String(entry),
-                            Err(error) => {
-                                ctx.status_message.write_error(&error);
-                                return;
-                            }
-                        },
-                        None => ScriptValue::Nil,
-                    }
-                }
+                ReadLinePoll::Submitted => match ctx.picker.current_entry(WordDatabase::empty()) {
+                    Some(entry) => match engine.create_string(entry.name.as_bytes()) {
+                        Ok(entry) => ScriptValue::String(entry),
+                        Err(error) => {
+                            ctx.status_message.write_error(&error);
+                            return;
+                        }
+                    },
+                    None => ScriptValue::Nil,
+                },
                 ReadLinePoll::Canceled => ScriptValue::Nil,
             };
 

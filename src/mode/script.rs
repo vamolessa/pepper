@@ -44,14 +44,14 @@ impl ModeState for State {
                 match keys.next() {
                     Key::Ctrl('n') | Key::Ctrl('j') => {
                         ctx.picker.move_cursor(1);
-                        if let Some(entry) = ctx.picker.current_entry_name(WordDatabase::empty()) {
-                            ctx.read_line.set_input(entry);
+                        if let Some(entry) = ctx.picker.current_entry(WordDatabase::empty()) {
+                            ctx.read_line.set_input(entry.name);
                         }
                     }
                     Key::Ctrl('p') | Key::Ctrl('k') => {
                         ctx.picker.move_cursor(-1);
-                        if let Some(entry) = ctx.picker.current_entry_name(WordDatabase::empty()) {
-                            ctx.read_line.set_input(entry);
+                        if let Some(entry) = ctx.picker.current_entry(WordDatabase::empty()) {
+                            ctx.read_line.set_input(entry.name);
                         }
                     }
                     _ => (),

@@ -184,13 +184,13 @@ impl ModeState for State {
 
 fn apply_completion(ctx: &mut ModeContext, handle: BufferViewHandle, cursor_movement: isize) {
     ctx.picker.move_cursor(cursor_movement);
-    if let Some(entry_name) = ctx.picker.current_entry_name(&ctx.word_database) {
+    if let Some(entry) = ctx.picker.current_entry(&ctx.word_database) {
         ctx.buffer_views.apply_completion(
             ctx.buffers,
             ctx.word_database,
             &ctx.config.syntaxes,
             handle,
-            &entry_name,
+            entry.name,
         );
     }
 }
