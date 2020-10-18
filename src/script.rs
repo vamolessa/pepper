@@ -375,7 +375,7 @@ impl<'a> ScriptContext<'a> {
         guard: &mut ScriptContextGuard,
         handle: BufferHandle,
     ) -> ScriptResult<()> {
-        engine.call_function_array_in_registry("on_open_buffer", guard, handle)
+        engine.call_function_array_in_registry("buffer_on_open", guard, handle)
     }
 }
 
@@ -673,6 +673,26 @@ impl<'lua> ScriptEngineRef<'lua> {
             callback?.call(guard, args.clone())?;
         }
 
+        Ok(())
+    }
+
+    pub fn add_to_function_array_in_registry(
+        &self,
+        key: &str,
+        function: ScriptFunction,
+    ) -> ScriptResult<()> {
+        let function = ScriptValue::Function(function);
+        let functions: ScriptResult<ScriptArray> = self.lua.named_registry_value(key);
+        match functions {
+            Ok(functions) => {
+                functions.push(function)?;
+            }
+            Err(_) => {
+                let functions = self.create_array()?;
+                functions.push(function)?;
+                self.save_to_registry(key, ScriptValue::Array(functions))?;
+            }
+        }
         Ok(())
     }
 

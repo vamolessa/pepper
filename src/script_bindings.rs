@@ -66,7 +66,7 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
     register!(client => index, current_buffer_view_handle,);
     register!(editor => version, quit, quit_all, force_quit_all, print, delete_selection, insert_text,);
     register!(buffer => all_handles, line_count, line_at, path, extension, needs_save, set_search, open,
-        close, force_close, close_all, force_close_all, save, save_all, commit_edits,);
+        close, force_close, close_all, force_close_all, save, save_all, commit_edits, on_open,);
     register!(buffer_view => buffer_handle, all_handles, handle_from_path, selection_text, insert_text,
         insert_text_at, delete_selection, delete_in, undo, redo,);
     register!(cursors => len, all, set_all, main_index, main, set, move_columns, move_lines, move_words,
@@ -540,6 +540,15 @@ mod buffer {
             buffer.commit_edits();
         }
         Ok(())
+    }
+
+    pub fn on_open(
+        engine: ScriptEngineRef,
+        _: &mut ScriptContext,
+        _: ScriptContextGuard,
+        callback: ScriptFunction,
+    ) -> ScriptResult<()> {
+        engine.add_to_function_array_in_registry("buffer_on_open", callback)
     }
 }
 
