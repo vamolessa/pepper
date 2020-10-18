@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, iter, ops::Range, path::Path, str::FromStr};
+use std::{cmp::Ordering, iter, ops::Range, path::Path};
 
 use crate::{
     buffer::BufferContent,
@@ -16,24 +16,6 @@ pub enum TokenKind {
     Symbol,
     String,
     Literal,
-}
-
-pub struct TokenKindParseError;
-impl FromStr for TokenKind {
-    type Err = TokenKindParseError;
-
-    fn from_str(text: &str) -> Result<Self, Self::Err> {
-        match text {
-            "text" => Ok(Self::Text),
-            "comment" => Ok(Self::Comment),
-            "keyword" => Ok(Self::Keyword),
-            "type" => Ok(Self::Type),
-            "symbol" => Ok(Self::Symbol),
-            "string" => Ok(Self::String),
-            "literal" => Ok(Self::Literal),
-            _ => Err(TokenKindParseError),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
