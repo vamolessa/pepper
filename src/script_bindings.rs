@@ -21,6 +21,7 @@ use crate::{
         ScriptArray, ScriptContext, ScriptContextGuard, ScriptEngineRef, ScriptError,
         ScriptFunction, ScriptObject, ScriptResult, ScriptString, ScriptValue,
     },
+    syntax::{Syntax, TokenKind},
     theme::Color,
 };
 
@@ -65,7 +66,7 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
 
     register!(client => index, current_buffer_view_handle,);
     register!(editor => version, quit, quit_all, force_quit_all, print, delete_selection, insert_text,);
-    register!(buffer => all_handles, line_count, line_at, path, extension, refresh_syntax, needs_save, set_search, open,
+    register!(buffer => all_handles, line_count, line_at, path, extension, has_extension, needs_save, set_search, open,
         close, force_close, close_all, force_close_all, save, save_all, commit_edits, on_open,);
     register!(buffer_view => buffer_handle, all_handles, handle_from_path, selection_text, insert_text,
         insert_text_at, delete_selection, delete_in, undo, redo,);
@@ -75,7 +76,7 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
     register!(picker => prompt, reset, entry, pick,);
     register!(process => pipe, spawn,);
     register!(keymap => normal, insert,);
-    register!(syntax => extension, rule,);
+    register!(syntax => rules,);
 
     {
         let globals = scripts.globals_object();
@@ -329,19 +330,20 @@ mod buffer {
         }
     }
 
-    pub fn refresh_syntax(
-        _: ScriptEngineRef,
+    pub fn has_extension<'a>(
+        _: ScriptEngineRef<'a>,
         ctx: &mut ScriptContext,
         _: ScriptContextGuard,
-        handle: Option<BufferHandle>,
-    ) -> ScriptResult<()> {
-        let handle = handle.or_else(|| ctx.current_buffer_handle());
-        let buffers = &mut ctx.buffers;
-        if let Some(buffer) = handle.and_then(|h| buffers.get_mut(h)) {
-            buffer.refresh_syntax(&ctx.config.syntaxes);
-        }
-
-        Ok(())
+        (extension, handle): (ScriptString, Option<BufferHandle>),
+    ) -> ScriptResult<bool> {
+        Ok(handle
+            .or_else(|| ctx.current_buffer_handle())
+            .and_then(|h| ctx.buffers.get(h))
+            .and_then(|b| b.path())
+            .and_then(|p| p.extension())
+            .and_then(|p| p.to_str())
+            .map(|p| p.as_bytes() == extension.as_bytes())
+            .unwrap_or(false))
     }
 
     pub fn needs_save(
@@ -1268,41 +1270,52 @@ mod theme {
 mod syntax {
     use super::*;
 
-    pub fn extension(
+    pub fn rules(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
         _: ScriptContextGuard,
-        (main_extension, other_extension): (ScriptString, ScriptString),
+        (extensions, rules): (ScriptArray, ScriptObject),
     ) -> ScriptResult<()> {
-        let main_extension = main_extension.to_str()?;
-        let other_extension = other_extension.to_str()?;
-        ctx.config
-            .syntaxes
-            .get_by_extension(main_extension)
-            .add_extension(other_extension.into());
-        Ok(())
-    }
+        fn try_add_rules(
+            syntax: &mut Syntax,
+            token_kind: TokenKind,
+            token_kind_key: &str,
+            rules: &ScriptObject,
+        ) -> ScriptResult<()> {
+            if let Ok(patterns) = rules.get::<ScriptArray>(token_kind_key) {
+                for pattern in patterns.iter::<ScriptString>() {
+                    let pattern = pattern?;
+                    let pattern = pattern.to_str()?;
+                    let pattern = Pattern::new(pattern).map_err(|e| {
+                        let message = helper::parsing_error(e, pattern, 0);
+                        ScriptError::from(message)
+                    })?;
+                    syntax.add_rule(token_kind, pattern);
+                }
+            }
+            Ok(())
+        }
 
-    pub fn rule(
-        _: ScriptEngineRef,
-        ctx: &mut ScriptContext,
-        _: ScriptContextGuard,
-        (main_extension, token_kind, pattern): (ScriptString, ScriptString, ScriptString),
-    ) -> ScriptResult<()> {
-        let main_extension = main_extension.to_str()?;
-        let token_kind = token_kind.to_str()?;
-        let pattern = pattern.to_str()?;
+        let mut syntax = Syntax::default();
 
-        let token_kind = token_kind.parse().map_err(ScriptError::from)?;
-        let pattern = Pattern::new(pattern).map_err(|e| {
-            let message = helper::parsing_error(e, pattern, 0);
-            ScriptError::from(message)
-        })?;
+        for extension in extensions.iter::<ScriptString>() {
+            syntax.add_extension(extension?.to_str()?.into());
+        }
 
-        ctx.config
-            .syntaxes
-            .get_by_extension(main_extension)
-            .add_rule(token_kind, pattern);
+        try_add_rules(&mut syntax, TokenKind::Keyword, "keyword", &rules)?;
+        try_add_rules(&mut syntax, TokenKind::Symbol, "symbol", &rules)?;
+        try_add_rules(&mut syntax, TokenKind::Type, "type", &rules)?;
+        try_add_rules(&mut syntax, TokenKind::Literal, "literal", &rules)?;
+        try_add_rules(&mut syntax, TokenKind::String, "string", &rules)?;
+        try_add_rules(&mut syntax, TokenKind::Comment, "comment", &rules)?;
+        try_add_rules(&mut syntax, TokenKind::Text, "text", &rules)?;
+
+        ctx.config.syntaxes.add(syntax);
+
+        for buffer in ctx.buffers.iter_mut() {
+            buffer.refresh_syntax(&ctx.config.syntaxes);
+        }
+
         Ok(())
     }
 }

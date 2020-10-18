@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, fmt, iter, ops::Range, path::Path, str::FromStr};
+use std::{cmp::Ordering, iter, ops::Range, path::Path, str::FromStr};
 
 use crate::{
     buffer::BufferContent,
@@ -19,12 +19,6 @@ pub enum TokenKind {
 }
 
 pub struct TokenKindParseError;
-impl fmt::Display for TokenKindParseError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str("could not parse TokenKind")
-    }
-}
-
 impl FromStr for TokenKind {
     type Err = TokenKindParseError;
 
@@ -203,17 +197,8 @@ impl SyntaxCollection {
         None
     }
 
-    pub fn get_by_extension(&mut self, extension: &str) -> &mut Syntax {
-        match self.find_handle_by_extension(extension) {
-            Some(handle) => &mut self.syntaxes[handle.0],
-            None => {
-                let mut syntax = Syntax::default();
-                syntax.add_extension(extension.into());
-                self.syntaxes.push(syntax);
-                let last_index = self.syntaxes.len() - 1;
-                &mut self.syntaxes[last_index]
-            }
-        }
+    pub fn add(&mut self, syntax: Syntax) {
+        self.syntaxes.push(syntax);
     }
 
     pub fn get(&self, handle: SyntaxHandle) -> &Syntax {
