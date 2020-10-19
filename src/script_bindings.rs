@@ -64,8 +64,8 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
         };
     }
 
-    register!(client => index, current_buffer_view_handle,);
-    register!(editor => version, quit, quit_all, force_quit_all, print, delete_selection, insert_text,);
+    register!(client => index, current_buffer_view_handle, quit, quit_all, force_quit_all,);
+    register!(editor => version, print,);
     register!(buffer => all_handles, line_count, line_at, path, extension, has_extension, needs_save, set_search, open,
         close, force_close, close_all, force_close_all, save, save_all, commit_edits, on_open,);
     register!(buffer_view => buffer_handle, all_handles, handle_from_path, selection_text, insert_text,
@@ -83,9 +83,11 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
 
         let editor = globals.get::<ScriptObject>("editor")?;
         globals.set("print", editor.get::<ScriptValue>("print")?)?;
-        globals.set("q", editor.get::<ScriptValue>("quit")?)?;
-        globals.set("qa", editor.get::<ScriptValue>("quit_all")?)?;
-        globals.set("fqa", editor.get::<ScriptValue>("force_quit_all")?)?;
+
+        let client = globals.get::<ScriptObject>("client")?;
+        globals.set("q", client.get::<ScriptValue>("quit")?)?;
+        globals.set("qa", client.get::<ScriptValue>("quit_all")?)?;
+        globals.set("fqa", client.get::<ScriptValue>("force_quit_all")?)?;
 
         let buffer = globals.get::<ScriptObject>("buffer")?;
         globals.set("o", buffer.get::<ScriptValue>("open")?)?;
@@ -129,21 +131,6 @@ mod client {
             .clients
             .get(target)
             .and_then(|c| c.current_buffer_view_handle))
-    }
-}
-
-mod editor {
-    use super::*;
-
-    pub fn version<'a>(
-        engine: ScriptEngineRef<'a>,
-        _: &mut ScriptContext,
-        _: ScriptContextGuard,
-        _: (),
-    ) -> ScriptResult<ScriptValue<'a>> {
-        engine
-            .create_string(env!("CARGO_PKG_VERSION").as_bytes())
-            .map(ScriptValue::String)
     }
 
     pub fn quit(
@@ -194,6 +181,21 @@ mod editor {
         ctx.editor_loop = EditorLoop::QuitAll;
         Err(ScriptError::from(QuitError))
     }
+}
+
+mod editor {
+    use super::*;
+
+    pub fn version<'a>(
+        engine: ScriptEngineRef<'a>,
+        _: &mut ScriptContext,
+        _: ScriptContextGuard,
+        _: (),
+    ) -> ScriptResult<ScriptValue<'a>> {
+        engine
+            .create_string(env!("CARGO_PKG_VERSION").as_bytes())
+            .map(ScriptValue::String)
+    }
 
     pub fn print(
         _: ScriptEngineRef,
@@ -203,42 +205,6 @@ mod editor {
     ) -> ScriptResult<()> {
         ctx.status_message
             .write_fmt(StatusMessageKind::Info, format_args!("{}", value));
-        Ok(())
-    }
-
-    pub fn delete_selection(
-        _: ScriptEngineRef,
-        ctx: &mut ScriptContext,
-        _: ScriptContextGuard,
-        _: (),
-    ) -> ScriptResult<()> {
-        if let Some(handle) = ctx.current_buffer_view_handle() {
-            ctx.buffer_views.delete_in_cursor_ranges(
-                ctx.buffers,
-                ctx.word_database,
-                &ctx.config.syntaxes,
-                handle,
-            );
-        }
-        Ok(())
-    }
-
-    pub fn insert_text(
-        _: ScriptEngineRef,
-        ctx: &mut ScriptContext,
-        _: ScriptContextGuard,
-        text: ScriptString,
-    ) -> ScriptResult<()> {
-        if let Some(handle) = ctx.current_buffer_view_handle() {
-            let text = text.to_str()?;
-            ctx.buffer_views.insert_text_at_cursor_positions(
-                ctx.buffers,
-                ctx.word_database,
-                &ctx.config.syntaxes,
-                handle,
-                text,
-            );
-        }
         Ok(())
     }
 }

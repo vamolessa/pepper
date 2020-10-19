@@ -28,6 +28,10 @@ keys | action
 `<c-d>`, `<c-u>` | move cursors half page down/up
 `/` | enter search mode
 
+binding | action
+--- | ---
+`s` | enter search mode
+
 ### selection
 keys | action
 --- | ---
@@ -49,6 +53,10 @@ keys | action
 `xn`, `xp` | set next/previous cursor as main cursor
 `x/` | reduce selections to their insersection with search ranges
 
+binding | action
+--- | ---
+`xs` | reduce selections to their insersection with search ranges
+
 ### editing
 keys | action
 --- | ---
@@ -58,6 +66,12 @@ keys | action
 `y` | copy selected text to clipboard
 `Y` | delete selected text and paste from clipboard
 `u`, `U` | undo/redo
+
+binding | action
+--- | ---
+`I`, `<c-i>` | move cursors to first non-blank/last column and enter insert mode
+`<o>`, `<O>` | create an empty line bellow/above each cursor and enter insert mode
+`J` | join one line bellow each cursor
 
 ### scripting
 keys | action
@@ -76,8 +90,49 @@ keys | action
 `<c-w>` | delete word backward
 `<c-n>`, `<c-p>` | apply next/previous completion
 
+binding | action
+--- | ---
+`<c-c>` | enter normal mode
+`<c-h>` | delete char backward
+`<c-m>` | insert line break
+
 ## script mode
 Perform actions not directly related to editing such as: open/save/close buffer, change settings, execute external programs, etc.
+
+Functions are defined inside their category object (e.g. client functions should be accessed through `client.function_name()`).
+**Function parameters are annotated with expected types. `?` denotes optional paramter.
+Functions without return type means they return nothing (`nil`)**
+
+Also, parameterless functions can be called without parenthesis if they're the sole expression being evaluated.
+
+Shortcuts are called without their category object prefix (they're a free function).
+
+### client
+function | action
+--- | ---
+`index() -> integer` | the index of current client (index `0` is where the server is run)
+`current_buffer_view_handle(client_index: integer?) -> integer` | client's current buffer view handle or current client's
+`quit()` | try quitting current client if it's not the server and there are no unsaved buffers
+`quit_all()` | try quitting all clients if there are no unsaved buffers
+`force_quit_all()` | quits all clients even if there are unsaved buffers
+
+shortcut | action
+--- | ---
+`q` | same as `client.quit()`
+`qa` | same as `client.quit_all()`
+`fqa` | same as `client.force_quit_all()`
+
+### editor
+function | action
+--- | ---
+`version() -> string` | the editor version string formatted as `major.minor.patch`.
+`print(value: any)` | prints a value to the editor's status bar
+
+### read_line
+function | action
+--- | ---
+`prompt(prefix: string)` | changes the prompt for the next `read_line.read()` calls
+
 
 # todo
 - macros
