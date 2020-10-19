@@ -7,6 +7,8 @@ https://twitter.com/ahvamolessa/status/1276978064166182913
 # keys
 
 ## normal mode
+This is the main mode from where you can interact with the editor, buffers and so on.
+
 ### navigation
 keys | action
 --- | ---
@@ -19,6 +21,7 @@ keys | action
 `gh`, `gl`, `gi` | move cursors to first, last and first non-blank columns
 `gj`, `gk` | move cursors to first/last line
 `gm` | move cursors to matching bracket
+`gb` | fuzzy pick from all opened buffers
 `f<char>`, `F<char>` | move cursors to next/previous `<char>` (inclusive)
 `t<char>`, `T<char>` | move cursors to next/previous `<char>` (exclusive)
 `;`, `,` | repeat last find char in forward/backward mode
@@ -56,7 +59,14 @@ keys | action
 `Y` | delete selected text and paste from clipboard
 `u`, `U` | undo/redo
 
+### scripting
+keys | action
+--- | ---
+`:` | enter script mode
+
 ## insert mode
+Insert new text to the current buffer.
+
 keys | action
 --- | ---
 `<esc>` | enter normal mode
@@ -65,6 +75,9 @@ keys | action
 `<backspace>`, `<delete>` | delete char backward/forward
 `<c-w>` | delete word backward
 `<c-n>`, `<c-p>` | apply next/previous completion
+
+## script mode
+Perform actions not directly related to editing such as: open/save/close buffer, change settings, execute external programs, etc.
 
 # todo
 - macros

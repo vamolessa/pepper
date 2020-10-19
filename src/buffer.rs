@@ -620,25 +620,19 @@ impl Buffer {
             }
         }
 
-        let syntax_handle = path
-            .as_ref()
-            .and_then(|p| syntaxes.find_handle_by_extension(syntax::get_path_extension(p)))
-            .unwrap_or(SyntaxHandle::default());
-
-        let mut highlighted = HighlightedBuffer::new();
-        highlighted.highligh_all(syntaxes.get(syntax_handle), &content);
-
-        let path = path.unwrap_or(PathBuf::new());
-
-        Self {
-            path,
+        let mut this = Self {
+            path: path.unwrap_or(PathBuf::new()),
             content,
-            syntax_handle,
-            highlighted,
+            syntax_handle: SyntaxHandle::default(),
+            highlighted: HighlightedBuffer::new(),
             history: History::new(),
             search_ranges: Vec::new(),
             needs_save: false,
-        }
+        };
+
+        this.refresh_syntax(syntaxes);
+
+        this
     }
 
     pub fn path(&self) -> Option<&Path> {

@@ -70,11 +70,10 @@ pub mod buffer {
                 return;
             }
 
-            let path = ctx
-                .picker
-                .current_entry(WordDatabase::empty())
-                .map(|e| e.name)
-                .unwrap_or(ctx.read_line.input());
+            let path = match ctx.picker.current_entry(WordDatabase::empty()) {
+                Some(entry) => entry.name,
+                None => return,
+            };
 
             NavigationHistory::save_client_snapshot(
                 ctx.clients,
@@ -101,7 +100,7 @@ pub mod buffer {
         for buffer in ctx.buffers.iter() {
             if let Some(path) = buffer.path().and_then(|p| p.to_str()) {
                 ctx.picker
-                    .add_custom_entry(path, if buffer.needs_save() { "*" } else { "" });
+                    .add_custom_entry(path, if buffer.needs_save() { "changed" } else { "" });
             }
         }
 

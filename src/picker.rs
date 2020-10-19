@@ -104,6 +104,8 @@ impl Picker {
             let entry = &mut self.custom_entries_buffer[self.custom_entries_len];
             entry.name.clear();
             entry.name.push_str(name);
+            entry.description.clear();
+            entry.description.push_str(description);
         } else {
             let entry = CustomPickerEntry {
                 name: name.into(),

@@ -142,7 +142,7 @@ pub fn render(
     let client_view = ClientView::from(editor, client);
 
     draw_text(buffer, editor, &client_view)?;
-    draw_picker(buffer, editor)?;
+    draw_picker(buffer, editor, &client_view)?;
     draw_statusbar(buffer, editor, &client_view, has_focus)?;
     Ok(())
 }
@@ -399,12 +399,14 @@ where
     Ok(())
 }
 
-fn draw_picker<W>(write: &mut W, editor: &Editor) -> UiResult<()>
+fn draw_picker<W>(write: &mut W, editor: &Editor, client_view: &ClientView) -> UiResult<()>
 where
     W: Write,
 {
     let cursor = editor.picker.cursor();
     let scroll = editor.picker.scroll();
+
+    let half_width = client_view.client.viewport_size.0.saturating_sub(3) / 2;
     let height = editor
         .picker
         .height(editor.config.values.picker_max_height.get());
@@ -433,7 +435,20 @@ where
         }
 
         handle_command!(write, Print(prefix))?;
-        handle_command!(write, Print(&entry.name))?;
+
+        for c in entry
+            .name
+            .chars()
+            .chain(std::iter::repeat(' '))
+            .take(half_width as _)
+        {
+            handle_command!(write, Print(c))?;
+        }
+        handle_command!(write, Print(' '))?;
+        for c in entry.description.chars().take(half_width as _) {
+            handle_command!(write, Print(c))?;
+        }
+
         handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
         handle_command!(write, cursor::MoveToNextLine(1))?;
     }
