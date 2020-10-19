@@ -150,7 +150,7 @@ pub fn render(
 struct ClientView<'a> {
     client: &'a Client,
     buffer: Option<&'a Buffer>,
-    main_cursor: Cursor,
+    main_cursor_position: BufferPosition,
     cursors: &'a [Cursor],
 }
 
@@ -163,15 +163,15 @@ impl<'a> ClientView<'a> {
             .map(|v| v.buffer_handle)
             .and_then(|h| editor.buffers.get(h));
 
-        let main_cursor;
+        let main_cursor_position;
         let cursors;
         match buffer_view {
             Some(view) => {
-                main_cursor = view.cursors.main_cursor().clone();
+                main_cursor_position = view.cursors.main_cursor().position;
                 cursors = &view.cursors[..];
             }
             None => {
-                main_cursor = Cursor::default();
+                main_cursor_position = BufferPosition::default();
                 cursors = &[];
             }
         };
@@ -179,7 +179,7 @@ impl<'a> ClientView<'a> {
         ClientView {
             client,
             buffer,
-            main_cursor,
+            main_cursor_position,
             cursors,
         }
     }
@@ -204,8 +204,6 @@ where
     let width = client_view.client.viewport_size.0;
     let height = client_view.client.height;
     let theme = &editor.config.theme;
-
-    handle_command!(write, cursor::Hide)?;
 
     let cursor_color = match editor.mode {
         Mode::Insert(_) => convert_color(theme.cursor_insert),
@@ -545,8 +543,8 @@ where
         let buffer_path = buffer.path().and_then(|p| p.to_str()).unwrap_or("");
         let needs_save_text = if buffer.needs_save() { "*" } else { "" };
 
-        let line_number = client_view.main_cursor.position.line_index + 1;
-        let column_number = client_view.main_cursor.position.column_byte_index + 1;
+        let line_number = client_view.main_cursor_position.line_index + 1;
+        let column_number = client_view.main_cursor_position.column_byte_index + 1;
 
         let param_count = match &editor.mode {
             Mode::Normal(state) if has_focus => state.count,
