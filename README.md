@@ -28,9 +28,9 @@ keys | action
 `<c-d>`, `<c-u>` | move cursors half page down/up
 `/` | enter search mode
 
-binding | action
---- | ---
-`s` | enter search mode
+binding | expands to | action
+--- | --- | ---
+`s` | `/` | enter search mode
 
 ### selection
 keys | action
@@ -46,16 +46,18 @@ keys | action
 ### cursor manipulation
 keys | action
 --- | ---
-`xx` | add a new cursor to each selected line
-`xc` | reduce all cursors to only the main cursor
-`xv` | exit selection mode
-`xo` | swap the anchor and position of all cursors
-`xn`, `xp` | set next/previous cursor as main cursor
-`x/` | reduce selections to their insersection with search ranges
+`cc` | splits all selection in lines
+`c0` | clear all extra cursors and keep only the main cursor
+`cv` | exit selection mode
+`co` | swap the anchor and position of all cursors
+`cj`, `ck` | add a new cursor to the line bellow/above the bottom/top cursor
+`cn`, `cp` | set next/previous cursor as main cursor
+`c/` | reduce selections to their insersection with search ranges
 
-binding | action
---- | ---
-`xs` | reduce selections to their insersection with search ranges
+binding | expands to | action
+--- | --- | ---
+`cs` | `c/` | reduce selections to their insersection with search ranges
+`<esc>`, `<c-c>` | `<esc>c0cv/<esc>` | keep only main cursor, remove selections, exit selection mode and clears search highlight
 
 ### editing
 keys | action
@@ -67,11 +69,11 @@ keys | action
 `Y` | delete selected text and paste from clipboard
 `u`, `U` | undo/redo
 
-binding | action
---- | ---
-`I`, `<c-i>` | move cursors to first non-blank/last column and enter insert mode
-`<o>`, `<O>` | create an empty line bellow/above each cursor and enter insert mode
-`J` | join one line bellow each cursor
+binding | expands to | action
+--- | --- | ---
+`I`, `<c-i>`, | `dgii`, `dgli` | move cursors to first non-blank/last column and enter insert mode
+`<o>`, `<O>` | `dgli<enter>`, `dgii<enter><up>` | create an empty line bellow/above each cursor and enter insert mode
+`J` | `djgivkgli<space><esc>` | join one line bellow each cursor
 
 ### scripting
 keys | action
@@ -90,11 +92,11 @@ keys | action
 `<c-w>` | delete word backward
 `<c-n>`, `<c-p>` | apply next/previous completion
 
-binding | action
---- | ---
-`<c-c>` | enter normal mode
-`<c-h>` | delete char backward
-`<c-m>` | insert line break
+binding | expands to | action
+--- | --- | ---
+`<c-c>` | `<esc>` | enter normal mode
+`<c-h>` | `<backspace>` | delete char backward
+`<c-m>` | `<enter>` | insert line break
 
 ## script mode
 Perform actions not directly related to editing such as: open/save/close buffer, change settings, execute external programs, etc.

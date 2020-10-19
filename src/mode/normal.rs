@@ -597,9 +597,9 @@ impl ModeState for State {
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
                 unwrap_or_none!(ctx.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
             }
-            Key::Char('x') => match keys.next() {
+            Key::Char('c') => match keys.next() {
                 Key::None => return ModeOperation::Pending,
-                Key::Char('x') => {
+                Key::Char('c') => {
                     let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
                     let buffer =
                         unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle)).content();
@@ -614,28 +614,49 @@ impl ModeState for State {
                         }
 
                         let range = BufferRange::between(cursor.anchor, cursor.position);
-                        cursor.anchor = range.from;
-                        cursor.position = BufferPosition::line_col(
-                            range.from.line_index,
-                            buffer.line_at(range.from.line_index).as_str().len(),
-                        );
+                        if range.to == cursor.position {
+                            cursor.anchor = range.from;
+                            cursor.position = BufferPosition::line_col(
+                                range.from.line_index,
+                                buffer.line_at(range.from.line_index).as_str().len(),
+                            );
 
-                        for line_index in (range.from.line_index + 1)..range.to.line_index {
-                            let line_len = buffer.line_at(line_index).as_str().len();
+                            for line_index in (range.from.line_index + 1)..range.to.line_index {
+                                let line_len = buffer.line_at(line_index).as_str().len();
+                                cursors.add(Cursor {
+                                    anchor: BufferPosition::line_col(line_index, 0),
+                                    position: BufferPosition::line_col(line_index, line_len),
+                                });
+                            }
+
                             cursors.add(Cursor {
-                                anchor: BufferPosition::line_col(line_index, 0),
-                                position: BufferPosition::line_col(line_index, line_len),
+                                anchor: BufferPosition::line_col(range.to.line_index, 0),
+                                position: range.to,
+                            });
+                        } else {
+                            cursor.anchor = range.to;
+                            cursor.position = BufferPosition::line_col(range.to.line_index, 0);
+
+                            for line_index in (range.from.line_index + 1)..range.to.line_index {
+                                let line_len = buffer.line_at(line_index).as_str().len();
+                                cursors.add(Cursor {
+                                    anchor: BufferPosition::line_col(line_index, line_len),
+                                    position: BufferPosition::line_col(line_index, 0),
+                                });
+                            }
+
+                            cursors.add(Cursor {
+                                anchor: BufferPosition::line_col(
+                                    range.from.line_index,
+                                    buffer.line_at(range.from.line_index).as_str().len(),
+                                ),
+                                position: range.from,
                             });
                         }
-
-                        cursors.add(Cursor {
-                            anchor: BufferPosition::line_col(range.to.line_index, 0),
-                            position: range.to,
-                        });
                     }
                     self.movement_kind = CursorMovementKind::PositionOnly;
                 }
-                Key::Char('c') => {
+                Key::Char('0') => {
                     let cursors = &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle)).cursors;
                     let main_cursor = *cursors.main_cursor();
                     let mut cursors = cursors.mut_guard();
@@ -658,6 +679,38 @@ impl ModeState for State {
                         .mut_guard()[..]
                     {
                         std::mem::swap(&mut cursor.anchor, &mut cursor.position);
+                    }
+                }
+                Key::Char('j') => {
+                    let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
+                    let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
+                    let mut cursors = buffer_view.cursors.mut_guard();
+
+                    if let Some(cursor) = cursors[..].last() {
+                        let mut position = cursor.as_range().to;
+                        position.line_index += 1;
+                        position = buffer.content().saturate_position(position);
+
+                        cursors.add(Cursor {
+                            anchor: position,
+                            position,
+                        });
+                    }
+                }
+                Key::Char('k') => {
+                    let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
+                    let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
+                    let mut cursors = buffer_view.cursors.mut_guard();
+
+                    if let Some(cursor) = cursors[..].first() {
+                        let mut position = cursor.as_range().from;
+                        position.line_index = position.line_index.saturating_sub(1);
+                        position = buffer.content().saturate_position(position);
+
+                        cursors.add(Cursor {
+                            anchor: position,
+                            position,
+                        });
                     }
                 }
                 Key::Char('n') => {
