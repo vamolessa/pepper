@@ -620,18 +620,20 @@ impl Buffer {
             }
         }
 
+        let syntax_handle = SyntaxHandle::default();
+        let mut highlighted = HighlightedBuffer::new();
+        highlighted.highligh_all(syntaxes.get(syntax_handle), &content);
+
         let mut this = Self {
             path: path.unwrap_or(PathBuf::new()),
             content,
-            syntax_handle: SyntaxHandle::default(),
-            highlighted: HighlightedBuffer::new(),
+            syntax_handle,
+            highlighted,
             history: History::new(),
             search_ranges: Vec::new(),
             needs_save: false,
         };
-
         this.refresh_syntax(syntaxes);
-
         this
     }
 
