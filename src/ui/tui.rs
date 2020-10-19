@@ -406,13 +406,13 @@ where
     let cursor = editor.picker.cursor();
     let scroll = editor.picker.scroll();
 
-    let half_width = client_view.client.viewport_size.0.saturating_sub(3) / 2;
+    let half_width = client_view.client.viewport_size.0.saturating_sub(1) / 2;
     let height = editor
         .picker
         .height(editor.config.values.picker_max_height.get());
 
-    let background_color = convert_color(editor.config.theme.token_whitespace);
-    let foreground_color = convert_color(editor.config.theme.token_text);
+    let background_color = convert_color(editor.config.theme.token_text);
+    let foreground_color = convert_color(editor.config.theme.token_whitespace);
 
     handle_command!(write, SetBackgroundColor(background_color))?;
     handle_command!(write, SetForegroundColor(foreground_color))?;
@@ -424,17 +424,13 @@ where
         .skip(scroll)
         .take(height)
     {
-        let mut prefix = "  ";
         if i == cursor {
-            prefix = "> ";
             handle_command!(write, SetForegroundColor(background_color))?;
             handle_command!(write, SetBackgroundColor(foreground_color))?;
         } else if i == cursor + 1 {
             handle_command!(write, SetBackgroundColor(background_color))?;
             handle_command!(write, SetForegroundColor(foreground_color))?;
         }
-
-        handle_command!(write, Print(prefix))?;
 
         for c in entry
             .name

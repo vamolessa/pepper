@@ -48,7 +48,7 @@ pub mod search {
                 ctx.buffer_views,
                 ctx.target_client,
             );
-            ctx.read_line.reset("/");
+            ctx.read_line.reset("search:");
             update_search(ctx);
         }
 
@@ -133,7 +133,7 @@ pub mod goto {
                 ctx.buffer_views,
                 ctx.target_client,
             );
-            ctx.read_line.reset("#");
+            ctx.read_line.reset("goto-line:");
         }
 
         fn on_event(ctx: &mut ModeContext, _: &mut KeysIterator, poll: ReadLinePoll) {
@@ -178,7 +178,7 @@ pub mod goto {
     }
 }
 
-pub mod script {
+pub mod custom {
     use super::*;
 
     use crate::script::{ScriptEngineRef, ScriptFunction, ScriptResult, ScriptString, ScriptValue};

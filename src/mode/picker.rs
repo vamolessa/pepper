@@ -62,7 +62,7 @@ pub mod buffer {
 
     pub fn mode(ctx: &mut ModeContext) -> Mode {
         fn on_enter(ctx: &mut ModeContext) {
-            ctx.read_line.reset(">");
+            ctx.read_line.reset("buffer:");
         }
 
         fn on_event(ctx: &mut ModeContext, _: &mut KeysIterator, poll: ReadLinePoll) {

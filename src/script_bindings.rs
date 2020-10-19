@@ -927,7 +927,7 @@ mod read_line {
         _: ScriptContextGuard,
         prompt: ScriptString,
     ) -> ScriptResult<()> {
-        mode::read_line::script::prompt(engine, prompt)
+        mode::read_line::custom::prompt(engine, prompt)
     }
 
     pub fn read(
@@ -936,7 +936,7 @@ mod read_line {
         _: ScriptContextGuard,
         callback: ScriptFunction,
     ) -> ScriptResult<()> {
-        ctx.next_mode = mode::read_line::script::mode(engine, callback)?;
+        ctx.next_mode = mode::read_line::custom::mode(engine, callback)?;
         Ok(())
     }
 }
