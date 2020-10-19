@@ -3,25 +3,20 @@ use crate::{
     editor::{EditorLoop, KeysIterator, ReadLinePoll, StatusMessageKind},
     mode::{Mode, ModeContext, ModeOperation, ModeState},
     script::{ScriptContext, ScriptEngine, ScriptResult, ScriptValue},
-    word_database::WordDatabase,
 };
 
 #[derive(Default)]
-pub struct State;
+pub struct State {
+    history_index: usize,
+}
 
 impl ModeState for State {
     fn on_enter(&mut self, ctx: &mut ModeContext) {
-        ctx.picker.reset();
-        for entry in ctx.scripts.history() {
-            ctx.picker.add_custom_entry(entry, "");
-        }
-
-        ctx.picker.filter(WordDatabase::empty(), "");
+        self.history_index = ctx.scripts.history_len();
         ctx.read_line.reset(":");
     }
 
     fn on_exit(&mut self, ctx: &mut ModeContext) {
-        ctx.picker.reset();
         ctx.read_line.reset("");
     }
 
@@ -31,16 +26,18 @@ impl ModeState for State {
                 keys.put_back();
                 match keys.next() {
                     Key::Ctrl('n') | Key::Ctrl('j') => {
-                        ctx.picker.move_cursor(1);
-                        if let Some(entry) = ctx.picker.current_entry(WordDatabase::empty()) {
-                            ctx.read_line.set_input(entry.name);
-                        }
+                        self.history_index = ctx
+                            .scripts
+                            .history_len()
+                            .saturating_sub(1)
+                            .min(self.history_index + 1);
+                        let entry = ctx.scripts.history_entry(self.history_index);
+                        ctx.read_line.set_input(entry);
                     }
                     Key::Ctrl('p') | Key::Ctrl('k') => {
-                        ctx.picker.move_cursor(-1);
-                        if let Some(entry) = ctx.picker.current_entry(WordDatabase::empty()) {
-                            ctx.read_line.set_input(entry.name);
-                        }
+                        self.history_index = self.history_index.saturating_sub(1);
+                        let entry = ctx.scripts.history_entry(self.history_index);
+                        ctx.read_line.set_input(entry);
                     }
                     _ => (),
                 }

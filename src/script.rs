@@ -556,8 +556,12 @@ impl ScriptEngine {
         Ok(())
     }
 
-    pub fn history(&self) -> impl Iterator<Item = &str> {
-        self.history.iter().map(String::as_str)
+    pub fn history_len(&self) -> usize {
+        self.history.len()
+    }
+
+    pub fn history_entry(&self, index: usize) -> &str {
+        self.history.get(index).map(String::as_str).unwrap_or("")
     }
 
     pub fn add_to_history(&mut self, entry: &str) {
@@ -566,14 +570,14 @@ impl ScriptEngine {
         }
 
         let mut s = if self.history.len() == self.history.capacity() {
-            self.history.pop_back().unwrap()
+            self.history.pop_front().unwrap()
         } else {
             String::new()
         };
 
         s.clear();
         s.push_str(entry);
-        self.history.push_front(s);
+        self.history.push_back(s);
     }
 }
 
