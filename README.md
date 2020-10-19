@@ -99,39 +99,87 @@ binding | action
 ## script mode
 Perform actions not directly related to editing such as: open/save/close buffer, change settings, execute external programs, etc.
 
-Functions are defined inside their category object (e.g. client functions should be accessed through `client.function_name()`).
 **Function parameters are annotated with expected types. `?` denotes optional paramter.
 Functions without return type means they return nothing (`nil`)**
 
 Also, parameterless functions can be called without parenthesis if they're the sole expression being evaluated.
 
-Shortcuts are called without their category object prefix (they're a free function).
-
 ### client
 function | action
 --- | ---
-`index() -> integer` | the index of current client (index `0` is where the server is run)
-`current_buffer_view_handle(client_index: integer?) -> integer` | client's current buffer view handle or current client's
-`quit()` | try quitting current client if it's not the server and there are no unsaved buffers
-`quit_all()` | try quitting all clients if there are no unsaved buffers
-`force_quit_all()` | quits all clients even if there are unsaved buffers
+`client.index() -> integer` | the index of current client (index `0` is where the server is run)
+`client.current_buffer_view_handle(client_index: integer?) -> integer` | client's current buffer view handle or current client's
+`client.quit()` | try quitting current client if it's not the server and there are no unsaved buffers
+`client.quit_all()` | try quitting all clients if there are no unsaved buffers
+`client.force_quit_all()` | quits all clients even if there are unsaved buffers
 
 shortcut | action
 --- | ---
-`q` | same as `client.quit()`
-`qa` | same as `client.quit_all()`
-`fqa` | same as `client.force_quit_all()`
+`q()` | same as `client.quit()`
+`qa()` | same as `client.quit_all()`
+`fqa()` | same as `client.force_quit_all()`
 
 ### editor
 function | action
 --- | ---
-`version() -> string` | the editor version string formatted as `major.minor.patch`.
-`print(value: any)` | prints a value to the editor's status bar
+`editor.version() -> string` | the editor version string formatted as `major.minor.patch`.
+`editor.print(value: any)` | prints a value to the editor's status bar
+
+### buffer
+function | action
+--- | ---
+`buffer.all_handles` | 
+`buffer.line_count` | 
+`buffer.line_at` | 
+`buffer.path` | 
+`buffer.extension` | 
+`buffer.has_extension` | 
+`buffer.needs_save` | 
+`buffer.set_search` | 
+`buffer.open` | 
+`buffer.close` | 
+`buffer.force_close` | 
+`buffer.force_close_all` | 
+`buffer.save` | 
+`buffer.save_all` | 
+`buffer.commit_edits` | 
+`buffer.on_open` | 
+
+### buffer_view
+function | action
+--- | ---
+
+### cursors
+function | action
+--- | ---
 
 ### read_line
 function | action
 --- | ---
-`prompt(prefix: string)` | changes the prompt for the next `read_line.read()` calls
+`read_line.prompt(prefix: string)` | changes the prompt for the next `read_line.read()` calls
+`read_line.read(callback: function(input: string?))` | begins a line read. If submitted, the callback is called with the line written. However, if cancelled, it is called with `nil`. 
+
+### picker
+function | action
+--- | ---
+`picker.prompt(prefix: string)` | changes the prompt for the next `picker.pick()` calls
+`picker.reset()` | reset all entries previously set
+`picker.entry(name: string, description: string?)` | add a new entry to then be picked by `picker.pick()`
+`picker.pick(callback: function(name: string))` | begins picking added entries. If submitted, the callback is called with the name of the picked entry. However, if cancelled, it is called with `nil`.
+
+### process
+function | action
+--- | ---
+`process.pipe(exe: string, args: [string]?, input: string?) -> string` | runs `exe` process with `args` and optionally with `input` as stdin. Once the process finishes, its stdout is returned.
+`process.spawn(exe: string, args: [string]?, input: string?)` | runs `exe` process with `args` and optionally with `input` as stdin. This function does not block.
+
+### keymap
+function | action
+--- | ---
+
+### syntax
+function | action
+--- | ---
 
 
 # todo
