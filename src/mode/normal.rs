@@ -728,7 +728,7 @@ impl ModeState for State {
                     cursors.set_main_cursor_index((index + cursor_count - 1) % cursor_count);
                 }
                 Key::Char('/') => {
-                    return ModeOperation::EnterMode(read_line::filter_cursors::by_words_mode());
+                    return ModeOperation::EnterMode(read_line::filter_cursors::by_pattern_mode());
                 }
                 Key::Char('?') => {
                     return ModeOperation::EnterMode(read_line::filter_cursors::by_separators_mode());
