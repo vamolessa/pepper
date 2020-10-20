@@ -119,6 +119,102 @@ pub mod search {
 pub mod filter_cursors {
     use super::*;
 
+    use crate::{buffer::BufferContent, buffer_position::BufferRange, cursor::Cursor};
+
+    pub fn filter_mode() -> Mode {
+        fn on_enter(ctx: &mut ModeContext) {
+            ctx.read_line.reset("filter:");
+        }
+
+        Mode::ReadLine(State {
+            on_enter,
+            on_event: |ctx, _, poll| on_event_impl(ctx, poll, true),
+        })
+    }
+
+    pub fn except_mode() -> Mode {
+        fn on_enter(ctx: &mut ModeContext) {
+            ctx.read_line.reset("except:");
+        }
+
+        Mode::ReadLine(State {
+            on_enter,
+            on_event: |ctx, _, poll| on_event_impl(ctx, poll, false),
+        })
+    }
+
+    fn on_event_impl(ctx: &mut ModeContext, poll: ReadLinePoll, keep_if_contains_pattern: bool) {
+        fn range_contains_pattern(
+            buffer: &BufferContent,
+            range: BufferRange,
+            pattern: &str,
+        ) -> bool {
+            if range.from.line_index == range.to.line_index {
+                let line = &buffer.line_at(range.from.line_index).as_str()
+                    [range.from.column_byte_index..range.to.column_byte_index];
+                line.contains(pattern)
+            } else {
+                let line =
+                    &buffer.line_at(range.from.line_index).as_str()[range.from.column_byte_index..];
+                if line.contains(pattern) {
+                    return true;
+                }
+
+                for line_index in (range.from.line_index + 1)..range.to.line_index {
+                    let line = buffer.line_at(line_index).as_str();
+                    if line.contains(pattern) {
+                        return true;
+                    }
+                }
+
+                let line =
+                    &buffer.line_at(range.to.line_index).as_str()[..range.to.column_byte_index];
+                line.contains(pattern)
+            }
+        }
+
+        if !matches!(poll, ReadLinePoll::Submitted) {
+            return;
+        }
+
+        let pattern = ctx.read_line.input();
+        let pattern = if pattern.is_empty() {
+            ctx.search.as_str()
+        } else {
+            pattern
+        };
+
+        let handle = unwrap_or_return!(ctx.current_buffer_view_handle());
+        let buffer_view = unwrap_or_return!(ctx.buffer_views.get_mut(handle));
+        let buffer = unwrap_or_return!(ctx.buffers.get_mut(buffer_view.buffer_handle)).content();
+
+        let mut cursors = buffer_view.cursors.mut_guard();
+        let main_cursor_position = cursors.main_cursor().position;
+        let cursor_count = cursors[..].len();
+
+        for i in 0..cursor_count {
+            let cursor = cursors[i];
+            if range_contains_pattern(buffer, cursor.as_range(), pattern)
+                == keep_if_contains_pattern
+            {
+                cursors.add(cursor);
+            }
+        }
+
+        cursors.remove_range(..cursor_count);
+
+        if cursors[..].is_empty() {
+            cursors.add(Cursor {
+                anchor: main_cursor_position,
+                position: main_cursor_position,
+            });
+        }
+    }
+}
+
+pub mod split_cursors {
+    use super::*;
+
     use crate::{
         buffer_position::BufferPosition,
         cursor::{Cursor, CursorCollectionMutGuard},
@@ -126,7 +222,7 @@ pub mod filter_cursors {
 
     pub fn by_pattern_mode() -> Mode {
         fn on_enter(ctx: &mut ModeContext) {
-            ctx.read_line.reset("filter:");
+            ctx.read_line.reset("split-by:");
         }
 
         fn add_matches(
@@ -216,7 +312,8 @@ pub mod filter_cursors {
         let cursor_count = cursors[..].len();
 
         for i in 0..cursor_count {
-            let range = cursors[i].as_range();
+            let cursor = cursors[i];
+            let range = cursor.as_range();
 
             if range.from.line_index == range.to.line_index {
                 let line = &buffer.line_at(range.from.line_index).as_str()
@@ -247,7 +344,7 @@ pub mod filter_cursors {
                 );
             }
 
-            if cursors[i].position == range.from {
+            if cursor.position == range.from {
                 for cursor in &mut cursors[cursor_count..] {
                     std::mem::swap(&mut cursor.anchor, &mut cursor.position);
                 }

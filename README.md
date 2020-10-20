@@ -47,12 +47,15 @@ keys | action
 keys | action
 --- | ---
 `cc` | splits all selection in lines
-`c0` | clear all extra cursors and keep only the main cursor
+`cd` | clear all extra cursors and keep only the main cursor
 `cv` | exit selection mode
 `co` | swap the anchor and position of all cursors
 `cj`, `ck` | add a new cursor to the line bellow/above the bottom/top cursor
 `cn`, `cp` | set next/previous cursor as main cursor
-`c/` | reduce selections to their insersection with search ranges
+`cs` | search inside selections and only keep those ranges
+`cS`, `CS` | search inside selections and remove those ranges
+`cf` | filter selections and keep those that contain the search pattern
+`cF`, `CF` | filter selections and remove those that contain the search pattern
 
 binding | expands to | action
 --- | --- | ---

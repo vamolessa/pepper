@@ -597,7 +597,7 @@ impl ModeState for State {
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
                 unwrap_or_none!(ctx.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
             }
-            Key::Char('c') => match keys.next() {
+            Key::Char('c') | Key::Char('C') => match keys.next() {
                 Key::None => return ModeOperation::Pending,
                 Key::Char('c') => {
                     let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
@@ -656,7 +656,7 @@ impl ModeState for State {
                     }
                     self.movement_kind = CursorMovementKind::PositionOnly;
                 }
-                Key::Char('0') => {
+                Key::Char('d') => {
                     let cursors = &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle)).cursors;
                     let main_cursor = *cursors.main_cursor();
                     let mut cursors = cursors.mut_guard();
@@ -665,6 +665,9 @@ impl ModeState for State {
                     self.movement_kind = CursorMovementKind::PositionAndAnchor;
                 }
                 Key::Char('v') => {
+                    self.movement_kind = CursorMovementKind::PositionOnly;
+                }
+                Key::Char('V') => {
                     for cursor in &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle))
                         .cursors
                         .mut_guard()[..]
@@ -727,11 +730,17 @@ impl ModeState for State {
                     let cursor_count = cursors[..].len();
                     cursors.set_main_cursor_index((index + cursor_count - 1) % cursor_count);
                 }
-                Key::Char('/') => {
-                    return ModeOperation::EnterMode(read_line::filter_cursors::by_pattern_mode());
+                Key::Char('f') => {
+                    return ModeOperation::EnterMode(read_line::filter_cursors::filter_mode());
                 }
-                Key::Char('?') => {
-                    return ModeOperation::EnterMode(read_line::filter_cursors::by_separators_mode());
+                Key::Char('F') => {
+                    return ModeOperation::EnterMode(read_line::filter_cursors::except_mode());
+                }
+                Key::Char('s') => {
+                    return ModeOperation::EnterMode(read_line::split_cursors::by_pattern_mode());
+                }
+                Key::Char('S') => {
+                    return ModeOperation::EnterMode(read_line::split_cursors::by_separators_mode());
                 }
                 _ => (),
             },
