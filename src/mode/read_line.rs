@@ -55,7 +55,7 @@ pub mod search {
         fn on_event(ctx: &mut ModeContext, _: &mut KeysIterator, poll: ReadLinePoll) {
             match poll {
                 ReadLinePoll::Pending => update_search(ctx),
-                ReadLinePoll::Submitted => ctx.search.set_text(ctx.read_line.input()),
+                ReadLinePoll::Submitted => ctx.search.set(ctx.read_line.input()),
                 ReadLinePoll::Canceled => NavigationHistory::move_in_history(
                     ctx.clients,
                     ctx.buffer_views,
@@ -113,6 +113,209 @@ pub mod search {
         if main_line_index < client.scroll || main_line_index >= client.scroll + height {
             client.scroll = main_line_index.saturating_sub(height / 2);
         }
+    }
+}
+
+pub mod filter_cursors {
+    use super::*;
+
+    use crate::{
+        buffer_position::BufferPosition,
+        cursor::{Cursor, CursorCollectionMutGuard},
+    };
+
+    pub fn by_words_mode() -> Mode {
+        fn on_enter(ctx: &mut ModeContext) {
+            ctx.read_line.reset("filter:");
+        }
+
+        fn on_event(ctx: &mut ModeContext, _: &mut KeysIterator, poll: ReadLinePoll) {
+            fn add_matches(
+                cursors: &mut CursorCollectionMutGuard,
+                line: &str,
+                pattern: &str,
+                start_position: BufferPosition,
+            ) {
+                for (index, s) in line.match_indices(pattern) {
+                    let mut from = start_position;
+                    from.column_byte_index += index;
+                    let mut to = from;
+                    to.column_byte_index += s.len();
+
+                    cursors.add(Cursor {
+                        anchor: from,
+                        position: to,
+                    });
+                }
+            }
+
+            if !matches!(poll, ReadLinePoll::Submitted) {
+                return;
+            }
+
+            let pattern = ctx.read_line.input();
+            let pattern = if pattern.is_empty() {
+                ctx.search.as_str()
+            } else {
+                pattern
+            };
+
+            let handle = unwrap_or_return!(ctx.current_buffer_view_handle());
+            let buffer_view = unwrap_or_return!(ctx.buffer_views.get_mut(handle));
+            let buffer =
+                unwrap_or_return!(ctx.buffers.get_mut(buffer_view.buffer_handle)).content();
+
+            let mut cursors = buffer_view.cursors.mut_guard();
+            let main_cursor_position = cursors.main_cursor().position;
+            let cursor_count = cursors[..].len();
+
+            for i in 0..cursor_count {
+                let range = cursors[i].as_range();
+
+                if range.from.line_index == range.to.line_index {
+                    let line = &buffer.line_at(range.from.line_index).as_str()
+                        [range.from.column_byte_index..range.to.column_byte_index];
+                    add_matches(&mut cursors, line, pattern, range.from);
+                } else {
+                    let line = &buffer.line_at(range.from.line_index).as_str()
+                        [range.from.column_byte_index..];
+                    add_matches(&mut cursors, line, pattern, range.from);
+
+                    for line_index in (range.from.line_index + 1)..range.to.line_index {
+                        let line = buffer.line_at(line_index).as_str();
+                        add_matches(
+                            &mut cursors,
+                            line,
+                            pattern,
+                            BufferPosition::line_col(line_index, 0),
+                        );
+                    }
+
+                    let line =
+                        &buffer.line_at(range.to.line_index).as_str()[..range.to.column_byte_index];
+                    add_matches(
+                        &mut cursors,
+                        line,
+                        pattern,
+                        BufferPosition::line_col(range.to.line_index, 0),
+                    );
+                }
+
+                if cursors[i].position == range.from {
+                    for cursor in &mut cursors[cursor_count..] {
+                        std::mem::swap(&mut cursor.anchor, &mut cursor.position);
+                    }
+                }
+            }
+
+            cursors.remove_range(..cursor_count);
+
+            if cursors[..].is_empty() {
+                cursors.add(Cursor {
+                    anchor: main_cursor_position,
+                    position: main_cursor_position,
+                });
+            }
+        }
+
+        Mode::ReadLine(State { on_enter, on_event })
+    }
+
+    pub fn by_separators_mode() -> Mode {
+        fn on_enter(ctx: &mut ModeContext) {
+            ctx.read_line.reset("filter:");
+        }
+
+        fn on_event(ctx: &mut ModeContext, _: &mut KeysIterator, poll: ReadLinePoll) {
+            fn add_matches(
+                cursors: &mut CursorCollectionMutGuard,
+                line: &str,
+                pattern: &str,
+                start_position: BufferPosition,
+            ) {
+                let mut index = start_position.column_byte_index;
+                for (i, s) in line.match_indices(pattern) {
+                    if i != index {
+                        cursors.add(Cursor {
+                            anchor: BufferPosition::line_col(start_position.line_index, index),
+                            position: BufferPosition::line_col(start_position.line_index, i),
+                        });
+                    }
+
+                    index = i + s.len();
+                }
+            }
+
+            if !matches!(poll, ReadLinePoll::Submitted) {
+                return;
+            }
+
+            let pattern = ctx.read_line.input();
+            let pattern = if pattern.is_empty() {
+                ctx.search.as_str()
+            } else {
+                pattern
+            };
+
+            let handle = unwrap_or_return!(ctx.current_buffer_view_handle());
+            let buffer_view = unwrap_or_return!(ctx.buffer_views.get_mut(handle));
+            let buffer =
+                unwrap_or_return!(ctx.buffers.get_mut(buffer_view.buffer_handle)).content();
+
+            let mut cursors = buffer_view.cursors.mut_guard();
+            let main_cursor_position = cursors.main_cursor().position;
+            let cursor_count = cursors[..].len();
+
+            for i in 0..cursor_count {
+                let range = cursors[i].as_range();
+
+                if range.from.line_index == range.to.line_index {
+                    let line = &buffer.line_at(range.from.line_index).as_str()
+                        [range.from.column_byte_index..range.to.column_byte_index];
+                    add_matches(&mut cursors, line, pattern, range.from);
+                } else {
+                    let line = &buffer.line_at(range.from.line_index).as_str()
+                        [range.from.column_byte_index..];
+                    add_matches(&mut cursors, line, pattern, range.from);
+
+                    for line_index in (range.from.line_index + 1)..range.to.line_index {
+                        let line = buffer.line_at(line_index).as_str();
+                        add_matches(
+                            &mut cursors,
+                            line,
+                            pattern,
+                            BufferPosition::line_col(line_index, 0),
+                        );
+                    }
+
+                    let line =
+                        &buffer.line_at(range.to.line_index).as_str()[..range.to.column_byte_index];
+                    add_matches(
+                        &mut cursors,
+                        line,
+                        pattern,
+                        BufferPosition::line_col(range.to.line_index, 0),
+                    );
+                }
+
+                if cursors[i].position == range.from {
+                    for cursor in &mut cursors[cursor_count..] {
+                        std::mem::swap(&mut cursor.anchor, &mut cursor.position);
+                    }
+                }
+            }
+
+            cursors.remove_range(..cursor_count);
+
+            if cursors[..].is_empty() {
+                cursors.add(Cursor {
+                    anchor: main_cursor_position,
+                    position: main_cursor_position,
+                });
+            }
+        }
+
+        Mode::ReadLine(State { on_enter, on_event })
     }
 }
 

@@ -728,66 +728,10 @@ impl ModeState for State {
                     cursors.set_main_cursor_index((index + cursor_count - 1) % cursor_count);
                 }
                 Key::Char('/') => {
-                    let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
-                    let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
-                    let search_ranges = buffer.search_ranges();
-                    if search_ranges.is_empty() {
-                        return ModeOperation::None;
-                    }
-
-                    let mut cursors = buffer_view.cursors.mut_guard();
-                    let cursor_count = cursors[..].len();
-
-                    let mut has_selection = false;
-                    for cursor in &cursors[..] {
-                        if cursor.anchor != cursor.position {
-                            has_selection = true;
-                            break;
-                        }
-                    }
-
-                    if has_selection {
-                        for i in 0..cursor_count {
-                            let cursor = &mut cursors[i];
-                            let cursor_range = BufferRange::between(cursor.anchor, cursor.position);
-
-                            let mut search_ranges = search_ranges.iter().filter(|r| {
-                                r.from >= cursor_range.from && r.from <= cursor_range.to
-                                    || r.to >= cursor_range.from && r.to <= cursor_range.to
-                            });
-
-                            if let Some(range) = search_ranges.next() {
-                                cursor.anchor = range.from;
-                                cursor.position = BufferPosition::line_col(
-                                    range.to.line_index,
-                                    range.to.column_byte_index,
-                                );
-                            }
-
-                            for range in search_ranges {
-                                cursors.add(Cursor {
-                                    anchor: range.from,
-                                    position: BufferPosition::line_col(
-                                        range.to.line_index,
-                                        range.to.column_byte_index,
-                                    ),
-                                });
-                            }
-                        }
-                    } else {
-                        cursors.clear();
-                        for range in search_ranges {
-                            cursors.add(Cursor {
-                                anchor: range.from,
-                                position: BufferPosition::line_col(
-                                    range.to.line_index,
-                                    range.to.column_byte_index,
-                                ),
-                            });
-                        }
-                    }
-
-                    self.movement_kind = CursorMovementKind::PositionOnly;
+                    return ModeOperation::EnterMode(read_line::filter_cursors::by_words_mode());
+                }
+                Key::Char('?') => {
+                    return ModeOperation::EnterMode(read_line::filter_cursors::by_separators_mode());
                 }
                 _ => (),
             },
@@ -907,8 +851,8 @@ where
 
     let mut search_ranges = buffer.search_ranges();
     if search_ranges.is_empty() {
-        if !ctx.search.text().is_empty() {
-            buffer.set_search(ctx.search.text());
+        if !ctx.search.as_str().is_empty() {
+            buffer.set_search(ctx.search.as_str());
             search_ranges = buffer.search_ranges();
         }
 
@@ -969,7 +913,7 @@ fn search_word_or_move_to_it(
             word.text
         });
 
-        ctx.search.set_text(search_word);
+        ctx.search.set(search_word);
     } else {
         let range_index = index_selector(search_ranges.len(), current_range_index);
         let range = search_ranges[range_index];

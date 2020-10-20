@@ -1,5 +1,5 @@
 use std::{
-    ops::{Drop, Index, IndexMut},
+    ops::{Drop, Index, IndexMut, RangeBounds, Bound},
     slice::SliceIndex,
 };
 
@@ -142,6 +142,30 @@ impl<'a> CursorCollectionMutGuard<'a> {
     pub fn add(&mut self, cursor: Cursor) {
         self.inner.main_cursor_index = self.inner.cursors.len();
         self.inner.cursors.push(cursor);
+    }
+
+    pub fn remove_range<R>(&mut self, range: R)
+    where
+        R: RangeBounds<usize>,
+    {
+        let start = match range.start_bound() {
+            Bound::Included(&n) => n,
+            Bound::Excluded(&n) => n + 1,
+            Bound::Unbounded => 0,
+        };
+        let end = match range.end_bound() {
+            Bound::Included(&n) => n + 1,
+            Bound::Excluded(&n) => n,
+            Bound::Unbounded => self.inner.cursors.len(),
+        };
+
+        if self.inner.main_cursor_index >= end {
+            self.inner.main_cursor_index -= end - start;
+        } else if self.inner.main_cursor_index > start {
+            self.inner.main_cursor_index = start;
+        }
+
+        self.inner.cursors.drain(range);
     }
 
     pub fn save_column_byte_indices(&mut self) {

@@ -58,11 +58,11 @@ pub struct SearchText {
 }
 
 impl SearchText {
-    pub fn text(&self) -> &str {
+    pub fn as_str(&self) -> &str {
         &self.text
     }
 
-    pub fn set_text(&mut self, text: &str) {
+    pub fn set(&mut self, text: &str) {
         self.text.clear();
         self.text.push_str(text);
     }
