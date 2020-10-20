@@ -130,7 +130,7 @@ mod client {
         Ok(ctx
             .clients
             .get(target)
-            .and_then(|c| c.current_buffer_view_handle))
+            .and_then(|c| c.current_buffer_view_handle()))
     }
 
     pub fn quit(
@@ -439,7 +439,7 @@ mod buffer {
             ctx.buffer_views
                 .remove_where(ctx.buffers, ctx.clients, ctx.word_database, |_| true);
             for c in ctx.clients.client_refs() {
-                c.client.current_buffer_view_handle = None;
+                c.client.set_current_buffer_view_handle(None);
             }
             Ok(())
         }
@@ -454,7 +454,7 @@ mod buffer {
         ctx.buffer_views
             .remove_where(ctx.buffers, ctx.clients, ctx.word_database, |_| true);
         for c in ctx.clients.client_refs() {
-            c.client.current_buffer_view_handle = None;
+            c.client.set_current_buffer_view_handle(None);
         }
         Ok(())
     }

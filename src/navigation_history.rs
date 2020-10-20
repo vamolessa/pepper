@@ -37,7 +37,7 @@ impl NavigationHistory {
             Some(client) => client,
             None => return,
         };
-        let view_handle = match client.current_buffer_view_handle {
+        let view_handle = match client.current_buffer_view_handle() {
             Some(handle) => handle,
             None => return,
         };
@@ -92,6 +92,8 @@ impl NavigationHistory {
             None => return,
         };
 
+        let current_buffer_view_handle = client.current_buffer_view_handle();
+
         let history = &mut client.navigation_history;
         let mut history_index = match history.state {
             NavigationState::IterIndex(index) => index,
@@ -114,9 +116,8 @@ impl NavigationHistory {
                 }
 
                 if history_index == history.snapshots.len() {
-                    if let Some(buffer_view) = client
-                        .current_buffer_view_handle
-                        .and_then(|h| buffer_views.get(h))
+                    if let Some(buffer_view) =
+                        current_buffer_view_handle.and_then(|h| buffer_views.get(h))
                     {
                         history.add_snapshot(buffer_view)
                     }
@@ -131,8 +132,6 @@ impl NavigationHistory {
 
         let view_handle = buffer_views
             .buffer_view_handle_from_buffer_handle(target_client, snapshot.buffer_handle);
-        client.current_buffer_view_handle = Some(view_handle);
-
         let mut cursors = match buffer_views.get_mut(view_handle) {
             Some(view) => view.cursors.mut_guard(),
             None => return,
@@ -141,6 +140,8 @@ impl NavigationHistory {
         for cursor in history.cursors[snapshot.cursor_range.0..snapshot.cursor_range.1].iter() {
             cursors.add(*cursor);
         }
+
+        client.set_current_buffer_view_handle(Some(view_handle));
     }
 
     pub fn remove_snapshots_with_buffer_handle(&mut self, buffer_handle: BufferHandle) {

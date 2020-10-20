@@ -74,7 +74,7 @@ pub mod search {
         }
 
         let client = unwrap_or_return!(ctx.clients.get_mut(ctx.target_client));
-        let handle = unwrap_or_return!(client.current_buffer_view_handle);
+        let handle = unwrap_or_return!(client.current_buffer_view_handle());
         let buffer_view = unwrap_or_return!(ctx.buffer_views.get_mut(handle));
         let buffer = unwrap_or_return!(ctx.buffers.get_mut(buffer_view.buffer_handle));
         buffer.set_search(&ctx.read_line.input());

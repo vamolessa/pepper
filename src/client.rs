@@ -73,14 +73,29 @@ impl FromArgValue for TargetClient {
 #[derive(Default)]
 pub struct Client {
     pub ui: UiKind,
-    pub current_buffer_view_handle: Option<BufferViewHandle>,
     pub viewport_size: (u16, u16),
     pub scroll: usize,
     pub height: u16,
     pub navigation_history: NavigationHistory,
+
+    current_buffer_view_handle: Option<BufferViewHandle>,
+    previous_buffer_view_handle: Option<BufferViewHandle>,
 }
 
 impl Client {
+    pub fn current_buffer_view_handle(&self) -> Option<BufferViewHandle> {
+        self.current_buffer_view_handle
+    }
+
+    pub fn previous_buffer_view_handle(&self) -> Option<BufferViewHandle> {
+        self.previous_buffer_view_handle
+    }
+
+    pub fn set_current_buffer_view_handle(&mut self, handle: Option<BufferViewHandle>) {
+        self.previous_buffer_view_handle = self.current_buffer_view_handle;
+        self.current_buffer_view_handle = handle;
+    }
+
     pub fn update_view(&mut self, editor: &Editor, has_focus: bool) {
         let picker_height = if has_focus {
             editor

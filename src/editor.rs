@@ -269,13 +269,13 @@ impl Editor {
         let target_client = TargetClient::Remote(client_handle);
         let buffer_view_handle = clients
             .get(self.focused_client)
-            .and_then(|c| c.current_buffer_view_handle)
+            .and_then(|c| c.current_buffer_view_handle())
             .and_then(|h| self.buffer_views.get(h))
             .map(|v| v.clone_with_target_client(target_client))
             .map(|b| self.buffer_views.add(b));
 
         if let Some(client) = clients.get_mut(target_client) {
-            client.current_buffer_view_handle = buffer_view_handle;
+            client.set_current_buffer_view_handle(buffer_view_handle);
         }
     }
 
@@ -338,7 +338,7 @@ impl Editor {
                 ) {
                     Ok(handle) => {
                         if let Some(client) = clients.get_mut(target_client) {
-                            client.current_buffer_view_handle = Some(handle);
+                            client.set_current_buffer_view_handle(Some(handle));
                         }
 
                         if let Some(handle) = self.buffer_views.get(handle).map(|v| v.buffer_handle)

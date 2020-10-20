@@ -58,7 +58,10 @@ pub mod buffer {
 
     use std::path::Path;
 
-    use crate::{editor::StatusMessageKind, navigation_history::NavigationHistory};
+    use crate::{
+        buffer::Buffer, editor::StatusMessageKind, navigation_history::NavigationHistory,
+        picker::Picker,
+    };
 
     pub fn mode(ctx: &mut ModeContext) -> Mode {
         fn on_enter(ctx: &mut ModeContext) {
@@ -96,11 +99,30 @@ pub mod buffer {
             }
         }
 
-        ctx.picker.reset();
-        for buffer in ctx.buffers.iter() {
+        fn add_buffer_to_picker(picker: &mut Picker, buffer: &Buffer) {
             if let Some(path) = buffer.path().and_then(|p| p.to_str()) {
-                ctx.picker
-                    .add_custom_entry(path, if buffer.needs_save() { "changed" } else { "" });
+                picker.add_custom_entry(path, if buffer.needs_save() { "changed" } else { "" });
+            }
+        }
+
+        ctx.picker.reset();
+
+        let buffers = &ctx.buffers;
+        let buffer_views = &ctx.buffer_views;
+        let prevous_buffer_handle = ctx
+            .clients
+            .get(ctx.target_client)
+            .and_then(|c| c.previous_buffer_view_handle())
+            .and_then(|h| buffer_views.get(h))
+            .map(|v| v.buffer_handle);
+
+        if let Some(buffer) = prevous_buffer_handle.and_then(|h| buffers.get(h)) {
+            add_buffer_to_picker(ctx.picker, buffer);
+        }
+
+        for (handle, buffer) in ctx.buffers.iter_with_handles() {
+            if prevous_buffer_handle.map(|h| h != handle).unwrap_or(true) {
+                add_buffer_to_picker(ctx.picker, buffer);
             }
         }
 

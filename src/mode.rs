@@ -70,12 +70,12 @@ impl<'a> ModeContext<'a> {
     pub fn current_buffer_view_handle(&self) -> Option<BufferViewHandle> {
         self.clients
             .get(self.target_client)
-            .and_then(|c| c.current_buffer_view_handle)
+            .and_then(|c| c.current_buffer_view_handle())
     }
 
     pub fn set_current_buffer_view_handle(&mut self, handle: Option<BufferViewHandle>) {
         if let Some(client) = self.clients.get_mut(self.target_client) {
-            client.current_buffer_view_handle = handle;
+            client.set_current_buffer_view_handle(handle);
         }
     }
 
