@@ -92,7 +92,10 @@ impl Client {
     }
 
     pub fn set_current_buffer_view_handle(&mut self, handle: Option<BufferViewHandle>) {
-        self.previous_buffer_view_handle = self.current_buffer_view_handle;
+        if self.previous_buffer_view_handle != self.current_buffer_view_handle {
+            self.previous_buffer_view_handle = self.current_buffer_view_handle;
+        }
+
         self.current_buffer_view_handle = handle;
     }
 
