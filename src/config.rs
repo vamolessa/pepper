@@ -1,4 +1,4 @@
-use std::num::NonZeroUsize;
+use std::num::NonZeroU8;
 
 use crate::{
     syntax::SyntaxCollection,
@@ -7,7 +7,7 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub struct ConfigValues {
-    pub tab_size: NonZeroUsize,
+    pub tab_size: NonZeroU8,
     pub indent_with_tabs: bool,
 
     pub visual_empty: char,
@@ -15,13 +15,13 @@ pub struct ConfigValues {
     pub visual_tab_first: char,
     pub visual_tab_repeat: char,
 
-    pub picker_max_height: NonZeroUsize,
+    pub picker_max_height: NonZeroU8,
 }
 
 impl Default for ConfigValues {
     fn default() -> Self {
         Self {
-            tab_size: NonZeroUsize::new(4).unwrap(),
+            tab_size: NonZeroU8::new(4).unwrap(),
             indent_with_tabs: true,
 
             visual_empty: '~',
@@ -29,7 +29,7 @@ impl Default for ConfigValues {
             visual_tab_first: '|',
             visual_tab_repeat: ' ',
 
-            picker_max_height: NonZeroUsize::new(8).unwrap(),
+            picker_max_height: NonZeroU8::new(8).unwrap(),
         }
     }
 }

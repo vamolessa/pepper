@@ -360,7 +360,7 @@ where
                     for _ in 0..next_tab_stop {
                         handle_command!(write, Print(editor.config.values.visual_tab_repeat))?;
                     }
-                    x += tab_size;
+                    x += next_tab_stop;
                 }
                 _ => {
                     handle_command!(write, Print(c))?;
@@ -404,10 +404,13 @@ where
     let cursor = editor.picker.cursor();
     let scroll = editor.picker.scroll();
 
-    let half_width = client_view.client.viewport_size.0.saturating_sub(1) / 2;
+    let half_width = client_view.client.viewport_size.0 / 2;
+    let half_width = half_width.saturating_sub(1);
+    let tab_size = editor.config.values.tab_size.get() as u16;
+
     let height = editor
         .picker
-        .height(editor.config.values.picker_max_height.get());
+        .height(editor.config.values.picker_max_height.get() as _);
 
     let background_color = convert_color(editor.config.theme.token_text);
     let foreground_color = convert_color(editor.config.theme.token_whitespace);
@@ -430,17 +433,42 @@ where
             handle_command!(write, SetForegroundColor(foreground_color))?;
         }
 
-        for c in entry
-            .name
-            .chars()
-            .chain(std::iter::repeat(' '))
-            .take(half_width as _)
-        {
-            handle_command!(write, Print(c))?;
+        let mut x = 0;
+
+        macro_rules! print_char {
+            ($c:expr) => {
+                match $c {
+                    '\t' => {
+                        let next_tab_stop = (tab_size - 1) - x % tab_size;
+                        x += next_tab_stop;
+                        if x > half_width {
+                            break;
+                        }
+
+                        for _ in 0..next_tab_stop {
+                            handle_command!(write, Print(editor.config.values.visual_tab_repeat))?;
+                        }
+                    }
+                    c => {
+                        x += 1;
+                        if x > half_width {
+                            break;
+                        }
+                        handle_command!(write, Print(c))?;
+                    }
+                }
+            };
         }
-        handle_command!(write, Print(' '))?;
-        for c in entry.description.chars().take(half_width as _) {
-            handle_command!(write, Print(c))?;
+
+        for c in entry.name.chars() {
+            print_char!(c);
+        }
+        for _ in x..(half_width + 1) {
+            handle_command!(write, Print(' '))?;
+        }
+        x = 0;
+        for c in entry.description.chars() {
+            print_char!(c);
         }
 
         handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;

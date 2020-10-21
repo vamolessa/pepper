@@ -537,7 +537,7 @@ impl ModeState for State {
                                 Some((i, c @ '\t')) => i + c.len_utf8(),
                                 Some((i, c @ ' ')) => {
                                     match chars
-                                        .take(ctx.config.values.tab_size.get() - 1)
+                                        .take(ctx.config.values.tab_size.get() as usize - 1)
                                         .take_while(|(_, c)| *c == ' ')
                                         .last()
                                     {
@@ -574,7 +574,7 @@ impl ModeState for State {
                         indentation.push_str("\t");
                     }
                 } else {
-                    let count = ctx.config.values.tab_size.get() * count;
+                    let count = ctx.config.values.tab_size.get() as usize * count;
                     for _ in 0..count {
                         indentation.push_str(" ");
                     }

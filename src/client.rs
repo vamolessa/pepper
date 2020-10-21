@@ -103,7 +103,7 @@ impl Client {
         let picker_height = if has_focus {
             editor
                 .picker
-                .height(editor.config.values.picker_max_height.get()) as u16
+                .height(editor.config.values.picker_max_height.get() as _) as u16
         } else {
             0
         };

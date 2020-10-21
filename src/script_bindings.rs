@@ -1,7 +1,7 @@
 use std::{
     fmt,
     io::Write,
-    num::NonZeroUsize,
+    num::NonZeroU8,
     path::Path,
     process::{Child, Command, Stdio},
 };
@@ -1117,15 +1117,15 @@ mod config {
                 }
             }};
         }
-        macro_rules! try_non_zero_usize {
+        macro_rules! try_non_zero_u8 {
             ($value:expr) => {{
                 let integer = match $value {
                     ScriptValue::Integer(i) if i > 0 => i,
                     _ => {
-                        return Err(ScriptError::<NonZeroUsize>::convert_from_script(&$value));
+                        return Err(ScriptError::<NonZeroU8>::convert_from_script(&$value));
                     }
                 };
-                NonZeroUsize::new(integer as _).unwrap()
+                NonZeroU8::new(integer as _).unwrap()
             }};
         }
         macro_rules! try_char {
@@ -1142,13 +1142,13 @@ mod config {
         let config = &mut ctx.config.values;
         let index = index.to_str()?;
         match index {
-            "tab_size" => config.tab_size = try_non_zero_usize!(value),
+            "tab_size" => config.tab_size = try_non_zero_u8!(value),
             "indent_with_tabs" => config.indent_with_tabs = try_bool!(value),
             "visual_empty" => config.visual_empty = try_char!(value),
             "visual_space" => config.visual_space = try_char!(value),
             "visual_tab_first" => config.visual_tab_first = try_char!(value),
             "visual_tab_repeat" => config.visual_tab_repeat = try_char!(value),
-            "picker_max_height" => config.picker_max_height = try_non_zero_usize!(value),
+            "picker_max_height" => config.picker_max_height = try_non_zero_u8!(value),
             _ => return Err(ScriptError::from(format!("no such property {}", index))),
         }
 

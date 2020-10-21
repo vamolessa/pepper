@@ -143,16 +143,23 @@ impl Picker {
             .iter()
             .enumerate()
         {
-            if let Some(mut score) = self.matcher.fuzzy_match(&entry.name, pattern) {
-                if entry.name.len() == pattern.len() {
-                    score += 1;
-                }
+            let name_score = self.matcher.fuzzy_match(&entry.name, pattern);
+            let description_score = self.matcher.fuzzy_match(&entry.description, pattern);
 
-                self.filtered_entries.push(FilteredEntry {
-                    source: FiletedEntrySource::Custom(i),
-                    score,
-                });
-            }
+            let name_eq_bonus = (entry.name.len() == pattern.len()) as i64;
+            let description_eq_bonus = (entry.description.len() == pattern.len()) as i64;
+
+            let score = match (name_score, description_score) {
+                (None, None) => continue,
+                (None, Some(s)) => s + description_eq_bonus,
+                (Some(s), None) => s + name_eq_bonus,
+                (Some(a), Some(b)) => (a + name_eq_bonus).max(b + description_eq_bonus),
+            };
+
+            self.filtered_entries.push(FilteredEntry {
+                source: FiletedEntrySource::Custom(i),
+                score,
+            });
         }
 
         self.filtered_entries

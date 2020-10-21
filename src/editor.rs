@@ -426,7 +426,7 @@ impl Editor {
         };
 
         self.picker
-            .update_scroll(self.config.values.picker_max_height.get());
+            .update_scroll(self.config.values.picker_max_height.get() as _);
         for c in clients.client_refs() {
             c.client.update_view(self, self.focused_client == c.target);
         }
