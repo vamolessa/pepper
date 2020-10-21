@@ -7,14 +7,14 @@ use crate::{
 
 pub struct State {
     on_enter: fn(&mut ModeContext),
-    on_event: fn(&mut ModeContext, &mut KeysIterator, ReadLinePoll),
+    on_event: fn(&mut ModeContext, &mut KeysIterator, ReadLinePoll) -> ModeOperation,
 }
 
 impl Default for State {
     fn default() -> Self {
         Self {
             on_enter: |_| (),
-            on_event: |_, _, _| (),
+            on_event: |_, _, _| ModeOperation::EnterMode(Mode::default()),
         }
     }
 }
@@ -42,13 +42,9 @@ impl ModeState for State {
                         .filter(WordDatabase::empty(), ctx.read_line.input()),
                 }
 
-                (self.on_event)(ctx, keys, ReadLinePoll::Pending);
-                ModeOperation::None
+                (self.on_event)(ctx, keys, ReadLinePoll::Pending)
             }
-            poll => {
-                (self.on_event)(ctx, keys, poll);
-                ModeOperation::EnterMode(Mode::default())
-            }
+            poll => (self.on_event)(ctx, keys, poll),
         }
     }
 }
@@ -68,14 +64,20 @@ pub mod buffer {
             ctx.read_line.reset("buffer:");
         }
 
-        fn on_event(ctx: &mut ModeContext, _: &mut KeysIterator, poll: ReadLinePoll) {
-            if !matches!(poll, ReadLinePoll::Submitted) {
-                return;
+        fn on_event(
+            ctx: &mut ModeContext,
+            _: &mut KeysIterator,
+            poll: ReadLinePoll,
+        ) -> ModeOperation {
+            match poll {
+                ReadLinePoll::Pending => return ModeOperation::None,
+                ReadLinePoll::Submitted => (),
+                ReadLinePoll::Canceled => return ModeOperation::EnterMode(Mode::default()),
             }
 
             let path = match ctx.picker.current_entry(WordDatabase::empty()) {
                 Some(entry) => entry.name,
-                None => return,
+                None => return ModeOperation::EnterMode(Mode::default()),
             };
 
             NavigationHistory::save_client_snapshot(
@@ -97,6 +99,8 @@ pub mod buffer {
                     .status_message
                     .write_str(StatusMessageKind::Error, &error),
             }
+
+            ModeOperation::EnterMode(Mode::default())
         }
 
         fn add_buffer_to_picker(picker: &mut Picker, buffer: &Buffer) {
@@ -154,11 +158,15 @@ pub mod custom {
             }
         }
 
-        fn on_event(ctx: &mut ModeContext, _: &mut KeysIterator, poll: ReadLinePoll) {
+        fn on_event(
+            ctx: &mut ModeContext,
+            _: &mut KeysIterator,
+            poll: ReadLinePoll,
+        ) -> ModeOperation {
             let (engine, _, mut ctx) = ctx.script_context();
-            let result = engine.as_ref_with_ctx(&mut ctx, |engine, ctx, mut guard| {
+            let operation = engine.as_ref_with_ctx(&mut ctx, |engine, ctx, mut guard| {
                 let entry = match poll {
-                    ReadLinePoll::Pending => return Ok(()),
+                    ReadLinePoll::Pending => return Ok(ModeOperation::None),
                     ReadLinePoll::Submitted => {
                         match ctx.picker.current_entry(WordDatabase::empty()) {
                             Some(entry) => {
@@ -173,11 +181,18 @@ pub mod custom {
                 engine
                     .take_from_registry::<ScriptFunction>(CALLBACK_REGISTRY_KEY)?
                     .call(&mut guard, entry)?;
-                Ok(())
+
+                let mut mode = Mode::default();
+                std::mem::swap(&mut mode, &mut ctx.next_mode);
+                Ok(ModeOperation::EnterMode(mode))
             });
 
-            if let Err(error) = result {
-                ctx.status_message.write_error(&error);
+            match operation {
+                Ok(operation) => operation,
+                Err(error) => {
+                    ctx.status_message.write_error(&error);
+                    ModeOperation::EnterMode(Mode::default())
+                }
             }
         }
 

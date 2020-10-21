@@ -46,4 +46,3 @@ macro_rules! impl_to_script {
         }
     };
 }
-

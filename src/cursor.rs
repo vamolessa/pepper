@@ -1,5 +1,5 @@
 use std::{
-    ops::{Drop, Index, IndexMut, RangeBounds, Bound},
+    ops::{Bound, Drop, Index, IndexMut, RangeBounds},
     slice::SliceIndex,
 };
 

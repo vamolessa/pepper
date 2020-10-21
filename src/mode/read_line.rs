@@ -5,14 +5,14 @@ use crate::{
 
 pub struct State {
     on_enter: fn(&mut ModeContext),
-    on_event: fn(&mut ModeContext, &mut KeysIterator, ReadLinePoll),
+    on_event: fn(&mut ModeContext, &mut KeysIterator, ReadLinePoll) -> ModeOperation,
 }
 
 impl Default for State {
     fn default() -> Self {
         Self {
             on_enter: |_| (),
-            on_event: |_, _, _| (),
+            on_event: |_, _, _| ModeOperation::EnterMode(Mode::default()),
         }
     }
 }
@@ -28,11 +28,7 @@ impl ModeState for State {
 
     fn on_event(&mut self, ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
         let poll = ctx.read_line.poll(keys);
-        (self.on_event)(ctx, keys, poll);
-        match poll {
-            ReadLinePoll::Pending => ModeOperation::None,
-            _ => ModeOperation::EnterMode(Mode::default()),
-        }
+        (self.on_event)(ctx, keys, poll)
     }
 }
 
@@ -52,16 +48,29 @@ pub mod search {
             update_search(ctx);
         }
 
-        fn on_event(ctx: &mut ModeContext, _: &mut KeysIterator, poll: ReadLinePoll) {
+        fn on_event(
+            ctx: &mut ModeContext,
+            _: &mut KeysIterator,
+            poll: ReadLinePoll,
+        ) -> ModeOperation {
             match poll {
-                ReadLinePoll::Pending => update_search(ctx),
-                ReadLinePoll::Submitted => ctx.search.set(ctx.read_line.input()),
-                ReadLinePoll::Canceled => NavigationHistory::move_in_history(
-                    ctx.clients,
-                    ctx.buffer_views,
-                    ctx.target_client,
-                    NavigationDirection::Backward,
-                ),
+                ReadLinePoll::Pending => {
+                    update_search(ctx);
+                    ModeOperation::None
+                }
+                ReadLinePoll::Submitted => {
+                    ctx.search.set(ctx.read_line.input());
+                    ModeOperation::EnterMode(Mode::default())
+                }
+                ReadLinePoll::Canceled => {
+                    NavigationHistory::move_in_history(
+                        ctx.clients,
+                        ctx.buffer_views,
+                        ctx.target_client,
+                        NavigationDirection::Backward,
+                    );
+                    ModeOperation::EnterMode(Mode::default())
+                }
             }
         }
 
@@ -116,6 +125,19 @@ pub mod search {
     }
 }
 
+macro_rules! on_submitted {
+    ($poll:expr => $value:expr) => {
+        match $poll {
+            ReadLinePoll::Pending => ModeOperation::None,
+            ReadLinePoll::Submitted => {
+                $value;
+                ModeOperation::EnterMode(Mode::default())
+            }
+            ReadLinePoll::Canceled => ModeOperation::EnterMode(Mode::default()),
+        }
+    };
+}
+
 pub mod filter_cursors {
     use super::*;
 
@@ -128,7 +150,7 @@ pub mod filter_cursors {
 
         Mode::ReadLine(State {
             on_enter,
-            on_event: |ctx, _, poll| on_event_impl(ctx, poll, true),
+            on_event: |ctx, _, poll| on_submitted!(poll => on_event_impl(ctx, true)),
         })
     }
 
@@ -139,11 +161,11 @@ pub mod filter_cursors {
 
         Mode::ReadLine(State {
             on_enter,
-            on_event: |ctx, _, poll| on_event_impl(ctx, poll, false),
+            on_event: |ctx, _, poll| on_submitted!(poll => on_event_impl(ctx, false)),
         })
     }
 
-    fn on_event_impl(ctx: &mut ModeContext, poll: ReadLinePoll, keep_if_contains_pattern: bool) {
+    fn on_event_impl(ctx: &mut ModeContext, keep_if_contains_pattern: bool) {
         fn range_contains_pattern(
             buffer: &BufferContent,
             range: BufferRange,
@@ -171,10 +193,6 @@ pub mod filter_cursors {
                     &buffer.line_at(range.to.line_index).as_str()[..range.to.column_byte_index];
                 line.contains(pattern)
             }
-        }
-
-        if !matches!(poll, ReadLinePoll::Submitted) {
-            return;
         }
 
         let pattern = ctx.read_line.input();
@@ -246,7 +264,7 @@ pub mod split_cursors {
 
         Mode::ReadLine(State {
             on_enter,
-            on_event: |ctx, _, poll| on_event_impl(ctx, poll, add_matches),
+            on_event: |ctx, _, poll| on_submitted!(poll => on_event_impl(ctx, add_matches)),
         })
     }
 
@@ -283,19 +301,14 @@ pub mod split_cursors {
 
         Mode::ReadLine(State {
             on_enter,
-            on_event: |ctx, _, poll| on_event_impl(ctx, poll, add_matches),
+            on_event: |ctx, _, poll| on_submitted!(poll => on_event_impl(ctx, add_matches)),
         })
     }
 
     fn on_event_impl(
         ctx: &mut ModeContext,
-        poll: ReadLinePoll,
         add_matches: fn(&mut CursorCollectionMutGuard, &str, &str, BufferPosition),
     ) {
-        if !matches!(poll, ReadLinePoll::Submitted) {
-            return;
-        }
-
         let pattern = ctx.read_line.input();
         let pattern = if pattern.is_empty() {
             ctx.search.as_str()
@@ -382,18 +395,22 @@ pub mod goto {
             ctx.read_line.reset("goto-line:");
         }
 
-        fn on_event(ctx: &mut ModeContext, _: &mut KeysIterator, poll: ReadLinePoll) {
+        fn on_event(
+            ctx: &mut ModeContext,
+            _: &mut KeysIterator,
+            poll: ReadLinePoll,
+        ) -> ModeOperation {
             match poll {
                 ReadLinePoll::Pending => {
                     let line_number: usize = match ctx.read_line.input().parse() {
                         Ok(number) => number,
-                        Err(_) => return,
+                        Err(_) => return ModeOperation::None,
                     };
                     let line_index = line_number.saturating_sub(1);
 
-                    let handle = unwrap_or_return!(ctx.current_buffer_view_handle());
-                    let buffer_view = unwrap_or_return!(ctx.buffer_views.get_mut(handle));
-                    let buffer = unwrap_or_return!(ctx.buffers.get(buffer_view.buffer_handle));
+                    let handle = unwrap_or_none!(ctx.current_buffer_view_handle());
+                    let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
+                    let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
 
                     let mut position = BufferPosition::line_col(line_index, 0);
                     let (first_word, _, mut right_words) = buffer.content().words_from(position);
@@ -409,14 +426,19 @@ pub mod goto {
                         anchor: position,
                         position,
                     });
+
+                    ModeOperation::None
                 }
-                ReadLinePoll::Submitted => (),
-                ReadLinePoll::Canceled => NavigationHistory::move_in_history(
-                    ctx.clients,
-                    ctx.buffer_views,
-                    ctx.target_client,
-                    NavigationDirection::Backward,
-                ),
+                ReadLinePoll::Submitted => ModeOperation::EnterMode(Mode::default()),
+                ReadLinePoll::Canceled => {
+                    NavigationHistory::move_in_history(
+                        ctx.clients,
+                        ctx.buffer_views,
+                        ctx.target_client,
+                        NavigationDirection::Backward,
+                    );
+                    ModeOperation::EnterMode(Mode::default())
+                }
             }
         }
 
@@ -448,11 +470,15 @@ pub mod custom {
             }
         }
 
-        fn on_event(ctx: &mut ModeContext, _: &mut KeysIterator, poll: ReadLinePoll) {
+        fn on_event(
+            ctx: &mut ModeContext,
+            _: &mut KeysIterator,
+            poll: ReadLinePoll,
+        ) -> ModeOperation {
             let (engine, read_line, mut ctx) = ctx.script_context();
-            let result = engine.as_ref_with_ctx(&mut ctx, |engine, _, mut guard| {
+            let operation = engine.as_ref_with_ctx(&mut ctx, |engine, ctx, mut guard| {
                 let input = match poll {
-                    ReadLinePoll::Pending => return Ok(()),
+                    ReadLinePoll::Pending => return Ok(ModeOperation::None),
                     ReadLinePoll::Submitted => {
                         ScriptValue::String(engine.create_string(read_line.input().as_bytes())?)
                     }
@@ -462,11 +488,18 @@ pub mod custom {
                 engine
                     .take_from_registry::<ScriptFunction>(CALLBACK_REGISTRY_KEY)?
                     .call(&mut guard, input)?;
-                Ok(())
+
+                let mut mode = Mode::default();
+                std::mem::swap(&mut mode, &mut ctx.next_mode);
+                Ok(ModeOperation::EnterMode(mode))
             });
 
-            if let Err(error) = result {
-                ctx.status_message.write_error(&error);
+            match operation {
+                Ok(operation) => operation,
+                Err(error) => {
+                    ctx.status_message.write_error(&error);
+                    ModeOperation::EnterMode(Mode::default())
+                }
             }
         }
 
