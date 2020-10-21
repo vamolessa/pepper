@@ -157,7 +157,9 @@ impl Picker {
 
         self.filtered_entries
             .sort_unstable_by(|a, b| b.score.cmp(&a.score));
-        self.cursor = self.cursor.min(self.filtered_entries.len());
+        self.cursor = self
+            .cursor
+            .min(self.filtered_entries.len().saturating_sub(1));
     }
 
     pub fn current_entry<'a>(
