@@ -165,22 +165,25 @@ pub mod custom {
         ) -> ModeOperation {
             let (engine, _, mut ctx) = ctx.script_context();
             let operation = engine.as_ref_with_ctx(&mut ctx, |engine, ctx, mut guard| {
-                let entry = match poll {
+                let (name, description) = match poll {
                     ReadLinePoll::Pending => return Ok(ModeOperation::None),
                     ReadLinePoll::Submitted => {
                         match ctx.picker.current_entry(WordDatabase::empty()) {
-                            Some(entry) => {
-                                ScriptValue::String(engine.create_string(entry.name.as_bytes())?)
-                            }
-                            None => ScriptValue::Nil,
+                            Some(entry) => (
+                                ScriptValue::String(engine.create_string(entry.name.as_bytes())?),
+                                ScriptValue::String(
+                                    engine.create_string(entry.description.as_bytes())?,
+                                ),
+                            ),
+                            None => (ScriptValue::Nil, ScriptValue::Nil),
                         }
                     }
-                    ReadLinePoll::Canceled => ScriptValue::Nil,
+                    ReadLinePoll::Canceled => (ScriptValue::Nil, ScriptValue::Nil),
                 };
 
                 engine
                     .take_from_registry::<ScriptFunction>(CALLBACK_REGISTRY_KEY)?
-                    .call(&mut guard, entry)?;
+                    .call(&mut guard, (name, description))?;
 
                 let mut mode = Mode::default();
                 std::mem::swap(&mut mode, &mut ctx.next_mode);
