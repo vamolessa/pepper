@@ -360,7 +360,7 @@ where
                     for _ in 0..next_tab_stop {
                         handle_command!(write, Print(editor.config.values.visual_tab_repeat))?;
                     }
-                    x += next_tab_stop;
+                    x += next_tab_stop + 1;
                 }
                 _ => {
                     handle_command!(write, Print(c))?;
@@ -439,7 +439,7 @@ where
             ($c:expr) => {
                 match $c {
                     '\t' => {
-                        let next_tab_stop = (tab_size - 1) - x % tab_size;
+                        let next_tab_stop = tab_size - x % tab_size;
                         x += next_tab_stop;
                         if x > half_width {
                             break;
