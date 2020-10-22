@@ -141,8 +141,10 @@ pub fn render(
     let has_focus = target_client == editor.focused_client;
     let client_view = ClientView::from(editor, client);
 
-    draw_text(buffer, editor, &client_view)?;
-    draw_picker(buffer, editor, &client_view)?;
+    draw_text(buffer, editor, &client_view, has_focus)?;
+    if has_focus {
+        draw_picker(buffer, editor, &client_view)?;
+    }
     draw_statusbar(buffer, editor, &client_view, has_focus)?;
     Ok(())
 }
@@ -185,7 +187,12 @@ impl<'a> ClientView<'a> {
     }
 }
 
-fn draw_text<W>(write: &mut W, editor: &Editor, client_view: &ClientView) -> UiResult<()>
+fn draw_text<W>(
+    write: &mut W,
+    editor: &Editor,
+    client_view: &ClientView,
+    has_focus: bool,
+) -> UiResult<()>
 where
     W: Write,
 {
@@ -205,9 +212,10 @@ where
     let height = client_view.client.height;
     let theme = &editor.config.theme;
 
-    let cursor_color = match editor.mode {
-        Mode::Insert(_) => convert_color(theme.highlight),
-        _ => convert_color(theme.cursor),
+    let cursor_color = if has_focus && matches!(editor.mode, Mode::Insert(_)) {
+        convert_color(theme.highlight)
+    } else {
+        convert_color(theme.cursor)
     };
 
     let background_color = convert_color(theme.background);
