@@ -92,11 +92,10 @@ impl Client {
     }
 
     pub fn set_current_buffer_view_handle(&mut self, handle: Option<BufferViewHandle>) {
-        if self.previous_buffer_view_handle != self.current_buffer_view_handle {
+        if self.current_buffer_view_handle != handle {
             self.previous_buffer_view_handle = self.current_buffer_view_handle;
+            self.current_buffer_view_handle = handle;
         }
-
-        self.current_buffer_view_handle = handle;
     }
 
     pub fn update_view(&mut self, editor: &Editor, has_focus: bool) {
