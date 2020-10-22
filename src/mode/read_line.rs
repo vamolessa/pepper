@@ -281,6 +281,7 @@ pub mod split_cursors {
         ) {
             let mut index = start_position.column_byte_index;
             for (i, s) in line.match_indices(pattern) {
+                let i = i + start_position.column_byte_index;
                 if index != i {
                     cursors.add(Cursor {
                         anchor: BufferPosition::line_col(start_position.line_index, index),
@@ -291,7 +292,7 @@ pub mod split_cursors {
                 index = i + s.len();
             }
 
-            if index != line.len() {
+            if index != start_position.column_byte_index + line.len() {
                 cursors.add(Cursor {
                     anchor: BufferPosition::line_col(start_position.line_index, index),
                     position: BufferPosition::line_col(start_position.line_index, line.len()),

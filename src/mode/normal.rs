@@ -36,6 +36,12 @@ impl State {
             Key::Char('g') => match keys.next() {
                 Key::None => ModeOperation::Pending,
                 Key::Char('b') => ModeOperation::EnterMode(picker::buffer::mode(ctx)),
+                Key::Char('a') => {
+                    if let Some(client) = ctx.clients.get_mut(ctx.target_client) {
+                        client.set_current_buffer_view_handle(client.previous_buffer_view_handle());
+                    }
+                    ModeOperation::None
+                }
                 _ => ModeOperation::None,
             },
             Key::Char(c) => {
