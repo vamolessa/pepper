@@ -179,6 +179,16 @@ impl ModeState for State {
                     }
                 }
 
+                fn delimiter_pair(buffer: &BufferContent, cursors: &mut [Cursor], delimiter: char) {
+                    for cursor in cursors {
+                        let range = buffer.find_delimiter_pair_at(cursor.position, delimiter);
+                        if let Some(range) = range {
+                            cursor.anchor = range.from;
+                            cursor.position = range.to;
+                        }
+                    }
+                }
+
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
                 let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle)).content();
                 let mut cursors = buffer_view.cursors.mut_guard();
@@ -214,9 +224,9 @@ impl ModeState for State {
                     Key::Char('<') | Key::Char('>') => {
                         balanced_brackets(buffer, &mut cursors[..], '<', '>')
                     }
-                    Key::Char('|') => balanced_brackets(buffer, &mut cursors[..], '|', '|'),
-                    Key::Char('"') => balanced_brackets(buffer, &mut cursors[..], '"', '"'),
-                    Key::Char('\'') => balanced_brackets(buffer, &mut cursors[..], '\'', '\''),
+                    Key::Char('|') => delimiter_pair(buffer, &mut cursors[..], '|'),
+                    Key::Char('"') => delimiter_pair(buffer, &mut cursors[..], '"'),
+                    Key::Char('\'') => delimiter_pair(buffer, &mut cursors[..], '\''),
                     _ => (),
                 }
 
@@ -239,6 +249,22 @@ impl ModeState for State {
                             cursor.position = BufferPosition::line_col(
                                 range.to.line_index,
                                 range.to.column_byte_index + right.len_utf8(),
+                            );
+                        }
+                    }
+                }
+
+                fn delimiter_pair(buffer: &BufferContent, cursors: &mut [Cursor], delimiter: char) {
+                    for cursor in cursors {
+                        let range = buffer.find_delimiter_pair_at(cursor.position, delimiter);
+                        if let Some(range) = range {
+                            cursor.anchor = BufferPosition::line_col(
+                                range.from.line_index,
+                                range.from.column_byte_index - delimiter.len_utf8(),
+                            );
+                            cursor.position = BufferPosition::line_col(
+                                range.to.line_index,
+                                range.to.column_byte_index + delimiter.len_utf8(),
                             );
                         }
                     }
@@ -288,9 +314,9 @@ impl ModeState for State {
                     Key::Char('<') | Key::Char('>') => {
                         balanced_brackets(buffer, &mut cursors[..], '<', '>')
                     }
-                    Key::Char('|') => balanced_brackets(buffer, &mut cursors[..], '|', '|'),
-                    Key::Char('"') => balanced_brackets(buffer, &mut cursors[..], '"', '"'),
-                    Key::Char('\'') => balanced_brackets(buffer, &mut cursors[..], '\'', '\''),
+                    Key::Char('|') => delimiter_pair(buffer, &mut cursors[..], '|'),
+                    Key::Char('"') => delimiter_pair(buffer, &mut cursors[..], '"'),
+                    Key::Char('\'') => delimiter_pair(buffer, &mut cursors[..], '\''),
                     _ => (),
                 }
 
@@ -331,27 +357,33 @@ impl ModeState for State {
                             unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle)).content();
                         for cursor in &mut buffer_view.cursors.mut_guard()[..] {
                             let position = cursor.position;
-                            let (left, right) = match buffer.line_at(position.line_index).as_str()
+                            let range = match buffer.line_at(position.line_index).as_str()
                                 [position.column_byte_index..]
                                 .chars()
                                 .next()
                             {
-                                Some('(') | Some(')') => ('(', ')'),
-                                Some('[') | Some(']') => ('[', ']'),
-                                Some('{') | Some('}') => ('{', '}'),
-                                Some('<') | Some('>') => ('<', '>'),
-                                Some('|') => ('|', '|'),
-                                Some('"') => ('"', '"'),
-                                Some('\'') => ('\'', '\''),
+                                Some('(') | Some(')') => {
+                                    buffer.find_balanced_chars_at(position, '(', ')')
+                                }
+                                Some('[') | Some(']') => {
+                                    buffer.find_balanced_chars_at(position, '[', ']')
+                                }
+                                Some('{') | Some('}') => {
+                                    buffer.find_balanced_chars_at(position, '{', '}')
+                                }
+                                Some('<') | Some('>') => {
+                                    buffer.find_balanced_chars_at(position, '<', '>')
+                                }
+                                Some(d @ '|') | Some(d @ '"') | Some(d @ '\'') => {
+                                    buffer.find_delimiter_pair_at(position, d)
+                                }
                                 _ => continue,
                             };
 
-                            if let Some(range) =
-                                buffer.find_balanced_chars_at(position, left, right)
-                            {
+                            if let Some(range) = range {
                                 let from = BufferPosition::line_col(
                                     range.from.line_index,
-                                    range.from.column_byte_index - left.len_utf8(),
+                                    range.from.column_byte_index - 1,
                                 );
                                 let to = range.to;
 

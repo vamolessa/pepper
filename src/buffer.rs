@@ -507,6 +507,7 @@ impl BufferContent {
         let position = self.clamp_position(position);
         let line = self.line_at(position.line_index).as_str();
 
+        let mut is_right_delim = false;
         let mut last_i = 0;
         for (i, c) in line.char_indices() {
             if c != delimiter {
@@ -514,12 +515,22 @@ impl BufferContent {
             }
 
             if i >= position.column_byte_index {
-                return Some(BufferRange::between(
-                    BufferPosition::line_col(position.line_index, last_i + delimiter.len_utf8()),
-                    BufferPosition::line_col(position.line_index, i),
-                ));
+                if is_right_delim {
+                    return Some(BufferRange::between(
+                        BufferPosition::line_col(
+                            position.line_index,
+                            last_i + delimiter.len_utf8(),
+                        ),
+                        BufferPosition::line_col(position.line_index, i),
+                    ));
+                }
+
+                if i != position.column_byte_index {
+                    break;
+                }
             }
 
+            is_right_delim = !is_right_delim;
             last_i = i;
         }
 
@@ -1363,14 +1374,14 @@ mod tests {
         );
         assert_eq!(
             Some(BufferRange::between(
-                BufferPosition::line_col(0, 6),
+                BufferPosition::line_col(0, 7),
                 BufferPosition::line_col(0, 10)
             )),
             buffer.find_delimiter_pair_at(BufferPosition::line_col(0, 6), '|')
         );
         assert_eq!(
             Some(BufferRange::between(
-                BufferPosition::line_col(0, 6),
+                BufferPosition::line_col(0, 7),
                 BufferPosition::line_col(0, 10)
             )),
             buffer.find_delimiter_pair_at(BufferPosition::line_col(0, 10), '|')
