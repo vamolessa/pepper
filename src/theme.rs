@@ -22,9 +22,7 @@ impl Color {
 pub struct Theme {
     pub background: Color,
     pub highlight: Color,
-
-    pub cursor_normal: Color,
-    pub cursor_insert: Color,
+    pub cursor: Color,
 
     pub token_whitespace: Color,
     pub token_text: Color,
@@ -50,9 +48,7 @@ impl Theme {
         match_and_get_property! {
             background,
             highlight,
-
-            cursor_normal,
-            cursor_insert,
+            cursor,
 
             token_whitespace,
             token_text,
@@ -88,9 +84,8 @@ pub fn pico8_theme() -> Theme {
 
     Theme {
         background: COLORS[0],
-
-        cursor_normal: COLORS[8],
-        cursor_insert: COLORS[11],
+        highlight: COLORS[10],
+        cursor: COLORS[8],
 
         token_whitespace: COLORS[2],
         token_text: COLORS[15],
@@ -98,9 +93,7 @@ pub fn pico8_theme() -> Theme {
         token_keyword: COLORS[9],
         token_type: COLORS[7],
         token_symbol: COLORS[6],
-        token_string: COLORS[10],
+        token_string: COLORS[11],
         token_literal: COLORS[14],
-
-        highlight: COLORS[10],
     }
 }

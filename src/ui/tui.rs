@@ -206,8 +206,8 @@ where
     let theme = &editor.config.theme;
 
     let cursor_color = match editor.mode {
-        Mode::Insert(_) => convert_color(theme.cursor_insert),
-        _ => convert_color(theme.cursor_normal),
+        Mode::Insert(_) => convert_color(theme.highlight),
+        _ => convert_color(theme.cursor),
     };
 
     let background_color = convert_color(theme.background);
@@ -496,10 +496,11 @@ where
         count
     }
 
-    let prompt_background_color = convert_color(editor.config.theme.token_keyword);
     let background_color = convert_color(editor.config.theme.token_text);
     let foreground_color = convert_color(editor.config.theme.background);
-    let cursor_color = convert_color(editor.config.theme.cursor_normal);
+    let prompt_background_color = convert_color(editor.config.theme.token_whitespace);
+    let prompt_foreground_color = background_color;
+    let cursor_color = convert_color(editor.config.theme.cursor);
 
     if has_focus {
         handle_command!(write, SetBackgroundColor(background_color))?;
@@ -525,7 +526,7 @@ where
                     let read_line = &editor.read_line;
 
                     handle_command!(write, SetBackgroundColor(prompt_background_color))?;
-                    handle_command!(write, SetForegroundColor(foreground_color))?;
+                    handle_command!(write, SetForegroundColor(prompt_foreground_color))?;
                     handle_command!(write, Print(read_line.prompt()))?;
                     handle_command!(write, SetBackgroundColor(background_color))?;
                     handle_command!(write, SetForegroundColor(foreground_color))?;
@@ -550,7 +551,7 @@ where
                 } else {
                     handle_command!(write, cursor::MoveUp(line_count as _))?;
                     handle_command!(write, SetBackgroundColor(prompt_background_color))?;
-                    handle_command!(write, SetForegroundColor(foreground_color))?;
+                    handle_command!(write, SetForegroundColor(prompt_foreground_color))?;
                     handle_command!(write, Print(prefix))?;
                     handle_command!(write, terminal::Clear(terminal::ClearType::FromCursorDown))?;
                     handle_command!(write, SetBackgroundColor(background_color))?;
@@ -567,7 +568,7 @@ where
             } else {
                 handle_command!(write, terminal::Clear(terminal::ClearType::CurrentLine))?;
                 handle_command!(write, SetBackgroundColor(prompt_background_color))?;
-                handle_command!(write, SetForegroundColor(foreground_color))?;
+                handle_command!(write, SetForegroundColor(prompt_foreground_color))?;
                 handle_command!(write, Print(prefix))?;
                 handle_command!(write, SetBackgroundColor(background_color))?;
                 handle_command!(write, SetForegroundColor(foreground_color))?;
