@@ -765,14 +765,16 @@ impl ModeState for State {
                     let index = cursors.main_cursor_index();
                     let mut cursors = cursors.mut_guard();
                     let cursor_count = cursors[..].len();
-                    cursors.set_main_cursor_index((index + 1) % cursor_count);
+                    let offset = self.count.max(1);
+                    cursors.set_main_cursor_index((index + offset) % cursor_count);
                 }
                 Key::Char('p') => {
                     let cursors = &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle)).cursors;
                     let index = cursors.main_cursor_index();
                     let mut cursors = cursors.mut_guard();
                     let cursor_count = cursors[..].len();
-                    cursors.set_main_cursor_index((index + cursor_count - 1) % cursor_count);
+                    let offset = self.count.max(1) % cursor_count;
+                    cursors.set_main_cursor_index((index + cursor_count - offset) % cursor_count);
                 }
                 Key::Char('f') => {
                     return ModeOperation::EnterMode(read_line::filter_cursors::filter_mode());
@@ -968,13 +970,18 @@ fn search_word_or_move_to_it(
 
         ctx.search.set(search_word);
     } else {
-        let range_index = index_selector(search_ranges.len(), current_range_index);
-        let range = search_ranges[range_index];
+        let mut range_index = current_range_index;
 
-        buffer_view.cursors.mut_guard().add(Cursor {
-            anchor: range.from,
-            position: range.from,
-        });
+        for _ in 0..state.count.max(1) {
+            let i = index_selector(search_ranges.len(), range_index);
+            let range = search_ranges[i];
+            range_index = Ok(i);
+
+            buffer_view.cursors.mut_guard().add(Cursor {
+                anchor: range.from,
+                position: range.from,
+            });
+        }
     }
 
     state.movement_kind = CursorMovementKind::PositionAndAnchor;
