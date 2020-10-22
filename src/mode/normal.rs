@@ -729,13 +729,16 @@ impl ModeState for State {
 
                     if let Some(cursor) = cursors[..].last() {
                         let mut position = cursor.as_range().to;
-                        position.line_index += 1;
-                        position = buffer.content().saturate_position(position);
 
-                        cursors.add(Cursor {
-                            anchor: position,
-                            position,
-                        });
+                        for _ in 0..self.count.max(1) {
+                            position.line_index += 1;
+                            position = buffer.content().saturate_position(position);
+
+                            cursors.add(Cursor {
+                                anchor: position,
+                                position,
+                            });
+                        }
                     }
                 }
                 Key::Char('k') => {
@@ -745,13 +748,16 @@ impl ModeState for State {
 
                     if let Some(cursor) = cursors[..].first() {
                         let mut position = cursor.as_range().from;
-                        position.line_index = position.line_index.saturating_sub(1);
-                        position = buffer.content().saturate_position(position);
 
-                        cursors.add(Cursor {
-                            anchor: position,
-                            position,
-                        });
+                        for _ in 0..self.count.max(1) {
+                            position.line_index = position.line_index.saturating_sub(1);
+                            position = buffer.content().saturate_position(position);
+
+                            cursors.add(Cursor {
+                                anchor: position,
+                                position,
+                            });
+                        }
                     }
                 }
                 Key::Char('n') => {
