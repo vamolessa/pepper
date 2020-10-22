@@ -499,6 +499,33 @@ impl BufferContent {
             .to_word_ref_with_position(position.line_index)
     }
 
+    pub fn find_delimiter_pair_at(
+        &self,
+        position: BufferPosition,
+        delimiter: char,
+    ) -> Option<BufferRange> {
+        let position = self.clamp_position(position);
+        let line = self.line_at(position.line_index).as_str();
+
+        let mut last_i = 0;
+        for (i, c) in line.char_indices() {
+            if c != delimiter {
+                continue;
+            }
+
+            if i >= position.column_byte_index {
+                return Some(BufferRange::between(
+                    BufferPosition::line_col(position.line_index, last_i + delimiter.len_utf8()),
+                    BufferPosition::line_col(position.line_index, i),
+                ));
+            }
+
+            last_i = i;
+        }
+
+        None
+    }
+
     pub fn find_balanced_chars_at(
         &self,
         position: BufferPosition,
@@ -1310,47 +1337,47 @@ mod tests {
             )),
             buffer.find_balanced_chars_at(BufferPosition::line_col(4, 2), '(', ')')
         );
+    }
 
-        let buffer = BufferContent::from_str("|\n|\na\n|\nbc|");
+    #[test]
+    fn buffer_find_delimiter_pairs() {
+        let buffer = BufferContent::from_str("|a|bcd|efg|");
 
         assert_eq!(
             Some(BufferRange::between(
                 BufferPosition::line_col(0, 1),
-                BufferPosition::line_col(1, 0)
+                BufferPosition::line_col(0, 2)
             )),
-            buffer.find_balanced_chars_at(BufferPosition::line_col(0, 0), '|', '|')
-        );
-        assert_eq!(
-            Some(BufferRange::between(
-                BufferPosition::line_col(1, 1),
-                BufferPosition::line_col(3, 0)
-            )),
-            buffer.find_balanced_chars_at(BufferPosition::line_col(2, 0), '|', '|')
+            buffer.find_delimiter_pair_at(BufferPosition::line_col(0, 0), '|')
         );
         assert_eq!(
             Some(BufferRange::between(
                 BufferPosition::line_col(0, 1),
-                BufferPosition::line_col(1, 0)
+                BufferPosition::line_col(0, 2)
             )),
-            buffer.find_balanced_chars_at(BufferPosition::line_col(0, 1), '|', '|')
-        );
-        assert_eq!(
-            Some(BufferRange::between(
-                BufferPosition::line_col(3, 1),
-                BufferPosition::line_col(4, 2)
-            )),
-            buffer.find_balanced_chars_at(BufferPosition::line_col(4, 0), '|', '|')
-        );
-        assert_eq!(
-            Some(BufferRange::between(
-                BufferPosition::line_col(0, 1),
-                BufferPosition::line_col(1, 0)
-            )),
-            buffer.find_balanced_chars_at(BufferPosition::line_col(0, 0), '|', '|')
+            buffer.find_delimiter_pair_at(BufferPosition::line_col(0, 2), '|')
         );
         assert_eq!(
             None,
-            buffer.find_balanced_chars_at(BufferPosition::line_col(4, 2), '|', '|')
+            buffer.find_delimiter_pair_at(BufferPosition::line_col(0, 4), '|')
+        );
+        assert_eq!(
+            Some(BufferRange::between(
+                BufferPosition::line_col(0, 6),
+                BufferPosition::line_col(0, 10)
+            )),
+            buffer.find_delimiter_pair_at(BufferPosition::line_col(0, 6), '|')
+        );
+        assert_eq!(
+            Some(BufferRange::between(
+                BufferPosition::line_col(0, 6),
+                BufferPosition::line_col(0, 10)
+            )),
+            buffer.find_delimiter_pair_at(BufferPosition::line_col(0, 10), '|')
+        );
+        assert_eq!(
+            None,
+            buffer.find_delimiter_pair_at(BufferPosition::line_col(0, 11), '|')
         );
     }
 }
