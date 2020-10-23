@@ -114,8 +114,6 @@ impl Default for KeyMapCollection {
         this.parse_and_map(normal_mode, "<c-c>", "<esc>cdcV/<esc>")
             .unwrap();
 
-        this.parse_and_map(normal_mode, "s", "/").unwrap();
-
         this.parse_and_map(normal_mode, "I", "dgii").unwrap();
         this.parse_and_map(normal_mode, "<c-i>", "dgli").unwrap();
         this.parse_and_map(normal_mode, "o", "dgli<enter>").unwrap();

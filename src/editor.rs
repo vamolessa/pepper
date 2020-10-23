@@ -53,18 +53,28 @@ impl<'a> KeysIterator<'a> {
 }
 
 #[derive(Default)]
-pub struct SearchText {
-    text: String,
+pub struct RegisterCollection {
+    registers: [String; (b'z' - b'a' + 1) as usize],
 }
 
-impl SearchText {
-    pub fn as_str(&self) -> &str {
-        &self.text
+impl RegisterCollection {
+    pub fn get(&self, key: u8) -> Option<&str> {
+        if key >= b'a' && key <= b'z' {
+            Some(&self.registers[(key - b'a') as usize])
+        } else {
+            None
+        }
     }
 
-    pub fn set(&mut self, text: &str) {
-        self.text.clear();
-        self.text.push_str(text);
+    pub fn set(&mut self, key: u8, value: &str) -> bool {
+        if key >= b'a' && key <= b'z' {
+            let register = &mut self.registers[(key - b'a') as usize];
+            register.clear();
+            register.push_str(value);
+            true
+        } else {
+            false
+        }
     }
 }
 
@@ -204,7 +214,7 @@ pub struct Editor {
     pub word_database: WordDatabase,
 
     pub buffered_keys: Vec<Key>,
-    pub search: SearchText,
+    pub registers: RegisterCollection,
     pub read_line: ReadLine,
     pub picker: Picker,
 
@@ -227,7 +237,7 @@ impl Editor {
             word_database: WordDatabase::new(),
 
             buffered_keys: Vec::new(),
-            search: SearchText::default(),
+            registers: RegisterCollection::default(),
             read_line: ReadLine::default(),
             picker: Picker::default(),
 
@@ -449,7 +459,7 @@ impl Editor {
             buffer_views: &mut self.buffer_views,
             word_database: &mut self.word_database,
 
-            search: &mut self.search,
+            registers: &mut self.registers,
             read_line: &mut self.read_line,
             picker: &mut self.picker,
 

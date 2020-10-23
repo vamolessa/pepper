@@ -790,7 +790,7 @@ impl ModeState for State {
                 }
                 _ => (),
             },
-            Key::Char('/') => return ModeOperation::EnterMode(read_line::search::mode()),
+            Key::Char('s') => return ModeOperation::EnterMode(read_line::search::mode()),
             Key::Char('y') => {
                 if let Ok(mut clipboard) = ClipboardContext::new() {
                     let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
@@ -906,8 +906,9 @@ where
 
     let mut search_ranges = buffer.search_ranges();
     if search_ranges.is_empty() {
-        if !ctx.search.as_str().is_empty() {
-            buffer.set_search(ctx.search.as_str());
+        let search = ctx.registers.get(b's').unwrap_or("");
+        if !search.is_empty() {
+            buffer.set_search(search);
             search_ranges = buffer.search_ranges();
         }
 
@@ -968,7 +969,7 @@ fn search_word_or_move_to_it(
             word.text
         });
 
-        ctx.search.set(search_word);
+        ctx.registers.set(b's', search_word);
     } else {
         let mut range_index = current_range_index;
 

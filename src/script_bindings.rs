@@ -101,6 +101,7 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
 
     register_object!(config);
     register_object!(theme);
+    register_object!(registers);
 
     Ok(())
 }
@@ -1200,39 +1201,6 @@ mod keymap {
     }
 }
 
-mod theme {
-    use super::*;
-
-    pub fn index<'script>(
-        _: ScriptEngineRef,
-        ctx: &mut ScriptContext,
-        _: ScriptContextGuard,
-        (_, index): (ScriptObject, ScriptString),
-    ) -> ScriptResult<ScriptValue<'script>> {
-        let theme = &mut ctx.config.theme;
-        let index = index.to_str()?;
-        match theme.color_from_name(index) {
-            Some(color) => Ok(ScriptValue::Integer(color.into_u32() as _)),
-            None => Err(ScriptError::from(format!("no such property {}", index))),
-        }
-    }
-
-    pub fn newindex(
-        _: ScriptEngineRef,
-        ctx: &mut ScriptContext,
-        _: ScriptContextGuard,
-        (_, index, value): (ScriptObject, ScriptString, u32),
-    ) -> ScriptResult<()> {
-        let theme = &mut ctx.config.theme;
-        let index = index.to_str()?;
-        match theme.color_from_name(index) {
-            Some(color) => *color = Color::from_u32(value),
-            None => return Err(ScriptError::from(format!("no such property {}", index))),
-        }
-        Ok(())
-    }
-}
-
 mod syntax {
     use super::*;
 
@@ -1283,6 +1251,76 @@ mod syntax {
         }
 
         Ok(())
+    }
+}
+
+mod theme {
+    use super::*;
+
+    pub fn index<'script>(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        (_, index): (ScriptObject, ScriptString),
+    ) -> ScriptResult<ScriptValue<'script>> {
+        let theme = &mut ctx.config.theme;
+        let index = index.to_str()?;
+        match theme.color_from_name(index) {
+            Some(color) => Ok(ScriptValue::Integer(color.into_u32() as _)),
+            None => Err(ScriptError::from(format!("no such property {}", index))),
+        }
+    }
+
+    pub fn newindex(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        (_, index, value): (ScriptObject, ScriptString, u32),
+    ) -> ScriptResult<()> {
+        let theme = &mut ctx.config.theme;
+        let index = index.to_str()?;
+        match theme.color_from_name(index) {
+            Some(color) => *color = Color::from_u32(value),
+            None => return Err(ScriptError::from(format!("no such property {}", index))),
+        }
+        Ok(())
+    }
+}
+
+mod registers {
+    use super::*;
+
+    pub fn index<'script>(
+        engine: ScriptEngineRef<'script>,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        (_, index): (ScriptObject, ScriptString),
+    ) -> ScriptResult<ScriptValue<'script>> {
+        let index = index.to_str()?;
+        let key = index.parse().map_err(|e| ScriptError::from(e))?;
+        match ctx.registers.get(key) {
+            Some(register) => {
+                let register = engine.create_string(register.as_bytes())?;
+                Ok(ScriptValue::String(register))
+            }
+            None => Err(ScriptError::from(format!("no such property {}", index))),
+        }
+    }
+
+    pub fn newindex(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        (_, index, value): (ScriptObject, ScriptString, ScriptString),
+    ) -> ScriptResult<()> {
+        let index = index.to_str()?;
+        let key = index.parse().map_err(|e| ScriptError::from(e))?;
+        let value = value.to_str()?;
+        if ctx.registers.set(key, value) {
+            Ok(())
+        } else {
+            Err(ScriptError::from(format!("no such property {}", index)))
+        }
     }
 }
 

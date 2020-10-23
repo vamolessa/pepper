@@ -5,7 +5,7 @@ use crate::{
     buffer_view::{BufferViewCollection, BufferViewHandle},
     client::{ClientCollection, TargetClient},
     config::Config,
-    editor::{EditorLoop, KeysIterator, ReadLine, SearchText, StatusMessage},
+    editor::{EditorLoop, KeysIterator, ReadLine, RegisterCollection, StatusMessage},
     keymap::KeyMapCollection,
     picker::Picker,
     script::{ScriptContext, ScriptEngine},
@@ -36,7 +36,7 @@ pub struct ModeContext<'a> {
     pub buffer_views: &'a mut BufferViewCollection,
     pub word_database: &'a mut WordDatabase,
 
-    pub search: &'a mut SearchText,
+    pub registers: &'a mut RegisterCollection,
     pub read_line: &'a mut ReadLine,
     pub picker: &'a mut Picker,
 
@@ -72,6 +72,7 @@ impl<'a> ModeContext<'a> {
             buffer_views: self.buffer_views,
             word_database: self.word_database,
 
+            registers: self.registers,
             picker: self.picker,
 
             status_message: self.status_message,

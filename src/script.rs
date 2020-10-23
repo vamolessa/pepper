@@ -19,7 +19,7 @@ use crate::{
     buffer_view::{BufferViewCollection, BufferViewHandle},
     client::{ClientCollection, TargetClient},
     config::Config,
-    editor::{EditorLoop, StatusMessage},
+    editor::{RegisterCollection, EditorLoop, StatusMessage},
     keymap::KeyMapCollection,
     mode::Mode,
     picker::Picker,
@@ -312,6 +312,7 @@ pub struct ScriptContext<'a> {
     pub buffer_views: &'a mut BufferViewCollection,
     pub word_database: &'a mut WordDatabase,
 
+    pub registers: &'a mut RegisterCollection,
     pub picker: &'a mut Picker,
 
     pub status_message: &'a mut StatusMessage,
