@@ -1,6 +1,7 @@
 use crate::{
-    editor::{SEARCH_REGISTER, KeysIterator, ReadLinePoll},
+    editor::{KeysIterator, ReadLinePoll},
     mode::{Mode, ModeContext, ModeOperation, ModeState},
+    register::SEARCH_REGISTER,
 };
 
 pub struct State {
@@ -197,7 +198,7 @@ pub mod filter_cursors {
 
         let pattern = ctx.read_line.input();
         let pattern = if pattern.is_empty() {
-            ctx.registers.get(SEARCH_REGISTER).unwrap_or("")
+            ctx.registers.get(SEARCH_REGISTER)
         } else {
             pattern
         };
@@ -312,7 +313,7 @@ pub mod split_cursors {
     ) {
         let pattern = ctx.read_line.input();
         let pattern = if pattern.is_empty() {
-            ctx.registers.get(SEARCH_REGISTER).unwrap_or("")
+            ctx.registers.get(SEARCH_REGISTER)
         } else {
             pattern
         };

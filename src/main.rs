@@ -17,6 +17,7 @@ mod mode;
 mod navigation_history;
 mod pattern;
 mod picker;
+mod register;
 mod script;
 mod script_bindings;
 mod serialization;

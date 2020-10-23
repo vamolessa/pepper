@@ -5,9 +5,10 @@ use crate::{
     buffer_view::{BufferViewCollection, BufferViewHandle},
     client::{ClientCollection, TargetClient},
     config::Config,
-    editor::{EditorLoop, KeysIterator, ReadLine, RegisterCollection, StatusMessage},
+    editor::{EditorLoop, KeysIterator, ReadLine, StatusMessage},
     keymap::KeyMapCollection,
     picker::Picker,
+    register::RegisterCollection,
     script::{ScriptContext, ScriptEngine},
     word_database::WordDatabase,
 };
@@ -24,6 +25,7 @@ pub enum ModeOperation {
     Quit,
     QuitAll,
     EnterMode(Mode),
+    ExecuteMacro(u8),
 }
 
 pub struct ModeContext<'a> {

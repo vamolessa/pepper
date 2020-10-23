@@ -1,6 +1,7 @@
 use std::{error::Error, fmt, path::Path};
 
 use crate::{
+    register::{KEY_QUEUE_REGISTER, RegisterCollection},
     buffer::BufferCollection,
     buffer_view::BufferViewCollection,
     client::{ClientCollection, ClientTargetMap, TargetClient},
@@ -49,35 +50,6 @@ impl<'a> KeysIterator<'a> {
 
     pub fn put_back(&mut self) {
         self.index = self.index.saturating_sub(1);
-    }
-}
-
-pub const SEARCH_REGISTER: u8 = b's';
-pub const KEY_QUEUE_REGISTER: u8 = b'k';
-
-#[derive(Default)]
-pub struct RegisterCollection {
-    registers: [String; (b'z' - b'a' + 1) as usize],
-}
-
-impl RegisterCollection {
-    pub fn get(&self, key: u8) -> Option<&str> {
-        if key >= b'a' && key <= b'z' {
-            Some(&self.registers[(key - b'a') as usize])
-        } else {
-            None
-        }
-    }
-
-    pub fn set(&mut self, key: u8, value: &str) -> bool {
-        if key >= b'a' && key <= b'z' {
-            let register = &mut self.registers[(key - b'a') as usize];
-            register.clear();
-            register.push_str(value);
-            true
-        } else {
-            false
-        }
     }
 }
 
@@ -424,10 +396,13 @@ impl Editor {
                             ModeOperation::EnterMode(next_mode) => {
                                 mode.change_to(&mut mode_ctx, next_mode);
                             }
+                            ModeOperation::ExecuteMacro(key) => {
+                                //
+                            }
                         }
                     }
 
-                    let key_queue = self.registers.get(KEY_QUEUE_REGISTER).unwrap_or("");
+                    let key_queue = self.registers.get(KEY_QUEUE_REGISTER);
                     if key_queue.is_empty() {
                         break;
                     } else {

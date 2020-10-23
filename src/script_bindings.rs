@@ -17,6 +17,7 @@ use crate::{
     mode::{self, Mode},
     navigation_history::NavigationHistory,
     pattern::Pattern,
+    register::RegisterKey,
     script::{
         ScriptArray, ScriptContext, ScriptContextGuard, ScriptEngineRef, ScriptError,
         ScriptFunction, ScriptObject, ScriptResult, ScriptString, ScriptValue,
@@ -1296,15 +1297,10 @@ mod registers {
         _: ScriptContextGuard,
         (_, index): (ScriptObject, ScriptString),
     ) -> ScriptResult<ScriptValue<'script>> {
-        let index = index.to_str()?;
-        let key = string_to_key(index);
-        match ctx.registers.get(key) {
-            Some(register) => {
-                let register = engine.create_string(register.as_bytes())?;
-                Ok(ScriptValue::String(register))
-            }
-            None => Err(ScriptError::from(format!("no such property {}", index))),
-        }
+        let key = parse_register_key(index)?;
+        let register = ctx.registers.get(key);
+        let register = engine.create_string(register.as_bytes())?;
+        Ok(ScriptValue::String(register))
     }
 
     pub fn newindex(
@@ -1313,23 +1309,21 @@ mod registers {
         _: ScriptContextGuard,
         (_, index, value): (ScriptObject, ScriptString, ScriptString),
     ) -> ScriptResult<()> {
-        let index = index.to_str()?;
-        let key = string_to_key(index);
+        let key = parse_register_key(index)?;
         let value = value.to_str()?;
-        if ctx.registers.set(key, value) {
-            Ok(())
-        } else {
-            Err(ScriptError::from(format!("no such property {}", index)))
-        }
+        ctx.registers.set(key, value);
+        Ok(())
     }
 
-    fn string_to_key(s: &str) -> u8 {
-        let bytes = s.as_bytes();
+    fn parse_register_key(text: ScriptString) -> ScriptResult<RegisterKey> {
+        let text = text.to_str()?;
+        let bytes = text.as_bytes();
         if bytes.len() == 1 {
-            bytes[0]
-        } else {
-            0
+            if let Some(key) = RegisterKey::from_u8(bytes[0]) {
+                return Ok(key);
+            }
         }
+        Err(ScriptError::from(format!("no such property {}", text)))
     }
 }
 

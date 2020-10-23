@@ -19,10 +19,11 @@ use crate::{
     buffer_view::{BufferViewCollection, BufferViewHandle},
     client::{ClientCollection, TargetClient},
     config::Config,
-    editor::{RegisterCollection, EditorLoop, StatusMessage},
+    editor::{EditorLoop, StatusMessage},
     keymap::KeyMapCollection,
     mode::Mode,
     picker::Picker,
+    register::RegisterCollection,
     script_bindings,
     word_database::WordDatabase,
 };

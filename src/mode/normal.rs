@@ -6,9 +6,10 @@ use crate::{
     buffer_view::{CursorMovement, CursorMovementKind},
     client_event::Key,
     cursor::Cursor,
-    editor::{KeysIterator, StatusMessageKind, SEARCH_REGISTER},
+    editor::{KeysIterator, StatusMessageKind},
     mode::{picker, read_line, Mode, ModeContext, ModeOperation, ModeState},
     navigation_history::{NavigationDirection, NavigationHistory},
+    register::SEARCH_REGISTER,
     word_database::WordKind,
 };
 
@@ -905,7 +906,7 @@ where
 
     let mut search_ranges = buffer.search_ranges();
     if search_ranges.is_empty() {
-        let search = ctx.registers.get(SEARCH_REGISTER).unwrap_or("");
+        let search = ctx.registers.get(SEARCH_REGISTER);
         if !search.is_empty() {
             buffer.set_search(search);
             search_ranges = buffer.search_ranges();
