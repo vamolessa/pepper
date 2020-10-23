@@ -1319,7 +1319,7 @@ mod registers {
         let text = text.to_str()?;
         let bytes = text.as_bytes();
         if bytes.len() == 1 {
-            if let Some(key) = RegisterKey::from_u8(bytes[0]) {
+            if let Some(key) = RegisterKey::from_char(bytes[0] as _) {
                 return Ok(key);
             }
         }

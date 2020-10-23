@@ -1,7 +1,6 @@
 use std::{error::Error, fmt, path::Path};
 
 use crate::{
-    register::{KEY_QUEUE_REGISTER, RegisterCollection},
     buffer::BufferCollection,
     buffer_view::BufferViewCollection,
     client::{ClientCollection, ClientTargetMap, TargetClient},
@@ -11,6 +10,7 @@ use crate::{
     keymap::{KeyMapCollection, MatchResult},
     mode::{Mode, ModeContext, ModeOperation},
     picker::Picker,
+    register::{RegisterCollection, RegisterKey, KEY_QUEUE_REGISTER},
     script::ScriptEngine,
     word_database::WordDatabase,
 };
@@ -189,6 +189,7 @@ pub struct Editor {
     pub word_database: WordDatabase,
 
     pub buffered_keys: Vec<Key>,
+    pub recording_macro: Option<RegisterKey>,
     pub registers: RegisterCollection,
     pub read_line: ReadLine,
     pub picker: Picker,
@@ -212,6 +213,7 @@ impl Editor {
             word_database: WordDatabase::new(),
 
             buffered_keys: Vec::new(),
+            recording_macro: None,
             registers: RegisterCollection::default(),
             read_line: ReadLine::default(),
             picker: Picker::default(),
@@ -355,6 +357,7 @@ impl Editor {
 
                 if target_client != self.focused_client {
                     self.focused_client = target_client;
+                    self.recording_macro = None;
                     self.buffered_keys.clear();
                 }
 
@@ -377,12 +380,15 @@ impl Editor {
                         self.mode_context(clients, target_client);
                     let mut keys = KeysIterator::new(&buffered_keys);
                     loop {
-                        if keys.index >= buffered_keys.len() {
+                        let keys_from_index = keys.index;
+                        if keys_from_index == buffered_keys.len() {
                             break;
                         }
 
                         match mode.on_event(&mut mode_ctx, &mut keys) {
-                            ModeOperation::Pending => return EditorLoop::Continue,
+                            ModeOperation::Pending => {
+                                return EditorLoop::Continue;
+                            }
                             ModeOperation::None => (),
                             ModeOperation::Quit => {
                                 mode.change_to(&mut mode_ctx, Mode::default());
@@ -397,34 +403,22 @@ impl Editor {
                                 mode.change_to(&mut mode_ctx, next_mode);
                             }
                             ModeOperation::ExecuteMacro(key) => {
-                                //
+                                self.parse_and_set_keys_in_register(key);
+                                continue 'key_queue_loop;
+                            }
+                        }
+
+                        for key in &buffered_keys[keys_from_index..keys.index] {
+                            if let Some(register_key) = mode_ctx.recording_macro.clone() {
+                                mode_ctx.registers.append_fmt(register_key, format_args!("{}", key));
                             }
                         }
                     }
 
-                    let key_queue = self.registers.get(KEY_QUEUE_REGISTER);
-                    if key_queue.is_empty() {
+                    self.parse_and_set_keys_in_register(KEY_QUEUE_REGISTER);
+                    self.registers.set(KEY_QUEUE_REGISTER, "");
+                    if self.buffered_keys.is_empty() {
                         break;
-                    } else {
-                        self.buffered_keys.clear();
-                        for key in Key::parse_all(key_queue) {
-                            match key {
-                                Ok(key) => self.buffered_keys.push(key),
-                                Err(error) => {
-                                    self.status_message.write_fmt(
-                                        StatusMessageKind::Error,
-                                        format_args!(
-                                            "error parsing keys '{}'\n{}",
-                                            key_queue, &error
-                                        ),
-                                    );
-                                    self.registers.set(KEY_QUEUE_REGISTER, "");
-                                    break 'key_queue_loop;
-                                }
-                            }
-                        }
-
-                        self.registers.set(KEY_QUEUE_REGISTER, "");
                     }
                 }
 
@@ -464,6 +458,7 @@ impl Editor {
             buffer_views: &mut self.buffer_views,
             word_database: &mut self.word_database,
 
+            recording_macro: &mut self.recording_macro,
             registers: &mut self.registers,
             read_line: &mut self.read_line,
             picker: &mut self.picker,
@@ -474,5 +469,28 @@ impl Editor {
             scripts: &mut self.scripts,
         };
         (&mut self.mode, &self.buffered_keys, mode_context)
+    }
+
+    fn parse_and_set_keys_in_register(&mut self, register_key: RegisterKey) {
+        self.buffered_keys.clear();
+
+        let keys = self.registers.get(register_key);
+        if keys.is_empty() {
+            return;
+        }
+
+        for key in Key::parse_all(keys) {
+            match key {
+                Ok(key) => self.buffered_keys.push(key),
+                Err(error) => {
+                    self.status_message.write_fmt(
+                        StatusMessageKind::Error,
+                        format_args!("error parsing keys '{}'\n{}", keys, &error),
+                    );
+                    self.buffered_keys.clear();
+                    return;
+                }
+            }
+        }
     }
 }

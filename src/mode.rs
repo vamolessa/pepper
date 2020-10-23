@@ -8,7 +8,7 @@ use crate::{
     editor::{EditorLoop, KeysIterator, ReadLine, StatusMessage},
     keymap::KeyMapCollection,
     picker::Picker,
-    register::RegisterCollection,
+    register::{RegisterKey, RegisterCollection},
     script::{ScriptContext, ScriptEngine},
     word_database::WordDatabase,
 };
@@ -25,7 +25,7 @@ pub enum ModeOperation {
     Quit,
     QuitAll,
     EnterMode(Mode),
-    ExecuteMacro(u8),
+    ExecuteMacro(RegisterKey),
 }
 
 pub struct ModeContext<'a> {
@@ -38,6 +38,7 @@ pub struct ModeContext<'a> {
     pub buffer_views: &'a mut BufferViewCollection,
     pub word_database: &'a mut WordDatabase,
 
+    pub recording_macro: &'a mut Option<RegisterKey>,
     pub registers: &'a mut RegisterCollection,
     pub read_line: &'a mut ReadLine,
     pub picker: &'a mut Picker,

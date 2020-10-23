@@ -524,7 +524,16 @@ where
 
         if status_message.is_empty() {
             match editor.mode {
-                Mode::Normal(_) => Some(0),
+                Mode::Normal(_) => match editor.recording_macro {
+                    Some(key) => {
+                        let text = "recording macro ";
+                        let key = key.to_char();
+                        handle_command!(write, Print(text))?;
+                        handle_command!(write, Print(key))?;
+                        Some(text.len() + 1)
+                    }
+                    None => Some(0),
+                },
                 Mode::Insert(_) => {
                     let text = "-- INSERT --";
                     handle_command!(write, Print(text))?;

@@ -9,7 +9,7 @@ use crate::{
     editor::{KeysIterator, StatusMessageKind},
     mode::{picker, read_line, Mode, ModeContext, ModeOperation, ModeState},
     navigation_history::{NavigationDirection, NavigationHistory},
-    register::SEARCH_REGISTER,
+    register::{RegisterKey, SEARCH_REGISTER},
     word_database::WordKind,
 };
 
@@ -32,6 +32,34 @@ impl State {
         keys: &mut KeysIterator,
     ) -> ModeOperation {
         match keys.next() {
+            Key::Char('q') => {
+                if ctx.recording_macro.take().is_some() {
+                    *ctx.recording_macro = None;
+                } else {
+                    match keys.next() {
+                        Key::None => return ModeOperation::Pending,
+                        Key::Char(c) => {
+                            if let Some(key) = RegisterKey::from_char(c) {
+                                ctx.registers.set(key, "");
+                                *ctx.recording_macro = Some(key);
+                            }
+                        }
+                        _ => (),
+                    }
+                }
+                ModeOperation::None
+            }
+            Key::Char('Q') => {
+                *ctx.recording_macro = None;
+                match keys.next() {
+                    Key::None => ModeOperation::Pending,
+                    Key::Char(c) => match RegisterKey::from_char(c.to_ascii_lowercase()) {
+                        Some(key) => ModeOperation::ExecuteMacro(key),
+                        None => ModeOperation::None,
+                    },
+                    _ => ModeOperation::None,
+                }
+            }
             Key::Char(':') => ModeOperation::EnterMode(Mode::Script(Default::default())),
             Key::Char('g') => match keys.next() {
                 Key::None => ModeOperation::Pending,
@@ -822,6 +850,31 @@ impl ModeState for State {
                 unwrap_or_none!(ctx.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
                 self.movement_kind = CursorMovementKind::PositionAndAnchor;
             }
+            Key::Ctrl('y') => match keys.next() {
+                Key::None => return ModeOperation::Pending,
+                Key::Char(c) => {
+                    ctx.buffer_views.delete_in_cursor_ranges(
+                        ctx.buffers,
+                        ctx.word_database,
+                        &ctx.config.syntaxes,
+                        handle,
+                    );
+                    if let Some(key) = RegisterKey::from_char(c) {
+                        let register = ctx.registers.get(key);
+                        ctx.buffer_views.insert_text_at_cursor_positions(
+                            ctx.buffers,
+                            ctx.word_database,
+                            &ctx.config.syntaxes,
+                            handle,
+                            register,
+                        );
+                    }
+                    let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
+                    unwrap_or_none!(ctx.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
+                    self.movement_kind = CursorMovementKind::PositionAndAnchor;
+                }
+                _ => (),
+            },
             Key::Char('u') => {
                 ctx.buffer_views
                     .undo(ctx.buffers, &ctx.config.syntaxes, handle);
