@@ -173,8 +173,8 @@ where
         editor.add_module_search_path(path);
     }
 
-    if let Some(ref config_path) = args.config {
-        editor.load_config(&mut clients, config_path);
+    for config in &args.config {
+        editor.load_config(&mut clients, config);
     }
 
     client_events_from_args(&args, |event| {

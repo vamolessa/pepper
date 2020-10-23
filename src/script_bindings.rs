@@ -1297,7 +1297,7 @@ mod registers {
         (_, index): (ScriptObject, ScriptString),
     ) -> ScriptResult<ScriptValue<'script>> {
         let index = index.to_str()?;
-        let key = index.parse().map_err(|e| ScriptError::from(e))?;
+        let key = string_to_key(index);
         match ctx.registers.get(key) {
             Some(register) => {
                 let register = engine.create_string(register.as_bytes())?;
@@ -1314,12 +1314,21 @@ mod registers {
         (_, index, value): (ScriptObject, ScriptString, ScriptString),
     ) -> ScriptResult<()> {
         let index = index.to_str()?;
-        let key = index.parse().map_err(|e| ScriptError::from(e))?;
+        let key = string_to_key(index);
         let value = value.to_str()?;
         if ctx.registers.set(key, value) {
             Ok(())
         } else {
             Err(ScriptError::from(format!("no such property {}", index)))
+        }
+    }
+
+    fn string_to_key(s: &str) -> u8 {
+        let bytes = s.as_bytes();
+        if bytes.len() == 1 {
+            bytes[0]
+        } else {
+            0
         }
     }
 }

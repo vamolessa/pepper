@@ -34,9 +34,9 @@ pub struct Args {
     #[argh(switch, short = 'v')]
     version: bool,
 
-    /// load config file at path
+    /// load config file at path (repeatable)
     #[argh(option, short = 'c')]
-    config: Option<std::path::PathBuf>,
+    config: Vec<std::path::PathBuf>,
 
     /// adds an extra script module search path (repeatable)
     #[argh(option)]

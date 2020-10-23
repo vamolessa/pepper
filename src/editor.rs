@@ -400,34 +400,61 @@ impl Editor {
                     }
                 }
 
-                let (mode, buffered_keys, mut mode_ctx) = self.mode_context(clients, target_client);
-                let mut keys = KeysIterator::new(&buffered_keys);
+                'key_queue_loop: loop {
+                    let (mode, buffered_keys, mut mode_ctx) =
+                        self.mode_context(clients, target_client);
+                    let mut keys = KeysIterator::new(&buffered_keys);
+                    loop {
+                        if keys.index >= buffered_keys.len() {
+                            break;
+                        }
 
-                let result = loop {
-                    if keys.index >= buffered_keys.len() {
-                        break EditorLoop::Continue;
+                        match mode.on_event(&mut mode_ctx, &mut keys) {
+                            ModeOperation::Pending => return EditorLoop::Continue,
+                            ModeOperation::None => (),
+                            ModeOperation::Quit => {
+                                mode.change_to(&mut mode_ctx, Mode::default());
+                                self.buffered_keys.clear();
+                                return EditorLoop::Quit;
+                            }
+                            ModeOperation::QuitAll => {
+                                self.buffered_keys.clear();
+                                return EditorLoop::QuitAll;
+                            }
+                            ModeOperation::EnterMode(next_mode) => {
+                                mode.change_to(&mut mode_ctx, next_mode);
+                            }
+                        }
                     }
 
-                    match mode.on_event(&mut mode_ctx, &mut keys) {
-                        ModeOperation::Pending => return EditorLoop::Continue,
-                        ModeOperation::None => (),
-                        ModeOperation::Quit => {
-                            mode.change_to(&mut mode_ctx, Mode::default());
-                            self.buffered_keys.clear();
-                            return EditorLoop::Quit;
+                    let key_queue = self.registers.get(KEY_QUEUE_REGISTER).unwrap_or("");
+                    if key_queue.is_empty() {
+                        break;
+                    } else {
+                        self.buffered_keys.clear();
+                        for key in Key::parse_all(key_queue) {
+                            match key {
+                                Ok(key) => self.buffered_keys.push(key),
+                                Err(error) => {
+                                    self.status_message.write_fmt(
+                                        StatusMessageKind::Error,
+                                        format_args!(
+                                            "error parsing keys '{}'\n{}",
+                                            key_queue, &error
+                                        ),
+                                    );
+                                    self.registers.set(KEY_QUEUE_REGISTER, "");
+                                    break 'key_queue_loop;
+                                }
+                            }
                         }
-                        ModeOperation::QuitAll => {
-                            self.buffered_keys.clear();
-                            return EditorLoop::QuitAll;
-                        }
-                        ModeOperation::EnterMode(next_mode) => {
-                            mode.change_to(&mut mode_ctx, next_mode);
-                        }
+
+                        self.registers.set(KEY_QUEUE_REGISTER, "");
                     }
-                };
+                }
 
                 self.buffered_keys.clear();
-                result
+                EditorLoop::Continue
             }
             ClientEvent::Resize(width, height) => {
                 let target_client = self.client_target_map.get(target_client);
