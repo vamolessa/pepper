@@ -1,5 +1,5 @@
 use crate::{
-    editor::{KeysIterator, ReadLinePoll},
+    editor::{SEARCH_REGISTER, KeysIterator, ReadLinePoll},
     mode::{Mode, ModeContext, ModeOperation, ModeState},
 };
 
@@ -59,7 +59,7 @@ pub mod search {
                     ModeOperation::None
                 }
                 ReadLinePoll::Submitted => {
-                    ctx.registers.set(b's', ctx.read_line.input());
+                    ctx.registers.set(SEARCH_REGISTER, ctx.read_line.input());
                     ModeOperation::EnterMode(Mode::default())
                 }
                 ReadLinePoll::Canceled => {
@@ -197,7 +197,7 @@ pub mod filter_cursors {
 
         let pattern = ctx.read_line.input();
         let pattern = if pattern.is_empty() {
-            ctx.registers.get(b's').unwrap_or("")
+            ctx.registers.get(SEARCH_REGISTER).unwrap_or("")
         } else {
             pattern
         };
@@ -312,7 +312,7 @@ pub mod split_cursors {
     ) {
         let pattern = ctx.read_line.input();
         let pattern = if pattern.is_empty() {
-            ctx.registers.get(b's').unwrap_or("")
+            ctx.registers.get(SEARCH_REGISTER).unwrap_or("")
         } else {
             pattern
         };

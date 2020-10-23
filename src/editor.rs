@@ -52,6 +52,9 @@ impl<'a> KeysIterator<'a> {
     }
 }
 
+pub const SEARCH_REGISTER: u8 = b's';
+pub const KEY_QUEUE_REGISTER: u8 = b'k';
+
 #[derive(Default)]
 pub struct RegisterCollection {
     registers: [String; (b'z' - b'a' + 1) as usize],
