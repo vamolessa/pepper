@@ -380,10 +380,10 @@ impl Editor {
                         self.mode_context(clients, target_client);
                     let mut keys = KeysIterator::new(&buffered_keys);
                     loop {
-                        let keys_from_index = keys.index;
-                        if keys_from_index == buffered_keys.len() {
+                        if keys.index == buffered_keys.len() {
                             break;
                         }
+                        let keys_from_index = mode_ctx.recording_macro.map(|_| keys.index);
 
                         match mode.on_event(&mut mode_ctx, &mut keys) {
                             ModeOperation::Pending => {
@@ -408,9 +408,13 @@ impl Editor {
                             }
                         }
 
-                        for key in &buffered_keys[keys_from_index..keys.index] {
-                            if let Some(register_key) = mode_ctx.recording_macro.clone() {
-                                mode_ctx.registers.append_fmt(register_key, format_args!("{}", key));
+                        if let Some((from_index, register_key)) =
+                            keys_from_index.zip(mode_ctx.recording_macro.clone())
+                        {
+                            for key in &buffered_keys[from_index..keys.index] {
+                                mode_ctx
+                                    .registers
+                                    .append_fmt(register_key, format_args!("{}", key));
                             }
                         }
                     }
