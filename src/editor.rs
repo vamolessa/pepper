@@ -38,6 +38,14 @@ impl<'a> KeysIterator<'a> {
         Self { keys, index: 0 }
     }
 
+    pub fn index(&self) -> usize {
+        self.index
+    }
+
+    pub fn keys(&self) -> &'a [Key] {
+        self.keys
+    }
+
     pub fn next(&mut self) -> Key {
         if self.index < self.keys.len() {
             let next = self.keys[self.index];

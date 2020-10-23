@@ -1,12 +1,18 @@
 use std::fmt;
 
-pub const SEARCH_REGISTER: RegisterKey = RegisterKey((b's' - b'a') as usize);
-pub const KEY_QUEUE_REGISTER: RegisterKey = RegisterKey((b'k' - b'a') as usize);
+pub const SEARCH_REGISTER: RegisterKey = RegisterKey::from_char_unchecked('b');
+pub const KEY_QUEUE_REGISTER: RegisterKey = RegisterKey::from_char_unchecked('k');
+pub const AUTO_MACRO_REGISTER: RegisterKey = RegisterKey::from_char_unchecked('a');
 
 #[derive(Clone, Copy)]
 pub struct RegisterKey(usize);
 
 impl RegisterKey {
+    const fn from_char_unchecked(key: char) -> RegisterKey {
+        let key = key as usize;
+        Self(key - b'a' as usize)
+    }
+
     pub const fn from_char(key: char) -> Option<RegisterKey> {
         let key = key as usize;
         if key >= b'a' as usize && key <= b'z' as usize {

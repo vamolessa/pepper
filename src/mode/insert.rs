@@ -5,6 +5,7 @@ use crate::{
     client_event::Key,
     editor::KeysIterator,
     mode::{Mode, ModeContext, ModeOperation, ModeState},
+    register::AUTO_MACRO_REGISTER,
     word_database::WordKind,
 };
 
@@ -26,7 +27,14 @@ impl ModeState for State {
             None => return ModeOperation::EnterMode(Mode::default()),
         };
 
-        match keys.next() {
+        let key = keys.next();
+        let keys = ();
+        let _ = keys;
+
+        ctx.registers
+            .append_fmt(AUTO_MACRO_REGISTER, format_args!("{}", key));
+
+        match key {
             Key::Esc => {
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
                 unwrap_or_none!(ctx.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();

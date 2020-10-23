@@ -46,7 +46,11 @@ impl ModeState for State {
             }
             ReadLinePoll::Canceled => ModeOperation::EnterMode(Mode::default()),
             ReadLinePoll::Submitted => {
-                ctx.scripts.add_to_history(ctx.read_line.input());
+                let input = ctx.read_line.input();
+                if !input.starts_with(' ') {
+                    ctx.scripts.add_to_history(input);
+                }
+
                 let (engine, read_line, mut context) = ctx.script_context();
 
                 if let Err(error) = eval(engine, &mut context, read_line.input()) {

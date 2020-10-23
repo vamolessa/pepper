@@ -9,7 +9,7 @@ use crate::{
     editor::{KeysIterator, StatusMessageKind},
     mode::{picker, read_line, Mode, ModeContext, ModeOperation, ModeState},
     navigation_history::{NavigationDirection, NavigationHistory},
-    register::{RegisterKey, SEARCH_REGISTER},
+    register::{RegisterKey, AUTO_MACRO_REGISTER, SEARCH_REGISTER},
     word_database::WordKind,
 };
 
@@ -22,15 +22,46 @@ enum CharJump {
 pub struct State {
     movement_kind: CursorMovementKind,
     last_char_jump: CharJump,
+    is_recording_auto_macro: bool,
     pub count: usize,
 }
 
 impl State {
+    fn on_movement_keys(&mut self, ctx: &mut ModeContext, keys: &KeysIterator, from_index: usize) {
+        match self.movement_kind {
+            CursorMovementKind::PositionAndAnchor => self.is_recording_auto_macro = false,
+            CursorMovementKind::PositionOnly => {
+                if !self.is_recording_auto_macro {
+                    ctx.registers.set(AUTO_MACRO_REGISTER, "");
+                }
+                self.is_recording_auto_macro = true;
+
+                for key in &keys.keys()[from_index..keys.index()] {
+                    ctx.registers
+                        .append_fmt(AUTO_MACRO_REGISTER, format_args!("{}", key));
+                }
+            }
+        }
+    }
+
+    fn on_edit_keys(&mut self, ctx: &mut ModeContext, keys: &KeysIterator, from_index: usize) {
+        if !self.is_recording_auto_macro {
+            ctx.registers.set(AUTO_MACRO_REGISTER, "");
+        }
+        self.is_recording_auto_macro = false;
+
+        for key in &keys.keys()[from_index..keys.index()] {
+            ctx.registers
+                .append_fmt(AUTO_MACRO_REGISTER, format_args!("{}", key));
+        }
+    }
+
     fn on_event_no_buffer(
         &mut self,
         ctx: &mut ModeContext,
         keys: &mut KeysIterator,
     ) -> ModeOperation {
+        self.is_recording_auto_macro = false;
         match keys.next() {
             Key::Char('q') => {
                 if ctx.recording_macro.take().is_some() {
@@ -89,6 +120,7 @@ impl Default for State {
         Self {
             movement_kind: CursorMovementKind::PositionAndAnchor,
             last_char_jump: CharJump::None,
+            is_recording_auto_macro: false,
             count: 0,
         }
     }
@@ -100,6 +132,9 @@ impl ModeState for State {
             Some(handle) => handle,
             None => return self.on_event_no_buffer(ctx, keys),
         };
+
+        let keys_from_index = keys.index();
+        let mut is_edit = false;
 
         match keys.next() {
             Key::Char('h') => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
@@ -565,6 +600,7 @@ impl ModeState for State {
                 );
             }
             Key::Char('d') => {
+                is_edit = true;
                 ctx.buffer_views.delete_in_cursor_ranges(
                     ctx.buffers,
                     ctx.word_database,
@@ -582,9 +618,12 @@ impl ModeState for State {
                     &ctx.config.syntaxes,
                     handle,
                 );
+
+                self.on_edit_keys(ctx, keys, keys_from_index);
                 return ModeOperation::EnterMode(Mode::Insert(Default::default()));
             }
             Key::Char('<') => {
+                is_edit = true;
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
                 let cursor_count = buffer_view.cursors[..].len();
                 let buffer_handle = buffer_view.buffer_handle;
@@ -632,6 +671,7 @@ impl ModeState for State {
                 unwrap_or_none!(ctx.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
             }
             Key::Char('>') => {
+                is_edit = true;
                 let cursor_count = unwrap_or_none!(ctx.buffer_views.get(handle)).cursors[..].len();
                 let count = self.count.max(1);
                 let mut indentation = Text::new();
@@ -831,6 +871,7 @@ impl ModeState for State {
                 self.movement_kind = CursorMovementKind::PositionAndAnchor;
             }
             Key::Char('Y') => {
+                is_edit = true;
                 ctx.buffer_views.delete_in_cursor_ranges(
                     ctx.buffers,
                     ctx.word_database,
@@ -853,6 +894,7 @@ impl ModeState for State {
             Key::Ctrl('y') => match keys.next() {
                 Key::None => return ModeOperation::Pending,
                 Key::Char(c) => {
+                    is_edit = true;
                     ctx.buffer_views.delete_in_cursor_ranges(
                         ctx.buffers,
                         ctx.word_database,
@@ -876,11 +918,13 @@ impl ModeState for State {
                 _ => (),
             },
             Key::Char('u') => {
+                is_edit = true;
                 ctx.buffer_views
                     .undo(ctx.buffers, &ctx.config.syntaxes, handle);
                 self.movement_kind = CursorMovementKind::PositionAndAnchor;
             }
             Key::Char('U') => {
+                is_edit = true;
                 ctx.buffer_views
                     .redo(ctx.buffers, &ctx.config.syntaxes, handle);
                 self.movement_kind = CursorMovementKind::PositionAndAnchor;
@@ -889,7 +933,13 @@ impl ModeState for State {
                 keys.put_back();
                 return self.on_event_no_buffer(ctx, keys);
             }
-        };
+        }
+
+        if is_edit {
+            self.on_edit_keys(ctx, keys, keys_from_index);
+        } else {
+            self.on_movement_keys(ctx, keys, keys_from_index);
+        }
 
         self.count = 0;
         ModeOperation::None

@@ -188,8 +188,5 @@ function | action
 
 
 # todo
-- macros
-	- repeat last insert (`.`)
-	- ~~record/play custom macros~~
 - language server protocol
 - debug adapter protocol
