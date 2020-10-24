@@ -34,27 +34,81 @@ impl<'a> JsonValue<'a> {
         }
     }
 
-    pub fn elements(&self) -> JsonArray<'a> {
-        let next = match self.inner {
-            JsonValueImpl::Array(i) => i,
-            _ => 0,
-        };
-
-        JsonArray {
-            json: self.json,
-            next,
+    pub fn elements(&self) -> Option<JsonElementIter<'a>> {
+        match self.inner {
+            JsonValueImpl::Array(r) => Some(JsonElementIter {
+                json: self.json,
+                next: r.from as _,
+            }),
+            _ => None,
         }
     }
 
-    pub fn members(&self) -> JsonObject<'a> {
-        let next = match self.inner {
-            JsonValueImpl::Object(i) => i,
-            _ => 0,
-        };
+    pub fn push_element(&mut self, json: &'a mut Json, element: JsonValue<'a>) {
+        if let JsonValueImpl::Array(r) = self.inner {
+            let index = json.elements.len() as u32;
+            json.elements.push(JsonArrayElement {
+                value: element.inner,
+                next: index,
+            });
+            if r.from == r.to {
+                *self = JsonValue {
+                    json,
+                    inner: JsonValueImpl::Array(JsonRange {
+                        from: index,
+                        to: index,
+                    }),
+                };
+            } else {
+                json.elements[r.to as usize].next = index;
+                *self = JsonValue {
+                    json,
+                    inner: JsonValueImpl::Array(JsonRange {
+                        from: r.from,
+                        to: index,
+                    }),
+                };
+            }
+        }
+    }
 
-        JsonObject {
-            json: self.json,
-            next,
+    pub fn members(&self) -> Option<JsonMemberIter<'a>> {
+        match self.inner {
+            JsonValueImpl::Object(r) => Some(JsonMemberIter {
+                json: self.json,
+                next: r.from as _,
+            }),
+            _ => None,
+        }
+    }
+
+    pub fn push_member(&mut self, json: &'a mut Json, key: &str, member: JsonValue<'a>) {
+        if let JsonValueImpl::Object(r) = self.inner {
+            let key = json.create_string_range(key);
+            let index = json.members.len() as u32;
+            json.members.push(JsonObjectMember {
+                key,
+                value: member.inner,
+                next: index,
+            });
+            if r.from == r.to {
+                *self = JsonValue {
+                    json,
+                    inner: JsonValueImpl::Object(JsonRange {
+                        from: index,
+                        to: index,
+                    }),
+                };
+            } else {
+                json.members[r.to as usize].next = index;
+                *self = JsonValue {
+                    json,
+                    inner: JsonValueImpl::Object(JsonRange {
+                        from: r.from,
+                        to: index,
+                    }),
+                };
+            }
         }
     }
 
@@ -62,66 +116,55 @@ impl<'a> JsonValue<'a> {
     where
         W: io::Write,
     {
-        match self.inner {
-            JsonValueImpl::Undefined | JsonValueImpl::Null => {
-                writer.write(b"null")?;
-            }
-            JsonValueImpl::Boolean(true) => {
-                writer.write(b"true")?;
-            }
-            JsonValueImpl::Boolean(false) => {
-                writer.write(b"false")?;
-            }
-            JsonValueImpl::Integer(i) => writer.write_fmt(format_args!("{}", i))?,
-            JsonValueImpl::Number(n) => writer.write_fmt(format_args!("{}", n))?,
-            JsonValueImpl::String(r) => write_str(writer, self.json.get_string(r))?,
-            _ => (),
-        }
-        Ok(())
+        write_value(self.json, writer, self.inner)
     }
 }
 
-pub struct JsonArray<'a> {
+pub struct JsonElementIter<'a> {
     json: &'a Json,
     next: usize,
 }
 
-impl<'a> Iterator for JsonArray<'a> {
+impl<'a> Iterator for JsonElementIter<'a> {
     type Item = JsonValue<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let element = self.json.elements[self.next];
-        self.next = element.next;
-        match element.value {
-            JsonValueImpl::Undefined => None,
-            _ => Some(JsonValue {
+        let next = element.next as usize;
+        if self.next != next {
+            self.next = next;
+            Some(JsonValue {
                 json: self.json,
                 inner: element.value,
-            }),
+            })
+        } else {
+            None
         }
     }
 }
 
-pub struct JsonObject<'a> {
+pub struct JsonMemberIter<'a> {
     json: &'a Json,
     next: usize,
 }
 
-impl<'a> Iterator for JsonObject<'a> {
+impl<'a> Iterator for JsonMemberIter<'a> {
     type Item = (&'a str, JsonValue<'a>);
 
     fn next(&mut self) -> Option<Self::Item> {
         let member = self.json.members[self.next];
-        self.next = member.next;
-        match member.value {
-            JsonValueImpl::Undefined => None,
-            _ => Some((
+        let next = member.next as usize;
+        if self.next != next {
+            self.next = next;
+            Some((
                 self.json.get_string(member.key),
                 JsonValue {
                     json: self.json,
                     inner: member.value,
                 },
-            )),
+            ))
+        } else {
+            None
         }
     }
 }
@@ -133,30 +176,31 @@ enum JsonValueImpl {
     Boolean(bool),
     Integer(i64),
     Number(f64),
-    String(JsonStringRange),
-    Array(usize),
-    Object(usize),
+    String(JsonRange),
+    Array(JsonRange),
+    Object(JsonRange),
 }
 
 #[derive(Clone, Copy)]
-struct JsonStringRange {
-    from: usize,
-    to: usize,
+struct JsonRange {
+    from: u32,
+    to: u32,
 }
 
 #[derive(Clone, Copy)]
 struct JsonArrayElement {
     value: JsonValueImpl,
-    next: usize,
+    next: u32,
 }
 
 #[derive(Clone, Copy)]
 struct JsonObjectMember {
-    key: JsonStringRange,
+    key: JsonRange,
     value: JsonValueImpl,
-    next: usize,
+    next: u32,
 }
 
+#[derive(Default)]
 pub struct Json {
     strings: String,
     elements: Vec<JsonArrayElement>,
@@ -164,25 +208,10 @@ pub struct Json {
 }
 
 impl Json {
-    pub fn new() -> Self {
-        Self {
-            strings: String::new(),
-            elements: vec![JsonArrayElement {
-                value: JsonValueImpl::Undefined,
-                next: 0,
-            }],
-            members: vec![JsonObjectMember {
-                key: JsonStringRange { from: 0, to: 0 },
-                value: JsonValueImpl::Undefined,
-                next: 0,
-            }],
-        }
-    }
-
-    pub fn parse<'a>(&'a mut self, json: &'a str) -> JsonValue<'a> {
+    pub fn parse<'a>(&'a mut self, json: &str) -> JsonValue<'a> {
         self.strings.clear();
-        self.elements.truncate(1);
-        self.members.truncate(1);
+        self.elements.clear();
+        self.members.clear();
 
         JsonValue {
             json: self,
@@ -190,9 +219,95 @@ impl Json {
         }
     }
 
-    fn get_string<'a>(&'a self, range: JsonStringRange) -> &'a str {
-        &self.strings[range.from..range.to]
+    pub fn create_string<'a>(&'a mut self, value: &str) -> JsonValue<'a> {
+        let range = self.create_string_range(value);
+        JsonValue {
+            json: self,
+            inner: JsonValueImpl::String(range),
+        }
     }
+
+    pub fn create_array<'a>(&'a mut self) -> JsonValue<'a> {
+        JsonValue {
+            json: self,
+            inner: JsonValueImpl::Array(JsonRange { from: 0, to: 0 }),
+        }
+    }
+
+    pub fn create_object<'a>(&'a mut self) -> JsonValue<'a> {
+        JsonValue {
+            json: self,
+            inner: JsonValueImpl::Object(JsonRange { from: 0, to: 0 }),
+        }
+    }
+
+    fn create_string_range(&mut self, value: &str) -> JsonRange {
+        let from = self.strings.len() as u32;
+        self.strings.push_str(value);
+        let to = self.strings.len() as u32;
+        JsonRange { from, to }
+    }
+
+    fn get_string(&self, range: JsonRange) -> &str {
+        &self.strings[(range.from as usize)..(range.to as usize)]
+    }
+}
+
+fn write_value<W>(json: &Json, writer: &mut W, value: JsonValueImpl) -> io::Result<()>
+where
+    W: io::Write,
+{
+    match value {
+        JsonValueImpl::Undefined | JsonValueImpl::Null => {
+            writer.write(b"null")?;
+        }
+        JsonValueImpl::Boolean(true) => {
+            writer.write(b"true")?;
+        }
+        JsonValueImpl::Boolean(false) => {
+            writer.write(b"false")?;
+        }
+        JsonValueImpl::Integer(i) => writer.write_fmt(format_args!("{}", i))?,
+        JsonValueImpl::Number(n) => writer.write_fmt(format_args!("{}", n))?,
+        JsonValueImpl::String(r) => write_str(writer, json.get_string(r))?,
+        JsonValueImpl::Array(r) => {
+            writer.write(b"[")?;
+            let mut next = r.from as usize;
+            let end = r.to as usize;
+            if next != end {
+                loop {
+                    let element = json.elements[next];
+                    write_value(json, writer, element.value)?;
+                    next = element.next as _;
+                    if next == end {
+                        break;
+                    }
+                    writer.write(b",")?;
+                }
+            }
+            writer.write(b"]")?;
+        }
+        JsonValueImpl::Object(r) => {
+            writer.write(b"{")?;
+            let mut next = r.from as usize;
+            let end = r.to as usize;
+            if next != end {
+                loop {
+                    let member = json.members[next];
+                    write_str(writer, json.get_string(member.key))?;
+                    writer.write(b":")?;
+                    write_value(json, writer, member.value)?;
+                    next = member.next as _;
+                    if next == end {
+                        break;
+                    }
+                    writer.write(b",")?;
+                }
+            }
+            writer.write(b"}")?;
+        }
+    }
+    Ok(())
 }
 
 fn write_str<W>(writer: &mut W, s: &str) -> io::Result<()>
