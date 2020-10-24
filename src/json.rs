@@ -12,7 +12,7 @@ pub enum JsonValue {
 }
 
 impl JsonValue {
-    pub fn write<W>(&self, json: &Json, writer: &mut W) -> io::Result<()>
+    pub fn stringify<W>(&self, json: &Json, writer: &mut W) -> io::Result<()>
     where
         W: io::Write,
     {
@@ -28,9 +28,9 @@ impl JsonValue {
             }
             JsonValue::Integer(i) => writer.write_fmt(format_args!("{}", i))?,
             JsonValue::Number(n) => writer.write_fmt(format_args!("{}", n))?,
-            JsonValue::String(s) => s.write(json, writer)?,
-            JsonValue::Array(a) => a.write(json, writer)?,
-            JsonValue::Object(o) => o.write(json, writer)?,
+            JsonValue::String(s) => s.stringify(json, writer)?,
+            JsonValue::Array(a) => a.stringify(json, writer)?,
+            JsonValue::Object(o) => o.stringify(json, writer)?,
         }
         Ok(())
     }
@@ -80,7 +80,7 @@ impl JsonString {
         &json.strings[(self.start as usize)..(self.end as usize)]
     }
 
-    pub fn write<W>(&self, json: &Json, writer: &mut W) -> io::Result<()>
+    pub fn stringify<W>(&self, json: &Json, writer: &mut W) -> io::Result<()>
     where
         W: io::Write,
     {
@@ -131,6 +131,10 @@ pub struct JsonArray {
 }
 
 impl JsonArray {
+    pub fn new() -> Self {
+        Self { first: 0, last: 0 }
+    }
+
     pub fn iter<'a>(&self, json: &'a Json) -> JsonElementIter<'a> {
         JsonElementIter {
             json,
@@ -149,7 +153,7 @@ impl JsonArray {
         self.last = index;
     }
 
-    pub fn write<W>(&self, json: &Json, writer: &mut W) -> io::Result<()>
+    pub fn stringify<W>(&self, json: &Json, writer: &mut W) -> io::Result<()>
     where
         W: io::Write,
     {
@@ -158,7 +162,7 @@ impl JsonArray {
         if next != 0 {
             loop {
                 let element = &json.elements[next];
-                element.value.write(json, writer)?;
+                element.value.stringify(json, writer)?;
                 next = element.next as _;
                 if next == 0 {
                     break;
@@ -177,6 +181,10 @@ pub struct JsonObject {
 }
 
 impl JsonObject {
+    pub fn new() -> Self {
+        Self { first: 0, last: 0 }
+    }
+
     pub fn iter<'a>(&self, json: &'a Json) -> JsonMemberIter<'a> {
         JsonMemberIter {
             json,
@@ -200,7 +208,7 @@ impl JsonObject {
         self.last = index;
     }
 
-    pub fn write<W>(&self, json: &Json, writer: &mut W) -> io::Result<()>
+    pub fn stringify<W>(&self, json: &Json, writer: &mut W) -> io::Result<()>
     where
         W: io::Write,
     {
@@ -209,9 +217,9 @@ impl JsonObject {
         if next != 0 {
             loop {
                 let member = &json.members[next];
-                member.key.write(json, writer)?;
+                member.key.stringify(json, writer)?;
                 writer.write(b":")?;
-                member.value.write(json, writer)?;
+                member.value.stringify(json, writer)?;
                 next = member.next as _;
                 if next == 0 {
                     break;
@@ -309,14 +317,6 @@ impl Json {
         let end = self.strings.len() as u32;
         JsonString { start, end }
     }
-
-    pub fn create_array(&mut self) -> JsonArray {
-        JsonArray { first: 0, last: 0 }
-    }
-
-    pub fn create_object(&mut self) -> JsonObject {
-        JsonObject { first: 0, last: 0 }
-    }
 }
 
 #[cfg(test)]
@@ -324,24 +324,29 @@ mod tests {
     use super::*;
 
     #[test]
-    fn array_elements() {
+    fn write_complex() {
         let mut json = Json::new();
-        let mut array = json.create_array();
+        let mut array = JsonArray::new();
 
         array.push(JsonValue::Boolean(true), &mut json);
         array.push(JsonValue::Integer(8), &mut json);
         array.push(JsonValue::Number(0.5), &mut json);
         array.push(json.create_string("text").into(), &mut json);
 
-        let mut object = json.create_object();
+        let mut object = JsonObject::new();
         object.push("first", JsonValue::Null, &mut json);
         object.push("second", json.create_string("txt").into(), &mut json);
 
         array.push(object.into(), &mut json);
+        array.push(JsonArray::new().into(), &mut json);
+        array.push(JsonObject::new().into(), &mut json);
 
         let mut buf = Vec::new();
-        array.write(&json, &mut buf).unwrap();
+        array.stringify(&json, &mut buf).unwrap();
         let json = String::from_utf8(buf).unwrap();
-        assert_eq!("[true,8,0.5,\"text\",{\"first\":null,\"second\":\"txt\"}]", json);
+        assert_eq!(
+            "[true,8,0.5,\"text\",{\"first\":null,\"second\":\"txt\"},[],{}]",
+            json
+        );
     }
 }
