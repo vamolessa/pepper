@@ -1,4 +1,4 @@
-use std::io;
+use std::{convert::From, io};
 
 pub enum JsonValue {
     Undefined,
@@ -33,6 +33,37 @@ impl JsonValue {
             JsonValue::Object(o) => o.write(json, writer)?,
         }
         Ok(())
+    }
+}
+
+impl From<bool> for JsonValue {
+    fn from(value: bool) -> Self {
+        JsonValue::Boolean(value)
+    }
+}
+impl From<JsonInteger> for JsonValue {
+    fn from(value: JsonInteger) -> Self {
+        JsonValue::Integer(value)
+    }
+}
+impl From<JsonNumber> for JsonValue {
+    fn from(value: JsonNumber) -> Self {
+        JsonValue::Number(value)
+    }
+}
+impl From<JsonString> for JsonValue {
+    fn from(value: JsonString) -> Self {
+        JsonValue::String(value)
+    }
+}
+impl From<JsonArray> for JsonValue {
+    fn from(value: JsonArray) -> Self {
+        JsonValue::Array(value)
+    }
+}
+impl From<JsonObject> for JsonValue {
+    fn from(value: JsonObject) -> Self {
+        JsonValue::Object(value)
     }
 }
 
@@ -107,7 +138,7 @@ impl JsonArray {
         }
     }
 
-    pub fn push(&mut self, json: &mut Json, value: JsonValue) {
+    pub fn push(&mut self, value: JsonValue, json: &mut Json) {
         let index = json.elements.len() as u32;
         json.elements.push(JsonArrayElement { value, next: 0 });
         if self.first != 0 {
@@ -153,7 +184,7 @@ impl JsonObject {
         }
     }
 
-    pub fn push(&mut self, json: &mut Json, key: &str, value: JsonValue) {
+    pub fn push(&mut self, key: &str, value: JsonValue, json: &mut Json) {
         let key = json.create_string(key);
         let index = json.members.len() as u32;
         json.members.push(JsonObjectMember {
@@ -296,7 +327,21 @@ mod tests {
     fn array_elements() {
         let mut json = Json::new();
         let mut array = json.create_array();
-        //array.push_element(&mut json, );
-        //array.push_element(&mut json, json.create_bool(true));
+
+        array.push(JsonValue::Boolean(true), &mut json);
+        array.push(JsonValue::Integer(8), &mut json);
+        array.push(JsonValue::Number(0.5), &mut json);
+        array.push(json.create_string("text").into(), &mut json);
+
+        let mut object = json.create_object();
+        object.push("first", JsonValue::Null, &mut json);
+        object.push("second", json.create_string("txt").into(), &mut json);
+
+        array.push(object.into(), &mut json);
+
+        let mut buf = Vec::new();
+        array.write(&json, &mut buf).unwrap();
+        let json = String::from_utf8(buf).unwrap();
+        assert_eq!("[true,8,0.5,\"text\",{\"first\":null,\"second\":\"txt\"}]", json);
     }
 }
