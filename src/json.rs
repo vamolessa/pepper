@@ -101,7 +101,8 @@ impl JsonString {
                     if c >= 32 && c <= 126 {
                         writer.write(&[c as u8])?;
                     } else {
-                        fn to_hex_digit(n: u8) -> u8 {
+                        fn to_hex_digit(n: u32) -> u8 {
+                            let n = (n & 0xf) as u8;
                             if n <= 9 {
                                 n + b'0'
                             } else {
@@ -110,12 +111,12 @@ impl JsonString {
                         }
 
                         writer.write(b"\\u")?;
-                        let bytes = c.to_le_bytes();
+                        let c = c.to_le();
                         writer.write(&[
-                            to_hex_digit(bytes[3]),
-                            to_hex_digit(bytes[2]),
-                            to_hex_digit(bytes[1]),
-                            to_hex_digit(bytes[0]),
+                            to_hex_digit(c >> 12),
+                            to_hex_digit(c >> 8),
+                            to_hex_digit(c >> 4),
+                            to_hex_digit(c),
                         ])?;
                     }
                     0
@@ -412,6 +413,7 @@ impl Json {
                                 c += from_hex_digit(buf[1])? << 8;
                                 c += from_hex_digit(buf[2])? << 4;
                                 c += from_hex_digit(buf[3])?;
+                                c = u32::from_le(c);
 
                                 match std::char::from_u32(c) {
                                     Some(c) => json.strings.push(c),
@@ -627,6 +629,7 @@ mod tests {
         assert_json!(JsonValue::Integer(-1), "-001");
         assert_json!(JsonValue::Number(n), "0.5" => assert_eq!(0.5, n));
         assert_json!(JsonValue::String(s), "\"string\"" => assert_eq!("string", s.as_str(&json)));
+        assert_json!(JsonValue::String(s), "\"\\u00e1\"" => assert_eq!("\u{00e1}", s.as_str(&json)));
         assert_json!(JsonValue::String(s), "\"\\ufa09\"" => assert_eq!("\u{fa09}", s.as_str(&json)));
     }
 }
