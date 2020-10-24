@@ -1,5 +1,6 @@
 use std::{convert::From, io};
 
+#[derive(Debug)]
 pub enum JsonValue {
     Undefined,
     Null,
@@ -70,6 +71,7 @@ impl From<JsonObject> for JsonValue {
 pub type JsonInteger = i64;
 pub type JsonNumber = f64;
 
+#[derive(Debug)]
 pub struct JsonString {
     start: u32,
     end: u32,
@@ -125,6 +127,7 @@ impl JsonString {
     }
 }
 
+#[derive(Debug)]
 pub struct JsonArray {
     first: u32,
     last: u32,
@@ -175,6 +178,7 @@ impl JsonArray {
     }
 }
 
+#[derive(Debug)]
 pub struct JsonObject {
     first: u32,
     last: u32,
@@ -334,15 +338,11 @@ impl Json {
             R: io::BufRead,
         {
             let buf = reader.fill_buf()?;
-            if buf.len() > 1 {
-                if buf[0] == byte {
-                    reader.consume(1);
-                    Ok(true)
-                } else {
-                    Ok(false)
-                }
+            if buf.len() > 0 && buf[0] == byte {
+                reader.consume(1);
+                Ok(true)
             } else {
-                Err(io::Error::from(io::ErrorKind::UnexpectedEof))
+                Ok(false)
             }
         }
 
@@ -398,25 +398,27 @@ impl Json {
                         b'u' => {
                             let mut buf = [0; 4];
                             if reader.read(&mut buf)? == buf.len() {
-                                fn from_hex_digit(d: u8) -> io::Result<u8> {
+                                fn from_hex_digit(d: u8) -> io::Result<u32> {
                                     match d {
-                                        b'0'..=b'9' => Ok(d - b'0'),
-                                        b'a'..=b'f' => Ok(10 + d - b'a'),
-                                        b'A'..=b'F' => Ok(10 + d - b'A'),
+                                        b'0'..=b'9' => Ok((d - b'0') as _),
+                                        b'a'..=b'f' => Ok((10 + d - b'a') as _),
+                                        b'A'..=b'F' => Ok((10 + d - b'A') as _),
                                         _ => Err(invalid_data_error()),
                                     }
                                 }
 
-                                for b in &mut buf {
-                                    *b = from_hex_digit(*b)?;
-                                }
+                                let mut c : u32 = 0;
+                                c += from_hex_digit(buf[0])? << 12;
+                                c += from_hex_digit(buf[1])? << 8;
+                                c += from_hex_digit(buf[2])? << 4;
+                                c += from_hex_digit(buf[3])?;
 
-                                match buf.iter().position(|&b| b != 0) {
-                                    Some(i) => match std::str::from_utf8(&buf[i..]) {
-                                        Ok(s) => json.strings.push_str(s),
-                                        Err(_) => return Err(invalid_data_error()),
-                                    },
-                                    None => json.strings.push('\0'),
+                                match std::char::from_u32(c) {
+                                    Some(c) => json.strings.push(c),
+                                    None => {
+                                        dbg!(c, '\u{fa09}' as u32);
+                                        return Err(invalid_data_error());
+                                    }
                                 }
                             } else {
                                 return Err(invalid_data_error());
@@ -489,16 +491,16 @@ impl Json {
                         R: io::BufRead,
                     {
                         let buf = reader.fill_buf()?;
-                        if buf.len() > 1 {
+                        if buf.len() > 0 {
                             let byte = buf[0];
                             if byte.is_ascii_digit() {
                                 reader.consume(1);
-                                Ok(Some(byte))
+                                Ok(Some(byte - b'0'))
                             } else {
                                 Ok(None)
                             }
                         } else {
-                            Err(io::Error::from(io::ErrorKind::UnexpectedEof))
+                            Ok(None)
                         }
                     }
 
@@ -564,6 +566,8 @@ fn invalid_data_error() -> io::Error {
 mod tests {
     use super::*;
 
+    use std::io::Cursor;
+
     #[test]
     fn write_complex() {
         let mut json = Json::new();
@@ -598,5 +602,31 @@ mod tests {
     #[test]
     fn read_value() {
         let mut json = Json::new();
+
+        macro_rules! assert_json {
+            ($expected:pat, $text:expr) => {
+                let mut reader = Cursor::new($text.as_bytes());
+                let value = json.read(&mut reader).unwrap();
+                assert!(matches!(value, $expected), "got {:?}", value);
+            };
+            ($expected:pat, $text:expr => $and_then:expr) => {
+                let mut reader = Cursor::new($text.as_bytes());
+                let value = json.read(&mut reader).unwrap();
+                match value {
+                    $expected => $and_then,
+                    _ => assert!(false, "got {:?}", value),
+                }
+            };
+        }
+
+        assert_json!(JsonValue::Null, "null");
+        assert_json!(JsonValue::Boolean(false), "false");
+        assert_json!(JsonValue::Boolean(true), "true");
+        assert_json!(JsonValue::Integer(0), "0");
+        assert_json!(JsonValue::Integer(0), "000");
+        assert_json!(JsonValue::Integer(-1), "-001");
+        assert_json!(JsonValue::Number(n), "0.5" => assert_eq!(0.5, n));
+        assert_json!(JsonValue::String(s), "\"string\"" => assert_eq!("string", s.as_str(&json)));
+        assert_json!(JsonValue::String(s), "\"\\ufa09\"" => assert_eq!("\u{fa09}", s.as_str(&json)));
     }
 }
