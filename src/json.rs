@@ -12,7 +12,7 @@ pub enum JsonValue {
 }
 
 impl JsonValue {
-    pub fn stringify<W>(&self, json: &Json, writer: &mut W) -> io::Result<()>
+    pub fn write<W>(&self, json: &Json, writer: &mut W) -> io::Result<()>
     where
         W: io::Write,
     {
@@ -28,9 +28,9 @@ impl JsonValue {
             }
             JsonValue::Integer(i) => writer.write_fmt(format_args!("{}", i))?,
             JsonValue::Number(n) => writer.write_fmt(format_args!("{}", n))?,
-            JsonValue::String(s) => s.stringify(json, writer)?,
-            JsonValue::Array(a) => a.stringify(json, writer)?,
-            JsonValue::Object(o) => o.stringify(json, writer)?,
+            JsonValue::String(s) => s.write(json, writer)?,
+            JsonValue::Array(a) => a.write(json, writer)?,
+            JsonValue::Object(o) => o.write(json, writer)?,
         }
         Ok(())
     }
@@ -80,18 +80,10 @@ impl JsonString {
         &json.strings[(self.start as usize)..(self.end as usize)]
     }
 
-    pub fn stringify<W>(&self, json: &Json, writer: &mut W) -> io::Result<()>
+    pub fn write<W>(&self, json: &Json, writer: &mut W) -> io::Result<()>
     where
         W: io::Write,
     {
-        fn to_hex_digit(n: u8) -> u8 {
-            if n <= 9 {
-                n + b'0'
-            } else {
-                n - 10 + b'a'
-            }
-        }
-
         writer.write(b"\"")?;
         for c in self.as_str(json).chars() {
             let _ = match c {
@@ -107,6 +99,14 @@ impl JsonString {
                     if c >= 32 && c <= 126 {
                         writer.write(&[c as u8])?;
                     } else {
+                        fn to_hex_digit(n: u8) -> u8 {
+                            if n <= 9 {
+                                n + b'0'
+                            } else {
+                                n - 10 + b'a'
+                            }
+                        }
+
                         writer.write(b"\\u")?;
                         let bytes = c.to_le_bytes();
                         writer.write(&[
@@ -143,7 +143,7 @@ impl JsonArray {
     }
 
     pub fn push(&mut self, value: JsonValue, json: &mut Json) {
-        let index = json.elements.len() as u32;
+        let index = json.elements.len() as _;
         json.elements.push(JsonArrayElement { value, next: 0 });
         if self.first != 0 {
             json.elements[self.last as usize].next = index;
@@ -153,7 +153,7 @@ impl JsonArray {
         self.last = index;
     }
 
-    pub fn stringify<W>(&self, json: &Json, writer: &mut W) -> io::Result<()>
+    pub fn write<W>(&self, json: &Json, writer: &mut W) -> io::Result<()>
     where
         W: io::Write,
     {
@@ -162,7 +162,7 @@ impl JsonArray {
         if next != 0 {
             loop {
                 let element = &json.elements[next];
-                element.value.stringify(json, writer)?;
+                element.value.write(json, writer)?;
                 next = element.next as _;
                 if next == 0 {
                     break;
@@ -192,9 +192,8 @@ impl JsonObject {
         }
     }
 
-    pub fn push(&mut self, key: &str, value: JsonValue, json: &mut Json) {
-        let key = json.create_string(key);
-        let index = json.members.len() as u32;
+    pub fn push(&mut self, key: JsonString, value: JsonValue, json: &mut Json) {
+        let index = json.members.len() as _;
         json.members.push(JsonObjectMember {
             key,
             value,
@@ -208,7 +207,7 @@ impl JsonObject {
         self.last = index;
     }
 
-    pub fn stringify<W>(&self, json: &Json, writer: &mut W) -> io::Result<()>
+    pub fn write<W>(&self, json: &Json, writer: &mut W) -> io::Result<()>
     where
         W: io::Write,
     {
@@ -217,9 +216,9 @@ impl JsonObject {
         if next != 0 {
             loop {
                 let member = &json.members[next];
-                member.key.stringify(json, writer)?;
+                member.key.write(json, writer)?;
                 writer.write(b":")?;
-                member.value.stringify(json, writer)?;
+                member.value.write(json, writer)?;
                 next = member.next as _;
                 if next == 0 {
                     break;
@@ -303,20 +302,262 @@ impl Json {
         }
     }
 
-    pub fn parse(&mut self, json: &str) -> JsonValue {
+    pub fn create_string(&mut self, value: &str) -> JsonString {
+        let start = self.strings.len() as _;
+        self.strings.push_str(value);
+        let end = self.strings.len() as _;
+        JsonString { start, end }
+    }
+
+    pub fn read<R>(&mut self, reader: &mut R) -> io::Result<JsonValue>
+    where
+        R: io::BufRead,
+    {
         self.strings.clear();
         self.elements.truncate(1);
         self.members.truncate(1);
 
-        JsonValue::Undefined
-    }
+        fn next_byte<R>(reader: &mut R) -> io::Result<u8>
+        where
+            R: io::BufRead,
+        {
+            let mut buf = [0; 1];
+            if reader.read(&mut buf)? == buf.len() {
+                Ok(buf[0])
+            } else {
+                Err(io::Error::from(io::ErrorKind::UnexpectedEof))
+            }
+        }
 
-    pub fn create_string(&mut self, value: &str) -> JsonString {
-        let start = self.strings.len() as u32;
-        self.strings.push_str(value);
-        let end = self.strings.len() as u32;
-        JsonString { start, end }
+        fn match_byte<R>(reader: &mut R, byte: u8) -> io::Result<bool>
+        where
+            R: io::BufRead,
+        {
+            let buf = reader.fill_buf()?;
+            if buf.len() > 1 {
+                if buf[0] == byte {
+                    reader.consume(1);
+                    Ok(true)
+                } else {
+                    Ok(false)
+                }
+            } else {
+                Err(io::Error::from(io::ErrorKind::UnexpectedEof))
+            }
+        }
+
+        fn skip_whitespace<R>(reader: &mut R) -> io::Result<()>
+        where
+            R: io::BufRead,
+        {
+            loop {
+                let buf = reader.fill_buf()?;
+                match buf.iter().position(u8::is_ascii_whitespace) {
+                    Some(i) => reader.consume(i),
+                    None => break Ok(()),
+                }
+            }
+        }
+
+        macro_rules! consume_bytes {
+            ($reader:expr, $bytes:expr) => {{
+                let mut buf = [0; $bytes.len()];
+                if $reader.read(&mut buf)? == buf.len() {
+                    if &buf != $bytes {
+                        return Err(invalid_data_error());
+                    }
+                } else {
+                    return Err(io::Error::from(io::ErrorKind::UnexpectedEof));
+                }
+            }};
+        }
+
+        fn consume_string<R>(json: &mut Json, reader: &mut R) -> io::Result<JsonString>
+        where
+            R: io::BufRead,
+        {
+            let start = json.strings.len();
+            loop {
+                match next_byte(reader)? {
+                    b'"' => {
+                        skip_whitespace(reader)?;
+                        return Ok(JsonString {
+                            start: start as _,
+                            end: json.strings.len() as _,
+                        });
+                    }
+                    b'\\' => match next_byte(reader)? {
+                        b'"' => json.strings.push('"'),
+                        b'\\' => json.strings.push('\\'),
+                        b'/' => json.strings.push('/'),
+                        b'b' => json.strings.push('\x08'),
+                        b'f' => json.strings.push('\x0c'),
+                        b'n' => json.strings.push('\n'),
+                        b'r' => json.strings.push('\r'),
+                        b't' => json.strings.push('\t'),
+                        b'u' => {
+                            let mut buf = [0; 4];
+                            if reader.read(&mut buf)? == buf.len() {
+                                fn from_hex_digit(d: u8) -> io::Result<u8> {
+                                    match d {
+                                        b'0'..=b'9' => Ok(d - b'0'),
+                                        b'a'..=b'f' => Ok(10 + d - b'a'),
+                                        b'A'..=b'F' => Ok(10 + d - b'A'),
+                                        _ => Err(invalid_data_error()),
+                                    }
+                                }
+
+                                for b in &mut buf {
+                                    *b = from_hex_digit(*b)?;
+                                }
+
+                                match buf.iter().position(|&b| b != 0) {
+                                    Some(i) => match std::str::from_utf8(&buf[i..]) {
+                                        Ok(s) => json.strings.push_str(s),
+                                        Err(_) => return Err(invalid_data_error()),
+                                    },
+                                    None => json.strings.push('\0'),
+                                }
+                            } else {
+                                return Err(invalid_data_error());
+                            }
+                        }
+                        _ => return Err(invalid_data_error()),
+                    },
+                    c => json.strings.push(c as _),
+                }
+            }
+        }
+
+        fn read_value<R>(json: &mut Json, reader: &mut R) -> io::Result<JsonValue>
+        where
+            R: io::BufRead,
+        {
+            skip_whitespace(reader)?;
+            match next_byte(reader)? {
+                b'n' => {
+                    consume_bytes!(reader, b"ull");
+                    skip_whitespace(reader)?;
+                    Ok(JsonValue::Null)
+                }
+                b'f' => {
+                    consume_bytes!(reader, b"alse");
+                    skip_whitespace(reader)?;
+                    Ok(JsonValue::Boolean(false))
+                }
+                b't' => {
+                    consume_bytes!(reader, b"rue");
+                    skip_whitespace(reader)?;
+                    Ok(JsonValue::Boolean(true))
+                }
+                b'"' => consume_string(json, reader).map(JsonValue::String),
+                b'[' => {
+                    skip_whitespace(reader)?;
+                    let mut array = JsonArray::new();
+                    if !match_byte(reader, b']')? {
+                        loop {
+                            array.push(read_value(json, reader)?, json);
+                            if match_byte(reader, b']')? {
+                                break;
+                            }
+                        }
+                    }
+                    skip_whitespace(reader)?;
+                    Ok(JsonValue::Array(array))
+                }
+                b'{' => {
+                    skip_whitespace(reader)?;
+                    let mut object = JsonObject::new();
+                    if !match_byte(reader, b'}')? {
+                        loop {
+                            skip_whitespace(reader)?;
+                            consume_bytes!(reader, b"\"");
+                            let key = consume_string(json, reader)?;
+                            consume_bytes!(reader, b":");
+                            object.push(key, read_value(json, reader)?, json);
+                            if match_byte(reader, b'}')? {
+                                break;
+                            }
+                        }
+                    }
+                    skip_whitespace(reader)?;
+                    Ok(JsonValue::Object(object))
+                }
+                b => {
+                    fn next_digit<R>(reader: &mut R) -> io::Result<Option<u8>>
+                    where
+                        R: io::BufRead,
+                    {
+                        let buf = reader.fill_buf()?;
+                        if buf.len() > 1 {
+                            let byte = buf[0];
+                            if byte.is_ascii_digit() {
+                                reader.consume(1);
+                                Ok(Some(byte))
+                            } else {
+                                Ok(None)
+                            }
+                        } else {
+                            Err(io::Error::from(io::ErrorKind::UnexpectedEof))
+                        }
+                    }
+
+                    let mut integer: JsonInteger = 0;
+
+                    let is_negative = b == b'-';
+                    if !is_negative {
+                        if b.is_ascii_digit() {
+                            integer = (b - b'0') as _;
+                        } else {
+                            return Err(invalid_data_error());
+                        }
+                    }
+
+                    if integer == 0 {
+                        while match_byte(reader, b'0')? {}
+                    }
+
+                    while let Some(d) = next_digit(reader)? {
+                        match integer.checked_mul(10).and_then(|n| n.checked_add(d as _)) {
+                            Some(n) => integer = n,
+                            None => return Err(invalid_data_error()),
+                        }
+                    }
+
+                    if match_byte(reader, b'.')? {
+                        let mut fraction_base: JsonNumber = 1.0;
+                        let mut fraction: JsonNumber = 0.0;
+
+                        while let Some(d) = next_digit(reader)? {
+                            fraction_base *= 0.1;
+                            fraction += (d as JsonNumber) * fraction_base;
+                        }
+
+                        fraction += integer as JsonNumber;
+                        if is_negative {
+                            fraction = -fraction;
+                        }
+
+                        skip_whitespace(reader)?;
+                        Ok(JsonValue::Number(fraction))
+                    } else {
+                        if is_negative {
+                            integer = -integer;
+                        }
+
+                        skip_whitespace(reader)?;
+                        Ok(JsonValue::Integer(integer))
+                    }
+                }
+            }
+        }
+
+        read_value(self, reader)
     }
+}
+
+fn invalid_data_error() -> io::Error {
+    io::Error::from(io::ErrorKind::InvalidData)
 }
 
 #[cfg(test)]
@@ -334,19 +575,28 @@ mod tests {
         array.push(json.create_string("text").into(), &mut json);
 
         let mut object = JsonObject::new();
-        object.push("first", JsonValue::Null, &mut json);
-        object.push("second", json.create_string("txt").into(), &mut json);
+        object.push(json.create_string("first"), JsonValue::Null, &mut json);
+        object.push(
+            json.create_string("second"),
+            json.create_string("txt").into(),
+            &mut json,
+        );
 
         array.push(object.into(), &mut json);
         array.push(JsonArray::new().into(), &mut json);
         array.push(JsonObject::new().into(), &mut json);
 
         let mut buf = Vec::new();
-        array.stringify(&json, &mut buf).unwrap();
+        array.write(&json, &mut buf).unwrap();
         let json = String::from_utf8(buf).unwrap();
         assert_eq!(
             "[true,8,0.5,\"text\",{\"first\":null,\"second\":\"txt\"},[],{}]",
             json
         );
+    }
+
+    #[test]
+    fn read_value() {
+        let mut json = Json::new();
     }
 }
