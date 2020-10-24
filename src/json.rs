@@ -1,3 +1,5 @@
+use std::io;
+
 pub struct JsonValue<'a> {
     json: &'a Json,
     inner: JsonValueImpl,
@@ -54,6 +56,28 @@ impl<'a> JsonValue<'a> {
             json: self.json,
             next,
         }
+    }
+
+    pub fn write<W>(&self, writer: &mut W) -> io::Result<()>
+    where
+        W: io::Write,
+    {
+        match self.inner {
+            JsonValueImpl::Undefined | JsonValueImpl::Null => {
+                writer.write(b"null")?;
+            }
+            JsonValueImpl::Boolean(true) => {
+                writer.write(b"true")?;
+            }
+            JsonValueImpl::Boolean(false) => {
+                writer.write(b"false")?;
+            }
+            JsonValueImpl::Integer(i) => writer.write_fmt(format_args!("{}", i))?,
+            JsonValueImpl::Number(n) => writer.write_fmt(format_args!("{}", n))?,
+            JsonValueImpl::String(r) => write_str(writer, self.json.get_string(r))?,
+            _ => (),
+        }
+        Ok(())
     }
 }
 
@@ -156,6 +180,10 @@ impl Json {
     }
 
     pub fn parse<'a>(&'a mut self, json: &'a str) -> JsonValue<'a> {
+        self.strings.clear();
+        self.elements.truncate(1);
+        self.members.truncate(1);
+
         JsonValue {
             json: self,
             inner: JsonValueImpl::Undefined,
@@ -165,6 +193,50 @@ impl Json {
     fn get_string<'a>(&'a self, range: JsonStringRange) -> &'a str {
         &self.strings[range.from..range.to]
     }
+}
+
+fn write_str<W>(writer: &mut W, s: &str) -> io::Result<()>
+where
+    W: io::Write,
+{
+    fn to_hex_digit(n: u8) -> u8 {
+        if n <= 9 {
+            n + b'0'
+        } else {
+            n - 10 + b'a'
+        }
+    }
+
+    writer.write(b"\"")?;
+    for c in s.chars() {
+        let _ = match c {
+            '\"' => writer.write(b"\\\"")?,
+            '\\' => writer.write(b"\\\\")?,
+            '\x08' => writer.write(b"\\b")?,
+            '\x0c' => writer.write(b"\\f")?,
+            '\n' => writer.write(b"\\n")?,
+            '\r' => writer.write(b"\\r")?,
+            '\t' => writer.write(b"\\t")?,
+            _ => {
+                let c = c as u32;
+                if c >= 32 && c <= 126 {
+                    writer.write(&[c as u8])?;
+                } else {
+                    writer.write(b"\\u")?;
+                    let bytes = c.to_le_bytes();
+                    writer.write(&[
+                        to_hex_digit(bytes[3]),
+                        to_hex_digit(bytes[2]),
+                        to_hex_digit(bytes[1]),
+                        to_hex_digit(bytes[0]),
+                    ])?;
+                }
+                0
+            }
+        };
+    }
+    writer.write(b"\"")?;
+    Ok(())
 }
 
 #[cfg(test)]
