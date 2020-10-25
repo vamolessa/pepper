@@ -14,6 +14,7 @@ mod event_manager;
 mod history;
 mod json;
 mod keymap;
+mod lsp;
 mod mode;
 mod navigation_history;
 mod pattern;
