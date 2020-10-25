@@ -6,6 +6,7 @@ pub enum JsonValue {
     Boolean(bool),
     Integer(JsonInteger),
     Number(JsonNumber),
+    Str(&'static str),
     String(JsonString),
     Array(JsonArray),
     Object(JsonObject),
@@ -24,6 +25,11 @@ impl From<JsonInteger> for JsonValue {
 impl From<JsonNumber> for JsonValue {
     fn from(value: JsonNumber) -> Self {
         JsonValue::Number(value)
+    }
+}
+impl From<&'static str> for JsonValue {
+    fn from(value: &'static str) -> Self {
+        JsonValue::Str(value)
     }
 }
 impl From<JsonString> for JsonValue {
@@ -87,6 +93,31 @@ impl JsonArray {
     }
 }
 
+pub enum JsonKey {
+    Str(&'static str),
+    String(JsonString),
+}
+
+impl JsonKey {
+    pub fn as_str<'a>(&self, json: &'a Json) -> &'a str {
+        match self {
+            JsonKey::Str(s) => s,
+            JsonKey::String(s) => s.as_str(json),
+        }
+    }
+}
+
+impl From<&'static str> for JsonKey {
+    fn from(value: &'static str) -> Self {
+        Self::Str(value)
+    }
+}
+impl From<JsonString> for JsonKey {
+    fn from(value: JsonString) -> Self {
+        Self::String(value)
+    }
+}
+
 #[derive(Debug)]
 pub struct JsonObject {
     first: u32,
@@ -105,7 +136,7 @@ impl JsonObject {
         }
     }
 
-    pub fn push(&mut self, key: JsonString, value: JsonValue, json: &mut Json) {
+    pub fn push(&mut self, key: JsonKey, value: JsonValue, json: &mut Json) {
         let index = json.members.len() as _;
         json.members.push(JsonObjectMember {
             key,
@@ -127,7 +158,7 @@ struct JsonArrayElement {
 }
 
 struct JsonObjectMember {
-    key: JsonString,
+    key: JsonKey,
     value: JsonValue,
     next: u32,
 }
@@ -185,7 +216,7 @@ impl Json {
                 next: 0,
             }],
             members: vec![JsonObjectMember {
-                key: JsonString { start: 0, end: 0 },
+                key: JsonKey::Str(""),
                 value: JsonValue::Null,
                 next: 0,
             }],
@@ -369,7 +400,7 @@ impl Json {
                             consume_bytes!(reader, b"\"");
                             let key = consume_string(json, reader)?;
                             consume_bytes!(reader, b":");
-                            object.push(key, read_value(json, reader)?, json);
+                            object.push(JsonKey::String(key), read_value(json, reader)?, json);
                             if match_byte(reader, b'}')? {
                                 break;
                             }
@@ -512,6 +543,7 @@ impl Json {
             }
             JsonValue::Integer(i) => writer.write_fmt(format_args!("{}", i))?,
             JsonValue::Number(n) => writer.write_fmt(format_args!("{}", n))?,
+            JsonValue::Str(s) => write_str(writer, s)?,
             JsonValue::String(s) => write_str(writer, s.as_str(self))?,
             JsonValue::Array(a) => {
                 writer.write(b"[")?;
@@ -603,12 +635,8 @@ mod tests {
         array.push(json.create_string("text").into(), &mut json);
 
         let mut object = JsonObject::new();
-        object.push(json.create_string("first"), JsonValue::Null, &mut json);
-        object.push(
-            json.create_string("second"),
-            json.create_string("txt").into(),
-            &mut json,
-        );
+        object.push("first".into(), JsonValue::Null, &mut json);
+        object.push("second".into(), json.create_string("txt").into(), &mut json);
 
         array.push(object.into(), &mut json);
         array.push(JsonArray::new().into(), &mut json);
