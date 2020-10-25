@@ -20,7 +20,6 @@ use crate::{
 struct ReadBuf {
     buf: Vec<u8>,
     len: usize,
-    position: usize,
 }
 
 impl ReadBuf {
@@ -30,7 +29,6 @@ impl ReadBuf {
         Self {
             buf,
             len: 0,
-            position: 0,
         }
     }
 
@@ -66,14 +64,13 @@ impl<'a> ReadGuard<'a> {
     }
 
     pub fn as_bytes(&'a self) -> &'a [u8] {
-        &self.0.buf[self.0.position..self.0.len]
+        &self.0.buf[..self.0.len]
     }
 }
 
 impl<'a> Drop for ReadGuard<'a> {
     fn drop(&mut self) {
         self.0.len = 0;
-        self.0.position = 0;
     }
 }
 

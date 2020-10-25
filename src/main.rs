@@ -68,6 +68,22 @@ pub struct Args {
 }
 
 fn main() {
+    let lsp_command = std::process::Command::new("rust-analyzer");
+    let lsp_connection = lsp::ServerConnection::spawn(lsp_command).unwrap();
+    let mut lsp = lsp::Client::from_server_connection(lsp_connection);
+    let mut params = json::JsonObject::new();
+    params.push("processId".into(), json::JsonValue::Integer(std::process::id() as _), &mut lsp.json);
+    params.push("rootUri".into(), json::JsonValue::Null, &mut lsp.json);
+    let capabilities = json::JsonObject::new();
+    params.push("capabilities".into(), json::JsonValue::Object(capabilities), &mut lsp.json);
+    let params = params.into();
+    lsp.request("initialize", &params).unwrap();
+    lsp.wait_response(|r| {
+        println!("response:\n{}", r);
+    }).unwrap();
+
+    return;
+
     let args: Args = argh::from_env();
     if args.version {
         let name = env!("CARGO_PKG_NAME");
