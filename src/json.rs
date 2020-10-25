@@ -2,7 +2,6 @@ use std::{convert::From, io};
 
 #[derive(Debug)]
 pub enum JsonValue {
-    Undefined,
     Null,
     Boolean(bool),
     Integer(JsonInteger),
@@ -10,31 +9,6 @@ pub enum JsonValue {
     String(JsonString),
     Array(JsonArray),
     Object(JsonObject),
-}
-
-impl JsonValue {
-    pub fn write<W>(&self, json: &Json, writer: &mut W) -> io::Result<()>
-    where
-        W: io::Write,
-    {
-        match self {
-            JsonValue::Undefined | JsonValue::Null => {
-                writer.write(b"null")?;
-            }
-            JsonValue::Boolean(true) => {
-                writer.write(b"true")?;
-            }
-            JsonValue::Boolean(false) => {
-                writer.write(b"false")?;
-            }
-            JsonValue::Integer(i) => writer.write_fmt(format_args!("{}", i))?,
-            JsonValue::Number(n) => writer.write_fmt(format_args!("{}", n))?,
-            JsonValue::String(s) => s.write(json, writer)?,
-            JsonValue::Array(a) => a.write(json, writer)?,
-            JsonValue::Object(o) => o.write(json, writer)?,
-        }
-        Ok(())
-    }
 }
 
 impl From<bool> for JsonValue {
@@ -81,51 +55,6 @@ impl JsonString {
     pub fn as_str<'a>(&self, json: &'a Json) -> &'a str {
         &json.strings[(self.start as usize)..(self.end as usize)]
     }
-
-    pub fn write<W>(&self, json: &Json, writer: &mut W) -> io::Result<()>
-    where
-        W: io::Write,
-    {
-        writer.write(b"\"")?;
-        for c in self.as_str(json).chars() {
-            let _ = match c {
-                '\"' => writer.write(b"\\\"")?,
-                '\\' => writer.write(b"\\\\")?,
-                '\x08' => writer.write(b"\\b")?,
-                '\x0c' => writer.write(b"\\f")?,
-                '\n' => writer.write(b"\\n")?,
-                '\r' => writer.write(b"\\r")?,
-                '\t' => writer.write(b"\\t")?,
-                _ => {
-                    let c = c as u32;
-                    if c >= 32 && c <= 126 {
-                        writer.write(&[c as u8])?;
-                    } else {
-                        fn to_hex_digit(n: u32) -> u8 {
-                            let n = (n & 0xf) as u8;
-                            if n <= 9 {
-                                n + b'0'
-                            } else {
-                                n - 10 + b'a'
-                            }
-                        }
-
-                        writer.write(b"\\u")?;
-                        let c = c.to_le();
-                        writer.write(&[
-                            to_hex_digit(c >> 12),
-                            to_hex_digit(c >> 8),
-                            to_hex_digit(c >> 4),
-                            to_hex_digit(c),
-                        ])?;
-                    }
-                    0
-                }
-            };
-        }
-        writer.write(b"\"")?;
-        Ok(())
-    }
 }
 
 #[derive(Debug)]
@@ -155,27 +84,6 @@ impl JsonArray {
             self.first = index;
         }
         self.last = index;
-    }
-
-    pub fn write<W>(&self, json: &Json, writer: &mut W) -> io::Result<()>
-    where
-        W: io::Write,
-    {
-        writer.write(b"[")?;
-        let mut next = self.first as usize;
-        if next != 0 {
-            loop {
-                let element = &json.elements[next];
-                element.value.write(json, writer)?;
-                next = element.next as _;
-                if next == 0 {
-                    break;
-                }
-                writer.write(b",")?;
-            }
-        }
-        writer.write(b"]")?;
-        Ok(())
     }
 }
 
@@ -210,29 +118,6 @@ impl JsonObject {
             self.first = index;
         }
         self.last = index;
-    }
-
-    pub fn write<W>(&self, json: &Json, writer: &mut W) -> io::Result<()>
-    where
-        W: io::Write,
-    {
-        writer.write(b"{")?;
-        let mut next = self.first as usize;
-        if next != 0 {
-            loop {
-                let member = &json.members[next];
-                member.key.write(json, writer)?;
-                writer.write(b":")?;
-                member.value.write(json, writer)?;
-                next = member.next as _;
-                if next == 0 {
-                    break;
-                }
-                writer.write(b",")?;
-            }
-        }
-        writer.write(b"}")?;
-        Ok(())
     }
 }
 
@@ -296,12 +181,12 @@ impl Json {
         Self {
             strings: String::new(),
             elements: vec![JsonArrayElement {
-                value: JsonValue::Undefined,
+                value: JsonValue::Null,
                 next: 0,
             }],
             members: vec![JsonObjectMember {
                 key: JsonString { start: 0, end: 0 },
-                value: JsonValue::Undefined,
+                value: JsonValue::Null,
                 next: 0,
             }],
         }
@@ -408,7 +293,7 @@ impl Json {
                                     }
                                 }
 
-                                let mut c : u32 = 0;
+                                let mut c: u32 = 0;
                                 c += from_hex_digit(buf[0])? << 12;
                                 c += from_hex_digit(buf[1])? << 8;
                                 c += from_hex_digit(buf[2])? << 4;
@@ -558,6 +443,106 @@ impl Json {
 
         read_value(self, reader)
     }
+
+    pub fn write<W>(&self, writer: &mut W, value: &JsonValue) -> io::Result<()>
+    where
+        W: io::Write,
+    {
+        fn write_str<W>(writer: &mut W, s: &str) -> io::Result<()>
+        where
+            W: io::Write,
+        {
+            writer.write(b"\"")?;
+            for c in s.chars() {
+                let _ = match c {
+                    '\"' => writer.write(b"\\\"")?,
+                    '\\' => writer.write(b"\\\\")?,
+                    '\x08' => writer.write(b"\\b")?,
+                    '\x0c' => writer.write(b"\\f")?,
+                    '\n' => writer.write(b"\\n")?,
+                    '\r' => writer.write(b"\\r")?,
+                    '\t' => writer.write(b"\\t")?,
+                    _ => {
+                        let c = c as u32;
+                        if c >= 32 && c <= 126 {
+                            writer.write(&[c as u8])?;
+                        } else {
+                            fn to_hex_digit(n: u32) -> u8 {
+                                let n = (n & 0xf) as u8;
+                                if n <= 9 {
+                                    n + b'0'
+                                } else {
+                                    n - 10 + b'a'
+                                }
+                            }
+
+                            writer.write(b"\\u")?;
+                            let c = c.to_le();
+                            writer.write(&[
+                                to_hex_digit(c >> 12),
+                                to_hex_digit(c >> 8),
+                                to_hex_digit(c >> 4),
+                                to_hex_digit(c),
+                            ])?;
+                        }
+                        0
+                    }
+                };
+            }
+            writer.write(b"\"")?;
+            Ok(())
+        }
+
+        match value {
+            JsonValue::Null => {
+                writer.write(b"null")?;
+            }
+            JsonValue::Boolean(true) => {
+                writer.write(b"true")?;
+            }
+            JsonValue::Boolean(false) => {
+                writer.write(b"false")?;
+            }
+            JsonValue::Integer(i) => writer.write_fmt(format_args!("{}", i))?,
+            JsonValue::Number(n) => writer.write_fmt(format_args!("{}", n))?,
+            JsonValue::String(s) => write_str(writer, s.as_str(self))?,
+            JsonValue::Array(a) => {
+                writer.write(b"[")?;
+                let mut next = a.first as usize;
+                if next != 0 {
+                    loop {
+                        let element = &self.elements[next];
+                        self.write(writer, &element.value)?;
+                        next = element.next as _;
+                        if next == 0 {
+                            break;
+                        }
+                        writer.write(b",")?;
+                    }
+                }
+                writer.write(b"]")?;
+            }
+            JsonValue::Object(o) => {
+                writer.write(b"{")?;
+                let mut next = o.first as usize;
+                if next != 0 {
+                    loop {
+                        let member = &self.members[next];
+                        write_str(writer, member.key.as_str(self))?;
+                        writer.write(b":")?;
+                        self.write(writer, &member.value)?;
+                        next = member.next as _;
+                        if next == 0 {
+                            break;
+                        }
+                        writer.write(b",")?;
+                    }
+                }
+                writer.write(b"}")?;
+            }
+        }
+        Ok(())
+    }
 }
 
 fn invalid_data_error() -> io::Error {
@@ -569,6 +554,33 @@ mod tests {
     use super::*;
 
     use std::io::Cursor;
+
+    #[test]
+    fn write_value() {
+        let mut json = Json::new();
+        let mut buf = Vec::new();
+
+        macro_rules! assert_json {
+            ($expected:expr, $value:expr) => {
+                buf.clear();
+                let value = $value;
+                json.write(&mut buf, &value).unwrap();
+                assert_eq!($expected, std::str::from_utf8(&buf).unwrap());
+            };
+        }
+
+        assert_json!("null", JsonValue::Null);
+        assert_json!("false", JsonValue::Boolean(false));
+        assert_json!("true", JsonValue::Boolean(true));
+        assert_json!("0", JsonValue::Integer(0));
+        assert_json!("1", JsonValue::Integer(1));
+        assert_json!("-1", JsonValue::Integer(-1));
+        assert_json!("0.5", JsonValue::Number(0.5));
+        assert_json!("\"string\"", json.create_string("string").into());
+        assert_json!("\"\\u00e1\"", json.create_string("\u{00e1}").into());
+        assert_json!("\"\\ufa09\"", json.create_string("\u{fa09}").into());
+        assert_json!("\"\\\"\\\\/\\b\\f\\n\\r\\t\"", json.create_string("\"\\/\x08\x0c\n\r\t").into());
+    }
 
     #[test]
     fn write_complex() {
@@ -593,7 +605,8 @@ mod tests {
         array.push(JsonObject::new().into(), &mut json);
 
         let mut buf = Vec::new();
-        array.write(&json, &mut buf).unwrap();
+        let array = array.into();
+        json.write(&mut buf, &array).unwrap();
         let json = String::from_utf8(buf).unwrap();
         assert_eq!(
             "[true,8,0.5,\"text\",{\"first\":null,\"second\":\"txt\"},[],{}]",
@@ -631,5 +644,9 @@ mod tests {
         assert_json!(JsonValue::String(s), "\"string\"" => assert_eq!("string", s.as_str(&json)));
         assert_json!(JsonValue::String(s), "\"\\u00e1\"" => assert_eq!("\u{00e1}", s.as_str(&json)));
         assert_json!(JsonValue::String(s), "\"\\ufa09\"" => assert_eq!("\u{fa09}", s.as_str(&json)));
+        assert_json!(JsonValue::String(s), "\"\\\"\\\\\\/\\b\\f\\n\\r\\t\"" => assert_eq!("\"\\/\x08\x0c\n\r\t", s.as_str(&json)));
     }
+
+    #[test]
+    fn read_complex() {}
 }
