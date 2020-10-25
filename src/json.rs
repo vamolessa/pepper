@@ -238,9 +238,14 @@ impl Json {
         {
             loop {
                 let buf = reader.fill_buf()?;
-                match buf.iter().position(u8::is_ascii_whitespace) {
-                    Some(i) => reader.consume(i),
-                    None => break Ok(()),
+                match buf
+                    .iter()
+                    .enumerate()
+                    .skip_while(|(_, c)| c.is_ascii_whitespace())
+                    .next()
+                {
+                    Some((0, _)) | None => return Ok(()),
+                    Some((i, _)) => reader.consume(i),
                 }
             }
         }
@@ -349,6 +354,7 @@ impl Json {
                             if match_byte(reader, b']')? {
                                 break;
                             }
+                            consume_bytes!(reader, b",");
                         }
                     }
                     skip_whitespace(reader)?;
@@ -367,6 +373,7 @@ impl Json {
                             if match_byte(reader, b'}')? {
                                 break;
                             }
+                            consume_bytes!(reader, b",");
                         }
                     }
                     skip_whitespace(reader)?;
@@ -579,7 +586,10 @@ mod tests {
         assert_json!("\"string\"", json.create_string("string").into());
         assert_json!("\"\\u00e1\"", json.create_string("\u{00e1}").into());
         assert_json!("\"\\ufa09\"", json.create_string("\u{fa09}").into());
-        assert_json!("\"\\\"\\\\/\\b\\f\\n\\r\\t\"", json.create_string("\"\\/\x08\x0c\n\r\t").into());
+        assert_json!(
+            "\"\\\"\\\\/\\b\\f\\n\\r\\t\"",
+            json.create_string("\"\\/\x08\x0c\n\r\t").into()
+        );
     }
 
     #[test]
@@ -648,5 +658,54 @@ mod tests {
     }
 
     #[test]
-    fn read_complex() {}
+    fn read_complex() {
+        let mut json = Json::new();
+        let mut reader = Cursor::new(b" { \"array\"  : [\"string\",  false,null,  0.25,\n{\"int\":  7,  \"bool\":false,\"null\":null, \t\n   \"string\":\"some text\"},[]],   \n\"str\":\"asdad\", \"empty\":{}}   ");
+        let value = json.read(&mut reader).unwrap();
+
+        macro_rules! assert_next {
+            ($iter:expr, $pattern:pat => $and_then:expr) => {
+                match $iter.next() {
+                    Some($pattern) => $and_then,
+                    v => assert!(false, "got {:?}", v),
+                }
+            };
+        }
+
+        match value {
+            JsonValue::Object(o) => {
+                let mut members = o.iter(&json);
+
+                assert_next!(members, ("array", JsonValue::Array(a)) => {
+                    let mut elements = a.iter(&json);
+
+                    assert_next!(elements, JsonValue::String(s) => assert_eq!("string", s.as_str(&json)));
+                    assert_next!(elements, JsonValue::Boolean(false) => assert!(true));
+                    assert_next!(elements, JsonValue::Null => assert!(true));
+                    assert_next!(elements, JsonValue::Number(n) => assert_eq!(0.25, *n));
+
+                    assert_next!(elements, JsonValue::Object(o) => {
+                        let mut members = o.iter(&json);
+
+                        assert_next!(members, ("int", JsonValue::Integer(7)) => assert!(true));
+                        assert_next!(members, ("bool", JsonValue::Boolean(false)) => assert!(true));
+                        assert_next!(members, ("null", JsonValue::Null) => assert!(true));
+                        assert_next!(members, ("string", JsonValue::String(s)) => assert_eq!("some text", s.as_str(&json)));
+                    });
+
+                    assert_next!(elements, JsonValue::Array(a) => {
+                        assert!(a.iter(&json).next().is_none());
+                    });
+
+                    assert!(elements.next().is_none());
+                });
+
+                assert_next!(members, ("str", JsonValue::String(s)) => assert_eq!("asdad", s.as_str(&json)));
+                assert_next!(members, ("empty", JsonValue::Object(o)) => {
+                    assert!(o.iter(&json).next().is_none());
+                });
+            }
+            _ => assert!(false, "got {:?}", value),
+        }
+    }
 }
