@@ -1,6 +1,7 @@
 use std::{
+    env,
     io::{self, Cursor, Read, Write},
-    process::{Child, ChildStdin, ChildStdout, Command, Stdio},
+    process::{self, Child, ChildStdin, ChildStdout, Command, Stdio},
 };
 
 use crate::json::{Json, JsonObject, JsonValue};
@@ -135,6 +136,46 @@ impl Client {
             write_buffer: Vec::new(),
             read_buffer: ReadBuf::new(),
         }
+    }
+
+    pub fn initialize(&mut self) -> io::Result<()> {
+        let current_dir = match env::current_dir()?.as_os_str().to_str() {
+            Some(path) => JsonValue::String(self.json.create_string(path)),
+            None => JsonValue::Null,
+        };
+
+        let mut params = JsonObject::new();
+        params.push(
+            "processId".into(),
+            JsonValue::Integer(process::id() as _),
+            &mut self.json,
+        );
+        params.push("rootUri".into(), current_dir, &mut self.json);
+
+        let mut workspaceCapabilities = JsonObject::new();
+
+        let mut textDocumentCapabilities = JsonObject::new();
+
+        let mut capabilities = JsonObject::new();
+        capabilities.push(
+            "workspace".into(),
+            workspaceCapabilities.into(),
+            &mut self.json,
+        );
+        capabilities.push(
+            "textDocument".into(),
+            textDocumentCapabilities.into(),
+            &mut self.json,
+        );
+
+        params.push(
+            "capabilities".into(),
+            JsonValue::Object(capabilities),
+            &mut self.json,
+        );
+
+        let params = params.into();
+        self.request("initialize", &params)
     }
 
     pub fn request(&mut self, method: &str, params: &JsonValue) -> io::Result<()> {
