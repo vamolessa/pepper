@@ -313,7 +313,7 @@ pub fn get_path_extension(path: &Path) -> &str {
 mod tests {
     use super::*;
 
-    use crate::buffer_position::BufferPosition;
+    use crate::{buffer::BufferLinePool, buffer_position::BufferPosition};
 
     fn assert_token(slice: &str, kind: TokenKind, line: &str, token: &Token) {
         assert_eq!(kind, token.kind);
@@ -420,11 +420,12 @@ mod tests {
             };
         }
 
+        let mut line_pool = BufferLinePool::default();
         let mut syntax = Syntax::default();
         syntax.add_rule(TokenKind::Comment, Pattern::new("/*{!(*/).$}").unwrap());
         syntax.add_rule(TokenKind::String, Pattern::new("'{!'.$}").unwrap());
 
-        let mut buffer = BufferContent::from_str("/*\n*/");
+        let mut buffer = BufferContent::from_str(&mut line_pool, "/*\n*/");
 
         let mut highlighted = HighlightedBuffer::new();
         highlighted.highligh_all(&syntax, &buffer);
@@ -434,9 +435,8 @@ mod tests {
         assert_next_token!(tokens, TokenKind::Comment, 0..2);
         assert_eq!(None, tokens.next());
 
-        let range = buffer.insert_text(BufferPosition::line_col(1, 0), "'");
+        let range = buffer.insert_text(&mut line_pool, BufferPosition::line_col(1, 0), "'");
         highlighted.on_insert(&syntax, &buffer, range);
-        //highlighted.fix_highlight_from(&syntax, &buffer, highlighted.lines[0].kind, 1);
 
         let mut tokens = highlighted.lines.iter().map(|l| l.tokens.iter()).flatten();
         assert_next_token!(tokens, TokenKind::Comment, 0..2);

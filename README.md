@@ -54,8 +54,8 @@ keys | action
 `cn`, `cp` | set next/previous cursor as main cursor
 `cs` | search inside selections and only keep those ranges
 `cS`, `CS` | search inside selections and remove those ranges
-`cf` | filter selections and keep those that contain the search pattern
-`cF`, `CF` | filter selections and remove those that contain the search pattern
+`cf` | filter selections and keep the ones that contains the sear
+`cF`, `CF` | search inside selections and remove those ranges
 
 binding | expands to | action
 --- | --- | ---

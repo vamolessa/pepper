@@ -334,9 +334,9 @@ mod buffer {
         (search, handle): (ScriptString, Option<BufferHandle>),
     ) -> ScriptResult<()> {
         let search = search.to_str()?;
-        if let Some(buffer) = handle
+        if let Some((buffer, _)) = handle
             .or_else(|| ctx.current_buffer_handle())
-            .and_then(|h| ctx.buffers.get_mut(h))
+            .and_then(|h| ctx.buffers.get_mut_with_line_pool(h))
         {
             buffer.set_search(search);
         }
@@ -472,8 +472,8 @@ mod buffer {
             None => return Err(ScriptError::from("no buffer opened")),
         };
 
-        let buffer = match ctx.buffers.get_mut(handle) {
-            Some(buffer) => buffer,
+        let buffer = match ctx.buffers.get_mut_with_line_pool(handle) {
+            Some((buffer, _)) => buffer,
             None => return Err(ScriptError::from("no buffer opened")),
         };
 
@@ -521,7 +521,8 @@ mod buffer {
                 .and_then(|h| ctx.buffer_views.get(h))
                 .map(|v| v.buffer_handle)
         });
-        if let Some(buffer) = buffer_handle.and_then(|h| ctx.buffers.get_mut(h)) {
+        if let Some((buffer, _)) = buffer_handle.and_then(|h| ctx.buffers.get_mut_with_line_pool(h))
+        {
             buffer.commit_edits();
         }
         Ok(())

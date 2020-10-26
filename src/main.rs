@@ -12,9 +12,9 @@ mod cursor;
 mod editor;
 mod event_manager;
 mod history;
-mod json;
+//mod json;
 mod keymap;
-mod lsp;
+//mod lsp;
 mod mode;
 mod navigation_history;
 mod pattern;
@@ -68,6 +68,7 @@ pub struct Args {
 }
 
 fn main() {
+    /*
     let lsp_command = std::process::Command::new("rust-analyzer");
     let lsp_connection = lsp::ServerConnection::spawn(lsp_command).unwrap();
     let mut lsp = lsp::Client::from_server_connection(lsp_connection);
@@ -83,6 +84,7 @@ fn main() {
     }).unwrap();
 
     return;
+    */
 
     let args: Args = argh::from_env();
     if args.version {
