@@ -86,10 +86,7 @@ pub mod search {
         let client = unwrap_or_return!(ctx.clients.get_mut(ctx.target_client));
         let handle = unwrap_or_return!(client.current_buffer_view_handle());
         let buffer_view = unwrap_or_return!(ctx.buffer_views.get_mut(handle));
-        let buffer = unwrap_or_return!(ctx
-            .buffers
-            .get_mut_with_line_pool(buffer_view.buffer_handle))
-        .0;
+        let buffer = unwrap_or_return!(ctx.buffers.get_mut(buffer_view.buffer_handle));
         buffer.set_search(&ctx.read_line.input());
         let search_ranges = buffer.search_ranges();
 
@@ -208,11 +205,7 @@ pub mod filter_cursors {
 
         let handle = unwrap_or_return!(ctx.current_buffer_view_handle());
         let buffer_view = unwrap_or_return!(ctx.buffer_views.get_mut(handle));
-        let buffer = unwrap_or_return!(ctx
-            .buffers
-            .get_mut_with_line_pool(buffer_view.buffer_handle))
-        .0
-        .content();
+        let buffer = unwrap_or_return!(ctx.buffers.get_mut(buffer_view.buffer_handle)).content();
 
         let mut cursors = buffer_view.cursors.mut_guard();
         let main_cursor_position = cursors.main_cursor().position;
@@ -327,11 +320,7 @@ pub mod split_cursors {
 
         let handle = unwrap_or_return!(ctx.current_buffer_view_handle());
         let buffer_view = unwrap_or_return!(ctx.buffer_views.get_mut(handle));
-        let buffer = unwrap_or_return!(ctx
-            .buffers
-            .get_mut_with_line_pool(buffer_view.buffer_handle))
-        .0
-        .content();
+        let buffer = unwrap_or_return!(ctx.buffers.get_mut(buffer_view.buffer_handle)).content();
 
         let mut cursors = buffer_view.cursors.mut_guard();
         let main_cursor_position = cursors.main_cursor().position;

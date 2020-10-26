@@ -955,6 +955,10 @@ impl BufferCollection {
         self.buffers[handle.0].as_ref()
     }
 
+    pub fn get_mut(&mut self, handle: BufferHandle) -> Option<&mut Buffer> {
+        self.buffers[handle.0].as_mut()
+    }
+
     pub fn get_mut_with_line_pool(
         &mut self,
         handle: BufferHandle,
