@@ -301,13 +301,11 @@ where
                 match event {
                     ConnectionEvent::NewConnection => (),
                     ConnectionEvent::Stream(_) => {
-                        let empty = connection.receive_display(|bytes| {
-                            ui.display(bytes).map(|_| bytes.is_empty())
-                        })??;
-                        if empty {
+                        let bytes = connection.receive_display()?;
+                        if bytes.is_empty() {
                             break;
                         }
-
+                        ui.display(bytes)?;
                         connection.listen_next_event(&event_registry)?;
                     }
                 }

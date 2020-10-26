@@ -12,9 +12,9 @@ mod cursor;
 mod editor;
 mod event_manager;
 mod history;
-//mod json;
+mod json;
 mod keymap;
-//mod lsp;
+mod lsp;
 mod mode;
 mod navigation_history;
 mod pattern;
@@ -79,10 +79,7 @@ fn main() {
     params.push("capabilities".into(), json::JsonValue::Object(capabilities), &mut lsp.json);
     let params = params.into();
     lsp.request("initialize", &params).unwrap();
-    lsp.wait_response(|r| {
-        println!("response:\n{}", r);
-    }).unwrap();
-
+    println!("response:\n{}", lsp.wait_response().unwrap());
     return;
     */
 

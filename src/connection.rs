@@ -26,32 +26,22 @@ impl ReadBuf {
     pub fn new() -> Self {
         let mut buf = Vec::with_capacity(2 * 1024);
         buf.resize(buf.capacity(), 0);
-        Self {
-            buf,
-            len: 0,
-        }
+        Self { buf, len: 0 }
     }
 
-    pub fn guard(&mut self) -> ReadGuard {
-        ReadGuard(self)
-    }
-}
-
-struct ReadGuard<'a>(&'a mut ReadBuf);
-
-impl<'a> ReadGuard<'a> {
-    pub fn read_from<R>(&mut self, mut reader: R) -> io::Result<()>
+    pub fn read_from<R>(&mut self, mut reader: R) -> io::Result<&[u8]>
     where
         R: Read,
     {
+        self.len = 0;
         loop {
-            match reader.read(&mut self.0.buf[self.0.len..]) {
+            match reader.read(&mut self.buf[self.len..]) {
                 Ok(len) => {
-                    self.0.len += len;
-                    if self.0.len < self.0.buf.len() {
+                    self.len += len;
+                    if self.len < self.buf.len() {
                         break;
                     }
-                    self.0.buf.resize(self.0.buf.len() * 2, 0);
+                    self.buf.resize(self.buf.len() * 2, 0);
                 }
                 Err(e) => match e.kind() {
                     io::ErrorKind::WouldBlock => break,
@@ -60,17 +50,7 @@ impl<'a> ReadGuard<'a> {
             }
         }
 
-        Ok(())
-    }
-
-    pub fn as_bytes(&'a self) -> &'a [u8] {
-        &self.0.buf[..self.0.len]
-    }
-}
-
-impl<'a> Drop for ReadGuard<'a> {
-    fn drop(&mut self) {
-        self.0.len = 0;
+        Ok(&self.buf[..self.len])
     }
 }
 
@@ -208,10 +188,9 @@ impl ConnectionWithClientCollection {
             None => return Ok(EditorLoop::Quit),
         };
 
-        let mut read_guard = self.read_buf.guard();
-        read_guard.read_from(&mut connection.0)?;
+        let bytes = self.read_buf.read_from(&mut connection.0)?;
         let mut last_editor_loop = EditorLoop::Quit;
-        let mut deserializer = ClientEventDeserializer::from_slice(read_guard.as_bytes());
+        let mut deserializer = ClientEventDeserializer::from_slice(bytes);
 
         loop {
             match deserializer.deserialize_next() {
@@ -252,9 +231,7 @@ impl ConnectionWithServer {
 
     pub fn close(&mut self) {
         let _ = self.stream.set_nonblocking(false);
-        let mut read_guard = self.read_buf.guard();
-        let _ = read_guard.read_from(&mut self.stream);
-
+        let _ = self.read_buf.read_from(&mut self.stream);
         let _ = self.stream.shutdown(Shutdown::Both);
     }
 
@@ -290,13 +267,7 @@ impl ConnectionWithServer {
         result
     }
 
-    pub fn receive_display<F, R>(&mut self, func: F) -> io::Result<R>
-    where
-        F: FnOnce(&[u8]) -> R,
-    {
-        let mut read_guard = self.read_buf.guard();
-        read_guard.read_from(&mut self.stream)?;
-        let bytes = read_guard.as_bytes();
-        Ok(func(bytes))
+    pub fn receive_display(&mut self) -> io::Result<&[u8]> {
+        self.read_buf.read_from(&mut self.stream)
     }
 }

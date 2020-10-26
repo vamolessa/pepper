@@ -66,15 +66,7 @@ impl ReadBuf {
         Self { buf, len: 0 }
     }
 
-    pub fn guard(&mut self) -> ReadGuard {
-        ReadGuard(self)
-    }
-}
-
-struct ReadGuard<'a>(&'a mut ReadBuf);
-
-impl<'a> ReadGuard<'a> {
-    pub fn read_from<R>(&mut self, mut reader: R) -> io::Result<()>
+    pub fn read_from<R>(&mut self, mut reader: R) -> io::Result<&[u8]>
     where
         R: Read,
     {
@@ -84,14 +76,15 @@ impl<'a> ReadGuard<'a> {
                 .map(|p| p + pattern.len())
         }
 
+        self.len = 0;
         let mut total_len = 0;
         loop {
-            match reader.read(&mut self.0.buf[self.0.len..]) {
+            match reader.read(&mut self.buf[self.len..]) {
                 Ok(len) => {
-                    self.0.len += len;
+                    self.len += len;
 
                     if total_len == 0 {
-                        let bytes = &self.0.buf[..self.0.len];
+                        let bytes = &self.buf[..self.len];
                         if let Some(cl_index) = find_end(bytes, b"Content-Length: ") {
                             let bytes = &bytes[cl_index..];
                             if let Some(c_index) = find_end(bytes, b"\r\n\r\n") {
@@ -110,27 +103,17 @@ impl<'a> ReadGuard<'a> {
                         }
                     }
 
-                    if self.0.len >= total_len {
+                    if self.len >= total_len {
                         break;
                     }
 
-                    self.0.buf.resize(self.0.buf.len() * 2, 0);
+                    self.buf.resize(self.buf.len() * 2, 0);
                 }
                 Err(e) => return Err(e),
             }
         }
 
-        Ok(())
-    }
-
-    pub fn as_bytes(&'a self) -> &'a [u8] {
-        &self.0.buf[..self.0.len]
-    }
-}
-
-impl<'a> Drop for ReadGuard<'a> {
-    fn drop(&mut self) {
-        self.0.len = 0;
+        Ok(&self.buf[..self.len])
     }
 }
 
@@ -178,14 +161,8 @@ impl Client {
         Ok(())
     }
 
-    pub fn wait_response<F>(&mut self, on_read: F) -> io::Result<()>
-    where
-        F: FnOnce(&str),
-    {
-        let mut reader = self.read_buffer.guard();
-        reader.read_from(&mut self.server_connection)?;
-        let s = std::str::from_utf8(reader.as_bytes()).unwrap();
-        on_read(s);
-        Ok(())
+    pub fn wait_response(&mut self) -> io::Result<&str> {
+        let bytes = self.read_buffer.read_from(&mut self.server_connection)?;
+        Ok(std::str::from_utf8(bytes).unwrap())
     }
 }
