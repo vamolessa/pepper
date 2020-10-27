@@ -12,6 +12,7 @@ pub fn client_capabilities(json: &mut Json) -> JsonValue {
         {
             let mut workspace_edit_capabilities = JsonObject::new();
             workspace_edit_capabilities.push("documentChanges".into(), true.into(), json);
+            workspace_edit_capabilities.push("failureHandling".into(), "undo".into(), json);
 
             let mut resource_operation_kinds = JsonArray::new();
             resource_operation_kinds.push("create".into(), json);
@@ -20,15 +21,6 @@ pub fn client_capabilities(json: &mut Json) -> JsonValue {
             workspace_edit_capabilities.push(
                 "resourceOperations".into(),
                 resource_operation_kinds.into(),
-                json,
-            );
-
-            let mut failure_handling_kinds = JsonArray::new();
-            failure_handling_kinds.push("abort".into(), json);
-            failure_handling_kinds.push("undo".into(), json);
-            workspace_edit_capabilities.push(
-                "failureHandling".into(),
-                failure_handling_kinds.into(),
                 json,
             );
 

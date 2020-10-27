@@ -3,7 +3,7 @@ use std::{
     process::{Child, ChildStdin, ChildStdout, Command, Stdio},
 };
 
-use crate::json::{Json, JsonObject, JsonValue};
+use crate::json::{Json, JsonInteger, JsonKey, JsonObject, JsonValue};
 
 pub struct ServerConnection {
     process: Child,
@@ -54,6 +54,12 @@ impl Drop for ServerConnection {
     }
 }
 
+pub struct ResponseError {
+    pub code: JsonInteger,
+    pub message: JsonKey,
+    pub data: JsonValue,
+}
+
 pub struct Protocol {
     pub json: Json,
     json_buffer: Vec<u8>,
@@ -62,7 +68,7 @@ pub struct Protocol {
     write_buffer: Vec<u8>,
     read_buffer: ReadBuf,
 
-    next_id: usize,
+    next_request_id: usize,
 }
 
 impl Protocol {
@@ -73,18 +79,58 @@ impl Protocol {
             server_connection,
             write_buffer: Vec::new(),
             read_buffer: ReadBuf::new(),
-            next_id: 1,
+            next_request_id: 1,
         }
     }
 
     pub fn request(&mut self, method: &'static str, params: JsonValue) -> io::Result<()> {
         let mut body = JsonObject::new();
         body.push("jsonrpc".into(), "2.0".into(), &mut self.json);
-        body.push("id".into(), JsonValue::Integer(self.next_id as _), &mut self.json);
+        body.push(
+            "id".into(),
+            JsonValue::Integer(self.next_request_id as _),
+            &mut self.json,
+        );
         body.push("method".into(), method.into(), &mut self.json);
         body.push("params".into(), params, &mut self.json);
-        let body = body.into();
 
+        self.next_request_id += 1;
+        self.send_body(body.into())
+    }
+
+    pub fn respond(
+        &mut self,
+        request_id: usize,
+        result: Result<JsonValue, ResponseError>,
+    ) -> io::Result<()> {
+        let mut body = JsonObject::new();
+        body.push(
+            "id".into(),
+            JsonValue::Integer(request_id as _),
+            &mut self.json,
+        );
+
+        match result {
+            Ok(result) => body.push("result".into(), result, &mut self.json),
+            Err(error) => {
+                let mut e = JsonObject::new();
+                e.push("code".into(), error.code.into(), &mut self.json);
+                e.push("message".into(), error.message.into(), &mut self.json);
+                e.push("data".into(), error.data, &mut self.json);
+
+                body.push("error".into(), e.into(), &mut self.json);
+            }
+        }
+
+        self.send_body(body.into())
+    }
+
+    pub fn wait_response(&mut self) -> io::Result<&str> {
+        let bytes = self.read_buffer.read_from(&mut self.server_connection)?;
+        Ok(std::str::from_utf8(bytes).unwrap())
+    }
+
+    fn send_body(&mut self, body: JsonValue) -> io::Result<()> {
         self.json.write(&mut self.json_buffer, &body)?;
 
         self.write_buffer.clear();
@@ -95,18 +141,13 @@ impl Protocol {
         )?;
         self.write_buffer.append(&mut self.json_buffer);
 
-        let msg = std::str::from_utf8(&self.write_buffer).unwrap();
-        println!("msg:\n{}", msg);
+        {
+            let msg = std::str::from_utf8(&self.write_buffer).unwrap();
+            println!("msg:\n{}", msg);
+        }
 
         self.server_connection.write(&self.write_buffer)?;
-        self.next_id += 1;
-
         Ok(())
-    }
-
-    pub fn wait_response(&mut self) -> io::Result<&str> {
-        let bytes = self.read_buffer.read_from(&mut self.server_connection)?;
-        Ok(std::str::from_utf8(bytes).unwrap())
     }
 }
 

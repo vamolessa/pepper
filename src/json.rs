@@ -14,37 +14,45 @@ pub enum JsonValue {
 
 impl From<bool> for JsonValue {
     fn from(value: bool) -> Self {
-        JsonValue::Boolean(value)
+        Self::Boolean(value)
     }
 }
 impl From<JsonInteger> for JsonValue {
     fn from(value: JsonInteger) -> Self {
-        JsonValue::Integer(value)
+        Self::Integer(value)
     }
 }
 impl From<JsonNumber> for JsonValue {
     fn from(value: JsonNumber) -> Self {
-        JsonValue::Number(value)
+        Self::Number(value)
     }
 }
 impl From<&'static str> for JsonValue {
     fn from(value: &'static str) -> Self {
-        JsonValue::Str(value)
+        Self::Str(value)
     }
 }
 impl From<JsonString> for JsonValue {
     fn from(value: JsonString) -> Self {
-        JsonValue::String(value)
+        Self::String(value)
+    }
+}
+impl From<JsonKey> for JsonValue {
+    fn from(value: JsonKey) -> Self {
+        match value {
+            JsonKey::Str(s) => Self::Str(s),
+            JsonKey::String(s) => Self::String(s),
+        }
     }
 }
 impl From<JsonArray> for JsonValue {
     fn from(value: JsonArray) -> Self {
-        JsonValue::Array(value)
+        Self::Array(value)
     }
 }
 impl From<JsonObject> for JsonValue {
     fn from(value: JsonObject) -> Self {
-        JsonValue::Object(value)
+        Self::Object(value)
     }
 }
 
