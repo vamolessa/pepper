@@ -98,6 +98,15 @@ impl Protocol {
         self.send_body(body.into())
     }
 
+    pub fn notify(&mut self, method: &'static str, params: JsonValue) -> io::Result<()> {
+        let mut body = JsonObject::new();
+        body.set("jsonrpc".into(), "2.0".into(), &mut self.json);
+        body.set("method".into(), method.into(), &mut self.json);
+        body.set("params".into(), params, &mut self.json);
+
+        self.send_body(body.into())
+    }
+
     pub fn respond(
         &mut self,
         request_id: usize,
