@@ -24,7 +24,7 @@ impl Client {
         let json = &mut self.protocol.json;
 
         let current_dir = match env::current_dir()?.as_os_str().to_str() {
-            Some(path) => JsonValue::String(json.create_string(path)),
+            Some(path) => json.create_string(path).into(),
             None => JsonValue::Null,
         };
 
