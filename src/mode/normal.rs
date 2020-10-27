@@ -669,7 +669,7 @@ impl ModeState for State {
                 unwrap_or_none!(ctx.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
 
                 self.on_edit_keys(ctx, keys, keys_from_index);
-                return ModeOperation::EnterMode(Mode::Insert(Default::default()));
+                return ModeOperation::None;
             }
             Key::Char('>') => {
                 let cursor_count = unwrap_or_none!(ctx.buffer_views.get(handle)).cursors[..].len();
@@ -704,7 +704,7 @@ impl ModeState for State {
                 unwrap_or_none!(ctx.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
 
                 self.on_edit_keys(ctx, keys, keys_from_index);
-                return ModeOperation::EnterMode(Mode::Insert(Default::default()));
+                return ModeOperation::None;
             }
             Key::Char('c') | Key::Char('C') => match keys.next() {
                 Key::None => return ModeOperation::Pending,
@@ -894,7 +894,7 @@ impl ModeState for State {
                 self.movement_kind = CursorMovementKind::PositionAndAnchor;
 
                 self.on_edit_keys(ctx, keys, keys_from_index);
-                return ModeOperation::EnterMode(Mode::Insert(Default::default()));
+                return ModeOperation::None;
             }
             Key::Ctrl('y') => match keys.next() {
                 Key::None => return ModeOperation::Pending,
@@ -920,7 +920,7 @@ impl ModeState for State {
                     self.movement_kind = CursorMovementKind::PositionAndAnchor;
 
                     self.on_edit_keys(ctx, keys, keys_from_index);
-                    return ModeOperation::EnterMode(Mode::Insert(Default::default()));
+                    return ModeOperation::None;
                 }
                 _ => (),
             },
