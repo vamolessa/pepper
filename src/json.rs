@@ -144,7 +144,7 @@ impl JsonObject {
         }
     }
 
-    pub fn push(&mut self, key: JsonKey, value: JsonValue, json: &mut Json) {
+    pub fn set(&mut self, key: JsonKey, value: JsonValue, json: &mut Json) {
         let index = json.members.len() as _;
         json.members.push(JsonObjectMember {
             key,
@@ -408,7 +408,7 @@ impl Json {
                             consume_bytes!(reader, b"\"");
                             let key = consume_string(json, reader)?;
                             consume_bytes!(reader, b":");
-                            object.push(JsonKey::String(key), read_value(json, reader)?, json);
+                            object.set(JsonKey::String(key), read_value(json, reader)?, json);
                             if match_byte(reader, b'}')? {
                                 break;
                             }
@@ -643,8 +643,8 @@ mod tests {
         array.push(json.create_string("text").into(), &mut json);
 
         let mut object = JsonObject::new();
-        object.push("first".into(), JsonValue::Null, &mut json);
-        object.push("second".into(), json.create_string("txt").into(), &mut json);
+        object.set("first".into(), JsonValue::Null, &mut json);
+        object.set("second".into(), json.create_string("txt").into(), &mut json);
 
         array.push(object.into(), &mut json);
         array.push(JsonArray::new().into(), &mut json);

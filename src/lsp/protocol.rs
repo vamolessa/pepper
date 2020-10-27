@@ -85,14 +85,14 @@ impl Protocol {
 
     pub fn request(&mut self, method: &'static str, params: JsonValue) -> io::Result<()> {
         let mut body = JsonObject::new();
-        body.push("jsonrpc".into(), "2.0".into(), &mut self.json);
-        body.push(
+        body.set("jsonrpc".into(), "2.0".into(), &mut self.json);
+        body.set(
             "id".into(),
             JsonValue::Integer(self.next_request_id as _),
             &mut self.json,
         );
-        body.push("method".into(), method.into(), &mut self.json);
-        body.push("params".into(), params, &mut self.json);
+        body.set("method".into(), method.into(), &mut self.json);
+        body.set("params".into(), params, &mut self.json);
 
         self.next_request_id += 1;
         self.send_body(body.into())
@@ -104,21 +104,21 @@ impl Protocol {
         result: Result<JsonValue, ResponseError>,
     ) -> io::Result<()> {
         let mut body = JsonObject::new();
-        body.push(
+        body.set(
             "id".into(),
             JsonValue::Integer(request_id as _),
             &mut self.json,
         );
 
         match result {
-            Ok(result) => body.push("result".into(), result, &mut self.json),
+            Ok(result) => body.set("result".into(), result, &mut self.json),
             Err(error) => {
                 let mut e = JsonObject::new();
-                e.push("code".into(), error.code.into(), &mut self.json);
-                e.push("message".into(), error.message.into(), &mut self.json);
-                e.push("data".into(), error.data, &mut self.json);
+                e.set("code".into(), error.code.into(), &mut self.json);
+                e.set("message".into(), error.message.into(), &mut self.json);
+                e.set("data".into(), error.data, &mut self.json);
 
-                body.push("error".into(), e.into(), &mut self.json);
+                body.set("error".into(), e.into(), &mut self.json);
             }
         }
 

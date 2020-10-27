@@ -5,26 +5,34 @@ pub fn client_capabilities(json: &mut Json) -> JsonValue {
 
     {
         let mut workspace_capabilities = JsonObject::new();
-        workspace_capabilities.push("applyEdit".into(), true.into(), json);
-        workspace_capabilities.push("workspaceFolders".into(), false.into(), json);
-        workspace_capabilities.push("configuration".into(), false.into(), json);
+        workspace_capabilities.set("applyEdit".into(), true.into(), json);
+        workspace_capabilities.set("workspaceFolders".into(), false.into(), json);
+        workspace_capabilities.set("configuration".into(), false.into(), json);
+
+        workspace_capabilities.set(
+            "didChangeWatchedFiles".into(),
+            JsonObject::new().into(),
+            json,
+        );
+
+        workspace_capabilities.set("executeCommand".into(), JsonObject::new().into(), json);
 
         {
             let mut workspace_edit_capabilities = JsonObject::new();
-            workspace_edit_capabilities.push("documentChanges".into(), true.into(), json);
-            workspace_edit_capabilities.push("failureHandling".into(), "undo".into(), json);
+            workspace_edit_capabilities.set("documentChanges".into(), true.into(), json);
+            workspace_edit_capabilities.set("failureHandling".into(), "undo".into(), json);
 
             let mut resource_operation_kinds = JsonArray::new();
             resource_operation_kinds.push("create".into(), json);
             resource_operation_kinds.push("rename".into(), json);
             resource_operation_kinds.push("delete".into(), json);
-            workspace_edit_capabilities.push(
+            workspace_edit_capabilities.set(
                 "resourceOperations".into(),
                 resource_operation_kinds.into(),
                 json,
             );
 
-            workspace_capabilities.push(
+            workspace_capabilities.set(
                 "workspaceEdit".into(),
                 workspace_edit_capabilities.into(),
                 json,
@@ -32,36 +40,42 @@ pub fn client_capabilities(json: &mut Json) -> JsonValue {
         }
 
         {
-            let mut did_change_watched_files = JsonObject::new();
-            did_change_watched_files.push("dynamicRegistration".into(), false.into(), json);
-
-            workspace_capabilities.push(
-                "didChangeWatchedFiles".into(),
-                did_change_watched_files.into(),
-                json,
-            );
-        }
-
-        {
             let mut symbol = JsonObject::new();
-            symbol.push("dynamicRegistration".into(), false.into(), json);
-            symbol.push("symbolKind".into(), JsonObject::new().into(), json);
+            symbol.set("symbolKind".into(), JsonObject::new().into(), json);
 
-            workspace_capabilities.push("symbol".into(), symbol.into(), json);
+            workspace_capabilities.set("symbol".into(), symbol.into(), json);
         }
 
-        {
-            let mut execute_command = JsonObject::new();
-            execute_command.push("dynamicRegistration".into(), false.into(), json);
-            workspace_capabilities.push("executeCommand".into(), execute_command.into(), json);
-        }
-
-        capabilities.push("workspace".into(), workspace_capabilities.into(), json);
+        capabilities.set("workspace".into(), workspace_capabilities.into(), json);
     }
 
     {
         let mut text_document_capabilities = JsonObject::new();
-        capabilities.push(
+
+        {
+            let mut synchronization = JsonObject::new();
+            synchronization.set("willSave".into(), false.into(), json);
+            synchronization.set("willSaveWaitUntil".into(), false.into(), json);
+            synchronization.set("didSave".into(), false.into(), json);
+
+            text_document_capabilities.set("synchronization".into(), synchronization.into(), json);
+        }
+
+        {
+            let mut completion = JsonObject::new();
+
+            {
+                let mut completion_item = JsonObject::new();
+                completion_item.set("snippetSupport".into(), false.into(), json);
+                completion_item.set("commitCharactersSupport".into(), false.into(), json);
+
+                completion.set("completionItem".into(), completion_item.into(), json);
+            }
+
+            text_document_capabilities.set("completion".into(), completion.into(), json);
+        }
+
+        capabilities.set(
             "textDocument".into(),
             text_document_capabilities.into(),
             json,

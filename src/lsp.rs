@@ -29,13 +29,13 @@ impl Client {
         };
 
         let mut params = JsonObject::new();
-        params.push(
+        params.set(
             "processId".into(),
             JsonValue::Integer(process::id() as _),
             json,
         );
-        params.push("rootUri".into(), current_dir, json);
-        params.push(
+        params.set("rootUri".into(), current_dir, json);
+        params.set(
             "capabilities".into(),
             capabilities::client_capabilities(json),
             json,
