@@ -68,11 +68,9 @@ pub struct Args {
 }
 
 fn main() {
-    let lsp_command = std::process::Command::new("rust-analyzer");
-    let lsp_connection = lsp::ServerConnection::spawn(lsp_command).unwrap();
-    let mut lsp = lsp::Client::from_server_connection(lsp_connection);
-    lsp.initialize().unwrap();
-    println!("response:\n{}", lsp.wait_response().unwrap());
+    let mut lsp_client = lsp::LspClient::new("rust-analyzer").unwrap();
+    lsp_client.initialize().unwrap();
+    println!("response:\n{}", lsp_client.wait_response().unwrap());
     return;
 
     let args: Args = argh::from_env();
