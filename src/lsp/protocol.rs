@@ -1,15 +1,20 @@
 use std::{
     io::{self, Cursor, Read, Write},
-    process::{Child, ChildStdin, ChildStdout, Command, Stdio},
-    sync::{mpsc, Arc, Mutex, MutexGuard},
+    process::{Child, ChildStdin, Command, Stdio},
+    sync::{mpsc, Arc, Mutex},
     thread,
 };
 
-use crate::json::{Json, JsonInteger, JsonKey, JsonObject, JsonString, JsonValue};
+use crate::{
+    client_event::LocalEvent,
+    json::{Json, JsonInteger, JsonKey, JsonObject, JsonString, JsonValue},
+    lsp::client::ClientHandle,
+};
 
-pub struct ServerMessage {
-    pub json: Arc<Mutex<Json>>,
-    pub body: JsonValue,
+pub enum ServerEvent {
+    Closed(ClientHandle),
+    ParseError(ClientHandle),
+    Message(ClientHandle, JsonValue),
 }
 
 pub struct ServerConnection {
@@ -21,7 +26,9 @@ pub struct ServerConnection {
 impl ServerConnection {
     pub fn spawn(
         mut command: Command,
-        message_receiver: mpsc::Sender<ServerMessage>,
+        handle: ClientHandle,
+        json: Arc<Mutex<Json>>,
+        event_sender: mpsc::Sender<LocalEvent>,
     ) -> io::Result<Self> {
         let mut process = command
             .stdin(Stdio::piped())
@@ -40,23 +47,23 @@ impl ServerConnection {
         let reader_handle = thread::spawn(move || {
             let mut stdout = stdout;
             let mut buf = ReadBuf::new();
-            let json = Arc::new(Mutex::new(Json::new()));
+            let json = json;
+
             loop {
                 let content_bytes = match buf.read_content_from(&mut stdout) {
                     Ok(bytes) => bytes,
-                    Err(_) => break,
+                    Err(_) => {
+                        let _ = event_sender.send(LocalEvent::Lsp(ServerEvent::Closed(handle)));
+                        break;
+                    }
                 };
                 let mut json_guard = json.lock().unwrap();
                 let mut reader = Cursor::new(content_bytes);
-                let body = match json_guard.read(&mut reader) {
-                    Ok(body) => body,
-                    Err(_) => break,
+                let event = match json_guard.read(&mut reader) {
+                    Ok(body) => ServerEvent::Message(handle, body),
+                    Err(_) => ServerEvent::ParseError(handle),
                 };
-                let message = ServerMessage {
-                    json: json.clone(),
-                    body,
-                };
-                if let Err(_) = message_receiver.send(message) {
+                if let Err(_) = event_sender.send(LocalEvent::Lsp(event)) {
                     break;
                 }
             }
@@ -79,11 +86,15 @@ impl Write for ServerConnection {
         self.stdin.flush()
     }
 }
+
 impl Drop for ServerConnection {
     fn drop(&mut self) {
         let _ = self.process.kill();
     }
 }
+
+#[derive(Default, PartialEq, Eq)]
+pub struct RequestId(usize);
 
 pub struct ResponseError {
     pub code: JsonInteger,
@@ -95,7 +106,6 @@ pub struct Protocol {
     server_connection: ServerConnection,
     body_buffer: Vec<u8>,
     write_buffer: Vec<u8>,
-
     next_request_id: usize,
 }
 
@@ -114,19 +124,19 @@ impl Protocol {
         json: &mut Json,
         method: &'static str,
         params: JsonValue,
-    ) -> io::Result<()> {
+    ) -> io::Result<RequestId> {
+        let id = self.next_request_id;
+
         let mut body = JsonObject::new();
         body.set("jsonrpc".into(), "2.0".into(), json);
-        body.set(
-            "id".into(),
-            JsonValue::Integer(self.next_request_id as _),
-            json,
-        );
+        body.set("id".into(), JsonValue::Integer(id as _), json);
         body.set("method".into(), method.into(), json);
         body.set("params".into(), params, json);
 
         self.next_request_id += 1;
-        self.send_body(json, body.into())
+        self.send_body(json, body.into())?;
+
+        Ok(RequestId(id))
     }
 
     pub fn notify(

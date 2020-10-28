@@ -3,7 +3,7 @@ use std::{error::Error, fmt, str::Chars};
 use crate::{
     client::TargetClient,
     event_manager::ConnectionEvent,
-    lsp::LspServerMessage,
+    lsp::{LspClientHandle, LspServerEvent},
     serialization::{
         DeserializationSlice, DeserializeError, Deserializer, SerializationBuf, Serialize,
         Serializer,
@@ -17,7 +17,7 @@ pub enum LocalEvent {
     Key(Key),
     Resize(u16, u16),
     Connection(ConnectionEvent),
-    Lsp(LspServerMessage),
+    Lsp(LspServerEvent),
 }
 
 pub enum ClientEvent<'a> {
