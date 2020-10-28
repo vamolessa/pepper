@@ -132,6 +132,7 @@ impl BufferLinePool {
         match self.pool.pop() {
             Some(mut line) => {
                 line.text.clear();
+                line.char_count = 0;
                 line
             }
             None => BufferLine {
