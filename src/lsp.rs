@@ -1,28 +1,29 @@
-use std::{env, io, process};
+use std::{env, io, process, sync::mpsc};
 
-use crate::json::{JsonObject, JsonValue};
+use crate::json::{Json, JsonObject, JsonValue};
 
 mod capabilities;
 mod protocol;
 
-use protocol::{Protocol, ServerConnection};
+use protocol::{Protocol, ServerConnection, ServerMessage};
 
 pub struct Client {
     protocol: Protocol,
 }
 
 impl Client {
-    pub fn new(server_executable: &str) -> io::Result<Self> {
+    pub fn new(
+        server_executable: &str,
+        message_receiver: mpsc::Sender<ServerMessage>,
+    ) -> io::Result<Self> {
         let server_command = process::Command::new(server_executable);
-        let connection = ServerConnection::spawn(server_command)?;
+        let connection = ServerConnection::spawn(server_command, message_receiver)?;
         Ok(Self {
             protocol: Protocol::new(connection),
         })
     }
 
-    pub fn initialize(&mut self) -> io::Result<()> {
-        let json = &mut self.protocol.json;
-
+    pub fn initialize(&mut self, json: &mut Json) -> io::Result<()> {
         let current_dir = match env::current_dir()?.as_os_str().to_str() {
             Some(path) => json.create_string(path).into(),
             None => JsonValue::Null,
@@ -41,10 +42,6 @@ impl Client {
             json,
         );
 
-        self.protocol.request("initialize", params.into())
-    }
-
-    pub fn wait_response(&mut self) -> io::Result<&str> {
-        self.protocol.wait_response()
+        self.protocol.request(json, "initialize", params.into())
     }
 }

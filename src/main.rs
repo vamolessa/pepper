@@ -68,10 +68,12 @@ pub struct Args {
 }
 
 fn main() {
+    /*
     let mut lsp_client = lsp::Client::new("rust-analyzer").unwrap();
     lsp_client.initialize().unwrap();
     println!("response:\n{}", lsp_client.wait_response().unwrap());
     return;
+    */
 
     let args: Args = argh::from_env();
     if args.version {

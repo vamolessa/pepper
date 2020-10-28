@@ -71,6 +71,12 @@ impl JsonString {
     }
 }
 
+impl Default for JsonString {
+    fn default() -> Self {
+        Self { start: 0, end: 0 }
+    }
+}
+
 #[derive(Debug)]
 pub struct JsonArray {
     first: u32,
