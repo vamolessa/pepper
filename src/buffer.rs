@@ -1013,10 +1013,12 @@ impl BufferCollection {
             if let Some(buffer) = &mut self.buffers[i] {
                 let handle = BufferHandle(i);
                 if predicate(handle, buffer) {
-                    for line in buffer.content.lines() {
+                    for line in buffer.content.lines.drain(..) {
                         for word in WordIter::new(line.as_str()).of_kind(WordKind::Identifier) {
                             word_database.remove_word(word);
                         }
+
+                        self.line_pool.dispose(line);
                     }
 
                     for client in clients.iter_mut() {
