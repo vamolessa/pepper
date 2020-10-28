@@ -96,28 +96,26 @@ pub struct EventRegistry {
 
 impl EventRegistry {
     pub fn register_listener(&self, listener: &UnixListener) -> io::Result<()> {
-        self.poller.insert(listener)?;
-        self.listen_next_listener_event(listener)?;
-        Ok(())
+        let id = ConnectionEvent::NewConnection.raw_id();
+        self.poller.add(listener, polling::Event::readable(id))
     }
 
     pub fn register_stream(&self, stream: &UnixStream, id: StreamId) -> io::Result<()> {
-        self.poller.insert(stream)?;
-        self.listen_next_stream_event(stream, id)?;
-        Ok(())
+        let id = ConnectionEvent::Stream(id).raw_id();
+        self.poller.add(stream, polling::Event::readable(id))
     }
 
     pub fn listen_next_listener_event(&self, listener: &UnixListener) -> io::Result<()> {
         let id = ConnectionEvent::NewConnection.raw_id();
-        self.poller.interest(listener, polling::Event::readable(id))
+        self.poller.modify(listener, polling::Event::readable(id))
     }
 
     pub fn listen_next_stream_event(&self, stream: &UnixStream, id: StreamId) -> io::Result<()> {
         let id = ConnectionEvent::Stream(id).raw_id();
-        self.poller.interest(stream, polling::Event::readable(id))
+        self.poller.modify(stream, polling::Event::readable(id))
     }
 
     pub fn unregister_stream(&self, stream: &UnixStream) -> io::Result<()> {
-        self.poller.remove(stream)
+        self.poller.delete(stream)
     }
 }

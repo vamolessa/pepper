@@ -1,6 +1,8 @@
 use std::{
     io::{self, Read, Write},
     process::{Child, ChildStdin, ChildStdout, Command, Stdio},
+    sync::mpsc,
+    thread,
 };
 
 use crate::json::{Json, JsonInteger, JsonKey, JsonObject, JsonValue};
@@ -16,7 +18,7 @@ impl ServerConnection {
         let mut process = command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stderr(Stdio::null())
             .spawn()?;
         let stdin = process
             .stdin
@@ -26,6 +28,11 @@ impl ServerConnection {
             .stdout
             .take()
             .ok_or(io::Error::from(io::ErrorKind::WriteZero))?;
+
+        thread::spawn(move || {
+            //
+        });
+
         Ok(Self {
             process,
             stdin,
