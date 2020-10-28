@@ -893,7 +893,7 @@ impl ModeState for State {
                 unwrap_or_none!(ctx.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
                 self.movement_kind = CursorMovementKind::PositionAndAnchor;
 
-                self.on_edit_keys(ctx, keys, keys_from_index);
+                self.is_recording_auto_macro = false;
                 return ModeOperation::None;
             }
             Key::Ctrl('y') => match keys.next() {
@@ -919,7 +919,7 @@ impl ModeState for State {
                     unwrap_or_none!(ctx.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
                     self.movement_kind = CursorMovementKind::PositionAndAnchor;
 
-                    self.on_edit_keys(ctx, keys, keys_from_index);
+                    self.is_recording_auto_macro = false;
                     return ModeOperation::None;
                 }
                 _ => (),
