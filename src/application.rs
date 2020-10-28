@@ -234,6 +234,9 @@ where
                 }
                 connections.unregister_closed_connections(&event_registry)?;
             }
+            LocalEvent::Lsp(message) => {
+                //
+            }
         }
 
         render_clients(&mut editor, &mut clients, &mut ui, &mut connections)?;
@@ -311,6 +314,9 @@ where
                 }
 
                 profiler.end_frame();
+            }
+            LocalEvent::Lsp(message) => {
+                //
             }
         }
     }

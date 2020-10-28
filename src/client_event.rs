@@ -3,6 +3,7 @@ use std::{error::Error, fmt, str::Chars};
 use crate::{
     client::TargetClient,
     event_manager::ConnectionEvent,
+    lsp::LspServerMessage,
     serialization::{
         DeserializationSlice, DeserializeError, Deserializer, SerializationBuf, Serialize,
         Serializer,
@@ -10,16 +11,15 @@ use crate::{
     ui::UiKind,
 };
 
-#[derive(Debug, Clone, Copy)]
 pub enum LocalEvent {
     None,
     EndOfInput,
     Key(Key),
     Resize(u16, u16),
     Connection(ConnectionEvent),
+    Lsp(LspServerMessage),
 }
 
-#[derive(Debug)]
 pub enum ClientEvent<'a> {
     Ui(UiKind),
     AsFocusedClient,
@@ -504,7 +504,6 @@ impl ClientEventSerializer {
     }
 }
 
-#[derive(Debug)]
 pub enum ClientEventDeserializeResult<'a> {
     Some(ClientEvent<'a>),
     None,
