@@ -178,7 +178,7 @@ impl ModeState for State {
             && word_position.column_byte_index
                 >= word.end_position().column_byte_index.saturating_sub(1)
         {
-            ctx.picker.filter(&ctx.word_database, word.text);
+            ctx.picker.filter(ctx.word_database, word.text);
             if ctx.picker.height(usize::MAX) == 1 {
                 ctx.picker.clear_filtered();
             }
@@ -192,7 +192,7 @@ impl ModeState for State {
 
 fn apply_completion(ctx: &mut ModeContext, handle: BufferViewHandle, cursor_movement: isize) {
     ctx.picker.move_cursor(cursor_movement);
-    if let Some(entry) = ctx.picker.current_entry(&ctx.word_database) {
+    if let Some(entry) = ctx.picker.current_entry(ctx.word_database) {
         ctx.buffer_views.apply_completion(
             ctx.buffers,
             ctx.word_database,

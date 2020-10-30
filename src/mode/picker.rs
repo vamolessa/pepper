@@ -2,7 +2,7 @@ use crate::{
     client_event::Key,
     editor::{KeysIterator, ReadLinePoll},
     mode::{Mode, ModeContext, ModeOperation, ModeState},
-    word_database::WordDatabase,
+    word_database::EmptyWordCollection,
 };
 
 pub struct State {
@@ -21,7 +21,7 @@ impl Default for State {
 
 impl ModeState for State {
     fn on_enter(&mut self, ctx: &mut ModeContext) {
-        ctx.picker.filter(WordDatabase::empty(), "");
+        ctx.picker.filter(&EmptyWordCollection, "");
         (self.on_enter)(ctx);
     }
 
@@ -39,7 +39,7 @@ impl ModeState for State {
                     Key::Ctrl('p') | Key::Ctrl('k') => ctx.picker.move_cursor(-1),
                     _ => ctx
                         .picker
-                        .filter(WordDatabase::empty(), ctx.read_line.input()),
+                        .filter(&EmptyWordCollection, ctx.read_line.input()),
                 }
 
                 (self.on_event)(ctx, keys, ReadLinePoll::Pending)
@@ -75,7 +75,7 @@ pub mod buffer {
                 ReadLinePoll::Canceled => return ModeOperation::EnterMode(Mode::default()),
             }
 
-            let path = match ctx.picker.current_entry(WordDatabase::empty()) {
+            let path = match ctx.picker.current_entry(&EmptyWordCollection) {
                 Some(entry) => entry.name,
                 None => return ModeOperation::EnterMode(Mode::default()),
             };
@@ -168,7 +168,7 @@ pub mod custom {
                 let (name, description) = match poll {
                     ReadLinePoll::Pending => return Ok(ModeOperation::None),
                     ReadLinePoll::Submitted => {
-                        match ctx.picker.current_entry(WordDatabase::empty()) {
+                        match ctx.picker.current_entry(&EmptyWordCollection) {
                             Some(entry) => (
                                 ScriptValue::String(engine.create_string(entry.name.as_bytes())?),
                                 ScriptValue::String(

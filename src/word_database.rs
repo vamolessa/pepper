@@ -1,6 +1,6 @@
 use std::{
-    collections::hash_map::DefaultHasher,
-    hash::{Hash, Hasher},
+    collections::hash_map::{DefaultHasher, Entry, HashMap},
+    hash::{BuildHasher, Hash, Hasher},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -84,88 +84,149 @@ struct Word {
     count: usize,
 }
 
-pub struct WordDatabase {
-    len: usize,
-    words: Vec<Word>,
+#[derive(PartialEq, Eq)]
+struct WordHash(u64);
+impl WordHash {
+    pub fn new(word: &str) -> Self {
+        let mut hasher = DefaultHasher::new();
+        word.hash(&mut hasher);
+        Self(hasher.finish())
+    }
+}
+impl Hash for WordHash {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        state.write_u64(self.0);
+    }
 }
 
-impl WordDatabase {
-    pub fn empty() -> &'static Self {
-        static EMPTY_DATABASE: WordDatabase = WordDatabase {
-            len: 0,
-            words: Vec::new(),
-        };
+struct WordHasher(u64);
+impl BuildHasher for WordHasher {
+    type Hasher = Self;
 
-        &EMPTY_DATABASE
+    fn build_hasher(&self) -> Self::Hasher {
+        Self(0)
+    }
+}
+impl Hasher for WordHasher {
+    fn finish(&self) -> u64 {
+        self.0
     }
 
-    pub fn new() -> Self {
-        let mut words = Vec::with_capacity(4 * 1024);
-        words.resize_with(words.capacity(), || Word::default());
-
-        Self { len: 0, words }
+    fn write(&mut self, _: &[u8]) {
+        unreachable!();
     }
 
-    pub fn add_word(&mut self, word: &str) {
-        const LOAD_FACTOR_PERCENT: usize = 70;
+    fn write_u64(&mut self, hash: u64) {
+        self.0 = hash;
+    }
+}
 
-        if self.len * 100 >= self.words.len() * LOAD_FACTOR_PERCENT {
-            let mut words = Vec::with_capacity(self.words.capacity() * 2);
-            words.resize_with(words.capacity(), || Word::default());
+pub struct WordIndicesIter<'a> {
+    words: &'a [Word],
+    next_index: usize,
+}
+impl<'a> Iterator for WordIndicesIter<'a> {
+    type Item = (usize, &'a str);
 
-            std::mem::swap(&mut words, &mut self.words);
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.next_index < self.words.len() {
+            let index = self.next_index;
+            self.next_index += 1;
 
-            self.len = 0;
-            for word in &words {
-                if word.count > 0 {
-                    self.add_word(&word.text);
-                }
+            if self.words[index].count > 0 {
+                return Some((index, &self.words[index].text));
             }
         }
 
-        {
-            let word_in_bucket = Self::get_word_in_bucket(&mut self.words, word);
+        None
+    }
+}
 
-            if word_in_bucket.count == 0 {
-                word_in_bucket.text.clear();
-                word_in_bucket.text.push_str(word);
-                self.len += 1;
+pub trait WordCollection {
+    fn word_at(&self, index: usize) -> &str;
+    fn word_indices(&self) -> WordIndicesIter;
+}
+
+pub struct EmptyWordCollection;
+impl WordCollection for EmptyWordCollection {
+    fn word_at(&self, _: usize) -> &str {
+        ""
+    }
+
+    fn word_indices(&self) -> WordIndicesIter {
+        WordIndicesIter {
+            words: &[],
+            next_index: 0,
+        }
+    }
+}
+
+pub struct WordDatabase {
+    words: Vec<Word>,
+    free_indices: Vec<usize>,
+    hash_to_index: HashMap<WordHash, usize, WordHasher>,
+}
+
+impl WordDatabase {
+    pub fn new() -> Self {
+        Self {
+            words: Vec::with_capacity(512),
+            free_indices: Vec::new(),
+            hash_to_index: HashMap::with_hasher(WordHasher(0)),
+        }
+    }
+
+    pub fn add_word(&mut self, word: &str) {
+        let hash = WordHash::new(word);
+        match self.hash_to_index.entry(hash) {
+            Entry::Occupied(entry) => {
+                let index = *entry.get();
+                self.words[index].count += 1;
             }
-
-            word_in_bucket.count += 1;
+            Entry::Vacant(entry) => match self.free_indices.pop() {
+                Some(index) => {
+                    entry.insert(index);
+                    let w = &mut self.words[index];
+                    w.text.clear();
+                    w.text.push_str(word);
+                    w.count = 1;
+                }
+                None => {
+                    entry.insert(self.words.len());
+                    self.words.push(Word {
+                        text: word.into(),
+                        count: 1,
+                    });
+                }
+            },
         }
     }
 
     pub fn remove_word(&mut self, word: &str) {
-        let word_in_bucket = Self::get_word_in_bucket(&mut self.words, word);
-        if word_in_bucket.count > 0 {
-            word_in_bucket.count -= 1;
-
-            if word_in_bucket.count == 0 {
-                self.len -= 1;
+        let hash = WordHash::new(word);
+        let entry = self.hash_to_index.entry(hash);
+        if let Entry::Occupied(entry) = entry {
+            let index = *entry.get();
+            let w = &mut self.words[index];
+            w.count -= 1;
+            if w.count == 0 {
+                self.free_indices.push(index);
+                entry.remove();
             }
         }
     }
+}
 
-    pub fn word_at(&self, index: usize) -> &str {
+impl WordCollection for WordDatabase {
+    fn word_at(&self, index: usize) -> &str {
         &self.words[index].text
     }
 
-    pub fn word_indices<'a>(&'a self) -> impl Iterator<Item = (usize, &'a str)> {
-        self.words
-            .iter()
-            .enumerate()
-            .filter(|(_, w)| w.count > 0)
-            .map(|(i, w)| (i, &w.text[..]))
-    }
-
-    fn get_word_in_bucket<'a>(words: &'a mut [Word], word: &str) -> &'a mut Word {
-        let mut hasher = DefaultHasher::new();
-        word.hash(&mut hasher);
-        let hash = hasher.finish() as usize;
-
-        let bucket_count = words.len();
-        &mut words[hash % bucket_count]
+    fn word_indices(&self) -> WordIndicesIter {
+        WordIndicesIter {
+            words: &self.words,
+            next_index: 0,
+        }
     }
 }
 
@@ -230,26 +291,30 @@ mod tests {
 
     #[test]
     fn word_database_insert_remove() {
+        fn unique_word_count(word_database: &WordDatabase) -> usize {
+            word_database.words.len() - word_database.free_indices.len()
+        }
+
         let mut words = WordDatabase::new();
 
         words.add_word("first");
-        assert_eq!(1, words.len);
+        assert_eq!(1, unique_word_count(&words));
 
         words.add_word("first");
         words.add_word("first");
-        assert_eq!(1, words.len);
+        assert_eq!(1, unique_word_count(&words));
 
         words.add_word("second");
-        assert_eq!(2, words.len);
+        assert_eq!(2, unique_word_count(&words));
 
         words.remove_word("first");
-        assert_eq!(2, words.len);
+        assert_eq!(2, unique_word_count(&words));
 
         words.remove_word("first");
         words.remove_word("first");
-        assert_eq!(1, words.len);
+        assert_eq!(1, unique_word_count(&words));
 
         words.remove_word("first");
-        assert_eq!(1, words.len);
+        assert_eq!(1, unique_word_count(&words));
     }
 }

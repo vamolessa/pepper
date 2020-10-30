@@ -1,6 +1,6 @@
 use fuzzy_matcher::{skim::SkimMatcherV2, FuzzyMatcher};
 
-use crate::word_database::WordDatabase;
+use crate::word_database::WordCollection;
 
 #[derive(Default, Clone, Copy)]
 pub struct PickerEntry<'a> {
@@ -123,10 +123,13 @@ impl Picker {
         self.scroll = 0;
     }
 
-    pub fn filter(&mut self, word_database: &WordDatabase, pattern: &str) {
+    pub fn filter<W>(&mut self, words: &W, pattern: &str)
+    where
+        W: WordCollection,
+    {
         self.filtered_entries.clear();
 
-        for (i, word) in word_database.word_indices() {
+        for (i, word) in words.word_indices() {
             if let Some(mut score) = self.matcher.fuzzy_match(word, pattern) {
                 if word.len() == pattern.len() {
                     score += 1;
@@ -169,10 +172,10 @@ impl Picker {
             .min(self.filtered_entries.len().saturating_sub(1));
     }
 
-    pub fn current_entry<'a>(
-        &'a mut self,
-        word_database: &WordDatabase,
-    ) -> Option<PickerEntry<'a>> {
+    pub fn current_entry<'a, W>(&'a mut self, words: &W) -> Option<PickerEntry<'a>>
+    where
+        W: WordCollection,
+    {
         let entry = self.filtered_entries.get(self.cursor)?;
         match entry.source {
             FiletedEntrySource::Custom(i) => {
@@ -185,7 +188,7 @@ impl Picker {
             }
             FiletedEntrySource::WordDatabase(i) => {
                 self.cached_current_word.clear();
-                self.cached_current_word.push_str(word_database.word_at(i));
+                self.cached_current_word.push_str(words.word_at(i));
                 Some(PickerEntry {
                     name: &self.cached_current_word,
                     description: "",
@@ -195,10 +198,10 @@ impl Picker {
         }
     }
 
-    pub fn entries<'a>(
-        &'a self,
-        word_database: &'a WordDatabase,
-    ) -> impl 'a + Iterator<Item = PickerEntry<'a>> {
+    pub fn entries<'a, W>(&'a self, words: &'a W) -> impl 'a + Iterator<Item = PickerEntry<'a>>
+    where
+        W: WordCollection,
+    {
         self.filtered_entries.iter().map(move |e| match e.source {
             FiletedEntrySource::Custom(i) => {
                 let entry = &self.custom_entries_buffer[i];
@@ -209,7 +212,7 @@ impl Picker {
                 }
             }
             FiletedEntrySource::WordDatabase(i) => PickerEntry {
-                name: word_database.word_at(i),
+                name: words.word_at(i),
                 description: "",
                 score: e.score,
             },
