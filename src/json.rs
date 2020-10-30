@@ -1,6 +1,6 @@
 use std::{convert::From, io};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum JsonValue {
     Null,
     Boolean(bool),
@@ -59,7 +59,7 @@ impl From<JsonObject> for JsonValue {
 pub type JsonInteger = i64;
 pub type JsonNumber = f64;
 
-#[derive(Debug)]
+#[derive(Debug, Default, Clone)]
 pub struct JsonString {
     start: u32,
     end: u32,
@@ -71,23 +71,13 @@ impl JsonString {
     }
 }
 
-impl Default for JsonString {
-    fn default() -> Self {
-        Self { start: 0, end: 0 }
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, Default, Clone)]
 pub struct JsonArray {
     first: u32,
     last: u32,
 }
 
 impl JsonArray {
-    pub fn new() -> Self {
-        Self { first: 0, last: 0 }
-    }
-
     pub fn iter<'a>(&self, json: &'a Json) -> JsonElementIter<'a> {
         JsonElementIter {
             json,
@@ -132,17 +122,13 @@ impl From<JsonString> for JsonKey {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default, Clone)]
 pub struct JsonObject {
     first: u32,
     last: u32,
 }
 
 impl JsonObject {
-    pub fn new() -> Self {
-        Self { first: 0, last: 0 }
-    }
-
     pub fn iter<'a>(&self, json: &'a Json) -> JsonMemberIter<'a> {
         JsonMemberIter {
             json,
@@ -392,7 +378,7 @@ impl Json {
                 b'"' => consume_string(json, reader).map(JsonValue::String),
                 b'[' => {
                     skip_whitespace(reader)?;
-                    let mut array = JsonArray::new();
+                    let mut array = JsonArray::default();
                     if !match_byte(reader, b']')? {
                         loop {
                             array.push(read_value(json, reader)?, json);
@@ -407,7 +393,7 @@ impl Json {
                 }
                 b'{' => {
                     skip_whitespace(reader)?;
-                    let mut object = JsonObject::new();
+                    let mut object = JsonObject::default();
                     if !match_byte(reader, b'}')? {
                         loop {
                             skip_whitespace(reader)?;
@@ -641,20 +627,20 @@ mod tests {
     #[test]
     fn write_complex() {
         let mut json = Json::new();
-        let mut array = JsonArray::new();
+        let mut array = JsonArray::default();
 
         array.push(JsonValue::Boolean(true), &mut json);
         array.push(JsonValue::Integer(8), &mut json);
         array.push(JsonValue::Number(0.5), &mut json);
         array.push(json.create_string("text").into(), &mut json);
 
-        let mut object = JsonObject::new();
+        let mut object = JsonObject::default();
         object.set("first".into(), JsonValue::Null, &mut json);
         object.set("second".into(), json.create_string("txt").into(), &mut json);
 
         array.push(object.into(), &mut json);
-        array.push(JsonArray::new().into(), &mut json);
-        array.push(JsonObject::new().into(), &mut json);
+        array.push(JsonArray::default().into(), &mut json);
+        array.push(JsonObject::default().into(), &mut json);
 
         let mut buf = Vec::new();
         let array = array.into();

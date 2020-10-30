@@ -9,7 +9,7 @@ use crate::{
     json::{Json, JsonObject, JsonValue},
     lsp::{
         capabilities,
-        protocol::{Protocol, ServerConnection},
+        protocol::{Protocol, ServerConnection, ServerNotification, ServerRequest, ServerResponse},
     },
 };
 
@@ -19,6 +19,38 @@ pub struct Client {
 }
 
 impl Client {
+    pub fn on_request(&mut self, request: ServerRequest) -> io::Result<()> {
+        let json = self.json.lock().unwrap();
+
+        match request.method.as_str(&json) {
+            "initialize" => {
+                eprintln!("");
+            }
+            _ => (),
+        }
+
+        Ok(())
+    }
+
+    pub fn on_notification(&mut self, notification: ServerNotification) -> io::Result<()> {
+        let json = self.json.lock().unwrap();
+
+        match notification.method.as_str(&json) {
+            "initialize" => {
+                eprintln!("");
+            }
+            _ => (),
+        }
+
+        Ok(())
+    }
+
+    pub fn on_response(&mut self, response: ServerResponse) -> io::Result<()> {
+        let json = self.json.lock().unwrap();
+
+        Ok(())
+    }
+
     pub fn initialize(&mut self) -> io::Result<()> {
         let mut json = self.json.lock().unwrap();
 
@@ -27,7 +59,7 @@ impl Client {
             None => JsonValue::Null,
         };
 
-        let mut params = JsonObject::new();
+        let mut params = JsonObject::default();
         params.set(
             "processId".into(),
             JsonValue::Integer(process::id() as _),

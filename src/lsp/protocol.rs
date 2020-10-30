@@ -14,7 +14,25 @@ use crate::{
 pub enum ServerEvent {
     Closed(ClientHandle),
     ParseError(ClientHandle),
-    Message(ClientHandle, JsonValue),
+    Request(ClientHandle, ServerRequest),
+    Notification(ClientHandle, ServerNotification),
+    Response(ClientHandle, ServerResponse),
+}
+
+pub struct ServerRequest {
+    pub id: JsonValue,
+    pub method: JsonString,
+    pub params: JsonValue,
+}
+
+pub struct ServerNotification {
+    pub method: JsonString,
+    pub params: JsonValue,
+}
+
+pub struct ServerResponse {
+    pub id: RequestId,
+    pub result: Result<JsonValue, ResponseError>,
 }
 
 pub struct ServerConnection {
@@ -60,8 +78,70 @@ impl ServerConnection {
                 let mut json_guard = json.lock().unwrap();
                 let mut reader = Cursor::new(content_bytes);
                 let event = match json_guard.read(&mut reader) {
-                    Ok(body) => ServerEvent::Message(handle, body),
-                    Err(_) => ServerEvent::ParseError(handle),
+                    Ok(JsonValue::Object(body)) => {
+                        let mut id = JsonValue::Null;
+                        let mut method = JsonString::default();
+                        let mut params = JsonValue::Null;
+                        let mut result = JsonValue::Null;
+                        let mut error = JsonValue::Null;
+
+                        for (key, value) in body.iter(&json_guard) {
+                            match (key, value) {
+                                ("id", v) => id = v.clone(),
+                                ("method", JsonValue::String(s)) => method = s.clone(),
+                                ("params", v) => params = v.clone(),
+                                ("result", v) => result = v.clone(),
+                                ("error", v) => error = v.clone(),
+                                _ => (),
+                            }
+                        }
+
+                        if !matches!(result, JsonValue::Null) {
+                            let id = match id {
+                                JsonValue::Integer(n) if n > 0 => RequestId(n as _),
+                                _ => RequestId(0),
+                            };
+                            ServerEvent::Response(
+                                handle,
+                                ServerResponse {
+                                    id,
+                                    result: Ok(result),
+                                },
+                            )
+                        } else if let JsonValue::Object(error) = error {
+                            let mut e = ResponseError {
+                                code: JsonInteger::default(),
+                                message: JsonKey::String(JsonString::default()),
+                                data: JsonValue::Null,
+                            };
+                            for (key, value) in error.iter(&json_guard) {
+                                match (key, value) {
+                                    ("code", JsonValue::Integer(n)) => e.code = *n,
+                                    ("message", JsonValue::String(s)) => {
+                                        e.message = JsonKey::String(s.clone())
+                                    }
+                                    ("data", v) => e.data = v.clone(),
+                                    _ => (),
+                                }
+                            }
+                            let id = match id {
+                                JsonValue::Integer(n) if n > 0 => n as _,
+                                _ => 0,
+                            };
+                            ServerEvent::Response(
+                                handle,
+                                ServerResponse {
+                                    id: RequestId(id),
+                                    result: Err(e),
+                                },
+                            )
+                        } else if !matches!(id, JsonValue::Null) {
+                            ServerEvent::Request(handle, ServerRequest { id, method, params })
+                        } else {
+                            ServerEvent::Notification(handle, ServerNotification { method, params })
+                        }
+                    }
+                    _ => ServerEvent::ParseError(handle),
                 };
                 if let Err(_) = event_sender.send(LocalEvent::Lsp(event)) {
                     break;
@@ -127,7 +207,7 @@ impl Protocol {
     ) -> io::Result<RequestId> {
         let id = self.next_request_id;
 
-        let mut body = JsonObject::new();
+        let mut body = JsonObject::default();
         body.set("jsonrpc".into(), "2.0".into(), json);
         body.set("id".into(), JsonValue::Integer(id as _), json);
         body.set("method".into(), method.into(), json);
@@ -145,7 +225,7 @@ impl Protocol {
         method: &'static str,
         params: JsonValue,
     ) -> io::Result<()> {
-        let mut body = JsonObject::new();
+        let mut body = JsonObject::default();
         body.set("jsonrpc".into(), "2.0".into(), json);
         body.set("method".into(), method.into(), json);
         body.set("params".into(), params, json);
@@ -159,13 +239,13 @@ impl Protocol {
         request_id: usize,
         result: Result<JsonValue, ResponseError>,
     ) -> io::Result<()> {
-        let mut body = JsonObject::new();
+        let mut body = JsonObject::default();
         body.set("id".into(), JsonValue::Integer(request_id as _), json);
 
         match result {
             Ok(result) => body.set("result".into(), result, json),
             Err(error) => {
-                let mut e = JsonObject::new();
+                let mut e = JsonObject::default();
                 e.set("code".into(), error.code.into(), json);
                 e.set("message".into(), error.message.into(), json);
                 e.set("data".into(), error.data, json);
