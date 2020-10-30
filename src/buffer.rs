@@ -142,6 +142,31 @@ impl BufferLinePool {
         }
     }
 
+    pub fn read<R>(&mut self, read: &mut R) -> io::Result<Option<BufferLine>>
+    where
+        R: io::BufRead,
+    {
+        let mut line = self.rent();
+        match read.read_line(&mut line.text) {
+            Ok(0) => {
+                self.dispose(line);
+                Ok(None)
+            }
+            Ok(_) => {
+                if line.text.ends_with('\n') {
+                    line.text.truncate(line.text.len() - 1);
+                }
+                if line.text.ends_with('\r') {
+                    line.text.truncate(line.text.len() - 1);
+                }
+
+                line.char_count = line.text.chars().count();
+                Ok(Some(line))
+            }
+            Err(e) => Err(e),
+        }
+    }
+
     pub fn dispose(&mut self, line: BufferLine) {
         self.pool.push(line);
     }
@@ -302,6 +327,22 @@ impl BufferContent {
 
     pub fn line_at(&self, index: usize) -> &BufferLine {
         &self.lines[index]
+    }
+
+    pub fn read<R>(&mut self, pool: &mut BufferLinePool, read: &mut R) -> io::Result<()>
+    where
+        R: io::BufRead,
+    {
+        for line in self.lines.drain(..) {
+            pool.dispose(line);
+        }
+        while let Some(line) = pool.read(read)? {
+            self.lines.push(line);
+        }
+        if self.lines.is_empty() {
+            self.lines.push(pool.rent());
+        }
+        Ok(())
     }
 
     pub fn write<W>(&self, write: &mut W) -> io::Result<()>
@@ -908,11 +949,12 @@ impl Buffer {
     pub fn save_to_file(&mut self) -> Result<(), String> {
         match self.path() {
             Some(path) => {
-                let mut file = File::create(path)
+                let file = File::create(path)
                     .map_err(|e| format!("could not create file {:?}: {:?}", path, e))?;
+                let mut writer = io::BufWriter::new(file);
 
                 self.content
-                    .write(&mut file)
+                    .write(&mut writer)
                     .map_err(|e| format!("could not write to file {:?}: {:?}", path, e))?;
 
                 self.needs_save = false;
@@ -920,6 +962,27 @@ impl Buffer {
             }
             None => Err("buffer has no path".into()),
         }
+    }
+
+    pub fn discard_and_reload_from_file(
+        &mut self,
+        pool: &mut BufferLinePool,
+    ) -> Result<(), String> {
+        if self.path.as_os_str().is_empty() {
+            return Err("buffer has no path".into());
+        }
+
+        let path = self.path.as_path();
+        let file =
+            File::open(path).map_err(|e| format!("could not open file {:?}: {:?}", path, e))?;
+        let mut reader = io::BufReader::new(file);
+
+        self.content
+            .read(pool, &mut reader)
+            .map_err(|e| format!("could not read file {:?}: {:?}", path, e))?;
+
+        self.needs_save = false;
+        Ok(())
     }
 }
 
@@ -992,6 +1055,10 @@ impl BufferCollection {
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Buffer> {
         self.buffers.iter_mut().filter_map(|b| b.as_mut())
+    }
+
+    pub fn iter_mut_with_line_pool(&mut self) -> (impl Iterator<Item = &mut Buffer>, &mut BufferLinePool) {
+        (self.buffers.iter_mut().filter_map(|b| b.as_mut()), &mut self.line_pool)
     }
 
     pub fn iter_with_handles(&self) -> impl Iterator<Item = (BufferHandle, &Buffer)> {

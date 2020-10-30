@@ -68,7 +68,7 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
     register!(client => index, current_buffer_view_handle, quit, quit_all, force_quit_all,);
     register!(editor => version, print,);
     register!(buffer => all_handles, line_count, line_at, path, extension, has_extension, needs_save, set_search, open,
-        close, force_close, close_all, force_close_all, save, save_all, commit_edits, on_open,);
+        close, force_close, close_all, force_close_all, save, save_all, reload, force_reload, reload_all, force_reload_all, commit_edits, on_open,);
     register!(buffer_view => buffer_handle, all_handles, handle_from_path, selection_text, insert_text,
         insert_text_at, delete_selection, delete_in, undo, redo,);
     register!(cursors => len, all, set_all, main_index, main, set, move_columns, move_lines, move_words,
@@ -93,11 +93,15 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
         let buffer = globals.get::<ScriptObject>("buffer")?;
         globals.set("o", buffer.get::<ScriptValue>("open")?)?;
         globals.set("c", buffer.get::<ScriptValue>("close")?)?;
-        globals.set("ca", buffer.get::<ScriptValue>("close_all")?)?;
         globals.set("fc", buffer.get::<ScriptValue>("force_close")?)?;
+        globals.set("ca", buffer.get::<ScriptValue>("close_all")?)?;
         globals.set("fca", buffer.get::<ScriptValue>("force_close_all")?)?;
         globals.set("s", buffer.get::<ScriptValue>("save")?)?;
         globals.set("sa", buffer.get::<ScriptValue>("save_all")?)?;
+        globals.set("r", buffer.get::<ScriptValue>("reload")?)?;
+        globals.set("fr", buffer.get::<ScriptValue>("force_reload")?)?;
+        globals.set("ra", buffer.get::<ScriptValue>("reload_all")?)?;
+        globals.set("fra", buffer.get::<ScriptValue>("force_reload_all")?)?;
     }
 
     register_object!(config);
@@ -507,6 +511,91 @@ mod buffer {
             format_args!("{} buffers saved", buffer_count),
         );
 
+        Ok(())
+    }
+
+    pub fn reload(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        handle: Option<BufferHandle>,
+    ) -> ScriptResult<()> {
+        if let Some((buffer, line_pool)) = handle
+            .or_else(|| ctx.current_buffer_handle())
+            .and_then(|h| ctx.buffers.get_mut_with_line_pool(h))
+        {
+            if buffer.needs_save() {
+                ctx.status_message.write_str(
+                    StatusMessageKind::Error,
+                    "there are unsaved changes in buffer. try 'force_reload' to force reload",
+                );
+                return Ok(());
+            }
+
+            if let Err(error) = buffer.discard_and_reload_from_file(line_pool) {
+                ctx.status_message
+                    .write_str(StatusMessageKind::Error, &error);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn force_reload(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        handle: Option<BufferHandle>,
+    ) -> ScriptResult<()> {
+        if let Some((buffer, line_pool)) = handle
+            .or_else(|| ctx.current_buffer_handle())
+            .and_then(|h| ctx.buffers.get_mut_with_line_pool(h))
+        {
+            if let Err(error) = buffer.discard_and_reload_from_file(line_pool) {
+                ctx.status_message
+                    .write_str(StatusMessageKind::Error, &error);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn reload_all(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        _: (),
+    ) -> ScriptResult<()> {
+        let unsaved_buffers = ctx.buffers.iter().any(|b| b.needs_save());
+        if unsaved_buffers {
+            ctx.status_message.write_str(
+                StatusMessageKind::Error,
+                "there are unsaved changes in buffers. try 'force_reload_all' to force reload all",
+            );
+            Ok(())
+        } else {
+            let (buffers, line_pool) = ctx.buffers.iter_mut_with_line_pool();
+            for buffer in buffers {
+                if let Err(error) = buffer.discard_and_reload_from_file(line_pool) {
+                    ctx.status_message
+                        .write_str(StatusMessageKind::Error, &error);
+                }
+            }
+            Ok(())
+        }
+    }
+
+    pub fn force_reload_all(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        _: (),
+    ) -> ScriptResult<()> {
+        let (buffers, line_pool) = ctx.buffers.iter_mut_with_line_pool();
+        for buffer in buffers {
+            if let Err(error) = buffer.discard_and_reload_from_file(line_pool) {
+                ctx.status_message
+                    .write_str(StatusMessageKind::Error, &error);
+            }
+        }
         Ok(())
     }
 

@@ -1,4 +1,4 @@
-use std::{fs::File, io::Read, path::Path};
+use std::{fs::File, io::BufReader, path::Path};
 
 use crate::{
     buffer::{Buffer, BufferCollection, BufferContent, BufferHandle},
@@ -745,10 +745,11 @@ impl BufferViewCollection {
             Ok(handle)
         } else if path.to_str().map(|s| s.trim().len()).unwrap_or(0) > 0 {
             let content = match File::open(&path) {
-                Ok(mut file) => {
-                    let mut content = String::new();
-                    match file.read_to_string(&mut content) {
-                        Ok(_) => (),
+                Ok(file) => {
+                    let mut content = BufferContent::empty();
+                    let mut reader = BufReader::new(file);
+                    match content.read(buffers.line_pool(), &mut reader) {
+                        Ok(()) => (),
                         Err(error) => {
                             return Err(format!(
                                 "could not read contents from file {:?}: {:?}",
@@ -756,7 +757,7 @@ impl BufferViewCollection {
                             ))
                         }
                     }
-                    BufferContent::from_str(buffers.line_pool(), &content)
+                    content
                 }
                 Err(_) => BufferContent::from_str(buffers.line_pool(), ""),
             };
