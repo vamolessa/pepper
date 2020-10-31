@@ -38,7 +38,6 @@ pub struct ServerResponse {
 pub struct ServerConnection {
     process: Child,
     stdin: ChildStdin,
-    reader_handle: thread::JoinHandle<()>,
 }
 
 impl ServerConnection {
@@ -62,7 +61,7 @@ impl ServerConnection {
             .take()
             .ok_or(io::Error::from(io::ErrorKind::WriteZero))?;
 
-        let reader_handle = thread::spawn(move || {
+        thread::spawn(move || {
             let mut stdout = stdout;
             let mut buf = ReadBuf::new();
             let json = json;
@@ -96,11 +95,7 @@ impl ServerConnection {
             }
         });
 
-        Ok(Self {
-            process,
-            stdin,
-            reader_handle,
-        })
+        Ok(Self { process, stdin })
     }
 }
 
