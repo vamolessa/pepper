@@ -186,6 +186,23 @@ pub struct ResponseError {
     pub message: JsonKey,
     pub data: JsonValue,
 }
+impl ResponseError {
+    pub fn parse_error() -> Self {
+        Self {
+            code: -32601,
+            message: JsonKey::Str("MethodNotFound"),
+            data: JsonValue::Null,
+        }
+    }
+
+    pub fn method_not_found() -> Self {
+        Self {
+            code: -32601,
+            message: JsonKey::Str("MethodNotFound"),
+            data: JsonValue::Null,
+        }
+    }
+}
 
 pub struct Protocol {
     server_connection: ServerConnection,
@@ -241,11 +258,11 @@ impl Protocol {
     pub fn respond(
         &mut self,
         json: &mut Json,
-        request_id: usize,
+        request_id: JsonValue,
         result: Result<JsonValue, ResponseError>,
     ) -> io::Result<()> {
         let mut body = JsonObject::default();
-        body.set("id".into(), JsonValue::Integer(request_id as _), json);
+        body.set("id".into(), request_id, json);
 
         match result {
             Ok(result) => body.set("result".into(), result, json),

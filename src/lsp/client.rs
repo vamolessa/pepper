@@ -6,10 +6,13 @@ use std::{
 
 use crate::{
     client_event::LocalEvent,
-    json::{Json, JsonObject, JsonValue},
+    json::{Json, JsonKey, JsonObject, JsonValue},
     lsp::{
         capabilities,
-        protocol::{Protocol, ServerConnection, ServerNotification, ServerRequest, ServerResponse},
+        protocol::{
+            Protocol, ResponseError, ServerConnection, ServerEvent, ServerNotification,
+            ServerRequest, ServerResponse,
+        },
     },
 };
 
@@ -20,16 +23,14 @@ pub struct Client {
 
 impl Client {
     pub fn on_request(&mut self, request: ServerRequest) -> io::Result<()> {
-        let json = self.json.lock().unwrap();
+        let mut json = self.json.lock().unwrap();
 
         match request.method.as_str(&json) {
-            "initialize" => {
-                eprintln!("");
+            _ => {
+                let error = ResponseError::method_not_found();
+                self.protocol.respond(&mut json, request.id, Err(error))
             }
-            _ => (),
         }
-
-        Ok(())
     }
 
     pub fn on_notification(&mut self, notification: ServerNotification) -> io::Result<()> {
@@ -47,8 +48,14 @@ impl Client {
 
     pub fn on_response(&mut self, response: ServerResponse) -> io::Result<()> {
         let json = self.json.lock().unwrap();
-
         Ok(())
+    }
+
+    pub fn on_parse_error(&mut self) -> io::Result<()> {
+        let mut json = self.json.lock().unwrap();
+        let error = ResponseError::parse_error();
+        self.protocol
+            .respond(&mut json, JsonValue::Null, Err(error))
     }
 
     pub fn initialize(&mut self) -> io::Result<()> {
@@ -101,8 +108,33 @@ impl ClientCollection {
         Ok(handle)
     }
 
-    pub fn close(&mut self, handle: ClientHandle) {
-        self.clients[handle.0] = None;
+    pub fn on_event(&mut self, event: ServerEvent) -> io::Result<()> {
+        match event {
+            ServerEvent::Closed(handle) => {
+                self.clients[handle.0] = None;
+            }
+            ServerEvent::ParseError(handle) => {
+                if let Some(client) = self.clients[handle.0].as_mut() {
+                    client.on_parse_error()?;
+                }
+            }
+            ServerEvent::Request(handle, request) => {
+                if let Some(client) = self.clients[handle.0].as_mut() {
+                    client.on_request(request)?;
+                }
+            }
+            ServerEvent::Notification(handle, notification) => {
+                if let Some(client) = self.clients[handle.0].as_mut() {
+                    client.on_notification(notification)?;
+                }
+            }
+            ServerEvent::Response(handle, response) => {
+                if let Some(client) = self.clients[handle.0].as_mut() {
+                    client.on_response(response)?;
+                }
+            }
+        }
+        Ok(())
     }
 
     fn find_free_slot(&mut self) -> ClientHandle {
