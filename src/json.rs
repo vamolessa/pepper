@@ -234,10 +234,6 @@ impl Json {
     where
         R: io::BufRead,
     {
-        self.strings.clear();
-        self.elements.truncate(1);
-        self.members.truncate(1);
-
         fn next_byte<R>(reader: &mut R) -> io::Result<u8>
         where
             R: io::BufRead,
@@ -479,6 +475,9 @@ impl Json {
             }
         }
 
+        self.strings.clear();
+        self.elements.truncate(1);
+        self.members.truncate(1);
         read_value(self, reader)
     }
 
