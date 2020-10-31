@@ -76,10 +76,19 @@ impl ServerConnection {
                     }
                 };
                 let mut json_guard = json.lock().unwrap();
+
+                match std::str::from_utf8(content_bytes) {
+                    Ok(text) => eprintln!("received text:\n{}\n---\n", text),
+                    Err(_) => eprintln!("received {} non utf8 bytes", content_bytes.len()),
+                }
+
                 let mut reader = Cursor::new(content_bytes);
                 let event = match json_guard.read(&mut reader) {
                     Ok(body) => parse_server_event(handle, &json_guard, body),
-                    _ => ServerEvent::ParseError(handle),
+                    _ => {
+                        eprintln!("parse error! error reading json. really parse error!");
+                        ServerEvent::ParseError(handle)
+                    }
                 };
                 if let Err(_) = event_sender.send(LocalEvent::Lsp(event)) {
                     break;
@@ -98,7 +107,10 @@ impl ServerConnection {
 fn parse_server_event(handle: ClientHandle, json: &Json, body: JsonValue) -> ServerEvent {
     let body = match body {
         JsonValue::Object(body) => body,
-        _ => return ServerEvent::ParseError(handle),
+        _ => {
+            eprintln!("parse error! message body is not an object");
+            return ServerEvent::ParseError(handle);
+        }
     };
 
     let mut id = JsonValue::Null;
@@ -118,10 +130,24 @@ fn parse_server_event(handle: ClientHandle, json: &Json, body: JsonValue) -> Ser
         }
     }
 
+    fn debug_stringify(json: &Json, value: &JsonValue) -> String {
+        let mut buf = Vec::new();
+        match json.write(&mut buf, value) {
+            Ok(()) => String::from_utf8_lossy(&buf).into_owned(),
+            Err(e) => e.to_string(),
+        }
+    }
+
     if !matches!(result, JsonValue::Null) {
         let id = match id {
             JsonValue::Integer(n) if n > 0 => n as _,
-            _ => return ServerEvent::ParseError(handle),
+            _ => {
+                eprintln!(
+                    "parse error! invalid result id {}",
+                    debug_stringify(json, &id)
+                );
+                return ServerEvent::ParseError(handle);
+            }
         };
         ServerEvent::Response(
             handle,
@@ -146,7 +172,13 @@ fn parse_server_event(handle: ClientHandle, json: &Json, body: JsonValue) -> Ser
         }
         let id = match id {
             JsonValue::Integer(n) if n > 0 => n as _,
-            _ => return ServerEvent::ParseError(handle),
+            _ => {
+                eprintln!(
+                    "parse error! invalid error id {}",
+                    debug_stringify(json, &id)
+                );
+                return ServerEvent::ParseError(handle);
+            }
         };
         ServerEvent::Response(
             handle,
@@ -179,7 +211,7 @@ impl Drop for ServerConnection {
 }
 
 #[derive(Default, PartialEq, Eq)]
-pub struct RequestId(usize);
+pub struct RequestId(pub usize);
 
 pub struct ResponseError {
     pub code: JsonInteger,
@@ -189,8 +221,8 @@ pub struct ResponseError {
 impl ResponseError {
     pub fn parse_error() -> Self {
         Self {
-            code: -32601,
-            message: JsonKey::Str("MethodNotFound"),
+            code: -32700,
+            message: JsonKey::Str("ParseError"),
             data: JsonValue::Null,
         }
     }
@@ -292,11 +324,46 @@ impl Protocol {
 
         {
             let msg = std::str::from_utf8(&self.write_buffer).unwrap();
-            println!("msg:\n{}", msg);
+            eprintln!("sending msg:\n{}\n---\n", msg);
         }
 
         self.server_connection.write(&self.write_buffer)?;
         Ok(())
+    }
+}
+
+struct PendingRequest {
+    id: RequestId,
+    method: &'static str,
+}
+
+#[derive(Default)]
+pub struct PendingRequestColection {
+    pending_requests: Vec<PendingRequest>,
+}
+
+impl PendingRequestColection {
+    pub fn add(&mut self, id: RequestId, method: &'static str) {
+        for request in &mut self.pending_requests {
+            if request.id.0 == 0 {
+                request.id = id;
+                request.method = method;
+                return;
+            }
+        }
+
+        self.pending_requests.push(PendingRequest { id, method })
+    }
+
+    pub fn take(&mut self, id: RequestId) -> Option<&'static str> {
+        for request in &mut self.pending_requests {
+            if request.id == id {
+                request.id.0 = 0;
+                return Some(request.method);
+            }
+        }
+
+        None
     }
 }
 
@@ -345,8 +412,8 @@ impl ReadBuf {
                                     }
                                 }
 
-                                content_index = c_index;
-                                total_len = cl_index + c_index + content_len;
+                                content_index = cl_index + c_index;
+                                total_len = content_index + content_len;
                             }
                         }
                     }

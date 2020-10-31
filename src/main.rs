@@ -68,12 +68,28 @@ pub struct Args {
 }
 
 fn main() {
-    /*
-    let mut lsp_client = lsp::Client::new("rust-analyzer").unwrap();
-    lsp_client.initialize().unwrap();
-    println!("response:\n{}", lsp_client.wait_response().unwrap());
+    use ui::Ui;
+    let stdout = std::io::stdout();
+    let stdout = stdout.lock();
+    let mut ui = ui::tui::Tui::new(stdout);
+
+    let mut lsp = lsp::LspClientCollection::default();
+    let server_command = std::process::Command::new("rust-analyzer");
+    let (event_sender, event_receiver) = std::sync::mpsc::channel();
+    ui.run_event_loop_in_background(event_sender.clone());
+    let handle = lsp.spawn(server_command, event_sender).unwrap();
+    let client = lsp.get(handle).unwrap();
+    client.initialize().unwrap();
+    for event in event_receiver.iter() {
+        match event {
+            client_event::LocalEvent::Lsp(event) => {
+                lsp.on_event(event).unwrap();
+            }
+            client_event::LocalEvent::Key(client_event::Key::Char('q')) => break,
+            _ => eprintln!("other event"),
+        }
+    }
     return;
-    */
 
     let args: Args = argh::from_env();
     if args.version {

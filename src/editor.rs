@@ -8,6 +8,7 @@ use crate::{
     config::Config,
     connection::ConnectionWithClientHandle,
     keymap::{KeyMapCollection, MatchResult},
+    lsp::{LspClientCollection, LspServerEvent},
     mode::{Mode, ModeContext, ModeOperation},
     picker::Picker,
     register::{RegisterCollection, RegisterKey, KEY_QUEUE_REGISTER},
@@ -207,6 +208,7 @@ pub struct Editor {
 
     keymaps: KeyMapCollection,
     scripts: ScriptEngine,
+    lsp: LspClientCollection,
     client_target_map: ClientTargetMap,
 }
 
@@ -231,6 +233,7 @@ impl Editor {
 
             keymaps: KeyMapCollection::default(),
             scripts: ScriptEngine::new(),
+            lsp: LspClientCollection::default(),
             client_target_map: ClientTargetMap::default(),
         }
     }
@@ -503,6 +506,12 @@ impl Editor {
                     return;
                 }
             }
+        }
+    }
+
+    pub fn on_lsp_event(&mut self, event: LspServerEvent) {
+        if let Err(error) = self.lsp.on_event(event) {
+            self.status_message.write_error(&error);
         }
     }
 }

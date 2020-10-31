@@ -10,8 +10,8 @@ use crate::{
     lsp::{
         capabilities,
         protocol::{
-            Protocol, ResponseError, ServerConnection, ServerEvent, ServerNotification,
-            ServerRequest, ServerResponse,
+            PendingRequestColection, Protocol, RequestId, ResponseError, ServerConnection,
+            ServerEvent, ServerNotification, ServerRequest, ServerResponse,
         },
     },
 };
@@ -19,6 +19,7 @@ use crate::{
 pub struct Client {
     protocol: Protocol,
     json: Arc<Mutex<Json>>,
+    pending_requests: PendingRequestColection,
 }
 
 impl Client {
@@ -37,9 +38,6 @@ impl Client {
         let json = self.json.lock().unwrap();
 
         match notification.method.as_str(&json) {
-            "initialize" => {
-                eprintln!("");
-            }
             _ => (),
         }
 
@@ -47,7 +45,36 @@ impl Client {
     }
 
     pub fn on_response(&mut self, response: ServerResponse) -> io::Result<()> {
-        let json = self.json.lock().unwrap();
+        let idn = response.id.0;
+        let method = match self.pending_requests.take(response.id) {
+            Some(method) => method,
+            None => {
+                eprintln!("num acho request para a response {:?}", idn);
+                return Ok(());
+            }
+        };
+        let mut json = self.json.lock().unwrap();
+
+        match method {
+            "initialize" => {
+                let mut bytes = Vec::new();
+                match response.result {
+                    Ok(result) => {
+                        json.write(&mut bytes, &result)?;
+                        self.protocol.notify(
+                            &mut json,
+                            "initialized",
+                            JsonValue::Object(JsonObject::default()),
+                        )?;
+                    }
+                    Err(error) => json.write(&mut bytes, &error.message.into())?,
+                }
+                let text = String::from_utf8(bytes).unwrap();
+                eprintln!("initialize response:\n{}\n---\n", text);
+            }
+            _ => (),
+        }
+
         Ok(())
     }
 
@@ -56,6 +83,18 @@ impl Client {
         let error = ResponseError::parse_error();
         self.protocol
             .respond(&mut json, JsonValue::Null, Err(error))
+    }
+
+    fn request(
+        protocol: &mut Protocol,
+        json: &mut Json,
+        pending_requests: &mut PendingRequestColection,
+        method: &'static str,
+        params: JsonObject,
+    ) -> io::Result<()> {
+        let id = protocol.request(json, method, params.into())?;
+        pending_requests.add(id, method);
+        Ok(())
     }
 
     pub fn initialize(&mut self) -> io::Result<()> {
@@ -79,8 +118,13 @@ impl Client {
             &mut json,
         );
 
-        self.protocol
-            .request(&mut json, "initialize", params.into())?;
+        Self::request(
+            &mut self.protocol,
+            &mut json,
+            &mut self.pending_requests,
+            "initialize",
+            params,
+        )?;
         Ok(())
     }
 }
@@ -88,6 +132,7 @@ impl Client {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct ClientHandle(usize);
 
+#[derive(Default)]
 pub struct ClientCollection {
     clients: Vec<Option<Client>>,
 }
@@ -104,8 +149,13 @@ impl ClientCollection {
         self.clients[handle.0] = Some(Client {
             protocol: Protocol::new(connection),
             json,
+            pending_requests: PendingRequestColection::default(),
         });
         Ok(handle)
+    }
+
+    pub fn get(&mut self, handle: ClientHandle) -> Option<&mut Client> {
+        self.clients[handle.0].as_mut()
     }
 
     pub fn on_event(&mut self, event: ServerEvent) -> io::Result<()> {

@@ -235,7 +235,7 @@ where
                 connections.unregister_closed_connections(&event_registry)?;
             }
             LocalEvent::Lsp(event) => {
-                //
+                editor.on_lsp_event(event);
             }
         }
 
