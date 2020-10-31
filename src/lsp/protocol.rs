@@ -78,69 +78,7 @@ impl ServerConnection {
                 let mut json_guard = json.lock().unwrap();
                 let mut reader = Cursor::new(content_bytes);
                 let event = match json_guard.read(&mut reader) {
-                    Ok(JsonValue::Object(body)) => {
-                        let mut id = JsonValue::Null;
-                        let mut method = JsonString::default();
-                        let mut params = JsonValue::Null;
-                        let mut result = JsonValue::Null;
-                        let mut error = JsonValue::Null;
-
-                        for (key, value) in body.iter(&json_guard) {
-                            match (key, value) {
-                                ("id", v) => id = v.clone(),
-                                ("method", JsonValue::String(s)) => method = s.clone(),
-                                ("params", v) => params = v.clone(),
-                                ("result", v) => result = v.clone(),
-                                ("error", v) => error = v.clone(),
-                                _ => (),
-                            }
-                        }
-
-                        if !matches!(result, JsonValue::Null) {
-                            let id = match id {
-                                JsonValue::Integer(n) if n > 0 => RequestId(n as _),
-                                _ => RequestId(0),
-                            };
-                            ServerEvent::Response(
-                                handle,
-                                ServerResponse {
-                                    id,
-                                    result: Ok(result),
-                                },
-                            )
-                        } else if let JsonValue::Object(error) = error {
-                            let mut e = ResponseError {
-                                code: JsonInteger::default(),
-                                message: JsonKey::String(JsonString::default()),
-                                data: JsonValue::Null,
-                            };
-                            for (key, value) in error.iter(&json_guard) {
-                                match (key, value) {
-                                    ("code", JsonValue::Integer(n)) => e.code = *n,
-                                    ("message", JsonValue::String(s)) => {
-                                        e.message = JsonKey::String(s.clone())
-                                    }
-                                    ("data", v) => e.data = v.clone(),
-                                    _ => (),
-                                }
-                            }
-                            let id = match id {
-                                JsonValue::Integer(n) if n > 0 => n as _,
-                                _ => 0,
-                            };
-                            ServerEvent::Response(
-                                handle,
-                                ServerResponse {
-                                    id: RequestId(id),
-                                    result: Err(e),
-                                },
-                            )
-                        } else if !matches!(id, JsonValue::Null) {
-                            ServerEvent::Request(handle, ServerRequest { id, method, params })
-                        } else {
-                            ServerEvent::Notification(handle, ServerNotification { method, params })
-                        }
-                    }
+                    Ok(body) => parse_server_event(handle, &json_guard, body),
                     _ => ServerEvent::ParseError(handle),
                 };
                 if let Err(_) = event_sender.send(LocalEvent::Lsp(event)) {
@@ -154,6 +92,73 @@ impl ServerConnection {
             stdin,
             reader_handle,
         })
+    }
+}
+
+fn parse_server_event(handle: ClientHandle, json: &Json, body: JsonValue) -> ServerEvent {
+    let body = match body {
+        JsonValue::Object(body) => body,
+        _ => return ServerEvent::ParseError(handle),
+    };
+
+    let mut id = JsonValue::Null;
+    let mut method = JsonString::default();
+    let mut params = JsonValue::Null;
+    let mut result = JsonValue::Null;
+    let mut error = JsonValue::Null;
+
+    for (key, value) in body.iter(json) {
+        match (key, value) {
+            ("id", v) => id = v.clone(),
+            ("method", JsonValue::String(s)) => method = s.clone(),
+            ("params", v) => params = v.clone(),
+            ("result", v) => result = v.clone(),
+            ("error", v) => error = v.clone(),
+            _ => (),
+        }
+    }
+
+    if !matches!(result, JsonValue::Null) {
+        let id = match id {
+            JsonValue::Integer(n) if n > 0 => n as _,
+            _ => return ServerEvent::ParseError(handle),
+        };
+        ServerEvent::Response(
+            handle,
+            ServerResponse {
+                id: RequestId(id),
+                result: Ok(result),
+            },
+        )
+    } else if let JsonValue::Object(error) = error {
+        let mut e = ResponseError {
+            code: JsonInteger::default(),
+            message: JsonKey::String(JsonString::default()),
+            data: JsonValue::Null,
+        };
+        for (key, value) in error.iter(json) {
+            match (key, value) {
+                ("code", JsonValue::Integer(n)) => e.code = *n,
+                ("message", JsonValue::String(s)) => e.message = JsonKey::String(s.clone()),
+                ("data", v) => e.data = v.clone(),
+                _ => (),
+            }
+        }
+        let id = match id {
+            JsonValue::Integer(n) if n > 0 => n as _,
+            _ => return ServerEvent::ParseError(handle),
+        };
+        ServerEvent::Response(
+            handle,
+            ServerResponse {
+                id: RequestId(id),
+                result: Err(e),
+            },
+        )
+    } else if !matches!(id, JsonValue::Null) {
+        ServerEvent::Request(handle, ServerRequest { id, method, params })
+    } else {
+        ServerEvent::Notification(handle, ServerNotification { method, params })
     }
 }
 
