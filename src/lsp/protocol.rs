@@ -383,51 +383,58 @@ impl ReadBuf {
     where
         R: Read,
     {
-        fn find_end<'a>(buf: &'a [u8], pattern: &[u8]) -> Option<usize> {
+        fn find_pattern_end<'a>(buf: &'a [u8], pattern: &[u8]) -> Option<usize> {
             buf.windows(pattern.len())
                 .position(|w| w == pattern)
                 .map(|p| p + pattern.len())
         }
 
-        self.len = 0;
-        let mut content_index = 0;
-        let mut total_len = 0;
-        loop {
-            match reader.read(&mut self.buf[self.len..]) {
-                Ok(len) => {
-                    self.len += len;
-
-                    if total_len == 0 {
-                        let bytes = &self.buf[..self.len];
-                        if let Some(cl_index) = find_end(bytes, b"Content-Length: ") {
-                            let bytes = &bytes[cl_index..];
-                            if let Some(c_index) = find_end(bytes, b"\r\n\r\n") {
-                                let mut content_len = 0;
-                                for b in bytes {
-                                    if b.is_ascii_digit() {
-                                        content_len *= 10;
-                                        content_len += (b - b'0') as usize;
-                                    } else {
-                                        break;
-                                    }
-                                }
-
-                                content_index = cl_index + c_index;
-                                total_len = content_index + content_len;
-                            }
-                        }
-                    }
-
-                    if self.len >= total_len {
-                        break;
-                    }
-
-                    self.buf.resize(self.buf.len() * 2, 0);
+        fn parse_number(buf: &[u8]) -> usize {
+            let mut n = 0;
+            for b in buf {
+                if b.is_ascii_digit() {
+                    n *= 10;
+                    n += (b - b'0') as usize;
+                } else {
+                    break;
                 }
+            }
+            n
+        }
+
+        let start_index = self.len;
+        let mut content_start_index = 0;
+        let mut content_end_index = 0;
+
+        loop {
+            if content_end_index == 0 {
+                let bytes = &self.buf[..self.len];
+                if let Some(cl_index) = find_pattern_end(bytes, b"Content-Length: ") {
+                    let bytes = &bytes[cl_index..];
+                    if let Some(c_index) = find_pattern_end(bytes, b"\r\n\r\n") {
+                        let content_len = parse_number(bytes);
+                        content_start_index = start_index + cl_index + c_index;
+                        content_end_index = content_start_index + content_len;
+                    }
+                }
+            } else if self.len >= content_end_index {
+                break;
+            }
+
+            if self.len == self.buf.len() {
+                self.buf.resize(self.buf.len() * 2, 0);
+            }
+
+            match reader.read(&mut self.buf[self.len..]) {
+                Ok(len) => self.len += len,
                 Err(e) => return Err(e),
             }
         }
 
-        Ok(&self.buf[content_index..self.len])
+        if self.len == content_end_index {
+            self.len = 0;
+        }
+
+        Ok(&self.buf[content_start_index..content_end_index])
     }
 }
