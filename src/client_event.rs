@@ -17,7 +17,7 @@ pub enum LocalEvent {
     Key(Key),
     Resize(u16, u16),
     Connection(ConnectionEvent),
-    Lsp(LspServerEvent),
+    Lsp(LspClientHandle, LspServerEvent),
 }
 
 pub enum ClientEvent<'a> {

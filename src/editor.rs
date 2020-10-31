@@ -8,7 +8,7 @@ use crate::{
     config::Config,
     connection::ConnectionWithClientHandle,
     keymap::{KeyMapCollection, MatchResult},
-    lsp::{LspClientCollection, LspServerEvent},
+    lsp::{LspClientCollection, LspClientHandle, LspServerEvent},
     mode::{Mode, ModeContext, ModeOperation},
     picker::Picker,
     register::{RegisterCollection, RegisterKey, KEY_QUEUE_REGISTER},
@@ -509,8 +509,8 @@ impl Editor {
         }
     }
 
-    pub fn on_lsp_event(&mut self, event: LspServerEvent) {
-        if let Err(error) = self.lsp.on_event(event) {
+    pub fn on_lsp_event(&mut self, client_handle: LspClientHandle, event: LspServerEvent) {
+        if let Err(error) = self.lsp.on_event(client_handle, event) {
             self.status_message.write_error(&error);
         }
     }

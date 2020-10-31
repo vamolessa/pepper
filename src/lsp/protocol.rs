@@ -12,11 +12,11 @@ use crate::{
 };
 
 pub enum ServerEvent {
-    Closed(ClientHandle),
-    ParseError(ClientHandle),
-    Request(ClientHandle, ServerRequest),
-    Notification(ClientHandle, ServerNotification),
-    Response(ClientHandle, ServerResponse),
+    Closed,
+    ParseError,
+    Request(ServerRequest),
+    Notification(ServerNotification),
+    Response(ServerResponse),
 }
 
 pub struct ServerRequest {
@@ -70,7 +70,7 @@ impl ServerConnection {
                 let content_bytes = match buf.read_content_from(&mut stdout) {
                     Ok(bytes) => bytes,
                     Err(_) => {
-                        let _ = event_sender.send(LocalEvent::Lsp(ServerEvent::Closed(handle)));
+                        let _ = event_sender.send(LocalEvent::Lsp(handle, ServerEvent::Closed));
                         break;
                     }
                 };
@@ -83,13 +83,13 @@ impl ServerConnection {
 
                 let mut reader = Cursor::new(content_bytes);
                 let event = match json_guard.read(&mut reader) {
-                    Ok(body) => parse_server_event(handle, &json_guard, body),
+                    Ok(body) => parse_server_event(&json_guard, body),
                     _ => {
                         eprintln!("parse error! error reading json. really parse error!");
-                        ServerEvent::ParseError(handle)
+                        ServerEvent::ParseError
                     }
                 };
-                if let Err(_) = event_sender.send(LocalEvent::Lsp(event)) {
+                if let Err(_) = event_sender.send(LocalEvent::Lsp(handle, event)) {
                     break;
                 }
             }
@@ -99,12 +99,12 @@ impl ServerConnection {
     }
 }
 
-fn parse_server_event(handle: ClientHandle, json: &Json, body: JsonValue) -> ServerEvent {
+fn parse_server_event(json: &Json, body: JsonValue) -> ServerEvent {
     let body = match body {
         JsonValue::Object(body) => body,
         _ => {
             eprintln!("parse error! message body is not an object");
-            return ServerEvent::ParseError(handle);
+            return ServerEvent::ParseError;
         }
     };
 
@@ -141,16 +141,13 @@ fn parse_server_event(handle: ClientHandle, json: &Json, body: JsonValue) -> Ser
                     "parse error! invalid result id {}",
                     debug_stringify(json, &id)
                 );
-                return ServerEvent::ParseError(handle);
+                return ServerEvent::ParseError;
             }
         };
-        ServerEvent::Response(
-            handle,
-            ServerResponse {
-                id: RequestId(id),
-                result: Ok(result),
-            },
-        )
+        ServerEvent::Response(ServerResponse {
+            id: RequestId(id),
+            result: Ok(result),
+        })
     } else if let JsonValue::Object(error) = error {
         let mut e = ResponseError {
             code: JsonInteger::default(),
@@ -172,20 +169,17 @@ fn parse_server_event(handle: ClientHandle, json: &Json, body: JsonValue) -> Ser
                     "parse error! invalid error id {}",
                     debug_stringify(json, &id)
                 );
-                return ServerEvent::ParseError(handle);
+                return ServerEvent::ParseError;
             }
         };
-        ServerEvent::Response(
-            handle,
-            ServerResponse {
-                id: RequestId(id),
-                result: Err(e),
-            },
-        )
+        ServerEvent::Response(ServerResponse {
+            id: RequestId(id),
+            result: Err(e),
+        })
     } else if !matches!(id, JsonValue::Null) {
-        ServerEvent::Request(handle, ServerRequest { id, method, params })
+        ServerEvent::Request(ServerRequest { id, method, params })
     } else {
-        ServerEvent::Notification(handle, ServerNotification { method, params })
+        ServerEvent::Notification(ServerNotification { method, params })
     }
 }
 

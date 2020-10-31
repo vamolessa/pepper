@@ -6,12 +6,12 @@ use std::{
 
 use crate::{
     client_event::LocalEvent,
-    json::{Json, JsonKey, JsonObject, JsonValue},
+    json::{Json, JsonObject, JsonValue},
     lsp::{
         capabilities,
         protocol::{
-            PendingRequestColection, Protocol, RequestId, ResponseError, ServerConnection,
-            ServerEvent, ServerNotification, ServerRequest, ServerResponse,
+            PendingRequestColection, Protocol, ResponseError, ServerConnection, ServerEvent,
+            ServerNotification, ServerRequest, ServerResponse,
         },
     },
 };
@@ -158,27 +158,27 @@ impl ClientCollection {
         self.clients[handle.0].as_mut()
     }
 
-    pub fn on_event(&mut self, event: ServerEvent) -> io::Result<()> {
+    pub fn on_event(&mut self, handle: ClientHandle, event: ServerEvent) -> io::Result<()> {
         match event {
-            ServerEvent::Closed(handle) => {
+            ServerEvent::Closed => {
                 self.clients[handle.0] = None;
             }
-            ServerEvent::ParseError(handle) => {
+            ServerEvent::ParseError => {
                 if let Some(client) = self.clients[handle.0].as_mut() {
                     client.on_parse_error()?;
                 }
             }
-            ServerEvent::Request(handle, request) => {
+            ServerEvent::Request(request) => {
                 if let Some(client) = self.clients[handle.0].as_mut() {
                     client.on_request(request)?;
                 }
             }
-            ServerEvent::Notification(handle, notification) => {
+            ServerEvent::Notification(notification) => {
                 if let Some(client) = self.clients[handle.0].as_mut() {
                     client.on_notification(notification)?;
                 }
             }
-            ServerEvent::Response(handle, response) => {
+            ServerEvent::Response(response) => {
                 if let Some(client) = self.clients[handle.0].as_mut() {
                     client.on_response(response)?;
                 }

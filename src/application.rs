@@ -234,8 +234,8 @@ where
                 }
                 connections.unregister_closed_connections(&event_registry)?;
             }
-            LocalEvent::Lsp(event) => {
-                editor.on_lsp_event(event);
+            LocalEvent::Lsp(handle, event) => {
+                editor.on_lsp_event(handle, event);
             }
         }
 
@@ -315,7 +315,7 @@ where
 
                 profiler.end_frame();
             }
-            LocalEvent::Lsp(_) => (),
+            LocalEvent::Lsp(_, _) => (),
         }
     }
 

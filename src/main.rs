@@ -82,8 +82,8 @@ fn main() {
     client.initialize().unwrap();
     for event in event_receiver.iter() {
         match event {
-            client_event::LocalEvent::Lsp(event) => {
-                lsp.on_event(event).unwrap();
+            client_event::LocalEvent::Lsp(handle, event) => {
+                lsp.on_event(handle, event).unwrap();
             }
             client_event::LocalEvent::Key(client_event::Key::Char('q')) => break,
             _ => eprintln!("other event"),
