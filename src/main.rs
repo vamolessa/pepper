@@ -11,6 +11,7 @@ mod connection;
 mod cursor;
 mod editor;
 mod event_manager;
+mod glob;
 mod history;
 mod json;
 mod keymap;

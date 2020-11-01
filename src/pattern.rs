@@ -45,7 +45,7 @@ pub struct Pattern {
 
 impl Pattern {
     pub fn new(pattern: &str) -> Result<Self, PatternError> {
-        Ok(PatternCompiler::new(pattern.as_bytes()).compile()?)
+        Ok(PatternCompiler::new(pattern.as_bytes(), Vec::new()).compile()?)
     }
 
     pub fn matches(&self, text: &str) -> MatchResult {
@@ -279,12 +279,13 @@ struct PatternCompiler<'a> {
 }
 
 impl<'a> PatternCompiler<'a> {
-    pub fn new(bytes: &'a [u8]) -> Self {
+    pub fn new(bytes: &'a [u8], mut ops_buf: Vec<Op>) -> Self {
+        ops_buf.clear();
         Self {
             bytes,
             index: 0,
             start_jump: Jump(1),
-            ops: Vec::new(),
+            ops: ops_buf,
         }
     }
 

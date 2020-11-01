@@ -29,6 +29,7 @@ pub struct Client {
     protocol: Protocol,
     json: Arc<Mutex<Json>>,
     pending_requests: PendingRequestColection,
+    initialized: bool,
 }
 
 impl Client {
@@ -81,12 +82,13 @@ impl Client {
                 let mut bytes = Vec::new();
                 match response.result {
                     Ok(result) => {
-                        json.write(&mut bytes, &result)?;
+                        self.initialized = true;
                         self.protocol.notify(
                             &mut json,
                             "initialized",
                             JsonValue::Object(JsonObject::default()),
                         )?;
+                        json.write(&mut bytes, &result)?;
                     }
                     Err(error) => json.write(&mut bytes, &error.message.into())?,
                 }
@@ -111,6 +113,10 @@ impl Client {
         ctx: &mut ClientContext,
         events: &[EditorEvent],
     ) -> io::Result<()> {
+        if !self.initialized {
+            return Ok(());
+        }
+
         for event in events {
             match event {
                 _ => (),
@@ -184,6 +190,7 @@ impl ClientCollection {
             protocol: Protocol::new(connection),
             json,
             pending_requests: PendingRequestColection::default(),
+            initialized: false,
         });
         Ok(handle)
     }
