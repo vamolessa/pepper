@@ -1,6 +1,12 @@
 pub struct InvalidGlobError;
 
 pub fn match_glob(pattern: &str, path: &str) -> Result<bool, InvalidGlobError> {
+    if pattern.is_empty() && path.is_empty() {
+        return Ok(true);
+    }
+
+    let mut chars = path.chars();
+
     Ok(false)
 }
 
@@ -14,7 +20,10 @@ enum SubPattern {
     BeginGroup,
 }
 
-fn next_subpattern(pattern: &str) -> Result<(SubPattern, &str), InvalidGlobError> {
+fn next_subpattern(
+    pattern: &str,
+    inside_group: bool,
+) -> Result<(SubPattern, &str), InvalidGlobError> {
     let mut chars = pattern.chars();
     loop {
         match chars.next() {
@@ -61,8 +70,16 @@ fn next_subpattern(pattern: &str) -> Result<(SubPattern, &str), InvalidGlobError
             }
             Some(']') => break Err(InvalidGlobError),
             Some('{') => break Ok((SubPattern::BeginGroup, chars.as_str())),
-            Some('}') => (),
+            Some('}') => {
+                if !inside_group {
+                    break Err(InvalidGlobError);
+                }
+            }
             Some(',') => {
+                if !inside_group {
+                    break Err(InvalidGlobError);
+                }
+
                 let pattern = chars.as_str();
                 match pattern.find('}') {
                     Some(i) => chars = pattern[i..].chars(),
@@ -83,8 +100,19 @@ mod tests {
     fn test_next_class() {
         macro_rules! assert_subpattern {
             ($expect:pat, $pattern:expr) => {
-                assert!(matches!(next_subpattern($pattern), Ok(($expect,""))))
-            }
+                assert!(matches!(
+                    next_subpattern($pattern, false),
+                    Ok(($expect, ""))
+                ))
+            };
+        }
+        macro_rules! assert_subpattern_fail {
+            ($pattern:expr) => {
+                assert!(matches!(
+                    next_subpattern($pattern, false),
+                    Err(InvalidGlobError)
+                ))
+            };
         }
 
         assert_subpattern!(SubPattern::Char('a'), "a");
@@ -101,15 +129,19 @@ mod tests {
         assert_subpattern!(SubPattern::Range('a', 'z'), "[a-z]");
         assert_subpattern!(SubPattern::Range('A', 'Z'), "[A-Z]");
         assert_subpattern!(SubPattern::Range('0', '9'), "[0-9]");
-        assert!(matches!(next_subpattern("[z-a"), Err(InvalidGlobError)));
-        assert!(matches!(next_subpattern("]"), Err(InvalidGlobError)));
-        assert!(matches!(next_subpattern("[z-a]"), Err(InvalidGlobError)));
+        assert_subpattern_fail!("[a-z");
+        assert_subpattern_fail!("]");
+        assert_subpattern_fail!("[z-a]");
 
         assert_subpattern!(SubPattern::ExceptRange('a', 'z'), "[!a-z]");
         assert_subpattern!(SubPattern::ExceptRange('A', 'Z'), "[!A-Z]");
         assert_subpattern!(SubPattern::ExceptRange('0', '9'), "[!0-9]");
-        assert!(matches!(next_subpattern("[!z-a"), Err(InvalidGlobError)));
-        assert!(matches!(next_subpattern("[!]"), Err(InvalidGlobError)));
-        assert!(matches!(next_subpattern("[!z-a]"), Err(InvalidGlobError)));
+        assert_subpattern_fail!("[!a-z");
+        assert_subpattern_fail!("[!]");
+        assert_subpattern_fail!("[!z-a]");
+
+        assert_subpattern!(SubPattern::BeginGroup, "{");
+        assert_subpattern_fail!("}");
+        assert_subpattern_fail!(",");
     }
 }
