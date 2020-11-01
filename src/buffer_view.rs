@@ -372,6 +372,7 @@ impl BufferViewCollection {
         buffers: &mut BufferCollection,
         clients: &mut ClientCollection,
         word_database: &mut WordDatabase,
+        events: &mut EditorEventQueue,
         predicate: F,
     ) where
         F: Fn(&BufferView) -> bool,
@@ -384,7 +385,7 @@ impl BufferViewCollection {
             }
         }
 
-        buffers.remove_where(clients, word_database, |h, _| {
+        buffers.remove_where(clients, word_database, events, |h, _| {
             !self.iter().any(|v| v.buffer_handle == h)
         });
     }

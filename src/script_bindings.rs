@@ -393,10 +393,13 @@ mod buffer {
                 return Ok(());
             }
 
-            ctx.buffer_views
-                .remove_where(ctx.buffers, ctx.clients, ctx.word_database, |view| {
-                    view.buffer_handle == handle
-                });
+            ctx.buffer_views.remove_where(
+                ctx.buffers,
+                ctx.clients,
+                ctx.word_database,
+                ctx.events,
+                |view| view.buffer_handle == handle,
+            );
         }
 
         ctx.set_current_buffer_view_handle(None);
@@ -410,10 +413,13 @@ mod buffer {
         handle: Option<BufferHandle>,
     ) -> ScriptResult<()> {
         if let Some(handle) = handle.or_else(|| ctx.current_buffer_handle()) {
-            ctx.buffer_views
-                .remove_where(ctx.buffers, ctx.clients, ctx.word_database, |view| {
-                    view.buffer_handle == handle
-                });
+            ctx.buffer_views.remove_where(
+                ctx.buffers,
+                ctx.clients,
+                ctx.word_database,
+                ctx.events,
+                |view| view.buffer_handle == handle,
+            );
         }
 
         ctx.set_current_buffer_view_handle(None);
@@ -434,8 +440,13 @@ mod buffer {
             );
             Ok(())
         } else {
-            ctx.buffer_views
-                .remove_where(ctx.buffers, ctx.clients, ctx.word_database, |_| true);
+            ctx.buffer_views.remove_where(
+                ctx.buffers,
+                ctx.clients,
+                ctx.word_database,
+                ctx.events,
+                |_| true,
+            );
             for c in ctx.clients.client_refs() {
                 c.client.set_current_buffer_view_handle(None);
             }
@@ -449,8 +460,13 @@ mod buffer {
         _: ScriptContextGuard,
         _: (),
     ) -> ScriptResult<()> {
-        ctx.buffer_views
-            .remove_where(ctx.buffers, ctx.clients, ctx.word_database, |_| true);
+        ctx.buffer_views.remove_where(
+            ctx.buffers,
+            ctx.clients,
+            ctx.word_database,
+            ctx.events,
+            |_| true,
+        );
         for c in ctx.clients.client_refs() {
             c.client.set_current_buffer_view_handle(None);
         }

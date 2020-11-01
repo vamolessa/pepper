@@ -1082,6 +1082,7 @@ impl BufferCollection {
         &mut self,
         clients: &mut ClientCollection,
         word_database: &mut WordDatabase,
+        events: &mut EditorEventQueue,
         predicate: F,
     ) where
         F: Fn(BufferHandle, &Buffer) -> bool,
@@ -1105,6 +1106,7 @@ impl BufferCollection {
                     }
 
                     self.buffers[i] = None;
+                    events.enqueue(EditorEvent::BufferClose(handle));
                 }
             }
         }

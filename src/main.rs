@@ -68,7 +68,6 @@ pub struct Args {
 }
 
 fn main() {
-    /*
     use ui::Ui;
     let stdout = std::io::stdout();
     let stdout = stdout.lock();
@@ -91,7 +90,6 @@ fn main() {
         }
     }
     return;
-    */
 
     let args: Args = argh::from_env();
     if args.version {
