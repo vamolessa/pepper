@@ -3,9 +3,9 @@ use std::{fs::File, io::BufReader, path::Path};
 use crate::{
     buffer::{Buffer, BufferCollection, BufferContent, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
-    client::ClientCollection,
-    client::TargetClient,
+    client::{ClientCollection, TargetClient},
     cursor::{Cursor, CursorCollection},
+    editor::EditorEventQueue,
     history::{Edit, EditKind},
     script::ScriptValue,
     syntax::SyntaxCollection,
@@ -709,6 +709,7 @@ impl BufferViewCollection {
         target_client: TargetClient,
         path: &Path,
         line_index: Option<usize>,
+        events: &mut EditorEventQueue,
     ) -> Result<BufferViewHandle, String> {
         pub fn try_set_line_index(
             buffer_views: &mut BufferViewCollection,
@@ -762,12 +763,10 @@ impl BufferViewCollection {
                 Err(_) => BufferContent::from_str(buffers.line_pool(), ""),
             };
 
-            let buffer_handle = buffers.add(Buffer::new(
-                word_database,
-                syntaxes,
-                Some(path.into()),
-                content,
-            ));
+            let buffer_handle = buffers.add(
+                Buffer::new(word_database, syntaxes, Some(path.into()), content),
+                events,
+            );
             let buffer_view = BufferView::new(target_client, buffer_handle);
             let handle = self.add(buffer_view);
 
@@ -795,18 +794,17 @@ mod tests {
 
     impl TestContext {
         pub fn with_buffer(text: &str) -> Self {
+            let mut events = EditorEventQueue::default();
             let mut line_pool = BufferLinePool::default();
             let mut word_database = WordDatabase::new();
             let syntaxes = SyntaxCollection::new();
 
             let mut buffers = BufferCollection::default();
             let buffer_content = BufferContent::from_str(&mut line_pool, text);
-            let buffer_handle = buffers.add(Buffer::new(
-                &mut word_database,
-                &syntaxes,
-                None,
-                buffer_content,
-            ));
+            let buffer_handle = buffers.add(
+                Buffer::new(&mut word_database, &syntaxes, None, buffer_content),
+                &mut events,
+            );
 
             let buffer_view = BufferView::new(TargetClient::Local, buffer_handle);
 

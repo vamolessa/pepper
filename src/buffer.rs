@@ -9,6 +9,7 @@ use std::{
 use crate::{
     buffer_position::{BufferPosition, BufferRange},
     client::ClientCollection,
+    editor::{EditorEvent, EditorEventQueue},
     history::{Edit, EditKind, History},
     script::ScriptValue,
     syntax::{self, HighlightedBuffer, SyntaxCollection, SyntaxHandle},
@@ -1002,16 +1003,20 @@ pub struct BufferCollection {
 }
 
 impl BufferCollection {
-    pub fn add(&mut self, buffer: Buffer) -> BufferHandle {
+    pub fn add(&mut self, buffer: Buffer, events: &mut EditorEventQueue) -> BufferHandle {
         for (i, slot) in self.buffers.iter_mut().enumerate() {
             if slot.is_none() {
+                let handle = BufferHandle(i);
                 *slot = Some(buffer);
-                return BufferHandle(i);
+
+                events.enqueue(EditorEvent::BufferOpen(handle));
+                return handle;
             }
         }
 
         let handle = BufferHandle(self.buffers.len());
         self.buffers.push(Some(buffer));
+        events.enqueue(EditorEvent::BufferOpen(handle));
         handle
     }
 
@@ -1057,8 +1062,13 @@ impl BufferCollection {
         self.buffers.iter_mut().filter_map(|b| b.as_mut())
     }
 
-    pub fn iter_mut_with_line_pool(&mut self) -> (impl Iterator<Item = &mut Buffer>, &mut BufferLinePool) {
-        (self.buffers.iter_mut().filter_map(|b| b.as_mut()), &mut self.line_pool)
+    pub fn iter_mut_with_line_pool(
+        &mut self,
+    ) -> (impl Iterator<Item = &mut Buffer>, &mut BufferLinePool) {
+        (
+            self.buffers.iter_mut().filter_map(|b| b.as_mut()),
+            &mut self.line_pool,
+        )
     }
 
     pub fn iter_with_handles(&self) -> impl Iterator<Item = (BufferHandle, &Buffer)> {

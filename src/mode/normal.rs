@@ -127,7 +127,7 @@ impl Default for State {
 }
 
 impl ModeState for State {
-    fn on_event(&mut self, ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
+    fn on_client_keys(&mut self, ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
         let handle = match ctx.current_buffer_view_handle() {
             Some(handle) => handle,
             None => return self.on_event_no_buffer(ctx, keys),

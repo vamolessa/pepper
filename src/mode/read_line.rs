@@ -6,14 +6,14 @@ use crate::{
 
 pub struct State {
     on_enter: fn(&mut ModeContext),
-    on_event: fn(&mut ModeContext, &mut KeysIterator, ReadLinePoll) -> ModeOperation,
+    on_client_keys: fn(&mut ModeContext, &mut KeysIterator, ReadLinePoll) -> ModeOperation,
 }
 
 impl Default for State {
     fn default() -> Self {
         Self {
             on_enter: |_| (),
-            on_event: |_, _, _| ModeOperation::EnterMode(Mode::default()),
+            on_client_keys: |_, _, _| ModeOperation::EnterMode(Mode::default()),
         }
     }
 }
@@ -27,9 +27,9 @@ impl ModeState for State {
         ctx.read_line.reset("");
     }
 
-    fn on_event(&mut self, ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
+    fn on_client_keys(&mut self, ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
         let poll = ctx.read_line.poll(keys);
-        (self.on_event)(ctx, keys, poll)
+        (self.on_client_keys)(ctx, keys, poll)
     }
 }
 
@@ -49,7 +49,7 @@ pub mod search {
             update_search(ctx);
         }
 
-        fn on_event(
+        fn on_client_keys(
             ctx: &mut ModeContext,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
@@ -75,7 +75,7 @@ pub mod search {
             }
         }
 
-        Mode::ReadLine(State { on_enter, on_event })
+        Mode::ReadLine(State { on_enter, on_client_keys })
     }
 
     fn update_search(ctx: &mut ModeContext) {
@@ -151,7 +151,7 @@ pub mod filter_cursors {
 
         Mode::ReadLine(State {
             on_enter,
-            on_event: |ctx, _, poll| on_submitted!(poll => on_event_impl(ctx, true)),
+            on_client_keys: |ctx, _, poll| on_submitted!(poll => on_event_impl(ctx, true)),
         })
     }
 
@@ -162,7 +162,7 @@ pub mod filter_cursors {
 
         Mode::ReadLine(State {
             on_enter,
-            on_event: |ctx, _, poll| on_submitted!(poll => on_event_impl(ctx, false)),
+            on_client_keys: |ctx, _, poll| on_submitted!(poll => on_event_impl(ctx, false)),
         })
     }
 
@@ -265,7 +265,7 @@ pub mod split_cursors {
 
         Mode::ReadLine(State {
             on_enter,
-            on_event: |ctx, _, poll| on_submitted!(poll => on_event_impl(ctx, add_matches)),
+            on_client_keys: |ctx, _, poll| on_submitted!(poll => on_event_impl(ctx, add_matches)),
         })
     }
 
@@ -303,7 +303,7 @@ pub mod split_cursors {
 
         Mode::ReadLine(State {
             on_enter,
-            on_event: |ctx, _, poll| on_submitted!(poll => on_event_impl(ctx, add_matches)),
+            on_client_keys: |ctx, _, poll| on_submitted!(poll => on_event_impl(ctx, add_matches)),
         })
     }
 
@@ -397,7 +397,7 @@ pub mod goto {
             ctx.read_line.reset("goto-line:");
         }
 
-        fn on_event(
+        fn on_client_keys(
             ctx: &mut ModeContext,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
@@ -444,7 +444,7 @@ pub mod goto {
             }
         }
 
-        Mode::ReadLine(State { on_enter, on_event })
+        Mode::ReadLine(State { on_enter, on_client_keys })
     }
 }
 
@@ -472,7 +472,7 @@ pub mod custom {
             }
         }
 
-        fn on_event(
+        fn on_client_keys(
             ctx: &mut ModeContext,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
@@ -506,6 +506,6 @@ pub mod custom {
         }
 
         engine.save_to_registry(CALLBACK_REGISTRY_KEY, ScriptValue::Function(callback))?;
-        Ok(Mode::ReadLine(State { on_enter, on_event }))
+        Ok(Mode::ReadLine(State { on_enter, on_client_keys }))
     }
 }

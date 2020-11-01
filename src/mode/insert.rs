@@ -21,7 +21,7 @@ impl ModeState for State {
         ctx.picker.reset();
     }
 
-    fn on_event(&mut self, ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
+    fn on_client_keys(&mut self, ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
         let handle = match ctx.current_buffer_view_handle() {
             Some(handle) => handle,
             None => return ModeOperation::EnterMode(Mode::default()),

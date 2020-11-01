@@ -7,14 +7,14 @@ use crate::{
 
 pub struct State {
     on_enter: fn(&mut ModeContext),
-    on_event: fn(&mut ModeContext, &mut KeysIterator, ReadLinePoll) -> ModeOperation,
+    on_client_keys: fn(&mut ModeContext, &mut KeysIterator, ReadLinePoll) -> ModeOperation,
 }
 
 impl Default for State {
     fn default() -> Self {
         Self {
             on_enter: |_| (),
-            on_event: |_, _, _| ModeOperation::EnterMode(Mode::default()),
+            on_client_keys: |_, _, _| ModeOperation::EnterMode(Mode::default()),
         }
     }
 }
@@ -30,7 +30,7 @@ impl ModeState for State {
         ctx.picker.reset();
     }
 
-    fn on_event(&mut self, ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
+    fn on_client_keys(&mut self, ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
         match ctx.read_line.poll(keys) {
             ReadLinePoll::Pending => {
                 keys.put_back();
@@ -42,9 +42,9 @@ impl ModeState for State {
                         .filter(&EmptyWordCollection, ctx.read_line.input()),
                 }
 
-                (self.on_event)(ctx, keys, ReadLinePoll::Pending)
+                (self.on_client_keys)(ctx, keys, ReadLinePoll::Pending)
             }
-            poll => (self.on_event)(ctx, keys, poll),
+            poll => (self.on_client_keys)(ctx, keys, poll),
         }
     }
 }
@@ -64,7 +64,7 @@ pub mod buffer {
             ctx.read_line.reset("buffer:");
         }
 
-        fn on_event(
+        fn on_client_keys(
             ctx: &mut ModeContext,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
@@ -93,6 +93,7 @@ pub mod buffer {
                 ctx.target_client,
                 Path::new(path),
                 None,
+                ctx.events,
             ) {
                 Ok(handle) => ctx.set_current_buffer_view_handle(Some(handle)),
                 Err(error) => ctx
@@ -130,7 +131,7 @@ pub mod buffer {
             }
         }
 
-        Mode::Picker(State { on_enter, on_event })
+        Mode::Picker(State { on_enter, on_client_keys })
     }
 }
 
@@ -158,7 +159,7 @@ pub mod custom {
             }
         }
 
-        fn on_event(
+        fn on_client_keys(
             ctx: &mut ModeContext,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
@@ -200,6 +201,6 @@ pub mod custom {
         }
 
         engine.save_to_registry(CALLBACK_REGISTRY_KEY, ScriptValue::Function(callback))?;
-        Ok(Mode::Picker(State { on_enter, on_event }))
+        Ok(Mode::Picker(State { on_enter, on_client_keys }))
     }
 }

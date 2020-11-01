@@ -5,10 +5,10 @@ use crate::{
     buffer_view::{BufferViewCollection, BufferViewHandle},
     client::{ClientCollection, TargetClient},
     config::Config,
-    editor::{EditorLoop, KeysIterator, ReadLine, StatusMessage},
+    editor::{EditorEvent, EditorEventQueue, EditorLoop, KeysIterator, ReadLine, StatusMessage},
     keymap::KeyMapCollection,
     picker::Picker,
-    register::{RegisterKey, RegisterCollection},
+    register::{RegisterCollection, RegisterKey},
     script::{ScriptContext, ScriptEngine},
     word_database::WordDatabase,
 };
@@ -45,6 +45,7 @@ pub struct ModeContext<'a> {
 
     pub status_message: &'a mut StatusMessage,
 
+    pub events: &'a mut EditorEventQueue,
     pub keymaps: &'a mut KeyMapCollection,
     pub scripts: &'a mut ScriptEngine,
 }
@@ -80,6 +81,7 @@ impl<'a> ModeContext<'a> {
 
             status_message: self.status_message,
 
+            events: self.events,
             keymaps: self.keymaps,
         };
 
@@ -88,9 +90,10 @@ impl<'a> ModeContext<'a> {
 }
 
 pub trait ModeState {
-    fn on_enter(&mut self, _context: &mut ModeContext) {}
-    fn on_exit(&mut self, _context: &mut ModeContext) {}
-    fn on_event(&mut self, ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation;
+    fn on_enter(&mut self, _ctx: &mut ModeContext) {}
+    fn on_exit(&mut self, _ctx: &mut ModeContext) {}
+    fn on_client_keys(&mut self, ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation;
+    fn on_editor_events(&mut self, _ctx: &mut ModeContext, _events: &[EditorEvent]) {}
 }
 
 pub enum Mode {
@@ -126,13 +129,23 @@ impl Mode {
         }
     }
 
-    pub fn on_event(&mut self, ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
+    pub fn on_client_keys(&mut self, ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
         match self {
-            Mode::Normal(state) => state.on_event(ctx, keys),
-            Mode::Insert(state) => state.on_event(ctx, keys),
-            Mode::ReadLine(state) => state.on_event(ctx, keys),
-            Mode::Picker(state) => state.on_event(ctx, keys),
-            Mode::Script(state) => state.on_event(ctx, keys),
+            Mode::Normal(state) => state.on_client_keys(ctx, keys),
+            Mode::Insert(state) => state.on_client_keys(ctx, keys),
+            Mode::ReadLine(state) => state.on_client_keys(ctx, keys),
+            Mode::Picker(state) => state.on_client_keys(ctx, keys),
+            Mode::Script(state) => state.on_client_keys(ctx, keys),
+        }
+    }
+
+    pub fn on_editor_events(&mut self, ctx: &mut ModeContext, events: &[EditorEvent]) {
+        match self {
+            Mode::Normal(state) => state.on_editor_events(ctx, events),
+            Mode::Insert(state) => state.on_editor_events(ctx, events),
+            Mode::ReadLine(state) => state.on_editor_events(ctx, events),
+            Mode::Picker(state) => state.on_editor_events(ctx, events),
+            Mode::Script(state) => state.on_editor_events(ctx, events),
         }
     }
 }

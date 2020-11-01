@@ -1,7 +1,7 @@
 use std::{error::Error, fmt, path::Path};
 
 use crate::{
-    buffer::BufferCollection,
+    buffer::{BufferCollection, BufferHandle},
     buffer_view::BufferViewCollection,
     client::{ClientCollection, ClientTargetMap, TargetClient},
     client_event::{ClientEvent, Key},
@@ -22,10 +22,35 @@ pub enum EditorLoop {
     QuitAll,
     Continue,
 }
-
 impl EditorLoop {
     pub fn is_quit(self) -> bool {
         matches!(self, EditorLoop::Quit | EditorLoop::QuitAll)
+    }
+}
+
+pub enum EditorEvent {
+    BufferOpen(BufferHandle),
+    BufferClose(BufferHandle),
+}
+
+#[derive(Default)]
+struct EditorEventDoubleQueue {
+    read: EditorEventQueue,
+    write: EditorEventQueue,
+}
+impl EditorEventDoubleQueue {
+    pub fn flip_and_get_read_write_queues(&mut self) -> (&[EditorEvent], &mut EditorEventQueue) {
+        self.read.0.clear();
+        std::mem::swap(&mut self.read, &mut self.write);
+        (&self.read.0, &mut self.write)
+    }
+}
+
+#[derive(Default)]
+pub struct EditorEventQueue(Vec<EditorEvent>);
+impl EditorEventQueue {
+    pub fn enqueue(&mut self, event: EditorEvent) {
+        self.0.push(event);
     }
 }
 
@@ -33,7 +58,6 @@ pub struct KeysIterator<'a> {
     keys: &'a [Key],
     index: usize,
 }
-
 impl<'a> KeysIterator<'a> {
     fn new(keys: &'a [Key]) -> Self {
         Self { keys, index: 0 }
@@ -74,7 +98,6 @@ pub struct ReadLine {
     prompt: String,
     input: String,
 }
-
 impl ReadLine {
     pub fn prompt(&self) -> &str {
         &self.prompt
@@ -145,7 +168,6 @@ pub struct StatusMessage {
     kind: StatusMessageKind,
     message: String,
 }
-
 impl StatusMessage {
     pub fn new() -> Self {
         Self {
@@ -206,12 +228,12 @@ pub struct Editor {
     pub focused_client: TargetClient,
     pub status_message: StatusMessage,
 
+    events: EditorEventDoubleQueue,
     keymaps: KeyMapCollection,
     scripts: ScriptEngine,
     lsp: LspClientCollection,
     client_target_map: ClientTargetMap,
 }
-
 impl Editor {
     pub fn new() -> Self {
         Self {
@@ -231,6 +253,7 @@ impl Editor {
             focused_client: TargetClient::Local,
             status_message: StatusMessage::new(),
 
+            events: EditorEventDoubleQueue::default(),
             keymaps: KeyMapCollection::default(),
             scripts: ScriptEngine::new(),
             lsp: LspClientCollection::default(),
@@ -245,7 +268,7 @@ impl Editor {
     }
 
     pub fn load_config(&mut self, clients: &mut ClientCollection, path: &Path) {
-        let (mode, _, mut mode_ctx) = self.mode_context(clients, TargetClient::Local);
+        let (mode, _, _, mut mode_ctx) = self.mode_context(clients, TargetClient::Local);
         let (scripts, _, mut script_ctx) = mode_ctx.script_context();
 
         if let Err(e) = scripts.eval_entry_file(&mut script_ctx, path) {
@@ -325,6 +348,8 @@ impl Editor {
                     }
                 }
 
+                let write_events = self.events.flip_and_get_read_write_queues().1;
+
                 let path = Path::new(path);
                 match self.buffer_views.buffer_view_handle_from_path(
                     &mut self.buffers,
@@ -333,33 +358,19 @@ impl Editor {
                     target_client,
                     path,
                     line_index,
+                    write_events,
                 ) {
                     Ok(handle) => {
                         if let Some(client) = clients.get_mut(target_client) {
                             client.set_current_buffer_view_handle(Some(handle));
-                        }
-
-                        if let Some(handle) = self.buffer_views.get(handle).map(|v| v.buffer_handle)
-                        {
-                            let (_, _, mut ctx) = self.mode_context(clients, target_client);
-                            let (engine, _, mut ctx) = ctx.script_context();
-                            if let Err(error) =
-                                engine.as_ref_with_ctx(&mut ctx, |engine, _, mut guard| {
-                                    engine.call_function_array_in_registry(
-                                        "buffer_on_open",
-                                        &mut guard,
-                                        handle,
-                                    )
-                                })
-                            {
-                                ctx.status_message.write_error(&error);
-                            }
                         }
                     }
                     Err(error) => self
                         .status_message
                         .write_str(StatusMessageKind::Error, &error),
                 }
+
+                self.trigger_event_handlers(clients);
 
                 EditorLoop::Continue
             }
@@ -387,7 +398,7 @@ impl Editor {
                 }
 
                 'key_queue_loop: loop {
-                    let (mode, buffered_keys, mut mode_ctx) =
+                    let (mode, buffered_keys, _, mut mode_ctx) =
                         self.mode_context(clients, target_client);
                     let mut keys = KeysIterator::new(&buffered_keys);
                     loop {
@@ -396,7 +407,7 @@ impl Editor {
                         }
                         let keys_from_index = mode_ctx.recording_macro.map(|_| keys.index);
 
-                        match mode.on_event(&mut mode_ctx, &mut keys) {
+                        match mode.on_client_keys(&mut mode_ctx, &mut keys) {
                             ModeOperation::Pending => {
                                 return EditorLoop::Continue;
                             }
@@ -462,7 +473,8 @@ impl Editor {
         &'a mut self,
         clients: &'a mut ClientCollection,
         target_client: TargetClient,
-    ) -> (&'a mut Mode, &'a [Key], ModeContext<'a>) {
+    ) -> (&'a mut Mode, &'a [Key], &'a [EditorEvent], ModeContext<'a>) {
+        let (read_events, write_events) = self.events.flip_and_get_read_write_queues();
         let mode_context = ModeContext {
             target_client,
             clients,
@@ -480,10 +492,16 @@ impl Editor {
 
             status_message: &mut self.status_message,
 
+            events: write_events,
             keymaps: &mut self.keymaps,
             scripts: &mut self.scripts,
         };
-        (&mut self.mode, &self.buffered_keys, mode_context)
+        (
+            &mut self.mode,
+            &self.buffered_keys,
+            read_events,
+            mode_context,
+        )
     }
 
     fn parse_and_set_keys_in_register(&mut self, register_key: RegisterKey) {
@@ -505,6 +523,17 @@ impl Editor {
                     self.buffered_keys.clear();
                     return;
                 }
+            }
+        }
+    }
+
+    fn trigger_event_handlers(&mut self, clients: &mut ClientCollection) {
+        let (mode, _, events, mut ctx) = self.mode_context(clients, TargetClient::Local);
+        if !events.is_empty() {
+            mode.on_editor_events(&mut ctx, events);
+            let (scripts, _, mut ctx) = ctx.script_context();
+            if let Err(error) = scripts.on_editor_event(&mut ctx, events) {
+                ctx.status_message.write_error(&error);
             }
         }
     }

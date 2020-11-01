@@ -20,7 +20,7 @@ impl ModeState for State {
         ctx.read_line.reset("");
     }
 
-    fn on_event(&mut self, ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
+    fn on_client_keys(&mut self, ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
         match ctx.read_line.poll(keys) {
             ReadLinePoll::Pending => {
                 keys.put_back();

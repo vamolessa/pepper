@@ -349,9 +349,9 @@ mod buffer {
     }
 
     pub fn open(
-        engine: ScriptEngineRef,
+        _: ScriptEngineRef,
         ctx: &mut ScriptContext,
-        mut guard: ScriptContextGuard,
+        _: ScriptContextGuard,
         (path, line_number): (ScriptString, Option<usize>),
     ) -> ScriptResult<()> {
         NavigationHistory::save_client_snapshot(ctx.clients, ctx.buffer_views, ctx.target_client);
@@ -366,18 +366,10 @@ mod buffer {
                 ctx.target_client,
                 path,
                 line_number.map(|l| l.saturating_sub(1)),
+                ctx.events,
             )
             .map_err(ScriptError::from)?;
         ctx.set_current_buffer_view_handle(Some(buffer_view_handle));
-
-        if let Some(handle) = ctx
-            .buffer_views
-            .get(buffer_view_handle)
-            .map(|v| v.buffer_handle)
-        {
-            engine.call_function_array_in_registry("buffer_on_open", &mut guard, handle)?;
-        }
-
         Ok(())
     }
 
@@ -665,6 +657,7 @@ mod buffer_view {
             ctx.target_client,
             Path::new(path),
             None,
+            ctx.events,
         ) {
             Ok(handle) => Ok(Some(handle)),
             Err(error) => {

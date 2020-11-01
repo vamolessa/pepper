@@ -19,7 +19,7 @@ use crate::{
     buffer_view::{BufferViewCollection, BufferViewHandle},
     client::{ClientCollection, TargetClient},
     config::Config,
-    editor::{EditorLoop, StatusMessage},
+    editor::{EditorEvent, EditorEventQueue, EditorLoop, StatusMessage},
     keymap::KeyMapCollection,
     mode::Mode,
     picker::Picker,
@@ -318,6 +318,7 @@ pub struct ScriptContext<'a> {
 
     pub status_message: &'a mut StatusMessage,
 
+    pub events: &'a mut EditorEventQueue,
     pub keymaps: &'a mut KeyMapCollection,
 }
 
@@ -527,6 +528,37 @@ impl ScriptEngine {
         Ok(())
     }
 
+    pub fn on_editor_event(
+        &mut self,
+        ctx: &mut ScriptContext,
+        events: &[EditorEvent],
+    ) -> ScriptResult<()> {
+        let s = ScriptContextRegistryScope::new(&self.lua, ctx)?;
+        let engine = ScriptEngineRef::from_lua(&self.lua);
+        let mut guard = ScriptContextGuard(());
+
+        macro_rules! call {
+            ($callback:ident, $args:expr) => {{
+                let callbacks: ScriptArray = match engine.lua.named_registry_value(stringify!($callback)) {
+                    Ok(callbacks) => callbacks,
+                    Err(_) => continue,
+                };
+                for callback in callbacks.iter::<ScriptFunction>() {
+                    callback?.call(&mut guard, $args.clone())?;
+                }
+            }};
+        }
+
+        for event in events {
+            match event {
+                EditorEvent::BufferOpen(handle) => call!(buffer_on_open, *handle),
+                _ => (),
+            }
+        }
+        drop(s);
+        Ok(())
+    }
+
     pub fn history_len(&self) -> usize {
         self.history.len()
     }
@@ -619,27 +651,6 @@ impl<'lua> ScriptEngineRef<'lua> {
         T: ToLua<'lua>,
     {
         self.lua.set_named_registry_value(key, value)
-    }
-
-    pub fn call_function_array_in_registry<A>(
-        &self,
-        key: &str,
-        guard: &mut ScriptContextGuard,
-        args: A,
-    ) -> ScriptResult<()>
-    where
-        A: Clone + ToLuaMulti<'lua>,
-    {
-        let callbacks: ScriptArray = match self.lua.named_registry_value(key) {
-            Ok(callbacks) => callbacks,
-            Err(_) => return Ok(()),
-        };
-
-        for callback in callbacks.iter::<ScriptFunction>() {
-            callback?.call(guard, args.clone())?;
-        }
-
-        Ok(())
     }
 
     pub fn add_to_function_array_in_registry(
