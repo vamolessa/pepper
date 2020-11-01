@@ -59,6 +59,7 @@ fn next_subpattern(pattern: &str) -> Result<(SubPattern, &str), InvalidGlobError
                     break Ok((SubPattern::Range(start, end), chars.as_str()));
                 }
             }
+            Some(']') => break Err(InvalidGlobError),
             Some('{') => break Ok((SubPattern::BeginGroup, chars.as_str())),
             Some('}') => (),
             Some(',') => {
@@ -100,5 +101,15 @@ mod tests {
         assert_subpattern!(SubPattern::Range('a', 'z'), "[a-z]");
         assert_subpattern!(SubPattern::Range('A', 'Z'), "[A-Z]");
         assert_subpattern!(SubPattern::Range('0', '9'), "[0-9]");
+        assert!(matches!(next_subpattern("[z-a"), Err(InvalidGlobError)));
+        assert!(matches!(next_subpattern("]"), Err(InvalidGlobError)));
+        assert!(matches!(next_subpattern("[z-a]"), Err(InvalidGlobError)));
+
+        assert_subpattern!(SubPattern::ExceptRange('a', 'z'), "[!a-z]");
+        assert_subpattern!(SubPattern::ExceptRange('A', 'Z'), "[!A-Z]");
+        assert_subpattern!(SubPattern::ExceptRange('0', '9'), "[!0-9]");
+        assert!(matches!(next_subpattern("[!z-a"), Err(InvalidGlobError)));
+        assert!(matches!(next_subpattern("[!]"), Err(InvalidGlobError)));
+        assert!(matches!(next_subpattern("[!z-a]"), Err(InvalidGlobError)));
     }
 }
