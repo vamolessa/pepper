@@ -253,6 +253,7 @@ mod tests {
         assert_eq!(true, match_glob(b"a{b,c}d", b"acd"));
         assert_eq!(true, match_glob(b"a*{b,c}d", b"aaabd"));
         assert_eq!(true, match_glob(b"a*{b,c}d", b"abbd"));
+        assert_eq!(true, match_glob(b"a*{b*,c}d", b"abbzzzzd"));
     }
 
     #[test]
