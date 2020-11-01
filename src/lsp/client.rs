@@ -5,7 +5,10 @@ use std::{
 };
 
 use crate::{
+    buffer::BufferCollection,
+    buffer_view::BufferViewCollection,
     client_event::LocalEvent,
+    editor::{EditorEvent, StatusMessage},
     json::{Json, JsonObject, JsonValue},
     lsp::{
         capabilities,
@@ -16,6 +19,12 @@ use crate::{
     },
 };
 
+pub struct ClientContext<'a> {
+    pub buffers: &'a mut BufferCollection,
+    pub buffer_views: &'a mut BufferViewCollection,
+    pub status_message: &'a mut StatusMessage,
+}
+
 pub struct Client {
     protocol: Protocol,
     json: Arc<Mutex<Json>>,
@@ -23,7 +32,11 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn on_request(&mut self, request: ServerRequest) -> io::Result<()> {
+    pub fn on_request(
+        &mut self,
+        ctx: &mut ClientContext,
+        request: ServerRequest,
+    ) -> io::Result<()> {
         let mut json = self.json.lock().unwrap();
 
         match request.method.as_str(&json) {
@@ -34,7 +47,11 @@ impl Client {
         }
     }
 
-    pub fn on_notification(&mut self, notification: ServerNotification) -> io::Result<()> {
+    pub fn on_notification(
+        &mut self,
+        ctx: &mut ClientContext,
+        notification: ServerNotification,
+    ) -> io::Result<()> {
         let json = self.json.lock().unwrap();
 
         match notification.method.as_str(&json) {
@@ -44,7 +61,11 @@ impl Client {
         Ok(())
     }
 
-    pub fn on_response(&mut self, response: ServerResponse) -> io::Result<()> {
+    pub fn on_response(
+        &mut self,
+        ctx: &mut ClientContext,
+        response: ServerResponse,
+    ) -> io::Result<()> {
         let idn = response.id.0;
         let method = match self.pending_requests.take(response.id) {
             Some(method) => method,
@@ -83,6 +104,19 @@ impl Client {
         let error = ResponseError::parse_error();
         self.protocol
             .respond(&mut json, JsonValue::Null, Err(error))
+    }
+
+    pub fn on_editor_events(
+        &mut self,
+        ctx: &mut ClientContext,
+        events: &[EditorEvent],
+    ) -> io::Result<()> {
+        for event in events {
+            match event {
+                _ => (),
+            }
+        }
+        Ok(())
     }
 
     fn request(
@@ -158,7 +192,12 @@ impl ClientCollection {
         self.clients[handle.0].as_mut()
     }
 
-    pub fn on_event(&mut self, handle: ClientHandle, event: ServerEvent) -> io::Result<()> {
+    pub fn on_server_event(
+        &mut self,
+        ctx: &mut ClientContext,
+        handle: ClientHandle,
+        event: ServerEvent,
+    ) -> io::Result<()> {
         match event {
             ServerEvent::Closed => {
                 self.clients[handle.0] = None;
@@ -170,19 +209,30 @@ impl ClientCollection {
             }
             ServerEvent::Request(request) => {
                 if let Some(client) = self.clients[handle.0].as_mut() {
-                    client.on_request(request)?;
+                    client.on_request(ctx, request)?;
                 }
             }
             ServerEvent::Notification(notification) => {
                 if let Some(client) = self.clients[handle.0].as_mut() {
-                    client.on_notification(notification)?;
+                    client.on_notification(ctx, notification)?;
                 }
             }
             ServerEvent::Response(response) => {
                 if let Some(client) = self.clients[handle.0].as_mut() {
-                    client.on_response(response)?;
+                    client.on_response(ctx, response)?;
                 }
             }
+        }
+        Ok(())
+    }
+
+    pub fn on_editor_events(
+        &mut self,
+        ctx: &mut ClientContext,
+        events: &[EditorEvent],
+    ) -> io::Result<()> {
+        for client in self.clients.iter_mut().flatten() {
+            client.on_editor_events(ctx, events)?;
         }
         Ok(())
     }

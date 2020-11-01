@@ -7,6 +7,7 @@ use crate::{
     config::Config,
     editor::{EditorEvent, EditorEventQueue, EditorLoop, KeysIterator, ReadLine, StatusMessage},
     keymap::KeyMapCollection,
+    lsp::LspClientCollection,
     picker::Picker,
     register::{RegisterCollection, RegisterKey},
     script::{ScriptContext, ScriptEngine},
@@ -48,6 +49,7 @@ pub struct ModeContext<'a> {
     pub events: &'a mut EditorEventQueue,
     pub keymaps: &'a mut KeyMapCollection,
     pub scripts: &'a mut ScriptEngine,
+    pub lsp: &'a mut LspClientCollection,
 }
 
 impl<'a> ModeContext<'a> {
@@ -64,7 +66,7 @@ impl<'a> ModeContext<'a> {
     }
 
     pub fn script_context(&mut self) -> (&mut ScriptEngine, &mut ReadLine, ScriptContext) {
-        let context = ScriptContext {
+        let ctx = ScriptContext {
             target_client: self.target_client,
             clients: self.clients,
             editor_loop: EditorLoop::Continue,
@@ -83,9 +85,10 @@ impl<'a> ModeContext<'a> {
 
             events: self.events,
             keymaps: self.keymaps,
+            lsp: self.lsp,
         };
 
-        (self.scripts, self.read_line, context)
+        (self.scripts, self.read_line, ctx)
     }
 }
 
@@ -129,7 +132,11 @@ impl Mode {
         }
     }
 
-    pub fn on_client_keys(&mut self, ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
+    pub fn on_client_keys(
+        &mut self,
+        ctx: &mut ModeContext,
+        keys: &mut KeysIterator,
+    ) -> ModeOperation {
         match self {
             Mode::Normal(state) => state.on_client_keys(ctx, keys),
             Mode::Insert(state) => state.on_client_keys(ctx, keys),

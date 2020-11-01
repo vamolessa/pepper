@@ -8,7 +8,7 @@ use crate::{
     config::Config,
     connection::ConnectionWithClientHandle,
     keymap::{KeyMapCollection, MatchResult},
-    lsp::{LspClientCollection, LspClientHandle, LspServerEvent},
+    lsp::{LspClientCollection, LspClientContext, LspClientHandle, LspServerEvent},
     mode::{Mode, ModeContext, ModeOperation},
     picker::Picker,
     register::{RegisterCollection, RegisterKey, KEY_QUEUE_REGISTER},
@@ -30,6 +30,7 @@ impl EditorLoop {
 
 pub enum EditorEvent {
     BufferOpen(BufferHandle),
+    BufferSave(BufferHandle),
     BufferClose(BufferHandle),
 }
 
@@ -495,6 +496,7 @@ impl Editor {
             events: write_events,
             keymaps: &mut self.keymaps,
             scripts: &mut self.scripts,
+            lsp: &mut self.lsp,
         };
         (
             &mut self.mode,
@@ -529,17 +531,31 @@ impl Editor {
 
     fn trigger_event_handlers(&mut self, clients: &mut ClientCollection) {
         let (mode, _, events, mut ctx) = self.mode_context(clients, TargetClient::Local);
-        if !events.is_empty() {
-            mode.on_editor_events(&mut ctx, events);
-            let (scripts, _, mut ctx) = ctx.script_context();
-            if let Err(error) = scripts.on_editor_event(&mut ctx, events) {
-                ctx.status_message.write_error(&error);
-            }
+        if events.is_empty() {
+            return;
+        }
+
+        mode.on_editor_events(&mut ctx, events);
+
+        let (scripts, _, mut ctx) = ctx.script_context();
+        if let Err(error) = scripts.on_editor_event(&mut ctx, events) {
+            ctx.status_message.write_error(&error);
+        }
+
+        let (lsp, mut ctx) = ctx.lsp_context();
+        if let Err(error) = lsp.on_editor_events(&mut ctx, events) {
+            ctx.status_message.write_error(&error);
         }
     }
 
     pub fn on_lsp_event(&mut self, client_handle: LspClientHandle, event: LspServerEvent) {
-        if let Err(error) = self.lsp.on_event(client_handle, event) {
+        let mut ctx = LspClientContext {
+            buffers: &mut self.buffers,
+            buffer_views: &mut self.buffer_views,
+            status_message: &mut self.status_message,
+        };
+
+        if let Err(error) = self.lsp.on_server_event(&mut ctx, client_handle, event) {
             self.status_message.write_error(&error);
         }
     }

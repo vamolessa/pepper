@@ -21,6 +21,7 @@ use crate::{
     config::Config,
     editor::{EditorEvent, EditorEventQueue, EditorLoop, StatusMessage},
     keymap::KeyMapCollection,
+    lsp::{LspClientCollection, LspClientContext},
     mode::Mode,
     picker::Picker,
     register::RegisterCollection,
@@ -320,6 +321,7 @@ pub struct ScriptContext<'a> {
 
     pub events: &'a mut EditorEventQueue,
     pub keymaps: &'a mut KeyMapCollection,
+    pub lsp: &'a mut LspClientCollection,
 }
 
 impl<'a> ScriptContext<'a> {
@@ -339,6 +341,16 @@ impl<'a> ScriptContext<'a> {
         if let Some(client) = self.clients.get_mut(self.target_client) {
             client.set_current_buffer_view_handle(handle);
         }
+    }
+
+    pub fn lsp_context(&mut self) -> (&mut LspClientCollection, LspClientContext) {
+        let ctx = LspClientContext {
+            buffers: self.buffers,
+            buffer_views: self.buffer_views,
+            status_message: self.status_message,
+        };
+
+        (self.lsp, ctx)
     }
 }
 
@@ -539,10 +551,11 @@ impl ScriptEngine {
 
         macro_rules! call {
             ($callback:ident, $args:expr) => {{
-                let callbacks: ScriptArray = match engine.lua.named_registry_value(stringify!($callback)) {
-                    Ok(callbacks) => callbacks,
-                    Err(_) => continue,
-                };
+                let callbacks: ScriptArray =
+                    match engine.lua.named_registry_value(stringify!($callback)) {
+                        Ok(callbacks) => callbacks,
+                        Err(_) => continue,
+                    };
                 for callback in callbacks.iter::<ScriptFunction>() {
                     callback?.call(&mut guard, $args.clone())?;
                 }

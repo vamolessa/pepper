@@ -947,24 +947,6 @@ impl Buffer {
         &self.search_ranges
     }
 
-    pub fn save_to_file(&mut self) -> Result<(), String> {
-        match self.path() {
-            Some(path) => {
-                let file = File::create(path)
-                    .map_err(|e| format!("could not create file {:?}: {:?}", path, e))?;
-                let mut writer = io::BufWriter::new(file);
-
-                self.content
-                    .write(&mut writer)
-                    .map_err(|e| format!("could not write to file {:?}: {:?}", path, e))?;
-
-                self.needs_save = false;
-                Ok(())
-            }
-            None => Err("buffer has no path".into()),
-        }
-    }
-
     pub fn discard_and_reload_from_file(
         &mut self,
         pool: &mut BufferLinePool,
@@ -1107,6 +1089,40 @@ impl BufferCollection {
                 None
             }
         })
+    }
+
+    pub fn save_to_file(
+        &mut self,
+        handle: BufferHandle,
+        events: &mut EditorEventQueue,
+    ) -> Result<(), String> {
+        match self.get_mut(handle) {
+            Some(buffer) => match buffer.path() {
+                Some(path) => {
+                    let file = File::create(path)
+                        .map_err(|e| format!("could not create file {:?}: {:?}", path, e))?;
+                    let mut writer = io::BufWriter::new(file);
+
+                    buffer.content
+                        .write(&mut writer)
+                        .map_err(|e| format!("could not write to file {:?}: {:?}", path, e))?;
+                    buffer.needs_save = false;
+
+                    events.enqueue(EditorEvent::BufferSave(handle));
+                    Ok(())
+                }
+                None => Err("buffer has no path".into()),
+            },
+            None => Ok(()),
+        }
+    }
+
+    pub fn save_all_to_file(&mut self, events: &mut EditorEventQueue) -> Result<(), String> {
+        let buffer_count = self.buffers.len();
+        for i in 0..buffer_count {
+            self.save_to_file(BufferHandle(i), events)?;
+        }
+        Ok(())
     }
 
     pub fn remove_where<F>(

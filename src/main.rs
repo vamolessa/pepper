@@ -80,13 +80,23 @@ fn main() {
     let handle = lsp.spawn(server_command, event_sender).unwrap();
     let client = lsp.get(handle).unwrap();
     client.initialize().unwrap();
+
+    let mut buffers = buffer::BufferCollection::default();
+    let mut buffer_views = buffer_view::BufferViewCollection::default();
+    let mut status_message = editor::StatusMessage::new();
+    let mut ctx = lsp::LspClientContext {
+        buffers: &mut buffers,
+        buffer_views: &mut buffer_views,
+        status_message: &mut status_message,
+    };
+
     for event in event_receiver.iter() {
         match event {
             client_event::LocalEvent::Lsp(handle, event) => {
-                lsp.on_event(handle, event).unwrap();
+                lsp.on_server_event(&mut ctx, handle, event).unwrap();
             }
             client_event::LocalEvent::Key(client_event::Key::Char('q')) => break,
-            _ => eprintln!("other event"),
+            _ => (),
         }
     }
     return;

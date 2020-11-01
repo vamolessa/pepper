@@ -125,24 +125,10 @@ fn parse_server_event(json: &Json, body: JsonValue) -> ServerEvent {
         }
     }
 
-    fn debug_stringify(json: &Json, value: &JsonValue) -> String {
-        let mut buf = Vec::new();
-        match json.write(&mut buf, value) {
-            Ok(()) => String::from_utf8_lossy(&buf).into_owned(),
-            Err(e) => e.to_string(),
-        }
-    }
-
     if !matches!(result, JsonValue::Null) {
         let id = match id {
             JsonValue::Integer(n) if n > 0 => n as _,
-            _ => {
-                eprintln!(
-                    "parse error! invalid result id {}",
-                    debug_stringify(json, &id)
-                );
-                return ServerEvent::ParseError;
-            }
+            _ => return ServerEvent::ParseError,
         };
         ServerEvent::Response(ServerResponse {
             id: RequestId(id),
@@ -164,13 +150,7 @@ fn parse_server_event(json: &Json, body: JsonValue) -> ServerEvent {
         }
         let id = match id {
             JsonValue::Integer(n) if n > 0 => n as _,
-            _ => {
-                eprintln!(
-                    "parse error! invalid error id {}",
-                    debug_stringify(json, &id)
-                );
-                return ServerEvent::ParseError;
-            }
+            _ => return ServerEvent::ParseError,
         };
         ServerEvent::Response(ServerResponse {
             id: RequestId(id),

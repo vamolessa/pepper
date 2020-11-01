@@ -501,7 +501,9 @@ mod buffer {
                 .write_fmt(StatusMessageKind::Info, format_args!("saved to '{}'", path));
         }
 
-        buffer.save_to_file().map_err(ScriptError::from)
+        ctx.buffers
+            .save_to_file(handle, ctx.events)
+            .map_err(ScriptError::from)
     }
 
     pub fn save_all(
@@ -510,12 +512,10 @@ mod buffer {
         _: ScriptContextGuard,
         _: (),
     ) -> ScriptResult<()> {
-        let mut buffer_count = 0;
-        for buffer in ctx.buffers.iter_mut() {
-            buffer.save_to_file().map_err(ScriptError::from)?;
-            buffer_count += 1;
-        }
-
+        ctx.buffers
+            .save_all_to_file(ctx.events)
+            .map_err(ScriptError::from)?;
+        let buffer_count = ctx.buffers.iter().count();
         ctx.status_message.write_fmt(
             StatusMessageKind::Info,
             format_args!("{} buffers saved", buffer_count),
