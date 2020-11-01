@@ -247,10 +247,18 @@ mod tests {
     fn test_match() {
         assert!(match_glob(b"", b""));
         assert!(match_glob(b"abc", b"abc"));
+        assert!(!match_glob(b"ab", b"abc"));
         assert!(match_glob(b"a?c", b"abc"));
         assert!(match_glob(b"a[A-Z]c", b"aBc"));
         assert!(!match_glob(b"a[A-Z]c", b"abc"));
         assert!(match_glob(b"a[!0-9]c", b"abc"));
+
+        assert!(match_glob(b"a*c", b"ac"));
+        assert!(match_glob(b"a*c", b"abc"));
+        assert!(match_glob(b"a*c", b"abbbc"));
+        assert!(match_glob(b"a*/c", b"a/c"));
+        assert!(match_glob(b"a*/c", b"abbb/c"));
+        assert!(!match_glob(b"a*c", b"a/c"));
     }
 
     #[test]
