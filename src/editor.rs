@@ -371,7 +371,6 @@ impl Editor {
                 }
 
                 self.trigger_event_handlers(clients);
-
                 EditorLoop::Continue
             }
             ClientEvent::Key(key) => {
@@ -449,6 +448,7 @@ impl Editor {
                 }
 
                 self.buffered_keys.clear();
+                self.trigger_event_handlers(clients);
                 EditorLoop::Continue
             }
             ClientEvent::Resize(width, height) => {
