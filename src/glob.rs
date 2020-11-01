@@ -18,8 +18,8 @@ fn match_glob_recursive(
     };
 
     let mut path_index = 0;
-    let mut try_path_index = 0;
-    let mut try_pattern_index = 0;
+    let mut try_path_index = None;
+    let mut last_any_segment_index = 0;
 
     macro_rules! check_next_path_byte {
         ($byte:ident => $check:expr) => {{
@@ -27,6 +27,9 @@ fn match_glob_recursive(
             path_index += 1;
             if i < path.len() {
                 let $byte = path[i];
+                if path::is_separator($byte as _) {
+                    try_path_index = None;
+                }
                 if $check {
                     continue;
                 }
@@ -50,8 +53,8 @@ fn match_glob_recursive(
                 }
             }
             SubPattern::AnySegment => {
-                try_pattern_index = state.index - 1;
-                try_path_index = path_index + 1;
+                last_any_segment_index = state.index - 1;
+                try_path_index = Some(path_index + 1);
                 continue;
 
                 /*
@@ -115,13 +118,13 @@ fn match_glob_recursive(
             }
         }
 
-        if 0 < try_path_index && try_path_index <= path.len() {
-            state.index = try_pattern_index;
-            path_index = try_path_index;
-            continue;
+        match try_path_index {
+            Some(i) => {
+                state.index = last_any_segment_index;
+                path_index = i;
+            }
+            None => return Ok(false),
         }
-
-        return Ok(false);
     }
 }
 
@@ -258,6 +261,7 @@ mod tests {
         assert!(match_glob(b"a*c", b"abbbc"));
         assert!(match_glob(b"a*/c", b"a/c"));
         assert!(match_glob(b"a*/c", b"abbb/c"));
+        assert!(match_glob(b"a*[0-9]/c", b"abbb5/c"));
         assert!(!match_glob(b"a*c", b"a/c"));
     }
 
