@@ -1,157 +1,189 @@
+use std::path;
+
 pub struct InvalidGlobError;
 
 fn match_glob_recursive(
-    mut pattern: &str,
-    path: &str,
-    mut inside_group: bool,
+    pattern: &[u8],
+    path: &[u8],
+    inside_group: bool,
 ) -> Result<bool, InvalidGlobError> {
     if pattern.is_empty() && path.is_empty() {
         return Ok(true);
     }
 
-    let mut chars = path.chars();
+    let mut state = State {
+        pattern,
+        next_index: 0,
+        inside_group,
+    };
 
-    macro_rules! next_char {
-        () => {
-            match chars.next() {
-                Some(c) => c,
-                None => return Ok(false),
+    let mut next_path_index = 0;
+    macro_rules! next_path_byte {
+        () => {{
+            let i = next_path_index;
+            next_path_index += 1;
+            if i < path.len() {
+                let b = path[i];
+                if path::is_separator(b as _) {
+                    b'/'
+                } else {
+                    b
+                }
+            } else {
+                return Ok(false);
             }
-        };
+        }};
     }
 
     loop {
-        let (subpattern, rest, ingroup) = next_subpattern(pattern, inside_group)?;
-        pattern = rest;
-        inside_group = ingroup;
-
-        match subpattern {
-            SubPattern::None => match chars.next() {
-                None => break Ok(true),
-                _ => break Ok(false),
-            },
-            SubPattern::Char(c) => {
-                if next_char!() != c {
-                    break Ok(false);
+        match state.next_subpattern()? {
+            SubPattern::None => return Ok(next_path_index == path.len()),
+            SubPattern::Byte(b) => {
+                if next_path_byte!() != b {
+                    return Ok(false);
                 }
             }
-            SubPattern::AnyChar => {
-                next_char!();
+            SubPattern::AnyByte => {
+                next_path_byte!();
             }
             SubPattern::AnySegment => {
                 unimplemented!();
             }
-            SubPattern::AnyMultiSegment => {
+            SubPattern::AnyMultiSegment=> {
                 unimplemented!();
-            }
+                }
             SubPattern::Range(start, end) => {
-                let c = next_char!();
-                if c < start || end > c {
-                    break Ok(false);
+                let b = next_path_byte!();
+                if b < start || end > b {
+                    return Ok(false);
                 }
             }
             SubPattern::ExceptRange(start, end) => {
-                let c = next_char!();
-                if start <= c && c <= end {
-                    break Ok(false);
+                let b = next_path_byte!();
+                if start <= b && b <= end {
+                    return Ok(false);
                 }
             }
-            SubPattern::BeginGroup => {}
-            _ => (),
+            SubPattern::BeginGroup => {
+                unimplemented!();
+            }
         }
     }
 }
 
 enum SubPattern {
     None,
-    Char(char),
-    Separator,
-    AnyChar,
+    Byte(u8),
+    AnyByte,
     AnySegment,
     AnyMultiSegment,
-    Range(char, char),
-    ExceptRange(char, char),
+    Range(u8, u8),
+    ExceptRange(u8, u8),
     BeginGroup,
 }
 
-fn next_subpattern(
-    pattern: &str,
-    mut inside_group: bool,
-) -> Result<(SubPattern, &str, bool), InvalidGlobError> {
-    let mut chars = pattern.chars();
-    loop {
-        match chars.next() {
-            Some('?') => break Ok((SubPattern::AnyChar, chars.as_str(), inside_group)),
-            Some('*') => match chars.as_str().chars().next() {
-                Some('*') => {
-                    chars.next();
-                    let rest = chars.as_str();
-                    match rest.chars().next() {
-                        None | Some('/') => {
-                            break Ok((SubPattern::AnyMultiSegment, rest, inside_group))
-                        }
-                        _ => break Err(InvalidGlobError),
-                    }
-                }
-                _ => break Ok((SubPattern::AnySegment, chars.as_str(), inside_group)),
-            },
-            Some('[') => {
-                let inverse = match chars.as_str().chars().next() {
-                    Some('!') => {
-                        chars.next();
-                        true
-                    }
-                    _ => false,
-                };
+struct State<'a> {
+    pattern: &'a [u8],
+    next_index: usize,
+    inside_group: bool,
+}
 
-                let start = match chars.next() {
-                    Some(c) => c,
-                    None => break Err(InvalidGlobError),
-                };
-                if chars.next() != Some('-') {
-                    break Err(InvalidGlobError);
-                }
-                let end = match chars.next() {
-                    Some(c) => c,
-                    _ => break Err(InvalidGlobError),
-                };
-                if start > end {
-                    break Err(InvalidGlobError);
-                }
-                if chars.next() != Some(']') {
-                    break Err(InvalidGlobError);
-                }
-
-                let rest = chars.as_str();
-                if inverse {
-                    break Ok((SubPattern::ExceptRange(start, end), rest, inside_group));
+impl<'a> State<'a> {
+    pub fn next_subpattern(&mut self) -> Result<SubPattern, InvalidGlobError> {
+        macro_rules! next_byte {
+            () => {{
+                let i = self.next_index;
+                self.next_index += 1;
+                if i < self.pattern.len() {
+                    Some(self.pattern[i])
                 } else {
-                    break Ok((SubPattern::Range(start, end), rest, inside_group));
+                    None
                 }
-            }
-            Some(']') => break Err(InvalidGlobError),
-            Some('{') => break Ok((SubPattern::BeginGroup, chars.as_str(), true)),
-            Some('}') => {
-                if !inside_group {
-                    break Err(InvalidGlobError);
-                }
-                inside_group = false;
-            }
-            Some(',') => {
-                if !inside_group {
-                    break Err(InvalidGlobError);
-                }
+            }};
+        }
 
-                let rest = chars.as_str();
-                match rest.find('}') {
-                    Some(i) => chars = rest[i..].chars(),
-                    None => break Err(InvalidGlobError),
+        macro_rules! peek_byte {
+            () => {
+                if self.next_index < self.pattern.len() {
+                    Some(self.pattern[self.next_index])
+                } else {
+                    None
                 }
-                inside_group = false;
+            };
+        }
+
+        loop {
+            match next_byte!() {
+                Some(b'?') => return Ok(SubPattern::AnyByte),
+                Some(b'*') => match peek_byte!() {
+                    Some(b'*') => {
+                        self.next_index += 1;
+                        match peek_byte!() {
+                            None | Some(b'/') => return Ok(SubPattern::AnyMultiSegment),
+                            _ => return Err(InvalidGlobError),
+                        }
+                    }
+                    _ => return Ok(SubPattern::AnySegment),
+                },
+                Some(b'[') => {
+                    let inverse = match peek_byte!() {
+                        Some(b'!') => {
+                            self.next_index += 1;
+                            true
+                        }
+                        _ => false,
+                    };
+                    let start = match next_byte!() {
+                        Some(c) => c,
+                        None => return Err(InvalidGlobError),
+                    };
+                    if next_byte!() != Some(b'-') {
+                        return Err(InvalidGlobError);
+                    }
+                    let end = match next_byte!() {
+                        Some(c) => c,
+                        None => return Err(InvalidGlobError),
+                    };
+                    if start > end {
+                        return Err(InvalidGlobError);
+                    }
+                    if next_byte!() != Some(b']') {
+                        return Err(InvalidGlobError);
+                    }
+
+                    if inverse {
+                        return Ok(SubPattern::ExceptRange(start, end));
+                    } else {
+                        return Ok(SubPattern::Range(start, end));
+                    }
+                }
+                Some(b']') => return Err(InvalidGlobError),
+                Some(b'{') => {
+                    self.inside_group = true;
+                    return Ok(SubPattern::BeginGroup);
+                }
+                Some(b'}') => {
+                    if !self.inside_group {
+                        return Err(InvalidGlobError);
+                    }
+                    self.inside_group = false;
+                }
+                Some(b',') => {
+                    if !self.inside_group {
+                        return Err(InvalidGlobError);
+                    }
+                    match self.pattern[self.next_index..]
+                        .iter()
+                        .position(|b| *b == b'}')
+                    {
+                        Some(i) => self.next_index += i,
+                        None => return Err(InvalidGlobError),
+                    }
+                    self.inside_group = false;
+                }
+                Some(b) => return Ok(SubPattern::Byte(b)),
+                None => return Ok(SubPattern::None),
             }
-            Some('/') => break Ok((SubPattern::Separator, chars.as_str(), inside_group)),
-            Some(c) => break Ok((SubPattern::Char(c), chars.as_str(), inside_group)),
-            None => break Ok((SubPattern::None, "", false)),
         }
     }
 }
@@ -164,53 +196,53 @@ mod tests {
     fn test_next_class() {
         macro_rules! assert_subpattern {
             ($expect:pat, $pattern:expr) => {
-                assert!(matches!(
-                    next_subpattern($pattern, false),
-                    Ok(($expect, "", false))
-                ))
+                let mut state = State {
+                    pattern: $pattern.as_bytes(),
+                    next_index: 0,
+                    inside_group: false,
+                };
+                assert!(matches!(state.next_subpattern(), Ok($expect)))
             };
         }
         macro_rules! assert_subpattern_fail {
             ($pattern:expr) => {
-                assert!(matches!(
-                    next_subpattern($pattern, false),
-                    Err(InvalidGlobError)
-                ))
+                let mut state = State {
+                    pattern: $pattern.as_bytes(),
+                    next_index: 0,
+                    inside_group: false,
+                };
+                assert!(matches!(state.next_subpattern(), Err(InvalidGlobError)))
             };
         }
 
         assert_subpattern!(SubPattern::None, "");
 
-        assert_subpattern!(SubPattern::Char('a'), "a");
-        assert_subpattern!(SubPattern::Char('z'), "z");
-        assert_subpattern!(SubPattern::Char('A'), "A");
-        assert_subpattern!(SubPattern::Char('Z'), "Z");
-        assert_subpattern!(SubPattern::Char('0'), "0");
-        assert_subpattern!(SubPattern::Char('9'), "9");
+        assert_subpattern!(SubPattern::Byte(b'a'), "a");
+        assert_subpattern!(SubPattern::Byte(b'z'), "z");
+        assert_subpattern!(SubPattern::Byte(b'A'), "A");
+        assert_subpattern!(SubPattern::Byte(b'Z'), "Z");
+        assert_subpattern!(SubPattern::Byte(b'0'), "0");
+        assert_subpattern!(SubPattern::Byte(b'9'), "9");
 
-        assert_subpattern!(SubPattern::Separator, "/");
-        assert_subpattern!(SubPattern::AnyChar, "?");
+        assert_subpattern!(SubPattern::AnyByte, "?");
         assert_subpattern!(SubPattern::AnySegment, "*");
         assert_subpattern!(SubPattern::AnyMultiSegment, "**");
 
-        assert_subpattern!(SubPattern::Range('a', 'z'), "[a-z]");
-        assert_subpattern!(SubPattern::Range('A', 'Z'), "[A-Z]");
-        assert_subpattern!(SubPattern::Range('0', '9'), "[0-9]");
+        assert_subpattern!(SubPattern::Range(b'a', b'z'), "[a-z]");
+        assert_subpattern!(SubPattern::Range(b'A', b'Z'), "[A-Z]");
+        assert_subpattern!(SubPattern::Range(b'0', b'9'), "[0-9]");
         assert_subpattern_fail!("[a-z");
         assert_subpattern_fail!("]");
         assert_subpattern_fail!("[z-a]");
 
-        assert_subpattern!(SubPattern::ExceptRange('a', 'z'), "[!a-z]");
-        assert_subpattern!(SubPattern::ExceptRange('A', 'Z'), "[!A-Z]");
-        assert_subpattern!(SubPattern::ExceptRange('0', '9'), "[!0-9]");
+        assert_subpattern!(SubPattern::ExceptRange(b'a', b'z'), "[!a-z]");
+        assert_subpattern!(SubPattern::ExceptRange(b'A', b'Z'), "[!A-Z]");
+        assert_subpattern!(SubPattern::ExceptRange(b'0', b'9'), "[!0-9]");
         assert_subpattern_fail!("[!a-z");
         assert_subpattern_fail!("[!]");
         assert_subpattern_fail!("[!z-a]");
 
-        assert!(matches!(
-            next_subpattern("{", true),
-            Ok((SubPattern::BeginGroup, "", true))
-        ));
+        assert_subpattern!(SubPattern::BeginGroup, "{");
         assert_subpattern_fail!("}");
         assert_subpattern_fail!(",");
     }
