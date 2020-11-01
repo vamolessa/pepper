@@ -998,42 +998,65 @@ impl_to_script!(BufferHandle, (self, _engine) => ScriptValue::Integer(self.0 as 
 
 #[derive(Default)]
 pub struct BufferCollection {
-    buffers: Vec<Option<Buffer>>,
+    buffers: Vec<(bool, Buffer)>,
     line_pool: BufferLinePool,
 }
 
 impl BufferCollection {
     pub fn add(&mut self, buffer: Buffer, events: &mut EditorEventQueue) -> BufferHandle {
-        for (i, slot) in self.buffers.iter_mut().enumerate() {
-            if slot.is_none() {
+        for (i, (alive, b)) in self.buffers.iter_mut().enumerate() {
+            if !*alive {
                 let handle = BufferHandle(i);
-                *slot = Some(buffer);
-
+                *alive = true;
+                *b = buffer;
                 events.enqueue(EditorEvent::BufferOpen(handle));
                 return handle;
             }
         }
 
         let handle = BufferHandle(self.buffers.len());
-        self.buffers.push(Some(buffer));
+        self.buffers.push((true, buffer));
         events.enqueue(EditorEvent::BufferOpen(handle));
         handle
     }
 
     pub fn get(&self, handle: BufferHandle) -> Option<&Buffer> {
-        self.buffers[handle.0].as_ref()
+        let (alive, buffer) = &self.buffers[handle.0];
+        if *alive {
+            Some(buffer)
+        } else {
+            None
+        }
     }
 
     pub fn get_mut(&mut self, handle: BufferHandle) -> Option<&mut Buffer> {
-        self.buffers[handle.0].as_mut()
+        let (alive, buffer) = &mut self.buffers[handle.0];
+        if *alive {
+            Some(buffer)
+        } else {
+            None
+        }
     }
 
     pub fn get_mut_with_line_pool(
         &mut self,
         handle: BufferHandle,
     ) -> Option<(&mut Buffer, &mut BufferLinePool)> {
-        let line_pool = &mut self.line_pool;
-        self.buffers[handle.0].as_mut().map(move |b| (b, line_pool))
+        let (alive, buffer) = &mut self.buffers[handle.0];
+        if *alive {
+            Some((buffer, &mut self.line_pool))
+        } else {
+            None
+        }
+    }
+
+    pub fn get_removed(&self, handle: BufferHandle) -> Option<&Buffer> {
+        let (alive, buffer) = &self.buffers[handle.0];
+        if !*alive {
+            Some(buffer)
+        } else {
+            None
+        }
     }
 
     pub fn line_pool(&mut self) -> &mut BufferLinePool {
@@ -1055,27 +1078,35 @@ impl BufferCollection {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &Buffer> {
-        self.buffers.iter().filter_map(|b| b.as_ref())
+        self.buffers
+            .iter()
+            .filter_map(|(a, b)| if *a { Some(b) } else { None })
     }
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Buffer> {
-        self.buffers.iter_mut().filter_map(|b| b.as_mut())
+        self.buffers
+            .iter_mut()
+            .filter_map(|(a, b)| if *a { Some(b) } else { None })
     }
 
     pub fn iter_mut_with_line_pool(
         &mut self,
     ) -> (impl Iterator<Item = &mut Buffer>, &mut BufferLinePool) {
-        (
-            self.buffers.iter_mut().filter_map(|b| b.as_mut()),
-            &mut self.line_pool,
-        )
+        let iter = self
+            .buffers
+            .iter_mut()
+            .filter_map(|(a, b)| if *a { Some(b) } else { None });
+        (iter, &mut self.line_pool)
     }
 
     pub fn iter_with_handles(&self) -> impl Iterator<Item = (BufferHandle, &Buffer)> {
-        self.buffers
-            .iter()
-            .enumerate()
-            .filter_map(|(i, b)| Some(BufferHandle(i)).zip(b.as_ref()))
+        self.buffers.iter().enumerate().filter_map(|(i, (a, b))| {
+            if *a {
+                Some((BufferHandle(i), b))
+            } else {
+                None
+            }
+        })
     }
 
     pub fn remove_where<F>(
@@ -1088,27 +1119,32 @@ impl BufferCollection {
         F: Fn(BufferHandle, &Buffer) -> bool,
     {
         for i in 0..self.buffers.len() {
-            if let Some(buffer) = &mut self.buffers[i] {
-                let handle = BufferHandle(i);
-                if predicate(handle, buffer) {
-                    for line in buffer.content.lines.drain(..) {
-                        for word in WordIter::new(line.as_str()).of_kind(WordKind::Identifier) {
-                            word_database.remove_word(word);
-                        }
-
-                        self.line_pool.dispose(line);
-                    }
-
-                    for client in clients.iter_mut() {
-                        client
-                            .navigation_history
-                            .remove_snapshots_with_buffer_handle(handle);
-                    }
-
-                    self.buffers[i] = None;
-                    events.enqueue(EditorEvent::BufferClose(handle));
-                }
+            let (alive, buffer) = &mut self.buffers[i];
+            if !*alive {
+                continue;
             }
+
+            let handle = BufferHandle(i);
+            if !predicate(handle, buffer) {
+                continue;
+            }
+
+            for line in buffer.content.lines.drain(..) {
+                for word in WordIter::new(line.as_str()).of_kind(WordKind::Identifier) {
+                    word_database.remove_word(word);
+                }
+
+                self.line_pool.dispose(line);
+            }
+
+            for client in clients.iter_mut() {
+                client
+                    .navigation_history
+                    .remove_snapshots_with_buffer_handle(handle);
+            }
+
+            *alive = false;
+            events.enqueue(EditorEvent::BufferClose(handle));
         }
     }
 }

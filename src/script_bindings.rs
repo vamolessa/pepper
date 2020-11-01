@@ -68,7 +68,9 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
     register!(client => index, current_buffer_view_handle, quit, quit_all, force_quit_all,);
     register!(editor => version, print,);
     register!(buffer => all_handles, line_count, line_at, path, extension, has_extension, needs_save, set_search, open,
-        close, force_close, close_all, force_close_all, save, save_all, reload, force_reload, reload_all, force_reload_all, commit_edits, on_open,);
+        close, force_close, close_all, force_close_all, save, save_all, reload, force_reload, reload_all, force_reload_all,
+        commit_edits, on_open,);
+    register!(closed_buffer => line_count, line_at, path, extension, has_extension,);
     register!(buffer_view => buffer_handle, all_handles, handle_from_path, selection_text, insert_text,
         insert_text_at, delete_selection, delete_in, undo, redo,);
     register!(cursors => len, all, set_all, main_index, main, set, move_columns, move_lines, move_words,
@@ -631,6 +633,97 @@ mod buffer {
         callback: ScriptFunction,
     ) -> ScriptResult<()> {
         engine.add_to_function_array_in_registry("buffer_on_open", callback)
+    }
+}
+
+mod closed_buffer {
+    use super::*;
+
+    pub fn line_count(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        handle: Option<BufferHandle>,
+    ) -> ScriptResult<Option<usize>> {
+        Ok(handle
+            .or_else(|| ctx.current_buffer_handle())
+            .and_then(|h| ctx.buffers.get_removed(h))
+            .map(|b| b.content().line_count()))
+    }
+
+    pub fn line_at<'a>(
+        engine: ScriptEngineRef<'a>,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        (index, handle): (usize, Option<BufferHandle>),
+    ) -> ScriptResult<ScriptValue<'a>> {
+        match handle
+            .or_else(|| ctx.current_buffer_handle())
+            .and_then(|h| ctx.buffers.get_removed(h))
+        {
+            Some(buffer) => {
+                if index < buffer.content().line_count() {
+                    let line_bytes = buffer.content().line_at(index).as_str().as_bytes();
+                    Ok(ScriptValue::String(engine.create_string(line_bytes)?))
+                } else {
+                    Ok(ScriptValue::Nil)
+                }
+            }
+            None => Ok(ScriptValue::Nil),
+        }
+    }
+
+    pub fn path<'a>(
+        engine: ScriptEngineRef<'a>,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        handle: Option<BufferHandle>,
+    ) -> ScriptResult<ScriptValue<'a>> {
+        match handle
+            .or_else(|| ctx.current_buffer_handle())
+            .and_then(|h| ctx.buffers.get_removed(h))
+            .and_then(|b| b.path())
+            .and_then(|p| p.to_str())
+            .map(|p| p.as_bytes())
+        {
+            Some(bytes) => Ok(ScriptValue::String(engine.create_string(bytes)?)),
+            None => Ok(ScriptValue::Nil),
+        }
+    }
+
+    pub fn extension<'a>(
+        engine: ScriptEngineRef<'a>,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        handle: Option<BufferHandle>,
+    ) -> ScriptResult<ScriptValue<'a>> {
+        match handle
+            .or_else(|| ctx.current_buffer_handle())
+            .and_then(|h| ctx.buffers.get_removed(h))
+            .and_then(|b| b.path())
+            .and_then(|p| p.extension())
+            .and_then(|p| p.to_str())
+            .map(|p| p.as_bytes())
+        {
+            Some(bytes) => Ok(ScriptValue::String(engine.create_string(bytes)?)),
+            None => Ok(ScriptValue::Nil),
+        }
+    }
+
+    pub fn has_extension<'a>(
+        _: ScriptEngineRef<'a>,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        (extension, handle): (ScriptString, Option<BufferHandle>),
+    ) -> ScriptResult<bool> {
+        Ok(handle
+            .or_else(|| ctx.current_buffer_handle())
+            .and_then(|h| ctx.buffers.get_removed(h))
+            .and_then(|b| b.path())
+            .and_then(|p| p.extension())
+            .and_then(|p| p.to_str())
+            .map(|p| p.as_bytes() == extension.as_bytes())
+            .unwrap_or(false))
     }
 }
 
