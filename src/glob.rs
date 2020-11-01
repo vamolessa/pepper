@@ -17,72 +17,88 @@ fn match_glob_recursive(
         inside_group,
     };
 
-    enum SegmentState {
-        None,
-        One(usize),
-        Multiple(usize),
-    }
-
     let mut path_index = 0;
-    let mut segment_state = SegmentState::None;
-    let mut retry_pattern_index = 0;
-
-    macro_rules! check_next_path_byte {
-        ($byte:ident => $check:expr) => {{
+    macro_rules! next_path_byte {
+        () => {{
             let i = path_index;
             path_index += 1;
             if i < path.len() {
-                let $byte = path[i];
-                if path::is_separator($byte as _) {
-                    if let SegmentState::One(_) = segment_state {
-                        segment_state = SegmentState::None;
-                    }
-                }
-                if $check {
-                    continue;
-                }
+                path[i]
+            } else {
+                return Ok(false);
             }
         }};
     }
 
     loop {
-        let last_state_index = state.index;
         match state.next_subpattern()? {
-            SubPattern::None => {
-                if path_index == path.len() {
-                    return Ok(true);
+            SubPattern::None => return Ok(path_index == path.len()),
+            SubPattern::Byte(b'/') => {
+                if !path::is_separator(next_path_byte!() as _) {
+                    return Ok(false);
                 }
             }
-            SubPattern::Byte(b'/') => check_next_path_byte!(b => path::is_separator(b as _)),
-            SubPattern::Byte(pb) => check_next_path_byte!(b => b == pb),
-            SubPattern::AnyByte => {
-                if path_index < path.len() {
-                    path_index += 1;
-                    continue;
+            SubPattern::Byte(b) => {
+                if next_path_byte!() != b {
+                    return Ok(false);
                 }
+            }
+            SubPattern::AnyByte => {
+                next_path_byte!();
             }
             SubPattern::AnySegment => {
-                retry_pattern_index = last_state_index;
-                segment_state = SegmentState::One(path_index + 1);
-                continue;
+                let pattern = &pattern[state.index..];
+                let path = &path[path_index..];
+                let next_separator_index =
+                    path.iter().position(|&b| b == b'/').unwrap_or(path.len());
+                for i in 0..=next_separator_index {
+                    if match_glob_recursive(pattern, &path[i..], state.inside_group)? {
+                        return Ok(true);
+                    }
+                }
+                return Ok(false);
             }
             SubPattern::AnyMultiSegment => {
-                retry_pattern_index = last_state_index;
-                segment_state = SegmentState::Multiple(path_index + 1);
-                continue;
+                let pattern = &pattern[state.index..];
+                let path = &path[path_index..];
+                if match_glob_recursive(pattern, path, state.inside_group)? {
+                    return Ok(true);
+                }
+                for (i, _) in path.iter().enumerate().filter(|(_, &b)| b == b'/') {
+                    if match_glob_recursive(pattern, &path[i..], state.inside_group)? {
+                        return Ok(true);
+                    }
+                }
+                return Ok(false);
             }
-            SubPattern::Range(start, end) => check_next_path_byte!(b => start <= b && b <= end),
-            SubPattern::ExceptRange(start, end) => check_next_path_byte!(b => b < start || end < b),
+            SubPattern::Range(start, end) => {
+                let b = next_path_byte!();
+                if b < start || end < b {
+                    return Ok(false);
+                }
+            }
+            SubPattern::ExceptRange(start, end) => {
+                let b = next_path_byte!();
+                if start <= b && b <= end {
+                    return Ok(false);
+                }
+            }
             SubPattern::BeginGroup => {
-                unimplemented!();
-            }
-        }
+                let mut pattern = &pattern[state.index..];
+                let path = &path[path_index..];
 
-        match segment_state {
-            SegmentState::None => return Ok(false),
-            SegmentState::One(i) | SegmentState::Multiple(i) => {
-                state.index = retry_pattern_index;
-                path_index = i;
+                while !match_glob_recursive(pattern, path, true)? {
+                    match pattern
+                        .iter()
+                        .enumerate()
+                        .find(|(_, &b)| b == b',' || b == b'}')
+                    {
+                        Some((i, b',')) => pattern = &pattern[(i + 1)..],
+                        _ => return Ok(false),
+                    }
+                }
+
+                return Ok(true);
             }
         }
     }
@@ -190,7 +206,7 @@ impl<'a> State<'a> {
                         return Err(InvalidGlobError);
                     }
                     match self.pattern[self.index..].iter().position(|&b| b == b'}') {
-                        Some(i) => self.index += i,
+                        Some(i) => self.index += i + 1,
                         None => return Err(InvalidGlobError),
                     }
                     self.inside_group = false;
@@ -208,28 +224,35 @@ mod tests {
 
     #[test]
     fn test_match() {
-        assert!(match_glob(b"", b""));
-        assert!(match_glob(b"abc", b"abc"));
-        assert!(!match_glob(b"ab", b"abc"));
-        assert!(match_glob(b"a?c", b"abc"));
-        assert!(match_glob(b"a[A-Z]c", b"aBc"));
-        assert!(!match_glob(b"a[A-Z]c", b"abc"));
-        assert!(match_glob(b"a[!0-9]c", b"abc"));
+        assert_eq!(true, match_glob(b"", b""));
+        assert_eq!(true, match_glob(b"abc", b"abc"));
+        assert_eq!(false, match_glob(b"ab", b"abc"));
+        assert_eq!(true, match_glob(b"a?c", b"abc"));
+        assert_eq!(true, match_glob(b"a[A-Z]c", b"aBc"));
+        assert_eq!(false, match_glob(b"a[A-Z]c", b"abc"));
+        assert_eq!(true, match_glob(b"a[!0-9]c", b"abc"));
 
-        assert!(match_glob(b"a*c", b"ac"));
-        assert!(match_glob(b"a*c", b"abc"));
-        assert!(match_glob(b"a*c", b"abbbc"));
-        assert!(match_glob(b"a*/c", b"a/c"));
-        assert!(match_glob(b"a*/c", b"abbb/c"));
-        assert!(match_glob(b"a*[0-9]/c", b"abbb5/c"));
-        assert!(!match_glob(b"a*c", b"a/c"));
+        assert_eq!(true, match_glob(b"a*c", b"ac"));
+        assert_eq!(true, match_glob(b"a*c", b"abc"));
+        assert_eq!(true, match_glob(b"a*c", b"abbbc"));
+        assert_eq!(true, match_glob(b"a*/", b"abc/"));
+        assert_eq!(true, match_glob(b"a*/c", b"a/c"));
+        assert_eq!(true, match_glob(b"a*/c", b"abbb/c"));
+        assert_eq!(true, match_glob(b"a*[0-9]/c", b"abbb5/c"));
+        assert_eq!(false, match_glob(b"a*c", b"a/c"));
+        assert_eq!(true, match_glob(b"a*bx*cy*d", b"a00bx000cy0000d"));
 
-        assert!(!match_glob(b"a**c", b"ac"));
-        assert!(!match_glob(b"a**c", b"a/c"));
-        assert!(match_glob(b"a**/c", b"a/c"));
-        assert!(match_glob(b"a**/c", b"a/b/c"));
-        assert!(match_glob(b"a**/c", b"a/bbb/c"));
-        assert!(match_glob(b"a**/c", b"aaa/b/c"));
+        assert_eq!(false, match_glob(b"a**c", b"ac"));
+        assert_eq!(false, match_glob(b"a**c", b"a/c"));
+        assert_eq!(true, match_glob(b"a**/c", b"a/c"));
+        assert_eq!(true, match_glob(b"a**/c", b"a/b/c"));
+        assert_eq!(true, match_glob(b"a**/c", b"a/bbb/c"));
+        assert_eq!(true, match_glob(b"a**/c", b"aaa/b/c"));
+
+        assert_eq!(true, match_glob(b"a{b,c}d", b"abd"));
+        assert_eq!(true, match_glob(b"a{b,c}d", b"acd"));
+        //assert_eq!(true, match_glob(b"*a{b,c}d", b"aaabd"));
+        //assert_eq!(true, match_glob(b"*a{b,c}d", b"abbd"));
     }
 
     #[test]
