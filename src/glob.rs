@@ -25,11 +25,9 @@ enum Op {
     ManyComponents,
     AnyWithinRanges { start: u16, count: u16 },
     ExceptWithinRanges { start: u16, count: u16 },
+    SubPatternGroup { len: u16 },
     SubPattern { len: u16 },
-    End,
 }
-
-struct NoMatch;
 
 #[derive(Default)]
 pub struct Glob {
@@ -43,10 +41,7 @@ impl Glob {
         self.ops.clear();
 
         match self.compile_recursive(pattern, 0) {
-            Ok(len) if len == pattern.len() => {
-                self.ops.push(Op::End);
-                Ok(())
-            }
+            Ok(len) if len == pattern.len() => Ok(()),
             _ => Err(InvalidGlobError::new()),
         }
     }
@@ -141,12 +136,18 @@ impl Glob {
                 Some(b']') => return Err(InvalidGlobError::new()),
                 Some(b'{') => {
                     let fix_index = self.ops.len();
-                    self.ops.push(Op::SubPattern { len: 0 });
+                    self.ops.push(Op::SubPatternGroup { len: 0 });
 
                     let next_depth = depth + 1;
                     loop {
+                        let fix_index = self.ops.len();
+                        self.ops.push(Op::SubPattern { len: 0 });
                         index += self.compile_recursive(&pattern[index..], next_depth)?;
-                        self.ops.push(Op::End);
+                        let op_count = self.ops.len();
+                        match &mut self.ops[fix_index] {
+                            Op::SubPattern { len } => *len = (op_count - fix_index - 1) as _,
+                            _ => unreachable!(),
+                        }
 
                         match next!() {
                             Some(b'}') => break,
@@ -157,7 +158,7 @@ impl Glob {
 
                     let op_count = self.ops.len();
                     match &mut self.ops[fix_index] {
-                        Op::SubPattern { len } => *len = (op_count - fix_index - 1) as _,
+                        Op::SubPatternGroup { len } => *len = (op_count - fix_index - 1) as _,
                         _ => unreachable!(),
                     }
                 }
@@ -184,83 +185,104 @@ impl Glob {
     }
 
     pub fn matches(&self, path: &[u8]) -> bool {
-        match self.matches_recursive(path, 0) {
-            Ok((rest, op_index)) => rest.len() == 0 && op_index + 1 == self.ops.len(),
+        let state = MatchState {
+            ops: &self.ops[..],
+            path,
+        };
+        match matches_recursive(state, &self.bytes) {
+            Ok(state) => state.path.is_empty(),
             Err(_) => false,
         }
     }
+}
 
-    fn matches_recursive<'a>(
-        &self,
-        mut path: &'a [u8],
-        mut op_index: usize,
-    ) -> Result<(&'a [u8], usize), NoMatch> {
-        'op_loop: loop {
-            let op = {
-                let i = op_index;
-                op_index += 1;
-                &self.ops[i]
-            };
+struct NoMatch;
 
-            match op {
-                Op::Slice { from, to } => {
-                    let prefix = &self.bytes[(*from as usize)..(*to as usize)];
-                    if !path.starts_with(prefix) {
-                        return Err(NoMatch);
-                    }
-                    path = &path[prefix.len()..];
-                }
-                Op::Skip { len } => {
-                    let len = *len as usize;
-                    if path.len() < len {
-                        return Err(NoMatch);
-                    }
-                    path = &path[len..];
-                }
-                Op::Many => {
-                    unimplemented!();
-                }
-                Op::ManyComponents => {
-                    unimplemented!();
-                }
-                Op::AnyWithinRanges { start, count } => {
-                    if path.is_empty() {
-                        return Err(NoMatch);
-                    }
-                    let b = path[0];
-                    path = &path[1..];
-                    for range in self.bytes[(*start as usize)..].chunks(2).take(*count as _) {
-                        let start = range[0];
-                        let end = range[1];
-                        if start <= b && b <= end {
-                            continue 'op_loop;
-                        }
-                    }
-                    return Err(NoMatch);
-                }
-                Op::ExceptWithinRanges { start, count } => {
-                    if path.is_empty() {
-                        return Err(NoMatch);
-                    }
-                    let b = path[0];
-                    path = &path[1..];
-                    for range in self.bytes[(*start as usize)..].chunks(2).take(*count as _) {
-                        let start = range[0];
-                        let end = range[1];
-                        if b < start || end < b {
-                            continue 'op_loop;
-                        }
-                    }
-                    return Err(NoMatch);
-                }
-                //SubPattern { len } => {}
-                Op::End => break,
-                _ => (),
-            }
-        }
-
-        Ok((path, op_index))
+struct MatchState<'a> {
+    pub ops: &'a [Op],
+    pub path: &'a [u8],
+}
+impl<'a> MatchState<'a> {
+    pub fn advance_path(&mut self, len: usize) {
+        self.path = &self.path[len..];
     }
+}
+
+fn matches_recursive<'a>(
+    mut state: MatchState<'a>,
+    bytes: &[u8],
+) -> Result<MatchState<'a>, NoMatch> {
+    'op_loop: loop {
+        let op = match state.ops.split_first() {
+            Some((op, rest)) => {
+                state.ops = rest;
+                op
+            }
+            None => break,
+        };
+
+        match op {
+            Op::Slice { from, to } => {
+                let prefix = &bytes[(*from as usize)..(*to as usize)];
+                if !state.path.starts_with(prefix) {
+                    return Err(NoMatch);
+                }
+                state.advance_path(prefix.len());
+            }
+            Op::Skip { len } => {
+                let len = *len as usize;
+                if state.path.len() < len {
+                    return Err(NoMatch);
+                }
+                state.advance_path(len);
+            }
+            Op::Many => {
+                unimplemented!();
+            }
+            Op::ManyComponents => {
+                unimplemented!();
+            }
+            Op::AnyWithinRanges { start, count } => {
+                if state.path.is_empty() {
+                    return Err(NoMatch);
+                }
+                let b = state.path[0];
+                state.advance_path(1);
+                for range in bytes[(*start as usize)..].chunks(2).take(*count as _) {
+                    let start = range[0];
+                    let end = range[1];
+                    if start <= b && b <= end {
+                        continue 'op_loop;
+                    }
+                }
+                return Err(NoMatch);
+            }
+            Op::ExceptWithinRanges { start, count } => {
+                if state.path.is_empty() {
+                    return Err(NoMatch);
+                }
+                let b = state.path[0];
+                state.advance_path(1);
+                for range in bytes[(*start as usize)..].chunks(2).take(*count as _) {
+                    let start = range[0];
+                    let end = range[1];
+                    if b < start || end < b {
+                        continue 'op_loop;
+                    }
+                }
+                return Err(NoMatch);
+            }
+            Op::SubPatternGroup { len } => {
+                let len = *len as usize;
+                loop {
+                    //
+                }
+            }
+            _ => (),
+        }
+    }
+
+    Ok(state)
 }
 
 /////////
