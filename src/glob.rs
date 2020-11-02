@@ -1,22 +1,6 @@
 use std::path;
 
-pub struct InvalidGlobError(());
-impl InvalidGlobError {
-    pub const fn new() -> Self {
-        //panic!();
-        Self(())
-    }
-}
-
-macro_rules! dbg_bytes {
-    ($bytes:expr) => {
-        eprintln!(
-            "{} = {}",
-            stringify!($bytes),
-            std::str::from_utf8($bytes).unwrap()
-        )
-    };
-}
+pub struct InvalidGlobError;
 
 enum Op {
     Slice { from: u16, to: u16 },
@@ -42,7 +26,7 @@ impl Glob {
 
         match self.compile_recursive(pattern, 0) {
             Ok(len) if len == pattern.len() => Ok(()),
-            _ => Err(InvalidGlobError::new()),
+            _ => Err(InvalidGlobError),
         }
     }
 
@@ -87,7 +71,7 @@ impl Glob {
                         index += 1;
                         match peek!() {
                             None | Some(b'/') => self.ops.push(Op::ManyComponents),
-                            _ => return Err(InvalidGlobError::new()),
+                            _ => return Err(InvalidGlobError),
                         }
                     }
                     _ => self.ops.push(Op::Many),
@@ -103,7 +87,7 @@ impl Glob {
                     let start = self.bytes.len();
                     loop {
                         let start = match next!() {
-                            None => return Err(InvalidGlobError::new()),
+                            None => return Err(InvalidGlobError),
                             Some(b']') => break,
                             Some(b) => b,
                         };
@@ -111,11 +95,11 @@ impl Glob {
                             Some(b'-') => {
                                 index += 1;
                                 let end = match next!() {
-                                    None | Some(b']') => return Err(InvalidGlobError::new()),
+                                    None | Some(b']') => return Err(InvalidGlobError),
                                     Some(b) => b,
                                 };
                                 if end < start {
-                                    return Err(InvalidGlobError::new());
+                                    return Err(InvalidGlobError);
                                 }
                                 end
                             }
@@ -133,7 +117,7 @@ impl Glob {
                         self.ops.push(Op::AnyWithinRanges { start, count })
                     }
                 }
-                Some(b']') => return Err(InvalidGlobError::new()),
+                Some(b']') => return Err(InvalidGlobError),
                 Some(b'{') => {
                     let fix_index = self.ops.len();
                     self.ops.push(Op::SubPatternGroup { len: 0 });
@@ -152,7 +136,7 @@ impl Glob {
                         match next!() {
                             Some(b'}') => break,
                             Some(b',') => continue,
-                            _ => return Err(InvalidGlobError::new()),
+                            _ => return Err(InvalidGlobError),
                         }
                     }
 
@@ -185,12 +169,8 @@ impl Glob {
     }
 
     pub fn matches(&self, path: &[u8]) -> bool {
-        let state = MatchState {
-            ops: &self.ops[..],
-            path,
-        };
-        match matches_recursive(state, &self.bytes) {
-            Ok(state) => state.path.is_empty(),
+        match matches_recursive(&self.ops, &self.bytes, path) {
+            Ok(rest) => rest.is_empty(),
             Err(_) => false,
         }
     }
@@ -198,24 +178,21 @@ impl Glob {
 
 struct NoMatch;
 
-struct MatchState<'a> {
-    pub ops: &'a [Op],
-    pub path: &'a [u8],
-}
-impl<'a> MatchState<'a> {
-    pub fn advance_path(&mut self, len: usize) {
-        self.path = &self.path[len..];
-    }
-}
-
 fn matches_recursive<'a>(
-    mut state: MatchState<'a>,
-    bytes: &[u8],
-) -> Result<MatchState<'a>, NoMatch> {
+    mut ops: &'a [Op],
+    bytes: &'a [u8],
+    mut path: &'a [u8],
+) -> Result<&'a [u8], NoMatch> {
+    macro_rules! advance {
+        ($slice:ident, $len:expr) => {
+            $slice = &$slice[$len..]
+        };
+    }
+
     'op_loop: loop {
-        let op = match state.ops.split_first() {
+        let op = match ops.split_first() {
             Some((op, rest)) => {
-                state.ops = rest;
+                ops = rest;
                 op
             }
             None => break,
@@ -224,30 +201,49 @@ fn matches_recursive<'a>(
         match op {
             Op::Slice { from, to } => {
                 let prefix = &bytes[(*from as usize)..(*to as usize)];
-                if !state.path.starts_with(prefix) {
+                if !path.starts_with(prefix) {
                     return Err(NoMatch);
                 }
-                state.advance_path(prefix.len());
+                advance!(path, prefix.len());
             }
             Op::Skip { len } => {
                 let len = *len as usize;
-                if state.path.len() < len {
+                if path.len() < len {
                     return Err(NoMatch);
                 }
-                state.advance_path(len);
+                advance!(path, len);
             }
             Op::Many => {
-                unimplemented!();
+                let next_separator_index =
+                    path.iter().position(|&b| b == b'/').unwrap_or(path.len());
+                for _ in 0..=next_separator_index {
+                    match matches_recursive(ops, bytes, path) {
+                        Ok(rest) if rest.is_empty() => return Ok(rest),
+                        _ => advance!(path, 1),
+                    }
+                }
+                return Err(NoMatch);
             }
-            Op::ManyComponents => {
-                unimplemented!();
-            }
-            Op::AnyWithinRanges { start, count } => {
-                if state.path.is_empty() {
+            Op::ManyComponents => loop {
+                match matches_recursive(ops, bytes, path) {
+                    Ok(rest) if rest.is_empty() => return Ok(rest),
+                    _ => (),
+                }
+                if path.is_empty() {
                     return Err(NoMatch);
                 }
-                let b = state.path[0];
-                state.advance_path(1);
+                advance!(path, 1);
+                match path.iter().position(|&b| b == b'/') {
+                    Some(i) => advance!(path, i),
+                    None => return Err(NoMatch),
+                }
+            },
+            Op::AnyWithinRanges { start, count } => {
+                if path.is_empty() {
+                    return Err(NoMatch);
+                }
+                let b = path[0];
+                advance!(path, 1);
                 for range in bytes[(*start as usize)..].chunks(2).take(*count as _) {
                     let start = range[0];
                     let end = range[1];
@@ -258,11 +254,11 @@ fn matches_recursive<'a>(
                 return Err(NoMatch);
             }
             Op::ExceptWithinRanges { start, count } => {
-                if state.path.is_empty() {
+                if path.is_empty() {
                     return Err(NoMatch);
                 }
-                let b = state.path[0];
-                state.advance_path(1);
+                let b = path[0];
+                advance!(path, 1);
                 for range in bytes[(*start as usize)..].chunks(2).take(*count as _) {
                     let start = range[0];
                     let end = range[1];
@@ -273,39 +269,26 @@ fn matches_recursive<'a>(
                 return Err(NoMatch);
             }
             Op::SubPatternGroup { len } => {
-                let jump = &state.ops[(*len as usize)..];
-
+                let jump = &ops[(*len as usize)..];
                 loop {
-                    let len = match state.ops[0] {
+                    let len = match ops[0] {
                         Op::SubPattern { len } => len as usize,
-                        _ => unreachable!(),
+                        _ => return Err(NoMatch),
                     };
-                    let sub_state = MatchState {
-                        ops: &state.ops[1..],
-                        path: state.path,
-                    };
-                    match matches_recursive(sub_state, bytes) {
-                        Ok(s) => {
-                            state.ops = jump;
-                            state.path = s.path;
-                            break;
-                        }
-                        Err(_) => {
-                            let next_sub_pattern_index = len + 1;
-                            state.ops = &state.ops[next_sub_pattern_index..];
+                    advance!(ops, 1);
+                    if let Ok(rest) = matches_recursive(&ops[..len], bytes, path) {
+                        if let Ok(rest) = matches_recursive(jump, bytes, rest) {
+                            return Ok(rest);
                         }
                     }
-
-                    if state.ops.as_ptr() == jump.as_ptr() {
-                        return Err(NoMatch);
-                    }
+                    advance!(ops, len);
                 }
             }
             Op::SubPattern { .. } => unreachable!(),
         }
     }
 
-    Ok(state)
+    Ok(path)
 }
 
 /////////
@@ -374,7 +357,7 @@ fn match_glob_recursive(
                     Some(b'*') => {
                         pattern_index += 1;
                         if !matches!(peek_pattern_byte!(), None | Some(b'/')) {
-                            return Err(InvalidGlobError::new());
+                            return Err(InvalidGlobError);
                         }
                         if match_glob_recursive(pattern, path, inside_group)? {
                             return Ok(true);
@@ -408,7 +391,7 @@ fn match_glob_recursive(
                 };
                 loop {
                     let start = match next_pattern_byte!() {
-                        None => return Err(InvalidGlobError::new()),
+                        None => return Err(InvalidGlobError),
                         Some(b']') => return Ok(false),
                         Some(b) => b,
                     };
@@ -416,11 +399,11 @@ fn match_glob_recursive(
                         Some(b'-') => {
                             pattern_index += 1;
                             let end = match next_pattern_byte!() {
-                                None | Some(b']') => return Err(InvalidGlobError::new()),
+                                None | Some(b']') => return Err(InvalidGlobError),
                                 Some(b) => b,
                             };
                             if end < start {
-                                return Err(InvalidGlobError::new());
+                                return Err(InvalidGlobError);
                             }
                             let b = next_path_byte!();
                             let inside = start <= b && b <= end;
@@ -439,10 +422,10 @@ fn match_glob_recursive(
                 }
                 match pattern[pattern_index..].iter().position(|&b| b == b']') {
                     Some(i) => pattern_index += i + 1,
-                    None => return Err(InvalidGlobError::new()),
+                    None => return Err(InvalidGlobError),
                 }
             }
-            Some(b']') => return Err(InvalidGlobError::new()),
+            Some(b']') => return Err(InvalidGlobError),
             Some(b'{') => {
                 let mut pattern = &pattern[pattern_index..];
                 let path = &path[path_index..];
@@ -460,17 +443,17 @@ fn match_glob_recursive(
             }
             Some(b'}') => {
                 if !inside_group {
-                    return Err(InvalidGlobError::new());
+                    return Err(InvalidGlobError);
                 }
                 inside_group = false;
             }
             Some(b',') => {
                 if !inside_group {
-                    return Err(InvalidGlobError::new());
+                    return Err(InvalidGlobError);
                 }
                 match pattern[pattern_index..].iter().position(|&b| b == b'}') {
                     Some(i) => pattern_index += i + 1,
-                    None => return Err(InvalidGlobError::new()),
+                    None => return Err(InvalidGlobError),
                 }
                 inside_group = false;
             }
@@ -491,27 +474,77 @@ mod tests {
     fn compile() {
         let mut glob = Glob::default();
 
-        assert!(matches!(glob.compile(b""), Ok(())));
-        assert!(matches!(glob.compile(b"abc"), Ok(())));
-        assert!(matches!(glob.compile(b"a?c"), Ok(())));
-        assert!(matches!(glob.compile(b"a[A-Z]c"), Ok(())));
-        assert!(matches!(glob.compile(b"a[!0-9]c"), Ok(())));
+        assert!(glob.compile(b"").is_ok());
+        assert!(glob.compile(b"abc").is_ok());
+        assert!(glob.compile(b"a?c").is_ok());
+        assert!(glob.compile(b"a[A-Z]c").is_ok());
+        assert!(glob.compile(b"a[!0-9]c").is_ok());
 
-        assert!(matches!(glob.compile(b"a*c"), Ok(())));
-        assert!(matches!(glob.compile(b"a*/"), Ok(())));
-        assert!(matches!(glob.compile(b"a*/c"), Ok(())));
-        assert!(matches!(glob.compile(b"a*[0-9]/c"), Ok(())));
-        assert!(matches!(glob.compile(b"a*bx*cy*d"), Ok(())));
+        assert!(glob.compile(b"a*c").is_ok());
+        assert!(glob.compile(b"a*/").is_ok());
+        assert!(glob.compile(b"a*/c").is_ok());
+        assert!(glob.compile(b"a*[0-9]/c").is_ok());
+        assert!(glob.compile(b"a*bx*cy*d").is_ok());
 
-        assert!(matches!(glob.compile(b"a**/"), Ok(())));
-        assert!(matches!(glob.compile(b"a**/c"), Ok(())));
+        assert!(glob.compile(b"a**/").is_ok());
+        assert!(glob.compile(b"a**/c").is_ok());
+        assert!(glob.compile(b"a**c").is_err());
 
-        assert!(matches!(glob.compile(b"a{b,c}d"), Ok(())));
-        assert!(matches!(glob.compile(b"a*{b,c}d"), Ok(())));
-        assert!(matches!(glob.compile(b"a*{b*,c}d"), Ok(())));
+        assert!(glob.compile(b"a{b,c}d").is_ok());
+        assert!(glob.compile(b"a*{b,c}d").is_ok());
+        assert!(glob.compile(b"a*{b*,c}d").is_ok());
     }
 
     #[test]
+    fn matches() {
+        let mut glob = Glob::default();
+
+        macro_rules! assert_glob {
+            ($expected:expr, $pattern:expr, $path:expr) => {
+                if glob.compile($pattern).is_err() {
+                    panic!(
+                        "invalid glob pattern '{}'",
+                        std::str::from_utf8($pattern).unwrap()
+                    );
+                }
+                assert_eq!(
+                    $expected,
+                    glob.matches($path),
+                    "'{}' did{} match pattern '{}'",
+                    std::str::from_utf8($path).unwrap(),
+                    if $expected { " not" } else { "" },
+                    std::str::from_utf8($pattern).unwrap()
+                );
+            };
+        }
+
+        assert_glob!(true, b"", b"");
+        assert_glob!(true, b"abc", b"abc");
+        assert_glob!(false, b"ab", b"abc");
+        assert_glob!(true, b"a?c", b"abc");
+        assert_glob!(true, b"a[A-Z]c", b"aBc");
+        assert_glob!(false, b"a[A-Z]c", b"abc");
+        assert_glob!(true, b"a[!0-9A-CD-FGH]c", b"abc");
+
+        assert_glob!(true, b"a*c", b"ac");
+        assert_glob!(true, b"a*c", b"abc");
+        assert_glob!(true, b"a*c", b"abbbc");
+        assert_glob!(true, b"a*/", b"abc/");
+        assert_glob!(true, b"a*/c", b"a/c");
+        assert_glob!(true, b"a*/c", b"abbb/c");
+        assert_glob!(true, b"a*[0-9]/c", b"abbb5/c");
+        assert_glob!(false, b"a*c", b"a/c");
+        assert_glob!(true, b"a*bx*cy*d", b"a00bx000cy0000d");
+
+        assert_glob!(true, b"a**/c", b"a/c");
+        assert_glob!(true, b"a**/c", b"a/b/c");
+        assert_glob!(true, b"a**/c", b"a/bb/bbb/c");
+        assert_glob!(true, b"a**/c", b"aaaaa/bb/bbb/c");
+
+        assert_glob!(true, b"a{b,c}d", b"abd");
+    }
+
+    //#[test]
     fn test_match() {
         assert_eq!(true, match_glob(b"", b""));
         assert_eq!(true, match_glob(b"abc", b"abc"));
