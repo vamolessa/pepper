@@ -2,7 +2,7 @@ use std::path;
 
 pub struct InvalidGlobError(());
 impl InvalidGlobError {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         //panic!();
         Self(())
     }
@@ -19,15 +19,17 @@ macro_rules! dbg_bytes {
 }
 
 enum Op {
-    Skip { count: u16 },
+    Slice { from: u16, to: u16 },
+    Skip { len: u16 },
     Many,
     ManyComponents,
-    Slice { from: u16, to: u16 },
     AnyWithinRanges { start: u16, count: u16 },
     ExceptWithinRanges { start: u16, count: u16 },
-    SubPatternGroup { len: u16 },
     SubPattern { len: u16 },
+    End,
 }
+
+struct NoMatch;
 
 #[derive(Default)]
 pub struct Glob {
@@ -41,7 +43,10 @@ impl Glob {
         self.ops.clear();
 
         match self.compile_recursive(pattern, 0) {
-            Ok(len) if len == pattern.len() => Ok(()),
+            Ok(len) if len == pattern.len() => {
+                self.ops.push(Op::End);
+                Ok(())
+            }
             _ => Err(InvalidGlobError::new()),
         }
     }
@@ -79,8 +84,8 @@ impl Glob {
             match next!() {
                 None => break,
                 Some(b'?') => match self.ops.last_mut() {
-                    Some(Op::Skip { count }) => *count += 1,
-                    _ => self.ops.push(Op::Skip { count: 1 }),
+                    Some(Op::Skip { len }) => *len += 1,
+                    _ => self.ops.push(Op::Skip { len: 1 }),
                 },
                 Some(b'*') => match peek!() {
                     Some(b'*') => {
@@ -136,19 +141,12 @@ impl Glob {
                 Some(b']') => return Err(InvalidGlobError::new()),
                 Some(b'{') => {
                     let fix_index = self.ops.len();
-                    self.ops.push(Op::SubPatternGroup { len: 0 });
+                    self.ops.push(Op::SubPattern { len: 0 });
 
                     let next_depth = depth + 1;
                     loop {
-                        let fix_index = self.ops.len();
-                        self.ops.push(Op::SubPattern { len: 0 });
-
                         index += self.compile_recursive(&pattern[index..], next_depth)?;
-                        let op_count = self.ops.len();
-                        match &mut self.ops[fix_index] {
-                            Op::SubPattern { len } => *len = (op_count - fix_index - 1) as _,
-                            _ => unreachable!(),
-                        }
+                        self.ops.push(Op::End);
 
                         match next!() {
                             Some(b'}') => break,
@@ -159,7 +157,7 @@ impl Glob {
 
                     let op_count = self.ops.len();
                     match &mut self.ops[fix_index] {
-                        Op::SubPatternGroup { len } => *len = (op_count - fix_index - 1) as _,
+                        Op::SubPattern { len } => *len = (op_count - fix_index - 1) as _,
                         _ => unreachable!(),
                     }
                 }
@@ -183,6 +181,85 @@ impl Glob {
         }
 
         Ok(index)
+    }
+
+    pub fn matches(&self, path: &[u8]) -> bool {
+        match self.matches_recursive(path, 0) {
+            Ok((rest, op_index)) => rest.len() == 0 && op_index + 1 == self.ops.len(),
+            Err(_) => false,
+        }
+    }
+
+    fn matches_recursive<'a>(
+        &self,
+        mut path: &'a [u8],
+        mut op_index: usize,
+    ) -> Result<(&'a [u8], usize), NoMatch> {
+        'op_loop: loop {
+            let op = {
+                let i = op_index;
+                op_index += 1;
+                &self.ops[i]
+            };
+
+            match op {
+                Op::Slice { from, to } => {
+                    let prefix = &self.bytes[(*from as usize)..(*to as usize)];
+                    if !path.starts_with(prefix) {
+                        return Err(NoMatch);
+                    }
+                    path = &path[prefix.len()..];
+                }
+                Op::Skip { len } => {
+                    let len = *len as usize;
+                    if path.len() < len {
+                        return Err(NoMatch);
+                    }
+                    path = &path[len..];
+                }
+                Op::Many => {
+                    unimplemented!();
+                }
+                Op::ManyComponents => {
+                    unimplemented!();
+                }
+                Op::AnyWithinRanges { start, count } => {
+                    if path.is_empty() {
+                        return Err(NoMatch);
+                    }
+                    let b = path[0];
+                    path = &path[1..];
+                    for range in self.bytes[(*start as usize)..].chunks(2).take(*count as _) {
+                        let start = range[0];
+                        let end = range[1];
+                        if start <= b && b <= end {
+                            continue 'op_loop;
+                        }
+                    }
+                    return Err(NoMatch);
+                }
+                Op::ExceptWithinRanges { start, count } => {
+                    if path.is_empty() {
+                        return Err(NoMatch);
+                    }
+                    let b = path[0];
+                    path = &path[1..];
+                    for range in self.bytes[(*start as usize)..].chunks(2).take(*count as _) {
+                        let start = range[0];
+                        let end = range[1];
+                        if b < start || end < b {
+                            continue 'op_loop;
+                        }
+                    }
+                    return Err(NoMatch);
+                }
+                //SubPattern { len } => {}
+                Op::End => break,
+                _ => (),
+            }
+        }
+
+        Ok((path, op_index))
     }
 }
 
