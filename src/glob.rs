@@ -2,6 +2,23 @@ use std::path;
 
 pub struct InvalidGlobError;
 
+pub struct Glob {
+    bytes: Vec<u8>,
+    patterns: Vec<Pattern>,
+}
+
+enum Pattern {
+    Any,
+    Many,
+    ManyComponents,
+    Slice(u16, u16),
+    AnyWithin(u16, u16),
+    ExceptWithin(u16, u16),
+    SubPattern(u16, u16),
+}
+
+/////////
+
 fn match_glob(pattern: &[u8], path: &[u8]) -> bool {
     match_glob_recursive(pattern, path, false).unwrap_or(false)
 }
