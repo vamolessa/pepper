@@ -2,6 +2,7 @@ use std::path;
 
 pub struct InvalidGlobError;
 
+#[derive(Debug)]
 enum Op {
     Slice { from: u16, to: u16 },
     Skip { len: u16 },
@@ -35,6 +36,7 @@ impl Glob {
         pattern: &[u8],
         depth: usize,
     ) -> Result<usize, InvalidGlobError> {
+        let mut start_ops_index = self.ops.len();
         let mut index = 0;
 
         macro_rules! next {
@@ -62,7 +64,7 @@ impl Glob {
         loop {
             match next!() {
                 None => break,
-                Some(b'?') => match self.ops.last_mut() {
+                Some(b'?') => match self.ops[start_ops_index..].last_mut() {
                     Some(Op::Skip { len }) => *len += 1,
                     _ => self.ops.push(Op::Skip { len: 1 }),
                 },
@@ -145,12 +147,14 @@ impl Glob {
                         Op::SubPatternGroup { len } => *len = (op_count - fix_index - 1) as _,
                         _ => unreachable!(),
                     }
+
+                    start_ops_index = self.ops.len();
                 }
                 Some(b'}') | Some(b',') => {
                     index -= 1;
                     break;
                 }
-                Some(b) => match self.ops.last_mut() {
+                Some(b) => match self.ops[start_ops_index..].last_mut() {
                     Some(Op::Slice { to, .. }) if *to == self.bytes.len() as u16 => {
                         self.bytes.push(b);
                         *to += 1;
@@ -213,17 +217,18 @@ fn matches_recursive<'a>(
                 }
                 advance!(path, len);
             }
-            Op::Many => {
-                let next_separator_index =
-                    path.iter().position(|&b| b == b'/').unwrap_or(path.len());
-                for _ in 0..=next_separator_index {
-                    match matches_recursive(ops, bytes, path) {
-                        Ok(rest) if rest.is_empty() => return Ok(rest),
-                        _ => advance!(path, 1),
+            Op::Many => loop {
+                match matches_recursive(ops, bytes, path) {
+                    Ok(rest) if rest.is_empty() => return Ok(rest),
+                    _ => {
+                        if path.is_empty() || path[0] == b'/' {
+                            return Err(NoMatch);
+                        } else {
+                            advance!(path, 1);
+                        }
                     }
                 }
-                return Err(NoMatch);
-            }
+            },
             Op::ManyComponents => loop {
                 match matches_recursive(ops, bytes, path) {
                     Ok(rest) if rest.is_empty() => return Ok(rest),
@@ -510,10 +515,12 @@ mod tests {
                 assert_eq!(
                     $expected,
                     glob.matches($path),
-                    "'{}' did{} match pattern '{}'",
+                    "'{}' did{} match pattern '{}'\nops:\n{:?}\n\nbytes:\n{:?}\n",
                     std::str::from_utf8($path).unwrap(),
                     if $expected { " not" } else { "" },
-                    std::str::from_utf8($pattern).unwrap()
+                    std::str::from_utf8($pattern).unwrap(),
+                    &glob.ops,
+                    std::str::from_utf8(&glob.bytes).unwrap(),
                 );
             };
         }
@@ -526,6 +533,9 @@ mod tests {
         assert_glob!(false, b"a[A-Z]c", b"abc");
         assert_glob!(true, b"a[!0-9A-CD-FGH]c", b"abc");
 
+        assert_glob!(true, b"*", b"");
+        assert_glob!(true, b"*", b"a");
+        assert_glob!(true, b"*", b"abc");
         assert_glob!(true, b"a*c", b"ac");
         assert_glob!(true, b"a*c", b"abc");
         assert_glob!(true, b"a*c", b"abbbc");
@@ -542,6 +552,11 @@ mod tests {
         assert_glob!(true, b"a**/c", b"aaaaa/bb/bbb/c");
 
         assert_glob!(true, b"a{b,c}d", b"abd");
+        assert_glob!(true, b"a{b,c}d", b"acd");
+        assert_glob!(true, b"a*{b,c}d", b"aaabd");
+        assert_glob!(true, b"a*{b,c}d", b"abbbd");
+        assert_glob!(true, b"a*{b*,c}d", b"acdbbczzcd");
+        assert_glob!(true, b"a*{b,c*}d", b"acdbczzzd");
     }
 
     //#[test]
