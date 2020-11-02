@@ -137,8 +137,8 @@ impl Glob {
                 Some(b'{') => {
                     let fix_index = self.ops.len();
                     self.ops.push(Op::SubPatternGroup { len: 0 });
-
                     let next_depth = depth + 1;
+
                     loop {
                         let fix_index = self.ops.len();
                         self.ops.push(Op::SubPattern { len: 0 });
@@ -273,12 +273,35 @@ fn matches_recursive<'a>(
                 return Err(NoMatch);
             }
             Op::SubPatternGroup { len } => {
-                let len = *len as usize;
+                let jump = &state.ops[(*len as usize)..];
+
                 loop {
-                    //
+                    let len = match state.ops[0] {
+                        Op::SubPattern { len } => len as usize,
+                        _ => unreachable!(),
+                    };
+                    let sub_state = MatchState {
+                        ops: &state.ops[1..],
+                        path: state.path,
+                    };
+                    match matches_recursive(sub_state, bytes) {
+                        Ok(s) => {
+                            state.ops = jump;
+                            state.path = s.path;
+                            break;
+                        }
+                        Err(_) => {
+                            let next_sub_pattern_index = len + 1;
+                            state.ops = &state.ops[next_sub_pattern_index..];
+                        }
+                    }
+
+                    if state.ops.as_ptr() == jump.as_ptr() {
+                        return Err(NoMatch);
+                    }
                 }
             }
-            _ => (),
+            Op::SubPattern { .. } => unreachable!(),
         }
     }
 
