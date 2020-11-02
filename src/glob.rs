@@ -9,15 +9,33 @@ fn match_glob(pattern: &[u8], path: &[u8]) -> bool {
 fn match_glob_recursive(
     pattern: &[u8],
     path: &[u8],
-    inside_group: bool,
+    mut inside_group: bool,
 ) -> Result<bool, InvalidGlobError> {
-    let mut state = State {
-        pattern,
-        index: 0,
-        inside_group,
-    };
-
+    let mut pattern_index = 0;
     let mut path_index = 0;
+
+    macro_rules! next_pattern_byte {
+        () => {{
+            let i = pattern_index;
+            pattern_index += 1;
+            if i < pattern.len() {
+                Some(pattern[i])
+            } else {
+                None
+            }
+        }};
+    }
+
+    macro_rules! peek_pattern_byte {
+        () => {
+            if pattern_index < pattern.len() {
+                Some(pattern[pattern_index])
+            } else {
+                None
+            }
+        };
+    }
+
     macro_rules! next_path_byte {
         () => {{
             let i = path_index;
@@ -31,62 +49,95 @@ fn match_glob_recursive(
     }
 
     loop {
-        match state.next_subpattern()? {
-            SubPattern::None => return Ok(path_index == path.len()),
-            SubPattern::Byte(b'/') => {
+        match next_pattern_byte!() {
+            None => return Ok(path_index == path.len()),
+            Some(b'/') => {
                 if !path::is_separator(next_path_byte!() as _) {
                     return Ok(false);
                 }
             }
-            SubPattern::Byte(b) => {
-                if next_path_byte!() != b {
-                    return Ok(false);
-                }
-            }
-            SubPattern::AnyByte => {
+            Some(b'?') => {
                 next_path_byte!();
             }
-            SubPattern::AnySegment => {
-                let pattern = &pattern[state.index..];
+            Some(b'*') => {
+                let pattern = &pattern[pattern_index..];
                 let path = &path[path_index..];
-                let next_separator_index =
-                    path.iter().position(|&b| b == b'/').unwrap_or(path.len());
-                for i in 0..=next_separator_index {
-                    if match_glob_recursive(pattern, &path[i..], state.inside_group)? {
-                        return Ok(true);
+                match peek_pattern_byte!() {
+                    Some(b'*') => {
+                        pattern_index += 1;
+                        if !matches!(peek_pattern_byte!(), None | Some(b'/')) {
+                            return Err(InvalidGlobError);
+                        }
+                        if match_glob_recursive(pattern, path, inside_group)? {
+                            return Ok(true);
+                        }
+                        for (i, _) in path.iter().enumerate().filter(|(_, &b)| b == b'/') {
+                            if match_glob_recursive(pattern, &path[i..], inside_group)? {
+                                return Ok(true);
+                            }
+                        }
+                        return Ok(false);
+                    }
+                    _ => {
+                        let next_separator_index =
+                            path.iter().position(|&b| b == b'/').unwrap_or(path.len());
+                        for i in 0..=next_separator_index {
+                            if match_glob_recursive(pattern, &path[i..], inside_group)? {
+                                return Ok(true);
+                            }
+                        }
+                        return Ok(false);
                     }
                 }
-                return Ok(false);
             }
-            SubPattern::AnyMultiSegment => {
-                let pattern = &pattern[state.index..];
-                let path = &path[path_index..];
-                if match_glob_recursive(pattern, path, state.inside_group)? {
-                    return Ok(true);
-                }
-                for (i, _) in path.iter().enumerate().filter(|(_, &b)| b == b'/') {
-                    if match_glob_recursive(pattern, &path[i..], state.inside_group)? {
-                        return Ok(true);
+            Some(b'[') => {
+                let inverse = match peek_pattern_byte!() {
+                    Some(b'!') => {
+                        pattern_index += 1;
+                        true
+                    }
+                    _ => false,
+                };
+                loop {
+                    let start = match next_pattern_byte!() {
+                        None => return Err(InvalidGlobError),
+                        Some(b']') => return Ok(false),
+                        Some(b) => b,
+                    };
+                    match peek_pattern_byte!() {
+                        Some(b'-') => {
+                            pattern_index += 1;
+                            let end = match next_pattern_byte!() {
+                                None | Some(b']') => return Err(InvalidGlobError),
+                                Some(b) => b,
+                            };
+                            if end < start {
+                                return Err(InvalidGlobError);
+                            }
+                            let b = next_path_byte!();
+                            let inside = start <= b && b <= end;
+                            if inside != inverse {
+                                break;
+                            }
+                        }
+                        Some(b']') => break,
+                        _ => {
+                            let equal = next_path_byte!() == start;
+                            if equal != inverse {
+                                break;
+                            }
+                        }
                     }
                 }
-                return Ok(false);
-            }
-            SubPattern::Range(start, end) => {
-                let b = next_path_byte!();
-                if b < start || end < b {
-                    return Ok(false);
+                match pattern[pattern_index..].iter().position(|&b| b == b']') {
+                    Some(i) => pattern_index += i + 1,
+                    None => return Err(InvalidGlobError),
                 }
             }
-            SubPattern::ExceptRange(start, end) => {
-                let b = next_path_byte!();
-                if start <= b && b <= end {
-                    return Ok(false);
-                }
-            }
-            SubPattern::BeginGroup => {
-                let mut pattern = &pattern[state.index..];
+            Some(b']') => return Err(InvalidGlobError),
+            Some(b'{') => {
+                let mut pattern = &pattern[pattern_index..];
                 let path = &path[path_index..];
-
                 while !match_glob_recursive(pattern, path, true)? {
                     match pattern
                         .iter()
@@ -97,122 +148,28 @@ fn match_glob_recursive(
                         _ => return Ok(false),
                     }
                 }
-
                 return Ok(true);
             }
-        }
-    }
-}
-
-enum SubPattern {
-    None,
-    Byte(u8),
-    AnyByte,
-    AnySegment,
-    AnyMultiSegment,
-    Range(u8, u8),
-    ExceptRange(u8, u8),
-    BeginGroup,
-}
-
-struct State<'a> {
-    pattern: &'a [u8],
-    index: usize,
-    inside_group: bool,
-}
-
-impl<'a> State<'a> {
-    pub fn next_subpattern(&mut self) -> Result<SubPattern, InvalidGlobError> {
-        macro_rules! next_byte {
-            () => {{
-                let i = self.index;
-                self.index += 1;
-                if i < self.pattern.len() {
-                    Some(self.pattern[i])
-                } else {
-                    None
+            Some(b'}') => {
+                if !inside_group {
+                    return Err(InvalidGlobError);
                 }
-            }};
-        }
-
-        macro_rules! peek_byte {
-            () => {
-                if self.index < self.pattern.len() {
-                    Some(self.pattern[self.index])
-                } else {
-                    None
+                inside_group = false;
+            }
+            Some(b',') => {
+                if !inside_group {
+                    return Err(InvalidGlobError);
                 }
-            };
-        }
-
-        loop {
-            match next_byte!() {
-                Some(b'?') => return Ok(SubPattern::AnyByte),
-                Some(b'*') => match peek_byte!() {
-                    Some(b'*') => {
-                        self.index += 1;
-                        match peek_byte!() {
-                            None | Some(b'/') => return Ok(SubPattern::AnyMultiSegment),
-                            _ => return Err(InvalidGlobError),
-                        }
-                    }
-                    _ => return Ok(SubPattern::AnySegment),
-                },
-                Some(b'[') => {
-                    let inverse = match peek_byte!() {
-                        Some(b'!') => {
-                            self.index += 1;
-                            true
-                        }
-                        _ => false,
-                    };
-                    let start = match next_byte!() {
-                        Some(c) => c,
-                        None => return Err(InvalidGlobError),
-                    };
-                    if next_byte!() != Some(b'-') {
-                        return Err(InvalidGlobError);
-                    }
-                    let end = match next_byte!() {
-                        Some(c) => c,
-                        None => return Err(InvalidGlobError),
-                    };
-                    if start > end {
-                        return Err(InvalidGlobError);
-                    }
-                    if next_byte!() != Some(b']') {
-                        return Err(InvalidGlobError);
-                    }
-
-                    if inverse {
-                        return Ok(SubPattern::ExceptRange(start, end));
-                    } else {
-                        return Ok(SubPattern::Range(start, end));
-                    }
+                match pattern[pattern_index..].iter().position(|&b| b == b'}') {
+                    Some(i) => pattern_index += i + 1,
+                    None => return Err(InvalidGlobError),
                 }
-                Some(b']') => return Err(InvalidGlobError),
-                Some(b'{') => {
-                    self.inside_group = true;
-                    return Ok(SubPattern::BeginGroup);
+                inside_group = false;
+            }
+            Some(b) => {
+                if next_path_byte!() != b {
+                    return Ok(false);
                 }
-                Some(b'}') => {
-                    if !self.inside_group {
-                        return Err(InvalidGlobError);
-                    }
-                    self.inside_group = false;
-                }
-                Some(b',') => {
-                    if !self.inside_group {
-                        return Err(InvalidGlobError);
-                    }
-                    match self.pattern[self.index..].iter().position(|&b| b == b'}') {
-                        Some(i) => self.index += i + 1,
-                        None => return Err(InvalidGlobError),
-                    }
-                    self.inside_group = false;
-                }
-                Some(b) => return Ok(SubPattern::Byte(b)),
-                None => return Ok(SubPattern::None),
             }
         }
     }
@@ -254,60 +211,5 @@ mod tests {
         assert_eq!(true, match_glob(b"a*{b,c}d", b"aaabd"));
         assert_eq!(true, match_glob(b"a*{b,c}d", b"abbd"));
         assert_eq!(true, match_glob(b"a*{b*,c}d", b"abbzzzzd"));
-    }
-
-    #[test]
-    fn test_subpattern() {
-        macro_rules! assert_subpattern {
-            ($expect:pat, $pattern:expr) => {
-                let mut state = State {
-                    pattern: $pattern.as_bytes(),
-                    index: 0,
-                    inside_group: false,
-                };
-                assert!(matches!(state.next_subpattern(), Ok($expect)))
-            };
-        }
-        macro_rules! assert_subpattern_fail {
-            ($pattern:expr) => {
-                let mut state = State {
-                    pattern: $pattern.as_bytes(),
-                    index: 0,
-                    inside_group: false,
-                };
-                assert!(matches!(state.next_subpattern(), Err(InvalidGlobError)))
-            };
-        }
-
-        assert_subpattern!(SubPattern::None, "");
-
-        assert_subpattern!(SubPattern::Byte(b'a'), "a");
-        assert_subpattern!(SubPattern::Byte(b'z'), "z");
-        assert_subpattern!(SubPattern::Byte(b'A'), "A");
-        assert_subpattern!(SubPattern::Byte(b'Z'), "Z");
-        assert_subpattern!(SubPattern::Byte(b'0'), "0");
-        assert_subpattern!(SubPattern::Byte(b'9'), "9");
-
-        assert_subpattern!(SubPattern::AnyByte, "?");
-        assert_subpattern!(SubPattern::AnySegment, "*");
-        assert_subpattern!(SubPattern::AnyMultiSegment, "**");
-
-        assert_subpattern!(SubPattern::Range(b'a', b'z'), "[a-z]");
-        assert_subpattern!(SubPattern::Range(b'A', b'Z'), "[A-Z]");
-        assert_subpattern!(SubPattern::Range(b'0', b'9'), "[0-9]");
-        assert_subpattern_fail!("[a-z");
-        assert_subpattern_fail!("]");
-        assert_subpattern_fail!("[z-a]");
-
-        assert_subpattern!(SubPattern::ExceptRange(b'a', b'z'), "[!a-z]");
-        assert_subpattern!(SubPattern::ExceptRange(b'A', b'Z'), "[!A-Z]");
-        assert_subpattern!(SubPattern::ExceptRange(b'0', b'9'), "[!0-9]");
-        assert_subpattern_fail!("[!a-z");
-        assert_subpattern_fail!("[!]");
-        assert_subpattern_fail!("[!z-a]");
-
-        assert_subpattern!(SubPattern::BeginGroup, "{");
-        assert_subpattern_fail!("}");
-        assert_subpattern_fail!(",");
     }
 }
