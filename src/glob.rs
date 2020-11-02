@@ -1,20 +1,189 @@
 use std::path;
 
-pub struct InvalidGlobError;
-
-pub struct Glob {
-    bytes: Vec<u8>,
-    patterns: Vec<Pattern>,
+pub struct InvalidGlobError(());
+impl InvalidGlobError {
+    pub fn new() -> Self {
+        //panic!();
+        Self(())
+    }
 }
 
-enum Pattern {
-    Any,
+macro_rules! dbg_bytes {
+    ($bytes:expr) => {
+        eprintln!(
+            "{} = {}",
+            stringify!($bytes),
+            std::str::from_utf8($bytes).unwrap()
+        )
+    };
+}
+
+enum Op {
+    Skip { count: u16 },
     Many,
     ManyComponents,
-    Slice(u16, u16),
-    AnyWithin(u16, u16),
-    ExceptWithin(u16, u16),
-    SubPattern(u16, u16),
+    Slice { from: u16, to: u16 },
+    AnyWithinRanges { start: u16, count: u16 },
+    ExceptWithinRanges { start: u16, count: u16 },
+    SubPatternGroup { len: u16 },
+    SubPattern { len: u16 },
+}
+
+#[derive(Default)]
+pub struct Glob {
+    bytes: Vec<u8>,
+    ops: Vec<Op>,
+}
+
+impl Glob {
+    pub fn compile(&mut self, pattern: &[u8]) -> Result<(), InvalidGlobError> {
+        self.bytes.clear();
+        self.ops.clear();
+
+        match self.compile_recursive(pattern, 0) {
+            Ok(len) if len == pattern.len() => Ok(()),
+            _ => Err(InvalidGlobError::new()),
+        }
+    }
+
+    fn compile_recursive(
+        &mut self,
+        pattern: &[u8],
+        depth: usize,
+    ) -> Result<usize, InvalidGlobError> {
+        let mut index = 0;
+
+        macro_rules! next {
+            () => {{
+                let i = index;
+                if i < pattern.len() {
+                    index += 1;
+                    Some(pattern[i])
+                } else {
+                    None
+                }
+            }};
+        }
+
+        macro_rules! peek {
+            () => {
+                if index < pattern.len() {
+                    Some(pattern[index])
+                } else {
+                    None
+                }
+            };
+        }
+
+        loop {
+            match next!() {
+                None => break,
+                Some(b'?') => match self.ops.last_mut() {
+                    Some(Op::Skip { count }) => *count += 1,
+                    _ => self.ops.push(Op::Skip { count: 1 }),
+                },
+                Some(b'*') => match peek!() {
+                    Some(b'*') => {
+                        index += 1;
+                        match peek!() {
+                            None | Some(b'/') => self.ops.push(Op::ManyComponents),
+                            _ => return Err(InvalidGlobError::new()),
+                        }
+                    }
+                    _ => self.ops.push(Op::Many),
+                },
+                Some(b'[') => {
+                    let inverse = match peek!() {
+                        Some(b'!') => {
+                            index += 1;
+                            true
+                        }
+                        _ => false,
+                    };
+                    let start = self.bytes.len();
+                    loop {
+                        let start = match next!() {
+                            None => return Err(InvalidGlobError::new()),
+                            Some(b']') => break,
+                            Some(b) => b,
+                        };
+                        let end = match peek!() {
+                            Some(b'-') => {
+                                index += 1;
+                                let end = match next!() {
+                                    None | Some(b']') => return Err(InvalidGlobError::new()),
+                                    Some(b) => b,
+                                };
+                                if end < start {
+                                    return Err(InvalidGlobError::new());
+                                }
+                                end
+                            }
+                            _ => start,
+                        };
+
+                        self.bytes.push(start);
+                        self.bytes.push(end);
+                    }
+                    let count = ((self.bytes.len() - start) / 2) as _;
+                    let start = start as _;
+                    if inverse {
+                        self.ops.push(Op::ExceptWithinRanges { start, count })
+                    } else {
+                        self.ops.push(Op::AnyWithinRanges { start, count })
+                    }
+                }
+                Some(b']') => return Err(InvalidGlobError::new()),
+                Some(b'{') => {
+                    let fix_index = self.ops.len();
+                    self.ops.push(Op::SubPatternGroup { len: 0 });
+
+                    let next_depth = depth + 1;
+                    loop {
+                        let fix_index = self.ops.len();
+                        self.ops.push(Op::SubPattern { len: 0 });
+
+                        index += self.compile_recursive(&pattern[index..], next_depth)?;
+                        let op_count = self.ops.len();
+                        match &mut self.ops[fix_index] {
+                            Op::SubPattern { len } => *len = (op_count - fix_index - 1) as _,
+                            _ => unreachable!(),
+                        }
+
+                        match next!() {
+                            Some(b'}') => break,
+                            Some(b',') => continue,
+                            _ => return Err(InvalidGlobError::new()),
+                        }
+                    }
+
+                    let op_count = self.ops.len();
+                    match &mut self.ops[fix_index] {
+                        Op::SubPatternGroup { len } => *len = (op_count - fix_index - 1) as _,
+                        _ => unreachable!(),
+                    }
+                }
+                Some(b'}') | Some(b',') => {
+                    index -= 1;
+                    break;
+                }
+                Some(b) => match self.ops.last_mut() {
+                    Some(Op::Slice { to, .. }) if *to == self.bytes.len() as u16 => {
+                        self.bytes.push(b);
+                        *to += 1;
+                    }
+                    _ => {
+                        let from = self.bytes.len() as _;
+                        let to = from + 1;
+                        self.bytes.push(b);
+                        self.ops.push(Op::Slice { from, to });
+                    }
+                },
+            }
+        }
+
+        Ok(index)
+    }
 }
 
 /////////
@@ -83,7 +252,7 @@ fn match_glob_recursive(
                     Some(b'*') => {
                         pattern_index += 1;
                         if !matches!(peek_pattern_byte!(), None | Some(b'/')) {
-                            return Err(InvalidGlobError);
+                            return Err(InvalidGlobError::new());
                         }
                         if match_glob_recursive(pattern, path, inside_group)? {
                             return Ok(true);
@@ -117,7 +286,7 @@ fn match_glob_recursive(
                 };
                 loop {
                     let start = match next_pattern_byte!() {
-                        None => return Err(InvalidGlobError),
+                        None => return Err(InvalidGlobError::new()),
                         Some(b']') => return Ok(false),
                         Some(b) => b,
                     };
@@ -125,11 +294,11 @@ fn match_glob_recursive(
                         Some(b'-') => {
                             pattern_index += 1;
                             let end = match next_pattern_byte!() {
-                                None | Some(b']') => return Err(InvalidGlobError),
+                                None | Some(b']') => return Err(InvalidGlobError::new()),
                                 Some(b) => b,
                             };
                             if end < start {
-                                return Err(InvalidGlobError);
+                                return Err(InvalidGlobError::new());
                             }
                             let b = next_path_byte!();
                             let inside = start <= b && b <= end;
@@ -148,10 +317,10 @@ fn match_glob_recursive(
                 }
                 match pattern[pattern_index..].iter().position(|&b| b == b']') {
                     Some(i) => pattern_index += i + 1,
-                    None => return Err(InvalidGlobError),
+                    None => return Err(InvalidGlobError::new()),
                 }
             }
-            Some(b']') => return Err(InvalidGlobError),
+            Some(b']') => return Err(InvalidGlobError::new()),
             Some(b'{') => {
                 let mut pattern = &pattern[pattern_index..];
                 let path = &path[path_index..];
@@ -169,17 +338,17 @@ fn match_glob_recursive(
             }
             Some(b'}') => {
                 if !inside_group {
-                    return Err(InvalidGlobError);
+                    return Err(InvalidGlobError::new());
                 }
                 inside_group = false;
             }
             Some(b',') => {
                 if !inside_group {
-                    return Err(InvalidGlobError);
+                    return Err(InvalidGlobError::new());
                 }
                 match pattern[pattern_index..].iter().position(|&b| b == b'}') {
                     Some(i) => pattern_index += i + 1,
-                    None => return Err(InvalidGlobError),
+                    None => return Err(InvalidGlobError::new()),
                 }
                 inside_group = false;
             }
@@ -195,6 +364,30 @@ fn match_glob_recursive(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compile() {
+        let mut glob = Glob::default();
+
+        assert!(matches!(glob.compile(b""), Ok(())));
+        assert!(matches!(glob.compile(b"abc"), Ok(())));
+        assert!(matches!(glob.compile(b"a?c"), Ok(())));
+        assert!(matches!(glob.compile(b"a[A-Z]c"), Ok(())));
+        assert!(matches!(glob.compile(b"a[!0-9]c"), Ok(())));
+
+        assert!(matches!(glob.compile(b"a*c"), Ok(())));
+        assert!(matches!(glob.compile(b"a*/"), Ok(())));
+        assert!(matches!(glob.compile(b"a*/c"), Ok(())));
+        assert!(matches!(glob.compile(b"a*[0-9]/c"), Ok(())));
+        assert!(matches!(glob.compile(b"a*bx*cy*d"), Ok(())));
+
+        assert!(matches!(glob.compile(b"a**/"), Ok(())));
+        assert!(matches!(glob.compile(b"a**/c"), Ok(())));
+
+        assert!(matches!(glob.compile(b"a{b,c}d"), Ok(())));
+        assert!(matches!(glob.compile(b"a*{b,c}d"), Ok(())));
+        assert!(matches!(glob.compile(b"a*{b*,c}d"), Ok(())));
+    }
 
     #[test]
     fn test_match() {
