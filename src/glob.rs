@@ -555,8 +555,8 @@ mod tests {
         assert_glob!(true, b"a*{b,c}d", b"aaabd");
         assert_glob!(true, b"a*{b,c}d", b"abbbd");
         assert_glob!(true, b"a*{b*,c}d", b"acdbbczzcd");
-        //assert_glob!(true, b"a{b,c*}d", b"aczd");
-        //assert_glob!(true, b"a*{b,c*}d", b"acdbczzzd");
+        assert_glob!(true, b"a{b,c*}d", b"aczd");
+        assert_glob!(true, b"a*{b,c*}d", b"acdbczzzd");
     }
 
     //#[test]
