@@ -19,7 +19,6 @@ path = "src/main.rs"
 [dependencies]
 ctrlc = "3.1"
 crossterm = "0.18"
-copypasta = "0.7"
 argh = "0.1"
 polling = "2.0"
 mlua = { version = "0.4", features = [ "vendored", "lua54" ] }
