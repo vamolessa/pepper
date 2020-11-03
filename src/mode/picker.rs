@@ -131,7 +131,10 @@ pub mod buffer {
             }
         }
 
-        Mode::Picker(State { on_enter, on_client_keys })
+        Mode::Picker(State {
+            on_enter,
+            on_client_keys,
+        })
     }
 }
 
@@ -201,6 +204,9 @@ pub mod custom {
         }
 
         engine.save_to_registry(CALLBACK_REGISTRY_KEY, ScriptValue::Function(callback))?;
-        Ok(Mode::Picker(State { on_enter, on_client_keys }))
+        Ok(Mode::Picker(State {
+            on_enter,
+            on_client_keys,
+        }))
     }
 }

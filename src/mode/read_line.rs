@@ -75,7 +75,10 @@ pub mod search {
             }
         }
 
-        Mode::ReadLine(State { on_enter, on_client_keys })
+        Mode::ReadLine(State {
+            on_enter,
+            on_client_keys,
+        })
     }
 
     fn update_search(ctx: &mut ModeContext) {
@@ -444,7 +447,10 @@ pub mod goto {
             }
         }
 
-        Mode::ReadLine(State { on_enter, on_client_keys })
+        Mode::ReadLine(State {
+            on_enter,
+            on_client_keys,
+        })
     }
 }
 
@@ -506,6 +512,9 @@ pub mod custom {
         }
 
         engine.save_to_registry(CALLBACK_REGISTRY_KEY, ScriptValue::Function(callback))?;
-        Ok(Mode::ReadLine(State { on_enter, on_client_keys }))
+        Ok(Mode::ReadLine(State {
+            on_enter,
+            on_client_keys,
+        }))
     }
 }

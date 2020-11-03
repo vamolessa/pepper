@@ -1103,7 +1103,8 @@ impl BufferCollection {
                         .map_err(|e| format!("could not create file {:?}: {:?}", path, e))?;
                     let mut writer = io::BufWriter::new(file);
 
-                    buffer.content
+                    buffer
+                        .content
                         .write(&mut writer)
                         .map_err(|e| format!("could not write to file {:?}: {:?}", path, e))?;
                     buffer.needs_save = false;
