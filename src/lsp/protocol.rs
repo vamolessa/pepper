@@ -68,11 +68,11 @@ impl ServerConnection {
 
             loop {
                 let content_bytes = match buf.read_content_from(&mut stdout) {
-                    Ok(bytes) => bytes,
-                    Err(_) => {
+                    [] => {
                         let _ = event_sender.send(LocalEvent::Lsp(handle, ServerEvent::Closed));
                         break;
                     }
+                    bytes => bytes,
                 };
                 let mut json_guard = json.lock().unwrap();
 
@@ -353,7 +353,7 @@ impl ReadBuf {
         }
     }
 
-    pub fn read_content_from<R>(&mut self, mut reader: R) -> io::Result<&[u8]>
+    pub fn read_content_from<R>(&mut self, mut reader: R) -> &[u8]
     where
         R: Read,
     {
@@ -395,13 +395,17 @@ impl ReadBuf {
                 break;
             }
 
-            if self.write_index == self.buf.len() {
+            while self.write_index == self.buf.len() || content_end_index > self.buf.len() {
                 self.buf.resize(self.buf.len() * 2, 0);
             }
 
             match reader.read(&mut self.buf[self.write_index..]) {
                 Ok(len) => self.write_index += len,
-                Err(e) => return Err(e),
+                Err(_) => {
+                    self.read_index = 0;
+                    self.write_index = 0;
+                    return &[];
+                }
             }
         }
 
@@ -412,6 +416,6 @@ impl ReadBuf {
             self.write_index = 0;
         }
 
-        Ok(&self.buf[content_start_index..content_end_index])
+        &self.buf[content_start_index..content_end_index]
     }
 }
