@@ -344,7 +344,7 @@ struct ReadBuf {
 
 impl ReadBuf {
     pub fn new() -> Self {
-        let mut buf = Vec::with_capacity(2 * 1024);
+        let mut buf = Vec::with_capacity(4 * 1024);
         buf.resize(buf.capacity(), 0);
         Self {
             buf,
@@ -395,16 +395,26 @@ impl ReadBuf {
                 break;
             }
 
-            while self.write_index == self.buf.len() || content_end_index > self.buf.len() {
-                self.buf.resize(self.buf.len() * 2, 0);
-            }
+            if self.read_index > self.buf.len() / 2 {
+                self.buf.copy_within(self.read_index..self.write_index, 0);
+                if content_end_index > 0 {
+                    content_start_index -= self.read_index;
+                    content_end_index -= self.read_index;
+                }
+                self.write_index -= self.read_index;
+                self.read_index = 0;
+            } else {
+                while self.write_index == self.buf.len() || content_end_index > self.buf.len() {
+                    self.buf.resize(self.buf.len() * 2, 0);
+                }
 
-            match reader.read(&mut self.buf[self.write_index..]) {
-                Ok(len) => self.write_index += len,
-                Err(_) => {
-                    self.read_index = 0;
-                    self.write_index = 0;
-                    return &[];
+                match reader.read(&mut self.buf[self.write_index..]) {
+                    Ok(len) => self.write_index += len,
+                    Err(_) => {
+                        self.read_index = 0;
+                        self.write_index = 0;
+                        return &[];
+                    }
                 }
             }
         }
