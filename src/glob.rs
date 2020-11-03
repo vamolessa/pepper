@@ -1,10 +1,8 @@
-use std::path;
-
 pub struct InvalidGlobError;
 
-#[derive(Debug)]
 enum Op {
     Slice { from: u16, to: u16 },
+    Separator,
     Skip { len: u16 },
     Many,
     ManyComponents,
@@ -151,6 +149,7 @@ impl Glob {
                     index -= 1;
                     break;
                 }
+                Some(b'/') => self.ops.push(Op::Separator),
                 Some(b) => match self.ops[start_ops_index..].last_mut() {
                     Some(Op::Slice { to, .. }) if *to == self.bytes.len() as u16 => {
                         self.bytes.push(b);
@@ -191,6 +190,11 @@ fn matches_recursive<'data, 'cont>(
         };
     }
 
+    #[inline]
+    fn is_path_separator(b: &u8) -> bool {
+        std::path::is_separator(*b as _)
+    }
+
     'op_loop: loop {
         let op = match ops.split_first() {
             Some((op, rest)) => {
@@ -213,9 +217,15 @@ fn matches_recursive<'data, 'cont>(
                 }
                 advance!(path, prefix.len());
             }
+            Op::Separator => {
+                if path.is_empty() || !is_path_separator(&path[0]) {
+                    return false;
+                }
+                advance!(path, 1);
+            }
             Op::Skip { len } => {
                 let len = *len as usize;
-                if path.len() < len {
+                if path.len() < len || path[..len].iter().any(is_path_separator) {
                     return false;
                 }
                 advance!(path, len);
@@ -224,7 +234,7 @@ fn matches_recursive<'data, 'cont>(
                 if matches_recursive(ops, bytes, path, continuation) {
                     return true;
                 }
-                if path.is_empty() || path[0] == b'/' {
+                if path.is_empty() || is_path_separator(&path[0]) {
                     return false;
                 } else {
                     advance!(path, 1);
@@ -238,7 +248,7 @@ fn matches_recursive<'data, 'cont>(
                     return false;
                 }
                 advance!(path, 1);
-                match path.iter().position(|&b| b == b'/') {
+                match path.iter().position(is_path_separator) {
                     Some(i) => advance!(path, i),
                     None => return false,
                 }
@@ -293,181 +303,6 @@ fn matches_recursive<'data, 'cont>(
     }
 }
 
-/////////
-
-fn match_glob(pattern: &[u8], path: &[u8]) -> bool {
-    match_glob_recursive(pattern, path, false).unwrap_or(false)
-}
-
-fn match_glob_recursive(
-    pattern: &[u8],
-    path: &[u8],
-    mut inside_group: bool,
-) -> Result<bool, InvalidGlobError> {
-    let mut pattern_index = 0;
-    let mut path_index = 0;
-
-    macro_rules! next_pattern_byte {
-        () => {{
-            let i = pattern_index;
-            pattern_index += 1;
-            if i < pattern.len() {
-                Some(pattern[i])
-            } else {
-                None
-            }
-        }};
-    }
-
-    macro_rules! peek_pattern_byte {
-        () => {
-            if pattern_index < pattern.len() {
-                Some(pattern[pattern_index])
-            } else {
-                None
-            }
-        };
-    }
-
-    macro_rules! next_path_byte {
-        () => {{
-            let i = path_index;
-            path_index += 1;
-            if i < path.len() {
-                path[i]
-            } else {
-                return Ok(false);
-            }
-        }};
-    }
-
-    loop {
-        match next_pattern_byte!() {
-            None => return Ok(path_index == path.len()),
-            Some(b'/') => {
-                if !path::is_separator(next_path_byte!() as _) {
-                    return Ok(false);
-                }
-            }
-            Some(b'?') => {
-                next_path_byte!();
-            }
-            Some(b'*') => {
-                let pattern = &pattern[pattern_index..];
-                let path = &path[path_index..];
-                match peek_pattern_byte!() {
-                    Some(b'*') => {
-                        pattern_index += 1;
-                        if !matches!(peek_pattern_byte!(), None | Some(b'/')) {
-                            return Err(InvalidGlobError);
-                        }
-                        if match_glob_recursive(pattern, path, inside_group)? {
-                            return Ok(true);
-                        }
-                        for (i, _) in path.iter().enumerate().filter(|(_, &b)| b == b'/') {
-                            if match_glob_recursive(pattern, &path[i..], inside_group)? {
-                                return Ok(true);
-                            }
-                        }
-                        return Ok(false);
-                    }
-                    _ => {
-                        let next_separator_index =
-                            path.iter().position(|&b| b == b'/').unwrap_or(path.len());
-                        for i in 0..=next_separator_index {
-                            if match_glob_recursive(pattern, &path[i..], inside_group)? {
-                                return Ok(true);
-                            }
-                        }
-                        return Ok(false);
-                    }
-                }
-            }
-            Some(b'[') => {
-                let inverse = match peek_pattern_byte!() {
-                    Some(b'!') => {
-                        pattern_index += 1;
-                        true
-                    }
-                    _ => false,
-                };
-                loop {
-                    let start = match next_pattern_byte!() {
-                        None => return Err(InvalidGlobError),
-                        Some(b']') => return Ok(false),
-                        Some(b) => b,
-                    };
-                    match peek_pattern_byte!() {
-                        Some(b'-') => {
-                            pattern_index += 1;
-                            let end = match next_pattern_byte!() {
-                                None | Some(b']') => return Err(InvalidGlobError),
-                                Some(b) => b,
-                            };
-                            if end < start {
-                                return Err(InvalidGlobError);
-                            }
-                            let b = next_path_byte!();
-                            let inside = start <= b && b <= end;
-                            if inside != inverse {
-                                break;
-                            }
-                        }
-                        Some(b']') => break,
-                        _ => {
-                            let equal = next_path_byte!() == start;
-                            if equal != inverse {
-                                break;
-                            }
-                        }
-                    }
-                }
-                match pattern[pattern_index..].iter().position(|&b| b == b']') {
-                    Some(i) => pattern_index += i + 1,
-                    None => return Err(InvalidGlobError),
-                }
-            }
-            Some(b']') => return Err(InvalidGlobError),
-            Some(b'{') => {
-                let mut pattern = &pattern[pattern_index..];
-                let path = &path[path_index..];
-                while !match_glob_recursive(pattern, path, true)? {
-                    match pattern
-                        .iter()
-                        .enumerate()
-                        .find(|(_, &b)| b == b',' || b == b'}')
-                    {
-                        Some((i, b',')) => pattern = &pattern[(i + 1)..],
-                        _ => return Ok(false),
-                    }
-                }
-                return Ok(true);
-            }
-            Some(b'}') => {
-                if !inside_group {
-                    return Err(InvalidGlobError);
-                }
-                inside_group = false;
-            }
-            Some(b',') => {
-                if !inside_group {
-                    return Err(InvalidGlobError);
-                }
-                match pattern[pattern_index..].iter().position(|&b| b == b'}') {
-                    Some(i) => pattern_index += i + 1,
-                    None => return Err(InvalidGlobError),
-                }
-                inside_group = false;
-            }
-            Some(b) => {
-                if next_path_byte!() != b {
-                    return Ok(false);
-                }
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -514,12 +349,10 @@ mod tests {
                 assert_eq!(
                     $expected,
                     glob.matches($path),
-                    "'{}' did{} match pattern '{}'\nops:\n{:?}\n\nbytes:\n{:?}\n",
+                    "'{}' did{} match pattern '{}'",
                     std::str::from_utf8($path).unwrap(),
                     if $expected { " not" } else { "" },
                     std::str::from_utf8($pattern).unwrap(),
-                    &glob.ops,
-                    std::str::from_utf8(&glob.bytes).unwrap(),
                 );
             };
         }
@@ -528,6 +361,7 @@ mod tests {
         assert_glob!(true, b"abc", b"abc");
         assert_glob!(false, b"ab", b"abc");
         assert_glob!(true, b"a?c", b"abc");
+        assert_glob!(false, b"a??", b"a/c");
         assert_glob!(true, b"a[A-Z]c", b"aBc");
         assert_glob!(false, b"a[A-Z]c", b"abc");
         assert_glob!(true, b"a[!0-9A-CD-FGH]c", b"abc");
@@ -557,39 +391,5 @@ mod tests {
         assert_glob!(true, b"a*{b*,c}d", b"acdbbczzcd");
         assert_glob!(true, b"a{b,c*}d", b"aczd");
         assert_glob!(true, b"a*{b,c*}d", b"acdbczzzd");
-    }
-
-    //#[test]
-    fn test_match() {
-        assert_eq!(true, match_glob(b"", b""));
-        assert_eq!(true, match_glob(b"abc", b"abc"));
-        assert_eq!(false, match_glob(b"ab", b"abc"));
-        assert_eq!(true, match_glob(b"a?c", b"abc"));
-        assert_eq!(true, match_glob(b"a[A-Z]c", b"aBc"));
-        assert_eq!(false, match_glob(b"a[A-Z]c", b"abc"));
-        assert_eq!(true, match_glob(b"a[!0-9]c", b"abc"));
-
-        assert_eq!(true, match_glob(b"a*c", b"ac"));
-        assert_eq!(true, match_glob(b"a*c", b"abc"));
-        assert_eq!(true, match_glob(b"a*c", b"abbbc"));
-        assert_eq!(true, match_glob(b"a*/", b"abc/"));
-        assert_eq!(true, match_glob(b"a*/c", b"a/c"));
-        assert_eq!(true, match_glob(b"a*/c", b"abbb/c"));
-        assert_eq!(true, match_glob(b"a*[0-9]/c", b"abbb5/c"));
-        assert_eq!(false, match_glob(b"a*c", b"a/c"));
-        assert_eq!(true, match_glob(b"a*bx*cy*d", b"a00bx000cy0000d"));
-
-        assert_eq!(false, match_glob(b"a**c", b"ac"));
-        assert_eq!(false, match_glob(b"a**c", b"a/c"));
-        assert_eq!(true, match_glob(b"a**/c", b"a/c"));
-        assert_eq!(true, match_glob(b"a**/c", b"a/b/c"));
-        assert_eq!(true, match_glob(b"a**/c", b"a/bbb/c"));
-        assert_eq!(true, match_glob(b"a**/c", b"aaa/b/c"));
-
-        assert_eq!(true, match_glob(b"a{b,c}d", b"abd"));
-        assert_eq!(true, match_glob(b"a{b,c}d", b"acd"));
-        assert_eq!(true, match_glob(b"a*{b,c}d", b"aaabd"));
-        assert_eq!(true, match_glob(b"a*{b,c}d", b"abbd"));
-        assert_eq!(true, match_glob(b"a*{b*,c}d", b"abbzzzzd"));
     }
 }
