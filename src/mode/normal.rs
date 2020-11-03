@@ -421,25 +421,30 @@ impl ModeState for State {
                         let buffer =
                             unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle)).content();
                         for cursor in &mut buffer_view.cursors.mut_guard()[..] {
-                            let position = cursor.position;
-                            let range = match buffer.line_at(position.line_index).as_str()
-                                [position.column_byte_index..]
-                                .chars()
-                                .next()
-                            {
-                                Some('(') | Some(')') => {
-                                    buffer.find_balanced_chars_at(position, '(', ')')
+                            let mut position = cursor.position;
+
+                            let line = buffer.line_at(position.line_index).as_str();
+                            let cursor_char = if position.column_byte_index < line.len() {
+                                match line[position.column_byte_index..].chars().next() {
+                                    Some(c) => c,
+                                    None => continue,
                                 }
-                                Some('[') | Some(']') => {
-                                    buffer.find_balanced_chars_at(position, '[', ']')
+                            } else {
+                                match line.char_indices().next_back() {
+                                    Some((i, c)) => {
+                                        position.column_byte_index = i;
+                                        c
+                                    }
+                                    None => continue,
                                 }
-                                Some('{') | Some('}') => {
-                                    buffer.find_balanced_chars_at(position, '{', '}')
-                                }
-                                Some('<') | Some('>') => {
-                                    buffer.find_balanced_chars_at(position, '<', '>')
-                                }
-                                Some(d @ '|') | Some(d @ '"') | Some(d @ '\'') => {
+                            };
+
+                            let range = match cursor_char {
+                                '(' | ')' => buffer.find_balanced_chars_at(position, '(', ')'),
+                                '[' | ']' => buffer.find_balanced_chars_at(position, '[', ']'),
+                                '{' | '}' => buffer.find_balanced_chars_at(position, '{', '}'),
+                                '<' | '>' => buffer.find_balanced_chars_at(position, '<', '>'),
+                                d @ '|' | d @ '"' | d @ '\'' => {
                                     buffer.find_delimiter_pair_at(position, d)
                                 }
                                 _ => continue,
