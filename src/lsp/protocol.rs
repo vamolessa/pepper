@@ -338,14 +338,19 @@ impl PendingRequestColection {
 
 struct ReadBuf {
     buf: Vec<u8>,
-    len: usize,
+    read_index: usize,
+    write_index: usize,
 }
 
 impl ReadBuf {
     pub fn new() -> Self {
         let mut buf = Vec::with_capacity(2 * 1024);
         buf.resize(buf.capacity(), 0);
-        Self { buf, len: 0 }
+        Self {
+            buf,
+            read_index: 0,
+            write_index: 0,
+        }
     }
 
     pub fn read_content_from<R>(&mut self, mut reader: R) -> io::Result<&[u8]>
@@ -371,37 +376,38 @@ impl ReadBuf {
             n
         }
 
-        let start_index = self.len;
         let mut content_start_index = 0;
         let mut content_end_index = 0;
 
         loop {
             if content_end_index == 0 {
-                let bytes = &self.buf[..self.len];
+                let bytes = &self.buf[self.read_index..self.write_index];
                 if let Some(cl_index) = find_pattern_end(bytes, b"Content-Length: ") {
                     let bytes = &bytes[cl_index..];
                     if let Some(c_index) = find_pattern_end(bytes, b"\r\n\r\n") {
                         let content_len = parse_number(bytes);
-                        content_start_index = start_index + cl_index + c_index;
+                        content_start_index = self.read_index + cl_index + c_index;
                         content_end_index = content_start_index + content_len;
                     }
                 }
-            } else if self.len >= content_end_index {
+            } else if self.write_index >= content_end_index {
                 break;
             }
 
-            if self.len == self.buf.len() {
+            if self.write_index == self.buf.len() {
                 self.buf.resize(self.buf.len() * 2, 0);
             }
 
-            match reader.read(&mut self.buf[self.len..]) {
-                Ok(len) => self.len += len,
+            match reader.read(&mut self.buf[self.write_index..]) {
+                Ok(len) => self.write_index += len,
                 Err(e) => return Err(e),
             }
         }
 
-        if self.len == content_end_index {
-            self.len = 0;
+        self.read_index = content_end_index;
+        if self.write_index == content_end_index {
+            self.read_index = 0;
+            self.write_index = 0;
         }
 
         Ok(&self.buf[content_start_index..content_end_index])
