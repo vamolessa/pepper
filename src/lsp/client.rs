@@ -9,6 +9,7 @@ use crate::{
     buffer_view::BufferViewCollection,
     client_event::LocalEvent,
     editor::{EditorEvent, StatusMessage},
+    glob::Glob,
     json::{Json, JsonObject, JsonValue},
     lsp::{
         capabilities,
@@ -29,10 +30,25 @@ pub struct Client {
     protocol: Protocol,
     json: Arc<Mutex<Json>>,
     pending_requests: PendingRequestColection,
+
+    document_selectors: Vec<Glob>,
+
     initialized: bool,
 }
 
 impl Client {
+    fn new(connection: ServerConnection, json: Arc<Mutex<Json>>) -> Self {
+        Self {
+            protocol: Protocol::new(connection),
+            json,
+            pending_requests: PendingRequestColection::default(),
+
+            document_selectors: Vec::new(),
+
+            initialized: false,
+        }
+    }
+
     pub fn on_request(
         &mut self,
         ctx: &mut ClientContext,
@@ -186,12 +202,7 @@ impl ClientCollection {
         let handle = self.find_free_slot();
         let json = Arc::new(Mutex::new(Json::new()));
         let connection = ServerConnection::spawn(command, handle, json.clone(), event_sender)?;
-        self.clients[handle.0] = Some(Client {
-            protocol: Protocol::new(connection),
-            json,
-            pending_requests: PendingRequestColection::default(),
-            initialized: false,
-        });
+        self.clients[handle.0] = Some(Client::new(connection, json));
         Ok(handle)
     }
 
