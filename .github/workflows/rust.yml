@@ -1,7 +1,6 @@
-name: Rust
+name: pepper
 
 on: [push, pull_request]
-
 jobs:
   build:
     name: Test rust ${{ matrix.rust }} on ${{ matrix.os }}
@@ -12,7 +11,6 @@ jobs:
       matrix:
         os: [ubuntu-latest, macOS-latest, 'windows-latest']
         rust: [stable]
-        name: [pepper]
 
     steps:
     - uses: hecrj/setup-rust-action@v1
@@ -30,14 +28,14 @@ jobs:
       uses: actions/upload-artifact@v1
       if: matrix.os != 'windows-latest'
       with:
-        name: ${{ matrix.name }}-${{ matrix.os }}
-        path: target/release/${{ matrix.name }}
+        name: ${{ github.workflow }}-${{ matrix.os }}
+        path: target/release/${{ github.workflow }}
     - name: Upload windows binary
       uses: actions/upload-artifact@v1
       if: matrix.os == 'windows-latest'
       with:
-        name: ${{ matrix.name }}-${{ matrix.os }}
-        path: target/release/${{ matrix.name }}.exe
+        name: ${{ github.workflow }}-${{ matrix.os }}
+        path: target/release/${{ github.workflow }}.exe
 
   release:
     name: Release
@@ -50,16 +48,16 @@ jobs:
       uses: actions/checkout@v1
     - uses: actions/download-artifact@v1
       with:
-        name: ${{ matrix.name }}-ubuntu-latest
-        path: dist/${{ matrix.name }}-ubuntu-latest
+        name: ${{ github.workflow }}-ubuntu-latest
+        path: dist/${{ github.workflow }}-ubuntu-latest
     - uses: actions/download-artifact@v1
       with:
-        name: ${{ matrix.name }}-macOS-latest
-        path: dist/${{ matrix.name }}-macOS-latest
+        name: ${{ github.workflow }}-macOS-latest
+        path: dist/${{ github.workflow }}-macOS-latest
     - uses: actions/download-artifact@v1
       with:
-        name: ${{ matrix.name }}-windows-latest
-        path: dist/${{ matrix.name }}-windows-latest
+        name: ${{ github.workflow }}-windows-latest
+        path: dist/${{ github.workflow }}-windows-latest
     - name: List release files
       run: find dist/
     - name: Create release
@@ -78,8 +76,8 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
-        asset_path: ./dist/${{ matrix.name }}-ubuntu-latest/${{ matrix.name }}
-        asset_name: ${{ matrix.name }}-linux-x86_64
+        asset_path: ./dist/${{ github.workflow }}-ubuntu-latest/${{ github.workflow }}
+        asset_name: ${{ github.workflow }}-linux-x86_64
         asset_content_type: application/x-elf
     - name: Upload macos release asset
       uses: actions/upload-release-asset@v1.0.1
@@ -87,8 +85,8 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
-        asset_path: ./dist/${{ matrix.name }}-macOS-latest/${{ matrix.name }}
-        asset_name: ${{ matrix.name }}-darwin-x86_64
+        asset_path: ./dist/${{ github.workflow }}-macOS-latest/${{ github.workflow }}
+        asset_name: ${{ github.workflow }}-darwin-x86_64
         asset_content_type: application/x-mach-binary
     - name: Upload windows release asset
       uses: actions/upload-release-asset@v1.0.1
@@ -96,6 +94,6 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
-        asset_path: ./dist/${{ matrix.name }}-windows-latest/${{ matrix.name }}.exe
-        asset_name: ${{ matrix.name }}-windows-x86_64.exe
+        asset_path: ./dist/${{ github.workflow }}-windows-latest/${{ github.workflow }}.exe
+        asset_name: ${{ github.workflow }}-windows-x86_64.exe
         asset_content_type: application/vnd.microsoft.portable-executable
