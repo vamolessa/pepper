@@ -170,20 +170,30 @@ impl Glob {
     }
 
     pub fn matches(&self, path: &[u8]) -> bool {
-        match matches_recursive(&self.ops, &self.bytes, path) {
-            Ok(rest) => rest.is_empty(),
-            Err(_) => false,
-        }
+        matches_recursive(&self.ops, &self.bytes, path, &Continuation::None)
     }
 }
 
 struct NoMatch;
 
-fn matches_recursive<'a, 'c>(
-    mut ops: &'a [Op],
-    bytes: &'a [u8],
-    mut path: &'a [u8],
-) -> Result<&'a [u8], NoMatch> {
+enum Continuation<'this, 'ops> {
+    None,
+    Next(&'ops [Op], &'this Continuation<'this, 'ops>),
+}
+
+fn a<'cont, 'ops>(b: bool, ops: &'ops [Op], c: &'cont Continuation<'cont, 'ops>) {
+    if b {
+        let c = Continuation::Next(ops, c);
+        a(false, ops, &c);
+    }
+}
+
+fn matches_recursive<'data, 'cont>(
+    mut ops: &'data [Op],
+    bytes: &'data [u8],
+    mut path: &'data [u8],
+    continuation: &'cont Continuation<'cont, 'data>,
+) -> bool {
     macro_rules! advance {
         ($slice:ident, $len:expr) => {
             $slice = &$slice[$len..]
@@ -196,59 +206,55 @@ fn matches_recursive<'a, 'c>(
                 ops = rest;
                 op
             }
-            None => break,
+            None => match continuation {
+                Continuation::None => return path.is_empty(),
+                Continuation::Next(ops, continuation) => {
+                    return matches_recursive(ops, bytes, path, continuation)
+                }
+            },
         };
 
         match op {
             Op::Slice { from, to } => {
                 let prefix = &bytes[(*from as usize)..(*to as usize)];
                 if !path.starts_with(prefix) {
-                    return Err(NoMatch);
+                    return false;
                 }
                 advance!(path, prefix.len());
             }
             Op::Skip { len } => {
                 let len = *len as usize;
                 if path.len() < len {
-                    return Err(NoMatch);
+                    return false;
                 }
                 advance!(path, len);
             }
             Op::Many => loop {
-                match matches_recursive(ops, bytes, path) {
-                    Ok(rest) if rest.is_empty() => {
-                        path = rest;
-                        break 'op_loop;
-                    }
-                    _ => {
-                        if path.is_empty() || path[0] == b'/' {
-                            return Err(NoMatch);
-                        } else {
-                            advance!(path, 1);
-                        }
-                    }
+                if matches_recursive(ops, bytes, path, continuation) {
+                    return true;
+                }
+                if path.is_empty() || path[0] == b'/' {
+                    return false;
+                } else {
+                    advance!(path, 1);
                 }
             },
             Op::ManyComponents => loop {
-                match matches_recursive(ops, bytes, path) {
-                    Ok(rest) if rest.is_empty() => {
-                        path = rest;
-                        break 'op_loop;
-                    }
-                    _ => (),
+                if matches_recursive(ops, bytes, path, continuation) {
+                    return true;
                 }
                 if path.is_empty() {
-                    return Err(NoMatch);
+                    return false;
                 }
                 advance!(path, 1);
                 match path.iter().position(|&b| b == b'/') {
                     Some(i) => advance!(path, i),
-                    None => return Err(NoMatch),
+                    None => return false,
                 }
             },
             Op::AnyWithinRanges { start, count } => {
                 if path.is_empty() {
-                    return Err(NoMatch);
+                    return false;
                 }
                 let b = path[0];
                 advance!(path, 1);
@@ -259,11 +265,11 @@ fn matches_recursive<'a, 'c>(
                         continue 'op_loop;
                     }
                 }
-                return Err(NoMatch);
+                return false;
             }
             Op::ExceptWithinRanges { start, count } => {
                 if path.is_empty() {
-                    return Err(NoMatch);
+                    return false;
                 }
                 let b = path[0];
                 advance!(path, 1);
@@ -274,21 +280,19 @@ fn matches_recursive<'a, 'c>(
                         continue 'op_loop;
                     }
                 }
-                return Err(NoMatch);
+                return false;
             }
             Op::SubPatternGroup { len } => {
                 let jump = &ops[(*len as usize)..];
                 loop {
                     let len = match ops[0] {
                         Op::SubPattern { len } => len as usize,
-                        _ => return Err(NoMatch),
+                        _ => return false,
                     };
                     advance!(ops, 1);
-                    if let Ok(rest) = matches_recursive(&ops[..len], bytes, path) {
-                        if let Ok(rest) = matches_recursive(jump, bytes, rest) {
-                            path = rest;
-                            break 'op_loop;
-                        }
+                    let continuation = Continuation::Next(jump, continuation);
+                    if matches_recursive(&ops[..len], bytes, path, &continuation) {
+                        return true;
                     }
                     advance!(ops, len);
                 }
@@ -296,8 +300,6 @@ fn matches_recursive<'a, 'c>(
             Op::SubPattern { .. } => unreachable!(),
         }
     }
-
-    Ok(path)
 }
 
 /////////
@@ -562,7 +564,7 @@ mod tests {
         assert_glob!(true, b"a*{b,c}d", b"aaabd");
         assert_glob!(true, b"a*{b,c}d", b"abbbd");
         assert_glob!(true, b"a*{b*,c}d", b"acdbbczzcd");
-        //assert_glob!(true, b"a{b,c*}d", b"acdbczzzd");
+        //assert_glob!(true, b"a{b,c*}d", b"aczd");
         //assert_glob!(true, b"a*{b,c*}d", b"acdbczzzd");
     }
 
