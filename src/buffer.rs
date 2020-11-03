@@ -360,11 +360,11 @@ impl BufferContent {
 
     pub fn saturate_position(&self, mut position: BufferPosition) -> BufferPosition {
         position.line_index = position.line_index.min(self.line_count() - 1);
-        position.column_byte_index = self
-            .line_at(position.line_index)
-            .as_str()
-            .len()
-            .min(position.column_byte_index);
+        let line = self.line_at(position.line_index).as_str();
+        position.column_byte_index = line.len().min(position.column_byte_index);
+        while !line.is_char_boundary(position.column_byte_index) {
+            position.column_byte_index += 1;
+        }
         position
     }
 
