@@ -1,28 +1,100 @@
 name: Rust
-on:
-  push:
-    branches: [ master ]
-env:
-  CARGO_TERM_COLOR: always
+
+on: [push, pull_request]
+
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v2
-    - name: Build
-      run: cargo build --verbose
-    - name: Run tests
-      run: cargo test --verbose
-  release:
-    name: release ${{ matrix.target }}
-    runs-on: ubuntu-latest
+  build:
+    name: Test rust ${{ matrix.rust }} on ${{ matrix.os }}
+
+    runs-on: ${{ matrix.os }}
+
     strategy:
       matrix:
-        target: [x86_64-pc-windows-gnu, x86_64-unknown-linux-gnu, x86_64-apple-darwin]
+        os: [ubuntu-latest, macOS-latest, 'windows-latest']
+        rust: [stable]
+
     steps:
-      - uses: actions/checkout@master
-      - name: Compile and release
-        uses: Douile/rust-build.action@v0.1.7
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RUSTTARGET: ${{ matrix.target }}
+    - uses: hecrj/setup-rust-action@v1
+      with:
+        rust-version: ${{ matrix.rust }}
+        components: rustfmt
+    - uses: actions/checkout@v1
+    - name: Check formatting
+      run: cargo fmt -- --check
+    - name: Run tests
+      run: cargo test --verbose
+    - name: Build release
+      run: cargo build --verbose --release
+    - name: Upload unix binary
+      uses: actions/upload-artifact@v1
+      if: matrix.os != 'windows-latest'
+      with:
+        name: pepper-${{ matrix.os }}
+        path: target/release/pepper
+    - name: Upload windows binary
+      uses: actions/upload-artifact@v1
+      if: matrix.os == 'windows-latest'
+      with:
+        name: pepper-${{ matrix.os }}
+        path: target/release/pepper.exe
+
+  release:
+    name: Release
+    needs: build
+    if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v1
+    - uses: actions/download-artifact@v1
+      with:
+        name: pepper-ubuntu-latest
+        path: dist/pepper-ubuntu-latest
+    - uses: actions/download-artifact@v1
+      with:
+        name: pepper-macOS-latest
+        path: dist/pepper-macOS-latest
+    - uses: actions/download-artifact@v1
+      with:
+        name: pepper-windows-latest
+        path: dist/pepper-windows-latest
+    - name: List release files
+      run: find dist/
+    - name: Create release
+      id: create_release
+      uses: actions/create-release@v1.0.0
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ github.ref }}
+        draft: false
+        prerelease: false
+    - name: Upload linux release asset
+      uses: actions/upload-release-asset@v1.0.1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
+        asset_path: ./dist/pepper-ubuntu-latest/pepper
+        asset_name: pepper-linux-x86_64
+        asset_content_type: application/x-elf
+    - name: Upload macos release asset
+      uses: actions/upload-release-asset@v1.0.1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
+        asset_path: ./dist/pepper-macOS-latest/pepper
+        asset_name: pepper-darwin-x86_64
+        asset_content_type: application/x-mach-binary
+    - name: Upload windows release asset
+      uses: actions/upload-release-asset@v1.0.1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
+        asset_path: ./dist/pepper-windows-latest/pepper.exe
+        asset_name: pepper-windows-x86_64.exe
+        asset_content_type: application/vnd.microsoft.portable-executable
