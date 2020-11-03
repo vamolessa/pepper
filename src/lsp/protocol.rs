@@ -358,9 +358,8 @@ impl ReadBuf {
         R: Read,
     {
         fn find_pattern_end<'a>(buf: &'a [u8], pattern: &[u8]) -> Option<usize> {
-            buf.windows(pattern.len())
-                .position(|w| w == pattern)
-                .map(|p| p + pattern.len())
+            let len = pattern.len();
+            buf.windows(len).position(|w| w == pattern).map(|p| p + len)
         }
 
         fn parse_number(buf: &[u8]) -> usize {
@@ -390,7 +389,9 @@ impl ReadBuf {
                         content_end_index = content_start_index + content_len;
                     }
                 }
-            } else if self.write_index >= content_end_index {
+            }
+
+            if content_end_index > 0 && self.write_index >= content_end_index {
                 break;
             }
 
@@ -405,7 +406,8 @@ impl ReadBuf {
         }
 
         self.read_index = content_end_index;
-        if self.write_index == content_end_index {
+
+        if self.write_index == self.read_index {
             self.read_index = 0;
             self.write_index = 0;
         }
