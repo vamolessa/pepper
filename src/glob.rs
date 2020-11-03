@@ -174,18 +174,9 @@ impl Glob {
     }
 }
 
-struct NoMatch;
-
 enum Continuation<'this, 'ops> {
     None,
     Next(&'ops [Op], &'this Continuation<'this, 'ops>),
-}
-
-fn a<'cont, 'ops>(b: bool, ops: &'ops [Op], c: &'cont Continuation<'cont, 'ops>) {
-    if b {
-        let c = Continuation::Next(ops, c);
-        a(false, ops, &c);
-    }
 }
 
 fn matches_recursive<'data, 'cont>(
