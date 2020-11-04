@@ -31,7 +31,8 @@ mod word_database;
 
 use argh::FromArgs;
 
-/// Pepper editor is a minimalistic and modal code editor inspired by vim and kakoune.
+/// Pepper
+/// An opionated modal code editor for your terminal with a focus on programmer's comfort
 #[derive(FromArgs)]
 pub struct Args {
     /// print version and quit

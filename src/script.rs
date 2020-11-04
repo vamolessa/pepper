@@ -389,7 +389,6 @@ impl ScriptEngine {
             | mlua::StdLib::IO
             | mlua::StdLib::STRING
             | mlua::StdLib::UTF8
-            | mlua::StdLib::BIT
             | mlua::StdLib::MATH
             | mlua::StdLib::PACKAGE;
         let lua = Lua::new_with(libs)?;
