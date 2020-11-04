@@ -1,5 +1,5 @@
 use std::{
-    fmt,
+    env, fmt,
     io::Write,
     num::NonZeroU8,
     path::Path,
@@ -66,7 +66,7 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
     }
 
     register!(client => index, current_buffer_view_handle, quit, quit_all, force_quit_all,);
-    register!(editor => version, print,);
+    register!(editor => version, os, print,);
     register!(buffer => all_handles, line_count, line_at, path, extension, has_extension, needs_save, set_search, open,
         close, force_close, close_all, force_close_all, save, save_all, reload, force_reload, reload_all, force_reload_all,
         commit_edits, on_open,);
@@ -202,6 +202,17 @@ mod editor {
     ) -> ScriptResult<ScriptValue<'a>> {
         engine
             .create_string(env!("CARGO_PKG_VERSION").as_bytes())
+            .map(ScriptValue::String)
+    }
+
+    pub fn os<'a>(
+        engine: ScriptEngineRef<'a>,
+        _: &mut ScriptContext,
+        _: ScriptContextGuard,
+        _: (),
+    ) -> ScriptResult<ScriptValue<'a>> {
+        engine
+            .create_string(env::consts::OS.as_bytes())
             .map(ScriptValue::String)
     }
 
@@ -1207,7 +1218,9 @@ mod process {
 
         let child_output = child.wait_with_output().map_err(ScriptError::from)?;
         if child_output.status.success() {
-            engine.create_string(&child_output.stdout).map(ScriptValue::String)
+            engine
+                .create_string(&child_output.stdout)
+                .map(ScriptValue::String)
         } else {
             let child_output = String::from_utf8_lossy(&child_output.stdout);
             Err(ScriptError::from(child_output.into_owned()))
