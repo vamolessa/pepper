@@ -809,6 +809,7 @@ mod buffer_view {
                 handle,
                 text,
             );
+            ctx.edited_buffers = true;
         }
         Ok(())
     }
@@ -830,6 +831,7 @@ mod buffer_view {
                 text,
                 0,
             );
+            ctx.edited_buffers = true;
         }
         Ok(())
     }
@@ -847,6 +849,7 @@ mod buffer_view {
                 &ctx.config.syntaxes,
                 handle,
             );
+            ctx.edited_buffers = true;
         }
         Ok(())
     }
@@ -875,6 +878,7 @@ mod buffer_view {
                 ),
                 0,
             );
+            ctx.edited_buffers = true;
         }
         Ok(())
     }

@@ -307,6 +307,7 @@ pub struct ScriptContext<'a> {
     pub clients: &'a mut ClientCollection,
     pub editor_loop: EditorLoop,
     pub next_mode: Mode,
+    pub edited_buffers: bool,
 
     pub config: &'a mut Config,
 
@@ -528,6 +529,13 @@ impl ScriptEngine {
             ScriptContextGuard(()),
             value,
         )?;
+
+        if ctx.edited_buffers {
+            for buffer in ctx.buffers.iter_mut() {
+                buffer.commit_edits();
+            }
+        }
+
         drop(s);
         Ok(value)
     }
@@ -536,6 +544,13 @@ impl ScriptEngine {
         self.add_module_search_path(path)?;
         let s = ScriptContextRegistryScope::new(&self.lua, ctx)?;
         let _: LuaValue = eval_file(&self.lua, path)?;
+
+        if ctx.edited_buffers {
+            for buffer in ctx.buffers.iter_mut() {
+                buffer.commit_edits();
+            }
+        }
+
         drop(s);
         Ok(())
     }

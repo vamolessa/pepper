@@ -71,6 +71,7 @@ impl<'a> ModeContext<'a> {
             clients: self.clients,
             editor_loop: EditorLoop::Continue,
             next_mode: Mode::default(),
+            edited_buffers: false,
 
             config: self.config,
 
