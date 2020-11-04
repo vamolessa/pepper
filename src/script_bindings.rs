@@ -1184,12 +1184,12 @@ mod picker {
 mod process {
     use super::*;
 
-    pub fn pipe(
-        _: ScriptEngineRef,
+    pub fn pipe<'script>(
+        engine: ScriptEngineRef<'script>,
         _: &mut ScriptContext,
         _: ScriptContextGuard,
         (name, args, input): (ScriptString, Option<ScriptArray>, Option<ScriptString>),
-    ) -> ScriptResult<String> {
+    ) -> ScriptResult<ScriptValue<'script>> {
         let child = match args {
             Some(args) => {
                 let args = args.iter().filter_map(|i| match i {
@@ -1203,8 +1203,7 @@ mod process {
 
         let child_output = child.wait_with_output().map_err(ScriptError::from)?;
         if child_output.status.success() {
-            let child_output = String::from_utf8_lossy(&child_output.stdout);
-            Ok(child_output.into_owned())
+            engine.create_string(&child_output.stdout).map(ScriptValue::String)
         } else {
             let child_output = String::from_utf8_lossy(&child_output.stdout);
             Err(ScriptError::from(child_output.into_owned()))
