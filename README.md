@@ -13,6 +13,16 @@ I've drawn inspiration from (in no particular order):
 - Sublime: popularized multi-cursor editing. also, it's super snappy!
 - Amp: minimalistic and lightweight editor
 
+## handmade
+In the spirit of Handmade, almost all features are coded from scratch.
+These are the only external crates being used in the project (mainly because of easier crossplatform compatibility):
+- `ctrlc`: prevents closing application on `ctrl-c` on all platforms
+- `crossterm`: crossplatform terminal interaction
+- `argh`: process complex cli args. eases rapid prototyping of new cli features
+- `polling`: crossplatform socket events
+- `mlua`: adds support for lua scripting. could be own new scripting language, however there's value on using a known one
+- `fuzzy-matcher`: fuzzy matching for the picker ui. it could be replaced, however it's implementation does not get in the way and has minimal dependencies
+
 ## modal editing
 Pepper is modal which means keypresses do different things depending on which mode you're in.
 However, it's also designed to have few modes so the overhead is minimal. Most of the time, users will be in
@@ -161,6 +171,7 @@ shortcut | action
 function | action
 --- | ---
 `editor.version() -> string` | the editor version string formatted as `major.minor.patch`.
+`editor.os() -> string` | the os name the editor was compiled on. possible values: https://doc.rust-lang.org/std/env/consts/constant.OS.html.
 `editor.print(value: any)` | prints a value to the editor's status bar
 
 ### buffer

@@ -384,9 +384,12 @@ impl ScriptEngine {
     }
 
     fn try_new() -> ScriptResult<Self> {
-        let libs = mlua::StdLib::TABLE
+        let libs = mlua::StdLib::COROUTINE
+            | mlua::StdLib::TABLE
+            | mlua::StdLib::IO
             | mlua::StdLib::STRING
             | mlua::StdLib::UTF8
+            | mlua::StdLib::BIT
             | mlua::StdLib::MATH
             | mlua::StdLib::PACKAGE;
         let lua = Lua::new_with(libs)?;
