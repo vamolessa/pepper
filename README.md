@@ -1,10 +1,43 @@
 # pepper
-Experimental code editor
+### An opionated modal code editor for your terminal with a focus on programmer's comfort
 
-# development thread
-https://twitter.com/ahvamolessa/status/1276978064166182913
+Pepper is an experiment to craft a code editor focused on programmer's comfort.
+It was born out of my frustrations with code editors throughout the years. Those editors, however, also helped
+shape my vision of what the perfect code environment would be for me.
+
+I've drawn inspiration from (in no particular order):
+- Kakoune: features a novel approach to modal editing
+- Vim: arguably the most popular modal code editor
+- VSCode: really nice lsp integration
+- Spacemacs: ergonomic and mnemonic interface
+- Sublime: popularized multi-cursor editing. also, it's super snappy!
+- Amp: minimalistic and lightweight editor
+
+## modal editing
+Pepper is modal which means keypresses do different things depending on which mode you're in.
+However, it's also designed to have few modes so the overhead is minimal. Most of the time, users will be in
+either `normal` or `insert` mode. Regarding modes, you can think of Pepper like an editor that sits between
+Kakoune and Vim. Like Kakoune, you manage selections directly in `normal` mode. Although unlike it, movement
+commands only expand selections if you were selecting previously, kinda like Vim's `visual` mode. By doing so,
+it does not has to have several `shift-` and `alt-` keybindings, leading to a more comfortable editing experience
+at the cost of slight more key presses.
+
+It features:
+- everything is reachable through the keyboard
+- modal editing
+- multiple cursors
+- client/server architecture (multiple windows and allows interacting with running instances from outside)
+- lua scripting
+- simple syntax highlighting
+- text-objects
+- many of the vim commands you're used to
 
 # keys
+These are the default keybindings. Users can remap them.
+
+They may change during development (pre 1.0).
+
+** under construction **
 
 ## normal mode
 This is the main mode from where you can interact with the editor, buffers and so on.
@@ -187,6 +220,10 @@ function | action
 --- | ---
 
 
-# todo
-- language server protocol
+# development thread
+https://twitter.com/ahvamolessa/status/1276978064166182913
+
+
+# big features todo
+- language server protocol (in progress)
 - debug adapter protocol
