@@ -741,6 +741,7 @@ impl<'lua> ScriptEngineRef<'lua> {
 
     pub fn create_iterator(
         &self,
+        type_name: &'static str,
         keys: &'static [&'static str],
     ) -> ScriptResult<ScriptFunction<'lua>> {
         let next_function = self.lua.create_function(move |lua, (table, key)| {
@@ -772,12 +773,13 @@ impl<'lua> ScriptEngineRef<'lua> {
                 None => Ok((LuaValue::Nil, LuaValue::Nil)),
             }
         })?;
-        let registry_key = self.lua.create_registry_value(next_function)?;
+        self.lua
+            .set_named_registry_value(type_name, next_function)?;
 
         self.lua
             .create_function(move |lua, table| {
                 let table: LuaTable = table;
-                let next_function: LuaFunction = lua.registry_value(&registry_key)?;
+                let next_function: LuaFunction = lua.named_registry_value(type_name)?;
                 Ok((next_function, table, LuaValue::Nil))
             })
             .map(|f| ScriptFunction(f))

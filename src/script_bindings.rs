@@ -52,7 +52,7 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
             let meta = scripts.create_object()?;
             meta.set(
                 "__pairs",
-                ScriptValue::Function(scripts.create_iterator($name::KEYS)?),
+                ScriptValue::Function(scripts.create_iterator(stringify!($name), $name::KEYS)?),
             )?;
             meta.set(
                 "__index",
