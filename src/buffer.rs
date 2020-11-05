@@ -950,6 +950,7 @@ impl Buffer {
     pub fn discard_and_reload_from_file(
         &mut self,
         pool: &mut BufferLinePool,
+        syntaxes: &SyntaxCollection,
     ) -> Result<(), String> {
         if self.path.as_os_str().is_empty() {
             return Err("buffer has no path".into());
@@ -963,6 +964,9 @@ impl Buffer {
         self.content
             .read(pool, &mut reader)
             .map_err(|e| format!("could not read file {:?}: {:?}", path, e))?;
+
+        self.highlighted
+            .highligh_all(syntaxes.get(self.syntax_handle), &self.content);
 
         self.needs_save = false;
         Ok(())

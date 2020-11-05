@@ -70,6 +70,19 @@ pub struct Args {
 }
 
 fn main() {
+    /*
+    use std::process::{Command, Stdio};
+    let mut c = Command::new("sh");
+    c.args(&["-c", "explorer ."]);
+    c.stdin(Stdio::null());
+    c.stdout(Stdio::piped());
+    let output = c.output().unwrap().stdout;
+    let output = String::from_utf8(output).unwrap();
+    println!("'{}'", output);
+    return;
+    */
+
+    /*
     use ui::Ui;
     let stdout = std::io::stdout();
     let stdout = stdout.lock();
@@ -102,6 +115,7 @@ fn main() {
         }
     }
     return;
+    */
 
     let args: Args = argh::from_env();
     if args.version {

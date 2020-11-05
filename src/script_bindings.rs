@@ -73,7 +73,7 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
     register!(closed_buffer => line_count, line_at, path, extension, has_extension,);
     register!(buffer_view => buffer_handle, all_handles, handle_from_path, selection_text, insert_text,
         insert_text_at, delete_selection, delete_in, undo, redo,);
-    register!(cursors => len, all, set_all, main_index, main, set, move_columns, move_lines, move_words,
+    register!(cursors => len, all, set_all, main_index, main, get, set, move_columns, move_lines, move_words,
         move_home, move_end, move_first_line, move_last_line,);
     register!(read_line => prompt, read,);
     register!(picker => prompt, reset, entry, pick,);
@@ -541,9 +541,11 @@ mod buffer {
         _: ScriptContextGuard,
         handle: Option<BufferHandle>,
     ) -> ScriptResult<()> {
+        let current_handle = ctx.current_buffer_handle();
+        let buffers = &mut ctx.buffers;
         if let Some((buffer, line_pool)) = handle
-            .or_else(|| ctx.current_buffer_handle())
-            .and_then(|h| ctx.buffers.get_mut_with_line_pool(h))
+            .or_else(|| current_handle)
+            .and_then(|h| buffers.get_mut_with_line_pool(h))
         {
             if buffer.needs_save() {
                 ctx.status_message.write_str(
@@ -553,7 +555,8 @@ mod buffer {
                 return Ok(());
             }
 
-            if let Err(error) = buffer.discard_and_reload_from_file(line_pool) {
+            if let Err(error) = buffer.discard_and_reload_from_file(line_pool, &ctx.config.syntaxes)
+            {
                 ctx.status_message
                     .write_str(StatusMessageKind::Error, &error);
             }
@@ -567,11 +570,14 @@ mod buffer {
         _: ScriptContextGuard,
         handle: Option<BufferHandle>,
     ) -> ScriptResult<()> {
+        let current_handle = ctx.current_buffer_handle();
+        let buffers = &mut ctx.buffers;
         if let Some((buffer, line_pool)) = handle
-            .or_else(|| ctx.current_buffer_handle())
-            .and_then(|h| ctx.buffers.get_mut_with_line_pool(h))
+            .or_else(|| current_handle)
+            .and_then(|h| buffers.get_mut_with_line_pool(h))
         {
-            if let Err(error) = buffer.discard_and_reload_from_file(line_pool) {
+            if let Err(error) = buffer.discard_and_reload_from_file(line_pool, &ctx.config.syntaxes)
+            {
                 ctx.status_message
                     .write_str(StatusMessageKind::Error, &error);
             }
@@ -595,7 +601,9 @@ mod buffer {
         } else {
             let (buffers, line_pool) = ctx.buffers.iter_mut_with_line_pool();
             for buffer in buffers {
-                if let Err(error) = buffer.discard_and_reload_from_file(line_pool) {
+                if let Err(error) =
+                    buffer.discard_and_reload_from_file(line_pool, &ctx.config.syntaxes)
+                {
                     ctx.status_message
                         .write_str(StatusMessageKind::Error, &error);
                 }
@@ -612,7 +620,8 @@ mod buffer {
     ) -> ScriptResult<()> {
         let (buffers, line_pool) = ctx.buffers.iter_mut_with_line_pool();
         for buffer in buffers {
-            if let Err(error) = buffer.discard_and_reload_from_file(line_pool) {
+            if let Err(error) = buffer.discard_and_reload_from_file(line_pool, &ctx.config.syntaxes)
+            {
                 ctx.status_message
                     .write_str(StatusMessageKind::Error, &error);
             }
@@ -999,6 +1008,23 @@ mod cursors {
             .map(|v| *v.cursors.main_cursor()))
     }
 
+    pub fn get(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        (index, handle): (usize, Option<BufferViewHandle>),
+    ) -> ScriptResult<Option<Cursor>> {
+        if let Some(cursors) = handle
+            .or_else(|| ctx.current_buffer_view_handle())
+            .and_then(|h| ctx.buffer_views.get_mut(h))
+            .map(|v| &mut v.cursors)
+        {
+            Ok(cursors[..].get(index).cloned())
+        } else {
+            Ok(None)
+        }
+    }
+
     pub fn set(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
@@ -1204,27 +1230,29 @@ mod process {
         _: &mut ScriptContext,
         _: ScriptContextGuard,
         (name, args, input): (ScriptString, Option<ScriptArray>, Option<ScriptString>),
-    ) -> ScriptResult<ScriptValue<'script>> {
+    ) -> ScriptResult<(ScriptValue<'script>, ScriptValue<'script>, bool)> {
         let child = match args {
             Some(args) => {
                 let args = args.iter().filter_map(|i| match i {
                     Ok(i) => Some(i),
                     Err(_) => None,
                 });
-                run_process(name, args, input, Stdio::piped())?
+                run_process(name, args, input, Stdio::piped(), Stdio::piped())?
             }
-            None => run_process(name, std::iter::empty(), input, Stdio::piped())?,
+            None => {
+                let args = std::iter::empty();
+                run_process(name, args, input, Stdio::piped(), Stdio::piped())?
+            }
         };
 
-        let child_output = child.wait_with_output().map_err(ScriptError::from)?;
-        if child_output.status.success() {
-            engine
-                .create_string(&child_output.stdout)
-                .map(ScriptValue::String)
-        } else {
-            let child_output = String::from_utf8_lossy(&child_output.stdout);
-            Err(ScriptError::from(child_output.into_owned()))
-        }
+        let output = child.wait_with_output().map_err(ScriptError::from)?;
+        let stdout = engine
+            .create_string(&output.stdout)
+            .map(ScriptValue::String)?;
+        let stderr = engine
+            .create_string(&output.stderr)
+            .map(ScriptValue::String)?;
+        Ok((stdout, stderr, output.status.success()))
     }
 
     pub fn spawn(
@@ -1239,10 +1267,11 @@ mod process {
                     Ok(i) => Some(i),
                     Err(_) => None,
                 });
-                run_process(name, args, input, Stdio::null())?;
+                run_process(name, args, input, Stdio::null(), Stdio::null())?;
             }
             None => {
-                run_process(name, std::iter::empty(), input, Stdio::null())?;
+                let args = std::iter::empty();
+                run_process(name, args, input, Stdio::null(), Stdio::null())?;
             }
         }
         Ok(())
@@ -1252,19 +1281,19 @@ mod process {
         name: ScriptString,
         args: I,
         input: Option<ScriptString>,
-        output: Stdio,
+        stdout: Stdio,
+        stderr: Stdio,
     ) -> ScriptResult<Child>
     where
         I: Iterator<Item = ScriptString<'a>>,
     {
         let mut command = Command::new(name.to_str()?);
-        command.stdin(if input.is_some() {
-            Stdio::piped()
-        } else {
-            Stdio::null()
+        command.stdin(match input {
+            Some(_) => Stdio::piped(),
+            None => Stdio::null(),
         });
-        command.stdout(output);
-        command.stderr(Stdio::piped());
+        command.stdout(stdout);
+        command.stderr(stderr);
         for arg in args {
             command.arg(arg.to_str()?);
         }
