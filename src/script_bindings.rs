@@ -23,7 +23,7 @@ use crate::{
         ScriptFunction, ScriptObject, ScriptResult, ScriptString, ScriptValue,
     },
     syntax::{Syntax, TokenKind},
-    theme::Color,
+    theme::{Color, THEME_COLOR_NAMES},
 };
 
 pub struct QuitError;
@@ -50,6 +50,10 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
         ($name:ident) => {
             let $name = scripts.create_object()?;
             let meta = scripts.create_object()?;
+            meta.set(
+                "__pairs",
+                ScriptValue::Function(scripts.create_iterator($name::KEYS)?),
+            )?;
             meta.set(
                 "__index",
                 ScriptValue::Function(scripts.create_ctx_function($name::index)?),
@@ -1314,6 +1318,16 @@ mod process {
 mod config {
     use super::*;
 
+    pub const KEYS: &'static [&'static str] = &[
+        "tab_size",
+        "indent_with_tabs",
+        "visual_empty",
+        "visual_space",
+        "visual_tab_first",
+        "visual_tab_repeat",
+        "picker_max_height",
+    ];
+
     pub fn index<'script>(
         engine: ScriptEngineRef<'script>,
         ctx: &mut ScriptContext,
@@ -1494,6 +1508,8 @@ mod syntax {
 mod theme {
     use super::*;
 
+    pub const KEYS: &'static [&'static str] = THEME_COLOR_NAMES;
+
     pub fn index<'script>(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
@@ -1526,6 +1542,11 @@ mod theme {
 
 mod registers {
     use super::*;
+
+    pub const KEYS: &'static [&'static str] = &[
+        "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r",
+        "s", "t", "u", "v", "w", "x", "y", "z",
+    ];
 
     pub fn index<'script>(
         engine: ScriptEngineRef<'script>,

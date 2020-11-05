@@ -217,13 +217,33 @@ impl<'lua> fmt::Display for ScriptValue<'lua> {
                     if depth == 0 {
                         f.write_str("...")?;
                     } else {
-                        let o = o.0.clone();
-                        for pair in o.pairs::<ScriptValue, ScriptValue>() {
-                            if let Ok((key, value)) = pair {
-                                fmt_recursive(&key, f, depth - 1)?;
-                                f.write_str(":")?;
-                                fmt_recursive(&value, f, depth - 1)?;
-                                f.write_str(",")?;
+                        let table = o.0.clone();
+                        match LuaTablePairs::new(table) {
+                            Ok(pairs) => {
+                                for (key, value) in pairs {
+                                    let key = match lua_value_to_script_value(key) {
+                                        Ok(key) => key,
+                                        Err(_) => continue,
+                                    };
+                                    let value = match lua_value_to_script_value(value) {
+                                        Ok(value) => value,
+                                        Err(_) => continue,
+                                    };
+                                    fmt_recursive(&key, f, depth - 1)?;
+                                    f.write_str(":")?;
+                                    fmt_recursive(&value, f, depth - 1)?;
+                                    f.write_str(",")?;
+                                }
+                            }
+                            Err(table) => {
+                                for pair in table.pairs::<ScriptValue, ScriptValue>() {
+                                    if let Ok((key, value)) = pair {
+                                        fmt_recursive(&key, f, depth - 1)?;
+                                        f.write_str(":")?;
+                                        fmt_recursive(&value, f, depth - 1)?;
+                                        f.write_str(",")?;
+                                    }
+                                }
                             }
                         }
                     }
@@ -254,20 +274,7 @@ impl<'lua> fmt::Display for ScriptValue<'lua> {
 }
 impl<'lua> FromLua<'lua> for ScriptValue<'lua> {
     fn from_lua(lua_value: LuaValue<'lua>, _: &'lua Lua) -> LuaResult<Self> {
-        match lua_value {
-            LuaValue::Nil => Ok(Self::Nil),
-            LuaValue::Boolean(b) => Ok(Self::Boolean(b)),
-            LuaValue::Integer(i) => Ok(Self::Integer(i)),
-            LuaValue::Number(n) => Ok(Self::Number(n)),
-            LuaValue::String(s) => Ok(Self::String(ScriptString(s))),
-            LuaValue::Table(t) => Ok(Self::Object(ScriptObject(t))),
-            LuaValue::Function(f) => Ok(Self::Function(ScriptFunction(f))),
-            _ => Err(LuaError::FromLuaConversionError {
-                from: lua_value.type_name(),
-                to: std::any::type_name::<Self>(),
-                message: None,
-            }),
-        }
+        lua_value_to_script_value(lua_value)
     }
 }
 impl<'lua> ToLua<'lua> for ScriptValue<'lua> {
@@ -298,6 +305,62 @@ impl<'lua> TryInto<char> for ScriptValue<'lua> {
                 }
             }
             _ => Err(()),
+        }
+    }
+}
+fn lua_value_to_script_value<'lua>(value: LuaValue<'lua>) -> LuaResult<ScriptValue<'lua>> {
+    match value {
+        LuaValue::Nil => Ok(ScriptValue::Nil),
+        LuaValue::Boolean(b) => Ok(ScriptValue::Boolean(b)),
+        LuaValue::Integer(i) => Ok(ScriptValue::Integer(i)),
+        LuaValue::Number(n) => Ok(ScriptValue::Number(n)),
+        LuaValue::String(s) => Ok(ScriptValue::String(ScriptString(s))),
+        LuaValue::Table(t) => Ok(ScriptValue::Object(ScriptObject(t))),
+        LuaValue::Function(f) => Ok(ScriptValue::Function(ScriptFunction(f))),
+        _ => Err(LuaError::FromLuaConversionError {
+            from: value.type_name(),
+            to: std::any::type_name::<ScriptValue>(),
+            message: None,
+        }),
+    }
+}
+
+struct LuaTablePairs<'lua> {
+    table: LuaTable<'lua>,
+    key: LuaValue<'lua>,
+    next_selector: LuaFunction<'lua>,
+}
+impl<'lua> LuaTablePairs<'lua> {
+    pub fn new(table: LuaTable<'lua>) -> Result<Self, LuaTable<'lua>> {
+        match table
+            .get_metatable()
+            .and_then(|mt| mt.get("__pairs").ok())
+            .and_then(|pairs| {
+                let pairs: LuaFunction = pairs;
+                pairs.call(table.clone()).ok()
+            })
+            .map(|(next_selector, table, key)| Self {
+                table,
+                key,
+                next_selector,
+            }) {
+            Some(s) => Ok(s),
+            None => Err(table),
+        }
+    }
+}
+impl<'lua> Iterator for LuaTablePairs<'lua> {
+    type Item = (LuaValue<'lua>, LuaValue<'lua>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut key = LuaValue::Nil;
+        std::mem::swap(&mut key, &mut self.key);
+        match self.next_selector.call((self.table.clone(), key)) {
+            Ok((LuaValue::Nil, _)) | Err(_) => None,
+            Ok((key, value)) => {
+                self.key = key.clone();
+                Some((key, value))
+            }
         }
     }
 }
@@ -672,6 +735,50 @@ impl<'lua> ScriptEngineRef<'lua> {
                 let ctx: LuaLightUserData = lua.named_registry_value("ctx")?;
                 let ctx = unsafe { &mut *(ctx.0 as *mut _) };
                 func(engine, ctx, ScriptContextGuard(()), args)
+            })
+            .map(|f| ScriptFunction(f))
+    }
+
+    pub fn create_iterator(
+        &self,
+        keys: &'static [&'static str],
+    ) -> ScriptResult<ScriptFunction<'lua>> {
+        let next_function = self.lua.create_function(move |lua, (table, key)| {
+            let table: LuaTable = table;
+            let key: Option<LuaString> = key;
+            let next_index = match key {
+                Some(key) => {
+                    let key = key.to_str()?;
+                    match keys.iter().position(|&k| k == key) {
+                        Some(i) => {
+                            let index = i + 1;
+                            if index < keys.len() {
+                                Some(index)
+                            } else {
+                                None
+                            }
+                        }
+                        None => None,
+                    }
+                }
+                None => Some(0),
+            };
+            match next_index {
+                Some(i) => {
+                    let key = lua.create_string(keys[i].as_bytes())?;
+                    let value: LuaValue = table.get(key.clone())?;
+                    Ok((LuaValue::String(key), value))
+                }
+                None => Ok((LuaValue::Nil, LuaValue::Nil)),
+            }
+        })?;
+        let registry_key = self.lua.create_registry_value(next_function)?;
+
+        self.lua
+            .create_function(move |lua, table| {
+                let table: LuaTable = table;
+                let next_function: LuaFunction = lua.registry_value(&registry_key)?;
+                Ok((next_function, table, LuaValue::Nil))
             })
             .map(|f| ScriptFunction(f))
     }

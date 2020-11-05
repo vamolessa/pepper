@@ -18,48 +18,39 @@ impl Color {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Theme {
-    pub background: Color,
-    pub highlight: Color,
-    pub cursor: Color,
+macro_rules! theme_colors {
+    ($($color:ident,)*) => {
+        #[derive(Debug, Clone)]
+        pub struct Theme {
+            $(pub $color: Color,)*
+        }
 
-    pub token_whitespace: Color,
-    pub token_text: Color,
-    pub token_comment: Color,
-    pub token_keyword: Color,
-    pub token_type: Color,
-    pub token_symbol: Color,
-    pub token_string: Color,
-    pub token_literal: Color,
-}
-
-impl Theme {
-    pub fn color_from_name(&mut self, name: &str) -> Option<&mut Color> {
-        macro_rules! match_and_get_property {
-            ($($prop:ident,)*) => {
+        impl Theme {
+            pub fn color_from_name(&mut self, name: &str) -> Option<&mut Color> {
                 match name {
-                    $(stringify!($prop) => Some(&mut self.$prop),)*
-                    _ => None
+                    $(stringify!($color) => Some(&mut self.$color),)*
+                    _ => None,
                 }
             }
         }
 
-        match_and_get_property! {
-            background,
-            highlight,
-            cursor,
-
-            token_whitespace,
-            token_text,
-            token_comment,
-            token_keyword,
-            token_type,
-            token_symbol,
-            token_string,
-            token_literal,
-        }
+        pub const THEME_COLOR_NAMES: &'static [&'static str] = &[$(stringify!($color),)*];
     }
+}
+
+theme_colors! {
+    background,
+    highlight,
+    cursor,
+
+    token_whitespace,
+    token_text,
+    token_comment,
+    token_keyword,
+    token_type,
+    token_symbol,
+    token_string,
+    token_literal,
 }
 
 pub fn pico8_theme() -> Theme {
