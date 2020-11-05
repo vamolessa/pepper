@@ -1,4 +1,9 @@
-use std::{io, io::Write, iter, sync::mpsc, thread};
+use std::{
+    io::{self, Write},
+    iter,
+    sync::mpsc,
+    thread,
+};
 
 use crossterm::{
     cursor, event, handle_command,
@@ -495,15 +500,6 @@ fn draw_statusbar<W>(
 where
     W: Write,
 {
-    fn find_digit_count(mut number: usize) -> usize {
-        let mut count = 0;
-        while number > 0 {
-            number /= 10;
-            count += 1;
-        }
-        count
-    }
-
     let background_color = convert_color(editor.config.theme.token_text);
     let foreground_color = convert_color(editor.config.theme.background);
     let prompt_background_color = convert_color(editor.config.theme.token_whitespace);
@@ -600,8 +596,6 @@ where
 
     if let Some((buffer, x)) = client_view.buffer.zip(x) {
         let buffer_path = buffer.path().and_then(|p| p.to_str()).unwrap_or("");
-        let needs_save_text = if buffer.needs_save() { "*" } else { "" };
-
         let line_number = client_view.main_cursor_position.line_index + 1;
         let column_number = client_view.main_cursor_position.column_byte_index + 1;
 
@@ -609,60 +603,49 @@ where
             Mode::Normal(state) if has_focus => state.count,
             _ => 0,
         };
-        let param_count_digit_count = if param_count > 0 {
-            find_digit_count(param_count)
-        } else {
-            0
-        };
 
-        let line_digit_count = find_digit_count(line_number);
-        let column_digit_count = find_digit_count(column_number);
+        let mut status_buf = [0 as u8; 1024];
+        let mut status_buf = io::Cursor::new(&mut status_buf[..]);
 
-        let buffer_keys_len = if has_focus {
-            editor
-                .buffered_keys
-                .iter()
-                .map(|k| k.display_len())
-                .fold(0, std::ops::Add::add)
-        } else {
-            0
-        };
-
-        let buffer_status_len = x
-            + 1
-            + param_count_digit_count
-            + buffer_keys_len
-            + needs_save_text.len()
-            + buffer_path.len()
-            + 1
-            + line_digit_count
-            + 1
-            + column_digit_count
-            + 1;
-
-        let skip = (client_view.client.viewport_size.0 as usize).saturating_sub(buffer_status_len);
-        for _ in 0..skip {
-            handle_command!(write, Print(' '))?;
-        }
-
-        if param_count > 0 {
-            handle_command!(write, Print(param_count))?;
-        }
         if has_focus {
-            for key in editor.buffered_keys.iter() {
-                handle_command!(write, Print(key))?;
+            if param_count > 0 {
+                write!(status_buf, "{}", param_count)?;
+            };
+            for key in &editor.buffered_keys {
+                write!(status_buf, "{}", key)?;
             }
         }
 
-        handle_command!(write, Print(' '))?;
-        handle_command!(write, Print(needs_save_text))?;
-        handle_command!(write, Print(buffer_path))?;
-        handle_command!(write, Print(':'))?;
-        handle_command!(write, Print(line_number))?;
-        handle_command!(write, Print(','))?;
-        handle_command!(write, Print(column_number))?;
+        write!(status_buf, " ")?;
+        if buffer.needs_save() {
+            write!(status_buf, "*")?;
+        }
+        write!(
+            status_buf,
+            "{}:{},{} ",
+            buffer_path, line_number, column_number
+        )?;
 
-        handle_command!(write, terminal::SetTitle(buffer_path))?;
+        let available_width = client_view.client.viewport_size.0 as usize - x;
+
+        let status_buf_len = status_buf.position() as usize;
+        let status_buf = &status_buf.into_inner()[..status_buf_len];
+        let status_buf = unsafe { std::str::from_utf8_unchecked(status_buf) };
+
+        let min_index = status_buf.len() - status_buf.len().min(available_width);
+        let min_index = status_buf
+            .char_indices()
+            .map(|(i, _)| i)
+            .filter(|i| *i >= min_index)
+            .next()
+            .unwrap_or(status_buf.len());
+        let status_buf = &status_buf[min_index..];
+
+        for _ in 0..(available_width - status_buf.len()) {
+            handle_command!(write, Print(' '))?;
+        }
+        handle_command!(write, Print(status_buf))?;
+        handle_command!(write, terminal::SetTitle(status_buf.trim()))?;
     }
 
     handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;

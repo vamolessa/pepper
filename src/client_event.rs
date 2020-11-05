@@ -166,32 +166,6 @@ pub enum Key {
 }
 
 impl Key {
-    pub const fn display_len(&self) -> usize {
-        match self {
-            Key::None => 0,
-            Key::Backspace => "<backspace>".len(),
-            Key::Enter => "<enter>".len(),
-            Key::Left => "<left>".len(),
-            Key::Right => "<right>".len(),
-            Key::Up => "<up>".len(),
-            Key::Down => "<down>".len(),
-            Key::Home => "<home>".len(),
-            Key::End => "<end>".len(),
-            Key::PageUp => "<pageup>".len(),
-            Key::PageDown => "<pagedown>".len(),
-            Key::Tab => "<tab>".len(),
-            Key::Delete => "<delete>".len(),
-            Key::F(n) => if *n >= 10 { "<f__>" } else { "<f_>" }.len(),
-            Key::Char(' ') => "<space>".len(),
-            Key::Char('<') => "<less>".len(),
-            Key::Char('>') => "<greater>".len(),
-            Key::Char(_) => "_".len(),
-            Key::Ctrl(_) => "<c-_>".len(),
-            Key::Alt(_) => "<a-_>".len(),
-            Key::Esc => "<esc>".len(),
-        }
-    }
-
     pub fn parse_all<'a>(raw: &'a str) -> KeyParser<'a> {
         KeyParser {
             len: raw.len(),

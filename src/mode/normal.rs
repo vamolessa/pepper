@@ -21,7 +21,7 @@ pub struct State {
     movement_kind: CursorMovementKind,
     last_char_jump: CharJump,
     is_recording_auto_macro: bool,
-    pub count: usize,
+    pub count: u32,
 }
 
 impl State {
@@ -103,8 +103,7 @@ impl State {
             },
             Key::Char(c) => {
                 if let Some(n) = c.to_digit(10) {
-                    self.count *= 10;
-                    self.count += n as usize;
+                    self.count = self.count.saturating_mul(10).saturating_add(n);
                 }
                 ModeOperation::None
             }
@@ -135,32 +134,32 @@ impl ModeState for State {
         match keys.next() {
             Key::Char('h') => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
                 ctx.buffers,
-                CursorMovement::ColumnsBackward(self.count.max(1)),
+                CursorMovement::ColumnsBackward(self.count.max(1) as _),
                 self.movement_kind,
             ),
             Key::Char('j') => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
                 ctx.buffers,
-                CursorMovement::LinesForward(self.count.max(1)),
+                CursorMovement::LinesForward(self.count.max(1) as _),
                 self.movement_kind,
             ),
             Key::Char('k') => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
                 ctx.buffers,
-                CursorMovement::LinesBackward(self.count.max(1)),
+                CursorMovement::LinesBackward(self.count.max(1) as _),
                 self.movement_kind,
             ),
             Key::Char('l') => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
                 ctx.buffers,
-                CursorMovement::ColumnsForward(self.count.max(1)),
+                CursorMovement::ColumnsForward(self.count.max(1) as _),
                 self.movement_kind,
             ),
             Key::Char('w') => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
                 ctx.buffers,
-                CursorMovement::WordsForward(self.count.max(1)),
+                CursorMovement::WordsForward(self.count.max(1) as _),
                 self.movement_kind,
             ),
             Key::Char('b') => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
                 ctx.buffers,
-                CursorMovement::WordsBackward(self.count.max(1)),
+                CursorMovement::WordsBackward(self.count.max(1) as _),
                 self.movement_kind,
             ),
             Key::Char('n') => {
@@ -172,8 +171,8 @@ impl ModeState for State {
                 move_to_search_match(self, ctx, |len, r| {
                     let count = self.count.max(1);
                     let index = match r {
-                        Ok(index) => index + count,
-                        Err(index) => index + count - 1,
+                        Ok(index) => index + count as usize,
+                        Err(index) => index + count as usize - 1,
                     };
                     index % len
                 });
@@ -189,7 +188,7 @@ impl ModeState for State {
                         Ok(index) => index,
                         Err(index) => index,
                     };
-                    (index + len - self.count.max(1) % len) % len
+                    (index + len - self.count.max(1) as usize % len) % len
                 });
             }
             Key::Char('N') => {
@@ -480,7 +479,7 @@ impl ModeState for State {
                 Key::None => return ModeOperation::Pending,
                 Key::Char(ch) => {
                     self.last_char_jump = CharJump::Inclusive(ch);
-                    find_char(self, ctx, self.count.max(1), true);
+                    find_char(self, ctx, self.count.max(1) as _, true);
                 }
                 _ => (),
             },
@@ -488,7 +487,7 @@ impl ModeState for State {
                 Key::None => return ModeOperation::Pending,
                 Key::Char(ch) => {
                     self.last_char_jump = CharJump::Inclusive(ch);
-                    find_char(self, ctx, self.count.max(1), false);
+                    find_char(self, ctx, self.count.max(1) as _, false);
                 }
                 _ => (),
             },
@@ -496,7 +495,7 @@ impl ModeState for State {
                 Key::None => return ModeOperation::Pending,
                 Key::Char(ch) => {
                     self.last_char_jump = CharJump::Exclusive(ch);
-                    find_char(self, ctx, self.count.max(1), true);
+                    find_char(self, ctx, self.count.max(1) as _, true);
                 }
                 _ => (),
             },
@@ -504,12 +503,12 @@ impl ModeState for State {
                 Key::None => return ModeOperation::Pending,
                 Key::Char(ch) => {
                     self.last_char_jump = CharJump::Exclusive(ch);
-                    find_char(self, ctx, self.count.max(1), false);
+                    find_char(self, ctx, self.count.max(1) as _, false);
                 }
                 _ => (),
             },
-            Key::Char(';') => find_char(self, ctx, self.count.max(1), true),
-            Key::Char(',') => find_char(self, ctx, self.count.max(1), false),
+            Key::Char(';') => find_char(self, ctx, self.count.max(1) as _, true),
+            Key::Char(',') => find_char(self, ctx, self.count.max(1) as _, false),
             Key::Char('v') => {
                 let mut had_selection = false;
                 for cursor in &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle))
@@ -537,7 +536,7 @@ impl ModeState for State {
                 for cursor in &mut buffer_view.cursors.mut_guard()[..] {
                     if cursor.anchor <= cursor.position {
                         cursor.anchor.column_byte_index = 0;
-                        cursor.position.line_index += count;
+                        cursor.position.line_index += count as usize;
                         if cursor.position.line_index <= last_line_index {
                             cursor.position.column_byte_index = 0;
                         } else {
@@ -548,8 +547,8 @@ impl ModeState for State {
                     } else {
                         cursor.anchor.column_byte_index =
                             buffer.line_at(cursor.anchor.line_index).as_str().len();
-                        if cursor.position.line_index >= count {
-                            cursor.position.line_index -= count;
+                        if cursor.position.line_index >= count as usize {
+                            cursor.position.line_index -= count as usize;
                             cursor.position.column_byte_index =
                                 buffer.line_at(cursor.position.line_index).as_str().len();
                         } else {
@@ -683,7 +682,7 @@ impl ModeState for State {
                         indentation.push_str("\t");
                     }
                 } else {
-                    let count = ctx.config.values.tab_size.get() as usize * count;
+                    let count = ctx.config.values.tab_size.get() as usize * count as usize;
                     for _ in 0..count {
                         indentation.push_str(" ");
                     }
@@ -839,7 +838,7 @@ impl ModeState for State {
                     let index = cursors.main_cursor_index();
                     let mut cursors = cursors.mut_guard();
                     let cursor_count = cursors[..].len();
-                    let offset = self.count.max(1);
+                    let offset = self.count.max(1) as usize;
                     cursors.set_main_cursor_index((index + offset) % cursor_count);
                 }
                 Key::Char('p') => {
@@ -847,7 +846,7 @@ impl ModeState for State {
                     let index = cursors.main_cursor_index();
                     let mut cursors = cursors.mut_guard();
                     let cursor_count = cursors[..].len();
-                    let offset = self.count.max(1) % cursor_count;
+                    let offset = self.count.max(1) as usize % cursor_count;
                     cursors.set_main_cursor_index((index + cursor_count - offset) % cursor_count);
                 }
                 Key::Char('f') => {
