@@ -142,6 +142,7 @@ pub fn render(
     client: &Client,
     target_client: TargetClient,
     buffer: &mut Vec<u8>,
+    status_bar_buf: &mut String,
 ) -> UiResult<()> {
     let has_focus = target_client == editor.focused_client;
     let client_view = ClientView::from(editor, client);
@@ -150,7 +151,7 @@ pub fn render(
     if has_focus {
         draw_picker(buffer, editor, &client_view)?;
     }
-    draw_statusbar(buffer, editor, &client_view, has_focus)?;
+    draw_statusbar(buffer, editor, &client_view, has_focus, status_bar_buf)?;
     Ok(())
 }
 
@@ -496,6 +497,7 @@ fn draw_statusbar<W>(
     editor: &Editor,
     client_view: &ClientView,
     has_focus: bool,
+    buf: &mut String,
 ) -> UiResult<()>
 where
     W: Write,
@@ -595,6 +597,8 @@ where
     };
 
     if let Some((buffer, x)) = client_view.buffer.zip(x) {
+        use std::fmt::Write;
+
         let buffer_path = buffer.path().and_then(|p| p.to_str()).unwrap_or("");
         let line_number = client_view.main_cursor_position.line_index + 1;
         let column_number = client_view.main_cursor_position.column_byte_index + 1;
@@ -604,48 +608,39 @@ where
             _ => 0,
         };
 
-        let mut status_buf = [0 as u8; 1024];
-        let mut status_buf = io::Cursor::new(&mut status_buf[..]);
+        buf.clear();
 
         if has_focus {
             if param_count > 0 {
-                write!(status_buf, "{}", param_count)?;
+                write!(buf, "{}", param_count)?;
             };
             for key in &editor.buffered_keys {
-                write!(status_buf, "{}", key)?;
+                write!(buf, "{}", key)?;
             }
         }
 
-        write!(status_buf, " ")?;
+        buf.push(' ');
         if buffer.needs_save() {
-            write!(status_buf, "*")?;
+            buf.push('*');
         }
-        write!(
-            status_buf,
-            "{}:{},{} ",
-            buffer_path, line_number, column_number
-        )?;
+        write!(buf, "{}:{},{} ", buffer_path, line_number, column_number)?;
 
         let available_width = client_view.client.viewport_size.0 as usize - x;
 
-        let status_buf_len = status_buf.position() as usize;
-        let status_buf = &status_buf.into_inner()[..status_buf_len];
-        let status_buf = unsafe { std::str::from_utf8_unchecked(status_buf) };
-
-        let min_index = status_buf.len() - status_buf.len().min(available_width);
-        let min_index = status_buf
+        let min_index = buf.len() - buf.len().min(available_width);
+        let min_index = buf
             .char_indices()
             .map(|(i, _)| i)
             .filter(|i| *i >= min_index)
             .next()
-            .unwrap_or(status_buf.len());
-        let status_buf = &status_buf[min_index..];
+            .unwrap_or(buf.len());
+        let buf = &buf[min_index..];
 
-        for _ in 0..(available_width - status_buf.len()) {
+        for _ in 0..(available_width - buf.len()) {
             handle_command!(write, Print(' '))?;
         }
-        handle_command!(write, Print(status_buf))?;
-        handle_command!(write, terminal::SetTitle(status_buf.trim()))?;
+        handle_command!(write, Print(buf))?;
+        handle_command!(write, terminal::SetTitle(buf.trim()))?;
     }
 
     handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;

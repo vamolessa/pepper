@@ -72,7 +72,6 @@ impl FromArgValue for TargetClient {
 
 #[derive(Default)]
 pub struct Client {
-    pub ui: UiKind,
     pub viewport_size: (u16, u16),
     pub scroll: usize,
     pub height: u16,
@@ -151,17 +150,24 @@ impl Client {
 }
 
 pub struct ClientRef<'a> {
+    pub ui: &'a mut UiKind,
     pub target: TargetClient,
     pub client: &'a mut Client,
     pub buffer: &'a mut Vec<u8>,
 }
 
 #[derive(Default)]
+struct ClientData {
+    pub ui: UiKind,
+    pub display_buffer: Vec<u8>,
+}
+
+#[derive(Default)]
 pub struct ClientCollection {
     local: Client,
     remotes: Vec<Option<Client>>,
-    local_buf: Vec<u8>,
-    remote_bufs: Vec<Vec<u8>>,
+    local_data: ClientData,
+    remote_data: Vec<ClientData>,
 }
 
 impl ClientCollection {
@@ -172,15 +178,15 @@ impl ClientCollection {
             self.remotes.resize_with(min_len, || None);
         }
         self.remotes[index] = Some(Client::default());
-        if min_len > self.remote_bufs.len() {
-            self.remote_bufs.resize_with(min_len, || Vec::new());
+        if min_len > self.remote_data.len() {
+            self.remote_data.resize_with(min_len, || Default::default());
         }
     }
 
     pub fn on_client_left(&mut self, client_handle: ConnectionWithClientHandle) {
         let index = client_handle.into_index();
         self.remotes[index] = None;
-        self.remote_bufs[index].clear();
+        self.remote_data[index].display_buffer.clear();
     }
 
     pub fn get(&self, target: TargetClient) -> Option<&Client> {
@@ -197,6 +203,32 @@ impl ClientCollection {
         }
     }
 
+    pub fn get_client_ref(&mut self, target: TargetClient) -> Option<ClientRef> {
+        match target {
+            TargetClient::Local => Some(ClientRef {
+                ui: &mut self.local_data.ui,
+                target,
+                client: &mut self.local,
+                buffer: &mut self.local_data.display_buffer,
+            }),
+            TargetClient::Remote(handle) => {
+                let index = handle.into_index();
+                match self.remotes[index] {
+                    Some(ref mut c) => {
+                        let data = &mut self.remote_data[index];
+                        Some(ClientRef {
+                            ui: &mut data.ui,
+                            target,
+                            client: c,
+                            buffer: &mut data.display_buffer,
+                        })
+                    }
+                    None => None,
+                }
+            }
+        }
+    }
+
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Client> {
         let remotes = self.remotes.iter_mut().flatten();
         std::iter::once(&mut self.local).chain(remotes)
@@ -207,19 +239,21 @@ impl ClientCollection {
             .remotes
             .iter_mut()
             .enumerate()
-            .zip(self.remote_bufs.iter_mut())
-            .flat_map(|((i, c), b)| {
+            .zip(self.remote_data.iter_mut())
+            .flat_map(|((i, c), d)| {
                 c.as_mut().map(move |c| ClientRef {
+                    ui: &mut d.ui,
                     target: TargetClient::Remote(ConnectionWithClientHandle::from_index(i)),
                     client: c,
-                    buffer: b,
+                    buffer: &mut d.display_buffer,
                 })
             });
 
         std::iter::once(ClientRef {
+            ui: &mut self.local_data.ui,
             target: TargetClient::Local,
             client: &mut self.local,
-            buffer: &mut self.local_buf,
+            buffer: &mut self.local_data.display_buffer,
         })
         .chain(remotes)
     }

@@ -15,12 +15,12 @@ pub type UiResult<T> = Result<T, Box<dyn 'static + Error>>;
 #[derive(Debug)]
 pub enum UiKind {
     None,
-    Tui,
+    Tui { status_bar_buf: String },
 }
 
 impl UiKind {
     pub fn render(
-        &self,
+        &mut self,
         editor: &Editor,
         client: &Client,
         target_client: TargetClient,
@@ -29,14 +29,18 @@ impl UiKind {
         buffer.clear();
         match self {
             Self::None => Ok(()),
-            Self::Tui => tui::render(editor, client, target_client, buffer),
+            Self::Tui {
+                ref mut status_bar_buf,
+            } => tui::render(editor, client, target_client, buffer, status_bar_buf),
         }
     }
 }
 
 impl Default for UiKind {
     fn default() -> Self {
-        Self::Tui
+        Self::Tui {
+            status_bar_buf: String::new(),
+        }
     }
 }
 
@@ -47,7 +51,7 @@ impl<'de> Serialize<'de> for UiKind {
     {
         match self {
             UiKind::None => 0u8.serialize(serializer),
-            UiKind::Tui => 1u8.serialize(serializer),
+            UiKind::Tui { .. } => 1u8.serialize(serializer),
         }
     }
 
@@ -58,7 +62,9 @@ impl<'de> Serialize<'de> for UiKind {
         let discriminant = u8::deserialize(deserializer)?;
         match discriminant {
             0 => Ok(UiKind::None),
-            1 => Ok(UiKind::Tui),
+            1 => Ok(UiKind::Tui {
+                status_bar_buf: String::new(),
+            }),
             _ => Err(DeserializeError),
         }
     }

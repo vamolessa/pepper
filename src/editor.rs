@@ -323,8 +323,8 @@ impl Editor {
         let result = match event {
             ClientEvent::Ui(ui) => {
                 let target_client = self.client_target_map.get(target_client);
-                if let Some(client) = clients.get_mut(target_client) {
-                    client.ui = ui;
+                if let Some(client) = clients.get_client_ref(target_client) {
+                    *client.ui = ui;
                 }
                 EditorLoop::Continue
             }
