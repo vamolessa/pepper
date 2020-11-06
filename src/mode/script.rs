@@ -76,17 +76,18 @@ fn eval<'a>(
     ctx: &mut ScriptContext<'a>,
     code: &str,
 ) -> ScriptResult<()> {
-    let value = engine.eval(ctx, code, |_, _, mut guard, value| match value {
-        ScriptValue::Function(f) => f.call(&mut guard, ()),
-        value => Ok(value),
-    })?;
-
-    match value {
-        ScriptValue::Nil => (),
-        value => ctx
-            .status_message
-            .write_str(StatusMessageKind::Info, &value.to_string()),
-    }
-
-    Ok(())
+    engine.eval(ctx, code, |_, ctx, guard, value| {
+        let value = match value {
+            ScriptValue::Function(f) => f.call(&guard, ()),
+            value => Ok(value),
+        }?;
+        match value {
+            ScriptValue::Nil => (),
+            value => ctx.status_message.write_fmt(
+                StatusMessageKind::Info,
+                format_args!("{}", value.display(&guard)),
+            ),
+        }
+        Ok(())
+    })
 }

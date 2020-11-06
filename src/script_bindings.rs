@@ -50,10 +50,9 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
         ($name:ident) => {
             let $name = scripts.create_object()?;
             let meta = scripts.create_object()?;
-            meta.set(
-                "__pairs",
-                ScriptValue::Function(scripts.create_iterator(stringify!($name), $name::KEYS)?),
-            )?;
+            let (iter, pairs) = scripts.create_iterator($name::KEYS)?;
+            meta.set("__iter", ScriptValue::Function(iter))?;
+            meta.set("__pairs", ScriptValue::Function(pairs))?;
             meta.set(
                 "__index",
                 ScriptValue::Function(scripts.create_ctx_function($name::index)?),
@@ -223,11 +222,13 @@ mod editor {
     pub fn print(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
-        _: ScriptContextGuard,
+        mut guard: ScriptContextGuard,
         value: ScriptValue,
     ) -> ScriptResult<()> {
-        ctx.status_message
-            .write_fmt(StatusMessageKind::Info, format_args!("{}", value));
+        ctx.status_message.write_fmt(
+            StatusMessageKind::Info,
+            format_args!("{}", value.display(&mut guard)),
+        );
         Ok(())
     }
 }

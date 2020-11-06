@@ -484,7 +484,7 @@ pub mod custom {
             poll: ReadLinePoll,
         ) -> ModeOperation {
             let (engine, read_line, mut ctx) = ctx.script_context();
-            let operation = engine.as_ref_with_ctx(&mut ctx, |engine, ctx, mut guard| {
+            let operation = engine.as_ref_with_ctx(&mut ctx, |engine, ctx, guard| {
                 let input = match poll {
                     ReadLinePoll::Pending => return Ok(ModeOperation::None),
                     ReadLinePoll::Submitted => {
@@ -495,7 +495,7 @@ pub mod custom {
 
                 engine
                     .take_from_registry::<ScriptFunction>(CALLBACK_REGISTRY_KEY)?
-                    .call(&mut guard, input)?;
+                    .call(&guard, input)?;
 
                 let mut mode = Mode::default();
                 std::mem::swap(&mut mode, &mut ctx.next_mode);

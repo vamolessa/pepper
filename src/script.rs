@@ -155,7 +155,7 @@ impl<'lua> FromLua<'lua> for ScriptArray<'lua> {
 
 pub struct ScriptFunction<'lua>(LuaFunction<'lua>);
 impl<'lua> ScriptFunction<'lua> {
-    pub fn call<A, R>(&self, _: &mut ScriptContextGuard, args: A) -> ScriptResult<R>
+    pub fn call<A, R>(&self, _: &ScriptContextGuard, args: A) -> ScriptResult<R>
     where
         A: ToLuaMulti<'lua>,
         R: FromLuaMulti<'lua>,
@@ -199,77 +199,9 @@ impl<'lua> ScriptValue<'lua> {
             Self::Function(_) => "function",
         }
     }
-}
-impl<'lua> fmt::Display for ScriptValue<'lua> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fn fmt_recursive(value: &ScriptValue, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
-            match value {
-                ScriptValue::Nil => f.write_str("nil"),
-                ScriptValue::Boolean(b) => b.fmt(f),
-                ScriptValue::Integer(i) => i.fmt(f),
-                ScriptValue::Number(n) => n.fmt(f),
-                ScriptValue::String(s) => match s.to_str() {
-                    Ok(s) => s.fmt(f),
-                    Err(_) => Err(fmt::Error),
-                },
-                ScriptValue::Object(o) => {
-                    f.write_str("{")?;
-                    if depth == 0 {
-                        f.write_str("...")?;
-                    } else {
-                        let table = o.0.clone();
-                        match LuaTablePairs::new(table) {
-                            Ok(pairs) => {
-                                for (key, value) in pairs {
-                                    let key = match lua_value_to_script_value(key) {
-                                        Ok(key) => key,
-                                        Err(_) => continue,
-                                    };
-                                    let value = match lua_value_to_script_value(value) {
-                                        Ok(value) => value,
-                                        Err(_) => continue,
-                                    };
-                                    fmt_recursive(&key, f, depth - 1)?;
-                                    f.write_str(":")?;
-                                    fmt_recursive(&value, f, depth - 1)?;
-                                    f.write_str(",")?;
-                                }
-                            }
-                            Err(table) => {
-                                for pair in table.pairs::<ScriptValue, ScriptValue>() {
-                                    if let Ok((key, value)) = pair {
-                                        fmt_recursive(&key, f, depth - 1)?;
-                                        f.write_str(":")?;
-                                        fmt_recursive(&value, f, depth - 1)?;
-                                        f.write_str(",")?;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    f.write_str("}")?;
-                    Ok(())
-                }
-                ScriptValue::Array(a) => {
-                    f.write_str("[")?;
-                    if depth == 0 {
-                        f.write_str("...")?;
-                    } else {
-                        let a = a.0.clone();
-                        for value in a.sequence_values::<ScriptValue>() {
-                            if let Ok(value) = value {
-                                fmt_recursive(&value, f, depth - 1)?;
-                            }
-                        }
-                    }
-                    f.write_str("]")?;
-                    Ok(())
-                }
-                ScriptValue::Function(_) => f.write_str("function"),
-            }
-        }
 
-        fmt_recursive(self, f, 2)
+    pub fn display<'a>(&'a self, guard: &'a ScriptContextGuard) -> DisplayScriptValue<'lua, 'a> {
+        DisplayScriptValue(self, guard)
     }
 }
 impl<'lua> FromLua<'lua> for ScriptValue<'lua> {
@@ -325,13 +257,92 @@ fn lua_value_to_script_value<'lua>(value: LuaValue<'lua>) -> LuaResult<ScriptVal
     }
 }
 
+pub struct DisplayScriptValue<'lua, 'value>(&'value ScriptValue<'lua>, &'value ScriptContextGuard);
+impl<'lua, 'value> fmt::Display for DisplayScriptValue<'lua, 'value> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fn fmt_recursive(
+            value: &ScriptValue,
+            f: &mut fmt::Formatter,
+            guard: &ScriptContextGuard,
+            depth: usize,
+        ) -> fmt::Result {
+            match value {
+                ScriptValue::Nil => f.write_str("nil"),
+                ScriptValue::Boolean(b) => b.fmt(f),
+                ScriptValue::Integer(i) => i.fmt(f),
+                ScriptValue::Number(n) => n.fmt(f),
+                ScriptValue::String(s) => match s.to_str() {
+                    Ok(s) => s.fmt(f),
+                    Err(_) => Err(fmt::Error),
+                },
+                ScriptValue::Object(o) => {
+                    f.write_str("{")?;
+                    if depth == 0 {
+                        f.write_str("...")?;
+                    } else {
+                        let table = o.0.clone();
+                        match LuaTablePairs::new(table, guard) {
+                            Ok(pairs) => {
+                                for (key, value) in pairs {
+                                    let key = match lua_value_to_script_value(key) {
+                                        Ok(key) => key,
+                                        Err(_) => continue,
+                                    };
+                                    let value = match lua_value_to_script_value(value) {
+                                        Ok(value) => value,
+                                        Err(_) => continue,
+                                    };
+                                    fmt_recursive(&key, f, guard, depth - 1)?;
+                                    f.write_str(":")?;
+                                    fmt_recursive(&value, f, guard, depth - 1)?;
+                                    f.write_str(",")?;
+                                }
+                            }
+                            Err(table) => {
+                                for pair in table.pairs::<ScriptValue, ScriptValue>() {
+                                    if let Ok((key, value)) = pair {
+                                        fmt_recursive(&key, f, guard, depth - 1)?;
+                                        f.write_str(":")?;
+                                        fmt_recursive(&value, f, guard, depth - 1)?;
+                                        f.write_str(",")?;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    f.write_str("}")?;
+                    Ok(())
+                }
+                ScriptValue::Array(a) => {
+                    f.write_str("[")?;
+                    if depth == 0 {
+                        f.write_str("...")?;
+                    } else {
+                        let a = a.0.clone();
+                        for value in a.sequence_values::<ScriptValue>() {
+                            if let Ok(value) = value {
+                                fmt_recursive(&value, f, guard, depth - 1)?;
+                            }
+                        }
+                    }
+                    f.write_str("]")?;
+                    Ok(())
+                }
+                ScriptValue::Function(_) => f.write_str("function"),
+            }
+        }
+
+        fmt_recursive(self.0, f, self.1, 2)
+    }
+}
+
 struct LuaTablePairs<'lua> {
     table: LuaTable<'lua>,
     key: LuaValue<'lua>,
     next_selector: LuaFunction<'lua>,
 }
 impl<'lua> LuaTablePairs<'lua> {
-    pub fn new(table: LuaTable<'lua>) -> Result<Self, LuaTable<'lua>> {
+    pub fn new(table: LuaTable<'lua>, _: &ScriptContextGuard) -> Result<Self, LuaTable<'lua>> {
         match table
             .get_metatable()
             .and_then(|mt| mt.get("__pairs").ok())
@@ -354,10 +365,11 @@ impl<'lua> Iterator for LuaTablePairs<'lua> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut key = LuaValue::Nil;
-        std::mem::swap(&mut key, &mut self.key);
+        std::mem::swap(&mut self.key, &mut key);
         match self.next_selector.call((self.table.clone(), key)) {
             Ok((LuaValue::Nil, _)) | Err(_) => None,
             Ok((key, value)) => {
+                let value: LuaValue = value;
                 self.key = key.clone();
                 Some((key, value))
             }
@@ -741,48 +753,49 @@ impl<'lua> ScriptEngineRef<'lua> {
 
     pub fn create_iterator(
         &self,
-        type_name: &'static str,
         keys: &'static [&'static str],
-    ) -> ScriptResult<ScriptFunction<'lua>> {
-        let next_function = self.lua.create_function(move |lua, (table, key)| {
-            let table: LuaTable = table;
-            let key: Option<LuaString> = key;
-            let next_index = match key {
-                Some(key) => {
-                    let key = key.to_str()?;
-                    match keys.iter().position(|&k| k == key) {
-                        Some(i) => {
-                            let index = i + 1;
-                            if index < keys.len() {
-                                Some(index)
-                            } else {
-                                None
-                            }
-                        }
-                        None => None,
-                    }
-                }
-                None => Some(0),
-            };
-            match next_index {
-                Some(i) => {
-                    let key = lua.create_string(keys[i].as_bytes())?;
-                    let value: LuaValue = table.get(key.clone())?;
-                    Ok((LuaValue::String(key), value))
-                }
-                None => Ok((LuaValue::Nil, LuaValue::Nil)),
-            }
-        })?;
-        self.lua
-            .set_named_registry_value(type_name, next_function)?;
-
-        self.lua
-            .create_function(move |lua, table| {
+    ) -> ScriptResult<(ScriptFunction<'lua>, ScriptFunction<'lua>)> {
+        let next_function = self
+            .lua
+            .create_function(move |lua, (table, key)| {
                 let table: LuaTable = table;
-                let next_function: LuaFunction = lua.named_registry_value(type_name)?;
-                Ok((next_function, table, LuaValue::Nil))
+                let next_index = match key {
+                    LuaValue::Nil => Some(0),
+                    LuaValue::String(key) => {
+                        let key = key.to_str()?;
+                        keys.iter()
+                            .position(|&k| k == key)
+                            .map(|i| i + 1)
+                            .filter(|&i| i < keys.len())
+                    }
+                    _ => return Ok((LuaValue::Nil, LuaValue::Nil)),
+                };
+                match next_index {
+                    Some(i) => {
+                        let key = lua.create_string(keys[i].as_bytes())?;
+                        let value: LuaValue = table.get(key.clone())?;
+                        Ok((LuaValue::String(key), value))
+                    }
+                    None => Ok((LuaValue::Nil, LuaValue::Nil)),
+                }
             })
-            .map(|f| ScriptFunction(f))
+            .map(|f| ScriptFunction(f))?;
+
+        let pairs_function = self
+            .lua
+            .create_function(move |_, table| {
+                let table: LuaTable = table;
+                match table.get_metatable() {
+                    Some(meta) => {
+                        let next_function: LuaValue = meta.get("__iter")?;
+                        Ok((next_function, table, LuaValue::Nil))
+                    }
+                    None => Ok((LuaValue::Nil, table, LuaValue::Nil)),
+                }
+            })
+            .map(|f| ScriptFunction(f))?;
+
+        Ok((next_function, pairs_function))
     }
 
     pub fn save_to_registry<T>(&self, key: &str, value: T) -> ScriptResult<()>
