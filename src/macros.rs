@@ -46,3 +46,9 @@ macro_rules! impl_to_script {
         }
     };
 }
+
+macro_rules! impl_script_userdata {
+    ($type:ty) => {
+        impl mlua::UserData for $type {}
+    };
+}

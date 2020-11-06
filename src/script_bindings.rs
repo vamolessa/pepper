@@ -13,6 +13,7 @@ use crate::{
     client::TargetClient,
     cursor::Cursor,
     editor::{EditorLoop, StatusMessageKind},
+    glob::Glob,
     keymap::ParseKeyMapError,
     mode::{self, Mode},
     navigation_history::NavigationHistory,
@@ -20,7 +21,7 @@ use crate::{
     register::RegisterKey,
     script::{
         ScriptArray, ScriptContext, ScriptContextGuard, ScriptEngineRef, ScriptError,
-        ScriptFunction, ScriptObject, ScriptResult, ScriptString, ScriptValue,
+        ScriptFunction, ScriptObject, ScriptResult, ScriptString, ScriptUserData, ScriptValue,
     },
     syntax::{Syntax, TokenKind},
     theme::{Color, THEME_COLOR_NAMES},
@@ -70,12 +71,12 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
 
     register!(client => index, current_buffer_view_handle, quit, quit_all, force_quit_all,);
     register!(editor => version, os, print,);
-    register!(buffer => all_handles, line_count, line_at, path, extension, has_extension, needs_save, set_search, open,
-        close, force_close, close_all, force_close_all, save, save_all, reload, force_reload, reload_all, force_reload_all,
-        commit_edits, on_open,);
-    register!(closed_buffer => line_count, line_at, path, extension, has_extension,);
-    register!(buffer_view => buffer_handle, all_handles, handle_from_path, selection_text, insert_text,
-        insert_text_at, delete_selection, delete_in, undo, redo,);
+    register!(buffer => all_handles, line_count, line_at, path, needs_save, set_search, open, close, force_close,
+        close_all, force_close_all, save, save_all, reload, force_reload, reload_all, force_reload_all, commit_edits,
+        on_open,);
+    register!(closed_buffer => line_count, line_at, path,);
+    register!(buffer_view => buffer_handle, all_handles, handle_from_path, selection_text, insert_text, insert_text_at,
+        delete_selection, delete_in, undo, redo,);
     register!(cursors => len, all, set_all, main_index, main, get, set, move_columns, move_lines, move_words,
         move_home, move_end, move_first_line, move_last_line,);
     register!(read_line => prompt, read,);
@@ -83,6 +84,7 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
     register!(process => pipe, spawn,);
     register!(keymap => normal, insert,);
     register!(syntax => rules,);
+    register!(glob => compile, matches,);
 
     {
         let globals = scripts.globals_object();
@@ -299,41 +301,6 @@ mod buffer {
             Some(bytes) => Ok(ScriptValue::String(engine.create_string(bytes)?)),
             None => Ok(ScriptValue::Nil),
         }
-    }
-
-    pub fn extension<'a>(
-        engine: ScriptEngineRef<'a>,
-        ctx: &mut ScriptContext,
-        _: ScriptContextGuard,
-        handle: Option<BufferHandle>,
-    ) -> ScriptResult<ScriptValue<'a>> {
-        match handle
-            .or_else(|| ctx.current_buffer_handle())
-            .and_then(|h| ctx.buffers.get(h))
-            .and_then(|b| b.path())
-            .and_then(|p| p.extension())
-            .and_then(|p| p.to_str())
-            .map(|p| p.as_bytes())
-        {
-            Some(bytes) => Ok(ScriptValue::String(engine.create_string(bytes)?)),
-            None => Ok(ScriptValue::Nil),
-        }
-    }
-
-    pub fn has_extension<'a>(
-        _: ScriptEngineRef<'a>,
-        ctx: &mut ScriptContext,
-        _: ScriptContextGuard,
-        (extension, handle): (ScriptString, Option<BufferHandle>),
-    ) -> ScriptResult<bool> {
-        Ok(handle
-            .or_else(|| ctx.current_buffer_handle())
-            .and_then(|h| ctx.buffers.get(h))
-            .and_then(|b| b.path())
-            .and_then(|p| p.extension())
-            .and_then(|p| p.to_str())
-            .map(|p| p.as_bytes() == extension.as_bytes())
-            .unwrap_or(false))
     }
 
     pub fn needs_save(
@@ -714,41 +681,6 @@ mod closed_buffer {
             Some(bytes) => Ok(ScriptValue::String(engine.create_string(bytes)?)),
             None => Ok(ScriptValue::Nil),
         }
-    }
-
-    pub fn extension<'a>(
-        engine: ScriptEngineRef<'a>,
-        ctx: &mut ScriptContext,
-        _: ScriptContextGuard,
-        handle: Option<BufferHandle>,
-    ) -> ScriptResult<ScriptValue<'a>> {
-        match handle
-            .or_else(|| ctx.current_buffer_handle())
-            .and_then(|h| ctx.buffers.get_removed(h))
-            .and_then(|b| b.path())
-            .and_then(|p| p.extension())
-            .and_then(|p| p.to_str())
-            .map(|p| p.as_bytes())
-        {
-            Some(bytes) => Ok(ScriptValue::String(engine.create_string(bytes)?)),
-            None => Ok(ScriptValue::Nil),
-        }
-    }
-
-    pub fn has_extension<'a>(
-        _: ScriptEngineRef<'a>,
-        ctx: &mut ScriptContext,
-        _: ScriptContextGuard,
-        (extension, handle): (ScriptString, Option<BufferHandle>),
-    ) -> ScriptResult<bool> {
-        Ok(handle
-            .or_else(|| ctx.current_buffer_handle())
-            .and_then(|h| ctx.buffers.get_removed(h))
-            .and_then(|b| b.path())
-            .and_then(|p| p.extension())
-            .and_then(|p| p.to_str())
-            .map(|p| p.as_bytes() == extension.as_bytes())
-            .unwrap_or(false))
     }
 }
 
@@ -1503,6 +1435,31 @@ mod syntax {
         }
 
         Ok(())
+    }
+}
+
+mod glob {
+    use super::*;
+
+    pub fn compile(
+        _: ScriptEngineRef,
+        _: &mut ScriptContext,
+        _: ScriptContextGuard,
+        pattern: ScriptString,
+    ) -> ScriptResult<Glob> {
+        let mut glob = Glob::default();
+        glob.compile(pattern.as_bytes())
+            .map_err(ScriptError::from)?;
+        Ok(glob)
+    }
+
+    pub fn matches(
+        _: ScriptEngineRef,
+        _: &mut ScriptContext,
+        _: ScriptContextGuard,
+        (glob, path): (ScriptUserData<Glob>, ScriptString),
+    ) -> ScriptResult<bool> {
+        Ok(glob.borrow()?.matches(path.as_bytes()))
     }
 }
 

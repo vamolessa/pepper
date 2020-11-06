@@ -27,25 +27,25 @@ pub struct ClientContext<'a> {
 }
 
 pub struct Client {
+    name: String,
     protocol: Protocol,
     json: Arc<Mutex<Json>>,
     pending_requests: PendingRequestColection,
 
-    document_selectors: Vec<Glob>,
-
     initialized: bool,
+    document_selectors: Vec<Glob>,
 }
 
 impl Client {
-    fn new(connection: ServerConnection, json: Arc<Mutex<Json>>) -> Self {
+    fn new(name: String, connection: ServerConnection, json: Arc<Mutex<Json>>) -> Self {
         Self {
+            name,
             protocol: Protocol::new(connection),
             json,
             pending_requests: PendingRequestColection::default(),
 
-            document_selectors: Vec::new(),
-
             initialized: false,
+            document_selectors: Vec::new(),
         }
     }
 
@@ -196,13 +196,25 @@ pub struct ClientCollection {
 impl ClientCollection {
     pub fn spawn(
         &mut self,
+        name: &str,
         command: Command,
         event_sender: mpsc::Sender<LocalEvent>,
     ) -> io::Result<ClientHandle> {
+        for (handle, client) in self
+            .clients
+            .iter()
+            .enumerate()
+            .filter_map(|(i, v)| v.as_ref().map(|v| (ClientHandle(i), v)))
+        {
+            if client.name == name {
+                return Ok(handle);
+            }
+        }
+
         let handle = self.find_free_slot();
         let json = Arc::new(Mutex::new(Json::new()));
         let connection = ServerConnection::spawn(command, handle, json.clone(), event_sender)?;
-        self.clients[handle.0] = Some(Client::new(connection, json));
+        self.clients[handle.0] = Some(Client::new(name.into(), connection, json));
         Ok(handle)
     }
 

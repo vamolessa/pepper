@@ -1,4 +1,13 @@
+use std::{error::Error, fmt};
+
+#[derive(Debug)]
 pub struct InvalidGlobError;
+impl fmt::Display for InvalidGlobError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(stringify!(InvalidGlobError))
+    }
+}
+impl Error for InvalidGlobError {}
 
 enum Op {
     Slice { from: u16, to: u16 },
@@ -172,6 +181,8 @@ impl Glob {
         matches_recursive(&self.ops, &self.bytes, path, &Continuation::None)
     }
 }
+
+impl_script_userdata!(Glob);
 
 enum Continuation<'this, 'ops> {
     None,

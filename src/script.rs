@@ -1,17 +1,20 @@
 use std::{
+    cell::Ref,
     collections::VecDeque,
     convert::TryInto,
     error::Error,
     fmt,
     fs::File,
     io::Read,
+    marker::PhantomData,
     path::{Path, PathBuf},
     sync::Arc,
 };
 
 use mlua::prelude::{
-    FromLua, FromLuaMulti, Lua, LuaError, LuaFunction, LuaInteger, LuaLightUserData, LuaNumber,
-    LuaResult, LuaString, LuaTable, LuaTableSequence, LuaValue, ToLua, ToLuaMulti,
+    FromLua, FromLuaMulti, Lua, LuaAnyUserData, LuaError, LuaFunction, LuaInteger,
+    LuaLightUserData, LuaNumber, LuaResult, LuaString, LuaTable, LuaTableSequence, LuaUserData,
+    LuaValue, ToLua, ToLuaMulti,
 };
 
 use crate::{
@@ -171,6 +174,34 @@ impl<'lua> FromLua<'lua> for ScriptFunction<'lua> {
             Err(LuaError::FromLuaConversionError {
                 from: lua_value.type_name(),
                 to: std::any::type_name::<Self>(),
+                message: None,
+            })
+        }
+    }
+}
+
+pub struct ScriptUserData<'lua, T>(LuaAnyUserData<'lua>, PhantomData<T>)
+where
+    T: 'static + LuaUserData;
+impl<'lua, T> ScriptUserData<'lua, T>
+where
+    T: 'static + LuaUserData,
+{
+    pub fn borrow(&self) -> LuaResult<Ref<T>> {
+        self.0.borrow()
+    }
+}
+impl<'lua, T> FromLua<'lua> for ScriptUserData<'lua, T>
+where
+    T: 'static + LuaUserData,
+{
+    fn from_lua(lua_value: LuaValue<'lua>, _: &'lua Lua) -> LuaResult<Self> {
+        if let LuaValue::UserData(d) = lua_value {
+            Ok(Self(d, PhantomData))
+        } else {
+            Err(LuaError::FromLuaConversionError {
+                from: lua_value.type_name(),
+                to: std::any::type_name::<T>(),
                 message: None,
             })
         }
