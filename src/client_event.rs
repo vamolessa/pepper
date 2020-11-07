@@ -558,57 +558,6 @@ mod tests {
     }
 
     #[test]
-    fn parse_key_display() {
-        macro_rules! assert_key {
-            ($key:expr) => {
-                let s = $key.to_string();
-                assert_eq!(s.len(), $key.display_len(), "wrong display len {}", &s);
-                assert_eq!($key, Key::parse(&mut s.chars()).unwrap());
-            };
-        }
-
-        assert_eq!("", Key::None.to_string());
-        assert_key!(Key::Backspace);
-        assert_key!(Key::Enter);
-        assert_key!(Key::Left);
-        assert_key!(Key::Right);
-        assert_key!(Key::Up);
-        assert_key!(Key::Down);
-        assert_key!(Key::Home);
-        assert_key!(Key::End);
-        assert_key!(Key::PageUp);
-        assert_key!(Key::PageDown);
-        assert_key!(Key::Tab);
-        assert_key!(Key::Delete);
-        assert_key!(Key::Esc);
-
-        for i in 1..=12 {
-            assert_key!(Key::F(i));
-        }
-
-        assert_key!(Key::Char(' '));
-        for b in 0..u8::MAX {
-            if b.is_ascii_graphic() {
-                assert_key!(Key::Char(b as char));
-            }
-        }
-
-        for c in 'a'..='z' {
-            assert_key!(Key::Ctrl(c));
-            assert_key!(Key::Alt(c));
-        }
-        for c in 'A'..='Z' {
-            assert_key!(Key::Char(c));
-            assert_key!(Key::Ctrl(c));
-            assert_key!(Key::Alt(c));
-        }
-        for c in '0'..='9' {
-            assert_key!(Key::Char(c));
-            assert_key!(Key::Alt(c));
-        }
-    }
-
-    #[test]
     fn key_serialization() {
         macro_rules! assert_key_serialization {
             ($key:expr) => {
