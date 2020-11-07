@@ -69,7 +69,7 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
         };
     }
 
-    register!(client => index, current_buffer_view_handle, quit, quit_all, force_quit_all,);
+    register!(client => index, current_buffer_view_handle, quit, force_quit, quit_all, force_quit_all,);
     register!(editor => version, os, print,);
     register!(buffer => all_handles, line_count, line_at, path, path_matches, needs_save, set_search, open, close, force_close,
         close_all, force_close_all, save, save_all, reload, force_reload, reload_all, force_reload_all, commit_edits,
@@ -94,6 +94,7 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
 
         let client = globals.get::<ScriptObject>("client")?;
         globals.set("q", client.get::<ScriptValue>("quit")?)?;
+        globals.set("fq", client.get::<ScriptValue>("force_quit")?)?;
         globals.set("qa", client.get::<ScriptValue>("quit_all")?)?;
         globals.set("fqa", client.get::<ScriptValue>("force_quit_all")?)?;
 
@@ -160,10 +161,20 @@ mod client {
         } else {
             ctx.status_message.write_str(
                 StatusMessageKind::Error,
-                "there are unsaved changes in buffers. try 'force_quit_all' to force quit",
+                "there are unsaved changes in buffers. try 'editor.force_quit' to force quit",
             );
             Ok(())
         }
+    }
+
+    pub fn force_quit(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        _: (),
+    ) -> ScriptResult<()> {
+        ctx.editor_loop = EditorLoop::Quit;
+        Err(ScriptError::from(QuitError))
     }
 
     pub fn quit_all(
@@ -179,7 +190,7 @@ mod client {
         } else {
             ctx.status_message.write_str(
                 StatusMessageKind::Error,
-                "there are unsaved changes in buffers. try 'force_quit_all' to force quit all",
+                "there are unsaved changes in buffers. try 'editor.force_quit_all' to force quit all",
             );
             Ok(())
         }
@@ -392,7 +403,7 @@ mod buffer {
             if unsaved {
                 ctx.status_message.write_str(
                     StatusMessageKind::Error,
-                    "there are unsaved changes in buffer. try 'force_close' to force close",
+                    "there are unsaved changes in buffer. try 'buffer.force_close' to force close",
                 );
                 return Ok(());
             }
@@ -460,7 +471,7 @@ mod buffer {
         if unsaved_buffers {
             ctx.status_message.write_str(
                 StatusMessageKind::Error,
-                "there are unsaved changes in buffers. try 'force_close_all' to force close all",
+                "there are unsaved changes in buffers. try 'buffer.force_close_all' to force close all",
             );
             Ok(())
         } else {
@@ -573,15 +584,18 @@ mod buffer {
             if buffer.needs_save() {
                 ctx.status_message.write_str(
                     StatusMessageKind::Error,
-                    "there are unsaved changes in buffer. try 'force_reload' to force reload",
+                    "there are unsaved changes in buffer. try 'buffer.force_reload' to force reload",
                 );
                 return Ok(());
             }
 
-            if let Err(error) = buffer.discard_and_reload_from_file(line_pool, &ctx.config.syntaxes)
-            {
-                ctx.status_message
-                    .write_str(StatusMessageKind::Error, &error);
+            match buffer.discard_and_reload_from_file(line_pool, &ctx.config.syntaxes) {
+                Ok(()) => ctx
+                    .status_message
+                    .write_str(StatusMessageKind::Info, "reloaded"),
+                Err(error) => ctx
+                    .status_message
+                    .write_str(StatusMessageKind::Error, &error),
             }
         }
         Ok(())
@@ -599,10 +613,13 @@ mod buffer {
             .or_else(|| current_handle)
             .and_then(|h| buffers.get_mut_with_line_pool(h))
         {
-            if let Err(error) = buffer.discard_and_reload_from_file(line_pool, &ctx.config.syntaxes)
-            {
-                ctx.status_message
-                    .write_str(StatusMessageKind::Error, &error);
+            match buffer.discard_and_reload_from_file(line_pool, &ctx.config.syntaxes) {
+                Ok(()) => ctx
+                    .status_message
+                    .write_str(StatusMessageKind::Info, "reloaded"),
+                Err(error) => ctx
+                    .status_message
+                    .write_str(StatusMessageKind::Error, &error),
             }
         }
         Ok(())
@@ -618,18 +635,28 @@ mod buffer {
         if unsaved_buffers {
             ctx.status_message.write_str(
                 StatusMessageKind::Error,
-                "there are unsaved changes in buffers. try 'force_reload_all' to force reload all",
+                "there are unsaved changes in buffers. try 'buffer.force_reload_all' to force reload all",
             );
             Ok(())
         } else {
             let (buffers, line_pool) = ctx.buffers.iter_mut_with_line_pool();
+            let mut had_error = false;
+            let mut buffer_count = 0;
             for buffer in buffers {
                 if let Err(error) =
                     buffer.discard_and_reload_from_file(line_pool, &ctx.config.syntaxes)
                 {
+                    had_error = true;
                     ctx.status_message
                         .write_str(StatusMessageKind::Error, &error);
                 }
+                buffer_count += 1;
+            }
+            if !had_error {
+                ctx.status_message.write_fmt(
+                    StatusMessageKind::Info,
+                    format_args!("{} buffers reloaded", buffer_count),
+                );
             }
             Ok(())
         }
@@ -642,12 +669,22 @@ mod buffer {
         _: (),
     ) -> ScriptResult<()> {
         let (buffers, line_pool) = ctx.buffers.iter_mut_with_line_pool();
+        let mut had_error = false;
+        let mut buffer_count = 0;
         for buffer in buffers {
             if let Err(error) = buffer.discard_and_reload_from_file(line_pool, &ctx.config.syntaxes)
             {
+                had_error = true;
                 ctx.status_message
                     .write_str(StatusMessageKind::Error, &error);
             }
+            buffer_count += 1;
+        }
+        if !had_error {
+            ctx.status_message.write_fmt(
+                StatusMessageKind::Info,
+                format_args!("{} buffers reloaded", buffer_count),
+            );
         }
         Ok(())
     }
