@@ -70,7 +70,7 @@ pub struct Args {
 }
 
 fn main() {
-    /*
+    //*
     use ui::Ui;
     let stdout = std::io::stdout();
     let stdout = stdout.lock();
@@ -80,7 +80,7 @@ fn main() {
     let server_command = std::process::Command::new("rust-analyzer");
     let (event_sender, event_receiver) = std::sync::mpsc::channel();
     ui.run_event_loop_in_background(event_sender.clone());
-    let handle = lsp.spawn(server_command, event_sender).unwrap();
+    let handle = lsp.spawn("rust", server_command, event_sender).unwrap();
     let client = lsp.get(handle).unwrap();
     client.initialize().unwrap();
 
@@ -103,7 +103,7 @@ fn main() {
         }
     }
     return;
-    */
+    //*/
 
     let args: Args = argh::from_env();
     if args.version {
