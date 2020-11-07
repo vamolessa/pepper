@@ -71,10 +71,10 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
 
     register!(client => index, current_buffer_view_handle, quit, quit_all, force_quit_all,);
     register!(editor => version, os, print,);
-    register!(buffer => all_handles, line_count, line_at, path, needs_save, set_search, open, close, force_close,
+    register!(buffer => all_handles, line_count, line_at, path, path_matches, needs_save, set_search, open, close, force_close,
         close_all, force_close_all, save, save_all, reload, force_reload, reload_all, force_reload_all, commit_edits,
         on_open,);
-    register!(closed_buffer => line_count, line_at, path,);
+    register!(closed_buffer => line_count, line_at, path, path_matches,);
     register!(buffer_view => buffer_handle, all_handles, handle_from_path, selection_text, insert_text, insert_text_at,
         delete_selection, delete_in, undo, redo,);
     register!(cursors => len, all, set_all, main_index, main, get, set, move_columns, move_lines, move_words,
@@ -300,6 +300,25 @@ mod buffer {
         {
             Some(bytes) => Ok(ScriptValue::String(engine.create_string(bytes)?)),
             None => Ok(ScriptValue::Nil),
+        }
+    }
+
+    pub fn path_matches<'a>(
+        _: ScriptEngineRef<'a>,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        (glob, handle): (ScriptUserData<Glob>, Option<BufferHandle>),
+    ) -> ScriptResult<bool> {
+        let glob = glob.borrow()?;
+        match handle
+            .or_else(|| ctx.current_buffer_handle())
+            .and_then(|h| ctx.buffers.get(h))
+            .and_then(|b| b.path())
+            .and_then(|p| p.to_str())
+            .map(|p| p.as_bytes())
+        {
+            Some(bytes) => Ok(glob.matches(bytes)),
+            None => Ok(false),
         }
     }
 
@@ -680,6 +699,25 @@ mod closed_buffer {
         {
             Some(bytes) => Ok(ScriptValue::String(engine.create_string(bytes)?)),
             None => Ok(ScriptValue::Nil),
+        }
+    }
+
+    pub fn path_matches<'a>(
+        _: ScriptEngineRef<'a>,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        (glob, handle): (ScriptUserData<Glob>, Option<BufferHandle>),
+    ) -> ScriptResult<bool> {
+        let glob = glob.borrow()?;
+        match handle
+            .or_else(|| ctx.current_buffer_handle())
+            .and_then(|h| ctx.buffers.get_removed(h))
+            .and_then(|b| b.path())
+            .and_then(|p| p.to_str())
+            .map(|p| p.as_bytes())
+        {
+            Some(bytes) => Ok(glob.matches(bytes)),
+            None => Ok(false),
         }
     }
 }
