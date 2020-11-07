@@ -79,8 +79,8 @@ impl Glob {
                     Some(b'*') => {
                         index += 1;
                         match peek!() {
-                            None | Some(b'/') => self.ops.push(Op::ManyComponents),
-                            _ => return Err(InvalidGlobError),
+                            Some(b'*') => return Err(InvalidGlobError),
+                            _ => self.ops.push(Op::ManyComponents),
                         }
                     }
                     _ => self.ops.push(Op::Many),
@@ -251,9 +251,8 @@ fn matches_recursive<'data, 'cont>(
                 }
                 if path.is_empty() || is_path_separator(&path[0]) {
                     return false;
-                } else {
-                    advance!(path, 1);
                 }
+                advance!(path, 1);
             },
             Op::ManyComponents => loop {
                 if matches_recursive(ops, bytes, path, continuation) {
@@ -263,10 +262,6 @@ fn matches_recursive<'data, 'cont>(
                     return false;
                 }
                 advance!(path, 1);
-                match path.iter().position(is_path_separator) {
-                    Some(i) => advance!(path, i),
-                    None => return false,
-                }
             },
             Op::AnyWithinRanges { start, count } => {
                 if path.is_empty() {
@@ -340,7 +335,7 @@ mod tests {
 
         assert!(glob.compile(b"a**/").is_ok());
         assert!(glob.compile(b"a**/c").is_ok());
-        assert!(glob.compile(b"a**c").is_err());
+        assert!(glob.compile(b"a**c").is_ok());
 
         assert!(glob.compile(b"a{b,c}d").is_ok());
         assert!(glob.compile(b"a*{b,c}d").is_ok());
@@ -398,6 +393,11 @@ mod tests {
         assert_glob!(true, b"a**/c", b"a/b/c");
         assert_glob!(true, b"a**/c", b"a/bb/bbb/c");
         assert_glob!(true, b"a**/c", b"aaaaa/bb/bbb/c");
+        assert_glob!(true, b"a**c", b"a/c");
+        assert_glob!(true, b"a**c", b"ac");
+        assert_glob!(true, b"a**c", b"a/bc");
+        assert_glob!(true, b"a**c", b"ab/c");
+        assert_glob!(true, b"a**c", b"a/b/c");
 
         assert_glob!(true, b"a{b,c}d", b"abd");
         assert_glob!(true, b"a{b,c}d", b"acd");
