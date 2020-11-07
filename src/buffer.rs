@@ -12,7 +12,7 @@ use crate::{
     editor::{EditorEvent, EditorEventQueue},
     history::{Edit, EditKind, History},
     script::ScriptValue,
-    syntax::{self, HighlightedBuffer, SyntaxCollection, SyntaxHandle},
+    syntax::{HighlightedBuffer, SyntaxCollection, SyntaxHandle},
     word_database::{WordDatabase, WordIter, WordKind},
 };
 
@@ -761,7 +761,7 @@ impl Buffer {
 
     pub fn refresh_syntax(&mut self, syntaxes: &SyntaxCollection) {
         let syntax_handle = syntaxes
-            .find_handle_by_extension(syntax::get_path_extension(&self.path))
+            .find_handle_by_path(self.path.to_str().unwrap_or("").as_bytes())
             .unwrap_or(SyntaxHandle::default());
 
         if self.syntax_handle != syntax_handle {

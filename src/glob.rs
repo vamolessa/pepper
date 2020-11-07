@@ -34,7 +34,11 @@ impl Glob {
 
         match self.compile_recursive(pattern) {
             Ok(len) if len == pattern.len() => Ok(()),
-            _ => Err(InvalidGlobError),
+            _ => {
+                self.bytes.clear();
+                self.ops.clear();
+                Err(InvalidGlobError)
+            }
         }
     }
 

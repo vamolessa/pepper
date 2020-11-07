@@ -1,8 +1,9 @@
-use std::{cmp::Ordering, iter, ops::Range, path::Path};
+use std::{cmp::Ordering, iter, ops::Range};
 
 use crate::{
     buffer::BufferContent,
     buffer_position::BufferRange,
+    glob::Glob,
     pattern::{MatchResult, Pattern, PatternState},
 };
 
@@ -36,15 +37,15 @@ impl Default for LineKind {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct Syntax {
-    extensions: Vec<String>,
+    glob: Glob,
     rules: Vec<(TokenKind, Pattern)>,
 }
 
 impl Syntax {
-    pub fn add_extension(&mut self, extension: String) {
-        self.extensions.push(extension);
+    pub fn set_glob(&mut self, pattern: &[u8]) {
+        let _ = self.glob.compile(pattern);
     }
 
     pub fn add_rule(&mut self, kind: TokenKind, pattern: Pattern) {
@@ -155,7 +156,6 @@ impl Syntax {
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub struct SyntaxHandle(usize);
 
-#[derive(Debug)]
 pub struct SyntaxCollection {
     syntaxes: Vec<Syntax>,
 }
@@ -167,12 +167,12 @@ impl SyntaxCollection {
         Self { syntaxes }
     }
 
-    pub fn find_handle_by_extension(&self, extension: &str) -> Option<SyntaxHandle> {
-        for (i, syntax) in self.syntaxes.iter().enumerate() {
-            for ext in &syntax.extensions {
-                if extension == ext {
-                    return Some(SyntaxHandle(i));
-                }
+    pub fn find_handle_by_path(&self, path: &[u8]) -> Option<SyntaxHandle> {
+        let mut iter = self.syntaxes.iter().enumerate();
+        iter.next();
+        for (i, syntax) in iter {
+            if syntax.glob.matches(path) {
+                return Some(SyntaxHandle(i));
             }
         }
 
@@ -300,13 +300,6 @@ impl HighlightedBuffer {
             Err(_) => TokenKind::Text,
         }
     }
-}
-
-pub fn get_path_extension(path: &Path) -> &str {
-    path.extension()
-        .or(path.file_name())
-        .and_then(|s| s.to_str())
-        .unwrap_or("")
 }
 
 #[cfg(test)]

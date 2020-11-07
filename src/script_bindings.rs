@@ -1392,7 +1392,7 @@ mod syntax {
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
         _: ScriptContextGuard,
-        (extensions, rules): (ScriptArray, ScriptObject),
+        (extensions, rules): (ScriptString, ScriptObject),
     ) -> ScriptResult<()> {
         fn try_add_rules(
             syntax: &mut Syntax,
@@ -1416,10 +1416,7 @@ mod syntax {
 
         let mut syntax = Syntax::default();
 
-        for extension in extensions.iter::<ScriptString>() {
-            syntax.add_extension(extension?.to_str()?.into());
-        }
-
+        syntax.set_glob(extensions.as_bytes());
         try_add_rules(&mut syntax, TokenKind::Keyword, "keyword", &rules)?;
         try_add_rules(&mut syntax, TokenKind::Symbol, "symbol", &rules)?;
         try_add_rules(&mut syntax, TokenKind::Type, "type", &rules)?;
