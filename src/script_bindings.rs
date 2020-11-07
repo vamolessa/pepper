@@ -397,6 +397,16 @@ mod buffer {
                 return Ok(());
             }
 
+            if let Some(path) = ctx
+                .buffers
+                .get(handle)
+                .and_then(|b| b.path())
+                .and_then(|p| p.to_str())
+            {
+                ctx.status_message
+                    .write_fmt(StatusMessageKind::Info, format_args!("closed '{}'", path));
+            }
+
             ctx.buffer_views.remove_where(
                 ctx.buffers,
                 ctx.clients,
@@ -417,6 +427,16 @@ mod buffer {
         handle: Option<BufferHandle>,
     ) -> ScriptResult<()> {
         if let Some(handle) = handle.or_else(|| ctx.current_buffer_handle()) {
+            if let Some(path) = ctx
+                .buffers
+                .get(handle)
+                .and_then(|b| b.path())
+                .and_then(|p| p.to_str())
+            {
+                ctx.status_message
+                    .write_fmt(StatusMessageKind::Info, format_args!("closed '{}'", path));
+            }
+
             ctx.buffer_views.remove_where(
                 ctx.buffers,
                 ctx.clients,
@@ -444,6 +464,12 @@ mod buffer {
             );
             Ok(())
         } else {
+            let buffer_count = ctx.buffers.iter().count();
+            ctx.status_message.write_fmt(
+                StatusMessageKind::Info,
+                format_args!("{} buffers closed", buffer_count),
+            );
+
             ctx.buffer_views.remove_where(
                 ctx.buffers,
                 ctx.clients,
@@ -464,6 +490,12 @@ mod buffer {
         _: ScriptContextGuard,
         _: (),
     ) -> ScriptResult<()> {
+        let buffer_count = ctx.buffers.iter().count();
+        ctx.status_message.write_fmt(
+            StatusMessageKind::Info,
+            format_args!("{} buffers closed", buffer_count),
+        );
+
         ctx.buffer_views.remove_where(
             ctx.buffers,
             ctx.clients,
