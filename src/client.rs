@@ -161,6 +161,17 @@ struct ClientData {
     pub ui: UiKind,
     pub display_buffer: Vec<u8>,
 }
+impl ClientData {
+    pub fn reset(&mut self) {
+        match self.ui {
+            UiKind::Tui {
+                ref mut status_bar_buf,
+            } => status_bar_buf.clear(),
+            _ => self.ui = UiKind::default(),
+        }
+        self.display_buffer.clear();
+    }
+}
 
 #[derive(Default)]
 pub struct ClientCollection {
@@ -181,13 +192,12 @@ impl ClientCollection {
         if min_len > self.remote_data.len() {
             self.remote_data.resize_with(min_len, || Default::default());
         }
-        self.remote_data[index].ui.reset_to_default();
     }
 
     pub fn on_client_left(&mut self, client_handle: ConnectionWithClientHandle) {
         let index = client_handle.into_index();
         self.remotes[index] = None;
-        self.remote_data[index].display_buffer.clear();
+        self.remote_data[index].reset();
     }
 
     pub fn get(&self, target: TargetClient) -> Option<&Client> {

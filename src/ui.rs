@@ -19,19 +19,6 @@ pub enum UiKind {
 }
 
 impl UiKind {
-    pub fn reset_to_default(&mut self) {
-        match self {
-            UiKind::None => {
-                *self = UiKind::Tui {
-                    status_bar_buf: String::new(),
-                }
-            }
-            UiKind::Tui {
-                ref mut status_bar_buf,
-            } => status_bar_buf.clear(),
-        }
-    }
-
     pub fn render(
         &mut self,
         editor: &Editor,
