@@ -129,6 +129,16 @@ pub struct JsonObject {
 }
 
 impl JsonObject {
+    pub fn get<'a>(&self, key: &str, json: &'a Json) -> &'a JsonValue {
+        for (k, v) in self.iter(json) {
+            if k == key {
+                return v;
+            }
+        }
+
+        &json.members[0].value
+    }
+
     pub fn iter<'a>(&self, json: &'a Json) -> JsonMemberIter<'a> {
         JsonMemberIter {
             json,

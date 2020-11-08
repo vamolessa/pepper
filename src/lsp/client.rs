@@ -26,6 +26,19 @@ pub struct ClientContext<'a> {
     pub status_message: &'a mut StatusMessage,
 }
 
+#[derive(Default)]
+pub struct ClientCapabilities {
+    pub hover_provider: bool,
+    pub rename_provider: bool,
+    pub document_formatting_provider: bool,
+    pub references_provider: bool,
+    pub definition_provider: bool,
+    pub declaration_provider: bool,
+    pub implementation_provider: bool,
+    pub document_symbol_provider: bool,
+    pub workspace_symbol_provider: bool,
+}
+
 pub struct Client {
     name: String,
     protocol: Protocol,
@@ -33,6 +46,7 @@ pub struct Client {
     pending_requests: PendingRequestColection,
 
     initialized: bool,
+    capabilities: ClientCapabilities,
     document_selectors: Vec<Glob>,
 }
 
@@ -45,6 +59,7 @@ impl Client {
             pending_requests: PendingRequestColection::default(),
 
             initialized: false,
+            capabilities: ClientCapabilities::default(),
             document_selectors: Vec::new(),
         }
     }
@@ -56,7 +71,67 @@ impl Client {
     ) -> io::Result<()> {
         let mut json = self.json.lock().unwrap();
 
+        macro_rules! parse_error {
+            () => {{
+                let error = ResponseError::parse_error();
+                return self.protocol.respond(&mut json, request.id, Err(error));
+            }};
+        }
+        macro_rules! expect_json_array {
+            ($value:expr) => {
+                match $value {
+                    JsonValue::Array(array) => array,
+                    _ => parse_error!(),
+                }
+            };
+        }
+        macro_rules! expect_json_object {
+            ($value:expr) => {
+                match $value {
+                    JsonValue::Object(object) => object,
+                    _ => parse_error!(),
+                }
+            };
+        }
+
         match request.method.as_str(&json) {
+            "client/registerCapability" => {
+                let params = expect_json_object!(request.params);
+                let registrations = expect_json_array!(params.get("registrations", &json));
+                for registration in registrations.iter(&json) {
+                    let registration = expect_json_object!(registration);
+                    let method = match registration.get("method", &json) {
+                        JsonValue::Str(s) => *s,
+                        JsonValue::String(s) => s.as_str(&json),
+                        _ => parse_error!(),
+                    };
+                    let options = expect_json_object!(registration.get("registerOptions", &json));
+                    match method {
+                        "textDocument/didSave" => {
+                            let document_selector =
+                                expect_json_array!(options.get("documentSelector", &json));
+                            self.document_selectors.clear();
+                            for filter in document_selector.iter(&json) {
+                                let filter = expect_json_object!(filter);
+                                let pattern = match filter.get("pattern", &json) {
+                                    JsonValue::Str(s) => *s,
+                                    JsonValue::String(s) => s.as_str(&json),
+                                    _ => continue,
+                                };
+                                let mut glob = Glob::default();
+                                if let Err(_) = glob.compile(pattern.as_bytes()) {
+                                    self.document_selectors.clear();
+                                    parse_error!();
+                                }
+                                self.document_selectors.push(glob);
+                            }
+                        }
+                        _ => (),
+                    }
+                }
+                self.protocol
+                    .respond(&mut json, request.id, Ok(JsonValue::Null))
+            }
             _ => {
                 let error = ResponseError::method_not_found();
                 self.protocol.respond(&mut json, request.id, Err(error))
@@ -83,34 +158,72 @@ impl Client {
         ctx: &mut ClientContext,
         response: ServerResponse,
     ) -> io::Result<()> {
-        let idn = response.id.0;
         let method = match self.pending_requests.take(response.id) {
             Some(method) => method,
-            None => {
-                eprintln!("num acho request para a response {:?}", idn);
-                return Ok(());
-            }
+            None => return Ok(()),
         };
         let mut json = self.json.lock().unwrap();
 
-        match method {
-            "initialize" => {
-                let mut bytes = Vec::new();
-                match response.result {
-                    Ok(result) => {
-                        self.initialized = true;
-                        self.protocol.notify(
-                            &mut json,
-                            "initialized",
-                            JsonValue::Object(JsonObject::default()),
-                        )?;
-                        json.write(&mut bytes, &result)?;
+        macro_rules! expect_json_object {
+            ($value:expr) => {
+                match $value {
+                    JsonValue::Object(object) => object,
+                    _ => {
+                        let error = ResponseError::parse_error();
+                        return self
+                            .protocol
+                            .respond(&mut json, JsonValue::Null, Err(error));
                     }
-                    Err(error) => json.write(&mut bytes, &error.message.into())?,
                 }
-                let text = String::from_utf8(bytes).unwrap();
-                eprintln!("initialize response:\n{}\n---\n", text);
+            };
+        }
+
+        fn is_true_or_object(value: &JsonValue) -> bool {
+            match value {
+                JsonValue::Boolean(true) | JsonValue::Object(_) => true,
+                _ => false,
             }
+        }
+
+        match method {
+            "initialize" => match response.result {
+                Ok(result) => {
+                    let body = expect_json_object!(result);
+                    let capabilities = expect_json_object!(body.get("capabilities", &json));
+
+                    self.initialized = true;
+                    let c = &mut self.capabilities;
+                    for (name, v) in capabilities.iter(&json) {
+                        match name {
+                            "hoverProvider" => c.hover_provider = is_true_or_object(v),
+                            "renameProvider" => c.rename_provider = is_true_or_object(v),
+                            "documentFormattingProvider" => {
+                                c.document_formatting_provider = is_true_or_object(v)
+                            }
+                            "referencesProvider" => c.references_provider = is_true_or_object(v),
+                            "definitionProvider" => c.definition_provider = is_true_or_object(v),
+                            "declarationProvider" => c.declaration_provider = is_true_or_object(v),
+                            "implementationProvider" => {
+                                c.implementation_provider = is_true_or_object(v)
+                            }
+                            "documentSymbolProvider" => {
+                                c.document_symbol_provider = is_true_or_object(v)
+                            }
+                            "workspaceSymbolProvider" => {
+                                c.workspace_symbol_provider = is_true_or_object(v)
+                            }
+                            _ => (),
+                        }
+                    }
+
+                    self.protocol.notify(
+                        &mut json,
+                        "initialized",
+                        JsonValue::Object(JsonObject::default()),
+                    )?;
+                }
+                Err(_) => unimplemented!(),
+            },
             _ => (),
         }
 
