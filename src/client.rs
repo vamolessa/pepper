@@ -181,6 +181,7 @@ impl ClientCollection {
         if min_len > self.remote_data.len() {
             self.remote_data.resize_with(min_len, || Default::default());
         }
+        self.remote_data[index].ui.reset_to_default();
     }
 
     pub fn on_client_left(&mut self, client_handle: ConnectionWithClientHandle) {

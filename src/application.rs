@@ -48,10 +48,6 @@ impl fmt::Display for ApplicationError {
 }
 
 pub fn run(args: Args) -> Result<(), Box<dyn Error>> {
-    if let Err(e) = ctrlc::set_handler(|| {}) {
-        return Err(Box::new(e));
-    }
-
     let mut session_socket_path = env::temp_dir();
     session_socket_path.push(env!("CARGO_PKG_NAME"));
     if !session_socket_path.exists() {

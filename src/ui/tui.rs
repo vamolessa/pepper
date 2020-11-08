@@ -107,11 +107,14 @@ where
                 let _ = event_sender.send(LocalEvent::EndOfInput);
             })
         } else {
+            eprintln!("read keys from stdin");
             thread::spawn(move || read_keys_from_stdin(event_sender))
         }
     }
 
     fn init(&mut self) -> UiResult<()> {
+        ctrlc::set_handler(|| {}).map_err(Box::new)?;
+
         handle_command!(self.write, terminal::EnterAlternateScreen)?;
         handle_command!(self.write, cursor::Hide)?;
         self.write.flush()?;
