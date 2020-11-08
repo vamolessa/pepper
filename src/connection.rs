@@ -230,8 +230,6 @@ impl ConnectionWithServer {
     }
 
     pub fn close(&mut self) {
-        let _ = self.stream.set_nonblocking(false);
-        let _ = self.read_buf.read_from(&mut self.stream);
         let _ = self.stream.shutdown(Shutdown::Both);
     }
 

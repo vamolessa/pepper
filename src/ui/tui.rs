@@ -107,7 +107,6 @@ where
                 let _ = event_sender.send(LocalEvent::EndOfInput);
             })
         } else {
-            eprintln!("read keys from stdin");
             thread::spawn(move || read_keys_from_stdin(event_sender))
         }
     }

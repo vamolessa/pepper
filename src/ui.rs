@@ -95,8 +95,9 @@ pub fn read_keys_from_stdin(event_sender: mpsc::Sender<LocalEvent>) {
     let mut line = String::new();
 
     'main_loop: loop {
-        if stdin.read_line(&mut line).is_err() || line.is_empty() {
-            break;
+        match stdin.read_line(&mut line) {
+            Ok(0) | Err(_) => break,
+            Ok(_) => (),
         }
 
         for key in Key::parse_all(&line) {
