@@ -40,9 +40,12 @@ struct EditorEventDoubleQueue {
     write: EditorEventQueue,
 }
 impl EditorEventDoubleQueue {
-    pub fn flip_and_get_read_write_queues(&mut self) -> (&[EditorEvent], &mut EditorEventQueue) {
+    pub fn flip(&mut self) {
         self.read.0.clear();
         std::mem::swap(&mut self.read, &mut self.write);
+    }
+
+    pub fn get_read_and_write_queues(&mut self) -> (&[EditorEvent], &mut EditorEventQueue) {
         (&self.read.0, &mut self.write)
     }
 }
@@ -349,7 +352,7 @@ impl Editor {
                     }
                 }
 
-                let write_events = self.events.flip_and_get_read_write_queues().1;
+                let write_events = self.events.get_read_and_write_queues().1;
 
                 let path = Path::new(path);
                 match self.buffer_views.buffer_view_handle_from_path(
@@ -475,7 +478,7 @@ impl Editor {
         clients: &'a mut ClientCollection,
         target_client: TargetClient,
     ) -> (&'a mut Mode, &'a [Key], &'a [EditorEvent], ModeContext<'a>) {
-        let (read_events, write_events) = self.events.flip_and_get_read_write_queues();
+        let (read_events, write_events) = self.events.get_read_and_write_queues();
         let mode_context = ModeContext {
             target_client,
             clients,
@@ -530,7 +533,9 @@ impl Editor {
     }
 
     fn trigger_event_handlers(&mut self, clients: &mut ClientCollection) {
+        self.events.flip();
         let (mode, _, events, mut ctx) = self.mode_context(clients, TargetClient::Local);
+
         if events.is_empty() {
             return;
         }
