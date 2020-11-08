@@ -203,6 +203,10 @@ impl HighlightedBuffer {
         Self { lines: Vec::new() }
     }
 
+    pub fn clear(&mut self) {
+        self.lines.clear();
+    }
+
     pub fn highligh_all(&mut self, syntax: &Syntax, buffer: &BufferContent) {
         self.lines
             .resize(buffer.line_count(), HighlightedLine::default());

@@ -56,6 +56,13 @@ impl History {
         }
     }
 
+    pub fn clear(&mut self) {
+        self.texts.clear();
+        self.edits.clear();
+        self.group_ranges.clear();
+        self.state = HistoryState::IterIndex(0);
+    }
+
     pub fn add_edit(&mut self, edit: Edit) {
         let current_group_len = match self.state {
             HistoryState::IterIndex(index) => {

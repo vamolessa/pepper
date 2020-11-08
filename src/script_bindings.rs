@@ -74,7 +74,7 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
     register!(buffer => all_handles, line_count, line_at, path, path_matches, needs_save, set_search, open, close, force_close,
         close_all, force_close_all, save, save_all, reload, force_reload, reload_all, force_reload_all, commit_edits,
         on_open,);
-    register!(closed_buffer => line_count, line_at, path, path_matches,);
+    register!(closed_buffer => path, path_matches,);
     register!(buffer_view => buffer_handle, all_handles, handle_from_path, selection_text, insert_text, insert_text_at,
         delete_selection, delete_in, undo, redo,);
     register!(cursors => len, all, set_all, main_index, main, get, set, move_columns, move_lines, move_words,
@@ -718,40 +718,6 @@ mod buffer {
 
 mod closed_buffer {
     use super::*;
-
-    pub fn line_count(
-        _: ScriptEngineRef,
-        ctx: &mut ScriptContext,
-        _: ScriptContextGuard,
-        handle: Option<BufferHandle>,
-    ) -> ScriptResult<Option<usize>> {
-        Ok(handle
-            .or_else(|| ctx.current_buffer_handle())
-            .and_then(|h| ctx.buffers.get_removed(h))
-            .map(|b| b.content().line_count()))
-    }
-
-    pub fn line_at<'a>(
-        engine: ScriptEngineRef<'a>,
-        ctx: &mut ScriptContext,
-        _: ScriptContextGuard,
-        (index, handle): (usize, Option<BufferHandle>),
-    ) -> ScriptResult<ScriptValue<'a>> {
-        match handle
-            .or_else(|| ctx.current_buffer_handle())
-            .and_then(|h| ctx.buffers.get_removed(h))
-        {
-            Some(buffer) => {
-                if index < buffer.content().line_count() {
-                    let line_bytes = buffer.content().line_at(index).as_str().as_bytes();
-                    Ok(ScriptValue::String(engine.create_string(line_bytes)?))
-                } else {
-                    Ok(ScriptValue::Nil)
-                }
-            }
-            None => Ok(ScriptValue::Nil),
-        }
-    }
 
     pub fn path<'a>(
         engine: ScriptEngineRef<'a>,
@@ -1535,7 +1501,7 @@ mod syntax {
         ctx.config.syntaxes.add(syntax);
 
         for buffer in ctx.buffers.iter_mut() {
-            buffer.refresh_syntax(&ctx.config.syntaxes);
+            buffer.refresh_syntax(&ctx.config.syntaxes, false);
         }
 
         Ok(())

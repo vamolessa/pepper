@@ -714,33 +714,54 @@ pub struct Buffer {
 }
 
 impl Buffer {
-    pub fn new(
+    pub fn new() -> Self {
+        Self {
+            path: PathBuf::new(),
+            content: BufferContent::empty(),
+            syntax_handle: SyntaxHandle::default(),
+            highlighted: HighlightedBuffer::new(),
+            history: History::new(),
+            search_ranges: Vec::new(),
+            needs_save: false,
+        }
+    }
+
+    pub fn init(
+        &mut self,
         word_database: &mut WordDatabase,
         syntaxes: &SyntaxCollection,
-        path: Option<PathBuf>,
+        path: Option<&Path>,
         content: BufferContent,
-    ) -> Self {
+    ) {
         for line in content.lines() {
             for word in WordIter::new(line.as_str()).of_kind(WordKind::Identifier) {
                 word_database.add_word(word);
             }
         }
 
-        let syntax_handle = SyntaxHandle::default();
-        let mut highlighted = HighlightedBuffer::new();
-        highlighted.highligh_all(syntaxes.get(syntax_handle), &content);
+        self.path.clear();
+        if let Some(path) = path {
+            self.path.push(path);
+        }
 
-        let mut this = Self {
-            path: path.unwrap_or(PathBuf::new()),
-            content,
-            syntax_handle,
-            highlighted,
-            history: History::new(),
-            search_ranges: Vec::new(),
-            needs_save: false,
-        };
-        this.refresh_syntax(syntaxes);
-        this
+        self.content = content;
+        self.refresh_syntax(syntaxes, true);
+    }
+
+    pub fn dispose(&mut self, pool: &mut BufferLinePool, word_database: &mut WordDatabase) {
+        for line in self.content.lines.drain(..) {
+            for word in WordIter::new(line.as_str()).of_kind(WordKind::Identifier) {
+                word_database.remove_word(word);
+            }
+
+            pool.dispose(line);
+        }
+
+        self.syntax_handle = SyntaxHandle::default();
+        self.highlighted.clear();
+        self.history.clear();
+        self.search_ranges.clear();
+        self.needs_save = false;
     }
 
     pub fn path(&self) -> Option<&Path> {
@@ -756,15 +777,15 @@ impl Buffer {
         if let Some(path) = path {
             self.path.push(path);
         }
-        self.refresh_syntax(syntaxes);
+        self.refresh_syntax(syntaxes, false);
     }
 
-    pub fn refresh_syntax(&mut self, syntaxes: &SyntaxCollection) {
+    pub fn refresh_syntax(&mut self, syntaxes: &SyntaxCollection, force: bool) {
         let syntax_handle = syntaxes
             .find_handle_by_path(self.path.to_str().unwrap_or("").as_bytes())
             .unwrap_or(SyntaxHandle::default());
 
-        if self.syntax_handle != syntax_handle {
+        if force || self.syntax_handle != syntax_handle {
             self.syntax_handle = syntax_handle;
             self.highlighted
                 .highligh_all(syntaxes.get(self.syntax_handle), &self.content);
@@ -989,21 +1010,26 @@ pub struct BufferCollection {
 }
 
 impl BufferCollection {
-    pub fn add(&mut self, buffer: Buffer, events: &mut EditorEventQueue) -> BufferHandle {
-        for (i, (alive, b)) in self.buffers.iter_mut().enumerate() {
+    pub fn new(&mut self, events: &mut EditorEventQueue) -> (BufferHandle, &mut Buffer) {
+        let mut handle = None;
+        for (i, (alive, _)) in self.buffers.iter_mut().enumerate() {
             if !*alive {
-                let handle = BufferHandle(i);
+                handle = Some(BufferHandle(i));
                 *alive = true;
-                *b = buffer;
-                events.enqueue(EditorEvent::BufferOpen(handle));
-                return handle;
+                break;
             }
         }
+        let handle = match handle {
+            Some(handle) => handle,
+            None => {
+                let handle = BufferHandle(self.buffers.len());
+                self.buffers.push((true, Buffer::new()));
+                handle
+            }
+        };
 
-        let handle = BufferHandle(self.buffers.len());
-        self.buffers.push((true, buffer));
         events.enqueue(EditorEvent::BufferOpen(handle));
-        handle
+        (handle, &mut self.buffers[handle.0].1)
     }
 
     pub fn get(&self, handle: BufferHandle) -> Option<&Buffer> {
@@ -1150,19 +1176,13 @@ impl BufferCollection {
                 continue;
             }
 
-            for line in buffer.content.lines.drain(..) {
-                for word in WordIter::new(line.as_str()).of_kind(WordKind::Identifier) {
-                    word_database.remove_word(word);
-                }
-
-                self.line_pool.dispose(line);
-            }
-
             for client in clients.iter_mut() {
                 client
                     .navigation_history
                     .remove_snapshots_with_buffer_handle(handle);
             }
+
+            buffer.dispose(&mut self.line_pool, word_database);
 
             *alive = false;
             events.enqueue(EditorEvent::BufferClose(handle));
@@ -1395,7 +1415,8 @@ mod tests {
         let mut word_database = WordDatabase::new();
         let syntaxes = SyntaxCollection::new();
 
-        let mut buffer = Buffer::new(
+        let mut buffer = Buffer::new();
+        buffer.init(
             &mut word_database,
             &syntaxes,
             None,
@@ -1424,7 +1445,8 @@ mod tests {
         let mut word_database = WordDatabase::new();
         let syntaxes = SyntaxCollection::new();
 
-        let mut buffer = Buffer::new(
+        let mut buffer = Buffer::new();
+        buffer.init(
             &mut word_database,
             &syntaxes,
             None,
