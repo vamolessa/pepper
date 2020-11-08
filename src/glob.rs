@@ -77,10 +77,19 @@ impl Glob {
                 },
                 Some(b'*') => match peek!() {
                     Some(b'*') => {
+                        match self.ops.last() {
+                            None | Some(Op::Separator) => (),
+                            _ => return Err(InvalidGlobError),
+                        }
+
                         index += 1;
                         match peek!() {
-                            Some(b'*') => return Err(InvalidGlobError),
-                            _ => self.ops.push(Op::ManyComponents),
+                            None => self.ops.push(Op::ManyComponents),
+                            Some(b'/') => {
+                                index += 1;
+                                self.ops.push(Op::ManyComponents);
+                            }
+                            _ => return Err(InvalidGlobError),
                         }
                     }
                     _ => self.ops.push(Op::Many),
@@ -261,7 +270,10 @@ fn matches_recursive<'data, 'cont>(
                 if path.is_empty() {
                     return false;
                 }
-                advance!(path, 1);
+                match path.iter().position(is_path_separator) {
+                    Some(i) => advance!(path, i + 1),
+                    None => return false,
+                }
             },
             Op::AnyWithinRanges { start, count } => {
                 if path.is_empty() {
@@ -333,9 +345,13 @@ mod tests {
         assert!(glob.compile(b"a*[0-9]/c").is_ok());
         assert!(glob.compile(b"a*bx*cy*d").is_ok());
 
-        assert!(glob.compile(b"a**/").is_ok());
-        assert!(glob.compile(b"a**/c").is_ok());
-        assert!(glob.compile(b"a**c").is_ok());
+        assert!(glob.compile(b"**").is_ok());
+        assert!(glob.compile(b"/**").is_ok());
+        assert!(glob.compile(b"**/").is_ok());
+        assert!(glob.compile(b"a/**/").is_ok());
+        assert!(glob.compile(b"a/**/c").is_ok());
+        assert!(glob.compile(b"a/**c").is_err());
+        assert!(glob.compile(b"a**/c").is_err());
 
         assert!(glob.compile(b"a{b,c}d").is_ok());
         assert!(glob.compile(b"a*{b,c}d").is_ok());
@@ -389,15 +405,16 @@ mod tests {
         assert_glob!(false, b"a*c", b"a/c");
         assert_glob!(true, b"a*bx*cy*d", b"a00bx000cy0000d");
 
-        assert_glob!(true, b"a**/c", b"a/c");
-        assert_glob!(true, b"a**/c", b"a/b/c");
-        assert_glob!(true, b"a**/c", b"a/bb/bbb/c");
-        assert_glob!(true, b"a**/c", b"aaaaa/bb/bbb/c");
-        assert_glob!(true, b"a**c", b"a/c");
-        assert_glob!(true, b"a**c", b"ac");
-        assert_glob!(true, b"a**c", b"a/bc");
-        assert_glob!(true, b"a**c", b"ab/c");
-        assert_glob!(true, b"a**c", b"a/b/c");
+        assert_glob!(true, b"a/**/c", b"a/c");
+        assert_glob!(true, b"a/**/c", b"a/b/c");
+        assert_glob!(true, b"a/**/c", b"a/bb/bbb/c");
+        assert_glob!(true, b"a/**/c", b"a/a/bb/bbb/c");
+        assert_glob!(true, b"**/c", b"c");
+        assert_glob!(true, b"**/c", b"a/c");
+        assert_glob!(false, b"**/c", b"ac");
+        assert_glob!(false, b"**/c", b"a/bc");
+        assert_glob!(true, b"**/c", b"ab/c");
+        assert_glob!(true, b"**/c", b"a/b/c");
 
         assert_glob!(true, b"a{b,c}d", b"abd");
         assert_glob!(true, b"a{b,c}d", b"acd");
