@@ -240,6 +240,12 @@ impl Json {
         JsonString { start, end }
     }
 
+    pub fn clear(&mut self) {
+        self.strings.clear();
+        self.elements.truncate(1);
+        self.members.truncate(1);
+    }
+
     pub fn read<R>(&mut self, reader: &mut R) -> io::Result<JsonValue>
     where
         R: io::BufRead,
@@ -485,9 +491,6 @@ impl Json {
             }
         }
 
-        self.strings.clear();
-        self.elements.truncate(1);
-        self.members.truncate(1);
         read_value(self, reader)
     }
 
@@ -668,11 +671,13 @@ mod tests {
         macro_rules! assert_json {
             ($expected:pat, $text:expr) => {
                 let mut reader = Cursor::new($text.as_bytes());
+                json.clear();
                 let value = json.read(&mut reader).unwrap();
                 assert!(matches!(value, $expected), "got {:?}", value);
             };
             ($expected:pat, $text:expr => $and_then:expr) => {
                 let mut reader = Cursor::new($text.as_bytes());
+                json.clear();
                 let value = json.read(&mut reader).unwrap();
                 match value {
                     $expected => $and_then,

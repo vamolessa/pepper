@@ -1,7 +1,7 @@
 use std::{
     env, io,
     process::{self, Command},
-    sync::{mpsc, Arc, Mutex},
+    sync::mpsc,
 };
 
 use crate::{
@@ -15,7 +15,7 @@ use crate::{
         capabilities,
         protocol::{
             PendingRequestColection, Protocol, ResponseError, ServerConnection, ServerEvent,
-            ServerNotification, ServerRequest, ServerResponse,
+            ServerNotification, ServerRequest, ServerResponse, SharedJson,
         },
     },
 };
@@ -43,7 +43,6 @@ pub struct ClientCapabilities {
 pub struct Client {
     name: String,
     protocol: Protocol,
-    json: Arc<Mutex<Json>>,
     pending_requests: PendingRequestColection,
 
     initialized: bool,
@@ -52,11 +51,10 @@ pub struct Client {
 }
 
 impl Client {
-    fn new(name: String, connection: ServerConnection, json: Arc<Mutex<Json>>) -> Self {
+    fn new(name: String, connection: ServerConnection) -> Self {
         Self {
             name,
             protocol: Protocol::new(connection),
-            json,
             pending_requests: PendingRequestColection::default(),
 
             initialized: false,
@@ -68,21 +66,14 @@ impl Client {
     pub fn on_request(
         &mut self,
         ctx: &mut ClientContext,
+        json: &mut Json,
         request: ServerRequest,
     ) -> io::Result<()> {
-        let mut json = self.json.lock().unwrap();
-
-        macro_rules! parse_error {
-            () => {{
-                let error = ResponseError::parse_error();
-                return self.protocol.respond(&mut json, request.id, Err(error));
-            }};
-        }
         macro_rules! expect_json_array {
             ($value:expr) => {
                 match $value {
                     JsonValue::Array(array) => array,
-                    _ => parse_error!(),
+                    _ => return self.on_parse_error(json, request.id),
                 }
             };
         }
@@ -90,7 +81,7 @@ impl Client {
             ($value:expr) => {
                 match $value {
                     JsonValue::Object(object) => object,
-                    _ => parse_error!(),
+                    _ => return self.on_parse_error(json, request.id),
                 }
             };
         }
@@ -104,7 +95,7 @@ impl Client {
                     let method = match registration.get("method", &json) {
                         JsonValue::Str(s) => *s,
                         JsonValue::String(s) => s.as_str(&json),
-                        _ => parse_error!(),
+                        _ => return self.on_parse_error(json, request.id),
                     };
                     let options = expect_json_object!(registration.get("registerOptions", &json));
                     match method {
@@ -122,7 +113,7 @@ impl Client {
                                 let mut glob = Glob::default();
                                 if let Err(_) = glob.compile(pattern.as_bytes()) {
                                     self.document_selectors.clear();
-                                    parse_error!();
+                                    return self.on_parse_error(json, request.id);
                                 }
                                 self.document_selectors.push(glob);
                             }
@@ -130,12 +121,11 @@ impl Client {
                         _ => (),
                     }
                 }
-                self.protocol
-                    .respond(&mut json, request.id, Ok(JsonValue::Null))
+                self.protocol.respond(json, request.id, Ok(JsonValue::Null))
             }
             _ => {
                 let error = ResponseError::method_not_found();
-                self.protocol.respond(&mut json, request.id, Err(error))
+                self.protocol.respond(json, request.id, Err(error))
             }
         }
     }
@@ -143,24 +133,14 @@ impl Client {
     pub fn on_notification(
         &mut self,
         ctx: &mut ClientContext,
+        json: &mut Json,
         notification: ServerNotification,
     ) -> io::Result<()> {
-        let mut json = self.json.lock().unwrap();
-
-        macro_rules! parse_error {
-            () => {{
-                let error = ResponseError::parse_error();
-                eprintln!("\n\nPARSE ERROR at {}:{}\n\n", file!(), line!());
-                return self
-                    .protocol
-                    .respond(&mut json, JsonValue::Null, Err(error));
-            }};
-        }
         macro_rules! expect_json_integer {
             ($value:expr) => {
                 match $value {
                     JsonValue::Integer(integer) => integer,
-                    _ => parse_error!(),
+                    _ => return self.on_parse_error(json, JsonValue::Null),
                 }
             };
         }
@@ -168,7 +148,7 @@ impl Client {
             ($value:expr) => {
                 match $value {
                     JsonValue::Array(array) => array,
-                    _ => parse_error!(),
+                    _ => return self.on_parse_error(json, JsonValue::Null),
                 }
             };
         }
@@ -176,61 +156,34 @@ impl Client {
             ($value:expr) => {
                 match $value {
                     JsonValue::Object(object) => object,
-                    _ => parse_error!(),
+                    _ => return self.on_parse_error(json, JsonValue::Null),
                 }
             };
         }
 
-        {
-            let mut buf = Vec::new();
-            json.write(&mut buf, &notification.params).unwrap();
-            let text = std::str::from_utf8(&buf).unwrap();
-            eprintln!(
-                "\n\nfrom client notification '{}' params:\n{}\n\n",
-                notification.method.as_str(&json),
-                text
-            );
-            let params = match &notification.params {
-                JsonValue::Object(obj) => obj.clone(),
-                v => {
-                    dbg!(v);
-                    return Ok(());
-                }
-            };
-            buf.clear();
-            json.write(&mut buf, &JsonValue::Object(params)).unwrap();
-            let text = std::str::from_utf8(&buf).unwrap();
-            eprintln!("\n\nuri: {}\n\n", text);
-        }
-
-        match notification.method.as_str(&json) {
+        match notification.method.as_str(json) {
             "textDocument/publishDiagnostics" => {
                 let params = expect_json_object!(notification.params);
-
-                for (k, _) in params.iter(&json) {
-                    dbg!(k);
-                }
-
-                let uri = match params.get("uri", &json) {
+                let uri = match params.get("uri", json) {
                     JsonValue::Str(s) => *s,
-                    JsonValue::String(s) => s.as_str(&json),
-                    v => parse_error!(),
+                    JsonValue::String(s) => s.as_str(json),
+                    v => return self.on_parse_error(json, JsonValue::Null),
                 };
-                let diagnostics = expect_json_array!(params.get("diagnostics", &json));
-                for diagnostic in diagnostics.iter(&json) {
+                let diagnostics = expect_json_array!(params.get("diagnostics", json));
+                for diagnostic in diagnostics.iter(json) {
                     let diagnostic = expect_json_object!(diagnostic);
-                    for (name, v) in diagnostic.iter(&json) {
+                    for (name, v) in diagnostic.iter(json) {
                         match name {
                             "message" => (),
                             "range" => {
                                 let range = expect_json_object!(v);
-                                let start = expect_json_object!(range.get("start", &json));
-                                let start_line = expect_json_integer!(start.get("line", &json));
+                                let start = expect_json_object!(range.get("start", json));
+                                let start_line = expect_json_integer!(start.get("line", json));
                                 let start_column =
-                                    expect_json_integer!(start.get("character", &json));
-                                let end = expect_json_object!(range.get("end", &json));
-                                let end_line = expect_json_integer!(end.get("line", &json));
-                                let end_column = expect_json_integer!(end.get("character", &json));
+                                    expect_json_integer!(start.get("character", json));
+                                let end = expect_json_object!(range.get("end", json));
+                                let end_line = expect_json_integer!(end.get("line", json));
+                                let end_column = expect_json_integer!(end.get("character", json));
                             }
                             _ => (),
                         }
@@ -246,13 +199,13 @@ impl Client {
     pub fn on_response(
         &mut self,
         ctx: &mut ClientContext,
+        json: &mut Json,
         response: ServerResponse,
     ) -> io::Result<()> {
         let method = match self.pending_requests.take(response.id) {
             Some(method) => method,
             None => return Ok(()),
         };
-        let mut json = self.json.lock().unwrap();
 
         macro_rules! expect_json_object {
             ($value:expr) => {
@@ -260,9 +213,7 @@ impl Client {
                     JsonValue::Object(object) => object,
                     _ => {
                         let error = ResponseError::parse_error();
-                        return self
-                            .protocol
-                            .respond(&mut json, JsonValue::Null, Err(error));
+                        return self.protocol.respond(json, JsonValue::Null, Err(error));
                     }
                 }
             };
@@ -317,7 +268,7 @@ impl Client {
                     }
 
                     self.protocol.notify(
-                        &mut json,
+                        json,
                         "initialized",
                         JsonValue::Object(JsonObject::default()),
                     )?;
@@ -330,17 +281,16 @@ impl Client {
         Ok(())
     }
 
-    pub fn on_parse_error(&mut self) -> io::Result<()> {
-        let mut json = self.json.lock().unwrap();
+    pub fn on_parse_error(&mut self, json: &mut Json, request_id: JsonValue) -> io::Result<()> {
         let error = ResponseError::parse_error();
-        self.protocol
-            .respond(&mut json, JsonValue::Null, Err(error))
+        self.protocol.respond(json, request_id, Err(error))
     }
 
     pub fn on_editor_events(
         &mut self,
         ctx: &mut ClientContext,
         events: &[EditorEvent],
+        json: &mut Json,
     ) -> io::Result<()> {
         if !self.initialized {
             return Ok(());
@@ -366,9 +316,7 @@ impl Client {
         Ok(())
     }
 
-    pub fn initialize(&mut self) -> io::Result<()> {
-        let mut json = self.json.lock().unwrap();
-
+    pub fn initialize(&mut self, json: &mut Json) -> io::Result<()> {
         let current_dir = match env::current_dir()?.as_os_str().to_str() {
             Some(path) => json.create_string(path).into(),
             None => JsonValue::Null,
@@ -378,18 +326,18 @@ impl Client {
         params.set(
             "processId".into(),
             JsonValue::Integer(process::id() as _),
-            &mut json,
+            json,
         );
-        params.set("rootUri".into(), current_dir, &mut json);
+        params.set("rootUri".into(), current_dir, json);
         params.set(
             "capabilities".into(),
-            capabilities::client_capabilities(&mut json),
-            &mut json,
+            capabilities::client_capabilities(json),
+            json,
         );
 
         Self::request(
             &mut self.protocol,
-            &mut json,
+            json,
             &mut self.pending_requests,
             "initialize",
             params,
@@ -401,9 +349,14 @@ impl Client {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct ClientHandle(usize);
 
+struct ClientCollectionEntry {
+    client: Client,
+    json: SharedJson,
+}
+
 #[derive(Default)]
 pub struct ClientCollection {
-    clients: Vec<Option<Client>>,
+    entries: Vec<Option<ClientCollectionEntry>>,
 }
 
 impl ClientCollection {
@@ -413,26 +366,38 @@ impl ClientCollection {
         command: Command,
         event_sender: mpsc::Sender<LocalEvent>,
     ) -> io::Result<ClientHandle> {
-        for (handle, client) in self
-            .clients
+        for (handle, entry) in self
+            .entries
             .iter()
             .enumerate()
-            .filter_map(|(i, v)| v.as_ref().map(|v| (ClientHandle(i), v)))
+            .filter_map(|(i, e)| e.as_ref().map(|e| (ClientHandle(i), e)))
         {
-            if client.name == name {
+            if entry.client.name == name {
                 return Ok(handle);
             }
         }
 
         let handle = self.find_free_slot();
-        let json = Arc::new(Mutex::new(Json::new()));
+        let json = SharedJson::new();
         let connection = ServerConnection::spawn(command, handle, json.clone(), event_sender)?;
-        self.clients[handle.0] = Some(Client::new(name.into(), connection, json));
+        self.entries[handle.0] = Some(ClientCollectionEntry {
+            client: Client::new(name.into(), connection),
+            json,
+        });
         Ok(handle)
     }
 
-    pub fn get(&mut self, handle: ClientHandle) -> Option<&mut Client> {
-        self.clients[handle.0].as_mut()
+    pub fn try_access<F, E>(&mut self, handle: ClientHandle, accessor: F) -> Result<(), E>
+    where
+        F: FnOnce(&mut Client, &mut Json) -> Result<(), E>,
+    {
+        match &mut self.entries[handle.0] {
+            Some(entry) => {
+                let mut json = entry.json.write_lock();
+                accessor(&mut entry.client, json.get())
+            }
+            None => Ok(()),
+        }
     }
 
     pub fn on_server_event(
@@ -443,26 +408,32 @@ impl ClientCollection {
     ) -> io::Result<()> {
         match event {
             ServerEvent::Closed => {
-                self.clients[handle.0] = None;
+                self.entries[handle.0] = None;
             }
             ServerEvent::ParseError => {
-                if let Some(client) = self.clients[handle.0].as_mut() {
-                    client.on_parse_error()?;
+                if let Some(entry) = self.entries[handle.0].as_mut() {
+                    let mut json = entry.json.consume_lock();
+                    entry.client.on_parse_error(json.get(), JsonValue::Null)?;
                 }
             }
             ServerEvent::Request(request) => {
-                if let Some(client) = self.clients[handle.0].as_mut() {
-                    client.on_request(ctx, request)?;
+                if let Some(entry) = self.entries[handle.0].as_mut() {
+                    let mut json = entry.json.consume_lock();
+                    entry.client.on_request(ctx, json.get(), request)?;
                 }
             }
             ServerEvent::Notification(notification) => {
-                if let Some(client) = self.clients[handle.0].as_mut() {
-                    client.on_notification(ctx, notification)?;
+                if let Some(entry) = self.entries[handle.0].as_mut() {
+                    let mut json = entry.json.consume_lock();
+                    entry
+                        .client
+                        .on_notification(ctx, json.get(), notification)?;
                 }
             }
             ServerEvent::Response(response) => {
-                if let Some(client) = self.clients[handle.0].as_mut() {
-                    client.on_response(ctx, response)?;
+                if let Some(entry) = self.entries[handle.0].as_mut() {
+                    let mut json = entry.json.consume_lock();
+                    entry.client.on_response(ctx, json.get(), response)?;
                 }
             }
         }
@@ -474,20 +445,21 @@ impl ClientCollection {
         ctx: &mut ClientContext,
         events: &[EditorEvent],
     ) -> io::Result<()> {
-        for client in self.clients.iter_mut().flatten() {
-            client.on_editor_events(ctx, events)?;
+        for entry in self.entries.iter_mut().flatten() {
+            let mut json = entry.json.write_lock();
+            entry.client.on_editor_events(ctx, events, json.get())?;
         }
         Ok(())
     }
 
     fn find_free_slot(&mut self) -> ClientHandle {
-        for (i, slot) in self.clients.iter_mut().enumerate() {
-            if slot.is_none() {
+        for (i, slot) in self.entries.iter_mut().enumerate() {
+            if let None = slot {
                 return ClientHandle(i);
             }
         }
-        let handle = ClientHandle(self.clients.len());
-        self.clients.push(None);
+        let handle = ClientHandle(self.entries.len());
+        self.entries.push(None);
         handle
     }
 }

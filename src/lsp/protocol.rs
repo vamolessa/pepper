@@ -1,7 +1,7 @@
 use std::{
     io::{self, Cursor, Read, Write},
     process::{Child, ChildStdin, Command, Stdio},
-    sync::{mpsc, Arc, Mutex},
+    sync::{mpsc, Arc, Mutex, MutexGuard},
     thread,
 };
 
@@ -10,6 +10,45 @@ use crate::{
     json::{Json, JsonInteger, JsonKey, JsonObject, JsonString, JsonValue},
     lsp::client::ClientHandle,
 };
+
+pub struct SharedJsonGuard {
+    json: Json,
+    pending_consume_count: usize,
+}
+impl SharedJsonGuard {
+    pub fn get(&mut self) -> &mut Json {
+        &mut self.json
+    }
+}
+#[derive(Clone)]
+pub struct SharedJson(Arc<Mutex<SharedJsonGuard>>);
+impl SharedJson {
+    pub fn new() -> Self {
+        Self(Arc::new(Mutex::new(SharedJsonGuard {
+            json: Json::new(),
+            pending_consume_count: 0,
+        })))
+    }
+
+    fn parse_lock(&self) -> MutexGuard<SharedJsonGuard> {
+        let mut json = self.0.lock().unwrap();
+        if json.pending_consume_count == 0 {
+            json.json.clear();
+        }
+        json.pending_consume_count += 1;
+        json
+    }
+
+    pub fn consume_lock(&mut self) -> MutexGuard<SharedJsonGuard> {
+        let mut json = self.0.lock().unwrap();
+        json.pending_consume_count -= 1;
+        json
+    }
+
+    pub fn write_lock(&mut self) -> MutexGuard<SharedJsonGuard> {
+        self.0.lock().unwrap()
+    }
+}
 
 pub enum ServerEvent {
     Closed,
@@ -44,7 +83,7 @@ impl ServerConnection {
     pub fn spawn(
         mut command: Command,
         handle: ClientHandle,
-        json: Arc<Mutex<Json>>,
+        json: SharedJson,
         event_sender: mpsc::Sender<LocalEvent>,
     ) -> io::Result<Self> {
         let mut process = command
@@ -64,7 +103,6 @@ impl ServerConnection {
         thread::spawn(move || {
             let mut stdout = stdout;
             let mut buf = ReadBuf::new();
-            let json = json;
 
             loop {
                 let content_bytes = match buf.read_content_from(&mut stdout) {
@@ -74,7 +112,8 @@ impl ServerConnection {
                     }
                     bytes => bytes,
                 };
-                let mut json_guard = json.lock().unwrap();
+                let mut json = json.parse_lock();
+                let json = json.get();
 
                 match std::str::from_utf8(content_bytes) {
                     Ok(text) => eprintln!("received text:\n{}\n---\n", text),
@@ -82,8 +121,8 @@ impl ServerConnection {
                 }
 
                 let mut reader = Cursor::new(content_bytes);
-                let event = match json_guard.read(&mut reader) {
-                    Ok(body) => parse_server_event(&json_guard, body),
+                let event = match json.read(&mut reader) {
+                    Ok(body) => parse_server_event(&json, body),
                     _ => {
                         eprintln!("parse error! error reading json. really parse error!");
                         ServerEvent::ParseError
@@ -159,17 +198,6 @@ fn parse_server_event(json: &Json, body: JsonValue) -> ServerEvent {
     } else if !matches!(id, JsonValue::Null) {
         ServerEvent::Request(ServerRequest { id, method, params })
     } else {
-        {
-            let mut buf = Vec::new();
-            json.write(&mut buf, &params).unwrap();
-            let text = String::from_utf8(buf).unwrap();
-            eprintln!(
-                "\n\nfrom protocol notification '{}' params:\n{}\n\n",
-                method.as_str(&json),
-                text
-            );
-        }
-
         ServerEvent::Notification(ServerNotification { method, params })
     }
 }
