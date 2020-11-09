@@ -2,44 +2,52 @@ use std::{convert::From, io};
 
 pub struct JsonConvertError;
 pub trait FromJson<'json>: Sized {
-    fn from_json(value: &JsonValue, json: &'json Json) -> Result<Self, JsonConvertError>;
+    fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError>;
 }
 
 macro_rules! impl_try_from_json_value {
-    ($type:ty, $pattern:pat if $cond:expr => $ok:expr) => {
+    ($type:ty, $pattern:pat => $ok:expr) => {
         impl<'json> FromJson<'json> for $type {
-            fn from_json(value: &JsonValue, _: &'json Json) -> Result<Self, JsonConvertError> {
+            fn from_json(value: JsonValue, _: &'json Json) -> Result<Self, JsonConvertError> {
                 match value {
-                    $pattern if $cond => Ok($ok),
+                    $pattern => Ok($ok),
                     _ => Err(JsonConvertError),
                 }
             }
         }
     };
 }
-impl_try_from_json_value!(bool, JsonValue::Boolean(b) if true => *b);
-impl_try_from_json_value!(u8, JsonValue::Integer(i) if *i >= 0 => *i as _);
-impl_try_from_json_value!(u16, JsonValue::Integer(i) if *i >= 0 => *i as _);
-impl_try_from_json_value!(u32, JsonValue::Integer(i) if *i >= 0 => *i as _);
-impl_try_from_json_value!(u64, JsonValue::Integer(i) if *i >= 0 => *i as _);
-impl_try_from_json_value!(i8, JsonValue::Integer(i) if true => *i as _);
-impl_try_from_json_value!(i16, JsonValue::Integer(i) if true => *i as _);
-impl_try_from_json_value!(i32, JsonValue::Integer(i) if true => *i as _);
-impl_try_from_json_value!(i64, JsonValue::Integer(i) if true => *i as _);
-impl_try_from_json_value!(f32, JsonValue::Number(n) if true => *n as _);
-impl_try_from_json_value!(f64, JsonValue::Number(n) if true => *n as _);
+impl_try_from_json_value!(bool, JsonValue::Boolean(b) => b);
+impl_try_from_json_value!(JsonInteger, JsonValue::Integer(i) => i);
+impl_try_from_json_value!(usize, JsonValue::Integer(i) => { if i < 0 { return Err(JsonConvertError); } i as _ });
+impl_try_from_json_value!(JsonNumber, JsonValue::Number(n) => n);
+impl_try_from_json_value!(JsonString, JsonValue::String(s) => s);
+impl_try_from_json_value!(JsonArray, JsonValue::Array(a) => a);
+impl_try_from_json_value!(JsonObject, JsonValue::Object(o) => o);
 
 impl<'json> FromJson<'json> for &'json str {
-    fn from_json(value: &JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
+    fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
         match value {
-            JsonValue::Str(s) => Ok(*s),
+            JsonValue::Str(s) => Ok(s),
             JsonValue::String(s) => Ok(s.as_str(json)),
             _ => Err(JsonConvertError),
         }
     }
 }
 
-#[derive(Debug, Clone)]
+impl<'json, T> FromJson<'json> for Option<T>
+where
+    T: FromJson<'json>,
+{
+    fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
+        match value {
+            JsonValue::Null => Ok(None),
+            _ => Ok(Some(T::from_json(value, json)?)),
+        }
+    }
+}
+
+#[derive(Debug)]
 pub enum JsonValue {
     Null,
     Boolean(bool),
@@ -50,19 +58,31 @@ pub enum JsonValue {
     Array(JsonArray),
     Object(JsonObject),
 }
+impl JsonValue {
+    pub fn get(self, key: &str, json: &Json) -> JsonValue {
+        match self {
+            JsonValue::Object(object) => object.get(key, json),
+            _ => JsonValue::Null,
+        }
+    }
 
+    pub fn elements<'a>(self, json: &'a Json) -> JsonElementIter<'a> {
+        match self {
+            JsonValue::Array(array) => array.elements(json),
+            _ => JsonElementIter { json, next: 0 },
+        }
+    }
+}
 impl Default for JsonValue {
     fn default() -> Self {
         Self::Null
     }
 }
-
 impl<'json> FromJson<'json> for JsonValue {
-    fn from_json(value: &JsonValue, _: &'json Json) -> Result<Self, JsonConvertError> {
-        Ok(value.clone())
+    fn from_json(value: JsonValue, _: &'json Json) -> Result<Self, JsonConvertError> {
+        Ok(value)
     }
 }
-
 impl From<bool> for JsonValue {
     fn from(value: bool) -> Self {
         Self::Boolean(value)
@@ -115,7 +135,6 @@ pub struct JsonString {
     start: u32,
     end: u32,
 }
-
 impl JsonString {
     pub fn as_str<'a>(&self, json: &'a Json) -> &'a str {
         &json.strings[(self.start as usize)..(self.end as usize)]
@@ -127,9 +146,8 @@ pub struct JsonArray {
     first: u32,
     last: u32,
 }
-
 impl JsonArray {
-    pub fn iter<'a>(&self, json: &'a Json) -> JsonElementIter<'a> {
+    pub fn elements<'a>(self, json: &'a Json) -> JsonElementIter<'a> {
         JsonElementIter {
             json,
             next: self.first as _,
@@ -152,7 +170,6 @@ pub enum JsonKey {
     Str(&'static str),
     String(JsonString),
 }
-
 impl JsonKey {
     pub fn as_str<'a>(&self, json: &'a Json) -> &'a str {
         match self {
@@ -161,23 +178,20 @@ impl JsonKey {
         }
     }
 }
-
 impl Default for JsonKey {
     fn default() -> Self {
         Self::String(JsonString::default())
     }
 }
-
 impl<'json> FromJson<'json> for JsonKey {
-    fn from_json(value: &JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
+    fn from_json(value: JsonValue, _: &'json Json) -> Result<Self, JsonConvertError> {
         match value {
-            JsonValue::Str(s) => Ok(JsonKey::Str(*s)),
+            JsonValue::Str(s) => Ok(JsonKey::Str(s)),
             JsonValue::String(s) => Ok(JsonKey::String(s.clone())),
             _ => Err(JsonConvertError),
         }
     }
 }
-
 impl From<&'static str> for JsonKey {
     fn from(value: &'static str) -> Self {
         Self::Str(value)
@@ -194,19 +208,17 @@ pub struct JsonObject {
     first: u32,
     last: u32,
 }
-
 impl JsonObject {
-    pub fn get<'a>(&self, key: &str, json: &'a Json) -> &'a JsonValue {
-        for (k, v) in self.iter(json) {
+    pub fn get(self, key: &str, json: &Json) -> JsonValue {
+        for (k, v) in self.members(json) {
             if k == key {
                 return v;
             }
         }
-
-        &json.members[0].value
+        JsonValue::Null
     }
 
-    pub fn iter<'a>(&self, json: &'a Json) -> JsonMemberIter<'a> {
+    pub fn members<'a>(self, json: &'a Json) -> JsonMemberIter<'a> {
         JsonMemberIter {
             json,
             next: self.first as _,
@@ -246,13 +258,13 @@ pub struct JsonElementIter<'a> {
 }
 
 impl<'a> Iterator for JsonElementIter<'a> {
-    type Item = &'a JsonValue;
+    type Item = JsonValue;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.next != 0 {
             let element = &self.json.elements[self.next];
             self.next = element.next as usize;
-            Some(&element.value)
+            Some(clone_json_value(&element.value))
         } else {
             None
         }
@@ -265,16 +277,41 @@ pub struct JsonMemberIter<'a> {
 }
 
 impl<'a> Iterator for JsonMemberIter<'a> {
-    type Item = (&'a str, &'a JsonValue);
+    type Item = (&'a str, JsonValue);
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.next != 0 {
             let member = &self.json.members[self.next];
             self.next = member.next as usize;
-            Some((member.key.as_str(self.json), &member.value))
+            Some((
+                member.key.as_str(self.json),
+                clone_json_value(&member.value),
+            ))
         } else {
             None
         }
+    }
+}
+
+fn clone_json_value(value: &JsonValue) -> JsonValue {
+    match value {
+        JsonValue::Null => JsonValue::Null,
+        JsonValue::Boolean(b) => JsonValue::Boolean(*b),
+        JsonValue::Integer(i) => JsonValue::Integer(*i),
+        JsonValue::Number(n) => JsonValue::Number(*n),
+        JsonValue::Str(s) => JsonValue::Str(*s),
+        JsonValue::String(s) => JsonValue::String(JsonString {
+            start: s.start,
+            end: s.end,
+        }),
+        JsonValue::Array(a) => JsonValue::Array(JsonArray {
+            first: a.first,
+            last: a.last,
+        }),
+        JsonValue::Object(a) => JsonValue::Object(JsonObject {
+            first: a.first,
+            last: a.last,
+        }),
     }
 }
 
@@ -788,18 +825,18 @@ mod tests {
 
         match value {
             JsonValue::Object(o) => {
-                let mut members = o.iter(&json);
+                let mut members = o.members(&json);
 
                 assert_next!(members, ("array", JsonValue::Array(a)) => {
-                    let mut elements = a.iter(&json);
+                    let mut elements = a.elements(&json);
 
                     assert_next!(elements, JsonValue::String(s) => assert_eq!("string", s.as_str(&json)));
                     assert_next!(elements, JsonValue::Boolean(false) => assert!(true));
                     assert_next!(elements, JsonValue::Null => assert!(true));
-                    assert_next!(elements, JsonValue::Number(n) => assert_eq!(0.25, *n));
+                    assert_next!(elements, JsonValue::Number(n) => assert_eq!(0.25, n));
 
                     assert_next!(elements, JsonValue::Object(o) => {
-                        let mut members = o.iter(&json);
+                        let mut members = o.members(&json);
 
                         assert_next!(members, ("int", JsonValue::Integer(7)) => assert!(true));
                         assert_next!(members, ("bool", JsonValue::Boolean(false)) => assert!(true));
@@ -808,7 +845,7 @@ mod tests {
                     });
 
                     assert_next!(elements, JsonValue::Array(a) => {
-                        assert!(a.iter(&json).next().is_none());
+                        assert!(a.elements(&json).next().is_none());
                     });
 
                     assert!(elements.next().is_none());
@@ -816,7 +853,7 @@ mod tests {
 
                 assert_next!(members, ("str", JsonValue::String(s)) => assert_eq!("asdad", s.as_str(&json)));
                 assert_next!(members, ("empty", JsonValue::Object(o)) => {
-                    assert!(o.iter(&json).next().is_none());
+                    assert!(o.members(&json).next().is_none());
                 });
             }
             _ => assert!(false, "got {:?}", value),

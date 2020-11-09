@@ -7,7 +7,7 @@ use std::{
 
 use crate::{
     client_event::LocalEvent,
-    json::{Json, JsonInteger, JsonKey, JsonObject, JsonString, JsonValue},
+    json::{FromJson, Json, JsonInteger, JsonKey, JsonObject, JsonString, JsonValue},
     lsp::client::ClientHandle,
 };
 
@@ -139,66 +139,50 @@ impl ServerConnection {
 }
 
 fn parse_server_event(json: &Json, body: JsonValue) -> ServerEvent {
-    let body = match body {
-        JsonValue::Object(body) => body,
-        _ => {
-            eprintln!("parse error! message body is not an object");
-            return ServerEvent::ParseError;
-        }
-    };
-
-    let mut id = JsonValue::Null;
-    let mut method = JsonString::default();
-    let mut params = JsonValue::Null;
-    let mut result = JsonValue::Null;
-    let mut error = JsonValue::Null;
-
-    for (key, value) in body.iter(json) {
-        match (key, value) {
-            ("id", v) => id = v.clone(),
-            ("method", JsonValue::String(s)) => method = s.clone(),
-            ("params", v) => params = v.clone(),
-            ("result", v) => result = v.clone(),
-            ("error", v) => error = v.clone(),
-            _ => (),
+    declare_json_object! {
+        struct Body {
+            id: JsonValue,
+            method: JsonString,
+            params: JsonValue,
+            result: JsonValue,
+            error: Option<ResponseError>,
         }
     }
 
-    if !matches!(result, JsonValue::Null) {
-        let id = match id {
+    let body = match Body::from_json(body, json) {
+        Ok(body) => body,
+        Err(_) => panic!(),
+    };
+
+    if !matches!(body.result, JsonValue::Null) {
+        let id = match body.id {
             JsonValue::Integer(n) if n > 0 => n as _,
             _ => return ServerEvent::ParseError,
         };
         ServerEvent::Response(ServerResponse {
             id: RequestId(id),
-            result: Ok(result),
+            result: Ok(body.result),
         })
-    } else if let JsonValue::Object(error) = error {
-        let mut e = ResponseError {
-            code: JsonInteger::default(),
-            message: JsonKey::String(JsonString::default()),
-            data: JsonValue::Null,
-        };
-        for (key, value) in error.iter(json) {
-            match (key, value) {
-                ("code", JsonValue::Integer(n)) => e.code = *n,
-                ("message", JsonValue::String(s)) => e.message = JsonKey::String(s.clone()),
-                ("data", v) => e.data = v.clone(),
-                _ => (),
-            }
-        }
-        let id = match id {
+    } else if let Some(error) = body.error {
+        let id = match body.id {
             JsonValue::Integer(n) if n > 0 => n as _,
             _ => return ServerEvent::ParseError,
         };
         ServerEvent::Response(ServerResponse {
             id: RequestId(id),
-            result: Err(e),
+            result: Err(error),
         })
-    } else if !matches!(id, JsonValue::Null) {
-        ServerEvent::Request(ServerRequest { id, method, params })
+    } else if !matches!(body.id, JsonValue::Null) {
+        ServerEvent::Request(ServerRequest {
+            id: body.id,
+            method: body.method,
+            params: body.params,
+        })
     } else {
-        ServerEvent::Notification(ServerNotification { method, params })
+        ServerEvent::Notification(ServerNotification {
+            method: body.method,
+            params: body.params,
+        })
     }
 }
 
@@ -221,11 +205,12 @@ impl Drop for ServerConnection {
 #[derive(Default, PartialEq, Eq)]
 pub struct RequestId(pub usize);
 
-#[derive(Default)]
-pub struct ResponseError {
-    pub code: JsonInteger,
-    pub message: JsonKey,
-    pub data: JsonValue,
+declare_json_object! {
+    pub struct ResponseError {
+        pub code: JsonInteger,
+        pub message: JsonKey,
+        pub data: JsonValue,
+    }
 }
 impl ResponseError {
     pub fn parse_error() -> Self {
@@ -244,7 +229,6 @@ impl ResponseError {
         }
     }
 }
-impl_from_json_object!(ResponseError => code, message, data,);
 
 pub struct Protocol {
     server_connection: ServerConnection,

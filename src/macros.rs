@@ -53,25 +53,40 @@ macro_rules! impl_script_userdata {
     };
 }
 
-macro_rules! impl_from_json_object {
-    ($type:ty => $($member:ident,)*) => {
-        impl<'json> $crate::json::FromJson<'json> for $type {
+macro_rules! declare_json_object {
+    (
+        $(#[$attribute:meta])*
+        $struct_vis:vis
+        struct $struct_name:ident {
+            $($member_vis:vis $member_name:ident : $member_type:ty,)*
+        }
+    ) => {
+        #[allow(non_snake_case)]
+        $(#[$attribute])*
+        $struct_vis struct $struct_name {
+            $($member_vis $member_name : $member_type,)*
+        }
+        impl<'json> $crate::json::FromJson<'json> for $struct_name {
             fn from_json(
-                value: &$crate::json::JsonValue,
-                json: &'json $crate::json::Json
+                value: $crate::json::JsonValue,
+                json: &'json $crate::json::Json,
             ) -> Result<Self, $crate::json::JsonConvertError> {
                 match value {
                     JsonValue::Object(object) => {
-                        let mut this = Self::default();
-                        for (key, value) in object.iter(json) {
+                        let mut this = Self {
+                            $($member_name : Default::default(),)*
+                        };
+                        for (key, value) in object.members(json) {
                             match key {
-                                $(stringify!($member) => this.$member = $crate::json::FromJson::from_json(value, json)?,)*
+                                $(stringify!($member_name) => {
+                                    this.$member_name = $crate::json::FromJson::from_json(value, json)?
+                                })*
                                 _ => (),
                             }
                         }
                         Ok(this)
                     }
-                    _ => Err($crate::json::JsonConvertError),
+                    _ => Err($crate::json::JsonConvertError)
                 }
             }
         }
