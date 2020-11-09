@@ -692,6 +692,11 @@ mod tests {
         assert_json!(JsonValue::String(s), "\"\\u00e1\"" => assert_eq!("\u{00e1}", s.as_str(&json)));
         assert_json!(JsonValue::String(s), "\"\\ufa09\"" => assert_eq!("\u{fa09}", s.as_str(&json)));
         assert_json!(JsonValue::String(s), "\"\\\"\\\\\\/\\b\\f\\n\\r\\t\"" => assert_eq!("\"\\/\x08\x0c\n\r\t", s.as_str(&json)));
+        assert_json!(
+            JsonValue::String(s),
+            "\"file:///c:/path/to/file.ext\"" =>
+            assert_eq!("file:///c:/path/to/file.ext", s.as_str(&json))
+        );
     }
 
     #[test]

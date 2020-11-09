@@ -159,6 +159,17 @@ fn parse_server_event(json: &Json, body: JsonValue) -> ServerEvent {
     } else if !matches!(id, JsonValue::Null) {
         ServerEvent::Request(ServerRequest { id, method, params })
     } else {
+        {
+            let mut buf = Vec::new();
+            json.write(&mut buf, &params).unwrap();
+            let text = String::from_utf8(buf).unwrap();
+            eprintln!(
+                "\n\nfrom protocol notification '{}' params:\n{}\n\n",
+                method.as_str(&json),
+                text
+            );
+        }
+
         ServerEvent::Notification(ServerNotification { method, params })
     }
 }

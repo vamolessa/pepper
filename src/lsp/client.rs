@@ -30,6 +30,7 @@ pub struct ClientContext<'a> {
 pub struct ClientCapabilities {
     pub hover_provider: bool,
     pub rename_provider: bool,
+    pub prepare_rename_provider: bool,
     pub document_formatting_provider: bool,
     pub references_provider: bool,
     pub definition_provider: bool,
@@ -149,6 +150,7 @@ impl Client {
         macro_rules! parse_error {
             () => {{
                 let error = ResponseError::parse_error();
+                eprintln!("\n\nPARSE ERROR at {}:{}\n\n", file!(), line!());
                 return self
                     .protocol
                     .respond(&mut json, JsonValue::Null, Err(error));
@@ -179,13 +181,40 @@ impl Client {
             };
         }
 
+        {
+            let mut buf = Vec::new();
+            json.write(&mut buf, &notification.params).unwrap();
+            let text = std::str::from_utf8(&buf).unwrap();
+            eprintln!(
+                "\n\nfrom client notification '{}' params:\n{}\n\n",
+                notification.method.as_str(&json),
+                text
+            );
+            let params = match &notification.params {
+                JsonValue::Object(obj) => obj.clone(),
+                v => {
+                    dbg!(v);
+                    return Ok(());
+                }
+            };
+            buf.clear();
+            json.write(&mut buf, &JsonValue::Object(params)).unwrap();
+            let text = std::str::from_utf8(&buf).unwrap();
+            eprintln!("\n\nuri: {}\n\n", text);
+        }
+
         match notification.method.as_str(&json) {
             "textDocument/publishDiagnostics" => {
                 let params = expect_json_object!(notification.params);
+
+                for (k, _) in params.iter(&json) {
+                    dbg!(k);
+                }
+
                 let uri = match params.get("uri", &json) {
                     JsonValue::Str(s) => *s,
                     JsonValue::String(s) => s.as_str(&json),
-                    _ => parse_error!(),
+                    v => parse_error!(),
                 };
                 let diagnostics = expect_json_array!(params.get("diagnostics", &json));
                 for diagnostic in diagnostics.iter(&json) {
@@ -205,7 +234,6 @@ impl Client {
                             }
                             _ => (),
                         }
-                        //
                     }
                 }
             }
@@ -258,7 +286,17 @@ impl Client {
                     for (name, v) in capabilities.iter(&json) {
                         match name {
                             "hoverProvider" => c.hover_provider = is_true_or_object(v),
-                            "renameProvider" => c.rename_provider = is_true_or_object(v),
+                            "renameProvider" => match v {
+                                JsonValue::Boolean(true) => c.rename_provider = true,
+                                JsonValue::Object(options) => {
+                                    c.rename_provider = true;
+                                    c.prepare_rename_provider = matches!(
+                                        options.get("prepareProvider", &json),
+                                        JsonValue::Boolean(true)
+                                    );
+                                }
+                                _ => (),
+                            },
                             "documentFormattingProvider" => {
                                 c.document_formatting_provider = is_true_or_object(v)
                             }
