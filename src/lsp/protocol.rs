@@ -221,6 +221,7 @@ impl Drop for ServerConnection {
 #[derive(Default, PartialEq, Eq)]
 pub struct RequestId(pub usize);
 
+#[derive(Default)]
 pub struct ResponseError {
     pub code: JsonInteger,
     pub message: JsonKey,
@@ -243,6 +244,7 @@ impl ResponseError {
         }
     }
 }
+impl_from_json_object!(ResponseError => code, message, data,);
 
 pub struct Protocol {
     server_connection: ServerConnection,

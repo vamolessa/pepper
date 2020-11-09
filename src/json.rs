@@ -1,5 +1,44 @@
 use std::{convert::From, io};
 
+pub struct JsonConvertError;
+pub trait FromJson<'json>: Sized {
+    fn from_json(value: &JsonValue, json: &'json Json) -> Result<Self, JsonConvertError>;
+}
+
+macro_rules! impl_try_from_json_value {
+    ($type:ty, $pattern:pat if $cond:expr => $ok:expr) => {
+        impl<'json> FromJson<'json> for $type {
+            fn from_json(value: &JsonValue, _: &'json Json) -> Result<Self, JsonConvertError> {
+                match value {
+                    $pattern if $cond => Ok($ok),
+                    _ => Err(JsonConvertError),
+                }
+            }
+        }
+    };
+}
+impl_try_from_json_value!(bool, JsonValue::Boolean(b) if true => *b);
+impl_try_from_json_value!(u8, JsonValue::Integer(i) if *i >= 0 => *i as _);
+impl_try_from_json_value!(u16, JsonValue::Integer(i) if *i >= 0 => *i as _);
+impl_try_from_json_value!(u32, JsonValue::Integer(i) if *i >= 0 => *i as _);
+impl_try_from_json_value!(u64, JsonValue::Integer(i) if *i >= 0 => *i as _);
+impl_try_from_json_value!(i8, JsonValue::Integer(i) if true => *i as _);
+impl_try_from_json_value!(i16, JsonValue::Integer(i) if true => *i as _);
+impl_try_from_json_value!(i32, JsonValue::Integer(i) if true => *i as _);
+impl_try_from_json_value!(i64, JsonValue::Integer(i) if true => *i as _);
+impl_try_from_json_value!(f32, JsonValue::Number(n) if true => *n as _);
+impl_try_from_json_value!(f64, JsonValue::Number(n) if true => *n as _);
+
+impl<'json> FromJson<'json> for &'json str {
+    fn from_json(value: &JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
+        match value {
+            JsonValue::Str(s) => Ok(*s),
+            JsonValue::String(s) => Ok(s.as_str(json)),
+            _ => Err(JsonConvertError),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum JsonValue {
     Null,
@@ -10,6 +49,18 @@ pub enum JsonValue {
     String(JsonString),
     Array(JsonArray),
     Object(JsonObject),
+}
+
+impl Default for JsonValue {
+    fn default() -> Self {
+        Self::Null
+    }
+}
+
+impl<'json> FromJson<'json> for JsonValue {
+    fn from_json(value: &JsonValue, _: &'json Json) -> Result<Self, JsonConvertError> {
+        Ok(value.clone())
+    }
 }
 
 impl From<bool> for JsonValue {
@@ -107,6 +158,22 @@ impl JsonKey {
         match self {
             JsonKey::Str(s) => s,
             JsonKey::String(s) => s.as_str(json),
+        }
+    }
+}
+
+impl Default for JsonKey {
+    fn default() -> Self {
+        Self::String(JsonString::default())
+    }
+}
+
+impl<'json> FromJson<'json> for JsonKey {
+    fn from_json(value: &JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
+        match value {
+            JsonValue::Str(s) => Ok(JsonKey::Str(*s)),
+            JsonValue::String(s) => Ok(JsonKey::String(s.clone())),
+            _ => Err(JsonConvertError),
         }
     }
 }

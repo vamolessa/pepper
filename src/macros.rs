@@ -52,3 +52,28 @@ macro_rules! impl_script_userdata {
         impl mlua::UserData for $type {}
     };
 }
+
+macro_rules! impl_from_json_object {
+    ($type:ty => $($member:ident,)*) => {
+        impl<'json> $crate::json::FromJson<'json> for $type {
+            fn from_json(
+                value: &$crate::json::JsonValue,
+                json: &'json $crate::json::Json
+            ) -> Result<Self, $crate::json::JsonConvertError> {
+                match value {
+                    JsonValue::Object(object) => {
+                        let mut this = Self::default();
+                        for (key, value) in object.iter(json) {
+                            match key {
+                                $(stringify!($member) => this.$member = $crate::json::FromJson::from_json(value, json)?,)*
+                                _ => (),
+                            }
+                        }
+                        Ok(this)
+                    }
+                    _ => Err($crate::json::JsonConvertError),
+                }
+            }
+        }
+    }
+}
