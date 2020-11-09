@@ -144,9 +144,71 @@ impl Client {
         ctx: &mut ClientContext,
         notification: ServerNotification,
     ) -> io::Result<()> {
-        let json = self.json.lock().unwrap();
+        let mut json = self.json.lock().unwrap();
+
+        macro_rules! parse_error {
+            () => {{
+                let error = ResponseError::parse_error();
+                return self
+                    .protocol
+                    .respond(&mut json, JsonValue::Null, Err(error));
+            }};
+        }
+        macro_rules! expect_json_integer {
+            ($value:expr) => {
+                match $value {
+                    JsonValue::Integer(integer) => integer,
+                    _ => parse_error!(),
+                }
+            };
+        }
+        macro_rules! expect_json_array {
+            ($value:expr) => {
+                match $value {
+                    JsonValue::Array(array) => array,
+                    _ => parse_error!(),
+                }
+            };
+        }
+        macro_rules! expect_json_object {
+            ($value:expr) => {
+                match $value {
+                    JsonValue::Object(object) => object,
+                    _ => parse_error!(),
+                }
+            };
+        }
 
         match notification.method.as_str(&json) {
+            "textDocument/publishDiagnostics" => {
+                let params = expect_json_object!(notification.params);
+                let uri = match params.get("uri", &json) {
+                    JsonValue::Str(s) => *s,
+                    JsonValue::String(s) => s.as_str(&json),
+                    _ => parse_error!(),
+                };
+                let diagnostics = expect_json_array!(params.get("diagnostics", &json));
+                for diagnostic in diagnostics.iter(&json) {
+                    let diagnostic = expect_json_object!(diagnostic);
+                    for (name, v) in diagnostic.iter(&json) {
+                        match name {
+                            "message" => (),
+                            "range" => {
+                                let range = expect_json_object!(v);
+                                let start = expect_json_object!(range.get("start", &json));
+                                let start_line = expect_json_integer!(start.get("line", &json));
+                                let start_column =
+                                    expect_json_integer!(start.get("character", &json));
+                                let end = expect_json_object!(range.get("end", &json));
+                                let end_line = expect_json_integer!(end.get("line", &json));
+                                let end_column = expect_json_integer!(end.get("character", &json));
+                            }
+                            _ => (),
+                        }
+                        //
+                    }
+                }
+            }
             _ => (),
         }
 
