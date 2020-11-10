@@ -192,6 +192,8 @@ impl ConnectionWithClientCollection {
         let mut last_editor_loop = EditorLoop::Quit;
         let mut deserializer = ClientEventDeserializer::from_slice(bytes);
 
+        eprintln!("received {} bytes", bytes.len());
+
         loop {
             match deserializer.deserialize_next() {
                 ClientEventDeserializeResult::Some(event) => {
@@ -230,7 +232,10 @@ impl ConnectionWithServer {
     }
 
     pub fn close(&mut self) {
-        let _ = self.stream.shutdown(Shutdown::Both);
+        let _ = self.stream.set_nonblocking(false);
+        //let _ = self.read_buf.read_from(&mut self.stream);
+        let _ = self.stream.write(&[0]);
+        let _ = self.stream.shutdown(Shutdown::Read);
     }
 
     pub fn register_connection(&self, event_registry: &EventRegistry) -> io::Result<()> {
@@ -255,6 +260,8 @@ impl ConnectionWithServer {
         if bytes.is_empty() {
             return Ok(());
         }
+
+        eprintln!("sending {} bytes", bytes.len());
 
         let result = self
             .stream

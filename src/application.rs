@@ -155,13 +155,6 @@ where
     P: Profiler,
     I: Ui,
 {
-    let (event_sender, event_receiver) = mpsc::channel();
-
-    let event_manager = EventManager::new()?;
-    let event_registry = event_manager.registry();
-    let event_manager_loop = event_manager.run_event_loop_in_background(event_sender.clone());
-    let ui_event_loop = ui.run_event_loop_in_background(event_sender);
-
     let mut editor = Editor::new();
     let mut clients = ClientCollection::default();
 
@@ -176,6 +169,12 @@ where
     client_events_from_args(&args, |event| {
         editor.on_event(&mut clients, TargetClient::Local, event);
     });
+
+    let (event_sender, event_receiver) = mpsc::channel();
+    let event_manager = EventManager::new()?;
+    let event_registry = event_manager.registry();
+    let event_manager_loop = event_manager.run_event_loop_in_background(event_sender.clone());
+    let ui_event_loop = ui.run_event_loop_in_background(event_sender);
 
     connections.register_listener(&event_registry)?;
 
@@ -203,14 +202,17 @@ where
                 }
             }
             LocalEvent::Connection(event) => {
-                editor.status_message.clear();
                 match event {
                     ConnectionEvent::NewConnection => {
                         let handle = connections.accept_connection(&event_registry)?;
                         editor.on_client_joined(&mut clients, handle);
                         connections.listen_next_listener_event(&event_registry)?;
+
+                        profiler.end_frame();
+                        continue;
                     }
                     ConnectionEvent::Stream(stream_id) => {
+                        editor.status_message.clear();
                         let handle = stream_id.into();
                         let editor_loop = connections.receive_events(handle, |event| {
                             editor.on_event(&mut clients, TargetClient::Remote(handle), event)
@@ -257,13 +259,12 @@ where
     P: Profiler,
     I: Ui,
 {
-    let (event_sender, event_receiver) = mpsc::channel();
-
     let mut client_events = ClientEventSerializer::default();
     client_events_from_args(&args, |event| {
         client_events.serialize(event);
     });
 
+    let (event_sender, event_receiver) = mpsc::channel();
     let event_manager = EventManager::new()?;
     let event_registry = event_manager.registry();
     let event_manager_loop = event_manager.run_event_loop_in_background(event_sender.clone());

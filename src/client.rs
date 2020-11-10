@@ -9,7 +9,7 @@ use crate::{
     ui::UiKind,
 };
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub enum TargetClient {
     Local,
     Remote(ConnectionWithClientHandle),

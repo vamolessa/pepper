@@ -12,7 +12,6 @@ pub mod tui;
 
 pub type UiResult<T> = Result<T, Box<dyn 'static + Error>>;
 
-#[derive(Debug)]
 pub enum UiKind {
     None,
     Tui { status_bar_buf: String },
