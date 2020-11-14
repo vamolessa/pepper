@@ -17,6 +17,7 @@ name = "pepper"
 path = "src/main.rs"
 
 [features]
+default = []
 demo = []
 
 [dependencies]
