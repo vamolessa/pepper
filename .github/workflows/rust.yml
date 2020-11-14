@@ -59,6 +59,7 @@ jobs:
       with:
         name: ${{ github.workflow }}-windows-latest-default
         path: dist/${{ github.workflow }}-windows-latest-default
+    - uses: actions/download-artifact@v1
       with:
         name: ${{ github.workflow }}-ubuntu-latest-demo
         path: dist/${{ github.workflow }}-ubuntu-latest-demo
