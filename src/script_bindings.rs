@@ -520,6 +520,21 @@ mod buffer {
         Ok(())
     }
 
+    #[cfg(feature = "demo")]
+    pub fn save(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        _: (),
+    ) -> ScriptResult<()> {
+        ctx.status_message.write_str(
+            StatusMessageKind::Error,
+            "buffer.save is only available on the full version",
+        );
+        Ok(())
+    }
+
+    #[cfg(not(feature = "demo"))]
     pub fn save(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
@@ -551,6 +566,21 @@ mod buffer {
             .map_err(ScriptError::from)
     }
 
+    #[cfg(feature = "demo")]
+    pub fn save_all(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        _: (),
+    ) -> ScriptResult<()> {
+        ctx.status_message.write_str(
+            StatusMessageKind::Error,
+            "buffer.save_all is only available on the full version",
+        );
+        Ok(())
+    }
+
+    #[cfg(not(feature = "demo"))]
     pub fn save_all(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
@@ -1435,6 +1465,21 @@ mod keymap {
         map_mode(ctx, Mode::Insert(Default::default()), from, to)
     }
 
+    #[cfg(feature = "demo")]
+    fn map_mode(
+        ctx: &mut ScriptContext,
+        _: Mode,
+        _: ScriptString,
+        _: ScriptString,
+    ) -> ScriptResult<()> {
+        ctx.status_message.write_str(
+            StatusMessageKind::Error,
+            "keymap is only available on the full version",
+        );
+        Ok(())
+    }
+
+    #[cfg(not(feature = "demo"))]
     fn map_mode(
         ctx: &mut ScriptContext,
         mode: Mode,
@@ -1628,3 +1673,4 @@ mod helper {
         }
     }
 }
+

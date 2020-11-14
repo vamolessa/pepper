@@ -11,6 +11,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macOS-latest, 'windows-latest']
         rust: [stable]
+        features: [default, demo]
 
     steps:
     - uses: hecrj/setup-rust-action@v1
@@ -23,18 +24,18 @@ jobs:
     - name: Run tests
       run: cargo test --verbose
     - name: Build release
-      run: cargo build --verbose --release
+      run: cargo build --verbose --release --features ${{ matrix.features }}
     - name: Upload unix binary
       uses: actions/upload-artifact@v1
       if: matrix.os != 'windows-latest'
       with:
-        name: ${{ github.workflow }}-${{ matrix.os }}
+        name: ${{ github.workflow }}-${{ matrix.os }}-${{ matrix.features }}
         path: target/release/${{ github.workflow }}
     - name: Upload windows binary
       uses: actions/upload-artifact@v1
       if: matrix.os == 'windows-latest'
       with:
-        name: ${{ github.workflow }}-${{ matrix.os }}
+        name: ${{ github.workflow }}-${{ matrix.os }}-${{ matrix.features }}
         path: target/release/${{ github.workflow }}.exe
 
   release:
@@ -48,16 +49,27 @@ jobs:
       uses: actions/checkout@v1
     - uses: actions/download-artifact@v1
       with:
-        name: ${{ github.workflow }}-ubuntu-latest
-        path: dist/${{ github.workflow }}-ubuntu-latest
+        name: ${{ github.workflow }}-ubuntu-latest-default
+        path: dist/${{ github.workflow }}-ubuntu-latest-default
     - uses: actions/download-artifact@v1
       with:
-        name: ${{ github.workflow }}-macOS-latest
-        path: dist/${{ github.workflow }}-macOS-latest
+        name: ${{ github.workflow }}-macOS-latest-default
+        path: dist/${{ github.workflow }}-macOS-latest-default
     - uses: actions/download-artifact@v1
       with:
-        name: ${{ github.workflow }}-windows-latest
-        path: dist/${{ github.workflow }}-windows-latest
+        name: ${{ github.workflow }}-windows-latest-default
+        path: dist/${{ github.workflow }}-windows-latest-default
+      with:
+        name: ${{ github.workflow }}-ubuntu-latest-demo
+        path: dist/${{ github.workflow }}-ubuntu-latest-demo
+    - uses: actions/download-artifact@v1
+      with:
+        name: ${{ github.workflow }}-macOS-latest-demo
+        path: dist/${{ github.workflow }}-macOS-latest-demo
+    - uses: actions/download-artifact@v1
+      with:
+        name: ${{ github.workflow }}-windows-latest-demo
+        path: dist/${{ github.workflow }}-windows-latest-demo
     - name: List release files
       run: find dist/
     - name: Create release
@@ -76,7 +88,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
-        asset_path: ./dist/${{ github.workflow }}-ubuntu-latest/${{ github.workflow }}
+        asset_path: ./dist/${{ github.workflow }}-ubuntu-latest-default/${{ github.workflow }}
         asset_name: ${{ github.workflow }}-linux-x86_64
         asset_content_type: application/x-elf
     - name: Upload macos release asset
@@ -85,7 +97,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
-        asset_path: ./dist/${{ github.workflow }}-macOS-latest/${{ github.workflow }}
+        asset_path: ./dist/${{ github.workflow }}-macOS-latest-default/${{ github.workflow }}
         asset_name: ${{ github.workflow }}-darwin-x86_64
         asset_content_type: application/x-mach-binary
     - name: Upload windows release asset
@@ -94,6 +106,33 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
-        asset_path: ./dist/${{ github.workflow }}-windows-latest/${{ github.workflow }}.exe
+        asset_path: ./dist/${{ github.workflow }}-windows-latest-default/${{ github.workflow }}.exe
+        asset_name: ${{ github.workflow }}-windows-x86_64.exe
+        asset_content_type: application/vnd.microsoft.portable-executable
+    - name: Upload linux release asset
+      uses: actions/upload-release-asset@v1.0.1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
+        asset_path: ./dist/${{ github.workflow }}-ubuntu-latest-demo/${{ github.workflow }}
+        asset_name: ${{ github.workflow }}-linux-x86_64
+        asset_content_type: application/x-elf
+    - name: Upload macos release asset
+      uses: actions/upload-release-asset@v1.0.1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
+        asset_path: ./dist/${{ github.workflow }}-macOS-latest-demo/${{ github.workflow }}
+        asset_name: ${{ github.workflow }}-darwin-x86_64
+        asset_content_type: application/x-mach-binary
+    - name: Upload windows release asset
+      uses: actions/upload-release-asset@v1.0.1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
+        asset_path: ./dist/${{ github.workflow }}-windows-latest-demo/${{ github.workflow }}.exe
         asset_name: ${{ github.workflow }}-windows-x86_64.exe
         asset_content_type: application/vnd.microsoft.portable-executable

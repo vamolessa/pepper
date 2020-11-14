@@ -16,6 +16,9 @@ categories = ["command-line-utilities", "text-editors"]
 name = "pepper"
 path = "src/main.rs"
 
+[features]
+demo = []
+
 [dependencies]
 ctrlc = "3.1"
 crossterm = "0.18"
