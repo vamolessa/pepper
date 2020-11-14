@@ -3,7 +3,7 @@ name: pepper
 on: [push, pull_request]
 jobs:
   build:
-    name: Test rust ${{ matrix.rust }} on ${{ matrix.os }}
+    name: Test rust ${{ matrix.rust }} on ${{ matrix.os }} ${{ matrix.features }} version
 
     runs-on: ${{ matrix.os }}
 
