@@ -117,7 +117,7 @@ jobs:
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
         asset_path: ./dist/${{ github.workflow }}-ubuntu-latest-demo/${{ github.workflow }}
-        asset_name: ${{ github.workflow }}-linux-x86_64
+        asset_name: ${{ github.workflow }}-linux-x86_64-demo
         asset_content_type: application/x-elf
     - name: Upload macos release asset
       uses: actions/upload-release-asset@v1.0.1
@@ -126,7 +126,7 @@ jobs:
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
         asset_path: ./dist/${{ github.workflow }}-macOS-latest-demo/${{ github.workflow }}
-        asset_name: ${{ github.workflow }}-darwin-x86_64
+        asset_name: ${{ github.workflow }}-darwin-x86_64-demo
         asset_content_type: application/x-mach-binary
     - name: Upload windows release asset
       uses: actions/upload-release-asset@v1.0.1
@@ -135,5 +135,5 @@ jobs:
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
         asset_path: ./dist/${{ github.workflow }}-windows-latest-demo/${{ github.workflow }}.exe
-        asset_name: ${{ github.workflow }}-windows-x86_64.exe
+        asset_name: ${{ github.workflow }}-windows-x86_64-demo.exe
         asset_content_type: application/vnd.microsoft.portable-executable
