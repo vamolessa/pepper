@@ -161,7 +161,7 @@ mod client {
         } else {
             ctx.status_message.write_str(
                 StatusMessageKind::Error,
-                "there are unsaved changes in buffers. try 'editor.force_quit' to force quit",
+                "there are unsaved changes in buffers. try 'client.force_quit' to force quit",
             );
             Ok(())
         }
@@ -190,7 +190,7 @@ mod client {
         } else {
             ctx.status_message.write_str(
                 StatusMessageKind::Error,
-                "there are unsaved changes in buffers. try 'editor.force_quit_all' to force quit all",
+                "there are unsaved changes in buffers. try 'client.force_quit_all' to force quit all",
             );
             Ok(())
         }
@@ -529,7 +529,7 @@ mod buffer {
     ) -> ScriptResult<()> {
         ctx.status_message.write_str(
             StatusMessageKind::Error,
-            "buffer.save is only available on the full version",
+            "'buffer.save' is only available on the full version",
         );
         Ok(())
     }
@@ -575,7 +575,7 @@ mod buffer {
     ) -> ScriptResult<()> {
         ctx.status_message.write_str(
             StatusMessageKind::Error,
-            "buffer.save_all is only available on the full version",
+            "'buffer.save_all' is only available on the full version",
         );
         Ok(())
     }
@@ -1474,7 +1474,7 @@ mod keymap {
     ) -> ScriptResult<()> {
         ctx.status_message.write_str(
             StatusMessageKind::Error,
-            "keymap is only available on the full version",
+            "'keymap' is only available on the full version",
         );
         Ok(())
     }
