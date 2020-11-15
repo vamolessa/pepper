@@ -33,7 +33,7 @@ jobs:
       run: cargo test --verbose
     - name: Build release
       run: cargo build --verbose --release --features ${{ matrix.features }}
-    - name: Upload $${ matrix.os }} binary
+    - name: Upload ${ matrix.os }} binary
       uses: actions/upload-artifact@v1
       with:
         name: ${{ github.workflow }}-${{ matrix.os }}-${{ matrix.features }}
