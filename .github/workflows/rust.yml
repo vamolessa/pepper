@@ -1,11 +1,14 @@
 name: pepper
 
 env:
-  ubuntu_extension: ''
-  macos_extension: ''
+  linux_os: ubuntu-latest
+  mac_os: macos-latest
+  windows_os: windows-latest
+  linux_extension: ''
+  mac_extension: ''
   windows_extension: '.exe'
-  ubuntu_content_type: 'application/x-elf'
-  macos_content_type: 'application/x-mach-binary'
+  linux_content_type: 'application/x-elf'
+  mac_content_type: 'application/x-mach-binary'
   windows_content_type: 'application/vnd.microsoft.portable-executable'
   default_suffix: ''
   demo_suffix: '-demo'
@@ -13,13 +16,13 @@ env:
 on: [push, pull_request]
 jobs:
   build:
-    name: rust ${{ matrix.rust }} on ${{ matrix.os }} ${{ matrix.features }} version
+    name: rust ${{ matrix.rust }} on ${{ matrix.target }} ${{ matrix.features }} version
     if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags/v')
-    runs-on: ${{ matrix.os }}-latest
+    runs-on: ${{ env[format('{0}_os', matrix.target)] }}
 
     strategy:
       matrix:
-        os: [ubuntu, macos, windows]
+        target: [linux, mac, windows]
         rust: [stable]
         features: [default, demo]
 
@@ -35,14 +38,11 @@ jobs:
       run: cargo test --verbose
     - name: Build release
       run: cargo build --verbose --release --features ${{ matrix.features }}
-    - name: Upload ${ matrix.os }} binary
+    - name: Upload ${ matrix.target }} binary
       uses: actions/upload-artifact@v1
       with:
-        name: ${{ github.workflow }}-${{ matrix.os }}-${{ matrix.features }}
-        path: target/release/${{ github.workflow }}${{ env[format('{0}_extension', matrix.os)] }}
-    - name: Print crate version
-      # https://github.com/marketplace/actions/butler-push
-      run: cat Cargo.toml | grep version | head -n 1 | awk -F'"' '{print $2}'
+        name: ${{ github.workflow }}-${{ matrix.target }}-${{ matrix.features }}
+        path: target/release/${{ github.workflow }}${{ env[format('{0}_extension', matrix.target)] }}
 
   release:
     name: Release
@@ -52,21 +52,22 @@ jobs:
     
     strategy:
       matrix:
-        os: [ubuntu, macos, windows]
-        features: [demo]
+        target: [linux, mac, windows]
+        features: [default, demo]
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v1
     - uses: actions/download-artifact@v1
       with:
-        name: ${{ github.workflow }}-${{ matrix.os }}-${{ matrix.features }}
-        path: dist/${{ github.workflow }}-${{ matrix.os }}-${{ matrix.features }}
+        name: ${{ github.workflow }}-${{ matrix.target }}-${{ matrix.features }}
+        path: dist/${{ github.workflow }}-${{ matrix.target }}-${{ matrix.features }}
     - name: List release files
       run: find dist/
     - name: Create release
       id: create_release
       uses: actions/create-release@v1.0.0
+      if: matrix.features == 'demo'
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
@@ -75,12 +76,22 @@ jobs:
         draft: false
         prerelease: false
         repo: pepper
-    - name: Upload ${{ matrix.os }} ${{ matrix.features }} release asset
+    - name: Upload ${{ matrix.target }} ${{ matrix.features }} release asset
       uses: actions/upload-release-asset@v1.0.1
+      if: matrix.features == 'demo'
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
-        asset_path: ./dist/${{ github.workflow }}-${{ matrix.os }}-${{ matrix.features }}/${{ github.workflow }}
-        asset_name: ${{ github.workflow }}-${{ matrix.os }}${{ env[format('{0}_suffix', matrix.features)] }}${{ env[format('{0}_extension', matrix.os)] }}
-        asset_content_type: ${{ env[format('{0}_content_type', matrix.os)] }}
+        asset_path: ./dist/${{ github.workflow }}-${{ matrix.target }}-${{ matrix.features }}/${{ github.workflow }}
+        asset_name: ${{ github.workflow }}-${{ matrix.target }}${{ env[format('{0}_suffix', matrix.features)] }}${{ env[format('{0}_extension', matrix.target)] }}
+        asset_content_type: ${{ env[format('{0}_content_type', matrix.target)] }}
+    - name: Upload ${{ matrix.target }} ${{ matrix.features }} to itch
+      uses: josephbmanley/butler-publish-itchio-action@master
+      env:
+        BUTLER_CREDENTIALS: ${{ secrets.BUTLER_APIKEY }}
+        CHANNEL: ${{ env[format('{0}_channel', matrix.target)] }}
+        ITCH_GAME: ${{ github.workflow }}
+        ITCH_USER: matheuslessarodrigues
+        PACKAGE: ./dist/${{ github.workflow }}-${{ matrix.target }}-${{ matrix.features }}/${{ github.workflow }}
+        VERSION: ${{ github.ref }}
