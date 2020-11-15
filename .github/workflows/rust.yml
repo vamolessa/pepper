@@ -30,7 +30,7 @@ jobs:
     - uses: hecrj/setup-rust-action@v1
       with:
         rust-version: ${{ matrix.rust }}
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
     - name: Run tests
       run: cargo test --verbose
     - name: Build release
@@ -54,8 +54,8 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v1
-    - uses: actions/download-artifact@v1
+      uses: actions/checkout@v2
+    - uses: actions/download-artifact@v2
       with:
         name: ${{ github.workflow }}-${{ env[format('{0}_channel', matrix.os)] }}${{ env[format('{0}_suffix', matrix.features)] }}
         path: dist/${{ matrix.os }}-${{ matrix.features }}
