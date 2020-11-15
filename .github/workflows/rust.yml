@@ -64,7 +64,6 @@ jobs:
     - name: Create release
       id: create_release
       uses: actions/create-release@v1.0.0
-      if: matrix.features == 'demo'
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
@@ -72,10 +71,8 @@ jobs:
         release_name: Release ${{ github.ref }}
         draft: false
         prerelease: false
-        repo: pepper
     - name: Upload ${{ matrix.os }} ${{ matrix.features }} release asset
       uses: actions/upload-release-asset@v1.0.1
-      if: matrix.features == 'demo'
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
@@ -85,6 +82,8 @@ jobs:
         asset_content_type: ${{ env[format('{0}_content_type', matrix.os)] }}
     - name: Rename ${{ matrix.os }}-${{ matrix.features }} executable before upload
       run: mv dist/${{ matrix.os }}-${{ matrix.features }}/${{ github.workflow }}${{ env[format('{0}_extension', matrix.os)] }} dist/${{ github.workflow }}-${{ env[format('{0}_channel', matrix.os)] }}${{ env[format('{0}_suffix', matrix.features)] }}${{ env[format('{0}_extension', matrix.os)] }}
+    - name: Create version file
+      run: cat Cargo.toml | grep version | head -n 1 | awk -F'"' '{ print $2 }' > version.txt
     - name: Upload ${{ matrix.os }} ${{ matrix.features }} to itch
       uses: josephbmanley/butler-publish-itchio-action@master
       env:
@@ -93,4 +92,4 @@ jobs:
         ITCH_GAME: ${{ github.workflow }}
         ITCH_USER: matheuslessarodrigues
         PACKAGE: dist/${{ github.workflow }}-${{ env[format('{0}_channel', matrix.os)] }}${{ env[format('{0}_suffix', matrix.features)] }}${{ env[format('{0}_extension', matrix.os)] }}
-        VERSION: ${{ github.ref }}
+        VERSION_FILE: version.txt
