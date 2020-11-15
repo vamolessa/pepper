@@ -17,7 +17,7 @@ jobs:
 
     strategy:
       matrix:
-        os: [ubuntu-latest, macOS-latest, windows]
+        os: [ubuntu, macos, windows]
         rust: [stable]
         features: [default, demo]
 
