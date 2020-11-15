@@ -40,8 +40,6 @@ jobs:
       with:
         name: ${{ github.workflow }}-${{ env[format('{0}_channel', matrix.os)] }}${{ env[format('{0}_suffix', matrix.features)] }}
         path: target/release/${{ github.workflow }}${{ env[format('{0}_extension', matrix.os)] }}
-    - name: List release files
-      run: find target/release/
 
   release:
     name: Release
