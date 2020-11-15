@@ -38,6 +38,9 @@ jobs:
       with:
         name: ${{ github.workflow }}-${{ matrix.os }}-${{ matrix.features }}
         path: target/release/${{ github.workflow }}${{ env[format('{0}_extension', matrix.os)] }}
+    - name: Print crate version
+      # https://github.com/marketplace/actions/butler-push
+      run: cat Cargo.toml | grep version | head -n 1 | awk -F'"' '{print $2}'
 
   release:
     name: Release
