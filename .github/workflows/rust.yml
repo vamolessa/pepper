@@ -12,7 +12,7 @@ on: [push, pull_request]
 jobs:
   build:
     name: rust ${{ matrix.rust }} on ${{ matrix.os }} ${{ matrix.features }} version
-
+    if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags/v')
     runs-on: ${{ matrix.os }}-latest
 
     strategy:
