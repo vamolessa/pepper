@@ -80,11 +80,11 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
-        asset_path: ./dist/${{ matrix.os }}-${{ matrix.features }}/${{ github.workflow }}
+        asset_path: ./dist/${{ matrix.os }}-${{ matrix.features }}/${{ github.workflow }}${{ env[format('{0}_extension', matrix.os)] }}
         asset_name: ${{ github.workflow }}-${{ env[format('{0}_channel', matrix.os)] }}${{ env[format('{0}_suffix', matrix.features)] }}${{ env[format('{0}_extension', matrix.os)] }}
         asset_content_type: ${{ env[format('{0}_content_type', matrix.os)] }}
     - name: Rename ${{ matrix.os }}-${{ matrix.features }} executable before upload
-      run: mv dist/${{ matrix.os }}-${{ matrix.features }}/${{ github.workflow }} dist/${{ github.workflow }}-${{ env[format('{0}_channel', matrix.os)] }}${{ env[format('{0}_suffix', matrix.features)] }}${{ env[format('{0}_extension', matrix.os)] }}
+      run: mv dist/${{ matrix.os }}-${{ matrix.features }}/${{ github.workflow }}${{ env[format('{0}_extension', matrix.os)] }} dist/${{ github.workflow }}-${{ env[format('{0}_channel', matrix.os)] }}${{ env[format('{0}_suffix', matrix.features)] }}${{ env[format('{0}_extension', matrix.os)] }}
     - name: Upload ${{ matrix.os }} ${{ matrix.features }} to itch
       uses: josephbmanley/butler-publish-itchio-action@master
       env:
