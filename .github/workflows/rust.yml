@@ -30,10 +30,7 @@ jobs:
     - uses: hecrj/setup-rust-action@v1
       with:
         rust-version: ${{ matrix.rust }}
-        components: rustfmt
     - uses: actions/checkout@v1
-    - name: Check formatting
-      run: cargo fmt -- --check
     - name: Run tests
       run: cargo test --verbose
     - name: Build release
