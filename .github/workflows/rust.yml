@@ -7,6 +7,8 @@ env:
   ubuntu_content_type: 'application/x-elf'
   macos_content_type: 'application/x-mach-binary'
   windows_content_type: 'application/vnd.microsoft.portable-executable'
+  default_suffix: ''
+  demo_suffix: '-demo'
 
 on: [push, pull_request]
 jobs:
@@ -51,7 +53,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu, macos, windows]
-        features: [default, demo]
+        features: [demo]
 
     steps:
     - name: Checkout code
@@ -72,6 +74,7 @@ jobs:
         release_name: Release ${{ github.ref }}
         draft: false
         prerelease: false
+        repo: pepper
     - name: Upload ${{ matrix.os }} ${{ matrix.features }} release asset
       uses: actions/upload-release-asset@v1.0.1
       env:
@@ -79,5 +82,5 @@ jobs:
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
         asset_path: ./dist/${{ github.workflow }}-${{ matrix.os }}-${{ matrix.features }}/${{ github.workflow }}
-        asset_name: ${{ github.workflow }}-${{ matrix.os }}-${{ matrix.features }}
+        asset_name: ${{ github.workflow }}-${{ matrix.os }}${{ env[format('{0}_suffix', matrix.features)] }}${{ env[format('{0}_extension', matrix.os)] }}
         asset_content_type: ${{ env[format('{0}_content_type', matrix.os)] }}
