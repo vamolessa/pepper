@@ -607,12 +607,11 @@ where
         }
         None => {
             buffer_needs_save = false;
-            buffer_path = "";
+            buffer_path = "<no buffer>";
         }
     };
 
     buf.clear();
-
     match x {
         Some(x) => {
             use std::fmt::Write;
@@ -636,15 +635,13 @@ where
 
             buf.push(' ');
 
-            if !buffer_path.is_empty() {
-                let title_start = buf.len();
-                if buffer_needs_save {
-                    buf.push('*');
-                }
-                buf.push_str(buffer_path);
-                handle_command!(write, terminal::SetTitle(&buf[title_start..]))?;
-                write!(buf, ":{},{} ", line_number, column_number)?;
+            let title_start = buf.len();
+            if buffer_needs_save {
+                buf.push('*');
             }
+            buf.push_str(buffer_path);
+            handle_command!(write, terminal::SetTitle(&buf[title_start..]))?;
+            write!(buf, ":{},{} ", line_number, column_number)?;
 
             let available_width = client_view.client.viewport_size.0 as usize - x;
 
@@ -663,12 +660,11 @@ where
             handle_command!(write, Print(buf))?;
         }
         None => {
-            let title_start = buf.len();
             if buffer_needs_save {
                 buf.push('*');
             }
             buf.push_str(buffer_path);
-            handle_command!(write, terminal::SetTitle(&buf[title_start..]))?;
+            handle_command!(write, terminal::SetTitle(&buf))?;
         }
     }
 
