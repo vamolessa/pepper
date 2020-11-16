@@ -598,51 +598,77 @@ where
         Some(0)
     };
 
-    if let Some((buffer, x)) = client_view.buffer.zip(x) {
-        use std::fmt::Write;
+    let buffer_needs_save;
+    let buffer_path;
+    match client_view.buffer {
+        Some(buffer) => {
+            buffer_needs_save = buffer.needs_save();
+            buffer_path = buffer.path().and_then(|p| p.to_str()).unwrap_or("");
+        }
+        None => {
+            buffer_needs_save = false;
+            buffer_path = "";
+        }
+    };
 
-        let buffer_path = buffer.path().and_then(|p| p.to_str()).unwrap_or("");
-        let line_number = client_view.main_cursor_position.line_index + 1;
-        let column_number = client_view.main_cursor_position.column_byte_index + 1;
+    buf.clear();
 
-        let param_count = match &editor.mode {
-            Mode::Normal(state) if has_focus => state.count,
-            _ => 0,
-        };
+    match x {
+        Some(x) => {
+            use std::fmt::Write;
 
-        buf.clear();
+            let line_number = client_view.main_cursor_position.line_index + 1;
+            let column_number = client_view.main_cursor_position.column_byte_index + 1;
 
-        if has_focus {
-            if param_count > 0 {
-                write!(buf, "{}", param_count)?;
+            let param_count = match &editor.mode {
+                Mode::Normal(state) if has_focus => state.count,
+                _ => 0,
             };
-            for key in &editor.buffered_keys {
-                write!(buf, "{}", key)?;
+
+            if has_focus {
+                if param_count > 0 {
+                    write!(buf, "{}", param_count)?;
+                };
+                for key in &editor.buffered_keys {
+                    write!(buf, "{}", key)?;
+                }
             }
+
+            buf.push(' ');
+
+            let title_start = buf.len();
+            if buffer_needs_save {
+                buf.push('*');
+            }
+            buf.push_str(buffer_path);
+            handle_command!(write, terminal::SetTitle(&buf[title_start..]))?;
+
+            write!(buf, ":{},{} ", line_number, column_number)?;
+
+            let available_width = client_view.client.viewport_size.0 as usize - x;
+
+            let min_index = buf.len() - buf.len().min(available_width);
+            let min_index = buf
+                .char_indices()
+                .map(|(i, _)| i)
+                .filter(|i| *i >= min_index)
+                .next()
+                .unwrap_or(buf.len());
+            let buf = &buf[min_index..];
+
+            for _ in 0..(available_width - buf.len()) {
+                handle_command!(write, Print(' '))?;
+            }
+            handle_command!(write, Print(buf))?;
         }
-
-        buf.push(' ');
-        if buffer.needs_save() {
-            buf.push('*');
+        None => {
+            let title_start = buf.len();
+            if buffer_needs_save {
+                buf.push('*');
+            }
+            buf.push_str(buffer_path);
+            handle_command!(write, terminal::SetTitle(&buf[title_start..]))?;
         }
-        write!(buf, "{}:{},{} ", buffer_path, line_number, column_number)?;
-
-        let available_width = client_view.client.viewport_size.0 as usize - x;
-
-        let min_index = buf.len() - buf.len().min(available_width);
-        let min_index = buf
-            .char_indices()
-            .map(|(i, _)| i)
-            .filter(|i| *i >= min_index)
-            .next()
-            .unwrap_or(buf.len());
-        let buf = &buf[min_index..];
-
-        for _ in 0..(available_width - buf.len()) {
-            handle_command!(write, Print(' '))?;
-        }
-        handle_command!(write, Print(buf))?;
-        handle_command!(write, terminal::SetTitle(buf.trim()))?;
     }
 
     handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;

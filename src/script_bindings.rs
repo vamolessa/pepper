@@ -82,7 +82,7 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
     register!(read_line => prompt, read,);
     register!(picker => prompt, reset, entry, pick,);
     register!(process => pipe, spawn,);
-    register!(keymap => normal, insert,);
+    register!(keymap => normal, insert, read_line, picker, script,);
     register!(syntax => rules,);
     register!(glob => compile, matches,);
 
@@ -1463,6 +1463,33 @@ mod keymap {
         (from, to): (ScriptString, ScriptString),
     ) -> ScriptResult<()> {
         map_mode(ctx, Mode::Insert(Default::default()), from, to)
+    }
+
+    pub fn read_line(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        (from, to): (ScriptString, ScriptString),
+    ) -> ScriptResult<()> {
+        map_mode(ctx, Mode::ReadLine(Default::default()), from, to)
+    }
+
+    pub fn picker(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        (from, to): (ScriptString, ScriptString),
+    ) -> ScriptResult<()> {
+        map_mode(ctx, Mode::Picker(Default::default()), from, to)
+    }
+
+    pub fn script(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        (from, to): (ScriptString, ScriptString),
+    ) -> ScriptResult<()> {
+        map_mode(ctx, Mode::Script(Default::default()), from, to)
     }
 
     #[cfg(feature = "demo")]
