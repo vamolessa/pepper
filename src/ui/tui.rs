@@ -636,14 +636,15 @@ where
 
             buf.push(' ');
 
-            let title_start = buf.len();
-            if buffer_needs_save {
-                buf.push('*');
+            if !buffer_path.is_empty() {
+                let title_start = buf.len();
+                if buffer_needs_save {
+                    buf.push('*');
+                }
+                buf.push_str(buffer_path);
+                handle_command!(write, terminal::SetTitle(&buf[title_start..]))?;
+                write!(buf, ":{},{} ", line_number, column_number)?;
             }
-            buf.push_str(buffer_path);
-            handle_command!(write, terminal::SetTitle(&buf[title_start..]))?;
-
-            write!(buf, ":{},{} ", line_number, column_number)?;
 
             let available_width = client_view.client.viewport_size.0 as usize - x;
 
