@@ -1,5 +1,6 @@
 use std::{
     io::{self, Cursor, Read, Write},
+    path::Path,
     process::{Child, ChildStdin, Command, Stdio},
     sync::{mpsc, Arc, Mutex, MutexGuard},
     thread,
@@ -47,6 +48,21 @@ impl SharedJson {
 
     pub fn write_lock(&mut self) -> MutexGuard<SharedJsonGuard> {
         self.0.lock().unwrap()
+    }
+}
+
+pub enum Uri<'a> {
+    None,
+    Path(&'a Path),
+}
+impl<'a> Uri<'a> {
+    pub fn parse(uri: &'a str) -> Self {
+        const FILE_SCHEME_PREFIX: &'static str = "file:///";
+        if uri.starts_with(FILE_SCHEME_PREFIX) {
+            Uri::Path(Path::new(&uri[FILE_SCHEME_PREFIX.len()..]))
+        } else {
+            Uri::None
+        }
     }
 }
 

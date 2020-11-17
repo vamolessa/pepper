@@ -1,11 +1,14 @@
 use std::{
+    collections::HashMap,
     env, io,
+    path::PathBuf,
     process::{self, Command},
     sync::mpsc,
 };
 
 use crate::{
     buffer::BufferCollection,
+    buffer_position::BufferRange,
     buffer_view::BufferViewCollection,
     client_event::LocalEvent,
     editor::{EditorEvent, StatusMessage},
@@ -15,7 +18,7 @@ use crate::{
         capabilities,
         protocol::{
             PendingRequestColection, Protocol, ResponseError, ServerConnection, ServerEvent,
-            ServerNotification, ServerRequest, ServerResponse, SharedJson,
+            ServerNotification, ServerRequest, ServerResponse, SharedJson, Uri,
         },
     },
 };
@@ -74,6 +77,20 @@ declare_json_object! {
         documentSymbolProvider: GenericCapability,
         workspaceSymbolProvider: GenericCapability,
     }
+}
+
+struct Diagnostic {
+    message: String,
+    range: BufferRange,
+}
+
+struct BufferDiagnosticCollection {
+    diagnostics: Vec<Diagnostic>,
+    diagnostics_len: usize,
+}
+
+struct DiagnosticCollection {
+    buffer_diagnostics: HashMap<PathBuf, BufferDiagnosticCollection>,
 }
 
 pub struct Client {
@@ -188,6 +205,12 @@ impl Client {
                 }
 
                 let params: Params = deserialize!(notification.params);
+                let uri = params.uri.as_str(json);
+                let path = match Uri::parse(uri) {
+                    Uri::None => return Ok(()),
+                    Uri::Path(path) => path,
+                };
+
                 for diagnostic in params.diagnostics.elements(json) {
                     declare_json_object! {
                         #[derive(Default)]
@@ -276,7 +299,15 @@ impl Client {
 
         for event in events {
             match event {
-                _ => (),
+                EditorEvent::BufferOpen(handle) => {
+                    //
+                }
+                EditorEvent::BufferSave(handle) => {
+                    //
+                }
+                EditorEvent::BufferClose(handle) => {
+                    //
+                }
             }
         }
         Ok(())

@@ -70,7 +70,7 @@ pub struct Args {
 }
 
 fn main() {
-    /*
+    //*
     use ui::Ui;
     let stdout = std::io::stdout();
     let stdout = stdout.lock();
