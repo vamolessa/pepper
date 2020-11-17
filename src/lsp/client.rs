@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     io,
     path::{Path, PathBuf},
     process::{self, Command},
@@ -8,7 +7,7 @@ use std::{
 
 use crate::{
     buffer::BufferCollection,
-    buffer_position::BufferRange,
+    buffer_position::{BufferPosition, BufferRange},
     buffer_view::BufferViewCollection,
     client_event::LocalEvent,
     editor::{EditorEvent, StatusMessage},
@@ -79,42 +78,104 @@ declare_json_object! {
     }
 }
 
-struct Diagnostic {
-    message: String,
-    range: BufferRange,
+pub struct Diagnostic {
+    pub message: String,
+    pub utf16_range: BufferRange,
 }
 
-struct BufferDiagnosticCollection {
+pub struct BufferDiagnosticCollection {
+    path: PathBuf,
     diagnostics: Vec<Diagnostic>,
-    diagnostics_len: usize,
+    len: usize,
+}
+impl BufferDiagnosticCollection {
+    pub fn add(&mut self, message: &str, range: BufferRange) {
+        if self.len < self.diagnostics.len() {
+            let diagnostic = &mut self.diagnostics[self.len];
+            diagnostic.message.clear();
+            diagnostic.message.push_str(message);
+            diagnostic.utf16_range = range;
+        } else {
+            self.diagnostics.push(Diagnostic {
+                message: message.into(),
+                utf16_range: range,
+            });
+        }
+        self.len += 1;
+    }
 }
 
-struct DiagnosticCollection {
-    buffer_diagnostics: HashMap<PathBuf, BufferDiagnosticCollection>,
+#[derive(Default)]
+pub struct DiagnosticCollection {
+    buffer_diagnostics: Vec<BufferDiagnosticCollection>,
+}
+impl DiagnosticCollection {
+    pub fn buffer_diagnostics(&self, path: &Path) -> &[Diagnostic] {
+        for diagnostics in &self.buffer_diagnostics {
+            if diagnostics.path == path {
+                return &diagnostics.diagnostics[..diagnostics.len];
+            }
+        }
+        &[]
+    }
+
+    pub fn buffer_diagnostics_mut(&mut self, path: &Path) -> &mut BufferDiagnosticCollection {
+        let buffer_diagnostics = &mut self.buffer_diagnostics;
+        for i in 0..buffer_diagnostics.len() {
+            if buffer_diagnostics[i].path == path {
+                let diagnostics = &mut buffer_diagnostics[i];
+                diagnostics.len = 0;
+                return diagnostics;
+            }
+        }
+
+        let last_index = buffer_diagnostics.len();
+        buffer_diagnostics.push(BufferDiagnosticCollection {
+            path: path.into(),
+            diagnostics: Vec::new(),
+            len: 0,
+        });
+        &mut buffer_diagnostics[last_index]
+    }
+
+    pub fn clear_empty(&mut self) {
+        let buffer_diagnostics = &mut self.buffer_diagnostics;
+        for i in (0..buffer_diagnostics.len()).rev() {
+            if buffer_diagnostics[i].len == 0 {
+                buffer_diagnostics.swap_remove(i);
+            }
+        }
+    }
+
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = (&'a Path, &'a [Diagnostic])> {
+        self.buffer_diagnostics
+            .iter()
+            .map(|d| (d.path.as_path(), &d.diagnostics[..d.len]))
+    }
 }
 
 pub struct Client {
     name: String,
-    root: PathBuf,
     protocol: Protocol,
     pending_requests: PendingRequestColection,
 
     initialized: bool,
     capabilities: ClientCapabilities,
     document_selectors: Vec<Glob>,
+    pub diagnostics: DiagnosticCollection,
 }
 
 impl Client {
     fn new(name: String, connection: ServerConnection) -> Self {
         Self {
             name,
-            root: PathBuf::new(),
             protocol: Protocol::new(connection),
             pending_requests: PendingRequestColection::default(),
 
             initialized: false,
             capabilities: ClientCapabilities::default(),
             document_selectors: Vec::new(),
+            diagnostics: DiagnosticCollection::default(),
         }
     }
 
@@ -128,7 +189,9 @@ impl Client {
             ($value:expr) => {
                 match FromJson::from_json($value, &json) {
                     Ok(value) => value,
-                    Err(_) => return self.on_parse_error(json, request.id),
+                    Err(_) => {
+                        return Self::respond_parse_error(&mut self.protocol, json, JsonValue::Null)
+                    }
                 }
             };
         }
@@ -192,7 +255,9 @@ impl Client {
             ($value:expr) => {
                 match FromJson::from_json($value, &json) {
                     Ok(value) => value,
-                    Err(_) => return self.on_parse_error(json, JsonValue::Null),
+                    Err(_) => {
+                        return Self::respond_parse_error(&mut self.protocol, json, JsonValue::Null)
+                    }
                 }
             };
         }
@@ -213,6 +278,7 @@ impl Client {
                     Uri::Path(path) => path,
                 };
 
+                let diagnostics = self.diagnostics.buffer_diagnostics_mut(path);
                 for diagnostic in params.diagnostics.elements(json) {
                     declare_json_object! {
                         #[derive(Default)]
@@ -236,7 +302,14 @@ impl Client {
                     }
 
                     let diagnostic: Diagnostic = deserialize!(diagnostic);
+                    let range = diagnostic.range;
+                    let range = BufferRange::between(
+                        BufferPosition::line_col(range.start.line, range.start.character),
+                        BufferPosition::line_col(range.end.line, range.end.character),
+                    );
+                    diagnostics.add(diagnostic.message.as_str(json), range);
                 }
+                self.diagnostics.clear_empty();
             }
             _ => (),
         }
@@ -254,7 +327,9 @@ impl Client {
             ($value:expr) => {
                 match FromJson::from_json($value, &json) {
                     Ok(value) => value,
-                    Err(_) => return self.on_parse_error(json, JsonValue::Null),
+                    Err(_) => {
+                        return Self::respond_parse_error(&mut self.protocol, json, JsonValue::Null)
+                    }
                 }
             };
         }
@@ -285,8 +360,16 @@ impl Client {
     }
 
     pub fn on_parse_error(&mut self, json: &mut Json, request_id: JsonValue) -> io::Result<()> {
+        Self::respond_parse_error(&mut self.protocol, json, request_id)
+    }
+
+    fn respond_parse_error(
+        protocol: &mut Protocol,
+        json: &mut Json,
+        request_id: JsonValue,
+    ) -> io::Result<()> {
         let error = ResponseError::parse_error();
-        self.protocol.respond(json, request_id, Err(error))
+        protocol.respond(json, request_id, Err(error))
     }
 
     pub fn on_editor_events(
@@ -328,9 +411,6 @@ impl Client {
     }
 
     pub fn initialize(&mut self, json: &mut Json, root: &Path) -> io::Result<()> {
-        self.root.clear();
-        self.root.push(root);
-
         let mut params = JsonObject::default();
         params.set(
             "processId".into(),
@@ -395,6 +475,16 @@ impl ClientCollection {
             json,
         });
         Ok(handle)
+    }
+
+    pub fn access<F>(&mut self, handle: ClientHandle, accessor: F)
+    where
+        F: FnOnce(&mut Client, &mut Json),
+    {
+        if let Some(entry) = &mut self.entries[handle.0] {
+            let mut json = entry.json.write_lock();
+            accessor(&mut entry.client, json.get());
+        }
     }
 
     pub fn try_access<F, E>(&mut self, handle: ClientHandle, accessor: F) -> Result<(), E>

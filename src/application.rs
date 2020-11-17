@@ -155,7 +155,8 @@ where
     P: Profiler,
     I: Ui,
 {
-    let mut editor = Editor::new();
+    let current_dir = env::current_dir().map_err(Box::new)?;
+    let mut editor = Editor::new(current_dir);
     let mut clients = ClientCollection::default();
 
     for path in &args.module_search_path {

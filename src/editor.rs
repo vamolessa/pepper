@@ -1,4 +1,8 @@
-use std::{error::Error, fmt, path::Path};
+use std::{
+    error::Error,
+    fmt,
+    path::{Path, PathBuf},
+};
 
 use crate::{
     buffer::{BufferCollection, BufferHandle},
@@ -216,6 +220,7 @@ impl StatusMessage {
 }
 
 pub struct Editor {
+    pub root: PathBuf,
     pub config: Config,
     pub mode: Mode,
 
@@ -239,8 +244,9 @@ pub struct Editor {
     client_target_map: ClientTargetMap,
 }
 impl Editor {
-    pub fn new() -> Self {
+    pub fn new(root: PathBuf) -> Self {
         Self {
+            root,
             config: Config::default(),
             mode: Mode::default(),
 
