@@ -95,6 +95,7 @@ struct DiagnosticCollection {
 
 pub struct Client {
     name: String,
+    root: PathBuf,
     protocol: Protocol,
     pending_requests: PendingRequestColection,
 
@@ -107,6 +108,7 @@ impl Client {
     fn new(name: String, connection: ServerConnection) -> Self {
         Self {
             name,
+            root: PathBuf::new(),
             protocol: Protocol::new(connection),
             pending_requests: PendingRequestColection::default(),
 
@@ -326,6 +328,9 @@ impl Client {
     }
 
     pub fn initialize(&mut self, json: &mut Json, root: &Path) -> io::Result<()> {
+        self.root.clear();
+        self.root.push(root);
+
         let mut params = JsonObject::default();
         params.set(
             "processId".into(),

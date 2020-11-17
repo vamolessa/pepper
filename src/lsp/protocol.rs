@@ -69,7 +69,7 @@ impl<'a> Uri<'a> {
 impl<'a> fmt::Display for Uri<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Self::None => Ok(()),
+            Self::None => (),
             Self::Path(path) => {
                 f.write_str("file:///")?;
                 let mut components = path.components().peekable();
@@ -107,9 +107,9 @@ impl<'a> fmt::Display for Uri<'a> {
                     }
                     f.write_str("/")?;
                 }
-                Ok(())
             }
         }
+        Ok(())
     }
 }
 
