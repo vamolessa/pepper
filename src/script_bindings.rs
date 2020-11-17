@@ -1354,7 +1354,7 @@ mod process {
 mod config {
     use super::*;
 
-    pub const KEYS: &'static [&'static str] = &[
+    pub const KEYS: &[&str] = &[
         "tab_size",
         "indent_with_tabs",
         "visual_empty",
@@ -1608,7 +1608,7 @@ mod glob {
 mod theme {
     use super::*;
 
-    pub const KEYS: &'static [&'static str] = THEME_COLOR_NAMES;
+    pub const KEYS: &[&str] = THEME_COLOR_NAMES;
 
     pub fn index<'script>(
         _: ScriptEngineRef,
@@ -1643,7 +1643,7 @@ mod theme {
 mod registers {
     use super::*;
 
-    pub const KEYS: &'static [&'static str] = &[
+    pub const KEYS: &[&str] = &[
         "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r",
         "s", "t", "u", "v", "w", "x", "y", "z",
     ];

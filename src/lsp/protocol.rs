@@ -1,6 +1,7 @@
 use std::{
+    fmt,
     io::{self, Cursor, Read, Write},
-    path::Path,
+    path::{Component, Path, Prefix},
     process::{Child, ChildStdin, Command, Stdio},
     sync::{mpsc, Arc, Mutex, MutexGuard},
     thread,
@@ -57,11 +58,57 @@ pub enum Uri<'a> {
 }
 impl<'a> Uri<'a> {
     pub fn parse(uri: &'a str) -> Self {
-        const FILE_SCHEME_PREFIX: &'static str = "file:///";
+        const FILE_SCHEME_PREFIX: &str = "file:///";
         if uri.starts_with(FILE_SCHEME_PREFIX) {
             Uri::Path(Path::new(&uri[FILE_SCHEME_PREFIX.len()..]))
         } else {
             Uri::None
+        }
+    }
+}
+impl<'a> fmt::Display for Uri<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Self::None => Ok(()),
+            Self::Path(path) => {
+                f.write_str("file:///")?;
+                let mut components = path.components().peekable();
+                let mut has_prefix = false;
+                while let Some(component) = components.next() {
+                    match component {
+                        Component::Prefix(prefix) => match prefix.kind() {
+                            Prefix::Verbatim(p) => match p.to_str() {
+                                Some(p) => {
+                                    f.write_str(p)?;
+                                    has_prefix = true;
+                                }
+                                None => return Err(fmt::Error),
+                            },
+                            Prefix::VerbatimDisk(d) | Prefix::Disk(d) => {
+                                f.write_fmt(format_args!("{}:", d as char))?;
+                                has_prefix = true;
+                            }
+                            _ => continue,
+                        },
+                        Component::RootDir => {
+                            if has_prefix {
+                                continue;
+                            }
+                        }
+                        Component::CurDir => f.write_str(".")?,
+                        Component::ParentDir => f.write_str("..")?,
+                        Component::Normal(component) => match component.to_str() {
+                            Some(component) => f.write_str(component)?,
+                            None => return Err(fmt::Error),
+                        },
+                    }
+                    if let None = components.peek() {
+                        break;
+                    }
+                    f.write_str("/")?;
+                }
+                Ok(())
+            }
         }
     }
 }

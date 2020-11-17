@@ -81,7 +81,8 @@ fn main() {
     let (event_sender, event_receiver) = std::sync::mpsc::channel();
     ui.run_event_loop_in_background(event_sender.clone());
     let handle = lsp.spawn("rust", server_command, event_sender).unwrap();
-    lsp.try_access(handle, |c, j| c.initialize(j)).unwrap();
+    let current_dir = std::env::current_dir().unwrap();
+    lsp.try_access(handle, |c, j| c.initialize(j, &current_dir)).unwrap();
 
     let mut buffers = buffer::BufferCollection::default();
     let mut buffer_views = buffer_view::BufferViewCollection::default();

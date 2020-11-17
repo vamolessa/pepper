@@ -1,4 +1,4 @@
-use std::{convert::From, io};
+use std::{convert::From, io, fmt};
 
 pub struct JsonConvertError;
 pub trait FromJson<'json>: Sized {
@@ -340,6 +340,13 @@ impl Json {
     pub fn create_string(&mut self, value: &str) -> JsonString {
         let start = self.strings.len() as _;
         self.strings.push_str(value);
+        let end = self.strings.len() as _;
+        JsonString { start, end }
+    }
+
+    pub fn fmt_string(&mut self, args: fmt::Arguments) -> JsonString {
+        let start = self.strings.len() as _;
+        let _ = fmt::write(&mut self.strings, args);
         let end = self.strings.len() as _;
         JsonString { start, end }
     }

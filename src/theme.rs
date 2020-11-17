@@ -34,7 +34,7 @@ macro_rules! theme_colors {
             }
         }
 
-        pub const THEME_COLOR_NAMES: &'static [&'static str] = &[$(stringify!($color),)*];
+        pub const THEME_COLOR_NAMES: &[&str] = &[$(stringify!($color),)*];
     }
 }
 

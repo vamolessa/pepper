@@ -784,7 +784,7 @@ impl<'lua> ScriptEngineRef<'lua> {
 
     pub fn create_iterator(
         &self,
-        keys: &'static [&'static str],
+        keys: &'static [&str],
     ) -> ScriptResult<(ScriptFunction<'lua>, ScriptFunction<'lua>)> {
         let next_function = self
             .lua

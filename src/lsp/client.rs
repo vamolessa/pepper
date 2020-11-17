@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
-    env, io,
-    path::PathBuf,
+    io,
+    path::{Path, PathBuf},
     process::{self, Command},
     sync::mpsc,
 };
@@ -325,19 +325,15 @@ impl Client {
         Ok(())
     }
 
-    pub fn initialize(&mut self, json: &mut Json) -> io::Result<()> {
-        let current_dir = match env::current_dir()?.as_os_str().to_str() {
-            Some(path) => json.create_string(path).into(),
-            None => JsonValue::Null,
-        };
-
+    pub fn initialize(&mut self, json: &mut Json, root: &Path) -> io::Result<()> {
         let mut params = JsonObject::default();
         params.set(
             "processId".into(),
             JsonValue::Integer(process::id() as _),
             json,
         );
-        params.set("rootUri".into(), current_dir, json);
+        let root = json.fmt_string(format_args!("{}", Uri::Path(root)));
+        params.set("rootUri".into(), root.into(), json);
         params.set(
             "capabilities".into(),
             capabilities::client_capabilities(json),
