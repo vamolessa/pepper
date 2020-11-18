@@ -489,6 +489,7 @@ impl Editor {
             target_client,
             clients,
 
+            root: &self.root,
             config: &mut self.config,
 
             buffers: &mut self.buffers,
@@ -561,6 +562,7 @@ impl Editor {
 
     pub fn on_lsp_event(&mut self, client_handle: LspClientHandle, event: LspServerEvent) {
         let mut ctx = LspClientContext {
+            root: &self.root,
             buffers: &mut self.buffers,
             buffer_views: &mut self.buffer_views,
             status_message: &mut self.status_message,

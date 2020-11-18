@@ -415,6 +415,7 @@ pub struct ScriptContext<'a> {
     pub next_mode: Mode,
     pub edited_buffers: bool,
 
+    pub root: &'a Path,
     pub config: &'a mut Config,
 
     pub buffers: &'a mut BufferCollection,
@@ -452,6 +453,7 @@ impl<'a> ScriptContext<'a> {
 
     pub fn lsp_context(&mut self) -> (&mut LspClientCollection, LspClientContext) {
         let ctx = LspClientContext {
+            root: self.root,
             buffers: self.buffers,
             buffer_views: self.buffer_views,
             status_message: self.status_message,

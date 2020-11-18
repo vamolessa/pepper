@@ -89,6 +89,7 @@ fn main() {
     let mut buffer_views = buffer_view::BufferViewCollection::default();
     let mut status_message = editor::StatusMessage::new();
     let mut ctx = lsp::LspClientContext {
+        root: &current_dir,
         buffers: &mut buffers,
         buffer_views: &mut buffer_views,
         status_message: &mut status_message,

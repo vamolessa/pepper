@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    buffer::{BufferCollection, BufferHandle},
+    buffer::{Buffer, BufferCollection, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::BufferViewCollection,
     client_event::LocalEvent,
@@ -23,6 +23,7 @@ use crate::{
 };
 
 pub struct ClientContext<'a> {
+    pub root: &'a Path,
     pub buffers: &'a mut BufferCollection,
     pub buffer_views: &'a mut BufferViewCollection,
     pub status_message: &'a mut StatusMessage,
@@ -110,6 +111,10 @@ impl BufferDiagnosticCollection {
     }
 }
 
+fn buffer_has_path(buffer: &Buffer, editor_root: &Path, path: &Path) -> bool {
+    false
+}
+
 #[derive(Default)]
 pub struct DiagnosticCollection {
     buffer_diagnostics: Vec<BufferDiagnosticCollection>,
@@ -124,7 +129,11 @@ impl DiagnosticCollection {
         &[]
     }
 
-    fn buffer_diagnostics_mut(&mut self, path: &Path) -> &mut BufferDiagnosticCollection {
+    fn buffer_diagnostics_mut(
+        &mut self,
+        ctx: &ClientContext,
+        path: &Path,
+    ) -> &mut BufferDiagnosticCollection {
         let buffer_diagnostics = &mut self.buffer_diagnostics;
         for i in 0..buffer_diagnostics.len() {
             if buffer_diagnostics[i].path == path {
@@ -134,10 +143,18 @@ impl DiagnosticCollection {
             }
         }
 
+        let mut buffer_handle = None;
+        for (handle, buffer) in ctx.buffers.iter_with_handles() {
+            if buffer_has_path(buffer, ctx.root, path) {
+                buffer_handle = Some(handle);
+                break;
+            }
+        }
+
         let last_index = buffer_diagnostics.len();
         buffer_diagnostics.push(BufferDiagnosticCollection {
             path: path.into(),
-            buffer_handle: None,
+            buffer_handle,
             diagnostics: Vec::new(),
             len: 0,
         });
@@ -284,7 +301,7 @@ impl Client {
                     Uri::Path(path) => path,
                 };
 
-                let diagnostics = self.diagnostics.buffer_diagnostics_mut(path);
+                let diagnostics = self.diagnostics.buffer_diagnostics_mut(ctx, path);
                 for diagnostic in params.diagnostics.elements(json) {
                     declare_json_object! {
                         #[derive(Default)]
