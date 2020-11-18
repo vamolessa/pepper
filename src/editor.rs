@@ -130,7 +130,7 @@ impl ReadLine {
         match keys.next() {
             Key::Esc => ReadLinePoll::Canceled,
             Key::Enter => ReadLinePoll::Submitted,
-            Key::Ctrl('u') => {
+            Key::Home | Key::Ctrl('u') => {
                 self.input.clear();
                 ReadLinePoll::Pending
             }
@@ -151,7 +151,7 @@ impl ReadLine {
                 self.input.truncate(last_index);
                 ReadLinePoll::Pending
             }
-            Key::Ctrl('h') => {
+            Key::Backspace | Key::Ctrl('h') => {
                 if let Some((last_char_index, _)) = self.input.char_indices().rev().next() {
                     self.input.truncate(last_char_index);
                 }

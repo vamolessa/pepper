@@ -690,7 +690,8 @@ impl ScriptEngine {
         for event in events {
             match event {
                 EditorEvent::BufferOpen(handle) => call!(buffer_on_open, *handle),
-                _ => (),
+                EditorEvent::BufferSave(handle) => call!(buffer_on_save, *handle),
+                EditorEvent::BufferClose(handle) => call!(buffer_on_close, *handle),
             }
         }
         drop(s);

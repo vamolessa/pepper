@@ -57,11 +57,7 @@ impl ModeState for State {
                     match context.editor_loop {
                         EditorLoop::Quit => return ModeOperation::Quit,
                         EditorLoop::QuitAll => return ModeOperation::QuitAll,
-                        EditorLoop::Continue => {
-                            context
-                                .status_message
-                                .write_str(StatusMessageKind::Error, &error.to_string());
-                        }
+                        EditorLoop::Continue => context.status_message.write_error(&error),
                     }
                 }
 

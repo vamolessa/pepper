@@ -74,7 +74,7 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
     register!(lsp => start, diagnostics,);
     register!(buffer => all_handles, line_count, line_at, path, path_matches, needs_save, set_search, open, close, force_close,
         close_all, force_close_all, save, save_all, reload, force_reload, reload_all, force_reload_all, commit_edits,
-        on_open,);
+        on_open, on_save, on_close,);
     register!(closed_buffer => path, path_matches,);
     register!(buffer_view => buffer_handle, all_handles, handle_from_path, selection_text, insert_text, insert_text_at,
         delete_selection, delete_in, undo, redo,);
@@ -813,6 +813,24 @@ mod buffer {
         callback: ScriptFunction,
     ) -> ScriptResult<()> {
         engine.add_to_function_array_in_registry("buffer_on_open", callback)
+    }
+
+    pub fn on_save(
+        engine: ScriptEngineRef,
+        _: &mut ScriptContext,
+        _: ScriptContextGuard,
+        callback: ScriptFunction,
+    ) -> ScriptResult<()> {
+        engine.add_to_function_array_in_registry("buffer_on_save", callback)
+    }
+
+    pub fn on_close(
+        engine: ScriptEngineRef,
+        _: &mut ScriptContext,
+        _: ScriptContextGuard,
+        callback: ScriptFunction,
+    ) -> ScriptResult<()> {
+        engine.add_to_function_array_in_registry("buffer_on_close", callback)
     }
 }
 
