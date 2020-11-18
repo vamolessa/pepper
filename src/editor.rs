@@ -236,11 +236,11 @@ pub struct Editor {
 
     pub focused_client: TargetClient,
     pub status_message: StatusMessage,
+    pub lsp: LspClientCollection,
 
     events: EditorEventDoubleQueue,
     keymaps: KeyMapCollection,
     scripts: ScriptEngine,
-    lsp: LspClientCollection,
     client_target_map: ClientTargetMap,
 }
 impl Editor {
@@ -262,11 +262,11 @@ impl Editor {
 
             focused_client: TargetClient::Local,
             status_message: StatusMessage::new(),
+            lsp: LspClientCollection::default(),
 
             events: EditorEventDoubleQueue::default(),
             keymaps: KeyMapCollection::default(),
             scripts: ScriptEngine::new(),
-            lsp: LspClientCollection::default(),
             client_target_map: ClientTargetMap::default(),
         }
     }

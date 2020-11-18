@@ -13,12 +13,13 @@ use crossterm::{
 };
 
 use crate::{
-    buffer::{Buffer, BufferContent},
+    buffer::{Buffer, BufferContent, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
     client::{Client, TargetClient},
     client_event::{Key, LocalEvent},
     cursor::Cursor,
     editor::{Editor, StatusMessageKind},
+    lsp::LspDiagnostic,
     mode::Mode,
     syntax::{HighlightedBuffer, TokenKind},
     theme,
@@ -149,7 +150,7 @@ pub fn render(
     let has_focus = target_client == editor.focused_client;
     let client_view = ClientView::from(editor, client);
 
-    draw_text(buffer, editor, &client_view, has_focus)?;
+    draw_buffer(buffer, editor, &client_view, has_focus)?;
     if has_focus {
         draw_picker(buffer, editor, &client_view)?;
     }
@@ -159,6 +160,7 @@ pub fn render(
 
 struct ClientView<'a> {
     client: &'a Client,
+    buffer_handle: Option<BufferHandle>,
     buffer: Option<&'a Buffer>,
     main_cursor_position: BufferPosition,
     cursors: &'a [Cursor],
@@ -169,9 +171,8 @@ impl<'a> ClientView<'a> {
         let buffer_view = client
             .current_buffer_view_handle()
             .and_then(|h| editor.buffer_views.get(h));
-        let buffer = buffer_view
-            .map(|v| v.buffer_handle)
-            .and_then(|h| editor.buffers.get(h));
+        let buffer_handle = buffer_view.map(|v| v.buffer_handle);
+        let buffer = buffer_handle.and_then(|h| editor.buffers.get(h));
 
         let main_cursor_position;
         let cursors;
@@ -188,6 +189,7 @@ impl<'a> ClientView<'a> {
 
         ClientView {
             client,
+            buffer_handle,
             buffer,
             main_cursor_position,
             cursors,
@@ -195,7 +197,7 @@ impl<'a> ClientView<'a> {
     }
 }
 
-fn draw_text<W>(
+fn draw_buffer<W>(
     write: &mut W,
     editor: &Editor,
     client_view: &ClientView,
@@ -204,9 +206,6 @@ fn draw_text<W>(
 where
     W: Write,
 {
-    static EMPTY_BUFFER: BufferContent = BufferContent::empty();
-    static EMPTY_HIGHLIGHTED_BUFFER: HighlightedBuffer = HighlightedBuffer::new();
-
     #[derive(Clone, Copy, PartialEq, Eq)]
     enum DrawState {
         Token(TokenKind),
@@ -259,25 +258,49 @@ where
             search_ranges = buffer.search_ranges();
         }
         None => {
+            static EMPTY_BUFFER: BufferContent = BufferContent::empty();
+            static EMPTY_HIGHLIGHTED_BUFFER: HighlightedBuffer = HighlightedBuffer::new();
+
             buffer_content = &EMPTY_BUFFER;
             highlighted_buffer = &EMPTY_HIGHLIGHTED_BUFFER;
             search_ranges = &[];
         }
     }
+    let diagnostics = match client_view.buffer_handle {
+        Some(handle) => {
+            let mut diagnostics: &[LspDiagnostic] = &[];
+            for lsp in editor.lsp.iter() {
+                diagnostics = lsp.diagnostics.buffer_diagnostics(handle);
+                if !diagnostics.is_empty() {
+                    break;
+                }
+            }
+            diagnostics
+        }
+        None => &[],
+    };
+
     let search_ranges_last_index = search_ranges.len().saturating_sub(1);
 
     let mut current_cursor_index = 0;
-    let (mut current_cursor_position, mut current_cursor_range) =
-        match cursors.get(current_cursor_index) {
-            Some(cursor) => (cursor.position, cursor.as_range()),
-            None => Default::default(),
-        };
+    let mut current_cursor_position = BufferPosition::default();
+    let mut current_cursor_range = BufferRange::default();
+    if let Some(cursor) = cursors.get(current_cursor_index) {
+        current_cursor_position = cursor.position;
+        current_cursor_range = cursor.as_range();
+    }
 
     let mut current_search_range_index = 0;
-    let mut current_search_range = match search_ranges.get(current_search_range_index) {
-        Some(&range) => range,
-        None => BufferRange::default(),
-    };
+    let mut current_search_range = BufferRange::default();
+    if let Some(&range) = search_ranges.get(current_search_range_index) {
+        current_search_range = range;
+    }
+
+    let mut current_diagnostic_index = 0;
+    let mut current_diagnostic_range = BufferRange::default();
+    if let Some(diagnostic) = diagnostics.get(current_diagnostic_index) {
+        current_diagnostic_range = diagnostic.utf16_range;
+    }
 
     'lines_loop: for line in buffer_content.lines().skip(line_index) {
         let mut draw_state = DrawState::Token(TokenKind::Text);

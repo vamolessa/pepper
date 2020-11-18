@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    buffer::BufferCollection,
+    buffer::{BufferHandle, BufferCollection},
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::BufferViewCollection,
     client_event::LocalEvent,
@@ -83,8 +83,9 @@ pub struct Diagnostic {
     pub utf16_range: BufferRange,
 }
 
-pub struct BufferDiagnosticCollection {
+struct BufferDiagnosticCollection {
     path: PathBuf,
+    buffer_handle: Option<BufferHandle>,
     diagnostics: Vec<Diagnostic>,
     len: usize,
 }
@@ -103,6 +104,10 @@ impl BufferDiagnosticCollection {
         }
         self.len += 1;
     }
+
+    pub fn sort(&mut self) {
+        self.diagnostics.sort_by_key(|d| d.utf16_range.from);
+    }
 }
 
 #[derive(Default)]
@@ -110,16 +115,16 @@ pub struct DiagnosticCollection {
     buffer_diagnostics: Vec<BufferDiagnosticCollection>,
 }
 impl DiagnosticCollection {
-    pub fn buffer_diagnostics(&self, path: &Path) -> &[Diagnostic] {
+    pub fn buffer_diagnostics(&self, buffer_handle: BufferHandle) -> &[Diagnostic] {
         for diagnostics in &self.buffer_diagnostics {
-            if diagnostics.path == path {
+            if diagnostics.buffer_handle == Some(buffer_handle) {
                 return &diagnostics.diagnostics[..diagnostics.len];
             }
         }
         &[]
     }
 
-    pub fn buffer_diagnostics_mut(&mut self, path: &Path) -> &mut BufferDiagnosticCollection {
+    fn buffer_diagnostics_mut(&mut self, path: &Path) -> &mut BufferDiagnosticCollection {
         let buffer_diagnostics = &mut self.buffer_diagnostics;
         for i in 0..buffer_diagnostics.len() {
             if buffer_diagnostics[i].path == path {
@@ -132,6 +137,7 @@ impl DiagnosticCollection {
         let last_index = buffer_diagnostics.len();
         buffer_diagnostics.push(BufferDiagnosticCollection {
             path: path.into(),
+            buffer_handle: None,
             diagnostics: Vec::new(),
             len: 0,
         });
@@ -309,6 +315,7 @@ impl Client {
                     );
                     diagnostics.add(diagnostic.message.as_str(json), range);
                 }
+                diagnostics.sort();
                 self.diagnostics.clear_empty();
             }
             _ => (),
@@ -475,6 +482,13 @@ impl ClientCollection {
             json,
         });
         Ok(handle)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Client> {
+        self.entries.iter().flat_map(|e| match e {
+            Some(e) => Some(&e.client),
+            None => None,
+        })
     }
 
     pub fn access<F>(&mut self, handle: ClientHandle, accessor: F)
