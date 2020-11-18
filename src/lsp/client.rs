@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    buffer::{BufferHandle, BufferCollection},
+    buffer::{BufferCollection, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::BufferViewCollection,
     client_event::LocalEvent,

@@ -1,4 +1,4 @@
-use std::{convert::From, io, fmt};
+use std::{convert::From, fmt, io};
 
 pub struct JsonConvertError;
 pub trait FromJson<'json>: Sized {

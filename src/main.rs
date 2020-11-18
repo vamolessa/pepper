@@ -122,7 +122,6 @@ fn main() {
     });
     return;
     // */
-
     let args: Args = argh::from_env();
     if args.version {
         let name = env!("CARGO_PKG_NAME");
