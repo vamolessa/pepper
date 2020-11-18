@@ -24,10 +24,10 @@ impl UiKind {
         client: &Client,
         target_client: TargetClient,
         buffer: &mut Vec<u8>,
-    ) -> UiResult<()> {
+    ) {
         buffer.clear();
         match self {
-            Self::None => Ok(()),
+            Self::None => (),
             Self::Tui {
                 ref mut status_bar_buf,
             } => tui::render(editor, client, target_client, buffer, status_bar_buf),

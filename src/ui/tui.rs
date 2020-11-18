@@ -118,8 +118,8 @@ where
     fn init(&mut self) -> UiResult<()> {
         ctrlc::set_handler(|| {}).map_err(Box::new)?;
 
-        handle_command!(self.write, terminal::EnterAlternateScreen)?;
-        handle_command!(self.write, cursor::Hide)?;
+        let _ = handle_command!(self.write, terminal::EnterAlternateScreen);
+        let _ = handle_command!(self.write, cursor::Hide);
         self.write.flush()?;
         terminal::enable_raw_mode()?;
         Ok(())
@@ -127,16 +127,16 @@ where
 
     fn display(&mut self, buffer: &[u8]) -> UiResult<()> {
         self.write.write_all(buffer)?;
-        handle_command!(self.write, ResetColor)?;
+        let _ = handle_command!(self.write, ResetColor);
         self.write.flush()?;
         Ok(())
     }
 
     fn shutdown(&mut self) -> UiResult<()> {
-        handle_command!(self.write, terminal::Clear(terminal::ClearType::All))?;
-        handle_command!(self.write, terminal::LeaveAlternateScreen)?;
-        handle_command!(self.write, ResetColor)?;
-        handle_command!(self.write, cursor::Show)?;
+        let _ = handle_command!(self.write, terminal::Clear(terminal::ClearType::All));
+        let _ = handle_command!(self.write, terminal::LeaveAlternateScreen);
+        let _ = handle_command!(self.write, ResetColor);
+        let _ = handle_command!(self.write, cursor::Show);
         self.write.flush()?;
         terminal::disable_raw_mode()?;
         Ok(())
@@ -149,16 +149,15 @@ pub fn render(
     target_client: TargetClient,
     buffer: &mut Vec<u8>,
     status_bar_buf: &mut String,
-) -> UiResult<()> {
+) {
     let has_focus = target_client == editor.focused_client;
     let client_view = ClientView::from(editor, client);
 
-    draw_buffer(buffer, editor, &client_view, has_focus)?;
+    draw_buffer(buffer, editor, &client_view, has_focus);
     if has_focus {
-        draw_picker(buffer, editor, &client_view)?;
+        draw_picker(buffer, editor, &client_view);
     }
-    draw_statusbar(buffer, editor, &client_view, has_focus, status_bar_buf)?;
-    Ok(())
+    draw_statusbar(buffer, editor, &client_view, has_focus, status_bar_buf);
 }
 
 struct ClientView<'a> {
@@ -200,12 +199,7 @@ impl<'a> ClientView<'a> {
     }
 }
 
-fn draw_buffer<W>(
-    write: &mut W,
-    editor: &Editor,
-    client_view: &ClientView,
-    has_focus: bool,
-) -> UiResult<()>
+fn draw_buffer<W>(write: &mut W, editor: &Editor, client_view: &ClientView, has_focus: bool)
 where
     W: Write,
 {
@@ -241,9 +235,9 @@ where
 
     let mut text_color = token_text_color;
 
-    handle_command!(write, cursor::MoveTo(0, 0))?;
-    handle_command!(write, SetBackgroundColor(background_color))?;
-    handle_command!(write, SetForegroundColor(text_color))?;
+    let _ = handle_command!(write, cursor::MoveTo(0, 0));
+    let _ = handle_command!(write, SetBackgroundColor(background_color));
+    let _ = handle_command!(write, SetForegroundColor(text_color));
 
     let mut line_index = scroll;
     let mut drawn_line_count = 0;
@@ -312,11 +306,11 @@ where
         let mut column_byte_index = 0;
         let mut x = 0;
 
-        handle_command!(write, SetForegroundColor(token_text_color))?;
+        let _ = handle_command!(write, SetForegroundColor(token_text_color));
 
         for (char_index, c) in line.as_str().char_indices().chain(iter::once((0, '\0'))) {
             if x >= width {
-                handle_command!(write, cursor::MoveToNextLine(1))?;
+                let _ = handle_command!(write, cursor::MoveToNextLine(1));
 
                 drawn_line_count += 1;
                 x -= width;
@@ -375,56 +369,57 @@ where
             if inside_diagnostic_range != was_inside_diagnostic_range {
                 was_inside_diagnostic_range = inside_diagnostic_range;
                 if inside_diagnostic_range {
-                    handle_command!(write, SetAttribute(Attribute::Underlined))?;
+                    let _ = handle_command!(write, SetAttribute(Attribute::Underlined));
                 } else {
-                    handle_command!(write, SetAttribute(Attribute::NoUnderline))?;
+                    let _ = handle_command!(write, SetAttribute(Attribute::NoUnderline));
                 }
             }
 
             if char_position == current_cursor_position {
                 if draw_state != DrawState::Cursor {
                     draw_state = DrawState::Cursor;
-                    handle_command!(write, SetBackgroundColor(cursor_color))?;
-                    handle_command!(write, SetForegroundColor(text_color))?;
+                    let _ = handle_command!(write, SetBackgroundColor(cursor_color));
+                    let _ = handle_command!(write, SetForegroundColor(text_color));
                 }
             } else if inside_cursor_range {
                 if draw_state != DrawState::Selection(token_kind) {
                     draw_state = DrawState::Selection(token_kind);
-                    handle_command!(write, SetBackgroundColor(text_color))?;
-                    handle_command!(write, SetForegroundColor(background_color))?;
+                    let _ = handle_command!(write, SetBackgroundColor(text_color));
+                    let _ = handle_command!(write, SetForegroundColor(background_color));
                 }
             } else if inside_search_range {
                 if draw_state != DrawState::Highlight {
                     draw_state = DrawState::Highlight;
-                    handle_command!(write, SetBackgroundColor(highlight_color))?;
-                    handle_command!(write, SetForegroundColor(background_color))?;
+                    let _ = handle_command!(write, SetBackgroundColor(highlight_color));
+                    let _ = handle_command!(write, SetForegroundColor(background_color));
                 }
             } else if draw_state != DrawState::Token(token_kind) {
                 draw_state = DrawState::Token(token_kind);
-                handle_command!(write, SetBackgroundColor(background_color))?;
-                handle_command!(write, SetForegroundColor(text_color))?;
+                let _ = handle_command!(write, SetBackgroundColor(background_color));
+                let _ = handle_command!(write, SetForegroundColor(text_color));
             }
 
             match c {
                 '\0' => {
-                    handle_command!(write, Print(' '))?;
+                    let _ = handle_command!(write, Print(' '));
                     x += 1;
                 }
                 ' ' => {
-                    handle_command!(write, Print(editor.config.values.visual_space))?;
+                    let _ = handle_command!(write, Print(editor.config.values.visual_space));
                     x += 1;
                 }
                 '\t' => {
-                    handle_command!(write, Print(editor.config.values.visual_tab_first))?;
+                    let _ = handle_command!(write, Print(editor.config.values.visual_tab_first));
                     let tab_size = editor.config.values.tab_size.get() as u16;
                     let next_tab_stop = (tab_size - 1) - x % tab_size;
                     for _ in 0..next_tab_stop {
-                        handle_command!(write, Print(editor.config.values.visual_tab_repeat))?;
+                        let _ =
+                            handle_command!(write, Print(editor.config.values.visual_tab_repeat));
                     }
                     x += next_tab_stop + 1;
                 }
                 _ => {
-                    handle_command!(write, Print(c))?;
+                    let _ = handle_command!(write, Print(c));
                     x += 1;
                 }
             }
@@ -433,11 +428,11 @@ where
         }
 
         if x < width {
-            handle_command!(write, SetBackgroundColor(background_color))?;
-            handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
+            let _ = handle_command!(write, SetBackgroundColor(background_color));
+            let _ = handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine));
         }
 
-        handle_command!(write, cursor::MoveToNextLine(1))?;
+        let _ = handle_command!(write, cursor::MoveToNextLine(1));
 
         line_index += 1;
         drawn_line_count += 1;
@@ -447,18 +442,16 @@ where
         }
     }
 
-    handle_command!(write, SetBackgroundColor(background_color))?;
-    handle_command!(write, SetForegroundColor(token_whitespace_color))?;
+    let _ = handle_command!(write, SetBackgroundColor(background_color));
+    let _ = handle_command!(write, SetForegroundColor(token_whitespace_color));
     for _ in drawn_line_count..height {
-        handle_command!(write, Print(editor.config.values.visual_empty))?;
-        handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
-        handle_command!(write, cursor::MoveToNextLine(1))?;
+        let _ = handle_command!(write, Print(editor.config.values.visual_empty));
+        let _ = handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine));
+        let _ = handle_command!(write, cursor::MoveToNextLine(1));
     }
-
-    Ok(())
 }
 
-fn draw_picker<W>(write: &mut W, editor: &Editor, client_view: &ClientView) -> UiResult<()>
+fn draw_picker<W>(write: &mut W, editor: &Editor, client_view: &ClientView)
 where
     W: Write,
 {
@@ -476,8 +469,8 @@ where
     let background_color = convert_color(editor.config.theme.token_text);
     let foreground_color = convert_color(editor.config.theme.token_whitespace);
 
-    handle_command!(write, SetBackgroundColor(background_color))?;
-    handle_command!(write, SetForegroundColor(foreground_color))?;
+    let _ = handle_command!(write, SetBackgroundColor(background_color));
+    let _ = handle_command!(write, SetForegroundColor(foreground_color));
 
     for (i, entry) in editor
         .picker
@@ -487,11 +480,11 @@ where
         .take(height)
     {
         if i == cursor {
-            handle_command!(write, SetForegroundColor(background_color))?;
-            handle_command!(write, SetBackgroundColor(foreground_color))?;
+            let _ = handle_command!(write, SetForegroundColor(background_color));
+            let _ = handle_command!(write, SetBackgroundColor(foreground_color));
         } else if i == cursor + 1 {
-            handle_command!(write, SetBackgroundColor(background_color))?;
-            handle_command!(write, SetForegroundColor(foreground_color))?;
+            let _ = handle_command!(write, SetBackgroundColor(background_color));
+            let _ = handle_command!(write, SetForegroundColor(foreground_color));
         }
 
         let mut x = 0;
@@ -507,7 +500,10 @@ where
                         }
 
                         for _ in 0..next_tab_stop {
-                            handle_command!(write, Print(editor.config.values.visual_tab_repeat))?;
+                            let _ = handle_command!(
+                                write,
+                                Print(editor.config.values.visual_tab_repeat)
+                            );
                         }
                     }
                     c => {
@@ -515,7 +511,7 @@ where
                         if x > half_width {
                             break;
                         }
-                        handle_command!(write, Print(c))?;
+                        let _ = handle_command!(write, Print(c));
                     }
                 }
             };
@@ -525,18 +521,16 @@ where
             print_char!(c);
         }
         for _ in x..(half_width + 1) {
-            handle_command!(write, Print(' '))?;
+            let _ = handle_command!(write, Print(' '));
         }
         x = 0;
         for c in entry.description.chars() {
             print_char!(c);
         }
 
-        handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
-        handle_command!(write, cursor::MoveToNextLine(1))?;
+        let _ = handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine));
+        let _ = handle_command!(write, cursor::MoveToNextLine(1));
     }
-
-    Ok(())
 }
 
 fn draw_statusbar<W>(
@@ -545,10 +539,22 @@ fn draw_statusbar<W>(
     client_view: &ClientView,
     has_focus: bool,
     buf: &mut String,
-) -> UiResult<()>
-where
+) where
     W: Write,
 {
+    fn print_line<W>(write: &mut W, line: &str)
+    where
+        W: Write,
+    {
+        for c in line.chars() {
+            let _ = match c {
+                '\t' => handle_command!(write, Print("    ")),
+                c => handle_command!(write, Print(c)),
+            };
+        }
+        let _ = handle_command!(write, Print(line));
+    }
+
     let background_color = convert_color(editor.config.theme.token_text);
     let foreground_color = convert_color(editor.config.theme.background);
     let prompt_background_color = convert_color(editor.config.theme.token_whitespace);
@@ -556,11 +562,11 @@ where
     let cursor_color = convert_color(editor.config.theme.cursor);
 
     if has_focus {
-        handle_command!(write, SetBackgroundColor(background_color))?;
-        handle_command!(write, SetForegroundColor(foreground_color))?;
+        let _ = handle_command!(write, SetBackgroundColor(background_color));
+        let _ = handle_command!(write, SetForegroundColor(foreground_color));
     } else {
-        handle_command!(write, SetBackgroundColor(foreground_color))?;
-        handle_command!(write, SetForegroundColor(background_color))?;
+        let _ = handle_command!(write, SetBackgroundColor(foreground_color));
+        let _ = handle_command!(write, SetForegroundColor(background_color));
     }
 
     let x = if has_focus {
@@ -573,8 +579,8 @@ where
                     Some(key) => {
                         let text = "recording macro ";
                         let key = key.to_char();
-                        handle_command!(write, Print(text))?;
-                        handle_command!(write, Print(key))?;
+                        let _ = handle_command!(write, Print(text));
+                        let _ = handle_command!(write, Print(key));
                         Some(text.len() + 1)
                     }
                     None => match client_view.buffer_handle {
@@ -597,23 +603,24 @@ where
                                     let diagnostic = &diagnostics[index];
                                     let line_count = diagnostic.message.lines().count();
                                     if line_count > 1 {
-                                        handle_command!(
+                                        let _ = handle_command!(
                                             write,
                                             cursor::MoveUp((line_count - 1) as _)
-                                        )?;
+                                        );
                                         for (i, line) in diagnostic.message.lines().enumerate() {
-                                            handle_command!(write, Print(line))?;
+                                            print_line(write, line);
                                             if i >= line_count {
                                                 continue;
                                             }
-                                            handle_command!(
+                                            let _ = handle_command!(
                                                 write,
                                                 terminal::Clear(terminal::ClearType::UntilNewLine)
-                                            )?;
-                                            handle_command!(write, cursor::MoveToNextLine(1))?;
+                                            );
+                                            let _ =
+                                                handle_command!(write, cursor::MoveToNextLine(1));
                                         }
                                     } else {
-                                        handle_command!(write, Print(&diagnostic.message))?;
+                                        print_line(write, &diagnostic.message);
                                     }
                                     x = None;
                                     break;
@@ -626,21 +633,21 @@ where
                 },
                 Mode::Insert(_) => {
                     let text = "-- INSERT --";
-                    handle_command!(write, Print(text))?;
+                    let _ = handle_command!(write, Print(text));
                     Some(text.len())
                 }
                 Mode::Picker(_) | Mode::ReadLine(_) | Mode::Script(_) => {
                     let read_line = &editor.read_line;
 
-                    handle_command!(write, SetBackgroundColor(prompt_background_color))?;
-                    handle_command!(write, SetForegroundColor(prompt_foreground_color))?;
-                    handle_command!(write, Print(read_line.prompt()))?;
-                    handle_command!(write, SetBackgroundColor(background_color))?;
-                    handle_command!(write, SetForegroundColor(foreground_color))?;
-                    handle_command!(write, Print(read_line.input()))?;
-                    handle_command!(write, SetBackgroundColor(cursor_color))?;
-                    handle_command!(write, Print(' '))?;
-                    handle_command!(write, SetBackgroundColor(background_color))?;
+                    let _ = handle_command!(write, SetBackgroundColor(prompt_background_color));
+                    let _ = handle_command!(write, SetForegroundColor(prompt_foreground_color));
+                    let _ = handle_command!(write, Print(read_line.prompt()));
+                    let _ = handle_command!(write, SetBackgroundColor(background_color));
+                    let _ = handle_command!(write, SetForegroundColor(foreground_color));
+                    let _ = handle_command!(write, Print(read_line.input()));
+                    let _ = handle_command!(write, SetBackgroundColor(cursor_color));
+                    let _ = handle_command!(write, Print(' '));
+                    let _ = handle_command!(write, SetBackgroundColor(background_color));
                     None
                 }
             }
@@ -653,33 +660,37 @@ where
             let line_count = status_message.lines().count();
             if line_count > 1 {
                 if prefix.is_empty() {
-                    handle_command!(write, cursor::MoveUp((line_count - 1) as _))?;
+                    let _ = handle_command!(write, cursor::MoveUp((line_count - 1) as _));
                 } else {
-                    handle_command!(write, cursor::MoveUp(line_count as _))?;
-                    handle_command!(write, SetBackgroundColor(prompt_background_color))?;
-                    handle_command!(write, SetForegroundColor(prompt_foreground_color))?;
-                    handle_command!(write, Print(prefix))?;
-                    handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
-                    handle_command!(write, cursor::MoveToNextLine(1))?;
-                    handle_command!(write, SetBackgroundColor(background_color))?;
-                    handle_command!(write, SetForegroundColor(foreground_color))?;
+                    let _ = handle_command!(write, cursor::MoveUp(line_count as _));
+                    let _ = handle_command!(write, SetBackgroundColor(prompt_background_color));
+                    let _ = handle_command!(write, SetForegroundColor(prompt_foreground_color));
+                    let _ = handle_command!(write, Print(prefix));
+                    let _ =
+                        handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine));
+                    let _ = handle_command!(write, cursor::MoveToNextLine(1));
+                    let _ = handle_command!(write, SetBackgroundColor(background_color));
+                    let _ = handle_command!(write, SetForegroundColor(foreground_color));
                 }
 
                 for (i, line) in status_message.lines().enumerate() {
-                    handle_command!(write, Print(line))?;
+                    print_line(write, line);
                     if i < line_count - 1 {
-                        handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
-                        handle_command!(write, cursor::MoveToNextLine(1))?;
+                        let _ = handle_command!(
+                            write,
+                            terminal::Clear(terminal::ClearType::UntilNewLine)
+                        );
+                        let _ = handle_command!(write, cursor::MoveToNextLine(1));
                     }
                 }
             } else {
-                handle_command!(write, terminal::Clear(terminal::ClearType::CurrentLine))?;
-                handle_command!(write, SetBackgroundColor(prompt_background_color))?;
-                handle_command!(write, SetForegroundColor(prompt_foreground_color))?;
-                handle_command!(write, Print(prefix))?;
-                handle_command!(write, SetBackgroundColor(background_color))?;
-                handle_command!(write, SetForegroundColor(foreground_color))?;
-                handle_command!(write, Print(status_message))?;
+                let _ = handle_command!(write, terminal::Clear(terminal::ClearType::CurrentLine));
+                let _ = handle_command!(write, SetBackgroundColor(prompt_background_color));
+                let _ = handle_command!(write, SetForegroundColor(prompt_foreground_color));
+                let _ = handle_command!(write, Print(prefix));
+                let _ = handle_command!(write, SetBackgroundColor(background_color));
+                let _ = handle_command!(write, SetForegroundColor(foreground_color));
+                print_line(write, status_message);
             }
 
             None
@@ -716,10 +727,10 @@ where
 
             if has_focus {
                 if param_count > 0 {
-                    write!(buf, "{}", param_count)?;
+                    let _ = write!(buf, "{}", param_count);
                 };
                 for key in &editor.buffered_keys {
-                    write!(buf, "{}", key)?;
+                    let _ = write!(buf, "{}", key);
                 }
             }
 
@@ -730,8 +741,8 @@ where
                 buf.push('*');
             }
             buf.push_str(buffer_path);
-            handle_command!(write, terminal::SetTitle(&buf[title_start..]))?;
-            write!(buf, ":{},{} ", line_number, column_number)?;
+            let _ = handle_command!(write, terminal::SetTitle(&buf[title_start..]));
+            let _ = write!(buf, ":{},{} ", line_number, column_number);
 
             let available_width = client_view.client.viewport_size.0 as usize - x;
 
@@ -745,19 +756,18 @@ where
             let buf = &buf[min_index..];
 
             for _ in 0..(available_width - buf.len()) {
-                handle_command!(write, Print(' '))?;
+                let _ = handle_command!(write, Print(' '));
             }
-            handle_command!(write, Print(buf))?;
+            let _ = handle_command!(write, Print(buf));
         }
         None => {
             if buffer_needs_save {
                 buf.push('*');
             }
             buf.push_str(buffer_path);
-            handle_command!(write, terminal::SetTitle(&buf))?;
+            let _ = handle_command!(write, terminal::SetTitle(&buf));
         }
     }
 
-    handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
-    Ok(())
+    let _ = handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine));
 }

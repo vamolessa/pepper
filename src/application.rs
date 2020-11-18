@@ -136,7 +136,7 @@ where
     I: Ui,
 {
     for c in clients.client_refs() {
-        c.ui.render(editor, c.client, c.target, c.buffer)?;
+        c.ui.render(editor, c.client, c.target, c.buffer);
         match c.target {
             TargetClient::Local => ui.display(c.buffer)?,
             TargetClient::Remote(handle) => connections.send_serialized_display(handle, c.buffer),
