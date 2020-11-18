@@ -1,4 +1,5 @@
 use std::{
+    cmp::Ordering,
     io::{self, Write},
     iter,
     sync::mpsc,
@@ -576,7 +577,52 @@ where
                         handle_command!(write, Print(key))?;
                         Some(text.len() + 1)
                     }
-                    None => Some(0),
+                    None => match client_view.buffer_handle {
+                        Some(handle) => {
+                            let cursor = client_view.main_cursor_position;
+                            let mut x = Some(0);
+                            for lsp in editor.lsp.iter() {
+                                let diagnostics = lsp.diagnostics.buffer_diagnostics(handle);
+                                let index = diagnostics.binary_search_by(|d| {
+                                    let range = d.utf16_range;
+                                    if range.to < cursor {
+                                        Ordering::Less
+                                    } else if range.from > cursor {
+                                        Ordering::Greater
+                                    } else {
+                                        Ordering::Equal
+                                    }
+                                });
+                                if let Ok(index) = index {
+                                    let diagnostic = &diagnostics[index];
+                                    let line_count = diagnostic.message.lines().count();
+                                    if line_count > 1 {
+                                        handle_command!(
+                                            write,
+                                            cursor::MoveUp((line_count - 1) as _)
+                                        )?;
+                                        for (i, line) in diagnostic.message.lines().enumerate() {
+                                            handle_command!(write, Print(line))?;
+                                            if i >= line_count {
+                                                continue;
+                                            }
+                                            handle_command!(
+                                                write,
+                                                terminal::Clear(terminal::ClearType::UntilNewLine)
+                                            )?;
+                                            handle_command!(write, cursor::MoveToNextLine(1))?;
+                                        }
+                                    } else {
+                                        handle_command!(write, Print(&diagnostic.message))?;
+                                    }
+                                    x = None;
+                                    break;
+                                }
+                            }
+                            x
+                        }
+                        None => Some(0),
+                    },
                 },
                 Mode::Insert(_) => {
                     let text = "-- INSERT --";
@@ -608,21 +654,21 @@ where
             if line_count > 1 {
                 if prefix.is_empty() {
                     handle_command!(write, cursor::MoveUp((line_count - 1) as _))?;
-                    handle_command!(write, terminal::Clear(terminal::ClearType::FromCursorDown))?;
                 } else {
                     handle_command!(write, cursor::MoveUp(line_count as _))?;
                     handle_command!(write, SetBackgroundColor(prompt_background_color))?;
                     handle_command!(write, SetForegroundColor(prompt_foreground_color))?;
                     handle_command!(write, Print(prefix))?;
-                    handle_command!(write, terminal::Clear(terminal::ClearType::FromCursorDown))?;
+                    handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
+                    handle_command!(write, cursor::MoveToNextLine(1))?;
                     handle_command!(write, SetBackgroundColor(background_color))?;
                     handle_command!(write, SetForegroundColor(foreground_color))?;
-                    handle_command!(write, cursor::MoveToNextLine(1))?;
                 }
 
                 for (i, line) in status_message.lines().enumerate() {
                     handle_command!(write, Print(line))?;
                     if i < line_count - 1 {
+                        handle_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine))?;
                         handle_command!(write, cursor::MoveToNextLine(1))?;
                     }
                 }
