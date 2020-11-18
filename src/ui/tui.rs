@@ -376,7 +376,7 @@ where
                 if inside_diagnostic_range {
                     handle_command!(write, SetAttribute(Attribute::Underlined))?;
                 } else {
-                    handle_command!(write, SetAttribute(Attribute::Reset))?;
+                    handle_command!(write, SetAttribute(Attribute::NoUnderline))?;
                 }
             }
 

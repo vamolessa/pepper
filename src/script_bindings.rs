@@ -257,7 +257,8 @@ mod lsp {
         (name, command, args): (ScriptString, ScriptString, Option<ScriptArray>),
     ) -> ScriptResult<()> {
         let name = name.to_str()?;
-        let mut command = Command::new(command.to_str()?);
+        let command = command.to_str()?;
+        let mut command = Command::new(command);
         if let Some(args) = args {
             for arg in args.iter() {
                 let arg: ScriptString = arg?;
