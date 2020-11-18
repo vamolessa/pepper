@@ -552,7 +552,6 @@ fn draw_statusbar<W>(
                 c => handle_command!(write, Print(c)),
             };
         }
-        let _ = handle_command!(write, Print(line));
     }
 
     let background_color = convert_color(editor.config.theme.token_text);
@@ -607,10 +606,11 @@ fn draw_statusbar<W>(
                                             write,
                                             cursor::MoveUp((line_count - 1) as _)
                                         );
+                                        let end_index = line_count - 1;
                                         for (i, line) in diagnostic.message.lines().enumerate() {
                                             print_line(write, line);
-                                            if i >= line_count {
-                                                continue;
+                                            if i == end_index {
+                                                break;
                                             }
                                             let _ = handle_command!(
                                                 write,
