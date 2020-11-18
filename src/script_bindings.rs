@@ -71,6 +71,7 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
 
     register!(client => index, current_buffer_view_handle, quit, force_quit, quit_all, force_quit_all,);
     register!(editor => version, os, print,);
+    register!(lsp => start, diagnostics,);
     register!(buffer => all_handles, line_count, line_at, path, path_matches, needs_save, set_search, open, close, force_close,
         close_all, force_close_all, save, save_all, reload, force_reload, reload_all, force_reload_all, commit_edits,
         on_open,);
@@ -242,6 +243,65 @@ mod editor {
             StatusMessageKind::Info,
             format_args!("{}", value.display(&mut guard)),
         );
+        Ok(())
+    }
+}
+
+mod lsp {
+    use super::*;
+
+    pub fn start(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        (name, command, args): (ScriptString, ScriptString, Option<ScriptArray>),
+    ) -> ScriptResult<()> {
+        let name = name.to_str()?;
+        let mut command = Command::new(command.to_str()?);
+        if let Some(args) = args {
+            for arg in args.iter() {
+                let arg: ScriptString = arg?;
+                command.arg(arg.to_str()?);
+            }
+        }
+
+        match ctx.lsp.start(name, command, ctx.root) {
+            Ok(_) => Ok(()),
+            Err(error) => Err(ScriptError::from(error)),
+        }
+    }
+
+    pub fn diagnostics(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        _: (),
+    ) -> ScriptResult<()> {
+        use std::fmt::Write;
+
+        let mut message = String::new();
+        let _ = writeln!(&mut message, "DIAGNOSTICS!");
+
+        for client in ctx.lsp.iter() {
+            for (path, diagnostics) in client.diagnostics.iter() {
+                let _ = writeln!(&mut message, "diagnostics for {:?}", path);
+                for diagnostic in diagnostics {
+                    let r = diagnostic.utf16_range;
+                    let _ = writeln!(
+                        &mut message,
+                        "{} @ [({},{}) ({},{})]",
+                        &diagnostic.message,
+                        r.from.line_index,
+                        r.from.column_byte_index,
+                        r.to.line_index,
+                        r.to.column_byte_index
+                    );
+                }
+            }
+        }
+
+        ctx.status_message
+            .write_str(StatusMessageKind::Info, &message);
         Ok(())
     }
 }

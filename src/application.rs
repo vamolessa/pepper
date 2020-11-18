@@ -6,6 +6,7 @@ use crate::{
     connection::{ConnectionWithClientCollection, ConnectionWithServer},
     editor::{Editor, EditorLoop},
     event_manager::{ConnectionEvent, EventManager},
+    lsp::LspClientCollection,
     ui::{self, Ui, UiKind, UiResult},
     Args,
 };
@@ -155,8 +156,11 @@ where
     P: Profiler,
     I: Ui,
 {
+    let (event_sender, event_receiver) = mpsc::channel();
+
     let current_dir = env::current_dir().map_err(Box::new)?;
-    let mut editor = Editor::new(current_dir);
+    let lsp = LspClientCollection::new(event_sender.clone());
+    let mut editor = Editor::new(current_dir, lsp);
     let mut clients = ClientCollection::default();
 
     for path in &args.module_search_path {
@@ -171,7 +175,6 @@ where
         editor.on_event(&mut clients, TargetClient::Local, event);
     });
 
-    let (event_sender, event_receiver) = mpsc::channel();
     let event_manager = EventManager::new()?;
     let event_registry = event_manager.registry();
     let event_manager_loop = event_manager.run_event_loop_in_background(event_sender.clone());

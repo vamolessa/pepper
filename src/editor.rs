@@ -244,7 +244,7 @@ pub struct Editor {
     client_target_map: ClientTargetMap,
 }
 impl Editor {
-    pub fn new(root: PathBuf) -> Self {
+    pub fn new(root: PathBuf, lsp: LspClientCollection) -> Self {
         Self {
             root,
             config: Config::default(),
@@ -262,7 +262,7 @@ impl Editor {
 
             focused_client: TargetClient::Local,
             status_message: StatusMessage::new(),
-            lsp: LspClientCollection::default(),
+            lsp,
 
             events: EditorEventDoubleQueue::default(),
             keymaps: KeyMapCollection::default(),

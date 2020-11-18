@@ -7,7 +7,9 @@ use std::{
 
 use crossterm::{
     cursor, event, handle_command,
-    style::{Color, Print, ResetColor, SetBackgroundColor, SetForegroundColor},
+    style::{
+        Attribute, Color, Print, ResetColor, SetAttribute, SetBackgroundColor, SetForegroundColor,
+    },
     terminal,
     tty::IsTty,
 };
@@ -246,7 +248,7 @@ where
     let mut drawn_line_count = 0;
 
     let cursors = &client_view.cursors[..];
-    let cursors_last_index = cursors.len().saturating_sub(1);
+    let cursors_end_index = cursors.len().saturating_sub(1);
 
     let buffer_content;
     let highlighted_buffer;
@@ -266,6 +268,8 @@ where
             search_ranges = &[];
         }
     }
+    let search_ranges_end_index = search_ranges.len().saturating_sub(1);
+
     let diagnostics = match client_view.buffer_handle {
         Some(handle) => {
             let mut diagnostics: &[LspDiagnostic] = &[];
@@ -279,8 +283,7 @@ where
         }
         None => &[],
     };
-
-    let search_ranges_last_index = search_ranges.len().saturating_sub(1);
+    let diagnostics_end_index = diagnostics.len().saturating_sub(1);
 
     let mut current_cursor_index = 0;
     let mut current_cursor_position = BufferPosition::default();
@@ -304,6 +307,7 @@ where
 
     'lines_loop: for line in buffer_content.lines().skip(line_index) {
         let mut draw_state = DrawState::Token(TokenKind::Text);
+        let mut was_inside_diagnostic_range = false;
         let mut column_byte_index = 0;
         let mut x = 0;
 
@@ -340,24 +344,41 @@ where
                 TokenKind::Literal => token_literal_color,
             };
 
-            if current_cursor_range.to < char_position && current_cursor_index < cursors_last_index
-            {
+            if current_cursor_range.to < char_position && current_cursor_index < cursors_end_index {
                 current_cursor_index += 1;
                 let cursor = cursors[current_cursor_index];
                 current_cursor_position = cursor.position;
                 current_cursor_range = cursor.as_range();
             }
-            let inside_current_cursor_range = current_cursor_range.from <= char_position
+            let inside_cursor_range = current_cursor_range.from <= char_position
                 && char_position < current_cursor_range.to;
 
             if current_search_range.to <= char_position
-                && current_search_range_index < search_ranges_last_index
+                && current_search_range_index < search_ranges_end_index
             {
                 current_search_range_index += 1;
                 current_search_range = search_ranges[current_search_range_index];
             }
-            let inside_current_search_range = current_search_range.from <= char_position
+            let inside_search_range = current_search_range.from <= char_position
                 && char_position < current_search_range.to;
+
+            if current_diagnostic_range.to < char_position
+                && current_diagnostic_index < diagnostics_end_index
+            {
+                current_diagnostic_index += 1;
+                current_diagnostic_range = diagnostics[current_diagnostic_index].utf16_range;
+            }
+            let inside_diagnostic_range = current_diagnostic_range.from <= char_position
+                && char_position < current_diagnostic_range.to;
+
+            if inside_diagnostic_range != was_inside_diagnostic_range {
+                was_inside_diagnostic_range = inside_diagnostic_range;
+                if inside_diagnostic_range {
+                    handle_command!(write, SetAttribute(Attribute::Underlined))?;
+                } else {
+                    handle_command!(write, SetAttribute(Attribute::Reset))?;
+                }
+            }
 
             if char_position == current_cursor_position {
                 if draw_state != DrawState::Cursor {
@@ -365,13 +386,13 @@ where
                     handle_command!(write, SetBackgroundColor(cursor_color))?;
                     handle_command!(write, SetForegroundColor(text_color))?;
                 }
-            } else if inside_current_cursor_range {
+            } else if inside_cursor_range {
                 if draw_state != DrawState::Selection(token_kind) {
                     draw_state = DrawState::Selection(token_kind);
                     handle_command!(write, SetBackgroundColor(text_color))?;
                     handle_command!(write, SetForegroundColor(background_color))?;
                 }
-            } else if inside_current_search_range {
+            } else if inside_search_range {
                 if draw_state != DrawState::Highlight {
                     draw_state = DrawState::Highlight;
                     handle_command!(write, SetBackgroundColor(highlight_color))?;

@@ -366,9 +366,7 @@ impl Client {
                     Uri::Path(path) => path,
                 };
 
-                let diagnostics = self
-                    .diagnostics
-                    .path_diagnostics_mut(ctx, &self.root, path);
+                let diagnostics = self.diagnostics.path_diagnostics_mut(ctx, &self.root, path);
                 for diagnostic in params.diagnostics.elements(json) {
                     declare_json_object! {
                         #[derive(Default)]
@@ -541,18 +539,20 @@ struct ClientCollectionEntry {
     json: SharedJson,
 }
 
-#[derive(Default)]
 pub struct ClientCollection {
+    event_sender: mpsc::Sender<LocalEvent>,
     entries: Vec<Option<ClientCollectionEntry>>,
 }
 
 impl ClientCollection {
-    pub fn spawn(
-        &mut self,
-        name: &str,
-        command: Command,
-        event_sender: mpsc::Sender<LocalEvent>,
-    ) -> io::Result<ClientHandle> {
+    pub fn new(event_sender: mpsc::Sender<LocalEvent>) -> Self {
+        Self {
+            event_sender,
+            entries: Vec::new(),
+        }
+    }
+
+    pub fn start(&mut self, name: &str, command: Command, root: &Path) -> io::Result<ClientHandle> {
         for (handle, entry) in self
             .entries
             .iter()
@@ -566,11 +566,16 @@ impl ClientCollection {
 
         let handle = self.find_free_slot();
         let json = SharedJson::new();
-        let connection = ServerConnection::spawn(command, handle, json.clone(), event_sender)?;
-        self.entries[handle.0] = Some(ClientCollectionEntry {
+        let connection =
+            ServerConnection::spawn(command, handle, json.clone(), self.event_sender.clone())?;
+        let mut entry = ClientCollectionEntry {
             client: Client::new(name.into(), connection),
             json,
-        });
+        };
+        entry
+            .client
+            .initialize(entry.json.write_lock().get(), root)?;
+        self.entries[handle.0] = Some(entry);
         Ok(handle)
     }
 
@@ -579,16 +584,6 @@ impl ClientCollection {
             Some(e) => Some(&e.client),
             None => None,
         })
-    }
-
-    pub fn access<F>(&mut self, handle: ClientHandle, accessor: F)
-    where
-        F: FnOnce(&mut Client, &mut Json),
-    {
-        if let Some(entry) = &mut self.entries[handle.0] {
-            let mut json = entry.json.write_lock();
-            accessor(&mut entry.client, json.get());
-        }
     }
 
     pub fn try_access<F, E>(&mut self, handle: ClientHandle, accessor: F) -> Result<(), E>
