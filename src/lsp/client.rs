@@ -111,8 +111,16 @@ impl BufferDiagnosticCollection {
     }
 }
 
-fn buffer_has_path(buffer: &Buffer, editor_root: &Path, path: &Path) -> bool {
-    false
+fn are_same_path_with_root(root_a: &Path, a: &Path, root_b: &Path, b: &Path) -> bool {
+    match (a.is_absolute(), b.is_absolute()) {
+        (false, false) => root_a
+            .components()
+            .chain(a.components())
+            .eq(root_b.components().chain(b.components())),
+        (false, true) => root_a.components().chain(a.components()).eq(b.components()),
+        (true, false) => a.components().eq(root_b.components().chain(b.components())),
+        (true, true) => a.components().eq(b.components()),
+    }
 }
 
 #[derive(Default)]
@@ -132,6 +140,7 @@ impl DiagnosticCollection {
     fn buffer_diagnostics_mut(
         &mut self,
         ctx: &ClientContext,
+        client_root: &Path,
         path: &Path,
     ) -> &mut BufferDiagnosticCollection {
         let buffer_diagnostics = &mut self.buffer_diagnostics;
@@ -145,9 +154,11 @@ impl DiagnosticCollection {
 
         let mut buffer_handle = None;
         for (handle, buffer) in ctx.buffers.iter_with_handles() {
-            if buffer_has_path(buffer, ctx.root, path) {
-                buffer_handle = Some(handle);
-                break;
+            if let Some(buffer_path) = buffer.path() {
+                if are_same_path_with_root(ctx.root, buffer_path, client_root, path) {
+                    buffer_handle = Some(handle);
+                    break;
+                }
             }
         }
 
@@ -159,6 +170,57 @@ impl DiagnosticCollection {
             len: 0,
         });
         &mut buffer_diagnostics[last_index]
+    }
+
+    pub fn on_open_buffer(
+        &mut self,
+        ctx: &ClientContext,
+        buffer_handle: BufferHandle,
+        client_root: &Path,
+    ) {
+        let buffer_path = match ctx.buffers.get(buffer_handle).and_then(|b| b.path()) {
+            Some(path) => path,
+            None => return,
+        };
+
+        for diagnostics in &mut self.buffer_diagnostics {
+            if let None = diagnostics.buffer_handle {
+                if are_same_path_with_root(ctx.root, buffer_path, client_root, &diagnostics.path) {
+                    diagnostics.buffer_handle = Some(buffer_handle);
+                    return;
+                }
+            }
+        }
+    }
+
+    pub fn on_save_buffer(
+        &mut self,
+        ctx: &ClientContext,
+        buffer_handle: BufferHandle,
+        client_root: &Path,
+    ) {
+        let buffer_path = match ctx.buffers.get(buffer_handle).and_then(|b| b.path()) {
+            Some(path) => path,
+            None => return,
+        };
+
+        for diagnostics in &mut self.buffer_diagnostics {
+            if diagnostics.buffer_handle == Some(buffer_handle) {
+                diagnostics.buffer_handle = None;
+                if are_same_path_with_root(ctx.root, buffer_path, client_root, &diagnostics.path) {
+                    diagnostics.buffer_handle = Some(buffer_handle);
+                    return;
+                }
+            }
+        }
+    }
+
+    pub fn on_close_buffer(&mut self, buffer_handle: BufferHandle) {
+        for diagnostics in &mut self.buffer_diagnostics {
+            if diagnostics.buffer_handle == Some(buffer_handle) {
+                diagnostics.buffer_handle = None;
+            }
+        }
     }
 
     pub fn clear_empty(&mut self) {
@@ -179,6 +241,7 @@ impl DiagnosticCollection {
 
 pub struct Client {
     name: String,
+    root: PathBuf,
     protocol: Protocol,
     pending_requests: PendingRequestColection,
 
@@ -192,6 +255,7 @@ impl Client {
     fn new(name: String, connection: ServerConnection) -> Self {
         Self {
             name,
+            root: PathBuf::new(),
             protocol: Protocol::new(connection),
             pending_requests: PendingRequestColection::default(),
 
@@ -301,7 +365,9 @@ impl Client {
                     Uri::Path(path) => path,
                 };
 
-                let diagnostics = self.diagnostics.buffer_diagnostics_mut(ctx, path);
+                let diagnostics = self
+                    .diagnostics
+                    .buffer_diagnostics_mut(ctx, &self.root, path);
                 for diagnostic in params.diagnostics.elements(json) {
                     declare_json_object! {
                         #[derive(Default)]
@@ -409,12 +475,15 @@ impl Client {
         for event in events {
             match event {
                 EditorEvent::BufferOpen(handle) => {
+                    self.diagnostics.on_open_buffer(ctx, *handle, &self.root);
                     //
                 }
                 EditorEvent::BufferSave(handle) => {
+                    self.diagnostics.on_save_buffer(ctx, *handle, &self.root);
                     //
                 }
                 EditorEvent::BufferClose(handle) => {
+                    self.diagnostics.on_close_buffer(*handle);
                     //
                 }
             }
@@ -435,6 +504,9 @@ impl Client {
     }
 
     pub fn initialize(&mut self, json: &mut Json, root: &Path) -> io::Result<()> {
+        self.root.clear();
+        self.root.push(root);
+
         let mut params = JsonObject::default();
         params.set(
             "processId".into(),
