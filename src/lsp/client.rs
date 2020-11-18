@@ -137,7 +137,7 @@ impl DiagnosticCollection {
         &[]
     }
 
-    fn buffer_diagnostics_mut(
+    fn path_diagnostics_mut(
         &mut self,
         ctx: &ClientContext,
         client_root: &Path,
@@ -234,6 +234,7 @@ impl DiagnosticCollection {
         for diagnostics in &mut self.buffer_diagnostics {
             if diagnostics.buffer_handle == Some(buffer_handle) {
                 diagnostics.buffer_handle = None;
+                return;
             }
         }
     }
@@ -367,7 +368,7 @@ impl Client {
 
                 let diagnostics = self
                     .diagnostics
-                    .buffer_diagnostics_mut(ctx, &self.root, path);
+                    .path_diagnostics_mut(ctx, &self.root, path);
                 for diagnostic in params.diagnostics.elements(json) {
                     declare_json_object! {
                         #[derive(Default)]
