@@ -172,6 +172,21 @@ impl DiagnosticCollection {
         &mut buffer_diagnostics[last_index]
     }
 
+    pub fn clear_empty(&mut self) {
+        let buffer_diagnostics = &mut self.buffer_diagnostics;
+        for i in (0..buffer_diagnostics.len()).rev() {
+            if buffer_diagnostics[i].len == 0 {
+                buffer_diagnostics.swap_remove(i);
+            }
+        }
+    }
+
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = (&'a Path, &'a [Diagnostic])> {
+        self.buffer_diagnostics
+            .iter()
+            .map(|d| (d.path.as_path(), &d.diagnostics[..d.len]))
+    }
+
     pub fn on_open_buffer(
         &mut self,
         ctx: &ClientContext,
@@ -221,21 +236,6 @@ impl DiagnosticCollection {
                 diagnostics.buffer_handle = None;
             }
         }
-    }
-
-    pub fn clear_empty(&mut self) {
-        let buffer_diagnostics = &mut self.buffer_diagnostics;
-        for i in (0..buffer_diagnostics.len()).rev() {
-            if buffer_diagnostics[i].len == 0 {
-                buffer_diagnostics.swap_remove(i);
-            }
-        }
-    }
-
-    pub fn iter<'a>(&'a self) -> impl Iterator<Item = (&'a Path, &'a [Diagnostic])> {
-        self.buffer_diagnostics
-            .iter()
-            .map(|d| (d.path.as_path(), &d.diagnostics[..d.len]))
     }
 }
 
