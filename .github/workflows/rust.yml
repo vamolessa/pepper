@@ -1,4 +1,4 @@
-name: pepper
+name: rust
 
 env:
   ubuntu_extension: ''
@@ -7,11 +7,14 @@ env:
   ubuntu_content_type: 'application/x-elf'
   macos_content_type: 'application/x-mach-binary'
   windows_content_type: 'application/vnd.microsoft.portable-executable'
+  ubuntu_install_dependencies: 'sudo apt-get install libxcb-shape0-dev libxcb-xfixes0-dev'
+  macos_install_dependencies: ''
+  windows_install_dependencies: ''
   ubuntu_channel: linux
   macos_channel: mac
   windows_channel: windows
-  default_suffix: ''
-  demo_suffix: '-demo'
+  _feature_suffix: ''
+  demo_feature_suffix: '-demo'
 
 on: [push, pull_request]
 jobs:
@@ -24,22 +27,28 @@ jobs:
       matrix:
         os: [ubuntu, macos, windows]
         rust: [stable]
-        features: [default, demo]
+        features: ['', demo]
 
     steps:
     - uses: hecrj/setup-rust-action@v1
       with:
         rust-version: ${{ matrix.rust }}
     - uses: actions/checkout@v2
+    - name: Get crate name
+      id: crate-name
+      run: echo "::set-output name=name::$(cat Cargo.toml | grep name | head -n 1 | awk -F'\"' '{ print $2 }')"
+    - name: Installing dependencies
+      if: env[format('{0}_install_dependencies', matrix.os)] != ''
+      run: ${{ env[format('{0}_install_dependencies', matrix.os)] }}
     - name: Run tests
       run: cargo test --verbose
     - name: Build release
-      run: cargo build --verbose --release --features ${{ matrix.features }}
+      run: cargo build --verbose --release --features '${{ matrix.features }}'
     - name: Upload ${{ matrix.os }} binary
       uses: actions/upload-artifact@v1
       with:
-        name: ${{ github.workflow }}-${{ env[format('{0}_channel', matrix.os)] }}${{ env[format('{0}_suffix', matrix.features)] }}
-        path: target/release/${{ github.workflow }}${{ env[format('{0}_extension', matrix.os)] }}
+        name: ${{ steps.crate-name.outputs.name }}-${{ env[format('{0}_channel', matrix.os)] }}${{ env[format('{0}_feature_suffix', matrix.features)] }}
+        path: target/release/${{ steps.crate-name.outputs.name }}${{ env[format('{0}_extension', matrix.os)] }}
 
   release:
     name: Release
@@ -50,14 +59,17 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu, macos, windows]
-        features: [default, demo]
+        features: ['', demo]
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v2
+    - name: Get crate name
+      id: crate-name
+      run: echo "::set-output name=name::$(cat Cargo.toml | grep name | head -n 1 | awk -F'\"' '{ print $2 }')"
     - uses: actions/download-artifact@v2
       with:
-        name: ${{ github.workflow }}-${{ env[format('{0}_channel', matrix.os)] }}${{ env[format('{0}_suffix', matrix.features)] }}
+        name: ${{ steps.crate-name.outputs.name }}-${{ env[format('{0}_channel', matrix.os)] }}${{ env[format('{0}_feature_suffix', matrix.features)] }}
         path: dist/${{ matrix.os }}-${{ matrix.features }}
     - name: List release files
       run: find dist/
@@ -77,19 +89,24 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
-        asset_path: ./dist/${{ matrix.os }}-${{ matrix.features }}/${{ github.workflow }}${{ env[format('{0}_extension', matrix.os)] }}
-        asset_name: ${{ github.workflow }}-${{ env[format('{0}_channel', matrix.os)] }}${{ env[format('{0}_suffix', matrix.features)] }}${{ env[format('{0}_extension', matrix.os)] }}
+        asset_path: ./dist/${{ matrix.os }}-${{ matrix.features }}/${{ steps.crate-name.outputs.name }}${{ env[format('{0}_extension', matrix.os)] }}
+        asset_name: ${{ steps.crate-name.outputs.name }}-${{ env[format('{0}_channel', matrix.os)] }}${{ env[format('{0}_feature_suffix', matrix.features)] }}${{ env[format('{0}_extension', matrix.os)] }}
         asset_content_type: ${{ env[format('{0}_content_type', matrix.os)] }}
     - name: Rename ${{ matrix.os }}-${{ matrix.features }} executable before upload
-      run: mv dist/${{ matrix.os }}-${{ matrix.features }}/${{ github.workflow }}${{ env[format('{0}_extension', matrix.os)] }} dist/${{ github.workflow }}-${{ env[format('{0}_channel', matrix.os)] }}${{ env[format('{0}_suffix', matrix.features)] }}${{ env[format('{0}_extension', matrix.os)] }}
+      run: mv dist/${{ matrix.os }}-${{ matrix.features }}/${{ steps.crate-name.outputs.name }}${{ env[format('{0}_extension', matrix.os)] }} dist/${{ steps.crate-name.outputs.name }}-${{ env[format('{0}_channel', matrix.os)] }}${{ env[format('{0}_feature_suffix', matrix.features)] }}${{ env[format('{0}_extension', matrix.os)] }}
     - name: Create version file
       run: cat Cargo.toml | grep version | head -n 1 | awk -F'"' '{ print $2 }' > version.txt
+    - name: Check Butler credentials
+      run: echo 'checking butler credentials...'
+      env:
+        BUTLER_APIKEY: ${{ secrets.BUTLER_APIKEY }}
     - name: Upload ${{ matrix.os }} ${{ matrix.features }} to itch
+      if: env.BUTLER_APIKEY != ''
       uses: josephbmanley/butler-publish-itchio-action@master
       env:
-        BUTLER_CREDENTIALS: ${{ secrets.BUTLER_APIKEY }}
+        BUTLER_CREDENTIALS: ${{ env.BUTLER_APIKEY }}
         CHANNEL: ${{ env[format('{0}_channel', matrix.os)] }}
-        ITCH_GAME: ${{ github.workflow }}
+        ITCH_GAME: ${{ steps.crate-name.outputs.name }}
         ITCH_USER: matheuslessarodrigues
-        PACKAGE: dist/${{ github.workflow }}-${{ env[format('{0}_channel', matrix.os)] }}${{ env[format('{0}_suffix', matrix.features)] }}${{ env[format('{0}_extension', matrix.os)] }}
+        PACKAGE: dist/${{ steps.crate-name.outputs.name }}-${{ env[format('{0}_channel', matrix.os)] }}${{ env[format('{0}_feature_suffix', matrix.features)] }}${{ env[format('{0}_extension', matrix.os)] }}
         VERSION_FILE: version.txt

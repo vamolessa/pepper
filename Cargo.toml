@@ -27,6 +27,7 @@ argh = "0.1"
 polling = "2.0"
 mlua = { version = "0.4", features = [ "vendored", "lua54" ] }
 fuzzy-matcher = "0.3"
+copypasta = "0.7.1"
 
 [target.'cfg(windows)'.dependencies]
 uds_windows = "0.1"
