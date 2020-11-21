@@ -582,54 +582,7 @@ fn draw_statusbar<W>(
                         let _ = handle_command!(write, Print(key));
                         Some(text.len() + 1)
                     }
-                    None => match client_view.buffer_handle {
-                        Some(handle) => {
-                            let cursor = client_view.main_cursor_position;
-                            let mut x = Some(0);
-                            for lsp in editor.lsp.iter() {
-                                let diagnostics = lsp.diagnostics.buffer_diagnostics(handle);
-                                let index = diagnostics.binary_search_by(|d| {
-                                    let range = d.utf16_range;
-                                    if range.to < cursor {
-                                        Ordering::Less
-                                    } else if range.from > cursor {
-                                        Ordering::Greater
-                                    } else {
-                                        Ordering::Equal
-                                    }
-                                });
-                                if let Ok(index) = index {
-                                    let diagnostic = &diagnostics[index];
-                                    let line_count = diagnostic.message.lines().count();
-                                    if line_count > 1 {
-                                        let _ = handle_command!(
-                                            write,
-                                            cursor::MoveUp((line_count - 1) as _)
-                                        );
-                                        let end_index = line_count - 1;
-                                        for (i, line) in diagnostic.message.lines().enumerate() {
-                                            print_line(write, line);
-                                            if i == end_index {
-                                                break;
-                                            }
-                                            let _ = handle_command!(
-                                                write,
-                                                terminal::Clear(terminal::ClearType::UntilNewLine)
-                                            );
-                                            let _ =
-                                                handle_command!(write, cursor::MoveToNextLine(1));
-                                        }
-                                    } else {
-                                        print_line(write, &diagnostic.message);
-                                    }
-                                    x = None;
-                                    break;
-                                }
-                            }
-                            x
-                        }
-                        None => Some(0),
-                    },
+                    None => Some(0),
                 },
                 Mode::Insert(_) => {
                     let text = "-- INSERT --";
@@ -717,9 +670,6 @@ fn draw_statusbar<W>(
         Some(x) => {
             use std::fmt::Write;
 
-            let line_number = client_view.main_cursor_position.line_index + 1;
-            let column_number = client_view.main_cursor_position.column_byte_index + 1;
-
             let param_count = match &editor.mode {
                 Mode::Normal(state) if has_focus => state.count,
                 _ => 0,
@@ -742,7 +692,12 @@ fn draw_statusbar<W>(
             }
             buf.push_str(buffer_path);
             let _ = handle_command!(write, terminal::SetTitle(&buf[title_start..]));
-            let _ = write!(buf, ":{},{} ", line_number, column_number);
+
+            if client_view.buffer.is_some() {
+                let line_number = client_view.main_cursor_position.line_index + 1;
+                let column_number = client_view.main_cursor_position.column_byte_index + 1;
+                let _ = write!(buf, ":{},{} ", line_number, column_number);
+            }
 
             let available_width = client_view.client.viewport_size.0 as usize - x;
 

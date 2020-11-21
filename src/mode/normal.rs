@@ -1,7 +1,9 @@
+use std::cmp::Ordering;
+
 use crate::{
     buffer::{BufferContent, Text},
     buffer_position::{BufferPosition, BufferRange},
-    buffer_view::{CursorMovement, CursorMovementKind},
+    buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     client_event::Key,
     cursor::Cursor,
     editor::{KeysIterator, StatusMessageKind},
@@ -110,26 +112,13 @@ impl State {
             _ => ModeOperation::None,
         }
     }
-}
 
-impl Default for State {
-    fn default() -> Self {
-        Self {
-            movement_kind: CursorMovementKind::PositionAndAnchor,
-            last_char_jump: CharJump::None,
-            is_recording_auto_macro: false,
-            count: 0,
-        }
-    }
-}
-
-impl ModeState for State {
-    fn on_client_keys(&mut self, ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
-        let handle = match ctx.current_buffer_view_handle() {
-            Some(handle) => handle,
-            None => return self.on_event_no_buffer(ctx, keys),
-        };
-
+    fn on_client_keys_with_buffer_view(
+        &mut self,
+        ctx: &mut ModeContext,
+        keys: &mut KeysIterator,
+        handle: BufferViewHandle,
+    ) -> ModeOperation {
         let keys_from_index = keys.index();
         match keys.next() {
             Key::Char('h') => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
@@ -884,7 +873,9 @@ impl ModeState for State {
                     &ctx.config.syntaxes,
                     handle,
                 );
-                if let Ok(text) = copypasta::ClipboardContext::new().and_then(|mut c| c.get_contents()) {
+                if let Ok(text) =
+                    copypasta::ClipboardContext::new().and_then(|mut c| c.get_contents())
+                {
                     ctx.buffer_views.insert_text_at_cursor_positions(
                         ctx.buffers,
                         ctx.word_database,
@@ -950,6 +941,68 @@ impl ModeState for State {
 
         self.count = 0;
         ModeOperation::None
+    }
+}
+
+impl Default for State {
+    fn default() -> Self {
+        Self {
+            movement_kind: CursorMovementKind::PositionAndAnchor,
+            last_char_jump: CharJump::None,
+            is_recording_auto_macro: false,
+            count: 0,
+        }
+    }
+}
+
+impl ModeState for State {
+    fn on_client_keys(&mut self, ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
+        fn show_hovered_diagnostic_in_status_message(
+            ctx: &mut ModeContext,
+            buffer_view_handle: BufferViewHandle,
+        ) {
+            let current_message = ctx.status_message.message().1;
+            if !current_message.is_empty() {
+                return;
+            }
+            let buffer_view = match ctx.buffer_views.get(buffer_view_handle) {
+                Some(view) => view,
+                None => return,
+            };
+            let main_cursor_position = buffer_view.cursors.main_cursor().position;
+
+            for lsp in ctx.lsp.iter() {
+                let diagnostics = lsp
+                    .diagnostics
+                    .buffer_diagnostics(buffer_view.buffer_handle);
+
+                if let Ok(index) = diagnostics.binary_search_by(|d| {
+                    let range = d.utf16_range;
+                    if range.to < main_cursor_position {
+                        Ordering::Less
+                    } else if range.from > main_cursor_position {
+                        Ordering::Greater
+                    } else {
+                        Ordering::Equal
+                    }
+                }) {
+                    ctx.status_message
+                        .write_str(StatusMessageKind::Info, &diagnostics[index].message);
+                    break;
+                }
+            }
+        }
+
+        match ctx.current_buffer_view_handle() {
+            Some(handle) => match self.on_client_keys_with_buffer_view(ctx, keys, handle) {
+                op @ ModeOperation::None => {
+                    show_hovered_diagnostic_in_status_message(ctx, handle);
+                    op
+                }
+                op => op,
+            },
+            None => self.on_event_no_buffer(ctx, keys),
+        }
     }
 }
 
