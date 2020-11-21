@@ -36,6 +36,11 @@ impl State {
                 }
                 self.is_recording_auto_macro = true;
 
+                if ctx.registers.get(AUTO_MACRO_REGISTER).is_empty() && self.count > 0 {
+                    ctx.registers
+                        .append_fmt(AUTO_MACRO_REGISTER, format_args!("{}", self.count));
+                }
+
                 for key in &keys.keys()[from_index..keys.index()] {
                     ctx.registers
                         .append_fmt(AUTO_MACRO_REGISTER, format_args!("{}", key));
@@ -49,6 +54,11 @@ impl State {
             ctx.registers.set(AUTO_MACRO_REGISTER, "");
         }
         self.is_recording_auto_macro = false;
+
+        if ctx.registers.get(AUTO_MACRO_REGISTER).is_empty() && self.count > 0 {
+            ctx.registers
+                .append_fmt(AUTO_MACRO_REGISTER, format_args!("{}", self.count));
+        }
 
         for key in &keys.keys()[from_index..keys.index()] {
             ctx.registers
@@ -852,6 +862,60 @@ impl State {
                 }
                 _ => (),
             },
+            Key::Char('r') => match keys.next() {
+                Key::None => return ModeOperation::Pending,
+                Key::Char('n') => {
+                    let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
+                    let main_position = buffer_view.cursors.main_cursor().position;
+
+                    for client in ctx.lsp.clients() {
+                        let diagnostics = client
+                            .diagnostics
+                            .buffer_diagnostics(buffer_view.buffer_handle);
+                        if diagnostics.is_empty() {
+                            continue;
+                        }
+
+                        let search_result = diagnostics.binary_search_by(|d| {
+                            let range = d.utf16_range;
+                            if range.to < main_position {
+                                Ordering::Less
+                            } else if range.from > main_position {
+                                Ordering::Greater
+                            } else {
+                                Ordering::Equal
+                            }
+                        });
+
+                        let next_index = match search_result {
+                            Ok(index) => index + 1,
+                            Err(index) => index,
+                        };
+
+                        let diagnostic_position = if next_index < diagnostics.len() {
+                            diagnostics[next_index].utf16_range.from
+                        } else {
+                            diagnostics[0].utf16_range.from
+                        };
+
+                        let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
+                        let mut cursors = buffer_view.cursors.mut_guard();
+                        cursors.clear();
+                        cursors.add(Cursor {
+                            anchor: diagnostic_position,
+                            position: diagnostic_position,
+                        });
+                        break;
+                    }
+                }
+                Key::Char('p') => {
+                    //
+                }
+                Key::Char('r') => ctx
+                    .status_message
+                    .write_str(StatusMessageKind::Info, "rename not yet implemented"),
+                _ => (),
+            },
             Key::Char('s') => return ModeOperation::EnterMode(read_line::search::mode()),
             Key::Char('y') => {
                 use copypasta::ClipboardProvider;
@@ -969,18 +1033,18 @@ impl ModeState for State {
                 Some(view) => view,
                 None => return,
             };
-            let main_cursor_position = buffer_view.cursors.main_cursor().position;
+            let main_position = buffer_view.cursors.main_cursor().position;
 
-            for lsp in ctx.lsp.iter() {
-                let diagnostics = lsp
+            for client in ctx.lsp.clients() {
+                let diagnostics = client
                     .diagnostics
                     .buffer_diagnostics(buffer_view.buffer_handle);
 
                 if let Ok(index) = diagnostics.binary_search_by(|d| {
                     let range = d.utf16_range;
-                    if range.to < main_cursor_position {
+                    if range.to < main_position {
                         Ordering::Less
-                    } else if range.from > main_cursor_position {
+                    } else if range.from > main_position {
                         Ordering::Greater
                     } else {
                         Ordering::Equal
@@ -994,13 +1058,11 @@ impl ModeState for State {
         }
 
         match ctx.current_buffer_view_handle() {
-            Some(handle) => match self.on_client_keys_with_buffer_view(ctx, keys, handle) {
-                op @ ModeOperation::None => {
-                    show_hovered_diagnostic_in_status_message(ctx, handle);
-                    op
-                }
-                op => op,
-            },
+            Some(handle) => {
+                let op = self.on_client_keys_with_buffer_view(ctx, keys, handle);
+                show_hovered_diagnostic_in_status_message(ctx, handle);
+                op
+            }
             None => self.on_event_no_buffer(ctx, keys),
         }
     }

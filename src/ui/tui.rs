@@ -272,9 +272,9 @@ where
 
     let diagnostics = match client_view.buffer_handle {
         Some(handle) => {
-            let mut diagnostics: &[LspDiagnostic] = &[];
-            for lsp in editor.lsp.iter() {
-                diagnostics = lsp.diagnostics.buffer_diagnostics(handle);
+            let mut diagnostics: &[_] = &[];
+            for client in editor.lsp.clients() {
+                diagnostics = client.diagnostics.buffer_diagnostics(handle);
                 if !diagnostics.is_empty() {
                     break;
                 }

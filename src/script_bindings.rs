@@ -292,8 +292,8 @@ mod lsp {
         let mut message = String::new();
         let _ = writeln!(&mut message, "DIAGNOSTICS!");
 
-        for client in ctx.lsp.iter() {
-            for (path, diagnostics) in client.diagnostics.iter() {
+        for client in ctx.lsp.clients() {
+            for (path, _, diagnostics) in client.diagnostics.iter() {
                 let _ = writeln!(&mut message, "diagnostics for {:?}", path);
                 for diagnostic in diagnostics {
                     let r = diagnostic.utf16_range;

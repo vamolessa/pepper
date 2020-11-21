@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    buffer::{Buffer, BufferCollection, BufferHandle},
+    buffer::{BufferCollection, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::BufferViewCollection,
     client_event::LocalEvent,
@@ -181,10 +181,10 @@ impl DiagnosticCollection {
         }
     }
 
-    pub fn iter<'a>(&'a self) -> impl Iterator<Item = (&'a Path, &'a [Diagnostic])> {
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = (&'a Path, Option<BufferHandle>, &'a [Diagnostic])> {
         self.buffer_diagnostics
             .iter()
-            .map(|d| (d.path.as_path(), &d.diagnostics[..d.len]))
+            .map(|d| (d.path.as_path(), d.buffer_handle, &d.diagnostics[..d.len]))
     }
 
     pub fn on_open_buffer(
@@ -579,7 +579,7 @@ impl ClientCollection {
         Ok(handle)
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &Client> {
+    pub fn clients(&self) -> impl Iterator<Item = &Client> {
         self.entries.iter().flat_map(|e| match e {
             Some(e) => Some(&e.client),
             None => None,
