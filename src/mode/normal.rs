@@ -864,7 +864,6 @@ impl ModeState for State {
                 _ => (),
             },
             Key::Char('s') => return ModeOperation::EnterMode(read_line::search::mode()),
-            /*
             Key::Char('y') => {
                 use copypasta::ClipboardProvider;
                 if let Ok(mut clipboard) = copypasta::ClipboardContext::new() {
@@ -901,7 +900,6 @@ impl ModeState for State {
                 self.is_recording_auto_macro = false;
                 return ModeOperation::None;
             }
-            */
             Key::Ctrl('y') => match keys.next() {
                 Key::None => return ModeOperation::Pending,
                 Key::Char(c) => {
