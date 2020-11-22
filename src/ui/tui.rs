@@ -678,9 +678,8 @@ fn draw_statusbar<W>(
                 for key in &editor.buffered_keys {
                     let _ = write!(buf, "{}", key);
                 }
+                buf.push(' ');
             }
-
-            buf.push(' ');
 
             let title_start = buf.len();
             if buffer_needs_save {
@@ -692,8 +691,9 @@ fn draw_statusbar<W>(
             if client_view.buffer.is_some() {
                 let line_number = client_view.main_cursor_position.line_index + 1;
                 let column_number = client_view.main_cursor_position.column_byte_index + 1;
-                let _ = write!(buf, ":{},{} ", line_number, column_number);
+                let _ = write!(buf, ":{},{}", line_number, column_number);
             }
+            buf.push(' ');
 
             let available_width = client_view.client.viewport_size.0 as usize - x;
 

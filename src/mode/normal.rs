@@ -7,6 +7,7 @@ use crate::{
     client_event::Key,
     cursor::Cursor,
     editor::{KeysIterator, StatusMessageKind},
+    lsp::LspDiagnostic,
     mode::{picker, read_line, Mode, ModeContext, ModeOperation, ModeState},
     navigation_history::{NavigationDirection, NavigationHistory},
     register::{RegisterKey, AUTO_MACRO_REGISTER, SEARCH_REGISTER},
@@ -854,14 +855,8 @@ impl State {
             },
             Key::Char('r') => match keys.next() {
                 Key::None => return ModeOperation::Pending,
-                Key::Char('n') => move_to_diagnostic(self, ctx, |r| match r {
-                    Ok(index) => (index + 1) as _,
-                    Err(index) => index as _,
-                }),
-                Key::Char('p') => move_to_diagnostic(self, ctx, |r| match r {
-                    Ok(index) => index as isize - 1,
-                    Err(index) => index as isize - 1,
-                }),
+                Key::Char('n') => move_to_diagnostic(self, ctx, true),
+                Key::Char('p') => move_to_diagnostic(self, ctx, false),
                 Key::Char('r') => ctx
                     .status_message
                     .write_str(StatusMessageKind::Info, "rename not yet implemented"),
@@ -1171,20 +1166,43 @@ fn search_word_or_move_to_it(
     state.movement_kind = CursorMovementKind::PositionAndAnchor;
 }
 
-fn move_to_diagnostic(
-    state: &mut State,
-    ctx: &mut ModeContext,
-    index_selector: fn(Result<usize, usize>) -> isize,
-) {
+fn move_to_diagnostic(state: &mut State, ctx: &mut ModeContext, forward: bool) {
+    enum DirectedIter<I> {
+        Forward(I),
+        Backward(I),
+    }
+    impl<I> DirectedIter<I> {
+        pub fn new(iter: I, forward: bool) -> Self {
+            if forward {
+                Self::Forward(iter)
+            } else {
+                Self::Backward(iter)
+            }
+        }
+    }
+    impl<I, E> Iterator for DirectedIter<I>
+    where
+        I: DoubleEndedIterator<Item = E>,
+    {
+        type Item = E;
+        fn next(&mut self) -> Option<Self::Item> {
+            match self {
+                Self::Forward(iter) => iter.next(),
+                Self::Backward(iter) => iter.next_back(),
+            }
+        }
+    }
+
     let handle = unwrap_or_return!(ctx.current_buffer_view_handle());
     let buffer_view = unwrap_or_return!(ctx.buffer_views.get(handle));
     let main_position = buffer_view.cursors.main_cursor().position;
 
-    let mut diagnostics = ctx.lsp.clients().flat_map(|c| c.diagnostics.iter());
-
+    let mut diagnostics = DirectedIter::new(
+        ctx.lsp.clients().flat_map(|c| c.diagnostics.iter()),
+        forward,
+    );
     let mut next_diagnostic = None;
 
-    let mut wrap_forward = false;
     for (path, buffer_handle, diagnostics) in &mut diagnostics {
         if buffer_handle != Some(buffer_view.buffer_handle) {
             continue;
@@ -1201,40 +1219,50 @@ fn move_to_diagnostic(
             }
         });
 
-        let next_index = index_selector(search_result);
-        if next_index >= 0 {
-            wrap_forward = true;
-            let next_index = next_index as usize;
-            if next_index < diagnostics.len() {
-                next_diagnostic = Some((
-                    path,
-                    buffer_handle,
-                    diagnostics[next_index].utf16_range.from,
-                ));
+        let next_index = if forward {
+            match search_result {
+                Ok(i) => i + 1,
+                Err(i) => i,
             }
+        } else {
+            match search_result {
+                Ok(0) | Err(0) => break,
+                Ok(i) | Err(i) => i - 1,
+            }
+        };
+
+        if next_index < diagnostics.len() {
+            next_diagnostic = Some((
+                path,
+                buffer_handle,
+                diagnostics[next_index].utf16_range.from,
+            ));
         }
         break;
     }
 
-    if let None = next_diagnostic {
-        next_diagnostic = if wrap_forward {
-            diagnostics
-                .next()
-                .map(|(p, h, d)| (p, h, d[0].utf16_range.from))
+    fn select_diagnostic_position(diagnostics: &[LspDiagnostic], forward: bool) -> BufferPosition {
+        if forward {
+            diagnostics[0].utf16_range.from
         } else {
-            diagnostics
-                .next_back()
-                .map(|(p, h, d)| (p, h, d[d.len() - 1].utf16_range.from))
-        };
+            diagnostics[diagnostics.len() - 1].utf16_range.from
+        }
     }
+
     if let None = next_diagnostic {
-        let mut iter = ctx.lsp.clients().flat_map(|c| c.diagnostics.iter());
-        next_diagnostic = if wrap_forward {
-            iter.next().map(|(p, h, d)| (p, h, d[0].utf16_range.from))
-        } else {
-            iter.next_back()
-                .map(|(p, h, d)| (p, h, d[d.len() - 1].utf16_range.from))
-        };
+        next_diagnostic = diagnostics
+            .next()
+            .map(|(p, h, d)| (p, h, select_diagnostic_position(d, forward)));
+    }
+
+    if let None = next_diagnostic {
+        let mut iter = DirectedIter::new(
+            ctx.lsp.clients().flat_map(|c| c.diagnostics.iter()),
+            forward,
+        );
+        next_diagnostic = iter
+            .next()
+            .map(|(p, h, d)| (p, h, select_diagnostic_position(d, forward)));
     }
 
     if let Some((path, buffer_handle, position)) = next_diagnostic {
