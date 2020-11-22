@@ -360,13 +360,13 @@ impl Editor {
 
                 let write_events = self.events.get_read_and_write_queues().1;
 
-                let path = Path::new(path);
                 match self.buffer_views.buffer_view_handle_from_path(
                     &mut self.buffers,
                     &mut self.word_database,
                     &self.config.syntaxes,
                     target_client,
-                    path,
+                    &self.current_directory,
+                    Path::new(path),
                     line_index,
                     write_events,
                 ) {

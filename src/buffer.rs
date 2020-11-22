@@ -996,7 +996,6 @@ impl Buffer {
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct BufferHandle(usize);
-
 impl_from_script!(BufferHandle, value => match value {
     ScriptValue::Integer(n) if n >= 0 => Some(Self(n as _)),
     _ => None,
@@ -1075,14 +1074,22 @@ impl BufferCollection {
         &mut self.line_pool
     }
 
-    pub fn find_with_path(&self, path: &Path) -> Option<BufferHandle> {
+    pub fn find_with_path(&self, root: &Path, path: &Path) -> Option<BufferHandle> {
         if path.as_os_str().len() == 0 {
             return None;
         }
 
-        for (handle, buffer) in self.iter_with_handles() {
-            if buffer.path == path {
-                return Some(handle);
+        if path.is_absolute() {
+            for (handle, buffer) in self.iter_with_handles() {
+                if buffer.path == path {
+                    return Some(handle);
+                }
+            }
+        } else {
+            for (handle, buffer) in self.iter_with_handles() {
+                if buffer.path == path {
+                    return Some(handle);
+                }
             }
         }
 

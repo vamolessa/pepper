@@ -1262,6 +1262,7 @@ fn move_to_diagnostic(state: &mut State, ctx: &mut ModeContext, forward: bool) {
                 &mut ctx.word_database,
                 &ctx.config.syntaxes,
                 ctx.target_client,
+                ctx.current_directory,
                 path,
                 None,
                 ctx.events,

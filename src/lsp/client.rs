@@ -20,6 +20,7 @@ use crate::{
             ServerNotification, ServerRequest, ServerResponse, SharedJson, Uri,
         },
     },
+    script::ScriptValue,
 };
 
 pub struct ClientContext<'a> {
@@ -111,15 +112,11 @@ impl BufferDiagnosticCollection {
     }
 }
 
-fn are_same_path_with_root(root_a: &Path, a: &Path, root_b: &Path, b: &Path) -> bool {
-    match (a.is_absolute(), b.is_absolute()) {
-        (false, false) => root_a
-            .components()
-            .chain(a.components())
-            .eq(root_b.components().chain(b.components())),
-        (false, true) => root_a.components().chain(a.components()).eq(b.components()),
-        (true, false) => a.components().eq(root_b.components().chain(b.components())),
-        (true, true) => a.components().eq(b.components()),
+fn are_same_path_with_root(root_a: &Path, a: &Path, b: &Path) -> bool {
+    if a.is_absolute() {
+        a.components().eq(b.components())
+    } else {
+        root_a.components().chain(a.components()).eq(b.components())
     }
 }
 
@@ -140,7 +137,6 @@ impl DiagnosticCollection {
     fn path_diagnostics_mut(
         &mut self,
         ctx: &ClientContext,
-        client_root: &Path,
         path: &Path,
     ) -> &mut BufferDiagnosticCollection {
         let buffer_diagnostics = &mut self.buffer_diagnostics;
@@ -155,7 +151,7 @@ impl DiagnosticCollection {
         let mut buffer_handle = None;
         for (handle, buffer) in ctx.buffers.iter_with_handles() {
             if let Some(buffer_path) = buffer.path() {
-                if are_same_path_with_root(ctx.current_directory, buffer_path, client_root, path) {
+                if are_same_path_with_root(ctx.current_directory, buffer_path, path) {
                     buffer_handle = Some(handle);
                     break;
                 }
@@ -189,12 +185,7 @@ impl DiagnosticCollection {
             .map(|d| (d.path.as_path(), d.buffer_handle, &d.diagnostics[..d.len]))
     }
 
-    pub fn on_open_buffer(
-        &mut self,
-        ctx: &ClientContext,
-        buffer_handle: BufferHandle,
-        client_root: &Path,
-    ) {
+    pub fn on_open_buffer(&mut self, ctx: &ClientContext, buffer_handle: BufferHandle) {
         let buffer_path = match ctx.buffers.get(buffer_handle).and_then(|b| b.path()) {
             Some(path) => path,
             None => return,
@@ -202,12 +193,7 @@ impl DiagnosticCollection {
 
         for diagnostics in &mut self.buffer_diagnostics {
             if let None = diagnostics.buffer_handle {
-                if are_same_path_with_root(
-                    ctx.current_directory,
-                    buffer_path,
-                    client_root,
-                    &diagnostics.path,
-                ) {
+                if are_same_path_with_root(ctx.current_directory, buffer_path, &diagnostics.path) {
                     diagnostics.buffer_handle = Some(buffer_handle);
                     return;
                 }
@@ -215,12 +201,7 @@ impl DiagnosticCollection {
         }
     }
 
-    pub fn on_save_buffer(
-        &mut self,
-        ctx: &ClientContext,
-        buffer_handle: BufferHandle,
-        client_root: &Path,
-    ) {
+    pub fn on_save_buffer(&mut self, ctx: &ClientContext, buffer_handle: BufferHandle) {
         let buffer_path = match ctx.buffers.get(buffer_handle).and_then(|b| b.path()) {
             Some(path) => path,
             None => return,
@@ -229,12 +210,7 @@ impl DiagnosticCollection {
         for diagnostics in &mut self.buffer_diagnostics {
             if diagnostics.buffer_handle == Some(buffer_handle) {
                 diagnostics.buffer_handle = None;
-                if are_same_path_with_root(
-                    ctx.current_directory,
-                    buffer_path,
-                    client_root,
-                    &diagnostics.path,
-                ) {
+                if are_same_path_with_root(ctx.current_directory, buffer_path, &diagnostics.path) {
                     diagnostics.buffer_handle = Some(buffer_handle);
                     return;
                 }
@@ -253,8 +229,6 @@ impl DiagnosticCollection {
 }
 
 pub struct Client {
-    command: String,
-    root: PathBuf,
     protocol: Protocol,
     pending_requests: PendingRequestColection,
 
@@ -265,10 +239,8 @@ pub struct Client {
 }
 
 impl Client {
-    fn new(command: String, connection: ServerConnection) -> Self {
+    fn new(connection: ServerConnection) -> Self {
         Self {
-            command,
-            root: PathBuf::new(),
             protocol: Protocol::new(connection),
             pending_requests: PendingRequestColection::default(),
 
@@ -378,7 +350,7 @@ impl Client {
                     Uri::Path(path) => path,
                 };
 
-                let diagnostics = self.diagnostics.path_diagnostics_mut(ctx, &self.root, path);
+                let diagnostics = self.diagnostics.path_diagnostics_mut(ctx, path);
                 for diagnostic in params.diagnostics.elements(json) {
                     declare_json_object! {
                         #[derive(Default)]
@@ -486,16 +458,13 @@ impl Client {
         for event in events {
             match event {
                 EditorEvent::BufferOpen(handle) => {
-                    self.diagnostics.on_open_buffer(ctx, *handle, &self.root);
-                    //
+                    self.diagnostics.on_open_buffer(ctx, *handle);
                 }
                 EditorEvent::BufferSave(handle) => {
-                    self.diagnostics.on_save_buffer(ctx, *handle, &self.root);
-                    //
+                    self.diagnostics.on_save_buffer(ctx, *handle);
                 }
                 EditorEvent::BufferClose(handle) => {
                     self.diagnostics.on_close_buffer(*handle);
-                    //
                 }
             }
         }
@@ -515,9 +484,6 @@ impl Client {
     }
 
     pub fn initialize(&mut self, json: &mut Json, root: &Path) -> io::Result<()> {
-        self.root.clear();
-        self.root.push(root);
-
         let mut params = JsonObject::default();
         params.set(
             "processId".into(),
@@ -545,6 +511,11 @@ impl Client {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct ClientHandle(usize);
+impl_from_script!(ClientHandle, value => match value {
+    ScriptValue::Integer(n) if n >= 0 => Some(Self(n as _)),
+    _ => None,
+});
+impl_to_script!(ClientHandle, (self, _engine) => ScriptValue::Integer(self.0 as _));
 
 struct ClientCollectionEntry {
     client: Client,
@@ -564,29 +535,13 @@ impl ClientCollection {
         }
     }
 
-    pub fn start(
-        &mut self,
-        command_name: &str,
-        command: Command,
-        root: &Path,
-    ) -> io::Result<ClientHandle> {
-        for (handle, entry) in self
-            .entries
-            .iter()
-            .enumerate()
-            .filter_map(|(i, e)| e.as_ref().map(|e| (ClientHandle(i), e)))
-        {
-            if entry.client.command == command_name && entry.client.root == root {
-                return Ok(handle);
-            }
-        }
-
+    pub fn start(&mut self, command: Command, root: &Path) -> io::Result<ClientHandle> {
         let handle = self.find_free_slot();
         let json = SharedJson::new();
         let connection =
             ServerConnection::spawn(command, handle, json.clone(), self.event_sender.clone())?;
         let mut entry = ClientCollectionEntry {
-            client: Client::new(command_name.into(), connection),
+            client: Client::new(connection),
             json,
         };
         entry

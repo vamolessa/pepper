@@ -15,6 +15,7 @@ use crate::{
     editor::{EditorLoop, StatusMessageKind},
     glob::Glob,
     keymap::ParseKeyMapError,
+    lsp::LspClientHandle,
     mode::{self, Mode},
     navigation_history::NavigationHistory,
     pattern::Pattern,
@@ -277,10 +278,10 @@ mod lsp {
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
         _: ScriptContextGuard,
-        (command_name, args, root): (ScriptString, Option<ScriptArray>, Option<ScriptString>),
-    ) -> ScriptResult<()> {
-        let command_name = command_name.to_str()?;
-        let mut command = Command::new(command_name);
+        (command, args, root): (ScriptString, Option<ScriptArray>, Option<ScriptString>),
+    ) -> ScriptResult<LspClientHandle> {
+        let command = command.to_str()?;
+        let mut command = Command::new(command);
         if let Some(args) = args {
             for arg in args.iter() {
                 let arg: ScriptString = arg?;
@@ -293,10 +294,7 @@ mod lsp {
             None => ctx.current_directory,
         };
 
-        match ctx.lsp.start(command_name, command, root) {
-            Ok(_) => Ok(()),
-            Err(error) => Err(ScriptError::from(error)),
-        }
+        ctx.lsp.start(command, root).map_err(ScriptError::from)
     }
 
     pub fn diagnostics(
@@ -467,6 +465,7 @@ mod buffer {
                 ctx.word_database,
                 &ctx.config.syntaxes,
                 ctx.target_client,
+                ctx.current_directory,
                 path,
                 line_number.map(|l| l.saturating_sub(1)),
                 ctx.events,
@@ -930,6 +929,7 @@ mod buffer_view {
             ctx.word_database,
             &ctx.config.syntaxes,
             ctx.target_client,
+            ctx.current_directory,
             Path::new(path),
             None,
             ctx.events,

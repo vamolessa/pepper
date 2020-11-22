@@ -91,6 +91,7 @@ pub mod buffer {
                 ctx.word_database,
                 &ctx.config.syntaxes,
                 ctx.target_client,
+                ctx.current_directory,
                 Path::new(path),
                 None,
                 ctx.events,

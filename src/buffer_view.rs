@@ -340,7 +340,6 @@ impl BufferView {
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub struct BufferViewHandle(usize);
-
 impl_from_script!(BufferViewHandle, value => match value {
     ScriptValue::Integer(n) if n >= 0 => Some(Self(n as _)),
     _ => None,
@@ -708,6 +707,7 @@ impl BufferViewCollection {
         word_database: &mut WordDatabase,
         syntaxes: &SyntaxCollection,
         target_client: TargetClient,
+        root: &Path,
         path: &Path,
         line_index: Option<usize>,
         events: &mut EditorEventQueue,
@@ -741,7 +741,7 @@ impl BufferViewCollection {
             });
         }
 
-        if let Some(buffer_handle) = buffers.find_with_path(path) {
+        if let Some(buffer_handle) = buffers.find_with_path(root, path) {
             let handle = self.buffer_view_handle_from_buffer_handle(target_client, buffer_handle);
             try_set_line_index(self, buffers, handle, line_index);
             Ok(handle)
