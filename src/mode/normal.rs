@@ -967,15 +967,13 @@ impl Default for State {
 
 impl ModeState for State {
     fn on_client_keys(&mut self, ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
-        fn show_hovered_diagnostic_in_status_message(
-            ctx: &mut ModeContext,
-            buffer_view_handle: BufferViewHandle,
-        ) {
+        fn show_hovered_diagnostic_in_status_message(ctx: &mut ModeContext) {
+            let handle = unwrap_or_return!(ctx.current_buffer_view_handle());
             let current_message = ctx.status_message.message().1;
             if !current_message.is_empty() {
                 return;
             }
-            let buffer_view = match ctx.buffer_views.get(buffer_view_handle) {
+            let buffer_view = match ctx.buffer_views.get(handle) {
                 Some(view) => view,
                 None => return,
             };
@@ -1007,7 +1005,7 @@ impl ModeState for State {
             Some(handle) => {
                 let op = self.on_client_keys_with_buffer_view(ctx, keys, handle);
                 if let ModeOperation::None = op {
-                    show_hovered_diagnostic_in_status_message(ctx, handle);
+                    show_hovered_diagnostic_in_status_message(ctx);
                 }
                 op
             }
@@ -1193,8 +1191,6 @@ fn move_to_diagnostic(state: &mut State, ctx: &mut ModeContext, forward: bool) {
         }
     }
 
-    eprintln!("----------------------------------------------------------------------");
-
     let handle = unwrap_or_return!(ctx.current_buffer_view_handle());
     let buffer_view = unwrap_or_return!(ctx.buffer_views.get(handle));
     let main_position = buffer_view.cursors.main_cursor().position;
@@ -1254,9 +1250,9 @@ fn move_to_diagnostic(state: &mut State, ctx: &mut ModeContext, forward: bool) {
             .map(|(p, h, d)| (p, h, select_diagnostic_position(d, forward)));
     }
 
-    if let Some((path, buffer_handle, position)) = next_diagnostic {
-        dbg!(path, buffer_handle, position);
+    drop(diagnostics);
 
+    if let Some((path, buffer_handle, position)) = next_diagnostic {
         let buffer_view_handle = match buffer_handle {
             Some(buffer_handle) => ctx
                 .buffer_views
@@ -1289,6 +1285,10 @@ fn move_to_diagnostic(state: &mut State, ctx: &mut ModeContext, forward: bool) {
             position,
         });
 
+        drop(cursors);
+        drop(buffer_view);
+
+        ctx.set_current_buffer_view_handle(Some(buffer_view_handle));
         state.movement_kind = CursorMovementKind::PositionAndAnchor;
     }
 }
