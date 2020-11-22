@@ -220,7 +220,7 @@ impl StatusMessage {
 }
 
 pub struct Editor {
-    pub root: PathBuf,
+    pub current_directory: PathBuf,
     pub config: Config,
     pub mode: Mode,
 
@@ -244,9 +244,9 @@ pub struct Editor {
     client_target_map: ClientTargetMap,
 }
 impl Editor {
-    pub fn new(root: PathBuf, lsp: LspClientCollection) -> Self {
+    pub fn new(current_directory: PathBuf, lsp: LspClientCollection) -> Self {
         Self {
-            root,
+            current_directory,
             config: Config::default(),
             mode: Mode::default(),
 
@@ -489,7 +489,7 @@ impl Editor {
             target_client,
             clients,
 
-            root: &self.root,
+            current_directory: &self.current_directory,
             config: &mut self.config,
 
             buffers: &mut self.buffers,
@@ -562,7 +562,7 @@ impl Editor {
 
     pub fn on_lsp_event(&mut self, client_handle: LspClientHandle, event: LspServerEvent) {
         let mut ctx = LspClientContext {
-            root: &self.root,
+            current_directory: &self.current_directory,
             buffers: &mut self.buffers,
             buffer_views: &mut self.buffer_views,
             status_message: &mut self.status_message,

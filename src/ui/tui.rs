@@ -21,7 +21,6 @@ use crate::{
     client_event::{Key, LocalEvent},
     cursor::Cursor,
     editor::{Editor, StatusMessageKind},
-    lsp::LspDiagnostic,
     mode::Mode,
     syntax::{HighlightedBuffer, TokenKind},
     theme,

@@ -23,7 +23,7 @@ use crate::{
 };
 
 pub struct ClientContext<'a> {
-    pub root: &'a Path,
+    pub current_directory: &'a Path,
     pub buffers: &'a mut BufferCollection,
     pub buffer_views: &'a mut BufferViewCollection,
     pub status_message: &'a mut StatusMessage,
@@ -155,7 +155,7 @@ impl DiagnosticCollection {
         let mut buffer_handle = None;
         for (handle, buffer) in ctx.buffers.iter_with_handles() {
             if let Some(buffer_path) = buffer.path() {
-                if are_same_path_with_root(ctx.root, buffer_path, client_root, path) {
+                if are_same_path_with_root(ctx.current_directory, buffer_path, client_root, path) {
                     buffer_handle = Some(handle);
                     break;
                 }
@@ -181,7 +181,9 @@ impl DiagnosticCollection {
         }
     }
 
-    pub fn iter<'a>(&'a self) -> impl Iterator<Item = (&'a Path, Option<BufferHandle>, &'a [Diagnostic])> {
+    pub fn iter<'a>(
+        &'a self,
+    ) -> impl DoubleEndedIterator<Item = (&'a Path, Option<BufferHandle>, &'a [Diagnostic])> {
         self.buffer_diagnostics
             .iter()
             .map(|d| (d.path.as_path(), d.buffer_handle, &d.diagnostics[..d.len]))
@@ -200,7 +202,12 @@ impl DiagnosticCollection {
 
         for diagnostics in &mut self.buffer_diagnostics {
             if let None = diagnostics.buffer_handle {
-                if are_same_path_with_root(ctx.root, buffer_path, client_root, &diagnostics.path) {
+                if are_same_path_with_root(
+                    ctx.current_directory,
+                    buffer_path,
+                    client_root,
+                    &diagnostics.path,
+                ) {
                     diagnostics.buffer_handle = Some(buffer_handle);
                     return;
                 }
@@ -222,7 +229,12 @@ impl DiagnosticCollection {
         for diagnostics in &mut self.buffer_diagnostics {
             if diagnostics.buffer_handle == Some(buffer_handle) {
                 diagnostics.buffer_handle = None;
-                if are_same_path_with_root(ctx.root, buffer_path, client_root, &diagnostics.path) {
+                if are_same_path_with_root(
+                    ctx.current_directory,
+                    buffer_path,
+                    client_root,
+                    &diagnostics.path,
+                ) {
                     diagnostics.buffer_handle = Some(buffer_handle);
                     return;
                 }
@@ -241,7 +253,7 @@ impl DiagnosticCollection {
 }
 
 pub struct Client {
-    name: String,
+    command: String,
     root: PathBuf,
     protocol: Protocol,
     pending_requests: PendingRequestColection,
@@ -253,9 +265,9 @@ pub struct Client {
 }
 
 impl Client {
-    fn new(name: String, connection: ServerConnection) -> Self {
+    fn new(command: String, connection: ServerConnection) -> Self {
         Self {
-            name,
+            command,
             root: PathBuf::new(),
             protocol: Protocol::new(connection),
             pending_requests: PendingRequestColection::default(),
@@ -552,14 +564,19 @@ impl ClientCollection {
         }
     }
 
-    pub fn start(&mut self, name: &str, command: Command, root: &Path) -> io::Result<ClientHandle> {
+    pub fn start(
+        &mut self,
+        command_name: &str,
+        command: Command,
+        root: &Path,
+    ) -> io::Result<ClientHandle> {
         for (handle, entry) in self
             .entries
             .iter()
             .enumerate()
             .filter_map(|(i, e)| e.as_ref().map(|e| (ClientHandle(i), e)))
         {
-            if entry.client.name == name {
+            if entry.client.command == command_name && entry.client.root == root {
                 return Ok(handle);
             }
         }
@@ -569,7 +586,7 @@ impl ClientCollection {
         let connection =
             ServerConnection::spawn(command, handle, json.clone(), self.event_sender.clone())?;
         let mut entry = ClientCollectionEntry {
-            client: Client::new(name.into(), connection),
+            client: Client::new(command_name.into(), connection),
             json,
         };
         entry
@@ -579,24 +596,11 @@ impl ClientCollection {
         Ok(handle)
     }
 
-    pub fn clients(&self) -> impl Iterator<Item = &Client> {
+    pub fn clients(&self) -> impl DoubleEndedIterator<Item = &Client> {
         self.entries.iter().flat_map(|e| match e {
             Some(e) => Some(&e.client),
             None => None,
         })
-    }
-
-    pub fn try_access<F, E>(&mut self, handle: ClientHandle, accessor: F) -> Result<(), E>
-    where
-        F: FnOnce(&mut Client, &mut Json) -> Result<(), E>,
-    {
-        match &mut self.entries[handle.0] {
-            Some(entry) => {
-                let mut json = entry.json.write_lock();
-                accessor(&mut entry.client, json.get())
-            }
-            None => Ok(()),
-        }
     }
 
     pub fn on_server_event(

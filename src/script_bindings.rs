@@ -70,7 +70,7 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
     }
 
     register!(client => index, current_buffer_view_handle, quit, force_quit, quit_all, force_quit_all,);
-    register!(editor => version, os, print, error,);
+    register!(editor => version, os, current_directory, print, error,);
     register!(lsp => start, diagnostics,);
     register!(buffer => all_handles, line_count, line_at, path, path_matches, needs_save, set_search, open, close, force_close,
         close_all, force_close_all, save, save_all, reload, force_reload, reload_all, force_reload_all, commit_edits,
@@ -233,6 +233,20 @@ mod editor {
             .map(ScriptValue::String)
     }
 
+    pub fn current_directory<'a>(
+        engine: ScriptEngineRef<'a>,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        _: (),
+    ) -> ScriptResult<ScriptValue<'a>> {
+        match ctx.current_directory.to_str() {
+            Some(path) => engine
+                .create_string(path.as_bytes())
+                .map(ScriptValue::String),
+            None => Ok(ScriptValue::Nil),
+        }
+    }
+
     pub fn print(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
@@ -263,11 +277,10 @@ mod lsp {
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
         _: ScriptContextGuard,
-        (name, command, args): (ScriptString, ScriptString, Option<ScriptArray>),
+        (command_name, args, root): (ScriptString, Option<ScriptArray>, Option<ScriptString>),
     ) -> ScriptResult<()> {
-        let name = name.to_str()?;
-        let command = command.to_str()?;
-        let mut command = Command::new(command);
+        let command_name = command_name.to_str()?;
+        let mut command = Command::new(command_name);
         if let Some(args) = args {
             for arg in args.iter() {
                 let arg: ScriptString = arg?;
@@ -275,7 +288,12 @@ mod lsp {
             }
         }
 
-        match ctx.lsp.start(name, command, ctx.root) {
+        let root = match root {
+            Some(ref path) => Path::new(path.to_str()?),
+            None => ctx.current_directory,
+        };
+
+        match ctx.lsp.start(command_name, command, root) {
             Ok(_) => Ok(()),
             Err(error) => Err(ScriptError::from(error)),
         }

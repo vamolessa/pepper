@@ -33,7 +33,7 @@ pub struct ModeContext<'a> {
     pub target_client: TargetClient,
     pub clients: &'a mut ClientCollection,
 
-    pub root: &'a Path,
+    pub current_directory: &'a Path,
     pub config: &'a mut Config,
 
     pub buffers: &'a mut BufferCollection,
@@ -74,7 +74,7 @@ impl<'a> ModeContext<'a> {
             next_mode: Mode::default(),
             edited_buffers: false,
 
-            root: self.root,
+            current_directory: self.current_directory,
             config: self.config,
 
             buffers: self.buffers,

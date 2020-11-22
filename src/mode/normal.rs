@@ -162,11 +162,6 @@ impl State {
                 self.movement_kind,
             ),
             Key::Char('n') => {
-                NavigationHistory::save_client_snapshot(
-                    ctx.clients,
-                    ctx.buffer_views,
-                    ctx.target_client,
-                );
                 move_to_search_match(self, ctx, |len, r| {
                     let count = self.count.max(1);
                     let index = match r {
@@ -177,11 +172,6 @@ impl State {
                 });
             }
             Key::Char('p') => {
-                NavigationHistory::save_client_snapshot(
-                    ctx.clients,
-                    ctx.buffer_views,
-                    ctx.target_client,
-                );
                 move_to_search_match(self, ctx, |len, r| {
                     let index = match r {
                         Ok(index) => index,
@@ -864,53 +854,14 @@ impl State {
             },
             Key::Char('r') => match keys.next() {
                 Key::None => return ModeOperation::Pending,
-                Key::Char('n') => {
-                    let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
-                    let main_position = buffer_view.cursors.main_cursor().position;
-
-                    for client in ctx.lsp.clients() {
-                        let diagnostics = client
-                            .diagnostics
-                            .buffer_diagnostics(buffer_view.buffer_handle);
-                        if diagnostics.is_empty() {
-                            continue;
-                        }
-
-                        let search_result = diagnostics.binary_search_by(|d| {
-                            let range = d.utf16_range;
-                            if range.to < main_position {
-                                Ordering::Less
-                            } else if range.from > main_position {
-                                Ordering::Greater
-                            } else {
-                                Ordering::Equal
-                            }
-                        });
-
-                        let next_index = match search_result {
-                            Ok(index) => index + 1,
-                            Err(index) => index,
-                        };
-
-                        let diagnostic_position = if next_index < diagnostics.len() {
-                            diagnostics[next_index].utf16_range.from
-                        } else {
-                            diagnostics[0].utf16_range.from
-                        };
-
-                        let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
-                        let mut cursors = buffer_view.cursors.mut_guard();
-                        cursors.clear();
-                        cursors.add(Cursor {
-                            anchor: diagnostic_position,
-                            position: diagnostic_position,
-                        });
-                        break;
-                    }
-                }
-                Key::Char('p') => {
-                    //
-                }
+                Key::Char('n') => move_to_diagnostic(self, ctx, |r| match r {
+                    Ok(index) => (index + 1) as _,
+                    Err(index) => index as _,
+                }),
+                Key::Char('p') => move_to_diagnostic(self, ctx, |r| match r {
+                    Ok(index) => index as isize - 1,
+                    Err(index) => index as isize - 1,
+                }),
                 Key::Char('r') => ctx
                     .status_message
                     .write_str(StatusMessageKind::Info, "rename not yet implemented"),
@@ -1060,7 +1011,9 @@ impl ModeState for State {
         match ctx.current_buffer_view_handle() {
             Some(handle) => {
                 let op = self.on_client_keys_with_buffer_view(ctx, keys, handle);
-                show_hovered_diagnostic_in_status_message(ctx, handle);
+                if let ModeOperation::None = op {
+                    show_hovered_diagnostic_in_status_message(ctx, handle);
+                }
                 op
             }
             None => self.on_event_no_buffer(ctx, keys),
@@ -1125,6 +1078,8 @@ fn move_to_search_match<F>(state: &State, ctx: &mut ModeContext, index_selector:
 where
     F: FnOnce(usize, Result<usize, usize>) -> usize,
 {
+    NavigationHistory::save_client_snapshot(ctx.clients, ctx.buffer_views, ctx.target_client);
+
     let handle = unwrap_or_return!(ctx.current_buffer_view_handle());
     let buffer_view = unwrap_or_return!(ctx.buffer_views.get_mut(handle));
     let buffer = unwrap_or_return!(ctx.buffers.get_mut(buffer_view.buffer_handle));
@@ -1196,6 +1151,9 @@ fn search_word_or_move_to_it(
 
         ctx.registers.set(SEARCH_REGISTER, search_word);
     } else {
+        NavigationHistory::save_client_snapshot(ctx.clients, ctx.buffer_views, ctx.target_client);
+
+        let buffer_view = unwrap_or_return!(ctx.buffer_views.get_mut(handle));
         let mut range_index = current_range_index;
 
         for _ in 0..state.count.max(1) {
@@ -1211,4 +1169,107 @@ fn search_word_or_move_to_it(
     }
 
     state.movement_kind = CursorMovementKind::PositionAndAnchor;
+}
+
+fn move_to_diagnostic(
+    state: &mut State,
+    ctx: &mut ModeContext,
+    index_selector: fn(Result<usize, usize>) -> isize,
+) {
+    let handle = unwrap_or_return!(ctx.current_buffer_view_handle());
+    let buffer_view = unwrap_or_return!(ctx.buffer_views.get(handle));
+    let main_position = buffer_view.cursors.main_cursor().position;
+
+    let mut diagnostics = ctx.lsp.clients().flat_map(|c| c.diagnostics.iter());
+
+    let mut next_diagnostic = None;
+
+    let mut wrap_forward = false;
+    for (path, buffer_handle, diagnostics) in &mut diagnostics {
+        if buffer_handle != Some(buffer_view.buffer_handle) {
+            continue;
+        }
+
+        let search_result = diagnostics.binary_search_by(|d| {
+            let range = d.utf16_range;
+            if range.to < main_position {
+                Ordering::Less
+            } else if range.from > main_position {
+                Ordering::Greater
+            } else {
+                Ordering::Equal
+            }
+        });
+
+        let next_index = index_selector(search_result);
+        if next_index >= 0 {
+            wrap_forward = true;
+            let next_index = next_index as usize;
+            if next_index < diagnostics.len() {
+                next_diagnostic = Some((
+                    path,
+                    buffer_handle,
+                    diagnostics[next_index].utf16_range.from,
+                ));
+            }
+        }
+        break;
+    }
+
+    if let None = next_diagnostic {
+        next_diagnostic = if wrap_forward {
+            diagnostics
+                .next()
+                .map(|(p, h, d)| (p, h, d[0].utf16_range.from))
+        } else {
+            diagnostics
+                .next_back()
+                .map(|(p, h, d)| (p, h, d[d.len() - 1].utf16_range.from))
+        };
+    }
+    if let None = next_diagnostic {
+        let mut iter = ctx.lsp.clients().flat_map(|c| c.diagnostics.iter());
+        next_diagnostic = if wrap_forward {
+            iter.next().map(|(p, h, d)| (p, h, d[0].utf16_range.from))
+        } else {
+            iter.next_back()
+                .map(|(p, h, d)| (p, h, d[d.len() - 1].utf16_range.from))
+        };
+    }
+
+    if let Some((path, buffer_handle, position)) = next_diagnostic {
+        let buffer_view_handle = match buffer_handle {
+            Some(buffer_handle) => ctx
+                .buffer_views
+                .buffer_view_handle_from_buffer_handle(ctx.target_client, buffer_handle),
+            None => match ctx.buffer_views.buffer_view_handle_from_path(
+                ctx.buffers,
+                &mut ctx.word_database,
+                &ctx.config.syntaxes,
+                ctx.target_client,
+                path,
+                None,
+                ctx.events,
+            ) {
+                Ok(handle) => handle,
+                Err(error) => {
+                    ctx.status_message
+                        .write_str(StatusMessageKind::Error, &error);
+                    return;
+                }
+            },
+        };
+
+        NavigationHistory::save_client_snapshot(ctx.clients, ctx.buffer_views, ctx.target_client);
+
+        let buffer_view = unwrap_or_return!(ctx.buffer_views.get_mut(buffer_view_handle));
+        let mut cursors = buffer_view.cursors.mut_guard();
+        cursors.clear();
+        cursors.add(Cursor {
+            anchor: position,
+            position,
+        });
+
+        state.movement_kind = CursorMovementKind::PositionAndAnchor;
+    }
 }
