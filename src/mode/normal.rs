@@ -1193,6 +1193,8 @@ fn move_to_diagnostic(state: &mut State, ctx: &mut ModeContext, forward: bool) {
         }
     }
 
+    eprintln!("----------------------------------------------------------------------");
+
     let handle = unwrap_or_return!(ctx.current_buffer_view_handle());
     let buffer_view = unwrap_or_return!(ctx.buffer_views.get(handle));
     let main_position = buffer_view.cursors.main_cursor().position;
@@ -1208,35 +1210,22 @@ fn move_to_diagnostic(state: &mut State, ctx: &mut ModeContext, forward: bool) {
             continue;
         }
 
-        let search_result = diagnostics.binary_search_by(|d| {
-            let range = d.utf16_range;
-            if range.to < main_position {
-                Ordering::Less
-            } else if range.from > main_position {
-                Ordering::Greater
-            } else {
-                Ordering::Equal
-            }
-        });
-
-        let next_index = if forward {
-            match search_result {
-                Ok(i) => i + 1,
-                Err(i) => i,
+        if forward {
+            for d in diagnostics.iter() {
+                let range = d.utf16_range;
+                if range.from > main_position {
+                    next_diagnostic = Some((path, buffer_handle, range.from));
+                    break;
+                }
             }
         } else {
-            match search_result {
-                Ok(0) | Err(0) => break,
-                Ok(i) | Err(i) => i - 1,
+            for d in diagnostics.iter().rev() {
+                let range = d.utf16_range;
+                if range.from < main_position {
+                    next_diagnostic = Some((path, buffer_handle, range.from));
+                    break;
+                }
             }
-        };
-
-        if next_index < diagnostics.len() {
-            next_diagnostic = Some((
-                path,
-                buffer_handle,
-                diagnostics[next_index].utf16_range.from,
-            ));
         }
         break;
     }
@@ -1266,6 +1255,8 @@ fn move_to_diagnostic(state: &mut State, ctx: &mut ModeContext, forward: bool) {
     }
 
     if let Some((path, buffer_handle, position)) = next_diagnostic {
+        dbg!(path, buffer_handle, position);
+
         let buffer_view_handle = match buffer_handle {
             Some(buffer_handle) => ctx
                 .buffer_views
