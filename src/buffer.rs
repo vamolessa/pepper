@@ -1079,17 +1079,14 @@ impl BufferCollection {
             return None;
         }
 
-        if path.is_absolute() {
-            for (handle, buffer) in self.iter_with_handles() {
-                if buffer.path == path {
-                    return Some(handle);
-                }
-            }
-        } else {
-            for (handle, buffer) in self.iter_with_handles() {
-                if buffer.path == path {
-                    return Some(handle);
-                }
+        let path = path.strip_prefix(root).unwrap_or(path);
+
+        for (handle, buffer) in self.iter_with_handles() {
+            let buffer_path = buffer.path.as_path();
+            let buffer_path = buffer_path.strip_prefix(root).unwrap_or(buffer_path);
+
+            if buffer_path == path {
+                return Some(handle);
             }
         }
 
