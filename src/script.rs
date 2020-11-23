@@ -373,7 +373,7 @@ struct LuaTablePairs<'lua> {
     next_selector: LuaFunction<'lua>,
 }
 impl<'lua> LuaTablePairs<'lua> {
-    pub fn new(table: LuaTable<'lua>, _: &ScriptContextGuard) -> Result<Self, LuaTable<'lua>> {
+    pub fn new(table: LuaTable<'lua>, _: &'lua ScriptContextGuard) -> Result<Self, LuaTable<'lua>> {
         match table
             .get_metatable()
             .and_then(|mt| mt.get("__pairs").ok())
@@ -463,8 +463,8 @@ impl<'a> ScriptContext<'a> {
     }
 }
 
-const MODULE_SEARCH_PATHS_REGISTRY_KEY: &str = "module_search_paths";
-const MODULE_LOADER_REGISTRY_KEY: &str = "module_loader";
+const CURRENT_PATH_REGISTRY_KEY: &str = "current_path";
+struct CurrentPath<'a>(&'a Path);
 
 pub struct ScriptContextGuard(());
 
@@ -501,76 +501,11 @@ impl ScriptEngine {
             | mlua::StdLib::PACKAGE;
         let lua = Lua::new_with(libs)?;
 
-        {
-            fn load_module<'lua>(
-                lua: &'lua Lua,
-                (_module_name, file_path): (LuaString<'lua>, LuaString<'lua>),
-            ) -> LuaResult<LuaValue<'lua>> {
-                let path = Path::new(file_path.to_str()?);
-                eval_file(lua, path)
-            }
-
-            fn search_module<'lua>(
-                lua: &'lua Lua,
-                module_name: LuaString<'lua>,
-            ) -> LuaResult<(LuaValue<'lua>, Option<LuaString<'lua>>)> {
-                let mut module_path = PathBuf::new();
-                let module_name = module_name.to_str()?;
-                module_path.reserve(module_name.len());
-                for module_part in module_name.split('.') {
-                    module_path.push(module_part);
-                }
-                let module_path = module_path.as_path();
-
-                let mut final_path = PathBuf::new();
-                let module_search_paths: LuaTable =
-                    lua.named_registry_value(MODULE_SEARCH_PATHS_REGISTRY_KEY)?;
-                for module_search_path in module_search_paths.sequence_values::<LuaString>() {
-                    let module_search_path = module_search_path?;
-                    let module_search_path = Path::new(module_search_path.to_str()?);
-
-                    final_path.clear();
-                    final_path.push(module_search_path);
-                    final_path.push(module_path);
-                    final_path.set_extension("lua");
-
-                    if final_path.exists() {
-                        let loader: LuaFunction =
-                            lua.named_registry_value(MODULE_LOADER_REGISTRY_KEY)?;
-                        let loader = LuaValue::Function(loader);
-                        match final_path.to_str() {
-                            Some(path) => {
-                                let path = lua.create_string(path.as_bytes())?;
-                                return Ok((loader, Some(path)));
-                            }
-                            None => break,
-                        }
-                    }
-                }
-
-                Ok((LuaValue::Nil, None))
-            }
-
-            lua.set_named_registry_value(MODULE_SEARCH_PATHS_REGISTRY_KEY, lua.create_table()?)?;
-            lua.set_named_registry_value(
-                MODULE_LOADER_REGISTRY_KEY,
-                lua.create_function(load_module)?,
-            )?;
-
-            let searcher = lua.create_function(search_module)?;
-            let globals = lua.globals();
-            let package: LuaTable = globals.get("package")?;
-            let searchers: LuaTable = package.get("searchers")?;
-            searchers.set(searchers.len()? + 1, searcher)?;
-        }
-
         let mut this = Self {
             lua,
             history: VecDeque::with_capacity(10),
         };
-
         script_bindings::bind_all(this.as_ref())?;
-
         Ok(this)
     }
 
@@ -590,30 +525,6 @@ impl ScriptEngine {
         )?;
         drop(s);
         Ok(value)
-    }
-
-    pub fn add_module_search_path(&mut self, path: &Path) -> ScriptResult<()> {
-        let path = path
-            .canonicalize()
-            .map_err(|e| LuaError::ExternalError(Arc::new(e)))?;
-        let path = if path.is_file() {
-            match path.parent() {
-                Some(path) => path,
-                None => return Ok(()),
-            }
-        } else {
-            path.as_path()
-        };
-
-        if let Some(path) = path.to_str() {
-            let path = self.lua.create_string(path.as_bytes())?;
-            let module_search_paths: LuaTable = self
-                .lua
-                .named_registry_value(MODULE_SEARCH_PATHS_REGISTRY_KEY)?;
-            module_search_paths.set(module_search_paths.len()? + 1, path)?;
-        }
-
-        Ok(())
     }
 
     pub fn eval<'a, F, R>(
@@ -650,7 +561,6 @@ impl ScriptEngine {
     }
 
     pub fn eval_entry_file(&mut self, ctx: &mut ScriptContext, path: &Path) -> ScriptResult<()> {
-        self.add_module_search_path(path)?;
         let s = ScriptContextRegistryScope::new(&self.lua, ctx)?;
         let _: LuaValue = eval_file(&self.lua, path)?;
 
@@ -731,19 +641,41 @@ fn eval_file<'lua, T>(lua: &'lua Lua, path: &Path) -> LuaResult<T>
 where
     T: FromLua<'lua>,
 {
-    let mut file = File::open(path).map_err(|e| LuaError::ExternalError(Arc::new(e)))?;
-    let metadata = file
-        .metadata()
-        .map_err(|e| LuaError::ExternalError(Arc::new(e)))?;
-    let mut source = String::with_capacity(metadata.len() as _);
-    file.read_to_string(&mut source)
-        .map_err(|e| LuaError::ExternalError(Arc::new(e)))?;
+    fn try_eval_file<'lua>(lua: &'lua Lua, path: &Path) -> LuaResult<LuaValue<'lua>> {
+        let mut file = File::open(path).map_err(|e| LuaError::ExternalError(Arc::new(e)))?;
+        let metadata = file
+            .metadata()
+            .map_err(|e| LuaError::ExternalError(Arc::new(e)))?;
+        let mut source = String::with_capacity(metadata.len() as _);
+        file.read_to_string(&mut source)
+            .map_err(|e| LuaError::ExternalError(Arc::new(e)))?;
 
-    let chunk = lua.load(&source);
-    if let Some(name) = path.to_str() {
-        chunk.set_name(name)?.eval()
-    } else {
-        chunk.eval()
+        let chunk = lua.load(&source);
+        match path.to_str() {
+            Some(name) => chunk.set_name(name)?.eval(),
+            None => chunk.eval(),
+        }
+    }
+
+    let previous_path: LuaValue = lua.named_registry_value(CURRENT_PATH_REGISTRY_KEY)?;
+    let mut current_path = CurrentPath(Path::new(""));
+    match path.parent() {
+        Some(parent) => {
+            current_path.0 = parent;
+            lua.set_named_registry_value(
+                CURRENT_PATH_REGISTRY_KEY,
+                LuaLightUserData(&current_path as *const CurrentPath as _),
+            )?;
+        }
+        None => lua.set_named_registry_value(CURRENT_PATH_REGISTRY_KEY, LuaValue::Nil)?,
+    }
+    let result = try_eval_file(lua, path);
+    drop(current_path);
+    lua.set_named_registry_value(CURRENT_PATH_REGISTRY_KEY, previous_path)?;
+
+    match result {
+        Ok(value) => T::from_lua(value, lua),
+        Err(error) => Err(error),
     }
 }
 
@@ -782,8 +714,8 @@ impl<'lua> ScriptEngineRef<'lua> {
         self.lua
             .create_function(move |lua, args| {
                 let engine = ScriptEngineRef { lua };
-                let ctx: LuaLightUserData = lua.named_registry_value("ctx")?;
-                let ctx = unsafe { &mut *(ctx.0 as *mut _) };
+                let LuaLightUserData(ctx) = lua.named_registry_value("ctx")?;
+                let ctx = unsafe { &mut *(ctx as *mut _) };
                 func(engine, ctx, ScriptContextGuard(()), args)
             })
             .map(|f| ScriptFunction(f))
@@ -870,5 +802,26 @@ impl<'lua> ScriptEngineRef<'lua> {
         let value = self.lua.named_registry_value(key)?;
         self.lua.unset_named_registry_value(key)?;
         Ok(value)
+    }
+
+    pub fn source(&self, _: &ScriptContextGuard, path: &Path) -> ScriptResult<ScriptValue<'lua>> {
+        if path.is_absolute() {
+            eval_file(&self.lua, path)
+        } else {
+            match self.lua.named_registry_value(CURRENT_PATH_REGISTRY_KEY)? {
+                LuaValue::Nil => eval_file(&self.lua, path),
+                LuaValue::LightUserData(LuaLightUserData(current_path)) => {
+                    let CurrentPath(current_path) =
+                        unsafe { &*(current_path as *const CurrentPath) };
+                    let mut final_path = current_path.to_path_buf();
+                    final_path.push(path);
+                    eval_file(&self.lua, &final_path)
+                }
+                _ => Err(ScriptError::from(format!(
+                    "could not source file '{:?}'",
+                    path
+                ))),
+            }
+        }
     }
 }

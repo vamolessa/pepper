@@ -84,7 +84,7 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
     }
 
     register!(client => index, current_buffer_view_handle, quit, force_quit, quit_all, force_quit_all,);
-    register!(editor => version, os, current_directory, print, error,);
+    register!(editor => version, os, current_directory, source, print,);
     register!(lsp => start, diagnostics,);
     register!(buffer => all_handles, line_count, line_at, path, path_matches, needs_save, set_search, open, close, force_close,
         close_all, force_close_all, save, save_all, reload, force_reload, reload_all, force_reload_all, commit_edits,);
@@ -258,6 +258,16 @@ mod editor {
         }
     }
 
+    pub fn source<'a>(
+        engine: ScriptEngineRef<'a>,
+        _: &mut ScriptContext,
+        guard: ScriptContextGuard,
+        path: ScriptString,
+    ) -> ScriptResult<ScriptValue<'a>> {
+        let path = Path::new(path.to_str()?);
+        engine.source(&guard, path)
+    }
+
     pub fn print(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
@@ -269,15 +279,6 @@ mod editor {
             format_args!("{}", value.display(&mut guard)),
         );
         Ok(())
-    }
-
-    pub fn error(
-        _: ScriptEngineRef,
-        _: &mut ScriptContext,
-        mut guard: ScriptContextGuard,
-        value: ScriptValue,
-    ) -> ScriptResult<()> {
-        Err(ScriptError::from(format!("{}", value.display(&mut guard))))
     }
 }
 
@@ -1522,21 +1523,6 @@ mod keymap {
         map_mode(ctx, Mode::Script(Default::default()), from, to)
     }
 
-    #[cfg(feature = "demo")]
-    fn map_mode(
-        ctx: &mut ScriptContext,
-        _: Mode,
-        _: ScriptString,
-        _: ScriptString,
-    ) -> ScriptResult<()> {
-        ctx.status_message.write_str(
-            StatusMessageKind::Error,
-            "'keymap' is only available on the full version",
-        );
-        Ok(())
-    }
-
-    #[cfg(not(feature = "demo"))]
     fn map_mode(
         ctx: &mut ScriptContext,
         mode: Mode,

@@ -163,10 +163,6 @@ where
     let mut editor = Editor::new(current_dir, lsp);
     let mut clients = ClientCollection::default();
 
-    for path in &args.module_search_path {
-        editor.add_module_search_path(path);
-    }
-
     for config in &args.config {
         editor.load_config(&mut clients, config);
     }

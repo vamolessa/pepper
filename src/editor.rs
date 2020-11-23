@@ -281,12 +281,6 @@ impl Editor {
         }
     }
 
-    pub fn add_module_search_path(&mut self, path: &Path) {
-        if let Err(e) = self.scripts.add_module_search_path(path) {
-            self.status_message.write_error(&e);
-        }
-    }
-
     pub fn load_config(&mut self, clients: &mut ClientCollection, path: &Path) {
         let (mode, _, _, mut mode_ctx) = self.mode_context(clients, TargetClient::Local);
         let (scripts, _, mut script_ctx) = mode_ctx.script_context();

@@ -43,10 +43,6 @@ pub struct Args {
     #[argh(option, short = 'c')]
     config: Vec<std::path::PathBuf>,
 
-    /// adds an extra script module search path (repeatable)
-    #[argh(option)]
-    module_search_path: Vec<std::path::PathBuf>,
-
     /// session name
     #[argh(option, short = 's')]
     session: Option<String>,
