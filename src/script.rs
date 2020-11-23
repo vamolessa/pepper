@@ -642,7 +642,16 @@ where
     T: FromLua<'lua>,
 {
     fn try_eval_file<'lua>(lua: &'lua Lua, path: &Path) -> LuaResult<LuaValue<'lua>> {
-        let mut file = File::open(path).map_err(|e| LuaError::ExternalError(Arc::new(e)))?;
+        let mut file = match File::open(path) {
+            Ok(file) => file,
+            Err(error) => {
+                return Err(ScriptError::from(format!(
+                    "could not open file '{:?}': {}",
+                    path, error
+                )));
+            }
+        };
+
         let metadata = file
             .metadata()
             .map_err(|e| LuaError::ExternalError(Arc::new(e)))?;
