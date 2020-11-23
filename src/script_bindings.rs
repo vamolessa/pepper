@@ -633,24 +633,26 @@ mod buffer {
             None => return Err(ScriptError::from("no buffer opened")),
         };
 
-        let buffer = match ctx.buffers.get_mut(handle) {
-            Some(buffer) => buffer,
-            None => return Err(ScriptError::from("no buffer opened")),
+        let path = match path {
+            Some(ref path) => Some(Path::new(path.to_str()?)),
+            None => None,
         };
 
-        if let Some(path) = path {
-            let path = Path::new(path.to_str()?);
-            buffer.set_path(&ctx.config.syntaxes, Some(path));
-        }
-
-        if let Some(path) = buffer.path().and_then(|p| p.to_str()) {
-            ctx.status_message
-                .write_fmt(StatusMessageKind::Info, format_args!("saved to '{}'", path));
-        }
-
         ctx.buffers
-            .save_to_file(handle, ctx.events)
-            .map_err(ScriptError::from)
+            .save_to_file(handle, path, ctx.events)
+            .map_err(ScriptError::from)?;
+
+        match ctx.buffers.get(handle) {
+            Some(buffer) => match buffer.path().and_then(|p| p.to_str()) {
+                Some(path) => ctx
+                    .status_message
+                    .write_fmt(StatusMessageKind::Info, format_args!("saved to '{}'", path)),
+                None => (),
+            },
+            None => return Err(ScriptError::from("no buffer opened")),
+        }
+
+        Ok(())
     }
 
     #[cfg(feature = "demo")]
@@ -1679,7 +1681,7 @@ mod syntax {
         ctx.config.syntaxes.add(syntax);
 
         for buffer in ctx.buffers.iter_mut() {
-            buffer.refresh_syntax(&ctx.config.syntaxes, false);
+            buffer.refresh_syntax(&ctx.config.syntaxes);
         }
 
         Ok(())

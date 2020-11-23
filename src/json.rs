@@ -461,10 +461,7 @@ impl Json {
 
                                 match std::char::from_u32(c) {
                                     Some(c) => json.strings.push(c),
-                                    None => {
-                                        dbg!(c, '\u{fa09}' as u32);
-                                        return Err(invalid_data_error());
-                                    }
+                                    None => return Err(invalid_data_error()),
                                 }
                             } else {
                                 return Err(invalid_data_error());

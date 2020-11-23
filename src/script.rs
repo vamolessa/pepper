@@ -675,23 +675,25 @@ impl ScriptEngine {
         let mut guard = ScriptContextGuard(());
 
         macro_rules! call {
-            ($callback:ident, $args:expr) => {{
-                let callbacks: ScriptArray =
-                    match engine.lua.named_registry_value(stringify!($callback)) {
-                        Ok(callbacks) => callbacks,
-                        Err(_) => continue,
-                    };
-                for callback in callbacks.iter::<ScriptFunction>() {
-                    callback?.call(&mut guard, $args.clone())?;
+            ($callback:ident, $args:expr) => {
+                if let Ok(callbacks) = engine.lua.named_registry_value(stringify!($callback)) {
+                    let callbacks: ScriptArray = callbacks;
+                    for callback in callbacks.iter::<ScriptFunction>() {
+                        callback?.call(&mut guard, $args.clone())?;
+                    }
                 }
-            }};
+            };
         }
 
         for event in events {
             match event {
-                EditorEvent::BufferOpen(handle) => call!(buffer_on_open, *handle),
-                EditorEvent::BufferSave(handle) => call!(buffer_on_save, *handle),
-                EditorEvent::BufferClose(handle) => call!(buffer_on_close, *handle),
+                EditorEvent::BufferOpen { handle, new_buffer } => {
+                    call!(buffer_on_open, (*handle, *new_buffer))
+                }
+                EditorEvent::BufferSave { handle, new_path } => {
+                    call!(buffer_on_save, (*handle, *new_path))
+                }
+                EditorEvent::BufferClose { handle } => call!(buffer_on_close, *handle),
             }
         }
         drop(s);

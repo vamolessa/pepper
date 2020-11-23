@@ -3,7 +3,7 @@ name = "pepper"
 version = "0.5.4"
 authors = ["Matheus Lessa <matheus@fastmail.com>"]
 edition = "2018"
-description = "Experimental code editor"
+description = "An opinionated modal editor to simplify code editing from the terminal"
 license = "MIT"
 
 documentation = "https://github.com/matheuslessarodrigues/pepper"

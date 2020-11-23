@@ -33,9 +33,17 @@ impl EditorLoop {
 }
 
 pub enum EditorEvent {
-    BufferOpen(BufferHandle),
-    BufferSave(BufferHandle),
-    BufferClose(BufferHandle),
+    BufferOpen {
+        handle: BufferHandle,
+        new_buffer: bool,
+    },
+    BufferSave {
+        handle: BufferHandle,
+        new_path: bool,
+    },
+    BufferClose {
+        handle: BufferHandle,
+    },
 }
 
 #[derive(Default)]
@@ -541,22 +549,39 @@ impl Editor {
 
     fn trigger_event_handlers(&mut self, clients: &mut ClientCollection) {
         self.events.flip();
-        let (mode, _, events, mut ctx) = self.mode_context(clients, TargetClient::Local);
+        let (mode, _, events, mut mode_ctx) = self.mode_context(clients, TargetClient::Local);
 
         if events.is_empty() {
             return;
         }
 
-        mode.on_editor_events(&mut ctx, events);
+        mode.on_editor_events(&mut mode_ctx, events);
 
-        let (scripts, _, mut ctx) = ctx.script_context();
-        if let Err(error) = scripts.on_editor_event(&mut ctx, events) {
-            ctx.status_message.write_error(&error);
+        let (scripts, _, mut script_ctx) = mode_ctx.script_context();
+        if let Err(error) = scripts.on_editor_event(&mut script_ctx, events) {
+            script_ctx.status_message.write_error(&error);
         }
 
-        let (lsp, mut ctx) = ctx.lsp_context();
-        if let Err(error) = lsp.on_editor_events(&mut ctx, events) {
-            ctx.status_message.write_error(&error);
+        let (lsp, mut lsp_ctx) = script_ctx.lsp_context();
+        if let Err(error) = lsp.on_editor_events(&mut lsp_ctx, events) {
+            lsp_ctx.status_message.write_error(&error);
+        }
+
+        Self::handle_editor_events(&mut mode_ctx, events);
+    }
+
+    fn handle_editor_events(ctx: &mut ModeContext, events: &[EditorEvent]) {
+        for event in events {
+            match event {
+                EditorEvent::BufferSave { handle, new_path } => {
+                    if *new_path {
+                        if let Some(buffer) = ctx.buffers.get_mut(*handle) {
+                            buffer.refresh_syntax(&ctx.config.syntaxes);
+                        }
+                    }
+                }
+                _ => (),
+            }
         }
     }
 

@@ -745,7 +745,10 @@ impl Buffer {
         }
 
         self.content = content;
-        self.refresh_syntax(syntaxes, true);
+        if !self.refresh_syntax(syntaxes) {
+            self.highlighted
+                .highligh_all(syntaxes.get(self.syntax_handle), &self.content);
+        }
     }
 
     pub fn dispose(&mut self, pool: &mut BufferLinePool, word_database: &mut WordDatabase) {
@@ -772,23 +775,18 @@ impl Buffer {
         }
     }
 
-    pub fn set_path(&mut self, syntaxes: &SyntaxCollection, path: Option<&Path>) {
-        self.path.clear();
-        if let Some(path) = path {
-            self.path.push(path);
-        }
-        self.refresh_syntax(syntaxes, false);
-    }
-
-    pub fn refresh_syntax(&mut self, syntaxes: &SyntaxCollection, force: bool) {
+    pub fn refresh_syntax(&mut self, syntaxes: &SyntaxCollection) -> bool {
         let syntax_handle = syntaxes
             .find_handle_by_path(self.path.to_str().unwrap_or("").as_bytes())
             .unwrap_or(SyntaxHandle::default());
 
-        if force || self.syntax_handle != syntax_handle {
+        if self.syntax_handle != syntax_handle {
             self.syntax_handle = syntax_handle;
             self.highlighted
                 .highligh_all(syntaxes.get(self.syntax_handle), &self.content);
+            true
+        } else {
+            false
         }
     }
 
@@ -1027,7 +1025,10 @@ impl BufferCollection {
             }
         };
 
-        events.enqueue(EditorEvent::BufferOpen(handle));
+        events.enqueue(EditorEvent::BufferOpen {
+            handle,
+            new_buffer: true,
+        });
         (handle, &mut self.buffers[handle.0].1)
     }
 
@@ -1128,26 +1129,38 @@ impl BufferCollection {
     pub fn save_to_file(
         &mut self,
         handle: BufferHandle,
+        path: Option<&Path>,
         events: &mut EditorEventQueue,
     ) -> Result<(), String> {
         match self.get_mut(handle) {
-            Some(buffer) => match buffer.path() {
-                Some(path) => {
-                    let file = File::create(path)
-                        .map_err(|e| format!("could not create file {:?}: {:?}", path, e))?;
-                    let mut writer = io::BufWriter::new(file);
+            Some(buffer) => {
+                let new_path = match path {
+                    Some(path) => {
+                        buffer.path.clear();
+                        buffer.path.push(path);
+                        true
+                    }
+                    None => false,
+                };
 
-                    buffer
-                        .content
-                        .write(&mut writer)
-                        .map_err(|e| format!("could not write to file {:?}: {:?}", path, e))?;
-                    buffer.needs_save = false;
+                match buffer.path() {
+                    Some(path) => {
+                        let file = File::create(path)
+                            .map_err(|e| format!("could not create file {:?}: {:?}", path, e))?;
+                        let mut writer = io::BufWriter::new(file);
 
-                    events.enqueue(EditorEvent::BufferSave(handle));
-                    Ok(())
+                        buffer
+                            .content
+                            .write(&mut writer)
+                            .map_err(|e| format!("could not write to file {:?}: {:?}", path, e))?;
+                        buffer.needs_save = false;
+
+                        events.enqueue(EditorEvent::BufferSave { handle, new_path });
+                        Ok(())
+                    }
+                    None => Err("buffer has no path".into()),
                 }
-                None => Err("buffer has no path".into()),
-            },
+            }
             None => Ok(()),
         }
     }
@@ -1155,7 +1168,7 @@ impl BufferCollection {
     pub fn save_all_to_file(&mut self, events: &mut EditorEventQueue) -> Result<(), String> {
         let buffer_count = self.buffers.len();
         for i in 0..buffer_count {
-            self.save_to_file(BufferHandle(i), events)?;
+            self.save_to_file(BufferHandle(i), None, events)?;
         }
         Ok(())
     }
@@ -1189,7 +1202,7 @@ impl BufferCollection {
             buffer.dispose(&mut self.line_pool, word_database);
 
             *alive = false;
-            events.enqueue(EditorEvent::BufferClose(handle));
+            events.enqueue(EditorEvent::BufferClose { handle });
         }
     }
 }

@@ -32,7 +32,7 @@ mod word_database;
 use argh::FromArgs;
 
 /// Pepper
-/// An opionated modal code editor for your terminal with a focus on programmer's comfort
+/// An opinionated modal editor to simplify code editing from the terminal
 #[derive(FromArgs)]
 pub struct Args {
     /// print version and quit
