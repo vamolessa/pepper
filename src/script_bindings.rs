@@ -84,7 +84,8 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
     }
 
     register!(client => index, current_buffer_view_handle, quit, force_quit, quit_all, force_quit_all,);
-    register!(editor => version, os, current_directory, source, print,);
+    register!(editor => version, os, current_directory, print,);
+    register!(script => source, directory,);
     register!(lsp => start, diagnostics,);
     register!(buffer => all_handles, line_count, line_at, path, path_matches, needs_save, set_search, open, close, force_close,
         close_all, force_close_all, save, save_all, reload, force_reload, reload_all, force_reload_all, commit_edits,);
@@ -258,16 +259,6 @@ mod editor {
         }
     }
 
-    pub fn source<'a>(
-        engine: ScriptEngineRef<'a>,
-        _: &mut ScriptContext,
-        guard: ScriptContextGuard,
-        path: ScriptString,
-    ) -> ScriptResult<ScriptValue<'a>> {
-        let path = Path::new(path.to_str()?);
-        engine.source(&guard, path)
-    }
-
     pub fn print(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
@@ -279,6 +270,30 @@ mod editor {
             format_args!("{}", value.display(&mut guard)),
         );
         Ok(())
+    }
+}
+
+mod script {
+    use super::*;
+
+    pub fn source<'a>(
+        engine: ScriptEngineRef<'a>,
+        _: &mut ScriptContext,
+        guard: ScriptContextGuard,
+        path: ScriptString,
+    ) -> ScriptResult<ScriptValue<'a>> {
+        let path = Path::new(path.to_str()?);
+        engine.source(&guard, path)
+    }
+
+    pub fn directory<'a>(
+        engine: ScriptEngineRef<'a>,
+        _: &mut ScriptContext,
+        guard: ScriptContextGuard,
+        path: ScriptString,
+    ) -> ScriptResult<ScriptValue<'a>> {
+        let path = Path::new(path.to_str()?);
+        engine.source(&guard, path)
     }
 }
 

@@ -463,8 +463,8 @@ impl<'a> ScriptContext<'a> {
     }
 }
 
-const CURRENT_PATH_REGISTRY_KEY: &str = "current_path";
-struct CurrentPath<'a>(&'a Path);
+const CURRENT_DIRECTORY_REGISTRY_KEY: &str = "current_path";
+struct CurrentDirectory<'a>(&'a Path);
 
 pub struct ScriptContextGuard(());
 
@@ -657,21 +657,21 @@ where
         }
     }
 
-    let previous_path: LuaValue = lua.named_registry_value(CURRENT_PATH_REGISTRY_KEY)?;
-    let mut current_path = CurrentPath(Path::new(""));
+    let previous_path: LuaValue = lua.named_registry_value(CURRENT_DIRECTORY_REGISTRY_KEY)?;
+    let mut current_path = CurrentDirectory(Path::new(""));
     match path.parent() {
         Some(parent) => {
             current_path.0 = parent;
             lua.set_named_registry_value(
-                CURRENT_PATH_REGISTRY_KEY,
-                LuaLightUserData(&current_path as *const CurrentPath as _),
+                CURRENT_DIRECTORY_REGISTRY_KEY,
+                LuaLightUserData(&current_path as *const CurrentDirectory as _),
             )?;
         }
-        None => lua.set_named_registry_value(CURRENT_PATH_REGISTRY_KEY, LuaValue::Nil)?,
+        None => lua.set_named_registry_value(CURRENT_DIRECTORY_REGISTRY_KEY, LuaValue::Nil)?,
     }
     let result = try_eval_file(lua, path);
     drop(current_path);
-    lua.set_named_registry_value(CURRENT_PATH_REGISTRY_KEY, previous_path)?;
+    lua.set_named_registry_value(CURRENT_DIRECTORY_REGISTRY_KEY, previous_path)?;
 
     match result {
         Ok(value) => T::from_lua(value, lua),
@@ -808,20 +808,32 @@ impl<'lua> ScriptEngineRef<'lua> {
         if path.is_absolute() {
             eval_file(&self.lua, path)
         } else {
-            match self.lua.named_registry_value(CURRENT_PATH_REGISTRY_KEY)? {
-                LuaValue::Nil => eval_file(&self.lua, path),
-                LuaValue::LightUserData(LuaLightUserData(current_path)) => {
-                    let CurrentPath(current_path) =
-                        unsafe { &*(current_path as *const CurrentPath) };
-                    let mut final_path = current_path.to_path_buf();
+            match self.current_source_directory()? {
+                Some(parent) => {
+                    let mut final_path = parent.to_path_buf();
                     final_path.push(path);
                     eval_file(&self.lua, &final_path)
                 }
-                _ => Err(ScriptError::from(format!(
-                    "could not source file '{:?}'",
-                    path
-                ))),
+                None => eval_file(&self.lua, path),
             }
+        }
+    }
+
+    pub fn current_source_directory<'a>(&self) -> ScriptResult<Option<&'a Path>> {
+        match self
+            .lua
+            .named_registry_value(CURRENT_DIRECTORY_REGISTRY_KEY)?
+        {
+            LuaValue::Nil => Ok(None),
+            LuaValue::LightUserData(LuaLightUserData(current_directory)) => {
+                let CurrentDirectory(current_directory) =
+                    unsafe { &*(current_directory as *const CurrentDirectory) };
+                Ok(Some(current_directory))
+            }
+            value => Err(ScriptError::from(format!(
+                "invalid script source directory '{:?}'",
+                value
+            ))),
         }
     }
 }
