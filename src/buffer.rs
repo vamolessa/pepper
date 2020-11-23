@@ -1025,16 +1025,13 @@ impl BufferCollection {
             }
         };
 
-        events.enqueue(EditorEvent::BufferOpen {
-            handle,
-            new_buffer: true,
-        });
+        events.enqueue(EditorEvent::BufferLoad { handle });
         (handle, &mut self.buffers[handle.0].1)
     }
 
     pub fn get(&self, handle: BufferHandle) -> Option<&Buffer> {
-        let (alive, buffer) = &self.buffers[handle.0];
-        if *alive {
+        let (alive, ref buffer) = self.buffers[handle.0];
+        if alive {
             Some(buffer)
         } else {
             None
@@ -1042,8 +1039,8 @@ impl BufferCollection {
     }
 
     pub fn get_mut(&mut self, handle: BufferHandle) -> Option<&mut Buffer> {
-        let (alive, buffer) = &mut self.buffers[handle.0];
-        if *alive {
+        let (alive, ref mut buffer) = self.buffers[handle.0];
+        if alive {
             Some(buffer)
         } else {
             None
@@ -1054,18 +1051,9 @@ impl BufferCollection {
         &mut self,
         handle: BufferHandle,
     ) -> Option<(&mut Buffer, &mut BufferLinePool)> {
-        let (alive, buffer) = &mut self.buffers[handle.0];
-        if *alive {
+        let (alive, ref mut buffer) = self.buffers[handle.0];
+        if alive {
             Some((buffer, &mut self.line_pool))
-        } else {
-            None
-        }
-    }
-
-    pub fn get_removed(&self, handle: BufferHandle) -> Option<&Buffer> {
-        let (alive, buffer) = &self.buffers[handle.0];
-        if !*alive {
-            Some(buffer)
         } else {
             None
         }
@@ -1173,18 +1161,13 @@ impl BufferCollection {
         Ok(())
     }
 
-    pub fn remove_where<F>(
-        &mut self,
-        clients: &mut ClientCollection,
-        word_database: &mut WordDatabase,
-        events: &mut EditorEventQueue,
-        predicate: F,
-    ) where
+    pub fn defer_remove_where<F>(&mut self, events: &mut EditorEventQueue, predicate: F)
+    where
         F: Fn(BufferHandle, &Buffer) -> bool,
     {
         for i in 0..self.buffers.len() {
-            let (alive, buffer) = &mut self.buffers[i];
-            if !*alive {
+            let (alive, ref mut buffer) = self.buffers[i];
+            if !alive {
                 continue;
             }
 
@@ -1193,17 +1176,30 @@ impl BufferCollection {
                 continue;
             }
 
-            for client in clients.iter_mut() {
-                client
-                    .navigation_history
-                    .remove_snapshots_with_buffer_handle(handle);
-            }
-
-            buffer.dispose(&mut self.line_pool, word_database);
-
-            *alive = false;
             events.enqueue(EditorEvent::BufferClose { handle });
         }
+    }
+
+    pub fn remove(
+        &mut self,
+        handle: BufferHandle,
+        clients: &mut ClientCollection,
+        word_database: &mut WordDatabase,
+    ) {
+        let (alive, buffer) = &mut self.buffers[handle.0];
+        if !*alive {
+            return;
+        }
+
+        for client in clients.iter_mut() {
+            client
+                .navigation_history
+                .remove_snapshots_with_buffer_handle(handle);
+        }
+
+        buffer.dispose(&mut self.line_pool, word_database);
+
+        *alive = false;
     }
 }
 

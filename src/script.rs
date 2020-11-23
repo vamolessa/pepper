@@ -687,8 +687,11 @@ impl ScriptEngine {
 
         for event in events {
             match event {
-                EditorEvent::BufferOpen { handle, new_buffer } => {
-                    call!(buffer_on_open, (*handle, *new_buffer))
+                EditorEvent::BufferLoad { handle } => {
+                    call!(buffer_on_load, *handle)
+                }
+                EditorEvent::BufferOpen { handle } => {
+                    call!(buffer_on_open, *handle)
                 }
                 EditorEvent::BufferSave { handle, new_path } => {
                     call!(buffer_on_save, (*handle, *new_path))

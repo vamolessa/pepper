@@ -36,15 +36,30 @@ impl fmt::Display for QuitError {
 }
 
 pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
+    let globals = scripts.globals_object();
+
     macro_rules! register {
         ($namespace:ident => $($func:ident,)*) => {
-            let globals = scripts.globals_object();
             let $namespace = scripts.create_object()?;
             $(
                 let func = scripts.create_ctx_function($namespace::$func)?;
                 $namespace.set(stringify!($func), ScriptValue::Function(func))?;
             )*
             globals.set(stringify!($namespace), ScriptValue::Object($namespace))?;
+        };
+    }
+
+    macro_rules! register_callbacks {
+        ($namespace:ident => $($callback:ident,)*) => {
+            let $namespace = globals.get::<ScriptObject>(stringify!($namespace))?;
+            $(
+                let callback = scripts.create_ctx_function(|engine, _, _, callback| {
+                    let callback : ScriptFunction = callback;
+                    let name = concat!(stringify!($namespace), "_", stringify!($callback));
+                    engine.add_to_function_array_in_registry(name, callback)
+                })?;
+                $namespace.set(stringify!($callback), ScriptValue::Function(callback))?;
+            )*
         };
     }
 
@@ -64,9 +79,7 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
                 ScriptValue::Function(scripts.create_ctx_function($name::newindex)?),
             )?;
             $name.set_meta_object(Some(meta));
-            scripts
-                .globals_object()
-                .set(stringify!($name), ScriptValue::Object($name))?;
+            globals.set(stringify!($name), ScriptValue::Object($name))?;
         };
     }
 
@@ -74,9 +87,8 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
     register!(editor => version, os, current_directory, print, error,);
     register!(lsp => start, diagnostics,);
     register!(buffer => all_handles, line_count, line_at, path, path_matches, needs_save, set_search, open, close, force_close,
-        close_all, force_close_all, save, save_all, reload, force_reload, reload_all, force_reload_all, commit_edits,
-        on_open, on_save, on_close,);
-    register!(closed_buffer => path, path_matches,);
+        close_all, force_close_all, save, save_all, reload, force_reload, reload_all, force_reload_all, commit_edits,);
+    register_callbacks!(buffer => on_load, on_open, on_save, on_close,);
     register!(buffer_view => buffer_handle, all_handles, handle_from_path, selection_text, insert_text, insert_text_at,
         delete_selection, delete_in, undo, redo,);
     register!(cursors => len, all, set_all, main_index, main, get, set, move_columns, move_lines, move_words,
@@ -89,8 +101,6 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
     register!(glob => compile, matches,);
 
     {
-        let globals = scripts.globals_object();
-
         let editor = globals.get::<ScriptObject>("editor")?;
         globals.set("print", editor.get::<ScriptValue>("print")?)?;
 
@@ -505,13 +515,8 @@ mod buffer {
                     .write_fmt(StatusMessageKind::Info, format_args!("closed '{}'", path));
             }
 
-            ctx.buffer_views.remove_where(
-                ctx.buffers,
-                ctx.clients,
-                ctx.word_database,
-                ctx.events,
-                |view| view.buffer_handle == handle,
-            );
+            ctx.buffer_views
+                .defer_remove_where(ctx.buffers, ctx.events, |view| view.buffer_handle == handle);
         }
 
         ctx.set_current_buffer_view_handle(None);
@@ -535,13 +540,8 @@ mod buffer {
                     .write_fmt(StatusMessageKind::Info, format_args!("closed '{}'", path));
             }
 
-            ctx.buffer_views.remove_where(
-                ctx.buffers,
-                ctx.clients,
-                ctx.word_database,
-                ctx.events,
-                |view| view.buffer_handle == handle,
-            );
+            ctx.buffer_views
+                .defer_remove_where(ctx.buffers, ctx.events, |view| view.buffer_handle == handle);
         }
 
         ctx.set_current_buffer_view_handle(None);
@@ -568,13 +568,8 @@ mod buffer {
                 format_args!("{} buffers closed", buffer_count),
             );
 
-            ctx.buffer_views.remove_where(
-                ctx.buffers,
-                ctx.clients,
-                ctx.word_database,
-                ctx.events,
-                |_| true,
-            );
+            ctx.buffer_views
+                .defer_remove_where(ctx.buffers, ctx.events, |_| true);
             for c in ctx.clients.client_refs() {
                 c.client.set_current_buffer_view_handle(None);
             }
@@ -594,13 +589,8 @@ mod buffer {
             format_args!("{} buffers closed", buffer_count),
         );
 
-        ctx.buffer_views.remove_where(
-            ctx.buffers,
-            ctx.clients,
-            ctx.word_database,
-            ctx.events,
-            |_| true,
-        );
+        ctx.buffer_views
+            .defer_remove_where(ctx.buffers, ctx.events, |_| true);
         for c in ctx.clients.client_refs() {
             c.client.set_current_buffer_view_handle(None);
         }
@@ -823,74 +813,6 @@ mod buffer {
             buffer.commit_edits();
         }
         Ok(())
-    }
-
-    pub fn on_open(
-        engine: ScriptEngineRef,
-        _: &mut ScriptContext,
-        _: ScriptContextGuard,
-        callback: ScriptFunction,
-    ) -> ScriptResult<()> {
-        engine.add_to_function_array_in_registry("buffer_on_open", callback)
-    }
-
-    pub fn on_save(
-        engine: ScriptEngineRef,
-        _: &mut ScriptContext,
-        _: ScriptContextGuard,
-        callback: ScriptFunction,
-    ) -> ScriptResult<()> {
-        engine.add_to_function_array_in_registry("buffer_on_save", callback)
-    }
-
-    pub fn on_close(
-        engine: ScriptEngineRef,
-        _: &mut ScriptContext,
-        _: ScriptContextGuard,
-        callback: ScriptFunction,
-    ) -> ScriptResult<()> {
-        engine.add_to_function_array_in_registry("buffer_on_close", callback)
-    }
-}
-
-mod closed_buffer {
-    use super::*;
-
-    pub fn path<'a>(
-        engine: ScriptEngineRef<'a>,
-        ctx: &mut ScriptContext,
-        _: ScriptContextGuard,
-        handle: Option<BufferHandle>,
-    ) -> ScriptResult<ScriptValue<'a>> {
-        match handle
-            .or_else(|| ctx.current_buffer_handle())
-            .and_then(|h| ctx.buffers.get_removed(h))
-            .and_then(|b| b.path())
-            .and_then(|p| p.to_str())
-            .map(|p| p.as_bytes())
-        {
-            Some(bytes) => Ok(ScriptValue::String(engine.create_string(bytes)?)),
-            None => Ok(ScriptValue::Nil),
-        }
-    }
-
-    pub fn path_matches<'a>(
-        _: ScriptEngineRef<'a>,
-        ctx: &mut ScriptContext,
-        _: ScriptContextGuard,
-        (glob, handle): (ScriptUserData<Glob>, Option<BufferHandle>),
-    ) -> ScriptResult<bool> {
-        let glob = glob.borrow()?;
-        match handle
-            .or_else(|| ctx.current_buffer_handle())
-            .and_then(|h| ctx.buffers.get_removed(h))
-            .and_then(|b| b.path())
-            .and_then(|p| p.to_str())
-            .map(|p| p.as_bytes())
-        {
-            Some(bytes) => Ok(glob.matches(bytes)),
-            None => Ok(false),
-        }
     }
 }
 

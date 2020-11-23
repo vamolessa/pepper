@@ -33,9 +33,11 @@ impl EditorLoop {
 }
 
 pub enum EditorEvent {
+    BufferLoad {
+        handle: BufferHandle,
+    },
     BufferOpen {
         handle: BufferHandle,
-        new_buffer: bool,
     },
     BufferSave {
         handle: BufferHandle,
@@ -579,6 +581,9 @@ impl Editor {
                             buffer.refresh_syntax(&ctx.config.syntaxes);
                         }
                     }
+                }
+                EditorEvent::BufferClose { handle } => {
+                    ctx.buffers.remove(*handle, ctx.clients, ctx.word_database);
                 }
                 _ => (),
             }

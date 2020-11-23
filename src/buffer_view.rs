@@ -366,11 +366,9 @@ impl BufferViewCollection {
         handle
     }
 
-    pub fn remove_where<F>(
+    pub fn defer_remove_where<F>(
         &mut self,
         buffers: &mut BufferCollection,
-        clients: &mut ClientCollection,
-        word_database: &mut WordDatabase,
         events: &mut EditorEventQueue,
         predicate: F,
     ) where
@@ -384,9 +382,7 @@ impl BufferViewCollection {
             }
         }
 
-        buffers.remove_where(clients, word_database, events, |h, _| {
-            !self.iter().any(|v| v.buffer_handle == h)
-        });
+        buffers.defer_remove_where(events, |h, _| !self.iter().any(|v| v.buffer_handle == h));
     }
 
     pub fn get(&self, handle: BufferViewHandle) -> Option<&BufferView> {

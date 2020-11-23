@@ -185,12 +185,7 @@ impl DiagnosticCollection {
             .map(|d| (d.path.as_path(), d.buffer_handle, &d.diagnostics[..d.len]))
     }
 
-    pub fn on_open_buffer(
-        &mut self,
-        ctx: &ClientContext,
-        buffer_handle: BufferHandle,
-        new_buffer: bool,
-    ) {
+    pub fn on_load_buffer(&mut self, ctx: &ClientContext, buffer_handle: BufferHandle) {
         let buffer_path = match ctx.buffers.get(buffer_handle).and_then(|b| b.path()) {
             Some(path) => path,
             None => return,
@@ -467,8 +462,8 @@ impl Client {
 
         for event in events {
             match event {
-                EditorEvent::BufferOpen { handle, new_buffer } => {
-                    self.diagnostics.on_open_buffer(ctx, *handle, *new_buffer);
+                EditorEvent::BufferLoad { handle } => {
+                    self.diagnostics.on_load_buffer(ctx, *handle);
                 }
                 EditorEvent::BufferSave { handle, new_path } => {
                     self.diagnostics.on_save_buffer(ctx, *handle, *new_path);
@@ -476,6 +471,7 @@ impl Client {
                 EditorEvent::BufferClose { handle } => {
                     self.diagnostics.on_close_buffer(*handle);
                 }
+                _ => (),
             }
         }
         Ok(())

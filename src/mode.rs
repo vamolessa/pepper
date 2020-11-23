@@ -60,9 +60,20 @@ impl<'a> ModeContext<'a> {
             .and_then(|c| c.current_buffer_view_handle())
     }
 
-    pub fn set_current_buffer_view_handle(&mut self, handle: Option<BufferViewHandle>) {
+    pub fn set_current_buffer_view_handle(
+        &mut self,
+        handle: Option<BufferViewHandle>,
+    ) {
         if let Some(client) = self.clients.get_mut(self.target_client) {
             client.set_current_buffer_view_handle(handle);
+
+            if let Some(handle) = handle
+                .and_then(|h| self.buffer_views.get(h))
+                .map(|v| v.buffer_handle)
+            {
+                self.events
+                    .enqueue(EditorEvent::BufferOpen { handle});
+            }
         }
     }
 
