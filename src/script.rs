@@ -558,11 +558,10 @@ impl ScriptEngine {
             )?;
 
             let searcher = lua.create_function(search_module)?;
-            let searchers = lua.create_table()?;
-            searchers.set(1, searcher)?;
             let globals = lua.globals();
             let package: LuaTable = globals.get("package")?;
-            package.set("searchers", searchers)?;
+            let searchers: LuaTable = package.get("searchers")?;
+            searchers.set(searchers.len()? + 1, searcher)?;
         }
 
         let mut this = Self {
