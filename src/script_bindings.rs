@@ -289,11 +289,15 @@ mod script {
     pub fn directory<'a>(
         engine: ScriptEngineRef<'a>,
         _: &mut ScriptContext,
-        guard: ScriptContextGuard,
-        path: ScriptString,
+        _: ScriptContextGuard,
+        _: (),
     ) -> ScriptResult<ScriptValue<'a>> {
-        let path = Path::new(path.to_str()?);
-        engine.source(&guard, path)
+        match engine.current_source_directory()?.and_then(|p| p.to_str()) {
+            Some(directory) => engine
+                .create_string(directory.as_bytes())
+                .map(ScriptValue::String),
+            None => Ok(ScriptValue::Nil),
+        }
     }
 }
 
