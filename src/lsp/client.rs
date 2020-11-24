@@ -240,31 +240,45 @@ impl DiagnosticCollection {
 }
 
 pub struct Client {
+    name: String,
     protocol: Protocol,
     pending_requests: PendingRequestColection,
 
     initialized: bool,
     capabilities: ClientCapabilities,
+    log_write_buf: Vec<u8>,
     log_buffer_handle: Option<BufferHandle>,
     document_selectors: Vec<Glob>,
     pub diagnostics: DiagnosticCollection,
 }
 
 impl Client {
-    fn new(connection: ServerConnection) -> Self {
+    fn new(name: String, connection: ServerConnection) -> Self {
         Self {
+            name,
             protocol: Protocol::new(connection),
             pending_requests: PendingRequestColection::default(),
 
             initialized: false,
             capabilities: ClientCapabilities::default(),
+
+            log_write_buf: Vec::new(),
             log_buffer_handle: None,
+
             document_selectors: Vec::new(),
             diagnostics: DiagnosticCollection::default(),
         }
     }
 
-    fn log_json_to_buffer<F>(&self, ctx: &mut ClientContext, writer: F)
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn set_log_buffer(&mut self, log_buffer_handle: Option<BufferHandle>) {
+        self.log_buffer_handle = log_buffer_handle;
+    }
+
+    fn log_json_to_buffer<F>(&mut self, ctx: &mut ClientContext, writer: F)
     where
         F: FnOnce(&mut Vec<u8>),
     {
@@ -275,19 +289,19 @@ impl Client {
             .log_buffer_handle
             .and_then(|h| buffers.get_mut_with_line_pool(h))
         {
-            let mut buf = Vec::new();
-            buf.push(b'\n');
-            writer(&mut buf);
+            self.log_write_buf.clear();
+            self.log_write_buf.push(b'\n');
+            writer(&mut self.log_write_buf);
             let content = buffer.content();
             let line_index = content.line_count() - 1;
             let position =
                 BufferPosition::line_col(line_index, content.line_at(line_index).as_str().len());
-            let text = String::from_utf8_lossy(&buf);
+            let text = String::from_utf8_lossy(&self.log_write_buf);
             buffer.insert_text(pool, word_database, syntaxes, position, &text, 0);
         }
     }
 
-    pub fn on_request(
+    fn on_request(
         &mut self,
         ctx: &mut ClientContext,
         json: &mut Json,
@@ -365,7 +379,7 @@ impl Client {
         }
     }
 
-    pub fn on_notification(
+    fn on_notification(
         &mut self,
         ctx: &mut ClientContext,
         json: &mut Json,
@@ -448,7 +462,7 @@ impl Client {
         Ok(())
     }
 
-    pub fn on_response(
+    fn on_response(
         &mut self,
         ctx: &mut ClientContext,
         json: &mut Json,
@@ -510,7 +524,7 @@ impl Client {
         Ok(())
     }
 
-    pub fn on_parse_error(&mut self, json: &mut Json, request_id: JsonValue) -> io::Result<()> {
+    fn on_parse_error(&mut self, json: &mut Json, request_id: JsonValue) -> io::Result<()> {
         Self::respond_parse_error(&mut self.protocol, json, request_id)
     }
 
@@ -523,7 +537,7 @@ impl Client {
         protocol.respond(json, request_id, Err(error))
     }
 
-    pub fn on_editor_events(
+    fn on_editor_events(
         &mut self,
         ctx: &mut ClientContext,
         events: &[EditorEvent],
@@ -562,7 +576,7 @@ impl Client {
         Ok(())
     }
 
-    pub fn initialize(&mut self, json: &mut Json, root: &Path) -> io::Result<()> {
+    fn initialize(&mut self, json: &mut Json, root: &Path) -> io::Result<()> {
         let mut params = JsonObject::default();
         params.set(
             "processId".into(),
@@ -614,13 +628,18 @@ impl ClientCollection {
         }
     }
 
-    pub fn start(&mut self, command: Command, root: &Path) -> io::Result<ClientHandle> {
+    pub fn start(
+        &mut self,
+        name: String,
+        command: Command,
+        root: &Path,
+    ) -> io::Result<ClientHandle> {
         let handle = self.find_free_slot();
         let json = SharedJson::new();
         let connection =
             ServerConnection::spawn(command, handle, json.clone(), self.event_sender.clone())?;
         let mut entry = ClientCollectionEntry {
-            client: Client::new(connection),
+            client: Client::new(name, connection),
             json,
         };
         entry

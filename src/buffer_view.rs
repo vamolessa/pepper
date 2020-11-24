@@ -761,7 +761,7 @@ impl BufferViewCollection {
                 Err(_) => BufferContent::from_str(buffers.line_pool(), ""),
             };
 
-            let (buffer_handle, buffer) =
+            let buffer_handle =
                 buffers.new(word_database, syntaxes, Some(path), content, events, |b| {
                     b.text()
                 });
@@ -799,7 +799,7 @@ mod tests {
 
             let mut buffers = BufferCollection::default();
             let buffer_content = BufferContent::from_str(&mut line_pool, text);
-            let (buffer_handle, buffer) = buffers.new(
+            let buffer_handle = buffers.new(
                 &mut word_database,
                 &syntaxes,
                 None,

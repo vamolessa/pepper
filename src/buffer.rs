@@ -1051,7 +1051,7 @@ impl BufferCollection {
         content: BufferContent,
         events: &mut EditorEventQueue,
         capabilities_initializer: fn(&mut BufferCapabilities),
-    ) -> (BufferHandle, &mut Buffer) {
+    ) -> BufferHandle {
         let mut handle = None;
         for (i, buffer) in self.buffers.iter_mut().enumerate() {
             if !buffer.alive {
@@ -1073,7 +1073,7 @@ impl BufferCollection {
         buffer.init(word_database, syntaxes, path, content);
         capabilities_initializer(&mut buffer.capabilities);
 
-        (handle, buffer)
+        handle
     }
 
     pub fn get(&self, handle: BufferHandle) -> Option<&Buffer> {

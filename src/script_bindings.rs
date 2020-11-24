@@ -312,6 +312,8 @@ mod lsp {
         (command, args, root): (ScriptString, Option<ScriptArray>, Option<ScriptString>),
     ) -> ScriptResult<LspClientHandle> {
         let command = command.to_str()?;
+        let name = command.into();
+
         let mut command = Command::new(command);
         if let Some(args) = args {
             for arg in args.iter() {
@@ -325,7 +327,9 @@ mod lsp {
             None => ctx.current_directory,
         };
 
-        ctx.lsp.start(command, root).map_err(ScriptError::from)
+        ctx.lsp
+            .start(name, command, root)
+            .map_err(ScriptError::from)
     }
 
     pub fn open_log(
@@ -336,14 +340,16 @@ mod lsp {
     ) -> ScriptResult<()> {
         if let Some(client) = ctx.lsp.get_mut(handle) {
             let content = BufferContent::from_str(ctx.buffers.line_pool(), "");
-            let (handle, _) = ctx.buffers.new(
+            let path = Path::new(client.name());
+            let handle = ctx.buffers.new(
                 ctx.word_database,
                 &ctx.config.syntaxes,
-                None,
+                Some(path),
                 content,
                 ctx.events,
                 |c| c.text(),
             );
+            client.set_log_buffer(Some(handle));
         }
         Ok(())
     }
