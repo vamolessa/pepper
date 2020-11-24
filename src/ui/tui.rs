@@ -15,7 +15,7 @@ use crossterm::{
 };
 
 use crate::{
-    buffer::{TextBuffer, BufferContent, BufferHandle},
+    buffer::{Buffer, BufferContent, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
     client::{Client, TargetClient},
     client_event::{Key, LocalEvent},
@@ -167,7 +167,7 @@ pub fn render(
 struct ClientView<'a> {
     client: &'a Client,
     buffer_handle: Option<BufferHandle>,
-    buffer: Option<&'a TextBuffer>,
+    buffer: Option<&'a Buffer>,
     main_cursor_position: BufferPosition,
     cursors: &'a [Cursor],
 }

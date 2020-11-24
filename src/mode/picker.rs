@@ -55,7 +55,7 @@ pub mod buffer {
     use std::path::Path;
 
     use crate::{
-        buffer::TextBuffer, editor::StatusMessageKind, navigation_history::NavigationHistory,
+        buffer::Buffer, editor::StatusMessageKind, navigation_history::NavigationHistory,
         picker::Picker,
     };
 
@@ -105,7 +105,7 @@ pub mod buffer {
             ModeOperation::EnterMode(Mode::default())
         }
 
-        fn add_buffer_to_picker(picker: &mut Picker, buffer: &TextBuffer) {
+        fn add_buffer_to_picker(picker: &mut Picker, buffer: &Buffer) {
             if let Some(path) = buffer.path().and_then(|p| p.to_str()) {
                 picker.add_custom_entry(path, if buffer.needs_save() { "changed" } else { "" });
             }

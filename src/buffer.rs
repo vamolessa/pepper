@@ -703,7 +703,7 @@ impl BufferContent {
     }
 }
 
-pub struct TextBuffer {
+pub struct Buffer {
     path: PathBuf,
     content: BufferContent,
     syntax_handle: SyntaxHandle,
@@ -713,7 +713,7 @@ pub struct TextBuffer {
     needs_save: bool,
 }
 
-impl TextBuffer {
+impl Buffer {
     pub fn new() -> Self {
         Self {
             path: PathBuf::new(),
@@ -1002,12 +1002,12 @@ impl_to_script!(BufferHandle, (self, _engine) => ScriptValue::Integer(self.0 as 
 
 #[derive(Default)]
 pub struct BufferCollection {
-    buffers: Vec<(bool, TextBuffer)>,
+    buffers: Vec<(bool, Buffer)>,
     line_pool: BufferLinePool,
 }
 
 impl BufferCollection {
-    pub fn new(&mut self, events: &mut EditorEventQueue) -> (BufferHandle, &mut TextBuffer) {
+    pub fn new(&mut self, events: &mut EditorEventQueue) -> (BufferHandle, &mut Buffer) {
         let mut handle = None;
         for (i, (alive, _)) in self.buffers.iter_mut().enumerate() {
             if !*alive {
@@ -1020,7 +1020,7 @@ impl BufferCollection {
             Some(handle) => handle,
             None => {
                 let handle = BufferHandle(self.buffers.len());
-                self.buffers.push((true, TextBuffer::new()));
+                self.buffers.push((true, Buffer::new()));
                 handle
             }
         };
@@ -1029,7 +1029,7 @@ impl BufferCollection {
         (handle, &mut self.buffers[handle.0].1)
     }
 
-    pub fn get(&self, handle: BufferHandle) -> Option<&TextBuffer> {
+    pub fn get(&self, handle: BufferHandle) -> Option<&Buffer> {
         let (alive, ref buffer) = self.buffers[handle.0];
         if alive {
             Some(buffer)
@@ -1038,7 +1038,7 @@ impl BufferCollection {
         }
     }
 
-    pub fn get_mut(&mut self, handle: BufferHandle) -> Option<&mut TextBuffer> {
+    pub fn get_mut(&mut self, handle: BufferHandle) -> Option<&mut Buffer> {
         let (alive, ref mut buffer) = self.buffers[handle.0];
         if alive {
             Some(buffer)
@@ -1050,7 +1050,7 @@ impl BufferCollection {
     pub fn get_mut_with_line_pool(
         &mut self,
         handle: BufferHandle,
-    ) -> Option<(&mut TextBuffer, &mut BufferLinePool)> {
+    ) -> Option<(&mut Buffer, &mut BufferLinePool)> {
         let (alive, ref mut buffer) = self.buffers[handle.0];
         if alive {
             Some((buffer, &mut self.line_pool))
@@ -1082,13 +1082,13 @@ impl BufferCollection {
         None
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &TextBuffer> {
+    pub fn iter(&self) -> impl Iterator<Item = &Buffer> {
         self.buffers
             .iter()
             .filter_map(|(a, b)| if *a { Some(b) } else { None })
     }
 
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut TextBuffer> {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Buffer> {
         self.buffers
             .iter_mut()
             .filter_map(|(a, b)| if *a { Some(b) } else { None })
@@ -1096,7 +1096,7 @@ impl BufferCollection {
 
     pub fn iter_mut_with_line_pool(
         &mut self,
-    ) -> (impl Iterator<Item = &mut TextBuffer>, &mut BufferLinePool) {
+    ) -> (impl Iterator<Item = &mut Buffer>, &mut BufferLinePool) {
         let iter = self
             .buffers
             .iter_mut()
@@ -1104,7 +1104,7 @@ impl BufferCollection {
         (iter, &mut self.line_pool)
     }
 
-    pub fn iter_with_handles(&self) -> impl Iterator<Item = (BufferHandle, &TextBuffer)> {
+    pub fn iter_with_handles(&self) -> impl Iterator<Item = (BufferHandle, &Buffer)> {
         self.buffers.iter().enumerate().filter_map(|(i, (a, b))| {
             if *a {
                 Some((BufferHandle(i), b))
@@ -1163,7 +1163,7 @@ impl BufferCollection {
 
     pub fn defer_remove_where<F>(&mut self, events: &mut EditorEventQueue, predicate: F)
     where
-        F: Fn(BufferHandle, &TextBuffer) -> bool,
+        F: Fn(BufferHandle, &Buffer) -> bool,
     {
         for i in 0..self.buffers.len() {
             let (alive, ref mut buffer) = self.buffers[i];
@@ -1428,7 +1428,7 @@ mod tests {
         let mut word_database = WordDatabase::new();
         let syntaxes = SyntaxCollection::new();
 
-        let mut buffer = TextBuffer::new();
+        let mut buffer = Buffer::new();
         buffer.init(
             &mut word_database,
             &syntaxes,
@@ -1458,7 +1458,7 @@ mod tests {
         let mut word_database = WordDatabase::new();
         let syntaxes = SyntaxCollection::new();
 
-        let mut buffer = TextBuffer::new();
+        let mut buffer = Buffer::new();
         buffer.init(
             &mut word_database,
             &syntaxes,
