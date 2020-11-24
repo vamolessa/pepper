@@ -168,7 +168,7 @@ impl BufferLinePool {
         }
     }
 
-    pub fn dispose(&mut self, line: BufferLine) {
+    fn dispose(&mut self, line: BufferLine) {
         self.pool.push(line);
     }
 }
@@ -703,7 +703,7 @@ impl BufferContent {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum BufferKind {
     Text,
     Log,
@@ -797,8 +797,13 @@ impl Buffer {
     }
 
     pub fn refresh_syntax(&mut self, syntaxes: &SyntaxCollection) -> bool {
+        let path = self.path.to_str().unwrap_or("").as_bytes();
+        if path.is_empty() {
+            return false;
+        }
+
         let syntax_handle = syntaxes
-            .find_handle_by_path(self.path.to_str().unwrap_or("").as_bytes())
+            .find_handle_by_path(path)
             .unwrap_or(SyntaxHandle::default());
 
         if self.syntax_handle != syntax_handle {
@@ -877,6 +882,10 @@ impl Buffer {
         range: BufferRange,
         cursor_index: usize,
     ) {
+        if self.kind != BufferKind::Text {
+            return;
+        }
+
         self.search_ranges.clear();
         if range.from == range.to {
             return;
@@ -992,11 +1001,11 @@ impl Buffer {
         pool: &mut BufferLinePool,
         syntaxes: &SyntaxCollection,
     ) -> Result<(), String> {
-        if self.path.as_os_str().is_empty() {
+        let path = self.path.as_path();
+        if path.as_os_str().is_empty() {
             return Err("buffer has no path".into());
         }
 
-        let path = self.path.as_path();
         let file =
             File::open(path).map_err(|e| format!("could not open file {:?}: {:?}", path, e))?;
         let mut reader = io::BufReader::new(file);
@@ -1453,7 +1462,7 @@ mod tests {
         let mut word_database = WordDatabase::new();
         let syntaxes = SyntaxCollection::new();
 
-        let mut buffer = Buffer::new();
+        let mut buffer = Buffer::new(BufferKind::Text);
         buffer.init(
             &mut word_database,
             &syntaxes,
@@ -1483,7 +1492,7 @@ mod tests {
         let mut word_database = WordDatabase::new();
         let syntaxes = SyntaxCollection::new();
 
-        let mut buffer = Buffer::new();
+        let mut buffer = Buffer::new(BufferKind::Text);
         buffer.init(
             &mut word_database,
             &syntaxes,

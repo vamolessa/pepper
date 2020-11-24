@@ -797,7 +797,7 @@ mod tests {
 
             let mut buffers = BufferCollection::default();
             let buffer_content = BufferContent::from_str(&mut line_pool, text);
-            let (buffer_handle, buffer) = buffers.new(&mut events);
+            let (buffer_handle, buffer) = buffers.new(BufferKind::Text, &mut events);
             buffer.init(&mut word_database, &syntaxes, None, buffer_content);
 
             let buffer_view = BufferView::new(TargetClient::Local, buffer_handle);

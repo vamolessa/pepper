@@ -1,14 +1,6 @@
 use std::{
-    cell::Ref,
-    collections::VecDeque,
-    convert::TryInto,
-    error::Error,
-    fmt,
-    fs::File,
-    io::Read,
-    marker::PhantomData,
-    path::{Path, PathBuf},
-    sync::Arc,
+    cell::Ref, collections::VecDeque, convert::TryInto, error::Error, fmt, fs::File, io::Read,
+    marker::PhantomData, path::Path, sync::Arc,
 };
 
 use mlua::prelude::{
