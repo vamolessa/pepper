@@ -278,7 +278,7 @@ impl Client {
         self.log_buffer_handle = log_buffer_handle;
     }
 
-    fn log_json_to_buffer<F>(&mut self, ctx: &mut ClientContext, writer: F)
+    fn write_to_log_buffer<F>(&mut self, ctx: &mut ClientContext, writer: F)
     where
         F: FnOnce(&mut Vec<u8>),
     {
@@ -290,8 +290,8 @@ impl Client {
             .and_then(|h| buffers.get_mut_with_line_pool(h))
         {
             self.log_write_buf.clear();
-            self.log_write_buf.push(b'\n');
             writer(&mut self.log_write_buf);
+            self.log_write_buf.extend_from_slice(b"\n----\n\n");
             let content = buffer.content();
             let line_index = content.line_count() - 1;
             let position =
@@ -318,7 +318,7 @@ impl Client {
             };
         }
 
-        self.log_json_to_buffer(ctx, |buf| {
+        self.write_to_log_buffer(ctx, |buf| {
             use io::Write;
             let _ = write!(buf, "request\nid: ");
             let _ = json.write(buf, &request.id);
@@ -396,7 +396,7 @@ impl Client {
             };
         }
 
-        self.log_json_to_buffer(ctx, |buf| {
+        self.write_to_log_buffer(ctx, |buf| {
             use io::Write;
             let _ = write!(
                 buf,
@@ -479,7 +479,7 @@ impl Client {
             };
         }
 
-        self.log_json_to_buffer(ctx, |buf| {
+        self.write_to_log_buffer(ctx, |buf| {
             use io::Write;
             let _ = write!(buf, "response\nid: {}\n", response.id.0);
             match &response.result {

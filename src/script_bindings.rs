@@ -341,15 +341,20 @@ mod lsp {
         if let Some(client) = ctx.lsp.get_mut(handle) {
             let content = BufferContent::from_str(ctx.buffers.line_pool(), "");
             let path = Path::new(client.name());
-            let handle = ctx.buffers.new(
+            let buffer_handle = ctx.buffers.new(
                 ctx.word_database,
                 &ctx.config.syntaxes,
                 Some(path),
                 content,
                 ctx.events,
-                |c| c.text(),
+                |c| c.log(),
             );
-            client.set_log_buffer(Some(handle));
+            client.set_log_buffer(Some(buffer_handle));
+
+            let view_handle = ctx
+                .buffer_views
+                .buffer_view_handle_from_buffer_handle(ctx.target_client, buffer_handle);
+            ctx.set_current_buffer_view_handle(Some(view_handle));
         }
         Ok(())
     }

@@ -178,18 +178,10 @@ impl ServerConnection {
                 let mut json = json.parse_lock();
                 let json = json.get();
 
-                match std::str::from_utf8(content_bytes) {
-                    Ok(text) => eprintln!("received text:\n{}\n---\n", text),
-                    Err(_) => eprintln!("received {} non utf8 bytes", content_bytes.len()),
-                }
-
                 let mut reader = Cursor::new(content_bytes);
                 let event = match json.read(&mut reader) {
                     Ok(body) => parse_server_event(&json, body),
-                    _ => {
-                        eprintln!("parse error! error reading json. really parse error!");
-                        ServerEvent::ParseError
-                    }
+                    _ => ServerEvent::ParseError,
                 };
                 if let Err(_) = event_sender.send(LocalEvent::Lsp(handle, event)) {
                     break;
@@ -378,11 +370,6 @@ impl Protocol {
             self.body_buffer.len()
         )?;
         self.write_buffer.append(&mut self.body_buffer);
-
-        {
-            let msg = std::str::from_utf8(&self.write_buffer).unwrap();
-            eprintln!("sending msg:\n{}\n---\n", msg);
-        }
 
         self.server_connection.write(&self.write_buffer)?;
         Ok(())
