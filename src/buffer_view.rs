@@ -1,7 +1,7 @@
 use std::{fs::File, io::BufReader, path::Path};
 
 use crate::{
-    buffer::{BufferCollection, BufferContent, BufferHandle, BufferKind},
+    buffer::{BufferCollection, BufferContent, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
     client::TargetClient,
     cursor::{Cursor, CursorCollection},
@@ -761,8 +761,10 @@ impl BufferViewCollection {
                 Err(_) => BufferContent::from_str(buffers.line_pool(), ""),
             };
 
-            let (buffer_handle, buffer) = buffers.new(BufferKind::Text, events);
-            buffer.init(word_database, syntaxes, Some(path), content);
+            let (buffer_handle, buffer) =
+                buffers.new(word_database, syntaxes, Some(path), content, events, |b| {
+                    b.text()
+                });
             let buffer_view = BufferView::new(target_client, buffer_handle);
             let handle = self.add(buffer_view);
 
@@ -797,8 +799,14 @@ mod tests {
 
             let mut buffers = BufferCollection::default();
             let buffer_content = BufferContent::from_str(&mut line_pool, text);
-            let (buffer_handle, buffer) = buffers.new(BufferKind::Text, &mut events);
-            buffer.init(&mut word_database, &syntaxes, None, buffer_content);
+            let (buffer_handle, buffer) = buffers.new(
+                &mut word_database,
+                &syntaxes,
+                None,
+                buffer_content,
+                &mut events,
+                |c| c.text(),
+            );
 
             let buffer_view = BufferView::new(TargetClient::Local, buffer_handle);
 

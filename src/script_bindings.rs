@@ -7,7 +7,7 @@ use std::{
 };
 
 use crate::{
-    buffer::BufferHandle,
+    buffer::{BufferContent, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     client::TargetClient,
@@ -86,8 +86,8 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
     register!(client => index, current_buffer_view_handle, quit, force_quit, quit_all, force_quit_all,);
     register!(editor => version, os, current_directory, print,);
     register!(script => source, directory,);
-    register!(lsp => start, diagnostics,);
-    register!(buffer => all_handles, kind, line_count, line_at, path, path_matches, needs_save, set_search, open, close,
+    register!(lsp => start, open_log, diagnostics,);
+    register!(buffer => all_handles, line_count, line_at, path, path_matches, needs_save, set_search, open, close,
         force_close, close_all, force_close_all, save, save_all, reload, force_reload, reload_all, force_reload_all,
         commit_edits,);
     register_callbacks!(buffer => on_load, on_open, on_save, on_close,);
@@ -328,6 +328,26 @@ mod lsp {
         ctx.lsp.start(command, root).map_err(ScriptError::from)
     }
 
+    pub fn open_log(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        handle: LspClientHandle,
+    ) -> ScriptResult<()> {
+        if let Some(client) = ctx.lsp.get_mut(handle) {
+            let content = BufferContent::from_str(ctx.buffers.line_pool(), "");
+            let (handle, _) = ctx.buffers.new(
+                ctx.word_database,
+                &ctx.config.syntaxes,
+                None,
+                content,
+                ctx.events,
+                |c| c.text(),
+            );
+        }
+        Ok(())
+    }
+
     pub fn diagnostics(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
@@ -377,23 +397,6 @@ mod buffer {
             handles.push(h)?;
         }
         Ok(ScriptValue::Array(handles))
-    }
-
-    pub fn kind<'a>(
-        engine: ScriptEngineRef<'a>,
-        ctx: &mut ScriptContext,
-        _: ScriptContextGuard,
-        handle: Option<BufferHandle>,
-    ) -> ScriptResult<ScriptValue<'a>> {
-        match handle
-            .or_else(|| ctx.current_buffer_handle())
-            .and_then(|h| ctx.buffers.get(h))
-        {
-            Some(buffer) => engine
-                .create_string(buffer.kind().as_str().as_bytes())
-                .map(ScriptValue::String),
-            None => Ok(ScriptValue::Nil),
-        }
     }
 
     pub fn line_count(

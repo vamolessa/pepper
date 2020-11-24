@@ -446,8 +446,12 @@ impl<'a> ScriptContext<'a> {
     pub fn lsp_context(&mut self) -> (&mut LspClientCollection, LspClientContext) {
         let ctx = LspClientContext {
             current_directory: self.current_directory,
+            config: self.config,
+
             buffers: self.buffers,
             buffer_views: self.buffer_views,
+            word_database: self.word_database,
+
             status_message: self.status_message,
         };
 

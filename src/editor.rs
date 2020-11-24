@@ -587,8 +587,12 @@ impl Editor {
     pub fn on_lsp_event(&mut self, client_handle: LspClientHandle, event: LspServerEvent) {
         let mut ctx = LspClientContext {
             current_directory: &self.current_directory,
+            config: &mut self.config,
+
             buffers: &mut self.buffers,
             buffer_views: &mut self.buffer_views,
+            word_database: &mut self.word_database,
+
             status_message: &mut self.status_message,
         };
 

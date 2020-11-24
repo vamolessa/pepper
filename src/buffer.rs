@@ -168,7 +168,7 @@ impl BufferLinePool {
         }
     }
 
-    fn dispose(&mut self, line: BufferLine) {
+    pub fn dispose(&mut self, line: BufferLine) {
         self.pool.push(line);
     }
 }
@@ -496,16 +496,6 @@ impl BufferContent {
         }
     }
 
-    pub fn append_line(&mut self, line: BufferLine) -> BufferRange {
-        let line_index = self.lines.len();
-        let range = BufferRange::between(
-            BufferPosition::line_col(line_index, 0),
-            BufferPosition::line_col(line_index, line.as_str().len()),
-        );
-        self.lines.push(line);
-        range
-    }
-
     pub fn delete_range(&mut self, pool: &mut BufferLinePool, range: BufferRange) -> Text {
         let from = self.clamp_position(range.from);
         let to = self.clamp_position(range.to);
@@ -713,23 +703,25 @@ impl BufferContent {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum BufferKind {
-    Text,
-    Log,
+#[derive(Default)]
+pub struct BufferCapabilities {
+    has_history: bool,
+    can_save: bool,
 }
+impl BufferCapabilities {
+    pub fn text(&mut self) {
+        self.has_history = true;
+        self.can_save = true;
+    }
 
-impl BufferKind {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            BufferKind::Text => "text",
-            BufferKind::Log => "log",
-        }
+    pub fn log(&mut self) {
+        self.has_history = false;
+        self.can_save = false;
     }
 }
 
 pub struct Buffer {
-    kind: BufferKind,
+    alive: bool,
     path: PathBuf,
     content: BufferContent,
     syntax_handle: SyntaxHandle,
@@ -737,12 +729,13 @@ pub struct Buffer {
     history: History,
     search_ranges: Vec<BufferRange>,
     needs_save: bool,
+    capabilities: BufferCapabilities,
 }
 
 impl Buffer {
-    pub fn new(kind: BufferKind) -> Self {
+    fn new() -> Self {
         Self {
-            kind,
+            alive: false,
             path: PathBuf::new(),
             content: BufferContent::empty(),
             syntax_handle: SyntaxHandle::default(),
@@ -750,22 +743,18 @@ impl Buffer {
             history: History::new(),
             search_ranges: Vec::new(),
             needs_save: false,
+            capabilities: BufferCapabilities::default(),
         }
     }
 
-    pub fn init(
+    fn init(
         &mut self,
         word_database: &mut WordDatabase,
         syntaxes: &SyntaxCollection,
         path: Option<&Path>,
         content: BufferContent,
     ) {
-        for line in content.lines() {
-            for word in WordIter::new(line.as_str()).of_kind(WordKind::Identifier) {
-                word_database.add_word(word);
-            }
-        }
-
+        self.alive = true;
         self.path.clear();
         if let Some(path) = path {
             self.path.push(path);
@@ -775,6 +764,12 @@ impl Buffer {
         if !self.refresh_syntax(syntaxes) {
             self.highlighted
                 .highligh_all(syntaxes.get(self.syntax_handle), &self.content);
+        }
+
+        for line in self.content.lines() {
+            for word in WordIter::new(line.as_str()).of_kind(WordKind::Identifier) {
+                word_database.add_word(word);
+            }
         }
     }
 
@@ -787,15 +782,13 @@ impl Buffer {
             pool.dispose(line);
         }
 
+        self.alive = false;
         self.syntax_handle = SyntaxHandle::default();
         self.highlighted.clear();
         self.history.clear();
         self.search_ranges.clear();
         self.needs_save = false;
-    }
-
-    pub fn kind(&self) -> BufferKind {
-        self.kind
+        self.capabilities = BufferCapabilities::default();
     }
 
     pub fn path(&self) -> Option<&Path> {
@@ -835,10 +828,7 @@ impl Buffer {
     }
 
     pub fn needs_save(&self) -> bool {
-        match self.kind {
-            BufferKind::Text => self.needs_save,
-            BufferKind::Log => false,
-        }
+        self.capabilities.can_save && self.needs_save
     }
 
     pub fn insert_text(
@@ -850,10 +840,6 @@ impl Buffer {
         text: &str,
         cursor_index: usize,
     ) -> BufferRange {
-        if self.kind != BufferKind::Text {
-            return BufferRange::default();
-        }
-
         self.search_ranges.clear();
         if text.is_empty() {
             return BufferRange::between(position, position);
@@ -882,34 +868,8 @@ impl Buffer {
 
         self.highlighted
             .on_insert(syntaxes.get(self.syntax_handle), &self.content, range);
-        self.history.add_edit(Edit {
-            kind: EditKind::Insert,
-            range,
-            text,
-            cursor_index: cursor_index.min(u8::MAX as _) as _,
-        });
-        range
-    }
 
-    pub fn append_line(
-        &mut self,
-        line: BufferLine,
-        word_database: &mut WordDatabase,
-        syntaxes: &SyntaxCollection,
-        cursor_index: usize,
-    ) -> BufferRange {
-        self.needs_save = true;
-
-        for word in WordIter::new(line.as_str()).of_kind(WordKind::Identifier) {
-            word_database.add_word(word);
-        }
-        let range = self.content.append_line(line);
-
-        self.highlighted
-            .on_insert(syntaxes.get(self.syntax_handle), &self.content, range);
-
-        if self.kind == BufferKind::Text {
-            let text = self.content.line_at(range.from.line_index).as_str();
+        if self.capabilities.has_history {
             self.history.add_edit(Edit {
                 kind: EditKind::Insert,
                 range,
@@ -929,10 +889,6 @@ impl Buffer {
         range: BufferRange,
         cursor_index: usize,
     ) {
-        if self.kind != BufferKind::Text {
-            return;
-        }
-
         self.search_ranges.clear();
         if range.from == range.to {
             return;
@@ -961,12 +917,15 @@ impl Buffer {
 
         self.highlighted
             .on_delete(syntaxes.get(self.syntax_handle), &self.content, range);
-        self.history.add_edit(Edit {
-            kind: EditKind::Delete,
-            range,
-            text: deleted_text.as_str(),
-            cursor_index: cursor_index.min(u8::MAX as _) as _,
-        });
+
+        if self.capabilities.has_history {
+            self.history.add_edit(Edit {
+                kind: EditKind::Delete,
+                range,
+                text: deleted_text.as_str(),
+                cursor_index: cursor_index.min(u8::MAX as _) as _,
+            });
+        }
     }
 
     pub fn commit_edits(&mut self) {
@@ -1079,21 +1038,24 @@ impl_to_script!(BufferHandle, (self, _engine) => ScriptValue::Integer(self.0 as 
 
 #[derive(Default)]
 pub struct BufferCollection {
-    buffers: Vec<(bool, Buffer)>,
+    buffers: Vec<Buffer>,
     line_pool: BufferLinePool,
 }
 
 impl BufferCollection {
     pub fn new(
         &mut self,
-        kind: BufferKind,
+        word_database: &mut WordDatabase,
+        syntaxes: &SyntaxCollection,
+        path: Option<&Path>,
+        content: BufferContent,
         events: &mut EditorEventQueue,
+        capabilities_initializer: fn(&mut BufferCapabilities),
     ) -> (BufferHandle, &mut Buffer) {
         let mut handle = None;
-        for (i, (alive, _)) in self.buffers.iter_mut().enumerate() {
-            if !*alive {
+        for (i, buffer) in self.buffers.iter_mut().enumerate() {
+            if !buffer.alive {
                 handle = Some(BufferHandle(i));
-                *alive = true;
                 break;
             }
         }
@@ -1101,18 +1063,22 @@ impl BufferCollection {
             Some(handle) => handle,
             None => {
                 let handle = BufferHandle(self.buffers.len());
-                self.buffers.push((true, Buffer::new(kind)));
+                self.buffers.push(Buffer::new());
                 handle
             }
         };
 
         events.enqueue(EditorEvent::BufferLoad { handle });
-        (handle, &mut self.buffers[handle.0].1)
+        let buffer = &mut self.buffers[handle.0];
+        buffer.init(word_database, syntaxes, path, content);
+        capabilities_initializer(&mut buffer.capabilities);
+
+        (handle, buffer)
     }
 
     pub fn get(&self, handle: BufferHandle) -> Option<&Buffer> {
-        let (alive, ref buffer) = self.buffers[handle.0];
-        if alive {
+        let buffer = &self.buffers[handle.0];
+        if buffer.alive {
             Some(buffer)
         } else {
             None
@@ -1120,8 +1086,8 @@ impl BufferCollection {
     }
 
     pub fn get_mut(&mut self, handle: BufferHandle) -> Option<&mut Buffer> {
-        let (alive, ref mut buffer) = self.buffers[handle.0];
-        if alive {
+        let buffer = &mut self.buffers[handle.0];
+        if buffer.alive {
             Some(buffer)
         } else {
             None
@@ -1132,8 +1098,8 @@ impl BufferCollection {
         &mut self,
         handle: BufferHandle,
     ) -> Option<(&mut Buffer, &mut BufferLinePool)> {
-        let (alive, ref mut buffer) = self.buffers[handle.0];
-        if alive {
+        let buffer = &mut self.buffers[handle.0];
+        if buffer.alive {
             Some((buffer, &mut self.line_pool))
         } else {
             None
@@ -1166,13 +1132,13 @@ impl BufferCollection {
     pub fn iter(&self) -> impl Iterator<Item = &Buffer> {
         self.buffers
             .iter()
-            .filter_map(|(a, b)| if *a { Some(b) } else { None })
+            .filter_map(|b| if b.alive { Some(b) } else { None })
     }
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Buffer> {
         self.buffers
             .iter_mut()
-            .filter_map(|(a, b)| if *a { Some(b) } else { None })
+            .filter_map(|b| if b.alive { Some(b) } else { None })
     }
 
     pub fn iter_mut_with_line_pool(
@@ -1181,13 +1147,13 @@ impl BufferCollection {
         let iter = self
             .buffers
             .iter_mut()
-            .filter_map(|(a, b)| if *a { Some(b) } else { None });
+            .filter_map(|b| if b.alive { Some(b) } else { None });
         (iter, &mut self.line_pool)
     }
 
     pub fn iter_with_handles(&self) -> impl Iterator<Item = (BufferHandle, &Buffer)> {
-        self.buffers.iter().enumerate().filter_map(|(i, (a, b))| {
-            if *a {
+        self.buffers.iter().enumerate().filter_map(|(i, b)| {
+            if b.alive {
                 Some((BufferHandle(i), b))
             } else {
                 None
@@ -1211,6 +1177,10 @@ impl BufferCollection {
                     }
                     None => false,
                 };
+
+                if !buffer.capabilities.can_save {
+                    return Ok(());
+                }
 
                 match buffer.path() {
                     Some(path) => {
@@ -1247,8 +1217,8 @@ impl BufferCollection {
         F: Fn(BufferHandle, &Buffer) -> bool,
     {
         for i in 0..self.buffers.len() {
-            let (alive, ref mut buffer) = self.buffers[i];
-            if !alive {
+            let buffer = &mut self.buffers[i];
+            if !buffer.alive {
                 continue;
             }
 
@@ -1267,8 +1237,8 @@ impl BufferCollection {
         clients: &mut ClientCollection,
         word_database: &mut WordDatabase,
     ) {
-        let (alive, buffer) = &mut self.buffers[handle.0];
-        if !*alive {
+        let buffer = &mut self.buffers[handle.0];
+        if !buffer.alive {
             return;
         }
 
@@ -1279,8 +1249,6 @@ impl BufferCollection {
         }
 
         buffer.dispose(&mut self.line_pool, word_database);
-
-        *alive = false;
     }
 }
 
@@ -1509,13 +1477,14 @@ mod tests {
         let mut word_database = WordDatabase::new();
         let syntaxes = SyntaxCollection::new();
 
-        let mut buffer = Buffer::new(BufferKind::Text);
+        let mut buffer = Buffer::new();
         buffer.init(
             &mut word_database,
             &syntaxes,
             None,
             BufferContent::from_str(&mut pool, "single line content"),
         );
+        buffer.capabilities.text();
         let range = BufferRange::between(
             BufferPosition::line_col(0, 7),
             BufferPosition::line_col(0, 12),
@@ -1539,13 +1508,14 @@ mod tests {
         let mut word_database = WordDatabase::new();
         let syntaxes = SyntaxCollection::new();
 
-        let mut buffer = Buffer::new(BufferKind::Text);
+        let mut buffer = Buffer::new();
         buffer.init(
             &mut word_database,
             &syntaxes,
             None,
             BufferContent::from_str(&mut pool, "multi\nline\ncontent"),
         );
+        buffer.capabilities.text();
         let range = BufferRange::between(
             BufferPosition::line_col(0, 1),
             BufferPosition::line_col(1, 3),

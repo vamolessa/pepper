@@ -10,6 +10,7 @@ use crate::{
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::BufferViewCollection,
     client_event::LocalEvent,
+    config::Config,
     editor::{EditorEvent, StatusMessage},
     glob::Glob,
     json::{FromJson, Json, JsonArray, JsonConvertError, JsonObject, JsonString, JsonValue},
@@ -21,12 +22,17 @@ use crate::{
         },
     },
     script::ScriptValue,
+    word_database::WordDatabase,
 };
 
 pub struct ClientContext<'a> {
     pub current_directory: &'a Path,
+    pub config: &'a mut Config,
+
     pub buffers: &'a mut BufferCollection,
     pub buffer_views: &'a mut BufferViewCollection,
+    pub word_database: &'a mut WordDatabase,
+
     pub status_message: &'a mut StatusMessage,
 }
 
@@ -258,6 +264,29 @@ impl Client {
         }
     }
 
+    fn log_json_to_buffer<F>(&self, ctx: &mut ClientContext, writer: F)
+    where
+        F: FnOnce(&mut Vec<u8>),
+    {
+        let buffers = &mut *ctx.buffers;
+        let word_database = &mut *ctx.word_database;
+        let syntaxes = &ctx.config.syntaxes;
+        if let Some((buffer, pool)) = self
+            .log_buffer_handle
+            .and_then(|h| buffers.get_mut_with_line_pool(h))
+        {
+            let mut buf = Vec::new();
+            buf.push(b'\n');
+            writer(&mut buf);
+            let content = buffer.content();
+            let line_index = content.line_count() - 1;
+            let position =
+                BufferPosition::line_col(line_index, content.line_at(line_index).as_str().len());
+            let text = String::from_utf8_lossy(&buf);
+            buffer.insert_text(pool, word_database, syntaxes, position, &text, 0);
+        }
+    }
+
     pub fn on_request(
         &mut self,
         ctx: &mut ClientContext,
@@ -274,6 +303,18 @@ impl Client {
                 }
             };
         }
+
+        self.log_json_to_buffer(ctx, |buf| {
+            use io::Write;
+            let _ = write!(buf, "request\nid: ");
+            let _ = json.write(buf, &request.id);
+            let _ = write!(
+                buf,
+                "\nmethod: '{}'\nparams:\n",
+                request.method.as_str(json)
+            );
+            let _ = json.write(buf, &request.params);
+        });
 
         match request.method.as_str(&json) {
             "client/registerCapability" => {
@@ -340,6 +381,16 @@ impl Client {
                 }
             };
         }
+
+        self.log_json_to_buffer(ctx, |buf| {
+            use io::Write;
+            let _ = write!(
+                buf,
+                "notification\nmethod: '{}'\nparams:\n",
+                notification.method.as_str(json)
+            );
+            let _ = json.write(buf, &notification.params);
+        });
 
         match notification.method.as_str(json) {
             "textDocument/publishDiagnostics" => {
@@ -413,6 +464,26 @@ impl Client {
                 }
             };
         }
+
+        self.log_json_to_buffer(ctx, |buf| {
+            use io::Write;
+            let _ = write!(buf, "response\nid: {}\n", response.id.0);
+            match &response.result {
+                Ok(result) => {
+                    let _ = write!(buf, "result:\n");
+                    let _ = json.write(buf, result);
+                }
+                Err(error) => {
+                    let _ = write!(
+                        buf,
+                        "error_code: {}\nerror_message: '{}'\nerror_data:\n",
+                        error.code,
+                        error.message.as_str(json)
+                    );
+                    let _ = json.write(buf, &error.data);
+                }
+            }
+        });
 
         let method = match self.pending_requests.take(response.id) {
             Some(method) => method,
@@ -557,6 +628,13 @@ impl ClientCollection {
             .initialize(entry.json.write_lock().get(), root)?;
         self.entries[handle.0] = Some(entry);
         Ok(handle)
+    }
+
+    pub fn get_mut(&mut self, handle: ClientHandle) -> Option<&mut Client> {
+        match self.entries[handle.0] {
+            Some(ClientCollectionEntry { ref mut client, .. }) => Some(client),
+            None => None,
+        }
     }
 
     pub fn clients(&self) -> impl DoubleEndedIterator<Item = &Client> {
