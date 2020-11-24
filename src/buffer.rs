@@ -703,7 +703,23 @@ impl BufferContent {
     }
 }
 
+#[derive(Clone, Copy)]
+pub enum BufferKind {
+    Text,
+    Log,
+}
+
+impl BufferKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            BufferKind::Text => "text",
+            BufferKind::Log => "log",
+        }
+    }
+}
+
 pub struct Buffer {
+    kind: BufferKind,
     path: PathBuf,
     content: BufferContent,
     syntax_handle: SyntaxHandle,
@@ -714,8 +730,9 @@ pub struct Buffer {
 }
 
 impl Buffer {
-    pub fn new() -> Self {
+    pub fn new(kind: BufferKind) -> Self {
         Self {
+            kind,
             path: PathBuf::new(),
             content: BufferContent::empty(),
             syntax_handle: SyntaxHandle::default(),
@@ -751,7 +768,7 @@ impl Buffer {
         }
     }
 
-    pub fn dispose(&mut self, pool: &mut BufferLinePool, word_database: &mut WordDatabase) {
+    fn dispose(&mut self, pool: &mut BufferLinePool, word_database: &mut WordDatabase) {
         for line in self.content.lines.drain(..) {
             for word in WordIter::new(line.as_str()).of_kind(WordKind::Identifier) {
                 word_database.remove_word(word);
@@ -765,6 +782,10 @@ impl Buffer {
         self.history.clear();
         self.search_ranges.clear();
         self.needs_save = false;
+    }
+
+    pub fn kind(&self) -> BufferKind {
+        self.kind
     }
 
     pub fn path(&self) -> Option<&Path> {
@@ -1007,7 +1028,11 @@ pub struct BufferCollection {
 }
 
 impl BufferCollection {
-    pub fn new(&mut self, events: &mut EditorEventQueue) -> (BufferHandle, &mut Buffer) {
+    pub fn new(
+        &mut self,
+        kind: BufferKind,
+        events: &mut EditorEventQueue,
+    ) -> (BufferHandle, &mut Buffer) {
         let mut handle = None;
         for (i, (alive, _)) in self.buffers.iter_mut().enumerate() {
             if !*alive {
@@ -1020,7 +1045,7 @@ impl BufferCollection {
             Some(handle) => handle,
             None => {
                 let handle = BufferHandle(self.buffers.len());
-                self.buffers.push((true, Buffer::new()));
+                self.buffers.push((true, Buffer::new(kind)));
                 handle
             }
         };

@@ -1,9 +1,9 @@
 use std::{fs::File, io::BufReader, path::Path};
 
 use crate::{
-    buffer::{BufferCollection, BufferContent, BufferHandle},
+    buffer::{BufferCollection, BufferContent, BufferHandle, BufferKind},
     buffer_position::{BufferPosition, BufferRange},
-    client::{ClientCollection, TargetClient},
+    client::TargetClient,
     cursor::{Cursor, CursorCollection},
     editor::EditorEventQueue,
     history::{Edit, EditKind},
@@ -761,7 +761,7 @@ impl BufferViewCollection {
                 Err(_) => BufferContent::from_str(buffers.line_pool(), ""),
             };
 
-            let (buffer_handle, buffer) = buffers.new(events);
+            let (buffer_handle, buffer) = buffers.new(BufferKind::Text, events);
             buffer.init(word_database, syntaxes, Some(path), content);
             let buffer_view = BufferView::new(target_client, buffer_handle);
             let handle = self.add(buffer_view);
