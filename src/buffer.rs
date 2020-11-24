@@ -496,6 +496,16 @@ impl BufferContent {
         }
     }
 
+    pub fn append_line(&mut self, line: BufferLine) -> BufferRange {
+        let line_index = self.lines.len();
+        let range = BufferRange::between(
+            BufferPosition::line_col(line_index, 0),
+            BufferPosition::line_col(line_index, line.as_str().len()),
+        );
+        self.lines.push(line);
+        range
+    }
+
     pub fn delete_range(&mut self, pool: &mut BufferLinePool, range: BufferRange) -> Text {
         let from = self.clamp_position(range.from);
         let to = self.clamp_position(range.to);
@@ -825,7 +835,10 @@ impl Buffer {
     }
 
     pub fn needs_save(&self) -> bool {
-        self.needs_save
+        match self.kind {
+            BufferKind::Text => self.needs_save,
+            BufferKind::Log => false,
+        }
     }
 
     pub fn insert_text(
@@ -837,6 +850,10 @@ impl Buffer {
         text: &str,
         cursor_index: usize,
     ) -> BufferRange {
+        if self.kind != BufferKind::Text {
+            return BufferRange::default();
+        }
+
         self.search_ranges.clear();
         if text.is_empty() {
             return BufferRange::between(position, position);
@@ -871,6 +888,36 @@ impl Buffer {
             text,
             cursor_index: cursor_index.min(u8::MAX as _) as _,
         });
+        range
+    }
+
+    pub fn append_line(
+        &mut self,
+        line: BufferLine,
+        word_database: &mut WordDatabase,
+        syntaxes: &SyntaxCollection,
+        cursor_index: usize,
+    ) -> BufferRange {
+        self.needs_save = true;
+
+        for word in WordIter::new(line.as_str()).of_kind(WordKind::Identifier) {
+            word_database.add_word(word);
+        }
+        let range = self.content.append_line(line);
+
+        self.highlighted
+            .on_insert(syntaxes.get(self.syntax_handle), &self.content, range);
+
+        if self.kind == BufferKind::Text {
+            let text = self.content.line_at(range.from.line_index).as_str();
+            self.history.add_edit(Edit {
+                kind: EditKind::Insert,
+                range,
+                text,
+                cursor_index: cursor_index.min(u8::MAX as _) as _,
+            });
+        }
+
         range
     }
 

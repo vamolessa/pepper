@@ -239,6 +239,7 @@ pub struct Client {
 
     initialized: bool,
     capabilities: ClientCapabilities,
+    log_buffer_handle: Option<BufferHandle>,
     document_selectors: Vec<Glob>,
     pub diagnostics: DiagnosticCollection,
 }
@@ -251,6 +252,7 @@ impl Client {
 
             initialized: false,
             capabilities: ClientCapabilities::default(),
+            log_buffer_handle: None,
             document_selectors: Vec::new(),
             diagnostics: DiagnosticCollection::default(),
         }
