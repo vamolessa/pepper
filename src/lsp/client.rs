@@ -362,7 +362,11 @@ impl Client {
                                 let mut glob = Glob::default();
                                 if let Err(_) = glob.compile(pattern.as_bytes()) {
                                     self.document_selectors.clear();
-                                    return self.on_parse_error(json, request.id);
+                                    return Self::respond_parse_error(
+                                        &mut self.protocol,
+                                        json,
+                                        request.id,
+                                    );
                                 }
                                 self.document_selectors.push(glob);
                             }
@@ -524,7 +528,18 @@ impl Client {
         Ok(())
     }
 
-    fn on_parse_error(&mut self, json: &mut Json, request_id: JsonValue) -> io::Result<()> {
+    fn on_parse_error(
+        &mut self,
+        ctx: &mut ClientContext,
+        json: &mut Json,
+        request_id: JsonValue,
+    ) -> io::Result<()> {
+        self.write_to_log_buffer(ctx, |buf| {
+            use io::Write;
+            let _ = write!(buf, "parse error\nrequest_id: ");
+            let _ = json.write(buf, &request_id);
+        });
+
         Self::respond_parse_error(&mut self.protocol, json, request_id)
     }
 
@@ -676,7 +691,9 @@ impl ClientCollection {
             ServerEvent::ParseError => {
                 if let Some(entry) = self.entries[handle.0].as_mut() {
                     let mut json = entry.json.consume_lock();
-                    entry.client.on_parse_error(json.get(), JsonValue::Null)?;
+                    entry
+                        .client
+                        .on_parse_error(ctx, json.get(), JsonValue::Null)?;
                 }
             }
             ServerEvent::Request(request) => {
