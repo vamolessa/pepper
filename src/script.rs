@@ -14,7 +14,7 @@ use crate::{
     buffer_view::{BufferViewCollection, BufferViewHandle},
     client::{ClientCollection, TargetClient},
     config::Config,
-    editor::{EditorEvent, EditorEventQueue, EditorLoop, StatusMessage},
+    editor::{EditorEvent, EditorEventQueue, EditorEventsIter, EditorLoop, StatusMessage},
     keymap::KeyMapCollection,
     lsp::{LspClientCollection, LspClientContext},
     mode::Mode,
@@ -61,6 +61,7 @@ where
 }
 impl<T> Error for ScriptError<T> where T: fmt::Display {}
 
+#[derive(Clone)]
 pub struct ScriptString<'lua>(LuaString<'lua>);
 impl<'lua> ScriptString<'lua> {
     pub fn as_bytes(&self) -> &[u8] {
@@ -84,6 +85,7 @@ impl<'lua> FromLua<'lua> for ScriptString<'lua> {
     }
 }
 
+#[derive(Clone)]
 pub struct ScriptObject<'lua>(LuaTable<'lua>);
 impl<'lua> ScriptObject<'lua> {
     pub fn get<T>(&self, key: &str) -> ScriptResult<T>
@@ -118,6 +120,7 @@ impl<'lua> FromLua<'lua> for ScriptObject<'lua> {
     }
 }
 
+#[derive(Clone)]
 pub struct ScriptArray<'lua>(LuaTable<'lua>);
 impl<'lua> ScriptArray<'lua> {
     pub fn push<T>(&self, value: T) -> ScriptResult<()>
@@ -148,6 +151,7 @@ impl<'lua> FromLua<'lua> for ScriptArray<'lua> {
     }
 }
 
+#[derive(Clone)]
 pub struct ScriptFunction<'lua>(LuaFunction<'lua>);
 impl<'lua> ScriptFunction<'lua> {
     pub fn call<A, R>(&self, _: &ScriptContextGuard, args: A) -> ScriptResult<R>
@@ -200,6 +204,7 @@ where
     }
 }
 
+#[derive(Clone)]
 pub enum ScriptValue<'lua> {
     Nil,
     Boolean(bool),
@@ -573,21 +578,22 @@ impl ScriptEngine {
     pub fn on_editor_event(
         &mut self,
         ctx: &mut ScriptContext,
-        events: &[EditorEvent],
+        events: EditorEventsIter,
     ) -> ScriptResult<()> {
         let s = ScriptContextRegistryScope::new(&self.lua, ctx)?;
         let engine = ScriptEngineRef::from_lua(&self.lua);
         let mut guard = ScriptContextGuard(());
 
         macro_rules! call {
-            ($callback:ident, $args:expr) => {
+            ($callback:ident, $args:expr) => {{
+                let args = $args;
                 if let Ok(callbacks) = engine.lua.named_registry_value(stringify!($callback)) {
                     let callbacks: ScriptArray = callbacks;
                     for callback in callbacks.iter::<ScriptFunction>() {
-                        callback?.call(&mut guard, $args.clone())?;
+                        callback?.call(&mut guard, args.clone())?;
                     }
                 }
-            };
+            }};
         }
 
         for event in events {
@@ -597,6 +603,24 @@ impl ScriptEngine {
                 }
                 EditorEvent::BufferOpen { handle } => {
                     call!(buffer_on_open, *handle)
+                }
+                EditorEvent::BufferChange { handle, changes } => {
+                    let change_array = engine.create_array()?;
+                    for change in changes.iter(&events) {
+                        let change_object = engine.create_object()?;
+                        if !change.text.is_empty() {
+                            let text = engine.create_string(change.text.as_bytes())?;
+                            change_object.set("text", ScriptValue::String(text))?;
+                        }
+                        change_object.set("from_line", change.range.from.line_index)?;
+                        change_object.set("from_column", change.range.from.column_byte_index)?;
+                        change_object.set("to_line", change.range.to.line_index)?;
+                        change_object.set("to_column", change.range.to.column_byte_index)?;
+
+                        change_array.push(ScriptValue::Object(change_object))?;
+                    }
+                    let change_array = ScriptValue::Array(change_array);
+                    call!(buffer_on_change, (*handle, change_array))
                 }
                 EditorEvent::BufferSave { handle, new_path } => {
                     call!(buffer_on_save, (*handle, *new_path))

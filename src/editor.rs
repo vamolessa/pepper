@@ -1,11 +1,13 @@
 use std::{
     error::Error,
     fmt,
+    ops::Range,
     path::{Path, PathBuf},
 };
 
 use crate::{
     buffer::{BufferCollection, BufferHandle},
+    buffer_position::BufferRange,
     buffer_view::BufferViewCollection,
     client::{ClientCollection, ClientTargetMap, TargetClient},
     client_event::{ClientEvent, Key},
@@ -32,12 +34,37 @@ impl EditorLoop {
     }
 }
 
+pub struct BufferChange<'a> {
+    pub range: BufferRange,
+    pub text: &'a str,
+}
+pub struct BufferChanges(Range<usize>);
+impl BufferChanges {
+    pub fn iter<'a>(
+        &self,
+        stream: &EditorEventsIter<'a>,
+    ) -> impl 'a + Iterator<Item = BufferChange<'a>> {
+        let texts = &stream.0.texts;
+        stream
+            .0
+            .changes
+            .iter()
+            .map(move |(range, text_range)| BufferChange {
+                range: *range,
+                text: &texts[text_range.clone()],
+            })
+    }
+}
 pub enum EditorEvent {
     BufferLoad {
         handle: BufferHandle,
     },
     BufferOpen {
         handle: BufferHandle,
+    },
+    BufferChange {
+        handle: BufferHandle,
+        changes: BufferChanges,
     },
     BufferSave {
         handle: BufferHandle,
@@ -49,26 +76,40 @@ pub enum EditorEvent {
 }
 
 #[derive(Default)]
+pub struct EditorEventQueue {
+    events: Vec<EditorEvent>,
+    changes: Vec<(BufferRange, Range<usize>)>,
+    texts: String,
+}
+impl EditorEventQueue {
+    pub fn enqueue(&mut self, event: EditorEvent) {
+        self.events.push(event);
+    }
+}
+#[derive(Clone, Copy)]
+pub struct EditorEventsIter<'a>(&'a EditorEventQueue);
+impl<'a> IntoIterator for EditorEventsIter<'a> {
+    type Item = &'a EditorEvent;
+    type IntoIter = std::slice::Iter<'a, EditorEvent>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.events.iter()
+    }
+}
+#[derive(Default)]
 struct EditorEventDoubleQueue {
     read: EditorEventQueue,
     write: EditorEventQueue,
 }
 impl EditorEventDoubleQueue {
     pub fn flip(&mut self) {
-        self.read.0.clear();
+        self.read.events.clear();
+        self.read.changes.clear();
+        self.read.texts.clear();
         std::mem::swap(&mut self.read, &mut self.write);
     }
 
-    pub fn get_read_and_write_queues(&mut self) -> (&[EditorEvent], &mut EditorEventQueue) {
-        (&self.read.0, &mut self.write)
-    }
-}
-
-#[derive(Default)]
-pub struct EditorEventQueue(Vec<EditorEvent>);
-impl EditorEventQueue {
-    pub fn enqueue(&mut self, event: EditorEvent) {
-        self.0.push(event);
+    pub fn get_stream_and_sink(&mut self) -> (EditorEventsIter, &mut EditorEventQueue) {
+        (EditorEventsIter(&self.read), &mut self.write)
     }
 }
 
@@ -362,7 +403,7 @@ impl Editor {
                     }
                 }
 
-                let write_events = self.events.get_read_and_write_queues().1;
+                let write_events = self.events.get_stream_and_sink().1;
 
                 match self.buffer_views.buffer_view_handle_from_path(
                     &mut self.buffers,
@@ -487,8 +528,13 @@ impl Editor {
         &'a mut self,
         clients: &'a mut ClientCollection,
         target_client: TargetClient,
-    ) -> (&'a mut Mode, &'a [Key], &'a [EditorEvent], ModeContext<'a>) {
-        let (read_events, write_events) = self.events.get_read_and_write_queues();
+    ) -> (
+        &'a mut Mode,
+        &'a [Key],
+        EditorEventsIter<'a>,
+        ModeContext<'a>,
+    ) {
+        let (read_events, write_events) = self.events.get_stream_and_sink();
         let mode_context = ModeContext {
             target_client,
             clients,
@@ -547,7 +593,7 @@ impl Editor {
         self.events.flip();
         let (mode, _, events, mut mode_ctx) = self.mode_context(clients, TargetClient::Local);
 
-        if events.is_empty() {
+        if let None = events.into_iter().next() {
             return;
         }
 
@@ -566,7 +612,7 @@ impl Editor {
         Self::handle_editor_events(&mut mode_ctx, events);
     }
 
-    fn handle_editor_events(ctx: &mut ModeContext, events: &[EditorEvent]) {
+    fn handle_editor_events(ctx: &mut ModeContext, events: EditorEventsIter) {
         for event in events {
             match event {
                 EditorEvent::BufferSave { handle, new_path } => {

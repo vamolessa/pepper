@@ -5,7 +5,10 @@ use crate::{
     buffer_view::{BufferViewCollection, BufferViewHandle},
     client::{ClientCollection, TargetClient},
     config::Config,
-    editor::{EditorEvent, EditorEventQueue, EditorLoop, KeysIterator, ReadLine, StatusMessage},
+    editor::{
+        EditorEvent, EditorEventsIter, EditorEventQueue, EditorLoop, KeysIterator, ReadLine,
+        StatusMessage,
+    },
     keymap::KeyMapCollection,
     lsp::LspClientCollection,
     picker::Picker,
@@ -60,10 +63,7 @@ impl<'a> ModeContext<'a> {
             .and_then(|c| c.current_buffer_view_handle())
     }
 
-    pub fn set_current_buffer_view_handle(
-        &mut self,
-        handle: Option<BufferViewHandle>,
-    ) {
+    pub fn set_current_buffer_view_handle(&mut self, handle: Option<BufferViewHandle>) {
         if let Some(client) = self.clients.get_mut(self.target_client) {
             client.set_current_buffer_view_handle(handle);
 
@@ -71,8 +71,7 @@ impl<'a> ModeContext<'a> {
                 .and_then(|h| self.buffer_views.get(h))
                 .map(|v| v.buffer_handle)
             {
-                self.events
-                    .enqueue(EditorEvent::BufferOpen { handle});
+                self.events.enqueue(EditorEvent::BufferOpen { handle });
             }
         }
     }
@@ -110,7 +109,7 @@ pub trait ModeState {
     fn on_enter(&mut self, _ctx: &mut ModeContext) {}
     fn on_exit(&mut self, _ctx: &mut ModeContext) {}
     fn on_client_keys(&mut self, ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation;
-    fn on_editor_events(&mut self, _ctx: &mut ModeContext, _events: &[EditorEvent]) {}
+    fn on_editor_events(&mut self, _ctx: &mut ModeContext, _events: EditorEventsIter) {}
 }
 
 pub enum Mode {
@@ -160,7 +159,7 @@ impl Mode {
         }
     }
 
-    pub fn on_editor_events(&mut self, ctx: &mut ModeContext, events: &[EditorEvent]) {
+    pub fn on_editor_events(&mut self, ctx: &mut ModeContext, events: EditorEventsIter) {
         match self {
             Mode::Normal(state) => state.on_editor_events(ctx, events),
             Mode::Insert(state) => state.on_editor_events(ctx, events),

@@ -6,12 +6,12 @@ use std::{
 };
 
 use crate::{
-    buffer::{Buffer, BufferCollection, BufferHandle},
+    buffer::{BufferCollection, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::BufferViewCollection,
     client_event::LocalEvent,
     config::Config,
-    editor::{EditorEvent, StatusMessage},
+    editor::{EditorEvent, EditorEventsIter, StatusMessage},
     glob::Glob,
     json::{FromJson, Json, JsonArray, JsonConvertError, JsonObject, JsonString, JsonValue},
     lsp::{
@@ -649,7 +649,7 @@ impl Client {
     fn on_editor_events(
         &mut self,
         ctx: &mut ClientContext,
-        events: &[EditorEvent],
+        events: EditorEventsIter,
         json: &mut Json,
     ) -> io::Result<()> {
         fn get_path_uri<'a>(ctx: &'a ClientContext, path: &'a Path) -> Uri<'a> {
@@ -699,6 +699,7 @@ impl Client {
         ) -> Option<()> {
             let buffer = ctx.buffers.get(buffer_handle)?;
             let buffer_path = buffer.path()?;
+            None
         }
 
         if !self.initialized {
@@ -867,7 +868,7 @@ impl ClientCollection {
     pub fn on_editor_events(
         &mut self,
         ctx: &mut ClientContext,
-        events: &[EditorEvent],
+        events: EditorEventsIter,
     ) -> io::Result<()> {
         for entry in self.entries.iter_mut().flatten() {
             let mut json = entry.json.write_lock();
