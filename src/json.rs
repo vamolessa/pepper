@@ -756,7 +756,7 @@ mod tests {
 
         let mut object = JsonObject::default();
         object.set("first".into(), JsonValue::Null, &mut json);
-        object.set("second".into(), json.create_string("txt").into(), &mut json);
+        object.set("second".into(), "txt".into(), &mut json);
 
         array.push(object.into(), &mut json);
         array.push(JsonArray::default().into(), &mut json);

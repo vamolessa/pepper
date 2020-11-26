@@ -362,6 +362,7 @@ impl BufferContent {
         let last_index = self.lines.len() - 1;
         for line in &self.lines[..last_index] {
             text.push_str(line.as_str());
+            text.push('\n');
         }
         text.push_str(self.lines[last_index].as_str());
     }
