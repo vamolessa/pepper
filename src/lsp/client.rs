@@ -660,7 +660,7 @@ impl Client {
             }
         }
 
-        fn send_on_open(
+        fn send_did_open(
             client: &mut Client,
             ctx: &mut ClientContext,
             json: &mut Json,
@@ -691,6 +691,16 @@ impl Client {
                 .ok()
         }
 
+        fn send_did_close(
+            client: &mut Client,
+            ctx: &mut ClientContext,
+            json: &mut Json,
+            buffer_handle: BufferHandle,
+        ) -> Option<()> {
+            let buffer = ctx.buffers.get(buffer_handle)?;
+            let buffer_path = buffer.path()?;
+        }
+
         if !self.initialized {
             return Ok(());
         }
@@ -699,7 +709,7 @@ impl Client {
             match event {
                 EditorEvent::BufferLoad { handle } => {
                     self.diagnostics.on_load_buffer(ctx, *handle);
-                    send_on_open(self, ctx, json, *handle);
+                    send_did_open(self, ctx, json, *handle);
                 }
                 EditorEvent::BufferSave { handle, new_path } => {
                     self.diagnostics.on_save_buffer(ctx, *handle, *new_path);
