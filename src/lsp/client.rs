@@ -11,7 +11,7 @@ use crate::{
     buffer_view::BufferViewCollection,
     client_event::LocalEvent,
     config::Config,
-    editor::{EditorEvent, EditorEventsIter, StatusMessage},
+    editor::{EditorEventBufferChanges, EditorEvent, EditorEventsIter, StatusMessage},
     glob::Glob,
     json::{FromJson, Json, JsonArray, JsonConvertError, JsonObject, JsonString, JsonValue},
     lsp::{
@@ -691,6 +691,16 @@ impl Client {
                 .ok()
         }
 
+        fn send_did_change(
+            client: &mut Client,
+            ctx: &mut ClientContext,
+            json: &mut Json,
+            buffer_handle: BufferHandle,
+            changes: &EditorEventBufferChanges,
+        ) -> Option<()> {
+            None
+        }
+
         fn send_did_close(
             client: &mut Client,
             ctx: &mut ClientContext,
@@ -711,6 +721,9 @@ impl Client {
                 EditorEvent::BufferLoad { handle } => {
                     self.diagnostics.on_load_buffer(ctx, *handle);
                     send_did_open(self, ctx, json, *handle);
+                }
+                EditorEvent::BufferChange { handle, changes } => {
+                    send_did_change(self, ctx, json, *handle, changes);
                 }
                 EditorEvent::BufferSave { handle, new_path } => {
                     self.diagnostics.on_save_buffer(ctx, *handle, *new_path);

@@ -34,22 +34,22 @@ impl EditorLoop {
     }
 }
 
-pub struct BufferChange<'a> {
+pub struct EditorEventBufferChange<'a> {
     pub range: BufferRange,
     pub text: &'a str,
 }
-pub struct BufferChanges(Range<usize>);
-impl BufferChanges {
+pub struct EditorEventBufferChanges(Range<usize>);
+impl EditorEventBufferChanges {
     pub fn iter<'a>(
         &self,
-        stream: &EditorEventsIter<'a>,
-    ) -> impl 'a + Iterator<Item = BufferChange<'a>> {
+        stream: EditorEventsIter<'a>,
+    ) -> impl 'a + Iterator<Item = EditorEventBufferChange<'a>> {
         let texts = &stream.0.texts;
         stream
             .0
             .changes
             .iter()
-            .map(move |(range, text_range)| BufferChange {
+            .map(move |(range, text_range)| EditorEventBufferChange {
                 range: *range,
                 text: &texts[text_range.clone()],
             })
@@ -64,7 +64,7 @@ pub enum EditorEvent {
     },
     BufferChange {
         handle: BufferHandle,
-        changes: BufferChanges,
+        changes: EditorEventBufferChanges,
     },
     BufferSave {
         handle: BufferHandle,
@@ -84,6 +84,30 @@ pub struct EditorEventQueue {
 impl EditorEventQueue {
     pub fn enqueue(&mut self, event: EditorEvent) {
         self.events.push(event);
+    }
+
+    pub fn enqueue_buffer_changes(&mut self, handle: BufferHandle) -> EditorEventBufferChangeQueue {
+        let changes_len = self.changes.len();
+        let changes = EditorEventBufferChanges(changes_len..changes_len);
+        self.events
+            .push(EditorEvent::BufferChange { handle, changes });
+        EditorEventBufferChangeQueue(self)
+    }
+}
+pub struct EditorEventBufferChangeQueue<'a>(&'a mut EditorEventQueue);
+impl<'a> EditorEventBufferChangeQueue<'a> {
+    pub fn enqueue(&mut self, change: EditorEventBufferChange) {
+        let events_len = self.0.events.len();
+        match &mut self.0.events[events_len - 1] {
+            EditorEvent::BufferChange { changes, .. } => {
+                let text_range_start = self.0.texts.len();
+                self.0.texts.push_str(change.text);
+                let text_range = text_range_start..self.0.texts.len();
+                self.0.changes.push((change.range, text_range));
+                changes.0.end = self.0.changes.len();
+            }
+            _ => unreachable!(),
+        }
     }
 }
 #[derive(Clone, Copy)]

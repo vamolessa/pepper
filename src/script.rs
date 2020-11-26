@@ -606,7 +606,7 @@ impl ScriptEngine {
                 }
                 EditorEvent::BufferChange { handle, changes } => {
                     let change_array = engine.create_array()?;
-                    for change in changes.iter(&events) {
+                    for change in changes.iter(events) {
                         let change_object = engine.create_object()?;
                         if !change.text.is_empty() {
                             let text = engine.create_string(change.text.as_bytes())?;
