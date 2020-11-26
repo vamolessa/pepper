@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    buffer::{Buffer, BufferCollection, BufferHandle},
+    buffer::{BufferCollection, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::BufferViewCollection,
     client_event::LocalEvent,
@@ -391,16 +391,6 @@ impl Client {
         }
     }
 
-    fn text_document_item(&self, json: &mut Json, buffer: &Buffer) -> Option<JsonValue> {
-        let mut item = JsonObject::default();
-
-        let uri = Uri::Path(buffer.path()?);
-        let uri = json.fmt_string(format_args!("{}", uri));
-        item.set("uri".into(), uri.into(), json);
-
-        Some(item.into())
-    }
-
     fn on_request(
         &mut self,
         ctx: &mut ClientContext,
@@ -522,8 +512,8 @@ impl Client {
                 let params: Params = deserialize!(notification.params);
                 let uri = params.uri.as_str(json);
                 let path = match Uri::parse(uri) {
-                    Uri::None => return Ok(()),
-                    Uri::Path(path) => path,
+                    Uri::AbsolutePath(path) => path,
+                    _ => return Ok(()),
                 };
 
                 let diagnostics = self.diagnostics.path_diagnostics_mut(ctx, path);
@@ -590,7 +580,11 @@ impl Client {
 
         self.write_to_log_buffer(ctx, |buf| {
             use io::Write;
-            let _ = write!(buf, "response\nid: {}\nmethod: '{}'\n", response.id.0, method);
+            let _ = write!(
+                buf,
+                "response\nid: {}\nmethod: '{}'\n",
+                response.id.0, method
+            );
             match &response.result {
                 Ok(result) => {
                     let _ = write!(buf, "result:\n");
@@ -658,6 +652,34 @@ impl Client {
         events: &[EditorEvent],
         json: &mut Json,
     ) -> io::Result<()> {
+        fn send_on_open(
+            client: &mut Client,
+            ctx: &mut ClientContext,
+            json: &mut Json,
+            buffer_handle: BufferHandle,
+        ) -> Option<()> {
+            let buffer = ctx.buffers.get(buffer_handle)?;
+
+            let mut text_document = JsonObject::default();
+
+            let buffer_path = buffer.path()?;
+            let uri = if buffer_path.is_absolute() {
+                Uri::AbsolutePath(buffer_path)
+            } else {
+                Uri::RelativePath(ctx.current_directory, buffer_path)
+            };
+            let uri = json.fmt_string(format_args!("{}", uri));
+            text_document.set("uri".into(), uri.into(), json);
+
+            let mut params = JsonObject::default();
+            params.set("textDocument".into(), text_document.into(), json);
+
+            client
+                .protocol
+                .notify(json, "textDocument/didOpen", params.into())
+                .ok()
+        }
+
         if !self.initialized {
             return Ok(());
         }
@@ -666,7 +688,7 @@ impl Client {
             match event {
                 EditorEvent::BufferLoad { handle } => {
                     self.diagnostics.on_load_buffer(ctx, *handle);
-                    //self.protocol.notify();
+                    send_on_open(self, ctx, json, *handle);
                 }
                 EditorEvent::BufferSave { handle, new_path } => {
                     self.diagnostics.on_save_buffer(ctx, *handle, *new_path);
@@ -699,7 +721,7 @@ impl Client {
             JsonValue::Integer(process::id() as _),
             json,
         );
-        let root = json.fmt_string(format_args!("{}", Uri::Path(root)));
+        let root = json.fmt_string(format_args!("{}", Uri::AbsolutePath(root)));
         params.set("rootUri".into(), root.into(), json);
         params.set(
             "capabilities".into(),

@@ -54,13 +54,14 @@ impl SharedJson {
 
 pub enum Uri<'a> {
     None,
-    Path(&'a Path),
+    AbsolutePath(&'a Path),
+    RelativePath(&'a Path, &'a Path),
 }
 impl<'a> Uri<'a> {
     pub fn parse(uri: &'a str) -> Self {
         const FILE_SCHEME_PREFIX: &str = "file:///";
         if uri.starts_with(FILE_SCHEME_PREFIX) {
-            Uri::Path(Path::new(&uri[FILE_SCHEME_PREFIX.len()..]))
+            Uri::AbsolutePath(Path::new(&uri[FILE_SCHEME_PREFIX.len()..]))
         } else {
             Uri::None
         }
@@ -68,48 +69,58 @@ impl<'a> Uri<'a> {
 }
 impl<'a> fmt::Display for Uri<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            Self::None => (),
-            Self::Path(path) => {
-                f.write_str("file:///")?;
-                let mut components = path.components().peekable();
-                let mut has_prefix = false;
-                while let Some(component) = components.next() {
-                    match component {
-                        Component::Prefix(prefix) => match prefix.kind() {
-                            Prefix::Verbatim(p) => match p.to_str() {
-                                Some(p) => {
-                                    f.write_str(p)?;
-                                    has_prefix = true;
-                                }
-                                None => return Err(fmt::Error),
-                            },
-                            Prefix::VerbatimDisk(d) | Prefix::Disk(d) => {
-                                f.write_fmt(format_args!("{}:", d as char))?;
+        fn fmt_path(f: &mut fmt::Formatter, path: &Path) -> fmt::Result {
+            let mut components = path.components().peekable();
+            let mut has_prefix = false;
+            while let Some(component) = components.next() {
+                match component {
+                    Component::Prefix(prefix) => match prefix.kind() {
+                        Prefix::Verbatim(p) => match p.to_str() {
+                            Some(p) => {
+                                f.write_str(p)?;
                                 has_prefix = true;
                             }
-                            _ => continue,
-                        },
-                        Component::RootDir => {
-                            if has_prefix {
-                                continue;
-                            }
-                        }
-                        Component::CurDir => f.write_str(".")?,
-                        Component::ParentDir => f.write_str("..")?,
-                        Component::Normal(component) => match component.to_str() {
-                            Some(component) => f.write_str(component)?,
                             None => return Err(fmt::Error),
                         },
+                        Prefix::VerbatimDisk(d) | Prefix::Disk(d) => {
+                            f.write_fmt(format_args!("{}:", d as char))?;
+                            has_prefix = true;
+                        }
+                        _ => continue,
+                    },
+                    Component::RootDir => {
+                        if has_prefix {
+                            continue;
+                        }
                     }
-                    if let None = components.peek() {
-                        break;
-                    }
-                    f.write_str("/")?;
+                    Component::CurDir => f.write_str(".")?,
+                    Component::ParentDir => f.write_str("..")?,
+                    Component::Normal(component) => match component.to_str() {
+                        Some(component) => f.write_str(component)?,
+                        None => return Err(fmt::Error),
+                    },
                 }
+                if let None = components.peek() {
+                    break;
+                }
+                f.write_str("/")?;
+            }
+            Ok(())
+        }
+
+        match *self {
+            Self::None => Ok(()),
+            Self::AbsolutePath(path) => {
+                f.write_str("file:///")?;
+                fmt_path(f, path)
+            }
+            Self::RelativePath(base, path) => {
+                f.write_str("file:///")?;
+                fmt_path(f, base)?;
+                f.write_str("/")?;
+                fmt_path(f, path)
             }
         }
-        Ok(())
     }
 }
 
