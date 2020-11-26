@@ -257,7 +257,7 @@ impl Drop for ServerConnection {
     }
 }
 
-#[derive(Default, PartialEq, Eq)]
+#[derive(Default, Clone, Copy, PartialEq, Eq)]
 pub struct RequestId(pub usize);
 
 declare_json_object! {

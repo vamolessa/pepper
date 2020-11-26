@@ -103,7 +103,7 @@ pub fn client_capabilities(json: &mut Json) -> JsonValue {
             let mut synchronization = JsonObject::default();
             synchronization.set("willSave".into(), false.into(), json);
             synchronization.set("willSaveWaitUntil".into(), false.into(), json);
-            synchronization.set("didSave".into(), false.into(), json);
+            synchronization.set("didSave".into(), true.into(), json);
 
             text_document_capabilities.set("synchronization".into(), synchronization.into(), json);
         }

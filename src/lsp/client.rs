@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    buffer::{BufferCollection, BufferHandle},
+    buffer::{Buffer, BufferCollection, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::BufferViewCollection,
     client_event::LocalEvent,
@@ -70,10 +70,99 @@ impl<'json> FromJson<'json> for RenameCapability {
         }
     }
 }
+enum TextDocumentSyncKind {
+    None,
+    Full,
+    Incremental,
+}
+struct TextDocumentSyncCapability {
+    on: bool,
+    open_close: bool,
+    change: TextDocumentSyncKind,
+    save: TextDocumentSyncKind,
+}
+impl Default for TextDocumentSyncCapability {
+    fn default() -> Self {
+        Self {
+            on: false,
+            open_close: false,
+            change: TextDocumentSyncKind::None,
+            save: TextDocumentSyncKind::None,
+        }
+    }
+}
+impl<'json> FromJson<'json> for TextDocumentSyncCapability {
+    fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
+        match value {
+            JsonValue::Integer(0) => Ok(Self {
+                on: false,
+                open_close: false,
+                change: TextDocumentSyncKind::None,
+                save: TextDocumentSyncKind::None,
+            }),
+            JsonValue::Integer(1) => Ok(Self {
+                on: true,
+                open_close: true,
+                change: TextDocumentSyncKind::Full,
+                save: TextDocumentSyncKind::Full,
+            }),
+            JsonValue::Integer(2) => Ok(Self {
+                on: true,
+                open_close: true,
+                change: TextDocumentSyncKind::Incremental,
+                save: TextDocumentSyncKind::Incremental,
+            }),
+            JsonValue::Object(options) => {
+                let mut open_close = false;
+                let mut change = TextDocumentSyncKind::None;
+                let mut save = TextDocumentSyncKind::None;
+                for (key, value) in options.members(json) {
+                    match key {
+                        "change" => {
+                            change = match value {
+                                JsonValue::Integer(0) => TextDocumentSyncKind::None,
+                                JsonValue::Integer(1) => TextDocumentSyncKind::Full,
+                                JsonValue::Integer(2) => TextDocumentSyncKind::Incremental,
+                                _ => return Err(JsonConvertError),
+                            }
+                        }
+                        "openClose" => {
+                            open_close = match value {
+                                JsonValue::Boolean(b) => b,
+                                _ => return Err(JsonConvertError),
+                            }
+                        }
+                        "save" => {
+                            save = match value {
+                                JsonValue::Boolean(false) => TextDocumentSyncKind::None,
+                                JsonValue::Boolean(true) => TextDocumentSyncKind::Incremental,
+                                JsonValue::Object(options) => {
+                                    match options.get("includeText", json) {
+                                        JsonValue::Boolean(true) => TextDocumentSyncKind::Full,
+                                        _ => TextDocumentSyncKind::Incremental,
+                                    }
+                                }
+                                _ => return Err(JsonConvertError),
+                            }
+                        }
+                        _ => (),
+                    }
+                }
+                Ok(Self {
+                    on: true,
+                    open_close,
+                    change,
+                    save,
+                })
+            }
+            _ => Err(JsonConvertError),
+        }
+    }
+}
 
 declare_json_object! {
     #[derive(Default)]
-    pub struct ClientCapabilities {
+    pub struct ServerCapabilities {
         hoverProvider: GenericCapability,
         renameProvider: RenameCapability,
         documentFormattingProvider: GenericCapability,
@@ -83,6 +172,7 @@ declare_json_object! {
         implementationProvider: GenericCapability,
         documentSymbolProvider: GenericCapability,
         workspaceSymbolProvider: GenericCapability,
+        textDocumentSync: TextDocumentSyncCapability,
     }
 }
 
@@ -245,7 +335,7 @@ pub struct Client {
     pending_requests: PendingRequestColection,
 
     initialized: bool,
-    capabilities: ClientCapabilities,
+    server_capabilities: ServerCapabilities,
     log_write_buf: Vec<u8>,
     log_buffer_handle: Option<BufferHandle>,
     document_selectors: Vec<Glob>,
@@ -260,7 +350,7 @@ impl Client {
             pending_requests: PendingRequestColection::default(),
 
             initialized: false,
-            capabilities: ClientCapabilities::default(),
+            server_capabilities: ServerCapabilities::default(),
 
             log_write_buf: Vec::new(),
             log_buffer_handle: None,
@@ -299,6 +389,16 @@ impl Client {
             let text = String::from_utf8_lossy(&self.log_write_buf);
             buffer.insert_text(pool, word_database, syntaxes, position, &text, 0);
         }
+    }
+
+    fn text_document_item(&self, json: &mut Json, buffer: &Buffer) -> Option<JsonValue> {
+        let mut item = JsonObject::default();
+
+        let uri = Uri::Path(buffer.path()?);
+        let uri = json.fmt_string(format_args!("{}", uri));
+        item.set("uri".into(), uri.into(), json);
+
+        Some(item.into())
     }
 
     fn on_request(
@@ -483,9 +583,14 @@ impl Client {
             };
         }
 
+        let method = match self.pending_requests.take(response.id) {
+            Some(method) => method,
+            None => return Ok(()),
+        };
+
         self.write_to_log_buffer(ctx, |buf| {
             use io::Write;
-            let _ = write!(buf, "response\nid: {}\n", response.id.0);
+            let _ = write!(buf, "response\nid: {}\nmethod: '{}'\n", response.id.0, method);
             match &response.result {
                 Ok(result) => {
                     let _ = write!(buf, "result:\n");
@@ -503,15 +608,10 @@ impl Client {
             }
         });
 
-        let method = match self.pending_requests.take(response.id) {
-            Some(method) => method,
-            None => return Ok(()),
-        };
-
         match method {
             "initialize" => match response.result {
                 Ok(result) => {
-                    self.capabilities = deserialize!(result.get("capabilities", &json));
+                    self.server_capabilities = deserialize!(result.get("capabilities", &json));
                     self.initialized = true;
 
                     self.protocol.notify(
@@ -566,6 +666,7 @@ impl Client {
             match event {
                 EditorEvent::BufferLoad { handle } => {
                     self.diagnostics.on_load_buffer(ctx, *handle);
+                    //self.protocol.notify();
                 }
                 EditorEvent::BufferSave { handle, new_path } => {
                     self.diagnostics.on_save_buffer(ctx, *handle, *new_path);
