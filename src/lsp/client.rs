@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    buffer::{BufferCollection, BufferHandle},
+    buffer::{Buffer, BufferCollection, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::BufferViewCollection,
     client_event::LocalEvent,
@@ -17,7 +17,7 @@ use crate::{
     lsp::{
         capabilities,
         protocol::{
-            PendingRequestColection, Protocol, ResponseError, ServerConnection, ServerEvent,
+            self, PendingRequestColection, Protocol, ResponseError, ServerConnection, ServerEvent,
             ServerNotification, ServerRequest, ServerResponse, SharedJson, Uri,
         },
     },
@@ -652,6 +652,14 @@ impl Client {
         events: &[EditorEvent],
         json: &mut Json,
     ) -> io::Result<()> {
+        fn get_path_uri<'a>(ctx: &'a ClientContext, path: &'a Path) -> Uri<'a> {
+            if path.is_absolute() {
+                Uri::AbsolutePath(path)
+            } else {
+                Uri::RelativePath(ctx.current_directory, path)
+            }
+        }
+
         fn send_on_open(
             client: &mut Client,
             ctx: &mut ClientContext,
@@ -659,17 +667,22 @@ impl Client {
             buffer_handle: BufferHandle,
         ) -> Option<()> {
             let buffer = ctx.buffers.get(buffer_handle)?;
+            let buffer_path = buffer.path()?;
 
             let mut text_document = JsonObject::default();
 
-            let buffer_path = buffer.path()?;
-            let uri = if buffer_path.is_absolute() {
-                Uri::AbsolutePath(buffer_path)
-            } else {
-                Uri::RelativePath(ctx.current_directory, buffer_path)
-            };
-            let uri = json.fmt_string(format_args!("{}", uri));
+            let uri = json.fmt_string(format_args!("{}", get_path_uri(ctx, buffer_path)));
             text_document.set("uri".into(), uri.into(), json);
+
+            let language_id = json.create_string(protocol::path_to_language_id(buffer_path));
+            text_document.set("languageId".into(), language_id.into(), json);
+
+            text_document.set("version".into(), JsonValue::Integer(0), json);
+
+            let mut text = String::new();
+            buffer.content().append_to_string(&mut text);
+            let text = json.create_string(&text);
+            text_document.set("text".into(), text.into(), json);
 
             let mut params = JsonObject::default();
             params.set("textDocument".into(), text_document.into(), json);

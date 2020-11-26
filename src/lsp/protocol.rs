@@ -124,6 +124,77 @@ impl<'a> fmt::Display for Uri<'a> {
     }
 }
 
+pub fn path_to_language_id(path: &Path) -> &str {
+    let extension = match path.extension().and_then(|e| e.to_str()) {
+        Some(extension) => extension,
+        None => return "",
+    };
+
+    let mut buf = [0; 8];
+    let extension_len = extension.len();
+    if extension_len > buf.len() {
+        return extension;
+    }
+
+    for (bb, eb) in buf.iter_mut().zip(extension.bytes()) {
+        *bb = eb.to_ascii_lowercase();
+    }
+    let extension_lowercase = &buf[..extension_len];
+
+    match extension_lowercase {
+        b"abap" => "abap",
+        b"bat" | b"cmd" => "bat",
+        b"bib" => "bibtex",
+        b"clj" | b"cljs" | b"cljc" | b"edn" => "closure",
+        b"coffee" | b"litcoffee" => "coffeescript",
+        b"c" | b"h" => "c",
+        b"cc" | b"cpp" | b"cxx" | b"c++" | b"hh" | b"hpp" | b"hxx" | b"h++" => "cpp",
+        b"cs" | b"csx" => "csharp",
+        b"css" => "css",
+        b"diff" => "diff",
+        b"dart" => "dart",
+        b"dockerfile" => "dockerfile",
+        b"ex" | b"exs" => "elixir",
+        b"erl" | b"hrl" => "erlang",
+        b"fs" | b"fsi" | b"fsx" | b"fsscript" => "fsharp",
+        b"go" => "go",
+        b"groovy" | b"gvy" | b"gy" | b"gsh" => "groovy",
+        b"html" | b"htm" => "html",
+        b"ini" => "ini",
+        b"java" => "java",
+        b"js" | b"mjs" => "javascript",
+        b"json" => "json",
+        b"less" => "less",
+        b"lua" => "lua",
+        b"md" => "markdown",
+        b"m" => "objective-c",
+        b"mm" => "objective-cpp",
+        b"plx" | b"pl" | b"pm" | b"xs" | b"t" | b"pod" => "perl",
+        b"php" | b"phtml" | b"php3" | b"php4" | b"php5" | b"php7" | b"phps" | b"php-s" | b"pht"
+        | b"phar" => "php",
+        b"ps1" | b"ps1xml" | b"psc1" | b"psd1" | b"psm1" | b"pssc" | b"psrc" | b"cdxml" => {
+            "powershell"
+        }
+        b"py" | b"pyi" | b"pyc" | b"pyd" | b"pyo" | b"pyw" | b"pyz" => "python",
+        b"r" | b"rdata" | b"rds" | b"rda" => "r",
+        b"razor" | b"cshtml" | b"vbhtml" => "razor",
+        b"rb" => "ruby",
+        b"rs" => "rust",
+        b"scss" => "scss",
+        b"sass" => "sass",
+        b"scala" | b"sc" => "scala",
+        b"sh" => "shellscript",
+        b"sql" => "sql",
+        b"swift" => "swift",
+        b"ts" | b"tsx" => "typescript",
+        b"tex" => "tex",
+        b"vb" => "vb",
+        b"xml" => "xml",
+        b"yaml" | b"yml" => "yaml",
+        _ => extension,
+    }
+}
+
 pub enum ServerEvent {
     Closed,
     ParseError,

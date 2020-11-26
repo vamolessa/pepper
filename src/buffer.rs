@@ -358,6 +358,14 @@ impl BufferContent {
         Ok(())
     }
 
+    pub fn append_to_string(&self, text: &mut String) {
+        let last_index = self.lines.len() - 1;
+        for line in &self.lines[..last_index] {
+            text.push_str(line.as_str());
+        }
+        text.push_str(self.lines[last_index].as_str());
+    }
+
     pub fn saturate_position(&self, mut position: BufferPosition) -> BufferPosition {
         position.line_index = position.line_index.min(self.line_count() - 1);
         let line = self.line_at(position.line_index).as_str();
@@ -1258,9 +1266,9 @@ mod tests {
     use crate::buffer_position::BufferPosition;
 
     fn buffer_to_string(buffer: &BufferContent) -> String {
-        let mut buf = Vec::new();
-        buffer.write(&mut buf).unwrap();
-        String::from_utf8(buf).unwrap()
+        let mut string = String::new();
+        buffer.append_to_string(&mut string);
+        string
     }
 
     #[test]
