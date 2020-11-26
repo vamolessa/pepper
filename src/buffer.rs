@@ -1,5 +1,6 @@
 use std::{
     convert::From,
+    fmt,
     fs::File,
     io,
     ops::RangeBounds,
@@ -358,15 +359,6 @@ impl BufferContent {
         Ok(())
     }
 
-    pub fn append_to_string(&self, text: &mut String) {
-        let last_index = self.lines.len() - 1;
-        for line in &self.lines[..last_index] {
-            text.push_str(line.as_str());
-            text.push('\n');
-        }
-        text.push_str(self.lines[last_index].as_str());
-    }
-
     pub fn saturate_position(&self, mut position: BufferPosition) -> BufferPosition {
         position.line_index = position.line_index.min(self.line_count() - 1);
         let line = self.line_at(position.line_index).as_str();
@@ -709,6 +701,17 @@ impl BufferContent {
         };
 
         Some(BufferRange::between(left_position, right_position))
+    }
+}
+
+impl fmt::Display for BufferContent {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let last_index = self.lines.len() - 1;
+        for line in &self.lines[..last_index] {
+            f.write_str(line.as_str())?;
+            f.write_str("\n")?;
+        }
+        f.write_str(self.lines[last_index].as_str())
     }
 }
 
@@ -1266,12 +1269,6 @@ mod tests {
     use super::*;
     use crate::buffer_position::BufferPosition;
 
-    fn buffer_to_string(buffer: &BufferContent) -> String {
-        let mut string = String::new();
-        buffer.append_to_string(&mut string);
-        string
-    }
-
     #[test]
     fn text_size() {
         assert_eq!(32, std::mem::size_of::<Text>());
@@ -1327,13 +1324,13 @@ mod tests {
         let mut buffer = BufferContent::from_str(&mut pool, "");
 
         assert_eq!(1, buffer.line_count());
-        assert_eq!("", buffer_to_string(&buffer));
+        assert_eq!("", buffer.to_string());
 
         buffer.insert_text(&mut pool, BufferPosition::line_col(0, 0), "hold");
         buffer.insert_text(&mut pool, BufferPosition::line_col(0, 2), "r");
         buffer.insert_text(&mut pool, BufferPosition::line_col(0, 1), "ello w");
         assert_eq!(1, buffer.line_count());
-        assert_eq!("hello world", buffer_to_string(&buffer));
+        assert_eq!("hello world", buffer.to_string());
 
         buffer.insert_text(&mut pool, BufferPosition::line_col(0, 5), "\n");
         buffer.insert_text(
@@ -1344,7 +1341,7 @@ mod tests {
         assert_eq!(5, buffer.line_count());
         assert_eq!(
             "hello\n world appending more\nand more\nand even more\nlines",
-            buffer_to_string(&buffer)
+            buffer.to_string()
         );
 
         let mut buffer = BufferContent::from_str(&mut pool, "this is content");
@@ -1354,7 +1351,7 @@ mod tests {
             "some\nmultiline ",
         );
         assert_eq!(2, buffer.line_count());
-        assert_eq!("this is some\nmultiline content", buffer_to_string(&buffer));
+        assert_eq!("this is some\nmultiline content", buffer.to_string());
 
         let mut buffer = BufferContent::from_str(&mut pool, "this is content");
         buffer.insert_text(
@@ -1365,7 +1362,7 @@ mod tests {
         assert_eq!(4, buffer.line_count());
         assert_eq!(
             "this is some\nmore\nextensive\nmultiline content",
-            buffer_to_string(&buffer)
+            buffer.to_string()
         );
     }
 
@@ -1380,7 +1377,7 @@ mod tests {
                 BufferPosition::line_col(0, 1),
             ),
         );
-        assert_eq!("abc", buffer_to_string(&buffer));
+        assert_eq!("abc", buffer.to_string());
         buffer.delete_range(
             &mut pool,
             BufferRange::between(
@@ -1388,7 +1385,7 @@ mod tests {
                 BufferPosition::line_col(0, 2),
             ),
         );
-        assert_eq!("ac", buffer_to_string(&buffer));
+        assert_eq!("ac", buffer.to_string());
 
         let mut buffer =
             BufferContent::from_str(&mut pool, "this is the initial\ncontent of the buffer");
@@ -1396,7 +1393,7 @@ mod tests {
         assert_eq!(2, buffer.line_count());
         assert_eq!(
             "this is the initial\ncontent of the buffer",
-            buffer_to_string(&buffer)
+            buffer.to_string()
         );
 
         let deleted_text = buffer.delete_range(
@@ -1409,7 +1406,7 @@ mod tests {
         assert_eq!(2, buffer.line_count());
         assert_eq!(
             "this is the initial\ncontent of the buffer",
-            buffer_to_string(&buffer)
+            buffer.to_string()
         );
         assert_eq!("", deleted_text.as_str());
 
@@ -1421,10 +1418,7 @@ mod tests {
             ),
         );
         assert_eq!(2, buffer.line_count());
-        assert_eq!(
-            "this is the\ncontent of the buffer",
-            buffer_to_string(&buffer)
-        );
+        assert_eq!("this is the\ncontent of the buffer", buffer.to_string());
         assert_eq!(" initial", deleted_text.as_str());
 
         let deleted_text = buffer.delete_range(
@@ -1435,7 +1429,7 @@ mod tests {
             ),
         );
         assert_eq!(1, buffer.line_count());
-        assert_eq!("this is buffer", buffer_to_string(&buffer));
+        assert_eq!("this is buffer", buffer.to_string());
         assert_eq!("the\ncontent of the ", deleted_text.as_str());
 
         let mut buffer =
@@ -1448,7 +1442,7 @@ mod tests {
                 BufferPosition::line_col(4, 1),
             ),
         );
-        assert_eq!("this\nbuffines\nyes", buffer_to_string(&buffer));
+        assert_eq!("this\nbuffines\nyes", buffer.to_string());
         assert_eq!("er\ncontains\nmultiple\nl", deleted_text.as_str());
     }
 
@@ -1464,7 +1458,7 @@ mod tests {
                 BufferPosition::line_col(2, 0),
             ),
         );
-        assert_eq!("first line\nthird line", buffer_to_string(&buffer));
+        assert_eq!("first line\nthird line", buffer.to_string());
         assert_eq!("second line\n", deleted_text.as_str());
 
         let mut buffer = BufferContent::from_str(&mut pool, "first line\nsecond line\nthird line");
@@ -1476,7 +1470,7 @@ mod tests {
                 BufferPosition::line_col(1, 11),
             ),
         );
-        assert_eq!("first line\n\nthird line", buffer_to_string(&buffer));
+        assert_eq!("first line\n\nthird line", buffer.to_string());
         assert_eq!("second line", deleted_text.as_str());
     }
 
@@ -1500,15 +1494,15 @@ mod tests {
         );
         buffer.delete_range(&mut pool, &mut word_database, &syntaxes, range, 0);
 
-        assert_eq!("single content", buffer_to_string(&buffer.content));
+        assert_eq!("single content", buffer.content.to_string());
         {
             let mut ranges = buffer.undo(&mut pool, &syntaxes);
             assert_eq!(range, ranges.next().unwrap().range);
             assert!(ranges.next().is_none());
         }
-        assert_eq!("single line content", buffer_to_string(&buffer.content));
+        assert_eq!("single line content", buffer.content.to_string());
         for _ in buffer.redo(&mut pool, &syntaxes) {}
-        assert_eq!("single content", buffer_to_string(&buffer.content));
+        assert_eq!("single content", buffer.content.to_string());
     }
 
     #[test]
@@ -1531,15 +1525,15 @@ mod tests {
         );
         buffer.delete_range(&mut pool, &mut word_database, &syntaxes, range, 0);
 
-        assert_eq!("me\ncontent", buffer_to_string(&buffer.content));
+        assert_eq!("me\ncontent", buffer.content.to_string());
         {
             let mut ranges = buffer.undo(&mut pool, &syntaxes);
             assert_eq!(range, ranges.next().unwrap().range);
             assert!(ranges.next().is_none());
         }
-        assert_eq!("multi\nline\ncontent", buffer_to_string(&buffer.content));
+        assert_eq!("multi\nline\ncontent", buffer.content.to_string());
         for _ in buffer.redo(&mut pool, &syntaxes) {}
-        assert_eq!("me\ncontent", buffer_to_string(&buffer.content));
+        assert_eq!("me\ncontent", buffer.content.to_string());
     }
 
     #[test]

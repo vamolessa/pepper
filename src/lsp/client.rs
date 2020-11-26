@@ -679,9 +679,7 @@ impl Client {
 
             text_document.set("version".into(), JsonValue::Integer(0), json);
 
-            let mut text = String::new();
-            buffer.content().append_to_string(&mut text);
-            let text = json.create_string(&text);
+            let text = json.fmt_string(format_args!("{}", buffer.content()));
             text_document.set("text".into(), text.into(), json);
 
             let mut params = JsonObject::default();
