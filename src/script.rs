@@ -604,23 +604,8 @@ impl ScriptEngine {
                 EditorEvent::BufferOpen { handle } => {
                     call!(buffer_on_open, *handle)
                 }
-                EditorEvent::BufferChange { handle, changes } => {
-                    let change_array = engine.create_array()?;
-                    for change in changes.iter(events) {
-                        let change_object = engine.create_object()?;
-                        if !change.text.is_empty() {
-                            let text = engine.create_string(change.text.as_bytes())?;
-                            change_object.set("text", ScriptValue::String(text))?;
-                        }
-                        change_object.set("from_line", change.range.from.line_index)?;
-                        change_object.set("from_column", change.range.from.column_byte_index)?;
-                        change_object.set("to_line", change.range.to.line_index)?;
-                        change_object.set("to_column", change.range.to.column_byte_index)?;
-
-                        change_array.push(ScriptValue::Object(change_object))?;
-                    }
-                    let change_array = ScriptValue::Array(change_array);
-                    call!(buffer_on_change, (*handle, change_array))
+                EditorEvent::BufferChange { handle } => {
+                    call!(buffer_on_change, *handle)
                 }
                 EditorEvent::BufferSave { handle, new_path } => {
                     call!(buffer_on_save, (*handle, *new_path))

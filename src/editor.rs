@@ -1,13 +1,11 @@
 use std::{
     error::Error,
     fmt,
-    ops::Range,
     path::{Path, PathBuf},
 };
 
 use crate::{
     buffer::{BufferCollection, BufferHandle},
-    buffer_position::BufferRange,
     buffer_view::BufferViewCollection,
     client::{ClientCollection, ClientTargetMap, TargetClient},
     client_event::{ClientEvent, Key},
@@ -34,27 +32,6 @@ impl EditorLoop {
     }
 }
 
-pub struct EditorEventBufferChange<'a> {
-    pub range: BufferRange,
-    pub text: &'a str,
-}
-pub struct EditorEventBufferChanges(Range<usize>);
-impl EditorEventBufferChanges {
-    pub fn iter<'a>(
-        &self,
-        stream: EditorEventsIter<'a>,
-    ) -> impl 'a + Iterator<Item = EditorEventBufferChange<'a>> {
-        let texts = &stream.0.texts;
-        stream
-            .0
-            .changes
-            .iter()
-            .map(move |(range, text_range)| EditorEventBufferChange {
-                range: *range,
-                text: &texts[text_range.clone()],
-            })
-    }
-}
 pub enum EditorEvent {
     BufferLoad {
         handle: BufferHandle,
@@ -64,7 +41,6 @@ pub enum EditorEvent {
     },
     BufferChange {
         handle: BufferHandle,
-        changes: EditorEventBufferChanges,
     },
     BufferSave {
         handle: BufferHandle,
@@ -76,38 +52,10 @@ pub enum EditorEvent {
 }
 
 #[derive(Default)]
-pub struct EditorEventQueue {
-    events: Vec<EditorEvent>,
-    changes: Vec<(BufferRange, Range<usize>)>,
-    texts: String,
-}
+pub struct EditorEventQueue(Vec<EditorEvent>);
 impl EditorEventQueue {
     pub fn enqueue(&mut self, event: EditorEvent) {
-        self.events.push(event);
-    }
-
-    pub fn enqueue_buffer_changes(&mut self, handle: BufferHandle) -> EditorEventBufferChangeQueue {
-        let changes_len = self.changes.len();
-        let changes = EditorEventBufferChanges(changes_len..changes_len);
-        self.events
-            .push(EditorEvent::BufferChange { handle, changes });
-        EditorEventBufferChangeQueue(self)
-    }
-}
-pub struct EditorEventBufferChangeQueue<'a>(&'a mut EditorEventQueue);
-impl<'a> EditorEventBufferChangeQueue<'a> {
-    pub fn enqueue(&mut self, change: EditorEventBufferChange) {
-        let events_len = self.0.events.len();
-        match &mut self.0.events[events_len - 1] {
-            EditorEvent::BufferChange { changes, .. } => {
-                let text_range_start = self.0.texts.len();
-                self.0.texts.push_str(change.text);
-                let text_range = text_range_start..self.0.texts.len();
-                self.0.changes.push((change.range, text_range));
-                changes.0.end = self.0.changes.len();
-            }
-            _ => unreachable!(),
-        }
+        self.0.push(event);
     }
 }
 #[derive(Clone, Copy)]
@@ -116,7 +64,7 @@ impl<'a> IntoIterator for EditorEventsIter<'a> {
     type Item = &'a EditorEvent;
     type IntoIter = std::slice::Iter<'a, EditorEvent>;
     fn into_iter(self) -> Self::IntoIter {
-        self.0.events.iter()
+        self.0.0.iter()
     }
 }
 #[derive(Default)]
@@ -126,9 +74,7 @@ struct EditorEventDoubleQueue {
 }
 impl EditorEventDoubleQueue {
     pub fn flip(&mut self) {
-        self.read.events.clear();
-        self.read.changes.clear();
-        self.read.texts.clear();
+        self.read.0.clear();
         std::mem::swap(&mut self.read, &mut self.write);
     }
 
