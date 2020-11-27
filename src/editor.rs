@@ -107,7 +107,7 @@ impl ReadLine {
             }
             Key::Ctrl('w') => {
                 let mut found_space = false;
-                let mut last_index = 0;
+                let mut end_index = 0;
                 for (i, c) in self.input.char_indices().rev() {
                     if found_space {
                         if c != ' ' {
@@ -116,10 +116,10 @@ impl ReadLine {
                     } else if c == ' ' {
                         found_space = true;
                     }
-                    last_index = i;
+                    end_index = i;
                 }
 
-                self.input.truncate(last_index);
+                self.input.truncate(end_index);
                 ReadLinePoll::Pending
             }
             Key::Backspace | Key::Ctrl('h') => {

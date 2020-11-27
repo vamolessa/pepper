@@ -351,11 +351,11 @@ impl BufferContent {
     where
         W: io::Write,
     {
-        let last_index = self.lines.len() - 1;
-        for line in &self.lines[..last_index] {
+        let end_index = self.lines.len() - 1;
+        for line in &self.lines[..end_index] {
             writeln!(write, "{}", line.as_str())?;
         }
-        write!(write, "{}", self.lines[last_index].as_str())?;
+        write!(write, "{}", self.lines[end_index].as_str())?;
         Ok(())
     }
 
@@ -706,12 +706,12 @@ impl BufferContent {
 
 impl fmt::Display for BufferContent {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let last_index = self.lines.len() - 1;
-        for line in &self.lines[..last_index] {
+        let end_index = self.lines.len() - 1;
+        for line in &self.lines[..end_index] {
             f.write_str(line.as_str())?;
             f.write_str("\n")?;
         }
-        f.write_str(self.lines[last_index].as_str())
+        f.write_str(self.lines[end_index].as_str())
     }
 }
 

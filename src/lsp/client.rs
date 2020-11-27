@@ -255,14 +255,14 @@ impl DiagnosticCollection {
             }
         }
 
-        let last_index = buffer_diagnostics.len();
+        let end_index = buffer_diagnostics.len();
         buffer_diagnostics.push(BufferDiagnosticCollection {
             path: path.into(),
             buffer_handle,
             diagnostics: Vec::new(),
             len: 0,
         });
-        &mut buffer_diagnostics[last_index]
+        &mut buffer_diagnostics[end_index]
     }
 
     pub fn clear_empty(&mut self) {

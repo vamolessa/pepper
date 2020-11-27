@@ -19,7 +19,7 @@ pub struct Edit<'a> {
 struct EditInternal {
     pub kind: EditKind,
     pub buffer_range: BufferRange,
-    pub texts_range: Range<usize>,
+    pub text_range: Range<usize>,
     pub cursor_index: u8,
 }
 
@@ -28,7 +28,7 @@ impl EditInternal {
         Edit {
             kind: self.kind,
             range: self.buffer_range,
-            text: &texts[self.texts_range.clone()],
+            text: &texts[self.text_range.clone()],
             cursor_index: self.cursor_index,
         }
     }
@@ -79,8 +79,8 @@ impl History {
             HistoryState::InsertGroup(ref range) => range.end - range.start,
         };
 
-        let append_edit = self.try_merge_with_last(current_group_len, &edit);
-        if append_edit {
+        let merged = self.try_merge_edit(current_group_len, &edit);
+        if !merged {
             if let HistoryState::InsertGroup(range) = &mut self.state {
                 range.end += 1;
             }
@@ -90,138 +90,183 @@ impl History {
             self.edits.push(EditInternal {
                 kind: edit.kind,
                 buffer_range: edit.range,
-                texts_range: texts_range_start..self.texts.len(),
+                text_range: texts_range_start..self.texts.len(),
                 cursor_index: edit.cursor_index,
             });
         }
     }
 
-    fn try_merge_with_last(&mut self, current_group_len: usize, edit: &Edit) -> bool {
-        if current_group_len == 0 {
-            return true;
+    fn try_merge_edit(&mut self, current_group_len: usize, edit: &Edit) -> bool {
+        fn insert_ranges(
+            edits: &mut [EditInternal],
+            buffer_range: BufferRange,
+            text_range: Range<usize>,
+        ) {
+            let text_len = text_range.end - text_range.start;
+            for edit in edits {
+                edit.buffer_range.from = edit.buffer_range.from.insert(buffer_range);
+                edit.buffer_range.to = edit.buffer_range.to.insert(buffer_range);
+
+                if text_range.end <= edit.text_range.start {
+                    edit.text_range.start += text_len;
+                    edit.text_range.end += text_len;
+                } else if text_range.end <= edit.text_range.end {
+                    edit.text_range.end += text_len;
+                }
+            }
         }
 
-        let last_edit_index = self.edits.len() - 1;
-        let last_edit = &mut self.edits[last_edit_index];
+        fn delete_ranges(
+            edits: &mut [EditInternal],
+            buffer_range: BufferRange,
+            text_range: Range<usize>,
+        ) {
+            let text_len = text_range.end - text_range.start;
+            for edit in edits {
+                edit.buffer_range.from = edit.buffer_range.from.delete(buffer_range);
+                edit.buffer_range.to = edit.buffer_range.to.delete(buffer_range);
 
-        if last_edit.cursor_index != edit.cursor_index {
-            return true;
+                if text_range.end <= edit.text_range.start {
+                    edit.text_range.start += text_len;
+                    edit.text_range.end += text_len;
+                } else if text_range.end <= edit.text_range.end {
+                    edit.text_range.end += text_len;
+                }
+            }
         }
 
-        match (last_edit.kind, edit.kind) {
+        let current_group_start = self.edits.len() - current_group_len;
+        let other_edit_index = match self.edits[current_group_start..]
+            .iter()
+            .rposition(|e| e.cursor_index == edit.cursor_index)
+        {
+            Some(i) => current_group_start + i,
+            None => return false,
+        };
+        let edits_len = self.edits.len();
+        let other_edit = &mut self.edits[other_edit_index];
+        if other_edit_index != edits_len - 1 {
+            return false;
+        }
+
+        match (other_edit.kind, edit.kind) {
             (EditKind::Insert, EditKind::Insert) => {
                 // -- insert --
-                //             -- insert --
-                if edit.range.from == last_edit.buffer_range.to {
-                    last_edit.buffer_range.to = edit.range.to;
-                    self.texts.push_str(edit.text);
-                    last_edit.texts_range.end = self.texts.len();
+                //             -- insert -- (new)
+                if edit.range.from == other_edit.buffer_range.to {
+                    other_edit.buffer_range.to = edit.range.to;
+                    self.texts.insert_str(other_edit.text_range.end, edit.text);
+                    other_edit.text_range.end = self.texts.len();
 
-                    return false;
+                    return true;
                 //             -- insert --
-                // -- insert --
-                } else if edit.range.from == last_edit.buffer_range.from {
-                    last_edit.buffer_range.to = last_edit.buffer_range.to.insert(edit.range);
+                // -- insert -- (new)
+                } else if edit.range.from == other_edit.buffer_range.from {
+                    other_edit.buffer_range.to = other_edit.buffer_range.to.insert(edit.range);
                     self.texts
-                        .insert_str(last_edit.texts_range.start, edit.text);
-                    last_edit.texts_range.end = self.texts.len();
+                        .insert_str(other_edit.text_range.start, edit.text);
+                    other_edit.text_range.end = self.texts.len();
 
-                    return false;
+                    return true;
                 }
             }
             (EditKind::Delete, EditKind::Delete) => {
                 // -- delete --
-                //             -- delete --
-                if edit.range.from == last_edit.buffer_range.from {
-                    last_edit.buffer_range.to = last_edit.buffer_range.to.insert(edit.range);
-                    self.texts.push_str(edit.text);
-                    last_edit.texts_range.end = self.texts.len();
+                //             -- delete -- (new)
+                if edit.range.from == other_edit.buffer_range.from {
+                    other_edit.buffer_range.to = other_edit.buffer_range.to.insert(edit.range);
+                    self.texts.insert_str(other_edit.text_range.end, edit.text);
+                    other_edit.text_range.end = self.texts.len();
 
-                    return false;
+                    return true;
                 //             -- delete --
-                // -- delete --
-                } else if edit.range.to == last_edit.buffer_range.from {
-                    last_edit.buffer_range.from = edit.range.from;
+                // -- delete -- (new)
+                } else if edit.range.to == other_edit.buffer_range.from {
+                    other_edit.buffer_range.from = edit.range.from;
                     self.texts
-                        .insert_str(last_edit.texts_range.start, edit.text);
-                    last_edit.texts_range.end = self.texts.len();
+                        .insert_str(other_edit.text_range.start, edit.text);
+                    other_edit.text_range.end = self.texts.len();
 
-                    return false;
+                    return true;
                 }
             }
             (EditKind::Insert, EditKind::Delete) => {
                 // ------ insert --
-                // -- delete --
-                if last_edit.buffer_range.from == edit.range.from
-                    && edit.range.to <= last_edit.buffer_range.to
+                // -- delete -- (new)
+                if other_edit.buffer_range.from == edit.range.from
+                    && edit.range.to <= other_edit.buffer_range.to
                 {
-                    let deleted_text_range = last_edit.texts_range.start
-                        ..(last_edit.texts_range.start + edit.text.len());
+                    let deleted_text_range = other_edit.text_range.start
+                        ..(other_edit.text_range.start + edit.text.len());
                     if edit.text == &self.texts[deleted_text_range.clone()] {
-                        last_edit.buffer_range.to = last_edit.buffer_range.to.delete(edit.range);
+                        other_edit.buffer_range.to = other_edit.buffer_range.to.delete(edit.range);
                         self.texts.drain(deleted_text_range);
-                        last_edit.texts_range.end = self.texts.len();
+                        other_edit.text_range.end = self.texts.len();
 
-                        return false;
+                        return true;
                     }
 
                 // ------ insert --
-                //     -- delete --
-                } else if edit.range.to == last_edit.buffer_range.to
-                    && last_edit.buffer_range.from <= edit.range.from
+                //     -- delete -- (new)
+                } else if edit.range.to == other_edit.buffer_range.to
+                    && other_edit.buffer_range.from <= edit.range.from
                 {
                     let deleted_text_range =
-                        (last_edit.texts_range.end - edit.text.len())..last_edit.texts_range.end;
+                        (other_edit.text_range.end - edit.text.len())..other_edit.text_range.end;
                     if edit.text == &self.texts[deleted_text_range.clone()] {
-                        last_edit.buffer_range.to = edit.range.from;
-                        self.texts.truncate(deleted_text_range.start);
-                        last_edit.texts_range.end = self.texts.len();
+                        other_edit.buffer_range.to = edit.range.from;
+                        self.texts.drain(deleted_text_range);
+                        other_edit.text_range.end = self.texts.len();
 
-                        return false;
+                        return true;
                     }
 
                 // -- insert --
-                // -- delete ------
-                } else if edit.range.from == last_edit.buffer_range.from
-                    && last_edit.buffer_range.to <= edit.range.to
+                // -- delete ------ (new)
+                } else if edit.range.from == other_edit.buffer_range.from
+                    && other_edit.buffer_range.to <= edit.range.to
                 {
-                    let inserted_text_end = last_edit.texts_range.end - last_edit.texts_range.start;
-                    if &edit.text[..inserted_text_end] == &self.texts[last_edit.texts_range.clone()]
+                    let inserted_text_end = other_edit.text_range.end - other_edit.text_range.start;
+                    if &edit.text[..inserted_text_end] == &self.texts[other_edit.text_range.clone()]
                     {
-                        last_edit.kind = EditKind::Delete;
-                        last_edit.buffer_range.to = edit.range.to.delete(last_edit.buffer_range);
-                        self.texts.truncate(last_edit.texts_range.start);
-                        self.texts.push_str(&edit.text[inserted_text_end..]);
-                        last_edit.texts_range.end = self.texts.len();
+                        other_edit.kind = EditKind::Delete;
+                        other_edit.buffer_range.to = edit.range.to.delete(other_edit.buffer_range);
+                        self.texts.replace_range(
+                            other_edit.text_range.clone(),
+                            &edit.text[inserted_text_end..],
+                        );
+                        other_edit.text_range.end = self.texts.len();
 
-                        return false;
+                        return true;
                     }
 
                 //     -- insert --
-                // ------ delete --
-                } else if last_edit.buffer_range.to == edit.range.to
-                    && edit.range.from <= last_edit.buffer_range.from
+                // ------ delete -- (new)
+                } else if other_edit.buffer_range.to == edit.range.to
+                    && edit.range.from <= other_edit.buffer_range.from
                 {
                     let inserted_text_start =
-                        last_edit.texts_range.end - last_edit.texts_range.start;
+                        other_edit.text_range.end - other_edit.text_range.start;
                     if &edit.text[inserted_text_start..]
-                        == &self.texts[last_edit.texts_range.clone()]
+                        == &self.texts[other_edit.text_range.clone()]
                     {
-                        last_edit.kind = EditKind::Delete;
-                        last_edit.buffer_range.to = last_edit.buffer_range.from;
-                        last_edit.buffer_range.from = edit.range.from;
-                        self.texts.truncate(last_edit.texts_range.start);
-                        self.texts.push_str(&edit.text[..inserted_text_start]);
-                        last_edit.texts_range.end = self.texts.len();
+                        other_edit.kind = EditKind::Delete;
+                        other_edit.buffer_range.to = other_edit.buffer_range.from;
+                        other_edit.buffer_range.from = edit.range.from;
+                        self.texts.replace_range(
+                            other_edit.text_range.clone(),
+                            &edit.text[..inserted_text_start],
+                        );
+                        other_edit.text_range.end = self.texts.len();
 
-                        return false;
+                        return true;
                     }
                 }
             }
             _ => (),
         }
 
-        true
+        false
     }
 
     pub fn commit_edits(&mut self) {
