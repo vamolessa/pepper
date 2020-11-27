@@ -730,7 +730,7 @@ impl Client {
                     self.diagnostics.on_load_buffer(ctx, *handle);
                     send_did_open(self, ctx, json, *handle);
                 }
-                EditorEvent::BufferChange { handle } => {
+                EditorEvent::BufferEdit { handle } => {
                     // buffer changes
                 }
                 EditorEvent::BufferSave { handle, new_path } => {

@@ -39,7 +39,7 @@ pub enum EditorEvent {
     BufferOpen {
         handle: BufferHandle,
     },
-    BufferChange {
+    BufferEdit {
         handle: BufferHandle,
     },
     BufferSave {
