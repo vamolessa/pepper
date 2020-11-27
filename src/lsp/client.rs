@@ -11,7 +11,8 @@ use crate::{
     buffer_view::BufferViewCollection,
     client_event::LocalEvent,
     config::Config,
-    editor::{EditorEvent, EditorEventsIter, StatusMessage},
+    editor::StatusMessage,
+    editor_event::{EditorEvent, EditorEventsIter},
     glob::Glob,
     json::{FromJson, Json, JsonArray, JsonConvertError, JsonObject, JsonString, JsonValue},
     lsp::{

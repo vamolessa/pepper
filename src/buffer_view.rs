@@ -5,7 +5,7 @@ use crate::{
     buffer_position::{BufferPosition, BufferRange},
     client::TargetClient,
     cursor::{Cursor, CursorCollection},
-    editor::EditorEventQueue,
+    editor_event::EditorEventQueue,
     history::{Edit, EditKind},
     script::ScriptValue,
     syntax::SyntaxCollection,

@@ -5,10 +5,8 @@ use crate::{
     buffer_view::{BufferViewCollection, BufferViewHandle},
     client::{ClientCollection, TargetClient},
     config::Config,
-    editor::{
-        EditorEvent, EditorEventsIter, EditorEventQueue, EditorLoop, KeysIterator, ReadLine,
-        StatusMessage,
-    },
+    editor::{EditorLoop, KeysIterator, ReadLine, StatusMessage},
+    editor_event::{EditorEvent, EditorEventQueue, EditorEventsIter},
     keymap::KeyMapCollection,
     lsp::LspClientCollection,
     picker::Picker,

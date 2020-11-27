@@ -5,12 +5,13 @@ use std::{
 };
 
 use crate::{
-    buffer::{BufferCollection, BufferHandle},
+    buffer::BufferCollection,
     buffer_view::BufferViewCollection,
     client::{ClientCollection, ClientTargetMap, TargetClient},
     client_event::{ClientEvent, Key},
     config::Config,
     connection::ConnectionWithClientHandle,
+    editor_event::{EditorEvent, EditorEventDoubleQueue, EditorEventsIter},
     keymap::{KeyMapCollection, MatchResult},
     lsp::{LspClientCollection, LspClientContext, LspClientHandle, LspServerEvent},
     mode::{Mode, ModeContext, ModeOperation},
@@ -29,57 +30,6 @@ pub enum EditorLoop {
 impl EditorLoop {
     pub fn is_quit(self) -> bool {
         matches!(self, EditorLoop::Quit | EditorLoop::QuitAll)
-    }
-}
-
-pub enum EditorEvent {
-    BufferLoad {
-        handle: BufferHandle,
-    },
-    BufferOpen {
-        handle: BufferHandle,
-    },
-    BufferEdit {
-        handle: BufferHandle,
-    },
-    BufferSave {
-        handle: BufferHandle,
-        new_path: bool,
-    },
-    BufferClose {
-        handle: BufferHandle,
-    },
-}
-
-#[derive(Default)]
-pub struct EditorEventQueue(Vec<EditorEvent>);
-impl EditorEventQueue {
-    pub fn enqueue(&mut self, event: EditorEvent) {
-        self.0.push(event);
-    }
-}
-#[derive(Clone, Copy)]
-pub struct EditorEventsIter<'a>(&'a EditorEventQueue);
-impl<'a> IntoIterator for EditorEventsIter<'a> {
-    type Item = &'a EditorEvent;
-    type IntoIter = std::slice::Iter<'a, EditorEvent>;
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.0.iter()
-    }
-}
-#[derive(Default)]
-struct EditorEventDoubleQueue {
-    read: EditorEventQueue,
-    write: EditorEventQueue,
-}
-impl EditorEventDoubleQueue {
-    pub fn flip(&mut self) {
-        self.read.0.clear();
-        std::mem::swap(&mut self.read, &mut self.write);
-    }
-
-    pub fn get_stream_and_sink(&mut self) -> (EditorEventsIter, &mut EditorEventQueue) {
-        (EditorEventsIter(&self.read), &mut self.write)
     }
 }
 

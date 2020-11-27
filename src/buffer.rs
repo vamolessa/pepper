@@ -10,7 +10,7 @@ use std::{
 use crate::{
     buffer_position::{BufferPosition, BufferRange},
     client::ClientCollection,
-    editor::{EditorEvent, EditorEventQueue},
+    editor_event::{EditorEvent, EditorEventQueue},
     history::{Edit, EditKind, History},
     script::ScriptValue,
     syntax::{HighlightedBuffer, SyntaxCollection, SyntaxHandle},
