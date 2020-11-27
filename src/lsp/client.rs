@@ -11,7 +11,7 @@ use crate::{
     buffer_view::BufferViewCollection,
     client_event::LocalEvent,
     config::Config,
-    editor::{EditorEventBufferChanges, EditorEvent, EditorEventsIter, StatusMessage},
+    editor::{EditorEvent, EditorEventBufferChanges, EditorEventsIter, StatusMessage},
     glob::Glob,
     json::{FromJson, Json, JsonArray, JsonConvertError, JsonObject, JsonString, JsonValue},
     lsp::{
@@ -297,12 +297,7 @@ impl DiagnosticCollection {
         }
     }
 
-    pub fn on_save_buffer(
-        &mut self,
-        ctx: &ClientContext,
-        buffer_handle: BufferHandle,
-        new_path: bool,
-    ) {
+    pub fn on_save_buffer(&mut self, ctx: &ClientContext, buffer_handle: BufferHandle) {
         let buffer_path = match ctx.buffers.get(buffer_handle).and_then(|b| b.path()) {
             Some(path) => path,
             None => return,
@@ -691,13 +686,14 @@ impl Client {
                 .ok()
         }
 
-        fn send_did_change(
+        fn send_did_save(
             client: &mut Client,
             ctx: &mut ClientContext,
             json: &mut Json,
             buffer_handle: BufferHandle,
-            changes: &EditorEventBufferChanges,
         ) -> Option<()> {
+            let buffer = ctx.buffers.get(buffer_handle)?;
+            let buffer_path = buffer.path()?;
             None
         }
 
@@ -709,7 +705,19 @@ impl Client {
         ) -> Option<()> {
             let buffer = ctx.buffers.get(buffer_handle)?;
             let buffer_path = buffer.path()?;
-            None
+
+            let mut text_document = JsonObject::default();
+
+            let uri = json.fmt_string(format_args!("{}", get_path_uri(ctx, buffer_path)));
+            text_document.set("uri".into(), uri.into(), json);
+
+            let mut params = JsonObject::default();
+            params.set("textDocument".into(), text_document.into(), json);
+
+            client
+                .protocol
+                .notify(json, "textDocument/didClose", params.into())
+                .ok()
         }
 
         if !self.initialized {
@@ -723,13 +731,15 @@ impl Client {
                     send_did_open(self, ctx, json, *handle);
                 }
                 EditorEvent::BufferChange { handle, changes } => {
-                    send_did_change(self, ctx, json, *handle, changes);
+                    // buffer changes
                 }
                 EditorEvent::BufferSave { handle, new_path } => {
-                    self.diagnostics.on_save_buffer(ctx, *handle, *new_path);
+                    self.diagnostics.on_save_buffer(ctx, *handle);
+                    send_did_save(self, ctx, json, *handle);
                 }
                 EditorEvent::BufferClose { handle } => {
                     self.diagnostics.on_close_buffer(*handle);
+                    send_did_close(self, ctx, json, *handle);
                 }
                 _ => (),
             }
