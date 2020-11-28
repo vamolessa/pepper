@@ -152,6 +152,8 @@ impl History {
             if start <= edit.text_range.start {
                 edit.text_range.start += len;
                 edit.text_range.end += len;
+            } else if start <= edit.text_range.end {
+                edit.text_range.end += len;
             }
         }
 
@@ -182,17 +184,9 @@ impl History {
                 // -- insert --
                 //             -- insert -- (new)
                 if edit.range.from == other_edit.buffer_range.to {
-                    other_edit.buffer_range.to = edit.range.to;
-                    self.texts.insert_str(other_edit.text_range.end, edit.text);
                     let fix_text_start = other_edit.text_range.end;
-                    other_edit.text_range.end += edit_text_len;
-
-                    //let fix_text_start = other_edit.text_range.end;
-                    //for e in &mut self.edits[(other_edit_index + 1)..] {
-                    for (i, e) in self.edits[current_group_start..].iter_mut().enumerate() {
-                        if i == other_edit_index {
-                            continue;
-                        }
+                    self.texts.insert_str(fix_text_start, edit.text);
+                    for e in &mut self.edits[current_group_start..] {
                         insert_buffer_range(e, edit.range);
                         insert_text_range(e, fix_text_start, edit_text_len);
                     }
