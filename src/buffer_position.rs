@@ -1,6 +1,9 @@
-use std::cmp::{Ord, Ordering, PartialOrd};
+use std::{
+    cmp::{Ord, Ordering, PartialOrd},
+    fmt,
+};
 
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+#[derive(Default, Copy, Clone, PartialEq, Eq)]
 pub struct BufferPosition {
     pub line_index: usize,
     pub column_byte_index: usize,
@@ -59,6 +62,15 @@ impl BufferPosition {
     }
 }
 
+impl fmt::Debug for BufferPosition {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_fmt(format_args!(
+            "BufferPosition(line: {}, col: {})",
+            self.line_index, self.column_byte_index
+        ))
+    }
+}
+
 impl Ord for BufferPosition {
     fn cmp(&self, other: &Self) -> Ordering {
         if self.line_index < other.line_index {
@@ -81,7 +93,7 @@ impl PartialOrd for BufferPosition {
     }
 }
 
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+#[derive(Default, Copy, Clone, PartialEq, Eq)]
 pub struct BufferRange {
     pub from: BufferPosition,
     pub to: BufferPosition,
@@ -92,6 +104,18 @@ impl BufferRange {
     pub fn between(from: BufferPosition, to: BufferPosition) -> Self {
         let (from, to) = if from <= to { (from, to) } else { (to, from) };
         Self { from, to, __: () }
+    }
+}
+
+impl fmt::Debug for BufferRange {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_fmt(format_args!(
+            "BufferRange(line: {}, col: {} => line: {}, col: {})",
+            self.from.line_index,
+            self.from.column_byte_index,
+            self.to.line_index,
+            self.to.column_byte_index
+        ))
     }
 }
 
