@@ -97,41 +97,33 @@ impl History {
     }
 
     fn try_merge_edit(&mut self, current_group_len: usize, edit: &Edit) -> bool {
-        fn insert_ranges(
-            edits: &mut [EditInternal],
-            buffer_range: BufferRange,
-            text_range: Range<usize>,
-        ) {
-            let text_len = text_range.end - text_range.start;
-            for edit in edits {
-                edit.buffer_range.from = edit.buffer_range.from.insert(buffer_range);
-                edit.buffer_range.to = edit.buffer_range.to.insert(buffer_range);
+        fn insert_buffer_range(edit: &mut EditInternal, range: BufferRange) {
+            edit.buffer_range.from = edit.buffer_range.from.insert(range);
+            edit.buffer_range.to = edit.buffer_range.to.insert(range);
+        }
 
-                if text_range.end <= edit.text_range.start {
-                    edit.text_range.start += text_len;
-                    edit.text_range.end += text_len;
-                } else if text_range.end <= edit.text_range.end {
-                    edit.text_range.end += text_len;
-                }
+        fn delete_buffer_range(edit: &mut EditInternal, range: BufferRange) {
+            edit.buffer_range.from = edit.buffer_range.from.delete(range);
+            edit.buffer_range.to = edit.buffer_range.to.delete(range);
+        }
+
+        fn insert_text_range(edit: &mut EditInternal, start: usize, len: usize) {
+            let end = start + len;
+            if end <= edit.text_range.start {
+                edit.text_range.start += len;
+                edit.text_range.end += len;
+            } else if end <= edit.text_range.end {
+                edit.text_range.end += len;
             }
         }
 
-        fn delete_ranges(
-            edits: &mut [EditInternal],
-            buffer_range: BufferRange,
-            text_range: Range<usize>,
-        ) {
-            let text_len = text_range.end - text_range.start;
-            for edit in edits {
-                edit.buffer_range.from = edit.buffer_range.from.delete(buffer_range);
-                edit.buffer_range.to = edit.buffer_range.to.delete(buffer_range);
-
-                if text_range.end <= edit.text_range.start {
-                    edit.text_range.start += text_len;
-                    edit.text_range.end += text_len;
-                } else if text_range.end <= edit.text_range.end {
-                    edit.text_range.end += text_len;
-                }
+        fn delete_text_range(edit: &mut EditInternal, start: usize, len: usize) {
+            let end = start + len;
+            if end <= edit.text_range.start {
+                edit.text_range.start -= len;
+                edit.text_range.end -= len;
+            } else if end <= edit.text_range.end {
+                edit.text_range.end -= len;
             }
         }
 
@@ -143,11 +135,9 @@ impl History {
             Some(i) => current_group_start + i,
             None => return false,
         };
-        let edits_len = self.edits.len();
         let other_edit = &mut self.edits[other_edit_index];
-        if other_edit_index != edits_len - 1 {
-            return false;
-        }
+
+        let edit_text_len = edit.text.len();
 
         match (other_edit.kind, edit.kind) {
             (EditKind::Insert, EditKind::Insert) => {
@@ -156,7 +146,13 @@ impl History {
                 if edit.range.from == other_edit.buffer_range.to {
                     other_edit.buffer_range.to = edit.range.to;
                     self.texts.insert_str(other_edit.text_range.end, edit.text);
-                    other_edit.text_range.end = self.texts.len();
+                    let fix_text_start = other_edit.text_range.end;
+                    other_edit.text_range.end += edit_text_len;
+
+                    for e in &mut self.edits[(other_edit_index + 1)..] {
+                        insert_buffer_range(e, edit.range);
+                        insert_text_range(e, fix_text_start, edit_text_len);
+                    }
 
                     return true;
                 //             -- insert --
@@ -165,7 +161,13 @@ impl History {
                     other_edit.buffer_range.to = other_edit.buffer_range.to.insert(edit.range);
                     self.texts
                         .insert_str(other_edit.text_range.start, edit.text);
-                    other_edit.text_range.end = self.texts.len();
+                    other_edit.text_range.end += edit_text_len;
+
+                    let fix_text_start = other_edit.text_range.start;
+                    for e in &mut self.edits[(other_edit_index + 1)..] {
+                        insert_buffer_range(e, edit.range);
+                        insert_text_range(e, fix_text_start, edit_text_len);
+                    }
 
                     return true;
                 }
@@ -176,7 +178,13 @@ impl History {
                 if edit.range.from == other_edit.buffer_range.from {
                     other_edit.buffer_range.to = other_edit.buffer_range.to.insert(edit.range);
                     self.texts.insert_str(other_edit.text_range.end, edit.text);
-                    other_edit.text_range.end = self.texts.len();
+                    let fix_text_start = other_edit.text_range.end;
+                    other_edit.text_range.end += edit_text_len;
+
+                    for e in &mut self.edits[(other_edit_index + 1)..] {
+                        delete_buffer_range(e, edit.range);
+                        insert_text_range(e, fix_text_start, edit_text_len);
+                    }
 
                     return true;
                 //             -- delete --
@@ -185,7 +193,13 @@ impl History {
                     other_edit.buffer_range.from = edit.range.from;
                     self.texts
                         .insert_str(other_edit.text_range.start, edit.text);
-                    other_edit.text_range.end = self.texts.len();
+                    other_edit.text_range.end += edit_text_len;
+
+                    let fix_text_start = other_edit.text_range.start;
+                    for e in &mut self.edits[(other_edit_index + 1)..] {
+                        delete_buffer_range(e, edit.range);
+                        insert_text_range(e, fix_text_start, edit_text_len);
+                    }
 
                     return true;
                 }
@@ -196,12 +210,18 @@ impl History {
                 if other_edit.buffer_range.from == edit.range.from
                     && edit.range.to <= other_edit.buffer_range.to
                 {
-                    let deleted_text_range = other_edit.text_range.start
-                        ..(other_edit.text_range.start + edit.text.len());
+                    let deleted_text_range =
+                        other_edit.text_range.start..(other_edit.text_range.start + edit_text_len);
                     if edit.text == &self.texts[deleted_text_range.clone()] {
                         other_edit.buffer_range.to = other_edit.buffer_range.to.delete(edit.range);
                         self.texts.drain(deleted_text_range);
                         other_edit.text_range.end = self.texts.len();
+
+                        let fix_text_start = other_edit.text_range.start;
+                        for e in &mut self.edits[(other_edit_index + 1)..] {
+                            delete_buffer_range(e, edit.range);
+                            delete_text_range(e, fix_text_start, edit_text_len);
+                        }
 
                         return true;
                     }
@@ -212,11 +232,18 @@ impl History {
                     && other_edit.buffer_range.from <= edit.range.from
                 {
                     let deleted_text_range =
-                        (other_edit.text_range.end - edit.text.len())..other_edit.text_range.end;
+                        (other_edit.text_range.end - edit_text_len)..other_edit.text_range.end;
                     if edit.text == &self.texts[deleted_text_range.clone()] {
                         other_edit.buffer_range.to = edit.range.from;
                         self.texts.drain(deleted_text_range);
                         other_edit.text_range.end = self.texts.len();
+
+                        todo!();
+                        let fix_text_start = other_edit.text_range.start;
+                        for e in &mut self.edits[(other_edit_index + 1)..] {
+                            delete_buffer_range(e, edit.range);
+                            delete_text_range(e, fix_text_start, edit_text_len);
+                        }
 
                         return true;
                     }
