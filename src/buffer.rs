@@ -803,6 +803,10 @@ impl Buffer {
         self.capabilities = BufferCapabilities::default();
     }
 
+    pub fn dump_history(&self) -> String {
+        self.history.dump()
+    }
+
     pub fn path(&self) -> Option<&Path> {
         if self.path.as_os_str().is_empty() {
             None
@@ -1019,6 +1023,10 @@ impl Buffer {
         pool: &mut BufferLinePool,
         syntaxes: &SyntaxCollection,
     ) -> Result<(), String> {
+        if !self.capabilities.can_save {
+            return Ok(());
+        }
+
         let path = self.path.as_path();
         if path.as_os_str().is_empty() {
             return Err("buffer has no path".into());
@@ -1034,6 +1042,9 @@ impl Buffer {
 
         self.highlighted
             .highligh_all(syntaxes.get(self.syntax_handle), &self.content);
+
+        self.history.clear();
+        self.search_ranges.clear();
 
         self.needs_save = false;
         Ok(())

@@ -664,16 +664,18 @@ impl BufferViewCollection {
             }
         }
 
+        if self.fix_cursor_ranges.is_empty() {
+            return;
+        }
+
         if let Some(view) = self.buffer_views[handle.0].as_mut() {
-            if !self.fix_cursor_ranges.is_empty() {
-                let mut cursors = view.cursors.mut_guard();
-                cursors.clear();
-                for range in &self.fix_cursor_ranges {
-                    cursors.add(Cursor {
-                        anchor: range.from,
-                        position: range.from,
-                    });
-                }
+            let mut cursors = view.cursors.mut_guard();
+            cursors.clear();
+            for range in &self.fix_cursor_ranges {
+                cursors.add(Cursor {
+                    anchor: range.from,
+                    position: range.from,
+                });
             }
         }
     }

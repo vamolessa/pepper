@@ -87,7 +87,7 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
     register!(editor => version, os, current_directory, print,);
     register!(script => source, directory,);
     register!(lsp => start, open_log, diagnostics,);
-    register!(buffer => all_handles, line_count, line_at, path, path_matches, needs_save, set_search, open, close,
+    register!(buffer => history, all_handles, line_count, line_at, path, path_matches, needs_save, set_search, open, close,
         force_close, close_all, force_close_all, save, save_all, reload, force_reload, reload_all, force_reload_all,
         commit_edits,);
     register_callbacks!(buffer => on_load, on_open, on_save, on_close,);
@@ -124,6 +124,8 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
         globals.set("fr", buffer.get::<ScriptValue>("force_reload")?)?;
         globals.set("ra", buffer.get::<ScriptValue>("reload_all")?)?;
         globals.set("fra", buffer.get::<ScriptValue>("force_reload_all")?)?;
+
+        globals.set("bh", buffer.get::<ScriptValue>("history")?)?;
     }
 
     register_object!(config);
@@ -396,6 +398,23 @@ mod lsp {
 
 mod buffer {
     use super::*;
+
+    pub fn history(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        _: (),
+    ) -> ScriptResult<()> {
+        if let Some(buffer) = ctx.current_buffer_handle().and_then(|h| ctx.buffers.get(h)) {
+            let history = buffer.dump_history();
+            ctx.status_message
+                .write_str(StatusMessageKind::Info, &history);
+        } else {
+            ctx.status_message
+                .write_str(StatusMessageKind::Error, "no buffer opened");
+        }
+        Ok(())
+    }
 
     pub fn all_handles<'a>(
         engine: ScriptEngineRef<'a>,

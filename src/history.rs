@@ -56,6 +56,40 @@ impl History {
         }
     }
 
+    pub fn dump(&self) -> String {
+        use std::fmt::Write;
+        let mut text = String::new();
+        let _ = writeln!(text, "texts: '{}'", self.texts);
+        let _ = writeln!(text, "edits:");
+        for e in &self.edits {
+            match e.kind {
+                EditKind::Insert => text.push_str(" - insert "),
+                EditKind::Delete => text.push_str(" - delete "),
+            }
+            let _ = writeln!(
+                text,
+                "'{}' ({}..{}) range: {:?} [{}]",
+                &self.texts[e.text_range.clone()],
+                e.text_range.start,
+                e.text_range.end,
+                e.buffer_range,
+                e.cursor_index
+            );
+        }
+        let _ = write!(text, "group_ranges: ");
+        for r in &self.group_ranges {
+            let _ = write!(text, "({}, {}) ", r.start, r.end);
+        }
+        text.push('\n');
+        let _ = match &self.state {
+            HistoryState::IterIndex(i) => writeln!(text, "state: iter index {}", i),
+            HistoryState::InsertGroup(r) => {
+                writeln!(text, "state: insert group {}..{}", r.start, r.end)
+            }
+        };
+        text
+    }
+
     pub fn clear(&mut self) {
         self.texts.clear();
         self.edits.clear();
@@ -64,6 +98,13 @@ impl History {
     }
 
     pub fn add_edit(&mut self, edit: Edit) {
+        /*
+        eprintln!(
+            "new edit {:?} '{}' range: {:?} [{}]",
+            edit.kind, edit.text, edit.range, edit.cursor_index
+        );
+        */
+
         let current_group_len = match self.state {
             HistoryState::IterIndex(index) => {
                 let edit_index = if index < self.group_ranges.len() {
@@ -108,11 +149,8 @@ impl History {
         }
 
         fn insert_text_range(edit: &mut EditInternal, start: usize, len: usize) {
-            let end = start + len;
-            if end <= edit.text_range.start {
+            if start <= edit.text_range.start {
                 edit.text_range.start += len;
-                edit.text_range.end += len;
-            } else if end <= edit.text_range.end {
                 edit.text_range.end += len;
             }
         }
@@ -149,7 +187,12 @@ impl History {
                     let fix_text_start = other_edit.text_range.end;
                     other_edit.text_range.end += edit_text_len;
 
-                    for e in &mut self.edits[(other_edit_index + 1)..] {
+                    //let fix_text_start = other_edit.text_range.end;
+                    //for e in &mut self.edits[(other_edit_index + 1)..] {
+                    for (i, e) in self.edits[current_group_start..].iter_mut().enumerate() {
+                        if i == other_edit_index {
+                            continue;
+                        }
                         insert_buffer_range(e, edit.range);
                         insert_text_range(e, fix_text_start, edit_text_len);
                     }
@@ -643,7 +686,7 @@ mod tests {
     }
 
     #[test]
-    fn compress_multiple_edits() {
+    fn compress_multiple_insert_insert_edits() {
         let mut history = History::new();
         history.add_edit(Edit {
             kind: EditKind::Insert,
@@ -657,18 +700,69 @@ mod tests {
             text: "a",
             cursor_index: 0,
         });
+        history.add_edit(Edit {
+            kind: EditKind::Insert,
+            range: buffer_range!(1, 1 => 1, 2),
+            text: "b",
+            cursor_index: 1,
+        });
+        history.add_edit(Edit {
+            kind: EditKind::Insert,
+            range: buffer_range!(0, 1 => 0, 2),
+            text: "b",
+            cursor_index: 0,
+        });
 
         let mut edit_iter = history.undo_edits();
         let edit = edit_iter.next().unwrap();
         assert_eq!(EditKind::Delete, edit.kind);
-        assert_eq!(buffer_range!(1, 0 => 1, 1), edit.range);
-        assert_eq!(1, edit.cursor_index);
-
-        let edit = edit_iter.next().unwrap();
-        assert_eq!(buffer_range!(0, 0 => 0, 1), edit.range);
-        assert_eq!(EditKind::Delete, edit.kind);
+        assert_eq!("ab", edit.text);
+        assert_eq!(buffer_range!(0, 0 => 0, 2), edit.range);
         assert_eq!(0, edit.cursor_index);
+        let edit = edit_iter.next().unwrap();
+        assert_eq!(EditKind::Delete, edit.kind);
+        assert_eq!("ab", edit.text);
+        assert_eq!(buffer_range!(1, 0 => 1, 2), edit.range);
+        assert_eq!(1, edit.cursor_index);
+        assert!(edit_iter.next().is_none());
 
+        let mut history = History::new();
+        history.add_edit(Edit {
+            kind: EditKind::Insert,
+            range: buffer_range!(0, 4 => 0, 5),
+            text: "a",
+            cursor_index: 1,
+        });
+        history.add_edit(Edit {
+            kind: EditKind::Insert,
+            range: buffer_range!(0, 0 => 0, 1),
+            text: "a",
+            cursor_index: 0,
+        });
+        history.add_edit(Edit {
+            kind: EditKind::Insert,
+            range: buffer_range!(0, 6 => 0, 7),
+            text: "b",
+            cursor_index: 1,
+        });
+        history.add_edit(Edit {
+            kind: EditKind::Insert,
+            range: buffer_range!(0, 1 => 0, 2),
+            text: "b",
+            cursor_index: 0,
+        });
+
+        let mut edit_iter = history.undo_edits();
+        let edit = edit_iter.next().unwrap();
+        assert_eq!(EditKind::Delete, edit.kind);
+        assert_eq!("ab", edit.text);
+        assert_eq!(buffer_range!(0, 0 => 0, 2), edit.range);
+        assert_eq!(0, edit.cursor_index);
+        let edit = edit_iter.next().unwrap();
+        assert_eq!(EditKind::Delete, edit.kind);
+        assert_eq!("ab", edit.text);
+        assert_eq!(buffer_range!(1, 0 => 1, 2), edit.range);
+        assert_eq!(1, edit.cursor_index);
         assert!(edit_iter.next().is_none());
     }
 }
