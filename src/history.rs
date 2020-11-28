@@ -214,10 +214,10 @@ impl History {
                         other_edit.text_range.start..(other_edit.text_range.start + edit_text_len);
                     if edit.text == &self.texts[deleted_text_range.clone()] {
                         other_edit.buffer_range.to = other_edit.buffer_range.to.delete(edit.range);
+                        let fix_text_start = deleted_text_range.start;
                         self.texts.drain(deleted_text_range);
-                        other_edit.text_range.end = self.texts.len();
+                        other_edit.text_range.end -= edit_text_len;
 
-                        let fix_text_start = other_edit.text_range.start;
                         for e in &mut self.edits[(other_edit_index + 1)..] {
                             delete_buffer_range(e, edit.range);
                             delete_text_range(e, fix_text_start, edit_text_len);
@@ -235,11 +235,10 @@ impl History {
                         (other_edit.text_range.end - edit_text_len)..other_edit.text_range.end;
                     if edit.text == &self.texts[deleted_text_range.clone()] {
                         other_edit.buffer_range.to = edit.range.from;
+                        let fix_text_start = deleted_text_range.start;
                         self.texts.drain(deleted_text_range);
-                        other_edit.text_range.end = self.texts.len();
+                        other_edit.text_range.end -= edit_text_len;
 
-                        todo!();
-                        let fix_text_start = other_edit.text_range.start;
                         for e in &mut self.edits[(other_edit_index + 1)..] {
                             delete_buffer_range(e, edit.range);
                             delete_text_range(e, fix_text_start, edit_text_len);
@@ -253,16 +252,22 @@ impl History {
                 } else if edit.range.from == other_edit.buffer_range.from
                     && other_edit.buffer_range.to <= edit.range.to
                 {
-                    let inserted_text_end = other_edit.text_range.end - other_edit.text_range.start;
-                    if &edit.text[..inserted_text_end] == &self.texts[other_edit.text_range.clone()]
-                    {
+                    let other_text_len = other_edit.text_range.end - other_edit.text_range.start;
+                    if &edit.text[..other_text_len] == &self.texts[other_edit.text_range.clone()] {
                         other_edit.kind = EditKind::Delete;
                         other_edit.buffer_range.to = edit.range.to.delete(other_edit.buffer_range);
                         self.texts.replace_range(
                             other_edit.text_range.clone(),
-                            &edit.text[inserted_text_end..],
+                            &edit.text[other_text_len..],
                         );
-                        other_edit.text_range.end = self.texts.len();
+                        let text_len_diff = edit_text_len - other_text_len;
+                        other_edit.text_range.end = other_edit.text_range.start + text_len_diff;
+
+                        let fix_text_start = other_edit.text_range.start;
+                        for e in &mut self.edits[(other_edit_index + 1)..] {
+                            delete_buffer_range(e, edit.range);
+                            insert_text_range(e, fix_text_start, text_len_diff);
+                        }
 
                         return true;
                     }
@@ -272,19 +277,23 @@ impl History {
                 } else if other_edit.buffer_range.to == edit.range.to
                     && edit.range.from <= other_edit.buffer_range.from
                 {
-                    let inserted_text_start =
-                        other_edit.text_range.end - other_edit.text_range.start;
-                    if &edit.text[inserted_text_start..]
-                        == &self.texts[other_edit.text_range.clone()]
-                    {
+                    let other_text_len = other_edit.text_range.end - other_edit.text_range.start;
+                    if &edit.text[other_text_len..] == &self.texts[other_edit.text_range.clone()] {
                         other_edit.kind = EditKind::Delete;
                         other_edit.buffer_range.to = other_edit.buffer_range.from;
                         other_edit.buffer_range.from = edit.range.from;
                         self.texts.replace_range(
                             other_edit.text_range.clone(),
-                            &edit.text[..inserted_text_start],
+                            &edit.text[..other_text_len],
                         );
-                        other_edit.text_range.end = self.texts.len();
+                        let text_len_diff = edit_text_len - other_text_len;
+                        other_edit.text_range.end = other_edit.text_range.start + text_len_diff;
+
+                        let fix_text_start = other_edit.text_range.start;
+                        for e in &mut self.edits[(other_edit_index + 1)..] {
+                            delete_buffer_range(e, edit.range);
+                            insert_text_range(e, fix_text_start, text_len_diff);
+                        }
 
                         return true;
                     }
