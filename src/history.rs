@@ -199,7 +199,8 @@ impl History {
                 // -- delete --
                 //             -- delete -- (new)
                 if edit.range.from == other_edit.buffer_range.from {
-                    other_edit.buffer_range.to = other_edit.buffer_range.to.insert(edit.range);
+                    other_edit.buffer_range.to =
+                        other_edit.buffer_range.to.insert(edit.range);
                     self.texts.insert_str(other_edit.text_range.end, edit.text);
                     let fix_text_start = other_edit.text_range.end;
                     other_edit.text_range.end += edit_text_len;
@@ -236,7 +237,8 @@ impl History {
                     let deleted_text_range =
                         other_edit.text_range.start..(other_edit.text_range.start + edit_text_len);
                     if edit.text == &self.texts[deleted_text_range.clone()] {
-                        other_edit.buffer_range.to = other_edit.buffer_range.to.delete(edit.range);
+                        other_edit.buffer_range.to =
+                            other_edit.buffer_range.to.delete(edit.range);
                         let fix_text_start = deleted_text_range.start;
                         self.texts.drain(deleted_text_range);
                         other_edit.text_range.end -= edit_text_len;
@@ -278,7 +280,8 @@ impl History {
                     let other_text_len = other_edit.text_range.end - other_edit.text_range.start;
                     if &edit.text[..other_text_len] == &self.texts[other_edit.text_range.clone()] {
                         other_edit.kind = EditKind::Delete;
-                        other_edit.buffer_range.to = edit.range.to.delete(other_edit.buffer_range);
+                        other_edit.buffer_range.to =
+                            edit.range.to.delete(other_edit.buffer_range);
                         self.texts.replace_range(
                             other_edit.text_range.clone(),
                             &edit.text[other_text_len..],
