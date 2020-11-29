@@ -594,7 +594,7 @@ impl BufferViewCollection {
             .as_mut()
             .and_then(|view| buffers.get_mut_with_line_pool(view.buffer_handle))
         {
-            self.apply_edits(handle, buffer.undo(line_pool, syntaxes));
+            self.apply_edits(handle, true, buffer.undo(line_pool, syntaxes));
         }
     }
 
@@ -608,13 +608,14 @@ impl BufferViewCollection {
             .as_mut()
             .and_then(|view| buffers.get_mut_with_line_pool(view.buffer_handle))
         {
-            self.apply_edits(handle, buffer.redo(line_pool, syntaxes));
+            self.apply_edits(handle, false, buffer.redo(line_pool, syntaxes));
         }
     }
 
     fn apply_edits<'a>(
         &mut self,
         handle: BufferViewHandle,
+        fix_edit_ranges: bool,
         edits: impl 'a + Iterator<Item = Edit<'a>>,
     ) {
         let buffer_handle = match self.get(handle) {
@@ -626,8 +627,13 @@ impl BufferViewCollection {
         for edit in edits {
             match edit.kind {
                 EditKind::Insert => {
-                    self.fix_cursor_ranges
-                        .push(BufferRange::between(edit.range.to, edit.range.to));
+                    if fix_edit_ranges {
+                        for fix_range in &mut self.fix_cursor_ranges {
+                            fix_range.from = fix_range.from.insert(edit.range);
+                            fix_range.to = fix_range.to.insert(edit.range);
+                        }
+                    }
+                    self.fix_cursor_ranges.push(edit.range);
                     for (i, view) in self.buffer_views.iter_mut().flatten().enumerate() {
                         if i != handle.0 && view.buffer_handle == buffer_handle {
                             for c in &mut view.cursors.mut_guard()[..] {
@@ -637,8 +643,14 @@ impl BufferViewCollection {
                     }
                 }
                 EditKind::Delete => {
-                    self.fix_cursor_ranges
-                        .push(BufferRange::between(edit.range.from, edit.range.from));
+                    if fix_edit_ranges {
+                        for fix_range in &mut self.fix_cursor_ranges {
+                            fix_range.from = fix_range.from.delete(edit.range);
+                            fix_range.to = fix_range.to.delete(edit.range);
+                        }
+                    }
+                    let fix_range = BufferRange::between(edit.range.from, edit.range.from);
+                    self.fix_cursor_ranges.push(fix_range);
                     for (i, view) in self.buffer_views.iter_mut().flatten().enumerate() {
                         if i != handle.0 && view.buffer_handle == buffer_handle {
                             for c in &mut view.cursors.mut_guard()[..] {
@@ -660,10 +672,11 @@ impl BufferViewCollection {
             for range in &self.fix_cursor_ranges {
                 cursors.add(Cursor {
                     anchor: range.from,
-                    position: range.from,
+                    position: range.to,
                 });
             }
         }
+        self.fix_cursor_ranges.clear();
     }
 
     pub fn buffer_view_handle_from_buffer_handle(
