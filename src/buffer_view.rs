@@ -528,7 +528,7 @@ impl BufferViewCollection {
         };
 
         self.fix_cursor_ranges.clear();
-        for (i, cursor) in current_view.cursors[..].iter().enumerate().rev() {
+        for cursor in current_view.cursors[..].iter().rev() {
             let mut word_position = cursor.position;
             word_position.column_byte_index = word_position.column_byte_index.saturating_sub(1);
             let word = buffer.content().word_at(word_position);
