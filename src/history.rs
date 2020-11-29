@@ -251,25 +251,22 @@ impl History {
                     }
                 }
                 (EditKind::Insert, EditKind::Delete) => {
-                    // ------ insert --
+                    // -- insert ------
                     // -- delete -- (new)
                     if other_edit.buffer_range.from == edit.range.from
                         && edit.range.to <= other_edit.buffer_range.to
                     {
-                        let deleted_text_range = other_edit.text_range.start
-                            ..(other_edit.text_range.start + edit_text_len);
+                        let fix_text_start = other_edit.text_range.start;
+                        let deleted_text_range = fix_text_start..(fix_text_start + edit_text_len);
                         if edit.text == &self.texts[deleted_text_range.clone()] {
+                            self.texts.drain(deleted_text_range);
                             other_edit.buffer_range.to =
                                 other_edit.buffer_range.to.delete(edit.range);
-                            let fix_text_start = deleted_text_range.start;
-                            self.texts.drain(deleted_text_range);
                             other_edit.text_range.end -= edit_text_len;
-
-                            for e in group_edits {
+                            fix_other_edits!(e => {
                                 delete_buffer_range(e, edit.range);
                                 delete_text_range(e, fix_text_start, edit_text_len);
-                            }
-
+                            });
                             return true;
                         }
 
@@ -278,19 +275,16 @@ impl History {
                     } else if edit.range.to == other_edit.buffer_range.to
                         && other_edit.buffer_range.from <= edit.range.from
                     {
-                        let deleted_text_range =
-                            (other_edit.text_range.end - edit_text_len)..other_edit.text_range.end;
+                        let fix_text_start = other_edit.text_range.end - edit_text_len;
+                        let deleted_text_range = fix_text_start..other_edit.text_range.end;
                         if edit.text == &self.texts[deleted_text_range.clone()] {
-                            other_edit.buffer_range.to = edit.range.from;
-                            let fix_text_start = deleted_text_range.start;
                             self.texts.drain(deleted_text_range);
+                            other_edit.buffer_range.to = edit.range.from;
                             other_edit.text_range.end -= edit_text_len;
-
-                            for e in group_edits {
+                            fix_other_edits!(e => {
                                 delete_buffer_range(e, edit.range);
                                 delete_text_range(e, fix_text_start, edit_text_len);
-                            }
-
+                            });
                             return true;
                         }
 
@@ -299,27 +293,24 @@ impl History {
                     } else if edit.range.from == other_edit.buffer_range.from
                         && other_edit.buffer_range.to <= edit.range.to
                     {
-                        let other_text_len =
-                            other_edit.text_range.end - other_edit.text_range.start;
+                        let fix_text_start = other_edit.text_range.start;
+                        let other_text_len = other_edit.text_range.end - fix_text_start;
                         if &edit.text[..other_text_len]
                             == &self.texts[other_edit.text_range.clone()]
                         {
-                            other_edit.kind = EditKind::Delete;
-                            other_edit.buffer_range.to =
-                                edit.range.to.delete(other_edit.buffer_range);
                             self.texts.replace_range(
                                 other_edit.text_range.clone(),
                                 &edit.text[other_text_len..],
                             );
                             let text_len_diff = edit_text_len - other_text_len;
-                            other_edit.text_range.end = other_edit.text_range.start + text_len_diff;
-
-                            let fix_text_start = other_edit.text_range.start;
-                            for e in group_edits {
+                            other_edit.kind = EditKind::Delete;
+                            other_edit.buffer_range.to =
+                                edit.range.to.delete(other_edit.buffer_range);
+                            other_edit.text_range.end = fix_text_start + text_len_diff;
+                            fix_other_edits!(e => {
                                 delete_buffer_range(e, edit.range);
                                 insert_text_range(e, fix_text_start, text_len_diff);
-                            }
-
+                            });
                             return true;
                         }
 
@@ -328,27 +319,24 @@ impl History {
                     } else if other_edit.buffer_range.to == edit.range.to
                         && edit.range.from <= other_edit.buffer_range.from
                     {
-                        let other_text_len =
-                            other_edit.text_range.end - other_edit.text_range.start;
+                        let fix_text_start = other_edit.text_range.start;
+                        let other_text_len = other_edit.text_range.end - fix_text_start;
                         if &edit.text[other_text_len..]
                             == &self.texts[other_edit.text_range.clone()]
                         {
-                            other_edit.kind = EditKind::Delete;
-                            other_edit.buffer_range.to = other_edit.buffer_range.from;
-                            other_edit.buffer_range.from = edit.range.from;
                             self.texts.replace_range(
                                 other_edit.text_range.clone(),
                                 &edit.text[..other_text_len],
                             );
                             let text_len_diff = edit_text_len - other_text_len;
-                            other_edit.text_range.end = other_edit.text_range.start + text_len_diff;
-
-                            let fix_text_start = other_edit.text_range.start;
-                            for e in group_edits {
+                            other_edit.kind = EditKind::Delete;
+                            other_edit.buffer_range.to = other_edit.buffer_range.from;
+                            other_edit.buffer_range.from = edit.range.from;
+                            other_edit.text_range.end = fix_text_start + text_len_diff;
+                            fix_other_edits!(e => {
                                 delete_buffer_range(e, edit.range);
                                 insert_text_range(e, fix_text_start, text_len_diff);
-                            }
-
+                            });
                             return true;
                         }
                     }
@@ -593,7 +581,7 @@ mod tests {
         assert!(edit_iter.next().is_none());
     }
 
-    //#[test]
+    #[test]
     fn compress_insert_delete_edits() {
         // -- insert ------
         // -- delete --
