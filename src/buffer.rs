@@ -1481,7 +1481,7 @@ mod tests {
         assert_eq!("second line", deleted_text.as_str());
     }
 
-    //#[test]
+    #[test]
     fn buffer_delete_undo_redo_single_line() {
         let mut pool = BufferLinePool::default();
         let mut word_database = WordDatabase::new();
@@ -1512,7 +1512,7 @@ mod tests {
         assert_eq!("single content", buffer.content.to_string());
     }
 
-    //#[test]
+    #[test]
     fn buffer_delete_undo_redo_multi_line() {
         let mut pool = BufferLinePool::default();
         let mut word_database = WordDatabase::new();
