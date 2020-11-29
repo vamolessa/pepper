@@ -383,7 +383,7 @@ impl Client {
             let position =
                 BufferPosition::line_col(line_index, content.line_at(line_index).as_str().len());
             let text = String::from_utf8_lossy(&self.log_write_buf);
-            buffer.insert_text(pool, word_database, syntaxes, position, &text, 0);
+            buffer.insert_text(pool, word_database, syntaxes, position, &text);
         }
     }
 

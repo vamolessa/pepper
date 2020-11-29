@@ -854,7 +854,6 @@ impl Buffer {
         syntaxes: &SyntaxCollection,
         position: BufferPosition,
         text: &str,
-        cursor_index: usize,
     ) -> BufferRange {
         self.search_ranges.clear();
         if text.is_empty() {
@@ -890,7 +889,6 @@ impl Buffer {
                 kind: EditKind::Insert,
                 range,
                 text,
-                cursor_index: cursor_index.min(u8::MAX as _) as _,
             });
         }
 
@@ -903,7 +901,6 @@ impl Buffer {
         word_database: &mut WordDatabase,
         syntaxes: &SyntaxCollection,
         range: BufferRange,
-        cursor_index: usize,
     ) {
         self.search_ranges.clear();
         if range.from == range.to {
@@ -939,7 +936,6 @@ impl Buffer {
                 kind: EditKind::Delete,
                 range,
                 text: deleted_text.as_str(),
-                cursor_index: cursor_index.min(u8::MAX as _) as _,
             });
         }
     }

@@ -13,14 +13,12 @@ pub struct Edit<'a> {
     pub kind: EditKind,
     pub range: BufferRange,
     pub text: &'a str,
-    pub cursor_index: u8,
 }
 
 struct EditInternal {
     pub kind: EditKind,
     pub buffer_range: BufferRange,
     pub text_range: Range<usize>,
-    pub cursor_index: u8,
 }
 
 impl EditInternal {
@@ -29,7 +27,6 @@ impl EditInternal {
             kind: self.kind,
             range: self.buffer_range,
             text: &texts[self.text_range.clone()],
-            cursor_index: self.cursor_index,
         }
     }
 }
@@ -68,12 +65,11 @@ impl History {
             }
             let _ = writeln!(
                 text,
-                "'{}' ({}..{}) range: {:?} [{}]",
+                "'{}' ({}..{}) range: {:?}",
                 &self.texts[e.text_range.clone()],
                 e.text_range.start,
                 e.text_range.end,
                 e.buffer_range,
-                e.cursor_index
             );
         }
         let _ = write!(text, "group_ranges: ");
@@ -100,8 +96,8 @@ impl History {
     pub fn add_edit(&mut self, edit: Edit) {
         /*
         eprintln!(
-            "new edit {:?} '{}' range: {:?} [{}]",
-            edit.kind, edit.text, edit.range, edit.cursor_index
+            "new edit {:?} '{}' range: {:?}",
+            edit.kind, edit.text, edit.range
         );
         */
 
@@ -132,7 +128,6 @@ impl History {
                 kind: edit.kind,
                 buffer_range: edit.range,
                 text_range: texts_range_start..self.texts.len(),
-                cursor_index: edit.cursor_index,
             });
         }
     }
@@ -148,8 +143,8 @@ impl History {
             edit.buffer_range.to = edit.buffer_range.to.delete(range);
         }
 
-        fn insert_text_range(edit: &mut EditInternal, start: usize, len: usize) {
-            if start <= edit.text_range.start {
+        fn insert_text_range(edit: &mut EditInternal, start: usize, len: usize, shift_start: bool) {
+            if (shift_start && start == edit.text_range.start) || start < edit.text_range.start {
                 edit.text_range.start += len;
                 edit.text_range.end += len;
             } else if start <= edit.text_range.end {
@@ -168,13 +163,7 @@ impl History {
         }
 
         let current_group_start = self.edits.len() - current_group_len;
-        let other_edit_index = match self.edits[current_group_start..]
-            .iter()
-            .rposition(|e| e.cursor_index == edit.cursor_index)
-        {
-            Some(i) => current_group_start + i,
-            None => return false,
-        };
+        let other_edit_index = self.edits.len() - 1;
         let other_edit = &mut self.edits[other_edit_index];
 
         let edit_text_len = edit.text.len();
@@ -188,22 +177,19 @@ impl History {
                     self.texts.insert_str(fix_text_start, edit.text);
                     for e in &mut self.edits[current_group_start..] {
                         insert_buffer_range(e, edit.range);
-                        insert_text_range(e, fix_text_start, edit_text_len);
+                        insert_text_range(e, fix_text_start, edit_text_len, true);
                     }
 
                     return true;
                 //             -- insert --
                 // -- insert -- (new)
                 } else if edit.range.from == other_edit.buffer_range.from {
-                    other_edit.buffer_range.to = other_edit.buffer_range.to.insert(edit.range);
-                    self.texts
-                        .insert_str(other_edit.text_range.start, edit.text);
-                    other_edit.text_range.end += edit_text_len;
-
                     let fix_text_start = other_edit.text_range.start;
-                    for e in &mut self.edits[(other_edit_index + 1)..] {
+                    self.texts.insert_str(fix_text_start, edit.text);
+
+                    for e in &mut self.edits[current_group_start..] {
                         insert_buffer_range(e, edit.range);
-                        insert_text_range(e, fix_text_start, edit_text_len);
+                        insert_text_range(e, fix_text_start, edit_text_len, false);
                     }
 
                     return true;
@@ -220,7 +206,7 @@ impl History {
 
                     for e in &mut self.edits[(other_edit_index + 1)..] {
                         delete_buffer_range(e, edit.range);
-                        insert_text_range(e, fix_text_start, edit_text_len);
+                        insert_text_range(e, fix_text_start, edit_text_len, true);
                     }
 
                     return true;
@@ -235,7 +221,7 @@ impl History {
                     let fix_text_start = other_edit.text_range.start;
                     for e in &mut self.edits[(other_edit_index + 1)..] {
                         delete_buffer_range(e, edit.range);
-                        insert_text_range(e, fix_text_start, edit_text_len);
+                        insert_text_range(e, fix_text_start, edit_text_len, true);
                     }
 
                     return true;
@@ -303,7 +289,7 @@ impl History {
                         let fix_text_start = other_edit.text_range.start;
                         for e in &mut self.edits[(other_edit_index + 1)..] {
                             delete_buffer_range(e, edit.range);
-                            insert_text_range(e, fix_text_start, text_len_diff);
+                            insert_text_range(e, fix_text_start, text_len_diff, true);
                         }
 
                         return true;
@@ -329,7 +315,7 @@ impl History {
                         let fix_text_start = other_edit.text_range.start;
                         for e in &mut self.edits[(other_edit_index + 1)..] {
                             delete_buffer_range(e, edit.range);
-                            insert_text_range(e, fix_text_start, text_len_diff);
+                            insert_text_range(e, fix_text_start, text_len_diff, true);
                         }
 
                         return true;
@@ -432,13 +418,11 @@ mod tests {
             kind: EditKind::Insert,
             range: BufferRange::default(),
             text: "a",
-            cursor_index: 0,
         });
         history.add_edit(Edit {
             kind: EditKind::Delete,
             range: BufferRange::default(),
             text: "b",
-            cursor_index: 0,
         });
 
         assert_eq!(0, history.redo_edits().count());
@@ -479,7 +463,6 @@ mod tests {
             kind: EditKind::Insert,
             range: BufferRange::default(),
             text: "c",
-            cursor_index: 0,
         });
 
         assert_eq!(0, history.redo_edits().count());
@@ -501,13 +484,11 @@ mod tests {
             kind: EditKind::Insert,
             range: buffer_range!(0, 0 => 0, 3),
             text: "abc",
-            cursor_index: 0,
         });
         history.add_edit(Edit {
             kind: EditKind::Insert,
             range: buffer_range!(0, 3 => 0, 6),
             text: "def",
-            cursor_index: 0,
         });
 
         let mut edit_iter = history.undo_edits();
@@ -522,13 +503,11 @@ mod tests {
             kind: EditKind::Insert,
             range: buffer_range!(0, 0 => 0, 3),
             text: "abc",
-            cursor_index: 0,
         });
         history.add_edit(Edit {
             kind: EditKind::Insert,
             range: buffer_range!(0, 0 => 0, 3),
             text: "def",
-            cursor_index: 0,
         });
 
         let mut edit_iter = history.undo_edits();
@@ -546,13 +525,11 @@ mod tests {
             kind: EditKind::Delete,
             range: buffer_range!(0, 0 => 0, 3),
             text: "abc",
-            cursor_index: 0,
         });
         history.add_edit(Edit {
             kind: EditKind::Delete,
             range: buffer_range!(0, 0 => 0, 3),
             text: "def",
-            cursor_index: 0,
         });
 
         let mut edit_iter = history.undo_edits();
@@ -567,13 +544,11 @@ mod tests {
             kind: EditKind::Delete,
             range: buffer_range!(0, 3 => 0, 6),
             text: "abc",
-            cursor_index: 0,
         });
         history.add_edit(Edit {
             kind: EditKind::Delete,
             range: buffer_range!(0, 0 => 0, 3),
             text: "def",
-            cursor_index: 0,
         });
 
         let mut edit_iter = history.undo_edits();
@@ -593,13 +568,11 @@ mod tests {
             kind: EditKind::Insert,
             range: buffer_range!(0, 0 => 0, 6),
             text: "abcdef",
-            cursor_index: 0,
         });
         history.add_edit(Edit {
             kind: EditKind::Delete,
             range: buffer_range!(0, 0 => 0, 3),
             text: "abc",
-            cursor_index: 0,
         });
 
         let mut edit_iter = history.undo_edits();
@@ -616,13 +589,11 @@ mod tests {
             kind: EditKind::Insert,
             range: buffer_range!(0, 0 => 0, 6),
             text: "abcdef",
-            cursor_index: 0,
         });
         history.add_edit(Edit {
             kind: EditKind::Delete,
             range: buffer_range!(0, 3 => 0, 6),
             text: "def",
-            cursor_index: 0,
         });
 
         let mut edit_iter = history.undo_edits();
@@ -639,13 +610,11 @@ mod tests {
             kind: EditKind::Insert,
             range: buffer_range!(0, 0 => 0, 3),
             text: "abc",
-            cursor_index: 0,
         });
         history.add_edit(Edit {
             kind: EditKind::Delete,
             range: buffer_range!(0, 0 => 0, 6),
             text: "abcdef",
-            cursor_index: 0,
         });
 
         let mut edit_iter = history.undo_edits();
@@ -662,13 +631,11 @@ mod tests {
             kind: EditKind::Insert,
             range: buffer_range!(0, 3 => 0, 6),
             text: "def",
-            cursor_index: 0,
         });
         history.add_edit(Edit {
             kind: EditKind::Delete,
             range: buffer_range!(0, 0 => 0, 6),
             text: "abcdef",
-            cursor_index: 0,
         });
 
         let mut edit_iter = history.undo_edits();
@@ -686,25 +653,21 @@ mod tests {
             kind: EditKind::Insert,
             range: buffer_range!(1, 0 => 1, 1),
             text: "a",
-            cursor_index: 1,
         });
         history.add_edit(Edit {
             kind: EditKind::Insert,
             range: buffer_range!(0, 0 => 0, 1),
             text: "a",
-            cursor_index: 0,
         });
         history.add_edit(Edit {
             kind: EditKind::Insert,
             range: buffer_range!(1, 1 => 1, 2),
             text: "b",
-            cursor_index: 1,
         });
         history.add_edit(Edit {
             kind: EditKind::Insert,
             range: buffer_range!(0, 1 => 0, 2),
             text: "b",
-            cursor_index: 0,
         });
 
         let mut edit_iter = history.undo_edits();
@@ -712,51 +675,91 @@ mod tests {
         assert_eq!(EditKind::Delete, edit.kind);
         assert_eq!("ab", edit.text);
         assert_eq!(buffer_range!(0, 0 => 0, 2), edit.range);
-        assert_eq!(0, edit.cursor_index);
         let edit = edit_iter.next().unwrap();
         assert_eq!(EditKind::Delete, edit.kind);
         assert_eq!("ab", edit.text);
         assert_eq!(buffer_range!(1, 0 => 1, 2), edit.range);
-        assert_eq!(1, edit.cursor_index);
         assert!(edit_iter.next().is_none());
+
+        //
+
+        let mut history = History::new();
+        history.add_edit(Edit {
+            kind: EditKind::Insert,
+            range: buffer_range!(0, 1 => 0, 2),
+            text: "a",
+        });
+        history.add_edit(Edit {
+            kind: EditKind::Insert,
+            range: buffer_range!(0, 0 => 0, 1),
+            text: "a",
+        });
+
+        eprintln!("{}", history.dump());
+
+        history.add_edit(Edit {
+            kind: EditKind::Insert,
+            range: buffer_range!(0, 3 => 0, 4),
+            text: "b",
+        });
+
+        eprintln!("{}", history.dump());
+
+        history.add_edit(Edit {
+            kind: EditKind::Insert,
+            range: buffer_range!(0, 1 => 0, 2),
+            text: "b",
+        });
+
+        eprintln!("{}", history.dump());
+        assert!(false);
+
+        let mut edit_iter = history.undo_edits();
+        let edit = edit_iter.next().unwrap();
+        assert_eq!(EditKind::Delete, edit.kind);
+        assert_eq!("ab", edit.text);
+        assert_eq!(buffer_range!(0, 0 => 0, 2), edit.range);
+        let edit = edit_iter.next().unwrap();
+        assert_eq!(EditKind::Delete, edit.kind);
+        assert_eq!("ab", edit.text);
+        assert_eq!(buffer_range!(0, 2 => 0, 4), edit.range);
+        assert!(edit_iter.next().is_none());
+
+        //
 
         let mut history = History::new();
         history.add_edit(Edit {
             kind: EditKind::Insert,
             range: buffer_range!(0, 4 => 0, 5),
             text: "a",
-            cursor_index: 1,
         });
         history.add_edit(Edit {
             kind: EditKind::Insert,
             range: buffer_range!(0, 0 => 0, 1),
             text: "a",
-            cursor_index: 0,
         });
         history.add_edit(Edit {
             kind: EditKind::Insert,
             range: buffer_range!(0, 6 => 0, 7),
             text: "b",
-            cursor_index: 1,
         });
         history.add_edit(Edit {
             kind: EditKind::Insert,
             range: buffer_range!(0, 1 => 0, 2),
             text: "b",
-            cursor_index: 0,
         });
+
+        eprintln!("{}", history.dump());
 
         let mut edit_iter = history.undo_edits();
         let edit = edit_iter.next().unwrap();
         assert_eq!(EditKind::Delete, edit.kind);
         assert_eq!("ab", edit.text);
         assert_eq!(buffer_range!(0, 0 => 0, 2), edit.range);
-        assert_eq!(0, edit.cursor_index);
         let edit = edit_iter.next().unwrap();
         assert_eq!(EditKind::Delete, edit.kind);
         assert_eq!("ab", edit.text);
-        assert_eq!(buffer_range!(1, 0 => 1, 2), edit.range);
-        assert_eq!(1, edit.cursor_index);
+        assert_eq!(buffer_range!(0, 5 => 0, 7), edit.range);
         assert!(edit_iter.next().is_none());
     }
 }

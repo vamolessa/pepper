@@ -653,7 +653,6 @@ impl State {
                             &ctx.config.syntaxes,
                             handle,
                             range,
-                            i,
                         );
                     }
                 }
@@ -688,7 +687,6 @@ impl State {
                             handle,
                             BufferPosition::line_col(line_index, 0),
                             indentation.as_str(),
-                            i,
                         );
                     }
                 }

@@ -97,7 +97,6 @@ impl ModeState for State {
                         handle,
                         position,
                         text.as_str(),
-                        i,
                     );
                 }
             }

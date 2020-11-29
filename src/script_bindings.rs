@@ -996,7 +996,6 @@ mod buffer_view {
                 handle,
                 BufferPosition::line_col(line, column),
                 text,
-                0,
             );
             ctx.edited_buffers = true;
         }
@@ -1043,7 +1042,6 @@ mod buffer_view {
                     BufferPosition::line_col(from_line, from_column),
                     BufferPosition::line_col(to_line, to_column),
                 ),
-                0,
             );
             ctx.edited_buffers = true;
         }
