@@ -879,4 +879,46 @@ mod tests {
         assert_eq!(buffer_range!(0, 0 => 0, 2), edit.range);
         assert!(edit_iter.next().is_none());
     }
+
+    #[test]
+    fn compress_multiple_insert_delete_edits() {
+        // -- insert ------
+        // -- delete --
+        let mut history = History::new();
+        history.add_edit(Edit {
+            kind: EditKind::Insert,
+            range: buffer_range!(0, 1 => 0, 3),
+            text: "cd",
+        });
+        eprintln!("{}", history.dump());
+        history.add_edit(Edit {
+            kind: EditKind::Insert,
+            range: buffer_range!(0, 0 => 0, 2),
+            text: "ab",
+        });
+        eprintln!("{}", history.dump());
+        history.add_edit(Edit {
+            kind: EditKind::Delete,
+            range: buffer_range!(0, 3 => 0, 4),
+            text: "c",
+        });
+        eprintln!("{}", history.dump());
+        history.add_edit(Edit {
+            kind: EditKind::Delete,
+            range: buffer_range!(0, 0 => 0, 1),
+            text: "a",
+        });
+        eprintln!("{}", history.dump());
+
+        let mut edit_iter = history.undo_edits();
+        let edit = edit_iter.next().unwrap();
+        assert_eq!(EditKind::Delete, edit.kind);
+        assert_eq!("d", edit.text);
+        assert_eq!(buffer_range!(0, 2 => 0, 3), edit.range);
+        let edit = edit_iter.next().unwrap();
+        assert_eq!(EditKind::Delete, edit.kind);
+        assert_eq!("b", edit.text);
+        assert_eq!(buffer_range!(0, 0 => 0, 1), edit.range);
+        assert!(edit_iter.next().is_none());
+    }
 }
