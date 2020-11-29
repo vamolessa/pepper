@@ -430,18 +430,18 @@ mod tests {
         assert_eq!(0, history.redo_edits().count());
     }
 
-    //#[test]
+    #[test]
     fn edit_grouping() {
         let mut history = History::new();
 
         history.add_edit(Edit {
             kind: EditKind::Insert,
-            range: BufferRange::default(),
+            range: buffer_range!(0, 0 => 0, 1),
             text: "a",
         });
         history.add_edit(Edit {
             kind: EditKind::Delete,
-            range: BufferRange::default(),
+            range: buffer_range!(1, 0 => 1, 1),
             text: "b",
         });
 
@@ -481,7 +481,7 @@ mod tests {
 
         history.add_edit(Edit {
             kind: EditKind::Insert,
-            range: BufferRange::default(),
+            range: buffer_range!(2, 0 => 2, 1),
             text: "c",
         });
 
