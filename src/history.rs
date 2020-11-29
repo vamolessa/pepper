@@ -227,31 +227,26 @@ impl History {
                     // -- delete --
                     // -- delete -- (new)
                     if edit.range.from == other_edit.buffer_range.from {
-                        other_edit.buffer_range.to = other_edit.buffer_range.to.insert(edit.range);
-                        self.texts.insert_str(other_edit.text_range.end, edit.text);
                         let fix_text_start = other_edit.text_range.end;
+                        self.texts.insert_str(fix_text_start, edit.text);
+                        other_edit.buffer_range.to = other_edit.buffer_range.to.insert(edit.range);
                         other_edit.text_range.end += edit_text_len;
-
-                        for e in group_edits {
+                        fix_other_edits!(e => {
                             delete_buffer_range(e, edit.range);
                             insert_text_range(e, fix_text_start, edit_text_len);
-                        }
-
+                        });
                         return true;
                     //             -- delete --
                     // -- delete -- (new)
                     } else if edit.range.to == other_edit.buffer_range.from {
-                        other_edit.buffer_range.from = edit.range.from;
-                        self.texts
-                            .insert_str(other_edit.text_range.start, edit.text);
-                        other_edit.text_range.end += edit_text_len;
-
                         let fix_text_start = other_edit.text_range.start;
-                        for e in group_edits {
+                        self.texts.insert_str(fix_text_start, edit.text);
+                        other_edit.buffer_range.from = edit.range.from;
+                        other_edit.text_range.end += edit_text_len;
+                        fix_other_edits!(e => {
                             delete_buffer_range(e, edit.range);
                             insert_text_range(e, fix_text_start, edit_text_len);
-                        }
-
+                        });
                         return true;
                     }
                 }
@@ -433,7 +428,7 @@ mod tests {
         };
     }
 
-    //#[test]
+    #[test]
     fn commit_edits_on_emtpy_history() {
         let mut history = History::new();
         assert_eq!(0, history.undo_edits().count());
@@ -514,7 +509,7 @@ mod tests {
         assert_eq!(0, history.undo_edits().count());
     }
 
-    //#[test]
+    #[test]
     fn compress_insert_insert_edits() {
         let mut history = History::new();
         history.add_edit(Edit {
@@ -555,7 +550,7 @@ mod tests {
         assert!(edit_iter.next().is_none());
     }
 
-    //#[test]
+    #[test]
     fn compress_delete_delete_edits() {
         let mut history = History::new();
         history.add_edit(Edit {
@@ -582,11 +577,13 @@ mod tests {
             range: buffer_range!(0, 3 => 0, 6),
             text: "abc",
         });
+        eprintln!("{}", history.dump());
         history.add_edit(Edit {
             kind: EditKind::Delete,
             range: buffer_range!(0, 0 => 0, 3),
             text: "def",
         });
+        eprintln!("{}", history.dump());
 
         let mut edit_iter = history.undo_edits();
         let edit = edit_iter.next().unwrap();
