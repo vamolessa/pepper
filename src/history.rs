@@ -429,9 +429,11 @@ impl History {
             index = 0;
             end = 0;
         } else if index < end {
+            end = end.min(self.group_ranges.len() - 1);
             index = self.group_ranges[index].start;
             end = self.group_ranges[end].end;
         } else {
+            index = index.min(self.group_ranges.len() - 1);
             index = self.group_ranges[index].end;
             end = self.group_ranges[end].start;
         }

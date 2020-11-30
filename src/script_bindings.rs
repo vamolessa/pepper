@@ -910,7 +910,8 @@ mod buffer {
                     EditKind::Insert => message.push_str("insert"),
                     EditKind::Delete => message.push_str("delete"),
                 }
-                let _ = writeln!(message, " {} ({:?})", edit.text, edit.range);
+                let text = edit.text.replace('\n', "\\n");
+                let _ = writeln!(message, " {} ({:?})", text, edit.range);
             }
             ctx.status_message
                 .write_str(StatusMessageKind::Info, &message);
