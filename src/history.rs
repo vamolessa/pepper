@@ -53,39 +53,6 @@ impl History {
         }
     }
 
-    pub fn dump(&self) -> String {
-        use std::fmt::Write;
-        let mut text = String::new();
-        let _ = writeln!(text, "texts: '{}'", self.texts);
-        let _ = writeln!(text, "edits:");
-        for e in &self.edits {
-            match e.kind {
-                EditKind::Insert => text.push_str(" - insert "),
-                EditKind::Delete => text.push_str(" - delete "),
-            }
-            let _ = writeln!(
-                text,
-                "'{}' ({}..{}) range: {:?}",
-                &self.texts[e.text_range.clone()],
-                e.text_range.start,
-                e.text_range.end,
-                e.buffer_range,
-            );
-        }
-        let _ = write!(text, "group_ranges: ");
-        for r in &self.group_ranges {
-            let _ = write!(text, "({}, {}) ", r.start, r.end);
-        }
-        text.push('\n');
-        let _ = match &self.state {
-            HistoryState::IterIndex(i) => writeln!(text, "state: iter index {}", i),
-            HistoryState::InsertGroup(r) => {
-                writeln!(text, "state: insert group {}..{}", r.start, r.end)
-            }
-        };
-        text
-    }
-
     pub fn clear(&mut self) {
         self.texts.clear();
         self.edits.clear();

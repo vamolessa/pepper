@@ -803,10 +803,6 @@ impl Buffer {
         self.capabilities = BufferCapabilities::default();
     }
 
-    pub fn dump_history(&self) -> String {
-        self.history.dump()
-    }
-
     pub fn path(&self) -> Option<&Path> {
         if self.path.as_os_str().is_empty() {
             None
