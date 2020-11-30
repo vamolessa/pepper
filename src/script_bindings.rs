@@ -14,6 +14,7 @@ use crate::{
     cursor::Cursor,
     editor::{EditorLoop, StatusMessageKind},
     glob::Glob,
+    history::{EditHandle, EditKind},
     keymap::ParseKeyMapError,
     lsp::LspClientHandle,
     mode::{self, Mode},
@@ -89,7 +90,7 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
     register!(lsp => start, open_log, diagnostics,);
     register!(buffer => all_handles, line_count, line_at, path, path_matches, needs_save, set_search, open, close,
         force_close, close_all, force_close_all, save, save_all, reload, force_reload, reload_all, force_reload_all,
-        commit_edits,);
+        commit_edits, current_edit_handle, print_edits_since,);
     register_callbacks!(buffer => on_load, on_open, on_save, on_close,);
     register!(buffer_view => buffer_handle, all_handles, handle_from_path, selection_text, insert_text, insert_text_at,
         delete_selection, delete_in, undo, redo,);
@@ -869,6 +870,50 @@ mod buffer {
         });
         if let Some(buffer) = buffer_handle.and_then(|h| ctx.buffers.get_mut(h)) {
             buffer.commit_edits();
+        }
+        Ok(())
+    }
+
+    pub fn current_edit_handle(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        handle: Option<BufferHandle>,
+    ) -> ScriptResult<Option<EditHandle>> {
+        let buffer_handle = handle.or_else(|| {
+            ctx.current_buffer_view_handle()
+                .and_then(|h| ctx.buffer_views.get(h))
+                .map(|v| v.buffer_handle)
+        });
+        let edit_handle = buffer_handle
+            .and_then(|h| ctx.buffers.get(h))
+            .map(|b| b.current_edit_handle());
+        Ok(edit_handle)
+    }
+
+    pub fn print_edits_since(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        (edit_handle, buffer_handle): (EditHandle, Option<BufferHandle>),
+    ) -> ScriptResult<()> {
+        let buffer_handle = buffer_handle.or_else(|| {
+            ctx.current_buffer_view_handle()
+                .and_then(|h| ctx.buffer_views.get(h))
+                .map(|v| v.buffer_handle)
+        });
+        if let Some(buffer) = buffer_handle.and_then(|h| ctx.buffers.get(h)) {
+            let mut message = String::new();
+            for edit in buffer.edits_since(edit_handle) {
+                use std::fmt::Write;
+                match edit.kind {
+                    EditKind::Insert => message.push_str("insert"),
+                    EditKind::Delete => message.push_str("delete"),
+                }
+                let _ = writeln!(message, " {} ({:?})", edit.text, edit.range);
+            }
+            ctx.status_message
+                .write_str(StatusMessageKind::Info, &message);
         }
         Ok(())
     }
