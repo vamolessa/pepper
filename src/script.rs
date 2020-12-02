@@ -393,8 +393,7 @@ impl<'lua> Iterator for LuaTablePairs<'lua> {
     type Item = (LuaValue<'lua>, LuaValue<'lua>);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let mut key = LuaValue::Nil;
-        std::mem::swap(&mut self.key, &mut key);
+        let key = std::mem::replace(&mut self.key, LuaValue::Nil);
         match self.next_selector.call((self.table.clone(), key)) {
             Ok((LuaValue::Nil, _)) | Err(_) => None,
             Ok((key, value)) => {

@@ -497,8 +497,7 @@ pub mod custom {
                     .take_from_registry::<ScriptFunction>(CALLBACK_REGISTRY_KEY)?
                     .call(&guard, input)?;
 
-                let mut mode = Mode::default();
-                std::mem::swap(&mut mode, &mut ctx.next_mode);
+                let mode = std::mem::take(&mut ctx.next_mode);
                 Ok(ModeOperation::EnterMode(mode))
             });
 
