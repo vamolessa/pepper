@@ -199,12 +199,20 @@ pub struct HighlightedBuffer {
 }
 
 impl HighlightedBuffer {
-    pub const fn new() -> Self {
-        Self { lines: Vec::new() }
+    pub fn empty() -> &'static Self {
+        static EMPTY: HighlightedBuffer = HighlightedBuffer { lines: Vec::new() };
+        &EMPTY
+    }
+
+    pub fn new() -> Self {
+        Self {
+            lines: vec![HighlightedLine::default()],
+        }
     }
 
     pub fn clear(&mut self) {
         self.lines.clear();
+        self.lines.push(HighlightedLine::default());
     }
 
     pub fn highligh_all(&mut self, syntax: &Syntax, buffer: &BufferContent) {

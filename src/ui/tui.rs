@@ -259,11 +259,8 @@ where
             search_ranges = buffer.search_ranges();
         }
         None => {
-            static EMPTY_BUFFER: BufferContent = BufferContent::empty();
-            static EMPTY_HIGHLIGHTED_BUFFER: HighlightedBuffer = HighlightedBuffer::new();
-
-            buffer_content = &EMPTY_BUFFER;
-            highlighted_buffer = &EMPTY_HIGHLIGHTED_BUFFER;
+            buffer_content = BufferContent::empty();
+            highlighted_buffer = HighlightedBuffer::empty();
             search_ranges = &[];
         }
     }

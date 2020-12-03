@@ -312,8 +312,9 @@ pub struct BufferContent {
 }
 
 impl BufferContent {
-    pub const fn empty() -> Self {
-        Self { lines: Vec::new() }
+    pub fn empty() -> &'static Self {
+        static EMPTY: BufferContent = BufferContent { lines: Vec::new() };
+        &EMPTY
     }
 
     pub fn new() -> Self {
@@ -1462,10 +1463,15 @@ mod tests {
         {
             let mut ranges = buffer.undo(&syntaxes);
             assert_eq!(range, ranges.next().unwrap().range);
+            ranges.next().unwrap();
             assert!(ranges.next().is_none());
         }
-        assert_eq!("single line content", buffer.content.to_string());
-        for _ in buffer.redo(&syntaxes) {}
+        assert!(buffer.content.to_string().is_empty());
+        let mut redo_iter = buffer.redo(&syntaxes);
+        redo_iter.next().unwrap();
+        redo_iter.next().unwrap();
+        assert!(redo_iter.next().is_none());
+        drop(redo_iter);
         assert_eq!("single content", buffer.content.to_string());
     }
 
@@ -1492,10 +1498,15 @@ mod tests {
         {
             let mut ranges = buffer.undo(&syntaxes);
             assert_eq!(range, ranges.next().unwrap().range);
+            ranges.next().unwrap();
             assert!(ranges.next().is_none());
         }
-        assert_eq!("multi\nline\ncontent", buffer.content.to_string());
-        for _ in buffer.redo(&syntaxes) {}
+        assert!(buffer.content.to_string().is_empty());
+        let mut redo_iter = buffer.redo(&syntaxes);
+        redo_iter.next().unwrap();
+        redo_iter.next().unwrap();
+        assert!(redo_iter.next().is_none());
+        drop(redo_iter);
         assert_eq!("me\ncontent", buffer.content.to_string());
     }
 
