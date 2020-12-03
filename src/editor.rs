@@ -327,7 +327,6 @@ impl Editor {
 
                 match self.buffer_views.buffer_view_handle_from_path(
                     &mut self.buffers,
-                    &mut self.word_database,
                     &self.config.syntaxes,
                     target_client,
                     &self.current_directory,

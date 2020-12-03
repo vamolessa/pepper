@@ -88,7 +88,6 @@ pub mod buffer {
 
             match ctx.buffer_views.buffer_view_handle_from_path(
                 ctx.buffers,
-                ctx.word_database,
                 &ctx.config.syntaxes,
                 ctx.target_client,
                 ctx.current_directory,

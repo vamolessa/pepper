@@ -1257,7 +1257,6 @@ fn move_to_diagnostic(state: &mut State, ctx: &mut ModeContext, forward: bool) {
                 .buffer_view_handle_from_buffer_handle(ctx.target_client, buffer_handle),
             None => match ctx.buffer_views.buffer_view_handle_from_path(
                 ctx.buffers,
-                &mut ctx.word_database,
                 &ctx.config.syntaxes,
                 ctx.target_client,
                 ctx.current_directory,

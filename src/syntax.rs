@@ -422,7 +422,8 @@ mod tests {
         syntax.add_rule(TokenKind::Comment, Pattern::new("/*{!(*/).$}").unwrap());
         syntax.add_rule(TokenKind::String, Pattern::new("'{!'.$}").unwrap());
 
-        let mut buffer = BufferContent::from_str(&mut line_pool, "/*\n*/");
+        let mut buffer = BufferContent::new();
+        buffer.insert_text(&mut line_pool, BufferPosition::line_col(0, 0), "/*\n*/");
 
         let mut highlighted = HighlightedBuffer::new();
         highlighted.highligh_all(&syntax, &buffer);
