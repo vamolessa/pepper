@@ -194,30 +194,61 @@ struct HighlightedLine {
     tokens: Vec<Token>,
 }
 
+struct HighlightedLinePool {
+    pool: Vec<HighlightedLine>,
+}
+impl HighlightedLinePool {
+    pub const fn new() -> Self {
+        Self { pool: Vec::new() }
+    }
+
+    pub fn rent(&mut self) -> HighlightedLine {
+        match self.pool.pop() {
+            Some(mut line) => {
+                line.tokens.clear();
+                line.state = LineState::Finished;
+                line
+            }
+            None => HighlightedLine::default(),
+        }
+    }
+
+    pub fn dispose(&mut self, line: HighlightedLine) {
+        self.pool.push(line);
+    }
+}
+
 pub struct HighlightedBuffer {
     lines: Vec<HighlightedLine>,
+    line_pool: HighlightedLinePool,
 }
 
 impl HighlightedBuffer {
     pub fn empty() -> &'static Self {
-        static EMPTY: HighlightedBuffer = HighlightedBuffer { lines: Vec::new() };
+        static EMPTY: HighlightedBuffer = HighlightedBuffer {
+            lines: Vec::new(),
+            line_pool: HighlightedLinePool::new(),
+        };
         &EMPTY
     }
 
     pub fn new() -> Self {
         Self {
             lines: vec![HighlightedLine::default()],
+            line_pool: HighlightedLinePool::new(),
         }
     }
 
     pub fn clear(&mut self) {
-        self.lines.clear();
-        self.lines.push(HighlightedLine::default());
+        for line in self.lines.drain(..) {
+            self.line_pool.dispose(line);
+        }
+        self.lines.push(self.line_pool.rent());
     }
 
     pub fn highligh_all(&mut self, syntax: &Syntax, buffer: &BufferContent) {
-        self.lines
-            .resize(buffer.line_count(), HighlightedLine::default());
+        let pool = &mut self.line_pool;
+        self.lines.resize_with(buffer.line_count(), || pool.rent());
 
         let mut previous_line_state = LineState::Finished;
         for (bline, hline) in buffer.lines().zip(self.lines.iter_mut()) {
@@ -231,9 +262,10 @@ impl HighlightedBuffer {
 
         let insert_index = range.from.line_index + 1;
         let insert_count = range.to.line_index - range.from.line_index;
+        let pool = &mut self.line_pool;
         self.lines.splice(
             insert_index..insert_index,
-            iter::repeat(HighlightedLine::default()).take(insert_count),
+            iter::repeat_with(|| pool.rent()).take(insert_count),
         );
 
         for (bline, hline) in buffer
@@ -251,7 +283,9 @@ impl HighlightedBuffer {
 
     pub fn on_delete(&mut self, syntax: &Syntax, buffer: &BufferContent, range: BufferRange) {
         let previous_line_state = self.previous_line_state_at(range.from.line_index);
-        self.lines.drain(range.from.line_index..range.to.line_index);
+        for line in self.lines.drain(range.from.line_index..range.to.line_index) {
+            self.line_pool.dispose(line);
+        }
 
         let bline = buffer.line_at(range.from.line_index);
         let hline = &mut self.lines[range.from.line_index];
