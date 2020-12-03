@@ -55,7 +55,7 @@ impl Syntax {
     fn parse_line(
         &self,
         line: &str,
-        previous_line_kind: LineState,
+        previous_line_state: LineState,
         tokens: &mut Vec<Token>,
     ) -> LineState {
         tokens.clear();
@@ -71,7 +71,7 @@ impl Syntax {
         let line_len = line.len();
         let mut line_index = 0;
 
-        match previous_line_kind {
+        match previous_line_state {
             LineState::Finished => (),
             LineState::Unfinished(pattern_index, state) => {
                 match self.rules[pattern_index].1.matches_with_state(line, &state) {
@@ -211,15 +211,15 @@ impl HighlightedBuffer {
         self.lines
             .resize(buffer.line_count(), HighlightedLine::default());
 
-        let mut previous_line_kind = LineState::Finished;
+        let mut previous_line_state = LineState::Finished;
         for (bline, hline) in buffer.lines().zip(self.lines.iter_mut()) {
-            hline.state = syntax.parse_line(bline.as_str(), previous_line_kind, &mut hline.tokens);
-            previous_line_kind = hline.state;
+            hline.state = syntax.parse_line(bline.as_str(), previous_line_state, &mut hline.tokens);
+            previous_line_state = hline.state;
         }
     }
 
     pub fn on_insert(&mut self, syntax: &Syntax, buffer: &BufferContent, range: BufferRange) {
-        let mut previous_line_kind = self.previous_line_kind_at(range.from.line_index);
+        let mut previous_line_state = self.previous_line_state_at(range.from.line_index);
 
         let insert_index = range.from.line_index + 1;
         let insert_count = range.to.line_index - range.from.line_index;
@@ -234,26 +234,26 @@ impl HighlightedBuffer {
             .zip(self.lines[range.from.line_index..].iter_mut())
             .take(insert_count + 1)
         {
-            hline.state = syntax.parse_line(bline.as_str(), previous_line_kind, &mut hline.tokens);
-            previous_line_kind = hline.state;
+            hline.state = syntax.parse_line(bline.as_str(), previous_line_state, &mut hline.tokens);
+            previous_line_state = hline.state;
         }
 
-        self.fix_highlight_from(syntax, buffer, previous_line_kind, range.to.line_index + 1);
+        self.fix_highlight_from(syntax, buffer, previous_line_state, range.to.line_index + 1);
     }
 
     pub fn on_delete(&mut self, syntax: &Syntax, buffer: &BufferContent, range: BufferRange) {
-        let previous_line_kind = self.previous_line_kind_at(range.from.line_index);
+        let previous_line_state = self.previous_line_state_at(range.from.line_index);
         self.lines.drain(range.from.line_index..range.to.line_index);
 
         let bline = buffer.line_at(range.from.line_index);
         let hline = &mut self.lines[range.from.line_index];
-        hline.state = syntax.parse_line(bline.as_str(), previous_line_kind, &mut hline.tokens);
-        let previous_line_kind = hline.state;
+        hline.state = syntax.parse_line(bline.as_str(), previous_line_state, &mut hline.tokens);
+        let previous_line_state = hline.state;
 
-        self.fix_highlight_from(syntax, buffer, previous_line_kind, range.to.line_index + 1);
+        self.fix_highlight_from(syntax, buffer, previous_line_state, range.to.line_index + 1);
     }
 
-    fn previous_line_kind_at(&self, index: usize) -> LineState {
+    fn previous_line_state_at(&self, index: usize) -> LineState {
         match index.checked_sub(1) {
             Some(i) => self.lines[i].state,
             None => LineState::Finished,
@@ -264,7 +264,7 @@ impl HighlightedBuffer {
         &mut self,
         syntax: &Syntax,
         buffer: &BufferContent,
-        mut previous_line_kind: LineState,
+        mut previous_line_state: LineState,
         fix_from_index: usize,
     ) {
         if fix_from_index > self.lines.len() {
@@ -276,12 +276,12 @@ impl HighlightedBuffer {
             .skip(fix_from_index)
             .zip(self.lines[fix_from_index..].iter_mut())
         {
-            if previous_line_kind == LineState::Finished && hline.state == LineState::Finished {
+            if previous_line_state == LineState::Finished && hline.state == LineState::Finished {
                 break;
             }
 
-            hline.state = syntax.parse_line(bline.as_str(), previous_line_kind, &mut hline.tokens);
-            previous_line_kind = hline.state;
+            hline.state = syntax.parse_line(bline.as_str(), previous_line_state, &mut hline.tokens);
+            previous_line_state = hline.state;
         }
     }
 
@@ -322,9 +322,9 @@ mod tests {
         let syntax = Syntax::default();
         let mut tokens = Vec::new();
         let line = " fn main() ;  ";
-        let line_kind = syntax.parse_line(line, LineState::Finished, &mut tokens);
+        let line_state = syntax.parse_line(line, LineState::Finished, &mut tokens);
 
-        assert_eq!(LineState::Finished, line_kind);
+        assert_eq!(LineState::Finished, line_state);
         assert_eq!(1, tokens.len());
         assert_token(line, TokenKind::Text, line, &tokens[0]);
     }
@@ -336,9 +336,9 @@ mod tests {
 
         let mut tokens = Vec::new();
         let line = " fn main() ;  ";
-        let line_kind = syntax.parse_line(line, LineState::Finished, &mut tokens);
+        let line_state = syntax.parse_line(line, LineState::Finished, &mut tokens);
 
-        assert_eq!(LineState::Finished, line_kind);
+        assert_eq!(LineState::Finished, line_state);
         assert_eq!(6, tokens.len());
         assert_token(" fn", TokenKind::Text, line, &tokens[0]);
         assert_token(" main", TokenKind::Text, line, &tokens[1]);
@@ -357,9 +357,9 @@ mod tests {
 
         let mut tokens = Vec::new();
         let line = " fn main() ;  ";
-        let line_kind = syntax.parse_line(line, LineState::Finished, &mut tokens);
+        let line_state = syntax.parse_line(line, LineState::Finished, &mut tokens);
 
-        assert_eq!(LineState::Finished, line_kind);
+        assert_eq!(LineState::Finished, line_state);
         assert_eq!(6, tokens.len());
         assert_token(" fn", TokenKind::Keyword, line, &tokens[0]);
         assert_token(" main", TokenKind::Text, line, &tokens[1]);
