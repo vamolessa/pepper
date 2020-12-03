@@ -26,12 +26,12 @@ struct Token {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum LineKind {
+enum LineState {
     Finished,
     Unfinished(usize, PatternState),
 }
 
-impl Default for LineKind {
+impl Default for LineState {
     fn default() -> Self {
         Self::Finished
     }
@@ -55,9 +55,9 @@ impl Syntax {
     fn parse_line(
         &self,
         line: &str,
-        previous_line_kind: LineKind,
+        previous_line_kind: LineState,
         tokens: &mut Vec<Token>,
-    ) -> LineKind {
+    ) -> LineState {
         tokens.clear();
 
         if self.rules.len() == 0 {
@@ -65,15 +65,15 @@ impl Syntax {
                 kind: TokenKind::Text,
                 range: 0..line.len(),
             });
-            return LineKind::Finished;
+            return LineState::Finished;
         }
 
         let line_len = line.len();
         let mut line_index = 0;
 
         match previous_line_kind {
-            LineKind::Finished => (),
-            LineKind::Unfinished(pattern_index, state) => {
+            LineState::Finished => (),
+            LineState::Unfinished(pattern_index, state) => {
                 match self.rules[pattern_index].1.matches_with_state(line, &state) {
                     MatchResult::Ok(len) => {
                         tokens.push(Token {
@@ -88,7 +88,7 @@ impl Syntax {
                             kind: self.rules[pattern_index].0,
                             range: 0..line_len,
                         });
-                        return LineKind::Unfinished(pattern_index, state);
+                        return LineState::Unfinished(pattern_index, state);
                     }
                 }
             }
@@ -118,7 +118,7 @@ impl Syntax {
                             kind: *kind,
                             range: line_index..line_len,
                         });
-                        return LineKind::Unfinished(i, state);
+                        return LineState::Unfinished(i, state);
                     }
                 }
             }
@@ -149,7 +149,7 @@ impl Syntax {
             });
         }
 
-        LineKind::Finished
+        LineState::Finished
     }
 }
 
@@ -190,7 +190,7 @@ impl SyntaxCollection {
 
 #[derive(Default, Clone)]
 struct HighlightedLine {
-    kind: LineKind,
+    state: LineState,
     tokens: Vec<Token>,
 }
 
@@ -211,10 +211,10 @@ impl HighlightedBuffer {
         self.lines
             .resize(buffer.line_count(), HighlightedLine::default());
 
-        let mut previous_line_kind = LineKind::Finished;
+        let mut previous_line_kind = LineState::Finished;
         for (bline, hline) in buffer.lines().zip(self.lines.iter_mut()) {
-            hline.kind = syntax.parse_line(bline.as_str(), previous_line_kind, &mut hline.tokens);
-            previous_line_kind = hline.kind;
+            hline.state = syntax.parse_line(bline.as_str(), previous_line_kind, &mut hline.tokens);
+            previous_line_kind = hline.state;
         }
     }
 
@@ -234,8 +234,8 @@ impl HighlightedBuffer {
             .zip(self.lines[range.from.line_index..].iter_mut())
             .take(insert_count + 1)
         {
-            hline.kind = syntax.parse_line(bline.as_str(), previous_line_kind, &mut hline.tokens);
-            previous_line_kind = hline.kind;
+            hline.state = syntax.parse_line(bline.as_str(), previous_line_kind, &mut hline.tokens);
+            previous_line_kind = hline.state;
         }
 
         self.fix_highlight_from(syntax, buffer, previous_line_kind, range.to.line_index + 1);
@@ -247,16 +247,16 @@ impl HighlightedBuffer {
 
         let bline = buffer.line_at(range.from.line_index);
         let hline = &mut self.lines[range.from.line_index];
-        hline.kind = syntax.parse_line(bline.as_str(), previous_line_kind, &mut hline.tokens);
-        let previous_line_kind = hline.kind;
+        hline.state = syntax.parse_line(bline.as_str(), previous_line_kind, &mut hline.tokens);
+        let previous_line_kind = hline.state;
 
         self.fix_highlight_from(syntax, buffer, previous_line_kind, range.to.line_index + 1);
     }
 
-    fn previous_line_kind_at(&self, index: usize) -> LineKind {
+    fn previous_line_kind_at(&self, index: usize) -> LineState {
         match index.checked_sub(1) {
-            Some(i) => self.lines[i].kind,
-            None => LineKind::Finished,
+            Some(i) => self.lines[i].state,
+            None => LineState::Finished,
         }
     }
 
@@ -264,7 +264,7 @@ impl HighlightedBuffer {
         &mut self,
         syntax: &Syntax,
         buffer: &BufferContent,
-        mut previous_line_kind: LineKind,
+        mut previous_line_kind: LineState,
         fix_from_index: usize,
     ) {
         if fix_from_index > self.lines.len() {
@@ -276,12 +276,12 @@ impl HighlightedBuffer {
             .skip(fix_from_index)
             .zip(self.lines[fix_from_index..].iter_mut())
         {
-            if previous_line_kind == LineKind::Finished && hline.kind == LineKind::Finished {
+            if previous_line_kind == LineState::Finished && hline.state == LineState::Finished {
                 break;
             }
 
-            hline.kind = syntax.parse_line(bline.as_str(), previous_line_kind, &mut hline.tokens);
-            previous_line_kind = hline.kind;
+            hline.state = syntax.parse_line(bline.as_str(), previous_line_kind, &mut hline.tokens);
+            previous_line_kind = hline.state;
         }
     }
 
@@ -322,9 +322,9 @@ mod tests {
         let syntax = Syntax::default();
         let mut tokens = Vec::new();
         let line = " fn main() ;  ";
-        let line_kind = syntax.parse_line(line, LineKind::Finished, &mut tokens);
+        let line_kind = syntax.parse_line(line, LineState::Finished, &mut tokens);
 
-        assert_eq!(LineKind::Finished, line_kind);
+        assert_eq!(LineState::Finished, line_kind);
         assert_eq!(1, tokens.len());
         assert_token(line, TokenKind::Text, line, &tokens[0]);
     }
@@ -336,9 +336,9 @@ mod tests {
 
         let mut tokens = Vec::new();
         let line = " fn main() ;  ";
-        let line_kind = syntax.parse_line(line, LineKind::Finished, &mut tokens);
+        let line_kind = syntax.parse_line(line, LineState::Finished, &mut tokens);
 
-        assert_eq!(LineKind::Finished, line_kind);
+        assert_eq!(LineState::Finished, line_kind);
         assert_eq!(6, tokens.len());
         assert_token(" fn", TokenKind::Text, line, &tokens[0]);
         assert_token(" main", TokenKind::Text, line, &tokens[1]);
@@ -357,9 +357,9 @@ mod tests {
 
         let mut tokens = Vec::new();
         let line = " fn main() ;  ";
-        let line_kind = syntax.parse_line(line, LineKind::Finished, &mut tokens);
+        let line_kind = syntax.parse_line(line, LineState::Finished, &mut tokens);
 
-        assert_eq!(LineKind::Finished, line_kind);
+        assert_eq!(LineState::Finished, line_kind);
         assert_eq!(6, tokens.len());
         assert_token(" fn", TokenKind::Keyword, line, &tokens[0]);
         assert_token(" main", TokenKind::Text, line, &tokens[1]);
@@ -379,9 +379,9 @@ mod tests {
         let line1 = "only comment";
         let line2 = "still comment */ after";
 
-        let line0_kind = syntax.parse_line(line0, LineKind::Finished, &mut tokens);
+        let line0_kind = syntax.parse_line(line0, LineState::Finished, &mut tokens);
         match line0_kind {
-            LineKind::Unfinished(i, _) => assert_eq!(0, i),
+            LineState::Unfinished(i, _) => assert_eq!(0, i),
             _ => panic!("{:?}", line0_kind),
         }
         assert_eq!(2, tokens.len());
@@ -390,14 +390,14 @@ mod tests {
 
         let line1_kind = syntax.parse_line(line1, line0_kind, &mut tokens);
         match line1_kind {
-            LineKind::Unfinished(i, _) => assert_eq!(0, i),
+            LineState::Unfinished(i, _) => assert_eq!(0, i),
             _ => panic!("{:?}", line1_kind),
         }
         assert_eq!(1, tokens.len());
         assert_token("only comment", TokenKind::Comment, line1, &tokens[0]);
 
         let line2_kind = syntax.parse_line(line2, line1_kind, &mut tokens);
-        assert_eq!(LineKind::Finished, line2_kind);
+        assert_eq!(LineState::Finished, line2_kind);
         assert_eq!(2, tokens.len());
         assert_token("still comment */", TokenKind::Comment, line2, &tokens[0]);
         assert_token(" after", TokenKind::Text, line2, &tokens[1]);
