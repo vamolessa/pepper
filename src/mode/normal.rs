@@ -75,10 +75,9 @@ impl State {
         self.is_recording_auto_macro = false;
         match keys.next() {
             Key::Char('q') => {
-                if ctx.recording_macro.take().is_some() {
-                    *ctx.recording_macro = None;
-                } else {
-                    match keys.next() {
+                match ctx.recording_macro.take() {
+                    Some(k) => *ctx.recording_macro = None,
+                    None => match keys.next() {
                         Key::None => return ModeOperation::Pending,
                         Key::Char(c) => {
                             if let Some(key) = RegisterKey::from_char(c) {
@@ -87,7 +86,7 @@ impl State {
                             }
                         }
                         _ => (),
-                    }
+                    },
                 }
                 ModeOperation::None
             }

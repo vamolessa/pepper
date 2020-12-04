@@ -414,8 +414,15 @@ impl Editor {
                         }
                     }
 
-                    self.parse_and_set_keys_in_register(KEY_QUEUE_REGISTER);
-                    self.registers.set(KEY_QUEUE_REGISTER, "");
+                    match self.recording_macro {
+                        Some(KEY_QUEUE_REGISTER) => {
+                            self.buffered_keys.clear();
+                        }
+                        _ => {
+                            self.parse_and_set_keys_in_register(KEY_QUEUE_REGISTER);
+                            self.registers.set(KEY_QUEUE_REGISTER, "");
+                        }
+                    }
                     if self.buffered_keys.is_empty() {
                         break;
                     }
