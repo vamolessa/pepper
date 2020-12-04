@@ -964,6 +964,7 @@ mod tests {
         assert_eq!(MatchResult::Err, p.matches("a"));
         assert_eq!(MatchResult::Ok(2), p.matches("ad"));
         assert_eq!(MatchResult::Ok(3), p.matches("abd"));
+        assert_eq!(MatchResult::Ok(3), p.matches("acd"));
         assert_eq!(MatchResult::Ok(4), p.matches("abcd"));
         assert_eq!(MatchResult::Ok(5), p.matches("abcbd"));
         assert_eq!(MatchResult::Ok(6), p.matches("abcbcd"));
