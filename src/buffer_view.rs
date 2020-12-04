@@ -408,7 +408,6 @@ impl BufferViewCollection {
         &mut self,
         buffers: &mut BufferCollection,
         word_database: &mut WordDatabase,
-        syntaxes: &SyntaxCollection,
         handle: BufferViewHandle,
         position: BufferPosition,
         text: &str,
@@ -423,7 +422,7 @@ impl BufferViewCollection {
         };
 
         self.fix_cursor_ranges.clear();
-        let range = buffer.insert_text(word_database, syntaxes, position, text);
+        let range = buffer.insert_text(word_database, position, text);
         self.fix_cursor_ranges.push(range);
 
         let current_buffer_handle = current_view.buffer_handle;
@@ -434,7 +433,6 @@ impl BufferViewCollection {
         &mut self,
         buffers: &mut BufferCollection,
         word_database: &mut WordDatabase,
-        syntaxes: &SyntaxCollection,
         handle: BufferViewHandle,
         text: &str,
     ) {
@@ -449,7 +447,7 @@ impl BufferViewCollection {
 
         self.fix_cursor_ranges.clear();
         for cursor in current_view.cursors[..].iter().rev() {
-            let range = buffer.insert_text(word_database, syntaxes, cursor.position, text);
+            let range = buffer.insert_text(word_database, cursor.position, text);
             self.fix_cursor_ranges.push(range);
         }
 
@@ -461,7 +459,6 @@ impl BufferViewCollection {
         &mut self,
         buffers: &mut BufferCollection,
         word_database: &mut WordDatabase,
-        syntaxes: &SyntaxCollection,
         handle: BufferViewHandle,
         range: BufferRange,
     ) {
@@ -476,7 +473,7 @@ impl BufferViewCollection {
 
         self.fix_cursor_ranges.clear();
         self.fix_cursor_ranges.push(range);
-        buffer.delete_range(word_database, syntaxes, range);
+        buffer.delete_range(word_database, range);
 
         let current_buffer_handle = current_view.buffer_handle;
         self.fix_buffer_cursors(current_buffer_handle, |cursor, range| cursor.delete(range));
@@ -486,7 +483,6 @@ impl BufferViewCollection {
         &mut self,
         buffers: &mut BufferCollection,
         word_database: &mut WordDatabase,
-        syntaxes: &SyntaxCollection,
         handle: BufferViewHandle,
     ) {
         let current_view = match &mut self.buffer_views[handle.0] {
@@ -501,7 +497,7 @@ impl BufferViewCollection {
         self.fix_cursor_ranges.clear();
         for cursor in current_view.cursors[..].iter().rev() {
             let range = cursor.as_range();
-            buffer.delete_range(word_database, syntaxes, range);
+            buffer.delete_range(word_database, range);
             self.fix_cursor_ranges.push(range);
         }
 
@@ -513,7 +509,6 @@ impl BufferViewCollection {
         &mut self,
         buffers: &mut BufferCollection,
         word_database: &mut WordDatabase,
-        syntaxes: &SyntaxCollection,
         handle: BufferViewHandle,
         completion: &str,
     ) {
@@ -536,11 +531,10 @@ impl BufferViewCollection {
 
             if let WordKind::Identifier = word_kind {
                 let range = BufferRange::between(word_position, cursor.position);
-                buffer.delete_range(word_database, syntaxes, range);
+                buffer.delete_range(word_database, range);
             }
 
-            let insert_range =
-                buffer.insert_text(word_database, syntaxes, word_position, completion);
+            let insert_range = buffer.insert_text(word_database, word_position, completion);
             let mut range = BufferRange::between(cursor.position, insert_range.to);
             if cursor.position > insert_range.to {
                 std::mem::swap(&mut range.from, &mut range.to);
@@ -578,31 +572,21 @@ impl BufferViewCollection {
         }
     }
 
-    pub fn undo(
-        &mut self,
-        buffers: &mut BufferCollection,
-        syntaxes: &SyntaxCollection,
-        handle: BufferViewHandle,
-    ) {
+    pub fn undo(&mut self, buffers: &mut BufferCollection, handle: BufferViewHandle) {
         if let Some(buffer) = self.buffer_views[handle.0]
             .as_mut()
             .and_then(|view| buffers.get_mut(view.buffer_handle))
         {
-            self.apply_edits(handle, true, buffer.undo(syntaxes));
+            self.apply_edits(handle, true, buffer.undo());
         }
     }
 
-    pub fn redo(
-        &mut self,
-        buffers: &mut BufferCollection,
-        syntaxes: &SyntaxCollection,
-        handle: BufferViewHandle,
-    ) {
+    pub fn redo(&mut self, buffers: &mut BufferCollection, handle: BufferViewHandle) {
         if let Some(buffer) = self.buffer_views[handle.0]
             .as_mut()
             .and_then(|view| buffers.get_mut(view.buffer_handle))
         {
-            self.apply_edits(handle, false, buffer.redo(syntaxes));
+            self.apply_edits(handle, false, buffer.redo());
         }
     }
 
@@ -741,7 +725,7 @@ impl BufferViewCollection {
             let (buffer_handle, buffer) = buffers.new(events);
             buffer.capabilities().text();
             buffer.set_path(syntaxes, Some(path));
-            let _ = buffer.discard_and_reload_from_file(syntaxes);
+            let _ = buffer.discard_and_reload_from_file();
 
             let buffer_view = BufferView::new(target_client, buffer_handle);
             let handle = self.add(buffer_view);
@@ -760,7 +744,6 @@ mod tests {
 
     struct TestContext {
         pub word_database: WordDatabase,
-        pub syntaxes: SyntaxCollection,
         pub buffers: BufferCollection,
         pub buffer_views: BufferViewCollection,
         pub buffer_view_handle: BufferViewHandle,
@@ -770,17 +753,11 @@ mod tests {
         pub fn with_buffer(text: &str) -> Self {
             let mut events = EditorEventQueue::default();
             let mut word_database = WordDatabase::new();
-            let syntaxes = SyntaxCollection::new();
 
             let mut buffers = BufferCollection::default();
             let (buffer_handle, buffer) = buffers.new(&mut events);
             buffer.capabilities().text();
-            buffer.insert_text(
-                &mut word_database,
-                &syntaxes,
-                BufferPosition::line_col(0, 0),
-                text,
-            );
+            buffer.insert_text(&mut word_database, BufferPosition::line_col(0, 0), text);
 
             let buffer_view = BufferView::new(TargetClient::Local, buffer_handle);
 
@@ -789,7 +766,6 @@ mod tests {
 
             Self {
                 word_database,
-                syntaxes,
                 buffers,
                 buffer_views,
                 buffer_view_handle,
@@ -809,7 +785,6 @@ mod tests {
         ctx.buffer_views.insert_text_at_cursor_positions(
             &mut ctx.buffers,
             &mut ctx.word_database,
-            &ctx.syntaxes,
             ctx.buffer_view_handle,
             "ç",
         );

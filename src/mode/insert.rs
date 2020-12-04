@@ -63,7 +63,6 @@ impl ModeState for State {
             Key::Tab => ctx.buffer_views.insert_text_at_cursor_positions(
                 ctx.buffers,
                 ctx.word_database,
-                &ctx.config.syntaxes,
                 handle,
                 "\t",
             ),
@@ -93,7 +92,6 @@ impl ModeState for State {
                     ctx.buffer_views.insert_text_at_position(
                         ctx.buffers,
                         ctx.word_database,
-                        &ctx.config.syntaxes,
                         handle,
                         position,
                         text.as_str(),
@@ -106,7 +104,6 @@ impl ModeState for State {
                 ctx.buffer_views.insert_text_at_cursor_positions(
                     ctx.buffers,
                     ctx.word_database,
-                    &ctx.config.syntaxes,
                     handle,
                     s,
                 );
@@ -117,12 +114,8 @@ impl ModeState for State {
                     CursorMovement::ColumnsBackward(1),
                     CursorMovementKind::PositionOnly,
                 );
-                ctx.buffer_views.delete_in_cursor_ranges(
-                    ctx.buffers,
-                    ctx.word_database,
-                    &ctx.config.syntaxes,
-                    handle,
-                );
+                ctx.buffer_views
+                    .delete_in_cursor_ranges(ctx.buffers, ctx.word_database, handle);
             }
             Key::Delete => {
                 unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
@@ -130,12 +123,8 @@ impl ModeState for State {
                     CursorMovement::ColumnsForward(1),
                     CursorMovementKind::PositionOnly,
                 );
-                ctx.buffer_views.delete_in_cursor_ranges(
-                    ctx.buffers,
-                    ctx.word_database,
-                    &ctx.config.syntaxes,
-                    handle,
-                );
+                ctx.buffer_views
+                    .delete_in_cursor_ranges(ctx.buffers, ctx.word_database, handle);
             }
             Key::Ctrl('w') => {
                 unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
@@ -143,12 +132,8 @@ impl ModeState for State {
                     CursorMovement::WordsBackward(1),
                     CursorMovementKind::PositionOnly,
                 );
-                ctx.buffer_views.delete_in_cursor_ranges(
-                    ctx.buffers,
-                    ctx.word_database,
-                    &ctx.config.syntaxes,
-                    handle,
-                );
+                ctx.buffer_views
+                    .delete_in_cursor_ranges(ctx.buffers, ctx.word_database, handle);
             }
             Key::Ctrl('n') => {
                 apply_completion(ctx, handle, 1);
@@ -192,12 +177,7 @@ impl ModeState for State {
 fn apply_completion(ctx: &mut ModeContext, handle: BufferViewHandle, cursor_movement: isize) {
     ctx.picker.move_cursor(cursor_movement);
     if let Some(entry) = ctx.picker.current_entry(ctx.word_database) {
-        ctx.buffer_views.apply_completion(
-            ctx.buffers,
-            ctx.word_database,
-            &ctx.config.syntaxes,
-            handle,
-            entry.name,
-        );
+        ctx.buffer_views
+            .apply_completion(ctx.buffers, ctx.word_database, handle, entry.name);
     }
 }

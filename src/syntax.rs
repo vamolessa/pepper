@@ -27,13 +27,14 @@ struct Token {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LineState {
+    Dirty,
     Finished,
     Unfinished(usize, PatternState),
 }
 
 impl Default for LineState {
     fn default() -> Self {
-        Self::Finished
+        Self::Dirty
     }
 }
 
@@ -72,7 +73,7 @@ impl Syntax {
         let mut line_index = 0;
 
         match previous_line_state {
-            LineState::Finished => (),
+            LineState::Dirty | LineState::Finished => (),
             LineState::Unfinished(pattern_index, state) => {
                 match self.rules[pattern_index].1.matches_with_state(line, &state) {
                     MatchResult::Ok(len) => {
@@ -206,7 +207,7 @@ impl HighlightedLinePool {
         match self.pool.pop() {
             Some(mut line) => {
                 line.tokens.clear();
-                line.state = LineState::Finished;
+                line.state = LineState::Dirty;
                 line
             }
             None => HighlightedLine::default(),
@@ -246,20 +247,8 @@ impl HighlightedBuffer {
         self.lines.push(self.line_pool.rent());
     }
 
-    pub fn highligh_all(&mut self, syntax: &Syntax, buffer: &BufferContent) {
-        let pool = &mut self.line_pool;
-        self.lines.resize_with(buffer.line_count(), || pool.rent());
-
-        let mut previous_line_state = LineState::Finished;
-        for (bline, hline) in buffer.lines().zip(self.lines.iter_mut()) {
-            hline.state = syntax.parse_line(bline.as_str(), previous_line_state, &mut hline.tokens);
-            previous_line_state = hline.state;
-        }
-    }
-
-    pub fn on_insert(&mut self, syntax: &Syntax, buffer: &BufferContent, range: BufferRange) {
-        let mut previous_line_state = self.previous_line_state_at(range.from.line_index);
-
+    pub fn on_insert(&mut self, range: BufferRange) {
+        self.lines[range.from.line_index].state = LineState::Dirty;
         let insert_index = range.from.line_index + 1;
         let insert_count = range.to.line_index - range.from.line_index;
         let pool = &mut self.line_pool;
@@ -267,62 +256,44 @@ impl HighlightedBuffer {
             insert_index..insert_index,
             iter::repeat_with(|| pool.rent()).take(insert_count),
         );
-
-        for (bline, hline) in buffer
-            .lines()
-            .skip(range.from.line_index)
-            .zip(self.lines[range.from.line_index..].iter_mut())
-            .take(insert_count + 1)
-        {
-            hline.state = syntax.parse_line(bline.as_str(), previous_line_state, &mut hline.tokens);
-            previous_line_state = hline.state;
-        }
-
-        self.fix_highlight_from(syntax, buffer, previous_line_state, range.to.line_index + 1);
     }
 
-    pub fn on_delete(&mut self, syntax: &Syntax, buffer: &BufferContent, range: BufferRange) {
-        let previous_line_state = self.previous_line_state_at(range.from.line_index);
+    pub fn on_delete(&mut self, range: BufferRange) {
         for line in self.lines.drain(range.from.line_index..range.to.line_index) {
             self.line_pool.dispose(line);
         }
 
-        let bline = buffer.line_at(range.from.line_index);
-        let hline = &mut self.lines[range.from.line_index];
-        hline.state = syntax.parse_line(bline.as_str(), previous_line_state, &mut hline.tokens);
-        let previous_line_state = hline.state;
-
-        self.fix_highlight_from(syntax, buffer, previous_line_state, range.to.line_index + 1);
+        self.lines[range.from.line_index].state = LineState::Dirty;
     }
 
-    fn previous_line_state_at(&self, index: usize) -> LineState {
-        match index.checked_sub(1) {
-            Some(i) => self.lines[i].state,
-            None => LineState::Finished,
-        }
-    }
-
-    fn fix_highlight_from(
+    pub fn highlight_range(
         &mut self,
         syntax: &Syntax,
         buffer: &BufferContent,
-        mut previous_line_state: LineState,
-        fix_from_index: usize,
+        index: usize,
+        len: usize,
     ) {
-        if fix_from_index > self.lines.len() {
-            return;
+        let min_len = index + len;
+        if self.lines.len() < min_len {
+            let pool = &mut self.line_pool;
+            self.lines.resize_with(min_len, || pool.rent());
         }
+
+        let mut previous_line_state = match index.checked_sub(1) {
+            Some(i) => self.lines[i].state,
+            None => LineState::Finished,
+        };
 
         for (bline, hline) in buffer
             .lines()
-            .skip(fix_from_index)
-            .zip(self.lines[fix_from_index..].iter_mut())
+            .zip(self.lines.iter_mut())
+            .skip(index)
+            .take(len)
         {
-            if previous_line_state == LineState::Finished && hline.state == LineState::Finished {
-                break;
+            if hline.state == LineState::Dirty || previous_line_state == LineState::Dirty {
+                hline.state =
+                    syntax.parse_line(bline.as_str(), previous_line_state, &mut hline.tokens);
             }
-
-            hline.state = syntax.parse_line(bline.as_str(), previous_line_state, &mut hline.tokens);
             previous_line_state = hline.state;
         }
     }
@@ -468,7 +439,9 @@ mod tests {
         buffer.insert_text(&mut line_pool, BufferPosition::line_col(0, 0), "/*\n*/");
 
         let mut highlighted = HighlightedBuffer::new();
-        highlighted.highligh_all(&syntax, &buffer);
+        highlighted.highlight_range(&syntax, &buffer, 0, buffer.line_count());
+
+        assert_eq!(buffer.line_count(), highlighted.lines.len());
 
         let mut tokens = highlighted.lines.iter().map(|l| l.tokens.iter()).flatten();
         assert_next_token!(tokens, TokenKind::Comment, 0..2);
@@ -476,7 +449,8 @@ mod tests {
         assert_eq!(None, tokens.next());
 
         let range = buffer.insert_text(&mut line_pool, BufferPosition::line_col(1, 0), "'");
-        highlighted.on_insert(&syntax, &buffer, range);
+        highlighted.on_insert(range);
+        highlighted.highlight_range(&syntax, &buffer, 0, buffer.line_count());
 
         let mut tokens = highlighted.lines.iter().map(|l| l.tokens.iter()).flatten();
         assert_next_token!(tokens, TokenKind::Comment, 0..2);

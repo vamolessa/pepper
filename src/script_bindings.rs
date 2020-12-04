@@ -680,7 +680,7 @@ mod buffer {
         };
 
         ctx.buffers
-            .save_to_file(handle, path, ctx.events)
+            .save_to_file(&ctx.config.syntaxes, handle, path, ctx.events)
             .map_err(ScriptError::from)?;
 
         match ctx.buffers.get(handle) {
@@ -718,7 +718,7 @@ mod buffer {
         _: (),
     ) -> ScriptResult<()> {
         ctx.buffers
-            .save_all_to_file(ctx.events)
+            .save_all_to_file(&ctx.config.syntaxes, ctx.events)
             .map_err(ScriptError::from)?;
         let buffer_count = ctx.buffers.iter().count();
         ctx.status_message.write_fmt(
@@ -749,7 +749,7 @@ mod buffer {
                 return Ok(());
             }
 
-            match buffer.discard_and_reload_from_file(&ctx.config.syntaxes) {
+            match buffer.discard_and_reload_from_file() {
                 Ok(()) => ctx
                     .status_message
                     .write_str(StatusMessageKind::Info, "reloaded"),
@@ -773,7 +773,7 @@ mod buffer {
             .or_else(|| current_handle)
             .and_then(|h| buffers.get_mut(h))
         {
-            match buffer.discard_and_reload_from_file(&ctx.config.syntaxes) {
+            match buffer.discard_and_reload_from_file() {
                 Ok(()) => ctx
                     .status_message
                     .write_str(StatusMessageKind::Info, "reloaded"),
@@ -802,7 +802,7 @@ mod buffer {
             let mut had_error = false;
             let mut buffer_count = 0;
             for buffer in ctx.buffers.iter_mut() {
-                if let Err(error) = buffer.discard_and_reload_from_file(&ctx.config.syntaxes) {
+                if let Err(error) = buffer.discard_and_reload_from_file() {
                     had_error = true;
                     ctx.status_message
                         .write_str(StatusMessageKind::Error, &error);
@@ -828,7 +828,7 @@ mod buffer {
         let mut had_error = false;
         let mut buffer_count = 0;
         for buffer in ctx.buffers.iter_mut() {
-            if let Err(error) = buffer.discard_and_reload_from_file(&ctx.config.syntaxes) {
+            if let Err(error) = buffer.discard_and_reload_from_file() {
                 had_error = true;
                 ctx.status_message
                     .write_str(StatusMessageKind::Error, &error);
@@ -985,7 +985,6 @@ mod buffer_view {
             ctx.buffer_views.insert_text_at_cursor_positions(
                 ctx.buffers,
                 ctx.word_database,
-                &ctx.config.syntaxes,
                 handle,
                 text,
             );
@@ -1005,7 +1004,6 @@ mod buffer_view {
             ctx.buffer_views.insert_text_at_position(
                 ctx.buffers,
                 ctx.word_database,
-                &ctx.config.syntaxes,
                 handle,
                 BufferPosition::line_col(line, column),
                 text,
@@ -1022,12 +1020,8 @@ mod buffer_view {
         handle: Option<BufferViewHandle>,
     ) -> ScriptResult<()> {
         if let Some(handle) = handle.or_else(|| ctx.current_buffer_view_handle()) {
-            ctx.buffer_views.delete_in_cursor_ranges(
-                ctx.buffers,
-                ctx.word_database,
-                &ctx.config.syntaxes,
-                handle,
-            );
+            ctx.buffer_views
+                .delete_in_cursor_ranges(ctx.buffers, ctx.word_database, handle);
             ctx.edited_buffers = true;
         }
         Ok(())
@@ -1049,7 +1043,6 @@ mod buffer_view {
             ctx.buffer_views.delete_in_range(
                 ctx.buffers,
                 ctx.word_database,
-                &ctx.config.syntaxes,
                 handle,
                 BufferRange::between(
                     BufferPosition::line_col(from_line, from_column),
@@ -1068,8 +1061,7 @@ mod buffer_view {
         handle: Option<BufferViewHandle>,
     ) -> ScriptResult<()> {
         if let Some(handle) = handle.or_else(|| ctx.current_buffer_view_handle()) {
-            ctx.buffer_views
-                .undo(ctx.buffers, &ctx.config.syntaxes, handle);
+            ctx.buffer_views.undo(ctx.buffers, handle);
         }
         Ok(())
     }
@@ -1081,8 +1073,7 @@ mod buffer_view {
         handle: Option<BufferViewHandle>,
     ) -> ScriptResult<()> {
         if let Some(handle) = handle.or_else(|| ctx.current_buffer_view_handle()) {
-            ctx.buffer_views
-                .redo(ctx.buffers, &ctx.config.syntaxes, handle);
+            ctx.buffer_views.redo(ctx.buffers, handle);
         }
         Ok(())
     }

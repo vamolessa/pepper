@@ -437,7 +437,20 @@ impl Editor {
         self.picker
             .update_scroll(self.config.values.picker_max_height.get() as _);
         for c in clients.client_refs() {
-            c.client.update_view(self, self.focused_client == c.target);
+            let target = c.target;
+            let client = c.client;
+            client.update_view(self, self.focused_client == target);
+
+            let buffer_views = &self.buffer_views;
+            let buffers = &mut self.buffers;
+            if let Some(buffer) = client
+                .current_buffer_view_handle()
+                .and_then(|h| buffer_views.get(h))
+                .map(|v| v.buffer_handle)
+                .and_then(|h| buffers.get_mut(h))
+            {
+                buffer.highlight_range(&self.config.syntaxes, client.scroll, client.height as _);
+            }
         }
 
         result
