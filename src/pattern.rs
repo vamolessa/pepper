@@ -943,8 +943,10 @@ mod tests {
     #[test]
     fn test_repeat() {
         let p = Pattern::new("{a}").unwrap();
+        assert_eq!(MatchResult::Ok(0), p.matches(""));
         assert_eq!(MatchResult::Ok(1), p.matches("a"));
         assert_eq!(MatchResult::Ok(4), p.matches("aaaa"));
+        assert_eq!(MatchResult::Ok(0), p.matches("b"));
 
         let p = Pattern::new("{a}b").unwrap();
         assert_eq!(MatchResult::Ok(2), p.matches("ab"));
@@ -965,6 +967,12 @@ mod tests {
         assert_eq!(MatchResult::Ok(4), p.matches("abcd"));
         assert_eq!(MatchResult::Ok(5), p.matches("abcbd"));
         assert_eq!(MatchResult::Ok(6), p.matches("abcbcd"));
+
+        let p = Pattern::new("a{b!c}d").unwrap();
+        assert_eq!(MatchResult::Err, p.matches("ad"));
+        assert_eq!(MatchResult::Err, p.matches("abd"));
+        assert_eq!(MatchResult::Ok(3), p.matches("acd"));
+        assert_eq!(MatchResult::Ok(5), p.matches("abbcd"));
     }
 
     #[test]
