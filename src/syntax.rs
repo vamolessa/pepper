@@ -279,6 +279,7 @@ impl HighlightedBuffer {
             self.lines.resize_with(min_len, || pool.rent());
         }
 
+        let mut state_changed = false;
         let mut previous_line_state = match index.checked_sub(1) {
             Some(i) => self.lines[i].state,
             None => LineState::Finished,
@@ -290,9 +291,13 @@ impl HighlightedBuffer {
             .skip(index)
             .take(len)
         {
-            if hline.state != LineState::Finished || previous_line_state != LineState::Finished {
-                hline.state =
+            if hline.state == LineState::Dirty || state_changed {
+                let state =
                     syntax.parse_line(bline.as_str(), previous_line_state, &mut hline.tokens);
+                state_changed = state != hline.state;
+                if state_changed {
+                    hline.state = state;
+                }
             }
             previous_line_state = hline.state;
         }
