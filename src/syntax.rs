@@ -290,7 +290,7 @@ impl HighlightedBuffer {
             .skip(index)
             .take(len)
         {
-            if hline.state == LineState::Dirty || previous_line_state == LineState::Dirty {
+            if hline.state != LineState::Finished || previous_line_state != LineState::Finished {
                 hline.state =
                     syntax.parse_line(bline.as_str(), previous_line_state, &mut hline.tokens);
             }
