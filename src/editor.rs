@@ -18,6 +18,7 @@ use crate::{
     picker::Picker,
     register::{RegisterCollection, RegisterKey, KEY_QUEUE_REGISTER},
     script::ScriptEngine,
+    task::{TaskHandle, TaskManager, TaskResult},
     word_database::WordDatabase,
 };
 
@@ -207,6 +208,7 @@ pub struct Editor {
 
     pub focused_client: TargetClient,
     pub status_message: StatusMessage,
+    pub tasks: TaskManager,
     pub lsp: LspClientCollection,
 
     events: EditorEventDoubleQueue,
@@ -215,7 +217,7 @@ pub struct Editor {
     client_target_map: ClientTargetMap,
 }
 impl Editor {
-    pub fn new(current_directory: PathBuf, lsp: LspClientCollection) -> Self {
+    pub fn new(current_directory: PathBuf, tasks: TaskManager, lsp: LspClientCollection) -> Self {
         Self {
             current_directory,
             config: Config::default(),
@@ -233,6 +235,7 @@ impl Editor {
 
             focused_client: TargetClient::Local,
             status_message: StatusMessage::new(),
+            tasks,
             lsp,
 
             events: EditorEventDoubleQueue::default(),
@@ -344,7 +347,7 @@ impl Editor {
                         .write_str(StatusMessageKind::Error, &error),
                 }
 
-                self.trigger_event_handlers(clients);
+                self.trigger_event_handlers(clients, target_client);
                 EditorLoop::Continue
             }
             ClientEvent::Key(key) => {
@@ -429,7 +432,7 @@ impl Editor {
                 }
 
                 self.buffered_keys.clear();
-                self.trigger_event_handlers(clients);
+                self.trigger_event_handlers(clients, target_client);
                 EditorLoop::Continue
             }
             ClientEvent::Resize(width, height) => {
@@ -528,9 +531,13 @@ impl Editor {
         }
     }
 
-    fn trigger_event_handlers(&mut self, clients: &mut ClientCollection) {
+    fn trigger_event_handlers(
+        &mut self,
+        clients: &mut ClientCollection,
+        target_client: TargetClient,
+    ) {
         self.events.flip();
-        let (mode, _, events, mut mode_ctx) = self.mode_context(clients, TargetClient::Local);
+        let (mode, _, events, mut mode_ctx) = self.mode_context(clients, target_client);
 
         if let None = events.into_iter().next() {
             return;
@@ -566,6 +573,20 @@ impl Editor {
                 }
                 _ => (),
             }
+        }
+    }
+
+    pub fn on_task_event(
+        &mut self,
+        clients: &mut ClientCollection,
+        target_client: TargetClient,
+        handle: TaskHandle,
+        result: TaskResult,
+    ) {
+        let (_, _, _, mut mode_ctx) = self.mode_context(clients, target_client);
+        let (scripts, _, mut script_ctx) = mode_ctx.script_context();
+        if let Err(error) = scripts.on_task_event(&mut script_ctx, handle, &result) {
+            script_ctx.status_message.write_error(&error);
         }
     }
 

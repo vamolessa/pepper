@@ -7,6 +7,7 @@ use crate::{
     editor::{Editor, EditorLoop},
     event_manager::{ConnectionEvent, EventManager},
     lsp::LspClientCollection,
+    task::TaskManager,
     ui::{self, Ui, UiKind, UiResult},
     Args,
 };
@@ -159,8 +160,9 @@ where
     let (event_sender, event_receiver) = mpsc::channel();
 
     let current_dir = env::current_dir().map_err(Box::new)?;
+    let tasks = TaskManager::new(event_sender.clone());
     let lsp = LspClientCollection::new(event_sender.clone());
-    let mut editor = Editor::new(current_dir, lsp);
+    let mut editor = Editor::new(current_dir, tasks, lsp);
     let mut clients = ClientCollection::default();
 
     for config in &args.config {
@@ -231,6 +233,9 @@ where
                     }
                 }
                 connections.unregister_closed_connections(&event_registry)?;
+            }
+            LocalEvent::TaskEvent(client, handle, result) => {
+                editor.on_task_event(&mut clients, client, handle, result);
             }
             LocalEvent::Lsp(handle, event) => {
                 editor.on_lsp_event(handle, event);
@@ -312,7 +317,7 @@ where
 
                 profiler.end_frame();
             }
-            LocalEvent::Lsp(_, _) => (),
+            _ => unreachable!(),
         }
     }
 

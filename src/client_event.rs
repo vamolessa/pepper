@@ -1,6 +1,7 @@
 use std::{error::Error, fmt, str::Chars};
 
 use crate::{
+    task::{TaskHandle, TaskResult},
     client::TargetClient,
     event_manager::ConnectionEvent,
     lsp::{LspClientHandle, LspServerEvent},
@@ -17,6 +18,7 @@ pub enum LocalEvent {
     Key(Key),
     Resize(u16, u16),
     Connection(ConnectionEvent),
+    TaskEvent(TargetClient, TaskHandle, TaskResult),
     Lsp(LspClientHandle, LspServerEvent),
 }
 

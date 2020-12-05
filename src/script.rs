@@ -22,6 +22,7 @@ use crate::{
     picker::Picker,
     register::RegisterCollection,
     script_bindings,
+    task::{TaskHandle, TaskResult},
     word_database::WordDatabase,
 };
 
@@ -613,6 +614,31 @@ impl ScriptEngine {
                 EditorEvent::BufferClose { handle } => call!(buffer_on_close, *handle),
             }
         }
+        drop(s);
+        Ok(())
+    }
+
+    pub fn on_task_event(
+        &mut self,
+        ctx: &mut ScriptContext,
+        handle: TaskHandle,
+        result: &TaskResult,
+    ) -> ScriptResult<()> {
+        let s = ScriptContextRegistryScope::new(&self.lua, ctx)?;
+        let engine = ScriptEngineRef::from_lua(&self.lua);
+        let mut guard = ScriptContextGuard(());
+
+        let callback_index = handle.into_index();
+
+        if let Ok(callbacks) = engine.lua.named_registry_value("task_callbacks") {
+            let callbacks: LuaTable = callbacks;
+            let callback: Option<ScriptFunction> = callbacks.get(callback_index)?;
+            if let Some(callback) = callback {
+                callback.call(&mut guard, result.to_script_value(engine)?)?;
+            }
+            callbacks.set(callback_index, LuaValue::Nil)?;
+        }
+
         drop(s);
         Ok(())
     }
