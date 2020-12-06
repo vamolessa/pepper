@@ -257,6 +257,31 @@ impl Editor {
         mode.change_to(&mut mode_ctx, next_mode);
     }
 
+    pub fn on_pre_render(&mut self, clients: &mut ClientCollection) {
+        self.picker.update_scroll_and_unfiltered_entries(
+            self.config.values.picker_max_height.get() as _,
+            &EmptyWordCollection,
+            self.read_line.input(),
+        );
+
+        for c in clients.client_refs() {
+            let target = c.target;
+            let client = c.client;
+            client.update_view(self, self.focused_client == target);
+
+            let buffer_views = &self.buffer_views;
+            let buffers = &mut self.buffers;
+            if let Some(buffer) = client
+                .current_buffer_view_handle()
+                .and_then(|h| buffer_views.get(h))
+                .map(|v| v.buffer_handle)
+                .and_then(|h| buffers.get_mut(h))
+            {
+                buffer.highlight_range(&self.config.syntaxes, client.scroll, client.height as _);
+            }
+        }
+    }
+
     pub fn on_client_joined(
         &mut self,
         clients: &mut ClientCollection,
@@ -443,29 +468,6 @@ impl Editor {
                 EditorLoop::Continue
             }
         };
-
-        self.picker.update_scroll_and_unfiltered_entries(
-            self.config.values.picker_max_height.get() as _,
-            &EmptyWordCollection,
-            self.read_line.prompt(),
-        );
-
-        for c in clients.client_refs() {
-            let target = c.target;
-            let client = c.client;
-            client.update_view(self, self.focused_client == target);
-
-            let buffer_views = &self.buffer_views;
-            let buffers = &mut self.buffers;
-            if let Some(buffer) = client
-                .current_buffer_view_handle()
-                .and_then(|h| buffer_views.get(h))
-                .map(|v| v.buffer_handle)
-                .and_then(|h| buffers.get_mut(h))
-            {
-                buffer.highlight_range(&self.config.syntaxes, client.scroll, client.height as _);
-            }
-        }
 
         result
     }

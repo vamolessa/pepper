@@ -102,7 +102,6 @@ impl Picker {
         }
 
         if self.has_unfiltered_entries {
-            eprintln!("has unfiltered entries! refilter with {}", pattern);
             self.filter(words, pattern);
         }
     }
@@ -132,6 +131,7 @@ impl Picker {
     }
 
     pub fn clear_filtered(&mut self) {
+        self.has_unfiltered_entries = false;
         self.filtered_entries.clear();
         self.cursor = 0;
         self.scroll = 0;

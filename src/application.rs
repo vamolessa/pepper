@@ -136,6 +136,8 @@ fn render_clients<I>(
 where
     I: Ui,
 {
+    editor.on_pre_render(clients);
+
     for c in clients.client_refs() {
         c.ui.render(editor, c.client, c.target, c.buffer);
         match c.target {
