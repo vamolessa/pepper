@@ -459,8 +459,7 @@ where
     let scroll = editor.picker.scroll();
 
     let half_width = client_view.client.viewport_size.0 / 2;
-    let half_width = half_width.saturating_sub(1);
-    let tab_size = editor.config.values.tab_size.get() as u16;
+    let half_width = half_width.saturating_sub(1) as usize;
 
     let height = editor
         .picker
@@ -491,37 +490,41 @@ where
 
         macro_rules! print_char {
             ($c:expr) => {
+                x += 1;
                 match $c {
-                    '\t' => {
-                        let next_tab_stop = tab_size - x % tab_size;
-                        x += next_tab_stop;
-                        if x > half_width {
-                            break;
-                        }
-
-                        for _ in 0..next_tab_stop {
-                            write_command!(write, Print(editor.config.values.visual_tab_repeat));
-                        }
-                    }
-                    c => {
-                        x += 1;
-                        if x > half_width {
-                            break;
-                        }
-                        write_command!(write, Print(c));
-                    }
+                    '\t' => write_command!(write, Print(' ')),
+                    c => write_command!(write, Print(c)),
                 }
             };
         }
 
-        for c in entry.name.chars() {
-            print_char!(c);
+        let name_char_count = entry.name.chars().count();
+        if name_char_count < half_width {
+            for c in entry.name.chars() {
+                print_char!(c);
+            }
+        } else {
+            write_command!(write, Print("..."));
+            x += 3;
+            let name_char_count = name_char_count + 3;
+            for c in entry
+                .name
+                .chars()
+                .skip(name_char_count.saturating_sub(half_width))
+            {
+                print_char!(c);
+            }
         }
-        for _ in x..(half_width + 1) {
+        for _ in x..half_width {
             write_command!(write, Print(' '));
         }
+        write_command!(write, Print('|'));
         x = 0;
         for c in entry.description.chars() {
+            if x + 3 > half_width {
+                write_command!(write, Print("..."));
+                break;
+            }
             print_char!(c);
         }
 
