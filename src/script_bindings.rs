@@ -1433,7 +1433,6 @@ mod process {
         let task_handle = ctx
             .tasks
             .request(ctx.target_client, TaskRequest::ChildStream(child));
-        eprintln!("stream {}", task_handle.into_index());
         engine.add_task_callback(task_handle, callback)?;
         Ok(())
     }

@@ -120,7 +120,6 @@ impl TaskWorker {
             match task.request {
                 TaskRequest::Stop => break,
                 TaskRequest::ChildStream(child) => {
-                    eprintln!("child stream request");
                     if let Some(mut stdout) = child.stdout {
                         let mut buf = Vec::new();
                         let mut buf_len = 0;
@@ -146,15 +145,12 @@ impl TaskWorker {
                             buf.copy_within(..last_line_end_index, 0);
                             buf_len -= last_line_end_index;
 
-                            eprintln!("output:\n{}\n---\n", &output);
                             send_result!(TaskResult::ChildPartialOutput(output));
                         }
 
                         let output = String::from_utf8_lossy(&buf[..buf_len]).into();
-                        eprintln!("final output:\n{}\n---\n", &output);
                         send_result!(TaskResult::ChildPartialOutput(output));
                     } else {
-                        eprintln!("num tinha stdout");
                     }
 
                     send_result!(TaskResult::Finished);
