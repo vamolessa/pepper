@@ -86,7 +86,7 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
     }
 
     register!(client => index, current_buffer_view_handle, quit, force_quit, quit_all, force_quit_all,);
-    register!(editor => version, os, current_directory, print,);
+    register!(editor => version, os, current_directory, print, eprint,);
     register!(script => source, directory,);
     register!(lsp => start, open_log, diagnostics,);
     register!(buffer => all_handles, line_count, line_at, path, path_matches, needs_save, set_search, open, close,
@@ -265,13 +265,23 @@ mod editor {
     pub fn print(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
-        mut guard: ScriptContextGuard,
+        guard: ScriptContextGuard,
         value: ScriptValue,
     ) -> ScriptResult<()> {
         ctx.status_message.write_fmt(
             StatusMessageKind::Info,
-            format_args!("{}", value.display(&mut guard)),
+            format_args!("{}", value.display(&guard)),
         );
+        Ok(())
+    }
+
+    pub fn eprint(
+        _: ScriptEngineRef,
+        _: &mut ScriptContext,
+        guard: ScriptContextGuard,
+        value: ScriptValue,
+    ) -> ScriptResult<()> {
+        eprintln!("{}", value.display(&guard));
         Ok(())
     }
 }
