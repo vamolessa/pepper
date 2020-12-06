@@ -637,10 +637,14 @@ impl ScriptEngine {
             let callback: Option<ScriptFunction> = callbacks.get(callback_index)?;
             if let Some(callback) = callback {
                 callback.call(&mut guard, result.to_script_value(engine)?)?;
+            } else {
+                eprintln!("num tinha callback em {}??", callback_index);
             }
             if let TaskResult::Finished = result {
                 callbacks.set(callback_index, LuaValue::Nil)?;
             }
+        } else {
+            eprintln!("num tinha callbacks??");
         }
 
         drop(s);
@@ -823,6 +827,7 @@ impl<'lua> ScriptEngineRef<'lua> {
         let callbacks: LuaValue = self.lua.named_registry_value(TASK_CALLBACKS_REGISTRY_KEY)?;
         match callbacks {
             LuaValue::Nil => {
+                eprintln!("novo callback: {}", index);
                 let callbacks = self.lua.create_table()?;
                 callbacks.set(index, callback)?;
                 self.lua

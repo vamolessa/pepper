@@ -119,13 +119,14 @@ impl TaskWorker {
 
             match task.request {
                 TaskRequest::Stop => break,
-                TaskRequest::ChildStream(child) => match child.stdout {
-                    Some(mut stdout) => {
+                TaskRequest::ChildStream(child) => {
+                    eprintln!("child stream request");
+                    if let Some(mut stdout) = child.stdout {
                         let mut buf = Vec::new();
                         let mut buf_len = 0;
                         loop {
-                            let target_len = buf_len + 1024;
-                            if target_len < buf.len() {
+                            let target_len = buf_len + 2048;
+                            if target_len > buf.len() {
                                 buf.resize(target_len, 0);
                             }
 
@@ -134,27 +135,30 @@ impl TaskWorker {
                                 Ok(len) => buf_len += len,
                             }
 
-                            let last_line_end_index =
-                                match buf[..buf_len].iter().rposition(|b| *b == b'\n') {
-                                    Some(i) => i + 1,
-                                    None => 0,
-                                };
+                            let last_line_end_index;
+                            match buf[..buf_len].iter().rposition(|b| *b == b'\n') {
+                                Some(i) => last_line_end_index = i + 1,
+                                None => continue,
+                            }
+
                             let output =
                                 String::from_utf8_lossy(&buf[..last_line_end_index]).into();
                             buf.copy_within(..last_line_end_index, 0);
                             buf_len -= last_line_end_index;
 
+                            eprintln!("output:\n{}\n---\n", &output);
                             send_result!(TaskResult::ChildPartialOutput(output));
                         }
 
-                        let output = String::from_utf8_lossy(&buf).into();
+                        let output = String::from_utf8_lossy(&buf[..buf_len]).into();
+                        eprintln!("final output:\n{}\n---\n", &output);
                         send_result!(TaskResult::ChildPartialOutput(output));
-                        send_result!(TaskResult::Finished);
+                    } else {
+                        eprintln!("num tinha stdout");
                     }
-                    None => {
-                        send_result!(TaskResult::Finished);
-                    }
-                },
+
+                    send_result!(TaskResult::Finished);
+                }
             }
         }
     }
