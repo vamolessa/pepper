@@ -99,7 +99,7 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
         move_home, move_end, move_first_line, move_last_line,);
     register!(read_line => prompt, read,);
     register!(picker => prompt, reset, entry, pick,);
-    register!(process => pipe, stream, spawn,);
+    register!(process => pipe, spawn,);
     register!(keymap => normal, insert, read_line, picker, script,);
     register!(syntax => rules,);
     register!(glob => compile, matches,);
@@ -1415,57 +1415,43 @@ mod process {
         Ok((stdout, stderr, output.status.success()))
     }
 
-    pub fn stream<'script>(
-        engine: ScriptEngineRef<'script>,
+    pub fn spawn(
+        engine: ScriptEngineRef,
         ctx: &mut ScriptContext,
         _: ScriptContextGuard,
         (name, args, input, callback): (
             ScriptString,
             Option<ScriptArray>,
             Option<ScriptString>,
-            ScriptFunction,
+            Option<ScriptFunction>,
         ),
     ) -> ScriptResult<()> {
+        let stdout = match callback {
+            Some(_) => Stdio::piped(),
+            None => Stdio::null(),
+        };
+
         let child = match args {
             Some(args) => {
                 let args = args.iter().filter_map(|i| match i {
                     Ok(i) => Some(i),
                     Err(_) => None,
                 });
-                run_process(name, args, input, Stdio::piped(), Stdio::piped())?
+                run_process(name, args, input, stdout, Stdio::null())?
             }
             None => {
                 let args = std::iter::empty();
-                run_process(name, args, input, Stdio::piped(), Stdio::piped())?
+                run_process(name, args, input, stdout, Stdio::null())?
             }
         };
 
-        let task_handle = ctx
-            .tasks
-            .request(ctx.target_client, TaskRequest::ChildStream(child));
-        engine.add_task_callback(task_handle, callback)?;
-        Ok(())
-    }
-
-    pub fn spawn(
-        _: ScriptEngineRef,
-        _: &mut ScriptContext,
-        _: ScriptContextGuard,
-        (name, args, input): (ScriptString, Option<ScriptArray>, Option<ScriptString>),
-    ) -> ScriptResult<()> {
-        match args {
-            Some(args) => {
-                let args = args.iter().filter_map(|i| match i {
-                    Ok(i) => Some(i),
-                    Err(_) => None,
-                });
-                run_process(name, args, input, Stdio::null(), Stdio::null())?;
-            }
-            None => {
-                let args = std::iter::empty();
-                run_process(name, args, input, Stdio::null(), Stdio::null())?;
-            }
+        if let Some(callback) = callback {
+            let task_handle = ctx
+                .tasks
+                .request(ctx.target_client, TaskRequest::ChildStream(child));
+            engine.add_task_callback(task_handle, callback)?;
         }
+
         Ok(())
     }
 
