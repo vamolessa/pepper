@@ -35,6 +35,7 @@ pub struct Picker {
     cursor: usize,
     scroll: usize,
 
+    has_unfiltered_entries: bool,
     cached_current_word: String,
 }
 
@@ -85,12 +86,24 @@ impl Picker {
         }
     }
 
-    pub fn update_scroll(&mut self, max_height: usize) {
+    pub fn update_scroll_and_unfiltered_entries<W>(
+        &mut self,
+        max_height: usize,
+        words: &W,
+        pattern: &str,
+    ) where
+        W: WordCollection,
+    {
         let height = self.height(max_height);
         if self.cursor < self.scroll {
             self.scroll = self.cursor;
         } else if self.cursor >= self.scroll + height as usize {
             self.scroll = self.cursor + 1 - height as usize;
+        }
+
+        if self.has_unfiltered_entries {
+            eprintln!("has unfiltered entries! refilter with {}", pattern);
+            self.filter(words, pattern);
         }
     }
 
@@ -115,6 +128,7 @@ impl Picker {
         }
 
         self.custom_entries_len += 1;
+        self.has_unfiltered_entries = true;
     }
 
     pub fn clear_filtered(&mut self) {
@@ -127,6 +141,7 @@ impl Picker {
     where
         W: WordCollection,
     {
+        self.has_unfiltered_entries = false;
         self.filtered_entries.clear();
 
         for (i, word) in words.word_indices() {

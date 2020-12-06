@@ -124,7 +124,7 @@ impl TaskWorker {
                         let mut buf = Vec::new();
                         let mut buf_len = 0;
                         loop {
-                            let target_len = buf_len + 2048;
+                            let target_len = buf_len + 1024 * 4;
                             if target_len > buf.len() {
                                 buf.resize(target_len, 0);
                             }
@@ -150,7 +150,6 @@ impl TaskWorker {
 
                         let output = String::from_utf8_lossy(&buf[..buf_len]).into();
                         send_result!(TaskResult::ChildPartialOutput(output));
-                    } else {
                     }
 
                     send_result!(TaskResult::Finished);

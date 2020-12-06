@@ -19,7 +19,7 @@ use crate::{
     register::{RegisterCollection, RegisterKey, KEY_QUEUE_REGISTER},
     script::ScriptEngine,
     task::{TaskHandle, TaskManager, TaskResult},
-    word_database::WordDatabase,
+    word_database::{EmptyWordCollection, WordDatabase},
 };
 
 #[derive(Clone, Copy)]
@@ -444,8 +444,12 @@ impl Editor {
             }
         };
 
-        self.picker
-            .update_scroll(self.config.values.picker_max_height.get() as _);
+        self.picker.update_scroll_and_unfiltered_entries(
+            self.config.values.picker_max_height.get() as _,
+            &EmptyWordCollection,
+            self.read_line.prompt(),
+        );
+
         for c in clients.client_refs() {
             let target = c.target;
             let client = c.client;
