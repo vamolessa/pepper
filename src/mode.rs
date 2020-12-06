@@ -8,6 +8,7 @@ use crate::{
     editor::{EditorLoop, KeysIterator, ReadLine, StatusMessage},
     editor_event::{EditorEvent, EditorEventQueue, EditorEventsIter},
     keymap::KeyMapCollection,
+    task::TaskManager,
     lsp::LspClientCollection,
     picker::Picker,
     register::{RegisterCollection, RegisterKey},
@@ -51,6 +52,7 @@ pub struct ModeContext<'a> {
     pub events: &'a mut EditorEventQueue,
     pub keymaps: &'a mut KeyMapCollection,
     pub scripts: &'a mut ScriptEngine,
+    pub tasks: &'a mut TaskManager,
     pub lsp: &'a mut LspClientCollection,
 }
 
@@ -96,6 +98,7 @@ impl<'a> ModeContext<'a> {
 
             events: self.events,
             keymaps: self.keymaps,
+            tasks: self.tasks,
             lsp: self.lsp,
         };
 

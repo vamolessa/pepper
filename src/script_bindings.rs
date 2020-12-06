@@ -26,6 +26,7 @@ use crate::{
         ScriptFunction, ScriptObject, ScriptResult, ScriptString, ScriptUserData, ScriptValue,
     },
     syntax::{Syntax, TokenKind},
+    task::TaskRequest,
     theme::{Color, THEME_COLOR_NAMES},
 };
 
@@ -98,7 +99,7 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
         move_home, move_end, move_first_line, move_last_line,);
     register!(read_line => prompt, read,);
     register!(picker => prompt, reset, entry, pick,);
-    register!(process => pipe, spawn,);
+    register!(process => pipe, stream, spawn,);
     register!(keymap => normal, insert, read_line, picker, script,);
     register!(syntax => rules,);
     register!(glob => compile, matches,);
@@ -1402,6 +1403,38 @@ mod process {
             .create_string(&output.stderr)
             .map(ScriptValue::String)?;
         Ok((stdout, stderr, output.status.success()))
+    }
+
+    pub fn stream<'script>(
+        engine: ScriptEngineRef<'script>,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        (name, args, input, callback): (
+            ScriptString,
+            Option<ScriptArray>,
+            Option<ScriptString>,
+            ScriptFunction,
+        ),
+    ) -> ScriptResult<()> {
+        let child = match args {
+            Some(args) => {
+                let args = args.iter().filter_map(|i| match i {
+                    Ok(i) => Some(i),
+                    Err(_) => None,
+                });
+                run_process(name, args, input, Stdio::piped(), Stdio::piped())?
+            }
+            None => {
+                let args = std::iter::empty();
+                run_process(name, args, input, Stdio::piped(), Stdio::piped())?
+            }
+        };
+
+        let task_handle = ctx
+            .tasks
+            .request(ctx.target_client, TaskRequest::ChildStream(child));
+        engine.add_task_callback(task_handle, callback)?;
+        Ok(())
     }
 
     pub fn spawn(

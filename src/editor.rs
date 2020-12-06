@@ -498,6 +498,7 @@ impl Editor {
             events: write_events,
             keymaps: &mut self.keymaps,
             scripts: &mut self.scripts,
+            tasks: &mut self.tasks,
             lsp: &mut self.lsp,
         };
         (

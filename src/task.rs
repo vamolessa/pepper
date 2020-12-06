@@ -1,4 +1,4 @@
-use std::{process::Child, sync::mpsc, thread};
+use std::{io::Read, process::Child, sync::mpsc, thread};
 
 use crate::{
     client::TargetClient,
@@ -20,7 +20,8 @@ pub enum TaskRequest {
 }
 
 pub enum TaskResult {
-    ChildPartialOutput(Option<String>),
+    Finished,
+    ChildPartialOutput(String),
 }
 impl TaskResult {
     pub fn to_script_value<'script>(
@@ -28,13 +29,11 @@ impl TaskResult {
         engine: ScriptEngineRef<'script>,
     ) -> ScriptResult<ScriptValue<'script>> {
         match self {
-            TaskResult::ChildPartialOutput(output) => match output {
-                Some(output) => {
-                    let output = engine.create_string(output.as_bytes())?;
-                    Ok(ScriptValue::String(output))
-                }
-                None => Ok(ScriptValue::Nil),
-            },
+            TaskResult::Finished => Ok(ScriptValue::Nil),
+            TaskResult::ChildPartialOutput(output) => {
+                let output = engine.create_string(output.as_bytes())?;
+                Ok(ScriptValue::String(output))
+            }
         }
     }
 }
@@ -46,8 +45,8 @@ pub struct TaskManager {
 }
 
 struct Task {
-    handle: TaskHandle,
     target_client: TargetClient,
+    handle: TaskHandle,
     request: TaskRequest,
 }
 
@@ -66,8 +65,8 @@ impl TaskManager {
         let handle = self.next_handle;
         self.next_handle.0 += 1;
         let _ = self.task_sender.send(Task {
-            handle,
             target_client,
+            handle,
             request: task,
         });
         handle
@@ -96,8 +95,8 @@ impl TaskWorker {
 
     pub fn stop(&self, task_sender: &mpsc::Sender<Task>) {
         let _ = task_sender.send(Task {
-            handle: TaskHandle(0),
             target_client: TargetClient::Local,
+            handle: TaskHandle(0),
             request: TaskRequest::Stop,
         });
     }
@@ -109,11 +108,53 @@ impl TaskWorker {
                 Err(_) => break,
             };
 
+            macro_rules! send_result {
+                ($result:expr) => {{
+                    let event = LocalEvent::TaskEvent(task.target_client, task.handle, $result);
+                    if let Err(_) = event_sender.send(event) {
+                        break;
+                    }
+                }};
+            }
+
             match task.request {
                 TaskRequest::Stop => break,
-                TaskRequest::ChildStream(child) => {
-                    //
-                }
+                TaskRequest::ChildStream(child) => match child.stdout {
+                    Some(mut stdout) => {
+                        let mut buf = Vec::new();
+                        let mut buf_len = 0;
+                        loop {
+                            let target_len = buf_len + 1024;
+                            if target_len < buf.len() {
+                                buf.resize(target_len, 0);
+                            }
+
+                            match stdout.read(&mut buf[buf_len..]) {
+                                Ok(0) | Err(_) => break,
+                                Ok(len) => buf_len += len,
+                            }
+
+                            let last_line_end_index =
+                                match buf[..buf_len].iter().rposition(|b| *b == b'\n') {
+                                    Some(i) => i + 1,
+                                    None => 0,
+                                };
+                            let output =
+                                String::from_utf8_lossy(&buf[..last_line_end_index]).into();
+                            buf.copy_within(..last_line_end_index, 0);
+                            buf_len -= last_line_end_index;
+
+                            send_result!(TaskResult::ChildPartialOutput(output));
+                        }
+
+                        let output = String::from_utf8_lossy(&buf).into();
+                        send_result!(TaskResult::ChildPartialOutput(output));
+                        send_result!(TaskResult::Finished);
+                    }
+                    None => {
+                        send_result!(TaskResult::Finished);
+                    }
+                },
             }
         }
     }

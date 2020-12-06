@@ -22,7 +22,7 @@ use crate::{
     picker::Picker,
     register::RegisterCollection,
     script_bindings,
-    task::{TaskHandle, TaskResult},
+    task::{TaskHandle, TaskManager, TaskResult},
     word_database::WordDatabase,
 };
 
@@ -427,6 +427,7 @@ pub struct ScriptContext<'a> {
 
     pub events: &'a mut EditorEventQueue,
     pub keymaps: &'a mut KeyMapCollection,
+    pub tasks: &'a mut TaskManager,
     pub lsp: &'a mut LspClientCollection,
 }
 
@@ -465,6 +466,7 @@ impl<'a> ScriptContext<'a> {
     }
 }
 
+const TASK_CALLBACKS_REGISTRY_KEY: &str = "task_callbacks";
 const CURRENT_DIRECTORY_REGISTRY_KEY: &str = "current_path";
 struct CurrentDirectory<'a>(&'a Path);
 
@@ -630,13 +632,15 @@ impl ScriptEngine {
 
         let callback_index = handle.into_index();
 
-        if let Ok(callbacks) = engine.lua.named_registry_value("task_callbacks") {
+        if let Ok(callbacks) = engine.lua.named_registry_value(TASK_CALLBACKS_REGISTRY_KEY) {
             let callbacks: LuaTable = callbacks;
             let callback: Option<ScriptFunction> = callbacks.get(callback_index)?;
             if let Some(callback) = callback {
                 callback.call(&mut guard, result.to_script_value(engine)?)?;
             }
-            callbacks.set(callback_index, LuaValue::Nil)?;
+            if let TaskResult::Finished = result {
+                callbacks.set(callback_index, LuaValue::Nil)?;
+            }
         }
 
         drop(s);
@@ -806,6 +810,28 @@ impl<'lua> ScriptEngineRef<'lua> {
             .map(|f| ScriptFunction(f))?;
 
         Ok((next_function, pairs_function))
+    }
+
+    pub fn add_task_callback(
+        &self,
+        task_handle: TaskHandle,
+        callback: ScriptFunction,
+    ) -> ScriptResult<()> {
+        let index = task_handle.into_index();
+        let callback = ScriptValue::Function(callback);
+
+        let callbacks: LuaValue = self.lua.named_registry_value(TASK_CALLBACKS_REGISTRY_KEY)?;
+        match callbacks {
+            LuaValue::Nil => {
+                let callbacks = self.lua.create_table()?;
+                callbacks.set(index, callback)?;
+                self.lua
+                    .set_named_registry_value(TASK_CALLBACKS_REGISTRY_KEY, callbacks.clone())?;
+            }
+            LuaValue::Table(table) => table.set(index, callback)?,
+            _ => (),
+        };
+        Ok(())
     }
 
     pub fn save_to_registry<T>(&self, key: &str, value: T) -> ScriptResult<()>

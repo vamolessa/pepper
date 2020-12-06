@@ -76,7 +76,7 @@ impl State {
         match keys.next() {
             Key::Char('q') => {
                 match ctx.recording_macro.take() {
-                    Some(k) => *ctx.recording_macro = None,
+                    Some(_) => *ctx.recording_macro = None,
                     None => match keys.next() {
                         Key::None => return ModeOperation::Pending,
                         Key::Char(c) => {
