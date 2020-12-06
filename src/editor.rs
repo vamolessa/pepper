@@ -258,7 +258,7 @@ impl Editor {
     }
 
     pub fn on_pre_render(&mut self, clients: &mut ClientCollection) {
-        self.picker.update_scroll_and_unfiltered_entries(
+        let picker_height = self.picker.update_scroll_and_unfiltered_entries(
             self.config.values.picker_max_height.get() as _,
             &EmptyWordCollection,
             self.read_line.input(),
@@ -267,7 +267,12 @@ impl Editor {
         for c in clients.client_refs() {
             let target = c.target;
             let client = c.client;
-            client.update_view(self, self.focused_client == target);
+            let picker_height = if self.focused_client == target {
+                picker_height as _
+            } else {
+                0
+            };
+            client.update_view(self, picker_height);
 
             let buffer_views = &self.buffer_views;
             let buffers = &mut self.buffers;

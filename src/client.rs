@@ -97,15 +97,7 @@ impl Client {
         }
     }
 
-    pub fn update_view(&mut self, editor: &Editor, has_focus: bool) {
-        let picker_height = if has_focus {
-            editor
-                .picker
-                .height(editor.config.values.picker_max_height.get() as _) as u16
-        } else {
-            0
-        };
-
+    pub fn update_view(&mut self, editor: &Editor, picker_height: u16) {
         self.height = self.viewport_size.1.saturating_sub(1 + picker_height);
         if let Some(scroll) = self.calculate_scroll(editor) {
             self.scroll = scroll;

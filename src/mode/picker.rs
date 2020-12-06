@@ -35,8 +35,41 @@ impl ModeState for State {
             ReadLinePoll::Pending => {
                 keys.put_back();
                 match keys.next() {
-                    Key::Ctrl('n') | Key::Ctrl('j') => ctx.picker.move_cursor(1),
-                    Key::Ctrl('p') | Key::Ctrl('k') => ctx.picker.move_cursor(-1),
+                    Key::Ctrl('n') | Key::Ctrl('j') | Key::Down => ctx.picker.move_cursor(1),
+                    Key::Ctrl('p') | Key::Ctrl('k') | Key::Up => ctx.picker.move_cursor(-1),
+                    Key::Ctrl('d') | Key::PageDown => {
+                        let picker_height = ctx
+                            .picker
+                            .height(ctx.config.values.picker_max_height.get() as _)
+                            as isize;
+                        ctx.picker.move_cursor(picker_height / 2);
+                    }
+                    Key::Ctrl('u') | Key::PageUp => {
+                        let picker_height = ctx
+                            .picker
+                            .height(ctx.config.values.picker_max_height.get() as _)
+                            as isize;
+                        ctx.picker.move_cursor(-picker_height / 2);
+                    }
+                    Key::Ctrl('b') | Key::Home => {
+                        let cursor = ctx.picker.cursor() as isize;
+                        ctx.picker.move_cursor(-cursor);
+                    }
+                    Key::Ctrl('e') | Key::End => {
+                        let cursor = ctx.picker.cursor() as isize;
+                        let entry_count = ctx.picker.height(isize::MAX as _) as isize;
+                        ctx.picker.move_cursor(entry_count - cursor - 1);
+                    }
+                    Key::Ctrl('q') => {
+                        eprintln!(
+                            "cursor: {} scroll: {} height: {} count: {}",
+                            ctx.picker.cursor(),
+                            ctx.picker.scroll(),
+                            ctx.picker
+                                .height(ctx.config.values.picker_max_height.get() as _),
+                            ctx.picker.height(usize::MAX)
+                        );
+                    }
                     _ => ctx
                         .picker
                         .filter(&EmptyWordCollection, ctx.read_line.input()),

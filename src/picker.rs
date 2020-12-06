@@ -91,19 +91,22 @@ impl Picker {
         max_height: usize,
         words: &W,
         pattern: &str,
-    ) where
+    ) -> usize where
         W: WordCollection,
     {
+        if self.has_unfiltered_entries {
+            self.filter(words, pattern);
+        }
+
         let height = self.height(max_height);
         if self.cursor < self.scroll {
             self.scroll = self.cursor;
         } else if self.cursor >= self.scroll + height as usize {
             self.scroll = self.cursor + 1 - height as usize;
         }
+        self.scroll = self.scroll.min(self.filtered_entries.len().saturating_sub(height));
 
-        if self.has_unfiltered_entries {
-            self.filter(words, pattern);
-        }
+        height
     }
 
     pub fn reset(&mut self) {
