@@ -21,7 +21,7 @@ pub enum TaskRequest {
 
 pub enum TaskResult {
     Finished,
-    ChildPartialOutput(String),
+    ChildPartialOutput(Vec<u8>),
 }
 impl TaskResult {
     pub fn to_script_value<'script>(
@@ -31,7 +31,7 @@ impl TaskResult {
         match self {
             TaskResult::Finished => Ok(ScriptValue::Nil),
             TaskResult::ChildPartialOutput(output) => {
-                let output = engine.create_string(output.as_bytes())?;
+                let output = engine.create_string(&output)?;
                 Ok(ScriptValue::String(output))
             }
         }
@@ -121,34 +121,26 @@ impl TaskWorker {
                 TaskRequest::Stop => break,
                 TaskRequest::ChildStream(child) => {
                     if let Some(mut stdout) = child.stdout {
-                        let mut buf = Vec::new();
-                        let mut buf_len = 0;
+                        let mut buf = [0; 1024 * 8];
+                        let mut output = Vec::new();
                         loop {
-                            let target_len = buf_len + 1024 * 4;
-                            if target_len > buf.len() {
-                                buf.resize(target_len, 0);
-                            }
-
-                            match stdout.read(&mut buf[buf_len..]) {
+                            let buf_len = match stdout.read(&mut buf) {
                                 Ok(0) | Err(_) => break,
-                                Ok(len) => buf_len += len,
+                                Ok(len) => len,
+                            };
+                            output.extend_from_slice(&buf[..buf_len]);
+
+                            if output.len() >= buf.len() {
+                                if let Some(i) = output.iter().rposition(|b| *b == b'\n') {
+                                    let last_line_end_index = i + 1;
+
+                                    let partial_output = output[..last_line_end_index].into();
+                                    output.copy_within(last_line_end_index.., 0);
+                                    output.truncate(output.len() - last_line_end_index);
+                                    send_result!(TaskResult::ChildPartialOutput(partial_output));
+                                }
                             }
-
-                            let last_line_end_index;
-                            match buf[..buf_len].iter().rposition(|b| *b == b'\n') {
-                                Some(i) => last_line_end_index = i + 1,
-                                None => continue,
-                            }
-
-                            let output =
-                                String::from_utf8_lossy(&buf[..last_line_end_index]).into();
-                            buf.copy_within(..last_line_end_index, 0);
-                            buf_len -= last_line_end_index;
-
-                            send_result!(TaskResult::ChildPartialOutput(output));
                         }
-
-                        let output = String::from_utf8_lossy(&buf[..buf_len]).into();
                         send_result!(TaskResult::ChildPartialOutput(output));
                     }
 
