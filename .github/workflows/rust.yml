@@ -32,9 +32,12 @@ jobs:
       with:
         rust-version: ${{ matrix.rust }}
     - uses: actions/checkout@v2
+    - name: Get crate metadata
+      id: crate-metadata
+      run: echo "::set-output metadata=metadata::$(cargo metadata --no-deps --format-version 1)"
     - name: Get crate name
       id: crate-name
-      run: echo "::set-output name=name::$(cat Cargo.toml | grep name | head -n 1 | awk -F'\"' '{ print $2 }')"
+      run: echo "::set-output name=name::${{ fromJSON(steps.crate-metadata.outputs.metadata).packages[0].name }}"
     - name: Installing dependencies
       if: env[format('{0}_install_dependencies', matrix.os)] != ''
       run: ${{ env[format('{0}_install_dependencies', matrix.os)] }}
@@ -45,8 +48,8 @@ jobs:
     - name: Upload ${{ matrix.os }} binary
       uses: actions/upload-artifact@v1
       with:
-        name: ${{ steps.crate-name.outputs.name }}-${{ env[format('{0}_channel', matrix.os)] }}
-        path: target/release/${{ steps.crate-name.outputs.name }}${{ env[format('{0}_extension', matrix.os)] }}
+        name: ${{ steps.crate-name-outputs.name }}-${{ env[format('{0}_channel', matrix.os)] }}
+        path: target/release/${{ steps.crate-name-outputs.name }}${{ env[format('{0}_extension', matrix.os)] }}
 
   release:
     name: Release
@@ -61,9 +64,12 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v2
+    - name: Get crate metadata
+      id: crate-metadata
+      run: echo "::set-output metadata=metadata::$(cargo metadata --no-deps --format-version 1)"
     - name: Get crate name
       id: crate-name
-      run: echo "::set-output name=name::$(cat Cargo.toml | grep name | head -n 1 | awk -F'\"' '{ print $2 }')"
+      run: echo "::set-output name=name::${{ fromJSON(steps.crate-metadata.outputs.metadata).packages[0].name }}"
     - uses: actions/download-artifact@v2
       with:
         name: ${{ steps.crate-name.outputs.name }}-${{ env[format('{0}_channel', matrix.os)] }}
