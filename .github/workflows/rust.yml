@@ -50,8 +50,8 @@ jobs:
     - name: Upload ${{ matrix.os }} binary
       uses: actions/upload-artifact@v1
       with:
-        name: ${{ steps.crate-name-outputs.name }}-${{ env[format('{0}_channel', matrix.os)] }}
-        path: target/release/${{ steps.crate-name-outputs.name }}${{ env[format('{0}_extension', matrix.os)] }}
+        name: ${{ steps.crate-name.outputs.name }}-${{ env[format('{0}_channel', matrix.os)] }}
+        path: target/release/${{ steps.crate-name.outputs.name }}${{ env[format('{0}_extension', matrix.os)] }}
 
   release:
     name: Release
