@@ -99,8 +99,6 @@ jobs:
         asset_content_type: ${{ env[format('{0}_content_type', matrix.os)] }}
     - name: Rename ${{ matrix.os }} executable before upload
       run: mv dist/${{ matrix.os }}/${{ steps.crate-name.outputs.name }}${{ env[format('{0}_extension', matrix.os)] }} dist/${{ steps.crate-name.outputs.name }}-${{ env[format('{0}_channel', matrix.os)] }}${{ env[format('{0}_extension', matrix.os)] }}
-    - name: Create version file
-      run: cat Cargo.toml | grep version | head -n 1 | awk -F'"' '{ print $2 }' > version.txt
     - name: Check Butler credentials
       run: echo 'checking butler credentials...'
       env:
@@ -114,4 +112,4 @@ jobs:
         ITCH_GAME: ${{ steps.crate-name.outputs.name }}
         ITCH_USER: matheuslessarodrigues
         PACKAGE: dist/${{ steps.crate-name.outputs.name }}-${{ env[format('{0}_channel', matrix.os)] }}${{ env[format('{0}_extension', matrix.os)] }}
-        VERSION_FILE: version.txt
+        VERSION: ${{ fromJSON(steps.crate-metadata.outputs.metadata).packages[0].version }}
