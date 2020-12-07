@@ -2,7 +2,7 @@
 
 ### An opinionated modal editor to simplify code editing from the terminal
 
-![main screenshot](assets/screenshots/main.png)
+![main screenshot](.github/screenshots/main.png)
 
 [more screenshots](https://github.com/matheuslessarodrigues/pepper/wiki/screenshots)
 
