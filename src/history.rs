@@ -108,6 +108,32 @@ impl History {
         }
     }
 
+    pub fn edits_since(&self, handle: EditHandle) -> EditIter {
+        let mut index = handle.0.min(self.group_ranges.len());
+        let mut end = self.current_edit_handle().0;
+        if index == end {
+            index = 0;
+            end = 0;
+        } else if index < end {
+            index = self.group_ranges[index].start;
+            let group_ranges_len = self.group_ranges.len();
+            end = if end < group_ranges_len {
+                self.group_ranges[end].start
+            } else {
+                self.group_ranges[group_ranges_len - 1].end
+            };
+        } else {
+            index = index.min(self.group_ranges.len() - 1);
+            index = self.group_ranges[index].end;
+            end = self.group_ranges[end].start;
+        }
+        EditIter {
+            history: self,
+            index,
+            end,
+        }
+    }
+
     pub fn add_edit(&mut self, edit: Edit) {
         let current_group_start = match self.state {
             HistoryState::IterIndex(index) => {
@@ -420,28 +446,6 @@ impl History {
 
         let texts = &self.texts;
         self.edits[range].iter().map(move |e| e.as_edit_ref(texts))
-    }
-
-    pub fn edits_since(&self, handle: EditHandle) -> EditIter {
-        let mut index = handle.0.min(self.group_ranges.len());
-        let mut end = self.current_edit_handle().0;
-        if index == end {
-            index = 0;
-            end = 0;
-        } else if index < end {
-            end = end.min(self.group_ranges.len() - 1);
-            index = self.group_ranges[index].start;
-            end = self.group_ranges[end].end;
-        } else {
-            index = index.min(self.group_ranges.len() - 1);
-            index = self.group_ranges[index].end;
-            end = self.group_ranges[end].start;
-        }
-        EditIter {
-            history: self,
-            index,
-            end,
-        }
     }
 }
 
