@@ -1,6 +1,6 @@
 [package]
 name = "pepper"
-version = "0.5.4"
+version = "0.5.5"
 authors = ["Matheus Lessa <matheus@fastmail.com>"]
 edition = "2018"
 description = "An opinionated modal editor to simplify code editing from the terminal"
@@ -27,7 +27,7 @@ argh = "0.1"
 polling = "2.0"
 mlua = { version = "0.4", features = [ "vendored", "lua54" ] }
 fuzzy-matcher = "0.3"
-copypasta = "0.7.1"
+copypasta = "0.7"
 
 [target.'cfg(windows)'.dependencies]
 uds_windows = "0.1"
