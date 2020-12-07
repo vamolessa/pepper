@@ -123,8 +123,12 @@ impl History {
                 self.group_ranges[group_ranges_len - 1].end
             };
         } else {
-            index = index.min(self.group_ranges.len() - 1);
-            index = self.group_ranges[index].end;
+            let group_ranges_len = self.group_ranges.len();
+            index = if index < group_ranges_len {
+                self.group_ranges[index].start
+            } else {
+                self.group_ranges[group_ranges_len - 1].end
+            };
             end = self.group_ranges[end].start;
         }
         EditIter {
