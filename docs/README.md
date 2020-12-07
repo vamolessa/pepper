@@ -1,12 +1,12 @@
 # pepper
 
-### An opinionated modal code editor for your terminal with a focus on programmer's comfort
+### An opinionated modal editor to simplify code editing from the terminal
 
 ![main screenshot](screenshots/main.png)
 
 [more gifs](screenshots)
 
-Pepper is an experiment of mine to craft a code editor focused on programmer's comfort.
+Pepper is an experiment of mine to simplify code editing from the terminal.
 It's mission is to be a minimal and fast code editor with an orthogonal set of both editing and navigation features.
 
 #### !!! WARNING! Pra-alpha software ahead !!!
@@ -18,37 +18,38 @@ Demo's limitations (may change in the future)
 
 ### [default keybindings](modes)
 ### [scripting api](scripting)
+### [defining language syntaxes](syntax)
+### [config recipes](recipes)
 
 ### if you find a bug or need help
 Please [open an issue](https://github.com/matheuslessarodrigues/pepper/issues)
 
 ## goals
 
-- Small set of editing primitives
-- Mnemonic and easy to reach default keybindings (assuming a qwerty keyboard)
-- Require minimal effort to navigate and explore a workspace
-- Cross-plaftorm (Linux, Windows, Max)
-- Customizable through scripting
-- Extensible through external cli tools
-- Be as fast and reponsive as possible
+- small, but orthogonal, set of editing primitives
+- mnemonic and easy to reach default keybindings (assuming a qwerty keyboard)
+- cross-plaftorm (Linux, Windows, Mac)
+- customizable through scripting
+- extensible through external cli tools
+- be as fast and reponsive as possible
 
 ## non goals
 
-- Support every possible workflow (it will never get close to feature parity with vim or emacs)
-- Have complex ui (like breadcumbs, floating windows, extra status bars, etc)
-- Multiple viewports (you can open multiple clients and they'll be connected)
-- Undo tree
-- Support for text encodings other than UTF-8
-- Fuzzy file picker (you can integrate with fzf)
-- Workspace wide search (you can integrate with Grep, Ripgrep, etc)
-- Having any other feature that could be better implemented by integrating an external tool
+- support every possible workflow (it will never ever get close to feature parity with vim or emacs)
+- complex ui (like breadcumbs, floating windows, extra status bars, etc)
+- multiple viewports (leave that to your window manager/terminal multiplexer. instead clients can connect to each other and act together as if they're a single application)
+- undo tree
+- support for text encodings other than UTF-8
+- fuzzy file picker (you can integrate with fzf, skim, etc)
+- workspace wide search (you can integrate with grep, ripgrep, etc)
+- having any other feature that could be implemented by integrating an external tool
 
 ## features
 
 - everything is reachable through the keyboard
 - modal editing (normal mode also selects text)
 - multiple cursors
-- caret style cursors (cursors can move past last line character and text is always inserted to its left)
+- caret style cursors (like most text editors, cursors can move past last line character and text is always inserted to its left)
 - text-objects
 - macros
 - lua scripting
@@ -62,9 +63,10 @@ In the spirit of [Handmade](https://handmade.network/), almost all features are 
 These are the only external crates being used in the project (mainly because of crossplatform):
 - `ctrlc`: prevents closing application on `ctrl-c` on all platforms
 - `crossterm`: crossplatform terminal interaction
-- `argh`: process complex cli args. eases rapid prototyping of new cli features
+- `copypasta`: crossplatform clipboard api
 - `polling`: crossplatform socket events
-- `mlua`: adds support for lua scripting. could be own new scripting language, however there's value on using a known one
+- `argh`: process complex cli args. eases rapid prototyping of new cli features
+- `mlua`: adds support for lua scripting
 - `fuzzy-matcher`: fuzzy matching for the picker ui. it could be replaced, however it's implementation does not get in the way and has minimal dependencies
 - `uds_windows` (windows-only): unix domain sockets for windows
 
