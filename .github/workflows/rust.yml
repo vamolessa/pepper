@@ -34,7 +34,7 @@ jobs:
     - uses: actions/checkout@v2
     - name: Get crate metadata
       id: crate-metadata
-      run: echo "::set-output metadata=metadata::$(cargo metadata --no-deps --format-version 1)"
+      run: echo "::set-output name=metadata::$(cargo metadata --no-deps --format-version 1)"
     - name: Get crate name
       id: crate-name
       run: echo "::set-output name=name::${{ fromJSON(steps.crate-metadata.outputs.metadata).packages[0].name }}"
@@ -66,7 +66,7 @@ jobs:
       uses: actions/checkout@v2
     - name: Get crate metadata
       id: crate-metadata
-      run: echo "::set-output metadata=metadata::$(cargo metadata --no-deps --format-version 1)"
+      run: echo "::set-output name=metadata::$(cargo metadata --no-deps --format-version 1)"
     - name: Get crate name
       id: crate-name
       run: echo "::set-output name=name::${{ fromJSON(steps.crate-metadata.outputs.metadata).packages[0].name }}"
