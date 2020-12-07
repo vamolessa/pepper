@@ -1,6 +1,7 @@
 name: rust
 
 env:
+  create_github_release: ''
   ubuntu_extension: ''
   macos_extension: ''
   windows_extension: '.exe'
@@ -18,7 +19,7 @@ on: [push, pull_request]
 jobs:
   build:
     name: rust ${{ matrix.rust }} on ${{ matrix.os }} version
-    if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags/v')
+    #if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags/v')
     runs-on: ${{ matrix.os }}-latest
 
     strategy:
@@ -70,6 +71,7 @@ jobs:
     - name: List release files
       run: find dist/
     - name: Create release
+      if: env.create_github_release != ''
       id: create_release
       uses: actions/create-release@v1.0.0
       env:
@@ -80,6 +82,7 @@ jobs:
         draft: false
         prerelease: false
     - name: Upload ${{ matrix.os }} release asset
+      if: env.create_github_release != ''
       uses: actions/upload-release-asset@v1.0.1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
