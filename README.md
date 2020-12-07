@@ -21,6 +21,32 @@ Demo's limitations (may change in the future)
 ### [defining language syntaxes](https://github.com/matheuslessarodrigues/pepper/wiki/language-syntax-definitions)
 ### [config recipes](https://github.com/matheuslessarodrigues/pepper/wiki/config-recipes)
 
+## installation
+
+### binaries
+Pepper is open-source, which means you're free to build it and access all of its features.
+However, to support the development, prebuilt binaries are available for purchase at itch.
+
+https://matheuslessarodrigues.itch.io/pepper
+
+This will not only keep you updated with the latest features/fixes but also support further
+pepper development!
+
+### using [`cargo`](https://doc.rust-lang.org/cargo/)
+Simply running `cargo install pepper` should get you up and running.
+
+**NOTE**: for x11 users, you'll need to have both `libxcb-shape0-dev` and `libxcb-xfixes0-dev` in your system due
+to dependencies in the [`copypasta`](https://crates.io/crates/copypasta) crate.
+
+### from source
+```
+git clone git@github.com:matheuslessarodrigues/pepper.git
+cd pepper
+cargo install --path .
+```
+
+**NOTE**: installing from source still requires `cargo` (at least it's easier this way).
+
 ### if you find a bug or need help
 Please [open an issue](https://github.com/matheuslessarodrigues/pepper/issues)
 
@@ -103,3 +129,14 @@ It's possible to kinda follow Pepper's development history in this [twitter thre
 ## big features todo
 - language server protocol (in progress)
 - debug adapter protocol
+
+## support pepper development
+Pepper is open-source, which means you're free to build it and access all of its features.
+However, to support the development, prebuilt binaries are available for purchase at itch.
+
+Please consider purchasing in order to support both the development of new features and bug fixing.
+I'll be forever grateful :)
+
+<iframe src="https://itch.io/embed/810985?border_width=0" width="206" height="165" frameborder="0">
+  <a href="https://matheuslessarodrigues.itch.io/pepper">pepper by Matheus Lessa Rodrigues</a>
+</iframe>
