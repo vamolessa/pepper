@@ -690,9 +690,14 @@ mod buffer {
             None => None,
         };
 
-        ctx.buffers
+        if let Err(e) = ctx
+            .buffers
             .save_to_file(&ctx.config.syntaxes, handle, path, ctx.events)
-            .map_err(ScriptError::from)?;
+        {
+            return Err(ScriptError::from(
+                e.display(ctx.buffers.get(handle)).to_string(),
+            ));
+        }
 
         match ctx.buffers.get(handle) {
             Some(buffer) => match buffer.path().and_then(|p| p.to_str()) {
@@ -728,9 +733,15 @@ mod buffer {
         _: ScriptContextGuard,
         _: (),
     ) -> ScriptResult<()> {
-        ctx.buffers
+        if let Err((handle, e)) = ctx
+            .buffers
             .save_all_to_file(&ctx.config.syntaxes, ctx.events)
-            .map_err(ScriptError::from)?;
+        {
+            return Err(ScriptError::from(
+                e.display(ctx.buffers.get(handle)).to_string(),
+            ));
+        }
+
         let buffer_count = ctx.buffers.iter().count();
         ctx.status_message.write_fmt(
             StatusMessageKind::Info,
@@ -764,9 +775,10 @@ mod buffer {
                 Ok(()) => ctx
                     .status_message
                     .write_str(StatusMessageKind::Info, "reloaded"),
-                Err(error) => ctx
-                    .status_message
-                    .write_str(StatusMessageKind::Error, &error),
+                Err(error) => ctx.status_message.write_fmt(
+                    StatusMessageKind::Error,
+                    format_args!("{}", error.display(Some(buffer))),
+                ),
             }
         }
         Ok(())
@@ -788,9 +800,10 @@ mod buffer {
                 Ok(()) => ctx
                     .status_message
                     .write_str(StatusMessageKind::Info, "reloaded"),
-                Err(error) => ctx
-                    .status_message
-                    .write_str(StatusMessageKind::Error, &error),
+                Err(error) => ctx.status_message.write_fmt(
+                    StatusMessageKind::Error,
+                    format_args!("{}", error.display(Some(buffer))),
+                ),
             }
         }
         Ok(())
@@ -815,8 +828,10 @@ mod buffer {
             for buffer in ctx.buffers.iter_mut() {
                 if let Err(error) = buffer.discard_and_reload_from_file() {
                     had_error = true;
-                    ctx.status_message
-                        .write_str(StatusMessageKind::Error, &error);
+                    ctx.status_message.write_fmt(
+                        StatusMessageKind::Error,
+                        format_args!("{}", error.display(Some(buffer))),
+                    );
                 }
                 buffer_count += 1;
             }
@@ -841,8 +856,10 @@ mod buffer {
         for buffer in ctx.buffers.iter_mut() {
             if let Err(error) = buffer.discard_and_reload_from_file() {
                 had_error = true;
-                ctx.status_message
-                    .write_str(StatusMessageKind::Error, &error);
+                ctx.status_message.write_fmt(
+                    StatusMessageKind::Error,
+                    format_args!("{}", error.display(Some(buffer))),
+                );
             }
             buffer_count += 1;
         }

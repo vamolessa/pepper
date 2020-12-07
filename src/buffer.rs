@@ -736,6 +736,50 @@ impl BufferCapabilities {
     }
 }
 
+pub enum BufferError {
+    BufferDoesNotHavePath,
+    CouldNotOpenFile,
+    CouldNotReadFile,
+    CouldNotCreateFile,
+    CouldNotWriteFile,
+}
+impl BufferError {
+    pub fn display(self, buffer: Option<&Buffer>) -> BufferErrorDisplay {
+        BufferErrorDisplay {
+            error: self,
+            buffer,
+        }
+    }
+}
+pub struct BufferErrorDisplay<'a> {
+    error: BufferError,
+    buffer: Option<&'a Buffer>,
+}
+impl<'a> fmt::Display for BufferErrorDisplay<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let path = self
+            .buffer
+            .map(|b| b.path.as_path())
+            .unwrap_or(Path::new(""));
+
+        match self.error {
+            BufferError::BufferDoesNotHavePath => f.write_str("buffer does not have a path"),
+            BufferError::CouldNotOpenFile => {
+                f.write_fmt(format_args!("could not open file '{:?}'", path))
+            }
+            BufferError::CouldNotReadFile => {
+                f.write_fmt(format_args!("could not read from file '{:?}'", path))
+            }
+            BufferError::CouldNotCreateFile => {
+                f.write_fmt(format_args!("could not create file '{:?}'", path))
+            }
+            BufferError::CouldNotWriteFile => {
+                f.write_fmt(format_args!("could not write to file '{:?}'", path))
+            }
+        }
+    }
+}
+
 pub struct Buffer {
     alive: bool,
     path: PathBuf,
@@ -993,23 +1037,22 @@ impl Buffer {
         &self.search_ranges
     }
 
-    pub fn discard_and_reload_from_file(&mut self) -> Result<(), String> {
+    pub fn discard_and_reload_from_file(&mut self) -> Result<(), BufferError> {
         if !self.capabilities.can_save {
             return Ok(());
         }
 
         let path = self.path.as_path();
         if path.as_os_str().is_empty() {
-            return Err("buffer has no path".into());
+            return Err(BufferError::BufferDoesNotHavePath);
         }
 
-        let file =
-            File::open(path).map_err(|e| format!("could not open file {:?}: {:?}", path, e))?;
+        let file = File::open(path).map_err(|_| BufferError::CouldNotOpenFile)?;
         let mut reader = io::BufReader::new(file);
 
         self.content
             .read(&mut self.line_pool, &mut reader)
-            .map_err(|e| format!("could not read file {:?}: {:?}", path, e))?;
+            .map_err(|_| BufferError::CouldNotReadFile)?;
 
         self.highlighted.clear();
         self.history.clear();
@@ -1053,6 +1096,7 @@ impl BufferCollection {
 
         events.enqueue(EditorEvent::BufferLoad { handle });
         let buffer = &mut self.buffers[handle.0];
+        buffer.alive = true;
         (handle, buffer)
     }
 
@@ -1121,7 +1165,7 @@ impl BufferCollection {
         handle: BufferHandle,
         path: Option<&Path>,
         events: &mut EditorEventQueue,
-    ) -> Result<(), String> {
+    ) -> Result<(), BufferError> {
         match self.get_mut(handle) {
             Some(buffer) => {
                 let new_path = match path {
@@ -1138,20 +1182,20 @@ impl BufferCollection {
 
                 match buffer.path() {
                     Some(path) => {
-                        let file = File::create(path)
-                            .map_err(|e| format!("could not create file {:?}: {:?}", path, e))?;
+                        let file =
+                            File::create(path).map_err(|_| BufferError::CouldNotCreateFile)?;
                         let mut writer = io::BufWriter::new(file);
 
                         buffer
                             .content
                             .write(&mut writer)
-                            .map_err(|e| format!("could not write to file {:?}: {:?}", path, e))?;
+                            .map_err(|_| BufferError::CouldNotWriteFile)?;
                         buffer.needs_save = false;
 
                         events.enqueue(EditorEvent::BufferSave { handle, new_path });
                         Ok(())
                     }
-                    None => Err("buffer has no path".into()),
+                    None => Err(BufferError::BufferDoesNotHavePath),
                 }
             }
             None => Ok(()),
@@ -1162,10 +1206,12 @@ impl BufferCollection {
         &mut self,
         syntaxes: &SyntaxCollection,
         events: &mut EditorEventQueue,
-    ) -> Result<(), String> {
+    ) -> Result<(), (BufferHandle, BufferError)> {
         let buffer_count = self.buffers.len();
         for i in 0..buffer_count {
-            self.save_to_file(syntaxes, BufferHandle(i), None, events)?;
+            let handle = BufferHandle(i);
+            self.save_to_file(syntaxes, handle, None, events)
+                .map_err(|e| (handle, e))?;
         }
         Ok(())
     }

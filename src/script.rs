@@ -230,8 +230,8 @@ impl<'lua> ScriptValue<'lua> {
         }
     }
 
-    pub fn display<'a>(&'a self, guard: &'a ScriptContextGuard) -> DisplayScriptValue<'lua, 'a> {
-        DisplayScriptValue(self, guard)
+    pub fn display<'a>(&'a self, guard: &'a ScriptContextGuard) -> ScriptValueDisplay<'lua, 'a> {
+        ScriptValueDisplay(self, guard)
     }
 }
 impl<'lua> FromLua<'lua> for ScriptValue<'lua> {
@@ -287,8 +287,8 @@ fn lua_value_to_script_value<'lua>(value: LuaValue<'lua>) -> LuaResult<ScriptVal
     }
 }
 
-pub struct DisplayScriptValue<'lua, 'value>(&'value ScriptValue<'lua>, &'value ScriptContextGuard);
-impl<'lua, 'value> fmt::Display for DisplayScriptValue<'lua, 'value> {
+pub struct ScriptValueDisplay<'lua, 'value>(&'value ScriptValue<'lua>, &'value ScriptContextGuard);
+impl<'lua, 'value> fmt::Display for ScriptValueDisplay<'lua, 'value> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fn fmt_recursive(
             value: &ScriptValue,
