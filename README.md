@@ -7,13 +7,6 @@
 Pepper is an experiment of mine to simplify code editing from the terminal.
 It's mission is to be a minimal and fast code editor with an orthogonal set of both editing and navigation features.
 
-#### !!! WARNING! Pra-alpha software ahead !!!
-
-## [try the demo](https://matheuslessarodrigues.itch.io/pepper#demo)
-Demo's limitations (may change in the future)
-- can't change keybindings
-- can't save files
-
 ## [default keybindings](https://github.com/matheuslessarodrigues/pepper/wiki/bindings)
 ## [scripting api](https://github.com/matheuslessarodrigues/pepper/wiki/scripting-api-reference)
 ## [defining language syntaxes](https://github.com/matheuslessarodrigues/pepper/wiki/language-syntax-definitions)
