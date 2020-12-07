@@ -2,9 +2,9 @@
 
 ### An opinionated modal editor to simplify code editing from the terminal
 
-![main screenshot](screenshots/main.png)
+![main screenshot](assets/screenshots/main.png)
 
-[more gifs](screenshots)
+[more screenshots](https://github.com/matheuslessarodrigues/pepper/wiki/screenshots)
 
 Pepper is an experiment of mine to simplify code editing from the terminal.
 It's mission is to be a minimal and fast code editor with an orthogonal set of both editing and navigation features.
@@ -16,10 +16,10 @@ Demo's limitations (may change in the future)
 - can't change keybindings
 - can't save files
 
-### [default keybindings](modes)
-### [scripting api](scripting)
-### [defining language syntaxes](syntax)
-### [config recipes](recipes)
+### [default keybindings](https://github.com/matheuslessarodrigues/pepper/wiki/bindings)
+### [scripting api](https://github.com/matheuslessarodrigues/pepper/wiki/scripting-api-reference)
+### [defining language syntaxes](https://github.com/matheuslessarodrigues/pepper/wiki/language-syntax-definitions)
+### [config recipes](https://github.com/matheuslessarodrigues/pepper/wiki/config-recipes)
 
 ### if you find a bug or need help
 Please [open an issue](https://github.com/matheuslessarodrigues/pepper/issues)
