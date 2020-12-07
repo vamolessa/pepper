@@ -18,7 +18,7 @@ It's mission is to be a minimal and fast code editor with an orthogonal set of b
 Pepper is open-source, which means you're free to build it and access all of its features.
 However, to support the development, prebuilt binaries are available for purchase at itch.
 
-https://matheuslessarodrigues.itch.io/pepper
+[matheuslessarodrigues.itch.io/pepper](https://matheuslessarodrigues.itch.io/pepper)
 
 This will not only keep you updated with the latest features/fixes but also support further
 pepper development!
