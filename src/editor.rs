@@ -372,9 +372,7 @@ impl Editor {
                             client.set_current_buffer_view_handle(Some(handle));
                         }
                     }
-                    Err(error) => self
-                        .status_message
-                        .write_str(StatusMessageKind::Error, &error),
+                    Err(error) => self.status_message.write_error(&error),
                 }
 
                 self.trigger_event_handlers(clients, target_client);

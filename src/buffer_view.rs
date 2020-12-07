@@ -1,4 +1,8 @@
-use std::path::Path;
+use std::{
+    error::Error,
+    fmt,
+    path::{Path, PathBuf},
+};
 
 use crate::{
     buffer::{BufferCollection, BufferHandle},
@@ -337,6 +341,25 @@ impl BufferView {
         }
     }
 }
+
+pub enum BufferViewError {
+    InvalidPath(PathBuf),
+}
+impl fmt::Display for BufferViewError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            BufferViewError::InvalidPath(path) => {
+                f.write_fmt(format_args!("invalid path '{:?}'", path))
+            }
+        }
+    }
+}
+impl fmt::Debug for BufferViewError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(self, f)
+    }
+}
+impl Error for BufferViewError {}
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub struct BufferViewHandle(usize);
@@ -685,7 +708,7 @@ impl BufferViewCollection {
         path: &Path,
         line_index: Option<usize>,
         events: &mut EditorEventQueue,
-    ) -> Result<BufferViewHandle, String> {
+    ) -> Result<BufferViewHandle, BufferViewError> {
         pub fn try_set_line_index(
             buffer_views: &mut BufferViewCollection,
             buffers: &mut BufferCollection,
@@ -733,7 +756,7 @@ impl BufferViewCollection {
             try_set_line_index(self, buffers, handle, line_index);
             Ok(handle)
         } else {
-            Err(format!("invalid path {:?}", path))
+            Err(BufferViewError::InvalidPath(path.into()))
         }
     }
 }

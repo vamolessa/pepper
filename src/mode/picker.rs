@@ -88,7 +88,7 @@ pub mod buffer {
     use std::path::Path;
 
     use crate::{
-        buffer::Buffer, editor::StatusMessageKind, navigation_history::NavigationHistory,
+        buffer::Buffer, navigation_history::NavigationHistory,
         picker::Picker,
     };
 
@@ -129,9 +129,7 @@ pub mod buffer {
                 ctx.events,
             ) {
                 Ok(handle) => ctx.set_current_buffer_view_handle(Some(handle)),
-                Err(error) => ctx
-                    .status_message
-                    .write_str(StatusMessageKind::Error, &error),
+                Err(error) => ctx.status_message.write_error(&error),
             }
 
             ModeOperation::EnterMode(Mode::default())

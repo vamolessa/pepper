@@ -1246,8 +1246,7 @@ fn move_to_diagnostic(state: &mut State, ctx: &mut ModeContext, forward: bool) {
             ) {
                 Ok(handle) => handle,
                 Err(error) => {
-                    ctx.status_message
-                        .write_str(StatusMessageKind::Error, &error);
+                    ctx.status_message.write_error(&error);
                     return;
                 }
             },

@@ -977,11 +977,7 @@ mod buffer_view {
             ctx.events,
         ) {
             Ok(handle) => Ok(Some(handle)),
-            Err(error) => {
-                ctx.status_message
-                    .write_str(StatusMessageKind::Error, &error);
-                Ok(None)
-            }
+            Err(_) => Ok(None),
         }
     }
 
