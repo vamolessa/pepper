@@ -38,8 +38,6 @@ jobs:
     - name: Get crate name
       id: crate-name
       run: echo "::set-output name=name::${{ fromJSON(steps.crate-metadata.outputs.metadata).packages[0].name }}"
-    - name: Print crate name
-      run: echo ${{ steps.crate-name.outputs.name }}
     - name: Installing dependencies
       if: env[format('{0}_install_dependencies', matrix.os)] != ''
       run: ${{ env[format('{0}_install_dependencies', matrix.os)] }}
