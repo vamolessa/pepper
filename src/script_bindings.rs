@@ -659,21 +659,6 @@ mod buffer {
         Ok(())
     }
 
-    #[cfg(feature = "demo")]
-    pub fn save(
-        _: ScriptEngineRef,
-        ctx: &mut ScriptContext,
-        _: ScriptContextGuard,
-        _: (),
-    ) -> ScriptResult<()> {
-        ctx.status_message.write_str(
-            StatusMessageKind::Error,
-            "'buffer.save' is only available on the full version",
-        );
-        Ok(())
-    }
-
-    #[cfg(not(feature = "demo"))]
     pub fn save(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
@@ -712,21 +697,6 @@ mod buffer {
         }
     }
 
-    #[cfg(feature = "demo")]
-    pub fn save_all(
-        _: ScriptEngineRef,
-        ctx: &mut ScriptContext,
-        _: ScriptContextGuard,
-        _: (),
-    ) -> ScriptResult<()> {
-        ctx.status_message.write_str(
-            StatusMessageKind::Error,
-            "'buffer.save_all' is only available on the full version",
-        );
-        Ok(())
-    }
-
-    #[cfg(not(feature = "demo"))]
     pub fn save_all(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
