@@ -4,7 +4,8 @@ version = "0.5.5"
 authors = ["Matheus Lessa <matheus@fastmail.com>"]
 edition = "2018"
 description = "An opinionated modal editor to simplify code editing from the terminal"
-license = "MIT"
+license = "GPL-3.0"
+license-file = "LICENSE.txt"
 
 documentation = "https://github.com/matheuslessarodrigues/pepper"
 homepage = "https://github.com/matheuslessarodrigues/pepper"
