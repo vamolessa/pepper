@@ -7,7 +7,7 @@ use std::{
 };
 
 use crate::{
-    buffer::BufferHandle,
+    buffer::{BufferCapabilities, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     client::TargetClient,
@@ -351,8 +351,7 @@ mod lsp {
         handle: LspClientHandle,
     ) -> ScriptResult<()> {
         if let Some(client) = ctx.lsp.get_mut(handle) {
-            let (buffer_handle, buffer) = ctx.buffers.new(ctx.events);
-            buffer.capabilities().log();
+            let (buffer_handle, buffer) = ctx.buffers.new(BufferCapabilities::log(), ctx.events);
             buffer.set_path(&ctx.config.syntaxes, Some(Path::new(client.name())));
             client.set_log_buffer(Some(buffer_handle));
 
@@ -529,6 +528,7 @@ mod buffer {
             .buffer_views
             .buffer_view_handle_from_path(
                 ctx.buffers,
+                ctx.word_database,
                 &ctx.config.syntaxes,
                 ctx.target_client,
                 ctx.current_directory,
@@ -741,7 +741,7 @@ mod buffer {
                 return Ok(());
             }
 
-            match buffer.discard_and_reload_from_file() {
+            match buffer.discard_and_reload_from_file(ctx.word_database) {
                 Ok(()) => ctx
                     .status_message
                     .write_str(StatusMessageKind::Info, "reloaded"),
@@ -766,7 +766,7 @@ mod buffer {
             .or_else(|| current_handle)
             .and_then(|h| buffers.get_mut(h))
         {
-            match buffer.discard_and_reload_from_file() {
+            match buffer.discard_and_reload_from_file(ctx.word_database) {
                 Ok(()) => ctx
                     .status_message
                     .write_str(StatusMessageKind::Info, "reloaded"),
@@ -796,7 +796,7 @@ mod buffer {
             let mut had_error = false;
             let mut buffer_count = 0;
             for buffer in ctx.buffers.iter_mut() {
-                if let Err(error) = buffer.discard_and_reload_from_file() {
+                if let Err(error) = buffer.discard_and_reload_from_file(ctx.word_database) {
                     had_error = true;
                     ctx.status_message.write_fmt(
                         StatusMessageKind::Error,
@@ -824,7 +824,7 @@ mod buffer {
         let mut had_error = false;
         let mut buffer_count = 0;
         for buffer in ctx.buffers.iter_mut() {
-            if let Err(error) = buffer.discard_and_reload_from_file() {
+            if let Err(error) = buffer.discard_and_reload_from_file(ctx.word_database) {
                 had_error = true;
                 ctx.status_message.write_fmt(
                     StatusMessageKind::Error,
@@ -939,6 +939,7 @@ mod buffer_view {
         let path = path.to_str()?;
         match ctx.buffer_views.buffer_view_handle_from_path(
             ctx.buffers,
+            ctx.word_database,
             &ctx.config.syntaxes,
             ctx.target_client,
             ctx.current_directory,
@@ -1055,7 +1056,7 @@ mod buffer_view {
         handle: Option<BufferViewHandle>,
     ) -> ScriptResult<()> {
         if let Some(handle) = handle.or_else(|| ctx.current_buffer_view_handle()) {
-            ctx.buffer_views.undo(ctx.buffers, handle);
+            ctx.buffer_views.undo(ctx.buffers, ctx.word_database, handle);
         }
         Ok(())
     }
@@ -1067,7 +1068,7 @@ mod buffer_view {
         handle: Option<BufferViewHandle>,
     ) -> ScriptResult<()> {
         if let Some(handle) = handle.or_else(|| ctx.current_buffer_view_handle()) {
-            ctx.buffer_views.redo(ctx.buffers, handle);
+            ctx.buffer_views.redo(ctx.buffers, ctx.word_database, handle);
         }
         Ok(())
     }

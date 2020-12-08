@@ -176,7 +176,7 @@ impl WordDatabase {
         }
     }
 
-    pub fn add_word(&mut self, word: &str) {
+    pub fn add(&mut self, word: &str) {
         let hash = WordHash::new(word);
         match self.hash_to_index.entry(hash) {
             Entry::Occupied(entry) => {
@@ -202,7 +202,7 @@ impl WordDatabase {
         }
     }
 
-    pub fn remove_word(&mut self, word: &str) {
+    pub fn remove(&mut self, word: &str) {
         let hash = WordHash::new(word);
         let entry = self.hash_to_index.entry(hash);
         if let Entry::Occupied(entry) = entry {
@@ -297,24 +297,24 @@ mod tests {
 
         let mut words = WordDatabase::new();
 
-        words.add_word("first");
+        words.add("first");
         assert_eq!(1, unique_word_count(&words));
 
-        words.add_word("first");
-        words.add_word("first");
+        words.add("first");
+        words.add("first");
         assert_eq!(1, unique_word_count(&words));
 
-        words.add_word("second");
+        words.add("second");
         assert_eq!(2, unique_word_count(&words));
 
-        words.remove_word("first");
+        words.remove("first");
         assert_eq!(2, unique_word_count(&words));
 
-        words.remove_word("first");
-        words.remove_word("first");
+        words.remove("first");
+        words.remove("first");
         assert_eq!(1, unique_word_count(&words));
 
-        words.remove_word("first");
+        words.remove("first");
         assert_eq!(1, unique_word_count(&words));
     }
 }

@@ -910,12 +910,13 @@ impl State {
                 _ => (),
             },
             Key::Char('u') => {
-                ctx.buffer_views.undo(ctx.buffers, handle);
+                ctx.buffer_views
+                    .undo(ctx.buffers, ctx.word_database, handle);
                 self.movement_kind = CursorMovementKind::PositionAndAnchor;
                 return ModeOperation::None;
             }
             Key::Char('U') => {
-                ctx.buffer_views.redo(ctx.buffers, handle);
+                ctx.buffer_views.redo(ctx.buffers, ctx.word_database, handle);
                 self.movement_kind = CursorMovementKind::PositionAndAnchor;
                 return ModeOperation::None;
             }
@@ -1237,6 +1238,7 @@ fn move_to_diagnostic(state: &mut State, ctx: &mut ModeContext, forward: bool) {
                 .buffer_view_handle_from_buffer_handle(ctx.target_client, buffer_handle),
             None => match ctx.buffer_views.buffer_view_handle_from_path(
                 ctx.buffers,
+                ctx.word_database,
                 &ctx.config.syntaxes,
                 ctx.target_client,
                 ctx.current_directory,

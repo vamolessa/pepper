@@ -8,11 +8,11 @@ use crate::{
     editor::{EditorLoop, KeysIterator, ReadLine, StatusMessage},
     editor_event::{EditorEvent, EditorEventQueue, EditorEventsIter},
     keymap::KeyMapCollection,
-    task::TaskManager,
     lsp::LspClientCollection,
     picker::Picker,
     register::{RegisterCollection, RegisterKey},
     script::{ScriptContext, ScriptEngine},
+    task::TaskManager,
     word_database::WordDatabase,
 };
 

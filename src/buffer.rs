@@ -721,18 +721,25 @@ impl fmt::Display for BufferContent {
 
 #[derive(Default)]
 pub struct BufferCapabilities {
-    has_history: bool,
-    can_save: bool,
+    pub has_history: bool,
+    pub can_save: bool,
+    pub uses_word_database: bool,
 }
 impl BufferCapabilities {
-    pub fn text(&mut self) {
-        self.has_history = true;
-        self.can_save = true;
+    pub fn text() -> Self {
+        Self {
+            has_history: true,
+            can_save: true,
+            uses_word_database: true,
+        }
     }
 
-    pub fn log(&mut self) {
-        self.has_history = false;
-        self.can_save = false;
+    pub fn log() -> Self {
+        Self {
+            has_history: false,
+            can_save: false,
+            uses_word_database: false,
+        }
     }
 }
 
@@ -810,11 +817,8 @@ impl Buffer {
     }
 
     fn dispose(&mut self, word_database: &mut WordDatabase) {
+        self.remove_all_words_from_database(word_database);
         for line in self.content.lines.drain(..) {
-            for word in WordIter::new(line.as_str()).of_kind(WordKind::Identifier) {
-                word_database.remove_word(word);
-            }
-
             self.line_pool.dispose(line);
         }
         self.content.lines.push(self.line_pool.rent());
@@ -827,6 +831,16 @@ impl Buffer {
         self.search_ranges.clear();
         self.needs_save = false;
         self.capabilities = BufferCapabilities::default();
+    }
+
+    fn remove_all_words_from_database(&mut self, word_database: &mut WordDatabase) {
+        if self.capabilities.uses_word_database {
+            for line in &self.content.lines {
+                for word in WordIter::new(line.as_str()).of_kind(WordKind::Identifier) {
+                    word_database.remove(word);
+                }
+            }
+        }
     }
 
     pub fn path(&self) -> Option<&Path> {
@@ -853,10 +867,6 @@ impl Buffer {
         let syntax = syntaxes.get(self.syntax_handle);
         self.highlighted
             .highlight_range(syntax, &self.content, index, len);
-    }
-
-    pub fn capabilities(&mut self) -> &mut BufferCapabilities {
-        &mut self.capabilities
     }
 
     pub fn refresh_syntax(&mut self, syntaxes: &SyntaxCollection) {
@@ -895,29 +905,15 @@ impl Buffer {
         }
         self.needs_save = true;
 
-        for word in WordIter::new(self.content.line_at(position.line_index).as_str())
-            .of_kind(WordKind::Identifier)
-        {
-            word_database.remove_word(word);
-        }
-
-        let range = self
-            .content
-            .insert_text(&mut self.line_pool, position, text);
-
-        let line_count = range.to.line_index - range.from.line_index + 1;
-        for line in self
-            .content
-            .lines()
-            .skip(range.from.line_index)
-            .take(line_count)
-        {
-            for word in WordIter::new(line.as_str()).of_kind(WordKind::Identifier) {
-                word_database.add_word(word);
-            }
-        }
-
-        self.highlighted.on_insert(range);
+        let range = Self::insert_text_no_history(
+            &mut self.content,
+            &mut self.line_pool,
+            &mut self.highlighted,
+            self.capabilities.uses_word_database,
+            word_database,
+            position,
+            text,
+        );
 
         if self.capabilities.has_history {
             self.history.add_edit(Edit {
@@ -930,6 +926,38 @@ impl Buffer {
         range
     }
 
+    pub fn insert_text_no_history(
+        content: &mut BufferContent,
+        line_pool: &mut BufferLinePool,
+        highlighted: &mut HighlightedBuffer,
+        uses_word_database: bool,
+        word_database: &mut WordDatabase,
+        position: BufferPosition,
+        text: &str,
+    ) -> BufferRange {
+        if uses_word_database {
+            for word in WordIter::new(content.line_at(position.line_index).as_str())
+                .of_kind(WordKind::Identifier)
+            {
+                word_database.remove(word);
+            }
+        }
+
+        let range = content.insert_text(line_pool, position, text);
+
+        if uses_word_database {
+            let line_count = range.to.line_index - range.from.line_index + 1;
+            for line in content.lines().skip(range.from.line_index).take(line_count) {
+                for word in WordIter::new(line.as_str()).of_kind(WordKind::Identifier) {
+                    word_database.add(word);
+                }
+            }
+        }
+
+        highlighted.on_insert(range);
+        range
+    }
+
     pub fn delete_range(&mut self, word_database: &mut WordDatabase, range: BufferRange) {
         self.search_ranges.clear();
         if range.from == range.to {
@@ -937,27 +965,14 @@ impl Buffer {
         }
         self.needs_save = true;
 
-        let line_count = range.to.line_index - range.from.line_index + 1;
-        for line in self
-            .content
-            .lines()
-            .skip(range.from.line_index)
-            .take(line_count)
-        {
-            for word in WordIter::new(line.as_str()).of_kind(WordKind::Identifier) {
-                word_database.remove_word(word);
-            }
-        }
-
-        let deleted_text = self.content.delete_range(&mut self.line_pool, range);
-
-        for word in WordIter::new(self.content.line_at(range.from.line_index).as_str())
-            .of_kind(WordKind::Identifier)
-        {
-            word_database.add_word(word);
-        }
-
-        self.highlighted.on_delete(range);
+        let deleted_text = Self::delete_range_no_history(
+            &mut self.content,
+            &mut self.line_pool,
+            &mut self.highlighted,
+            self.capabilities.uses_word_database,
+            word_database,
+            range,
+        );
 
         if self.capabilities.has_history {
             self.history.add_edit(Edit {
@@ -968,19 +983,57 @@ impl Buffer {
         }
     }
 
+    fn delete_range_no_history(
+        content: &mut BufferContent,
+        line_pool: &mut BufferLinePool,
+        highlighted: &mut HighlightedBuffer,
+        uses_word_database: bool,
+        word_database: &mut WordDatabase,
+        range: BufferRange,
+    ) -> Text {
+        if uses_word_database {
+            let line_count = range.to.line_index - range.from.line_index + 1;
+            for line in content.lines().skip(range.from.line_index).take(line_count) {
+                for word in WordIter::new(line.as_str()).of_kind(WordKind::Identifier) {
+                    word_database.remove(word);
+                }
+            }
+        }
+
+        let deleted_text = content.delete_range(line_pool, range);
+
+        if uses_word_database {
+            for word in WordIter::new(content.line_at(range.from.line_index).as_str())
+                .of_kind(WordKind::Identifier)
+            {
+                word_database.add(word);
+            }
+        }
+
+        highlighted.on_delete(range);
+
+        deleted_text
+    }
+
     pub fn commit_edits(&mut self) {
         self.history.commit_edits();
     }
 
-    pub fn undo<'a>(&'a mut self) -> impl 'a + Iterator<Item = Edit<'a>> {
-        self.history_edits(|h| h.undo_edits())
+    pub fn undo<'a>(
+        &'a mut self,
+        word_database: &mut WordDatabase,
+    ) -> impl 'a + Iterator<Item = Edit<'a>> {
+        self.history_edits(word_database, |h| h.undo_edits())
     }
 
-    pub fn redo<'a>(&'a mut self) -> impl 'a + Iterator<Item = Edit<'a>> {
-        self.history_edits(|h| h.redo_edits())
+    pub fn redo<'a>(
+        &'a mut self,
+        word_database: &mut WordDatabase,
+    ) -> impl 'a + Iterator<Item = Edit<'a>> {
+        self.history_edits(word_database, |h| h.redo_edits())
     }
 
-    fn history_edits<'a, F, I>(&'a mut self, selector: F) -> I
+    fn history_edits<'a, F, I>(&'a mut self, word_database: &mut WordDatabase, selector: F) -> I
     where
         F: FnOnce(&'a mut History) -> I,
         I: 'a + Clone + Iterator<Item = Edit<'a>>,
@@ -988,19 +1041,34 @@ impl Buffer {
         self.search_ranges.clear();
         self.needs_save = true;
 
-        let edits = selector(&mut self.history);
+        let content = &mut self.content;
+        let line_pool = &mut self.line_pool;
+        let highlighted = &mut self.highlighted;
+        let uses_word_database = self.capabilities.uses_word_database;
 
+        let edits = selector(&mut self.history);
         for edit in edits.clone() {
             match edit.kind {
                 EditKind::Insert => {
-                    let range =
-                        self.content
-                            .insert_text(&mut self.line_pool, edit.range.from, edit.text);
-                    self.highlighted.on_insert(range);
+                    Self::insert_text_no_history(
+                        content,
+                        line_pool,
+                        highlighted,
+                        uses_word_database,
+                        word_database,
+                        edit.range.from,
+                        edit.text,
+                    );
                 }
                 EditKind::Delete => {
-                    self.content.delete_range(&mut self.line_pool, edit.range);
-                    self.highlighted.on_delete(edit.range);
+                    Self::delete_range_no_history(
+                        content,
+                        line_pool,
+                        highlighted,
+                        uses_word_database,
+                        word_database,
+                        edit.range,
+                    );
                 }
             }
         }
@@ -1037,7 +1105,10 @@ impl Buffer {
         &self.search_ranges
     }
 
-    pub fn discard_and_reload_from_file(&mut self) -> Result<(), BufferError> {
+    pub fn discard_and_reload_from_file(
+        &mut self,
+        word_database: &mut WordDatabase,
+    ) -> Result<(), BufferError> {
         if !self.capabilities.can_save {
             return Ok(());
         }
@@ -1050,9 +1121,19 @@ impl Buffer {
         let file = File::open(path).map_err(|_| BufferError::CouldNotOpenFile)?;
         let mut reader = io::BufReader::new(file);
 
+        self.remove_all_words_from_database(word_database);
+
         self.content
             .read(&mut self.line_pool, &mut reader)
             .map_err(|_| BufferError::CouldNotReadFile)?;
+
+        if self.capabilities.uses_word_database {
+            for line in &self.content.lines {
+                for word in WordIter::new(line.as_str()).of_kind(WordKind::Identifier) {
+                    word_database.add(word);
+                }
+            }
+        }
 
         self.highlighted.clear();
         self.history.clear();
@@ -1077,7 +1158,11 @@ pub struct BufferCollection {
 }
 
 impl BufferCollection {
-    pub fn new(&mut self, events: &mut EditorEventQueue) -> (BufferHandle, &mut Buffer) {
+    pub fn new(
+        &mut self,
+        capabilities: BufferCapabilities,
+        events: &mut EditorEventQueue,
+    ) -> (BufferHandle, &mut Buffer) {
         let mut handle = None;
         for (i, buffer) in self.buffers.iter_mut().enumerate() {
             if !buffer.alive {
@@ -1097,6 +1182,7 @@ impl BufferCollection {
         events.enqueue(EditorEvent::BufferLoad { handle });
         let buffer = &mut self.buffers[handle.0];
         buffer.alive = true;
+        buffer.capabilities = capabilities;
         (handle, buffer)
     }
 
@@ -1479,7 +1565,7 @@ mod tests {
         let mut word_database = WordDatabase::new();
 
         let mut buffer = Buffer::new();
-        buffer.capabilities.text();
+        buffer.capabilities = BufferCapabilities::text();
         buffer.insert_text(
             &mut word_database,
             BufferPosition::line_col(0, 0),
@@ -1493,13 +1579,13 @@ mod tests {
 
         assert_eq!("single content", buffer.content.to_string());
         {
-            let mut ranges = buffer.undo();
+            let mut ranges = buffer.undo(&mut word_database);
             assert_eq!(range, ranges.next().unwrap().range);
             ranges.next().unwrap();
             assert!(ranges.next().is_none());
         }
         assert!(buffer.content.to_string().is_empty());
-        let mut redo_iter = buffer.redo();
+        let mut redo_iter = buffer.redo(&mut word_database);
         redo_iter.next().unwrap();
         redo_iter.next().unwrap();
         assert!(redo_iter.next().is_none());
@@ -1512,7 +1598,7 @@ mod tests {
         let mut word_database = WordDatabase::new();
 
         let mut buffer = Buffer::new();
-        buffer.capabilities.text();
+        buffer.capabilities = BufferCapabilities::text();
         buffer.insert_text(
             &mut word_database,
             BufferPosition::line_col(0, 0),
@@ -1526,13 +1612,13 @@ mod tests {
 
         assert_eq!("me\ncontent", buffer.content.to_string());
         {
-            let mut ranges = buffer.undo();
+            let mut ranges = buffer.undo(&mut word_database);
             assert_eq!(range, ranges.next().unwrap().range);
             ranges.next().unwrap();
             assert!(ranges.next().is_none());
         }
         assert!(buffer.content.to_string().is_empty());
-        let mut redo_iter = buffer.redo();
+        let mut redo_iter = buffer.redo(&mut word_database);
         redo_iter.next().unwrap();
         redo_iter.next().unwrap();
         assert!(redo_iter.next().is_none());

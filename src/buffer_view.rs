@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-    buffer::{BufferCollection, BufferHandle},
+    buffer::{BufferCapabilities, BufferCollection, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
     client::TargetClient,
     cursor::{Cursor, CursorCollection},
@@ -595,21 +595,21 @@ impl BufferViewCollection {
         }
     }
 
-    pub fn undo(&mut self, buffers: &mut BufferCollection, handle: BufferViewHandle) {
+    pub fn undo(&mut self, buffers: &mut BufferCollection, word_database: &mut WordDatabase, handle: BufferViewHandle) {
         if let Some(buffer) = self.buffer_views[handle.0]
             .as_mut()
             .and_then(|view| buffers.get_mut(view.buffer_handle))
         {
-            self.apply_edits(handle, true, buffer.undo());
+            self.apply_edits(handle, true, buffer.undo(word_database));
         }
     }
 
-    pub fn redo(&mut self, buffers: &mut BufferCollection, handle: BufferViewHandle) {
+    pub fn redo(&mut self, buffers: &mut BufferCollection, word_database: &mut WordDatabase, handle: BufferViewHandle) {
         if let Some(buffer) = self.buffer_views[handle.0]
             .as_mut()
             .and_then(|view| buffers.get_mut(view.buffer_handle))
         {
-            self.apply_edits(handle, false, buffer.redo());
+            self.apply_edits(handle, false, buffer.redo(word_database));
         }
     }
 
@@ -702,6 +702,7 @@ impl BufferViewCollection {
     pub fn buffer_view_handle_from_path(
         &mut self,
         buffers: &mut BufferCollection,
+        word_database: &mut WordDatabase,
         syntaxes: &SyntaxCollection,
         target_client: TargetClient,
         root: &Path,
@@ -745,10 +746,9 @@ impl BufferViewCollection {
         } else if path.to_str().map(|s| !s.trim().is_empty()).unwrap_or(false) {
             let path = path.strip_prefix(root).unwrap_or(path);
 
-            let (buffer_handle, buffer) = buffers.new(events);
-            buffer.capabilities().text();
+            let (buffer_handle, buffer) = buffers.new(BufferCapabilities::text(), events);
             buffer.set_path(syntaxes, Some(path));
-            let _ = buffer.discard_and_reload_from_file();
+            let _ = buffer.discard_and_reload_from_file(word_database);
 
             let buffer_view = BufferView::new(target_client, buffer_handle);
             let handle = self.add(buffer_view);
@@ -778,8 +778,7 @@ mod tests {
             let mut word_database = WordDatabase::new();
 
             let mut buffers = BufferCollection::default();
-            let (buffer_handle, buffer) = buffers.new(&mut events);
-            buffer.capabilities().text();
+            let (buffer_handle, buffer) = buffers.new(BufferCapabilities::text(), &mut events);
             buffer.insert_text(&mut word_database, BufferPosition::line_col(0, 0), text);
 
             let buffer_view = BufferView::new(TargetClient::Local, buffer_handle);
