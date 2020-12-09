@@ -1,4 +1,4 @@
-![build_badge](https://github.com/matheuslessarodrigues/pepper/workflows/rust/badge.svg?branch=master)
+[![build badge](https://github.com/matheuslessarodrigues/pepper/workflows/rust/badge.svg?branch=master)](https://github.com/matheuslessarodrigues/pepper)
 
 ### An opinionated modal editor to simplify code editing from the terminal
 
