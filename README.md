@@ -1,3 +1,5 @@
+![build_badge](https://github.com/matheuslessarodrigues/pepper/workflows/rust/badge.svg?branch=master)
+
 ### An opinionated modal editor to simplify code editing from the terminal
 
 ![main screenshot](.github/screenshots/main.png)
