@@ -7,7 +7,7 @@ description = "An opinionated modal editor to simplify code editing from the ter
 license = "GPL-3.0"
 
 documentation = "https://github.com/matheuslessarodrigues/pepper"
-homepage = "https://github.com/matheuslessarodrigues/pepper"
+homepage = "https://matheuslessarodrigues.github.io/pepper"
 repository = "https://github.com/matheuslessarodrigues/pepper"
 readme = "README.md"
 categories = ["command-line-utilities", "text-editors"]
