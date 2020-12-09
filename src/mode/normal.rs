@@ -851,8 +851,8 @@ impl State {
             },
             Key::Char('s') => return ModeOperation::EnterMode(read_line::search::mode()),
             Key::Char('y') => {
-                use copypasta::ClipboardProvider;
-                if let Ok(mut clipboard) = copypasta::ClipboardContext::new() {
+                use copypasta::{ClipboardContext, ClipboardProvider};
+                if let Ok(mut clipboard) = ClipboardContext::new() {
                     let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
                     let mut text = String::new();
                     buffer_view.get_selection_text(ctx.buffers, &mut text);
@@ -863,12 +863,10 @@ impl State {
                 self.movement_kind = CursorMovementKind::PositionAndAnchor;
             }
             Key::Char('Y') => {
-                use copypasta::ClipboardProvider;
+                use copypasta::{ClipboardContext, ClipboardProvider};
                 ctx.buffer_views
                     .delete_in_cursor_ranges(ctx.buffers, ctx.word_database, handle);
-                if let Ok(text) =
-                    copypasta::ClipboardContext::new().and_then(|mut c| c.get_contents())
-                {
+                if let Ok(text) = ClipboardContext::new().and_then(|mut c| c.get_contents()) {
                     ctx.buffer_views.insert_text_at_cursor_positions(
                         ctx.buffers,
                         ctx.word_database,
@@ -916,7 +914,8 @@ impl State {
                 return ModeOperation::None;
             }
             Key::Char('U') => {
-                ctx.buffer_views.redo(ctx.buffers, ctx.word_database, handle);
+                ctx.buffer_views
+                    .redo(ctx.buffers, ctx.word_database, handle);
                 self.movement_kind = CursorMovementKind::PositionAndAnchor;
                 return ModeOperation::None;
             }

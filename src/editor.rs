@@ -129,6 +129,13 @@ impl ReadLine {
                 }
                 ReadLinePoll::Pending
             }
+            Key::Ctrl('y') => {
+                use copypasta::{ClipboardContext, ClipboardProvider};
+                if let Ok(text) = ClipboardContext::new().and_then(|mut c| c.get_contents()) {
+                    self.input.push_str(&text);
+                }
+                ReadLinePoll::Pending
+            }
             Key::Char(c) => {
                 self.input.push(c);
                 ReadLinePoll::Pending
