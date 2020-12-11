@@ -267,6 +267,7 @@ impl HighlightedBuffer {
     }
 
     pub fn refresh(&mut self, syntax: &Syntax, buffer: &BufferContent) {
+        self.require_size(buffer.line_count());
         self.highlight_line_range(syntax, buffer, 0, buffer.line_count());
     }
 
