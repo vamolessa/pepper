@@ -741,7 +741,7 @@ mod buffer {
                 return Ok(());
             }
 
-            match buffer.discard_and_reload_from_file(ctx.word_database) {
+            match buffer.discard_and_reload_from_file(&ctx.config.syntaxes, ctx.word_database) {
                 Ok(()) => ctx
                     .status_message
                     .write_str(StatusMessageKind::Info, "reloaded"),
@@ -766,7 +766,7 @@ mod buffer {
             .or_else(|| current_handle)
             .and_then(|h| buffers.get_mut(h))
         {
-            match buffer.discard_and_reload_from_file(ctx.word_database) {
+            match buffer.discard_and_reload_from_file(&ctx.config.syntaxes, ctx.word_database) {
                 Ok(()) => ctx
                     .status_message
                     .write_str(StatusMessageKind::Info, "reloaded"),
@@ -796,7 +796,9 @@ mod buffer {
             let mut had_error = false;
             let mut buffer_count = 0;
             for buffer in ctx.buffers.iter_mut() {
-                if let Err(error) = buffer.discard_and_reload_from_file(ctx.word_database) {
+                if let Err(error) =
+                    buffer.discard_and_reload_from_file(&ctx.config.syntaxes, ctx.word_database)
+                {
                     had_error = true;
                     ctx.status_message.write_fmt(
                         StatusMessageKind::Error,
@@ -824,7 +826,9 @@ mod buffer {
         let mut had_error = false;
         let mut buffer_count = 0;
         for buffer in ctx.buffers.iter_mut() {
-            if let Err(error) = buffer.discard_and_reload_from_file(ctx.word_database) {
+            if let Err(error) =
+                buffer.discard_and_reload_from_file(&ctx.config.syntaxes, ctx.word_database)
+            {
                 had_error = true;
                 ctx.status_message.write_fmt(
                     StatusMessageKind::Error,

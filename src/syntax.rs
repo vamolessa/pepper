@@ -332,7 +332,7 @@ impl HighlightedBuffer {
 mod tests {
     use super::*;
 
-    use crate::{buffer::BufferLinePool, buffer_position::BufferPosition};
+    use crate::buffer_position::BufferPosition;
 
     macro_rules! assert_next_token {
         ($iter:expr, $kind:expr, $range:expr) => {
@@ -439,13 +439,12 @@ mod tests {
 
     #[test]
     fn editing_highlighted_buffer() {
-        let mut line_pool = BufferLinePool::default();
         let mut syntax = Syntax::default();
         syntax.add_rule(TokenKind::Comment, Pattern::new("/*{!(*/).$}").unwrap());
         syntax.add_rule(TokenKind::String, Pattern::new("'{!'.$}").unwrap());
 
         let mut buffer = BufferContent::new();
-        let range = buffer.insert_text(&mut line_pool, BufferPosition::line_col(0, 0), "/*\n*/");
+        let range = buffer.insert_text(BufferPosition::line_col(0, 0), "/*\n*/");
 
         let mut highlighted = HighlightedBuffer::new();
         highlighted.on_insert(&syntax, &buffer, range);
@@ -456,7 +455,7 @@ mod tests {
         assert_next_token!(tokens, TokenKind::Comment, 0..2);
         assert_eq!(None, tokens.next());
 
-        let range = buffer.insert_text(&mut line_pool, BufferPosition::line_col(1, 0), "'");
+        let range = buffer.insert_text(BufferPosition::line_col(1, 0), "'");
         highlighted.on_insert(&syntax, &buffer, range);
 
         let mut tokens = highlighted.lines.iter().map(|l| l.tokens.iter()).flatten();
@@ -467,13 +466,11 @@ mod tests {
 
     #[test]
     fn highlight_range_after_unfinished_line() {
-        let mut line_pool = BufferLinePool::default();
         let mut syntax = Syntax::default();
         syntax.add_rule(TokenKind::Comment, Pattern::new("/*{!(*/).$}").unwrap());
 
         let mut buffer = BufferContent::new();
-        let range =
-            buffer.insert_text(&mut line_pool, BufferPosition::line_col(0, 0), "/*\n\n\n*/");
+        let range = buffer.insert_text(BufferPosition::line_col(0, 0), "/*\n\n\n*/");
 
         let mut highlighted = HighlightedBuffer::new();
         highlighted.on_insert(&syntax, &buffer, range);
@@ -489,16 +486,11 @@ mod tests {
 
     #[test]
     fn highlight_lines_after_unfinished_to_finished() {
-        let mut line_pool = BufferLinePool::default();
         let mut syntax = Syntax::default();
         syntax.add_rule(TokenKind::Comment, Pattern::new("/*{!(*/).$}").unwrap());
 
         let mut buffer = BufferContent::new();
-        let range = buffer.insert_text(
-            &mut line_pool,
-            BufferPosition::line_col(0, 0),
-            "/*\n* /\n*/",
-        );
+        let range = buffer.insert_text(BufferPosition::line_col(0, 0), "/*\n* /\n*/");
 
         let mut highlighted = HighlightedBuffer::new();
         highlighted.on_insert(&syntax, &buffer, range);
@@ -507,7 +499,7 @@ mod tests {
             BufferPosition::line_col(1, 1),
             BufferPosition::line_col(1, 2),
         );
-        buffer.delete_range(&mut line_pool, range);
+        buffer.delete_range(range);
         highlighted.on_delete(&syntax, &buffer, range);
 
         let mut line_states = highlighted.lines.iter().map(|l| l.state);
@@ -529,13 +521,11 @@ mod tests {
 
     #[test]
     fn highlight_lines_after_became_unfinished() {
-        let mut line_pool = BufferLinePool::default();
         let mut syntax = Syntax::default();
         syntax.add_rule(TokenKind::Comment, Pattern::new("/*{!(*/).$}").unwrap());
 
         let mut buffer = BufferContent::new();
-        let range =
-            buffer.insert_text(&mut line_pool, BufferPosition::line_col(0, 0), "/ *\na\n*/");
+        let range = buffer.insert_text(BufferPosition::line_col(0, 0), "/ *\na\n*/");
 
         let mut highlighted = HighlightedBuffer::new();
         highlighted.on_insert(&syntax, &buffer, range);
@@ -544,7 +534,7 @@ mod tests {
             BufferPosition::line_col(0, 1),
             BufferPosition::line_col(0, 2),
         );
-        buffer.delete_range(&mut line_pool, range);
+        buffer.delete_range(range);
         highlighted.on_delete(&syntax, &buffer, range);
 
         let mut tokens = highlighted.lines.iter().map(|l| l.tokens.iter()).flatten();

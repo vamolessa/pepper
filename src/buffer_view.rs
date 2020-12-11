@@ -766,7 +766,7 @@ impl BufferViewCollection {
 
             let (buffer_handle, buffer) = buffers.new(BufferCapabilities::text(), events);
             buffer.set_path(syntaxes, Some(path));
-            let _ = buffer.discard_and_reload_from_file(word_database);
+            let _ = buffer.discard_and_reload_from_file(syntaxes, word_database);
 
             let buffer_view = BufferView::new(target_client, buffer_handle);
             let handle = self.add(buffer_view);

@@ -124,12 +124,15 @@ impl<'a> WordRefWithPosition<'a> {
     }
 }
 
-#[derive(Default)]
 pub struct BufferLinePool {
     pool: Vec<BufferLine>,
 }
 
 impl BufferLinePool {
+    pub const fn new() -> Self {
+        Self { pool: Vec::new() }
+    }
+
     pub fn rent(&mut self) -> BufferLine {
         match self.pool.pop() {
             Some(mut line) => {
@@ -309,17 +312,22 @@ impl BufferLine {
 
 pub struct BufferContent {
     lines: Vec<BufferLine>,
+    line_pool: BufferLinePool,
 }
 
 impl BufferContent {
     pub fn empty() -> &'static Self {
-        static EMPTY: BufferContent = BufferContent { lines: Vec::new() };
+        static EMPTY: BufferContent = BufferContent {
+            lines: Vec::new(),
+            line_pool: BufferLinePool::new(),
+        };
         &EMPTY
     }
 
     pub fn new() -> Self {
         Self {
             lines: vec![BufferLine::new()],
+            line_pool: BufferLinePool::new(),
         }
     }
 
@@ -335,18 +343,18 @@ impl BufferContent {
         &self.lines[index]
     }
 
-    pub fn read<R>(&mut self, pool: &mut BufferLinePool, read: &mut R) -> io::Result<()>
+    pub fn read<R>(&mut self, read: &mut R) -> io::Result<()>
     where
         R: io::BufRead,
     {
         for line in self.lines.drain(..) {
-            pool.dispose(line);
+            self.line_pool.dispose(line);
         }
-        while let Some(line) = pool.read(read)? {
+        while let Some(line) = self.line_pool.read(read)? {
             self.lines.push(line);
         }
         if self.lines.is_empty() {
-            self.lines.push(pool.rent());
+            self.lines.push(self.line_pool.rent());
         }
         Ok(())
     }
@@ -447,12 +455,7 @@ impl BufferContent {
         position
     }
 
-    pub fn insert_text(
-        &mut self,
-        pool: &mut BufferLinePool,
-        position: BufferPosition,
-        text: &str,
-    ) -> BufferRange {
+    pub fn insert_text(&mut self, position: BufferPosition, text: &str) -> BufferRange {
         let position = self.clamp_position(position);
 
         if let None = text.find('\n') {
@@ -467,8 +470,8 @@ impl BufferContent {
             );
             BufferRange::between(position, end_position)
         } else {
-            let split_line =
-                self.lines[position.line_index].split_off(pool, position.column_byte_index);
+            let split_line = self.lines[position.line_index]
+                .split_off(&mut self.line_pool, position.column_byte_index);
 
             let mut line_count = 0;
             let mut lines = text.lines();
@@ -478,7 +481,7 @@ impl BufferContent {
             for line_text in lines {
                 line_count += 1;
 
-                let mut line = pool.rent();
+                let mut line = self.line_pool.rent();
                 line.push_text(line_text);
                 self.lines.insert(position.line_index + line_count, line);
             }
@@ -501,7 +504,7 @@ impl BufferContent {
         }
     }
 
-    pub fn delete_range(&mut self, pool: &mut BufferLinePool, range: BufferRange) -> Text {
+    pub fn delete_range(&mut self, range: BufferRange) -> Text {
         let from = self.clamp_position(range.from);
         let to = self.clamp_position(range.to);
 
@@ -527,7 +530,7 @@ impl BufferContent {
                 for line in self.lines.drain(lines_range) {
                     deleted_text.push_str("\n");
                     deleted_text.push_str(line.as_str());
-                    pool.dispose(line);
+                    self.line_pool.dispose(line);
                 }
             }
             let to_line_index = from.line_index + 1;
@@ -540,6 +543,13 @@ impl BufferContent {
 
             deleted_text
         }
+    }
+
+    pub fn clear(&mut self) {
+        for line in self.lines.drain(..) {
+            self.line_pool.dispose(line);
+        }
+        self.lines.push(self.line_pool.rent());
     }
 
     pub fn words_from<'a>(
@@ -791,7 +801,6 @@ pub struct Buffer {
     alive: bool,
     path: PathBuf,
     content: BufferContent,
-    line_pool: BufferLinePool,
     syntax_handle: SyntaxHandle,
     highlighted: HighlightedBuffer,
     history: History,
@@ -806,7 +815,6 @@ impl Buffer {
             alive: true,
             path: PathBuf::new(),
             content: BufferContent::new(),
-            line_pool: BufferLinePool::default(),
             syntax_handle: SyntaxHandle::default(),
             highlighted: HighlightedBuffer::new(),
             history: History::new(),
@@ -818,10 +826,7 @@ impl Buffer {
 
     fn dispose(&mut self, word_database: &mut WordDatabase) {
         self.remove_all_words_from_database(word_database);
-        for line in self.content.lines.drain(..) {
-            self.line_pool.dispose(line);
-        }
-        self.content.lines.push(self.line_pool.rent());
+        self.content.clear();
 
         self.alive = false;
         self.path.clear();
@@ -902,7 +907,6 @@ impl Buffer {
 
         let range = Self::insert_text_no_history(
             &mut self.content,
-            &mut self.line_pool,
             &mut self.highlighted,
             syntaxes.get(self.syntax_handle),
             self.capabilities.uses_word_database,
@@ -924,7 +928,6 @@ impl Buffer {
 
     pub fn insert_text_no_history(
         content: &mut BufferContent,
-        line_pool: &mut BufferLinePool,
         highlighted: &mut HighlightedBuffer,
         syntax: &Syntax,
         uses_word_database: bool,
@@ -940,7 +943,7 @@ impl Buffer {
             }
         }
 
-        let range = content.insert_text(line_pool, position, text);
+        let range = content.insert_text(position, text);
 
         if uses_word_database {
             let line_count = range.to.line_index - range.from.line_index + 1;
@@ -969,7 +972,6 @@ impl Buffer {
 
         let deleted_text = Self::delete_range_no_history(
             &mut self.content,
-            &mut self.line_pool,
             &mut self.highlighted,
             syntaxes.get(self.syntax_handle),
             self.capabilities.uses_word_database,
@@ -988,7 +990,6 @@ impl Buffer {
 
     fn delete_range_no_history(
         content: &mut BufferContent,
-        line_pool: &mut BufferLinePool,
         highlighted: &mut HighlightedBuffer,
         syntax: &Syntax,
         uses_word_database: bool,
@@ -1004,7 +1005,7 @@ impl Buffer {
             }
         }
 
-        let deleted_text = content.delete_range(line_pool, range);
+        let deleted_text = content.delete_range(range);
 
         if uses_word_database {
             for word in WordIter::new(content.line_at(range.from.line_index).as_str())
@@ -1053,7 +1054,6 @@ impl Buffer {
         self.needs_save = true;
 
         let content = &mut self.content;
-        let line_pool = &mut self.line_pool;
         let highlighted = &mut self.highlighted;
         let syntax = syntaxes.get(self.syntax_handle);
         let uses_word_database = self.capabilities.uses_word_database;
@@ -1064,7 +1064,6 @@ impl Buffer {
                 EditKind::Insert => {
                     Self::insert_text_no_history(
                         content,
-                        line_pool,
                         highlighted,
                         syntax,
                         uses_word_database,
@@ -1076,7 +1075,6 @@ impl Buffer {
                 EditKind::Delete => {
                     Self::delete_range_no_history(
                         content,
-                        line_pool,
                         highlighted,
                         syntax,
                         uses_word_database,
@@ -1121,6 +1119,7 @@ impl Buffer {
 
     pub fn discard_and_reload_from_file(
         &mut self,
+        syntaxes: &SyntaxCollection,
         word_database: &mut WordDatabase,
     ) -> Result<(), BufferError> {
         if !self.capabilities.can_save {
@@ -1136,10 +1135,19 @@ impl Buffer {
         let mut reader = io::BufReader::new(file);
 
         self.remove_all_words_from_database(word_database);
+        self.highlighted.clear();
 
         self.content
-            .read(&mut self.line_pool, &mut reader)
+            .read(&mut reader)
             .map_err(|_| BufferError::CouldNotReadFile)?;
+        self.highlighted.on_insert(
+            syntaxes.get(self.syntax_handle),
+            &self.content,
+            BufferRange::between(
+                BufferPosition::line_col(0, 0),
+                BufferPosition::line_col(self.content.line_count() - 1, 0),
+            ),
+        );
 
         if self.capabilities.uses_word_database {
             for line in &self.content.lines {
@@ -1361,9 +1369,9 @@ mod tests {
     use super::*;
     use crate::buffer_position::BufferPosition;
 
-    fn buffer_from_str(line_pool: &mut BufferLinePool, text: &str) -> BufferContent {
+    fn buffer_from_str(text: &str) -> BufferContent {
         let mut buffer = BufferContent::new();
-        buffer.insert_text(line_pool, BufferPosition::line_col(0, 0), text);
+        buffer.insert_text(BufferPosition::line_col(0, 0), text);
         buffer
     }
 
@@ -1390,7 +1398,7 @@ mod tests {
 
     #[test]
     fn buffer_line_char_count() {
-        let mut line_pool = BufferLinePool::default();
+        let mut line_pool = BufferLinePool::new();
         let mut line = line_pool.rent();
         line.push_text("abc");
         assert_eq!(3, line.char_count());
@@ -1404,9 +1412,8 @@ mod tests {
 
     #[test]
     fn buffer_utf8_support() {
-        let mut line_pool = BufferLinePool::default();
-        let mut buffer = buffer_from_str(&mut line_pool, "abd");
-        let range = buffer.insert_text(&mut line_pool, BufferPosition::line_col(0, 2), "ç");
+        let mut buffer = buffer_from_str("abd");
+        let range = buffer.insert_text(BufferPosition::line_col(0, 2), "ç");
         assert_eq!(
             BufferRange::between(
                 BufferPosition::line_col(0, 2),
@@ -1418,21 +1425,19 @@ mod tests {
 
     #[test]
     fn buffer_content_insert_text() {
-        let mut line_pool = BufferLinePool::default();
         let mut buffer = BufferContent::new();
 
         assert_eq!(1, buffer.line_count());
         assert_eq!("", buffer.to_string());
 
-        buffer.insert_text(&mut line_pool, BufferPosition::line_col(0, 0), "hold");
-        buffer.insert_text(&mut line_pool, BufferPosition::line_col(0, 2), "r");
-        buffer.insert_text(&mut line_pool, BufferPosition::line_col(0, 1), "ello w");
+        buffer.insert_text(BufferPosition::line_col(0, 0), "hold");
+        buffer.insert_text(BufferPosition::line_col(0, 2), "r");
+        buffer.insert_text(BufferPosition::line_col(0, 1), "ello w");
         assert_eq!(1, buffer.line_count());
         assert_eq!("hello world", buffer.to_string());
 
-        buffer.insert_text(&mut line_pool, BufferPosition::line_col(0, 5), "\n");
+        buffer.insert_text(BufferPosition::line_col(0, 5), "\n");
         buffer.insert_text(
-            &mut line_pool,
             BufferPosition::line_col(1, 6),
             " appending more\nand more\nand even more\nlines",
         );
@@ -1442,18 +1447,13 @@ mod tests {
             buffer.to_string()
         );
 
-        let mut buffer = buffer_from_str(&mut line_pool, "this is content");
-        buffer.insert_text(
-            &mut line_pool,
-            BufferPosition::line_col(0, 8),
-            "some\nmultiline ",
-        );
+        let mut buffer = buffer_from_str("this is content");
+        buffer.insert_text(BufferPosition::line_col(0, 8), "some\nmultiline ");
         assert_eq!(2, buffer.line_count());
         assert_eq!("this is some\nmultiline content", buffer.to_string());
 
-        let mut buffer = buffer_from_str(&mut line_pool, "this is content");
+        let mut buffer = buffer_from_str("this is content");
         buffer.insert_text(
-            &mut line_pool,
             BufferPosition::line_col(0, 8),
             "some\nmore\nextensive\nmultiline ",
         );
@@ -1466,27 +1466,19 @@ mod tests {
 
     #[test]
     fn buffer_content_delete_range() {
-        let mut line_pool = BufferLinePool::default();
-        let mut buffer = buffer_from_str(&mut line_pool, "abc");
-        buffer.delete_range(
-            &mut line_pool,
-            BufferRange::between(
-                BufferPosition::line_col(0, 1),
-                BufferPosition::line_col(0, 1),
-            ),
-        );
+        let mut buffer = buffer_from_str("abc");
+        buffer.delete_range(BufferRange::between(
+            BufferPosition::line_col(0, 1),
+            BufferPosition::line_col(0, 1),
+        ));
         assert_eq!("abc", buffer.to_string());
-        buffer.delete_range(
-            &mut line_pool,
-            BufferRange::between(
-                BufferPosition::line_col(0, 1),
-                BufferPosition::line_col(0, 2),
-            ),
-        );
+        buffer.delete_range(BufferRange::between(
+            BufferPosition::line_col(0, 1),
+            BufferPosition::line_col(0, 2),
+        ));
         assert_eq!("ac", buffer.to_string());
 
-        let mut buffer =
-            buffer_from_str(&mut line_pool, "this is the initial\ncontent of the buffer");
+        let mut buffer = buffer_from_str("this is the initial\ncontent of the buffer");
 
         assert_eq!(2, buffer.line_count());
         assert_eq!(
@@ -1494,13 +1486,10 @@ mod tests {
             buffer.to_string()
         );
 
-        let deleted_text = buffer.delete_range(
-            &mut line_pool,
-            BufferRange::between(
-                BufferPosition::line_col(0, 0),
-                BufferPosition::line_col(0, 0),
-            ),
-        );
+        let deleted_text = buffer.delete_range(BufferRange::between(
+            BufferPosition::line_col(0, 0),
+            BufferPosition::line_col(0, 0),
+        ));
         assert_eq!(2, buffer.line_count());
         assert_eq!(
             "this is the initial\ncontent of the buffer",
@@ -1508,68 +1497,49 @@ mod tests {
         );
         assert_eq!("", deleted_text.as_str());
 
-        let deleted_text = buffer.delete_range(
-            &mut line_pool,
-            BufferRange::between(
-                BufferPosition::line_col(0, 11),
-                BufferPosition::line_col(0, 19),
-            ),
-        );
+        let deleted_text = buffer.delete_range(BufferRange::between(
+            BufferPosition::line_col(0, 11),
+            BufferPosition::line_col(0, 19),
+        ));
         assert_eq!(2, buffer.line_count());
         assert_eq!("this is the\ncontent of the buffer", buffer.to_string());
         assert_eq!(" initial", deleted_text.as_str());
 
-        let deleted_text = buffer.delete_range(
-            &mut line_pool,
-            BufferRange::between(
-                BufferPosition::line_col(0, 8),
-                BufferPosition::line_col(1, 15),
-            ),
-        );
+        let deleted_text = buffer.delete_range(BufferRange::between(
+            BufferPosition::line_col(0, 8),
+            BufferPosition::line_col(1, 15),
+        ));
         assert_eq!(1, buffer.line_count());
         assert_eq!("this is buffer", buffer.to_string());
         assert_eq!("the\ncontent of the ", deleted_text.as_str());
 
-        let mut buffer = buffer_from_str(
-            &mut line_pool,
-            "this\nbuffer\ncontains\nmultiple\nlines\nyes",
-        );
+        let mut buffer = buffer_from_str("this\nbuffer\ncontains\nmultiple\nlines\nyes");
         assert_eq!(6, buffer.line_count());
-        let deleted_text = buffer.delete_range(
-            &mut line_pool,
-            BufferRange::between(
-                BufferPosition::line_col(1, 4),
-                BufferPosition::line_col(4, 1),
-            ),
-        );
+        let deleted_text = buffer.delete_range(BufferRange::between(
+            BufferPosition::line_col(1, 4),
+            BufferPosition::line_col(4, 1),
+        ));
         assert_eq!("this\nbuffines\nyes", buffer.to_string());
         assert_eq!("er\ncontains\nmultiple\nl", deleted_text.as_str());
     }
 
     #[test]
     fn buffer_content_delete_lines() {
-        let mut pool = BufferLinePool::default();
-        let mut buffer = buffer_from_str(&mut pool, "first line\nsecond line\nthird line");
+        let mut buffer = buffer_from_str("first line\nsecond line\nthird line");
         assert_eq!(3, buffer.line_count());
-        let deleted_text = buffer.delete_range(
-            &mut pool,
-            BufferRange::between(
-                BufferPosition::line_col(1, 0),
-                BufferPosition::line_col(2, 0),
-            ),
-        );
+        let deleted_text = buffer.delete_range(BufferRange::between(
+            BufferPosition::line_col(1, 0),
+            BufferPosition::line_col(2, 0),
+        ));
         assert_eq!("first line\nthird line", buffer.to_string());
         assert_eq!("second line\n", deleted_text.as_str());
 
-        let mut buffer = buffer_from_str(&mut pool, "first line\nsecond line\nthird line");
+        let mut buffer = buffer_from_str("first line\nsecond line\nthird line");
         assert_eq!(3, buffer.line_count());
-        let deleted_text = buffer.delete_range(
-            &mut pool,
-            BufferRange::between(
-                BufferPosition::line_col(1, 0),
-                BufferPosition::line_col(1, 11),
-            ),
-        );
+        let deleted_text = buffer.delete_range(BufferRange::between(
+            BufferPosition::line_col(1, 0),
+            BufferPosition::line_col(1, 11),
+        ));
         assert_eq!("first line\n\nthird line", buffer.to_string());
         assert_eq!("second line", deleted_text.as_str());
     }
@@ -1646,8 +1616,7 @@ mod tests {
 
     #[test]
     fn buffer_content_range_text() {
-        let mut pool = BufferLinePool::default();
-        let buffer = buffer_from_str(&mut pool, "abc\ndef\nghi");
+        let buffer = buffer_from_str("abc\ndef\nghi");
         let mut text = String::new();
         buffer.append_range_text_to_string(
             BufferRange::between(
@@ -1672,13 +1641,12 @@ mod tests {
             BufferPosition::line_col(0, column)
         }
 
-        let mut pool = BufferLinePool::default();
-        let buffer = buffer_from_str(&mut pool, "word");
+        let buffer = buffer_from_str("word");
         assert_word!(buffer.word_at(col(0)), col(0), WordKind::Identifier, "word");
         assert_word!(buffer.word_at(col(2)), col(0), WordKind::Identifier, "word");
         assert_word!(buffer.word_at(col(4)), col(4), WordKind::Whitespace, "");
 
-        let buffer = buffer_from_str(&mut pool, "asd word+? asd");
+        let buffer = buffer_from_str("asd word+? asd");
         assert_word!(buffer.word_at(col(3)), col(3), WordKind::Whitespace, " ");
         assert_word!(buffer.word_at(col(4)), col(4), WordKind::Identifier, "word");
         assert_word!(buffer.word_at(col(6)), col(4), WordKind::Identifier, "word");
@@ -1701,8 +1669,7 @@ mod tests {
             BufferPosition::line_col(0, column)
         }
 
-        let mut pool = BufferLinePool::default();
-        let buffer = buffer_from_str(&mut pool, "word");
+        let buffer = buffer_from_str("word");
         let (w, mut lw, mut rw) = buffer.words_from(col(0));
         assert_word!(w, col(0), WordKind::Identifier, "word");
         assert!(lw.next().is_none());
@@ -1717,7 +1684,7 @@ mod tests {
         assert!(lw.next().is_none());
         assert!(rw.next().is_none());
 
-        let buffer = buffer_from_str(&mut pool, "first second third");
+        let buffer = buffer_from_str("first second third");
         let (w, mut lw, mut rw) = buffer.words_from(col(8));
         assert_word!(w, col(6), WordKind::Identifier, "second");
         assert_word!(lw.next().unwrap(), col(5), WordKind::Whitespace, " ");
@@ -1730,8 +1697,7 @@ mod tests {
 
     #[test]
     fn buffer_find_balanced_chars() {
-        let mut pool = BufferLinePool::default();
-        let buffer = buffer_from_str(&mut pool, "(\n(\na\n)\nbc)");
+        let buffer = buffer_from_str("(\n(\na\n)\nbc)");
 
         assert_eq!(
             Some(BufferRange::between(
@@ -1779,8 +1745,7 @@ mod tests {
 
     #[test]
     fn buffer_find_delimiter_pairs() {
-        let mut pool = BufferLinePool::default();
-        let buffer = buffer_from_str(&mut pool, "|a|bcd|efg|");
+        let buffer = buffer_from_str("|a|bcd|efg|");
 
         assert_eq!(
             Some(BufferRange::between(
