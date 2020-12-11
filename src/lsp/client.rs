@@ -369,7 +369,6 @@ impl Client {
         F: FnOnce(&mut Vec<u8>),
     {
         let buffers = &mut *ctx.buffers;
-        let word_database = &mut *ctx.word_database;
         if let Some(buffer) = self.log_buffer_handle.and_then(|h| buffers.get_mut(h)) {
             self.log_write_buf.clear();
             writer(&mut self.log_write_buf);
@@ -379,7 +378,7 @@ impl Client {
             let position =
                 BufferPosition::line_col(line_index, content.line_at(line_index).as_str().len());
             let text = String::from_utf8_lossy(&self.log_write_buf);
-            buffer.insert_text(word_database, position, &text);
+            buffer.insert_text(&ctx.config.syntaxes, ctx.word_database, position, &text);
         }
     }
 

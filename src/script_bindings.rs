@@ -979,6 +979,7 @@ mod buffer_view {
             let text = text.to_str()?;
             ctx.buffer_views.insert_text_at_cursor_positions(
                 ctx.buffers,
+                &ctx.config.syntaxes,
                 ctx.word_database,
                 handle,
                 text,
@@ -998,6 +999,7 @@ mod buffer_view {
             let text = text.to_str()?;
             ctx.buffer_views.insert_text_at_position(
                 ctx.buffers,
+                &ctx.config.syntaxes,
                 ctx.word_database,
                 handle,
                 BufferPosition::line_col(line, column),
@@ -1015,8 +1017,12 @@ mod buffer_view {
         handle: Option<BufferViewHandle>,
     ) -> ScriptResult<()> {
         if let Some(handle) = handle.or_else(|| ctx.current_buffer_view_handle()) {
-            ctx.buffer_views
-                .delete_in_cursor_ranges(ctx.buffers, ctx.word_database, handle);
+            ctx.buffer_views.delete_in_cursor_ranges(
+                ctx.buffers,
+                &ctx.config.syntaxes,
+                ctx.word_database,
+                handle,
+            );
             ctx.edited_buffers = true;
         }
         Ok(())
@@ -1037,6 +1043,7 @@ mod buffer_view {
         if let Some(handle) = handle.or_else(|| ctx.current_buffer_view_handle()) {
             ctx.buffer_views.delete_in_range(
                 ctx.buffers,
+                &ctx.config.syntaxes,
                 ctx.word_database,
                 handle,
                 BufferRange::between(
@@ -1056,7 +1063,8 @@ mod buffer_view {
         handle: Option<BufferViewHandle>,
     ) -> ScriptResult<()> {
         if let Some(handle) = handle.or_else(|| ctx.current_buffer_view_handle()) {
-            ctx.buffer_views.undo(ctx.buffers, ctx.word_database, handle);
+            ctx.buffer_views
+                .undo(ctx.buffers, &ctx.config.syntaxes, ctx.word_database, handle);
         }
         Ok(())
     }
@@ -1068,7 +1076,8 @@ mod buffer_view {
         handle: Option<BufferViewHandle>,
     ) -> ScriptResult<()> {
         if let Some(handle) = handle.or_else(|| ctx.current_buffer_view_handle()) {
-            ctx.buffer_views.redo(ctx.buffers, ctx.word_database, handle);
+            ctx.buffer_views
+                .redo(ctx.buffers, &ctx.config.syntaxes, ctx.word_database, handle);
         }
         Ok(())
     }
