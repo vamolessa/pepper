@@ -769,7 +769,7 @@ mod tests {
     }
 
     #[test]
-    fn test_simple_pattern() {
+    fn simple_pattern() {
         let p = Pattern::new("").unwrap();
         assert_eq!(MatchResult::Ok(0), p.matches(""));
         assert_eq!(MatchResult::Ok(0), p.matches("a"));
@@ -856,7 +856,7 @@ mod tests {
     }
 
     #[test]
-    fn test_group() {
+    fn group() {
         let p = Pattern::new("[abc]").unwrap();
         assert_eq!(MatchResult::Ok(1), p.matches("a"));
         assert_eq!(MatchResult::Ok(1), p.matches("b"));
@@ -907,7 +907,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sequence() {
+    fn sequence() {
         let p = Pattern::new("(abc)").unwrap();
         assert_eq!(MatchResult::Ok(3), p.matches("abc"));
         assert_eq!(MatchResult::Ok(3), p.matches("abcd"));
@@ -941,7 +941,7 @@ mod tests {
     }
 
     #[test]
-    fn test_repeat() {
+    fn repeat() {
         let p = Pattern::new("{a}").unwrap();
         assert_eq!(MatchResult::Ok(0), p.matches(""));
         assert_eq!(MatchResult::Ok(1), p.matches("a"));
@@ -977,7 +977,7 @@ mod tests {
     }
 
     #[test]
-    fn test_end_anchor() {
+    fn end_anchor() {
         let p = Pattern::new("a$").unwrap();
         assert_eq!(MatchResult::Ok(1), p.matches("a"));
         assert_eq!(MatchResult::Err, p.matches("aa"));
@@ -1013,7 +1013,7 @@ mod tests {
     }
 
     #[test]
-    fn test_complex_pattern() {
+    fn complex_pattern() {
         let p = Pattern::new("{.!$}").unwrap();
         assert_eq!(MatchResult::Ok(10), p.matches("things 890"));
         assert_eq!(MatchResult::Ok(1), p.matches("0"));
@@ -1036,7 +1036,7 @@ mod tests {
     }
 
     #[test]
-    fn test_edge_cases() {
+    fn edge_cases() {
         let p = Pattern::new("(!(!abc))").unwrap();
         assert_eq!(MatchResult::Ok(3), p.matches("abc"));
         assert_eq!(MatchResult::Err, p.matches("xyz"));
@@ -1056,7 +1056,7 @@ mod tests {
     }
 
     #[test]
-    fn test_pattern_composition() {
+    fn pattern_composition() {
         let p = Pattern::new("[![(ab)(cd)]]").unwrap();
         assert_eq!(MatchResult::Ok(2), p.matches("ad"));
         assert_eq!(MatchResult::Ok(2), p.matches("bc"));
@@ -1088,7 +1088,7 @@ mod tests {
     }
 
     #[test]
-    fn test_bad_pattern() {
+    fn bad_pattern() {
         macro_rules! assert_err {
             ($expected:expr, $value:expr) => {
                 match $value {
