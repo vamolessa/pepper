@@ -247,6 +247,7 @@ impl HighlightedBuffer {
     }
 
     pub fn on_insert(&mut self, syntax: &Syntax, buffer: &BufferContent, range: BufferRange) {
+        self.require_size(range.from.line_index + 1);
         let pool = &mut self.line_pool;
         let insert_index = range.from.line_index + 1;
         let insert_count = range.to.line_index - range.from.line_index;
@@ -258,10 +259,22 @@ impl HighlightedBuffer {
     }
 
     pub fn on_delete(&mut self, syntax: &Syntax, buffer: &BufferContent, range: BufferRange) {
+        self.require_size(range.to.line_index + 1);
         for line in self.lines.drain(range.from.line_index..range.to.line_index) {
             self.line_pool.dispose(line);
         }
         self.highlight_line_range(syntax, buffer, range.from.line_index, 1);
+    }
+
+    pub fn refresh(&mut self, syntax: &Syntax, buffer: &BufferContent) {
+        self.highlight_line_range(syntax, buffer, 0, buffer.line_count());
+    }
+
+    fn require_size(&mut self, min_len: usize) {
+        if self.lines.len() < min_len {
+            let pool = &mut self.line_pool;
+            self.lines.resize_with(min_len, || pool.rent());
+        }
     }
 
     fn highlight_line_range(
@@ -271,12 +284,6 @@ impl HighlightedBuffer {
         index: usize,
         len: usize,
     ) {
-        let end_index = index + len;
-        if self.lines.len() < end_index {
-            let pool = &mut self.line_pool;
-            self.lines.resize_with(end_index, || pool.rent());
-        }
-
         let mut previous_line_state = match index.checked_sub(1) {
             Some(i) => self.lines[i].state,
             None => LineState::Finished,
@@ -293,7 +300,7 @@ impl HighlightedBuffer {
             hline.state = previous_line_state;
         }
 
-        for (bline, hline) in buffer.lines().zip(self.lines.iter_mut()).skip(end_index) {
+        for (bline, hline) in buffer.lines().zip(self.lines.iter_mut()).skip(index + len) {
             let previous_state = hline.state;
             previous_line_state =
                 syntax.parse_line(bline.as_str(), previous_line_state, &mut hline.tokens);

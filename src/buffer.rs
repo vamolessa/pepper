@@ -880,7 +880,8 @@ impl Buffer {
 
         if self.syntax_handle != syntax_handle {
             self.syntax_handle = syntax_handle;
-            self.highlighted.clear();
+            self.highlighted
+                .refresh(syntaxes.get(syntax_handle), &self.content);
         }
     }
 
@@ -1135,19 +1136,12 @@ impl Buffer {
         let mut reader = io::BufReader::new(file);
 
         self.remove_all_words_from_database(word_database);
-        self.highlighted.clear();
 
         self.content
             .read(&mut reader)
             .map_err(|_| BufferError::CouldNotReadFile)?;
-        self.highlighted.on_insert(
-            syntaxes.get(self.syntax_handle),
-            &self.content,
-            BufferRange::between(
-                BufferPosition::line_col(0, 0),
-                BufferPosition::line_col(self.content.line_count() - 1, 0),
-            ),
-        );
+        self.highlighted
+            .refresh(syntaxes.get(self.syntax_handle), &self.content);
 
         if self.capabilities.uses_word_database {
             for line in &self.content.lines {
@@ -1157,7 +1151,6 @@ impl Buffer {
             }
         }
 
-        self.highlighted.clear();
         self.history.clear();
         self.search_ranges.clear();
 
