@@ -280,17 +280,6 @@ impl Editor {
                 0
             };
             client.update_view(self, picker_height);
-
-            let buffer_views = &self.buffer_views;
-            let buffers = &mut self.buffers;
-            if let Some(buffer) = client
-                .current_buffer_view_handle()
-                .and_then(|h| buffer_views.get(h))
-                .map(|v| v.buffer_handle)
-                .and_then(|h| buffers.get_mut(h))
-            {
-                buffer.highlight_range(&self.config.syntaxes, client.scroll, client.height as _);
-            }
         }
     }
 

@@ -589,8 +589,12 @@ impl State {
                 );
             }
             Key::Char('d') => {
-                ctx.buffer_views
-                    .delete_in_cursor_ranges(ctx.buffers, ctx.word_database, handle);
+                ctx.buffer_views.delete_in_cursor_ranges(
+                    ctx.buffers,
+                    &ctx.config.syntaxes,
+                    ctx.word_database,
+                    handle,
+                );
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
                 unwrap_or_none!(ctx.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
                 self.movement_kind = CursorMovementKind::PositionAndAnchor;
@@ -598,8 +602,12 @@ impl State {
                 return ModeOperation::None;
             }
             Key::Char('i') => {
-                ctx.buffer_views
-                    .delete_in_cursor_ranges(ctx.buffers, ctx.word_database, handle);
+                ctx.buffer_views.delete_in_cursor_ranges(
+                    ctx.buffers,
+                    &ctx.config.syntaxes,
+                    ctx.word_database,
+                    handle,
+                );
 
                 self.on_edit_keys(ctx, keys, keys_from_index);
                 return ModeOperation::EnterMode(Mode::Insert(Default::default()));
@@ -640,6 +648,7 @@ impl State {
                         );
                         ctx.buffer_views.delete_in_range(
                             ctx.buffers,
+                            &ctx.config.syntaxes,
                             ctx.word_database,
                             handle,
                             range,
@@ -672,6 +681,7 @@ impl State {
                     for line_index in range.from.line_index..=range.to.line_index {
                         ctx.buffer_views.insert_text_at_position(
                             ctx.buffers,
+                            &ctx.config.syntaxes,
                             ctx.word_database,
                             handle,
                             BufferPosition::line_col(line_index, 0),
@@ -864,11 +874,16 @@ impl State {
             }
             Key::Char('Y') => {
                 use copypasta::{ClipboardContext, ClipboardProvider};
-                ctx.buffer_views
-                    .delete_in_cursor_ranges(ctx.buffers, ctx.word_database, handle);
+                ctx.buffer_views.delete_in_cursor_ranges(
+                    ctx.buffers,
+                    &ctx.config.syntaxes,
+                    ctx.word_database,
+                    handle,
+                );
                 if let Ok(text) = ClipboardContext::new().and_then(|mut c| c.get_contents()) {
                     ctx.buffer_views.insert_text_at_cursor_positions(
                         ctx.buffers,
+                        &ctx.config.syntaxes,
                         ctx.word_database,
                         handle,
                         &text,
@@ -886,6 +901,7 @@ impl State {
                 Key::Char(c) => {
                     ctx.buffer_views.delete_in_cursor_ranges(
                         ctx.buffers,
+                        &ctx.config.syntaxes,
                         ctx.word_database,
                         handle,
                     );
@@ -893,6 +909,7 @@ impl State {
                         let register = ctx.registers.get(key);
                         ctx.buffer_views.insert_text_at_cursor_positions(
                             ctx.buffers,
+                            &ctx.config.syntaxes,
                             ctx.word_database,
                             handle,
                             register,
@@ -909,13 +926,13 @@ impl State {
             },
             Key::Char('u') => {
                 ctx.buffer_views
-                    .undo(ctx.buffers, ctx.word_database, handle);
+                    .undo(ctx.buffers, &ctx.config.syntaxes, ctx.word_database, handle);
                 self.movement_kind = CursorMovementKind::PositionAndAnchor;
                 return ModeOperation::None;
             }
             Key::Char('U') => {
                 ctx.buffer_views
-                    .redo(ctx.buffers, ctx.word_database, handle);
+                    .redo(ctx.buffers, &ctx.config.syntaxes, ctx.word_database, handle);
                 self.movement_kind = CursorMovementKind::PositionAndAnchor;
                 return ModeOperation::None;
             }
