@@ -959,7 +959,7 @@ mod tests {
         assert_eq!(MatchResult::Ok(2), p.matches("ac"));
         assert_eq!(MatchResult::Ok(3), p.matches("abc"));
         assert_eq!(MatchResult::Ok(5), p.matches("abbbc"));
-        
+
         let p = Pattern::new("a{bc}d").unwrap();
         assert_eq!(MatchResult::Err, p.matches("a"));
         assert_eq!(MatchResult::Ok(2), p.matches("ad"));
@@ -1057,6 +1057,19 @@ mod tests {
 
     #[test]
     fn pattern_composition() {
+        assert!(matches!(
+            Pattern::new("[(ab)c]"),
+            Err(PatternError::GroupWithElementsOfDifferentSize)
+        ));
+
+        let p = Pattern::new("[(ab)(cd)]").unwrap();
+        assert_eq!(MatchResult::Ok(2), p.matches("ab"));
+        assert_eq!(MatchResult::Ok(2), p.matches("cd"));
+        assert_eq!(MatchResult::Err, p.matches("a"));
+        assert_eq!(MatchResult::Err, p.matches("c"));
+        assert_eq!(MatchResult::Err, p.matches("ad"));
+        assert_eq!(MatchResult::Err, p.matches("cb"));
+
         let p = Pattern::new("[![(ab)(cd)]]").unwrap();
         assert_eq!(MatchResult::Ok(2), p.matches("ad"));
         assert_eq!(MatchResult::Ok(2), p.matches("bc"));
