@@ -27,14 +27,13 @@ struct Token {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LineState {
-    Dirty,
     Finished,
     Unfinished(usize, PatternState),
 }
 
 impl Default for LineState {
     fn default() -> Self {
-        Self::Dirty
+        Self::Finished
     }
 }
 
@@ -73,7 +72,7 @@ impl Syntax {
         let mut line_index = 0;
 
         match previous_line_state {
-            LineState::Dirty | LineState::Finished => (),
+            LineState::Finished => (),
             LineState::Unfinished(pattern_index, state) => {
                 match self.rules[pattern_index].1.matches_with_state(line, &state) {
                     MatchResult::Ok(len) => {
@@ -207,7 +206,7 @@ impl HighlightedLinePool {
         match self.pool.pop() {
             Some(mut line) => {
                 line.tokens.clear();
-                line.state = LineState::Dirty;
+                line.state = LineState::Finished;
                 line
             }
             None => HighlightedLine::default(),
@@ -248,24 +247,20 @@ impl HighlightedBuffer {
     }
 
     pub fn on_insert(&mut self, syntax: &Syntax, buffer: &BufferContent, range: BufferRange) {
-        self.lines[range.from.line_index].state = LineState::Dirty;
+        let pool = &mut self.line_pool;
         let insert_index = range.from.line_index + 1;
         let insert_count = range.to.line_index - range.from.line_index;
-        let pool = &mut self.line_pool;
         self.lines.splice(
             insert_index..insert_index,
             iter::repeat_with(|| pool.rent()).take(insert_count),
         );
-
-        self.highlight_line_range(syntax, buffer, range.from.line_index, range.to.line_index - range.from.line_index);
+        self.highlight_line_range(syntax, buffer, range.from.line_index, insert_count);
     }
 
     pub fn on_delete(&mut self, syntax: &Syntax, buffer: &BufferContent, range: BufferRange) {
         for line in self.lines.drain(range.from.line_index..range.to.line_index) {
             self.line_pool.dispose(line);
         }
-
-        self.lines[range.from.line_index].state = LineState::Dirty;
         self.highlight_line_range(syntax, buffer, range.from.line_index, 1);
     }
 
@@ -273,8 +268,8 @@ impl HighlightedBuffer {
         &mut self,
         syntax: &Syntax,
         buffer: &BufferContent,
-        mut index: usize,
-        mut len: usize,
+        index: usize,
+        len: usize,
     ) {
         let end_index = index + len;
         if self.lines.len() < end_index {
@@ -282,22 +277,10 @@ impl HighlightedBuffer {
             self.lines.resize_with(end_index, || pool.rent());
         }
 
-        let mut previous_line_state = match self.lines[..index]
-            .iter()
-            .rposition(|l| l.state != LineState::Dirty)
-        {
-            Some(i) => {
-                index = i + 1;
-                len = end_index - index;
-                self.lines[i].state
-            }
-            None => {
-                index = 0;
-                len = end_index;
-                LineState::Finished
-            }
+        let mut previous_line_state = match index.checked_sub(1) {
+            Some(i) => self.lines[i].state,
+            None => LineState::Finished,
         };
-        let mut previous_line_previous_state = previous_line_state;
 
         for (bline, hline) in buffer
             .lines()
@@ -305,38 +288,21 @@ impl HighlightedBuffer {
             .skip(index)
             .take(len)
         {
-            let previous_state = hline.state;
-            if previous_state == LineState::Dirty
-                || previous_line_state != previous_line_previous_state
-            {
-                previous_line_state =
-                    syntax.parse_line(bline.as_str(), previous_line_state, &mut hline.tokens);
-                hline.state = previous_line_state;
-            } else {
-                previous_line_state = previous_state;
-            }
-            previous_line_previous_state = previous_state;
+            previous_line_state =
+                syntax.parse_line(bline.as_str(), previous_line_state, &mut hline.tokens);
+            hline.state = previous_line_state;
         }
 
-        if let LineState::Unfinished(_, _) = previous_line_previous_state {
-            if let LineState::Finished = previous_line_state {
-                for hline in &mut self.lines[end_index..] {
-                    let state = std::mem::take(&mut hline.state);
-                    if !matches!(state, LineState::Unfinished(_, _)) {
-                        break;
-                    }
-                }
-            }
-        } else {
-            if let LineState::Unfinished(_, _) = previous_line_state {
-                for (bline, hline) in buffer.lines().zip(self.lines.iter_mut()).skip(end_index) {
-                    previous_line_state =
-                        syntax.parse_line(bline.as_str(), previous_line_state, &mut hline.tokens);
-                    hline.state = previous_line_state;
-                    if let LineState::Finished = previous_line_state {
-                        break;
-                    }
-                }
+        for (bline, hline) in buffer.lines().zip(self.lines.iter_mut()).skip(end_index) {
+            let previous_state = hline.state;
+            previous_line_state =
+                syntax.parse_line(bline.as_str(), previous_line_state, &mut hline.tokens);
+            hline.state = previous_line_state;
+
+            if previous_state == LineState::Finished
+                && !matches!(previous_line_state, LineState::Unfinished(_, _))
+            {
+                break;
             }
         }
     }
@@ -506,7 +472,8 @@ mod tests {
         syntax.add_rule(TokenKind::Comment, Pattern::new("/*{!(*/).$}").unwrap());
 
         let mut buffer = BufferContent::new();
-        let range = buffer.insert_text(&mut line_pool, BufferPosition::line_col(0, 0), "/*\n\n\n*/");
+        let range =
+            buffer.insert_text(&mut line_pool, BufferPosition::line_col(0, 0), "/*\n\n\n*/");
 
         let mut highlighted = HighlightedBuffer::new();
         highlighted.on_insert(&syntax, &buffer, range);
@@ -520,7 +487,7 @@ mod tests {
         assert_eq!(None, tokens.next());
     }
 
-    //#[test]
+    #[test]
     fn highlight_lines_after_unfinished_to_finished() {
         let mut line_pool = BufferLinePool::default();
         let mut syntax = Syntax::default();
@@ -549,14 +516,14 @@ mod tests {
             Some(LineState::Unfinished(_, _))
         ));
         assert_eq!(Some(LineState::Finished), line_states.next());
-        assert_eq!(Some(LineState::Dirty), line_states.next());
+        assert_eq!(Some(LineState::Finished), line_states.next());
         assert_eq!(None, line_states.next());
 
         let mut tokens = highlighted.lines.iter().map(|l| l.tokens.iter()).flatten();
         assert_next_token!(tokens, TokenKind::Comment, 0..2);
         assert_next_token!(tokens, TokenKind::Comment, 0..2);
-        // This token is dirty and still has value from last highlight
-        assert_next_token!(tokens, TokenKind::Comment, 0..2);
+        assert_next_token!(tokens, TokenKind::Text, 0..1);
+        assert_next_token!(tokens, TokenKind::Text, 1..2);
         assert_eq!(None, tokens.next());
     }
 
@@ -567,7 +534,8 @@ mod tests {
         syntax.add_rule(TokenKind::Comment, Pattern::new("/*{!(*/).$}").unwrap());
 
         let mut buffer = BufferContent::new();
-        let range = buffer.insert_text(&mut line_pool, BufferPosition::line_col(0, 0), "/ *\na\n*/");
+        let range =
+            buffer.insert_text(&mut line_pool, BufferPosition::line_col(0, 0), "/ *\na\n*/");
 
         let mut highlighted = HighlightedBuffer::new();
         highlighted.on_insert(&syntax, &buffer, range);
