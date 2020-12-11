@@ -866,7 +866,7 @@ impl Buffer {
     pub fn highlight_range(&mut self, syntaxes: &SyntaxCollection, index: usize, len: usize) {
         let syntax = syntaxes.get(self.syntax_handle);
         self.highlighted
-            .highlight_range(syntax, &self.content, index, len);
+            .highlight_line_range(syntax, &self.content, index, len);
     }
 
     pub fn refresh_syntax(&mut self, syntaxes: &SyntaxCollection) {

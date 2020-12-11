@@ -61,7 +61,7 @@ impl Syntax {
     ) -> LineState {
         tokens.clear();
 
-        if self.rules.len() == 0 {
+        if self.rules.is_empty() {
             tokens.push(Token {
                 kind: TokenKind::Text,
                 range: 0..line.len(),
@@ -266,12 +266,12 @@ impl HighlightedBuffer {
         self.lines[range.from.line_index].state = LineState::Dirty;
     }
 
-    pub fn highlight_range(
+    pub fn highlight_line_range(
         &mut self,
         syntax: &Syntax,
         buffer: &BufferContent,
-        index: usize,
-        len: usize,
+        mut index: usize,
+        mut len: usize,
     ) {
         let min_len = index + len;
         if self.lines.len() < min_len {
@@ -280,9 +280,20 @@ impl HighlightedBuffer {
         }
 
         let mut state_changed = false;
-        let mut previous_line_state = match index.checked_sub(1) {
-            Some(i) => self.lines[i].state,
-            None => LineState::Finished,
+        let mut previous_line_state = match self.lines[..index]
+            .iter()
+            .rposition(|l| l.state != LineState::Dirty)
+        {
+            Some(i) => {
+                index = i + 1;
+                len = min_len - index;
+                self.lines[i].state
+            }
+            None => {
+                index = 0;
+                len = min_len;
+                LineState::Finished
+            }
         };
 
         for (bline, hline) in buffer
@@ -330,13 +341,25 @@ mod tests {
 
     use crate::{buffer::BufferLinePool, buffer_position::BufferPosition};
 
+    macro_rules! assert_next_token {
+        ($iter:expr, $kind:expr, $range:expr) => {
+            assert_eq!(
+                Some(Token {
+                    kind: $kind,
+                    range: $range,
+                }),
+                $iter.next().cloned(),
+            );
+        };
+    }
+
     fn assert_token(slice: &str, kind: TokenKind, line: &str, token: &Token) {
         assert_eq!(kind, token.kind);
         assert_eq!(slice, &line[token.range.clone()]);
     }
 
     #[test]
-    fn test_no_syntax() {
+    fn no_syntax() {
         let syntax = Syntax::default();
         let mut tokens = Vec::new();
         let line = " fn main() ;  ";
@@ -348,7 +371,7 @@ mod tests {
     }
 
     #[test]
-    fn test_one_rule_syntax() {
+    fn one_rule_syntax() {
         let mut syntax = Syntax::default();
         syntax.add_rule(TokenKind::Symbol, Pattern::new(";").unwrap());
 
@@ -367,7 +390,7 @@ mod tests {
     }
 
     #[test]
-    fn test_simple_syntax() {
+    fn simple_syntax() {
         let mut syntax = Syntax::default();
         syntax.add_rule(TokenKind::Keyword, Pattern::new("fn").unwrap());
         syntax.add_rule(TokenKind::Symbol, Pattern::new("%(").unwrap());
@@ -388,7 +411,7 @@ mod tests {
     }
 
     #[test]
-    fn test_multiline_syntax() {
+    fn multiline_syntax() {
         let mut syntax = Syntax::default();
         syntax.add_rule(TokenKind::Comment, Pattern::new("/*{!(*/).$}").unwrap());
 
@@ -422,19 +445,7 @@ mod tests {
     }
 
     #[test]
-    fn test_editing_highlighted_buffer() {
-        macro_rules! assert_next_token {
-            ($iter:expr, $kind:expr, $range:expr) => {
-                assert_eq!(
-                    Some(Token {
-                        kind: $kind,
-                        range: $range,
-                    }),
-                    $iter.next().cloned(),
-                );
-            };
-        }
-
+    fn editing_highlighted_buffer() {
         let mut line_pool = BufferLinePool::default();
         let mut syntax = Syntax::default();
         syntax.add_rule(TokenKind::Comment, Pattern::new("/*{!(*/).$}").unwrap());
@@ -444,8 +455,7 @@ mod tests {
         buffer.insert_text(&mut line_pool, BufferPosition::line_col(0, 0), "/*\n*/");
 
         let mut highlighted = HighlightedBuffer::new();
-        highlighted.highlight_range(&syntax, &buffer, 0, buffer.line_count());
-
+        highlighted.highlight_line_range(&syntax, &buffer, 0, buffer.line_count());
         assert_eq!(buffer.line_count(), highlighted.lines.len());
 
         let mut tokens = highlighted.lines.iter().map(|l| l.tokens.iter()).flatten();
@@ -455,11 +465,32 @@ mod tests {
 
         let range = buffer.insert_text(&mut line_pool, BufferPosition::line_col(1, 0), "'");
         highlighted.on_insert(range);
-        highlighted.highlight_range(&syntax, &buffer, 0, buffer.line_count());
+        highlighted.highlight_line_range(&syntax, &buffer, 0, buffer.line_count());
 
         let mut tokens = highlighted.lines.iter().map(|l| l.tokens.iter()).flatten();
         assert_next_token!(tokens, TokenKind::Comment, 0..2);
         assert_next_token!(tokens, TokenKind::Comment, 0..3);
+        assert_eq!(None, tokens.next());
+    }
+
+    #[test]
+    fn highlight_range_after_unfinished_line() {
+        let mut line_pool = BufferLinePool::default();
+        let mut syntax = Syntax::default();
+        syntax.add_rule(TokenKind::Comment, Pattern::new("/*{!(*/).$}").unwrap());
+
+        let mut buffer = BufferContent::new();
+        buffer.insert_text(&mut line_pool, BufferPosition::line_col(0, 0), "/*\n\n\n*/");
+
+        let mut highlighted = HighlightedBuffer::new();
+        highlighted.highlight_line_range(&syntax, &buffer, 2, buffer.line_count() - 2);
+        assert_eq!(buffer.line_count(), highlighted.lines.len());
+
+        let mut tokens = highlighted.lines.iter().map(|l| l.tokens.iter()).flatten();
+        assert_next_token!(tokens, TokenKind::Comment, 0..2);
+        assert_next_token!(tokens, TokenKind::Comment, 0..0);
+        assert_next_token!(tokens, TokenKind::Comment, 0..0);
+        assert_next_token!(tokens, TokenKind::Comment, 0..2);
         assert_eq!(None, tokens.next());
     }
 }
