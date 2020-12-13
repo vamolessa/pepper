@@ -124,7 +124,7 @@ impl<'a> WordRefWithPosition<'a> {
     }
 }
 
-pub struct BufferLinePool {
+struct BufferLinePool {
     pool: Vec<BufferLine>,
 }
 
@@ -141,31 +141,6 @@ impl BufferLinePool {
                 line
             }
             None => BufferLine::new(),
-        }
-    }
-
-    pub fn read<R>(&mut self, read: &mut R) -> io::Result<Option<BufferLine>>
-    where
-        R: io::BufRead,
-    {
-        let mut line = self.rent();
-        match read.read_line(&mut line.text) {
-            Ok(0) => {
-                self.dispose(line);
-                Ok(None)
-            }
-            Ok(_) => {
-                if line.text.ends_with('\n') {
-                    line.text.truncate(line.text.len() - 1);
-                }
-                if line.text.ends_with('\r') {
-                    line.text.truncate(line.text.len() - 1);
-                }
-
-                line.char_count = line.text.chars().count();
-                Ok(Some(line))
-            }
-            Err(e) => Err(e),
         }
     }
 
@@ -282,14 +257,13 @@ impl BufferLine {
         }
     }
 
-    pub fn split_off(&mut self, pool: &mut BufferLinePool, index: usize) -> BufferLine {
-        let mut new_line = pool.rent();
-        new_line.push_text(&self.text[index..]);
+    pub fn split_off(&mut self, other: &mut BufferLine, index: usize) {
+        other.text.clear();
+        other.char_count = 0;
+        other.push_text(&self.text[index..]);
 
         self.text.truncate(index);
-        self.char_count -= new_line.char_count();
-
-        new_line
+        self.char_count -= other.char_count();
     }
 
     pub fn insert_text(&mut self, index: usize, text: &str) {
@@ -350,9 +324,29 @@ impl BufferContent {
         for line in self.lines.drain(..) {
             self.line_pool.dispose(line);
         }
-        while let Some(line) = self.line_pool.read(read)? {
-            self.lines.push(line);
+
+        loop {
+            let mut line = self.line_pool.rent();
+            match read.read_line(&mut line.text) {
+                Ok(0) => {
+                    self.line_pool.dispose(line);
+                    break;
+                }
+                Ok(_) => {
+                    if line.text.ends_with('\n') {
+                        line.text.truncate(line.text.len() - 1);
+                    }
+                    if line.text.ends_with('\r') {
+                        line.text.truncate(line.text.len() - 1);
+                    }
+
+                    line.char_count = line.text.chars().count();
+                    self.lines.push(line);
+                }
+                Err(e) => return Err(e),
+            }
         }
+
         if self.lines.is_empty() {
             self.lines.push(self.line_pool.rent());
         }
@@ -470,8 +464,8 @@ impl BufferContent {
             );
             BufferRange::between(position, end_position)
         } else {
-            let split_line = self.lines[position.line_index]
-                .split_off(&mut self.line_pool, position.column_byte_index);
+            let mut split_line = self.line_pool.rent();
+            self.lines[position.line_index].split_off(&mut split_line, position.column_byte_index);
 
             let mut line_count = 0;
             let mut lines = text.lines();
