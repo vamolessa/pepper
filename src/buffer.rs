@@ -755,7 +755,7 @@ pub enum BufferError {
     CouldNotWriteFile,
 }
 impl BufferError {
-    pub fn display(self, buffer: Option<&Buffer>) -> BufferErrorDisplay {
+    pub fn display(self, buffer: &Buffer) -> BufferErrorDisplay {
         BufferErrorDisplay {
             error: self,
             buffer,
@@ -764,15 +764,11 @@ impl BufferError {
 }
 pub struct BufferErrorDisplay<'a> {
     error: BufferError,
-    buffer: Option<&'a Buffer>,
+    buffer: &'a Buffer,
 }
 impl<'a> fmt::Display for BufferErrorDisplay<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let path = self
-            .buffer
-            .map(|b| b.path.as_path())
-            .unwrap_or(Path::new(""));
-
+        let path = self.buffer.path.as_path();
         match self.error {
             BufferError::BufferDoesNotHavePath => f.write_str("buffer does not have a path"),
             BufferError::CouldNotOpenFile => {
@@ -793,6 +789,7 @@ impl<'a> fmt::Display for BufferErrorDisplay<'a> {
 
 pub struct Buffer {
     alive: bool,
+    handle: BufferHandle,
     path: PathBuf,
     content: BufferContent,
     syntax_handle: SyntaxHandle,
@@ -804,9 +801,10 @@ pub struct Buffer {
 }
 
 impl Buffer {
-    fn new() -> Self {
+    fn new(handle: BufferHandle) -> Self {
         Self {
             alive: true,
+            handle,
             path: PathBuf::new(),
             content: BufferContent::new(),
             syntax_handle: SyntaxHandle::default(),
@@ -840,6 +838,10 @@ impl Buffer {
                 }
             }
         }
+    }
+
+    pub fn handle(&self) -> BufferHandle {
+        self.handle
     }
 
     pub fn path(&self) -> Option<&Path> {
@@ -1112,6 +1114,44 @@ impl Buffer {
         &self.search_ranges
     }
 
+    pub fn save_to_file(
+        &mut self,
+        syntaxes: &SyntaxCollection,
+        path: Option<&Path>,
+        events: &mut EditorEventQueue,
+    ) -> Result<(), BufferError> {
+        let new_path = match path {
+            Some(path) => {
+                self.set_path(syntaxes, Some(path));
+                true
+            }
+            None => false,
+        };
+
+        if !self.capabilities.can_save {
+            return Ok(());
+        }
+
+        match self.path() {
+            Some(path) => {
+                let file = File::create(path).map_err(|_| BufferError::CouldNotCreateFile)?;
+                let mut writer = io::BufWriter::new(file);
+
+                self.content
+                    .write(&mut writer)
+                    .map_err(|_| BufferError::CouldNotWriteFile)?;
+                self.needs_save = false;
+
+                events.enqueue(EditorEvent::BufferSave {
+                    handle: self.handle,
+                    new_path,
+                });
+                Ok(())
+            }
+            None => Err(BufferError::BufferDoesNotHavePath),
+        }
+    }
+
     pub fn discard_and_reload_from_file(
         &mut self,
         syntaxes: &SyntaxCollection,
@@ -1171,7 +1211,7 @@ impl BufferCollection {
         &mut self,
         capabilities: BufferCapabilities,
         events: &mut EditorEventQueue,
-    ) -> (BufferHandle, &mut Buffer) {
+    ) -> &mut Buffer {
         let mut handle = None;
         for (i, buffer) in self.buffers.iter_mut().enumerate() {
             if !buffer.alive {
@@ -1183,7 +1223,7 @@ impl BufferCollection {
             Some(handle) => handle,
             None => {
                 let handle = BufferHandle(self.buffers.len());
-                self.buffers.push(Buffer::new());
+                self.buffers.push(Buffer::new(handle));
                 handle
             }
         };
@@ -1192,7 +1232,7 @@ impl BufferCollection {
         let buffer = &mut self.buffers[handle.0];
         buffer.alive = true;
         buffer.capabilities = capabilities;
-        (handle, buffer)
+        buffer
     }
 
     pub fn get(&self, handle: BufferHandle) -> Option<&Buffer> {
@@ -1213,19 +1253,19 @@ impl BufferCollection {
         }
     }
 
-    pub fn find_with_path(&self, root: &Path, path: &Path) -> Option<BufferHandle> {
+    pub fn find_with_path(&self, root: &Path, path: &Path) -> Option<&Buffer> {
         if path.as_os_str().len() == 0 {
             return None;
         }
 
         let path = path.strip_prefix(root).unwrap_or(path);
 
-        for (handle, buffer) in self.iter_with_handles() {
+        for buffer in self.iter() {
             let buffer_path = buffer.path.as_path();
             let buffer_path = buffer_path.strip_prefix(root).unwrap_or(buffer_path);
 
             if buffer_path == path {
-                return Some(handle);
+                return Some(buffer);
             }
         }
 
@@ -1242,73 +1282,6 @@ impl BufferCollection {
         self.buffers
             .iter_mut()
             .filter_map(|b| if b.alive { Some(b) } else { None })
-    }
-
-    pub fn iter_with_handles(&self) -> impl Iterator<Item = (BufferHandle, &Buffer)> {
-        self.buffers.iter().enumerate().filter_map(|(i, b)| {
-            if b.alive {
-                Some((BufferHandle(i), b))
-            } else {
-                None
-            }
-        })
-    }
-
-    pub fn save_to_file(
-        &mut self,
-        syntaxes: &SyntaxCollection,
-        handle: BufferHandle,
-        path: Option<&Path>,
-        events: &mut EditorEventQueue,
-    ) -> Result<(), BufferError> {
-        match self.get_mut(handle) {
-            Some(buffer) => {
-                let new_path = match path {
-                    Some(path) => {
-                        buffer.set_path(syntaxes, Some(path));
-                        true
-                    }
-                    None => false,
-                };
-
-                if !buffer.capabilities.can_save {
-                    return Ok(());
-                }
-
-                match buffer.path() {
-                    Some(path) => {
-                        let file =
-                            File::create(path).map_err(|_| BufferError::CouldNotCreateFile)?;
-                        let mut writer = io::BufWriter::new(file);
-
-                        buffer
-                            .content
-                            .write(&mut writer)
-                            .map_err(|_| BufferError::CouldNotWriteFile)?;
-                        buffer.needs_save = false;
-
-                        events.enqueue(EditorEvent::BufferSave { handle, new_path });
-                        Ok(())
-                    }
-                    None => Err(BufferError::BufferDoesNotHavePath),
-                }
-            }
-            None => Ok(()),
-        }
-    }
-
-    pub fn save_all_to_file(
-        &mut self,
-        syntaxes: &SyntaxCollection,
-        events: &mut EditorEventQueue,
-    ) -> Result<(), (BufferHandle, BufferError)> {
-        let buffer_count = self.buffers.len();
-        for i in 0..buffer_count {
-            let handle = BufferHandle(i);
-            self.save_to_file(syntaxes, handle, None, events)
-                .map_err(|e| (handle, e))?;
-        }
-        Ok(())
     }
 
     pub fn defer_remove_where<F>(&mut self, events: &mut EditorEventQueue, predicate: F)
@@ -1536,7 +1509,7 @@ mod tests {
         let syntaxes = SyntaxCollection::new();
         let mut word_database = WordDatabase::new();
 
-        let mut buffer = Buffer::new();
+        let mut buffer = Buffer::new(BufferHandle(0));
         buffer.capabilities = BufferCapabilities::text();
         buffer.insert_text(
             &syntaxes,
@@ -1571,7 +1544,7 @@ mod tests {
         let syntaxes = SyntaxCollection::new();
         let mut word_database = WordDatabase::new();
 
-        let mut buffer = Buffer::new();
+        let mut buffer = Buffer::new(BufferHandle(0));
         buffer.capabilities = BufferCapabilities::text();
         buffer.insert_text(
             &syntaxes,

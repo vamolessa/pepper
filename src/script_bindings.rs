@@ -351,7 +351,8 @@ mod lsp {
         handle: LspClientHandle,
     ) -> ScriptResult<()> {
         if let Some(client) = ctx.lsp.get_mut(handle) {
-            let (buffer_handle, buffer) = ctx.buffers.new(BufferCapabilities::log(), ctx.events);
+            let buffer = ctx.buffers.new(BufferCapabilities::log(), ctx.events);
+            let buffer_handle = buffer.handle();
             buffer.set_path(&ctx.config.syntaxes, Some(Path::new(client.name())));
             client.set_log_buffer(Some(buffer_handle));
 
@@ -408,8 +409,8 @@ mod buffer {
         _: (),
     ) -> ScriptResult<ScriptValue<'a>> {
         let handles = engine.create_array()?;
-        for (h, _) in ctx.buffers.iter_with_handles() {
-            handles.push(h)?;
+        for buffer in ctx.buffers.iter() {
+            handles.push(buffer.handle())?;
         }
         Ok(ScriptValue::Array(handles))
     }
@@ -665,36 +666,30 @@ mod buffer {
         _: ScriptContextGuard,
         (path, handle): (Option<ScriptString>, Option<BufferHandle>),
     ) -> ScriptResult<()> {
-        let handle = match handle.or_else(|| ctx.current_buffer_handle()) {
-            Some(handle) => handle,
+        let current_buffer_handle = ctx.current_buffer_handle();
+        let buffers = &mut *ctx.buffers;
+        let buffer = match handle
+            .or_else(|| current_buffer_handle)
+            .and_then(|h| buffers.get_mut(h))
+        {
+            Some(buffer) => buffer,
             None => return Err(ScriptError::from("no buffer opened")),
         };
-
         let path = match path {
             Some(ref path) => Some(Path::new(path.to_str()?)),
             None => None,
         };
 
-        if let Err(e) = ctx
-            .buffers
-            .save_to_file(&ctx.config.syntaxes, handle, path, ctx.events)
-        {
-            return Err(ScriptError::from(
-                e.display(ctx.buffers.get(handle)).to_string(),
-            ));
+        if let Err(e) = buffer.save_to_file(&ctx.config.syntaxes, path, ctx.events) {
+            return Err(ScriptError::from(e.display(buffer).to_string()));
         }
 
-        match ctx.buffers.get(handle) {
-            Some(buffer) => match buffer.path().and_then(|p| p.to_str()) {
-                Some(path) => {
-                    ctx.status_message
-                        .write_fmt(StatusMessageKind::Info, format_args!("saved to '{}'", path));
-                    Ok(())
-                }
-                None => Err(ScriptError::from("can't save buffer without a path")),
-            },
-            None => Err(ScriptError::from("no buffer opened")),
-        }
+        let path = buffer.path().unwrap_or(Path::new(""));
+        ctx.status_message.write_fmt(
+            StatusMessageKind::Info,
+            format_args!("saved to '{:?}'", path),
+        );
+        Ok(())
     }
 
     pub fn save_all(
@@ -703,21 +698,19 @@ mod buffer {
         _: ScriptContextGuard,
         _: (),
     ) -> ScriptResult<()> {
-        if let Err((handle, e)) = ctx
-            .buffers
-            .save_all_to_file(&ctx.config.syntaxes, ctx.events)
-        {
-            return Err(ScriptError::from(
-                e.display(ctx.buffers.get(handle)).to_string(),
-            ));
+        let mut buffer_count = 0;
+        for buffer in ctx.buffers.iter_mut() {
+            if let Err(e) = buffer.save_to_file(&ctx.config.syntaxes, None, ctx.events) {
+                return Err(ScriptError::from(e.display(buffer).to_string()));
+            }
+
+            buffer_count += 1;
         }
 
-        let buffer_count = ctx.buffers.iter().count();
         ctx.status_message.write_fmt(
             StatusMessageKind::Info,
             format_args!("{} buffers saved", buffer_count),
         );
-
         Ok(())
     }
 
@@ -747,7 +740,7 @@ mod buffer {
                     .write_str(StatusMessageKind::Info, "reloaded"),
                 Err(error) => ctx.status_message.write_fmt(
                     StatusMessageKind::Error,
-                    format_args!("{}", error.display(Some(buffer))),
+                    format_args!("{}", error.display(buffer)),
                 ),
             }
         }
@@ -772,7 +765,7 @@ mod buffer {
                     .write_str(StatusMessageKind::Info, "reloaded"),
                 Err(error) => ctx.status_message.write_fmt(
                     StatusMessageKind::Error,
-                    format_args!("{}", error.display(Some(buffer))),
+                    format_args!("{}", error.display(buffer)),
                 ),
             }
         }
@@ -802,7 +795,7 @@ mod buffer {
                     had_error = true;
                     ctx.status_message.write_fmt(
                         StatusMessageKind::Error,
-                        format_args!("{}", error.display(Some(buffer))),
+                        format_args!("{}", error.display(buffer)),
                     );
                 }
                 buffer_count += 1;
@@ -832,7 +825,7 @@ mod buffer {
                 had_error = true;
                 ctx.status_message.write_fmt(
                     StatusMessageKind::Error,
-                    format_args!("{}", error.display(Some(buffer))),
+                    format_args!("{}", error.display(buffer)),
                 );
             }
             buffer_count += 1;

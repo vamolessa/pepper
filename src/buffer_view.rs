@@ -757,18 +757,19 @@ impl BufferViewCollection {
             });
         }
 
-        if let Some(buffer_handle) = buffers.find_with_path(root, path) {
+        if let Some(buffer) = buffers.find_with_path(root, path) {
+            let buffer_handle = buffer.handle();
             let handle = self.buffer_view_handle_from_buffer_handle(target_client, buffer_handle);
             try_set_line_index(self, buffers, handle, line_index);
             Ok(handle)
         } else if path.to_str().map(|s| !s.trim().is_empty()).unwrap_or(false) {
             let path = path.strip_prefix(root).unwrap_or(path);
 
-            let (buffer_handle, buffer) = buffers.new(BufferCapabilities::text(), events);
+            let buffer = buffers.new(BufferCapabilities::text(), events);
             buffer.set_path(syntaxes, Some(path));
             let _ = buffer.discard_and_reload_from_file(syntaxes, word_database);
 
-            let buffer_view = BufferView::new(target_client, buffer_handle);
+            let buffer_view = BufferView::new(target_client, buffer.handle());
             let handle = self.add(buffer_view);
 
             try_set_line_index(self, buffers, handle, line_index);
@@ -798,7 +799,7 @@ mod tests {
             let mut word_database = WordDatabase::new();
 
             let mut buffers = BufferCollection::default();
-            let (buffer_handle, buffer) = buffers.new(BufferCapabilities::text(), &mut events);
+            let buffer = buffers.new(BufferCapabilities::text(), &mut events);
             buffer.insert_text(
                 &syntaxes,
                 &mut word_database,
@@ -806,7 +807,7 @@ mod tests {
                 text,
             );
 
-            let buffer_view = BufferView::new(TargetClient::Local, buffer_handle);
+            let buffer_view = BufferView::new(TargetClient::Local, buffer.handle());
 
             let mut buffer_views = BufferViewCollection::default();
             let buffer_view_handle = buffer_views.add(buffer_view);

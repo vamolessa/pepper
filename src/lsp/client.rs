@@ -246,10 +246,10 @@ impl DiagnosticCollection {
         }
 
         let mut buffer_handle = None;
-        for (handle, buffer) in ctx.buffers.iter_with_handles() {
+        for buffer in ctx.buffers.iter() {
             if let Some(buffer_path) = buffer.path() {
                 if are_same_path_with_root(ctx.current_directory, buffer_path, path) {
-                    buffer_handle = Some(handle);
+                    buffer_handle = Some(buffer.handle());
                     break;
                 }
             }

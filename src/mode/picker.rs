@@ -87,10 +87,7 @@ pub mod buffer {
 
     use std::path::Path;
 
-    use crate::{
-        buffer::Buffer, navigation_history::NavigationHistory,
-        picker::Picker,
-    };
+    use crate::{buffer::Buffer, navigation_history::NavigationHistory, picker::Picker};
 
     pub fn mode(ctx: &mut ModeContext) -> Mode {
         fn on_enter(ctx: &mut ModeContext) {
@@ -157,8 +154,12 @@ pub mod buffer {
             add_buffer_to_picker(ctx.picker, buffer);
         }
 
-        for (handle, buffer) in ctx.buffers.iter_with_handles() {
-            if prevous_buffer_handle.map(|h| h != handle).unwrap_or(true) {
+        for buffer in ctx.buffers.iter() {
+            let buffer_handle = buffer.handle();
+            if prevous_buffer_handle
+                .map(|h| h != buffer_handle)
+                .unwrap_or(true)
+            {
                 add_buffer_to_picker(ctx.picker, buffer);
             }
         }
