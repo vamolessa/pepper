@@ -956,22 +956,19 @@ impl Buffer {
             fn add_history_delete_line(buffer: &mut Buffer, from: BufferPosition) {
                 let line = buffer.content.line_at(from.line_index).as_str();
                 let range = BufferRange::between(
-                    from,
                     BufferPosition::line_col(from.line_index, line.len()),
-                );
-                buffer.history.add_edit(Edit {
-                    kind: EditKind::Delete,
-                    range,
-                    text: &line[from.column_byte_index..],
-                });
-                let range = BufferRange::between(
-                    range.to,
                     BufferPosition::line_col(from.line_index + 1, 0),
                 );
                 buffer.history.add_edit(Edit {
                     kind: EditKind::Delete,
                     range,
                     text: "\n",
+                });
+                let range = BufferRange::between(from, range.from);
+                buffer.history.add_edit(Edit {
+                    kind: EditKind::Delete,
+                    range,
+                    text: &line[from.column_byte_index..],
                 });
             }
 
@@ -980,20 +977,39 @@ impl Buffer {
                     [from.column_byte_index..to.column_byte_index];
                 self.history.add_edit(Edit {
                     kind: EditKind::Delete,
-                    range: BufferRange::between(from, to),
+                    range,
                     text,
                 });
             } else {
-                add_history_delete_line(self, from);
+                let mut text = String::new();
+                text.push_str(
+                    &self.content.line_at(from.line_index).as_str()[from.column_byte_index..],
+                );
+                text.push_str("\n");
                 for line_index in (from.line_index + 1)..to.line_index {
-                    add_history_delete_line(self, BufferPosition::line_col(line_index, 0));
+                    text.push_str(&self.content.line_at(line_index).as_str());
+                    text.push_str("\n");
                 }
+                text.push_str(
+                    &self.content.line_at(to.line_index).as_str()[..to.column_byte_index],
+                );
+                self.history.add_edit(Edit {
+                    kind: EditKind::Delete,
+                    range,
+                    text: &text,
+                });
+                /*
                 let text = &self.content.line_at(to.line_index).as_str()[..to.column_byte_index];
                 self.history.add_edit(Edit {
                     kind: EditKind::Delete,
                     range: BufferRange::between(BufferPosition::line_col(to.line_index, 0), to),
                     text,
                 });
+                for line_index in ((from.line_index + 1)..to.line_index).rev() {
+                    add_history_delete_line(self, BufferPosition::line_col(line_index, 0));
+                }
+                add_history_delete_line(self, from);
+                */
             }
         }
 
@@ -1570,31 +1586,47 @@ mod tests {
 
         let mut buffer = Buffer::new(BufferHandle(0));
         buffer.capabilities = BufferCapabilities::text();
-        buffer.insert_text(
+        let insert_range = buffer.insert_text(
             &syntaxes,
             &mut word_database,
             BufferPosition::line_col(0, 0),
             "multi\nline\ncontent",
         );
-        let range = BufferRange::between(
+
+        {
+            let mut undo_edits = buffer.undo(&syntaxes, &mut word_database);
+            assert_eq!(insert_range, undo_edits.next().unwrap().range);
+            assert!(undo_edits.next().is_none());
+        }
+        {
+            let mut redo_edits = buffer.redo(&syntaxes, &mut word_database);
+            assert_eq!(insert_range, redo_edits.next().unwrap().range);
+            assert!(redo_edits.next().is_none());
+        }
+        assert_eq!("multi\nline\ncontent", buffer.content.to_string());
+
+        let delete_range = BufferRange::between(
             BufferPosition::line_col(0, 1),
             BufferPosition::line_col(1, 3),
         );
-        buffer.delete_range(&syntaxes, &mut word_database, range);
+        dbg!(insert_range);
+        eprintln!("===================================================================");
+        buffer.delete_range(&syntaxes, &mut word_database, delete_range);
+        eprintln!("===================================================================");
 
         assert_eq!("me\ncontent", buffer.content.to_string());
         {
-            let mut ranges = buffer.undo(&syntaxes, &mut word_database);
-            assert_eq!(range, ranges.next().unwrap().range);
-            ranges.next().unwrap();
-            assert!(ranges.next().is_none());
+            let mut undo_edits = buffer.undo(&syntaxes, &mut word_database);
+            assert_eq!(delete_range, undo_edits.next().unwrap().range);
+            assert_eq!(insert_range, undo_edits.next().unwrap().range);
+            assert!(undo_edits.next().is_none());
         }
-        assert!(buffer.content.to_string().is_empty());
-        let mut redo_iter = buffer.redo(&syntaxes, &mut word_database);
-        redo_iter.next().unwrap();
-        redo_iter.next().unwrap();
-        assert!(redo_iter.next().is_none());
-        drop(redo_iter);
+        assert_eq!("", buffer.content.to_string());
+        let mut redo_edits = buffer.redo(&syntaxes, &mut word_database);
+        redo_edits.next().unwrap();
+        redo_edits.next().unwrap();
+        assert!(redo_edits.next().is_none());
+        drop(redo_edits);
         assert_eq!("me\ncontent", buffer.content.to_string());
     }
 

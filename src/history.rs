@@ -8,7 +8,7 @@ pub enum EditKind {
     Delete,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Edit<'a> {
     pub kind: EditKind,
     pub range: BufferRange,
@@ -139,6 +139,8 @@ impl History {
     }
 
     pub fn add_edit(&mut self, edit: Edit) {
+        dbg!(edit);
+
         let current_group_start = match self.state {
             HistoryState::IterIndex(index) => {
                 let edit_index = if index < self.group_ranges.len() {
@@ -155,6 +157,10 @@ impl History {
         };
 
         let merged = self.try_merge_edit(current_group_start, &edit);
+        if merged {
+            eprintln!("merged: {:?}", edit);
+        }
+
         if !merged {
             let index = match self.edits[current_group_start..]
                 .binary_search_by_key(&edit.range.from, |e| e.buffer_range.from)
