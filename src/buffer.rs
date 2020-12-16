@@ -981,6 +981,7 @@ impl Buffer {
                     text,
                 });
             } else {
+                /*
                 let mut text = String::new();
                 text.push_str(
                     &self.content.line_at(from.line_index).as_str()[from.column_byte_index..],
@@ -998,7 +999,8 @@ impl Buffer {
                     range,
                     text: &text,
                 });
-                /*
+                // */
+                //*
                 let text = &self.content.line_at(to.line_index).as_str()[..to.column_byte_index];
                 self.history.add_edit(Edit {
                     kind: EditKind::Delete,
@@ -1009,7 +1011,7 @@ impl Buffer {
                     add_history_delete_line(self, BufferPosition::line_col(line_index, 0));
                 }
                 add_history_delete_line(self, from);
-                */
+                // */
             }
         }
 
@@ -1593,6 +1595,7 @@ mod tests {
             "multi\nline\ncontent",
         );
 
+        /*
         {
             let mut undo_edits = buffer.undo(&syntaxes, &mut word_database);
             assert_eq!(insert_range, undo_edits.next().unwrap().range);
@@ -1603,13 +1606,13 @@ mod tests {
             assert_eq!(insert_range, redo_edits.next().unwrap().range);
             assert!(redo_edits.next().is_none());
         }
+        // */
         assert_eq!("multi\nline\ncontent", buffer.content.to_string());
 
         let delete_range = BufferRange::between(
             BufferPosition::line_col(0, 1),
             BufferPosition::line_col(1, 3),
         );
-        dbg!(insert_range);
         eprintln!("===================================================================");
         buffer.delete_range(&syntaxes, &mut word_database, delete_range);
         eprintln!("===================================================================");

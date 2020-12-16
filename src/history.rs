@@ -31,6 +31,7 @@ impl EditInternal {
     }
 }
 
+#[derive(Debug)]
 enum HistoryState {
     IterIndex(usize),
     InsertGroup(Range<usize>),
@@ -200,6 +201,20 @@ impl History {
                 range.end = self.edits.len();
             }
         }
+
+        eprintln!("------------------------------------");
+        eprintln!("history:");
+        eprintln!("state: {:?}", self.state);
+        eprintln!("texts: '{}'", self.texts);
+        eprintln!("edits:");
+        for (i, edit) in self.edits.iter().enumerate() {
+            eprintln!("  [{}] {:?}", i, edit.as_edit_ref(&self.texts));
+        }
+        eprintln!("group ranges:");
+        for group_range in &self.group_ranges {
+            eprintln!("  {:?}", group_range);
+        }
+        eprintln!("------------------------------------");
     }
 
     fn try_merge_edit(&mut self, current_group_start: usize, edit: &Edit) -> bool {
