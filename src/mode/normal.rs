@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 
 use crate::{
-    buffer::{BufferContent, Text},
+    buffer::BufferContent,
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     client_event::Key,
@@ -663,18 +663,19 @@ impl State {
             }
             Key::Char('>') => {
                 let cursor_count = unwrap_or_none!(ctx.buffer_views.get(handle)).cursors[..].len();
-                let count = self.count.max(1);
-                let mut indentation = Text::new();
+                let count;
+                let fill;
                 if ctx.config.values.indent_with_tabs {
-                    for _ in 0..count {
-                        indentation.push_str("\t");
-                    }
+                    count = self.count.max(1) as usize;
+                    fill = b'\t';
                 } else {
-                    let count = ctx.config.values.tab_size.get() as usize * count as usize;
-                    for _ in 0..count {
-                        indentation.push_str(" ");
-                    }
-                };
+                    count = self.count.max(1) as usize * ctx.config.values.tab_size.get() as usize;
+                    fill = b' ';
+                }
+
+                let buf = [fill; 128];
+                let len = buf.len().min(count);
+                let indentation = unsafe { std::str::from_utf8_unchecked(&buf[..len]) };
 
                 for i in 0..cursor_count {
                     let range = unwrap_or_none!(ctx.buffer_views.get(handle)).cursors[i].as_range();
@@ -685,7 +686,7 @@ impl State {
                             ctx.word_database,
                             handle,
                             BufferPosition::line_col(line_index, 0),
-                            indentation.as_str(),
+                            indentation,
                         );
                     }
                 }

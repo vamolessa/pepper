@@ -1,5 +1,4 @@
 use crate::{
-    buffer::Text,
     buffer_position::BufferPosition,
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     client_event::Key,
@@ -72,23 +71,30 @@ impl ModeState for State {
                 let cursor_count = buffer_view.cursors[..].len();
                 let buffer_handle = buffer_view.buffer_handle;
 
-                let mut text = Text::new();
+                let mut len = 0;
+                let mut buf = [0; 128];
+                buf[0] = b'\n';
 
                 for i in 0..cursor_count {
                     let position =
                         unwrap_or_none!(ctx.buffer_views.get(handle)).cursors[i].position;
                     let buffer = unwrap_or_none!(ctx.buffers.get(buffer_handle));
 
-                    text.clear();
-                    text.push_str("\n");
+                    len = 1;
                     let indentation_word = buffer
                         .content()
                         .word_at(BufferPosition::line_col(position.line_index, 0));
                     if indentation_word.kind == WordKind::Whitespace {
-                        let indentation_len =
-                            position.column_byte_index.min(indentation_word.text.len());
-                        text.push_str(&indentation_word.text[..indentation_len]);
+                        let indentation_len = position
+                            .column_byte_index
+                            .min(indentation_word.text.len())
+                            .min(buf.len() - 1);
+                        len += indentation_len;
+                        buf[1..len]
+                            .copy_from_slice(indentation_word.text[..indentation_len].as_bytes());
                     }
+
+                    let text = std::str::from_utf8(&buf[..len]).unwrap_or("\n");
 
                     ctx.buffer_views.insert_text_at_position(
                         ctx.buffers,
@@ -96,7 +102,7 @@ impl ModeState for State {
                         ctx.word_database,
                         handle,
                         position,
-                        text.as_str(),
+                        text,
                     );
                 }
             }

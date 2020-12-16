@@ -1,5 +1,4 @@
 use std::{
-    convert::From,
     fmt,
     fs::File,
     io,
@@ -16,84 +15,6 @@ use crate::{
     syntax::{HighlightedBuffer, Syntax, SyntaxCollection, SyntaxHandle},
     word_database::{WordDatabase, WordIter, WordKind},
 };
-
-#[derive(Debug)]
-enum TextImpl {
-    Inline(u8, [u8; Text::inline_string_max_len()]),
-    String(String),
-}
-
-#[derive(Debug)]
-pub struct Text(TextImpl);
-
-impl Text {
-    pub const fn inline_string_max_len() -> usize {
-        30
-    }
-
-    pub fn new() -> Self {
-        Self(TextImpl::Inline(0, [0; Self::inline_string_max_len()]))
-    }
-
-    pub fn as_str(&self) -> &str {
-        match &self.0 {
-            TextImpl::Inline(len, buf) => unsafe {
-                let len = *len as usize;
-                std::str::from_utf8_unchecked(&buf[..len])
-            },
-            TextImpl::String(s) => s,
-        }
-    }
-
-    pub fn clear(&mut self) {
-        match &mut self.0 {
-            TextImpl::Inline(len, _) => *len = 0,
-            TextImpl::String(s) => s.clear(),
-        }
-    }
-
-    pub fn push_str(&mut self, text: &str) {
-        match &mut self.0 {
-            TextImpl::Inline(len, buf) => {
-                let previous_len = *len as usize;
-                *len += text.len() as u8;
-                if *len as usize <= Self::inline_string_max_len() {
-                    buf[previous_len..*len as usize].copy_from_slice(text.as_bytes());
-                } else {
-                    let mut s = String::with_capacity(*len as _);
-                    s.push_str(unsafe { std::str::from_utf8_unchecked(&buf[..previous_len]) });
-                    s.push_str(text);
-                    *self = Self(TextImpl::String(s));
-                }
-            }
-            TextImpl::String(s) => s.push_str(text),
-        }
-    }
-}
-
-impl From<&str> for Text {
-    fn from(s: &str) -> Self {
-        if s.len() <= Self::inline_string_max_len() {
-            let mut buf = [0; Self::inline_string_max_len()];
-            buf[..s.len()].copy_from_slice(s.as_bytes());
-            Self(TextImpl::Inline(s.len() as _, buf))
-        } else {
-            Self(TextImpl::String(String::from(s)))
-        }
-    }
-}
-
-impl From<String> for Text {
-    fn from(s: String) -> Self {
-        if s.len() <= Self::inline_string_max_len() {
-            let mut buf = [0; Self::inline_string_max_len()];
-            buf[..s.len()].copy_from_slice(s.as_bytes());
-            Self(TextImpl::Inline(s.len() as _, buf))
-        } else {
-            Self(TextImpl::String(s))
-        }
-    }
-}
 
 pub struct WordRefWithIndex<'a> {
     pub kind: WordKind,
