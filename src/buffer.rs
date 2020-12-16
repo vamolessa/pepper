@@ -798,6 +798,7 @@ impl Buffer {
         word_database: &mut WordDatabase,
         position: BufferPosition,
         text: &str,
+        events: &mut EditorEventQueue,
     ) -> BufferRange {
         self.search_ranges.clear();
         if text.is_empty() {
@@ -814,6 +815,8 @@ impl Buffer {
             position,
             text,
         );
+
+        events.enqueue_buffer_insert(self.handle, range, text);
 
         if self.capabilities.has_history {
             self.history.add_edit(Edit {
@@ -863,6 +866,7 @@ impl Buffer {
         syntaxes: &SyntaxCollection,
         word_database: &mut WordDatabase,
         range: BufferRange,
+        events: &mut EditorEventQueue,
     ) {
         self.search_ranges.clear();
         if range.from == range.to {
@@ -870,9 +874,13 @@ impl Buffer {
         }
         self.needs_save = true;
 
+        events.enqueue(EditorEvent::BufferDeleteText {
+            handle: self.handle,
+            range,
+        });
+
         let from = range.from;
         let to = range.to;
-
         if self.capabilities.has_history {
             fn add_history_delete_line(buffer: &mut Buffer, from: BufferPosition) {
                 let line = buffer.content.line_at(from.line_index).as_str();
@@ -1429,6 +1437,7 @@ mod tests {
     fn buffer_delete_undo_redo_single_line() {
         let syntaxes = SyntaxCollection::new();
         let mut word_database = WordDatabase::new();
+        let mut events = EditorEventQueue::default();
 
         let mut buffer = Buffer::new(BufferHandle(0));
         buffer.capabilities = BufferCapabilities::text();
@@ -1437,12 +1446,13 @@ mod tests {
             &mut word_database,
             BufferPosition::line_col(0, 0),
             "single line content",
+            &mut events,
         );
         let range = BufferRange::between(
             BufferPosition::line_col(0, 7),
             BufferPosition::line_col(0, 12),
         );
-        buffer.delete_range(&syntaxes, &mut word_database, range);
+        buffer.delete_range(&syntaxes, &mut word_database, range, &mut events);
 
         assert_eq!("single content", buffer.content.to_string());
         {
@@ -1464,6 +1474,7 @@ mod tests {
     fn buffer_delete_undo_redo_multi_line() {
         let syntaxes = SyntaxCollection::new();
         let mut word_database = WordDatabase::new();
+        let mut events = EditorEventQueue::default();
 
         let mut buffer = Buffer::new(BufferHandle(0));
         buffer.capabilities = BufferCapabilities::text();
@@ -1472,6 +1483,7 @@ mod tests {
             &mut word_database,
             BufferPosition::line_col(0, 0),
             "multi\nline\ncontent",
+            &mut events,
         );
         assert_eq!("multi\nline\ncontent", buffer.content.to_string());
 
@@ -1479,7 +1491,7 @@ mod tests {
             BufferPosition::line_col(0, 1),
             BufferPosition::line_col(1, 3),
         );
-        buffer.delete_range(&syntaxes, &mut word_database, delete_range);
+        buffer.delete_range(&syntaxes, &mut word_database, delete_range, &mut events);
         assert_eq!("me\ncontent", buffer.content.to_string());
 
         {

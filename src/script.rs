@@ -460,6 +460,7 @@ impl<'a> ScriptContext<'a> {
             word_database: self.word_database,
 
             status_message: self.status_message,
+            events: self.events,
         };
 
         (self.lsp, ctx)

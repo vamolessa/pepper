@@ -980,6 +980,7 @@ mod buffer_view {
                 ctx.word_database,
                 handle,
                 text,
+                ctx.events,
             );
             ctx.edited_buffers = true;
         }
@@ -1001,6 +1002,7 @@ mod buffer_view {
                 handle,
                 BufferPosition::line_col(line, column),
                 text,
+                ctx.events,
             );
             ctx.edited_buffers = true;
         }
@@ -1019,6 +1021,7 @@ mod buffer_view {
                 &ctx.config.syntaxes,
                 ctx.word_database,
                 handle,
+                ctx.events,
             );
             ctx.edited_buffers = true;
         }
@@ -1047,6 +1050,7 @@ mod buffer_view {
                     BufferPosition::line_col(from_line, from_column),
                     BufferPosition::line_col(to_line, to_column),
                 ),
+                ctx.events,
             );
             ctx.edited_buffers = true;
         }

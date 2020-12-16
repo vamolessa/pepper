@@ -598,6 +598,7 @@ impl Editor {
     }
 
     pub fn on_lsp_event(&mut self, client_handle: LspClientHandle, event: LspServerEvent) {
+        let (read_events, write_events) = self.events.get_stream_and_sink();
         let mut ctx = LspClientContext {
             current_directory: &self.current_directory,
             config: &mut self.config,
@@ -607,6 +608,7 @@ impl Editor {
             word_database: &mut self.word_database,
 
             status_message: &mut self.status_message,
+            events: write_events,
         };
 
         if let Err(error) = self.lsp.on_server_event(&mut ctx, client_handle, event) {

@@ -12,7 +12,7 @@ use crate::{
     client_event::LocalEvent,
     config::Config,
     editor::StatusMessage,
-    editor_event::{EditorEvent, EditorEventsIter},
+    editor_event::{EditorEvent, EditorEventQueue, EditorEventsIter},
     glob::Glob,
     json::{FromJson, Json, JsonArray, JsonConvertError, JsonObject, JsonString, JsonValue},
     lsp::{
@@ -35,6 +35,7 @@ pub struct ClientContext<'a> {
     pub word_database: &'a mut WordDatabase,
 
     pub status_message: &'a mut StatusMessage,
+    pub events: &'a mut EditorEventQueue,
 }
 
 #[derive(Default)]
@@ -378,7 +379,13 @@ impl Client {
             let position =
                 BufferPosition::line_col(line_index, content.line_at(line_index).as_str().len());
             let text = String::from_utf8_lossy(&self.log_write_buf);
-            buffer.insert_text(&ctx.config.syntaxes, ctx.word_database, position, &text);
+            buffer.insert_text(
+                &ctx.config.syntaxes,
+                ctx.word_database,
+                position,
+                &text,
+                ctx.events,
+            );
         }
     }
 
@@ -731,6 +738,7 @@ impl Client {
                     range,
                     text,
                 } => {
+                    let text = text.as_str(events);
                     // buffer changes
                 }
                 EditorEvent::BufferDeleteText { handle, range } => {

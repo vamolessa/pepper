@@ -594,6 +594,7 @@ impl State {
                     &ctx.config.syntaxes,
                     ctx.word_database,
                     handle,
+                    ctx.events,
                 );
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
                 unwrap_or_none!(ctx.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
@@ -607,6 +608,7 @@ impl State {
                     &ctx.config.syntaxes,
                     ctx.word_database,
                     handle,
+                    ctx.events,
                 );
 
                 self.on_edit_keys(ctx, keys, keys_from_index);
@@ -652,6 +654,7 @@ impl State {
                             ctx.word_database,
                             handle,
                             range,
+                            ctx.events,
                         );
                     }
                 }
@@ -687,6 +690,7 @@ impl State {
                             handle,
                             BufferPosition::line_col(line_index, 0),
                             indentation,
+                            ctx.events,
                         );
                     }
                 }
@@ -880,6 +884,7 @@ impl State {
                     &ctx.config.syntaxes,
                     ctx.word_database,
                     handle,
+                    ctx.events,
                 );
                 if let Ok(text) = ClipboardContext::new().and_then(|mut c| c.get_contents()) {
                     ctx.buffer_views.insert_text_at_cursor_positions(
@@ -888,6 +893,7 @@ impl State {
                         ctx.word_database,
                         handle,
                         &text,
+                        ctx.events,
                     );
                 }
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
@@ -905,6 +911,7 @@ impl State {
                         &ctx.config.syntaxes,
                         ctx.word_database,
                         handle,
+                        ctx.events,
                     );
                     if let Some(key) = RegisterKey::from_char(c) {
                         let register = ctx.registers.get(key);
@@ -914,6 +921,7 @@ impl State {
                             ctx.word_database,
                             handle,
                             register,
+                            ctx.events,
                         );
                     }
                     let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));

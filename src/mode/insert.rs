@@ -65,6 +65,7 @@ impl ModeState for State {
                 ctx.word_database,
                 handle,
                 "\t",
+                ctx.events,
             ),
             Key::Enter => {
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
@@ -102,6 +103,7 @@ impl ModeState for State {
                         handle,
                         position,
                         text,
+                        ctx.events,
                     );
                 }
             }
@@ -114,6 +116,7 @@ impl ModeState for State {
                     ctx.word_database,
                     handle,
                     s,
+                    ctx.events,
                 );
             }
             Key::Backspace => {
@@ -127,6 +130,7 @@ impl ModeState for State {
                     &ctx.config.syntaxes,
                     ctx.word_database,
                     handle,
+                    ctx.events,
                 );
             }
             Key::Delete => {
@@ -140,6 +144,7 @@ impl ModeState for State {
                     &ctx.config.syntaxes,
                     ctx.word_database,
                     handle,
+                    ctx.events,
                 );
             }
             Key::Ctrl('w') => {
@@ -153,6 +158,7 @@ impl ModeState for State {
                     &ctx.config.syntaxes,
                     ctx.word_database,
                     handle,
+                    ctx.events,
                 );
             }
             Key::Ctrl('n') => {
@@ -203,6 +209,7 @@ fn apply_completion(ctx: &mut ModeContext, handle: BufferViewHandle, cursor_move
             ctx.word_database,
             handle,
             entry.name,
+            ctx.events,
         );
     }
 }

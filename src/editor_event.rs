@@ -80,6 +80,7 @@ pub struct EditorEventDoubleQueue {
 impl EditorEventDoubleQueue {
     pub fn flip(&mut self) {
         self.read.events.clear();
+        self.read.texts.clear();
         std::mem::swap(&mut self.read, &mut self.write);
     }
 
