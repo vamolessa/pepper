@@ -611,13 +611,14 @@ impl BufferViewCollection {
         buffers: &mut BufferCollection,
         syntaxes: &SyntaxCollection,
         word_database: &mut WordDatabase,
+        events: &mut EditorEventQueue,
         handle: BufferViewHandle,
     ) {
         if let Some(buffer) = self.buffer_views[handle.0]
             .as_mut()
             .and_then(|view| buffers.get_mut(view.buffer_handle))
         {
-            self.apply_edits(handle, true, buffer.undo(syntaxes, word_database));
+            self.apply_edits(handle, true, buffer.undo(syntaxes, word_database, events));
         }
     }
 
@@ -626,13 +627,14 @@ impl BufferViewCollection {
         buffers: &mut BufferCollection,
         syntaxes: &SyntaxCollection,
         word_database: &mut WordDatabase,
+        events: &mut EditorEventQueue,
         handle: BufferViewHandle,
     ) {
         if let Some(buffer) = self.buffer_views[handle.0]
             .as_mut()
             .and_then(|view| buffers.get_mut(view.buffer_handle))
         {
-            self.apply_edits(handle, false, buffer.redo(syntaxes, word_database));
+            self.apply_edits(handle, false, buffer.redo(syntaxes, word_database, events));
         }
     }
 

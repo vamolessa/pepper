@@ -934,14 +934,24 @@ impl State {
                 _ => (),
             },
             Key::Char('u') => {
-                ctx.buffer_views
-                    .undo(ctx.buffers, &ctx.config.syntaxes, ctx.word_database, handle);
+                ctx.buffer_views.undo(
+                    ctx.buffers,
+                    &ctx.config.syntaxes,
+                    ctx.word_database,
+                    ctx.events,
+                    handle,
+                );
                 self.movement_kind = CursorMovementKind::PositionAndAnchor;
                 return ModeOperation::None;
             }
             Key::Char('U') => {
-                ctx.buffer_views
-                    .redo(ctx.buffers, &ctx.config.syntaxes, ctx.word_database, handle);
+                ctx.buffer_views.redo(
+                    ctx.buffers,
+                    &ctx.config.syntaxes,
+                    ctx.word_database,
+                    ctx.events,
+                    handle,
+                );
                 self.movement_kind = CursorMovementKind::PositionAndAnchor;
                 return ModeOperation::None;
             }

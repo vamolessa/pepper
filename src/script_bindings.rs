@@ -1064,8 +1064,13 @@ mod buffer_view {
         handle: Option<BufferViewHandle>,
     ) -> ScriptResult<()> {
         if let Some(handle) = handle.or_else(|| ctx.current_buffer_view_handle()) {
-            ctx.buffer_views
-                .undo(ctx.buffers, &ctx.config.syntaxes, ctx.word_database, handle);
+            ctx.buffer_views.undo(
+                ctx.buffers,
+                &ctx.config.syntaxes,
+                ctx.word_database,
+                ctx.events,
+                handle,
+            );
         }
         Ok(())
     }
@@ -1077,8 +1082,13 @@ mod buffer_view {
         handle: Option<BufferViewHandle>,
     ) -> ScriptResult<()> {
         if let Some(handle) = handle.or_else(|| ctx.current_buffer_view_handle()) {
-            ctx.buffer_views
-                .redo(ctx.buffers, &ctx.config.syntaxes, ctx.word_database, handle);
+            ctx.buffer_views.redo(
+                ctx.buffers,
+                &ctx.config.syntaxes,
+                ctx.word_database,
+                ctx.events,
+                handle,
+            );
         }
         Ok(())
     }

@@ -971,22 +971,25 @@ impl Buffer {
         &'a mut self,
         syntaxes: &SyntaxCollection,
         word_database: &mut WordDatabase,
+        events: &mut EditorEventQueue,
     ) -> impl 'a + Iterator<Item = Edit<'a>> {
-        self.history_edits(syntaxes, word_database, |h| h.undo_edits())
+        self.history_edits(syntaxes, word_database, events, |h| h.undo_edits())
     }
 
     pub fn redo<'a>(
         &'a mut self,
         syntaxes: &SyntaxCollection,
         word_database: &mut WordDatabase,
+        events: &mut EditorEventQueue,
     ) -> impl 'a + Iterator<Item = Edit<'a>> {
-        self.history_edits(syntaxes, word_database, |h| h.redo_edits())
+        self.history_edits(syntaxes, word_database, events, |h| h.redo_edits())
     }
 
     fn history_edits<'a, F, I>(
         &'a mut self,
         syntaxes: &SyntaxCollection,
         word_database: &mut WordDatabase,
+        events: &mut EditorEventQueue,
         selector: F,
     ) -> I
     where
@@ -1014,6 +1017,7 @@ impl Buffer {
                         edit.range.from,
                         edit.text,
                     );
+                    events.enqueue_buffer_insert(self.handle, edit.range, edit.text);
                 }
                 EditKind::Delete => {
                     Self::delete_range_no_history(
@@ -1024,6 +1028,10 @@ impl Buffer {
                         word_database,
                         edit.range,
                     );
+                    events.enqueue(EditorEvent::BufferDeleteText {
+                        handle: self.handle,
+                        range: edit.range,
+                    });
                 }
             }
         }
