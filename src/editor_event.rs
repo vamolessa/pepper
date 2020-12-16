@@ -1,4 +1,15 @@
-use crate::buffer::BufferHandle;
+use std::ops::Range;
+
+use crate::{buffer::BufferHandle, buffer_position::BufferRange};
+
+pub struct InsertText {
+    texts_range: Range<usize>,
+}
+impl InsertText {
+    pub fn as_str(&self) -> &str {
+        ""
+    }
+}
 
 pub enum EditorEvent {
     BufferLoad {
@@ -7,8 +18,14 @@ pub enum EditorEvent {
     BufferOpen {
         handle: BufferHandle,
     },
-    BufferEdit {
+    BufferInsertText {
         handle: BufferHandle,
+        range: BufferRange,
+        text: InsertText,
+    },
+    BufferDeleteText {
+        handle: BufferHandle,
+        range: BufferRange,
     },
     BufferSave {
         handle: BufferHandle,
@@ -22,11 +39,16 @@ pub enum EditorEvent {
 #[derive(Default)]
 pub struct EditorEventQueue {
     events: Vec<EditorEvent>,
+    texts: String,
 }
 
 impl EditorEventQueue {
     pub fn enqueue(&mut self, event: EditorEvent) {
         self.events.push(event);
+    }
+
+    pub fn enqueue_buffer_insert(&mut self, handle: BufferHandle, range: BufferRange, text: &str) {
+        //
     }
 }
 
