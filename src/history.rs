@@ -147,6 +147,10 @@ impl History {
                     self.edits.len()
                 };
                 self.edits.truncate(edit_index);
+                match self.edits.last() {
+                    Some(edit) => self.texts.truncate(edit.text_range.end),
+                    None => self.texts.clear(),
+                }
                 self.state = HistoryState::InsertGroup(edit_index..edit_index);
                 self.group_ranges.truncate(index);
                 edit_index
@@ -238,7 +242,7 @@ impl History {
                         $fix_buffer_range;
                         $fix_text_range;
                     }
-                }
+                };
             }
 
             match (other_edit.kind, edit.kind) {
