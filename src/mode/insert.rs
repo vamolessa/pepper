@@ -71,7 +71,6 @@ impl ModeState for State {
                 let cursor_count = buffer_view.cursors[..].len();
                 let buffer_handle = buffer_view.buffer_handle;
 
-                let mut len = 0;
                 let mut buf = [0; 128];
                 buf[0] = b'\n';
 
@@ -80,7 +79,7 @@ impl ModeState for State {
                         unwrap_or_none!(ctx.buffer_views.get(handle)).cursors[i].position;
                     let buffer = unwrap_or_none!(ctx.buffers.get(buffer_handle));
 
-                    len = 1;
+                    let mut len = 1;
                     let indentation_word = buffer
                         .content()
                         .word_at(BufferPosition::line_col(position.line_index, 0));
