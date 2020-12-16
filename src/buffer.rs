@@ -498,32 +498,18 @@ impl BufferContent {
         }
     }
 
-    pub fn delete_range(&mut self, range: BufferRange) -> Text {
+    pub fn delete_range(&mut self, range: BufferRange) {
         let from = self.clamp_position(range.from);
         let to = self.clamp_position(range.to);
 
         if from.line_index == to.line_index {
             let line = &mut self.lines[from.line_index];
-            let range = from.column_byte_index..to.column_byte_index;
-            let deleted_text = &line.as_str()[range.clone()];
-            let text = Text::from(deleted_text);
-            line.delete_range(range);
-
-            text
+            line.delete_range(from.column_byte_index..to.column_byte_index);
         } else {
-            let mut deleted_text = Text::new();
-
-            let line = &mut self.lines[from.line_index];
-            let delete_range = from.column_byte_index..;
-            deleted_text.push_str(&line.as_str()[delete_range.clone()]);
-            line.delete_range(delete_range);
-            drop(line);
-
+            self.lines[from.line_index].delete_range(from.column_byte_index..);
             let lines_range = (from.line_index + 1)..to.line_index;
             if lines_range.start < lines_range.end {
                 for line in self.lines.drain(lines_range) {
-                    deleted_text.push_str("\n");
-                    deleted_text.push_str(line.as_str());
                     self.line_pool.dispose(line);
                 }
             }
@@ -531,11 +517,7 @@ impl BufferContent {
             if to_line_index < self.lines.len() {
                 let to_line = self.lines.remove(to_line_index);
                 self.lines[from.line_index].push_text(&to_line.as_str()[to.column_byte_index..]);
-                deleted_text.push_str("\n");
-                deleted_text.push_str(&to_line.as_str()[..to.column_byte_index]);
             }
-
-            deleted_text
         }
     }
 
@@ -967,7 +949,55 @@ impl Buffer {
         }
         self.needs_save = true;
 
-        let deleted_text = Self::delete_range_no_history(
+        let from = range.from;
+        let to = range.to;
+
+        if self.capabilities.has_history {
+            fn add_history_delete_line(buffer: &mut Buffer, from: BufferPosition) {
+                let line = buffer.content.line_at(from.line_index).as_str();
+                let range = BufferRange::between(
+                    from,
+                    BufferPosition::line_col(from.line_index, line.len()),
+                );
+                buffer.history.add_edit(Edit {
+                    kind: EditKind::Delete,
+                    range,
+                    text: &line[from.column_byte_index..],
+                });
+                let range = BufferRange::between(
+                    range.to,
+                    BufferPosition::line_col(from.line_index + 1, 0),
+                );
+                buffer.history.add_edit(Edit {
+                    kind: EditKind::Delete,
+                    range,
+                    text: "\n",
+                });
+            }
+
+            if from.line_index == to.line_index {
+                let text = &self.content.line_at(from.line_index).as_str()
+                    [from.column_byte_index..to.column_byte_index];
+                self.history.add_edit(Edit {
+                    kind: EditKind::Delete,
+                    range: BufferRange::between(from, to),
+                    text,
+                });
+            } else {
+                add_history_delete_line(self, from);
+                for line_index in (from.line_index + 1)..to.line_index {
+                    add_history_delete_line(self, BufferPosition::line_col(line_index, 0));
+                }
+                let text = &self.content.line_at(to.line_index).as_str()[..to.column_byte_index];
+                self.history.add_edit(Edit {
+                    kind: EditKind::Delete,
+                    range: BufferRange::between(BufferPosition::line_col(to.line_index, 0), to),
+                    text,
+                });
+            }
+        }
+
+        Self::delete_range_no_history(
             &mut self.content,
             &mut self.highlighted,
             syntaxes.get(self.syntax_handle),
@@ -975,14 +1005,6 @@ impl Buffer {
             word_database,
             range,
         );
-
-        if self.capabilities.has_history {
-            self.history.add_edit(Edit {
-                kind: EditKind::Delete,
-                range,
-                text: deleted_text.as_str(),
-            });
-        }
     }
 
     fn delete_range_no_history(
@@ -992,7 +1014,7 @@ impl Buffer {
         uses_word_database: bool,
         word_database: &mut WordDatabase,
         range: BufferRange,
-    ) -> Text {
+    ) {
         if uses_word_database {
             let line_count = range.to.line_index - range.from.line_index + 1;
             for line in content.lines().skip(range.from.line_index).take(line_count) {
@@ -1000,21 +1022,19 @@ impl Buffer {
                     word_database.remove(word);
                 }
             }
-        }
 
-        let deleted_text = content.delete_range(range);
+            content.delete_range(range);
 
-        if uses_word_database {
             for word in WordIter::new(content.line_at(range.from.line_index).as_str())
                 .of_kind(WordKind::Identifier)
             {
                 word_database.add(word);
             }
+        } else {
+            content.delete_range(range);
         }
 
         highlighted.on_delete(syntax, content, range);
-
-        deleted_text
     }
 
     pub fn commit_edits(&mut self) {
@@ -1422,6 +1442,16 @@ mod tests {
             "this is some\nmore\nextensive\nmultiline content",
             buffer.to_string()
         );
+
+        let mut buffer = buffer_from_str("abc");
+        let range = buffer.insert_text(BufferPosition::line_col(0, 3), "\n");
+        assert_eq!(
+            BufferRange::between(
+                BufferPosition::line_col(0, 3),
+                BufferPosition::line_col(1, 0)
+            ),
+            range
+        );
     }
 
     #[test]
@@ -1446,7 +1476,7 @@ mod tests {
             buffer.to_string()
         );
 
-        let deleted_text = buffer.delete_range(BufferRange::between(
+        buffer.delete_range(BufferRange::between(
             BufferPosition::line_col(0, 0),
             BufferPosition::line_col(0, 0),
         ));
@@ -1455,53 +1485,47 @@ mod tests {
             "this is the initial\ncontent of the buffer",
             buffer.to_string()
         );
-        assert_eq!("", deleted_text.as_str());
 
-        let deleted_text = buffer.delete_range(BufferRange::between(
+        buffer.delete_range(BufferRange::between(
             BufferPosition::line_col(0, 11),
             BufferPosition::line_col(0, 19),
         ));
         assert_eq!(2, buffer.line_count());
         assert_eq!("this is the\ncontent of the buffer", buffer.to_string());
-        assert_eq!(" initial", deleted_text.as_str());
 
-        let deleted_text = buffer.delete_range(BufferRange::between(
+        buffer.delete_range(BufferRange::between(
             BufferPosition::line_col(0, 8),
             BufferPosition::line_col(1, 15),
         ));
         assert_eq!(1, buffer.line_count());
         assert_eq!("this is buffer", buffer.to_string());
-        assert_eq!("the\ncontent of the ", deleted_text.as_str());
 
         let mut buffer = buffer_from_str("this\nbuffer\ncontains\nmultiple\nlines\nyes");
         assert_eq!(6, buffer.line_count());
-        let deleted_text = buffer.delete_range(BufferRange::between(
+        buffer.delete_range(BufferRange::between(
             BufferPosition::line_col(1, 4),
             BufferPosition::line_col(4, 1),
         ));
         assert_eq!("this\nbuffines\nyes", buffer.to_string());
-        assert_eq!("er\ncontains\nmultiple\nl", deleted_text.as_str());
     }
 
     #[test]
     fn buffer_content_delete_lines() {
         let mut buffer = buffer_from_str("first line\nsecond line\nthird line");
         assert_eq!(3, buffer.line_count());
-        let deleted_text = buffer.delete_range(BufferRange::between(
+        buffer.delete_range(BufferRange::between(
             BufferPosition::line_col(1, 0),
             BufferPosition::line_col(2, 0),
         ));
         assert_eq!("first line\nthird line", buffer.to_string());
-        assert_eq!("second line\n", deleted_text.as_str());
 
         let mut buffer = buffer_from_str("first line\nsecond line\nthird line");
         assert_eq!(3, buffer.line_count());
-        let deleted_text = buffer.delete_range(BufferRange::between(
+        buffer.delete_range(BufferRange::between(
             BufferPosition::line_col(1, 0),
             BufferPosition::line_col(1, 11),
         ));
         assert_eq!("first line\n\nthird line", buffer.to_string());
-        assert_eq!("second line", deleted_text.as_str());
     }
 
     #[test]
