@@ -31,7 +31,6 @@ impl EditInternal {
     }
 }
 
-#[derive(Debug)]
 enum HistoryState {
     IterIndex(usize),
     InsertGroup(Range<usize>),
@@ -140,8 +139,6 @@ impl History {
     }
 
     pub fn add_edit(&mut self, edit: Edit) {
-        dbg!(edit);
-
         let current_group_start = match self.state {
             HistoryState::IterIndex(index) => {
                 let edit_index = if index < self.group_ranges.len() {
@@ -158,10 +155,6 @@ impl History {
         };
 
         let merged = self.try_merge_edit(current_group_start, &edit);
-        if merged {
-            eprintln!("merged: {:?}", edit);
-        }
-
         if !merged {
             let index = match self.edits[current_group_start..]
                 .binary_search_by_key(&edit.range.from, |e| e.buffer_range.from)
@@ -201,20 +194,6 @@ impl History {
                 range.end = self.edits.len();
             }
         }
-
-        eprintln!("------------------------------------");
-        eprintln!("history:");
-        eprintln!("state: {:?}", self.state);
-        eprintln!("texts: '{}'", self.texts);
-        eprintln!("edits:");
-        for (i, edit) in self.edits.iter().enumerate() {
-            eprintln!("  [{}] {:?}", i, edit.as_edit_ref(&self.texts));
-        }
-        eprintln!("group ranges:");
-        for group_range in &self.group_ranges {
-            eprintln!("  {:?}", group_range);
-        }
-        eprintln!("------------------------------------");
     }
 
     fn try_merge_edit(&mut self, current_group_start: usize, edit: &Edit) -> bool {
@@ -251,14 +230,15 @@ impl History {
         let edit_text_len = edit.text.len();
         for (i, other_edit) in group_edits.iter_mut().enumerate() {
             macro_rules! fix_other_edits {
-                ($edit:ident => $fix:block) => {
+                ($edit:ident => $fix_buffer_range:expr, $fix_text_range:expr,) => {
                     for $edit in &mut group_edits[..i] {
-                        $fix
+                        $fix_text_range;
                     }
                     for $edit in &mut group_edits[(i + 1)..] {
-                        $fix
+                        $fix_buffer_range;
+                        $fix_text_range;
                     }
-                };
+                }
             }
 
             match (other_edit.kind, edit.kind) {
@@ -270,10 +250,10 @@ impl History {
                         self.texts.insert_str(fix_text_start, edit.text);
                         other_edit.buffer_range.to = edit.range.to;
                         other_edit.text_range.end += edit_text_len;
-                        fix_other_edits!(e => {
-                            insert_buffer_range(e, edit.range);
-                            insert_text_range(e, fix_text_start, edit_text_len);
-                        });
+                        fix_other_edits!(e =>
+                            insert_buffer_range(e, edit.range),
+                            insert_text_range(e, fix_text_start, edit_text_len),
+                        );
                         return true;
                     // -- insert --
                     // -- insert -- (new)
@@ -282,10 +262,10 @@ impl History {
                         self.texts.insert_str(fix_text_start, edit.text);
                         other_edit.buffer_range.to = other_edit.buffer_range.to.insert(edit.range);
                         other_edit.text_range.end += edit_text_len;
-                        fix_other_edits!(e => {
-                            insert_buffer_range(e, edit.range);
-                            insert_text_range(e, fix_text_start, edit_text_len);
-                        });
+                        fix_other_edits!(e =>
+                            insert_buffer_range(e, edit.range),
+                            insert_text_range(e, fix_text_start, edit_text_len),
+                        );
                         return true;
                     }
                 }
@@ -297,10 +277,10 @@ impl History {
                         self.texts.insert_str(fix_text_start, edit.text);
                         other_edit.buffer_range.to = other_edit.buffer_range.to.insert(edit.range);
                         other_edit.text_range.end += edit_text_len;
-                        fix_other_edits!(e => {
-                            delete_buffer_range(e, edit.range);
-                            insert_text_range(e, fix_text_start, edit_text_len);
-                        });
+                        fix_other_edits!(e =>
+                            delete_buffer_range(e, edit.range),
+                            insert_text_range(e, fix_text_start, edit_text_len),
+                        );
                         return true;
                     //             -- delete --
                     // -- delete -- (new)
@@ -309,10 +289,10 @@ impl History {
                         self.texts.insert_str(fix_text_start, edit.text);
                         other_edit.buffer_range.from = edit.range.from;
                         other_edit.text_range.end += edit_text_len;
-                        fix_other_edits!(e => {
-                            delete_buffer_range(e, edit.range);
-                            insert_text_range(e, fix_text_start, edit_text_len);
-                        });
+                        fix_other_edits!(e =>
+                            delete_buffer_range(e, edit.range),
+                            insert_text_range(e, fix_text_start, edit_text_len),
+                        );
                         return true;
                     }
                 }
@@ -329,10 +309,10 @@ impl History {
                             other_edit.buffer_range.to =
                                 other_edit.buffer_range.to.delete(edit.range);
                             other_edit.text_range.end -= edit_text_len;
-                            fix_other_edits!(e => {
-                                delete_buffer_range(e, edit.range);
-                                delete_text_range(e, fix_text_start, edit_text_len);
-                            });
+                            fix_other_edits!(e =>
+                                delete_buffer_range(e, edit.range),
+                                delete_text_range(e, fix_text_start, edit_text_len),
+                            );
                             return true;
                         }
 
@@ -347,10 +327,10 @@ impl History {
                             self.texts.drain(deleted_text_range);
                             other_edit.buffer_range.to = edit.range.from;
                             other_edit.text_range.end -= edit_text_len;
-                            fix_other_edits!(e => {
-                                delete_buffer_range(e, edit.range);
-                                delete_text_range(e, fix_text_start, edit_text_len);
-                            });
+                            fix_other_edits!(e =>
+                                delete_buffer_range(e, edit.range),
+                                delete_text_range(e, fix_text_start, edit_text_len),
+                            );
                             return true;
                         }
 
@@ -376,10 +356,10 @@ impl History {
                                 fix_text_start + edit_text_len - other_text_len;
                             let other_text_end_diff =
                                 previous_other_text_end - other_edit.text_range.end;
-                            fix_other_edits!(e => {
-                                delete_buffer_range(e, edit.range);
-                                insert_text_range(e, fix_text_start, other_text_end_diff);
-                            });
+                            fix_other_edits!(e =>
+                                delete_buffer_range(e, edit.range),
+                                insert_text_range(e, fix_text_start, other_text_end_diff),
+                            );
                             return true;
                         }
 
@@ -405,10 +385,10 @@ impl History {
                                 fix_text_start + edit_text_len - other_text_len;
                             let other_text_end_diff =
                                 previous_other_text_end - other_edit.text_range.end;
-                            fix_other_edits!(e => {
-                                delete_buffer_range(e, edit.range);
-                                insert_text_range(e, fix_text_start, other_text_end_diff);
-                            });
+                            fix_other_edits!(e =>
+                                delete_buffer_range(e, edit.range),
+                                insert_text_range(e, fix_text_start, other_text_end_diff),
+                            );
                             return true;
                         }
                     }

@@ -981,26 +981,6 @@ impl Buffer {
                     text,
                 });
             } else {
-                /*
-                let mut text = String::new();
-                text.push_str(
-                    &self.content.line_at(from.line_index).as_str()[from.column_byte_index..],
-                );
-                text.push_str("\n");
-                for line_index in (from.line_index + 1)..to.line_index {
-                    text.push_str(&self.content.line_at(line_index).as_str());
-                    text.push_str("\n");
-                }
-                text.push_str(
-                    &self.content.line_at(to.line_index).as_str()[..to.column_byte_index],
-                );
-                self.history.add_edit(Edit {
-                    kind: EditKind::Delete,
-                    range,
-                    text: &text,
-                });
-                // */
-                //*
                 let text = &self.content.line_at(to.line_index).as_str()[..to.column_byte_index];
                 self.history.add_edit(Edit {
                     kind: EditKind::Delete,
@@ -1011,7 +991,6 @@ impl Buffer {
                     add_history_delete_line(self, BufferPosition::line_col(line_index, 0));
                 }
                 add_history_delete_line(self, from);
-                // */
             }
         }
 
@@ -1374,27 +1353,6 @@ mod tests {
     }
 
     #[test]
-    fn text_size() {
-        assert_eq!(32, std::mem::size_of::<Text>());
-    }
-
-    #[test]
-    fn text_grow() {
-        const S1: &str = "123456789012345678901234567890";
-        const S2: &str = "abc";
-
-        let mut text = Text::new();
-        text.push_str(S1);
-        assert_eq!(S1, text.as_str());
-        text.push_str(S2);
-
-        let mut s = String::new();
-        s.push_str(S1);
-        s.push_str(S2);
-        assert_eq!(s, text.as_str());
-    }
-
-    #[test]
     fn buffer_line_char_count() {
         let mut line_pool = BufferLinePool::new();
         let mut line = line_pool.rent();
@@ -1594,30 +1552,15 @@ mod tests {
             BufferPosition::line_col(0, 0),
             "multi\nline\ncontent",
         );
-
-        /*
-        {
-            let mut undo_edits = buffer.undo(&syntaxes, &mut word_database);
-            assert_eq!(insert_range, undo_edits.next().unwrap().range);
-            assert!(undo_edits.next().is_none());
-        }
-        {
-            let mut redo_edits = buffer.redo(&syntaxes, &mut word_database);
-            assert_eq!(insert_range, redo_edits.next().unwrap().range);
-            assert!(redo_edits.next().is_none());
-        }
-        // */
         assert_eq!("multi\nline\ncontent", buffer.content.to_string());
 
         let delete_range = BufferRange::between(
             BufferPosition::line_col(0, 1),
             BufferPosition::line_col(1, 3),
         );
-        eprintln!("===================================================================");
         buffer.delete_range(&syntaxes, &mut word_database, delete_range);
-        eprintln!("===================================================================");
-
         assert_eq!("me\ncontent", buffer.content.to_string());
+
         {
             let mut undo_edits = buffer.undo(&syntaxes, &mut word_database);
             assert_eq!(delete_range, undo_edits.next().unwrap().range);
@@ -1625,11 +1568,13 @@ mod tests {
             assert!(undo_edits.next().is_none());
         }
         assert_eq!("", buffer.content.to_string());
-        let mut redo_edits = buffer.redo(&syntaxes, &mut word_database);
-        redo_edits.next().unwrap();
-        redo_edits.next().unwrap();
-        assert!(redo_edits.next().is_none());
-        drop(redo_edits);
+
+        {
+            let mut redo_edits = buffer.redo(&syntaxes, &mut word_database);
+            redo_edits.next().unwrap();
+            redo_edits.next().unwrap();
+            assert!(redo_edits.next().is_none());
+        }
         assert_eq!("me\ncontent", buffer.content.to_string());
     }
 
