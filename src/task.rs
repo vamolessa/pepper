@@ -102,12 +102,7 @@ impl TaskWorker {
     }
 
     fn work(task_receiver: mpsc::Receiver<Task>, event_sender: mpsc::Sender<LocalEvent>) {
-        loop {
-            let task = match task_receiver.recv() {
-                Ok(task) => task,
-                Err(_) => break,
-            };
-
+        for task in task_receiver.iter() {
             macro_rules! send_result {
                 ($result:expr) => {{
                     let event = LocalEvent::TaskEvent(task.target_client, task.handle, $result);
