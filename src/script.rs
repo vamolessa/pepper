@@ -608,7 +608,11 @@ impl ScriptEngine {
                 EditorEvent::BufferOpen { handle } => {
                     call!(buffer_on_open, *handle)
                 }
-                EditorEvent::BufferInsertText { handle, range, text } => {
+                EditorEvent::BufferInsertText {
+                    handle,
+                    range,
+                    text,
+                } => {
                     //call!(buffer_on_change, *handle)
                 }
                 EditorEvent::BufferDeleteText { handle, range } => {

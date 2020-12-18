@@ -1,7 +1,6 @@
 use std::{error::Error, fmt, str::Chars};
 
 use crate::{
-    task::{TaskHandle, TaskResult},
     client::TargetClient,
     event_manager::ConnectionEvent,
     lsp::{LspClientHandle, LspServerEvent},
@@ -9,6 +8,7 @@ use crate::{
         DeserializationSlice, DeserializeError, Deserializer, SerializationBuf, Serialize,
         Serializer,
     },
+    task::{TaskHandle, TaskResult},
     ui::UiKind,
 };
 
