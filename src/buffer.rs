@@ -1464,13 +1464,13 @@ mod tests {
 
         assert_eq!("single content", buffer.content.to_string());
         {
-            let mut ranges = buffer.undo(&syntaxes, &mut word_database);
+            let mut ranges = buffer.undo(&syntaxes, &mut word_database, &mut events);
             assert_eq!(range, ranges.next().unwrap().range);
             ranges.next().unwrap();
             assert!(ranges.next().is_none());
         }
         assert!(buffer.content.to_string().is_empty());
-        let mut redo_iter = buffer.redo(&syntaxes, &mut word_database);
+        let mut redo_iter = buffer.redo(&syntaxes, &mut word_database, &mut events);
         redo_iter.next().unwrap();
         redo_iter.next().unwrap();
         assert!(redo_iter.next().is_none());
@@ -1503,7 +1503,7 @@ mod tests {
         assert_eq!("me\ncontent", buffer.content.to_string());
 
         {
-            let mut undo_edits = buffer.undo(&syntaxes, &mut word_database);
+            let mut undo_edits = buffer.undo(&syntaxes, &mut word_database, &mut events);
             assert_eq!(delete_range, undo_edits.next().unwrap().range);
             assert_eq!(insert_range, undo_edits.next().unwrap().range);
             assert!(undo_edits.next().is_none());
@@ -1511,7 +1511,7 @@ mod tests {
         assert_eq!("", buffer.content.to_string());
 
         {
-            let mut redo_edits = buffer.redo(&syntaxes, &mut word_database);
+            let mut redo_edits = buffer.redo(&syntaxes, &mut word_database, &mut events);
             redo_edits.next().unwrap();
             redo_edits.next().unwrap();
             assert!(redo_edits.next().is_none());
