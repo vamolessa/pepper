@@ -371,8 +371,6 @@ impl BufferContent {
     }
 
     pub fn insert_text(&mut self, position: BufferPosition, text: &str) -> BufferRange {
-        let position = self.clamp_position(position);
-
         if let None = text.find('\n') {
             let line = &mut self.lines[position.line_index];
             let previous_len = line.as_str().len();
@@ -420,8 +418,8 @@ impl BufferContent {
     }
 
     pub fn delete_range(&mut self, range: BufferRange) {
-        let from = self.clamp_position(range.from);
-        let to = self.clamp_position(range.to);
+        let from = range.from;
+        let to = range.to;
 
         if from.line_index == to.line_index {
             let line = &mut self.lines[from.line_index];
@@ -801,6 +799,8 @@ impl Buffer {
         events: &mut EditorEventQueue,
     ) -> BufferRange {
         self.search_ranges.clear();
+        let position = self.content.clamp_position(position);
+
         if text.is_empty() {
             return BufferRange::between(position, position);
         }
@@ -865,10 +865,13 @@ impl Buffer {
         &mut self,
         syntaxes: &SyntaxCollection,
         word_database: &mut WordDatabase,
-        range: BufferRange,
+        mut range: BufferRange,
         events: &mut EditorEventQueue,
     ) {
         self.search_ranges.clear();
+        range.from = self.content.clamp_position(range.from);
+        range.to = self.content.clamp_position(range.to);
+
         if range.from == range.to {
             return;
         }
@@ -881,6 +884,7 @@ impl Buffer {
 
         let from = range.from;
         let to = range.to;
+
         if self.capabilities.has_history {
             fn add_history_delete_line(buffer: &mut Buffer, from: BufferPosition) {
                 let line = buffer.content.line_at(from.line_index).as_str();
