@@ -351,9 +351,9 @@ mod lsp {
         handle: LspClientHandle,
     ) -> ScriptResult<()> {
         if let Some(client) = ctx.lsp.get_mut(handle) {
-            let buffer = ctx.buffers.new(BufferCapabilities::log(), ctx.events);
+            let buffer = ctx.buffers.new(BufferCapabilities::log());
             let buffer_handle = buffer.handle();
-            buffer.set_path(&ctx.config.syntaxes, Some(Path::new(client.name())));
+            buffer.set_path(Some(Path::new(client.name())));
             client.set_log_buffer(Some(buffer_handle));
 
             let view_handle = ctx
@@ -530,7 +530,6 @@ mod buffer {
             .buffer_view_handle_from_path(
                 ctx.buffers,
                 ctx.word_database,
-                &ctx.config.syntaxes,
                 ctx.target_client,
                 ctx.current_directory,
                 path,
@@ -680,7 +679,7 @@ mod buffer {
             None => None,
         };
 
-        if let Err(e) = buffer.save_to_file(&ctx.config.syntaxes, path, ctx.events) {
+        if let Err(e) = buffer.save_to_file(path, ctx.events) {
             return Err(ScriptError::from(e.display(buffer).to_string()));
         }
 
@@ -700,7 +699,7 @@ mod buffer {
     ) -> ScriptResult<()> {
         let mut buffer_count = 0;
         for buffer in ctx.buffers.iter_mut() {
-            if let Err(e) = buffer.save_to_file(&ctx.config.syntaxes, None, ctx.events) {
+            if let Err(e) = buffer.save_to_file(None, ctx.events) {
                 return Err(ScriptError::from(e.display(buffer).to_string()));
             }
 
@@ -734,7 +733,7 @@ mod buffer {
                 return Ok(());
             }
 
-            match buffer.discard_and_reload_from_file(&ctx.config.syntaxes, ctx.word_database) {
+            match buffer.discard_and_reload_from_file(ctx.word_database, ctx.events) {
                 Ok(()) => ctx
                     .status_message
                     .write_str(StatusMessageKind::Info, "reloaded"),
@@ -759,7 +758,7 @@ mod buffer {
             .or_else(|| current_handle)
             .and_then(|h| buffers.get_mut(h))
         {
-            match buffer.discard_and_reload_from_file(&ctx.config.syntaxes, ctx.word_database) {
+            match buffer.discard_and_reload_from_file(ctx.word_database, ctx.events) {
                 Ok(()) => ctx
                     .status_message
                     .write_str(StatusMessageKind::Info, "reloaded"),
@@ -790,7 +789,7 @@ mod buffer {
             let mut buffer_count = 0;
             for buffer in ctx.buffers.iter_mut() {
                 if let Err(error) =
-                    buffer.discard_and_reload_from_file(&ctx.config.syntaxes, ctx.word_database)
+                    buffer.discard_and_reload_from_file(ctx.word_database, ctx.events)
                 {
                     had_error = true;
                     ctx.status_message.write_fmt(
@@ -819,9 +818,7 @@ mod buffer {
         let mut had_error = false;
         let mut buffer_count = 0;
         for buffer in ctx.buffers.iter_mut() {
-            if let Err(error) =
-                buffer.discard_and_reload_from_file(&ctx.config.syntaxes, ctx.word_database)
-            {
+            if let Err(error) = buffer.discard_and_reload_from_file(ctx.word_database, ctx.events) {
                 had_error = true;
                 ctx.status_message.write_fmt(
                     StatusMessageKind::Error,
@@ -937,7 +934,6 @@ mod buffer_view {
         match ctx.buffer_views.buffer_view_handle_from_path(
             ctx.buffers,
             ctx.word_database,
-            &ctx.config.syntaxes,
             ctx.target_client,
             ctx.current_directory,
             Path::new(path),
@@ -976,7 +972,6 @@ mod buffer_view {
             let text = text.to_str()?;
             ctx.buffer_views.insert_text_at_cursor_positions(
                 ctx.buffers,
-                &ctx.config.syntaxes,
                 ctx.word_database,
                 handle,
                 text,
@@ -997,7 +992,6 @@ mod buffer_view {
             let text = text.to_str()?;
             ctx.buffer_views.insert_text_at_position(
                 ctx.buffers,
-                &ctx.config.syntaxes,
                 ctx.word_database,
                 handle,
                 BufferPosition::line_col(line, column),
@@ -1018,7 +1012,6 @@ mod buffer_view {
         if let Some(handle) = handle.or_else(|| ctx.current_buffer_view_handle()) {
             ctx.buffer_views.delete_in_cursor_ranges(
                 ctx.buffers,
-                &ctx.config.syntaxes,
                 ctx.word_database,
                 handle,
                 ctx.events,
@@ -1043,7 +1036,6 @@ mod buffer_view {
         if let Some(handle) = handle.or_else(|| ctx.current_buffer_view_handle()) {
             ctx.buffer_views.delete_in_range(
                 ctx.buffers,
-                &ctx.config.syntaxes,
                 ctx.word_database,
                 handle,
                 BufferRange::between(
@@ -1064,13 +1056,8 @@ mod buffer_view {
         handle: Option<BufferViewHandle>,
     ) -> ScriptResult<()> {
         if let Some(handle) = handle.or_else(|| ctx.current_buffer_view_handle()) {
-            ctx.buffer_views.undo(
-                ctx.buffers,
-                &ctx.config.syntaxes,
-                ctx.word_database,
-                ctx.events,
-                handle,
-            );
+            ctx.buffer_views
+                .undo(ctx.buffers, ctx.word_database, ctx.events, handle);
         }
         Ok(())
     }
@@ -1082,13 +1069,8 @@ mod buffer_view {
         handle: Option<BufferViewHandle>,
     ) -> ScriptResult<()> {
         if let Some(handle) = handle.or_else(|| ctx.current_buffer_view_handle()) {
-            ctx.buffer_views.redo(
-                ctx.buffers,
-                &ctx.config.syntaxes,
-                ctx.word_database,
-                ctx.events,
-                handle,
-            );
+            ctx.buffer_views
+                .redo(ctx.buffers, ctx.word_database, ctx.events, handle);
         }
         Ok(())
     }

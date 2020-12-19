@@ -357,7 +357,6 @@ impl Editor {
                 match self.buffer_views.buffer_view_handle_from_path(
                     &mut self.buffers,
                     &mut self.word_database,
-                    &self.config.syntaxes,
                     target_client,
                     &self.current_directory,
                     Path::new(path),
@@ -568,6 +567,11 @@ impl Editor {
     fn handle_editor_events(ctx: &mut ModeContext, events: EditorEventsIter) {
         for event in events {
             match event {
+                EditorEvent::BufferLoad { handle } => {
+                    if let Some(buffer) = ctx.buffers.get_mut(*handle) {
+                        buffer.refresh_syntax(&ctx.config.syntaxes);
+                    }
+                }
                 EditorEvent::BufferSave { handle, new_path } => {
                     if *new_path {
                         if let Some(buffer) = ctx.buffers.get_mut(*handle) {

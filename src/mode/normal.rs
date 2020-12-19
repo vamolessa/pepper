@@ -591,7 +591,6 @@ impl State {
             Key::Char('d') => {
                 ctx.buffer_views.delete_in_cursor_ranges(
                     ctx.buffers,
-                    &ctx.config.syntaxes,
                     ctx.word_database,
                     handle,
                     ctx.events,
@@ -605,7 +604,6 @@ impl State {
             Key::Char('i') => {
                 ctx.buffer_views.delete_in_cursor_ranges(
                     ctx.buffers,
-                    &ctx.config.syntaxes,
                     ctx.word_database,
                     handle,
                     ctx.events,
@@ -650,7 +648,6 @@ impl State {
                         );
                         ctx.buffer_views.delete_in_range(
                             ctx.buffers,
-                            &ctx.config.syntaxes,
                             ctx.word_database,
                             handle,
                             range,
@@ -685,7 +682,6 @@ impl State {
                     for line_index in range.from.line_index..=range.to.line_index {
                         ctx.buffer_views.insert_text_at_position(
                             ctx.buffers,
-                            &ctx.config.syntaxes,
                             ctx.word_database,
                             handle,
                             BufferPosition::line_col(line_index, 0),
@@ -881,7 +877,6 @@ impl State {
                 use copypasta::{ClipboardContext, ClipboardProvider};
                 ctx.buffer_views.delete_in_cursor_ranges(
                     ctx.buffers,
-                    &ctx.config.syntaxes,
                     ctx.word_database,
                     handle,
                     ctx.events,
@@ -889,7 +884,6 @@ impl State {
                 if let Ok(text) = ClipboardContext::new().and_then(|mut c| c.get_contents()) {
                     ctx.buffer_views.insert_text_at_cursor_positions(
                         ctx.buffers,
-                        &ctx.config.syntaxes,
                         ctx.word_database,
                         handle,
                         &text,
@@ -908,7 +902,6 @@ impl State {
                 Key::Char(c) => {
                     ctx.buffer_views.delete_in_cursor_ranges(
                         ctx.buffers,
-                        &ctx.config.syntaxes,
                         ctx.word_database,
                         handle,
                         ctx.events,
@@ -917,7 +910,6 @@ impl State {
                         let register = ctx.registers.get(key);
                         ctx.buffer_views.insert_text_at_cursor_positions(
                             ctx.buffers,
-                            &ctx.config.syntaxes,
                             ctx.word_database,
                             handle,
                             register,
@@ -934,24 +926,14 @@ impl State {
                 _ => (),
             },
             Key::Char('u') => {
-                ctx.buffer_views.undo(
-                    ctx.buffers,
-                    &ctx.config.syntaxes,
-                    ctx.word_database,
-                    ctx.events,
-                    handle,
-                );
+                ctx.buffer_views
+                    .undo(ctx.buffers, ctx.word_database, ctx.events, handle);
                 self.movement_kind = CursorMovementKind::PositionAndAnchor;
                 return ModeOperation::None;
             }
             Key::Char('U') => {
-                ctx.buffer_views.redo(
-                    ctx.buffers,
-                    &ctx.config.syntaxes,
-                    ctx.word_database,
-                    ctx.events,
-                    handle,
-                );
+                ctx.buffer_views
+                    .redo(ctx.buffers, ctx.word_database, ctx.events, handle);
                 self.movement_kind = CursorMovementKind::PositionAndAnchor;
                 return ModeOperation::None;
             }
@@ -1274,7 +1256,6 @@ fn move_to_diagnostic(state: &mut State, ctx: &mut ModeContext, forward: bool) {
             None => match ctx.buffer_views.buffer_view_handle_from_path(
                 ctx.buffers,
                 ctx.word_database,
-                &ctx.config.syntaxes,
                 ctx.target_client,
                 ctx.current_directory,
                 path,

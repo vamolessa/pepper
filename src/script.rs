@@ -608,6 +608,7 @@ impl ScriptEngine {
                 EditorEvent::BufferOpen { handle } => {
                     call!(buffer_on_open, *handle)
                 }
+                /*
                 EditorEvent::BufferInsertText {
                     handle,
                     range,
@@ -618,10 +619,12 @@ impl ScriptEngine {
                 EditorEvent::BufferDeleteText { handle, range } => {
                     //call!(buffer_on_change, *handle)
                 }
+                */
                 EditorEvent::BufferSave { handle, new_path } => {
                     call!(buffer_on_save, (*handle, *new_path))
                 }
                 EditorEvent::BufferClose { handle } => call!(buffer_on_close, *handle),
+                _ => (),
             }
         }
         drop(s);

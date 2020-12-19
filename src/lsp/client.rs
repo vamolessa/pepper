@@ -380,7 +380,6 @@ impl Client {
                 BufferPosition::line_col(line_index, content.line_at(line_index).as_str().len());
             let text = String::from_utf8_lossy(&self.log_write_buf);
             buffer.insert_text(
-                &ctx.config.syntaxes,
                 ctx.word_database,
                 position,
                 &text,

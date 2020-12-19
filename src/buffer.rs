@@ -12,7 +12,7 @@ use crate::{
     editor_event::{EditorEvent, EditorEventQueue},
     history::{Edit, EditHandle, EditKind, History},
     script::ScriptValue,
-    syntax::{HighlightedBuffer, Syntax, SyntaxCollection, SyntaxHandle},
+    syntax::{HighlightedBuffer, SyntaxCollection, SyntaxHandle},
     word_database::{WordDatabase, WordIter, WordKind},
 };
 
@@ -753,12 +753,11 @@ impl Buffer {
         }
     }
 
-    pub fn set_path(&mut self, syntaxes: &SyntaxCollection, path: Option<&Path>) {
+    pub fn set_path(&mut self, path: Option<&Path>) {
         self.path.clear();
         if let Some(path) = path {
             self.path.push(path);
         }
-        self.refresh_syntax(syntaxes);
     }
 
     pub fn highlighted(&self) -> &HighlightedBuffer {
@@ -802,7 +801,6 @@ impl Buffer {
 
     pub fn insert_text(
         &mut self,
-        syntaxes: &SyntaxCollection,
         word_database: &mut WordDatabase,
         position: BufferPosition,
         text: &str,
@@ -818,8 +816,6 @@ impl Buffer {
 
         let range = Self::insert_text_no_history(
             &mut self.content,
-            &mut self.highlighted,
-            syntaxes.get(self.syntax_handle),
             self.capabilities.uses_word_database,
             word_database,
             position,
@@ -841,8 +837,6 @@ impl Buffer {
 
     pub fn insert_text_no_history(
         content: &mut BufferContent,
-        highlighted: &mut HighlightedBuffer,
-        syntax: &Syntax,
         uses_word_database: bool,
         word_database: &mut WordDatabase,
         position: BufferPosition,
@@ -867,13 +861,11 @@ impl Buffer {
             }
         }
 
-        highlighted.on_insert(syntax, content, range);
         range
     }
 
     pub fn delete_range(
         &mut self,
-        syntaxes: &SyntaxCollection,
         word_database: &mut WordDatabase,
         mut range: BufferRange,
         events: &mut EditorEventQueue,
@@ -939,8 +931,6 @@ impl Buffer {
 
         Self::delete_range_no_history(
             &mut self.content,
-            &mut self.highlighted,
-            syntaxes.get(self.syntax_handle),
             self.capabilities.uses_word_database,
             word_database,
             range,
@@ -949,8 +939,6 @@ impl Buffer {
 
     fn delete_range_no_history(
         content: &mut BufferContent,
-        highlighted: &mut HighlightedBuffer,
-        syntax: &Syntax,
         uses_word_database: bool,
         word_database: &mut WordDatabase,
         range: BufferRange,
@@ -973,8 +961,6 @@ impl Buffer {
         } else {
             content.delete_range(range);
         }
-
-        highlighted.on_delete(syntax, content, range);
     }
 
     pub fn commit_edits(&mut self) {
@@ -983,25 +969,22 @@ impl Buffer {
 
     pub fn undo<'a>(
         &'a mut self,
-        syntaxes: &SyntaxCollection,
         word_database: &mut WordDatabase,
         events: &mut EditorEventQueue,
     ) -> impl 'a + Iterator<Item = Edit<'a>> {
-        self.history_edits(syntaxes, word_database, events, |h| h.undo_edits())
+        self.history_edits(word_database, events, |h| h.undo_edits())
     }
 
     pub fn redo<'a>(
         &'a mut self,
-        syntaxes: &SyntaxCollection,
         word_database: &mut WordDatabase,
         events: &mut EditorEventQueue,
     ) -> impl 'a + Iterator<Item = Edit<'a>> {
-        self.history_edits(syntaxes, word_database, events, |h| h.redo_edits())
+        self.history_edits(word_database, events, |h| h.redo_edits())
     }
 
     fn history_edits<'a, F, I>(
         &'a mut self,
-        syntaxes: &SyntaxCollection,
         word_database: &mut WordDatabase,
         events: &mut EditorEventQueue,
         selector: F,
@@ -1014,8 +997,6 @@ impl Buffer {
         self.needs_save = true;
 
         let content = &mut self.content;
-        let highlighted = &mut self.highlighted;
-        let syntax = syntaxes.get(self.syntax_handle);
         let uses_word_database = self.capabilities.uses_word_database;
 
         let edits = selector(&mut self.history);
@@ -1024,8 +1005,6 @@ impl Buffer {
                 EditKind::Insert => {
                     Self::insert_text_no_history(
                         content,
-                        highlighted,
-                        syntax,
                         uses_word_database,
                         word_database,
                         edit.range.from,
@@ -1036,8 +1015,6 @@ impl Buffer {
                 EditKind::Delete => {
                     Self::delete_range_no_history(
                         content,
-                        highlighted,
-                        syntax,
                         uses_word_database,
                         word_database,
                         edit.range,
@@ -1084,13 +1061,12 @@ impl Buffer {
 
     pub fn save_to_file(
         &mut self,
-        syntaxes: &SyntaxCollection,
         path: Option<&Path>,
         events: &mut EditorEventQueue,
     ) -> Result<(), BufferError> {
         let new_path = match path {
             Some(path) => {
-                self.set_path(syntaxes, Some(path));
+                self.set_path(Some(path));
                 true
             }
             None => false,
@@ -1122,8 +1098,8 @@ impl Buffer {
 
     pub fn discard_and_reload_from_file(
         &mut self,
-        syntaxes: &SyntaxCollection,
         word_database: &mut WordDatabase,
+        events: &mut EditorEventQueue,
     ) -> Result<(), BufferError> {
         if !self.capabilities.can_save {
             return Ok(());
@@ -1142,8 +1118,10 @@ impl Buffer {
         self.content
             .read(&mut reader)
             .map_err(|_| BufferError::CouldNotReadFile)?;
-        self.highlighted
-            .refresh(syntaxes.get(self.syntax_handle), &self.content);
+
+        events.enqueue(EditorEvent::BufferLoad {
+            handle: self.handle,
+        });
 
         if self.capabilities.uses_word_database {
             for line in &self.content.lines {
@@ -1175,11 +1153,7 @@ pub struct BufferCollection {
 }
 
 impl BufferCollection {
-    pub fn new(
-        &mut self,
-        capabilities: BufferCapabilities,
-        events: &mut EditorEventQueue,
-    ) -> &mut Buffer {
+    pub fn new(&mut self, capabilities: BufferCapabilities) -> &mut Buffer {
         let mut handle = None;
         for (i, buffer) in self.buffers.iter_mut().enumerate() {
             if !buffer.alive {
@@ -1196,7 +1170,6 @@ impl BufferCollection {
             }
         };
 
-        events.enqueue(EditorEvent::BufferLoad { handle });
         let buffer = &mut self.buffers[handle.0];
         buffer.alive = true;
         buffer.capabilities = capabilities;
@@ -1457,14 +1430,12 @@ mod tests {
 
     #[test]
     fn buffer_delete_undo_redo_single_line() {
-        let syntaxes = SyntaxCollection::new();
         let mut word_database = WordDatabase::new();
         let mut events = EditorEventQueue::default();
 
         let mut buffer = Buffer::new(BufferHandle(0));
         buffer.capabilities = BufferCapabilities::text();
         buffer.insert_text(
-            &syntaxes,
             &mut word_database,
             BufferPosition::line_col(0, 0),
             "single line content",
@@ -1474,17 +1445,17 @@ mod tests {
             BufferPosition::line_col(0, 7),
             BufferPosition::line_col(0, 12),
         );
-        buffer.delete_range(&syntaxes, &mut word_database, range, &mut events);
+        buffer.delete_range(&mut word_database, range, &mut events);
 
         assert_eq!("single content", buffer.content.to_string());
         {
-            let mut ranges = buffer.undo(&syntaxes, &mut word_database, &mut events);
+            let mut ranges = buffer.undo(&mut word_database, &mut events);
             assert_eq!(range, ranges.next().unwrap().range);
             ranges.next().unwrap();
             assert!(ranges.next().is_none());
         }
         assert!(buffer.content.to_string().is_empty());
-        let mut redo_iter = buffer.redo(&syntaxes, &mut word_database, &mut events);
+        let mut redo_iter = buffer.redo(&mut word_database, &mut events);
         redo_iter.next().unwrap();
         redo_iter.next().unwrap();
         assert!(redo_iter.next().is_none());
@@ -1494,14 +1465,12 @@ mod tests {
 
     #[test]
     fn buffer_delete_undo_redo_multi_line() {
-        let syntaxes = SyntaxCollection::new();
         let mut word_database = WordDatabase::new();
         let mut events = EditorEventQueue::default();
 
         let mut buffer = Buffer::new(BufferHandle(0));
         buffer.capabilities = BufferCapabilities::text();
         let insert_range = buffer.insert_text(
-            &syntaxes,
             &mut word_database,
             BufferPosition::line_col(0, 0),
             "multi\nline\ncontent",
@@ -1513,11 +1482,11 @@ mod tests {
             BufferPosition::line_col(0, 1),
             BufferPosition::line_col(1, 3),
         );
-        buffer.delete_range(&syntaxes, &mut word_database, delete_range, &mut events);
+        buffer.delete_range(&mut word_database, delete_range, &mut events);
         assert_eq!("me\ncontent", buffer.content.to_string());
 
         {
-            let mut undo_edits = buffer.undo(&syntaxes, &mut word_database, &mut events);
+            let mut undo_edits = buffer.undo(&mut word_database, &mut events);
             assert_eq!(delete_range, undo_edits.next().unwrap().range);
             assert_eq!(insert_range, undo_edits.next().unwrap().range);
             assert!(undo_edits.next().is_none());
@@ -1525,7 +1494,7 @@ mod tests {
         assert_eq!("", buffer.content.to_string());
 
         {
-            let mut redo_edits = buffer.redo(&syntaxes, &mut word_database, &mut events);
+            let mut redo_edits = buffer.redo(&mut word_database, &mut events);
             redo_edits.next().unwrap();
             redo_edits.next().unwrap();
             assert!(redo_edits.next().is_none());

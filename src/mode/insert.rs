@@ -61,7 +61,6 @@ impl ModeState for State {
             ),
             Key::Tab => ctx.buffer_views.insert_text_at_cursor_positions(
                 ctx.buffers,
-                &ctx.config.syntaxes,
                 ctx.word_database,
                 handle,
                 "\t",
@@ -98,7 +97,6 @@ impl ModeState for State {
 
                     ctx.buffer_views.insert_text_at_position(
                         ctx.buffers,
-                        &ctx.config.syntaxes,
                         ctx.word_database,
                         handle,
                         position,
@@ -112,7 +110,6 @@ impl ModeState for State {
                 let s = c.encode_utf8(&mut buf);
                 ctx.buffer_views.insert_text_at_cursor_positions(
                     ctx.buffers,
-                    &ctx.config.syntaxes,
                     ctx.word_database,
                     handle,
                     s,
@@ -127,7 +124,6 @@ impl ModeState for State {
                 );
                 ctx.buffer_views.delete_in_cursor_ranges(
                     ctx.buffers,
-                    &ctx.config.syntaxes,
                     ctx.word_database,
                     handle,
                     ctx.events,
@@ -141,7 +137,6 @@ impl ModeState for State {
                 );
                 ctx.buffer_views.delete_in_cursor_ranges(
                     ctx.buffers,
-                    &ctx.config.syntaxes,
                     ctx.word_database,
                     handle,
                     ctx.events,
@@ -155,7 +150,6 @@ impl ModeState for State {
                 );
                 ctx.buffer_views.delete_in_cursor_ranges(
                     ctx.buffers,
-                    &ctx.config.syntaxes,
                     ctx.word_database,
                     handle,
                     ctx.events,
@@ -205,7 +199,6 @@ fn apply_completion(ctx: &mut ModeContext, handle: BufferViewHandle, cursor_move
     if let Some(entry) = ctx.picker.current_entry(ctx.word_database) {
         ctx.buffer_views.apply_completion(
             ctx.buffers,
-            &ctx.config.syntaxes,
             ctx.word_database,
             handle,
             entry.name,
