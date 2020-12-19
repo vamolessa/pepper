@@ -1,14 +1,14 @@
 [package]
 name = "pepper"
-version = "0.5.6"
-authors = ["Matheus Lessa <matheus@fastmail.com>"]
+version = "0.5.7"
+authors = ["Matheus Lessa <vamolessa@mm.st>"]
 edition = "2018"
 description = "An opinionated modal editor to simplify code editing from the terminal"
 license = "GPL-3.0"
 
-documentation = "https://github.com/matheuslessarodrigues/pepper"
-homepage = "https://matheuslessarodrigues.github.io/pepper"
-repository = "https://github.com/matheuslessarodrigues/pepper"
+documentation = "https://github.com/vamolessa/pepper/wiki"
+homepage = "https://vamolessa.github.io/pepper"
+repository = "https://github.com/vamolessa/pepper"
 readme = "README.md"
 categories = ["command-line-utilities", "text-editors"]
 
