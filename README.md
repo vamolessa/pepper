@@ -1,18 +1,18 @@
-[![build badge](https://github.com/matheuslessarodrigues/pepper/workflows/rust/badge.svg?branch=master)](https://github.com/matheuslessarodrigues/pepper)
+[![build badge](https://github.com/vamolessa/pepper/workflows/rust/badge.svg?branch=master)](https://github.com/vamolessa/pepper)
 
 ### An opinionated modal editor to simplify code editing from the terminal
 
 ![main screenshot](.github/screenshots/main.png)
 
-[more screenshots](https://github.com/matheuslessarodrigues/pepper/wiki/screenshots)
+[more screenshots](https://github.com/vamolessa/pepper/wiki/screenshots)
 
 Pepper is an experiment of mine to simplify code editing from the terminal.
 It's mission is to be a minimal and fast code editor with an orthogonal set of both editing and navigation features.
 
-## [default keybindings](https://github.com/matheuslessarodrigues/pepper/wiki/bindings)
-## [scripting api](https://github.com/matheuslessarodrigues/pepper/wiki/scripting-api-reference)
-## [defining language syntaxes](https://github.com/matheuslessarodrigues/pepper/wiki/language-syntax-definitions)
-## [config recipes](https://github.com/matheuslessarodrigues/pepper/wiki/config-recipes)
+## [default keybindings](https://github.com/vamolessa/pepper/wiki/bindings)
+## [scripting api](https://github.com/vamolessa/pepper/wiki/scripting-api-reference)
+## [defining language syntaxes](https://github.com/vamolessa/pepper/wiki/language-syntax-definitions)
+## [config recipes](https://github.com/vamolessa/pepper/wiki/config-recipes)
 
 # installation
 
@@ -20,7 +20,7 @@ It's mission is to be a minimal and fast code editor with an orthogonal set of b
 Pepper is open-source, which means you're free to build it and access all of its features.
 However, to support the development, prebuilt binaries are available for purchase at itch.
 
-[matheuslessarodrigues.itch.io/pepper](https://matheuslessarodrigues.itch.io/pepper)
+[vamolessa.itch.io/pepper](https://vamolessa.itch.io/pepper)
 
 This will not only keep you updated with the latest features/fixes but also support further
 pepper development!
@@ -33,7 +33,7 @@ to dependencies in the [`copypasta`](https://crates.io/crates/copypasta) crate.
 
 ## from source
 ```
-git clone git@github.com:matheuslessarodrigues/pepper.git
+git clone git@github.com:vamolessa/pepper.git
 cd pepper
 cargo install --path .
 ```
@@ -41,7 +41,7 @@ cargo install --path .
 **NOTE**: installing from source still requires `cargo` (at least it's easier this way).
 
 ## if you find a bug or need help
-Please [open an issue](https://github.com/matheuslessarodrigues/pepper/issues)
+Please [open an issue](https://github.com/vamolessa/pepper/issues)
 
 # goals
 
@@ -131,5 +131,5 @@ Please consider purchasing in order to support both the development of new featu
 I'll be forever grateful :)
 
 <iframe src="https://itch.io/embed/810985?border_width=0" width="206" height="165" frameborder="0">
-  <a href="https://matheuslessarodrigues.itch.io/pepper">pepper by Matheus Lessa Rodrigues</a>
+  <a href="https://vamolessa.itch.io/pepper">pepper by Matheus Lessa Rodrigues</a>
 </iframe>
