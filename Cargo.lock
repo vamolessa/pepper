@@ -426,7 +426,7 @@ dependencies = [
 
 [[package]]
 name = "pepper"
-version = "0.5.8"
+version = "0.5.9"
 dependencies = [
  "argh",
  "copypasta",
