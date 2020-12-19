@@ -1,7 +1,7 @@
 [package]
 name = "pepper"
-version = "0.5.9"
-authors = ["Matheus Lessa <vamolessa@mm.st>"]
+version = "0.5.10"
+authors = ["Matheus Lessa"]
 edition = "2018"
 description = "An opinionated modal editor to simplify code editing from the terminal"
 license = "GPL-3.0"
