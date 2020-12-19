@@ -578,6 +578,16 @@ impl Editor {
                 EditorEvent::BufferClose { handle } => {
                     ctx.buffers.remove(*handle, ctx.clients, ctx.word_database);
                 }
+                EditorEvent::BufferInsertText { handle, range, .. } => {
+                    if let Some(buffer) = ctx.buffers.get_mut(*handle) {
+                        buffer.highlight_insert(&ctx.config.syntaxes, *range);
+                    }
+                }
+                EditorEvent::BufferDeleteText { handle, range } => {
+                    if let Some(buffer) = ctx.buffers.get_mut(*handle) {
+                        buffer.highlight_delete(&ctx.config.syntaxes, *range);
+                    }
+                }
                 _ => (),
             }
         }
@@ -598,7 +608,7 @@ impl Editor {
     }
 
     pub fn on_lsp_event(&mut self, client_handle: LspClientHandle, event: LspServerEvent) {
-        let (read_events, write_events) = self.events.get_stream_and_sink();
+        let (_, write_events) = self.events.get_stream_and_sink();
         let mut ctx = LspClientContext {
             current_directory: &self.current_directory,
             config: &mut self.config,

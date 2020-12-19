@@ -765,6 +765,16 @@ impl Buffer {
         &self.highlighted
     }
 
+    pub fn highlight_insert(&mut self, syntaxes: &SyntaxCollection, range: BufferRange) {
+        self.highlighted
+            .on_insert(syntaxes.get(self.syntax_handle), &self.content, range);
+    }
+
+    pub fn highlight_delete(&mut self, syntaxes: &SyntaxCollection, range: BufferRange) {
+        self.highlighted
+            .on_delete(syntaxes.get(self.syntax_handle), &self.content, range);
+    }
+
     pub fn refresh_syntax(&mut self, syntaxes: &SyntaxCollection) {
         let path = self.path.to_str().unwrap_or("").as_bytes();
         if path.is_empty() {
