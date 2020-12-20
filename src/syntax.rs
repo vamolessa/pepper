@@ -192,7 +192,6 @@ impl SyntaxCollection {
 struct HighlightedLine {
     parse_state: LineParseState,
     tokens: Vec<Token>,
-    dirty: bool,
 }
 
 struct HighlightedLinePool {
@@ -222,6 +221,7 @@ impl HighlightedLinePool {
 pub struct HighlightedBuffer {
     lines: Vec<HighlightedLine>,
     line_pool: HighlightedLinePool,
+    dirty_line_indexes: Vec<usize>,
 }
 
 impl HighlightedBuffer {
@@ -229,6 +229,7 @@ impl HighlightedBuffer {
         static EMPTY: HighlightedBuffer = HighlightedBuffer {
             lines: Vec::new(),
             line_pool: HighlightedLinePool::new(),
+            dirty_line_indexes: Vec::new(),
         };
         &EMPTY
     }
@@ -237,6 +238,7 @@ impl HighlightedBuffer {
         Self {
             lines: vec![HighlightedLine::default()],
             line_pool: HighlightedLinePool::new(),
+            dirty_line_indexes: Vec::new(),
         }
     }
 
@@ -245,6 +247,28 @@ impl HighlightedBuffer {
             self.line_pool.dispose(line);
         }
         self.lines.push(self.line_pool.rent());
+        self.dirty_line_indexes.clear();
+    }
+
+    pub fn on_insert(&mut self, range: BufferRange) {
+        self.require_size(range.from.line_index + 1);
+        let insert_count = range.to.line_index - range.from.line_index;
+        let pool = &mut self.line_pool;
+        self.lines
+            .resize_with(self.lines.len() + insert_count, || pool.rent());
+        let insert_index = range.from.line_index + 1;
+        self.lines[insert_index..].rotate_right(insert_count);
+        for i in range.from.line_index..=range.to.line_index {
+            self.dirty_line_indexes.push(i);
+        }
+    }
+
+    pub fn on_delete(&mut self, range: BufferRange) {
+        self.require_size(range.to.line_index + 1);
+        for line in self.lines.drain(range.from.line_index..range.to.line_index) {
+            self.line_pool.dispose(line);
+        }
+        self.dirty_line_indexes.push(range.from.line_index);
     }
 
     /*
@@ -272,12 +296,57 @@ impl HighlightedBuffer {
         self.require_size(buffer.line_count());
         self.highlight_line_range(syntax, buffer, 0, buffer.line_count());
     }
+    */
 
     fn require_size(&mut self, min_len: usize) {
         if self.lines.len() < min_len {
             let pool = &mut self.line_pool;
             self.lines.resize_with(min_len, || pool.rent());
         }
+    }
+
+    pub fn highlight_dirty_lines(&mut self, syntax: &Syntax, buffer: &BufferContent) {
+        if self.dirty_line_indexes.is_empty() {
+            return;
+        }
+
+        self.dirty_line_indexes.sort();
+        self.dirty_line_indexes.dedup();
+        let mut index = self.dirty_line_indexes[0];
+
+        let mut previous_parse_state = match index.checked_sub(1) {
+            Some(i) => self.lines[i].parse_state,
+            None => LineParseState::Finished,
+        };
+
+        for dirty_index in &self.dirty_line_indexes {
+            let dirty_index = *dirty_index;
+            if dirty_index < index {
+                continue;
+            }
+
+            index = dirty_index;
+
+            while index < self.lines.len() {
+                let bline = buffer.line_at(index);
+                let hline = &mut self.lines[index];
+
+                let previous_state = hline.parse_state;
+                previous_parse_state =
+                    syntax.parse_line(bline.as_str(), previous_parse_state, &mut hline.tokens);
+                hline.parse_state = previous_parse_state;
+
+                index += 1;
+
+                if previous_state == LineParseState::Finished
+                    && !matches!(previous_parse_state, LineParseState::Unfinished(_, _))
+                {
+                    break;
+                }
+            }
+        }
+
+        self.dirty_line_indexes.clear();
     }
 
     fn highlight_line_range(

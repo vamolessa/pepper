@@ -289,6 +289,18 @@ impl Editor {
             } else {
                 0
             };
+
+            let buffer_views = &self.buffer_views;
+            let buffers = &mut self.buffers;
+            if let Some(buffer) = client
+                .current_buffer_view_handle()
+                .and_then(|h| buffer_views.get(h))
+                .map(|v| v.buffer_handle)
+                .and_then(|h| buffers.get_mut(h))
+            {
+                buffer.update_highlighting(&self.config.syntaxes);
+            }
+
             client.update_view(self, picker_height);
         }
     }
@@ -591,16 +603,6 @@ impl Editor {
                 }
                 EditorEvent::BufferClose { handle } => {
                     ctx.buffers.remove(*handle, ctx.clients, ctx.word_database);
-                }
-                EditorEvent::BufferInsertText { handle, range, .. } => {
-                    if let Some(buffer) = ctx.buffers.get_mut(*handle) {
-                        buffer.highlight_insert(&ctx.config.syntaxes, *range);
-                    }
-                }
-                EditorEvent::BufferDeleteText { handle, range } => {
-                    if let Some(buffer) = ctx.buffers.get_mut(*handle) {
-                        buffer.highlight_delete(&ctx.config.syntaxes, *range);
-                    }
                 }
                 _ => (),
             }

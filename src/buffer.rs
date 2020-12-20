@@ -764,14 +764,9 @@ impl Buffer {
         &self.highlighted
     }
 
-    pub fn highlight_insert(&mut self, syntaxes: &SyntaxCollection, range: BufferRange) {
+    pub fn update_highlighting(&mut self, syntaxes: &SyntaxCollection) {
         self.highlighted
-            .on_insert(syntaxes.get(self.syntax_handle), &self.content, range);
-    }
-
-    pub fn highlight_delete(&mut self, syntaxes: &SyntaxCollection, range: BufferRange) {
-        self.highlighted
-            .on_delete(syntaxes.get(self.syntax_handle), &self.content, range);
+            .highlight_dirty_lines(syntaxes.get(self.syntax_handle), &self.content);
     }
 
     pub fn refresh_syntax(&mut self, syntaxes: &SyntaxCollection) {
@@ -786,8 +781,7 @@ impl Buffer {
 
         if self.syntax_handle != syntax_handle {
             self.syntax_handle = syntax_handle;
-            self.highlighted
-                .refresh(syntaxes.get(syntax_handle), &self.content);
+            self.highlighted.clear();
         }
     }
 
@@ -816,6 +810,7 @@ impl Buffer {
 
         let range = Self::insert_text_no_history(
             &mut self.content,
+            &mut self.highlighted,
             self.capabilities.uses_word_database,
             word_database,
             position,
@@ -837,6 +832,7 @@ impl Buffer {
 
     pub fn insert_text_no_history(
         content: &mut BufferContent,
+        highlighted: &mut HighlightedBuffer,
         uses_word_database: bool,
         word_database: &mut WordDatabase,
         position: BufferPosition,
@@ -851,6 +847,7 @@ impl Buffer {
         }
 
         let range = content.insert_text(position, text);
+        highlighted.on_insert(range);
 
         if uses_word_database {
             let line_count = range.to.line_index - range.from.line_index + 1;
@@ -931,6 +928,7 @@ impl Buffer {
 
         Self::delete_range_no_history(
             &mut self.content,
+            &mut self.highlighted,
             self.capabilities.uses_word_database,
             word_database,
             range,
@@ -939,6 +937,7 @@ impl Buffer {
 
     fn delete_range_no_history(
         content: &mut BufferContent,
+        highlighted: &mut HighlightedBuffer,
         uses_word_database: bool,
         word_database: &mut WordDatabase,
         range: BufferRange,
@@ -961,6 +960,8 @@ impl Buffer {
         } else {
             content.delete_range(range);
         }
+
+        highlighted.on_delete(range);
     }
 
     pub fn commit_edits(&mut self) {
@@ -997,6 +998,7 @@ impl Buffer {
         self.needs_save = true;
 
         let content = &mut self.content;
+        let highlighted = &mut self.highlighted;
         let uses_word_database = self.capabilities.uses_word_database;
 
         let edits = selector(&mut self.history);
@@ -1005,6 +1007,7 @@ impl Buffer {
                 EditKind::Insert => {
                     Self::insert_text_no_history(
                         content,
+                        highlighted,
                         uses_word_database,
                         word_database,
                         edit.range.from,
@@ -1015,6 +1018,7 @@ impl Buffer {
                 EditKind::Delete => {
                     Self::delete_range_no_history(
                         content,
+                        highlighted,
                         uses_word_database,
                         word_database,
                         edit.range,
