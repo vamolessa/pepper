@@ -26,12 +26,12 @@ struct Token {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum LineState {
+enum LineParseState {
     Finished,
     Unfinished(usize, PatternState),
 }
 
-impl Default for LineState {
+impl Default for LineParseState {
     fn default() -> Self {
         Self::Finished
     }
@@ -55,9 +55,9 @@ impl Syntax {
     fn parse_line(
         &self,
         line: &str,
-        previous_line_state: LineState,
+        previous_parse_state: LineParseState,
         tokens: &mut Vec<Token>,
-    ) -> LineState {
+    ) -> LineParseState {
         tokens.clear();
 
         if self.rules.is_empty() {
@@ -65,15 +65,15 @@ impl Syntax {
                 kind: TokenKind::Text,
                 range: 0..line.len(),
             });
-            return LineState::Finished;
+            return LineParseState::Finished;
         }
 
         let line_len = line.len();
         let mut line_index = 0;
 
-        match previous_line_state {
-            LineState::Finished => (),
-            LineState::Unfinished(pattern_index, state) => {
+        match previous_parse_state {
+            LineParseState::Finished => (),
+            LineParseState::Unfinished(pattern_index, state) => {
                 match self.rules[pattern_index].1.matches_with_state(line, &state) {
                     MatchResult::Ok(len) => {
                         tokens.push(Token {
@@ -88,7 +88,7 @@ impl Syntax {
                             kind: self.rules[pattern_index].0,
                             range: 0..line_len,
                         });
-                        return LineState::Unfinished(pattern_index, state);
+                        return LineParseState::Unfinished(pattern_index, state);
                     }
                 }
             }
@@ -118,7 +118,7 @@ impl Syntax {
                             kind: *kind,
                             range: line_index..line_len,
                         });
-                        return LineState::Unfinished(i, state);
+                        return LineParseState::Unfinished(i, state);
                     }
                 }
             }
@@ -149,7 +149,7 @@ impl Syntax {
             });
         }
 
-        LineState::Finished
+        LineParseState::Finished
     }
 }
 
@@ -190,7 +190,7 @@ impl SyntaxCollection {
 
 #[derive(Default, Clone)]
 struct HighlightedLine {
-    state: LineState,
+    state: LineParseState,
     tokens: Vec<Token>,
 }
 
@@ -206,7 +206,7 @@ impl HighlightedLinePool {
         match self.pool.pop() {
             Some(mut line) => {
                 line.tokens.clear();
-                line.state = LineState::Finished;
+                line.state = LineParseState::Finished;
                 line
             }
             None => HighlightedLine::default(),
@@ -285,9 +285,9 @@ impl HighlightedBuffer {
         index: usize,
         len: usize,
     ) {
-        let mut previous_line_state = match index.checked_sub(1) {
+        let mut previous_parse_state = match index.checked_sub(1) {
             Some(i) => self.lines[i].state,
-            None => LineState::Finished,
+            None => LineParseState::Finished,
         };
 
         for (bline, hline) in buffer
@@ -296,19 +296,19 @@ impl HighlightedBuffer {
             .skip(index)
             .take(len)
         {
-            previous_line_state =
-                syntax.parse_line(bline.as_str(), previous_line_state, &mut hline.tokens);
-            hline.state = previous_line_state;
+            previous_parse_state =
+                syntax.parse_line(bline.as_str(), previous_parse_state, &mut hline.tokens);
+            hline.state = previous_parse_state;
         }
 
         for (bline, hline) in buffer.lines().zip(self.lines.iter_mut()).skip(index + len) {
             let previous_state = hline.state;
-            previous_line_state =
-                syntax.parse_line(bline.as_str(), previous_line_state, &mut hline.tokens);
-            hline.state = previous_line_state;
+            previous_parse_state =
+                syntax.parse_line(bline.as_str(), previous_parse_state, &mut hline.tokens);
+            hline.state = previous_parse_state;
 
-            if previous_state == LineState::Finished
-                && !matches!(previous_line_state, LineState::Unfinished(_, _))
+            if previous_state == LineParseState::Finished
+                && !matches!(previous_parse_state, LineParseState::Unfinished(_, _))
             {
                 break;
             }
@@ -364,9 +364,9 @@ mod tests {
         let syntax = Syntax::default();
         let mut tokens = Vec::new();
         let line = " fn main() ;  ";
-        let line_state = syntax.parse_line(line, LineState::Finished, &mut tokens);
+        let parse_state = syntax.parse_line(line, LineParseState::Finished, &mut tokens);
 
-        assert_eq!(LineState::Finished, line_state);
+        assert_eq!(LineParseState::Finished, parse_state);
         assert_eq!(1, tokens.len());
         assert_token(line, TokenKind::Text, line, &tokens[0]);
     }
@@ -378,9 +378,9 @@ mod tests {
 
         let mut tokens = Vec::new();
         let line = " fn main() ;  ";
-        let line_state = syntax.parse_line(line, LineState::Finished, &mut tokens);
+        let parse_state = syntax.parse_line(line, LineParseState::Finished, &mut tokens);
 
-        assert_eq!(LineState::Finished, line_state);
+        assert_eq!(LineParseState::Finished, parse_state);
         assert_eq!(6, tokens.len());
         assert_token(" fn", TokenKind::Text, line, &tokens[0]);
         assert_token(" main", TokenKind::Text, line, &tokens[1]);
@@ -399,9 +399,9 @@ mod tests {
 
         let mut tokens = Vec::new();
         let line = " fn main() ;  ";
-        let line_state = syntax.parse_line(line, LineState::Finished, &mut tokens);
+        let parse_state = syntax.parse_line(line, LineParseState::Finished, &mut tokens);
 
-        assert_eq!(LineState::Finished, line_state);
+        assert_eq!(LineParseState::Finished, parse_state);
         assert_eq!(6, tokens.len());
         assert_token(" fn", TokenKind::Keyword, line, &tokens[0]);
         assert_token(" main", TokenKind::Text, line, &tokens[1]);
@@ -421,9 +421,9 @@ mod tests {
         let line1 = "only comment";
         let line2 = "still comment */ after";
 
-        let line0_kind = syntax.parse_line(line0, LineState::Finished, &mut tokens);
+        let line0_kind = syntax.parse_line(line0, LineParseState::Finished, &mut tokens);
         match line0_kind {
-            LineState::Unfinished(i, _) => assert_eq!(0, i),
+            LineParseState::Unfinished(i, _) => assert_eq!(0, i),
             _ => panic!("{:?}", line0_kind),
         }
         assert_eq!(2, tokens.len());
@@ -432,14 +432,14 @@ mod tests {
 
         let line1_kind = syntax.parse_line(line1, line0_kind, &mut tokens);
         match line1_kind {
-            LineState::Unfinished(i, _) => assert_eq!(0, i),
+            LineParseState::Unfinished(i, _) => assert_eq!(0, i),
             _ => panic!("{:?}", line1_kind),
         }
         assert_eq!(1, tokens.len());
         assert_token("only comment", TokenKind::Comment, line1, &tokens[0]);
 
         let line2_kind = syntax.parse_line(line2, line1_kind, &mut tokens);
-        assert_eq!(LineState::Finished, line2_kind);
+        assert_eq!(LineParseState::Finished, line2_kind);
         assert_eq!(2, tokens.len());
         assert_token("still comment */", TokenKind::Comment, line2, &tokens[0]);
         assert_token(" after", TokenKind::Text, line2, &tokens[1]);
@@ -510,14 +510,14 @@ mod tests {
         buffer.delete_range(range);
         highlighted.on_delete(&syntax, &buffer, range);
 
-        let mut line_states = highlighted.lines.iter().map(|l| l.state);
+        let mut parse_states = highlighted.lines.iter().map(|l| l.state);
         assert!(matches!(
-            line_states.next(),
-            Some(LineState::Unfinished(_, _))
+            parse_states.next(),
+            Some(LineParseState::Unfinished(_, _))
         ));
-        assert_eq!(Some(LineState::Finished), line_states.next());
-        assert_eq!(Some(LineState::Finished), line_states.next());
-        assert_eq!(None, line_states.next());
+        assert_eq!(Some(LineParseState::Finished), parse_states.next());
+        assert_eq!(Some(LineParseState::Finished), parse_states.next());
+        assert_eq!(None, parse_states.next());
 
         let mut tokens = highlighted.lines.iter().map(|l| l.tokens.iter()).flatten();
         assert_next_token!(tokens, TokenKind::Comment, 0..2);
