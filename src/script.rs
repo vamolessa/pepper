@@ -425,7 +425,7 @@ pub struct ScriptContext<'a> {
 
     pub status_message: &'a mut StatusMessage,
 
-    pub events: &'a mut EditorEventQueue,
+    pub editor_events: &'a mut EditorEventQueue,
     pub keymaps: &'a mut KeyMapCollection,
     pub tasks: &'a mut TaskManager,
     pub lsp: &'a mut LspClientCollection,
@@ -460,7 +460,7 @@ impl<'a> ScriptContext<'a> {
             word_database: self.word_database,
 
             status_message: self.status_message,
-            events: self.events,
+            editor_events: self.editor_events,
         };
 
         (self.lsp, ctx)

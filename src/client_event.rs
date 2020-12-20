@@ -15,6 +15,7 @@ use crate::{
 pub enum LocalEvent {
     None,
     EndOfInput,
+    Repaint,
     Key(Key),
     Resize(u16, u16),
     Connection(ConnectionEvent),

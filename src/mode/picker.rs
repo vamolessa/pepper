@@ -123,7 +123,7 @@ pub mod buffer {
                 ctx.current_directory,
                 Path::new(path),
                 None,
-                ctx.events,
+                ctx.editor_events,
             ) {
                 Ok(handle) => ctx.set_current_buffer_view_handle(Some(handle)),
                 Err(error) => ctx.status_message.write_error(&error),

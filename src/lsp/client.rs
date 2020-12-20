@@ -35,7 +35,7 @@ pub struct ClientContext<'a> {
     pub word_database: &'a mut WordDatabase,
 
     pub status_message: &'a mut StatusMessage,
-    pub events: &'a mut EditorEventQueue,
+    pub editor_events: &'a mut EditorEventQueue,
 }
 
 #[derive(Default)]
@@ -383,7 +383,7 @@ impl Client {
                 ctx.word_database,
                 position,
                 &text,
-                ctx.events,
+                ctx.editor_events,
             );
         }
     }

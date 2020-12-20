@@ -2,13 +2,14 @@ use std::{
     error::Error,
     fmt,
     path::{Path, PathBuf},
+    sync::mpsc,
 };
 
 use crate::{
     buffer::BufferCollection,
     buffer_view::BufferViewCollection,
     client::{ClientCollection, ClientTargetMap, TargetClient},
-    client_event::{ClientEvent, Key},
+    client_event::{ClientEvent, Key, LocalEvent},
     config::Config,
     connection::ConnectionWithClientHandle,
     editor_event::{EditorEvent, EditorEventDoubleQueue, EditorEventsIter},
@@ -215,16 +216,23 @@ pub struct Editor {
 
     pub focused_client: TargetClient,
     pub status_message: StatusMessage,
+
     pub tasks: TaskManager,
     pub lsp: LspClientCollection,
 
-    events: EditorEventDoubleQueue,
+    local_event_sender: mpsc::Sender<LocalEvent>,
+    editor_events: EditorEventDoubleQueue,
     keymaps: KeyMapCollection,
     scripts: ScriptEngine,
     client_target_map: ClientTargetMap,
 }
 impl Editor {
-    pub fn new(current_directory: PathBuf, tasks: TaskManager, lsp: LspClientCollection) -> Self {
+    pub fn new(
+        current_directory: PathBuf,
+        local_event_sender: mpsc::Sender<LocalEvent>,
+        tasks: TaskManager,
+        lsp: LspClientCollection,
+    ) -> Self {
         Self {
             current_directory,
             config: Config::default(),
@@ -242,10 +250,12 @@ impl Editor {
 
             focused_client: TargetClient::Local,
             status_message: StatusMessage::new(),
+
             tasks,
             lsp,
 
-            events: EditorEventDoubleQueue::default(),
+            local_event_sender,
+            editor_events: EditorEventDoubleQueue::default(),
             keymaps: KeyMapCollection::default(),
             scripts: ScriptEngine::new(),
             client_target_map: ClientTargetMap::default(),
@@ -352,7 +362,7 @@ impl Editor {
                     }
                 }
 
-                let write_events = self.events.get_stream_and_sink().1;
+                let write_events = self.editor_events.get_stream_and_sink().1;
 
                 match self.buffer_views.buffer_view_handle_from_path(
                     &mut self.buffers,
@@ -481,7 +491,7 @@ impl Editor {
         EditorEventsIter<'a>,
         ModeContext<'a>,
     ) {
-        let (read_events, write_events) = self.events.get_stream_and_sink();
+        let (read_events, write_events) = self.editor_events.get_stream_and_sink();
         let mode_context = ModeContext {
             target_client,
             clients,
@@ -500,7 +510,7 @@ impl Editor {
 
             status_message: &mut self.status_message,
 
-            events: write_events,
+            editor_events: write_events,
             keymaps: &mut self.keymaps,
             scripts: &mut self.scripts,
             tasks: &mut self.tasks,
@@ -542,7 +552,7 @@ impl Editor {
         clients: &mut ClientCollection,
         target_client: TargetClient,
     ) {
-        self.events.flip();
+        self.editor_events.flip();
         let (mode, _, events, mut mode_ctx) = self.mode_context(clients, target_client);
 
         if let None = events.into_iter().next() {
@@ -612,7 +622,7 @@ impl Editor {
     }
 
     pub fn on_lsp_event(&mut self, client_handle: LspClientHandle, event: LspServerEvent) {
-        let (_, write_events) = self.events.get_stream_and_sink();
+        let (_, write_events) = self.editor_events.get_stream_and_sink();
         let mut ctx = LspClientContext {
             current_directory: &self.current_directory,
             config: &mut self.config,
@@ -622,7 +632,7 @@ impl Editor {
             word_database: &mut self.word_database,
 
             status_message: &mut self.status_message,
-            events: write_events,
+            editor_events: write_events,
         };
 
         if let Err(error) = self.lsp.on_server_event(&mut ctx, client_handle, event) {

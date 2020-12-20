@@ -593,7 +593,7 @@ impl State {
                     ctx.buffers,
                     ctx.word_database,
                     handle,
-                    ctx.events,
+                    ctx.editor_events,
                 );
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
                 unwrap_or_none!(ctx.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
@@ -606,7 +606,7 @@ impl State {
                     ctx.buffers,
                     ctx.word_database,
                     handle,
-                    ctx.events,
+                    ctx.editor_events,
                 );
 
                 self.on_edit_keys(ctx, keys, keys_from_index);
@@ -651,7 +651,7 @@ impl State {
                             ctx.word_database,
                             handle,
                             range,
-                            ctx.events,
+                            ctx.editor_events,
                         );
                     }
                 }
@@ -686,7 +686,7 @@ impl State {
                             handle,
                             BufferPosition::line_col(line_index, 0),
                             indentation,
-                            ctx.events,
+                            ctx.editor_events,
                         );
                     }
                 }
@@ -879,7 +879,7 @@ impl State {
                     ctx.buffers,
                     ctx.word_database,
                     handle,
-                    ctx.events,
+                    ctx.editor_events,
                 );
                 if let Ok(text) = ClipboardContext::new().and_then(|mut c| c.get_contents()) {
                     ctx.buffer_views.insert_text_at_cursor_positions(
@@ -887,7 +887,7 @@ impl State {
                         ctx.word_database,
                         handle,
                         &text,
-                        ctx.events,
+                        ctx.editor_events,
                     );
                 }
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
@@ -904,7 +904,7 @@ impl State {
                         ctx.buffers,
                         ctx.word_database,
                         handle,
-                        ctx.events,
+                        ctx.editor_events,
                     );
                     if let Some(key) = RegisterKey::from_char(c) {
                         let register = ctx.registers.get(key);
@@ -913,7 +913,7 @@ impl State {
                             ctx.word_database,
                             handle,
                             register,
-                            ctx.events,
+                            ctx.editor_events,
                         );
                     }
                     let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
@@ -927,13 +927,13 @@ impl State {
             },
             Key::Char('u') => {
                 ctx.buffer_views
-                    .undo(ctx.buffers, ctx.word_database, ctx.events, handle);
+                    .undo(ctx.buffers, ctx.word_database, ctx.editor_events, handle);
                 self.movement_kind = CursorMovementKind::PositionAndAnchor;
                 return ModeOperation::None;
             }
             Key::Char('U') => {
                 ctx.buffer_views
-                    .redo(ctx.buffers, ctx.word_database, ctx.events, handle);
+                    .redo(ctx.buffers, ctx.word_database, ctx.editor_events, handle);
                 self.movement_kind = CursorMovementKind::PositionAndAnchor;
                 return ModeOperation::None;
             }
@@ -1260,7 +1260,7 @@ fn move_to_diagnostic(state: &mut State, ctx: &mut ModeContext, forward: bool) {
                 ctx.current_directory,
                 path,
                 None,
-                ctx.events,
+                ctx.editor_events,
             ) {
                 Ok(handle) => handle,
                 Err(error) => {

@@ -49,7 +49,7 @@ pub struct ModeContext<'a> {
 
     pub status_message: &'a mut StatusMessage,
 
-    pub events: &'a mut EditorEventQueue,
+    pub editor_events: &'a mut EditorEventQueue,
     pub keymaps: &'a mut KeyMapCollection,
     pub scripts: &'a mut ScriptEngine,
     pub tasks: &'a mut TaskManager,
@@ -71,7 +71,7 @@ impl<'a> ModeContext<'a> {
                 .and_then(|h| self.buffer_views.get(h))
                 .map(|v| v.buffer_handle)
             {
-                self.events.enqueue(EditorEvent::BufferOpen { handle });
+                self.editor_events.enqueue(EditorEvent::BufferOpen { handle });
             }
         }
     }
@@ -96,7 +96,7 @@ impl<'a> ModeContext<'a> {
 
             status_message: self.status_message,
 
-            events: self.events,
+            editor_events: self.editor_events,
             keymaps: self.keymaps,
             tasks: self.tasks,
             lsp: self.lsp,

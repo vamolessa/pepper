@@ -164,7 +164,7 @@ where
     let current_dir = env::current_dir().map_err(Box::new)?;
     let tasks = TaskManager::new(event_sender.clone());
     let lsp = LspClientCollection::new(event_sender.clone());
-    let mut editor = Editor::new(current_dir, tasks, lsp);
+    let mut editor = Editor::new(current_dir, event_sender.clone(), tasks, lsp);
     let mut clients = ClientCollection::default();
 
     for config in &args.config {
@@ -190,6 +190,7 @@ where
         match event {
             LocalEvent::None => continue,
             LocalEvent::EndOfInput => break,
+            LocalEvent::Repaint => (),
             LocalEvent::Key(key) => {
                 editor.status_message.clear();
                 let editor_loop =
@@ -286,7 +287,7 @@ where
 
     for event in event_receiver.iter() {
         match event {
-            LocalEvent::None => (),
+            LocalEvent::None | LocalEvent::Repaint => continue,
             LocalEvent::EndOfInput => break,
             LocalEvent::Key(key) => {
                 profiler.begin_frame();
