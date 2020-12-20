@@ -247,6 +247,7 @@ impl HighlightedBuffer {
         self.lines.push(self.line_pool.rent());
     }
 
+    /*
     pub fn on_insert(&mut self, syntax: &Syntax, buffer: &BufferContent, range: BufferRange) {
         self.require_size(range.from.line_index + 1);
         let pool = &mut self.line_pool;
