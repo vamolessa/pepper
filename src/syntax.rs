@@ -190,8 +190,9 @@ impl SyntaxCollection {
 
 #[derive(Default, Clone)]
 struct HighlightedLine {
-    state: LineParseState,
+    parse_state: LineParseState,
     tokens: Vec<Token>,
+    dirty: bool,
 }
 
 struct HighlightedLinePool {
@@ -206,7 +207,7 @@ impl HighlightedLinePool {
         match self.pool.pop() {
             Some(mut line) => {
                 line.tokens.clear();
-                line.state = LineParseState::Finished;
+                line.parse_state = LineParseState::Finished;
                 line
             }
             None => HighlightedLine::default(),
@@ -286,7 +287,7 @@ impl HighlightedBuffer {
         len: usize,
     ) {
         let mut previous_parse_state = match index.checked_sub(1) {
-            Some(i) => self.lines[i].state,
+            Some(i) => self.lines[i].parse_state,
             None => LineParseState::Finished,
         };
 
@@ -298,14 +299,14 @@ impl HighlightedBuffer {
         {
             previous_parse_state =
                 syntax.parse_line(bline.as_str(), previous_parse_state, &mut hline.tokens);
-            hline.state = previous_parse_state;
+            hline.parse_state = previous_parse_state;
         }
 
         for (bline, hline) in buffer.lines().zip(self.lines.iter_mut()).skip(index + len) {
-            let previous_state = hline.state;
+            let previous_state = hline.parse_state;
             previous_parse_state =
                 syntax.parse_line(bline.as_str(), previous_parse_state, &mut hline.tokens);
-            hline.state = previous_parse_state;
+            hline.parse_state = previous_parse_state;
 
             if previous_state == LineParseState::Finished
                 && !matches!(previous_parse_state, LineParseState::Unfinished(_, _))
@@ -510,7 +511,7 @@ mod tests {
         buffer.delete_range(range);
         highlighted.on_delete(&syntax, &buffer, range);
 
-        let mut parse_states = highlighted.lines.iter().map(|l| l.state);
+        let mut parse_states = highlighted.lines.iter().map(|l| l.parse_state);
         assert!(matches!(
             parse_states.next(),
             Some(LineParseState::Unfinished(_, _))
