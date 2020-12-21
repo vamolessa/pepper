@@ -85,7 +85,7 @@ impl Syntax {
                         line_index += len;
                     }
                     MatchResult::Err => (),
-                    MatchResult::Pending(_, state) => {
+                    MatchResult::Pending(state) => {
                         tokens.push(Token {
                             kind: self.rules[pattern_index].0,
                             range: 0..line_len,
@@ -100,7 +100,7 @@ impl Syntax {
             let line_slice = &line[line_index..];
             let whitespace_len = line_slice
                 .bytes()
-                .take_while(|b| b.is_ascii_whitespace())
+                .take_while(u8::is_ascii_whitespace)
                 .count();
             let line_slice = &line_slice[whitespace_len..];
 
@@ -115,7 +115,7 @@ impl Syntax {
                         }
                     }
                     MatchResult::Err => (),
-                    MatchResult::Pending(_, state) => {
+                    MatchResult::Pending(state) => {
                         tokens.push(Token {
                             kind: *kind,
                             range: line_index..line_len,
@@ -131,7 +131,7 @@ impl Syntax {
                 kind = TokenKind::Text;
                 max_len = line_slice
                     .bytes()
-                    .take_while(|b| b.is_ascii_alphanumeric())
+                    .take_while(u8::is_ascii_alphanumeric)
                     .count()
                     .max(1);
             }

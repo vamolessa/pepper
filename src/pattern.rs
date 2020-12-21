@@ -2,7 +2,7 @@ use std::{convert::From, fmt, ops::AddAssign};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MatchResult {
-    Pending(usize, PatternState),
+    Pending(PatternState),
     Ok(usize),
     Err,
 }
@@ -89,7 +89,7 @@ impl Pattern {
                         op_index = okj.0 as _;
                         return match ops[op_index] {
                             Op::Ok => MatchResult::Ok(bytes_index),
-                            _ => MatchResult::Pending(bytes_index, PatternState { op_index }),
+                            _ => MatchResult::Pending(PatternState { op_index }),
                         };
                     }
                 }
@@ -984,7 +984,7 @@ mod tests {
 
         let p = Pattern::new("a$b").unwrap();
         assert_eq!(
-            MatchResult::Pending(1, PatternState { op_index: 3 }),
+            MatchResult::Pending(PatternState { op_index: 3 }),
             p.matches("a")
         );
         assert_eq!(
@@ -994,7 +994,7 @@ mod tests {
 
         let p = Pattern::new("a{.!$}b").unwrap();
         match p.matches("axyz") {
-            MatchResult::Pending(4, state) => {
+            MatchResult::Pending(state) => {
                 assert_eq!(MatchResult::Ok(1), p.matches_with_state("b", &state))
             }
             _ => assert!(false),
@@ -1002,8 +1002,8 @@ mod tests {
 
         let p = Pattern::new("a{b$!c}{c!d}").unwrap();
         match p.matches("abb") {
-            MatchResult::Pending(3, state) => match p.matches_with_state("bb", &state) {
-                MatchResult::Pending(2, state) => {
+            MatchResult::Pending(state) => match p.matches_with_state("bb", &state) {
+                MatchResult::Pending(state) => {
                     assert_eq!(MatchResult::Ok(4), p.matches_with_state("bccd", &state));
                 }
                 _ => assert!(false),
