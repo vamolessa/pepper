@@ -10,7 +10,7 @@ use crate::{
     buffer_position::{BufferPosition, BufferRange},
     client::ClientCollection,
     editor_event::{EditorEvent, EditorEventQueue},
-    history::{Edit, EditHandle, EditKind, History},
+    history::{Edit, EditKind, History},
     script::ScriptValue,
     syntax::{HighlightedBuffer, SyntaxCollection, SyntaxHandle},
     word_database::{WordDatabase, WordIter, WordKind},
@@ -1036,14 +1036,6 @@ impl Buffer {
         }
 
         edits
-    }
-
-    pub fn current_edit_handle(&self) -> EditHandle {
-        self.history.current_edit_handle()
-    }
-
-    pub fn edits_since<'a>(&'a self, handle: EditHandle) -> impl 'a + Iterator<Item = Edit<'a>> {
-        self.history.edits_since(handle)
     }
 
     pub fn set_search(&mut self, text: &str) {

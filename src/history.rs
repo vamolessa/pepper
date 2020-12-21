@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use crate::{buffer_position::BufferRange, script::ScriptValue};
+use crate::buffer_position::BufferRange;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EditKind {
@@ -36,47 +36,6 @@ enum HistoryState {
     InsertGroup(Range<usize>),
 }
 
-pub struct EditIter<'a> {
-    history: &'a History,
-    index: usize,
-    end: usize,
-}
-
-impl<'a> Iterator for EditIter<'a> {
-    type Item = Edit<'a>;
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.index == self.end {
-            None
-        } else if self.index < self.end {
-            let edit = &self.history.edits[self.index];
-            let edit = Edit {
-                kind: edit.kind,
-                range: edit.buffer_range,
-                text: &self.history.texts[edit.text_range.clone()],
-            };
-            self.index += 1;
-            Some(edit)
-        } else {
-            self.index -= 1;
-            let edit = &self.history.edits[self.index];
-            let edit = Edit {
-                kind: edit.kind,
-                range: edit.buffer_range,
-                text: &self.history.texts[edit.text_range.clone()],
-            };
-            Some(edit)
-        }
-    }
-}
-
-#[derive(Clone, Copy)]
-pub struct EditHandle(usize);
-impl_from_script!(EditHandle, value => match value {
-    ScriptValue::Integer(n) if n >= 0 => Some(Self(n as _)),
-    _ => None,
-});
-impl_to_script!(EditHandle, (self, _engine) => ScriptValue::Integer(self.0 as _));
-
 pub struct History {
     texts: String,
     edits: Vec<EditInternal>,
@@ -99,43 +58,6 @@ impl History {
         self.edits.clear();
         self.group_ranges.clear();
         self.state = HistoryState::IterIndex(0);
-    }
-
-    pub fn current_edit_handle(&self) -> EditHandle {
-        match self.state {
-            HistoryState::IterIndex(i) => EditHandle(i),
-            HistoryState::InsertGroup(_) => EditHandle(self.group_ranges.len()),
-        }
-    }
-
-    pub fn edits_since(&self, handle: EditHandle) -> EditIter {
-        let mut index = handle.0.min(self.group_ranges.len());
-        let mut end = self.current_edit_handle().0;
-        if index == end {
-            index = 0;
-            end = 0;
-        } else if index < end {
-            index = self.group_ranges[index].start;
-            let group_ranges_len = self.group_ranges.len();
-            end = if end < group_ranges_len {
-                self.group_ranges[end].start
-            } else {
-                self.group_ranges[group_ranges_len - 1].end
-            };
-        } else {
-            let group_ranges_len = self.group_ranges.len();
-            index = if index < group_ranges_len {
-                self.group_ranges[index].start
-            } else {
-                self.group_ranges[group_ranges_len - 1].end
-            };
-            end = self.group_ranges[end].start;
-        }
-        EditIter {
-            history: self,
-            index,
-            end,
-        }
     }
 
     pub fn add_edit(&mut self, edit: Edit) {
