@@ -27,6 +27,7 @@ struct Token {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LineParseState {
+    Dirty,
     Finished,
     Unfinished(usize, PatternState),
 }
@@ -72,6 +73,7 @@ impl Syntax {
         let mut line_index = 0;
 
         match previous_parse_state {
+            LineParseState::Dirty => unreachable!(),
             LineParseState::Finished => (),
             LineParseState::Unfinished(pattern_index, state) => {
                 match self.rules[pattern_index].1.matches_with_state(line, &state) {
@@ -243,6 +245,7 @@ impl HighlightedBuffer {
             }
         }
 
+        self.lines[range.to.line_index].parse_state = LineParseState::Dirty;
         for i in range.from.line_index..=range.to.line_index {
             self.dirty_line_indexes.push(i);
         }
@@ -265,11 +268,8 @@ impl HighlightedBuffer {
             }
         }
 
+        self.lines[range.from.line_index].parse_state = LineParseState::Dirty;
         self.dirty_line_indexes.push(range.from.line_index);
-        let next_line_index = range.from.line_index + 1;
-        if next_line_index < self.highlighted_len {
-            self.dirty_line_indexes.push(next_line_index);
-        }
     }
 
     pub fn highlight_dirty_lines(&mut self, syntax: &Syntax, buffer: &BufferContent) {
@@ -293,15 +293,15 @@ impl HighlightedBuffer {
             }
 
             index = dirty_index;
-            last_dirty_index = index;
+            last_dirty_index = dirty_index;
 
-            while index < self.lines.len() {
-                let bline = buffer.line_at(index);
+            while index < self.highlighted_len {
+                let bline = buffer.line_at(index).as_str();
                 let hline = &mut self.lines[index];
 
                 let previous_state = hline.parse_state;
                 previous_parse_state =
-                    syntax.parse_line(bline.as_str(), previous_parse_state, &mut hline.tokens);
+                    syntax.parse_line(bline, previous_parse_state, &mut hline.tokens);
                 hline.parse_state = previous_parse_state;
 
                 index += 1;
@@ -318,7 +318,7 @@ impl HighlightedBuffer {
     }
 
     pub fn find_token_kind_at(&self, line_index: usize, char_index: usize) -> TokenKind {
-        if line_index >= self.lines.len() {
+        if line_index >= self.highlighted_len {
             return TokenKind::Text;
         }
 
@@ -354,6 +354,15 @@ mod tests {
                 $iter.next().cloned(),
             );
         };
+    }
+
+    fn highlighted_tokens<'a>(
+        highlighted: &'a HighlightedBuffer,
+    ) -> impl 'a + Iterator<Item = &'a Token> {
+        highlighted.lines[..highlighted.highlighted_len]
+            .iter()
+            .map(|l| l.tokens.iter())
+            .flatten()
     }
 
     fn assert_token(slice: &str, kind: TokenKind, line: &str, token: &Token) {
@@ -461,19 +470,23 @@ mod tests {
         highlighted.highlight_dirty_lines(&syntax, &buffer);
         assert_eq!(buffer.line_count(), highlighted.lines.len());
 
-        let mut tokens = highlighted.lines.iter().map(|l| l.tokens.iter()).flatten();
-        assert_next_token!(tokens, TokenKind::Comment, 0..2);
-        assert_next_token!(tokens, TokenKind::Comment, 0..2);
-        assert_eq!(None, tokens.next());
+        {
+            let mut tokens = highlighted_tokens(&highlighted);
+            assert_next_token!(tokens, TokenKind::Comment, 0..2);
+            assert_next_token!(tokens, TokenKind::Comment, 0..2);
+            assert_eq!(None, tokens.next());
+        }
 
         let range = buffer.insert_text(BufferPosition::line_col(1, 0), "'");
         highlighted.on_insert(range);
         highlighted.highlight_dirty_lines(&syntax, &buffer);
 
-        let mut tokens = highlighted.lines.iter().map(|l| l.tokens.iter()).flatten();
-        assert_next_token!(tokens, TokenKind::Comment, 0..2);
-        assert_next_token!(tokens, TokenKind::Comment, 0..3);
-        assert_eq!(None, tokens.next());
+        {
+            let mut tokens = highlighted_tokens(&highlighted);
+            assert_next_token!(tokens, TokenKind::Comment, 0..2);
+            assert_next_token!(tokens, TokenKind::Comment, 0..3);
+            assert_eq!(None, tokens.next());
+        }
     }
 
     #[test]
@@ -489,7 +502,7 @@ mod tests {
         highlighted.highlight_dirty_lines(&syntax, &buffer);
         assert_eq!(buffer.line_count(), highlighted.lines.len());
 
-        let mut tokens = highlighted.lines.iter().map(|l| l.tokens.iter()).flatten();
+        let mut tokens = highlighted_tokens(&highlighted);
         assert_next_token!(tokens, TokenKind::Comment, 0..2);
         assert_next_token!(tokens, TokenKind::Comment, 0..0);
         assert_next_token!(tokens, TokenKind::Comment, 0..0);
@@ -517,7 +530,9 @@ mod tests {
         highlighted.on_delete(range);
         highlighted.highlight_dirty_lines(&syntax, &buffer);
 
-        let mut parse_states = highlighted.lines.iter().map(|l| l.parse_state);
+        let mut parse_states = highlighted.lines[..highlighted.highlighted_len]
+            .iter()
+            .map(|l| l.parse_state);
         assert!(matches!(
             parse_states.next(),
             Some(LineParseState::Unfinished(_, _))
@@ -526,12 +541,14 @@ mod tests {
         assert_eq!(Some(LineParseState::Finished), parse_states.next());
         assert_eq!(None, parse_states.next());
 
-        let mut tokens = highlighted.lines.iter().map(|l| l.tokens.iter()).flatten();
-        assert_next_token!(tokens, TokenKind::Comment, 0..2);
-        assert_next_token!(tokens, TokenKind::Comment, 0..2);
-        assert_next_token!(tokens, TokenKind::Text, 0..1);
-        assert_next_token!(tokens, TokenKind::Text, 1..2);
-        assert_eq!(None, tokens.next());
+        {
+            let mut tokens = highlighted_tokens(&highlighted);
+            assert_next_token!(tokens, TokenKind::Comment, 0..2);
+            assert_next_token!(tokens, TokenKind::Comment, 0..2);
+            assert_next_token!(tokens, TokenKind::Text, 0..1);
+            assert_next_token!(tokens, TokenKind::Text, 1..2);
+            assert_eq!(None, tokens.next());
+        }
     }
 
     #[test]
@@ -554,7 +571,7 @@ mod tests {
         highlighted.on_delete(range);
         highlighted.highlight_dirty_lines(&syntax, &buffer);
 
-        let mut tokens = highlighted.lines.iter().map(|l| l.tokens.iter()).flatten();
+        let mut tokens = highlighted_tokens(&highlighted);
         assert_next_token!(tokens, TokenKind::Comment, 0..2);
         assert_next_token!(tokens, TokenKind::Comment, 0..1);
         assert_next_token!(tokens, TokenKind::Comment, 0..2);
@@ -569,15 +586,19 @@ mod tests {
         let mut buffer = BufferContent::new();
         let mut highlighted = HighlightedBuffer::new();
 
-        let range = buffer.insert_text(BufferPosition::line_col(0, 0), "a\n/*\nb*/");
+        let range = buffer.insert_text(BufferPosition::line_col(0, 0), "a\n/*\nb\nc*/");
         highlighted.on_insert(range);
         highlighted.highlight_dirty_lines(&syntax, &buffer);
+        assert_eq!(buffer.line_count(), highlighted.highlighted_len);
 
-        let mut tokens = highlighted.lines.iter().map(|l| l.tokens.iter()).flatten();
-        assert_next_token!(tokens, TokenKind::Text, 0..1);
-        assert_next_token!(tokens, TokenKind::Comment, 0..2);
-        assert_next_token!(tokens, TokenKind::Comment, 0..3);
-        assert_eq!(None, tokens.next());
+        {
+            let mut tokens = highlighted_tokens(&highlighted);
+            assert_next_token!(tokens, TokenKind::Text, 0..1);
+            assert_next_token!(tokens, TokenKind::Comment, 0..2);
+            assert_next_token!(tokens, TokenKind::Comment, 0..1);
+            assert_next_token!(tokens, TokenKind::Comment, 0..3);
+            assert_eq!(None, tokens.next());
+        }
 
         let range = BufferRange::between(
             BufferPosition::line_col(0, 0),
@@ -586,12 +607,16 @@ mod tests {
         buffer.delete_range(range);
         highlighted.on_delete(range);
         highlighted.highlight_dirty_lines(&syntax, &buffer);
+        assert_eq!(buffer.line_count(), highlighted.highlighted_len);
 
-        let mut tokens = highlighted.lines.iter().map(|l| l.tokens.iter()).flatten();
-        assert_next_token!(tokens, TokenKind::Text, 0..1);
-        assert_next_token!(tokens, TokenKind::Text, 0..1);
-        assert_next_token!(tokens, TokenKind::Text, 1..2);
-        assert_next_token!(tokens, TokenKind::Text, 2..3);
-        assert_eq!(None, tokens.next());
+        {
+            let mut tokens = highlighted_tokens(&highlighted);
+            assert_next_token!(tokens, TokenKind::Text, 0..1);
+            assert_next_token!(tokens, TokenKind::Text, 0..1);
+            assert_next_token!(tokens, TokenKind::Text, 0..1);
+            assert_next_token!(tokens, TokenKind::Text, 1..2);
+            assert_next_token!(tokens, TokenKind::Text, 2..3);
+            assert_eq!(None, tokens.next());
+        }
     }
 }
