@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, iter, ops::Range};
+use std::{cmp::Ordering, ops::Range};
 
 use crate::{
     buffer::BufferContent,
@@ -339,7 +339,7 @@ impl HighlightedBuffer {
                 index += 1;
 
                 if previous_state == LineParseState::Finished
-                    && !matches!(previous_parse_state, LineParseState::Unfinished(_, _))
+                    && previous_parse_state == LineParseState::Finished
                 {
                     break;
                 }
@@ -526,7 +526,8 @@ mod tests {
         let range = buffer.insert_text(BufferPosition::line_col(0, 0), "/*\n*/");
 
         let mut highlighted = HighlightedBuffer::new();
-        highlighted.on_insert(&syntax, &buffer, range);
+        highlighted.on_insert(range);
+        highlighted.highlight_dirty_lines(&syntax, &buffer);
         assert_eq!(buffer.line_count(), highlighted.lines.len());
 
         let mut tokens = highlighted.lines.iter().map(|l| l.tokens.iter()).flatten();
@@ -535,7 +536,8 @@ mod tests {
         assert_eq!(None, tokens.next());
 
         let range = buffer.insert_text(BufferPosition::line_col(1, 0), "'");
-        highlighted.on_insert(&syntax, &buffer, range);
+        highlighted.on_insert(range);
+        highlighted.highlight_dirty_lines(&syntax, &buffer);
 
         let mut tokens = highlighted.lines.iter().map(|l| l.tokens.iter()).flatten();
         assert_next_token!(tokens, TokenKind::Comment, 0..2);
@@ -552,7 +554,8 @@ mod tests {
         let range = buffer.insert_text(BufferPosition::line_col(0, 0), "/*\n\n\n*/");
 
         let mut highlighted = HighlightedBuffer::new();
-        highlighted.on_insert(&syntax, &buffer, range);
+        highlighted.on_insert(range);
+        highlighted.highlight_dirty_lines(&syntax, &buffer);
         assert_eq!(buffer.line_count(), highlighted.lines.len());
 
         let mut tokens = highlighted.lines.iter().map(|l| l.tokens.iter()).flatten();
@@ -572,14 +575,16 @@ mod tests {
         let range = buffer.insert_text(BufferPosition::line_col(0, 0), "/*\n* /\n*/");
 
         let mut highlighted = HighlightedBuffer::new();
-        highlighted.on_insert(&syntax, &buffer, range);
+        highlighted.on_insert(range);
+        highlighted.highlight_dirty_lines(&syntax, &buffer);
 
         let range = BufferRange::between(
             BufferPosition::line_col(1, 1),
             BufferPosition::line_col(1, 2),
         );
         buffer.delete_range(range);
-        highlighted.on_delete(&syntax, &buffer, range);
+        highlighted.on_delete(range);
+        highlighted.highlight_dirty_lines(&syntax, &buffer);
 
         let mut parse_states = highlighted.lines.iter().map(|l| l.parse_state);
         assert!(matches!(
@@ -607,14 +612,16 @@ mod tests {
         let range = buffer.insert_text(BufferPosition::line_col(0, 0), "/ *\na\n*/");
 
         let mut highlighted = HighlightedBuffer::new();
-        highlighted.on_insert(&syntax, &buffer, range);
+        highlighted.on_insert(range);
+        highlighted.highlight_dirty_lines(&syntax, &buffer);
 
         let range = BufferRange::between(
             BufferPosition::line_col(0, 1),
             BufferPosition::line_col(0, 2),
         );
         buffer.delete_range(range);
-        highlighted.on_delete(&syntax, &buffer, range);
+        highlighted.on_delete(range);
+        highlighted.highlight_dirty_lines(&syntax, &buffer);
 
         let mut tokens = highlighted.lines.iter().map(|l| l.tokens.iter()).flatten();
         assert_next_token!(tokens, TokenKind::Comment, 0..2);
