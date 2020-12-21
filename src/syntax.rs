@@ -266,6 +266,10 @@ impl HighlightedBuffer {
         }
 
         self.dirty_line_indexes.push(range.from.line_index);
+        let next_line_index = range.from.line_index + 1;
+        if next_line_index < self.highlighted_len {
+            self.dirty_line_indexes.push(next_line_index);
+        }
     }
 
     pub fn highlight_dirty_lines(&mut self, syntax: &Syntax, buffer: &BufferContent) {
@@ -554,6 +558,40 @@ mod tests {
         assert_next_token!(tokens, TokenKind::Comment, 0..2);
         assert_next_token!(tokens, TokenKind::Comment, 0..1);
         assert_next_token!(tokens, TokenKind::Comment, 0..2);
+        assert_eq!(None, tokens.next());
+    }
+
+    #[test]
+    fn highlight_unfinished_lines_on_multiline_delete() {
+        let mut syntax = Syntax::default();
+        syntax.add_rule(TokenKind::Comment, Pattern::new("/*{!(*/).$}").unwrap());
+
+        let mut buffer = BufferContent::new();
+        let mut highlighted = HighlightedBuffer::new();
+
+        let range = buffer.insert_text(BufferPosition::line_col(0, 0), "a\n/*\nb*/");
+        highlighted.on_insert(range);
+        highlighted.highlight_dirty_lines(&syntax, &buffer);
+
+        let mut tokens = highlighted.lines.iter().map(|l| l.tokens.iter()).flatten();
+        assert_next_token!(tokens, TokenKind::Text, 0..1);
+        assert_next_token!(tokens, TokenKind::Comment, 0..2);
+        assert_next_token!(tokens, TokenKind::Comment, 0..3);
+        assert_eq!(None, tokens.next());
+
+        let range = BufferRange::between(
+            BufferPosition::line_col(0, 0),
+            BufferPosition::line_col(1, 1),
+        );
+        buffer.delete_range(range);
+        highlighted.on_delete(range);
+        highlighted.highlight_dirty_lines(&syntax, &buffer);
+
+        let mut tokens = highlighted.lines.iter().map(|l| l.tokens.iter()).flatten();
+        assert_next_token!(tokens, TokenKind::Text, 0..1);
+        assert_next_token!(tokens, TokenKind::Text, 0..1);
+        assert_next_token!(tokens, TokenKind::Text, 1..2);
+        assert_next_token!(tokens, TokenKind::Text, 2..3);
         assert_eq!(None, tokens.next());
     }
 }
