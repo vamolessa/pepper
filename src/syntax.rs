@@ -188,7 +188,7 @@ impl SyntaxCollection {
     }
 }
 
-#[derive(Default, Clone)]
+#[derive(Default)]
 struct HighlightedLine {
     parse_state: LineParseState,
     tokens: Vec<Token>,
@@ -249,45 +249,33 @@ impl HighlightedBuffer {
     }
 
     pub fn clear(&mut self) {
-        self.highlighted_len = 0;
+        self.highlighted_len = 1;
         self.dirty_line_indexes.clear();
     }
 
     pub fn on_insert(&mut self, range: BufferRange) {
-        let min_len = range.to.line_index + 1;
-        let previous_len = self.highlighted_len;
+        let insert_line_count = range.to.line_index - range.from.line_index;
+        self.highlighted_len += insert_line_count;
+
         if self.highlighted_len > self.lines.len() {
-            self.lines.resize
+            self.lines
+                .resize_with(self.highlighted_len, HighlightedLine::default);
         }
 
-
-        self.require_size(range.from.line_index + 1);
-        let insert_count = range.to.line_index - range.from.line_index;
-
-
-        self.lines
-            .resize_with(self.lines.len() + insert_count, || pool.rent());
-
         let insert_index = range.from.line_index + 1;
-        self.lines[insert_index..].rotate_right(insert_count);
+        self.lines[insert_index..].rotate_right(insert_line_count);
         for i in range.from.line_index..=range.to.line_index {
             self.dirty_line_indexes.push(i);
         }
     }
 
     pub fn on_delete(&mut self, range: BufferRange) {
-        self.require_size(range.to.line_index + 1);
-        for line in self.lines.drain(range.from.line_index..range.to.line_index) {
-            self.line_pool.dispose(line);
-        }
-        self.dirty_line_indexes.push(range.from.line_index);
-    }
+        let delete_line_count = range.to.line_index - range.from.line_index;
+        self.highlighted_len -= delete_line_count;
 
-    fn require_size(&mut self, min_len: usize) {
-        if self.lines.len() < min_len {
-            let pool = &mut self.line_pool;
-            self.lines.resize_with(min_len, || pool.rent());
-        }
+        let delete_index = range.from.line_index + 1;
+        self.lines[delete_index..].rotate_left(delete_line_count);
+        self.dirty_line_indexes.push(range.from.line_index);
     }
 
     pub fn highlight_dirty_lines(&mut self, syntax: &Syntax, buffer: &BufferContent) {

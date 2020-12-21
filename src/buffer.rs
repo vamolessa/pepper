@@ -782,6 +782,10 @@ impl Buffer {
         if self.syntax_handle != syntax_handle {
             self.syntax_handle = syntax_handle;
             self.highlighted.clear();
+            self.highlighted.on_insert(BufferRange::between(
+                BufferPosition::line_col(0, 0),
+                BufferPosition::line_col(self.content.line_count() - 1, 0),
+            ));
         }
     }
 
