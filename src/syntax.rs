@@ -193,36 +193,6 @@ struct HighlightedLine {
     parse_state: LineParseState,
     tokens: Vec<Token>,
 }
-impl HighlightedLine {
-    pub fn clear(&mut self) {
-        self.parse_state = LineParseState::Finished;
-        self.tokens.clear();
-    }
-}
-
-struct HighlightedLinePool {
-    pool: Vec<HighlightedLine>,
-}
-impl HighlightedLinePool {
-    pub const fn new() -> Self {
-        Self { pool: Vec::new() }
-    }
-
-    pub fn rent(&mut self) -> HighlightedLine {
-        match self.pool.pop() {
-            Some(mut line) => {
-                line.tokens.clear();
-                line.parse_state = LineParseState::Finished;
-                line
-            }
-            None => HighlightedLine::default(),
-        }
-    }
-
-    pub fn dispose(&mut self, line: HighlightedLine) {
-        self.pool.push(line);
-    }
-}
 
 pub struct HighlightedBuffer {
     highlighted_len: usize,
