@@ -242,7 +242,7 @@ impl HighlightedBuffer {
 
     pub fn new() -> Self {
         Self {
-            highlighted_len: 0,
+            highlighted_len: 1,
             lines: vec![HighlightedLine::default()],
             dirty_line_indexes: Vec::new(),
         }
@@ -460,9 +460,9 @@ mod tests {
         syntax.add_rule(TokenKind::String, Pattern::new("'{!'.$}").unwrap());
 
         let mut buffer = BufferContent::new();
-        let range = buffer.insert_text(BufferPosition::line_col(0, 0), "/*\n*/");
-
         let mut highlighted = HighlightedBuffer::new();
+
+        let range = buffer.insert_text(BufferPosition::line_col(0, 0), "/*\n*/");
         highlighted.on_insert(range);
         highlighted.highlight_dirty_lines(&syntax, &buffer);
         assert_eq!(buffer.line_count(), highlighted.lines.len());
@@ -488,9 +488,9 @@ mod tests {
         syntax.add_rule(TokenKind::Comment, Pattern::new("/*{!(*/).$}").unwrap());
 
         let mut buffer = BufferContent::new();
-        let range = buffer.insert_text(BufferPosition::line_col(0, 0), "/*\n\n\n*/");
-
         let mut highlighted = HighlightedBuffer::new();
+
+        let range = buffer.insert_text(BufferPosition::line_col(0, 0), "/*\n\n\n*/");
         highlighted.on_insert(range);
         highlighted.highlight_dirty_lines(&syntax, &buffer);
         assert_eq!(buffer.line_count(), highlighted.lines.len());
@@ -509,9 +509,9 @@ mod tests {
         syntax.add_rule(TokenKind::Comment, Pattern::new("/*{!(*/).$}").unwrap());
 
         let mut buffer = BufferContent::new();
-        let range = buffer.insert_text(BufferPosition::line_col(0, 0), "/*\n* /\n*/");
-
         let mut highlighted = HighlightedBuffer::new();
+
+        let range = buffer.insert_text(BufferPosition::line_col(0, 0), "/*\n* /\n*/");
         highlighted.on_insert(range);
         highlighted.highlight_dirty_lines(&syntax, &buffer);
 
@@ -546,9 +546,9 @@ mod tests {
         syntax.add_rule(TokenKind::Comment, Pattern::new("/*{!(*/).$}").unwrap());
 
         let mut buffer = BufferContent::new();
-        let range = buffer.insert_text(BufferPosition::line_col(0, 0), "/ *\na\n*/");
-
         let mut highlighted = HighlightedBuffer::new();
+
+        let range = buffer.insert_text(BufferPosition::line_col(0, 0), "/ *\na\n*/");
         highlighted.on_insert(range);
         highlighted.highlight_dirty_lines(&syntax, &buffer);
 
