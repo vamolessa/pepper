@@ -227,13 +227,22 @@ impl HighlightedBuffer {
         let insert_line_count = range.to.line_index - range.from.line_index;
         self.highlighted_len += insert_line_count;
 
-        if self.highlighted_len > self.lines.len() {
-            self.lines
-                .resize_with(self.highlighted_len, HighlightedLine::default);
+        if insert_line_count > 0 {
+            if self.highlighted_len > self.lines.len() {
+                self.lines
+                    .resize_with(self.highlighted_len, HighlightedLine::default);
+            }
+
+            let insert_index = range.from.line_index + 1;
+            self.lines[insert_index..].rotate_right(insert_line_count);
+
+            for index in &mut self.dirty_line_indexes {
+                if insert_index <= *index {
+                    *index += insert_line_count;
+                }
+            }
         }
 
-        let insert_index = range.from.line_index + 1;
-        self.lines[insert_index..].rotate_right(insert_line_count);
         for i in range.from.line_index..=range.to.line_index {
             self.dirty_line_indexes.push(i);
         }
@@ -243,8 +252,19 @@ impl HighlightedBuffer {
         let delete_line_count = range.to.line_index - range.from.line_index;
         self.highlighted_len -= delete_line_count;
 
-        let delete_index = range.from.line_index + 1;
-        self.lines[delete_index..].rotate_left(delete_line_count);
+        if delete_line_count > 0 {
+            let delete_index = range.from.line_index + 1;
+            self.lines[delete_index..].rotate_left(delete_line_count);
+
+            for index in &mut self.dirty_line_indexes {
+                if range.to.line_index <= *index {
+                    *index -= delete_line_count;
+                } else if delete_index <= *index {
+                    *index = range.from.line_index;
+                }
+            }
+        }
+
         self.dirty_line_indexes.push(range.from.line_index);
     }
 
