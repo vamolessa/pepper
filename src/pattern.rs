@@ -293,7 +293,6 @@ impl<'a> PatternCompiler<'a> {
         self.ops.push(Op::Error);
         self.ops.push(Op::Ok);
         self.parse_subpatterns()?;
-        self.ops.push(Op::Unwind(Jump(1), Length(0)));
         self.optimize();
 
         Ok(Pattern {
@@ -340,19 +339,23 @@ impl<'a> PatternCompiler<'a> {
     }
 
     fn parse_subpatterns(&mut self) -> Result<(), PatternError> {
+        let end_jump = self.get_absolute_jump(JumpFrom::End(Jump(0)));
         while let Ok(_) = self.next() {
-            self.parse_stmt()?;
-            if let Ok(b'|') = self.peek() {
-                self.next()?;
-            }
+            self.parse_stmt(JumpFrom::Beginning(end_jump))?;
+            //if let Ok(b'|') = self.peek() {
+            //    self.next()?;
+            //}
         }
+        self.ops.push(Op::Unwind(Jump(1), Length(0)));
+        self.patch_jump(JumpFrom::End(Jump(0)), end_jump);
+        self.ops.push(Op::Unwind(Jump(0), Length(0)));
         Ok(())
     }
 
-    fn parse_stmt(&mut self) -> Result<(), PatternError> {
+    fn parse_stmt(&mut self, erj: JumpFrom) -> Result<(), PatternError> {
         match self.current() {
-            b'{' => self.parse_repeat_stmt(),
-            _ => match self.parse_expr(JumpFrom::End(Jump(0)), JumpFrom::Beginning(Jump(0))) {
+            b'{' => self.parse_repeat_stmt(erj),
+            _ => match self.parse_expr(JumpFrom::End(Jump(0)), erj) {
                 Ok(_) => Ok(()),
                 Err(e) => Err(e),
             },
@@ -412,7 +415,7 @@ impl<'a> PatternCompiler<'a> {
         }
     }
 
-    fn parse_repeat_stmt(&mut self) -> Result<(), PatternError> {
+    fn parse_repeat_stmt(&mut self, erj: JumpFrom) -> Result<(), PatternError> {
         let start_jump = self.ops.len().into();
         let end_jump = self.get_absolute_jump(JumpFrom::End(Jump(0)));
 
@@ -431,7 +434,7 @@ impl<'a> PatternCompiler<'a> {
         }
 
         if has_cancel_pattern {
-            self.ops.push(Op::Unwind(Jump(0), Length(0)));
+            self.jump_at_end(erj);
         }
 
         self.patch_jump(JumpFrom::End(Jump(0)), end_jump);
