@@ -78,6 +78,10 @@ impl Pattern {
             match ops[op_index] {
                 Op::Ok => return MatchResult::Ok(bytes_index),
                 Op::Error => return MatchResult::Err,
+                Op::Reset(jump) => {
+                    bytes_index = 0;
+                    op_index = jump.0 as _;
+                }
                 Op::Unwind(jump, len) => {
                     bytes_index -= len.0 as usize;
                     op_index = jump.0 as _;
@@ -196,6 +200,7 @@ enum JumpFrom {
 enum Op {
     Ok,
     Error,
+    Reset(Jump),
     Unwind(Jump, Length),
     EndAnchor(Jump, Jump),
     SkipOne(Jump, Jump),
@@ -227,6 +232,12 @@ impl fmt::Debug for Op {
         match self {
             Op::Ok => f.write_str("Ok"),
             Op::Error => f.write_str("Error"),
+            Op::Reset(jump) => f.write_fmt(format_args!(
+                "{:width$} {}",
+                "Reset",
+                jump.0,
+                width = WIDTH - 4,
+            )),
             Op::Unwind(jump, len) => f.write_fmt(format_args!(
                 "{:width$}[{}] {}",
                 "Unwind",
@@ -632,7 +643,7 @@ impl<'a> PatternCompiler<'a> {
         for op in &mut self.ops {
             match op {
                 Op::Ok | Op::Error => (),
-                Op::Unwind(j, _) => fix_jump!(j),
+                Op::Reset(j) | Op::Unwind(j, _) => fix_jump!(j),
                 Op::EndAnchor(okj, erj)
                 | Op::SkipOne(okj, erj)
                 | Op::SkipMany(okj, erj, _)
@@ -691,7 +702,7 @@ impl<'a> PatternCompiler<'a> {
         for op in &mut self.ops {
             match op {
                 Op::Ok | Op::Error => (),
-                Op::Unwind(j, _) => fix_jump!(j),
+                Op::Reset(j) | Op::Unwind(j, _) => fix_jump!(j),
                 Op::EndAnchor(okj, erj)
                 | Op::SkipOne(okj, erj)
                 | Op::SkipMany(okj, erj, _)
@@ -759,7 +770,7 @@ impl<'a> PatternCompiler<'a> {
         for op in &mut self.ops {
             match op {
                 Op::Ok | Op::Error => (),
-                Op::Unwind(j, _) => fix_jump!(j),
+                Op::Reset(j) | Op::Unwind(j, _) => fix_jump!(j),
                 Op::EndAnchor(okj, erj)
                 | Op::SkipOne(okj, erj)
                 | Op::SkipMany(okj, erj, _)
