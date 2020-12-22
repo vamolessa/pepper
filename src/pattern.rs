@@ -333,12 +333,18 @@ impl<'a> PatternCompiler<'a> {
     }
 
     fn next_is_not(&mut self, byte: u8) -> Result<bool, PatternError> {
-        Ok(self.next()? != byte)
+        match self.next() {
+            Ok(b) => Ok(b != byte),
+            Err(e) => Err(e),
+        }
     }
 
     fn parse_subpatterns(&mut self) -> Result<(), PatternError> {
         while let Ok(_) = self.next() {
             self.parse_stmt()?;
+            if let Ok(b'|') = self.peek() {
+                self.next()?;
+            }
         }
         Ok(())
     }
@@ -555,6 +561,7 @@ impl<'a> PatternCompiler<'a> {
                 b']' => Op::Byte(okj, erj, b']'),
                 b'{' => Op::Byte(okj, erj, b'{'),
                 b'}' => Op::Byte(okj, erj, b'}'),
+                b'|' => Op::Byte(okj, erj, b'|'),
                 b => return Err(PatternError::InvalidEscaping(b as char)),
             },
             b'$' => {
@@ -569,6 +576,7 @@ impl<'a> PatternCompiler<'a> {
             b']' => return Err(PatternError::Unescaped(']')),
             b'{' => return Err(PatternError::Unescaped('{')),
             b'}' => return Err(PatternError::Unescaped('}')),
+            b'|' => return Err(PatternError::Unescaped('|')),
             b => Op::Byte(okj, erj, b),
         };
 
