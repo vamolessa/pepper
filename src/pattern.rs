@@ -284,17 +284,16 @@ impl<'a> PatternCompiler<'a> {
         Self {
             bytes,
             index: 0,
-            start_jump: Jump(1),
+            start_jump: Jump(2),
             ops: ops_buf,
         }
     }
 
     pub fn compile(mut self) -> Result<Pattern, PatternError> {
         self.ops.push(Op::Error);
-        while let Ok(_) = self.next() {
-            self.parse_stmt()?;
-        }
         self.ops.push(Op::Ok);
+        self.parse_subpatterns()?;
+        self.ops.push(Op::Unwind(Jump(1), Length(0)));
         self.optimize();
 
         Ok(Pattern {
@@ -324,22 +323,33 @@ impl<'a> PatternCompiler<'a> {
     }
 
     fn next(&mut self) -> Result<u8, PatternError> {
-        self.peek().and_then(|b| {
-            self.index += 1;
-            Ok(b)
-        })
+        match self.peek() {
+            Ok(b) => {
+                self.index += 1;
+                Ok(b)
+            }
+            Err(e) => Err(e),
+        }
     }
 
     fn next_is_not(&mut self, byte: u8) -> Result<bool, PatternError> {
         Ok(self.next()? != byte)
     }
 
+    fn parse_subpatterns(&mut self) -> Result<(), PatternError> {
+        while let Ok(_) = self.next() {
+            self.parse_stmt()?;
+        }
+        Ok(())
+    }
+
     fn parse_stmt(&mut self) -> Result<(), PatternError> {
         match self.current() {
             b'{' => self.parse_repeat_stmt(),
-            _ => self
-                .parse_expr(JumpFrom::End(Jump(0)), JumpFrom::Beginning(Jump(0)))
-                .map(|_| ()),
+            _ => match self.parse_expr(JumpFrom::End(Jump(0)), JumpFrom::Beginning(Jump(0))) {
+                Ok(_) => Ok(()),
+                Err(e) => Err(e),
+            },
         }
     }
 
@@ -984,12 +994,12 @@ mod tests {
 
         let p = Pattern::new("a$b").unwrap();
         assert_eq!(
-            MatchResult::Pending(PatternState { op_index: 3 }),
+            MatchResult::Pending(PatternState { op_index: 4 }),
             p.matches("a")
         );
         assert_eq!(
             MatchResult::Ok(1),
-            p.matches_with_state("b", &PatternState { op_index: 3 })
+            p.matches_with_state("b", &PatternState { op_index: 4 })
         );
 
         let p = Pattern::new("a{.!$}b").unwrap();
