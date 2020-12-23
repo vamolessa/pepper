@@ -76,16 +76,15 @@ impl Pattern {
     }
 
     pub fn matches_with_state(&self, text: &str, state: &PatternState) -> MatchResult {
-        let bytes = text.as_bytes();
+        let mut bytes = text.as_bytes();
         let ops = &self.ops;
         let mut op_index = state.op_index;
-        let mut bytes_index = 0;
 
         macro_rules! check {
             ($e:expr, $okj:expr, $erj:expr) => {{
-                if bytes_index < bytes.len() && $e {
+                if !bytes.is_empty() && $e {
                     op_index = $okj.0 as _;
-                    bytes_index += 1;
+                    bytes = &bytes[1..];
                 } else {
                     op_index = $erj.0 as _;
                 }
@@ -94,61 +93,67 @@ impl Pattern {
 
         loop {
             match ops[op_index] {
-                Op::Ok => return MatchResult::Ok(bytes_index),
+                Op::Ok => {
+                    return MatchResult::Ok(unsafe {
+                        bytes.as_ptr().offset_from(text.as_bytes().as_ptr())
+                    } as usize)
+                }
                 Op::Error => return MatchResult::Err,
                 Op::Reset(jump) => {
-                    bytes_index = 0;
+                    bytes = text.as_bytes();
                     op_index = jump.0 as _;
                 }
                 Op::Unwind(jump, len) => {
-                    bytes_index -= len.0 as usize;
+                    bytes = unsafe {
+                        std::slice::from_raw_parts(
+                            bytes.as_ptr().offset(-(len.0 as isize)),
+                            bytes.len() + len.0 as usize,
+                        )
+                    };
                     op_index = jump.0 as _;
                 }
                 Op::EndAnchor(okj, erj) => {
-                    if bytes_index < bytes.len() {
-                        op_index = erj.0 as _;
-                    } else {
+                    if bytes.is_empty() {
                         op_index = okj.0 as _;
                         return match ops[op_index] {
-                            Op::Ok => MatchResult::Ok(bytes_index),
+                            Op::Ok => MatchResult::Ok(unsafe {
+                                bytes.as_ptr().offset_from(text.as_bytes().as_ptr())
+                            } as usize),
                             _ => MatchResult::Pending(PatternState { op_index }),
                         };
+                    } else {
+                        op_index = erj.0 as _;
                     }
                 }
                 Op::SkipOne(okj, erj) => check!(true, okj, erj),
                 Op::SkipMany(okj, erj, len) => {
                     let len = len.0 as usize;
-                    bytes_index += len;
-                    if bytes_index <= bytes.len() {
+                    if bytes.len() >= len {
+                        bytes = &bytes[len..];
                         op_index = okj.0 as _;
                     } else {
-                        bytes_index -= len;
                         op_index = erj.0 as _;
                     }
                 }
                 Op::Alphabetic(okj, erj) => {
-                    check!(bytes[bytes_index].is_ascii_alphabetic(), okj, erj)
+                    check!(bytes[0].is_ascii_alphabetic(), okj, erj)
                 }
-                Op::Lower(okj, erj) => check!(bytes[bytes_index].is_ascii_lowercase(), okj, erj),
-                Op::Upper(okj, erj) => check!(bytes[bytes_index].is_ascii_uppercase(), okj, erj),
-                Op::Digit(okj, erj) => check!(bytes[bytes_index].is_ascii_digit(), okj, erj),
+                Op::Lower(okj, erj) => check!(bytes[0].is_ascii_lowercase(), okj, erj),
+                Op::Upper(okj, erj) => check!(bytes[0].is_ascii_uppercase(), okj, erj),
+                Op::Digit(okj, erj) => check!(bytes[0].is_ascii_digit(), okj, erj),
                 Op::Alphanumeric(okj, erj) => {
-                    check!(bytes[bytes_index].is_ascii_alphanumeric(), okj, erj)
+                    check!(bytes[0].is_ascii_alphanumeric(), okj, erj)
                 }
-                Op::Byte(okj, erj, b) => check!(bytes[bytes_index] == b, okj, erj),
+                Op::Byte(okj, erj, b) => check!(bytes[0] == b, okj, erj),
                 Op::Bytes3(okj, erj, bs) => {
-                    let start_index = bytes_index;
-                    bytes_index += 3;
-                    if bytes_index <= bytes.len() {
-                        let slice = &bytes[start_index..bytes_index];
-                        if slice[0] == bs[0] && slice[1] == bs[1] && slice[2] == bs[2] {
-                            op_index = okj.0 as _;
-                        } else {
-                            bytes_index = start_index;
-                            op_index = erj.0 as _;
-                        }
+                    if bytes.len() >= 3
+                        && bytes[0] == bs[0]
+                        && bytes[1] == bs[1]
+                        && bytes[2] == bs[2]
+                    {
+                        op_index = okj.0 as _;
+                        bytes = &bytes[3..];
                     } else {
-                        bytes_index = start_index;
                         op_index = erj.0 as _;
                     }
                 }
