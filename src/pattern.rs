@@ -367,13 +367,15 @@ impl<'a> PatternCompiler<'a> {
         }
 
         let mut reset_jump = add_reset_jump(self);
-        while let Ok(_) = self.next() {
+        if let Ok(_) = self.next() {
             self.parse_stmt(JumpFrom::Beginning(reset_jump))?;
-            if let Ok(b'|') = self.peek() {
-                self.next()?;
-                self.ops.push(Op::Unwind(Jump(1), Length(0)));
-                patch_reset_jump(self, reset_jump);
-                reset_jump = add_reset_jump(self);
+            while let Ok(_) = self.next() {
+                if self.current() == b'|' {
+                    self.next()?;
+                    self.ops.push(Op::Unwind(Jump(1), Length(0)));
+                    patch_reset_jump(self, reset_jump);
+                    reset_jump = add_reset_jump(self);
+                }
                 self.parse_stmt(JumpFrom::Beginning(reset_jump))?;
             }
         }
@@ -1152,6 +1154,24 @@ mod tests {
     }
 
     #[test]
+    fn multi_subpatterns() {
+        let p = Pattern::new("a|b").unwrap();
+        assert_eq!(MatchResult::Ok(1), p.matches("a"));
+        assert_eq!(MatchResult::Ok(1), p.matches("b"));
+        assert_eq!(MatchResult::Err, p.matches("c"));
+        assert_eq!(MatchResult::Err, p.matches(""));
+
+        let p = Pattern::new("ab{(ab)}|c").unwrap();
+        assert_eq!(MatchResult::Err, p.matches("a"));
+        assert_eq!(MatchResult::Ok(2), p.matches("ab"));
+        assert_eq!(MatchResult::Ok(2), p.matches("aba"));
+        assert_eq!(MatchResult::Ok(4), p.matches("abab"));
+        assert_eq!(MatchResult::Ok(1), p.matches("c"));
+        assert_eq!(MatchResult::Ok(1), p.matches("ca"));
+        assert_eq!(MatchResult::Ok(1), p.matches("cab"));
+    }
+
+    #[test]
     fn bad_pattern() {
         macro_rules! assert_err {
             ($expected:expr, $value:expr) => {
@@ -1172,5 +1192,7 @@ mod tests {
         assert_err!(PatternError::UnexpectedEndOfPattern, Pattern::new("%"));
         assert_err!(PatternError::Unescaped('!'), Pattern::new("!"));
         assert_err!(PatternError::InvalidEscaping('@'), Pattern::new("%@"));
+        assert_err!(PatternError::Unescaped('|'), Pattern::new("|"));
+        assert_err!(PatternError::UnexpectedEndOfPattern, Pattern::new("a|"));
     }
 }
