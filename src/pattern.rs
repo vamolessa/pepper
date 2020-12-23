@@ -369,13 +369,13 @@ impl<'a> PatternCompiler<'a> {
         let reset_jump = add_reset_jump(self);
         while let Ok(_) = self.next() {
             self.parse_stmt(JumpFrom::Beginning(reset_jump))?;
-            //if let Ok(b'|') = self.peek() {
-            //    self.next()?;
-            //}
+            if let Ok(b'|') = self.peek() {
+                self.next()?;
+            }
         }
         self.ops.push(Op::Unwind(Jump(1), Length(0)));
-        patch_reset_jump(self, reset_jump);
-        self.ops.push(Op::Unwind(Jump(0), Length(0)));
+        //let jump = patch_reset_jump(self, reset_jump);
+        self.ops[reset_jump.0 as usize] = Op::Unwind(Jump(0), Length(0));
         Ok(())
     }
 
@@ -1032,12 +1032,12 @@ mod tests {
 
         let p = Pattern::new("a$b").unwrap();
         assert_eq!(
-            MatchResult::Pending(PatternState { op_index: 5 }),
+            MatchResult::Pending(PatternState { op_index: 4 }),
             p.matches("a")
         );
         assert_eq!(
             MatchResult::Ok(1),
-            p.matches_with_state("b", &PatternState { op_index: 5 })
+            p.matches_with_state("b", &PatternState { op_index: 4 })
         );
 
         let p = Pattern::new("a{.!$}b").unwrap();
