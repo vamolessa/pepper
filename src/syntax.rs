@@ -256,9 +256,8 @@ impl HighlightedBuffer {
 
     pub fn on_insert(&mut self, range: BufferRange) {
         let insert_line_count = range.to.line_index - range.from.line_index;
-        self.highlighted_len += insert_line_count;
-
         if insert_line_count > 0 {
+            self.highlighted_len += insert_line_count;
             if self.highlighted_len > self.lines.len() {
                 self.lines
                     .resize_with(self.highlighted_len, HighlightedLine::default);
@@ -282,9 +281,8 @@ impl HighlightedBuffer {
 
     pub fn on_delete(&mut self, range: BufferRange) {
         let delete_line_count = range.to.line_index - range.from.line_index;
-        self.highlighted_len -= delete_line_count;
-
         if delete_line_count > 0 {
+            self.highlighted_len -= delete_line_count;
             let delete_index = range.from.line_index + 1;
             self.lines[delete_index..].rotate_left(delete_line_count);
 

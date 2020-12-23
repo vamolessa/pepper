@@ -1118,6 +1118,11 @@ impl Buffer {
         self.content
             .read(&mut reader)
             .map_err(|_| BufferError::CouldNotReadFile)?;
+        self.highlighted.clear();
+        self.highlighted.on_insert(BufferRange::between(
+            BufferPosition::line_col(0, 0),
+            BufferPosition::line_col(self.content.line_count() - 1, 0),
+        ));
 
         events.enqueue(EditorEvent::BufferLoad {
             handle: self.handle,
