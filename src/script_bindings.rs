@@ -18,7 +18,6 @@ use crate::{
     lsp::LspClientHandle,
     mode::{self, Mode},
     navigation_history::NavigationHistory,
-    pattern::Pattern,
     register::RegisterKey,
     script::{
         ScriptArray, ScriptContext, ScriptContextGuard, ScriptEngineRef, ScriptError,
@@ -1614,26 +1613,21 @@ mod syntax {
             token_kind_key: &str,
             rules: &ScriptObject,
         ) -> ScriptResult<()> {
-            if let Ok(patterns) = rules.get::<ScriptArray>(token_kind_key) {
-                for pattern in patterns.iter::<ScriptString>() {
-                    let pattern = pattern?;
-                    let pattern = pattern.to_str()?;
-                    let pattern = Pattern::new(pattern).map_err(|e| {
-                        let message = helper::parsing_error(e, pattern, 0);
-                        ScriptError::from(message)
-                    })?;
-                    syntax.add_rule(token_kind, pattern);
-                }
+            if let Ok(pattern) = rules.get::<ScriptString>(token_kind_key) {
+                let pattern = pattern.to_str()?;
+                syntax.set_rule(token_kind, pattern).map_err(|e| {
+                    let message = helper::parsing_error(e, pattern, 0);
+                    ScriptError::from(message)
+                })?;
             }
             Ok(())
         }
 
-        let mut syntax = Syntax::default();
-
+        let mut syntax = Syntax::new();
         syntax.set_glob(extensions.as_bytes());
         try_add_rules(&mut syntax, TokenKind::Keyword, "keyword", &rules)?;
-        try_add_rules(&mut syntax, TokenKind::Symbol, "symbol", &rules)?;
         try_add_rules(&mut syntax, TokenKind::Type, "type", &rules)?;
+        try_add_rules(&mut syntax, TokenKind::Symbol, "symbol", &rules)?;
         try_add_rules(&mut syntax, TokenKind::Literal, "literal", &rules)?;
         try_add_rules(&mut syntax, TokenKind::String, "string", &rules)?;
         try_add_rules(&mut syntax, TokenKind::Comment, "comment", &rules)?;

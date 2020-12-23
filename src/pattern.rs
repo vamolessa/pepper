@@ -44,8 +44,26 @@ pub struct Pattern {
 }
 
 impl Pattern {
-    pub fn new(pattern: &str) -> Result<Self, PatternError> {
-        Ok(PatternCompiler::new(pattern.as_bytes(), Vec::new()).compile()?)
+    pub fn new() -> Self {
+        Self {
+            ops: vec![Op::Error],
+            start_jump: Jump(0),
+        }
+    }
+
+    pub fn compile(&mut self, pattern: &str) -> Result<(), PatternError> {
+        match PatternCompiler::new(&mut self.ops, pattern.as_bytes()).compile() {
+            Ok(start_jump) => {
+                self.start_jump = start_jump;
+                Ok(())
+            }
+            Err(error) => {
+                self.ops.clear();
+                self.ops.push(Op::Error);
+                self.start_jump = Jump(0);
+                Err(error)
+            }
+        }
     }
 
     pub fn matches(&self, text: &str) -> MatchResult {
@@ -286,30 +304,26 @@ struct PatternCompiler<'a> {
     pub bytes: &'a [u8],
     pub index: usize,
     pub start_jump: Jump,
-    pub ops: Vec<Op>,
+    pub ops: &'a mut Vec<Op>,
 }
 
 impl<'a> PatternCompiler<'a> {
-    pub fn new(bytes: &'a [u8], mut ops_buf: Vec<Op>) -> Self {
-        ops_buf.clear();
+    pub fn new(ops: &'a mut Vec<Op>, bytes: &'a [u8]) -> Self {
+        ops.clear();
         Self {
             bytes,
             index: 0,
             start_jump: Jump(2),
-            ops: ops_buf,
+            ops,
         }
     }
 
-    pub fn compile(mut self) -> Result<Pattern, PatternError> {
+    pub fn compile(mut self) -> Result<Jump, PatternError> {
         self.ops.push(Op::Error);
         self.ops.push(Op::Ok);
         self.parse_subpatterns()?;
         self.optimize();
-
-        Ok(Pattern {
-            ops: self.ops,
-            start_jump: self.start_jump,
-        })
+        Ok(self.start_jump)
     }
 
     fn peek(&self) -> Result<u8, PatternError> {
@@ -661,7 +675,7 @@ impl<'a> PatternCompiler<'a> {
             };
         }
 
-        for op in &mut self.ops {
+        for op in self.ops.iter_mut() {
             match op {
                 Op::Ok | Op::Error => (),
                 Op::Reset(j) | Op::Unwind(j, _) => fix_jump!(j),
@@ -720,7 +734,7 @@ impl<'a> PatternCompiler<'a> {
             };
         }
 
-        for op in &mut self.ops {
+        for op in self.ops.iter_mut() {
             match op {
                 Op::Ok | Op::Error => (),
                 Op::Reset(j) | Op::Unwind(j, _) => fix_jump!(j),
@@ -788,7 +802,7 @@ impl<'a> PatternCompiler<'a> {
             };
         }
 
-        for op in &mut self.ops {
+        for op in self.ops.iter_mut() {
             match op {
                 Op::Ok | Op::Error => (),
                 Op::Reset(j) | Op::Unwind(j, _) => fix_jump!(j),
@@ -816,6 +830,16 @@ impl<'a> PatternCompiler<'a> {
 mod tests {
     use super::*;
 
+    fn try_new_pattern(pattern: &str) -> Result<Pattern, PatternError> {
+        let mut p = Pattern::new();
+        p.compile(pattern)?;
+        Ok(p)
+    }
+
+    fn new_pattern(pattern: &str) -> Pattern {
+        try_new_pattern(pattern).unwrap()
+    }
+
     #[test]
     fn assert_size() {
         assert_eq!(8, std::mem::size_of::<Op>());
@@ -823,7 +847,7 @@ mod tests {
 
     #[test]
     fn simple_pattern() {
-        let p = Pattern::new("").unwrap();
+        let p = new_pattern("");
         assert_eq!(MatchResult::Ok(0), p.matches(""));
         assert_eq!(MatchResult::Ok(0), p.matches("a"));
         assert_eq!(MatchResult::Ok(0), p.matches("z"));
@@ -833,27 +857,27 @@ mod tests {
         assert_eq!(MatchResult::Ok(0), p.matches("9"));
         assert_eq!(MatchResult::Ok(0), p.matches("!"));
 
-        let p = Pattern::new("a").unwrap();
+        let p = new_pattern("a");
         assert_eq!(MatchResult::Ok(1), p.matches("a"));
         assert_eq!(MatchResult::Ok(1), p.matches("aa"));
         assert_eq!(MatchResult::Err, p.matches("b"));
         assert_eq!(MatchResult::Err, p.matches(""));
 
-        let p = Pattern::new("aa").unwrap();
+        let p = new_pattern("aa");
         assert_eq!(MatchResult::Ok(2), p.matches("aa"));
         assert_eq!(MatchResult::Ok(2), p.matches("aaa"));
         assert_eq!(MatchResult::Err, p.matches("baa"));
 
-        let p = Pattern::new("abc").unwrap();
+        let p = new_pattern("abc");
         assert_eq!(MatchResult::Ok(3), p.matches("abc"));
         assert_eq!(MatchResult::Ok(3), p.matches("abcd"));
         assert_eq!(MatchResult::Err, p.matches("aabc"));
 
-        let p = Pattern::new("%% %$ %. %! %( %) %[ %] %{ %}").unwrap();
+        let p = new_pattern("%% %$ %. %! %( %) %[ %] %{ %}");
         let matched_text = "% $ . ! ( ) [ ] { }";
         assert_eq!(MatchResult::Ok(matched_text.len()), p.matches(matched_text));
 
-        let p = Pattern::new(".").unwrap();
+        let p = new_pattern(".");
         assert_eq!(MatchResult::Ok(1), p.matches("a"));
         assert_eq!(MatchResult::Ok(1), p.matches("z"));
         assert_eq!(MatchResult::Ok(1), p.matches("A"));
@@ -862,7 +886,7 @@ mod tests {
         assert_eq!(MatchResult::Ok(1), p.matches("9"));
         assert_eq!(MatchResult::Ok(1), p.matches("!"));
 
-        let p = Pattern::new("%a").unwrap();
+        let p = new_pattern("%a");
         assert_eq!(MatchResult::Ok(1), p.matches("a"));
         assert_eq!(MatchResult::Ok(1), p.matches("z"));
         assert_eq!(MatchResult::Ok(1), p.matches("A"));
@@ -871,7 +895,7 @@ mod tests {
         assert_eq!(MatchResult::Err, p.matches("9"));
         assert_eq!(MatchResult::Err, p.matches("!"));
 
-        let p = Pattern::new("%l").unwrap();
+        let p = new_pattern("%l");
         assert_eq!(MatchResult::Ok(1), p.matches("a"));
         assert_eq!(MatchResult::Ok(1), p.matches("z"));
         assert_eq!(MatchResult::Err, p.matches("A"));
@@ -880,7 +904,7 @@ mod tests {
         assert_eq!(MatchResult::Err, p.matches("9"));
         assert_eq!(MatchResult::Err, p.matches("!"));
 
-        let p = Pattern::new("%u").unwrap();
+        let p = new_pattern("%u");
         assert_eq!(MatchResult::Err, p.matches("a"));
         assert_eq!(MatchResult::Err, p.matches("z"));
         assert_eq!(MatchResult::Ok(1), p.matches("A"));
@@ -889,7 +913,7 @@ mod tests {
         assert_eq!(MatchResult::Err, p.matches("9"));
         assert_eq!(MatchResult::Err, p.matches("!"));
 
-        let p = Pattern::new("%d").unwrap();
+        let p = new_pattern("%d");
         assert_eq!(MatchResult::Err, p.matches("a"));
         assert_eq!(MatchResult::Err, p.matches("z"));
         assert_eq!(MatchResult::Err, p.matches("A"));
@@ -898,7 +922,7 @@ mod tests {
         assert_eq!(MatchResult::Ok(1), p.matches("9"));
         assert_eq!(MatchResult::Err, p.matches("!"));
 
-        let p = Pattern::new("%w").unwrap();
+        let p = new_pattern("%w");
         assert_eq!(MatchResult::Ok(1), p.matches("a"));
         assert_eq!(MatchResult::Ok(1), p.matches("z"));
         assert_eq!(MatchResult::Ok(1), p.matches("A"));
@@ -910,13 +934,13 @@ mod tests {
 
     #[test]
     fn group() {
-        let p = Pattern::new("[abc]").unwrap();
+        let p = new_pattern("[abc]");
         assert_eq!(MatchResult::Ok(1), p.matches("a"));
         assert_eq!(MatchResult::Ok(1), p.matches("b"));
         assert_eq!(MatchResult::Ok(1), p.matches("c"));
         assert_eq!(MatchResult::Err, p.matches("d"));
 
-        let p = Pattern::new("z[abc]y").unwrap();
+        let p = new_pattern("z[abc]y");
         assert_eq!(MatchResult::Ok(3), p.matches("zay"));
         assert_eq!(MatchResult::Ok(3), p.matches("zby"));
         assert_eq!(MatchResult::Ok(3), p.matches("zcy"));
@@ -924,12 +948,12 @@ mod tests {
         assert_eq!(MatchResult::Err, p.matches("zy"));
         assert_eq!(MatchResult::Err, p.matches("zdy"));
 
-        let p = Pattern::new("z[a]").unwrap();
+        let p = new_pattern("z[a]");
         assert_eq!(MatchResult::Ok(2), p.matches("za"));
         assert_eq!(MatchResult::Err, p.matches("z"));
         assert_eq!(MatchResult::Err, p.matches("zb"));
 
-        let p = Pattern::new("z[%l%d]").unwrap();
+        let p = new_pattern("z[%l%d]");
         assert_eq!(MatchResult::Ok(2), p.matches("za"));
         assert_eq!(MatchResult::Ok(2), p.matches("zz"));
         assert_eq!(MatchResult::Ok(2), p.matches("z0"));
@@ -938,7 +962,7 @@ mod tests {
         assert_eq!(MatchResult::Err, p.matches("zA"));
         assert_eq!(MatchResult::Err, p.matches("zZ"));
 
-        let p = Pattern::new("[!abc]").unwrap();
+        let p = new_pattern("[!abc]");
         assert_eq!(MatchResult::Ok(1), p.matches("d"));
         assert_eq!(MatchResult::Ok(1), p.matches("3"));
         assert_eq!(MatchResult::Ok(1), p.matches("@"));
@@ -949,7 +973,7 @@ mod tests {
         assert_eq!(MatchResult::Err, p.matches("b"));
         assert_eq!(MatchResult::Err, p.matches("c"));
 
-        let p = Pattern::new("x[!%w]y").unwrap();
+        let p = new_pattern("x[!%w]y");
         assert_eq!(MatchResult::Err, p.matches("xay"));
         assert_eq!(MatchResult::Err, p.matches("xzy"));
         assert_eq!(MatchResult::Err, p.matches("xAy"));
@@ -961,26 +985,26 @@ mod tests {
 
     #[test]
     fn sequence() {
-        let p = Pattern::new("(abc)").unwrap();
+        let p = new_pattern("(abc)");
         assert_eq!(MatchResult::Ok(3), p.matches("abc"));
         assert_eq!(MatchResult::Ok(3), p.matches("abcd"));
         assert_eq!(MatchResult::Err, p.matches("a"));
         assert_eq!(MatchResult::Err, p.matches("ab"));
 
-        let p = Pattern::new("z(abc)y").unwrap();
+        let p = new_pattern("z(abc)y");
         assert_eq!(MatchResult::Ok(5), p.matches("zabcy"));
         assert_eq!(MatchResult::Ok(5), p.matches("zabcyd"));
         assert_eq!(MatchResult::Err, p.matches("zay"));
         assert_eq!(MatchResult::Err, p.matches("zaby"));
 
-        let p = Pattern::new("z(%u%w)y").unwrap();
+        let p = new_pattern("z(%u%w)y");
         assert_eq!(MatchResult::Ok(4), p.matches("zA0y"));
         assert_eq!(MatchResult::Ok(4), p.matches("zZay"));
         assert_eq!(MatchResult::Ok(4), p.matches("zA0yA"));
         assert_eq!(MatchResult::Err, p.matches("zaay"));
         assert_eq!(MatchResult::Err, p.matches("z8ay"));
 
-        let p = Pattern::new("(!abc)").unwrap();
+        let p = new_pattern("(!abc)");
         assert_eq!(MatchResult::Err, p.matches("abc"));
         assert_eq!(MatchResult::Err, p.matches("abcd"));
         assert_eq!(MatchResult::Err, p.matches("a"));
@@ -995,25 +1019,25 @@ mod tests {
 
     #[test]
     fn repeat() {
-        let p = Pattern::new("{a}").unwrap();
+        let p = new_pattern("{a}");
         assert_eq!(MatchResult::Ok(0), p.matches(""));
         assert_eq!(MatchResult::Ok(1), p.matches("a"));
         assert_eq!(MatchResult::Ok(4), p.matches("aaaa"));
         assert_eq!(MatchResult::Ok(0), p.matches("b"));
 
-        let p = Pattern::new("{a}b").unwrap();
+        let p = new_pattern("{a}b");
         assert_eq!(MatchResult::Ok(2), p.matches("ab"));
         assert_eq!(MatchResult::Ok(3), p.matches("aab"));
         assert_eq!(MatchResult::Ok(5), p.matches("aaaab"));
 
-        let p = Pattern::new("a{b}c").unwrap();
+        let p = new_pattern("a{b}c");
         assert_eq!(MatchResult::Err, p.matches("a"));
         assert_eq!(MatchResult::Err, p.matches("ab"));
         assert_eq!(MatchResult::Ok(2), p.matches("ac"));
         assert_eq!(MatchResult::Ok(3), p.matches("abc"));
         assert_eq!(MatchResult::Ok(5), p.matches("abbbc"));
 
-        let p = Pattern::new("a{bc}d").unwrap();
+        let p = new_pattern("a{bc}d");
         assert_eq!(MatchResult::Err, p.matches("a"));
         assert_eq!(MatchResult::Ok(2), p.matches("ad"));
         assert_eq!(MatchResult::Ok(3), p.matches("abd"));
@@ -1022,7 +1046,7 @@ mod tests {
         assert_eq!(MatchResult::Ok(5), p.matches("abcbd"));
         assert_eq!(MatchResult::Ok(6), p.matches("abcbcd"));
 
-        let p = Pattern::new("a{b!c}d").unwrap();
+        let p = new_pattern("a{b!c}d");
         assert_eq!(MatchResult::Err, p.matches("ad"));
         assert_eq!(MatchResult::Err, p.matches("abd"));
         assert_eq!(MatchResult::Ok(3), p.matches("acd"));
@@ -1031,11 +1055,11 @@ mod tests {
 
     #[test]
     fn end_anchor() {
-        let p = Pattern::new("a$").unwrap();
+        let p = new_pattern("a$");
         assert_eq!(MatchResult::Ok(1), p.matches("a"));
         assert_eq!(MatchResult::Err, p.matches("aa"));
 
-        let p = Pattern::new("a$b").unwrap();
+        let p = new_pattern("a$b");
         assert_eq!(
             MatchResult::Pending(PatternState { op_index: 4 }),
             p.matches("a")
@@ -1045,7 +1069,7 @@ mod tests {
             p.matches_with_state("b", &PatternState { op_index: 4 })
         );
 
-        let p = Pattern::new("a{.!$}b").unwrap();
+        let p = new_pattern("a{.!$}b");
         match p.matches("axyz") {
             MatchResult::Pending(state) => {
                 assert_eq!(MatchResult::Ok(1), p.matches_with_state("b", &state))
@@ -1053,7 +1077,7 @@ mod tests {
             _ => assert!(false),
         }
 
-        let p = Pattern::new("a{b$!c}{c!d}").unwrap();
+        let p = new_pattern("a{b$!c}{c!d}");
         match p.matches("abb") {
             MatchResult::Pending(state) => match p.matches_with_state("bb", &state) {
                 MatchResult::Pending(state) => {
@@ -1067,12 +1091,12 @@ mod tests {
 
     #[test]
     fn complex_pattern() {
-        let p = Pattern::new("{.!$}").unwrap();
+        let p = new_pattern("{.!$}");
         assert_eq!(MatchResult::Ok(10), p.matches("things 890"));
         assert_eq!(MatchResult::Ok(1), p.matches("0"));
         assert_eq!(MatchResult::Ok(1), p.matches(" "));
 
-        let p = Pattern::new("{[ab%d]!c}").unwrap();
+        let p = new_pattern("{[ab%d]!c}");
         assert_eq!(MatchResult::Ok(1), p.matches("c"));
         assert_eq!(MatchResult::Ok(2), p.matches("ac"));
         assert_eq!(MatchResult::Ok(2), p.matches("bc"));
@@ -1080,30 +1104,30 @@ mod tests {
         assert_eq!(MatchResult::Ok(5), p.matches("0b4ac"));
         assert_eq!(MatchResult::Ok(14), p.matches("a1b234ba9bbbbc"));
 
-        let p = Pattern::new("%d{[%w_%.]!@}").unwrap();
+        let p = new_pattern("%d{[%w_%.]!@}");
         assert_eq!(MatchResult::Ok(6), p.matches("1x4_5@"));
         assert_eq!(MatchResult::Ok(15), p.matches("9xxasd_234.45f@"));
 
-        let p = Pattern::new("ab{(!ba)!b}a").unwrap();
+        let p = new_pattern("ab{(!ba)!b}a");
         assert_eq!(MatchResult::Ok(4), p.matches("abba"));
     }
 
     #[test]
     fn edge_cases() {
-        let p = Pattern::new("(!(!abc))").unwrap();
+        let p = new_pattern("(!(!abc))");
         assert_eq!(MatchResult::Ok(3), p.matches("abc"));
         assert_eq!(MatchResult::Err, p.matches("xyz"));
         assert_eq!(MatchResult::Err, p.matches("a"));
         assert_eq!(MatchResult::Err, p.matches("ab"));
         assert_eq!(MatchResult::Err, p.matches("abz"));
 
-        let p = Pattern::new("[![!abc]]").unwrap();
+        let p = new_pattern("[![!abc]]");
         assert_eq!(MatchResult::Ok(1), p.matches("a"));
         assert_eq!(MatchResult::Ok(1), p.matches("b"));
         assert_eq!(MatchResult::Ok(1), p.matches("c"));
         assert_eq!(MatchResult::Err, p.matches("x"));
 
-        let p = Pattern::new("()").unwrap();
+        let p = new_pattern("()");
         assert_eq!(MatchResult::Ok(0), p.matches(""));
         assert_eq!(MatchResult::Ok(0), p.matches("x"));
     }
@@ -1111,11 +1135,11 @@ mod tests {
     #[test]
     fn pattern_composition() {
         assert!(matches!(
-            Pattern::new("[(ab)c]"),
+            try_new_pattern("[(ab)c]"),
             Err(PatternError::GroupWithElementsOfDifferentSize)
         ));
 
-        let p = Pattern::new("[(ab)(cd)]").unwrap();
+        let p = new_pattern("[(ab)(cd)]");
         assert_eq!(MatchResult::Ok(2), p.matches("ab"));
         assert_eq!(MatchResult::Ok(2), p.matches("cd"));
         assert_eq!(MatchResult::Err, p.matches("a"));
@@ -1123,13 +1147,13 @@ mod tests {
         assert_eq!(MatchResult::Err, p.matches("ad"));
         assert_eq!(MatchResult::Err, p.matches("cb"));
 
-        let p = Pattern::new("[![(ab)(cd)]]").unwrap();
+        let p = new_pattern("[![(ab)(cd)]]");
         assert_eq!(MatchResult::Ok(2), p.matches("ad"));
         assert_eq!(MatchResult::Ok(2), p.matches("bc"));
         assert_eq!(MatchResult::Err, p.matches("ab"));
         assert_eq!(MatchResult::Err, p.matches("cd"));
 
-        let p = Pattern::new("[(ab)(!cd)]").unwrap();
+        let p = new_pattern("[(ab)(!cd)]");
         assert_eq!(MatchResult::Ok(2), p.matches("ab"));
         assert_eq!(MatchResult::Err, p.matches("b"));
         assert_eq!(MatchResult::Ok(2), p.matches("ax"));
@@ -1137,7 +1161,7 @@ mod tests {
         assert_eq!(MatchResult::Ok(2), p.matches("acd"));
         assert_eq!(MatchResult::Ok(2), p.matches("cb"));
 
-        let p = Pattern::new("{(a[!ab])!x!$}").unwrap();
+        let p = new_pattern("{(a[!ab])!x!$}");
         assert_eq!(MatchResult::Ok(0), p.matches(""));
         assert_eq!(MatchResult::Err, p.matches("a"));
         assert_eq!(MatchResult::Ok(2), p.matches("ac"));
@@ -1145,7 +1169,7 @@ mod tests {
         assert_eq!(MatchResult::Err, p.matches("acab"));
         assert_eq!(MatchResult::Ok(4), p.matches("acax"));
 
-        let p = Pattern::new("{[(!ab)(cd)]!$}").unwrap();
+        let p = new_pattern("{[(!ab)(cd)]!$}");
         assert_eq!(MatchResult::Ok(0), p.matches(""));
         assert_eq!(MatchResult::Ok(2), p.matches("cd"));
         assert_eq!(MatchResult::Err, p.matches("ab"));
@@ -1155,13 +1179,13 @@ mod tests {
 
     #[test]
     fn multi_subpatterns() {
-        let p = Pattern::new("a|b").unwrap();
+        let p = new_pattern("a|b");
         assert_eq!(MatchResult::Ok(1), p.matches("a"));
         assert_eq!(MatchResult::Ok(1), p.matches("b"));
         assert_eq!(MatchResult::Err, p.matches("c"));
         assert_eq!(MatchResult::Err, p.matches(""));
 
-        let p = Pattern::new("ab{(ab)}|c").unwrap();
+        let p = new_pattern("ab{(ab)}|c");
         assert_eq!(MatchResult::Err, p.matches("a"));
         assert_eq!(MatchResult::Ok(2), p.matches("ab"));
         assert_eq!(MatchResult::Ok(2), p.matches("aba"));
@@ -1182,17 +1206,17 @@ mod tests {
             };
         }
 
-        assert_err!(PatternError::UnexpectedEndOfPattern, Pattern::new("("));
-        assert_err!(PatternError::Unescaped(')'), Pattern::new(")"));
-        assert_err!(PatternError::UnexpectedEndOfPattern, Pattern::new("["));
-        assert_err!(PatternError::Unescaped(']'), Pattern::new("]"));
-        assert_err!(PatternError::EmptyGroup, Pattern::new("[]"));
-        assert_err!(PatternError::UnexpectedEndOfPattern, Pattern::new("{"));
-        assert_err!(PatternError::Unescaped('}'), Pattern::new("}"));
-        assert_err!(PatternError::UnexpectedEndOfPattern, Pattern::new("%"));
-        assert_err!(PatternError::Unescaped('!'), Pattern::new("!"));
-        assert_err!(PatternError::InvalidEscaping('@'), Pattern::new("%@"));
-        assert_err!(PatternError::Unescaped('|'), Pattern::new("|"));
-        assert_err!(PatternError::UnexpectedEndOfPattern, Pattern::new("a|"));
+        assert_err!(PatternError::UnexpectedEndOfPattern, try_new_pattern("("));
+        assert_err!(PatternError::Unescaped(')'), try_new_pattern(")"));
+        assert_err!(PatternError::UnexpectedEndOfPattern, try_new_pattern("["));
+        assert_err!(PatternError::Unescaped(']'), try_new_pattern("]"));
+        assert_err!(PatternError::EmptyGroup, try_new_pattern("[]"));
+        assert_err!(PatternError::UnexpectedEndOfPattern, try_new_pattern("{"));
+        assert_err!(PatternError::Unescaped('}'), try_new_pattern("}"));
+        assert_err!(PatternError::UnexpectedEndOfPattern, try_new_pattern("%"));
+        assert_err!(PatternError::Unescaped('!'), try_new_pattern("!"));
+        assert_err!(PatternError::InvalidEscaping('@'), try_new_pattern("%@"));
+        assert_err!(PatternError::Unescaped('|'), try_new_pattern("|"));
+        assert_err!(PatternError::UnexpectedEndOfPattern, try_new_pattern("a|"));
     }
 }

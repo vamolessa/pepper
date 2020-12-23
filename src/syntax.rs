@@ -4,19 +4,19 @@ use crate::{
     buffer::BufferContent,
     buffer_position::BufferRange,
     glob::Glob,
-    pattern::{MatchResult, Pattern, PatternState},
+    pattern::{MatchResult, Pattern, PatternError, PatternState},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenKind {
-    Whitespace,
-    Text,
-    Comment,
     Keyword,
     Type,
     Symbol,
-    String,
     Literal,
+    String,
+    Comment,
+    Text,
+    Whitespace,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -29,7 +29,7 @@ struct Token {
 enum LineParseState {
     Dirty,
     Finished,
-    Unfinished(usize, PatternState),
+    Unfinished(TokenKind, PatternState),
 }
 
 impl Default for LineParseState {
@@ -38,19 +38,35 @@ impl Default for LineParseState {
     }
 }
 
-#[derive(Default)]
 pub struct Syntax {
     glob: Glob,
-    rules: Vec<(TokenKind, Pattern)>,
+    rules: [Pattern; 7],
 }
 
 impl Syntax {
+    pub fn new() -> Self {
+        let mut text_pattern = Pattern::new();
+        let _ = text_pattern.compile("%a{%w_}|_{%w_}");
+        Self {
+            glob: Glob::default(),
+            rules: [
+                Pattern::new(),
+                Pattern::new(),
+                Pattern::new(),
+                Pattern::new(),
+                Pattern::new(),
+                Pattern::new(),
+                text_pattern,
+            ],
+        }
+    }
+
     pub fn set_glob(&mut self, pattern: &[u8]) {
         let _ = self.glob.compile(pattern);
     }
 
-    pub fn add_rule(&mut self, kind: TokenKind, pattern: Pattern) {
-        self.rules.push((kind, pattern));
+    pub fn set_rule(&mut self, kind: TokenKind, pattern: &str) -> Result<(), PatternError> {
+        self.rules[kind as usize].compile(pattern)
     }
 
     fn parse_line(
@@ -61,25 +77,17 @@ impl Syntax {
     ) -> LineParseState {
         tokens.clear();
 
-        if self.rules.is_empty() {
-            tokens.push(Token {
-                kind: TokenKind::Text,
-                range: 0..line.len(),
-            });
-            return LineParseState::Finished;
-        }
-
         let line_len = line.len();
         let mut line_index = 0;
 
         match previous_parse_state {
             LineParseState::Dirty => unreachable!(),
             LineParseState::Finished => (),
-            LineParseState::Unfinished(pattern_index, state) => {
-                match self.rules[pattern_index].1.matches_with_state(line, &state) {
+            LineParseState::Unfinished(kind, state) => {
+                match self.rules[kind as usize].matches_with_state(line, &state) {
                     MatchResult::Ok(len) => {
                         tokens.push(Token {
-                            kind: self.rules[pattern_index].0,
+                            kind,
                             range: 0..len,
                         });
                         line_index += len;
@@ -87,10 +95,10 @@ impl Syntax {
                     MatchResult::Err => (),
                     MatchResult::Pending(state) => {
                         tokens.push(Token {
-                            kind: self.rules[pattern_index].0,
+                            kind,
                             range: 0..line_len,
                         });
-                        return LineParseState::Unfinished(pattern_index, state);
+                        return LineParseState::Unfinished(kind, state);
                     }
                 }
             }
@@ -104,28 +112,49 @@ impl Syntax {
                 .count();
             let line_slice = &line_slice[whitespace_len..];
 
-            let mut best_pattern_index = 0;
+            let mut best_pattern_kind = TokenKind::Text;
             let mut max_len = 0;
-            for (i, (kind, pattern)) in self.rules.iter().enumerate() {
+
+            macro_rules! for_each_non_whitespace_token_kind {
+                ($token_kind:ident => $body:block) => {{
+                    let $token_kind = TokenKind::Keyword;
+                    $body;
+                    let $token_kind = TokenKind::Type;
+                    $body;
+                    let $token_kind = TokenKind::Symbol;
+                    $body;
+                    let $token_kind = TokenKind::Literal;
+                    $body;
+                    let $token_kind = TokenKind::String;
+                    $body;
+                    let $token_kind = TokenKind::Comment;
+                    $body;
+                    let $token_kind = TokenKind::Text;
+                    $body;
+                }};
+            }
+
+            for_each_non_whitespace_token_kind!(kind => {
+                let pattern = &self.rules[kind as usize];
                 match pattern.matches(line_slice) {
                     MatchResult::Ok(len) => {
                         if len > max_len {
                             max_len = len;
-                            best_pattern_index = i;
+                            best_pattern_kind = kind;
                         }
                     }
                     MatchResult::Err => (),
                     MatchResult::Pending(state) => {
                         tokens.push(Token {
-                            kind: *kind,
+                            kind,
                             range: line_index..line_len,
                         });
-                        return LineParseState::Unfinished(i, state);
+                        return LineParseState::Unfinished(kind, state);
                     }
                 }
-            }
+            });
 
-            let mut kind = self.rules[best_pattern_index].0;
+            let mut kind = best_pattern_kind;
 
             if max_len == 0 {
                 kind = TokenKind::Text;
@@ -165,7 +194,7 @@ pub struct SyntaxCollection {
 impl SyntaxCollection {
     pub fn new() -> Self {
         let mut syntaxes = Vec::new();
-        syntaxes.push(Syntax::default());
+        syntaxes.push(Syntax::new());
         Self { syntaxes }
     }
 
@@ -372,20 +401,25 @@ mod tests {
 
     #[test]
     fn no_syntax() {
-        let syntax = Syntax::default();
+        let syntax = Syntax::new();
         let mut tokens = Vec::new();
         let line = " fn main() ;  ";
         let parse_state = syntax.parse_line(line, LineParseState::Finished, &mut tokens);
 
         assert_eq!(LineParseState::Finished, parse_state);
-        assert_eq!(1, tokens.len());
-        assert_token(line, TokenKind::Text, line, &tokens[0]);
+        assert_eq!(6, tokens.len());
+        assert_token(" fn", TokenKind::Text, line, &tokens[0]);
+        assert_token(" main", TokenKind::Text, line, &tokens[1]);
+        assert_token("(", TokenKind::Text, line, &tokens[2]);
+        assert_token(")", TokenKind::Text, line, &tokens[3]);
+        assert_token(" ;", TokenKind::Text, line, &tokens[4]);
+        assert_token("  ", TokenKind::Text, line, &tokens[5]);
     }
 
     #[test]
     fn one_rule_syntax() {
-        let mut syntax = Syntax::default();
-        syntax.add_rule(TokenKind::Symbol, Pattern::new(";").unwrap());
+        let mut syntax = Syntax::new();
+        syntax.set_rule(TokenKind::Symbol, ";").unwrap();
 
         let mut tokens = Vec::new();
         let line = " fn main() ;  ";
@@ -403,10 +437,9 @@ mod tests {
 
     #[test]
     fn simple_syntax() {
-        let mut syntax = Syntax::default();
-        syntax.add_rule(TokenKind::Keyword, Pattern::new("fn").unwrap());
-        syntax.add_rule(TokenKind::Symbol, Pattern::new("%(").unwrap());
-        syntax.add_rule(TokenKind::Symbol, Pattern::new("%)").unwrap());
+        let mut syntax = Syntax::new();
+        syntax.set_rule(TokenKind::Keyword, "fn").unwrap();
+        syntax.set_rule(TokenKind::Symbol, "%(|%)").unwrap();
 
         let mut tokens = Vec::new();
         let line = " fn main() ;  ";
@@ -424,8 +457,8 @@ mod tests {
 
     #[test]
     fn multiline_syntax() {
-        let mut syntax = Syntax::default();
-        syntax.add_rule(TokenKind::Comment, Pattern::new("/*{!(*/).$}").unwrap());
+        let mut syntax = Syntax::new();
+        syntax.set_rule(TokenKind::Comment, "/*{!(*/).$}").unwrap();
 
         let mut tokens = Vec::new();
         let line0 = "before /* comment";
@@ -434,7 +467,7 @@ mod tests {
 
         let line0_kind = syntax.parse_line(line0, LineParseState::Finished, &mut tokens);
         match line0_kind {
-            LineParseState::Unfinished(i, _) => assert_eq!(0, i),
+            LineParseState::Unfinished(i, _) => assert_eq!(TokenKind::Comment, i),
             _ => panic!("{:?}", line0_kind),
         }
         assert_eq!(2, tokens.len());
@@ -443,7 +476,7 @@ mod tests {
 
         let line1_kind = syntax.parse_line(line1, line0_kind, &mut tokens);
         match line1_kind {
-            LineParseState::Unfinished(i, _) => assert_eq!(0, i),
+            LineParseState::Unfinished(i, _) => assert_eq!(TokenKind::Comment, i),
             _ => panic!("{:?}", line1_kind),
         }
         assert_eq!(1, tokens.len());
@@ -458,9 +491,9 @@ mod tests {
 
     #[test]
     fn editing_highlighted_buffer() {
-        let mut syntax = Syntax::default();
-        syntax.add_rule(TokenKind::Comment, Pattern::new("/*{!(*/).$}").unwrap());
-        syntax.add_rule(TokenKind::String, Pattern::new("'{!'.$}").unwrap());
+        let mut syntax = Syntax::new();
+        syntax.set_rule(TokenKind::Comment, "/*{!(*/).$}").unwrap();
+        syntax.set_rule(TokenKind::String, "'{!'.$}").unwrap();
 
         let mut buffer = BufferContent::new();
         let mut highlighted = HighlightedBuffer::new();
@@ -491,8 +524,8 @@ mod tests {
 
     #[test]
     fn highlight_range_after_unfinished_line() {
-        let mut syntax = Syntax::default();
-        syntax.add_rule(TokenKind::Comment, Pattern::new("/*{!(*/).$}").unwrap());
+        let mut syntax = Syntax::new();
+        syntax.set_rule(TokenKind::Comment, "/*{!(*/).$}").unwrap();
 
         let mut buffer = BufferContent::new();
         let mut highlighted = HighlightedBuffer::new();
@@ -512,8 +545,8 @@ mod tests {
 
     #[test]
     fn highlight_lines_after_unfinished_to_finished() {
-        let mut syntax = Syntax::default();
-        syntax.add_rule(TokenKind::Comment, Pattern::new("/*{!(*/).$}").unwrap());
+        let mut syntax = Syntax::new();
+        syntax.set_rule(TokenKind::Comment, "/*{!(*/).$}").unwrap();
 
         let mut buffer = BufferContent::new();
         let mut highlighted = HighlightedBuffer::new();
@@ -553,8 +586,8 @@ mod tests {
 
     #[test]
     fn highlight_lines_after_became_unfinished() {
-        let mut syntax = Syntax::default();
-        syntax.add_rule(TokenKind::Comment, Pattern::new("/*{!(*/).$}").unwrap());
+        let mut syntax = Syntax::new();
+        syntax.set_rule(TokenKind::Comment, "/*{!(*/).$}").unwrap();
 
         let mut buffer = BufferContent::new();
         let mut highlighted = HighlightedBuffer::new();
@@ -580,8 +613,8 @@ mod tests {
 
     #[test]
     fn highlight_unfinished_lines_on_multiline_delete() {
-        let mut syntax = Syntax::default();
-        syntax.add_rule(TokenKind::Comment, Pattern::new("/*{!(*/).$}").unwrap());
+        let mut syntax = Syntax::new();
+        syntax.set_rule(TokenKind::Comment, "/*{!(*/).$}").unwrap();
 
         let mut buffer = BufferContent::new();
         let mut highlighted = HighlightedBuffer::new();
