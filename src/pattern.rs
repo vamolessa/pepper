@@ -350,15 +350,31 @@ impl<'a> PatternCompiler<'a> {
     }
 
     fn parse_subpatterns(&mut self) -> Result<(), PatternError> {
-        let end_jump = self.get_absolute_jump(JumpFrom::End(Jump(0)));
+        fn add_reset_jump(compiler: &mut PatternCompiler) -> Jump {
+            let jump = (compiler.ops.len() + 2).into();
+            compiler.ops.push(Op::Unwind(jump, Length(0)));
+            let jump = compiler.ops.len().into();
+            compiler.ops.push(Op::Reset(jump));
+            jump
+        }
+        fn patch_reset_jump(compiler: &mut PatternCompiler, reset_jump: Jump) {
+            let jump = compiler.ops.len().into();
+            if let Op::Reset(j) = &mut compiler.ops[reset_jump.0 as usize] {
+                *j = jump;
+            } else {
+                unreachable!();
+            }
+        }
+
+        let reset_jump = add_reset_jump(self);
         while let Ok(_) = self.next() {
-            self.parse_stmt(JumpFrom::Beginning(end_jump))?;
+            self.parse_stmt(JumpFrom::Beginning(reset_jump))?;
             //if let Ok(b'|') = self.peek() {
             //    self.next()?;
             //}
         }
         self.ops.push(Op::Unwind(Jump(1), Length(0)));
-        self.patch_jump(JumpFrom::End(Jump(0)), end_jump);
+        patch_reset_jump(self, reset_jump);
         self.ops.push(Op::Unwind(Jump(0), Length(0)));
         Ok(())
     }
@@ -396,10 +412,10 @@ impl<'a> PatternCompiler<'a> {
         }
     }
 
-    fn patch_jump(&mut self, jump: JumpFrom, abs_jump: Jump) {
+    fn patch_unwind_jump(&mut self, jump: JumpFrom, unwind_jump: Jump) {
         if let JumpFrom::End(mut jump) = jump {
             jump += self.ops.len().into();
-            if let Op::Unwind(j, Length(0)) = &mut self.ops[abs_jump.0 as usize] {
+            if let Op::Unwind(j, Length(0)) = &mut self.ops[unwind_jump.0 as usize] {
                 *j = jump;
             } else {
                 unreachable!();
@@ -448,7 +464,7 @@ impl<'a> PatternCompiler<'a> {
             self.jump_at_end(erj);
         }
 
-        self.patch_jump(JumpFrom::End(Jump(0)), end_jump);
+        self.patch_unwind_jump(JumpFrom::End(Jump(0)), end_jump);
 
         self.assert_current(b'}')?;
         Ok(())
@@ -478,7 +494,7 @@ impl<'a> PatternCompiler<'a> {
             }
             self.ops.push(Op::Unwind(abs_erj, len));
             self.jump_at_end(okj);
-            self.patch_jump(erj, abs_erj);
+            self.patch_unwind_jump(erj, abs_erj);
         } else {
             let abs_erj = self.get_absolute_jump(erj);
             while self.next_is_not(b')')? {
@@ -487,7 +503,7 @@ impl<'a> PatternCompiler<'a> {
                 len += expr_len;
             }
             self.jump_at_end(okj);
-            self.patch_jump(erj, abs_erj);
+            self.patch_unwind_jump(erj, abs_erj);
         }
 
         self.assert_current(b')')?;
@@ -520,7 +536,7 @@ impl<'a> PatternCompiler<'a> {
                     self.skip(jump, abs_erj, len);
                 }
             }
-            self.patch_jump(erj, abs_erj);
+            self.patch_unwind_jump(erj, abs_erj);
         } else {
             let abs_okj = self.get_absolute_jump(okj);
             while self.next_is_not(b']')? {
@@ -533,7 +549,7 @@ impl<'a> PatternCompiler<'a> {
                 len = Some(expr_len);
             }
             self.jump_at_end(erj);
-            self.patch_jump(okj, abs_okj);
+            self.patch_unwind_jump(okj, abs_okj);
         }
 
         self.assert_current(b']')?;
@@ -1016,12 +1032,12 @@ mod tests {
 
         let p = Pattern::new("a$b").unwrap();
         assert_eq!(
-            MatchResult::Pending(PatternState { op_index: 4 }),
+            MatchResult::Pending(PatternState { op_index: 5 }),
             p.matches("a")
         );
         assert_eq!(
             MatchResult::Ok(1),
-            p.matches_with_state("b", &PatternState { op_index: 4 })
+            p.matches_with_state("b", &PatternState { op_index: 5 })
         );
 
         let p = Pattern::new("a{.!$}b").unwrap();
