@@ -12,7 +12,7 @@ use crate::{
     editor_event::{EditorEvent, EditorEventQueue},
     history::{Edit, EditKind, History},
     script::ScriptValue,
-    syntax::{HighlightedBuffer, SyntaxCollection, SyntaxHandle},
+    syntax::{HighlightResult, HighlightedBuffer, SyntaxCollection, SyntaxHandle},
     word_database::{WordDatabase, WordIter, WordKind},
 };
 
@@ -764,9 +764,9 @@ impl Buffer {
         &self.highlighted
     }
 
-    pub fn update_highlighting(&mut self, syntaxes: &SyntaxCollection) {
+    pub fn update_highlighting(&mut self, syntaxes: &SyntaxCollection) -> HighlightResult {
         self.highlighted
-            .highlight_dirty_lines(syntaxes.get(self.syntax_handle), &self.content);
+            .highlight_dirty_lines(syntaxes.get(self.syntax_handle), &self.content)
     }
 
     pub fn refresh_syntax(&mut self, syntaxes: &SyntaxCollection) {

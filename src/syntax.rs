@@ -7,7 +7,7 @@ use crate::{
     pattern::{MatchResult, Pattern, PatternError, PatternState},
 };
 
-const MAX_HIGHLIGHT_COUNT: usize = 1024;
+const MAX_HIGHLIGHT_COUNT: usize = 2048;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenKind {

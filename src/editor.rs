@@ -19,6 +19,7 @@ use crate::{
     picker::Picker,
     register::{RegisterCollection, RegisterKey, KEY_QUEUE_REGISTER},
     script::ScriptEngine,
+    syntax::HighlightResult,
     task::{TaskHandle, TaskManager, TaskResult},
     word_database::{EmptyWordCollection, WordDatabase},
 };
@@ -298,7 +299,10 @@ impl Editor {
                 .map(|v| v.buffer_handle)
                 .and_then(|h| buffers.get_mut(h))
             {
-                buffer.update_highlighting(&self.config.syntaxes);
+                if let HighlightResult::Pending = buffer.update_highlighting(&self.config.syntaxes)
+                {
+                    let _ = self.local_event_sender.send(LocalEvent::Repaint);
+                }
             }
 
             client.update_view(self, picker_height);
