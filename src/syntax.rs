@@ -34,7 +34,7 @@ enum LineParseState {
 
 impl Default for LineParseState {
     fn default() -> Self {
-        Self::Finished
+        Self::Dirty
     }
 }
 
@@ -274,9 +274,7 @@ impl HighlightedBuffer {
         }
 
         self.lines[range.to.line_index].parse_state = LineParseState::Dirty;
-        for i in range.from.line_index..=range.to.line_index {
-            self.dirty_line_indexes.push(i);
-        }
+        self.dirty_line_indexes.push(range.from.line_index);
     }
 
     pub fn on_delete(&mut self, range: BufferRange) {
