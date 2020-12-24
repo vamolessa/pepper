@@ -314,8 +314,11 @@ impl HighlightedBuffer {
             None => LineParseState::Finished,
         };
 
-        for dirty_index in &self.dirty_line_indexes {
-            let dirty_index = *dirty_index;
+        let mut i = 0;
+        while i < self.dirty_line_indexes.len() {
+            let dirty_index = self.dirty_line_indexes[i];
+            i += 1;
+
             if dirty_index < index || dirty_index == last_dirty_index {
                 continue;
             }
