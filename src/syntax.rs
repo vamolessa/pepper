@@ -7,6 +7,8 @@ use crate::{
     pattern::{MatchResult, Pattern, PatternError, PatternState},
 };
 
+const MAX_HIGHLIGHT_COUNT: usize = 1024;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenKind {
     Keyword,
@@ -225,6 +227,11 @@ struct HighlightedLine {
     tokens: Vec<Token>,
 }
 
+pub enum HighlightResult {
+    Complete,
+    Pending,
+}
+
 pub struct HighlightedBuffer {
     highlighted_len: usize,
     lines: Vec<HighlightedLine>,
@@ -300,9 +307,13 @@ impl HighlightedBuffer {
         self.dirty_line_indexes.push(range.from.line_index);
     }
 
-    pub fn highlight_dirty_lines(&mut self, syntax: &Syntax, buffer: &BufferContent) {
+    pub fn highlight_dirty_lines(
+        &mut self,
+        syntax: &Syntax,
+        buffer: &BufferContent,
+    ) -> HighlightResult {
         if self.dirty_line_indexes.is_empty() {
-            return;
+            return HighlightResult::Complete;
         }
 
         self.dirty_line_indexes.sort();
@@ -314,6 +325,7 @@ impl HighlightedBuffer {
             None => LineParseState::Finished,
         };
 
+        let mut highlight_count = 0;
         let mut i = 0;
         while i < self.dirty_line_indexes.len() {
             let dirty_index = self.dirty_line_indexes[i];
@@ -336,6 +348,14 @@ impl HighlightedBuffer {
                 hline.parse_state = previous_parse_state;
 
                 index += 1;
+                highlight_count += 1;
+
+                if highlight_count == MAX_HIGHLIGHT_COUNT {
+                    i -= 1;
+                    self.dirty_line_indexes[i] = index;
+                    self.dirty_line_indexes.rotate_left(i);
+                    return HighlightResult::Pending;
+                }
 
                 if previous_state == LineParseState::Finished
                     && previous_parse_state == LineParseState::Finished
@@ -346,6 +366,7 @@ impl HighlightedBuffer {
         }
 
         self.dirty_line_indexes.clear();
+        HighlightResult::Complete
     }
 
     pub fn find_token_kind_at(&self, line_index: usize, char_index: usize) -> TokenKind {
