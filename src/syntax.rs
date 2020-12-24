@@ -257,10 +257,18 @@ impl HighlightedBuffer {
     pub fn on_insert(&mut self, range: BufferRange) {
         let insert_line_count = range.to.line_index - range.from.line_index;
         if insert_line_count > 0 {
+            let from = self.highlighted_len;
             self.highlighted_len += insert_line_count;
             if self.highlighted_len > self.lines.len() {
+                for line in &mut self.lines[from..] {
+                    line.parse_state = LineParseState::Dirty;
+                }
                 self.lines
                     .resize_with(self.highlighted_len, HighlightedLine::default);
+            } else {
+                for line in &mut self.lines[from..self.highlighted_len] {
+                    line.parse_state = LineParseState::Dirty;
+                }
             }
 
             let insert_index = range.from.line_index + 1;
