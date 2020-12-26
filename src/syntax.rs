@@ -80,7 +80,7 @@ impl Syntax {
         tokens.clear();
 
         let line_len = line.len();
-        let mut line_index = 0;
+        let mut index = 0;
 
         match previous_parse_state {
             LineParseState::Dirty => unreachable!(),
@@ -92,7 +92,7 @@ impl Syntax {
                             kind,
                             range: 0..len,
                         });
-                        line_index += len;
+                        index += len;
                     }
                     MatchResult::Err => (),
                     MatchResult::Pending(state) => {
@@ -106,8 +106,8 @@ impl Syntax {
             }
         }
 
-        while line_index < line_len {
-            let line_slice = &line[line_index..];
+        while index < line_len {
+            let line_slice = &line[index..];
             let whitespace_len = line_slice
                 .bytes()
                 .take_while(u8::is_ascii_whitespace)
@@ -149,7 +149,7 @@ impl Syntax {
                     MatchResult::Pending(state) => {
                         tokens.push(Token {
                             kind,
-                            range: line_index..line_len,
+                            range: index..line_len,
                         });
                         return LineParseState::Unfinished(kind, state);
                     }
@@ -169,16 +169,16 @@ impl Syntax {
 
             max_len += whitespace_len;
 
-            let from = line_index;
-            line_index = line_len.min(line_index + max_len);
+            let from = index;
+            index = line_len.min(index + max_len);
 
-            while !line.is_char_boundary(line_index) {
-                line_index += 1;
+            while !line.is_char_boundary(index) {
+                index += 1;
             }
 
             tokens.push(Token {
                 kind,
-                range: from..line_index,
+                range: from..index,
             });
         }
 
