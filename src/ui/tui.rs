@@ -3,9 +3,11 @@ use std::{
     iter,
     sync::mpsc,
     thread,
+    time::Duration,
 };
 
 use crossterm::{
+    Command,
     cursor, event, handle_command,
     style::{
         Attribute, Color, Print, ResetColor, SetAttribute, SetBackgroundColor, SetForegroundColor,
@@ -28,10 +30,13 @@ use crate::{
 
 use super::{read_keys_from_stdin, Ui, UiResult};
 
-macro_rules! write_command {
-    ($writer:expr, $command:expr) => {{
-        let _ = handle_command!($writer, $command);
-    }};
+#[inline]
+fn write_command<W, C>(writer: &mut W, command: C)
+where
+    W: io::Write,
+    C: Command,
+{
+    let _ = handle_command!(writer, command);
 }
 
 fn convert_event(event: event::Event) -> LocalEvent {
@@ -102,12 +107,20 @@ where
 
             thread::spawn(move || {
                 loop {
+                    match event::poll(Duration::from_millis(1000)) {
+                        Ok(false) => match event_sender.send(LocalEvent::Repaint) {
+                            Ok(()) => (),
+                            Err(_) => break,
+                        },
+                        Ok(true) => (),
+                        Err(_) => break,
+                    }
                     let event = match event::read() {
                         Ok(event) => event,
                         Err(_) => break,
                     };
 
-                    if event_sender.send(convert_event(event)).is_err() {
+                    if let Err(_) = event_sender.send(convert_event(event)) {
                         break;
                     }
                 }
@@ -122,8 +135,8 @@ where
     fn init(&mut self) -> UiResult<()> {
         ctrlc::set_handler(|| {}).map_err(Box::new)?;
 
-        write_command!(self.write, terminal::EnterAlternateScreen);
-        write_command!(self.write, cursor::Hide);
+        write_command(&mut self.write, terminal::EnterAlternateScreen);
+        write_command(&mut self.write, cursor::Hide);
         self.write.flush()?;
         terminal::enable_raw_mode()?;
         Ok(())
@@ -131,16 +144,16 @@ where
 
     fn display(&mut self, buffer: &[u8]) -> UiResult<()> {
         self.write.write_all(buffer)?;
-        write_command!(self.write, ResetColor);
+        write_command(&mut self.write, ResetColor);
         self.write.flush()?;
         Ok(())
     }
 
     fn shutdown(&mut self) -> UiResult<()> {
-        write_command!(self.write, terminal::Clear(terminal::ClearType::All));
-        write_command!(self.write, terminal::LeaveAlternateScreen);
-        write_command!(self.write, ResetColor);
-        write_command!(self.write, cursor::Show);
+        write_command(&mut self.write, terminal::Clear(terminal::ClearType::All));
+        write_command(&mut self.write, terminal::LeaveAlternateScreen);
+        write_command(&mut self.write, ResetColor);
+        write_command(&mut self.write, cursor::Show);
         self.write.flush()?;
         terminal::disable_raw_mode()?;
         Ok(())
@@ -239,9 +252,9 @@ where
 
     let mut text_color = token_text_color;
 
-    write_command!(write, cursor::MoveTo(0, 0));
-    write_command!(write, SetBackgroundColor(background_color));
-    write_command!(write, SetForegroundColor(text_color));
+    write_command(write, cursor::MoveTo(0, 0));
+    write_command(write, SetBackgroundColor(background_color));
+    write_command(write, SetForegroundColor(text_color));
 
     let mut line_index = scroll;
     let mut drawn_line_count = 0;
@@ -307,11 +320,11 @@ where
         let mut column_byte_index = 0;
         let mut x = 0;
 
-        write_command!(write, SetForegroundColor(token_text_color));
+        write_command(write, SetForegroundColor(token_text_color));
 
         for (char_index, c) in line.as_str().char_indices().chain(iter::once((0, '\0'))) {
             if x >= width {
-                write_command!(write, cursor::MoveToNextLine(1));
+                write_command(write, cursor::MoveToNextLine(1));
 
                 drawn_line_count += 1;
                 x -= width;
@@ -370,56 +383,56 @@ where
             if inside_diagnostic_range != was_inside_diagnostic_range {
                 was_inside_diagnostic_range = inside_diagnostic_range;
                 if inside_diagnostic_range {
-                    write_command!(write, SetAttribute(Attribute::Underlined));
+                    write_command(write, SetAttribute(Attribute::Underlined));
                 } else {
-                    write_command!(write, SetAttribute(Attribute::NoUnderline));
+                    write_command(write, SetAttribute(Attribute::NoUnderline));
                 }
             }
 
             if char_position == current_cursor_position {
                 if draw_state != DrawState::Cursor {
                     draw_state = DrawState::Cursor;
-                    write_command!(write, SetBackgroundColor(cursor_color));
-                    write_command!(write, SetForegroundColor(text_color));
+                    write_command(write, SetBackgroundColor(cursor_color));
+                    write_command(write, SetForegroundColor(text_color));
                 }
             } else if inside_cursor_range {
                 if draw_state != DrawState::Selection(token_kind) {
                     draw_state = DrawState::Selection(token_kind);
-                    write_command!(write, SetBackgroundColor(text_color));
-                    write_command!(write, SetForegroundColor(background_color));
+                    write_command(write, SetBackgroundColor(text_color));
+                    write_command(write, SetForegroundColor(background_color));
                 }
             } else if inside_search_range {
                 if draw_state != DrawState::Highlight {
                     draw_state = DrawState::Highlight;
-                    write_command!(write, SetBackgroundColor(highlight_color));
-                    write_command!(write, SetForegroundColor(background_color));
+                    write_command(write, SetBackgroundColor(highlight_color));
+                    write_command(write, SetForegroundColor(background_color));
                 }
             } else if draw_state != DrawState::Token(token_kind) {
                 draw_state = DrawState::Token(token_kind);
-                write_command!(write, SetBackgroundColor(background_color));
-                write_command!(write, SetForegroundColor(text_color));
+                write_command(write, SetBackgroundColor(background_color));
+                write_command(write, SetForegroundColor(text_color));
             }
 
             match c {
                 '\0' => {
-                    write_command!(write, Print(' '));
+                    write_command(write, Print(' '));
                     x += 1;
                 }
                 ' ' => {
-                    write_command!(write, Print(editor.config.values.visual_space));
+                    write_command(write, Print(editor.config.values.visual_space));
                     x += 1;
                 }
                 '\t' => {
-                    write_command!(write, Print(editor.config.values.visual_tab_first));
+                    write_command(write, Print(editor.config.values.visual_tab_first));
                     let tab_size = editor.config.values.tab_size.get() as u16;
                     let next_tab_stop = (tab_size - 1) - x % tab_size;
                     for _ in 0..next_tab_stop {
-                        write_command!(write, Print(editor.config.values.visual_tab_repeat));
+                        write_command(write, Print(editor.config.values.visual_tab_repeat));
                     }
                     x += next_tab_stop + 1;
                 }
                 _ => {
-                    write_command!(write, Print(c));
+                    write_command(write, Print(c));
                     x += 1;
                 }
             }
@@ -428,11 +441,11 @@ where
         }
 
         if x < width {
-            write_command!(write, SetBackgroundColor(background_color));
-            write_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine));
+            write_command(write, SetBackgroundColor(background_color));
+            write_command(write, terminal::Clear(terminal::ClearType::UntilNewLine));
         }
 
-        write_command!(write, cursor::MoveToNextLine(1));
+        write_command(write, cursor::MoveToNextLine(1));
 
         line_index += 1;
         drawn_line_count += 1;
@@ -442,12 +455,12 @@ where
         }
     }
 
-    write_command!(write, SetBackgroundColor(background_color));
-    write_command!(write, SetForegroundColor(token_whitespace_color));
+    write_command(write, SetBackgroundColor(background_color));
+    write_command(write, SetForegroundColor(token_whitespace_color));
     for _ in drawn_line_count..height {
-        write_command!(write, Print(editor.config.values.visual_empty));
-        write_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine));
-        write_command!(write, cursor::MoveToNextLine(1));
+        write_command(write, Print(editor.config.values.visual_empty));
+        write_command(write, terminal::Clear(terminal::ClearType::UntilNewLine));
+        write_command(write, cursor::MoveToNextLine(1));
     }
 }
 
@@ -468,8 +481,8 @@ where
     let background_color = convert_color(editor.config.theme.token_text);
     let foreground_color = convert_color(editor.config.theme.token_whitespace);
 
-    write_command!(write, SetBackgroundColor(background_color));
-    write_command!(write, SetForegroundColor(foreground_color));
+    write_command(write, SetBackgroundColor(background_color));
+    write_command(write, SetForegroundColor(foreground_color));
 
     for (i, entry) in editor
         .picker
@@ -479,11 +492,11 @@ where
         .take(height)
     {
         if i == cursor {
-            write_command!(write, SetForegroundColor(background_color));
-            write_command!(write, SetBackgroundColor(foreground_color));
+            write_command(write, SetForegroundColor(background_color));
+            write_command(write, SetBackgroundColor(foreground_color));
         } else if i == cursor + 1 {
-            write_command!(write, SetBackgroundColor(background_color));
-            write_command!(write, SetForegroundColor(foreground_color));
+            write_command(write, SetBackgroundColor(background_color));
+            write_command(write, SetForegroundColor(foreground_color));
         }
 
         let mut x = 0;
@@ -492,8 +505,8 @@ where
             ($c:expr) => {
                 x += 1;
                 match $c {
-                    '\t' => write_command!(write, Print(' ')),
-                    c => write_command!(write, Print(c)),
+                    '\t' => write_command(write, Print(' ')),
+                    c => write_command(write, Print(c)),
                 }
             };
         }
@@ -504,7 +517,7 @@ where
                 print_char!(c);
             }
         } else {
-            write_command!(write, Print("..."));
+            write_command(write, Print("..."));
             x += 3;
             let name_char_count = name_char_count + 3;
             for c in entry
@@ -516,20 +529,20 @@ where
             }
         }
         for _ in x..half_width {
-            write_command!(write, Print(' '));
+            write_command(write, Print(' '));
         }
-        write_command!(write, Print('|'));
+        write_command(write, Print('|'));
         x = 0;
         for c in entry.description.chars() {
             if x + 3 > half_width {
-                write_command!(write, Print("..."));
+                write_command(write, Print("..."));
                 break;
             }
             print_char!(c);
         }
 
-        write_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine));
-        write_command!(write, cursor::MoveToNextLine(1));
+        write_command(write, terminal::Clear(terminal::ClearType::UntilNewLine));
+        write_command(write, cursor::MoveToNextLine(1));
     }
 }
 
@@ -549,11 +562,11 @@ fn draw_statusbar<W>(
     let cursor_color = convert_color(editor.config.theme.cursor);
 
     if has_focus {
-        write_command!(write, SetBackgroundColor(background_color));
-        write_command!(write, SetForegroundColor(foreground_color));
+        write_command(write, SetBackgroundColor(background_color));
+        write_command(write, SetForegroundColor(foreground_color));
     } else {
-        write_command!(write, SetBackgroundColor(foreground_color));
-        write_command!(write, SetForegroundColor(background_color));
+        write_command(write, SetBackgroundColor(foreground_color));
+        write_command(write, SetForegroundColor(background_color));
     }
 
     let x = if has_focus {
@@ -566,29 +579,29 @@ fn draw_statusbar<W>(
                     Some(key) => {
                         let text = "recording macro ";
                         let key = key.to_char();
-                        write_command!(write, Print(text));
-                        write_command!(write, Print(key));
+                        write_command(write, Print(text));
+                        write_command(write, Print(key));
                         Some(text.len() + 1)
                     }
                     None => Some(0),
                 },
                 Mode::Insert(_) => {
                     let text = "-- INSERT --";
-                    write_command!(write, Print(text));
+                    write_command(write, Print(text));
                     Some(text.len())
                 }
                 Mode::Picker(_) | Mode::ReadLine(_) | Mode::Script(_) => {
                     let read_line = &editor.read_line;
 
-                    write_command!(write, SetBackgroundColor(prompt_background_color));
-                    write_command!(write, SetForegroundColor(prompt_foreground_color));
-                    write_command!(write, Print(read_line.prompt()));
-                    write_command!(write, SetBackgroundColor(background_color));
-                    write_command!(write, SetForegroundColor(foreground_color));
-                    write_command!(write, Print(read_line.input()));
-                    write_command!(write, SetBackgroundColor(cursor_color));
-                    write_command!(write, Print(' '));
-                    write_command!(write, SetBackgroundColor(background_color));
+                    write_command(write, SetBackgroundColor(prompt_background_color));
+                    write_command(write, SetForegroundColor(prompt_foreground_color));
+                    write_command(write, Print(read_line.prompt()));
+                    write_command(write, SetBackgroundColor(background_color));
+                    write_command(write, SetForegroundColor(foreground_color));
+                    write_command(write, Print(read_line.input()));
+                    write_command(write, SetBackgroundColor(cursor_color));
+                    write_command(write, Print(' '));
+                    write_command(write, SetBackgroundColor(background_color));
                     None
                 }
             }
@@ -599,8 +612,8 @@ fn draw_statusbar<W>(
             {
                 for c in line.chars() {
                     match c {
-                        '\t' => write_command!(write, Print("    ")),
-                        c => write_command!(write, Print(c)),
+                        '\t' => write_command(write, Print("    ")),
+                        c => write_command(write, Print(c)),
                     };
                 }
             }
@@ -613,32 +626,32 @@ fn draw_statusbar<W>(
             let line_count = status_message.lines().count();
             if line_count > 1 {
                 if prefix.is_empty() {
-                    write_command!(write, cursor::MoveUp((line_count - 1) as _));
+                    write_command(write, cursor::MoveUp((line_count - 1) as _));
                 } else {
-                    write_command!(write, cursor::MoveUp(line_count as _));
-                    write_command!(write, SetBackgroundColor(prompt_background_color));
-                    write_command!(write, SetForegroundColor(prompt_foreground_color));
-                    write_command!(write, Print(prefix));
-                    write_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine));
-                    write_command!(write, cursor::MoveToNextLine(1));
-                    write_command!(write, SetBackgroundColor(background_color));
-                    write_command!(write, SetForegroundColor(foreground_color));
+                    write_command(write, cursor::MoveUp(line_count as _));
+                    write_command(write, SetBackgroundColor(prompt_background_color));
+                    write_command(write, SetForegroundColor(prompt_foreground_color));
+                    write_command(write, Print(prefix));
+                    write_command(write, terminal::Clear(terminal::ClearType::UntilNewLine));
+                    write_command(write, cursor::MoveToNextLine(1));
+                    write_command(write, SetBackgroundColor(background_color));
+                    write_command(write, SetForegroundColor(foreground_color));
                 }
 
                 for (i, line) in status_message.lines().enumerate() {
                     print_line(write, line);
                     if i < line_count - 1 {
-                        write_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine));
-                        write_command!(write, cursor::MoveToNextLine(1));
+                        write_command(write, terminal::Clear(terminal::ClearType::UntilNewLine));
+                        write_command(write, cursor::MoveToNextLine(1));
                     }
                 }
             } else {
-                write_command!(write, terminal::Clear(terminal::ClearType::CurrentLine));
-                write_command!(write, SetBackgroundColor(prompt_background_color));
-                write_command!(write, SetForegroundColor(prompt_foreground_color));
-                write_command!(write, Print(prefix));
-                write_command!(write, SetBackgroundColor(background_color));
-                write_command!(write, SetForegroundColor(foreground_color));
+                write_command(write, terminal::Clear(terminal::ClearType::CurrentLine));
+                write_command(write, SetBackgroundColor(prompt_background_color));
+                write_command(write, SetForegroundColor(prompt_foreground_color));
+                write_command(write, Print(prefix));
+                write_command(write, SetBackgroundColor(background_color));
+                write_command(write, SetForegroundColor(foreground_color));
                 print_line(write, status_message);
             }
 
@@ -686,7 +699,7 @@ fn draw_statusbar<W>(
                 buf.push('*');
             }
             buf.push_str(buffer_path);
-            write_command!(write, terminal::SetTitle(&buf[title_start..]));
+            write_command(write, terminal::SetTitle(&buf[title_start..]));
 
             if client_view.buffer.is_some() {
                 let line_number = client_view.main_cursor_position.line_index + 1;
@@ -707,18 +720,18 @@ fn draw_statusbar<W>(
             let buf = &buf[min_index..];
 
             for _ in 0..(available_width - buf.len()) {
-                write_command!(write, Print(' '));
+                write_command(write, Print(' '));
             }
-            write_command!(write, Print(buf));
+            write_command(write, Print(buf));
         }
         None => {
             if buffer_needs_save {
                 buf.push('*');
             }
             buf.push_str(buffer_path);
-            write_command!(write, terminal::SetTitle(&buf));
+            write_command(write, terminal::SetTitle(&buf));
         }
     }
 
-    write_command!(write, terminal::Clear(terminal::ClearType::UntilNewLine));
+    write_command(write, terminal::Clear(terminal::ClearType::UntilNewLine));
 }
