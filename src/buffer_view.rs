@@ -759,7 +759,7 @@ impl BufferViewCollection {
             let handle = self.buffer_view_handle_from_buffer_handle(target_client, buffer_handle);
             try_set_line_index(self, buffers, handle, line_index);
             Ok(handle)
-        } else if path.to_str().map(|s| !s.trim().is_empty()).unwrap_or(false) {
+        } else if path.to_str().map(|s| !s.is_empty()).unwrap_or(false) {
             let path = path.strip_prefix(root).unwrap_or(path);
 
             let buffer = buffers.new(BufferCapabilities::text());

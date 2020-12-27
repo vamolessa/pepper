@@ -264,14 +264,22 @@ impl HighlightedBuffer {
     pub fn on_insert(&mut self, range: BufferRange) {
         let insert_line_count = range.to.line_index - range.from.line_index;
         if insert_line_count > 0 {
+            let previous_highlighted_len = self.highlighted_len;
             self.highlighted_len += insert_line_count;
             if self.highlighted_len > self.lines.len() {
+                for line in &mut self.lines[previous_highlighted_len..] {
+                    line.parse_state = LineParseState::Dirty;
+                }
                 self.lines
                     .resize_with(self.highlighted_len, HighlightedLine::default);
+            } else {
+                for line in &mut self.lines[previous_highlighted_len..self.highlighted_len] {
+                    line.parse_state = LineParseState::Dirty;
+                }
             }
 
             let insert_index = range.from.line_index + 1;
-            self.lines[insert_index..].rotate_right(insert_line_count);
+            self.lines[insert_index..self.highlighted_len].rotate_right(insert_line_count);
 
             for index in &mut self.dirty_line_indexes {
                 if insert_index <= *index {
@@ -280,14 +288,12 @@ impl HighlightedBuffer {
             }
         }
 
-        self.lines[range.to.line_index].parse_state = LineParseState::Dirty;
+        self.lines[range.from.line_index].parse_state = LineParseState::Dirty;
         self.dirty_line_indexes.push(range.from.line_index);
     }
 
     pub fn on_delete(&mut self, range: BufferRange) {
-        for line in &mut self.lines[range.from.line_index..=range.to.line_index] {
-            line.parse_state = LineParseState::Dirty;
-        }
+        self.lines[range.from.line_index].parse_state = LineParseState::Dirty;
 
         let delete_line_count = range.to.line_index - range.from.line_index;
         if delete_line_count > 0 {
