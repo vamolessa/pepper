@@ -1,5 +1,6 @@
 use std::{
     io,
+    ops::Range,
     path::{Path, PathBuf},
     process::{self, Command},
     sync::mpsc,
@@ -14,6 +15,7 @@ use crate::{
     editor::StatusMessage,
     editor_event::{EditorEvent, EditorEventQueue, EditorEventsIter},
     glob::Glob,
+    history::EditKind,
     json::{FromJson, Json, JsonArray, JsonConvertError, JsonObject, JsonString, JsonValue},
     lsp::{
         capabilities,
@@ -218,6 +220,51 @@ fn are_same_path_with_root(root_a: &Path, a: &Path, b: &Path) -> bool {
     }
 }
 
+struct BufferEdit {
+    kind: EditKind,
+    buffer_range: BufferRange,
+    text_range: Range<usize>,
+}
+#[derive(Default)]
+struct BufferEdits {
+    texts: String,
+    edits: Vec<BufferEdit>,
+}
+#[derive(Default)]
+struct BufferEditsCollection {
+    buffer_edits: Vec<BufferEdits>,
+}
+impl BufferEditsCollection {
+    pub fn add(
+        &mut self,
+        buffer_handle: BufferHandle,
+        kind: EditKind,
+        range: BufferRange,
+        text: &str,
+    ) {
+        let index = buffer_handle.into_index();
+        if index >= self.buffer_edits.len() {
+            self.buffer_edits
+                .resize_with(index + 1, BufferEdits::default);
+        }
+        let buffer_edits = &mut self.buffer_edits[index];
+        let text_range_start = buffer_edits.texts.len();
+        buffer_edits.texts.push_str(text);
+        buffer_edits.edits.push(BufferEdit {
+            kind,
+            buffer_range: range,
+            text_range: text_range_start..buffer_edits.texts.len(),
+        });
+    }
+
+    pub fn clear(&mut self, buffer_handle: BufferHandle) {
+        if let Some(buffer_edits) = self.buffer_edits.get_mut(buffer_handle.into_index()) {
+            buffer_edits.texts.clear();
+            buffer_edits.edits.clear();
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct DiagnosticCollection {
     buffer_diagnostics: Vec<BufferDiagnosticCollection>,
@@ -336,6 +383,7 @@ pub struct Client {
     log_write_buf: Vec<u8>,
     log_buffer_handle: Option<BufferHandle>,
     document_selectors: Vec<Glob>,
+    buffer_edits: BufferEditsCollection,
     pub diagnostics: DiagnosticCollection,
 }
 
@@ -353,6 +401,7 @@ impl Client {
             log_buffer_handle: None,
 
             document_selectors: Vec::new(),
+            buffer_edits: BufferEditsCollection::default(),
             diagnostics: DiagnosticCollection::default(),
         }
     }
@@ -743,12 +792,15 @@ impl Client {
                     // buffer changes
                 }
                 EditorEvent::BufferSave { handle, new_path } => {
-                    self.diagnostics.on_save_buffer(ctx, *handle);
-                    send_did_save(self, ctx, json, *handle);
+                    let handle = *handle;
+                    self.diagnostics.on_save_buffer(ctx, handle);
+                    send_did_save(self, ctx, json, handle);
                 }
                 EditorEvent::BufferClose { handle } => {
-                    self.diagnostics.on_close_buffer(*handle);
-                    send_did_close(self, ctx, json, *handle);
+                    let handle = *handle;
+                    self.buffer_edits.clear(handle);
+                    self.diagnostics.on_close_buffer(handle);
+                    send_did_close(self, ctx, json, handle);
                 }
             }
         }
