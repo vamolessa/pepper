@@ -497,6 +497,12 @@ impl Editor {
         result
     }
 
+    pub fn on_idle(&mut self, clients: &mut ClientCollection) {
+        let (_, events) = self.editor_events.get_stream_and_sink();
+        events.enqueue(EditorEvent::Idle);
+        self.trigger_event_handlers(clients, TargetClient::Local);
+    }
+
     fn mode_context<'a>(
         &'a mut self,
         clients: &'a mut ClientCollection,

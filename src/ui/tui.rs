@@ -108,7 +108,7 @@ where
             thread::spawn(move || {
                 loop {
                     match event::poll(Duration::from_millis(1000)) {
-                        Ok(false) => match event_sender.send(LocalEvent::Repaint) {
+                        Ok(false) => match event_sender.send(LocalEvent::Idle) {
                             Ok(()) => (),
                             Err(_) => break,
                         },
@@ -119,7 +119,6 @@ where
                         Ok(event) => event,
                         Err(_) => break,
                     };
-
                     if let Err(_) = event_sender.send(convert_event(event)) {
                         break;
                     }

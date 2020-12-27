@@ -379,12 +379,7 @@ impl Client {
             let position =
                 BufferPosition::line_col(line_index, content.line_at(line_index).as_str().len());
             let text = String::from_utf8_lossy(&self.log_write_buf);
-            buffer.insert_text(
-                ctx.word_database,
-                position,
-                &text,
-                ctx.editor_events,
-            );
+            buffer.insert_text(ctx.word_database, position, &text, ctx.editor_events);
         }
     }
 
@@ -728,10 +723,14 @@ impl Client {
 
         for event in events {
             match event {
+                EditorEvent::Idle => {
+                    // send buffer changes
+                }
                 EditorEvent::BufferLoad { handle } => {
                     self.diagnostics.on_load_buffer(ctx, *handle);
                     send_did_open(self, ctx, json, *handle);
                 }
+                EditorEvent::BufferOpen { .. } => (),
                 EditorEvent::BufferInsertText {
                     handle,
                     range,
@@ -751,7 +750,6 @@ impl Client {
                     self.diagnostics.on_close_buffer(*handle);
                     send_did_close(self, ctx, json, *handle);
                 }
-                _ => (),
             }
         }
         Ok(())

@@ -12,6 +12,7 @@ impl EditorEventText {
 }
 
 pub enum EditorEvent {
+    Idle,
     BufferLoad {
         handle: BufferHandle,
     },

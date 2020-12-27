@@ -190,6 +190,7 @@ where
         match event {
             LocalEvent::None => continue,
             LocalEvent::EndOfInput => break,
+            LocalEvent::Idle => editor.on_idle(&mut clients),
             LocalEvent::Repaint => (),
             LocalEvent::Key(key) => {
                 editor.status_message.clear();
@@ -287,7 +288,7 @@ where
 
     for event in event_receiver.iter() {
         match event {
-            LocalEvent::None | LocalEvent::Repaint => continue,
+            LocalEvent::None | LocalEvent::Idle | LocalEvent::Repaint => continue,
             LocalEvent::EndOfInput => break,
             LocalEvent::Key(key) => {
                 profiler.begin_frame();

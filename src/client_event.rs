@@ -15,7 +15,7 @@ use crate::{
 pub enum LocalEvent {
     None,
     EndOfInput,
-    //Idle,
+    Idle,
     Repaint,
     Key(Key),
     Resize(u16, u16),
