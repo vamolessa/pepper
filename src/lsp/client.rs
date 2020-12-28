@@ -461,7 +461,7 @@ impl Client {
 
         self.write_to_log_buffer(ctx, |buf| {
             use io::Write;
-            let _ = write!(buf, "request\nid: ");
+            let _ = write!(buf, "receive request\nid: ");
             let _ = json.write(buf, &request.id);
             let _ = write!(
                 buf,
@@ -545,7 +545,7 @@ impl Client {
             use io::Write;
             let _ = write!(
                 buf,
-                "notification\nmethod: '{}'\nparams:\n",
+                "receive notification\nmethod: '{}'\nparams:\n",
                 notification.method.as_str(json)
             );
             let _ = json.write(buf, &notification.params);
@@ -633,7 +633,7 @@ impl Client {
             use io::Write;
             let _ = write!(
                 buf,
-                "response\nid: {}\nmethod: '{}'\n",
+                "receive response\nid: {}\nmethod: '{}'\n",
                 response.id.0, method
             );
             match &response.result {
@@ -658,7 +658,7 @@ impl Client {
                 Ok(result) => {
                     self.server_capabilities = deserialize!(result.get("capabilities", &json));
                     self.initialized = true;
-                    self.notify(json, "initialized", JsonObject::default())?;
+                    self.notify(ctx, json, "initialized", JsonObject::default())?;
                 }
                 Err(_) => unimplemented!(),
             },
@@ -676,7 +676,7 @@ impl Client {
     ) -> io::Result<()> {
         self.write_to_log_buffer(ctx, |buf| {
             use io::Write;
-            let _ = write!(buf, "parse error\nrequest_id: ");
+            let _ = write!(buf, "send parse error\nrequest_id: ");
             let _ = json.write(buf, &request_id);
         });
 
@@ -764,9 +764,7 @@ impl Client {
             let mut params = JsonObject::default();
             params.set("textDocument".into(), text_document.into(), json);
 
-            client
-                .protocol
-                .notify(json, "textDocument/didOpen", params.into())
+            client.notify(ctx, json, "textDocument/didOpen", params.into())
         }
 
         fn send_pending_did_change(
@@ -778,7 +776,8 @@ impl Client {
                 return Ok(());
             }
 
-            for (buffer_handle, versioned_buffer) in client.versioned_buffers.iter_pending_mut() {
+            let mut versioned_buffers = std::mem::take(&mut client.versioned_buffers);
+            for (buffer_handle, versioned_buffer) in versioned_buffers.iter_pending_mut() {
                 let buffer = match ctx.buffers.get(buffer_handle) {
                     Some(buffer) => buffer,
                     None => continue,
@@ -828,11 +827,10 @@ impl Client {
 
                 params.set("contentChanges".into(), content_changes.into(), json);
 
-                let _ = client
-                    .protocol
-                    .notify(json, "textDocument/didChange", params.into());
                 versioned_buffer.flush();
+                client.notify(ctx, json, "textDocument/didChange", params.into())?;
             }
+            std::mem::swap(&mut client.versioned_buffers, &mut versioned_buffers);
 
             return Ok(());
         }
@@ -865,7 +863,7 @@ impl Client {
                 params.set("text".into(), text.into(), json);
             }
 
-            client.notify(json, "textDocument/didSave", params.into())
+            client.notify(ctx, json, "textDocument/didSave", params.into())
         }
 
         fn send_did_close(
@@ -891,7 +889,7 @@ impl Client {
             let mut params = JsonObject::default();
             params.set("textDocument".into(), text_document.into(), json);
 
-            client.notify(json, "textDocument/didClose", params.into())
+            client.notify(ctx, json, "textDocument/didClose", params.into())
         }
 
         if !self.initialized {
@@ -942,26 +940,49 @@ impl Client {
 
     fn request(
         &mut self,
+        ctx: &mut ClientContext,
         json: &mut Json,
         method: &'static str,
         params: JsonObject,
     ) -> io::Result<()> {
-        let id = self.protocol.request(json, method, params.into())?;
+        let params = params.into();
+
+        self.write_to_log_buffer(ctx, |buf| {
+            use io::Write;
+            let _ = write!(buf, "send request\nmethod: '{}'\nparams:\n", method);
+            let _ = json.write(buf, &params);
+        });
+
+        let id = self.protocol.request(json, method, params)?;
         self.pending_requests.add(id, method);
         Ok(())
     }
 
     fn notify(
         &mut self,
+        ctx: &mut ClientContext,
         json: &mut Json,
         method: &'static str,
         params: JsonObject,
     ) -> io::Result<()> {
-        self.protocol.notify(json, method, params.into())?;
+        let params = params.into();
+
+        self.write_to_log_buffer(ctx, |buf| {
+            use io::Write;
+            let _ = write!(buf, "send notification\nmethod: '{}'\nparams:\n", method);
+            let _ = json.write(buf, &params);
+        });
+
+        self.protocol.notify(json, method, params)?;
         Ok(())
     }
 
-    fn initialize(&mut self, json: &mut Json, root: &Path) -> io::Result<()> {
+    fn initialize(
+        &mut self,
+        ctx: &mut ClientContext,
+        json: &mut Json,
+        root: &Path,
+    ) -> io::Result<()> {
         let mut params = JsonObject::default();
         params.set(
             "processId".into(),
@@ -976,7 +997,7 @@ impl Client {
             json,
         );
 
-        self.request(json, "initialize", params)?;
+        self.request(ctx, json, "initialize", params)?;
         Ok(())
     }
 }
@@ -1007,7 +1028,12 @@ impl ClientCollection {
         }
     }
 
-    pub fn start(&mut self, command: Command, root: &Path) -> io::Result<ClientHandle> {
+    pub fn start(
+        &mut self,
+        ctx: &mut ClientContext,
+        command: Command,
+        root: &Path,
+    ) -> io::Result<ClientHandle> {
         let handle = self.find_free_slot();
         let json = SharedJson::new();
         let connection =
@@ -1018,7 +1044,7 @@ impl ClientCollection {
         };
         entry
             .client
-            .initialize(entry.json.write_lock().get(), root)?;
+            .initialize(ctx, entry.json.write_lock().get(), root)?;
         self.entries[handle.0] = Some(entry);
         Ok(handle)
     }

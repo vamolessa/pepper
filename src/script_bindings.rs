@@ -335,8 +335,8 @@ mod lsp {
             None => ctx.current_directory,
         };
 
-        ctx.lsp
-            .start(command, root)
+        let (lsp, mut ctx) = ctx.lsp_context();
+        lsp.start(&mut ctx, command, root)
             .map_err(ScriptError::from)
     }
 
