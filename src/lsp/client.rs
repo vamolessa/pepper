@@ -214,25 +214,32 @@ fn are_same_path_with_root(root_a: &Path, a: &Path, b: &Path) -> bool {
     }
 }
 
-struct BufferEdit {
+struct VersionedBufferEdit {
     kind: EditKind,
     buffer_range: BufferRange,
     text_range: Range<usize>,
 }
 #[derive(Default)]
-struct BufferEdits {
+struct VersionedBuffer {
+    version: usize,
     texts: String,
-    edits: Vec<BufferEdit>,
+    pending_edits: Vec<VersionedBufferEdit>,
 }
-impl BufferEdits {
-    pub fn clear(&mut self) {
+impl VersionedBuffer {
+    pub fn flush(&mut self) {
         self.texts.clear();
-        self.edits.clear();
+        self.pending_edits.clear();
+        self.version += 1;
+    }
+
+    pub fn dispose(&mut self) {
+        self.flush();
+        self.version = 0;
     }
 }
 #[derive(Default)]
 struct BufferEditsCollection {
-    buffer_edits: Vec<BufferEdits>,
+    buffer_edits: Vec<VersionedBuffer>,
 }
 impl BufferEditsCollection {
     pub fn add(
@@ -245,31 +252,31 @@ impl BufferEditsCollection {
         let index = buffer_handle.0;
         if index >= self.buffer_edits.len() {
             self.buffer_edits
-                .resize_with(index + 1, BufferEdits::default);
+                .resize_with(index + 1, VersionedBuffer::default);
         }
         let buffer_edits = &mut self.buffer_edits[index];
         let text_range_start = buffer_edits.texts.len();
         buffer_edits.texts.push_str(text);
-        buffer_edits.edits.push(BufferEdit {
+        buffer_edits.pending_edits.push(VersionedBufferEdit {
             kind,
             buffer_range: range,
             text_range: text_range_start..buffer_edits.texts.len(),
         });
     }
 
-    pub fn clear(&mut self, buffer_handle: BufferHandle) {
+    pub fn dispose(&mut self, buffer_handle: BufferHandle) {
         if let Some(buffer_edits) = self.buffer_edits.get_mut(buffer_handle.0) {
-            buffer_edits.clear();
+            buffer_edits.dispose();
         }
     }
 
     pub fn iter_pending_mut<'a>(
         &'a mut self,
-    ) -> impl 'a + Iterator<Item = (BufferHandle, &'a mut BufferEdits)> {
+    ) -> impl 'a + Iterator<Item = (BufferHandle, &'a mut VersionedBuffer)> {
         self.buffer_edits
             .iter_mut()
             .enumerate()
-            .filter(|(_, e)| !e.edits.is_empty())
+            .filter(|(_, e)| !e.pending_edits.is_empty())
             .map(|(i, e)| (BufferHandle(i), e))
     }
 }
@@ -783,7 +790,7 @@ impl Client {
                 let _ = client
                     .protocol
                     .notify(json, "textDocument/didChange", params.into());
-                buffer_edits.clear();
+                buffer_edits.flush();
             }
         }
 
@@ -859,7 +866,7 @@ impl Client {
                 }
                 EditorEvent::BufferLoad { handle } => {
                     let handle = *handle;
-                    self.buffer_edits.clear(handle);
+                    self.buffer_edits.dispose(handle);
                     self.diagnostics.on_load_buffer(ctx, handle);
                     send_did_open(self, ctx, json, handle);
                 }
@@ -884,7 +891,7 @@ impl Client {
                 }
                 EditorEvent::BufferClose { handle } => {
                     let handle = *handle;
-                    self.buffer_edits.clear(handle);
+                    self.buffer_edits.dispose(handle);
                     self.diagnostics.on_close_buffer(handle);
                     send_did_close(self, ctx, json, handle);
                 }
