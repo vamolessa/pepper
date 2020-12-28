@@ -1273,6 +1273,9 @@ fn move_to_diagnostic(state: &mut State, ctx: &mut ModeContext, forward: bool) {
         NavigationHistory::save_client_snapshot(ctx.clients, ctx.buffer_views, ctx.target_client);
 
         let buffer_view = unwrap_or_return!(ctx.buffer_views.get_mut(buffer_view_handle));
+        let buffer = unwrap_or_return!(ctx.buffers.get(buffer_view.buffer_handle));
+        let position = buffer.content().saturate_position(position);
+
         let mut cursors = buffer_view.cursors.mut_guard();
         cursors.clear();
         cursors.add(Cursor {
