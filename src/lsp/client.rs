@@ -390,7 +390,6 @@ impl DiagnosticCollection {
 }
 
 pub struct Client {
-    name: String,
     protocol: Protocol,
     pending_requests: PendingRequestColection,
 
@@ -404,9 +403,8 @@ pub struct Client {
 }
 
 impl Client {
-    fn new(name: String, connection: ServerConnection) -> Self {
+    fn new(connection: ServerConnection) -> Self {
         Self {
-            name,
             protocol: Protocol::new(connection),
             pending_requests: PendingRequestColection::default(),
 
@@ -420,10 +418,6 @@ impl Client {
             versioned_buffers: VersionedBufferCollection::default(),
             diagnostics: DiagnosticCollection::default(),
         }
-    }
-
-    pub fn name(&self) -> &str {
-        &self.name
     }
 
     pub fn set_log_buffer(&mut self, log_buffer_handle: Option<BufferHandle>) {
@@ -445,6 +439,8 @@ impl Client {
                 BufferPosition::line_col(line_index, content.line_at(line_index).as_str().len());
             let text = String::from_utf8_lossy(&self.log_write_buf);
             buffer.insert_text(ctx.word_database, position, &text, ctx.editor_events);
+
+            eprintln!("{}", text);
         }
     }
 
@@ -1015,7 +1011,6 @@ impl ClientCollection {
 
     pub fn start(
         &mut self,
-        name: String,
         command: Command,
         root: &Path,
     ) -> io::Result<ClientHandle> {
@@ -1024,7 +1019,7 @@ impl ClientCollection {
         let connection =
             ServerConnection::spawn(command, handle, json.clone(), self.event_sender.clone())?;
         let mut entry = ClientCollectionEntry {
-            client: Client::new(name, connection),
+            client: Client::new(connection),
             json,
         };
         entry

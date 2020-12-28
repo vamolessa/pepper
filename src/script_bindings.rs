@@ -322,8 +322,6 @@ mod lsp {
         (command, args, root): (ScriptString, Option<ScriptArray>, Option<ScriptString>),
     ) -> ScriptResult<LspClientHandle> {
         let command = command.to_str()?;
-        let name = command.into();
-
         let mut command = Command::new(command);
         if let Some(args) = args {
             for arg in args.iter() {
@@ -338,7 +336,7 @@ mod lsp {
         };
 
         ctx.lsp
-            .start(name, command, root)
+            .start(command, root)
             .map_err(ScriptError::from)
     }
 
@@ -351,7 +349,7 @@ mod lsp {
         if let Some(client) = ctx.lsp.get_mut(handle) {
             let buffer = ctx.buffers.new(BufferCapabilities::log());
             let buffer_handle = buffer.handle();
-            buffer.set_path(Some(Path::new(client.name())));
+            buffer.set_path(Some(Path::new("language-server-output")));
             client.set_log_buffer(Some(buffer_handle));
 
             let view_handle = ctx
