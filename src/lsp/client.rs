@@ -658,12 +658,7 @@ impl Client {
                 Ok(result) => {
                     self.server_capabilities = deserialize!(result.get("capabilities", &json));
                     self.initialized = true;
-
-                    self.protocol.notify(
-                        json,
-                        "initialized",
-                        JsonValue::Object(JsonObject::default()),
-                    )?;
+                    self.notify(json, "initialized", JsonObject::default())?;
                 }
                 Err(_) => unimplemented!(),
             },
@@ -870,9 +865,7 @@ impl Client {
                 params.set("text".into(), text.into(), json);
             }
 
-            client
-                .protocol
-                .notify(json, "textDocument/didSave", params.into())
+            client.notify(json, "textDocument/didSave", params.into())
         }
 
         fn send_did_close(
@@ -898,9 +891,7 @@ impl Client {
             let mut params = JsonObject::default();
             params.set("textDocument".into(), text_document.into(), json);
 
-            client
-                .protocol
-                .notify(json, "textDocument/didClose", params.into())
+            client.notify(json, "textDocument/didClose", params.into())
         }
 
         if !self.initialized {
