@@ -745,18 +745,18 @@ impl Client {
             ctx: &mut ClientContext,
             json: &mut Json,
             buffer_handle: BufferHandle,
-        ) {
+        ) -> io::Result<()> {
             if !client.server_capabilities.textDocumentSync.open_close {
-                return;
+                return Ok(());
             }
 
             let buffer = match ctx.buffers.get(buffer_handle) {
                 Some(buffer) => buffer,
-                None => return,
+                None => return Ok(()),
             };
             let buffer_path = match buffer.path() {
                 Some(path) => path,
-                None => return,
+                None => return Ok(()),
             };
 
             let mut text_document = text_document_with_id(ctx, buffer_path, json);
@@ -769,14 +769,18 @@ impl Client {
             let mut params = JsonObject::default();
             params.set("textDocument".into(), text_document.into(), json);
 
-            let _ = client
+            client
                 .protocol
-                .notify(json, "textDocument/didOpen", params.into());
+                .notify(json, "textDocument/didOpen", params.into())
         }
 
-        fn send_pending_did_change(client: &mut Client, ctx: &mut ClientContext, json: &mut Json) {
+        fn send_pending_did_change(
+            client: &mut Client,
+            ctx: &mut ClientContext,
+            json: &mut Json,
+        ) -> io::Result<()> {
             if let TextDocumentSyncKind::None = client.server_capabilities.textDocumentSync.change {
-                return;
+                return Ok(());
             }
 
             for (buffer_handle, versioned_buffer) in client.versioned_buffers.iter_pending_mut() {
@@ -834,6 +838,8 @@ impl Client {
                     .notify(json, "textDocument/didChange", params.into());
                 versioned_buffer.flush();
             }
+
+            return Ok(());
         }
 
         fn send_did_save(
@@ -841,18 +847,18 @@ impl Client {
             ctx: &mut ClientContext,
             json: &mut Json,
             buffer_handle: BufferHandle,
-        ) {
+        ) -> io::Result<()> {
             if let TextDocumentSyncKind::None = client.server_capabilities.textDocumentSync.save {
-                return;
+                return Ok(());
             }
 
             let buffer = match ctx.buffers.get(buffer_handle) {
                 Some(buffer) => buffer,
-                None => return,
+                None => return Ok(()),
             };
             let buffer_path = match buffer.path() {
                 Some(path) => path,
-                None => return,
+                None => return Ok(()),
             };
 
             let text_document = text_document_with_id(ctx, buffer_path, json);
@@ -864,9 +870,9 @@ impl Client {
                 params.set("text".into(), text.into(), json);
             }
 
-            let _ = client
+            client
                 .protocol
-                .notify(json, "textDocument/didSave", params.into());
+                .notify(json, "textDocument/didSave", params.into())
         }
 
         fn send_did_close(
@@ -874,27 +880,27 @@ impl Client {
             ctx: &mut ClientContext,
             json: &mut Json,
             buffer_handle: BufferHandle,
-        ) {
+        ) -> io::Result<()> {
             if !client.server_capabilities.textDocumentSync.open_close {
-                return;
+                return Ok(());
             }
 
             let buffer = match ctx.buffers.get(buffer_handle) {
                 Some(buffer) => buffer,
-                None => return,
+                None => return Ok(()),
             };
             let buffer_path = match buffer.path() {
                 Some(path) => path,
-                None => return,
+                None => return Ok(()),
             };
 
             let text_document = text_document_with_id(ctx, buffer_path, json);
             let mut params = JsonObject::default();
             params.set("textDocument".into(), text_document.into(), json);
 
-            let _ = client
+            client
                 .protocol
-                .notify(json, "textDocument/didClose", params.into());
+                .notify(json, "textDocument/didClose", params.into())
         }
 
         if !self.initialized {
@@ -904,13 +910,13 @@ impl Client {
         for event in events {
             match event {
                 EditorEvent::Idle => {
-                    send_pending_did_change(self, ctx, json);
+                    send_pending_did_change(self, ctx, json)?;
                 }
                 EditorEvent::BufferLoad { handle } => {
                     let handle = *handle;
                     self.versioned_buffers.dispose(handle);
                     self.diagnostics.on_load_buffer(ctx, handle);
-                    send_did_open(self, ctx, json, handle);
+                    send_did_open(self, ctx, json, handle)?;
                 }
                 EditorEvent::BufferOpen { .. } => (),
                 EditorEvent::BufferInsertText {
@@ -929,14 +935,14 @@ impl Client {
                 EditorEvent::BufferSave { handle, .. } => {
                     let handle = *handle;
                     self.diagnostics.on_save_buffer(ctx, handle);
-                    send_pending_did_change(self, ctx, json);
-                    send_did_save(self, ctx, json, handle);
+                    send_pending_did_change(self, ctx, json)?;
+                    send_did_save(self, ctx, json, handle)?;
                 }
                 EditorEvent::BufferClose { handle } => {
                     let handle = *handle;
                     self.versioned_buffers.dispose(handle);
                     self.diagnostics.on_close_buffer(handle);
-                    send_did_close(self, ctx, json, handle);
+                    send_did_close(self, ctx, json, handle)?;
                 }
             }
         }
@@ -944,14 +950,23 @@ impl Client {
     }
 
     fn request(
-        protocol: &mut Protocol,
+        &mut self,
         json: &mut Json,
-        pending_requests: &mut PendingRequestColection,
         method: &'static str,
         params: JsonObject,
     ) -> io::Result<()> {
-        let id = protocol.request(json, method, params.into())?;
-        pending_requests.add(id, method);
+        let id = self.protocol.request(json, method, params.into())?;
+        self.pending_requests.add(id, method);
+        Ok(())
+    }
+
+    fn notify(
+        &mut self,
+        json: &mut Json,
+        method: &'static str,
+        params: JsonObject,
+    ) -> io::Result<()> {
+        self.protocol.notify(json, method, params.into())?;
         Ok(())
     }
 
@@ -970,13 +985,7 @@ impl Client {
             json,
         );
 
-        Self::request(
-            &mut self.protocol,
-            json,
-            &mut self.pending_requests,
-            "initialize",
-            params,
-        )?;
+        self.request(json, "initialize", params)?;
         Ok(())
     }
 }
