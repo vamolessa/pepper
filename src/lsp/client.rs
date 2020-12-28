@@ -238,11 +238,11 @@ impl VersionedBuffer {
     }
 }
 #[derive(Default)]
-struct BufferEditsCollection {
-    buffer_edits: Vec<VersionedBuffer>,
+struct VersionedBufferCollection {
+    buffers: Vec<VersionedBuffer>,
 }
-impl BufferEditsCollection {
-    pub fn add(
+impl VersionedBufferCollection {
+    pub fn add_edit(
         &mut self,
         buffer_handle: BufferHandle,
         kind: EditKind,
@@ -250,30 +250,30 @@ impl BufferEditsCollection {
         text: &str,
     ) {
         let index = buffer_handle.0;
-        if index >= self.buffer_edits.len() {
-            self.buffer_edits
+        if index >= self.buffers.len() {
+            self.buffers
                 .resize_with(index + 1, VersionedBuffer::default);
         }
-        let buffer_edits = &mut self.buffer_edits[index];
-        let text_range_start = buffer_edits.texts.len();
-        buffer_edits.texts.push_str(text);
-        buffer_edits.pending_edits.push(VersionedBufferEdit {
+        let buffer = &mut self.buffers[index];
+        let text_range_start = buffer.texts.len();
+        buffer.texts.push_str(text);
+        buffer.pending_edits.push(VersionedBufferEdit {
             kind,
             buffer_range: range,
-            text_range: text_range_start..buffer_edits.texts.len(),
+            text_range: text_range_start..buffer.texts.len(),
         });
     }
 
     pub fn dispose(&mut self, buffer_handle: BufferHandle) {
-        if let Some(buffer_edits) = self.buffer_edits.get_mut(buffer_handle.0) {
-            buffer_edits.dispose();
+        if let Some(buffer) = self.buffers.get_mut(buffer_handle.0) {
+            buffer.dispose();
         }
     }
 
     pub fn iter_pending_mut<'a>(
         &'a mut self,
     ) -> impl 'a + Iterator<Item = (BufferHandle, &'a mut VersionedBuffer)> {
-        self.buffer_edits
+        self.buffers
             .iter_mut()
             .enumerate()
             .filter(|(_, e)| !e.pending_edits.is_empty())
@@ -399,7 +399,7 @@ pub struct Client {
     log_write_buf: Vec<u8>,
     log_buffer_handle: Option<BufferHandle>,
     document_selectors: Vec<Glob>,
-    buffer_edits: BufferEditsCollection,
+    versioned_buffers: VersionedBufferCollection,
     pub diagnostics: DiagnosticCollection,
 }
 
@@ -417,7 +417,7 @@ impl Client {
             log_buffer_handle: None,
 
             document_selectors: Vec::new(),
-            buffer_edits: BufferEditsCollection::default(),
+            versioned_buffers: VersionedBufferCollection::default(),
             diagnostics: DiagnosticCollection::default(),
         }
     }
@@ -728,6 +728,24 @@ impl Client {
             id
         }
 
+        fn position(position: BufferPosition, json: &mut Json) -> JsonObject {
+            let line = JsonValue::Integer(position.line_index as _);
+            let character = JsonValue::Integer(position.column_byte_index as _);
+            let mut p = JsonObject::default();
+            p.set("line".into(), line, json);
+            p.set("character".into(), character, json);
+            p
+        }
+
+        fn range(range: BufferRange, json: &mut Json) -> JsonObject {
+            let start = position(range.from, json);
+            let end = position(range.to, json);
+            let mut r = JsonObject::default();
+            r.set("start".into(), start.into(), json);
+            r.set("end".into(), end.into(), json);
+            r
+        }
+
         fn send_did_open(
             client: &mut Client,
             ctx: &mut ClientContext,
@@ -767,7 +785,7 @@ impl Client {
                 return;
             }
 
-            for (buffer_handle, buffer_edits) in client.buffer_edits.iter_pending_mut() {
+            for (buffer_handle, versioned_buffer) in client.versioned_buffers.iter_pending_mut() {
                 let buffer = match ctx.buffers.get(buffer_handle) {
                     Some(buffer) => buffer,
                     None => continue,
@@ -777,20 +795,50 @@ impl Client {
                     None => continue,
                 };
 
-                let text_document = text_document_with_id(ctx, buffer_path, json);
+                let mut text_document = text_document_with_id(ctx, buffer_path, json);
+                text_document.set(
+                    "version".into(),
+                    JsonValue::Integer(versioned_buffer.version as _),
+                    json,
+                );
+
                 let mut params = JsonObject::default();
                 params.set("textDocument".into(), text_document.into(), json);
 
-                if let TextDocumentSyncKind::Full = client.server_capabilities.textDocumentSync.save
-                {
-                    let text = json.fmt_string(format_args!("{}", buffer.content()));
-                    params.set("text".into(), text.into(), json);
+                let mut content_changes = JsonArray::default();
+                match client.server_capabilities.textDocumentSync.save {
+                    TextDocumentSyncKind::None => (),
+                    TextDocumentSyncKind::Full => {
+                        let text = json.fmt_string(format_args!("{}", buffer.content()));
+                        let mut change_event = JsonObject::default();
+                        change_event.set("text".into(), text.into(), json);
+                        content_changes.push(change_event.into(), json);
+                    }
+                    TextDocumentSyncKind::Incremental => {
+                        for edit in &versioned_buffer.pending_edits {
+                            let mut change_event = JsonObject::default();
+                            let range = range(edit.buffer_range, json).into();
+                            change_event.set("range".into(), range, json);
+                            match edit.kind {
+                                EditKind::Insert => {
+                                    let text = &versioned_buffer.texts[edit.text_range.clone()];
+                                    let text = json.create_string(text);
+                                    change_event.set("text".into(), text.into(), json);
+                                }
+                                EditKind::Delete => {
+                                    change_event.set("text".into(), "".into(), json);
+                                }
+                            }
+                        }
+                    }
                 }
+
+                params.set("contentChanges".into(), content_changes.into(), json);
 
                 let _ = client
                     .protocol
                     .notify(json, "textDocument/didChange", params.into());
-                buffer_edits.flush();
+                versioned_buffer.flush();
             }
         }
 
@@ -866,7 +914,7 @@ impl Client {
                 }
                 EditorEvent::BufferLoad { handle } => {
                     let handle = *handle;
-                    self.buffer_edits.dispose(handle);
+                    self.versioned_buffers.dispose(handle);
                     self.diagnostics.on_load_buffer(ctx, handle);
                     send_did_open(self, ctx, json, handle);
                 }
@@ -877,11 +925,12 @@ impl Client {
                     text,
                 } => {
                     let text = text.as_str(events);
-                    self.buffer_edits
-                        .add(*handle, EditKind::Insert, *range, text);
+                    self.versioned_buffers
+                        .add_edit(*handle, EditKind::Insert, *range, text);
                 }
                 EditorEvent::BufferDeleteText { handle, range } => {
-                    self.buffer_edits.add(*handle, EditKind::Delete, *range, "");
+                    self.versioned_buffers
+                        .add_edit(*handle, EditKind::Delete, *range, "");
                 }
                 EditorEvent::BufferSave { handle, .. } => {
                     let handle = *handle;
@@ -891,7 +940,7 @@ impl Client {
                 }
                 EditorEvent::BufferClose { handle } => {
                     let handle = *handle;
-                    self.buffer_edits.dispose(handle);
+                    self.versioned_buffers.dispose(handle);
                     self.diagnostics.on_close_buffer(handle);
                     send_did_close(self, ctx, json, handle);
                 }
