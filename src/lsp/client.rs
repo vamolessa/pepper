@@ -80,7 +80,6 @@ enum TextDocumentSyncKind {
     Incremental,
 }
 struct TextDocumentSyncCapability {
-    on: bool,
     open_close: bool,
     change: TextDocumentSyncKind,
     save: TextDocumentSyncKind,
@@ -88,7 +87,6 @@ struct TextDocumentSyncCapability {
 impl Default for TextDocumentSyncCapability {
     fn default() -> Self {
         Self {
-            on: false,
             open_close: false,
             change: TextDocumentSyncKind::None,
             save: TextDocumentSyncKind::None,
@@ -99,19 +97,16 @@ impl<'json> FromJson<'json> for TextDocumentSyncCapability {
     fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
         match value {
             JsonValue::Integer(0) => Ok(Self {
-                on: false,
                 open_close: false,
                 change: TextDocumentSyncKind::None,
                 save: TextDocumentSyncKind::None,
             }),
             JsonValue::Integer(1) => Ok(Self {
-                on: true,
                 open_close: true,
                 change: TextDocumentSyncKind::Full,
                 save: TextDocumentSyncKind::Full,
             }),
             JsonValue::Integer(2) => Ok(Self {
-                on: true,
                 open_close: true,
                 change: TextDocumentSyncKind::Incremental,
                 save: TextDocumentSyncKind::Incremental,
@@ -153,7 +148,6 @@ impl<'json> FromJson<'json> for TextDocumentSyncCapability {
                     }
                 }
                 Ok(Self {
-                    on: true,
                     open_close,
                     change,
                     save,
@@ -230,6 +224,12 @@ struct BufferEdits {
     texts: String,
     edits: Vec<BufferEdit>,
 }
+impl BufferEdits {
+    pub fn clear(&mut self) {
+        self.texts.clear();
+        self.edits.clear();
+    }
+}
 #[derive(Default)]
 struct BufferEditsCollection {
     buffer_edits: Vec<BufferEdits>,
@@ -242,7 +242,7 @@ impl BufferEditsCollection {
         range: BufferRange,
         text: &str,
     ) {
-        let index = buffer_handle.into_index();
+        let index = buffer_handle.0;
         if index >= self.buffer_edits.len() {
             self.buffer_edits
                 .resize_with(index + 1, BufferEdits::default);
@@ -258,10 +258,19 @@ impl BufferEditsCollection {
     }
 
     pub fn clear(&mut self, buffer_handle: BufferHandle) {
-        if let Some(buffer_edits) = self.buffer_edits.get_mut(buffer_handle.into_index()) {
-            buffer_edits.texts.clear();
-            buffer_edits.edits.clear();
+        if let Some(buffer_edits) = self.buffer_edits.get_mut(buffer_handle.0) {
+            buffer_edits.clear();
         }
+    }
+
+    pub fn iter_pending_mut<'a>(
+        &'a mut self,
+    ) -> impl 'a + Iterator<Item = (BufferHandle, &'a mut BufferEdits)> {
+        self.buffer_edits
+            .iter_mut()
+            .enumerate()
+            .filter(|(_, e)| !e.edits.is_empty())
+            .map(|(i, e)| (BufferHandle(i), e))
     }
 }
 
@@ -701,35 +710,81 @@ impl Client {
             }
         }
 
+        fn text_document_with_id<'a>(
+            ctx: &'a ClientContext,
+            path: &'a Path,
+            json: &mut Json,
+        ) -> JsonObject {
+            let mut id = JsonObject::default();
+            let uri = json.fmt_string(format_args!("{}", get_path_uri(ctx, path)));
+            id.set("uri".into(), uri.into(), json);
+            id
+        }
+
         fn send_did_open(
             client: &mut Client,
             ctx: &mut ClientContext,
             json: &mut Json,
             buffer_handle: BufferHandle,
-        ) -> Option<()> {
-            let buffer = ctx.buffers.get(buffer_handle)?;
-            let buffer_path = buffer.path()?;
+        ) {
+            if !client.server_capabilities.textDocumentSync.open_close {
+                return;
+            }
 
-            let mut text_document = JsonObject::default();
+            let buffer = match ctx.buffers.get(buffer_handle) {
+                Some(buffer) => buffer,
+                None => return,
+            };
+            let buffer_path = match buffer.path() {
+                Some(path) => path,
+                None => return,
+            };
 
-            let uri = json.fmt_string(format_args!("{}", get_path_uri(ctx, buffer_path)));
-            text_document.set("uri".into(), uri.into(), json);
-
+            let mut text_document = text_document_with_id(ctx, buffer_path, json);
             let language_id = json.create_string(protocol::path_to_language_id(buffer_path));
             text_document.set("languageId".into(), language_id.into(), json);
-
             text_document.set("version".into(), JsonValue::Integer(0), json);
-
             let text = json.fmt_string(format_args!("{}", buffer.content()));
             text_document.set("text".into(), text.into(), json);
 
             let mut params = JsonObject::default();
             params.set("textDocument".into(), text_document.into(), json);
 
-            client
+            let _ = client
                 .protocol
-                .notify(json, "textDocument/didOpen", params.into())
-                .ok()
+                .notify(json, "textDocument/didOpen", params.into());
+        }
+
+        fn send_pending_did_change(client: &mut Client, ctx: &mut ClientContext, json: &mut Json) {
+            if let TextDocumentSyncKind::None = client.server_capabilities.textDocumentSync.change {
+                return;
+            }
+
+            for (buffer_handle, buffer_edits) in client.buffer_edits.iter_pending_mut() {
+                let buffer = match ctx.buffers.get(buffer_handle) {
+                    Some(buffer) => buffer,
+                    None => continue,
+                };
+                let buffer_path = match buffer.path() {
+                    Some(path) => path,
+                    None => continue,
+                };
+
+                let text_document = text_document_with_id(ctx, buffer_path, json);
+                let mut params = JsonObject::default();
+                params.set("textDocument".into(), text_document.into(), json);
+
+                if let TextDocumentSyncKind::Full = client.server_capabilities.textDocumentSync.save
+                {
+                    let text = json.fmt_string(format_args!("{}", buffer.content()));
+                    params.set("text".into(), text.into(), json);
+                }
+
+                let _ = client
+                    .protocol
+                    .notify(json, "textDocument/didChange", params.into());
+                buffer_edits.clear();
+            }
         }
 
         fn send_did_save(
@@ -737,10 +792,32 @@ impl Client {
             ctx: &mut ClientContext,
             json: &mut Json,
             buffer_handle: BufferHandle,
-        ) -> Option<()> {
-            let buffer = ctx.buffers.get(buffer_handle)?;
-            let buffer_path = buffer.path()?;
-            None
+        ) {
+            if let TextDocumentSyncKind::None = client.server_capabilities.textDocumentSync.save {
+                return;
+            }
+
+            let buffer = match ctx.buffers.get(buffer_handle) {
+                Some(buffer) => buffer,
+                None => return,
+            };
+            let buffer_path = match buffer.path() {
+                Some(path) => path,
+                None => return,
+            };
+
+            let text_document = text_document_with_id(ctx, buffer_path, json);
+            let mut params = JsonObject::default();
+            params.set("textDocument".into(), text_document.into(), json);
+
+            if let TextDocumentSyncKind::Full = client.server_capabilities.textDocumentSync.save {
+                let text = json.fmt_string(format_args!("{}", buffer.content()));
+                params.set("text".into(), text.into(), json);
+            }
+
+            let _ = client
+                .protocol
+                .notify(json, "textDocument/didSave", params.into());
         }
 
         fn send_did_close(
@@ -748,22 +825,27 @@ impl Client {
             ctx: &mut ClientContext,
             json: &mut Json,
             buffer_handle: BufferHandle,
-        ) -> Option<()> {
-            let buffer = ctx.buffers.get(buffer_handle)?;
-            let buffer_path = buffer.path()?;
+        ) {
+            if !client.server_capabilities.textDocumentSync.open_close {
+                return;
+            }
 
-            let mut text_document = JsonObject::default();
+            let buffer = match ctx.buffers.get(buffer_handle) {
+                Some(buffer) => buffer,
+                None => return,
+            };
+            let buffer_path = match buffer.path() {
+                Some(path) => path,
+                None => return,
+            };
 
-            let uri = json.fmt_string(format_args!("{}", get_path_uri(ctx, buffer_path)));
-            text_document.set("uri".into(), uri.into(), json);
-
+            let text_document = text_document_with_id(ctx, buffer_path, json);
             let mut params = JsonObject::default();
             params.set("textDocument".into(), text_document.into(), json);
 
-            client
+            let _ = client
                 .protocol
-                .notify(json, "textDocument/didClose", params.into())
-                .ok()
+                .notify(json, "textDocument/didClose", params.into());
         }
 
         if !self.initialized {
@@ -773,11 +855,13 @@ impl Client {
         for event in events {
             match event {
                 EditorEvent::Idle => {
-                    // send buffer changes
+                    send_pending_did_change(self, ctx, json);
                 }
                 EditorEvent::BufferLoad { handle } => {
-                    self.diagnostics.on_load_buffer(ctx, *handle);
-                    send_did_open(self, ctx, json, *handle);
+                    let handle = *handle;
+                    self.buffer_edits.clear(handle);
+                    self.diagnostics.on_load_buffer(ctx, handle);
+                    send_did_open(self, ctx, json, handle);
                 }
                 EditorEvent::BufferOpen { .. } => (),
                 EditorEvent::BufferInsertText {
@@ -786,14 +870,16 @@ impl Client {
                     text,
                 } => {
                     let text = text.as_str(events);
-                    // buffer changes
+                    self.buffer_edits
+                        .add(*handle, EditKind::Insert, *range, text);
                 }
                 EditorEvent::BufferDeleteText { handle, range } => {
-                    // buffer changes
+                    self.buffer_edits.add(*handle, EditKind::Delete, *range, "");
                 }
-                EditorEvent::BufferSave { handle, new_path } => {
+                EditorEvent::BufferSave { handle, .. } => {
                     let handle = *handle;
                     self.diagnostics.on_save_buffer(ctx, handle);
+                    send_pending_did_change(self, ctx, json);
                     send_did_save(self, ctx, json, handle);
                 }
                 EditorEvent::BufferClose { handle } => {

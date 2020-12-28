@@ -1145,12 +1145,7 @@ impl Buffer {
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub struct BufferHandle(usize);
-impl BufferHandle {
-    pub fn into_index(self) -> usize {
-        self.0
-    }
-}
+pub struct BufferHandle(pub usize);
 impl_from_script!(BufferHandle, value => match value {
     ScriptValue::Integer(n) if n >= 0 => Some(Self(n as _)),
     _ => None,
