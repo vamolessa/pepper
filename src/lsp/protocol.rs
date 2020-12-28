@@ -258,11 +258,6 @@ impl ServerConnection {
                     bytes => bytes,
                 };
 
-                eprintln!(
-                    "receive content\n{}",
-                    String::from_utf8_lossy(content_bytes)
-                );
-
                 let mut reader = Cursor::new(content_bytes);
                 let mut json = json.parse_lock();
                 let json = json.get();
@@ -457,12 +452,6 @@ impl Protocol {
             self.body_buffer.len()
         )?;
         self.write_buffer.append(&mut self.body_buffer);
-
-        eprintln!(
-            "send body {}b\n{}",
-            self.body_buffer.len(),
-            String::from_utf8_lossy(&self.body_buffer)
-        );
 
         self.server_connection.write(&self.write_buffer)?;
         Ok(())

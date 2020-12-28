@@ -439,8 +439,6 @@ impl Client {
                 BufferPosition::line_col(line_index, content.line_at(line_index).as_str().len());
             let text = String::from_utf8_lossy(&self.log_write_buf);
             buffer.insert_text(ctx.word_database, position, &text, ctx.editor_events);
-
-            eprintln!("{}", text);
         }
     }
 
@@ -1009,11 +1007,7 @@ impl ClientCollection {
         }
     }
 
-    pub fn start(
-        &mut self,
-        command: Command,
-        root: &Path,
-    ) -> io::Result<ClientHandle> {
+    pub fn start(&mut self, command: Command, root: &Path) -> io::Result<ClientHandle> {
         let handle = self.find_free_slot();
         let json = SharedJson::new();
         let connection =

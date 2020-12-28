@@ -79,6 +79,14 @@ pub fn client_capabilities(json: &mut Json) -> JsonValue {
                 json,
             );
 
+            let mut change_annotation_support = JsonObject::default();
+            change_annotation_support.set("groupsOnLabel".into(), false.into(), json);
+            workspace_edit_capabilities.set(
+                "changeAnnotationSupport".into(),
+                change_annotation_support.into(),
+                json,
+            );
+
             workspace_capabilities.set(
                 "workspaceEdit".into(),
                 workspace_edit_capabilities.into(),
@@ -258,6 +266,8 @@ pub fn client_capabilities(json: &mut Json) -> JsonValue {
         {
             let mut rename = JsonObject::default();
             rename.set("prepareSupport".into(), true.into(), json);
+            rename.set("prepareSupportDefaultBehavior".into(), 1.into(), json);
+            rename.set("honorsChangeAnnotations".into(), false.into(), json);
 
             text_document_capabilities.set("rename".into(), rename.into(), json);
         }

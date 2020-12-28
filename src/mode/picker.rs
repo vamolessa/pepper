@@ -60,16 +60,6 @@ impl ModeState for State {
                         let entry_count = ctx.picker.height(isize::MAX as _) as isize;
                         ctx.picker.move_cursor(entry_count - cursor - 1);
                     }
-                    Key::Ctrl('q') => {
-                        eprintln!(
-                            "cursor: {} scroll: {} height: {} count: {}",
-                            ctx.picker.cursor(),
-                            ctx.picker.scroll(),
-                            ctx.picker
-                                .height(ctx.config.values.picker_max_height.get() as _),
-                            ctx.picker.height(usize::MAX)
-                        );
-                    }
                     _ => ctx
                         .picker
                         .filter(&EmptyWordCollection, ctx.read_line.input()),
