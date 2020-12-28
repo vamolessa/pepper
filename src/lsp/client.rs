@@ -15,7 +15,6 @@ use crate::{
     editor::StatusMessage,
     editor_event::{EditorEvent, EditorEventQueue, EditorEventsIter},
     glob::Glob,
-    history::EditKind,
     json::{FromJson, Json, JsonArray, JsonConvertError, JsonObject, JsonString, JsonValue},
     lsp::{
         capabilities,
@@ -215,7 +214,6 @@ fn are_same_path_with_root(root_a: &Path, a: &Path, b: &Path) -> bool {
 }
 
 struct VersionedBufferEdit {
-    kind: EditKind,
     buffer_range: BufferRange,
     text_range: Range<usize>,
 }
@@ -242,13 +240,7 @@ struct VersionedBufferCollection {
     buffers: Vec<VersionedBuffer>,
 }
 impl VersionedBufferCollection {
-    pub fn add_edit(
-        &mut self,
-        buffer_handle: BufferHandle,
-        kind: EditKind,
-        range: BufferRange,
-        text: &str,
-    ) {
+    pub fn add_edit(&mut self, buffer_handle: BufferHandle, range: BufferRange, text: &str) {
         let index = buffer_handle.0;
         if index >= self.buffers.len() {
             self.buffers
@@ -258,7 +250,6 @@ impl VersionedBufferCollection {
         let text_range_start = buffer.texts.len();
         buffer.texts.push_str(text);
         buffer.pending_edits.push(VersionedBufferEdit {
-            kind,
             buffer_range: range,
             text_range: text_range_start..buffer.texts.len(),
         });
@@ -749,6 +740,9 @@ impl Client {
                 Some(buffer) => buffer,
                 None => return Ok(()),
             };
+            if !buffer.capabilities().can_save {
+                return Ok(());
+            }
             let buffer_path = match buffer.path() {
                 Some(path) => path,
                 None => return Ok(()),
@@ -782,6 +776,9 @@ impl Client {
                     Some(buffer) => buffer,
                     None => continue,
                 };
+                if !buffer.capabilities().can_save {
+                    continue;
+                }
                 let buffer_path = match buffer.path() {
                     Some(path) => path,
                     None => continue,
@@ -809,18 +806,15 @@ impl Client {
                     TextDocumentSyncKind::Incremental => {
                         for edit in &versioned_buffer.pending_edits {
                             let mut change_event = JsonObject::default();
-                            let range = range(edit.buffer_range, json).into();
-                            change_event.set("range".into(), range, json);
-                            match edit.kind {
-                                EditKind::Insert => {
-                                    let text = &versioned_buffer.texts[edit.text_range.clone()];
-                                    let text = json.create_string(text);
-                                    change_event.set("text".into(), text.into(), json);
-                                }
-                                EditKind::Delete => {
-                                    change_event.set("text".into(), "".into(), json);
-                                }
-                            }
+
+                            let edit_range = range(edit.buffer_range, json).into();
+                            change_event.set("range".into(), edit_range, json);
+
+                            let text = &versioned_buffer.texts[edit.text_range.clone()];
+                            let text = json.create_string(text);
+                            change_event.set("text".into(), text.into(), json);
+
+                            content_changes.push(change_event.into(), json);
                         }
                     }
                 }
@@ -849,6 +843,9 @@ impl Client {
                 Some(buffer) => buffer,
                 None => return Ok(()),
             };
+            if !buffer.capabilities().can_save {
+                return Ok(());
+            }
             let buffer_path = match buffer.path() {
                 Some(path) => path,
                 None => return Ok(()),
@@ -880,6 +877,9 @@ impl Client {
                 Some(buffer) => buffer,
                 None => return Ok(()),
             };
+            if !buffer.capabilities().can_save {
+                return Ok(());
+            }
             let buffer_path = match buffer.path() {
                 Some(path) => path,
                 None => return Ok(()),
@@ -914,12 +914,11 @@ impl Client {
                     text,
                 } => {
                     let text = text.as_str(events);
-                    self.versioned_buffers
-                        .add_edit(*handle, EditKind::Insert, *range, text);
+                    let range = BufferRange::between(range.from, range.from);
+                    self.versioned_buffers.add_edit(*handle, range, text);
                 }
                 EditorEvent::BufferDeleteText { handle, range } => {
-                    self.versioned_buffers
-                        .add_edit(*handle, EditKind::Delete, *range, "");
+                    self.versioned_buffers.add_edit(*handle, *range, "");
                 }
                 EditorEvent::BufferSave { handle, .. } => {
                     let handle = *handle;

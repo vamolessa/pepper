@@ -797,6 +797,10 @@ impl Buffer {
         self.capabilities.can_save && self.needs_save
     }
 
+    pub fn capabilities(&self) -> &BufferCapabilities {
+        &self.capabilities
+    }
+
     pub fn insert_text(
         &mut self,
         word_database: &mut WordDatabase,
