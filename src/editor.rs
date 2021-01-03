@@ -19,6 +19,7 @@ use crate::{
     picker::Picker,
     register::{RegisterCollection, RegisterKey, KEY_QUEUE_REGISTER},
     script::ScriptEngine,
+    script_bindings::ScriptCallbacks,
     syntax::HighlightResult,
     task::{TaskHandle, TaskManager, TaskResult},
     word_database::{EmptyWordCollection, WordDatabase},
@@ -224,6 +225,7 @@ pub struct Editor {
     editor_events: EditorEventDoubleQueue,
     keymaps: KeyMapCollection,
     scripts: ScriptEngine,
+    script_callbacks: ScriptCallbacks,
     client_target_map: ClientTargetMap,
 }
 impl Editor {
@@ -258,6 +260,7 @@ impl Editor {
             editor_events: EditorEventDoubleQueue::default(),
             keymaps: KeyMapCollection::default(),
             scripts: ScriptEngine::new(),
+            script_callbacks: ScriptCallbacks::default(),
             client_target_map: ClientTargetMap::default(),
         }
     }
@@ -534,6 +537,7 @@ impl Editor {
             editor_events: write_events,
             keymaps: &mut self.keymaps,
             scripts: &mut self.scripts,
+            script_callbacks: &mut self.script_callbacks,
             tasks: &mut self.tasks,
             lsp: &mut self.lsp,
         };

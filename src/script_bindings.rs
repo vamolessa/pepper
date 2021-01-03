@@ -20,13 +20,30 @@ use crate::{
     navigation_history::NavigationHistory,
     register::RegisterKey,
     script::{
-        ScriptArray, ScriptContext, ScriptContextGuard, ScriptEngineRef, ScriptError,
-        ScriptFunction, ScriptObject, ScriptResult, ScriptString, ScriptUserData, ScriptValue,
+        ScriptCallback,
+        ScriptArray, ScriptContext, ScriptContextGuard, ScriptEngineRef,
+        ScriptError, ScriptFunction, ScriptObject, ScriptResult, ScriptString, ScriptUserData,
+        ScriptValue,
     },
     syntax::{Syntax, TokenKind},
     task::TaskRequest,
     theme::{Color, THEME_COLOR_NAMES},
 };
+
+#[derive(Default)]
+pub struct BufferScriptCallbacks {
+    pub on_load: Vec<ScriptCallback>,
+    pub on_open: Vec<ScriptCallback>,
+    pub on_save: Vec<ScriptCallback>,
+    pub on_close: Vec<ScriptCallback>,
+}
+
+#[derive(Default)]
+pub struct ScriptCallbacks {
+    pub read_line: Option<ScriptCallback>,
+    pub picker: Option<ScriptCallback>,
+    pub buffer: BufferScriptCallbacks,
+}
 
 pub struct QuitError;
 impl fmt::Display for QuitError {
@@ -56,9 +73,11 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
         ($namespace:ident => $($callback:ident,)*) => {
             $(
                 let name = concat!(stringify!($namespace), "_", stringify!($callback));
-                let callback = scripts.create_ctx_function(move |engine, _, _, callback| {
+                let callback = scripts.create_ctx_function(move |engine, ctx, _, callback| {
                     let callback : ScriptFunction = callback;
-                    engine.add_to_function_array_in_registry(name, callback)
+                    let callback = engine.create_callback(callback)?;
+                    ctx.script_callbacks.$namespace.$callback.push(callback);
+                    Ok(())
                 })?;
                 globals.set(name, ScriptValue::Function(callback))?;
             )*
@@ -1294,7 +1313,8 @@ mod read_line {
         _: ScriptContextGuard,
         callback: ScriptFunction,
     ) -> ScriptResult<()> {
-        ctx.next_mode = mode::read_line::custom::mode(engine, callback)?;
+        let callback = engine.create_callback(callback)?;
+        ctx.next_mode = mode::read_line::custom::mode(ctx, callback)?;
         Ok(())
     }
 }
@@ -1332,7 +1352,8 @@ mod picker {
         _: ScriptContextGuard,
         callback: ScriptFunction,
     ) -> ScriptResult<()> {
-        ctx.next_mode = mode::picker::custom::mode(engine, callback)?;
+        let callback = engine.create_callback(callback)?;
+        ctx.next_mode = mode::picker::custom::mode(ctx, callback)?;
         Ok(())
     }
 }

@@ -155,11 +155,9 @@ pub mod buffer {
 pub mod custom {
     use super::*;
 
-    use crate::script::{ScriptEngineRef, ScriptFunction, ScriptResult, ScriptValue};
+    use crate::script::{ScriptCallback, ScriptContext, ScriptResult, ScriptValue};
 
-    const CALLBACK_REGISTRY_KEY: &str = "picker_callback";
-
-    pub fn mode(engine: ScriptEngineRef, callback: ScriptFunction) -> ScriptResult<Mode> {
+    pub fn mode(ctx: &mut ScriptContext, callback: ScriptCallback) -> ScriptResult<Mode> {
         fn on_client_keys(
             ctx: &mut ModeContext,
             _: &mut KeysIterator,
@@ -183,9 +181,10 @@ pub mod custom {
                     ReadLinePoll::Canceled => (ScriptValue::Nil, ScriptValue::Nil),
                 };
 
-                engine
-                    .take_from_registry::<ScriptFunction>(CALLBACK_REGISTRY_KEY)?
-                    .call(&guard, (name, description))?;
+                if let Some(callback) = ctx.script_callbacks.picker.take() {
+                    callback.call(engine, &guard, (name, description))?;
+                    callback.dispose(engine)?;
+                }
 
                 let mode = std::mem::take(&mut ctx.next_mode);
                 Ok(ModeOperation::EnterMode(mode))
@@ -200,7 +199,7 @@ pub mod custom {
             }
         }
 
-        engine.save_to_registry(CALLBACK_REGISTRY_KEY, ScriptValue::Function(callback))?;
+        ctx.script_callbacks.picker = Some(callback);
         Ok(Mode::Picker(State { on_client_keys }))
     }
 }

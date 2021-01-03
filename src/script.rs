@@ -189,6 +189,10 @@ impl ScriptCallback {
         let func: LuaFunction = engine.lua.registry_value(&self.0)?;
         func.call(args)
     }
+
+    pub fn dispose(self, engine: ScriptEngineRef) -> ScriptResult<()> {
+        engine.lua.remove_registry_value(self.0)
+    }
 }
 
 pub struct ScriptUserData<'lua, T>(LuaAnyUserData<'lua>, PhantomData<T>)
@@ -379,6 +383,7 @@ pub struct ScriptContext<'a> {
 
     pub editor_events: &'a mut EditorEventQueue,
     pub keymaps: &'a mut KeyMapCollection,
+    pub script_callbacks: &'a mut script_bindings::ScriptCallbacks,
     pub tasks: &'a mut TaskManager,
     pub lsp: &'a mut LspClientCollection,
 }
@@ -445,10 +450,6 @@ pub struct ScriptEngine {
 
 impl ScriptEngine {
     pub fn new() -> Self {
-        Self::try_new().unwrap()
-    }
-
-    fn try_new() -> ScriptResult<Self> {
         let libs = mlua::StdLib::COROUTINE
             | mlua::StdLib::TABLE
             | mlua::StdLib::IO
@@ -456,18 +457,12 @@ impl ScriptEngine {
             | mlua::StdLib::UTF8
             | mlua::StdLib::MATH
             | mlua::StdLib::PACKAGE;
-        let lua = Lua::new_with(libs)?;
-
-        let mut this = Self {
+        let lua = Lua::new_with(libs).unwrap();
+        script_bindings::bind_all(ScriptEngineRef::from_lua(&lua)).unwrap();
+        Self {
             lua,
             history: VecDeque::with_capacity(10),
-        };
-        script_bindings::bind_all(this.as_ref())?;
-        Ok(this)
-    }
-
-    pub fn as_ref(&mut self) -> ScriptEngineRef {
-        ScriptEngineRef::from_lua(&self.lua)
+        }
     }
 
     pub fn as_ref_with_ctx<F, R>(&mut self, ctx: &mut ScriptContext, scope: F) -> ScriptResult<R>
@@ -538,16 +533,13 @@ impl ScriptEngine {
     ) -> ScriptResult<()> {
         let s = ScriptContextRegistryScope::new(&self.lua, ctx)?;
         let engine = ScriptEngineRef::from_lua(&self.lua);
-        let mut guard = ScriptContextGuard(());
+        let guard = ScriptContextGuard(());
 
         macro_rules! call {
-            ($callback:ident, $args:expr) => {{
+            ($namespace:ident . $callback:ident, $args:expr) => {{
                 let args = $args;
-                if let Ok(callbacks) = engine.lua.named_registry_value(stringify!($callback)) {
-                    let callbacks: ScriptArray = callbacks;
-                    for callback in callbacks.iter::<ScriptFunction>() {
-                        callback?.call(&mut guard, args.clone())?;
-                    }
+                for callback in &ctx.script_callbacks.$namespace.$callback {
+                    callback.call(engine, &guard, args.clone())?;
                 }
             }};
         }
@@ -555,10 +547,10 @@ impl ScriptEngine {
         for event in events {
             match event {
                 EditorEvent::BufferLoad { handle } => {
-                    call!(buffer_on_load, *handle)
+                    call!(buffer.on_load, *handle)
                 }
                 EditorEvent::BufferOpen { handle } => {
-                    call!(buffer_on_open, *handle)
+                    call!(buffer.on_open, *handle)
                 }
                 /*
                 EditorEvent::BufferInsertText {
@@ -573,9 +565,9 @@ impl ScriptEngine {
                 }
                 */
                 EditorEvent::BufferSave { handle, new_path } => {
-                    call!(buffer_on_save, (*handle, *new_path))
+                    call!(buffer.on_save, (*handle, *new_path))
                 }
-                EditorEvent::BufferClose { handle } => call!(buffer_on_close, *handle),
+                EditorEvent::BufferClose { handle } => call!(buffer.on_close, *handle),
                 _ => (),
             }
         }
@@ -686,6 +678,7 @@ where
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct ScriptEngineRef<'lua> {
     lua: &'lua Lua,
 }
@@ -728,6 +721,13 @@ impl<'lua> ScriptEngineRef<'lua> {
             .map(|f| ScriptFunction(f))
     }
 
+    pub fn create_callback(&self, func: ScriptFunction) -> ScriptResult<ScriptCallback> {
+        let key = self
+            .lua
+            .create_registry_value(ScriptValue::Function(func))?;
+        Ok(ScriptCallback(key))
+    }
+
     pub fn add_task_callback(
         &self,
         task_handle: TaskHandle,
@@ -748,42 +748,6 @@ impl<'lua> ScriptEngineRef<'lua> {
             _ => (),
         };
         Ok(())
-    }
-
-    pub fn save_to_registry<T>(&self, key: &str, value: T) -> ScriptResult<()>
-    where
-        T: ToLua<'lua>,
-    {
-        self.lua.set_named_registry_value(key, value)
-    }
-
-    pub fn add_to_function_array_in_registry(
-        &self,
-        key: &str,
-        function: ScriptFunction,
-    ) -> ScriptResult<()> {
-        let function = ScriptValue::Function(function);
-        let functions: ScriptResult<ScriptArray> = self.lua.named_registry_value(key);
-        match functions {
-            Ok(functions) => {
-                functions.push(function)?;
-            }
-            Err(_) => {
-                let functions = self.create_array()?;
-                functions.push(function)?;
-                self.save_to_registry(key, ScriptValue::Array(functions))?;
-            }
-        }
-        Ok(())
-    }
-
-    pub fn take_from_registry<T>(&self, key: &str) -> ScriptResult<T>
-    where
-        T: FromLua<'lua>,
-    {
-        let value = self.lua.named_registry_value(key)?;
-        self.lua.unset_named_registry_value(key)?;
-        Ok(value)
     }
 
     pub fn source(&self, _: &ScriptContextGuard, path: &Path) -> ScriptResult<ScriptValue<'lua>> {

@@ -12,6 +12,7 @@ use crate::{
     picker::Picker,
     register::{RegisterCollection, RegisterKey},
     script::{ScriptContext, ScriptEngine},
+    script_bindings::ScriptCallbacks,
     task::TaskManager,
     word_database::WordDatabase,
 };
@@ -52,6 +53,7 @@ pub struct ModeContext<'a> {
     pub editor_events: &'a mut EditorEventQueue,
     pub keymaps: &'a mut KeyMapCollection,
     pub scripts: &'a mut ScriptEngine,
+    pub script_callbacks: &'a mut ScriptCallbacks,
     pub tasks: &'a mut TaskManager,
     pub lsp: &'a mut LspClientCollection,
 }
@@ -100,6 +102,7 @@ impl<'a> ModeContext<'a> {
 
             editor_events: self.editor_events,
             keymaps: self.keymaps,
+            script_callbacks: self.script_callbacks,
             tasks: self.tasks,
             lsp: self.lsp,
         };
