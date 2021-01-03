@@ -68,7 +68,7 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
     register!(client => index, current_buffer_view_handle, quit, force_quit, quit_all, force_quit_all,);
     register!(editor => version, os, current_directory, print, eprint,);
     register!(script => source, directory,);
-    register!(lsp => start, open_log, diagnostics,);
+    register!(lsp => start, hover, open_log, diagnostics,);
     register!(buffer => all_handles, line_count, line_at, path, path_matches, needs_save, set_search, open, close,
         force_close, close_all, force_close_all, save, save_all, reload, force_reload, reload_all, force_reload_all,
         commit_edits,);
@@ -321,21 +321,60 @@ mod lsp {
         ctx.lsp.start(command, root).map_err(ScriptError::from)
     }
 
+    pub fn hover(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        (client_handle, line, column, buffer_handle): (
+            LspClientHandle,
+            Option<usize>,
+            Option<usize>,
+            Option<BufferHandle>,
+        ),
+    ) -> ScriptResult<()> {
+        let position = match (line, column) {
+            (Some(line), Some(column)) => BufferPosition::line_col(line, column),
+            _ => match ctx
+                .current_buffer_view_handle()
+                .and_then(|h| ctx.buffer_views.get(h))
+            {
+                Some(buffer_view) => buffer_view.cursors.main_cursor().position,
+                None => return Ok(()),
+            },
+        };
+        match buffer_handle.or_else(|| ctx.current_buffer_handle()) {
+            Some(buffer_handle) => {
+                let (lsp, ctx) = ctx.into_lsp_context();
+                lsp.access(client_handle, |client, json| {
+                    client.hover(&ctx, json, buffer_handle, position)
+                })
+                .unwrap_or(Ok(()))
+                .map_err(ScriptError::from)
+            }
+            None => Ok(()),
+        }
+    }
+
     pub fn open_log(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
         _: ScriptContextGuard,
         handle: LspClientHandle,
     ) -> ScriptResult<()> {
-        if let Some(client) = ctx.lsp.get_mut(handle) {
-            let buffer = ctx.buffers.new(BufferCapabilities::log());
+        let target_client = ctx.target_client;
+        let buffers = &mut *ctx.buffers;
+        let buffer_views = &mut *ctx.buffer_views;
+        let mut view_handle = None;
+        ctx.lsp.access(handle, |client, _| {
+            let buffer = buffers.new(BufferCapabilities::log());
             let buffer_handle = buffer.handle();
             buffer.set_path(Some(Path::new("language-server-output")));
             client.set_log_buffer(Some(buffer_handle));
-
-            let view_handle = ctx
-                .buffer_views
-                .buffer_view_handle_from_buffer_handle(ctx.target_client, buffer_handle);
+            view_handle = Some(
+                buffer_views.buffer_view_handle_from_buffer_handle(target_client, buffer_handle),
+            );
+        });
+        if let Some(view_handle) = view_handle {
             ctx.set_current_buffer_view_handle(Some(view_handle));
         }
         Ok(())

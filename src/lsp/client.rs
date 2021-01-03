@@ -415,6 +415,30 @@ impl Client {
         self.log_buffer_handle = log_buffer_handle;
     }
 
+    pub fn hover(
+        &mut self,
+        ctx: &ClientContext,
+        json: &mut Json,
+        buffer_handle: BufferHandle,
+        position: BufferPosition,
+    ) -> io::Result<()> {
+        if !self.server_capabilities.hoverProvider.0 {
+            return Ok(());
+        }
+
+        if let Some(buffer_path) = ctx.buffers.get(buffer_handle).and_then(|b| b.path()) {
+            let text_document = helper::text_document_with_id(ctx, buffer_path, json);
+            let position = helper::position(position, json);
+
+            let mut params = JsonObject::default();
+            params.set("textDocument".into(), text_document.into(), json);
+            params.set("position".into(), position.into(), json);
+
+            self.request(json, "textDocument/hover", params)?;
+        }
+        Ok(())
+    }
+
     fn write_to_log_buffer<F>(&mut self, writer: F)
     where
         F: FnOnce(&mut Vec<u8>),
@@ -662,6 +686,10 @@ impl Client {
                 }
                 Err(_) => unimplemented!(),
             },
+            "textDocument/hover" => {
+                ctx.status_message
+                    .write_str(crate::editor::StatusMessageKind::Info, "hover response!!");
+            }
             _ => (),
         }
 
@@ -1039,9 +1067,15 @@ impl ClientCollection {
         Ok(handle)
     }
 
-    pub fn get_mut(&mut self, handle: ClientHandle) -> Option<&mut Client> {
-        match self.entries[handle.0] {
-            Some(ClientCollectionEntry { ref mut client, .. }) => Some(client),
+    pub fn access<F, R>(&mut self, handle: ClientHandle, func: F) -> Option<R>
+    where
+        F: FnOnce(&mut Client, &mut Json) -> R,
+    {
+        match &mut self.entries[handle.0] {
+            Some(entry) => {
+                let mut json = entry.json.write_lock();
+                Some(func(&mut entry.client, json.get()))
+            }
             None => None,
         }
     }
@@ -1065,21 +1099,21 @@ impl ClientCollection {
             }
             ServerEvent::ParseError => {
                 if let Some(entry) = self.entries[handle.0].as_mut() {
-                    let mut json = entry.json.consume_lock();
+                    let mut json = entry.json.read_lock();
                     entry.client.on_parse_error(json.get(), JsonValue::Null)?;
                     entry.client.flush_log_buffer(ctx);
                 }
             }
             ServerEvent::Request(request) => {
                 if let Some(entry) = self.entries[handle.0].as_mut() {
-                    let mut json = entry.json.consume_lock();
+                    let mut json = entry.json.read_lock();
                     entry.client.on_request(ctx, json.get(), request)?;
                     entry.client.flush_log_buffer(ctx);
                 }
             }
             ServerEvent::Notification(notification) => {
                 if let Some(entry) = self.entries[handle.0].as_mut() {
-                    let mut json = entry.json.consume_lock();
+                    let mut json = entry.json.read_lock();
                     entry
                         .client
                         .on_notification(ctx, json.get(), notification)?;
@@ -1088,7 +1122,7 @@ impl ClientCollection {
             }
             ServerEvent::Response(response) => {
                 if let Some(entry) = self.entries[handle.0].as_mut() {
-                    let mut json = entry.json.consume_lock();
+                    let mut json = entry.json.read_lock();
                     entry.client.on_response(ctx, json.get(), response)?;
                     entry.client.flush_log_buffer(ctx);
                 }

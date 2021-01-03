@@ -41,7 +41,7 @@ impl SharedJson {
         json
     }
 
-    pub fn consume_lock(&mut self) -> MutexGuard<SharedJsonGuard> {
+    pub fn read_lock(&mut self) -> MutexGuard<SharedJsonGuard> {
         let mut json = self.0.lock().unwrap();
         json.pending_consume_count -= 1;
         json
