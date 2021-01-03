@@ -103,10 +103,6 @@ impl<'lua> ScriptObject<'lua> {
     {
         self.0.set(key, value)
     }
-
-    pub fn set_meta_object(&self, object: Option<ScriptObject<'lua>>) {
-        self.0.set_metatable(object.map(|o| o.0))
-    }
 }
 impl<'lua> FromLua<'lua> for ScriptObject<'lua> {
     fn from_lua(lua_value: LuaValue<'lua>, _: &'lua Lua) -> LuaResult<Self> {
@@ -774,53 +770,6 @@ impl<'lua> ScriptEngineRef<'lua> {
                 func(engine, ctx, ScriptContextGuard(()), args)
             })
             .map(|f| ScriptFunction(f))
-    }
-
-    pub fn create_iterator(
-        &self,
-        keys: &'static [&str],
-    ) -> ScriptResult<(ScriptFunction<'lua>, ScriptFunction<'lua>)> {
-        let next_function = self
-            .lua
-            .create_function(move |lua, (table, key)| {
-                let table: LuaTable = table;
-                let next_index = match key {
-                    LuaValue::Nil => Some(0),
-                    LuaValue::String(key) => {
-                        let key = key.to_str()?;
-                        keys.iter()
-                            .position(|&k| k == key)
-                            .map(|i| i + 1)
-                            .filter(|&i| i < keys.len())
-                    }
-                    _ => return Ok((LuaValue::Nil, LuaValue::Nil)),
-                };
-                match next_index {
-                    Some(i) => {
-                        let key = lua.create_string(keys[i].as_bytes())?;
-                        let value: LuaValue = table.get(key.clone())?;
-                        Ok((LuaValue::String(key), value))
-                    }
-                    None => Ok((LuaValue::Nil, LuaValue::Nil)),
-                }
-            })
-            .map(|f| ScriptFunction(f))?;
-
-        let pairs_function = self
-            .lua
-            .create_function(move |_, table| {
-                let table: LuaTable = table;
-                match table.get_metatable() {
-                    Some(meta) => {
-                        let next_function: LuaValue = meta.get("__iter")?;
-                        Ok((next_function, table, LuaValue::Nil))
-                    }
-                    None => Ok((LuaValue::Nil, table, LuaValue::Nil)),
-                }
-            })
-            .map(|f| ScriptFunction(f))?;
-
-        Ok((next_function, pairs_function))
     }
 
     pub fn add_task_callback(

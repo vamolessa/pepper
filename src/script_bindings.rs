@@ -39,47 +39,29 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
     let globals = scripts.globals_object();
 
     macro_rules! register {
+        ($namespace:ident) => {
+            let func = scripts.create_ctx_function($namespace::$namespace)?;
+            globals.set(stringify!($namespace), ScriptValue::Function(func))?;
+        };
         ($namespace:ident => $($func:ident,)*) => {
-            let $namespace = scripts.create_object()?;
             $(
                 let func = scripts.create_ctx_function($namespace::$func)?;
-                $namespace.set(stringify!($func), ScriptValue::Function(func))?;
+                let name = concat!(stringify!($namespace), "_", stringify!($func));
+                globals.set(name, ScriptValue::Function(func))?;
             )*
-            globals.set(stringify!($namespace), ScriptValue::Object($namespace))?;
         };
     }
 
     macro_rules! register_callbacks {
         ($namespace:ident => $($callback:ident,)*) => {
-            let $namespace = globals.get::<ScriptObject>(stringify!($namespace))?;
             $(
-                let callback = scripts.create_ctx_function(|engine, _, _, callback| {
+                let name = concat!(stringify!($namespace), "_", stringify!($callback));
+                let callback = scripts.create_ctx_function(move |engine, _, _, callback| {
                     let callback : ScriptFunction = callback;
-                    let name = concat!(stringify!($namespace), "_", stringify!($callback));
                     engine.add_to_function_array_in_registry(name, callback)
                 })?;
-                $namespace.set(stringify!($callback), ScriptValue::Function(callback))?;
+                globals.set(name, ScriptValue::Function(callback))?;
             )*
-        };
-    }
-
-    macro_rules! register_object {
-        ($name:ident) => {
-            let $name = scripts.create_object()?;
-            let meta = scripts.create_object()?;
-            let (iter, pairs) = scripts.create_iterator($name::KEYS)?;
-            meta.set("__iter", ScriptValue::Function(iter))?;
-            meta.set("__pairs", ScriptValue::Function(pairs))?;
-            meta.set(
-                "__index",
-                ScriptValue::Function(scripts.create_ctx_function($name::index)?),
-            )?;
-            meta.set(
-                "__newindex",
-                ScriptValue::Function(scripts.create_ctx_function($name::newindex)?),
-            )?;
-            $name.set_meta_object(Some(meta));
-            globals.set(stringify!($name), ScriptValue::Object($name))?;
         };
     }
 
@@ -90,7 +72,6 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
     register!(buffer => all_handles, line_count, line_at, path, path_matches, needs_save, set_search, open, close,
         force_close, close_all, force_close_all, save, save_all, reload, force_reload, reload_all, force_reload_all,
         commit_edits,);
-    register_callbacks!(buffer => on_load, on_open, on_save, on_close,);
     register!(buffer_view => buffer_handle, all_handles, handle_from_path, selection_text, insert_text, insert_text_at,
         delete_selection, delete_in, undo, redo,);
     register!(cursors => len, all, set_all, main_index, main, get, set, move_columns, move_lines, move_words,
@@ -102,33 +83,35 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
     register!(syntax => rules,);
     register!(glob => compile, matches,);
 
+    register!(config);
+    register!(theme);
+    register!(registers);
+
+    register_callbacks!(buffer => on_load, on_open, on_save, on_close,);
+
     {
-        let editor = globals.get::<ScriptObject>("editor")?;
-        globals.set("print", editor.get::<ScriptValue>("print")?)?;
+        globals.set("print", globals.get::<ScriptValue>("editor_print")?)?;
 
-        let client = globals.get::<ScriptObject>("client")?;
-        globals.set("q", client.get::<ScriptValue>("quit")?)?;
-        globals.set("fq", client.get::<ScriptValue>("force_quit")?)?;
-        globals.set("qa", client.get::<ScriptValue>("quit_all")?)?;
-        globals.set("fqa", client.get::<ScriptValue>("force_quit_all")?)?;
+        globals.set("q", globals.get::<ScriptValue>("client_quit")?)?;
+        globals.set("fq", globals.get::<ScriptValue>("client_force_quit")?)?;
+        globals.set("qa", globals.get::<ScriptValue>("client_quit_all")?)?;
+        globals.set("fqa", globals.get::<ScriptValue>("client_force_quit_all")?)?;
 
-        let buffer = globals.get::<ScriptObject>("buffer")?;
-        globals.set("o", buffer.get::<ScriptValue>("open")?)?;
-        globals.set("c", buffer.get::<ScriptValue>("close")?)?;
-        globals.set("fc", buffer.get::<ScriptValue>("force_close")?)?;
-        globals.set("ca", buffer.get::<ScriptValue>("close_all")?)?;
-        globals.set("fca", buffer.get::<ScriptValue>("force_close_all")?)?;
-        globals.set("s", buffer.get::<ScriptValue>("save")?)?;
-        globals.set("sa", buffer.get::<ScriptValue>("save_all")?)?;
-        globals.set("r", buffer.get::<ScriptValue>("reload")?)?;
-        globals.set("fr", buffer.get::<ScriptValue>("force_reload")?)?;
-        globals.set("ra", buffer.get::<ScriptValue>("reload_all")?)?;
-        globals.set("fra", buffer.get::<ScriptValue>("force_reload_all")?)?;
+        globals.set("o", globals.get::<ScriptValue>("buffer_open")?)?;
+        globals.set("c", globals.get::<ScriptValue>("buffer_close")?)?;
+        globals.set("fc", globals.get::<ScriptValue>("buffer_force_close")?)?;
+        globals.set("ca", globals.get::<ScriptValue>("buffer_close_all")?)?;
+        globals.set("fca", globals.get::<ScriptValue>("buffer_force_close_all")?)?;
+        globals.set("s", globals.get::<ScriptValue>("buffer_save")?)?;
+        globals.set("sa", globals.get::<ScriptValue>("buffer_save_all")?)?;
+        globals.set("r", globals.get::<ScriptValue>("buffer_reload")?)?;
+        globals.set("fr", globals.get::<ScriptValue>("buffer_force_reload")?)?;
+        globals.set("ra", globals.get::<ScriptValue>("buffer_reload_all")?)?;
+        globals.set(
+            "fra",
+            globals.get::<ScriptValue>("buffer_force_reload_all")?,
+        )?;
     }
-
-    register_object!(config);
-    register_object!(theme);
-    register_object!(registers);
 
     Ok(())
 }
@@ -1430,99 +1413,6 @@ mod process {
     }
 }
 
-mod config {
-    use super::*;
-
-    pub const KEYS: &[&str] = &[
-        "tab_size",
-        "indent_with_tabs",
-        "visual_empty",
-        "visual_space",
-        "visual_tab_first",
-        "visual_tab_repeat",
-        "picker_max_height",
-    ];
-
-    pub fn index<'script>(
-        engine: ScriptEngineRef<'script>,
-        ctx: &mut ScriptContext,
-        _: ScriptContextGuard,
-        (_, index): (ScriptObject, ScriptString),
-    ) -> ScriptResult<ScriptValue<'script>> {
-        macro_rules! char_to_string {
-            ($c:expr) => {{
-                let mut buf = [0; std::mem::size_of::<char>()];
-                ScriptValue::String(engine.create_string($c.encode_utf8(&mut buf).as_bytes())?)
-            }};
-        }
-
-        let config = &ctx.config.values;
-        let index = index.to_str()?;
-        match index {
-            "tab_size" => Ok(ScriptValue::Integer(config.tab_size.get() as _)),
-            "indent_with_tabs" => Ok(ScriptValue::Boolean(config.indent_with_tabs)),
-            "visual_empty" => Ok(char_to_string!(config.visual_empty)),
-            "visual_space" => Ok(char_to_string!(config.visual_space)),
-            "visual_tab_first" => Ok(char_to_string!(config.visual_tab_first)),
-            "visual_tab_repeat" => Ok(char_to_string!(config.visual_tab_repeat)),
-            "picker_max_height" => Ok(ScriptValue::Integer(config.picker_max_height.get() as _)),
-            _ => Err(ScriptError::from(format!("no such property {}", index))),
-        }
-    }
-
-    pub fn newindex(
-        _: ScriptEngineRef,
-        ctx: &mut ScriptContext,
-        _: ScriptContextGuard,
-        (_, index, value): (ScriptObject, ScriptString, ScriptValue),
-    ) -> ScriptResult<()> {
-        macro_rules! try_bool {
-            ($value:expr) => {{
-                match $value {
-                    ScriptValue::Boolean(b) => b,
-                    _ => return Err(ScriptError::<bool>::convert_from_script(&$value)),
-                }
-            }};
-        }
-        macro_rules! try_non_zero_u8 {
-            ($value:expr) => {{
-                let integer = match $value {
-                    ScriptValue::Integer(i) if i > 0 => i,
-                    _ => {
-                        return Err(ScriptError::<NonZeroU8>::convert_from_script(&$value));
-                    }
-                };
-                NonZeroU8::new(integer as _).unwrap()
-            }};
-        }
-        macro_rules! try_char {
-            ($value:expr) => {{
-                match $value {
-                    ScriptValue::String(s) => {
-                        s.to_str()?.parse().map_err(|e| ScriptError::from(e))?
-                    }
-                    _ => return Err(ScriptError::<char>::convert_from_script(&$value)),
-                }
-            }};
-        }
-
-        let config = &mut ctx.config.values;
-        let index = index.to_str()?;
-        match index {
-            "tab_size" => config.tab_size = try_non_zero_u8!(value),
-            "indent_with_tabs" => config.indent_with_tabs = try_bool!(value),
-            "visual_empty" => config.visual_empty = try_char!(value),
-            "visual_space" => config.visual_space = try_char!(value),
-            "visual_tab_first" => config.visual_tab_first = try_char!(value),
-            "visual_tab_repeat" => config.visual_tab_repeat = try_char!(value),
-            "picker_max_height" => config.picker_max_height = try_non_zero_u8!(value),
-            _ => return Err(ScriptError::from(format!("no such property {}", index))),
-        }
-
-        Ok(())
-    }
-}
-
 mod keymap {
     use super::*;
 
@@ -1664,87 +1554,211 @@ mod glob {
     }
 }
 
-mod theme {
+mod config {
     use super::*;
 
-    pub const KEYS: &[&str] = THEME_COLOR_NAMES;
-
-    pub fn index<'script>(
-        _: ScriptEngineRef,
+    pub fn config<'script>(
+        engine: ScriptEngineRef<'script>,
         ctx: &mut ScriptContext,
         _: ScriptContextGuard,
-        (_, index): (ScriptObject, ScriptString),
+        (key, value): (Option<ScriptString>, ScriptValue),
     ) -> ScriptResult<ScriptValue<'script>> {
-        let theme = &mut ctx.config.theme;
-        let index = index.to_str()?;
-        match theme.color_from_name(index) {
-            Some(color) => Ok(ScriptValue::Integer(color.into_u32() as _)),
-            None => Err(ScriptError::from(format!("no such property {}", index))),
+        match key {
+            Some(key) => match value {
+                ScriptValue::Nil => index(engine, ctx, key),
+                _ => {
+                    newindex(ctx, key, value)?;
+                    Ok(ScriptValue::Nil)
+                }
+            },
+            None => {
+                let keys = [
+                    "tab_size",
+                    "indent_with_tabs",
+                    "visual_empty",
+                    "visual_space",
+                    "visual_tab_first",
+                    "visual_tab_repeat",
+                    "picker_max_height",
+                ];
+                let array = engine.create_array()?;
+                for key in keys.iter() {
+                    let key = engine.create_string(key.as_bytes())?;
+                    array.push(ScriptValue::String(key))?;
+                }
+                Ok(ScriptValue::Array(array))
+            }
         }
     }
 
-    pub fn newindex(
-        _: ScriptEngineRef,
+    fn index<'script>(
+        engine: ScriptEngineRef<'script>,
+        ctx: &mut ScriptContext,
+        index: ScriptString,
+    ) -> ScriptResult<ScriptValue<'script>> {
+        macro_rules! char_to_string {
+            ($c:expr) => {{
+                let mut buf = [0; std::mem::size_of::<char>()];
+                ScriptValue::String(engine.create_string($c.encode_utf8(&mut buf).as_bytes())?)
+            }};
+        }
+
+        let config = &ctx.config.values;
+        let index = index.to_str()?;
+        match index {
+            "tab_size" => Ok(ScriptValue::Integer(config.tab_size.get() as _)),
+            "indent_with_tabs" => Ok(ScriptValue::Boolean(config.indent_with_tabs)),
+            "visual_empty" => Ok(char_to_string!(config.visual_empty)),
+            "visual_space" => Ok(char_to_string!(config.visual_space)),
+            "visual_tab_first" => Ok(char_to_string!(config.visual_tab_first)),
+            "visual_tab_repeat" => Ok(char_to_string!(config.visual_tab_repeat)),
+            "picker_max_height" => Ok(ScriptValue::Integer(config.picker_max_height.get() as _)),
+            _ => helper::no_such_property_error(index),
+        }
+    }
+
+    fn newindex(
+        ctx: &mut ScriptContext,
+        index: ScriptString,
+        value: ScriptValue,
+    ) -> ScriptResult<()> {
+        macro_rules! try_bool {
+            ($value:expr) => {{
+                match $value {
+                    ScriptValue::Boolean(b) => b,
+                    _ => return Err(ScriptError::<bool>::convert_from_script(&$value)),
+                }
+            }};
+        }
+        macro_rules! try_non_zero_u8 {
+            ($value:expr) => {{
+                let integer = match $value {
+                    ScriptValue::Integer(i) if i > 0 => i,
+                    _ => {
+                        return Err(ScriptError::<NonZeroU8>::convert_from_script(&$value));
+                    }
+                };
+                NonZeroU8::new(integer as _).unwrap()
+            }};
+        }
+        macro_rules! try_char {
+            ($value:expr) => {{
+                match $value {
+                    ScriptValue::String(s) => {
+                        s.to_str()?.parse().map_err(|e| ScriptError::from(e))?
+                    }
+                    _ => return Err(ScriptError::<char>::convert_from_script(&$value)),
+                }
+            }};
+        }
+
+        let config = &mut ctx.config.values;
+        let index = index.to_str()?;
+        match index {
+            "tab_size" => config.tab_size = try_non_zero_u8!(value),
+            "indent_with_tabs" => config.indent_with_tabs = try_bool!(value),
+            "visual_empty" => config.visual_empty = try_char!(value),
+            "visual_space" => config.visual_space = try_char!(value),
+            "visual_tab_first" => config.visual_tab_first = try_char!(value),
+            "visual_tab_repeat" => config.visual_tab_repeat = try_char!(value),
+            "picker_max_height" => config.picker_max_height = try_non_zero_u8!(value),
+            _ => return helper::no_such_property_error(index),
+        }
+
+        Ok(())
+    }
+}
+
+mod theme {
+    use super::*;
+
+    pub fn theme<'script>(
+        engine: ScriptEngineRef<'script>,
         ctx: &mut ScriptContext,
         _: ScriptContextGuard,
-        (_, index, value): (ScriptObject, ScriptString, u32),
-    ) -> ScriptResult<()> {
-        let theme = &mut ctx.config.theme;
-        let index = index.to_str()?;
-        match theme.color_from_name(index) {
-            Some(color) => *color = Color::from_u32(value),
-            None => return Err(ScriptError::from(format!("no such property {}", index))),
+        (key, value): (Option<ScriptString>, Option<u32>),
+    ) -> ScriptResult<ScriptValue<'script>> {
+        match key {
+            Some(key) => {
+                let theme = &mut ctx.config.theme;
+                let key = key.to_str()?;
+                let color = match theme.color_from_name(key) {
+                    Some(color) => color,
+                    None => return helper::no_such_property_error(key),
+                };
+                match value {
+                    Some(value) => {
+                        *color = Color::from_u32(value);
+                        Ok(ScriptValue::Nil)
+                    }
+                    None => Ok(ScriptValue::Integer(color.into_u32() as _)),
+                }
+            }
+            None => {
+                let array = engine.create_array()?;
+                for key in THEME_COLOR_NAMES {
+                    let key = engine.create_string(key.as_bytes())?;
+                    array.push(ScriptValue::String(key))?;
+                }
+                Ok(ScriptValue::Array(array))
+            }
         }
-        Ok(())
     }
 }
 
 mod registers {
     use super::*;
 
-    pub const KEYS: &[&str] = &[
-        "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r",
-        "s", "t", "u", "v", "w", "x", "y", "z",
-    ];
-
-    pub fn index<'script>(
+    pub fn registers<'script>(
         engine: ScriptEngineRef<'script>,
         ctx: &mut ScriptContext,
         _: ScriptContextGuard,
-        (_, index): (ScriptObject, ScriptString),
+        (key, value): (Option<ScriptString>, Option<ScriptString>),
     ) -> ScriptResult<ScriptValue<'script>> {
-        let key = parse_register_key(index)?;
-        let register = ctx.registers.get(key);
-        let register = engine.create_string(register.as_bytes())?;
-        Ok(ScriptValue::String(register))
-    }
-
-    pub fn newindex(
-        _: ScriptEngineRef,
-        ctx: &mut ScriptContext,
-        _: ScriptContextGuard,
-        (_, index, value): (ScriptObject, ScriptString, ScriptString),
-    ) -> ScriptResult<()> {
-        let key = parse_register_key(index)?;
-        let value = value.to_str()?;
-        ctx.registers.set(key, value);
-        Ok(())
-    }
-
-    fn parse_register_key(text: ScriptString) -> ScriptResult<RegisterKey> {
-        let text = text.to_str()?;
-        let bytes = text.as_bytes();
-        if bytes.len() == 1 {
-            if let Some(key) = RegisterKey::from_char(bytes[0] as _) {
-                return Ok(key);
+        match key {
+            Some(key) => {
+                let key = key.to_str()?;
+                let key = match key.as_bytes() {
+                    [b] => match RegisterKey::from_char(*b as _) {
+                        Some(key) => key,
+                        None => return helper::no_such_property_error(key),
+                    },
+                    _ => return helper::no_such_property_error(key),
+                };
+                match value {
+                    Some(value) => {
+                        let value = value.to_str()?;
+                        ctx.registers.set(key, value);
+                        Ok(ScriptValue::Nil)
+                    }
+                    None => {
+                        let register = ctx.registers.get(key);
+                        let register = engine.create_string(register.as_bytes())?;
+                        Ok(ScriptValue::String(register))
+                    }
+                }
+            }
+            None => {
+                let array = engine.create_array()?;
+                for key in b'a'..=b'z' {
+                    let key = engine.create_string(std::slice::from_ref(&key))?;
+                    array.push(ScriptValue::String(key))?;
+                }
+                Ok(ScriptValue::Array(array))
             }
         }
-        Err(ScriptError::from(format!("no such property {}", text)))
     }
 }
 
 mod helper {
     use super::*;
+
+    pub fn no_such_property_error<T>(property_name: &str) -> ScriptResult<T> {
+        Err(ScriptError::from(format!(
+            "no such property '{}'",
+            property_name
+        )))
+    }
 
     pub fn parsing_error<T>(message: T, text: &str, error_index: usize) -> String
     where
