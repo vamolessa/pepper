@@ -116,7 +116,7 @@ impl TaskWorker {
                 TaskRequest::Stop => break,
                 TaskRequest::ChildStream(child) => {
                     if let Some(mut stdout) = child.stdout {
-                        let mut buf = [0; 1024 * 8];
+                        let mut buf = [0; 1024 * 2];
                         let mut output = Vec::new();
                         loop {
                             let buf_len = match stdout.read(&mut buf) {
