@@ -415,27 +415,32 @@ impl Client {
         self.log_buffer_handle = log_buffer_handle;
     }
 
-    fn write_to_log_buffer<F>(&mut self, ctx: &mut ClientContext, writer: F)
+    fn write_to_log_buffer<F>(&mut self, writer: F)
     where
         F: FnOnce(&mut Vec<u8>),
     {
-        let buffers = &mut *ctx.buffers;
-        if let Some(buffer) = self.log_buffer_handle.and_then(|h| buffers.get_mut(h)) {
-            self.log_write_buf.clear();
+        if let Some(_) = self.log_buffer_handle {
             writer(&mut self.log_write_buf);
             self.log_write_buf.extend_from_slice(b"\n----\n\n");
+        }
+    }
+
+    fn flush_log_buffer(&mut self, ctx: &mut ClientContext) {
+        let buffers = &mut *ctx.buffers;
+        if let Some(buffer) = self.log_buffer_handle.and_then(|h| buffers.get_mut(h)) {
             let content = buffer.content();
             let line_index = content.line_count() - 1;
             let position =
                 BufferPosition::line_col(line_index, content.line_at(line_index).as_str().len());
             let text = String::from_utf8_lossy(&self.log_write_buf);
             buffer.insert_text(ctx.word_database, position, &text, ctx.editor_events);
+            self.log_write_buf.clear();
         }
     }
 
     fn on_request(
         &mut self,
-        ctx: &mut ClientContext,
+        _ctx: &mut ClientContext,
         json: &mut Json,
         request: ServerRequest,
     ) -> io::Result<()> {
@@ -450,7 +455,7 @@ impl Client {
             };
         }
 
-        self.write_to_log_buffer(ctx, |buf| {
+        self.write_to_log_buffer(|buf| {
             use io::Write;
             let _ = write!(buf, "receive request\nid: ");
             let _ = json.write(buf, &request.id);
@@ -532,7 +537,7 @@ impl Client {
             };
         }
 
-        self.write_to_log_buffer(ctx, |buf| {
+        self.write_to_log_buffer(|buf| {
             use io::Write;
             let _ = write!(
                 buf,
@@ -620,7 +625,7 @@ impl Client {
             None => return Ok(()),
         };
 
-        self.write_to_log_buffer(ctx, |buf| {
+        self.write_to_log_buffer(|buf| {
             use io::Write;
             let _ = write!(
                 buf,
@@ -649,7 +654,11 @@ impl Client {
                 Ok(result) => {
                     self.server_capabilities = deserialize!(result.get("capabilities", &json));
                     self.initialized = true;
-                    self.notify(ctx, json, "initialized", JsonObject::default())?;
+                    self.notify(json, "initialized", JsonObject::default())?;
+
+                    for buffer in ctx.buffers.iter() {
+                        helper::send_did_open(self, ctx, json, buffer.handle())?;
+                    }
                 }
                 Err(_) => unimplemented!(),
             },
@@ -659,18 +668,12 @@ impl Client {
         Ok(())
     }
 
-    fn on_parse_error(
-        &mut self,
-        ctx: &mut ClientContext,
-        json: &mut Json,
-        request_id: JsonValue,
-    ) -> io::Result<()> {
-        self.write_to_log_buffer(ctx, |buf| {
+    fn on_parse_error(&mut self, json: &mut Json, request_id: JsonValue) -> io::Result<()> {
+        self.write_to_log_buffer(|buf| {
             use io::Write;
             let _ = write!(buf, "send parse error\nrequest_id: ");
             let _ = json.write(buf, &request_id);
         });
-
         Self::respond_parse_error(&mut self.protocol, json, request_id)
     }
 
@@ -689,209 +692,6 @@ impl Client {
         events: EditorEventsIter,
         json: &mut Json,
     ) -> io::Result<()> {
-        fn get_path_uri<'a>(ctx: &'a ClientContext, path: &'a Path) -> Uri<'a> {
-            if path.is_absolute() {
-                Uri::AbsolutePath(path)
-            } else {
-                Uri::RelativePath(ctx.current_directory, path)
-            }
-        }
-
-        fn text_document_with_id<'a>(
-            ctx: &'a ClientContext,
-            path: &'a Path,
-            json: &mut Json,
-        ) -> JsonObject {
-            let mut id = JsonObject::default();
-            let uri = json.fmt_string(format_args!("{}", get_path_uri(ctx, path)));
-            id.set("uri".into(), uri.into(), json);
-            id
-        }
-
-        fn position(position: BufferPosition, json: &mut Json) -> JsonObject {
-            let line = JsonValue::Integer(position.line_index as _);
-            let character = JsonValue::Integer(position.column_byte_index as _);
-            let mut p = JsonObject::default();
-            p.set("line".into(), line, json);
-            p.set("character".into(), character, json);
-            p
-        }
-
-        fn range(range: BufferRange, json: &mut Json) -> JsonObject {
-            let start = position(range.from, json);
-            let end = position(range.to, json);
-            let mut r = JsonObject::default();
-            r.set("start".into(), start.into(), json);
-            r.set("end".into(), end.into(), json);
-            r
-        }
-
-        fn send_did_open(
-            client: &mut Client,
-            ctx: &mut ClientContext,
-            json: &mut Json,
-            buffer_handle: BufferHandle,
-        ) -> io::Result<()> {
-            if !client.server_capabilities.textDocumentSync.open_close {
-                return Ok(());
-            }
-
-            let buffer = match ctx.buffers.get(buffer_handle) {
-                Some(buffer) => buffer,
-                None => return Ok(()),
-            };
-            if !buffer.capabilities().can_save {
-                return Ok(());
-            }
-            let buffer_path = match buffer.path() {
-                Some(path) => path,
-                None => return Ok(()),
-            };
-
-            let mut text_document = text_document_with_id(ctx, buffer_path, json);
-            let language_id = json.create_string(protocol::path_to_language_id(buffer_path));
-            text_document.set("languageId".into(), language_id.into(), json);
-            text_document.set("version".into(), JsonValue::Integer(0), json);
-            let text = json.fmt_string(format_args!("{}", buffer.content()));
-            text_document.set("text".into(), text.into(), json);
-
-            let mut params = JsonObject::default();
-            params.set("textDocument".into(), text_document.into(), json);
-
-            client.notify(ctx, json, "textDocument/didOpen", params.into())
-        }
-
-        fn send_pending_did_change(
-            client: &mut Client,
-            ctx: &mut ClientContext,
-            json: &mut Json,
-        ) -> io::Result<()> {
-            if let TextDocumentSyncKind::None = client.server_capabilities.textDocumentSync.change {
-                return Ok(());
-            }
-
-            let mut versioned_buffers = std::mem::take(&mut client.versioned_buffers);
-            for (buffer_handle, versioned_buffer) in versioned_buffers.iter_pending_mut() {
-                let buffer = match ctx.buffers.get(buffer_handle) {
-                    Some(buffer) => buffer,
-                    None => continue,
-                };
-                if !buffer.capabilities().can_save {
-                    continue;
-                }
-                let buffer_path = match buffer.path() {
-                    Some(path) => path,
-                    None => continue,
-                };
-
-                let mut text_document = text_document_with_id(ctx, buffer_path, json);
-                text_document.set(
-                    "version".into(),
-                    JsonValue::Integer(versioned_buffer.version as _),
-                    json,
-                );
-
-                let mut params = JsonObject::default();
-                params.set("textDocument".into(), text_document.into(), json);
-
-                let mut content_changes = JsonArray::default();
-                match client.server_capabilities.textDocumentSync.save {
-                    TextDocumentSyncKind::None => (),
-                    TextDocumentSyncKind::Full => {
-                        let text = json.fmt_string(format_args!("{}", buffer.content()));
-                        let mut change_event = JsonObject::default();
-                        change_event.set("text".into(), text.into(), json);
-                        content_changes.push(change_event.into(), json);
-                    }
-                    TextDocumentSyncKind::Incremental => {
-                        for edit in &versioned_buffer.pending_edits {
-                            let mut change_event = JsonObject::default();
-
-                            let edit_range = range(edit.buffer_range, json).into();
-                            change_event.set("range".into(), edit_range, json);
-
-                            let text = &versioned_buffer.texts[edit.text_range.clone()];
-                            let text = json.create_string(text);
-                            change_event.set("text".into(), text.into(), json);
-
-                            content_changes.push(change_event.into(), json);
-                        }
-                    }
-                }
-
-                params.set("contentChanges".into(), content_changes.into(), json);
-
-                versioned_buffer.flush();
-                client.notify(ctx, json, "textDocument/didChange", params.into())?;
-            }
-            std::mem::swap(&mut client.versioned_buffers, &mut versioned_buffers);
-
-            return Ok(());
-        }
-
-        fn send_did_save(
-            client: &mut Client,
-            ctx: &mut ClientContext,
-            json: &mut Json,
-            buffer_handle: BufferHandle,
-        ) -> io::Result<()> {
-            if let TextDocumentSyncKind::None = client.server_capabilities.textDocumentSync.save {
-                return Ok(());
-            }
-
-            let buffer = match ctx.buffers.get(buffer_handle) {
-                Some(buffer) => buffer,
-                None => return Ok(()),
-            };
-            if !buffer.capabilities().can_save {
-                return Ok(());
-            }
-            let buffer_path = match buffer.path() {
-                Some(path) => path,
-                None => return Ok(()),
-            };
-
-            let text_document = text_document_with_id(ctx, buffer_path, json);
-            let mut params = JsonObject::default();
-            params.set("textDocument".into(), text_document.into(), json);
-
-            if let TextDocumentSyncKind::Full = client.server_capabilities.textDocumentSync.save {
-                let text = json.fmt_string(format_args!("{}", buffer.content()));
-                params.set("text".into(), text.into(), json);
-            }
-
-            client.notify(ctx, json, "textDocument/didSave", params.into())
-        }
-
-        fn send_did_close(
-            client: &mut Client,
-            ctx: &mut ClientContext,
-            json: &mut Json,
-            buffer_handle: BufferHandle,
-        ) -> io::Result<()> {
-            if !client.server_capabilities.textDocumentSync.open_close {
-                return Ok(());
-            }
-
-            let buffer = match ctx.buffers.get(buffer_handle) {
-                Some(buffer) => buffer,
-                None => return Ok(()),
-            };
-            if !buffer.capabilities().can_save {
-                return Ok(());
-            }
-            let buffer_path = match buffer.path() {
-                Some(path) => path,
-                None => return Ok(()),
-            };
-
-            let text_document = text_document_with_id(ctx, buffer_path, json);
-            let mut params = JsonObject::default();
-            params.set("textDocument".into(), text_document.into(), json);
-
-            client.notify(ctx, json, "textDocument/didClose", params.into())
-        }
-
         if !self.initialized {
             return Ok(());
         }
@@ -899,13 +699,13 @@ impl Client {
         for event in events {
             match event {
                 EditorEvent::Idle => {
-                    send_pending_did_change(self, ctx, json)?;
+                    helper::send_pending_did_change(self, ctx, json)?;
                 }
                 EditorEvent::BufferLoad { handle } => {
                     let handle = *handle;
                     self.versioned_buffers.dispose(handle);
                     self.diagnostics.on_load_buffer(ctx, handle);
-                    send_did_open(self, ctx, json, handle)?;
+                    helper::send_did_open(self, ctx, json, handle)?;
                 }
                 EditorEvent::BufferOpen { .. } => (),
                 EditorEvent::BufferInsertText {
@@ -923,14 +723,14 @@ impl Client {
                 EditorEvent::BufferSave { handle, .. } => {
                     let handle = *handle;
                     self.diagnostics.on_save_buffer(ctx, handle);
-                    send_pending_did_change(self, ctx, json)?;
-                    send_did_save(self, ctx, json, handle)?;
+                    helper::send_pending_did_change(self, ctx, json)?;
+                    helper::send_did_save(self, ctx, json, handle)?;
                 }
                 EditorEvent::BufferClose { handle } => {
                     let handle = *handle;
                     self.versioned_buffers.dispose(handle);
                     self.diagnostics.on_close_buffer(handle);
-                    send_did_close(self, ctx, json, handle)?;
+                    helper::send_did_close(self, ctx, json, handle)?;
                 }
             }
         }
@@ -939,14 +739,13 @@ impl Client {
 
     fn request(
         &mut self,
-        ctx: &mut ClientContext,
         json: &mut Json,
         method: &'static str,
         params: JsonObject,
     ) -> io::Result<()> {
         let params = params.into();
 
-        self.write_to_log_buffer(ctx, |buf| {
+        self.write_to_log_buffer(|buf| {
             use io::Write;
             let _ = write!(buf, "send request\nmethod: '{}'\nparams:\n", method);
             let _ = json.write(buf, &params);
@@ -959,14 +758,13 @@ impl Client {
 
     fn notify(
         &mut self,
-        ctx: &mut ClientContext,
         json: &mut Json,
         method: &'static str,
         params: JsonObject,
     ) -> io::Result<()> {
         let params = params.into();
 
-        self.write_to_log_buffer(ctx, |buf| {
+        self.write_to_log_buffer(|buf| {
             use io::Write;
             let _ = write!(buf, "send notification\nmethod: '{}'\nparams:\n", method);
             let _ = json.write(buf, &params);
@@ -976,12 +774,7 @@ impl Client {
         Ok(())
     }
 
-    fn initialize(
-        &mut self,
-        ctx: &mut ClientContext,
-        json: &mut Json,
-        root: &Path,
-    ) -> io::Result<()> {
+    fn initialize(&mut self, json: &mut Json, root: &Path) -> io::Result<()> {
         let mut params = JsonObject::default();
         params.set(
             "processId".into(),
@@ -996,8 +789,211 @@ impl Client {
             json,
         );
 
-        self.request(ctx, json, "initialize", params)?;
+        self.request(json, "initialize", params)?;
         Ok(())
+    }
+}
+
+mod helper {
+    use super::*;
+
+    pub fn get_path_uri<'a>(ctx: &'a ClientContext, path: &'a Path) -> Uri<'a> {
+        if path.is_absolute() {
+            Uri::AbsolutePath(path)
+        } else {
+            Uri::RelativePath(ctx.current_directory, path)
+        }
+    }
+
+    pub fn text_document_with_id(ctx: &ClientContext, path: &Path, json: &mut Json) -> JsonObject {
+        let mut id = JsonObject::default();
+        let uri = json.fmt_string(format_args!("{}", get_path_uri(ctx, path)));
+        id.set("uri".into(), uri.into(), json);
+        id
+    }
+
+    pub fn position(position: BufferPosition, json: &mut Json) -> JsonObject {
+        let line = JsonValue::Integer(position.line_index as _);
+        let character = JsonValue::Integer(position.column_byte_index as _);
+        let mut p = JsonObject::default();
+        p.set("line".into(), line, json);
+        p.set("character".into(), character, json);
+        p
+    }
+
+    pub fn range(range: BufferRange, json: &mut Json) -> JsonObject {
+        let start = position(range.from, json);
+        let end = position(range.to, json);
+        let mut r = JsonObject::default();
+        r.set("start".into(), start.into(), json);
+        r.set("end".into(), end.into(), json);
+        r
+    }
+
+    pub fn send_did_open(
+        client: &mut Client,
+        ctx: &ClientContext,
+        json: &mut Json,
+        buffer_handle: BufferHandle,
+    ) -> io::Result<()> {
+        if !client.server_capabilities.textDocumentSync.open_close {
+            return Ok(());
+        }
+
+        let buffer = match ctx.buffers.get(buffer_handle) {
+            Some(buffer) => buffer,
+            None => return Ok(()),
+        };
+        if !buffer.capabilities().can_save {
+            return Ok(());
+        }
+        let buffer_path = match buffer.path() {
+            Some(path) => path,
+            None => return Ok(()),
+        };
+
+        let mut text_document = text_document_with_id(ctx, buffer_path, json);
+        let language_id = json.create_string(protocol::path_to_language_id(buffer_path));
+        text_document.set("languageId".into(), language_id.into(), json);
+        text_document.set("version".into(), JsonValue::Integer(0), json);
+        let text = json.fmt_string(format_args!("{}", buffer.content()));
+        text_document.set("text".into(), text.into(), json);
+
+        let mut params = JsonObject::default();
+        params.set("textDocument".into(), text_document.into(), json);
+
+        client.notify(json, "textDocument/didOpen", params.into())
+    }
+
+    pub fn send_pending_did_change(
+        client: &mut Client,
+        ctx: &ClientContext,
+        json: &mut Json,
+    ) -> io::Result<()> {
+        if let TextDocumentSyncKind::None = client.server_capabilities.textDocumentSync.change {
+            return Ok(());
+        }
+
+        let mut versioned_buffers = std::mem::take(&mut client.versioned_buffers);
+        for (buffer_handle, versioned_buffer) in versioned_buffers.iter_pending_mut() {
+            let buffer = match ctx.buffers.get(buffer_handle) {
+                Some(buffer) => buffer,
+                None => continue,
+            };
+            if !buffer.capabilities().can_save {
+                continue;
+            }
+            let buffer_path = match buffer.path() {
+                Some(path) => path,
+                None => continue,
+            };
+
+            let mut text_document = text_document_with_id(ctx, buffer_path, json);
+            text_document.set(
+                "version".into(),
+                JsonValue::Integer(versioned_buffer.version as _),
+                json,
+            );
+
+            let mut params = JsonObject::default();
+            params.set("textDocument".into(), text_document.into(), json);
+
+            let mut content_changes = JsonArray::default();
+            match client.server_capabilities.textDocumentSync.save {
+                TextDocumentSyncKind::None => (),
+                TextDocumentSyncKind::Full => {
+                    let text = json.fmt_string(format_args!("{}", buffer.content()));
+                    let mut change_event = JsonObject::default();
+                    change_event.set("text".into(), text.into(), json);
+                    content_changes.push(change_event.into(), json);
+                }
+                TextDocumentSyncKind::Incremental => {
+                    for edit in &versioned_buffer.pending_edits {
+                        let mut change_event = JsonObject::default();
+
+                        let edit_range = range(edit.buffer_range, json).into();
+                        change_event.set("range".into(), edit_range, json);
+
+                        let text = &versioned_buffer.texts[edit.text_range.clone()];
+                        let text = json.create_string(text);
+                        change_event.set("text".into(), text.into(), json);
+
+                        content_changes.push(change_event.into(), json);
+                    }
+                }
+            }
+
+            params.set("contentChanges".into(), content_changes.into(), json);
+
+            versioned_buffer.flush();
+            client.notify(json, "textDocument/didChange", params.into())?;
+        }
+        std::mem::swap(&mut client.versioned_buffers, &mut versioned_buffers);
+
+        return Ok(());
+    }
+
+    pub fn send_did_save(
+        client: &mut Client,
+        ctx: &ClientContext,
+        json: &mut Json,
+        buffer_handle: BufferHandle,
+    ) -> io::Result<()> {
+        if let TextDocumentSyncKind::None = client.server_capabilities.textDocumentSync.save {
+            return Ok(());
+        }
+
+        let buffer = match ctx.buffers.get(buffer_handle) {
+            Some(buffer) => buffer,
+            None => return Ok(()),
+        };
+        if !buffer.capabilities().can_save {
+            return Ok(());
+        }
+        let buffer_path = match buffer.path() {
+            Some(path) => path,
+            None => return Ok(()),
+        };
+
+        let text_document = text_document_with_id(ctx, buffer_path, json);
+        let mut params = JsonObject::default();
+        params.set("textDocument".into(), text_document.into(), json);
+
+        if let TextDocumentSyncKind::Full = client.server_capabilities.textDocumentSync.save {
+            let text = json.fmt_string(format_args!("{}", buffer.content()));
+            params.set("text".into(), text.into(), json);
+        }
+
+        client.notify(json, "textDocument/didSave", params.into())
+    }
+
+    pub fn send_did_close(
+        client: &mut Client,
+        ctx: &ClientContext,
+        json: &mut Json,
+        buffer_handle: BufferHandle,
+    ) -> io::Result<()> {
+        if !client.server_capabilities.textDocumentSync.open_close {
+            return Ok(());
+        }
+
+        let buffer = match ctx.buffers.get(buffer_handle) {
+            Some(buffer) => buffer,
+            None => return Ok(()),
+        };
+        if !buffer.capabilities().can_save {
+            return Ok(());
+        }
+        let buffer_path = match buffer.path() {
+            Some(path) => path,
+            None => return Ok(()),
+        };
+
+        let text_document = text_document_with_id(ctx, buffer_path, json);
+        let mut params = JsonObject::default();
+        params.set("textDocument".into(), text_document.into(), json);
+
+        client.notify(json, "textDocument/didClose", params.into())
     }
 }
 
@@ -1027,12 +1023,7 @@ impl ClientCollection {
         }
     }
 
-    pub fn start(
-        &mut self,
-        ctx: &mut ClientContext,
-        command: Command,
-        root: &Path,
-    ) -> io::Result<ClientHandle> {
+    pub fn start(&mut self, command: Command, root: &Path) -> io::Result<ClientHandle> {
         let handle = self.find_free_slot();
         let json = SharedJson::new();
         let connection =
@@ -1043,7 +1034,7 @@ impl ClientCollection {
         };
         entry
             .client
-            .initialize(ctx, entry.json.write_lock().get(), root)?;
+            .initialize(entry.json.write_lock().get(), root)?;
         self.entries[handle.0] = Some(entry);
         Ok(handle)
     }
@@ -1075,15 +1066,15 @@ impl ClientCollection {
             ServerEvent::ParseError => {
                 if let Some(entry) = self.entries[handle.0].as_mut() {
                     let mut json = entry.json.consume_lock();
-                    entry
-                        .client
-                        .on_parse_error(ctx, json.get(), JsonValue::Null)?;
+                    entry.client.on_parse_error(json.get(), JsonValue::Null)?;
+                    entry.client.flush_log_buffer(ctx);
                 }
             }
             ServerEvent::Request(request) => {
                 if let Some(entry) = self.entries[handle.0].as_mut() {
                     let mut json = entry.json.consume_lock();
                     entry.client.on_request(ctx, json.get(), request)?;
+                    entry.client.flush_log_buffer(ctx);
                 }
             }
             ServerEvent::Notification(notification) => {
@@ -1092,12 +1083,14 @@ impl ClientCollection {
                     entry
                         .client
                         .on_notification(ctx, json.get(), notification)?;
+                    entry.client.flush_log_buffer(ctx);
                 }
             }
             ServerEvent::Response(response) => {
                 if let Some(entry) = self.entries[handle.0].as_mut() {
                     let mut json = entry.json.consume_lock();
                     entry.client.on_response(ctx, json.get(), response)?;
+                    entry.client.flush_log_buffer(ctx);
                 }
             }
         }
