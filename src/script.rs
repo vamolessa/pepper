@@ -14,7 +14,7 @@ use crate::{
     buffer_view::{BufferViewCollection, BufferViewHandle},
     client::{ClientCollection, TargetClient},
     config::Config,
-    editor::{EditorLoop, StatusMessage},
+    editor::{EditorLoop, ReadLine, StatusMessage},
     editor_event::{EditorEvent, EditorEventQueue, EditorEventsIter},
     keymap::KeyMapCollection,
     lsp::{LspClientCollection, LspClientContext},
@@ -417,6 +417,7 @@ pub struct ScriptContext<'a> {
     pub word_database: &'a mut WordDatabase,
 
     pub registers: &'a mut RegisterCollection,
+    pub read_line: &'a mut ReadLine,
     pub picker: &'a mut Picker,
 
     pub status_message: &'a mut StatusMessage,
@@ -446,7 +447,7 @@ impl<'a> ScriptContext<'a> {
         }
     }
 
-    pub fn lsp_context(&mut self) -> (&mut LspClientCollection, LspClientContext) {
+    pub fn into_lsp_context(&mut self) -> (&mut LspClientCollection, LspClientContext) {
         let ctx = LspClientContext {
             current_directory: self.current_directory,
             config: self.config,

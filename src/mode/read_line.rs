@@ -483,12 +483,12 @@ pub mod custom {
             _: &mut KeysIterator,
             poll: ReadLinePoll,
         ) -> ModeOperation {
-            let (engine, read_line, mut ctx) = ctx.script_context();
+            let (engine, mut ctx) = ctx.into_script_context();
             let operation = engine.as_ref_with_ctx(&mut ctx, |engine, ctx, guard| {
                 let input = match poll {
                     ReadLinePoll::Pending => return Ok(ModeOperation::None),
                     ReadLinePoll::Submitted => {
-                        ScriptValue::String(engine.create_string(read_line.input().as_bytes())?)
+                        ScriptValue::String(engine.create_string(ctx.read_line.input().as_bytes())?)
                     }
                     ReadLinePoll::Canceled => ScriptValue::Nil,
                 };

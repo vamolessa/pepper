@@ -264,8 +264,8 @@ impl Editor {
     }
 
     pub fn load_config(&mut self, clients: &mut ClientCollection, path: &Path) {
-        let (mode, _, _, mut mode_ctx) = self.mode_context(clients, TargetClient::Local);
-        let (scripts, _, mut script_ctx) = mode_ctx.script_context();
+        let (mode, _, _, mut mode_ctx) = self.into_mode_context(clients, TargetClient::Local);
+        let (scripts, mut script_ctx) = mode_ctx.into_script_context();
 
         if let Err(e) = scripts.eval_entry_file(&mut script_ctx, path) {
             script_ctx.status_message.write_error(&e);
@@ -425,7 +425,7 @@ impl Editor {
 
                 'key_queue_loop: loop {
                     let (mode, buffered_keys, _, mut mode_ctx) =
-                        self.mode_context(clients, target_client);
+                        self.into_mode_context(clients, target_client);
                     let mut keys = KeysIterator::new(&buffered_keys);
                     loop {
                         if keys.index == buffered_keys.len() {
@@ -503,7 +503,7 @@ impl Editor {
         self.trigger_event_handlers(clients, TargetClient::Local);
     }
 
-    fn mode_context<'a>(
+    fn into_mode_context<'a>(
         &'a mut self,
         clients: &'a mut ClientCollection,
         target_client: TargetClient,
@@ -575,7 +575,7 @@ impl Editor {
         target_client: TargetClient,
     ) {
         self.editor_events.flip();
-        let (mode, _, events, mut mode_ctx) = self.mode_context(clients, target_client);
+        let (mode, _, events, mut mode_ctx) = self.into_mode_context(clients, target_client);
 
         if let None = events.into_iter().next() {
             return;
@@ -583,12 +583,12 @@ impl Editor {
 
         mode.on_editor_events(&mut mode_ctx, events);
 
-        let (scripts, _, mut script_ctx) = mode_ctx.script_context();
+        let (scripts, mut script_ctx) = mode_ctx.into_script_context();
         if let Err(error) = scripts.on_editor_event(&mut script_ctx, events) {
             script_ctx.status_message.write_error(&error);
         }
 
-        let (lsp, mut lsp_ctx) = script_ctx.lsp_context();
+        let (lsp, mut lsp_ctx) = script_ctx.into_lsp_context();
         if let Err(error) = lsp.on_editor_events(&mut lsp_ctx, events) {
             lsp_ctx.status_message.write_error(&error);
         }
@@ -626,8 +626,8 @@ impl Editor {
         handle: TaskHandle,
         result: TaskResult,
     ) {
-        let (_, _, _, mut mode_ctx) = self.mode_context(clients, target_client);
-        let (scripts, _, mut script_ctx) = mode_ctx.script_context();
+        let (_, _, _, mut mode_ctx) = self.into_mode_context(clients, target_client);
+        let (scripts, mut script_ctx) = mode_ctx.into_script_context();
         if let Err(error) = scripts.on_task_event(&mut script_ctx, handle, &result) {
             script_ctx.status_message.write_error(&error);
         }

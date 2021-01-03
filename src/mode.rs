@@ -71,12 +71,13 @@ impl<'a> ModeContext<'a> {
                 .and_then(|h| self.buffer_views.get(h))
                 .map(|v| v.buffer_handle)
             {
-                self.editor_events.enqueue(EditorEvent::BufferOpen { handle });
+                self.editor_events
+                    .enqueue(EditorEvent::BufferOpen { handle });
             }
         }
     }
 
-    pub fn script_context(&mut self) -> (&mut ScriptEngine, &mut ReadLine, ScriptContext) {
+    pub fn into_script_context(&mut self) -> (&mut ScriptEngine, ScriptContext) {
         let ctx = ScriptContext {
             target_client: self.target_client,
             clients: self.clients,
@@ -92,6 +93,7 @@ impl<'a> ModeContext<'a> {
             word_database: self.word_database,
 
             registers: self.registers,
+            read_line: self.read_line,
             picker: self.picker,
 
             status_message: self.status_message,
@@ -102,7 +104,7 @@ impl<'a> ModeContext<'a> {
             lsp: self.lsp,
         };
 
-        (self.scripts, self.read_line, ctx)
+        (self.scripts, ctx)
     }
 }
 

@@ -51,17 +51,29 @@ impl ModeState for State {
                     ctx.scripts.add_to_history(input);
                 }
 
-                let (engine, read_line, mut context) = ctx.script_context();
+                let (engine, mut ctx) = ctx.into_script_context();
 
-                if let Err(error) = eval(engine, &mut context, read_line.input()) {
-                    match context.editor_loop {
+                let code = ctx.read_line.input();
+                const BUF_CAPACITY: usize = 256;
+                let result = if code.len() > BUF_CAPACITY {
+                    let code = String::from(code);
+                    eval(engine, &mut ctx, &code)
+                } else {
+                    let mut buf = [0; BUF_CAPACITY];
+                    buf[..code.len()].copy_from_slice(code.as_bytes());
+                    let code = unsafe { std::str::from_utf8_unchecked(&buf) };
+                    eval(engine, &mut ctx, code)
+                };
+
+                if let Err(error) = result {
+                    match ctx.editor_loop {
                         EditorLoop::Quit => return ModeOperation::Quit,
                         EditorLoop::QuitAll => return ModeOperation::QuitAll,
-                        EditorLoop::Continue => context.status_message.write_error(&error),
+                        EditorLoop::Continue => ctx.status_message.write_error(&error),
                     }
                 }
 
-                ModeOperation::EnterMode(context.next_mode)
+                ModeOperation::EnterMode(ctx.next_mode)
             }
         }
     }

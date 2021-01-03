@@ -189,7 +189,7 @@ pub mod custom {
             _: &mut KeysIterator,
             poll: ReadLinePoll,
         ) -> ModeOperation {
-            let (engine, _, mut ctx) = ctx.script_context();
+            let (engine, mut ctx) = ctx.into_script_context();
             let operation = engine.as_ref_with_ctx(&mut ctx, |engine, ctx, guard| {
                 let (name, description) = match poll {
                     ReadLinePoll::Pending => return Ok(ModeOperation::None),
