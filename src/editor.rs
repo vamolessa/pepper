@@ -89,10 +89,9 @@ impl ReadLine {
         &self.input
     }
 
-    pub fn reset(&mut self, prompt: &str) {
+    pub fn set_prompt(&mut self, prompt: &str) {
         self.prompt.clear();
         self.prompt.push_str(prompt);
-        self.input.clear();
     }
 
     pub fn set_input(&mut self, input: &str) {

@@ -6,14 +6,12 @@ use crate::{
 };
 
 pub struct State {
-    on_enter: fn(&mut ModeContext),
     on_client_keys: fn(&mut ModeContext, &mut KeysIterator, ReadLinePoll) -> ModeOperation,
 }
 
 impl Default for State {
     fn default() -> Self {
         Self {
-            on_enter: |_| (),
             on_client_keys: |_, _, _| ModeOperation::EnterMode(Mode::default()),
         }
     }
@@ -21,12 +19,12 @@ impl Default for State {
 
 impl ModeState for State {
     fn on_enter(&mut self, ctx: &mut ModeContext) {
+        ctx.read_line.set_input("");
         ctx.picker.filter(&EmptyWordCollection, "");
-        (self.on_enter)(ctx);
     }
 
     fn on_exit(&mut self, ctx: &mut ModeContext) {
-        ctx.read_line.reset("");
+        ctx.read_line.set_input("");
         ctx.picker.reset();
     }
 
@@ -80,10 +78,6 @@ pub mod buffer {
     use crate::{buffer::Buffer, navigation_history::NavigationHistory, picker::Picker};
 
     pub fn mode(ctx: &mut ModeContext) -> Mode {
-        fn on_enter(ctx: &mut ModeContext) {
-            ctx.read_line.reset("buffer:");
-        }
-
         fn on_client_keys(
             ctx: &mut ModeContext,
             _: &mut KeysIterator,
@@ -128,6 +122,7 @@ pub mod buffer {
             }
         }
 
+        ctx.read_line.set_prompt("buffer:");
         ctx.picker.reset();
 
         let buffers = &ctx.buffers;
@@ -153,37 +148,18 @@ pub mod buffer {
             }
         }
 
-        Mode::Picker(State {
-            on_enter,
-            on_client_keys,
-        })
+        Mode::Picker(State { on_client_keys })
     }
 }
 
 pub mod custom {
     use super::*;
 
-    use crate::script::{ScriptEngineRef, ScriptFunction, ScriptResult, ScriptString, ScriptValue};
+    use crate::script::{ScriptEngineRef, ScriptFunction, ScriptResult, ScriptValue};
 
-    const PROMPT_REGISTRY_KEY: &str = "picker_prompt";
     const CALLBACK_REGISTRY_KEY: &str = "picker_callback";
 
-    pub fn prompt(engine: ScriptEngineRef, prompt: ScriptString) -> ScriptResult<()> {
-        engine.save_to_registry(PROMPT_REGISTRY_KEY, ScriptValue::String(prompt))
-    }
-
     pub fn mode(engine: ScriptEngineRef, callback: ScriptFunction) -> ScriptResult<Mode> {
-        fn on_enter(ctx: &mut ModeContext) {
-            match ctx
-                .scripts
-                .as_ref()
-                .take_from_registry::<ScriptString>(PROMPT_REGISTRY_KEY)
-            {
-                Ok(prompt) => ctx.read_line.reset(prompt.to_str().unwrap_or(">")),
-                Err(_) => ctx.read_line.reset(">"),
-            }
-        }
-
         fn on_client_keys(
             ctx: &mut ModeContext,
             _: &mut KeysIterator,
@@ -225,9 +201,6 @@ pub mod custom {
         }
 
         engine.save_to_registry(CALLBACK_REGISTRY_KEY, ScriptValue::Function(callback))?;
-        Ok(Mode::Picker(State {
-            on_enter,
-            on_client_keys,
-        }))
+        Ok(Mode::Picker(State { on_client_keys }))
     }
 }

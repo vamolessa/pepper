@@ -77,7 +77,7 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
     register!(cursors => len, all, set_all, main_index, main, get, set, move_columns, move_lines, move_words,
         move_home, move_end, move_first_line, move_last_line,);
     register!(read_line => prompt, read,);
-    register!(picker => prompt, reset, entry, pick,);
+    register!(picker => reset, entry, pick,);
     register!(process => pipe, spawn,);
     register!(keymap => normal, insert, read_line, picker, script,);
     register!(syntax => rules,);
@@ -1240,12 +1240,13 @@ mod read_line {
     use super::*;
 
     pub fn prompt(
-        engine: ScriptEngineRef,
-        _: &mut ScriptContext,
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
         _: ScriptContextGuard,
         prompt: ScriptString,
     ) -> ScriptResult<()> {
-        mode::read_line::custom::prompt(engine, prompt)
+        ctx.read_line.set_prompt(prompt.to_str()?);
+        Ok(())
     }
 
     pub fn read(
@@ -1261,15 +1262,6 @@ mod read_line {
 
 mod picker {
     use super::*;
-
-    pub fn prompt(
-        engine: ScriptEngineRef,
-        _: &mut ScriptContext,
-        _: ScriptContextGuard,
-        prompt: ScriptString,
-    ) -> ScriptResult<()> {
-        mode::picker::custom::prompt(engine, prompt)
-    }
 
     pub fn reset(
         _: ScriptEngineRef,

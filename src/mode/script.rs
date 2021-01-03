@@ -13,11 +13,12 @@ pub struct State {
 impl ModeState for State {
     fn on_enter(&mut self, ctx: &mut ModeContext) {
         self.history_index = ctx.scripts.history_len();
-        ctx.read_line.reset(":");
+        ctx.read_line.set_prompt(":");
+        ctx.read_line.set_input("");
     }
 
     fn on_exit(&mut self, ctx: &mut ModeContext) {
-        ctx.read_line.reset("");
+        ctx.read_line.set_input("");
     }
 
     fn on_client_keys(&mut self, ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
