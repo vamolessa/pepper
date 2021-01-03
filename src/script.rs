@@ -306,33 +306,12 @@ impl<'lua, 'value> fmt::Display for ScriptValueDisplay<'lua, 'value> {
                     if depth == 0 {
                         f.write_str("...")?;
                     } else {
-                        let table = o.0.clone();
-                        match LuaTablePairs::new(table, guard) {
-                            Ok(pairs) => {
-                                for (key, value) in pairs {
-                                    let key = match lua_value_to_script_value(key) {
-                                        Ok(key) => key,
-                                        Err(_) => continue,
-                                    };
-                                    let value = match lua_value_to_script_value(value) {
-                                        Ok(value) => value,
-                                        Err(_) => continue,
-                                    };
-                                    fmt_recursive(&key, f, guard, depth - 1)?;
-                                    f.write_str(":")?;
-                                    fmt_recursive(&value, f, guard, depth - 1)?;
-                                    f.write_str(",")?;
-                                }
-                            }
-                            Err(table) => {
-                                for pair in table.pairs::<ScriptValue, ScriptValue>() {
-                                    if let Ok((key, value)) = pair {
-                                        fmt_recursive(&key, f, guard, depth - 1)?;
-                                        f.write_str(":")?;
-                                        fmt_recursive(&value, f, guard, depth - 1)?;
-                                        f.write_str(",")?;
-                                    }
-                                }
+                        for pair in o.0.clone().pairs::<ScriptValue, ScriptValue>() {
+                            if let Ok((key, value)) = pair {
+                                fmt_recursive(&key, f, guard, depth - 1)?;
+                                f.write_str(":")?;
+                                fmt_recursive(&value, f, guard, depth - 1)?;
+                                f.write_str(",")?;
                             }
                         }
                     }
@@ -344,8 +323,7 @@ impl<'lua, 'value> fmt::Display for ScriptValueDisplay<'lua, 'value> {
                     if depth == 0 {
                         f.write_str("...")?;
                     } else {
-                        let a = a.0.clone();
-                        for value in a.sequence_values::<ScriptValue>() {
+                        for value in a.0.clone().sequence_values::<ScriptValue>() {
                             if let Ok(value) = value {
                                 fmt_recursive(&value, f, guard, depth - 1)?;
                             }
@@ -359,46 +337,6 @@ impl<'lua, 'value> fmt::Display for ScriptValueDisplay<'lua, 'value> {
         }
 
         fmt_recursive(self.0, f, self.1, 2)
-    }
-}
-
-struct LuaTablePairs<'lua> {
-    table: LuaTable<'lua>,
-    key: LuaValue<'lua>,
-    next_selector: LuaFunction<'lua>,
-}
-impl<'lua> LuaTablePairs<'lua> {
-    pub fn new(table: LuaTable<'lua>, _: &'lua ScriptContextGuard) -> Result<Self, LuaTable<'lua>> {
-        match table
-            .get_metatable()
-            .and_then(|mt| mt.get("__pairs").ok())
-            .and_then(|pairs| {
-                let pairs: LuaFunction = pairs;
-                pairs.call(table.clone()).ok()
-            })
-            .map(|(next_selector, table, key)| Self {
-                table,
-                key,
-                next_selector,
-            }) {
-            Some(s) => Ok(s),
-            None => Err(table),
-        }
-    }
-}
-impl<'lua> Iterator for LuaTablePairs<'lua> {
-    type Item = (LuaValue<'lua>, LuaValue<'lua>);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let key = std::mem::replace(&mut self.key, LuaValue::Nil);
-        match self.next_selector.call((self.table.clone(), key)) {
-            Ok((LuaValue::Nil, _)) | Err(_) => None,
-            Ok((key, value)) => {
-                let value: LuaValue = value;
-                self.key = key.clone();
-                Some((key, value))
-            }
-        }
     }
 }
 
