@@ -5,8 +5,8 @@ use std::{
 
 use mlua::prelude::{
     FromLua, FromLuaMulti, Lua, LuaAnyUserData, LuaError, LuaFunction, LuaInteger,
-    LuaLightUserData, LuaNumber, LuaResult, LuaString, LuaTable, LuaTableSequence, LuaUserData,
-    LuaValue, ToLua, ToLuaMulti,
+    LuaLightUserData, LuaNumber, LuaRegistryKey, LuaResult, LuaString, LuaTable, LuaTableSequence,
+    LuaUserData, LuaValue, ToLua, ToLuaMulti,
 };
 
 use crate::{
@@ -171,6 +171,23 @@ impl<'lua> FromLua<'lua> for ScriptFunction<'lua> {
                 message: None,
             })
         }
+    }
+}
+
+pub struct ScriptCallback(LuaRegistryKey);
+impl ScriptCallback {
+    pub fn call<'lua, A, R>(
+        &self,
+        engine: ScriptEngineRef<'lua>,
+        _: &ScriptContextGuard,
+        args: A,
+    ) -> ScriptResult<R>
+    where
+        A: ToLuaMulti<'lua>,
+        R: FromLuaMulti<'lua>,
+    {
+        let func: LuaFunction = engine.lua.registry_value(&self.0)?;
+        func.call(args)
     }
 }
 
