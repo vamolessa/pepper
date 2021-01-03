@@ -61,7 +61,7 @@ impl ModeState for State {
                 } else {
                     let mut buf = [0; BUF_CAPACITY];
                     buf[..code.len()].copy_from_slice(code.as_bytes());
-                    let code = unsafe { std::str::from_utf8_unchecked(&buf) };
+                    let code = unsafe { std::str::from_utf8_unchecked(&buf[..code.len()]) };
                     eval(engine, &mut ctx, code)
                 };
 
