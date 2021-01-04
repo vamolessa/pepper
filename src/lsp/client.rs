@@ -705,36 +705,34 @@ impl Client {
             }
         });
 
-        match method {
-            "initialize" => match response.result {
-                Ok(result) => {
-                    self.server_capabilities = deserialize!(result.get("capabilities", json));
-                    self.initialized = true;
-                    self.notify(json, "initialized", JsonObject::default())?;
+        let result = match response.result {
+            Ok(result) => result,
+            Err(error) => {
+                helper::write_response_error(ctx, method, error, json);
+                return Ok(());
+            }
+        };
 
-                    for buffer in ctx.buffers.iter() {
-                        helper::send_did_open(self, ctx, json, buffer.handle())?;
-                    }
+        match method {
+            "initialize" => {
+                self.server_capabilities = deserialize!(result.get("capabilities", json));
+                self.initialized = true;
+                self.notify(json, "initialized", JsonObject::default())?;
+
+                for buffer in ctx.buffers.iter() {
+                    helper::send_did_open(self, ctx, json, buffer.handle())?;
                 }
-                Err(error) => {
-                    helper::write_response_error(ctx, "could not start server", error, json);
-                }
-            },
-            "textDocument/hover" => match response.result {
-                Ok(result) => {
-                    let contents = result.get("contents".into(), json);
-                    let info = helper::extract_markup_content(contents, json);
-                    ctx.status_message.write_str(StatusMessageKind::Info, info);
-                }
-                Err(error) => {
-                    helper::write_response_error(
-                        ctx,
-                        "could not retrieve hover information",
-                        error,
-                        json,
-                    );
-                }
-            },
+            }
+            "textDocument/hover" => {
+                let contents = result.get("contents".into(), json);
+                let info = helper::extract_markup_content(contents, json);
+                ctx.status_message.write_str(StatusMessageKind::Info, info);
+            }
+            "textDocument/signatureHelp" => {
+                let contents = result.get("contents".into(), json);
+                let info = helper::extract_markup_content(contents, json);
+                ctx.status_message.write_str(StatusMessageKind::Info, info);
+            }
             _ => (),
         }
 
@@ -872,14 +870,17 @@ mod helper {
 
     pub fn write_response_error(
         ctx: &mut ClientContext,
-        message: &str,
+        method: &str,
         error: ResponseError,
         json: &Json,
     ) {
         let error_message = error.message.as_str(json);
         ctx.status_message.write_fmt(
             StatusMessageKind::Error,
-            format_args!("[lsp code {}] {}: '{}'", error.code, message, error_message),
+            format_args!(
+                "[lsp error code {}] {}: '{}'",
+                error.code, method, error_message
+            ),
         );
     }
 
