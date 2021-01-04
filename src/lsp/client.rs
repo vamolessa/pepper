@@ -447,6 +447,30 @@ impl Client {
         Ok(())
     }
 
+    pub fn signature_help(
+        &mut self,
+        ctx: &ClientContext,
+        json: &mut Json,
+        buffer_handle: BufferHandle,
+        position: BufferPosition,
+    ) -> io::Result<()> {
+        if !self.server_capabilities.hoverProvider.0 {
+            return Ok(());
+        }
+
+        if let Some(buffer_path) = ctx.buffers.get(buffer_handle).and_then(|b| b.path()) {
+            let text_document = helper::text_document_with_id(ctx, buffer_path, json);
+            let position = helper::position(position, json);
+
+            let mut params = JsonObject::default();
+            params.set("textDocument".into(), text_document.into(), json);
+            params.set("position".into(), position.into(), json);
+
+            self.request(json, "textDocument/signatureHelp", params)?;
+        }
+        Ok(())
+    }
+
     fn write_to_log_buffer<F>(&mut self, writer: F)
     where
         F: FnOnce(&mut Vec<u8>),

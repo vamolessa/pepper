@@ -94,7 +94,7 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
     register!(client => index, current_buffer_view_handle, quit, force_quit, quit_all, force_quit_all,);
     register!(editor => version, os, current_directory, print, eprint,);
     register!(script => source, directory,);
-    register!(lsp => start, stop, hover, open_log,);
+    register!(lsp => start, stop, hover, signature_help, open_log,);
     register!(buffer => all_handles, line_count, line_at, path, path_matches, needs_save, set_search, open, close,
         force_close, close_all, force_close_all, save, save_all, reload, force_reload, reload_all, force_reload_all,
         commit_edits,);
@@ -405,6 +405,45 @@ mod lsp {
         let (lsp, ctx) = ctx.into_lsp_context();
         lsp.access(client_handle, |client, json| {
             client.hover(&ctx, json, buffer_handle, position)
+        })
+        .unwrap_or(Ok(()))
+        .map_err(ScriptError::from)
+    }
+
+    pub fn signature_help(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        (client_handle, line, column, buffer_handle): (
+            Option<LspClientHandle>,
+            Option<usize>,
+            Option<usize>,
+            Option<BufferHandle>,
+        ),
+    ) -> ScriptResult<()> {
+        let buffer_handle = match buffer_handle.or_else(|| ctx.current_buffer_handle()) {
+            Some(handle) => handle,
+            None => return Ok(()),
+        };
+        let client_handle =
+            match client_handle.or_else(|| get_current_client_handle(ctx, buffer_handle)) {
+                Some(handle) => handle,
+                None => return Ok(()),
+            };
+        let position = match (line, column) {
+            (Some(line), Some(column)) => BufferPosition::line_col(line, column),
+            _ => match ctx
+                .current_buffer_view_handle()
+                .and_then(|h| ctx.buffer_views.get(h))
+            {
+                Some(buffer_view) => buffer_view.cursors.main_cursor().position,
+                None => return Ok(()),
+            },
+        };
+
+        let (lsp, ctx) = ctx.into_lsp_context();
+        lsp.access(client_handle, |client, json| {
+            client.signature_help(&ctx, json, buffer_handle, position)
         })
         .unwrap_or(Ok(()))
         .map_err(ScriptError::from)
