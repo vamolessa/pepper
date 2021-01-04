@@ -94,7 +94,7 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
     register!(client => index, current_buffer_view_handle, quit, force_quit, quit_all, force_quit_all,);
     register!(editor => version, os, current_directory, print, eprint,);
     register!(script => source, directory,);
-    register!(lsp => start, hover, open_log, diagnostics,);
+    register!(lsp => start, stop, hover, open_log,);
     register!(buffer => all_handles, line_count, line_at, path, path_matches, needs_save, set_search, open, close,
         force_close, close_all, force_close_all, save, save_all, reload, force_reload, reload_all, force_reload_all,
         commit_edits,);
@@ -348,17 +348,49 @@ mod lsp {
         ctx.lsp.start(command, root).map_err(ScriptError::from)
     }
 
+    pub fn stop(
+        _: ScriptEngineRef,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        handle: LspClientHandle,
+    ) -> ScriptResult<()> {
+        ctx.lsp.stop(handle);
+        Ok(())
+    }
+
+    fn get_current_client_handle(
+        ctx: &ScriptContext,
+        buffer_handle: BufferHandle,
+    ) -> Option<LspClientHandle> {
+        let buffer_path_bytes = ctx.buffers.get(buffer_handle)?.path()?.to_str()?.as_bytes();
+        let (handle, _) = ctx.lsp.client_with_handles().find(|(_, c)| {
+            c.document_selectors()
+                .iter()
+                .any(|g| g.matches(buffer_path_bytes))
+        })?;
+        Some(handle)
+    }
+
     pub fn hover(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
         _: ScriptContextGuard,
         (client_handle, line, column, buffer_handle): (
-            LspClientHandle,
+            Option<LspClientHandle>,
             Option<usize>,
             Option<usize>,
             Option<BufferHandle>,
         ),
     ) -> ScriptResult<()> {
+        let buffer_handle = match buffer_handle.or_else(|| ctx.current_buffer_handle()) {
+            Some(handle) => handle,
+            None => return Ok(()),
+        };
+        let client_handle =
+            match client_handle.or_else(|| get_current_client_handle(ctx, buffer_handle)) {
+                Some(handle) => handle,
+                None => return Ok(()),
+            };
         let position = match (line, column) {
             (Some(line), Some(column)) => BufferPosition::line_col(line, column),
             _ => match ctx
@@ -369,17 +401,13 @@ mod lsp {
                 None => return Ok(()),
             },
         };
-        match buffer_handle.or_else(|| ctx.current_buffer_handle()) {
-            Some(buffer_handle) => {
-                let (lsp, ctx) = ctx.into_lsp_context();
-                lsp.access(client_handle, |client, json| {
-                    client.hover(&ctx, json, buffer_handle, position)
-                })
-                .unwrap_or(Ok(()))
-                .map_err(ScriptError::from)
-            }
-            None => Ok(()),
-        }
+
+        let (lsp, ctx) = ctx.into_lsp_context();
+        lsp.access(client_handle, |client, json| {
+            client.hover(&ctx, json, buffer_handle, position)
+        })
+        .unwrap_or(Ok(()))
+        .map_err(ScriptError::from)
     }
 
     pub fn open_log(
@@ -404,40 +432,6 @@ mod lsp {
         if let Some(view_handle) = view_handle {
             ctx.set_current_buffer_view_handle(Some(view_handle));
         }
-        Ok(())
-    }
-
-    pub fn diagnostics(
-        _: ScriptEngineRef,
-        ctx: &mut ScriptContext,
-        _: ScriptContextGuard,
-        _: (),
-    ) -> ScriptResult<()> {
-        use std::fmt::Write;
-
-        let mut message = String::new();
-        let _ = writeln!(&mut message, "DIAGNOSTICS!");
-
-        for client in ctx.lsp.clients() {
-            for (path, _, diagnostics) in client.diagnostics.iter() {
-                let _ = writeln!(&mut message, "diagnostics for {:?}", path);
-                for diagnostic in diagnostics {
-                    let r = diagnostic.utf16_range;
-                    let _ = writeln!(
-                        &mut message,
-                        "{} @ [({},{}) ({},{})]",
-                        &diagnostic.message,
-                        r.from.line_index,
-                        r.from.column_byte_index,
-                        r.to.line_index,
-                        r.to.column_byte_index
-                    );
-                }
-            }
-        }
-
-        ctx.status_message
-            .write_str(StatusMessageKind::Info, &message);
         Ok(())
     }
 }

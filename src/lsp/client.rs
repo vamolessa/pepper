@@ -390,7 +390,7 @@ pub struct Client {
     log_buffer_handle: Option<BufferHandle>,
     document_selectors: Vec<Glob>,
     versioned_buffers: VersionedBufferCollection,
-    pub diagnostics: DiagnosticCollection,
+    diagnostics: DiagnosticCollection,
 }
 
 impl Client {
@@ -413,6 +413,14 @@ impl Client {
 
     pub fn set_log_buffer(&mut self, log_buffer_handle: Option<BufferHandle>) {
         self.log_buffer_handle = log_buffer_handle;
+    }
+
+    pub fn document_selectors(&self) -> &[Glob] {
+        &self.document_selectors
+    }
+
+    pub fn diagnostics(&self) -> &DiagnosticCollection {
+        &self.diagnostics
     }
 
     pub fn hover(
@@ -1067,6 +1075,10 @@ impl ClientCollection {
         Ok(handle)
     }
 
+    pub fn stop(&mut self, handle: ClientHandle) {
+        self.entries[handle.0] = None;
+    }
+
     pub fn access<F, R>(&mut self, handle: ClientHandle, func: F) -> Option<R>
     where
         F: FnOnce(&mut Client, &mut Json) -> R,
@@ -1083,6 +1095,13 @@ impl ClientCollection {
     pub fn clients(&self) -> impl DoubleEndedIterator<Item = &Client> {
         self.entries.iter().flat_map(|e| match e {
             Some(e) => Some(&e.client),
+            None => None,
+        })
+    }
+
+    pub fn client_with_handles(&self) -> impl Iterator<Item = (ClientHandle, &Client)> {
+        self.entries.iter().enumerate().flat_map(|(i, e)| match e {
+            Some(e) => Some((ClientHandle(i), &e.client)),
             None => None,
         })
     }

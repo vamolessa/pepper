@@ -981,7 +981,7 @@ impl ModeState for State {
 
             for client in ctx.lsp.clients() {
                 let diagnostics = client
-                    .diagnostics
+                    .diagnostics()
                     .buffer_diagnostics(buffer_view.buffer_handle);
 
                 if let Ok(index) = diagnostics.binary_search_by(|d| {
@@ -1196,7 +1196,7 @@ fn move_to_diagnostic(state: &mut State, ctx: &mut ModeContext, forward: bool) {
     let main_position = buffer_view.cursors.main_cursor().position;
 
     let mut diagnostics = DirectedIter::new(
-        ctx.lsp.clients().flat_map(|c| c.diagnostics.iter()),
+        ctx.lsp.clients().flat_map(|c| c.diagnostics().iter()),
         forward,
     );
     let mut next_diagnostic = None;
@@ -1242,7 +1242,7 @@ fn move_to_diagnostic(state: &mut State, ctx: &mut ModeContext, forward: bool) {
 
     if let None = next_diagnostic {
         let mut iter = DirectedIter::new(
-            ctx.lsp.clients().flat_map(|c| c.diagnostics.iter()),
+            ctx.lsp.clients().flat_map(|c| c.diagnostics().iter()),
             forward,
         );
         next_diagnostic = iter

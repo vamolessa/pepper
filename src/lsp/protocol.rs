@@ -482,13 +482,14 @@ impl PendingRequestColection {
     }
 
     pub fn take(&mut self, id: RequestId) -> Option<&'static str> {
-        for request in &mut self.pending_requests {
+        for i in 0..self.pending_requests.len() {
+            let request = &self.pending_requests[i];
             if request.id == id {
-                request.id.0 = 0;
-                return Some(request.method);
+                let method = request.method;
+                self.pending_requests.swap_remove(i);
+                return Some(method);
             }
         }
-
         None
     }
 }
