@@ -12,7 +12,7 @@ use crate::{
     buffer_view::BufferViewCollection,
     client_event::LocalEvent,
     config::Config,
-    editor::StatusMessage,
+    editor::{StatusMessage, StatusMessageKind},
     editor_event::{EditorEvent, EditorEventQueue, EditorEventsIter},
     glob::Glob,
     json::{FromJson, Json, JsonArray, JsonConvertError, JsonObject, JsonString, JsonValue},
@@ -159,7 +159,7 @@ impl<'json> FromJson<'json> for TextDocumentSyncCapability {
 
 declare_json_object! {
     #[derive(Default)]
-    pub struct ServerCapabilities {
+    struct ServerCapabilities {
         hoverProvider: GenericCapability,
         renameProvider: RenameCapability,
         documentFormattingProvider: GenericCapability,
@@ -643,7 +643,7 @@ impl Client {
     ) -> io::Result<()> {
         macro_rules! deserialize {
             ($value:expr) => {
-                match FromJson::from_json($value, &json) {
+                match FromJson::from_json($value, json) {
                     Ok(value) => value,
                     Err(_) => {
                         return Self::respond_parse_error(&mut self.protocol, json, JsonValue::Null)
@@ -684,7 +684,7 @@ impl Client {
         match method {
             "initialize" => match response.result {
                 Ok(result) => {
-                    self.server_capabilities = deserialize!(result.get("capabilities", &json));
+                    self.server_capabilities = deserialize!(result.get("capabilities", json));
                     self.initialized = true;
                     self.notify(json, "initialized", JsonObject::default())?;
 
@@ -692,12 +692,25 @@ impl Client {
                         helper::send_did_open(self, ctx, json, buffer.handle())?;
                     }
                 }
-                Err(_) => unimplemented!(),
+                Err(error) => {
+                    helper::write_response_error(ctx, "could not start server", error, json);
+                }
             },
-            "textDocument/hover" => {
-                ctx.status_message
-                    .write_str(crate::editor::StatusMessageKind::Info, "hover response!!");
-            }
+            "textDocument/hover" => match response.result {
+                Ok(result) => {
+                    let contents = result.get("contents".into(), json);
+                    let info = helper::extract_markup_content(contents, json);
+                    ctx.status_message.write_str(StatusMessageKind::Info, info);
+                }
+                Err(error) => {
+                    helper::write_response_error(
+                        ctx,
+                        "could not retrieve hover information",
+                        error,
+                        json,
+                    );
+                }
+            },
             _ => (),
         }
 
@@ -833,6 +846,19 @@ impl Client {
 mod helper {
     use super::*;
 
+    pub fn write_response_error(
+        ctx: &mut ClientContext,
+        message: &str,
+        error: ResponseError,
+        json: &Json,
+    ) {
+        let error_message = error.message.as_str(json);
+        ctx.status_message.write_fmt(
+            StatusMessageKind::Error,
+            format_args!("[lsp code {}] {}: '{}'", error.code, message, error_message),
+        );
+    }
+
     pub fn get_path_uri<'a>(ctx: &'a ClientContext, path: &'a Path) -> Uri<'a> {
         if path.is_absolute() {
             Uri::AbsolutePath(path)
@@ -864,6 +890,17 @@ mod helper {
         r.set("start".into(), start.into(), json);
         r.set("end".into(), end.into(), json);
         r
+    }
+
+    pub fn extract_markup_content<'json>(content: JsonValue, json: &'json mut Json) -> &'json str {
+        match content {
+            JsonValue::Object(o) => match o.get("value".into(), json) {
+                JsonValue::Str(s) => s,
+                JsonValue::String(s) => s.as_str(json),
+                _ => "",
+            },
+            _ => "",
+        }
     }
 
     pub fn send_did_open(
