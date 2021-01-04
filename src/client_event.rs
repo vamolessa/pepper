@@ -147,7 +147,7 @@ impl<'a> Iterator for KeyParser<'a> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
     None,
     Backspace,

@@ -1,4 +1,13 @@
-use std::{env, error::Error, fmt, fs, path::Path, sync::mpsc, time::Instant};
+use std::{
+    collections::hash_map::DefaultHasher,
+    env,
+    error::Error,
+    fmt, fs,
+    hash::{Hash, Hasher},
+    path::Path,
+    sync::mpsc,
+    time::Instant,
+};
 
 use crate::{
     client::{ClientCollection, TargetClient},
@@ -40,6 +49,27 @@ impl Profiler for SimpleProfiler {
     }
 }
 
+fn u64_to_str(buf: &mut [u8], value: u64) -> &str {
+    use std::fmt::Write;
+    struct Formatter<'a> {
+        buf: &'a mut [u8],
+        len: usize,
+    }
+    impl<'a> Write for Formatter<'a> {
+        fn write_str(&mut self, s: &str) -> fmt::Result {
+            let bytes = s.as_bytes();
+            let len = self.len + bytes.len();
+            self.buf[self.len..len].copy_from_slice(bytes);
+            self.len = len;
+            Ok(())
+        }
+    }
+    let mut formatter = Formatter { buf, len: 0 };
+    let _ = write!(formatter, "{}", value);
+    let formatted = &formatter.buf[..formatter.len];
+    unsafe { std::str::from_utf8_unchecked(formatted) }
+}
+
 #[derive(Debug)]
 pub struct ApplicationError(String);
 impl Error for ApplicationError {}
@@ -56,15 +86,26 @@ pub fn run(args: Args) -> Result<(), Box<dyn Error>> {
         std::fs::create_dir_all(&session_socket_path).map_err(|e| Box::new(e))?;
     }
 
-    let mut session_name = match args.session.clone() {
-        Some(session) => session,
-        None => env::current_dir()
-            .map_err(|e| Box::new(e))?
-            .to_string_lossy()
-            .into_owned(),
-    };
-    session_name.retain(|c| c.is_alphanumeric());
-    session_socket_path.push(session_name);
+    match args.session.as_ref() {
+        Some(session) => {
+            if !session.chars().all(char::is_alphanumeric) {
+                return Err(Box::new(ApplicationError(format!(
+                    "invalid session name '{}'. it can only contain alphanumeric characters",
+                    session
+                ))));
+            }
+            session_socket_path.push(session);
+        }
+        None => {
+            let current_dir = env::current_dir().map_err(|e| Box::new(e))?;
+            let mut hasher = DefaultHasher::new();
+            current_dir.hash(&mut hasher);
+            let hash = hasher.finish();
+            let mut buf = [0; 32];
+            let hash = u64_to_str(&mut buf, hash);
+            session_socket_path.push(hash);
+        }
+    }
 
     if args.as_focused_client || args.as_client.is_some() {
         run_with_ui(args, ui::none_ui::NoneUi, &session_socket_path)

@@ -454,10 +454,6 @@ impl Client {
         buffer_handle: BufferHandle,
         position: BufferPosition,
     ) -> io::Result<()> {
-        if !self.server_capabilities.hoverProvider.0 {
-            return Ok(());
-        }
-
         if let Some(buffer_path) = ctx.buffers.get(buffer_handle).and_then(|b| b.path()) {
             let text_document = helper::text_document_with_id(ctx, buffer_path, json);
             let position = helper::position(position, json);
