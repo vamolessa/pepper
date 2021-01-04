@@ -30,6 +30,11 @@ use crate::{
 };
 
 #[derive(Default)]
+pub struct EditorScriptCallbacks {
+    pub on_idle: Vec<ScriptCallback>,
+}
+
+#[derive(Default)]
 pub struct BufferScriptCallbacks {
     pub on_load: Vec<ScriptCallback>,
     pub on_open: Vec<ScriptCallback>,
@@ -42,6 +47,8 @@ pub struct ScriptCallbacks {
     pub read_line: Option<ScriptCallback>,
     pub picker: Option<ScriptCallback>,
     pub task: Vec<(TaskHandle, ScriptCallback)>,
+
+    pub editor: EditorScriptCallbacks,
     pub buffer: BufferScriptCallbacks,
 }
 
@@ -106,6 +113,7 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
     register!(theme);
     register!(registers);
 
+    register_callbacks!(editor => on_idle,);
     register_callbacks!(buffer => on_load, on_open, on_save, on_close,);
 
     {

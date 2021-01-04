@@ -545,12 +545,9 @@ impl ScriptEngine {
 
         for event in events {
             match event {
-                EditorEvent::BufferLoad { handle } => {
-                    call!(buffer.on_load, *handle)
-                }
-                EditorEvent::BufferOpen { handle } => {
-                    call!(buffer.on_open, *handle)
-                }
+                EditorEvent::Idle => call!(editor.on_idle, ()),
+                EditorEvent::BufferLoad { handle } => call!(buffer.on_load, *handle),
+                EditorEvent::BufferOpen { handle } => call!(buffer.on_open, *handle),
                 /*
                 EditorEvent::BufferInsertText {
                     handle,
