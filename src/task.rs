@@ -6,13 +6,8 @@ use crate::{
     script::{ScriptEngineRef, ScriptResult, ScriptValue},
 };
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct TaskHandle(usize);
-impl TaskHandle {
-    pub fn into_index(self) -> usize {
-        self.0
-    }
-}
 
 pub enum TaskRequest {
     Stop,
@@ -63,7 +58,7 @@ impl TaskManager {
 
     pub fn request(&mut self, target_client: TargetClient, task: TaskRequest) -> TaskHandle {
         let handle = self.next_handle;
-        self.next_handle.0 += 1;
+        self.next_handle.0 = self.next_handle.0.wrapping_add(1);
         let _ = self.task_sender.send(Task {
             target_client,
             handle,

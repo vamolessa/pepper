@@ -20,13 +20,12 @@ use crate::{
     navigation_history::NavigationHistory,
     register::RegisterKey,
     script::{
-        ScriptCallback,
-        ScriptArray, ScriptContext, ScriptContextGuard, ScriptEngineRef,
+        ScriptArray, ScriptCallback, ScriptContext, ScriptContextGuard, ScriptEngineRef,
         ScriptError, ScriptFunction, ScriptObject, ScriptResult, ScriptString, ScriptUserData,
         ScriptValue,
     },
     syntax::{Syntax, TokenKind},
-    task::TaskRequest,
+    task::{TaskHandle, TaskRequest},
     theme::{Color, THEME_COLOR_NAMES},
 };
 
@@ -42,6 +41,7 @@ pub struct BufferScriptCallbacks {
 pub struct ScriptCallbacks {
     pub read_line: Option<ScriptCallback>,
     pub picker: Option<ScriptCallback>,
+    pub task: Vec<(TaskHandle, ScriptCallback)>,
     pub buffer: BufferScriptCallbacks,
 }
 
@@ -1425,7 +1425,7 @@ mod process {
             let task_handle = ctx
                 .tasks
                 .request(ctx.target_client, TaskRequest::ChildStream(child));
-            engine.add_task_callback(task_handle, callback)?;
+            engine.add_task_callback(ctx, task_handle, callback)?;
         }
 
         Ok(())
