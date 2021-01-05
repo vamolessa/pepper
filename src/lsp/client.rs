@@ -821,11 +821,10 @@ impl Client {
                     }
                 }
 
-                let SignatureHelp {
-                    activeSignature: active_signature,
-                    signatures,
-                } = deserialize!(result);
-                if let Some(signature) = signatures.elements(json).nth(active_signature) {
+                let signature_help: Option<SignatureHelp> = deserialize!(result);
+                if let Some(signature) =
+                    signature_help.and_then(|h| h.signatures.elements(json).nth(h.activeSignature))
+                {
                     let signature: SignatureInformation = deserialize!(signature);
                     let label = signature.label.as_str(json);
                     let documentation =
