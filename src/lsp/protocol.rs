@@ -565,12 +565,12 @@ impl ReadBuf {
                 }
 
                 match reader.read(&mut self.buf[self.write_index..]) {
-                    Ok(len) => self.write_index += len,
-                    Err(_) => {
+                    Ok(0) | Err(_) => {
                         self.read_index = 0;
                         self.write_index = 0;
                         return &[];
                     }
+                    Ok(len) => self.write_index += len,
                 }
             }
         }
