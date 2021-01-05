@@ -15,7 +15,9 @@ use crate::{
     editor::{StatusMessage, StatusMessageKind},
     editor_event::{EditorEvent, EditorEventQueue, EditorEventsIter},
     glob::Glob,
-    json::{FromJson, Json, JsonArray, JsonConvertError, JsonObject, JsonString, JsonValue},
+    json::{
+        FromJson, Json, JsonArray, JsonConvertError, JsonInteger, JsonObject, JsonString, JsonValue,
+    },
     lsp::{
         capabilities,
         protocol::{
@@ -545,7 +547,11 @@ impl Client {
                 match FromJson::from_json($value, &json) {
                     Ok(value) => value,
                     Err(_) => {
-                        return Self::respond_parse_error(&mut self.protocol, json, JsonValue::Null)
+                        return self.respond(
+                            json,
+                            JsonValue::Null,
+                            Err(ResponseError::parse_error()),
+                        )
                     }
                 }
             };
@@ -595,10 +601,10 @@ impl Client {
                                 let mut glob = Glob::default();
                                 if let Err(_) = glob.compile(pattern.as_bytes()) {
                                     self.document_selectors.clear();
-                                    return Self::respond_parse_error(
-                                        &mut self.protocol,
+                                    return self.respond(
                                         json,
                                         request.id,
+                                        Err(ResponseError::parse_error()),
                                     );
                                 }
                                 self.document_selectors.push(glob);
@@ -607,12 +613,9 @@ impl Client {
                         _ => (),
                     }
                 }
-                self.protocol.respond(json, request.id, Ok(JsonValue::Null))
+                self.respond(json, request.id, Ok(JsonValue::Null))
             }
-            _ => {
-                let error = ResponseError::method_not_found();
-                self.protocol.respond(json, request.id, Err(error))
-            }
+            _ => self.respond(json, request.id, Err(ResponseError::method_not_found())),
         }
     }
 
@@ -627,7 +630,11 @@ impl Client {
                 match FromJson::from_json($value, &json) {
                     Ok(value) => value,
                     Err(_) => {
-                        return Self::respond_parse_error(&mut self.protocol, json, JsonValue::Null)
+                        return self.respond(
+                            json,
+                            JsonValue::Null,
+                            Err(ResponseError::parse_error()),
+                        )
                     }
                 }
             };
@@ -644,6 +651,34 @@ impl Client {
         });
 
         match notification.method.as_str(json) {
+            "window/showMessage" => {
+                let mut message_type: JsonInteger = 0;
+                let mut message = JsonString::default();
+                for (key, value) in notification.params.members(json) {
+                    match key {
+                        "type" => message_type = deserialize!(value),
+                        "value" => message = deserialize!(value),
+                        _ => (),
+                    }
+                }
+                let message = message.as_str(json);
+                match message_type {
+                    1 => ctx
+                        .status_message
+                        .write_str(StatusMessageKind::Error, message),
+                    2 => ctx.status_message.write_fmt(
+                        StatusMessageKind::Info,
+                        format_args!("warning: {}", message),
+                    ),
+                    3 => ctx
+                        .status_message
+                        .write_fmt(StatusMessageKind::Info, format_args!("info: {}", message)),
+                    4 => ctx
+                        .status_message
+                        .write_str(StatusMessageKind::Info, message),
+                    _ => (),
+                }
+            }
             "textDocument/publishDiagnostics" => {
                 declare_json_object! {
                     struct Params {
@@ -710,7 +745,11 @@ impl Client {
                 match FromJson::from_json($value, json) {
                     Ok(value) => value,
                     Err(_) => {
-                        return Self::respond_parse_error(&mut self.protocol, json, JsonValue::Null)
+                        return self.respond(
+                            json,
+                            JsonValue::Null,
+                            Err(ResponseError::parse_error()),
+                        )
                     }
                 }
             };
@@ -814,16 +853,7 @@ impl Client {
             let _ = write!(buf, "send parse error\nrequest_id: ");
             let _ = json.write(buf, &request_id);
         });
-        Self::respond_parse_error(&mut self.protocol, json, request_id)
-    }
-
-    fn respond_parse_error(
-        protocol: &mut Protocol,
-        json: &mut Json,
-        request_id: JsonValue,
-    ) -> io::Result<()> {
-        let error = ResponseError::parse_error();
-        protocol.respond(json, request_id, Err(error))
+        self.respond(json, request_id, Err(ResponseError::parse_error()))
     }
 
     fn on_editor_events(
@@ -887,16 +917,43 @@ impl Client {
         params: JsonObject,
     ) -> io::Result<()> {
         let params = params.into();
-
         self.write_to_log_buffer(|buf| {
             use io::Write;
             let _ = write!(buf, "send request\nmethod: '{}'\nparams:\n", method);
             let _ = json.write(buf, &params);
         });
-
         let id = self.protocol.request(json, method, params)?;
         self.pending_requests.add(id, method);
         Ok(())
+    }
+
+    fn respond(
+        &mut self,
+        json: &mut Json,
+        request_id: JsonValue,
+        result: Result<JsonValue, ResponseError>,
+    ) -> io::Result<()> {
+        self.write_to_log_buffer(|buf| {
+            use io::Write;
+            let _ = write!(buf, "send response\nid: ");
+            let _ = json.write(buf, &request_id);
+            match &result {
+                Ok(result) => {
+                    let _ = write!(buf, "\nresult:\n");
+                    let _ = json.write(buf, result);
+                }
+                Err(error) => {
+                    let _ = write!(
+                        buf,
+                        "\nerror.code: {}\nerror.message: {}\nerror.data:\n",
+                        error.code,
+                        error.message.as_str(json)
+                    );
+                    let _ = json.write(buf, &error.data);
+                }
+            }
+        });
+        self.protocol.respond(json, request_id, result)
     }
 
     fn notify(
@@ -906,15 +963,12 @@ impl Client {
         params: JsonObject,
     ) -> io::Result<()> {
         let params = params.into();
-
         self.write_to_log_buffer(|buf| {
             use io::Write;
             let _ = write!(buf, "send notification\nmethod: '{}'\nparams:\n", method);
             let _ = json.write(buf, &params);
         });
-
-        self.protocol.notify(json, method, params)?;
-        Ok(())
+        self.protocol.notify(json, method, params)
     }
 
     fn initialize(&mut self, json: &mut Json, root: &Path) -> io::Result<()> {
@@ -924,8 +978,15 @@ impl Client {
             JsonValue::Integer(process::id() as _),
             json,
         );
+
+        let mut client_info = JsonObject::default();
+        client_info.set("name".into(), env!("CARGO_PKG_NAME").into(), json);
+        client_info.set("name".into(), env!("CARGO_PKG_VERSION").into(), json);
+        params.set("clientInfo".into(), client_info.into(), json);
+
         let root = json.fmt_string(format_args!("{}", Uri::AbsolutePath(root)));
         params.set("rootUri".into(), root.into(), json);
+
         params.set(
             "capabilities".into(),
             capabilities::client_capabilities(json),
@@ -1210,6 +1271,12 @@ impl ClientCollection {
     }
 
     pub fn stop(&mut self, handle: ClientHandle) {
+        if let Some(entry) = &mut self.entries[handle.0] {
+            let mut json = entry.json.write_lock();
+            let _ = entry
+                .client
+                .notify(json.get(), "exit", JsonObject::default());
+        }
         self.entries[handle.0] = None;
     }
 

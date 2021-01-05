@@ -72,6 +72,13 @@ impl JsonValue {
             _ => JsonElementIter { json, next: 0 },
         }
     }
+
+    pub fn members<'a>(self, json: &'a Json) -> JsonMemberIter<'a> {
+        match self {
+            JsonValue::Object(object) => object.members(json),
+            _ => JsonMemberIter { json, next: 0 },
+        }
+    }
 }
 impl Default for JsonValue {
     fn default() -> Self {
