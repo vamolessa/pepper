@@ -270,7 +270,7 @@ impl VersionedBuffer {
 
     pub fn dispose(&mut self) {
         self.flush();
-        self.version = 0;
+        self.version = 1;
     }
 }
 #[derive(Default)]

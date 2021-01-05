@@ -182,8 +182,6 @@ pub fn client_capabilities(json: &mut Json) -> JsonValue {
                     json,
                 );
 
-                //signature_information.set("activeParameterSupport".into(), false.into(), json);
-
                 signature_help.set(
                     "signatureInformation".into(),
                     signature_information.into(),
