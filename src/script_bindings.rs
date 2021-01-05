@@ -14,8 +14,9 @@ use crate::{
     cursor::Cursor,
     editor::{EditorLoop, StatusMessageKind},
     glob::Glob,
+    json::Json,
     keymap::ParseKeyMapError,
-    lsp::LspClientHandle,
+    lsp::{LspClient, LspClientContext, LspClientHandle},
     mode::{self, Mode},
     navigation_history::NavigationHistory,
     register::RegisterKey,
@@ -359,17 +360,44 @@ mod lsp {
         Ok(())
     }
 
-    fn get_current_client_handle(
-        ctx: &ScriptContext,
-        buffer_handle: BufferHandle,
-    ) -> Option<LspClientHandle> {
-        let buffer_path_bytes = ctx.buffers.get(buffer_handle)?.path()?.to_str()?.as_bytes();
-        let (handle, _) = ctx.lsp.client_with_handles().find(|(_, c)| {
-            c.document_selectors()
-                .iter()
-                .any(|g| g.matches(buffer_path_bytes))
-        })?;
-        Some(handle)
+    pub fn access_client<F, R, E>(
+        ctx: &mut ScriptContext,
+        client_handle: Option<LspClientHandle>,
+        buffer_handle: Option<BufferHandle>,
+        func: F,
+    ) -> ScriptResult<Option<R>>
+    where
+        F: FnOnce(&mut LspClientContext, &mut LspClient, &mut Json) -> Result<R, E>,
+        E: 'static + fmt::Display,
+    {
+        fn find_client_for_buffer(
+            ctx: &ScriptContext,
+            buffer_handle: Option<BufferHandle>,
+        ) -> Option<LspClientHandle> {
+            let buffer_handle = buffer_handle?;
+            let buffer_path_bytes = ctx.buffers.get(buffer_handle)?.path()?.to_str()?.as_bytes();
+            let (client_handle, _) = ctx
+                .lsp
+                .client_with_handles()
+                .find(|(_, c)| c.handles_path(buffer_path_bytes))?;
+            Some(client_handle)
+        }
+
+        let client_handle =
+            match client_handle.or_else(|| find_client_for_buffer(ctx, buffer_handle)) {
+                Some(handle) => handle,
+                None => return Ok(None),
+            };
+        let (lsp, mut ctx) = ctx.into_lsp_context();
+        match lsp.access(client_handle, |client, json| func(&mut ctx, client, json)) {
+            Some(Ok(value)) => Ok(Some(value)),
+            Some(Err(error)) => Err(ScriptError::from(error)),
+            None => {
+                ctx.status_message
+                    .write_str(StatusMessageKind::Error, "lsp server not running");
+                Ok(None)
+            }
+        }
     }
 
     fn get_current_position(
@@ -404,22 +432,17 @@ mod lsp {
             Some(handle) => handle,
             None => return Ok(()),
         };
-        let client_handle =
-            match client_handle.or_else(|| get_current_client_handle(ctx, buffer_handle)) {
-                Some(handle) => handle,
-                None => return Ok(()),
-            };
         let position = match get_current_position(ctx, line, column) {
             Some(position) => position,
             None => return Ok(()),
         };
-
-        let (lsp, ctx) = ctx.into_lsp_context();
-        lsp.access(client_handle, |client, json| {
-            client.hover(&ctx, json, buffer_handle, position)
-        })
-        .unwrap_or(Ok(()))
-        .map_err(ScriptError::from)
+        access_client(
+            ctx,
+            client_handle,
+            Some(buffer_handle),
+            |ctx, client, json| client.hover(ctx, json, buffer_handle, position),
+        )
+        .map(|r| r.unwrap_or(()))
     }
 
     pub fn signature_help(
@@ -437,22 +460,17 @@ mod lsp {
             Some(handle) => handle,
             None => return Ok(()),
         };
-        let client_handle =
-            match client_handle.or_else(|| get_current_client_handle(ctx, buffer_handle)) {
-                Some(handle) => handle,
-                None => return Ok(()),
-            };
         let position = match get_current_position(ctx, line, column) {
             Some(position) => position,
             None => return Ok(()),
         };
-
-        let (lsp, ctx) = ctx.into_lsp_context();
-        lsp.access(client_handle, |client, json| {
-            client.signature_help(&ctx, json, buffer_handle, position)
-        })
-        .unwrap_or(Ok(()))
-        .map_err(ScriptError::from)
+        access_client(
+            ctx,
+            client_handle,
+            Some(buffer_handle),
+            |ctx, client, json| client.signature_help(ctx, json, buffer_handle, position),
+        )
+        .map(|r| r.unwrap_or(()))
     }
 
     pub fn open_log(

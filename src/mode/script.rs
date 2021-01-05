@@ -87,15 +87,8 @@ fn eval<'a>(
 ) -> ScriptResult<()> {
     engine.eval(ctx, code, |_, ctx, guard, value| {
         match value {
-            ScriptValue::Function(f) => {
-                match f.call(&guard, ())? {
-                    ScriptValue::Nil => (),
-                    value => ctx.status_message.write_fmt(
-                        StatusMessageKind::Info,
-                        format_args!("{}", value.display(&guard)),
-                    ),
-                }
-            }
+            ScriptValue::Nil => (),
+            ScriptValue::Function(f) => f.call(&guard, ())?,
             value => ctx.status_message.write_fmt(
                 StatusMessageKind::Info,
                 format_args!("{}", value.display(&guard)),

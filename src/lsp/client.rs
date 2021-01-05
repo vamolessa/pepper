@@ -415,8 +415,12 @@ impl Client {
         self.log_buffer_handle = log_buffer_handle;
     }
 
-    pub fn document_selectors(&self) -> &[Glob] {
-        &self.document_selectors
+    pub fn handles_path(&self, path: &[u8]) -> bool {
+        if self.document_selectors.is_empty() {
+            true
+        } else {
+            self.document_selectors.iter().any(|g| g.matches(path))
+        }
     }
 
     pub fn diagnostics(&self) -> &DiagnosticCollection {
@@ -833,6 +837,9 @@ impl Client {
                 }
                 EditorEvent::BufferClose { handle } => {
                     let handle = *handle;
+                    if self.log_buffer_handle == Some(handle) {
+                        self.log_buffer_handle = None;
+                    }
                     self.versioned_buffers.dispose(handle);
                     self.diagnostics.on_close_buffer(handle);
                     helper::send_did_close(self, ctx, json, handle)?;
