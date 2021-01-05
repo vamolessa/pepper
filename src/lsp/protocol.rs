@@ -267,7 +267,6 @@ impl ServerConnection {
                 }
             }
             let _ = event_sender.send(LocalEvent::Lsp(handle, ServerEvent::Closed));
-            eprintln!("close lsp server");
         });
 
         Ok(Self { process, stdin })

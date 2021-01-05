@@ -458,36 +458,9 @@ impl Client {
             let text_document = helper::text_document_with_id(ctx, buffer_path, json);
             let position = helper::position(position, json);
 
-            /*
-            let mut context = JsonObject::default();
-            let trigger_kind_invoked = 1;
-            context.set("triggerKind".into(), trigger_kind_invoked.into(), json);
-            context.set("isRetrigger".into(), false.into(), json);
-
-            let mut signature = JsonObject::default();
-            signature.set("label".into(), "".into(), json);
-            signature.set("documentation".into(), "".into(), json);
-            let parameters = JsonArray::default();
-            signature.set("parameters".into(), parameters.into(), json);
-            signature.set("activeParameter".into(), 0.into(), json);
-
-            let mut signatures = JsonArray::default();
-            signatures.push(signature.into(), json);
-
-            let mut active_signature_help = JsonObject::default();
-            active_signature_help.set("signatures".into(), signatures.into(), json);
-            active_signature_help.set("activeSignature".into(), 0.into(), json);
-            //active_signature_help.set("activeParameter".into(), 0.into(), json);
-            context.set(
-                "activeSignatureHelp".into(),
-                active_signature_help.into(),
-                json,
-            );
-            // */
             let mut params = JsonObject::default();
             params.set("textDocument".into(), text_document.into(), json);
             params.set("position".into(), position.into(), json);
-            //params.set("context".into(), context.into(), json);
 
             self.request(json, "textDocument/signatureHelp", params)?;
         }
@@ -781,10 +754,8 @@ impl Client {
                 if let Some(signature) = signatures.elements(json).nth(active_signature) {
                     let signature: SignatureInformation = deserialize!(signature);
                     let label = signature.label.as_str(json);
-                    let documentation = match signature.documentation {
-                        JsonValue::String(s) => s.as_str(json),
-                        content => helper::extract_markup_content(content, json),
-                    };
+                    let documentation =
+                        helper::extract_markup_content(signature.documentation, json);
 
                     if documentation.is_empty() {
                         ctx.status_message.write_str(StatusMessageKind::Info, label);
@@ -982,6 +953,7 @@ mod helper {
 
     pub fn extract_markup_content<'json>(content: JsonValue, json: &'json Json) -> &'json str {
         match content {
+            JsonValue::String(s) => s.as_str(json),
             JsonValue::Object(o) => match o.get("value".into(), json) {
                 JsonValue::String(s) => s.as_str(json),
                 _ => "",

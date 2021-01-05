@@ -372,6 +372,23 @@ mod lsp {
         Some(handle)
     }
 
+    fn get_current_position(
+        ctx: &ScriptContext,
+        line: Option<usize>,
+        column: Option<usize>,
+    ) -> Option<BufferPosition> {
+        match (line, column) {
+            (Some(line), Some(column)) => Some(BufferPosition::line_col(line, column)),
+            _ => match ctx
+                .current_buffer_view_handle()
+                .and_then(|h| ctx.buffer_views.get(h))
+            {
+                Some(buffer_view) => Some(buffer_view.cursors.main_cursor().position),
+                None => None,
+            },
+        }
+    }
+
     pub fn hover(
         _: ScriptEngineRef,
         ctx: &mut ScriptContext,
@@ -392,15 +409,9 @@ mod lsp {
                 Some(handle) => handle,
                 None => return Ok(()),
             };
-        let position = match (line, column) {
-            (Some(line), Some(column)) => BufferPosition::line_col(line, column),
-            _ => match ctx
-                .current_buffer_view_handle()
-                .and_then(|h| ctx.buffer_views.get(h))
-            {
-                Some(buffer_view) => buffer_view.cursors.main_cursor().position,
-                None => return Ok(()),
-            },
+        let position = match get_current_position(ctx, line, column) {
+            Some(position) => position,
+            None => return Ok(()),
         };
 
         let (lsp, ctx) = ctx.into_lsp_context();
@@ -431,15 +442,9 @@ mod lsp {
                 Some(handle) => handle,
                 None => return Ok(()),
             };
-        let position = match (line, column) {
-            (Some(line), Some(column)) => BufferPosition::line_col(line, column),
-            _ => match ctx
-                .current_buffer_view_handle()
-                .and_then(|h| ctx.buffer_views.get(h))
-            {
-                Some(buffer_view) => buffer_view.cursors.main_cursor().position,
-                None => return Ok(()),
-            },
+        let position = match get_current_position(ctx, line, column) {
+            Some(position) => position,
+            None => return Ok(()),
         };
 
         let (lsp, ctx) = ctx.into_lsp_context();
