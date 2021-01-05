@@ -993,8 +993,7 @@ impl Client {
             json,
         );
 
-        self.request(json, "initialize", params)?;
-        Ok(())
+        self.request(json, "initialize", params)
     }
 }
 

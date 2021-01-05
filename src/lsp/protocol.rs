@@ -239,11 +239,11 @@ impl ServerConnection {
         let stdin = process
             .stdin
             .take()
-            .ok_or(io::Error::from(io::ErrorKind::UnexpectedEof))?;
+            .ok_or(io::Error::from(io::ErrorKind::WriteZero))?;
         let stdout = process
             .stdout
             .take()
-            .ok_or(io::Error::from(io::ErrorKind::WriteZero))?;
+            .ok_or(io::Error::from(io::ErrorKind::UnexpectedEof))?;
 
         thread::spawn(move || {
             let mut stdout = stdout;
@@ -277,7 +277,7 @@ fn parse_server_event(json: &Json, body: JsonValue) -> ServerEvent {
     declare_json_object! {
         struct Body {
             id: JsonValue,
-            method: JsonString,
+            method: JsonValue,
             params: JsonValue,
             result: JsonValue,
             error: Option<ResponseError>,
@@ -289,15 +289,19 @@ fn parse_server_event(json: &Json, body: JsonValue) -> ServerEvent {
         Err(_) => panic!(),
     };
 
-    if !matches!(body.result, JsonValue::Null) {
-        let id = match body.id {
-            JsonValue::Integer(n) if n > 0 => n as _,
+    if let JsonValue::String(method) = body.method {
+        match body.id {
+            JsonValue::Integer(_) | JsonValue::String(_) => ServerEvent::Request(ServerRequest {
+                id: body.id,
+                method,
+                params: body.params,
+            }),
+            JsonValue::Null => ServerEvent::Notification(ServerNotification {
+                method,
+                params: body.params,
+            }),
             _ => return ServerEvent::ParseError,
-        };
-        ServerEvent::Response(ServerResponse {
-            id: RequestId(id),
-            result: Ok(body.result),
-        })
+        }
     } else if let Some(error) = body.error {
         let id = match body.id {
             JsonValue::Integer(n) if n > 0 => n as _,
@@ -307,16 +311,14 @@ fn parse_server_event(json: &Json, body: JsonValue) -> ServerEvent {
             id: RequestId(id),
             result: Err(error),
         })
-    } else if !matches!(body.id, JsonValue::Null) {
-        ServerEvent::Request(ServerRequest {
-            id: body.id,
-            method: body.method,
-            params: body.params,
-        })
     } else {
-        ServerEvent::Notification(ServerNotification {
-            method: body.method,
-            params: body.params,
+        let id = match body.id {
+            JsonValue::Integer(n) if n > 0 => n as _,
+            _ => return ServerEvent::ParseError,
+        };
+        ServerEvent::Response(ServerResponse {
+            id: RequestId(id),
+            result: Ok(body.result),
         })
     }
 }
