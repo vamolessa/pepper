@@ -119,7 +119,7 @@ pub fn client_capabilities(json: &mut Json) -> JsonValue {
 
         {
             let mut completion = JsonObject::default();
-            completion.set("contextSupport".into(), false.into(), json);
+            completion.set("contextSupport".into(), true.into(), json);
 
             {
                 let mut completion_item = JsonObject::default();
@@ -181,6 +181,8 @@ pub fn client_capabilities(json: &mut Json) -> JsonValue {
                     parameter_information.into(),
                     json,
                 );
+
+                //signature_information.set("activeParameterSupport".into(), false.into(), json);
 
                 signature_help.set(
                     "signatureInformation".into(),

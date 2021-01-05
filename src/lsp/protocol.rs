@@ -251,10 +251,7 @@ impl ServerConnection {
 
             loop {
                 let content_bytes = match buf.read_content_from(&mut stdout) {
-                    [] => {
-                        let _ = event_sender.send(LocalEvent::Lsp(handle, ServerEvent::Closed));
-                        break;
-                    }
+                    [] => break,
                     bytes => bytes,
                 };
 
@@ -269,6 +266,8 @@ impl ServerConnection {
                     break;
                 }
             }
+            let _ = event_sender.send(LocalEvent::Lsp(handle, ServerEvent::Closed));
+            eprintln!("close lsp server");
         });
 
         Ok(Self { process, stdin })

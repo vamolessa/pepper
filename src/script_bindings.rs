@@ -354,7 +354,8 @@ mod lsp {
         _: ScriptContextGuard,
         handle: LspClientHandle,
     ) -> ScriptResult<()> {
-        ctx.lsp.stop(handle);
+        let (lsp, mut ctx) = ctx.into_lsp_context();
+        lsp.stop(&mut ctx, handle);
         Ok(())
     }
 

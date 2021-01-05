@@ -1234,21 +1234,10 @@ impl BufferCollection {
             .filter_map(|b| if b.alive { Some(b) } else { None })
     }
 
-    pub fn defer_remove_where<F>(&mut self, events: &mut EditorEventQueue, predicate: F)
-    where
-        F: Fn(BufferHandle, &Buffer) -> bool,
-    {
-        for i in 0..self.buffers.len() {
-            let buffer = &mut self.buffers[i];
-            if !buffer.alive {
-                continue;
-            }
-
-            let handle = BufferHandle(i);
-            if !predicate(handle, buffer) {
-                continue;
-            }
-
+    pub fn defer_remove(&mut self, handle: BufferHandle, events: &mut EditorEventQueue) {
+        let buffer = &mut self.buffers[handle.0];
+        if buffer.alive {
+            buffer.alive = false;
             events.enqueue(EditorEvent::BufferClose { handle });
         }
     }

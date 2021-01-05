@@ -458,9 +458,36 @@ impl Client {
             let text_document = helper::text_document_with_id(ctx, buffer_path, json);
             let position = helper::position(position, json);
 
+            /*
+            let mut context = JsonObject::default();
+            let trigger_kind_invoked = 1;
+            context.set("triggerKind".into(), trigger_kind_invoked.into(), json);
+            context.set("isRetrigger".into(), false.into(), json);
+
+            let mut signature = JsonObject::default();
+            signature.set("label".into(), "".into(), json);
+            signature.set("documentation".into(), "".into(), json);
+            let parameters = JsonArray::default();
+            signature.set("parameters".into(), parameters.into(), json);
+            signature.set("activeParameter".into(), 0.into(), json);
+
+            let mut signatures = JsonArray::default();
+            signatures.push(signature.into(), json);
+
+            let mut active_signature_help = JsonObject::default();
+            active_signature_help.set("signatures".into(), signatures.into(), json);
+            active_signature_help.set("activeSignature".into(), 0.into(), json);
+            //active_signature_help.set("activeParameter".into(), 0.into(), json);
+            context.set(
+                "activeSignatureHelp".into(),
+                active_signature_help.into(),
+                json,
+            );
+            // */
             let mut params = JsonObject::default();
             params.set("textDocument".into(), text_document.into(), json);
             params.set("position".into(), position.into(), json);
+            //params.set("context".into(), context.into(), json);
 
             self.request(json, "textDocument/signatureHelp", params)?;
         }
@@ -490,9 +517,18 @@ impl Client {
         }
     }
 
+    fn on_stop(&mut self, ctx: &mut ClientContext) {
+        if let Some(handle) = self.log_buffer_handle.take() {
+            ctx.buffer_views
+                .defer_remove_where(ctx.buffers, ctx.editor_events, |view| {
+                    view.buffer_handle == handle
+                });
+        }
+    }
+
     fn on_request(
         &mut self,
-        _ctx: &mut ClientContext,
+        ctx: &mut ClientContext,
         json: &mut Json,
         request: ServerRequest,
     ) -> io::Result<()> {
@@ -725,9 +761,40 @@ impl Client {
                 ctx.status_message.write_str(StatusMessageKind::Info, info);
             }
             "textDocument/signatureHelp" => {
-                let contents = result.get("contents".into(), json);
-                let info = helper::extract_markup_content(contents, json);
-                ctx.status_message.write_str(StatusMessageKind::Info, info);
+                declare_json_object! {
+                    struct SignatureHelp {
+                        activeSignature: usize,
+                        signatures: JsonArray,
+                    }
+                }
+                declare_json_object! {
+                    struct SignatureInformation {
+                        label: JsonString,
+                        documentation: JsonValue,
+                    }
+                }
+
+                let SignatureHelp {
+                    activeSignature: active_signature,
+                    signatures,
+                } = deserialize!(result);
+                if let Some(signature) = signatures.elements(json).nth(active_signature) {
+                    let signature: SignatureInformation = deserialize!(signature);
+                    let label = signature.label.as_str(json);
+                    let documentation = match signature.documentation {
+                        JsonValue::String(s) => s.as_str(json),
+                        content => helper::extract_markup_content(content, json),
+                    };
+
+                    if documentation.is_empty() {
+                        ctx.status_message.write_str(StatusMessageKind::Info, label);
+                    } else {
+                        ctx.status_message.write_fmt(
+                            StatusMessageKind::Info,
+                            format_args!("{}\n{}", documentation, label),
+                        );
+                    }
+                }
             }
             _ => (),
         }
@@ -913,10 +980,9 @@ mod helper {
         r
     }
 
-    pub fn extract_markup_content<'json>(content: JsonValue, json: &'json mut Json) -> &'json str {
+    pub fn extract_markup_content<'json>(content: JsonValue, json: &'json Json) -> &'json str {
         match content {
             JsonValue::Object(o) => match o.get("value".into(), json) {
-                JsonValue::Str(s) => s,
                 JsonValue::String(s) => s.as_str(json),
                 _ => "",
             },
@@ -1133,7 +1199,10 @@ impl ClientCollection {
         Ok(handle)
     }
 
-    pub fn stop(&mut self, handle: ClientHandle) {
+    pub fn stop(&mut self, ctx: &mut ClientContext, handle: ClientHandle) {
+        if let Some(entry) = self.entries[handle.0].as_mut() {
+            entry.client.on_stop(ctx);
+        }
         self.entries[handle.0] = None;
     }
 
@@ -1172,7 +1241,7 @@ impl ClientCollection {
     ) -> io::Result<()> {
         match event {
             ServerEvent::Closed => {
-                self.entries[handle.0] = None;
+                self.stop(ctx, handle);
             }
             ServerEvent::ParseError => {
                 if let Some(entry) = self.entries[handle.0].as_mut() {

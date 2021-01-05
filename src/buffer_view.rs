@@ -399,12 +399,11 @@ impl BufferViewCollection {
         for i in 0..self.buffer_views.len() {
             if let Some(view) = &self.buffer_views[i] {
                 if predicate(&view) {
+                    buffers.defer_remove(view.buffer_handle, events);
                     self.buffer_views[i] = None;
                 }
             }
         }
-
-        buffers.defer_remove_where(events, |h, _| !self.iter().any(|v| v.buffer_handle == h));
     }
 
     pub fn get(&self, handle: BufferViewHandle) -> Option<&BufferView> {
@@ -413,10 +412,6 @@ impl BufferViewCollection {
 
     pub fn get_mut(&mut self, handle: BufferViewHandle) -> Option<&mut BufferView> {
         self.buffer_views[handle.0].as_mut()
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = &BufferView> {
-        self.buffer_views.iter().flatten()
     }
 
     pub fn iter_with_handles(&self) -> impl Iterator<Item = (BufferViewHandle, &BufferView)> {
