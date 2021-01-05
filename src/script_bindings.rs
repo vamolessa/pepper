@@ -95,7 +95,7 @@ pub fn bind_all(scripts: ScriptEngineRef) -> ScriptResult<()> {
     register!(client => index, current_buffer_view_handle, quit, force_quit, quit_all, force_quit_all,);
     register!(editor => version, os, current_directory, print, eprint,);
     register!(script => source, directory,);
-    register!(lsp => start, stop, hover, signature_help, open_log,);
+    register!(lsp => all_handles, start, stop, hover, signature_help, open_log,);
     register!(buffer => all_handles, line_count, line_at, path, path_matches, needs_save, set_search, open, close,
         force_close, close_all, force_close_all, save, save_all, reload, force_reload, reload_all, force_reload_all,
         commit_edits,);
@@ -235,34 +235,34 @@ mod client {
 mod editor {
     use super::*;
 
-    pub fn version<'a>(
-        engine: ScriptEngineRef<'a>,
+    pub fn version<'script>(
+        engine: ScriptEngineRef<'script>,
         _: &mut ScriptContext,
         _: ScriptContextGuard,
         _: (),
-    ) -> ScriptResult<ScriptValue<'a>> {
+    ) -> ScriptResult<ScriptValue<'script>> {
         engine
             .create_string(env!("CARGO_PKG_VERSION").as_bytes())
             .map(ScriptValue::String)
     }
 
-    pub fn os<'a>(
-        engine: ScriptEngineRef<'a>,
+    pub fn os<'script>(
+        engine: ScriptEngineRef<'script>,
         _: &mut ScriptContext,
         _: ScriptContextGuard,
         _: (),
-    ) -> ScriptResult<ScriptValue<'a>> {
+    ) -> ScriptResult<ScriptValue<'script>> {
         engine
             .create_string(env::consts::OS.as_bytes())
             .map(ScriptValue::String)
     }
 
-    pub fn current_directory<'a>(
-        engine: ScriptEngineRef<'a>,
+    pub fn current_directory<'script>(
+        engine: ScriptEngineRef<'script>,
         ctx: &mut ScriptContext,
         _: ScriptContextGuard,
         _: (),
-    ) -> ScriptResult<ScriptValue<'a>> {
+    ) -> ScriptResult<ScriptValue<'script>> {
         match ctx.current_directory.to_str() {
             Some(path) => engine
                 .create_string(path.as_bytes())
@@ -298,22 +298,22 @@ mod editor {
 mod script {
     use super::*;
 
-    pub fn source<'a>(
-        engine: ScriptEngineRef<'a>,
+    pub fn source<'script>(
+        engine: ScriptEngineRef<'script>,
         _: &mut ScriptContext,
         guard: ScriptContextGuard,
         path: ScriptString,
-    ) -> ScriptResult<ScriptValue<'a>> {
+    ) -> ScriptResult<ScriptValue<'script>> {
         let path = Path::new(path.to_str()?);
         engine.source(&guard, path)
     }
 
-    pub fn directory<'a>(
-        engine: ScriptEngineRef<'a>,
+    pub fn directory<'script>(
+        engine: ScriptEngineRef<'script>,
         _: &mut ScriptContext,
         _: ScriptContextGuard,
         _: (),
-    ) -> ScriptResult<ScriptValue<'a>> {
+    ) -> ScriptResult<ScriptValue<'script>> {
         match engine.current_source_directory()?.and_then(|p| p.to_str()) {
             Some(directory) => engine
                 .create_string(directory.as_bytes())
@@ -325,6 +325,19 @@ mod script {
 
 mod lsp {
     use super::*;
+
+    pub fn all_handles<'script>(
+        engine: ScriptEngineRef<'script>,
+        ctx: &mut ScriptContext,
+        _: ScriptContextGuard,
+        _: (),
+    ) -> ScriptResult<ScriptValue<'script>> {
+        let handles = engine.create_array()?;
+        for (handle, _) in ctx.lsp.client_with_handles() {
+            handles.push(handle)?;
+        }
+        Ok(ScriptValue::Array(handles))
+    }
 
     pub fn start(
         _: ScriptEngineRef,
@@ -355,8 +368,7 @@ mod lsp {
         _: ScriptContextGuard,
         handle: LspClientHandle,
     ) -> ScriptResult<()> {
-        let (lsp, mut ctx) = ctx.into_lsp_context();
-        lsp.stop(&mut ctx, handle);
+        ctx.lsp.stop(handle);
         Ok(())
     }
 
@@ -386,7 +398,11 @@ mod lsp {
         let client_handle =
             match client_handle.or_else(|| find_client_for_buffer(ctx, buffer_handle)) {
                 Some(handle) => handle,
-                None => return Ok(None),
+                None => {
+                    ctx.status_message
+                        .write_str(StatusMessageKind::Error, "lsp server not running");
+                    return Ok(None);
+                }
             };
         let (lsp, mut ctx) = ctx.into_lsp_context();
         match lsp.access(client_handle, |client, json| func(&mut ctx, client, json)) {
@@ -502,12 +518,12 @@ mod lsp {
 mod buffer {
     use super::*;
 
-    pub fn all_handles<'a>(
-        engine: ScriptEngineRef<'a>,
+    pub fn all_handles<'script>(
+        engine: ScriptEngineRef<'script>,
         ctx: &mut ScriptContext,
         _: ScriptContextGuard,
         _: (),
-    ) -> ScriptResult<ScriptValue<'a>> {
+    ) -> ScriptResult<ScriptValue<'script>> {
         let handles = engine.create_array()?;
         for buffer in ctx.buffers.iter() {
             handles.push(buffer.handle())?;
@@ -527,12 +543,12 @@ mod buffer {
             .map(|b| b.content().line_count()))
     }
 
-    pub fn line_at<'a>(
-        engine: ScriptEngineRef<'a>,
+    pub fn line_at<'script>(
+        engine: ScriptEngineRef<'script>,
         ctx: &mut ScriptContext,
         _: ScriptContextGuard,
         (index, handle): (usize, Option<BufferHandle>),
-    ) -> ScriptResult<ScriptValue<'a>> {
+    ) -> ScriptResult<ScriptValue<'script>> {
         match handle
             .or_else(|| ctx.current_buffer_handle())
             .and_then(|h| ctx.buffers.get(h))
@@ -549,12 +565,12 @@ mod buffer {
         }
     }
 
-    pub fn path<'a>(
-        engine: ScriptEngineRef<'a>,
+    pub fn path<'script>(
+        engine: ScriptEngineRef<'script>,
         ctx: &mut ScriptContext,
         _: ScriptContextGuard,
         handle: Option<BufferHandle>,
-    ) -> ScriptResult<ScriptValue<'a>> {
+    ) -> ScriptResult<ScriptValue<'script>> {
         match handle
             .or_else(|| ctx.current_buffer_handle())
             .and_then(|h| ctx.buffers.get(h))
@@ -567,8 +583,8 @@ mod buffer {
         }
     }
 
-    pub fn path_matches<'a>(
-        _: ScriptEngineRef<'a>,
+    pub fn path_matches<'script>(
+        _: ScriptEngineRef<'script>,
         ctx: &mut ScriptContext,
         _: ScriptContextGuard,
         (glob, handle): (ScriptUserData<Glob>, Option<BufferHandle>),
@@ -972,12 +988,12 @@ mod buffer_view {
         Ok(ctx.buffer_views.get(handle).map(|v| v.buffer_handle))
     }
 
-    pub fn all_handles<'a>(
-        engine: ScriptEngineRef<'a>,
+    pub fn all_handles<'script>(
+        engine: ScriptEngineRef<'script>,
         ctx: &mut ScriptContext,
         _: ScriptContextGuard,
         _: (),
-    ) -> ScriptResult<ScriptValue<'a>> {
+    ) -> ScriptResult<ScriptValue<'script>> {
         let handles = engine.create_array()?;
         for (h, _) in ctx.buffer_views.iter_with_handles() {
             handles.push(h)?;
@@ -1140,8 +1156,8 @@ mod buffer_view {
 mod cursors {
     use super::*;
 
-    pub fn len<'a>(
-        _: ScriptEngineRef<'a>,
+    pub fn len<'script>(
+        _: ScriptEngineRef<'script>,
         ctx: &mut ScriptContext,
         _: ScriptContextGuard,
         handle: Option<BufferViewHandle>,
@@ -1152,12 +1168,12 @@ mod cursors {
             .map(|v| v.cursors[..].len()))
     }
 
-    pub fn all<'a>(
-        engine: ScriptEngineRef<'a>,
+    pub fn all<'script>(
+        engine: ScriptEngineRef<'script>,
         ctx: &mut ScriptContext,
         _: ScriptContextGuard,
         handle: Option<BufferViewHandle>,
-    ) -> ScriptResult<ScriptValue<'a>> {
+    ) -> ScriptResult<ScriptValue<'script>> {
         let script_cursors = engine.create_array()?;
         if let Some(cursors) = handle
             .or_else(|| ctx.current_buffer_view_handle())
@@ -1496,7 +1512,7 @@ mod process {
         Ok(())
     }
 
-    fn run_process<'a, I>(
+    fn run_process<'script, I>(
         name: ScriptString,
         args: I,
         input: Option<ScriptString>,
@@ -1504,7 +1520,7 @@ mod process {
         stderr: Stdio,
     ) -> ScriptResult<Child>
     where
-        I: Iterator<Item = ScriptString<'a>>,
+        I: Iterator<Item = ScriptString<'script>>,
     {
         let mut command = Command::new(name.to_str()?);
         command.stdin(match input {

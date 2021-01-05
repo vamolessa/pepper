@@ -44,8 +44,38 @@ struct GenericCapability(bool);
 impl<'json> FromJson<'json> for GenericCapability {
     fn from_json(value: JsonValue, _: &'json Json) -> Result<Self, JsonConvertError> {
         match value {
+            JsonValue::Null => Ok(Self(false)),
             JsonValue::Boolean(b) => Ok(Self(b)),
             JsonValue::Object(_) => Ok(Self(true)),
+            _ => Err(JsonConvertError),
+        }
+    }
+}
+#[derive(Default)]
+struct TriggerCharactersCapability {
+    on: bool,
+    trigger_characters: String,
+}
+impl<'json> FromJson<'json> for TriggerCharactersCapability {
+    fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
+        match value {
+            JsonValue::Null => Ok(Self {
+                on: false,
+                trigger_characters: String::new(),
+            }),
+            JsonValue::Object(options) => {
+                let mut trigger_characters = String::new();
+                for c in options.get("triggerCharacters".into(), json).elements(json) {
+                    if let JsonValue::String(c) = c {
+                        let c = c.as_str(json);
+                        trigger_characters.push_str(c);
+                    }
+                }
+                Ok(Self {
+                    on: true,
+                    trigger_characters,
+                })
+            }
             _ => Err(JsonConvertError),
         }
     }
@@ -58,6 +88,10 @@ struct RenameCapability {
 impl<'json> FromJson<'json> for RenameCapability {
     fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
         match value {
+            JsonValue::Null => Ok(Self {
+                on: false,
+                prepare_provider: false,
+            }),
             JsonValue::Boolean(b) => Ok(Self {
                 on: b,
                 prepare_provider: false,
@@ -160,16 +194,18 @@ impl<'json> FromJson<'json> for TextDocumentSyncCapability {
 declare_json_object! {
     #[derive(Default)]
     struct ServerCapabilities {
-        hoverProvider: GenericCapability,
-        renameProvider: RenameCapability,
-        documentFormattingProvider: GenericCapability,
-        referencesProvider: GenericCapability,
-        definitionProvider: GenericCapability,
-        declarationProvider: GenericCapability,
-        implementationProvider: GenericCapability,
-        documentSymbolProvider: GenericCapability,
-        workspaceSymbolProvider: GenericCapability,
         textDocumentSync: TextDocumentSyncCapability,
+        completionProvider: TriggerCharactersCapability,
+        hoverProvider: GenericCapability,
+        signatureHelpProvider: TriggerCharactersCapability,
+        declarationProvider: GenericCapability,
+        definitionProvider: GenericCapability,
+        implementationProvider: GenericCapability,
+        referencesProvider: GenericCapability,
+        documentSymbolProvider: GenericCapability,
+        documentFormattingProvider: GenericCapability,
+        renameProvider: RenameCapability,
+        workspaceSymbolProvider: GenericCapability,
     }
 }
 
@@ -458,6 +494,10 @@ impl Client {
         buffer_handle: BufferHandle,
         position: BufferPosition,
     ) -> io::Result<()> {
+        if !self.server_capabilities.signatureHelpProvider.on {
+            return Ok(());
+        }
+
         if let Some(buffer_path) = ctx.buffers.get(buffer_handle).and_then(|b| b.path()) {
             let text_document = helper::text_document_with_id(ctx, buffer_path, json);
             let position = helper::position(position, json);
@@ -491,15 +531,6 @@ impl Client {
             let text = String::from_utf8_lossy(&self.log_write_buf);
             buffer.insert_text(ctx.word_database, position, &text, ctx.editor_events);
             self.log_write_buf.clear();
-        }
-    }
-
-    fn on_stop(&mut self, ctx: &mut ClientContext) {
-        if let Some(handle) = self.log_buffer_handle.take() {
-            ctx.buffer_views
-                .defer_remove_where(ctx.buffers, ctx.editor_events, |view| {
-                    view.buffer_handle == handle
-                });
         }
     }
 
@@ -1178,10 +1209,7 @@ impl ClientCollection {
         Ok(handle)
     }
 
-    pub fn stop(&mut self, ctx: &mut ClientContext, handle: ClientHandle) {
-        if let Some(entry) = self.entries[handle.0].as_mut() {
-            entry.client.on_stop(ctx);
-        }
+    pub fn stop(&mut self, handle: ClientHandle) {
         self.entries[handle.0] = None;
     }
 
@@ -1220,7 +1248,7 @@ impl ClientCollection {
     ) -> io::Result<()> {
         match event {
             ServerEvent::Closed => {
-                self.stop(ctx, handle);
+                self.stop(handle);
             }
             ServerEvent::ParseError => {
                 if let Some(entry) = self.entries[handle.0].as_mut() {
