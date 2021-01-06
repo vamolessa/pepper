@@ -6,13 +6,13 @@ use crate::{
 };
 
 pub struct State {
-    on_client_keys: fn(&mut ModeContext, &mut KeysIterator, ReadLinePoll) -> ModeOperation,
+    on_client_keys: fn(&mut ModeContext, &mut KeysIterator, ReadLinePoll),
 }
 
 impl Default for State {
     fn default() -> Self {
         Self {
-            on_client_keys: |_, _, _| ModeOperation::EnterMode(ModeKind::default()),
+            on_client_keys: |_, _, _| (),
         }
     }
 }
@@ -64,10 +64,12 @@ impl ModeState for State {
                         .filter(&EmptyWordCollection, ctx.read_line.input()),
                 }
 
-                (this.on_client_keys)(ctx, keys, ReadLinePoll::Pending)
+                (this.on_client_keys)(ctx, keys, ReadLinePoll::Pending);
             }
             poll => (this.on_client_keys)(ctx, keys, poll),
         }
+
+        ModeOperation::None
     }
 }
 
@@ -78,21 +80,23 @@ pub mod buffer {
 
     use crate::{buffer::Buffer, navigation_history::NavigationHistory, picker::Picker};
 
-    pub fn mode(ctx: &mut ModeContext) -> ModeKind {
-        fn on_client_keys(
-            ctx: &mut ModeContext,
-            _: &mut KeysIterator,
-            poll: ReadLinePoll,
-        ) -> ModeOperation {
+    pub fn enter_mode(ctx: &mut ModeContext) {
+        fn on_client_keys(ctx: &mut ModeContext, _: &mut KeysIterator, poll: ReadLinePoll) {
             match poll {
-                ReadLinePoll::Pending => return ModeOperation::None,
+                ReadLinePoll::Pending => return,
                 ReadLinePoll::Submitted => (),
-                ReadLinePoll::Canceled => return ModeOperation::EnterMode(ModeKind::default()),
+                ReadLinePoll::Canceled => {
+                    Mode::change_to(ctx, ModeKind::default());
+                    return;
+                }
             }
 
             let path = match ctx.picker.current_entry(&EmptyWordCollection) {
                 Some(entry) => entry.name,
-                None => return ModeOperation::EnterMode(ModeKind::default()),
+                None => {
+                    Mode::change_to(ctx, ModeKind::default());
+                    return;
+                }
             };
 
             NavigationHistory::save_client_snapshot(
@@ -114,7 +118,7 @@ pub mod buffer {
                 Err(error) => ctx.status_message.write_error(&error),
             }
 
-            ModeOperation::EnterMode(ModeKind::default())
+            Mode::change_to(ctx, ModeKind::default());
         }
 
         fn add_buffer_to_picker(picker: &mut Picker, buffer: &Buffer) {
@@ -150,25 +154,22 @@ pub mod buffer {
         }
 
         ctx.mode.picker_state.on_client_keys = on_client_keys;
-        ModeKind::Picker
+        Mode::change_to(ctx, ModeKind::Picker);
     }
 }
 
 pub mod custom {
     use super::*;
 
-    use crate::script::{ScriptCallback, ScriptContext, ScriptResult, ScriptValue};
+    use crate::script::{ScriptCallback, ScriptContext, ScriptValue};
 
-    pub fn mode(ctx: &mut ScriptContext, callback: ScriptCallback) -> ModeKind {
-        fn on_client_keys(
-            ctx: &mut ModeContext,
-            _: &mut KeysIterator,
-            poll: ReadLinePoll,
-        ) -> ModeOperation {
-            let (engine, mut ctx) = ctx.into_script_context();
-            let operation = engine.as_ref_with_ctx(&mut ctx, |engine, ctx, guard| {
+    pub fn enter_mode(ctx: &mut ScriptContext, callback: ScriptCallback) {
+        fn on_client_keys(ctx: &mut ModeContext, _: &mut KeysIterator, poll: ReadLinePoll) {
+            let previous_mode_kind = ctx.mode.kind();
+            let (engine, mut script_ctx) = ctx.into_script_context();
+            let result = engine.as_ref_with_ctx(&mut script_ctx, |engine, ctx, guard| {
                 let (name, description) = match poll {
-                    ReadLinePoll::Pending => return Ok(ModeOperation::None),
+                    ReadLinePoll::Pending => return Ok(()),
                     ReadLinePoll::Submitted => {
                         match ctx.picker.current_entry(&EmptyWordCollection) {
                             Some(entry) => (
@@ -188,21 +189,24 @@ pub mod custom {
                     callback.dispose(engine)?;
                 }
 
-                let mode = std::mem::take(&mut ctx.next_mode);
-                Ok(ModeOperation::EnterMode(mode))
+                Ok(())
             });
 
-            match operation {
-                Ok(operation) => operation,
+            match result {
+                Ok(()) => {
+                    if ctx.mode.kind() == previous_mode_kind {
+                        Mode::change_to(ctx, ModeKind::default());
+                    }
+                }
                 Err(error) => {
                     ctx.status_message.write_error(&error);
-                    ModeOperation::EnterMode(ModeKind::default())
+                    Mode::change_to(ctx, ModeKind::default());
                 }
             }
         }
 
         ctx.script_callbacks.picker = Some(callback);
         ctx.mode.picker_state.on_client_keys = on_client_keys;
-        ModeKind::Picker
+        //Mode::change_to(ctx, ModeKind::Picker);
     }
 }

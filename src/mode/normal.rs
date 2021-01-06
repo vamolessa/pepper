@@ -73,53 +73,50 @@ impl State {
         let this = &mut ctx.mode.normal_state;
         this.is_recording_auto_macro = false;
         match keys.next() {
-            Key::Char('q') => {
-                match ctx.recording_macro.take() {
-                    Some(_) => *ctx.recording_macro = None,
-                    None => match keys.next() {
-                        Key::None => return ModeOperation::Pending,
-                        Key::Char(c) => {
-                            if let Some(key) = RegisterKey::from_char(c) {
-                                ctx.registers.set(key, "");
-                                *ctx.recording_macro = Some(key);
-                            }
+            Key::Char('q') => match ctx.recording_macro.take() {
+                Some(_) => *ctx.recording_macro = None,
+                None => match keys.next() {
+                    Key::None => return ModeOperation::Pending,
+                    Key::Char(c) => {
+                        if let Some(key) = RegisterKey::from_char(c) {
+                            ctx.registers.set(key, "");
+                            *ctx.recording_macro = Some(key);
                         }
-                        _ => (),
-                    },
-                }
-                ModeOperation::None
-            }
+                    }
+                    _ => (),
+                },
+            },
             Key::Char('Q') => {
                 *ctx.recording_macro = None;
                 match keys.next() {
-                    Key::None => ModeOperation::Pending,
+                    Key::None => return ModeOperation::Pending,
                     Key::Char(c) => match RegisterKey::from_char(c.to_ascii_lowercase()) {
-                        Some(key) => ModeOperation::ExecuteMacro(key),
-                        None => ModeOperation::None,
+                        Some(key) => return ModeOperation::ExecuteMacro(key),
+                        None => (),
                     },
-                    _ => ModeOperation::None,
+                    _ => (),
                 }
             }
-            Key::Char(':') => ModeOperation::EnterMode(ModeKind::Script),
+            Key::Char(':') => Mode::change_to(ctx, ModeKind::Script),
             Key::Char('g') => match keys.next() {
-                Key::None => ModeOperation::Pending,
-                //Key::Char('b') => ModeOperation::EnterMode(picker::buffer::mode(ctx)),
+                Key::None => return ModeOperation::Pending,
+                Key::Char('b') => picker::buffer::enter_mode(ctx),
                 Key::Char('a') => {
                     if let Some(client) = ctx.clients.get_mut(ctx.target_client) {
                         client.set_current_buffer_view_handle(client.previous_buffer_view_handle());
                     }
-                    ModeOperation::None
                 }
-                _ => ModeOperation::None,
+                _ => (),
             },
             Key::Char(c) => {
                 if let Some(n) = c.to_digit(10) {
                     this.count = this.count.saturating_mul(10).saturating_add(n);
                 }
-                ModeOperation::None
             }
-            _ => ModeOperation::None,
+            _ => (),
         }
+
+        ModeOperation::None
     }
 
     fn on_client_keys_with_buffer_view(
@@ -379,7 +376,7 @@ impl State {
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
                 match keys.next() {
                     Key::None => return ModeOperation::Pending,
-                    //Key::Char('g') => return ModeOperation::EnterMode(read_line::goto::mode(ctx)),
+                    Key::Char('g') => read_line::goto::enter_mode(ctx),
                     Key::Char('h') => buffer_view.move_cursors(
                         ctx.buffers,
                         CursorMovement::Home,
@@ -837,26 +834,10 @@ impl State {
                     let offset = this.count.max(1) as usize % cursor_count;
                     cursors.set_main_cursor_index((index + cursor_count - offset) % cursor_count);
                 }
-                Key::Char('f') => {
-                    //return ModeOperation::EnterMode(read_line::filter_cursors::filter_mode(ctx));
-                }
-                Key::Char('F') => {
-                    //return ModeOperation::EnterMode(read_line::filter_cursors::except_mode(ctx));
-                }
-                Key::Char('s') => {
-                    /*
-                    return ModeOperation::EnterMode(read_line::split_cursors::by_pattern_mode(
-                        ctx,
-                    ));
-                    */
-                }
-                Key::Char('S') => {
-                    /*
-                    return ModeOperation::EnterMode(read_line::split_cursors::by_separators_mode(
-                        ctx,
-                    ));
-                    */
-                }
+                Key::Char('f') => read_line::filter_cursors::enter_filter_mode(ctx),
+                Key::Char('F') => read_line::filter_cursors::enter_except_mode(ctx),
+                Key::Char('s') => read_line::split_cursors::enter_by_pattern_mode(ctx),
+                Key::Char('S') => read_line::split_cursors::enter_by_separators_mode(ctx),
                 _ => (),
             },
             Key::Char('r') => match keys.next() {
@@ -868,7 +849,7 @@ impl State {
                     .write_str(StatusMessageKind::Info, "rename not yet implemented"),
                 _ => (),
             },
-            //Key::Char('s') => return ModeOperation::EnterMode(read_line::search::mode(ctx)),
+            Key::Char('s') => read_line::search::enter_mode(ctx),
             Key::Char('y') => {
                 use copypasta::{ClipboardContext, ClipboardProvider};
                 if let Ok(mut clipboard) = ClipboardContext::new() {

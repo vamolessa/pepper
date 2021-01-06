@@ -1395,7 +1395,7 @@ mod read_line {
         callback: ScriptFunction,
     ) -> ScriptResult<()> {
         let callback = engine.create_callback(callback)?;
-        ctx.next_mode = mode::read_line::custom::mode(ctx, callback);
+        mode::read_line::custom::enter_mode(ctx, callback);
         Ok(())
     }
 }
@@ -1434,7 +1434,7 @@ mod picker {
         callback: ScriptFunction,
     ) -> ScriptResult<()> {
         let callback = engine.create_callback(callback)?;
-        ctx.next_mode = mode::picker::custom::mode(ctx, callback);
+        mode::picker::custom::enter_mode(ctx, callback);
         Ok(())
     }
 }
