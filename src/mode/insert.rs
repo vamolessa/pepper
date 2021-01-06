@@ -3,7 +3,7 @@ use crate::{
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     client_event::Key,
     editor::KeysIterator,
-    mode::{Mode, ModeContext, ModeOperation, ModeState},
+    mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     register::AUTO_MACRO_REGISTER,
     word_database::WordKind,
 };
@@ -12,18 +12,18 @@ use crate::{
 pub struct State;
 
 impl ModeState for State {
-    fn on_enter(&mut self, ctx: &mut ModeContext) {
+    fn on_enter(ctx: &mut ModeContext) {
         ctx.picker.reset();
     }
 
-    fn on_exit(&mut self, ctx: &mut ModeContext) {
+    fn on_exit(ctx: &mut ModeContext) {
         ctx.picker.reset();
     }
 
-    fn on_client_keys(&mut self, ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
+    fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
         let handle = match ctx.current_buffer_view_handle() {
             Some(handle) => handle,
-            None => return ModeOperation::EnterMode(Mode::default()),
+            None => return ModeOperation::EnterMode(ModeKind::default()),
         };
 
         let key = keys.next();
@@ -37,7 +37,7 @@ impl ModeState for State {
             Key::Esc => {
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
                 unwrap_or_none!(ctx.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
-                return ModeOperation::EnterMode(Mode::default());
+                return ModeOperation::EnterMode(ModeKind::default());
             }
             Key::Left => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
                 ctx.buffers,

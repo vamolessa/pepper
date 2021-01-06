@@ -8,7 +8,7 @@ use crate::{
     cursor::Cursor,
     editor::{KeysIterator, StatusMessageKind},
     lsp::LspDiagnostic,
-    mode::{picker, read_line, Mode, ModeContext, ModeOperation, ModeState},
+    mode::{picker, read_line, Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     navigation_history::{NavigationDirection, NavigationHistory},
     register::{RegisterKey, AUTO_MACRO_REGISTER, SEARCH_REGISTER},
     word_database::WordKind,
@@ -28,18 +28,19 @@ pub struct State {
 }
 
 impl State {
-    fn on_movement_keys(&mut self, ctx: &mut ModeContext, keys: &KeysIterator, from_index: usize) {
-        match self.movement_kind {
-            CursorMovementKind::PositionAndAnchor => self.is_recording_auto_macro = false,
+    fn on_movement_keys(ctx: &mut ModeContext, keys: &KeysIterator, from_index: usize) {
+        let this = &mut ctx.mode.normal_state;
+        match this.movement_kind {
+            CursorMovementKind::PositionAndAnchor => this.is_recording_auto_macro = false,
             CursorMovementKind::PositionOnly => {
-                if !self.is_recording_auto_macro {
+                if !this.is_recording_auto_macro {
                     ctx.registers.set(AUTO_MACRO_REGISTER, "");
                 }
-                self.is_recording_auto_macro = true;
+                this.is_recording_auto_macro = true;
 
-                if ctx.registers.get(AUTO_MACRO_REGISTER).is_empty() && self.count > 0 {
+                if ctx.registers.get(AUTO_MACRO_REGISTER).is_empty() && this.count > 0 {
                     ctx.registers
-                        .append_fmt(AUTO_MACRO_REGISTER, format_args!("{}", self.count));
+                        .append_fmt(AUTO_MACRO_REGISTER, format_args!("{}", this.count));
                 }
 
                 for key in &keys.keys()[from_index..keys.index()] {
@@ -50,15 +51,16 @@ impl State {
         }
     }
 
-    fn on_edit_keys(&mut self, ctx: &mut ModeContext, keys: &KeysIterator, from_index: usize) {
-        if !self.is_recording_auto_macro {
+    fn on_edit_keys(ctx: &mut ModeContext, keys: &KeysIterator, from_index: usize) {
+        let this = &mut ctx.mode.normal_state;
+        if !this.is_recording_auto_macro {
             ctx.registers.set(AUTO_MACRO_REGISTER, "");
         }
-        self.is_recording_auto_macro = false;
+        this.is_recording_auto_macro = false;
 
-        if ctx.registers.get(AUTO_MACRO_REGISTER).is_empty() && self.count > 0 {
+        if ctx.registers.get(AUTO_MACRO_REGISTER).is_empty() && this.count > 0 {
             ctx.registers
-                .append_fmt(AUTO_MACRO_REGISTER, format_args!("{}", self.count));
+                .append_fmt(AUTO_MACRO_REGISTER, format_args!("{}", this.count));
         }
 
         for key in &keys.keys()[from_index..keys.index()] {
@@ -67,12 +69,9 @@ impl State {
         }
     }
 
-    fn on_event_no_buffer(
-        &mut self,
-        ctx: &mut ModeContext,
-        keys: &mut KeysIterator,
-    ) -> ModeOperation {
-        self.is_recording_auto_macro = false;
+    fn on_event_no_buffer(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
+        let this = &mut ctx.mode.normal_state;
+        this.is_recording_auto_macro = false;
         match keys.next() {
             Key::Char('q') => {
                 match ctx.recording_macro.take() {
@@ -101,10 +100,10 @@ impl State {
                     _ => ModeOperation::None,
                 }
             }
-            Key::Char(':') => ModeOperation::EnterMode(Mode::Script(Default::default())),
+            Key::Char(':') => ModeOperation::EnterMode(ModeKind::Script),
             Key::Char('g') => match keys.next() {
                 Key::None => ModeOperation::Pending,
-                Key::Char('b') => ModeOperation::EnterMode(picker::buffer::mode(ctx)),
+                //Key::Char('b') => ModeOperation::EnterMode(picker::buffer::mode(ctx)),
                 Key::Char('a') => {
                     if let Some(client) = ctx.clients.get_mut(ctx.target_client) {
                         client.set_current_buffer_view_handle(client.previous_buffer_view_handle());
@@ -115,7 +114,7 @@ impl State {
             },
             Key::Char(c) => {
                 if let Some(n) = c.to_digit(10) {
-                    self.count = self.count.saturating_mul(10).saturating_add(n);
+                    this.count = this.count.saturating_mul(10).saturating_add(n);
                 }
                 ModeOperation::None
             }
@@ -124,46 +123,46 @@ impl State {
     }
 
     fn on_client_keys_with_buffer_view(
-        &mut self,
         ctx: &mut ModeContext,
         keys: &mut KeysIterator,
         handle: BufferViewHandle,
     ) -> ModeOperation {
+        let this = &mut ctx.mode.normal_state;
         let keys_from_index = keys.index();
         match keys.next() {
             Key::Char('h') => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
                 ctx.buffers,
-                CursorMovement::ColumnsBackward(self.count.max(1) as _),
-                self.movement_kind,
+                CursorMovement::ColumnsBackward(this.count.max(1) as _),
+                this.movement_kind,
             ),
             Key::Char('j') => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
                 ctx.buffers,
-                CursorMovement::LinesForward(self.count.max(1) as _),
-                self.movement_kind,
+                CursorMovement::LinesForward(this.count.max(1) as _),
+                this.movement_kind,
             ),
             Key::Char('k') => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
                 ctx.buffers,
-                CursorMovement::LinesBackward(self.count.max(1) as _),
-                self.movement_kind,
+                CursorMovement::LinesBackward(this.count.max(1) as _),
+                this.movement_kind,
             ),
             Key::Char('l') => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
                 ctx.buffers,
-                CursorMovement::ColumnsForward(self.count.max(1) as _),
-                self.movement_kind,
+                CursorMovement::ColumnsForward(this.count.max(1) as _),
+                this.movement_kind,
             ),
             Key::Char('w') => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
                 ctx.buffers,
-                CursorMovement::WordsForward(self.count.max(1) as _),
-                self.movement_kind,
+                CursorMovement::WordsForward(this.count.max(1) as _),
+                this.movement_kind,
             ),
             Key::Char('b') => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
                 ctx.buffers,
-                CursorMovement::WordsBackward(self.count.max(1) as _),
-                self.movement_kind,
+                CursorMovement::WordsBackward(this.count.max(1) as _),
+                this.movement_kind,
             ),
             Key::Char('n') => {
-                move_to_search_match(self, ctx, |len, r| {
-                    let count = self.count.max(1);
+                let count = this.count.max(1);
+                move_to_search_match(ctx, |len, r| {
                     let index = match r {
                         Ok(index) => index + count as usize,
                         Err(index) => index + count as usize - 1,
@@ -172,16 +171,17 @@ impl State {
                 });
             }
             Key::Char('p') => {
-                move_to_search_match(self, ctx, |len, r| {
+                let count = this.count.max(1) as usize;
+                move_to_search_match(ctx, |len, r| {
                     let index = match r {
                         Ok(index) => index,
                         Err(index) => index,
                     };
-                    (index + len - self.count.max(1) as usize % len) % len
+                    (index + len - count % len) % len
                 });
             }
             Key::Char('N') => {
-                search_word_or_move_to_it(self, ctx, |len, r| {
+                search_word_or_move_to_it(ctx, |len, r| {
                     let index = match r {
                         Ok(index) => index + 1,
                         Err(index) => index,
@@ -190,7 +190,7 @@ impl State {
                 });
             }
             Key::Char('P') => {
-                search_word_or_move_to_it(self, ctx, |len, r| {
+                search_word_or_move_to_it(ctx, |len, r| {
                     let index = match r {
                         Ok(index) => index,
                         Err(index) => index,
@@ -205,7 +205,7 @@ impl State {
                     ctx.target_client,
                     NavigationDirection::Forward,
                 );
-                self.movement_kind = CursorMovementKind::PositionAndAnchor;
+                this.movement_kind = CursorMovementKind::PositionAndAnchor;
             }
             Key::Ctrl('p') => {
                 NavigationHistory::move_in_history(
@@ -214,7 +214,7 @@ impl State {
                     ctx.target_client,
                     NavigationDirection::Backward,
                 );
-                self.movement_kind = CursorMovementKind::PositionAndAnchor;
+                this.movement_kind = CursorMovementKind::PositionAndAnchor;
             }
             Key::Char('a') => {
                 fn balanced_brackets(
@@ -283,7 +283,7 @@ impl State {
                     _ => (),
                 }
 
-                self.movement_kind = CursorMovementKind::PositionOnly;
+                this.movement_kind = CursorMovementKind::PositionOnly;
             }
             Key::Char('A') => {
                 fn balanced_brackets(
@@ -373,37 +373,37 @@ impl State {
                     _ => (),
                 }
 
-                self.movement_kind = CursorMovementKind::PositionOnly;
+                this.movement_kind = CursorMovementKind::PositionOnly;
             }
             Key::Char('g') => {
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
                 match keys.next() {
                     Key::None => return ModeOperation::Pending,
-                    Key::Char('g') => return ModeOperation::EnterMode(read_line::goto::mode(ctx)),
+                    //Key::Char('g') => return ModeOperation::EnterMode(read_line::goto::mode(ctx)),
                     Key::Char('h') => buffer_view.move_cursors(
                         ctx.buffers,
                         CursorMovement::Home,
-                        self.movement_kind,
+                        this.movement_kind,
                     ),
                     Key::Char('j') => buffer_view.move_cursors(
                         ctx.buffers,
                         CursorMovement::LastLine,
-                        self.movement_kind,
+                        this.movement_kind,
                     ),
                     Key::Char('k') => buffer_view.move_cursors(
                         ctx.buffers,
                         CursorMovement::FirstLine,
-                        self.movement_kind,
+                        this.movement_kind,
                     ),
                     Key::Char('l') => buffer_view.move_cursors(
                         ctx.buffers,
                         CursorMovement::End,
-                        self.movement_kind,
+                        this.movement_kind,
                     ),
                     Key::Char('i') => buffer_view.move_cursors(
                         ctx.buffers,
                         CursorMovement::HomeNonWhitespace,
-                        self.movement_kind,
+                        this.movement_kind,
                     ),
                     Key::Char('m') => {
                         let buffer =
@@ -451,7 +451,7 @@ impl State {
                                     cursor.position = from;
                                 }
 
-                                if let CursorMovementKind::PositionAndAnchor = self.movement_kind {
+                                if let CursorMovementKind::PositionAndAnchor = this.movement_kind {
                                     cursor.anchor = cursor.position;
                                 }
                             }
@@ -460,44 +460,44 @@ impl State {
                     _ => {
                         keys.put_back();
                         keys.put_back();
-                        return self.on_event_no_buffer(ctx, keys);
+                        return Self::on_event_no_buffer(ctx, keys);
                     }
                 }
             }
             Key::Char('f') => match keys.next() {
                 Key::None => return ModeOperation::Pending,
                 Key::Char(ch) => {
-                    self.last_char_jump = CharJump::Inclusive(ch);
-                    find_char(self, ctx, self.count.max(1) as _, true);
+                    this.last_char_jump = CharJump::Inclusive(ch);
+                    find_char(ctx, true);
                 }
                 _ => (),
             },
             Key::Char('F') => match keys.next() {
                 Key::None => return ModeOperation::Pending,
                 Key::Char(ch) => {
-                    self.last_char_jump = CharJump::Inclusive(ch);
-                    find_char(self, ctx, self.count.max(1) as _, false);
+                    this.last_char_jump = CharJump::Inclusive(ch);
+                    find_char(ctx, false);
                 }
                 _ => (),
             },
             Key::Char('t') => match keys.next() {
                 Key::None => return ModeOperation::Pending,
                 Key::Char(ch) => {
-                    self.last_char_jump = CharJump::Exclusive(ch);
-                    find_char(self, ctx, self.count.max(1) as _, true);
+                    this.last_char_jump = CharJump::Exclusive(ch);
+                    find_char(ctx, true);
                 }
                 _ => (),
             },
             Key::Char('T') => match keys.next() {
                 Key::None => return ModeOperation::Pending,
                 Key::Char(ch) => {
-                    self.last_char_jump = CharJump::Exclusive(ch);
-                    find_char(self, ctx, self.count.max(1) as _, false);
+                    this.last_char_jump = CharJump::Exclusive(ch);
+                    find_char(ctx, false);
                 }
                 _ => (),
             },
-            Key::Char(';') => find_char(self, ctx, self.count.max(1) as _, true),
-            Key::Char(',') => find_char(self, ctx, self.count.max(1) as _, false),
+            Key::Char(';') => find_char(ctx, true),
+            Key::Char(',') => find_char(ctx, false),
             Key::Char('v') => {
                 let mut had_selection = false;
                 for cursor in &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle))
@@ -510,7 +510,7 @@ impl State {
                     }
                 }
 
-                self.movement_kind = if had_selection {
+                this.movement_kind = if had_selection {
                     CursorMovementKind::PositionAndAnchor
                 } else {
                     CursorMovementKind::PositionOnly
@@ -520,7 +520,7 @@ impl State {
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
                 let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle)).content();
 
-                let count = self.count.max(1);
+                let count = this.count.max(1);
                 let last_line_index = buffer.line_count().saturating_sub(1);
                 for cursor in &mut buffer_view.cursors.mut_guard()[..] {
                     if cursor.anchor <= cursor.position {
@@ -546,7 +546,7 @@ impl State {
                         }
                     }
                 }
-                self.movement_kind = CursorMovementKind::PositionOnly;
+                this.movement_kind = CursorMovementKind::PositionOnly;
             }
             Key::Char('z') => {
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
@@ -572,7 +572,7 @@ impl State {
                 unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
                     ctx.buffers,
                     CursorMovement::LinesForward(half_height as _),
-                    self.movement_kind,
+                    this.movement_kind,
                 );
             }
             Key::Ctrl('u') => {
@@ -585,7 +585,7 @@ impl State {
                 unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
                     ctx.buffers,
                     CursorMovement::LinesBackward(half_height as _),
-                    self.movement_kind,
+                    this.movement_kind,
                 );
             }
             Key::Char('d') => {
@@ -597,8 +597,8 @@ impl State {
                 );
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
                 unwrap_or_none!(ctx.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
-                self.movement_kind = CursorMovementKind::PositionAndAnchor;
-                self.on_edit_keys(ctx, keys, keys_from_index);
+                this.movement_kind = CursorMovementKind::PositionAndAnchor;
+                Self::on_edit_keys(ctx, keys, keys_from_index);
                 return ModeOperation::None;
             }
             Key::Char('i') => {
@@ -609,14 +609,14 @@ impl State {
                     ctx.editor_events,
                 );
 
-                self.on_edit_keys(ctx, keys, keys_from_index);
-                return ModeOperation::EnterMode(Mode::Insert(Default::default()));
+                Self::on_edit_keys(ctx, keys, keys_from_index);
+                return ModeOperation::EnterMode(ModeKind::Insert);
             }
             Key::Char('<') => {
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
                 let cursor_count = buffer_view.cursors[..].len();
                 let buffer_handle = buffer_view.buffer_handle;
-                let count = self.count.max(1);
+                let count = this.count.max(1);
 
                 for i in 0..cursor_count {
                     let range = unwrap_or_none!(ctx.buffer_views.get(handle)).cursors[i].as_range();
@@ -658,7 +658,7 @@ impl State {
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
                 unwrap_or_none!(ctx.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
 
-                self.on_edit_keys(ctx, keys, keys_from_index);
+                Self::on_edit_keys(ctx, keys, keys_from_index);
                 return ModeOperation::None;
             }
             Key::Char('>') => {
@@ -666,10 +666,10 @@ impl State {
                 let count;
                 let fill;
                 if ctx.config.values.indent_with_tabs {
-                    count = self.count.max(1) as usize;
+                    count = this.count.max(1) as usize;
                     fill = b'\t';
                 } else {
-                    count = self.count.max(1) as usize * ctx.config.values.tab_size.get() as usize;
+                    count = this.count.max(1) as usize * ctx.config.values.tab_size.get() as usize;
                     fill = b' ';
                 }
 
@@ -693,7 +693,7 @@ impl State {
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
                 unwrap_or_none!(ctx.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
 
-                self.on_edit_keys(ctx, keys, keys_from_index);
+                Self::on_edit_keys(ctx, keys, keys_from_index);
                 return ModeOperation::None;
             }
             Key::Char('c') | Key::Char('C') => match keys.next() {
@@ -753,7 +753,7 @@ impl State {
                             });
                         }
                     }
-                    self.movement_kind = CursorMovementKind::PositionOnly;
+                    this.movement_kind = CursorMovementKind::PositionOnly;
                 }
                 Key::Char('d') => {
                     let cursors = &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle)).cursors;
@@ -761,10 +761,10 @@ impl State {
                     let mut cursors = cursors.mut_guard();
                     cursors.clear();
                     cursors.add(main_cursor);
-                    self.movement_kind = CursorMovementKind::PositionAndAnchor;
+                    this.movement_kind = CursorMovementKind::PositionAndAnchor;
                 }
                 Key::Char('v') => {
-                    self.movement_kind = CursorMovementKind::PositionOnly;
+                    this.movement_kind = CursorMovementKind::PositionOnly;
                 }
                 Key::Char('V') => {
                     for cursor in &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle))
@@ -773,7 +773,7 @@ impl State {
                     {
                         cursor.anchor = cursor.position;
                     }
-                    self.movement_kind = CursorMovementKind::PositionAndAnchor;
+                    this.movement_kind = CursorMovementKind::PositionAndAnchor;
                 }
                 Key::Char('o') => {
                     for cursor in &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle))
@@ -791,7 +791,7 @@ impl State {
                     if let Some(cursor) = cursors[..].last() {
                         let mut position = cursor.as_range().to;
 
-                        for _ in 0..self.count.max(1) {
+                        for _ in 0..this.count.max(1) {
                             position.line_index += 1;
                             position = buffer.content().saturate_position(position);
 
@@ -810,7 +810,7 @@ impl State {
                     if let Some(cursor) = cursors[..].first() {
                         let mut position = cursor.as_range().from;
 
-                        for _ in 0..self.count.max(1) {
+                        for _ in 0..this.count.max(1) {
                             position.line_index = position.line_index.saturating_sub(1);
                             position = buffer.content().saturate_position(position);
 
@@ -826,7 +826,7 @@ impl State {
                     let index = cursors.main_cursor_index();
                     let mut cursors = cursors.mut_guard();
                     let cursor_count = cursors[..].len();
-                    let offset = self.count.max(1) as usize;
+                    let offset = this.count.max(1) as usize;
                     cursors.set_main_cursor_index((index + offset) % cursor_count);
                 }
                 Key::Char('p') => {
@@ -834,37 +834,41 @@ impl State {
                     let index = cursors.main_cursor_index();
                     let mut cursors = cursors.mut_guard();
                     let cursor_count = cursors[..].len();
-                    let offset = self.count.max(1) as usize % cursor_count;
+                    let offset = this.count.max(1) as usize % cursor_count;
                     cursors.set_main_cursor_index((index + cursor_count - offset) % cursor_count);
                 }
                 Key::Char('f') => {
-                    return ModeOperation::EnterMode(read_line::filter_cursors::filter_mode(ctx));
+                    //return ModeOperation::EnterMode(read_line::filter_cursors::filter_mode(ctx));
                 }
                 Key::Char('F') => {
-                    return ModeOperation::EnterMode(read_line::filter_cursors::except_mode(ctx));
+                    //return ModeOperation::EnterMode(read_line::filter_cursors::except_mode(ctx));
                 }
                 Key::Char('s') => {
+                    /*
                     return ModeOperation::EnterMode(read_line::split_cursors::by_pattern_mode(
                         ctx,
                     ));
+                    */
                 }
                 Key::Char('S') => {
+                    /*
                     return ModeOperation::EnterMode(read_line::split_cursors::by_separators_mode(
                         ctx,
                     ));
+                    */
                 }
                 _ => (),
             },
             Key::Char('r') => match keys.next() {
                 Key::None => return ModeOperation::Pending,
-                Key::Char('n') => move_to_diagnostic(self, ctx, true),
-                Key::Char('p') => move_to_diagnostic(self, ctx, false),
+                Key::Char('n') => move_to_diagnostic(ctx, true),
+                Key::Char('p') => move_to_diagnostic(ctx, false),
                 Key::Char('r') => ctx
                     .status_message
                     .write_str(StatusMessageKind::Info, "rename not yet implemented"),
                 _ => (),
             },
-            Key::Char('s') => return ModeOperation::EnterMode(read_line::search::mode(ctx)),
+            //Key::Char('s') => return ModeOperation::EnterMode(read_line::search::mode(ctx)),
             Key::Char('y') => {
                 use copypasta::{ClipboardContext, ClipboardProvider};
                 if let Ok(mut clipboard) = ClipboardContext::new() {
@@ -875,7 +879,7 @@ impl State {
                         let _ = clipboard.set_contents(text);
                     }
                 }
-                self.movement_kind = CursorMovementKind::PositionAndAnchor;
+                this.movement_kind = CursorMovementKind::PositionAndAnchor;
             }
             Key::Char('Y') => {
                 use copypasta::{ClipboardContext, ClipboardProvider};
@@ -896,9 +900,9 @@ impl State {
                 }
                 let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
                 unwrap_or_none!(ctx.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
-                self.movement_kind = CursorMovementKind::PositionAndAnchor;
+                this.movement_kind = CursorMovementKind::PositionAndAnchor;
 
-                self.is_recording_auto_macro = false;
+                this.is_recording_auto_macro = false;
                 return ModeOperation::None;
             }
             Key::Ctrl('y') => match keys.next() {
@@ -922,9 +926,9 @@ impl State {
                     }
                     let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
                     unwrap_or_none!(ctx.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
-                    self.movement_kind = CursorMovementKind::PositionAndAnchor;
+                    this.movement_kind = CursorMovementKind::PositionAndAnchor;
 
-                    self.is_recording_auto_macro = false;
+                    this.is_recording_auto_macro = false;
                     return ModeOperation::None;
                 }
                 _ => (),
@@ -932,24 +936,24 @@ impl State {
             Key::Char('u') => {
                 ctx.buffer_views
                     .undo(ctx.buffers, ctx.word_database, ctx.editor_events, handle);
-                self.movement_kind = CursorMovementKind::PositionAndAnchor;
+                this.movement_kind = CursorMovementKind::PositionAndAnchor;
                 return ModeOperation::None;
             }
             Key::Char('U') => {
                 ctx.buffer_views
                     .redo(ctx.buffers, ctx.word_database, ctx.editor_events, handle);
-                self.movement_kind = CursorMovementKind::PositionAndAnchor;
+                this.movement_kind = CursorMovementKind::PositionAndAnchor;
                 return ModeOperation::None;
             }
             _ => {
                 keys.put_back();
-                return self.on_event_no_buffer(ctx, keys);
+                return Self::on_event_no_buffer(ctx, keys);
             }
         }
 
-        self.on_movement_keys(ctx, keys, keys_from_index);
+        Self::on_movement_keys(ctx, keys, keys_from_index);
 
-        self.count = 0;
+        ctx.mode.normal_state.count = 0;
         ModeOperation::None
     }
 }
@@ -966,7 +970,7 @@ impl Default for State {
 }
 
 impl ModeState for State {
-    fn on_client_keys(&mut self, ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
+    fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
         fn show_hovered_diagnostic_in_status_message(ctx: &mut ModeContext) {
             let handle = unwrap_or_return!(ctx.current_buffer_view_handle());
             let current_message = ctx.status_message.message().1;
@@ -1003,18 +1007,19 @@ impl ModeState for State {
 
         match ctx.current_buffer_view_handle() {
             Some(handle) => {
-                let op = self.on_client_keys_with_buffer_view(ctx, keys, handle);
+                let op = Self::on_client_keys_with_buffer_view(ctx, keys, handle);
                 if let ModeOperation::None = op {
                     show_hovered_diagnostic_in_status_message(ctx);
                 }
                 op
             }
-            None => self.on_event_no_buffer(ctx, keys),
+            None => Self::on_event_no_buffer(ctx, keys),
         }
     }
 }
 
-fn find_char(state: &State, ctx: &mut ModeContext, count: usize, forward: bool) {
+fn find_char(ctx: &mut ModeContext, forward: bool) {
+    let state = &ctx.mode.normal_state;
     let skip;
     let ch;
     let next_ch;
@@ -1036,6 +1041,7 @@ fn find_char(state: &State, ctx: &mut ModeContext, count: usize, forward: bool) 
     let buffer_view = unwrap_or_return!(ctx.buffer_views.get_mut(handle));
     let buffer = unwrap_or_return!(ctx.buffers.get(buffer_view.buffer_handle));
 
+    let count = state.count.max(1) as _;
     for cursor in &mut buffer_view.cursors.mut_guard()[..] {
         let (left_chars, right_chars) = buffer
             .content()
@@ -1067,7 +1073,7 @@ fn find_char(state: &State, ctx: &mut ModeContext, count: usize, forward: bool) 
     }
 }
 
-fn move_to_search_match<F>(state: &State, ctx: &mut ModeContext, index_selector: F)
+fn move_to_search_match<F>(ctx: &mut ModeContext, index_selector: F)
 where
     F: FnOnce(usize, Result<usize, usize>) -> usize,
 {
@@ -1110,13 +1116,12 @@ where
         }
     }
 
-    if let CursorMovementKind::PositionAndAnchor = state.movement_kind {
+    if let CursorMovementKind::PositionAndAnchor = ctx.mode.normal_state.movement_kind {
         main_cursor.anchor = main_cursor.position;
     }
 }
 
 fn search_word_or_move_to_it(
-    state: &mut State,
     ctx: &mut ModeContext,
     index_selector: fn(usize, Result<usize, usize>) -> usize,
 ) {
@@ -1149,7 +1154,7 @@ fn search_word_or_move_to_it(
         let buffer_view = unwrap_or_return!(ctx.buffer_views.get_mut(handle));
         let mut range_index = current_range_index;
 
-        for _ in 0..state.count.max(1) {
+        for _ in 0..ctx.mode.normal_state.count.max(1) {
             let i = index_selector(search_ranges.len(), range_index);
             let range = search_ranges[i];
             range_index = Ok(i);
@@ -1161,10 +1166,10 @@ fn search_word_or_move_to_it(
         }
     }
 
-    state.movement_kind = CursorMovementKind::PositionAndAnchor;
+    ctx.mode.normal_state.movement_kind = CursorMovementKind::PositionAndAnchor;
 }
 
-fn move_to_diagnostic(state: &mut State, ctx: &mut ModeContext, forward: bool) {
+fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) {
     enum DirectedIter<I> {
         Forward(I),
         Backward(I),
@@ -1291,6 +1296,6 @@ fn move_to_diagnostic(state: &mut State, ctx: &mut ModeContext, forward: bool) {
         drop(buffer_view);
 
         ctx.set_current_buffer_view_handle(Some(buffer_view_handle));
-        state.movement_kind = CursorMovementKind::PositionAndAnchor;
+        ctx.mode.normal_state.movement_kind = CursorMovementKind::PositionAndAnchor;
     }
 }

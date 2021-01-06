@@ -18,7 +18,7 @@ use crate::{
     editor_event::{EditorEvent, EditorEventQueue, EditorEventsIter},
     keymap::KeyMapCollection,
     lsp::{LspClientCollection, LspClientContext},
-    mode::Mode,
+    mode::{Mode, ModeKind},
     picker::Picker,
     register::RegisterCollection,
     script_bindings,
@@ -365,7 +365,8 @@ pub struct ScriptContext<'a> {
     pub target_client: TargetClient,
     pub clients: &'a mut ClientCollection,
     pub editor_loop: EditorLoop,
-    pub next_mode: Mode,
+    pub mode: &'a mut Mode,
+    pub next_mode: ModeKind,
     pub edited_buffers: bool,
 
     pub current_directory: &'a Path,

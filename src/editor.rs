@@ -15,7 +15,7 @@ use crate::{
     editor_event::{EditorEvent, EditorEventDoubleQueue, EditorEventsIter},
     keymap::{KeyMapCollection, MatchResult},
     lsp::{LspClientCollection, LspClientContext, LspClientHandle, LspServerEvent},
-    mode::{Mode, ModeContext, ModeOperation},
+    mode::{Mode, ModeContext, ModeOperation, ModeKind},
     picker::Picker,
     register::{RegisterCollection, RegisterKey, KEY_QUEUE_REGISTER},
     script::ScriptEngine,
@@ -266,7 +266,7 @@ impl Editor {
     }
 
     pub fn load_config(&mut self, clients: &mut ClientCollection, path: &Path) {
-        let (mode, _, _, mut mode_ctx) = self.into_mode_context(clients, TargetClient::Local);
+        let (_, _, mut mode_ctx) = self.into_mode_context(clients, TargetClient::Local);
         let (scripts, mut script_ctx) = mode_ctx.into_script_context();
 
         if let Err(e) = scripts.eval_entry_file(&mut script_ctx, path) {
@@ -274,7 +274,7 @@ impl Editor {
         }
 
         let next_mode = script_ctx.next_mode;
-        mode.change_to(&mut mode_ctx, next_mode);
+        Mode::change_to(&mut mode_ctx, next_mode);
     }
 
     pub fn on_pre_render(&mut self, clients: &mut ClientCollection) {
@@ -415,7 +415,7 @@ impl Editor {
 
                 match self
                     .keymaps
-                    .matches(self.mode.discriminant(), &self.buffered_keys)
+                    .matches(self.mode.kind(), &self.buffered_keys)
                 {
                     MatchResult::None => (),
                     MatchResult::Prefix => return EditorLoop::Continue,
@@ -426,7 +426,7 @@ impl Editor {
                 }
 
                 'key_queue_loop: loop {
-                    let (mode, buffered_keys, _, mut mode_ctx) =
+                    let (buffered_keys, _, mut mode_ctx) =
                         self.into_mode_context(clients, target_client);
                     let mut keys = KeysIterator::new(&buffered_keys);
                     loop {
@@ -435,13 +435,13 @@ impl Editor {
                         }
                         let keys_from_index = mode_ctx.recording_macro.map(|_| keys.index);
 
-                        match mode.on_client_keys(&mut mode_ctx, &mut keys) {
+                        match Mode::on_client_keys(&mut mode_ctx, &mut keys) {
                             ModeOperation::Pending => {
                                 return EditorLoop::Continue;
                             }
                             ModeOperation::None => (),
                             ModeOperation::Quit => {
-                                mode.change_to(&mut mode_ctx, Mode::default());
+                                Mode::change_to(&mut mode_ctx, ModeKind::default());
                                 self.buffered_keys.clear();
                                 return EditorLoop::Quit;
                             }
@@ -450,7 +450,7 @@ impl Editor {
                                 return EditorLoop::QuitAll;
                             }
                             ModeOperation::EnterMode(next_mode) => {
-                                mode.change_to(&mut mode_ctx, next_mode);
+                                Mode::change_to(&mut mode_ctx, next_mode);
                             }
                             ModeOperation::ExecuteMacro(key) => {
                                 self.parse_and_set_keys_in_register(key);
@@ -510,7 +510,6 @@ impl Editor {
         clients: &'a mut ClientCollection,
         target_client: TargetClient,
     ) -> (
-        &'a mut Mode,
         &'a [Key],
         EditorEventsIter<'a>,
         ModeContext<'a>,
@@ -522,6 +521,7 @@ impl Editor {
 
             current_directory: &self.current_directory,
             config: &mut self.config,
+            mode: &mut self.mode,
 
             buffers: &mut self.buffers,
             buffer_views: &mut self.buffer_views,
@@ -542,7 +542,6 @@ impl Editor {
             lsp: &mut self.lsp,
         };
         (
-            &mut self.mode,
             &self.buffered_keys,
             read_events,
             mode_context,
@@ -578,13 +577,13 @@ impl Editor {
         target_client: TargetClient,
     ) {
         self.editor_events.flip();
-        let (mode, _, events, mut mode_ctx) = self.into_mode_context(clients, target_client);
+        let (_, events, mut mode_ctx) = self.into_mode_context(clients, target_client);
 
         if let None = events.into_iter().next() {
             return;
         }
 
-        mode.on_editor_events(&mut mode_ctx, events);
+        Mode::on_editor_events(&mut mode_ctx, events);
 
         let (scripts, mut script_ctx) = mode_ctx.into_script_context();
         if let Err(error) = scripts.on_editor_event(&mut script_ctx, events) {
@@ -629,7 +628,7 @@ impl Editor {
         handle: TaskHandle,
         result: TaskResult,
     ) {
-        let (_, _, _, mut mode_ctx) = self.into_mode_context(clients, target_client);
+        let (_, _, mut mode_ctx) = self.into_mode_context(clients, target_client);
         let (scripts, mut script_ctx) = mode_ctx.into_script_context();
         if let Err(error) = scripts.on_task_event(&mut script_ctx, handle, &result) {
             script_ctx.status_message.write_error(&error);

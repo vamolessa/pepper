@@ -1,7 +1,7 @@
 use crate::{
     client_event::Key,
     editor::{EditorLoop, KeysIterator, ReadLinePoll, StatusMessageKind},
-    mode::{Mode, ModeContext, ModeOperation, ModeState},
+    mode::{ModeContext, ModeOperation, ModeState, ModeKind},
     script::{ScriptContext, ScriptEngine, ScriptResult, ScriptValue},
 };
 
@@ -11,33 +11,34 @@ pub struct State {
 }
 
 impl ModeState for State {
-    fn on_enter(&mut self, ctx: &mut ModeContext) {
-        self.history_index = ctx.scripts.history_len();
+    fn on_enter(ctx: &mut ModeContext) {
+        ctx.mode.script_state.history_index = ctx.scripts.history_len();
         ctx.read_line.set_prompt(":");
         ctx.read_line.set_input("");
     }
 
-    fn on_exit(&mut self, ctx: &mut ModeContext) {
+    fn on_exit(ctx: &mut ModeContext) {
         ctx.read_line.set_input("");
     }
 
-    fn on_client_keys(&mut self, ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
+    fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
+        let this = &mut ctx.mode.script_state;
         match ctx.read_line.poll(keys) {
             ReadLinePoll::Pending => {
                 keys.put_back();
                 match keys.next() {
                     Key::Ctrl('n') | Key::Ctrl('j') => {
-                        self.history_index = ctx
+                        this.history_index = ctx
                             .scripts
                             .history_len()
                             .saturating_sub(1)
-                            .min(self.history_index + 1);
-                        let entry = ctx.scripts.history_entry(self.history_index);
+                            .min(this.history_index + 1);
+                        let entry = ctx.scripts.history_entry(this.history_index);
                         ctx.read_line.set_input(entry);
                     }
                     Key::Ctrl('p') | Key::Ctrl('k') => {
-                        self.history_index = self.history_index.saturating_sub(1);
-                        let entry = ctx.scripts.history_entry(self.history_index);
+                        this.history_index = this.history_index.saturating_sub(1);
+                        let entry = ctx.scripts.history_entry(this.history_index);
                         ctx.read_line.set_input(entry);
                     }
                     _ => (),
@@ -45,7 +46,7 @@ impl ModeState for State {
 
                 ModeOperation::None
             }
-            ReadLinePoll::Canceled => ModeOperation::EnterMode(Mode::default()),
+            ReadLinePoll::Canceled => ModeOperation::EnterMode(ModeKind::default()),
             ReadLinePoll::Submitted => {
                 let input = ctx.read_line.input();
                 if !input.starts_with(' ') {

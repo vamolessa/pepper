@@ -7,13 +7,13 @@ use std::{
 };
 
 use crossterm::{
-    Command,
     cursor, event, handle_command,
     style::{
         Attribute, Color, Print, ResetColor, SetAttribute, SetBackgroundColor, SetForegroundColor,
     },
     terminal,
     tty::IsTty,
+    Command,
 };
 
 use crate::{
@@ -23,7 +23,7 @@ use crate::{
     client_event::{Key, LocalEvent},
     cursor::Cursor,
     editor::{Editor, StatusMessageKind},
-    mode::Mode,
+    mode::{Mode, ModeKind},
     syntax::{HighlightedBuffer, TokenKind},
     theme,
 };
@@ -232,7 +232,7 @@ where
     let height = client_view.client.height;
     let theme = &editor.config.theme;
 
-    let cursor_color = if has_focus && matches!(editor.mode, Mode::Insert(_)) {
+    let cursor_color = if has_focus && editor.mode.kind() == ModeKind::Insert {
         convert_color(theme.highlight)
     } else {
         convert_color(theme.cursor)
@@ -573,8 +573,8 @@ fn draw_statusbar<W>(
         let status_message = status_message.trim();
 
         if status_message.is_empty() {
-            match editor.mode {
-                Mode::Normal(_) => match editor.recording_macro {
+            match editor.mode.kind() {
+                ModeKind::Normal => match editor.recording_macro {
                     Some(key) => {
                         let text = "recording macro ";
                         let key = key.to_char();
@@ -584,12 +584,12 @@ fn draw_statusbar<W>(
                     }
                     None => Some(0),
                 },
-                Mode::Insert(_) => {
+                ModeKind::Insert => {
                     let text = "-- INSERT --";
                     write_command(write, Print(text));
                     Some(text.len())
                 }
-                Mode::Picker(_) | Mode::ReadLine(_) | Mode::Script(_) => {
+                ModeKind::Picker | ModeKind::ReadLine | ModeKind::Script => {
                     let read_line = &editor.read_line;
 
                     write_command(write, SetBackgroundColor(prompt_background_color));
@@ -678,8 +678,8 @@ fn draw_statusbar<W>(
         Some(x) => {
             use std::fmt::Write;
 
-            let param_count = match &editor.mode {
-                Mode::Normal(state) if has_focus => state.count,
+            let param_count = match editor.mode.kind() {
+                ModeKind::Normal if has_focus => editor.mode.normal_state.count,
                 _ => 0,
             };
 

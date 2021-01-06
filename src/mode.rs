@@ -1,4 +1,4 @@
-use std::{mem::Discriminant, path::Path};
+use std::path::Path;
 
 use crate::{
     buffer::BufferCollection,
@@ -28,7 +28,7 @@ pub enum ModeOperation {
     None,
     Quit,
     QuitAll,
-    EnterMode(Mode),
+    EnterMode(ModeKind),
     ExecuteMacro(RegisterKey),
 }
 
@@ -38,6 +38,7 @@ pub struct ModeContext<'a> {
 
     pub current_directory: &'a Path,
     pub config: &'a mut Config,
+    pub mode: &'a mut Mode,
 
     pub buffers: &'a mut BufferCollection,
     pub buffer_views: &'a mut BufferViewCollection,
@@ -84,7 +85,8 @@ impl<'a> ModeContext<'a> {
             target_client: self.target_client,
             clients: self.clients,
             editor_loop: EditorLoop::Continue,
-            next_mode: Mode::default(),
+            mode: self.mode,
+            next_mode: ModeKind::default(),
             edited_buffers: false,
 
             current_directory: self.current_directory,
@@ -112,72 +114,81 @@ impl<'a> ModeContext<'a> {
 }
 
 pub trait ModeState {
-    fn on_enter(&mut self, _ctx: &mut ModeContext) {}
-    fn on_exit(&mut self, _ctx: &mut ModeContext) {}
-    fn on_client_keys(&mut self, ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation;
-    fn on_editor_events(&mut self, _ctx: &mut ModeContext, _events: EditorEventsIter) {}
+    fn on_enter(_ctx: &mut ModeContext) {}
+    fn on_exit(_ctx: &mut ModeContext) {}
+    fn on_client_keys(_ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation;
+    fn on_editor_events(_ctx: &mut ModeContext, _events: EditorEventsIter) {}
 }
 
-pub enum Mode {
-    Normal(normal::State),
-    Insert(insert::State),
-    ReadLine(read_line::State),
-    Picker(picker::State),
-    Script(script::State),
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ModeKind {
+    Normal,
+    Insert,
+    ReadLine,
+    Picker,
+    Script,
+}
+
+impl Default for ModeKind {
+    fn default() -> Self {
+        Self::Normal
+    }
+}
+
+#[derive(Default)]
+pub struct Mode {
+    kind: ModeKind,
+    scratch_buf: String,
+
+    pub normal_state: normal::State,
+    pub insert_state: insert::State,
+    pub read_line_state: read_line::State,
+    pub picker_state: picker::State,
+    pub script_state: script::State,
 }
 
 impl Mode {
-    pub fn discriminant(&self) -> Discriminant<Self> {
-        std::mem::discriminant(self)
+    pub fn kind(&self) -> ModeKind {
+        self.kind
     }
 
-    pub fn change_to(&mut self, ctx: &mut ModeContext, next: Mode) {
-        match self {
-            Mode::Normal(state) => state.on_exit(ctx),
-            Mode::Insert(state) => state.on_exit(ctx),
-            Mode::ReadLine(state) => state.on_exit(ctx),
-            Mode::Picker(state) => state.on_exit(ctx),
-            Mode::Script(state) => state.on_exit(ctx),
+    pub fn change_to(ctx: &mut ModeContext, next: ModeKind) {
+        match ctx.mode.kind {
+            ModeKind::Normal => normal::State::on_exit(ctx),
+            ModeKind::Insert => insert::State::on_exit(ctx),
+            ModeKind::ReadLine => read_line::State::on_exit(ctx),
+            ModeKind::Picker => picker::State::on_exit(ctx),
+            ModeKind::Script => script::State::on_exit(ctx),
         }
 
-        *self = next;
+        ctx.mode.kind = next;
 
-        match self {
-            Mode::Normal(state) => state.on_enter(ctx),
-            Mode::Insert(state) => state.on_enter(ctx),
-            Mode::ReadLine(state) => state.on_enter(ctx),
-            Mode::Picker(state) => state.on_enter(ctx),
-            Mode::Script(state) => state.on_enter(ctx),
-        }
-    }
-
-    pub fn on_client_keys(
-        &mut self,
-        ctx: &mut ModeContext,
-        keys: &mut KeysIterator,
-    ) -> ModeOperation {
-        match self {
-            Mode::Normal(state) => state.on_client_keys(ctx, keys),
-            Mode::Insert(state) => state.on_client_keys(ctx, keys),
-            Mode::ReadLine(state) => state.on_client_keys(ctx, keys),
-            Mode::Picker(state) => state.on_client_keys(ctx, keys),
-            Mode::Script(state) => state.on_client_keys(ctx, keys),
+        match ctx.mode.kind {
+            ModeKind::Normal => normal::State::on_enter(ctx),
+            ModeKind::Insert => insert::State::on_enter(ctx),
+            ModeKind::ReadLine => read_line::State::on_enter(ctx),
+            ModeKind::Picker => picker::State::on_enter(ctx),
+            ModeKind::Script => script::State::on_enter(ctx),
         }
     }
 
-    pub fn on_editor_events(&mut self, ctx: &mut ModeContext, events: EditorEventsIter) {
-        match self {
-            Mode::Normal(state) => state.on_editor_events(ctx, events),
-            Mode::Insert(state) => state.on_editor_events(ctx, events),
-            Mode::ReadLine(state) => state.on_editor_events(ctx, events),
-            Mode::Picker(state) => state.on_editor_events(ctx, events),
-            Mode::Script(state) => state.on_editor_events(ctx, events),
+    pub fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
+        match ctx.mode.kind {
+            ModeKind::Normal => normal::State::on_client_keys(ctx, keys),
+            ModeKind::Insert => insert::State::on_client_keys(ctx, keys),
+            ModeKind::ReadLine => read_line::State::on_client_keys(ctx, keys),
+            ModeKind::Picker => picker::State::on_client_keys(ctx, keys),
+            ModeKind::Script => script::State::on_client_keys(ctx, keys),
         }
     }
-}
 
-impl Default for Mode {
-    fn default() -> Self {
-        Mode::Normal(Default::default())
+    pub fn on_editor_events(ctx: &mut ModeContext, events: EditorEventsIter) {
+        match ctx.mode.kind {
+            ModeKind::Normal => normal::State::on_editor_events(ctx, events),
+            ModeKind::Insert => insert::State::on_editor_events(ctx, events),
+            ModeKind::ReadLine => read_line::State::on_editor_events(ctx, events),
+            ModeKind::Picker => picker::State::on_editor_events(ctx, events),
+            ModeKind::Script => script::State::on_editor_events(ctx, events),
+        }
     }
 }

@@ -1,8 +1,8 @@
-use std::{collections::HashMap, mem::Discriminant};
+use std::collections::HashMap;
 
 use crate::{
     client_event::{Key, KeyParseAllError},
-    mode::Mode,
+    mode::ModeKind,
 };
 
 pub enum MatchResult<'a> {
@@ -23,13 +23,13 @@ struct KeyMap {
 }
 
 pub struct KeyMapCollection {
-    maps: HashMap<Discriminant<Mode>, Vec<KeyMap>>,
+    maps: HashMap<ModeKind, Vec<KeyMap>>,
 }
 
 impl KeyMapCollection {
     pub fn parse_and_map(
         &mut self,
-        mode: Discriminant<Mode>,
+        mode_kind: ModeKind,
         from: &str,
         to: &str,
     ) -> Result<(), ParseKeyMapError> {
@@ -49,7 +49,7 @@ impl KeyMapCollection {
             to: parse_keys(to).map_err(|e| ParseKeyMapError::To(e))?,
         };
 
-        let maps = self.maps.entry(mode).or_insert_with(Vec::new);
+        let maps = self.maps.entry(mode_kind).or_insert_with(Vec::new);
 
         for m in maps.iter_mut() {
             if m.from == map.from {
@@ -62,8 +62,8 @@ impl KeyMapCollection {
         Ok(())
     }
 
-    pub fn matches<'a>(&'a self, mode: Discriminant<Mode>, keys: &[Key]) -> MatchResult<'a> {
-        let maps = match self.maps.get(&mode) {
+    pub fn matches<'a>(&'a self, mode_kind: ModeKind, keys: &[Key]) -> MatchResult<'a> {
+        let maps = match self.maps.get(&mode_kind) {
             Some(maps) => maps,
             None => return MatchResult::None,
         };
@@ -92,15 +92,12 @@ impl Default for KeyMapCollection {
             maps: HashMap::default(),
         };
 
-        let normal_mode = Mode::Normal(Default::default()).discriminant();
-        let insert_mode = Mode::Insert(Default::default()).discriminant();
-
         let all_modes = [
-            normal_mode,
-            insert_mode,
-            Mode::ReadLine(Default::default()).discriminant(),
-            Mode::Picker(Default::default()).discriminant(),
-            Mode::Script(Default::default()).discriminant(),
+            ModeKind::Normal,
+            ModeKind::Insert,
+            ModeKind::ReadLine,
+            ModeKind::Picker,
+            ModeKind::Script,
         ];
 
         for mode in &all_modes {
@@ -109,21 +106,23 @@ impl Default for KeyMapCollection {
             this.parse_and_map(mode, "<c-m>", "<enter>").unwrap();
         }
 
-        this.parse_and_map(normal_mode, "<esc>", "<esc>cdcVs<esc>")
+        this.parse_and_map(ModeKind::Normal, "<esc>", "<esc>cdcVs<esc>")
             .unwrap();
-        this.parse_and_map(normal_mode, "<c-c>", "<esc>cdcVs<esc>")
+        this.parse_and_map(ModeKind::Normal, "<c-c>", "<esc>cdcVs<esc>")
             .unwrap();
-        this.parse_and_map(normal_mode, ".", "Qa").unwrap();
+        this.parse_and_map(ModeKind::Normal, ".", "Qa").unwrap();
 
-        this.parse_and_map(normal_mode, "I", "dgii").unwrap();
-        this.parse_and_map(normal_mode, "<c-i>", "dgli").unwrap();
-        this.parse_and_map(normal_mode, "o", "dgli<enter>").unwrap();
-        this.parse_and_map(normal_mode, "O", "dgii<enter><up>")
+        this.parse_and_map(ModeKind::Normal, "I", "dgii").unwrap();
+        this.parse_and_map(ModeKind::Normal, "<c-i>", "dgli")
             .unwrap();
-        this.parse_and_map(normal_mode, "J", "djgivkgli<space><esc>")
+        this.parse_and_map(ModeKind::Normal, "o", "dgli<enter>")
+            .unwrap();
+        this.parse_and_map(ModeKind::Normal, "O", "dgii<enter><up>")
+            .unwrap();
+        this.parse_and_map(ModeKind::Normal, "J", "djgivkgli<space><esc>")
             .unwrap();
 
-        this.parse_and_map(insert_mode, "<c-h>", "<backspace>")
+        this.parse_and_map(ModeKind::Insert, "<c-h>", "<backspace>")
             .unwrap();
 
         this

@@ -17,7 +17,7 @@ use crate::{
     json::Json,
     keymap::ParseKeyMapError,
     lsp::{LspClient, LspClientContext, LspClientHandle},
-    mode::{self, Mode},
+    mode::{self, Mode, ModeKind},
     navigation_history::NavigationHistory,
     register::RegisterKey,
     script::{
@@ -1395,7 +1395,7 @@ mod read_line {
         callback: ScriptFunction,
     ) -> ScriptResult<()> {
         let callback = engine.create_callback(callback)?;
-        ctx.next_mode = mode::read_line::custom::mode(ctx, callback)?;
+        ctx.next_mode = mode::read_line::custom::mode(ctx, callback);
         Ok(())
     }
 }
@@ -1434,7 +1434,7 @@ mod picker {
         callback: ScriptFunction,
     ) -> ScriptResult<()> {
         let callback = engine.create_callback(callback)?;
-        ctx.next_mode = mode::picker::custom::mode(ctx, callback)?;
+        ctx.next_mode = mode::picker::custom::mode(ctx, callback);
         Ok(())
     }
 }
@@ -1555,7 +1555,7 @@ mod keymap {
         _: ScriptContextGuard,
         (from, to): (ScriptString, ScriptString),
     ) -> ScriptResult<()> {
-        map_mode(ctx, Mode::Normal(Default::default()), from, to)
+        map_mode(ctx, ModeKind::Normal, from, to)
     }
 
     pub fn insert(
@@ -1564,7 +1564,7 @@ mod keymap {
         _: ScriptContextGuard,
         (from, to): (ScriptString, ScriptString),
     ) -> ScriptResult<()> {
-        map_mode(ctx, Mode::Insert(Default::default()), from, to)
+        map_mode(ctx, ModeKind::Insert, from, to)
     }
 
     pub fn read_line(
@@ -1573,7 +1573,7 @@ mod keymap {
         _: ScriptContextGuard,
         (from, to): (ScriptString, ScriptString),
     ) -> ScriptResult<()> {
-        map_mode(ctx, Mode::ReadLine(Default::default()), from, to)
+        map_mode(ctx, ModeKind::ReadLine, from, to)
     }
 
     pub fn picker(
@@ -1582,7 +1582,7 @@ mod keymap {
         _: ScriptContextGuard,
         (from, to): (ScriptString, ScriptString),
     ) -> ScriptResult<()> {
-        map_mode(ctx, Mode::Picker(Default::default()), from, to)
+        map_mode(ctx, ModeKind::Picker, from, to)
     }
 
     pub fn script(
@@ -1591,19 +1591,19 @@ mod keymap {
         _: ScriptContextGuard,
         (from, to): (ScriptString, ScriptString),
     ) -> ScriptResult<()> {
-        map_mode(ctx, Mode::Script(Default::default()), from, to)
+        map_mode(ctx, ModeKind::Script, from, to)
     }
 
     fn map_mode(
         ctx: &mut ScriptContext,
-        mode: Mode,
+        mode_kind: ModeKind,
         from: ScriptString,
         to: ScriptString,
     ) -> ScriptResult<()> {
         let from = from.to_str()?;
         let to = to.to_str()?;
 
-        match ctx.keymaps.parse_and_map(mode.discriminant(), from, to) {
+        match ctx.keymaps.parse_and_map(mode_kind, from, to) {
             Ok(()) => Ok(()),
             Err(ParseKeyMapError::From(e)) => {
                 let message = helper::parsing_error(e.error, from, e.index);
