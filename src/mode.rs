@@ -1,5 +1,5 @@
 use crate::{
-    client::ClientCollection,
+    client::{ClientCollection, TargetClient},
     editor::{Editor, KeysIterator},
     register::RegisterKey,
 };
@@ -15,19 +15,25 @@ pub enum ModeOperation {
     None,
     Quit,
     QuitAll,
-    EnterMode(ModeKind),
+    EnterMode(ModeKind), // TODO: delete
     ExecuteMacro(RegisterKey),
 }
 
 pub trait ModeState {
-    fn on_enter(_editor: &mut Editor, _clients: &mut ClientCollection) {}
-    fn on_exit(_editor: &mut Editor, _clients: &mut ClientCollection) {}
+    fn on_enter(_editor: &mut Editor, _clients: &mut ClientCollection, _target: TargetClient) {}
+    fn on_exit(_editor: &mut Editor, _clients: &mut ClientCollection, _target: TargetClient) {}
     fn on_client_keys(
-        _editor: &mut Editor,
-        _clients: &mut ClientCollection,
+        editor: &mut Editor,
+        clients: &mut ClientCollection,
+        target: TargetClient,
         keys: &mut KeysIterator,
     ) -> ModeOperation;
-    fn on_editor_events(_editor: &mut Editor, _clients: &mut ClientCollection) {}
+    fn on_editor_events(
+        _editor: &mut Editor,
+        _clients: &mut ClientCollection,
+        _target: TargetClient,
+    ) {
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -62,43 +68,57 @@ impl Mode {
         self.kind
     }
 
-    pub fn change_to(editor: &mut Editor, clients: &mut ClientCollection, next: ModeKind) {
+    pub fn change_to(
+        editor: &mut Editor,
+        clients: &mut ClientCollection,
+        target: TargetClient,
+        next: ModeKind,
+    ) {
         match editor.mode.kind {
-            ModeKind::Normal => normal::State::on_exit(editor, clients),
-            ModeKind::Insert => insert::State::on_exit(editor, clients),
-            ModeKind::ReadLine => read_line::State::on_exit(editor, clients),
-            ModeKind::Picker => picker::State::on_exit(editor, clients),
-            ModeKind::Script => script::State::on_exit(editor, clients),
+            ModeKind::Normal => normal::State::on_exit(editor, clients, target),
+            ModeKind::Insert => insert::State::on_exit(editor, clients, target),
+            ModeKind::ReadLine => read_line::State::on_exit(editor, clients, target),
+            ModeKind::Picker => picker::State::on_exit(editor, clients, target),
+            ModeKind::Script => script::State::on_exit(editor, clients, target),
         }
 
         editor.mode.kind = next;
 
         match editor.mode.kind {
-            ModeKind::Normal => normal::State::on_enter(editor, clients),
-            ModeKind::Insert => insert::State::on_enter(editor, clients),
-            ModeKind::ReadLine => read_line::State::on_enter(editor, clients),
-            ModeKind::Picker => picker::State::on_enter(editor, clients),
-            ModeKind::Script => script::State::on_enter(editor, clients),
+            ModeKind::Normal => normal::State::on_enter(editor, clients, target),
+            ModeKind::Insert => insert::State::on_enter(editor, clients, target),
+            ModeKind::ReadLine => read_line::State::on_enter(editor, clients, target),
+            ModeKind::Picker => picker::State::on_enter(editor, clients, target),
+            ModeKind::Script => script::State::on_enter(editor, clients, target),
         }
     }
 
-    pub fn on_client_keys(editor: &mut Editor, clients: &mut ClientCollection, keys: &mut KeysIterator) -> ModeOperation {
+    pub fn on_client_keys(
+        editor: &mut Editor,
+        clients: &mut ClientCollection,
+        target: TargetClient,
+        keys: &mut KeysIterator,
+    ) -> ModeOperation {
         match editor.mode.kind {
-            ModeKind::Normal => normal::State::on_client_keys(editor, clients, keys),
-            ModeKind::Insert => insert::State::on_client_keys(editor, clients, keys),
-            ModeKind::ReadLine => read_line::State::on_client_keys(editor, clients, keys),
-            ModeKind::Picker => picker::State::on_client_keys(editor, clients, keys),
-            ModeKind::Script => script::State::on_client_keys(editor, clients, keys),
+            ModeKind::Normal => normal::State::on_client_keys(editor, clients, target, keys),
+            ModeKind::Insert => insert::State::on_client_keys(editor, clients, target, keys),
+            ModeKind::ReadLine => read_line::State::on_client_keys(editor, clients, target, keys),
+            ModeKind::Picker => picker::State::on_client_keys(editor, clients, target, keys),
+            ModeKind::Script => script::State::on_client_keys(editor, clients, target, keys),
         }
     }
 
-    pub fn on_editor_events(editor: &mut Editor, clients: &mut ClientCollection) {
+    pub fn on_editor_events(
+        editor: &mut Editor,
+        clients: &mut ClientCollection,
+        target: TargetClient,
+    ) {
         match editor.mode.kind {
-            ModeKind::Normal => normal::State::on_editor_events(editor, clients),
-            ModeKind::Insert => insert::State::on_editor_events(editor, clients),
-            ModeKind::ReadLine => read_line::State::on_editor_events(editor, clients),
-            ModeKind::Picker => picker::State::on_editor_events(editor, clients),
-            ModeKind::Script => script::State::on_editor_events(editor, clients),
+            ModeKind::Normal => normal::State::on_editor_events(editor, clients, target),
+            ModeKind::Insert => insert::State::on_editor_events(editor, clients, target),
+            ModeKind::ReadLine => read_line::State::on_editor_events(editor, clients, target),
+            ModeKind::Picker => picker::State::on_editor_events(editor, clients, target),
+            ModeKind::Script => script::State::on_editor_events(editor, clients, target),
         }
     }
 }

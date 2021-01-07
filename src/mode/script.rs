@@ -1,6 +1,6 @@
 use crate::{
+    client::{ClientCollection, TargetClient},
     client_event::Key,
-    client::ClientCollection,
     editor::{Editor, EditorLoop, KeysIterator, ReadLinePoll, StatusMessageKind},
     mode::{Mode, ModeKind, ModeOperation, ModeState},
     script::{ScriptContext, ScriptEngine, ScriptResult, ScriptValue},
@@ -12,19 +12,20 @@ pub struct State {
 }
 
 impl ModeState for State {
-    fn on_enter(editor: &mut Editor, _: &mut ClientCollection) {
+    fn on_enter(editor: &mut Editor, _: &mut ClientCollection, _: TargetClient) {
         editor.mode.script_state.history_index = editor.scripts.history_len();
         editor.read_line.set_prompt(":");
         editor.read_line.set_input("");
     }
 
-    fn on_exit(editor: &mut Editor, _: &mut ClientCollection) {
+    fn on_exit(editor: &mut Editor, _: &mut ClientCollection, _: TargetClient) {
         editor.read_line.set_input("");
     }
 
     fn on_client_keys(
         editor: &mut Editor,
         clients: &mut ClientCollection,
+        target: TargetClient,
         keys: &mut KeysIterator,
     ) -> ModeOperation {
         let this = &mut editor.mode.script_state;
@@ -49,7 +50,7 @@ impl ModeState for State {
                     _ => (),
                 }
             }
-            ReadLinePoll::Canceled => Mode::change_to(editor, clients, ModeKind::default()),
+            ReadLinePoll::Canceled => Mode::change_to(editor, clients, target, ModeKind::default()),
             ReadLinePoll::Submitted => {
                 let input = editor.read_line.input();
                 if !input.starts_with(' ') {
@@ -58,7 +59,7 @@ impl ModeState for State {
 
                 let previous_mode_kind = editor.mode.kind();
 
-                let (engine, mut ctx) = editor.into_script_context(clients);
+                let (engine, mut ctx) = editor.into_script_context(clients, target);
 
                 let code = ctx.read_line.input();
                 const BUF_CAPACITY: usize = 256;
@@ -81,7 +82,7 @@ impl ModeState for State {
                 }
 
                 if editor.mode.kind() == previous_mode_kind {
-                    Mode::change_to(editor, clients, ModeKind::default());
+                    Mode::change_to(editor, clients, target, ModeKind::default());
                 }
             }
         }

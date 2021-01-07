@@ -28,7 +28,7 @@ pub struct NavigationHistory {
 }
 
 impl NavigationHistory {
-    // TODO: remove 'target_client' (get it from 'clients')
+    // TODO: move 'target_client' closer to 'clients' (or maybe only receive '&mut Client)
     pub fn save_client_snapshot(
         clients: &mut ClientCollection,
         buffer_views: &BufferViewCollection,
@@ -82,6 +82,7 @@ impl NavigationHistory {
         });
     }
 
+    // TODO: move 'target_client' closer to 'clients'
     pub fn move_in_history(
         clients: &mut ClientCollection,
         buffer_views: &mut BufferViewCollection,

@@ -89,6 +89,7 @@ pub struct Client {
 }
 
 impl Client {
+    // TODO: rename to 'buffer_view_handle'
     pub fn current_buffer_view_handle(&self) -> Option<BufferViewHandle> {
         self.current_buffer_view_handle
     }
@@ -97,6 +98,8 @@ impl Client {
         self.previous_buffer_view_handle
     }
 
+    // TODO: rename to 'set_buffer_view_handle'
+    // TODO: investigate if it's better to only use the method in ClientCollection
     pub fn set_current_buffer_view_handle(&mut self, handle: Option<BufferViewHandle>) {
         if self.current_buffer_view_handle != handle {
             self.previous_buffer_view_handle = self.current_buffer_view_handle;
@@ -175,7 +178,7 @@ impl ClientData {
 // TODO: rename to 'ClientManager'
 #[derive(Default)]
 pub struct ClientCollection {
-    pub focused_client: TargetClient, // TODO: rename to 'focused_target'
+    focused_client: TargetClient, // TODO: rename to 'focused_target'
     pub client_map: ClientTargetMap, // TODO: expose through ClientCollection
 
     local: Client,
@@ -185,19 +188,28 @@ pub struct ClientCollection {
 }
 
 impl ClientCollection {
-    // TODO: rename to 'focused_buffer_view_handle'
-    pub fn current_buffer_view_handle(&self) -> Option<BufferViewHandle> {
+    pub fn focused_target(&self) -> TargetClient {
+        self.focused_client
+    }
+
+    pub fn set_focused_target(&mut self, target: TargetClient) {
+        self.focused_client = target;
+    }
+
+    // TODO: rename
+    pub fn current_buffer_view_handle(&self, target: TargetClient) -> Option<BufferViewHandle> {
         self.get(self.focused_client)
             .and_then(|c| c.current_buffer_view_handle())
     }
 
-    // TODO: rename to 'set_focused_buffer_view_handle'
+    // TODO: delte or move it to editor
     pub fn set_current_buffer_view_handle(
         &mut self,
         editor: &mut Editor,
+        target: TargetClient,
         handle: Option<BufferViewHandle>,
     ) {
-        if let Some(client) = self.get_mut(self.focused_client) {
+        if let Some(client) = self.get_mut(target) {
             client.set_current_buffer_view_handle(handle);
 
             if let Some(handle) = handle

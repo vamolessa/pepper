@@ -179,7 +179,7 @@ where
 {
     editor.on_pre_render(clients);
 
-    let focused_target = clients.focused_client;
+    let focused_target = clients.focused_target();
     for c in clients.client_refs() {
         let has_focus = focused_target == c.target;
         c.ui.render(editor, c.client, has_focus, c.buffer);

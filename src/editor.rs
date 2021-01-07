@@ -272,9 +272,10 @@ impl Editor {
     pub fn into_script_context<'a>(
         &'a mut self,
         clients: &'a mut ClientCollection,
+        target: TargetClient,
     ) -> (&'a mut ScriptEngine, ScriptContext<'a>) {
         let ctx = ScriptContext {
-            target_client: clients.focused_client,
+            target_client: target,
             clients,
             editor_loop: EditorLoop::Continue,
             mode: &mut self.mode,
@@ -305,14 +306,14 @@ impl Editor {
 
     pub fn load_config(&mut self, clients: &mut ClientCollection, path: &Path) {
         let previous_mode_kind = self.mode.kind();
-        let (scripts, mut script_ctx) = self.into_script_context(clients);
+        let (scripts, mut script_ctx) = self.into_script_context(clients, TargetClient::Local);
 
         if let Err(e) = scripts.eval_entry_file(&mut script_ctx, path) {
             script_ctx.status_message.write_error(&e);
         }
 
         if previous_mode_kind == self.mode.kind() {
-            Mode::change_to(self, clients, ModeKind::default());
+            Mode::change_to(self, clients, TargetClient::Local, ModeKind::default());
         }
     }
 
@@ -323,7 +324,7 @@ impl Editor {
             self.read_line.input(),
         );
 
-        let focused_target = clients.focused_client;
+        let focused_target = clients.focused_target();
         for c in clients.client_refs() {
             let target = c.target;
             let client = c.client;
@@ -360,7 +361,7 @@ impl Editor {
 
         let target_client = TargetClient::Remote(client_handle);
         let buffer_view_handle = clients
-            .get(clients.focused_client)
+            .get(clients.focused_target())
             .and_then(|c| c.current_buffer_view_handle())
             .and_then(|h| self.buffer_views.get(h))
             .map(|v| v.clone_with_target_client(target_client))
@@ -382,27 +383,29 @@ impl Editor {
     pub fn on_event(
         &mut self,
         clients: &mut ClientCollection,
-        target_client: TargetClient,
+        target: TargetClient,
         event: ClientEvent,
     ) -> EditorLoop {
         let result = match event {
             ClientEvent::Ui(ui) => {
-                let target_client = clients.client_map.get(target_client);
+                let target_client = clients.client_map.get(target);
                 if let Some(client) = clients.get_client_ref(target_client) {
                     *client.ui = ui;
                 }
                 EditorLoop::Continue
             }
             ClientEvent::AsFocusedClient => {
-                clients.client_map.map(target_client, clients.focused_client);
+                clients
+                    .client_map
+                    .map(target, clients.focused_target());
                 EditorLoop::Continue
             }
-            ClientEvent::AsClient(target) => {
-                clients.client_map.map(target_client, target);
+            ClientEvent::AsClient(target_client) => {
+                clients.client_map.map(target, target_client);
                 EditorLoop::Continue
             }
             ClientEvent::OpenBuffer(mut path) => {
-                let target_client = clients.client_map.get(target_client);
+                let target_client = clients.client_map.get(target);
 
                 let mut line_index = None;
                 if let Some(separator_index) = path.rfind(':') {
@@ -434,10 +437,10 @@ impl Editor {
                 EditorLoop::Continue
             }
             ClientEvent::Key(key) => {
-                let target_client = clients.client_map.get(target_client);
+                let target = clients.client_map.get(target);
 
-                if target_client != clients.focused_client {
-                    clients.focused_client = target_client;
+                if target != clients.focused_target() {
+                    clients.set_focused_target(target);
                     self.recording_macro = None;
                     self.buffered_keys.0.clear();
                 }
@@ -464,13 +467,13 @@ impl Editor {
                         }
                         let keys_from_index = self.recording_macro.map(|_| keys.index);
 
-                        match Mode::on_client_keys(self, clients, &mut keys) {
+                        match Mode::on_client_keys(self, clients, target, &mut keys) {
                             ModeOperation::Pending => {
                                 return EditorLoop::Continue;
                             }
                             ModeOperation::None => (),
                             ModeOperation::Quit => {
-                                Mode::change_to(self, clients, ModeKind::default());
+                                Mode::change_to(self, clients, target, ModeKind::default());
                                 self.buffered_keys.0.clear();
                                 return EditorLoop::Quit;
                             }
@@ -479,7 +482,7 @@ impl Editor {
                                 return EditorLoop::QuitAll;
                             }
                             ModeOperation::EnterMode(next_mode) => {
-                                Mode::change_to(self, clients, next_mode);
+                                Mode::change_to(self, clients, target, next_mode);
                             }
                             ModeOperation::ExecuteMacro(key) => {
                                 self.parse_and_set_keys_in_register(key);
@@ -491,8 +494,7 @@ impl Editor {
                             keys_from_index.zip(self.recording_macro.clone())
                         {
                             for key in &self.buffered_keys.0[from_index..keys.index] {
-                                self
-                                    .registers
+                                self.registers
                                     .append_fmt(register_key, format_args!("{}", key));
                             }
                         }
@@ -513,12 +515,12 @@ impl Editor {
                 }
 
                 self.buffered_keys.0.clear();
-                self.trigger_event_handlers(clients, target_client);
+                self.trigger_event_handlers(clients, target);
                 EditorLoop::Continue
             }
             ClientEvent::Resize(width, height) => {
-                let target_client = clients.client_map.get(target_client);
-                if let Some(client) = clients.get_mut(target_client) {
+                let target = clients.client_map.get(target);
+                if let Some(client) = clients.get_mut(target) {
                     client.viewport_size = (width, height);
                 }
                 EditorLoop::Continue
@@ -556,19 +558,15 @@ impl Editor {
         }
     }
 
-    fn trigger_event_handlers(
-        &mut self,
-        clients: &mut ClientCollection,
-        target_client: TargetClient,
-    ) {
+    fn trigger_event_handlers(&mut self, clients: &mut ClientCollection, target: TargetClient) {
         self.editor_events.flip();
         if let None = self.editor_events.iter().next() {
             return;
         }
 
-        Mode::on_editor_events(self, clients);
+        Mode::on_editor_events(self, clients, target);
 
-        let (scripts, mut script_ctx) = self.into_script_context(clients);
+        let (scripts, mut script_ctx) = self.into_script_context(clients, target);
         if let Err(error) = scripts.on_editor_event(&mut script_ctx) {
             script_ctx.status_message.write_error(&error);
         }
@@ -608,13 +606,12 @@ impl Editor {
     pub fn on_task_event(
         &mut self,
         clients: &mut ClientCollection,
-        target_client: TargetClient,
+        target: TargetClient,
         handle: TaskHandle,
         result: TaskResult,
     ) {
         // TODO: will have to pass an extra 'target_client' parameter to all functions
-        clients.focused_client = target_client;
-        let (scripts, mut script_ctx) = self.into_script_context(clients);
+        let (scripts, mut script_ctx) = self.into_script_context(clients, target);
         if let Err(error) = scripts.on_task_event(&mut script_ctx, handle, &result) {
             script_ctx.status_message.write_error(&error);
         }
