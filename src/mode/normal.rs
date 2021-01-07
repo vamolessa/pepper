@@ -612,7 +612,9 @@ impl State {
                 );
 
                 Self::on_edit_keys(editor, keys, keys_from_index);
-                return ModeOperation::EnterMode(ModeKind::Insert);
+                
+                Mode::change_to(editor, clients, target, ModeKind::Insert);
+                return ModeOperation::None;
             }
             Key::Char('<') => {
                 let buffer_view = unwrap_or_none!(editor.buffer_views.get(handle));

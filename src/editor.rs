@@ -481,9 +481,6 @@ impl Editor {
                                 self.buffered_keys.0.clear();
                                 return EditorLoop::QuitAll;
                             }
-                            ModeOperation::EnterMode(next_mode) => {
-                                Mode::change_to(self, clients, target, next_mode);
-                            }
                             ModeOperation::ExecuteMacro(key) => {
                                 self.parse_and_set_keys_in_register(key);
                                 continue 'key_queue_loop;

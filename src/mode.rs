@@ -15,7 +15,6 @@ pub enum ModeOperation {
     None,
     Quit,
     QuitAll,
-    EnterMode(ModeKind), // TODO: delete
     ExecuteMacro(RegisterKey),
 }
 

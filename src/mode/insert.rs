@@ -46,7 +46,8 @@ impl ModeState for State {
             Key::Esc => {
                 let buffer_view = unwrap_or_none!(editor.buffer_views.get(handle));
                 unwrap_or_none!(editor.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
-                return ModeOperation::EnterMode(ModeKind::default());
+                Mode::change_to(editor, clients, target, ModeKind::default());
+                return ModeOperation::None;
             }
             Key::Left => unwrap_or_none!(editor.buffer_views.get_mut(handle)).move_cursors(
                 &editor.buffers,
