@@ -66,8 +66,8 @@ pub mod search {
                 ReadLinePoll::Canceled => {
                     NavigationHistory::move_in_history(
                         clients,
-                        &mut editor.buffer_views,
                         target,
+                        &mut editor.buffer_views,
                         NavigationDirection::Backward,
                     );
                     Mode::change_to(editor, clients, target, ModeKind::default());
@@ -75,7 +75,7 @@ pub mod search {
             }
         }
 
-        NavigationHistory::save_client_snapshot(clients, &mut editor.buffer_views, target);
+        NavigationHistory::save_client_snapshot(clients, target, &mut editor.buffer_views);
         editor.read_line.set_prompt("search:");
         update_search(editor, clients, target);
 
@@ -83,20 +83,20 @@ pub mod search {
         Mode::change_to(editor, clients, target, ModeKind::ReadLine);
     }
 
-    fn update_search(editor: &mut Editor, clients: &mut ClientCollection, target: TargetClient) {
+    fn update_search(editor: &mut Editor, clients: &mut ClientCollection, target: TargetClient) -> Option<()> {
         for buffer in editor.buffers.iter_mut() {
             buffer.set_search("");
         }
 
-        let client = unwrap_or_return!(clients.get_mut(target));
-        let handle = unwrap_or_return!(client.current_buffer_view_handle());
-        let buffer_view = unwrap_or_return!(editor.buffer_views.get_mut(handle));
-        let buffer = unwrap_or_return!(editor.buffers.get_mut(buffer_view.buffer_handle));
+        let client = clients.get_mut(target)?;
+        let handle = client.current_buffer_view_handle()?;
+        let buffer_view = editor.buffer_views.get_mut(handle)?;
+        let buffer = editor.buffers.get_mut(buffer_view.buffer_handle)?;
         buffer.set_search(&editor.read_line.input());
         let search_ranges = buffer.search_ranges();
 
         if search_ranges.is_empty() {
-            return;
+            return None;
         }
 
         let mut cursors = buffer_view.cursors.mut_guard();
@@ -128,6 +128,8 @@ pub mod search {
         if main_line_index < client.scroll || main_line_index >= client.scroll + height {
             client.scroll = main_line_index.saturating_sub(height / 2);
         }
+
+        None
     }
 }
 
@@ -172,7 +174,7 @@ pub mod filter_cursors {
         clients: &mut ClientCollection,
         target: TargetClient,
         keep_if_contains_pattern: bool,
-    ) {
+    ) -> Option<()> {
         fn range_contains_pattern(
             buffer: &BufferContent,
             range: BufferRange,
@@ -209,9 +211,9 @@ pub mod filter_cursors {
             pattern
         };
 
-        let handle = unwrap_or_return!(clients.current_buffer_view_handle(target));
-        let buffer_view = unwrap_or_return!(editor.buffer_views.get_mut(handle));
-        let buffer = unwrap_or_return!(editor.buffers.get_mut(buffer_view.buffer_handle)).content();
+        let handle = clients.current_buffer_view_handle(target)?;
+        let buffer_view = editor.buffer_views.get_mut(handle)?;
+        let buffer = editor.buffers.get_mut(buffer_view.buffer_handle)?.content();
 
         let mut cursors = buffer_view.cursors.mut_guard();
         let main_cursor_position = cursors.main_cursor().position;
@@ -312,7 +314,7 @@ pub mod split_cursors {
         clients: &mut ClientCollection,
         target: TargetClient,
         add_matches: fn(&mut CursorCollectionMutGuard, &str, &str, BufferPosition),
-    ) {
+    ) -> Option<()> {
         let pattern = editor.read_line.input();
         let pattern = if pattern.is_empty() {
             editor.registers.get(SEARCH_REGISTER)
@@ -320,9 +322,9 @@ pub mod split_cursors {
             pattern
         };
 
-        let handle = unwrap_or_return!(clients.current_buffer_view_handle(target));
-        let buffer_view = unwrap_or_return!(editor.buffer_views.get_mut(handle));
-        let buffer = unwrap_or_return!(editor.buffers.get_mut(buffer_view.buffer_handle)).content();
+        let handle = clients.current_buffer_view_handle(target)?;
+        let buffer_view = editor.buffer_views.get_mut(handle)?;
+        let buffer = editor.buffers.get_mut(buffer_view.buffer_handle)?.content();
 
         let mut cursors = buffer_view.cursors.mut_guard();
         let main_cursor_position = cursors.main_cursor().position;
@@ -376,6 +378,7 @@ pub mod split_cursors {
                 position: main_cursor_position,
             });
         }
+        None
     }
 }
 
@@ -396,18 +399,18 @@ pub mod goto {
             target: TargetClient,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
-        ) {
+        ) -> Option<()> {
             match poll {
                 ReadLinePoll::Pending => {
                     let line_number: usize = match editor.read_line.input().parse() {
                         Ok(number) => number,
-                        Err(_) => return,
+                        Err(_) => return None,
                     };
                     let line_index = line_number.saturating_sub(1);
 
-                    let handle = unwrap_or_return!(clients.current_buffer_view_handle(target));
-                    let buffer_view = unwrap_or_return!(editor.buffer_views.get_mut(handle));
-                    let buffer = unwrap_or_return!(editor.buffers.get(buffer_view.buffer_handle));
+                    let handle = clients.current_buffer_view_handle(target)?;
+                    let buffer_view = editor.buffer_views.get_mut(handle)?;
+                    let buffer = editor.buffers.get(buffer_view.buffer_handle)?;
 
                     let mut position = BufferPosition::line_col(line_index, 0);
                     let (first_word, _, mut right_words) = buffer.content().words_from(position);
@@ -428,19 +431,20 @@ pub mod goto {
                 ReadLinePoll::Canceled => {
                     NavigationHistory::move_in_history(
                         clients,
-                        &mut editor.buffer_views,
                         target,
+                        &mut editor.buffer_views,
                         NavigationDirection::Backward,
                     );
                     Mode::change_to(editor, clients, target, ModeKind::default());
                 }
             }
+            None
         }
 
         NavigationHistory::save_client_snapshot(
             clients,
-            &mut editor.buffer_views,
             target,
+            &mut editor.buffer_views,
         );
         editor.read_line.set_prompt("goto-line:");
         editor.mode.read_line_state.on_client_keys = on_client_keys;

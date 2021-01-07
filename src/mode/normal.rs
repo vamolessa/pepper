@@ -210,8 +210,8 @@ impl State {
             Key::Ctrl('n') => {
                 NavigationHistory::move_in_history(
                     clients,
-                    &mut editor.buffer_views,
                     target,
+                    &mut editor.buffer_views,
                     NavigationDirection::Forward,
                 );
                 this.movement_kind = CursorMovementKind::PositionAndAnchor;
@@ -219,8 +219,8 @@ impl State {
             Key::Ctrl('p') => {
                 NavigationHistory::move_in_history(
                     clients,
-                    &mut editor.buffer_views,
                     target,
+                    &mut editor.buffer_views,
                     NavigationDirection::Backward,
                 );
                 this.movement_kind = CursorMovementKind::PositionAndAnchor;
@@ -985,20 +985,16 @@ impl ModeState for State {
         target: TargetClient,
         keys: &mut KeysIterator,
     ) -> ModeOperation {
-        // TODO: get &Client instead of &mut ClientCollection and TargetClient
         fn show_hovered_diagnostic_in_status_bar(
             editor: &mut Editor,
             clients: &mut ClientCollection,
             target: TargetClient,
-        ) {
-            let handle = unwrap_or_return!(clients.current_buffer_view_handle(target));
+        ) -> Option<()> {
+            let handle = clients.current_buffer_view_handle(target)?;
             if !editor.status_bar.message().1.is_empty() {
-                return;
+                return None;
             }
-            let buffer_view = match editor.buffer_views.get(handle) {
-                Some(view) => view,
-                None => return,
-            };
+            let buffer_view = editor.buffer_views.get(handle)?;
             let main_position = buffer_view.cursors.main_cursor().position;
 
             for client in editor.lsp.clients() {
@@ -1022,6 +1018,8 @@ impl ModeState for State {
                     break;
                 }
             }
+
+            None
         }
 
         match clients.current_buffer_view_handle(target) {
@@ -1043,13 +1041,13 @@ fn find_char(
     clients: &mut ClientCollection,
     target: TargetClient,
     forward: bool,
-) {
+) -> Option<()> {
     let state = &editor.mode.normal_state;
     let skip;
     let ch;
     let next_ch;
     match state.last_char_jump {
-        CharJump::None => return,
+        CharJump::None => return None,
         CharJump::Inclusive(c) => {
             ch = c;
             next_ch = forward;
@@ -1062,9 +1060,9 @@ fn find_char(
         }
     };
 
-    let handle = unwrap_or_return!(clients.current_buffer_view_handle(target));
-    let buffer_view = unwrap_or_return!(editor.buffer_views.get_mut(handle));
-    let buffer = unwrap_or_return!(editor.buffers.get(buffer_view.buffer_handle));
+    let handle = clients.current_buffer_view_handle(target)?;
+    let buffer_view = editor.buffer_views.get_mut(handle)?;
+    let buffer = editor.buffers.get(buffer_view.buffer_handle)?;
 
     let count = state.count.max(1) as _;
     for cursor in &mut buffer_view.cursors.mut_guard()[..] {
@@ -1096,6 +1094,8 @@ fn find_char(
             }
         }
     }
+
+    None
 }
 
 fn move_to_search_match<F>(
@@ -1103,14 +1103,16 @@ fn move_to_search_match<F>(
     clients: &mut ClientCollection,
     target: TargetClient,
     index_selector: F,
-) where
+) -> Option<()>
+where
     F: FnOnce(usize, Result<usize, usize>) -> usize,
 {
-    NavigationHistory::save_client_snapshot(clients, &mut editor.buffer_views, target);
+    NavigationHistory::save_client_snapshot(clients, target, &mut editor.buffer_views);
 
-    let handle = unwrap_or_return!(clients.current_buffer_view_handle(target));
-    let buffer_view = unwrap_or_return!(editor.buffer_views.get_mut(handle));
-    let buffer = unwrap_or_return!(editor.buffers.get_mut(buffer_view.buffer_handle));
+    let client = clients.get_mut(target)?;
+    let handle = client.current_buffer_view_handle()?;
+    let buffer_view = editor.buffer_views.get_mut(handle)?;
+    let buffer = editor.buffers.get_mut(buffer_view.buffer_handle)?;
 
     let mut search_ranges = buffer.search_ranges();
     if search_ranges.is_empty() {
@@ -1124,7 +1126,7 @@ fn move_to_search_match<F>(
             editor
                 .status_bar
                 .write_str(StatusMessageKind::Error, "no search result");
-            return;
+            return None;
         }
     }
 
@@ -1138,18 +1140,17 @@ fn move_to_search_match<F>(
     let main_cursor = cursors.main_cursor();
     main_cursor.position = search_ranges[next_index].from;
 
-    // TODO: get client at the start and keep ref
-    if let Some(client) = clients.get_mut(target) {
-        let line_index = main_cursor.position.line_index;
-        let height = client.height as usize;
-        if line_index < client.scroll || line_index >= client.scroll + height {
-            client.scroll = line_index.saturating_sub(height / 2);
-        }
+    let line_index = main_cursor.position.line_index;
+    let height = client.height as usize;
+    if line_index < client.scroll || line_index >= client.scroll + height {
+        client.scroll = line_index.saturating_sub(height / 2);
     }
 
     if let CursorMovementKind::PositionAndAnchor = editor.mode.normal_state.movement_kind {
         main_cursor.anchor = main_cursor.position;
     }
+
+    None
 }
 
 fn search_word_or_move_to_it(
@@ -1157,10 +1158,10 @@ fn search_word_or_move_to_it(
     clients: &mut ClientCollection,
     target: TargetClient,
     index_selector: fn(usize, Result<usize, usize>) -> usize,
-) {
-    let handle = unwrap_or_return!(clients.current_buffer_view_handle(target));
-    let buffer_view = unwrap_or_return!(editor.buffer_views.get_mut(handle));
-    let buffer = unwrap_or_return!(editor.buffers.get_mut(buffer_view.buffer_handle));
+) -> Option<()> {
+    let handle = clients.current_buffer_view_handle(target)?;
+    let buffer_view = editor.buffer_views.get_mut(handle)?;
+    let buffer = editor.buffers.get_mut(buffer_view.buffer_handle)?;
 
     let main_position = buffer_view.cursors.main_cursor().position;
     let search_ranges = buffer.search_ranges();
@@ -1182,9 +1183,9 @@ fn search_word_or_move_to_it(
 
         editor.registers.set(SEARCH_REGISTER, search_word);
     } else {
-        NavigationHistory::save_client_snapshot(clients, &mut editor.buffer_views, target);
+        NavigationHistory::save_client_snapshot(clients, target, &mut editor.buffer_views);
 
-        let buffer_view = unwrap_or_return!(editor.buffer_views.get_mut(handle));
+        let buffer_view = editor.buffer_views.get_mut(handle)?;
         let mut range_index = current_range_index;
 
         for _ in 0..editor.mode.normal_state.count.max(1) {
@@ -1200,6 +1201,7 @@ fn search_word_or_move_to_it(
     }
 
     editor.mode.normal_state.movement_kind = CursorMovementKind::PositionAndAnchor;
+    None
 }
 
 fn move_to_diagnostic(
@@ -1207,7 +1209,7 @@ fn move_to_diagnostic(
     clients: &mut ClientCollection,
     target: TargetClient,
     forward: bool,
-) {
+) -> Option<()> {
     enum DirectedIter<I> {
         Forward(I),
         Backward(I),
@@ -1234,8 +1236,8 @@ fn move_to_diagnostic(
         }
     }
 
-    let handle = unwrap_or_return!(clients.current_buffer_view_handle(target));
-    let buffer_view = unwrap_or_return!(editor.buffer_views.get(handle));
+    let handle = clients.current_buffer_view_handle(target)?;
+    let buffer_view = editor.buffer_views.get(handle)?;
     let main_position = buffer_view.cursors.main_cursor().position;
 
     let mut diagnostics = DirectedIter::new(
@@ -1295,45 +1297,46 @@ fn move_to_diagnostic(
 
     drop(diagnostics);
 
-    if let Some((path, buffer_handle, position)) = next_diagnostic {
-        let buffer_view_handle = match buffer_handle {
-            Some(buffer_handle) => editor
-                .buffer_views
-                .buffer_view_handle_from_buffer_handle(target, buffer_handle),
-            None => match editor.buffer_views.buffer_view_handle_from_path(
-                target,
-                &mut editor.buffers,
-                &mut editor.word_database,
-                &editor.current_directory,
-                path,
-                None,
-                &mut editor.events,
-            ) {
-                Ok(handle) => handle,
-                Err(error) => {
-                    editor.status_bar.write_error(&error);
-                    return;
-                }
-            },
-        };
+    let (path, buffer_handle, position) = next_diagnostic?;
+    let buffer_view_handle = match buffer_handle {
+        Some(buffer_handle) => editor
+            .buffer_views
+            .buffer_view_handle_from_buffer_handle(target, buffer_handle),
+        None => match editor.buffer_views.buffer_view_handle_from_path(
+            target,
+            &mut editor.buffers,
+            &mut editor.word_database,
+            &editor.current_directory,
+            path,
+            None,
+            &mut editor.events,
+        ) {
+            Ok(handle) => handle,
+            Err(error) => {
+                editor.status_bar.write_error(&error);
+                return None;
+            }
+        },
+    };
 
-        NavigationHistory::save_client_snapshot(clients, &mut editor.buffer_views, target);
+    NavigationHistory::save_client_snapshot(clients, target, &mut editor.buffer_views);
 
-        let buffer_view = unwrap_or_return!(editor.buffer_views.get_mut(buffer_view_handle));
-        let buffer = unwrap_or_return!(editor.buffers.get(buffer_view.buffer_handle));
-        let position = buffer.content().saturate_position(position);
+    let buffer_view = editor.buffer_views.get_mut(buffer_view_handle)?;
+    let buffer = editor.buffers.get(buffer_view.buffer_handle)?;
+    let position = buffer.content().saturate_position(position);
 
-        let mut cursors = buffer_view.cursors.mut_guard();
-        cursors.clear();
-        cursors.add(Cursor {
-            anchor: position,
-            position,
-        });
+    let mut cursors = buffer_view.cursors.mut_guard();
+    cursors.clear();
+    cursors.add(Cursor {
+        anchor: position,
+        position,
+    });
 
-        drop(cursors);
-        drop(buffer_view);
+    drop(cursors);
+    drop(buffer_view);
 
-        clients.set_current_buffer_view_handle(editor, target, Some(buffer_view_handle));
-        editor.mode.normal_state.movement_kind = CursorMovementKind::PositionAndAnchor;
-    }
+    clients.set_current_buffer_view_handle(editor, target, Some(buffer_view_handle));
+    editor.mode.normal_state.movement_kind = CursorMovementKind::PositionAndAnchor;
+
+    None
 }

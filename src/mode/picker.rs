@@ -109,11 +109,7 @@ pub mod buffer {
                 }
             };
 
-            NavigationHistory::save_client_snapshot(
-                clients,
-                &editor.buffer_views,
-                target,
-            );
+            NavigationHistory::save_client_snapshot(clients, target, &editor.buffer_views);
 
             match editor.buffer_views.buffer_view_handle_from_path(
                 target,

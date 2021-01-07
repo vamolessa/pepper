@@ -28,13 +28,12 @@ pub struct NavigationHistory {
 }
 
 impl NavigationHistory {
-    // TODO: move 'target_client' closer to 'clients' (or maybe only receive '&mut Client)
     pub fn save_client_snapshot(
         clients: &mut ClientCollection,
+        target: TargetClient,
         buffer_views: &BufferViewCollection,
-        target_client: TargetClient,
     ) {
-        let client = match clients.get_mut(target_client) {
+        let client = match clients.get_mut(target) {
             Some(client) => client,
             None => return,
         };
@@ -82,14 +81,13 @@ impl NavigationHistory {
         });
     }
 
-    // TODO: move 'target_client' closer to 'clients'
     pub fn move_in_history(
         clients: &mut ClientCollection,
+        target: TargetClient,
         buffer_views: &mut BufferViewCollection,
-        target_client: TargetClient,
         direction: NavigationDirection,
     ) {
-        let client = match clients.get_mut(target_client) {
+        let client = match clients.get_mut(target) {
             Some(client) => client,
             None => return,
         };
@@ -132,8 +130,8 @@ impl NavigationHistory {
 
         history.state = NavigationState::IterIndex(history_index);
 
-        let view_handle = buffer_views
-            .buffer_view_handle_from_buffer_handle(target_client, snapshot.buffer_handle);
+        let view_handle =
+            buffer_views.buffer_view_handle_from_buffer_handle(target, snapshot.buffer_handle);
         let mut cursors = match buffer_views.get_mut(view_handle) {
             Some(view) => view.cursors.mut_guard(),
             None => return,

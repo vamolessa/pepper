@@ -638,7 +638,7 @@ mod buffer {
         _: ScriptContextGuard,
         (path, line_number): (ScriptString, Option<usize>),
     ) -> ScriptResult<()> {
-        NavigationHistory::save_client_snapshot(ctx.clients, ctx.buffer_views, ctx.target_client);
+        NavigationHistory::save_client_snapshot(ctx.clients, ctx.target_client, ctx.buffer_views);
 
         let path = Path::new(path.to_str()?);
         let buffer_view_handle = ctx
@@ -691,9 +691,7 @@ mod buffer {
             }
 
             ctx.buffer_views
-                .defer_remove_where(ctx.buffers, ctx.events, |view| {
-                    view.buffer_handle == handle
-                });
+                .defer_remove_where(ctx.buffers, ctx.events, |view| view.buffer_handle == handle);
         }
 
         ctx.set_current_buffer_view_handle(None);
@@ -721,9 +719,7 @@ mod buffer {
             }
 
             ctx.buffer_views
-                .defer_remove_where(ctx.buffers, ctx.events, |view| {
-                    view.buffer_handle == handle
-                });
+                .defer_remove_where(ctx.buffers, ctx.events, |view| view.buffer_handle == handle);
         }
 
         ctx.set_current_buffer_view_handle(None);
@@ -938,9 +934,7 @@ mod buffer {
         let mut had_error = false;
         let mut buffer_count = 0;
         for buffer in ctx.buffers.iter_mut() {
-            if let Err(error) =
-                buffer.discard_and_reload_from_file(ctx.word_database, ctx.events)
-            {
+            if let Err(error) = buffer.discard_and_reload_from_file(ctx.word_database, ctx.events) {
                 had_error = true;
                 ctx.status_bar.write_fmt(
                     StatusMessageKind::Error,
