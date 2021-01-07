@@ -6,8 +6,8 @@ pub struct EditorEventText {
     texts_range: Range<usize>,
 }
 impl EditorEventText {
-    pub fn as_str<'a>(&self, iter: EditorEventsIter<'a>) -> &'a str {
-        &iter.0.texts[self.texts_range.clone()]
+    pub fn as_str<'a>(&self, events: &'a EditorEventDoubleQueue) -> &'a str {
+        &events.read.texts[self.texts_range.clone()]
     }
 }
 
@@ -37,6 +37,7 @@ pub enum EditorEvent {
     },
 }
 
+// TODO: delete
 #[derive(Default)]
 pub struct EditorEventQueue {
     events: Vec<EditorEvent>,
@@ -62,16 +63,7 @@ impl EditorEventQueue {
     }
 }
 
-#[derive(Clone, Copy)]
-pub struct EditorEventsIter<'a>(&'a EditorEventQueue);
-impl<'a> IntoIterator for EditorEventsIter<'a> {
-    type Item = &'a EditorEvent;
-    type IntoIter = std::slice::Iter<'a, EditorEvent>;
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.events.iter()
-    }
-}
-
+// TODO: rename to EditorEventQueue
 #[derive(Default)]
 pub struct EditorEventDoubleQueue {
     read: EditorEventQueue,
@@ -102,11 +94,7 @@ impl EditorEventDoubleQueue {
         });
     }
 
-    pub fn iter(&self) -> EditorEventsIter {
-        EditorEventsIter(&self.read)
-    }
-
-    pub fn get_stream_and_sink(&mut self) -> (EditorEventsIter, &mut EditorEventQueue) {
-        (EditorEventsIter(&self.read), &mut self.write)
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a EditorEvent> {
+        self.read.events.iter()
     }
 }

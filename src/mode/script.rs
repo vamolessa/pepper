@@ -1,7 +1,8 @@
 use crate::{
     client_event::Key,
-    editor::{EditorLoop, KeysIterator, ReadLinePoll, StatusMessageKind},
-    mode::{ModeContext, ModeOperation, ModeState, ModeKind},
+    client::ClientCollection,
+    editor::{Editor, EditorLoop, KeysIterator, ReadLinePoll, StatusMessageKind},
+    mode::{Mode, ModeKind, ModeOperation, ModeState},
     script::{ScriptContext, ScriptEngine, ScriptResult, ScriptValue},
 };
 
@@ -11,48 +12,53 @@ pub struct State {
 }
 
 impl ModeState for State {
-    fn on_enter(ctx: &mut ModeContext) {
-        ctx.mode.script_state.history_index = ctx.scripts.history_len();
-        ctx.read_line.set_prompt(":");
-        ctx.read_line.set_input("");
+    fn on_enter(editor: &mut Editor, _: &mut ClientCollection) {
+        editor.mode.script_state.history_index = editor.scripts.history_len();
+        editor.read_line.set_prompt(":");
+        editor.read_line.set_input("");
     }
 
-    fn on_exit(ctx: &mut ModeContext) {
-        ctx.read_line.set_input("");
+    fn on_exit(editor: &mut Editor, _: &mut ClientCollection) {
+        editor.read_line.set_input("");
     }
 
-    fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
-        let this = &mut ctx.mode.script_state;
-        match ctx.read_line.poll(keys) {
+    fn on_client_keys(
+        editor: &mut Editor,
+        _: &mut ClientCollection,
+        keys: &mut KeysIterator,
+    ) -> ModeOperation {
+        let this = &mut editor.mode.script_state;
+        match editor.read_line.poll(keys) {
             ReadLinePoll::Pending => {
                 keys.put_back();
                 match keys.next() {
                     Key::Ctrl('n') | Key::Ctrl('j') => {
-                        this.history_index = ctx
+                        this.history_index = editor
                             .scripts
                             .history_len()
                             .saturating_sub(1)
                             .min(this.history_index + 1);
-                        let entry = ctx.scripts.history_entry(this.history_index);
-                        ctx.read_line.set_input(entry);
+                        let entry = editor.scripts.history_entry(this.history_index);
+                        editor.read_line.set_input(entry);
                     }
                     Key::Ctrl('p') | Key::Ctrl('k') => {
                         this.history_index = this.history_index.saturating_sub(1);
-                        let entry = ctx.scripts.history_entry(this.history_index);
-                        ctx.read_line.set_input(entry);
+                        let entry = editor.scripts.history_entry(this.history_index);
+                        editor.read_line.set_input(entry);
                     }
                     _ => (),
                 }
-
-                ModeOperation::None
             }
-            ReadLinePoll::Canceled => ModeOperation::EnterMode(ModeKind::default()),
+            ReadLinePoll::Canceled => Mode::change_to(editor, ModeKind::default()),
             ReadLinePoll::Submitted => {
-                let input = ctx.read_line.input();
+                let input = editor.read_line.input();
                 if !input.starts_with(' ') {
-                    ctx.scripts.add_to_history(input);
+                    editor.scripts.add_to_history(input);
                 }
 
+                let previous_mode_kind = editor.mode.kind();
+
+                /*
                 let (engine, mut ctx) = ctx.into_script_context();
 
                 let code = ctx.read_line.input();
@@ -74,10 +80,15 @@ impl ModeState for State {
                         EditorLoop::Continue => ctx.status_message.write_error(&error),
                     }
                 }
+                */
 
-                ModeOperation::EnterMode(ctx.next_mode)
+                if editor.mode.kind() == previous_mode_kind {
+                    Mode::change_to(editor, ModeKind::default());
+                }
             }
         }
+
+        ModeOperation::None
     }
 }
 

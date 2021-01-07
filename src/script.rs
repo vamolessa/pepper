@@ -15,7 +15,7 @@ use crate::{
     client::{ClientCollection, TargetClient},
     config::Config,
     editor::{EditorLoop, ReadLine, StatusMessage},
-    editor_event::{EditorEvent, EditorEventQueue, EditorEventsIter},
+    editor_event::{EditorEvent, EditorEventDoubleQueue},
     keymap::KeyMapCollection,
     lsp::{LspClientCollection, LspClientContext},
     mode::{Mode, ModeKind},
@@ -382,7 +382,7 @@ pub struct ScriptContext<'a> {
 
     pub status_message: &'a mut StatusMessage,
 
-    pub editor_events: &'a mut EditorEventQueue,
+    pub editor_events: &'a mut EditorEventDoubleQueue,
     pub keymaps: &'a mut KeyMapCollection,
     pub script_callbacks: &'a mut script_bindings::ScriptCallbacks,
     pub tasks: &'a mut TaskManager,
@@ -526,11 +526,7 @@ impl ScriptEngine {
         Ok(())
     }
 
-    pub fn on_editor_event(
-        &mut self,
-        ctx: &mut ScriptContext,
-        events: EditorEventsIter,
-    ) -> ScriptResult<()> {
+    pub fn on_editor_event(&mut self, ctx: &mut ScriptContext) -> ScriptResult<()> {
         let s = ScriptContextRegistryScope::new(&self.lua, ctx)?;
         let engine = ScriptEngineRef::from_lua(&self.lua);
         let guard = ScriptContextGuard(());
@@ -544,7 +540,7 @@ impl ScriptEngine {
             }};
         }
 
-        for event in events {
+        for event in ctx.editor_events.iter() {
             match event {
                 EditorEvent::Idle => call!(editor.on_idle, ()),
                 EditorEvent::BufferLoad { handle } => call!(buffer.on_load, *handle),

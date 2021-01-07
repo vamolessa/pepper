@@ -172,10 +172,11 @@ impl ClientData {
     }
 }
 
+// TODO: rename to 'ClientManager'
 #[derive(Default)]
 pub struct ClientCollection {
-    focused_client: TargetClient,
-    client_map: ClientTargetMap,
+    pub focused_client: TargetClient, // TODO: rename to 'focused_target'
+    pub client_map: ClientTargetMap, // TODO: expose through ClientCollection
 
     local: Client,
     remotes: Vec<Option<Client>>,
@@ -184,15 +185,13 @@ pub struct ClientCollection {
 }
 
 impl ClientCollection {
-    pub fn focused_client(&self) -> TargetClient {
-        self.focused_client
-    }
-
+    // TODO: rename to 'focused_buffer_view_handle'
     pub fn current_buffer_view_handle(&self) -> Option<BufferViewHandle> {
         self.get(self.focused_client)
             .and_then(|c| c.current_buffer_view_handle())
     }
 
+    // TODO: rename to 'set_focused_buffer_view_handle'
     pub fn set_current_buffer_view_handle(
         &mut self,
         editor: &mut Editor,
@@ -223,11 +222,7 @@ impl ClientCollection {
             self.remote_data.resize_with(min_len, || Default::default());
         }
 
-        self.on_client_joined(client_handle);
-        let target_client = TargetClient::Remote(client_handle);
-        if let Some(client) = self.get_mut(target_client) {
-            //self.set_current_buffer_view_handle(buffer_view_handle);
-        }
+        self.client_map.on_client_joined(client_handle);
     }
 
     pub fn on_client_left(&mut self, client_handle: ConnectionWithClientHandle) {
@@ -235,7 +230,7 @@ impl ClientCollection {
         self.remotes[index] = None;
         self.remote_data[index].reset();
 
-        self.on_client_left(client_handle);
+        self.client_map.on_client_left(client_handle);
         if self.focused_client == TargetClient::Remote(client_handle) {
             self.focused_client = TargetClient::Local;
         }

@@ -13,7 +13,7 @@ use crate::{
     client_event::LocalEvent,
     config::Config,
     editor::{StatusMessage, StatusMessageKind},
-    editor_event::{EditorEvent, EditorEventQueue, EditorEventsIter},
+    editor_event::{EditorEvent, EditorEventDoubleQueue},
     glob::Glob,
     json::{
         FromJson, Json, JsonArray, JsonConvertError, JsonInteger, JsonObject, JsonString, JsonValue,
@@ -38,7 +38,7 @@ pub struct ClientContext<'a> {
     pub word_database: &'a mut WordDatabase,
 
     pub status_message: &'a mut StatusMessage,
-    pub editor_events: &'a mut EditorEventQueue,
+    pub editor_events: &'a mut EditorEventDoubleQueue,
 }
 
 #[derive(Default)]
@@ -858,14 +858,13 @@ impl Client {
     fn on_editor_events(
         &mut self,
         ctx: &mut ClientContext,
-        events: EditorEventsIter,
         json: &mut Json,
     ) -> io::Result<()> {
         if !self.initialized {
             return Ok(());
         }
 
-        for event in events {
+        for event in ctx.editor_events.iter() {
             match event {
                 EditorEvent::Idle => {
                     helper::send_pending_did_change(self, ctx, json)?;
@@ -882,7 +881,7 @@ impl Client {
                     range,
                     text,
                 } => {
-                    let text = text.as_str(events);
+                    let text = text.as_str(ctx.editor_events);
                     let range = BufferRange::between(range.from, range.from);
                     self.versioned_buffers.add_edit(*handle, range, text);
                 }
@@ -1352,11 +1351,10 @@ impl ClientCollection {
     pub fn on_editor_events(
         &mut self,
         ctx: &mut ClientContext,
-        events: EditorEventsIter,
     ) -> io::Result<()> {
         for entry in self.entries.iter_mut().flatten() {
             let mut json = entry.json.write_lock();
-            entry.client.on_editor_events(ctx, events, json.get())?;
+            entry.client.on_editor_events(ctx, json.get())?;
         }
         Ok(())
     }

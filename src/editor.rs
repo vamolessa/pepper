@@ -12,13 +12,13 @@ use crate::{
     client_event::{ClientEvent, Key, LocalEvent},
     config::Config,
     connection::ConnectionWithClientHandle,
-    editor_event::{EditorEvent, EditorEventDoubleQueue, EditorEventsIter},
+    editor_event::{EditorEvent, EditorEventDoubleQueue},
     keymap::{KeyMapCollection, MatchResult},
     lsp::{LspClientCollection, LspClientContext, LspClientHandle, LspServerEvent},
-    mode::{Mode, ModeContext, ModeOperation, ModeKind},
+    mode::{Mode, ModeKind, ModeOperation},
     picker::Picker,
     register::{RegisterCollection, RegisterKey, KEY_QUEUE_REGISTER},
-    script::ScriptEngine,
+    script::{ScriptContext, ScriptEngine},
     script_bindings::ScriptCallbacks,
     syntax::HighlightResult,
     task::{TaskHandle, TaskManager, TaskResult},
@@ -37,26 +37,29 @@ impl EditorLoop {
     }
 }
 
-pub struct KeysIterator<'a> {
-    keys: &'a [Key],
+#[derive(Default)]
+pub struct BufferedKeys(Vec<Key>);
+impl BufferedKeys {
+    pub fn as_slice(&self) -> &[Key] {
+        &self.0
+    }
+}
+
+pub struct KeysIterator {
     index: usize,
 }
-impl<'a> KeysIterator<'a> {
-    fn new(keys: &'a [Key]) -> Self {
-        Self { keys, index: 0 }
+impl KeysIterator {
+    fn new() -> Self {
+        Self { index: 0 }
     }
 
     pub fn index(&self) -> usize {
         self.index
     }
 
-    pub fn keys(&self) -> &'a [Key] {
-        self.keys
-    }
-
-    pub fn next(&mut self) -> Key {
-        if self.index < self.keys.len() {
-            let next = self.keys[self.index];
+    pub fn next(&mut self, keys: &BufferedKeys) -> Key {
+        if self.index < keys.0.len() {
+            let next = keys.0[self.index];
             self.index += 1;
             next
         } else {
@@ -100,8 +103,12 @@ impl ReadLine {
         self.input.push_str(input);
     }
 
-    pub fn poll(&mut self, keys: &mut KeysIterator) -> ReadLinePoll {
-        match keys.next() {
+    pub fn poll(
+        &mut self,
+        buffered_keys: &BufferedKeys,
+        keys_iter: &mut KeysIterator,
+    ) -> ReadLinePoll {
+        match keys_iter.next(buffered_keys) {
             Key::Esc => ReadLinePoll::Canceled,
             Key::Enter => ReadLinePoll::Submitted,
             Key::Home | Key::Ctrl('u') => {
@@ -209,22 +216,22 @@ pub struct Editor {
     pub buffer_views: BufferViewCollection,
     pub word_database: WordDatabase,
 
-    pub buffered_keys: Vec<Key>,
+    pub buffered_keys: BufferedKeys,
     pub recording_macro: Option<RegisterKey>,
     pub registers: RegisterCollection,
     pub read_line: ReadLine,
     pub picker: Picker,
+    pub scripts: ScriptEngine,
 
-    pub focused_client: TargetClient,
+    pub focused_client: TargetClient, // TODO: delete
     pub status_message: StatusMessage,
 
     pub tasks: TaskManager,
     pub lsp: LspClientCollection,
-    pub editor_events: EditorEventDoubleQueue,
+    pub editor_events: EditorEventDoubleQueue, // TODO: rename to 'events'
 
     local_event_sender: mpsc::Sender<LocalEvent>,
     keymaps: KeyMapCollection,
-    scripts: ScriptEngine,
     script_callbacks: ScriptCallbacks,
 }
 impl Editor {
@@ -243,11 +250,12 @@ impl Editor {
             buffer_views: BufferViewCollection::default(),
             word_database: WordDatabase::new(),
 
-            buffered_keys: Vec::new(),
+            buffered_keys: BufferedKeys::default(),
             recording_macro: None,
             registers: RegisterCollection::default(),
             read_line: ReadLine::default(),
             picker: Picker::default(),
+            scripts: ScriptEngine::new(),
 
             focused_client: TargetClient::Local,
             status_message: StatusMessage::new(),
@@ -258,21 +266,55 @@ impl Editor {
 
             local_event_sender,
             keymaps: KeyMapCollection::default(),
-            scripts: ScriptEngine::new(),
             script_callbacks: ScriptCallbacks::default(),
         }
     }
 
+    pub fn into_script_context<'a>(
+        &'a self,
+        clients: &'a mut ClientCollection,
+    ) -> (&'a mut ScriptEngine, ScriptContext<'a>) {
+        let ctx = ScriptContext {
+            target_client: clients.focused_client,
+            clients,
+            editor_loop: EditorLoop::Continue,
+            mode: &mut self.mode,
+            next_mode: ModeKind::default(),
+            edited_buffers: false,
+
+            current_directory: &self.current_directory,
+            config: &mut self.config,
+
+            buffers: &mut self.buffers,
+            buffer_views: &mut self.buffer_views,
+            word_database: &mut self.word_database,
+
+            registers: &mut self.registers,
+            read_line: &mut self.read_line,
+            picker: &mut self.picker,
+
+            status_message: &mut self.status_message,
+
+            editor_events: &mut self.editor_events,
+            keymaps: &mut self.keymaps,
+            script_callbacks: &mut self.script_callbacks,
+            tasks: &mut self.tasks,
+            lsp: &mut self.lsp,
+        };
+        (&mut self.scripts, ctx)
+    }
+
     pub fn load_config(&mut self, clients: &mut ClientCollection, path: &Path) {
-        let (_, _, mut mode_ctx) = self.into_mode_context(clients, TargetClient::Local);
-        let (scripts, mut script_ctx) = mode_ctx.into_script_context();
+        let previous_mode_kind = self.mode.kind();
+        let (scripts, mut script_ctx) = self.into_script_context(clients);
 
         if let Err(e) = scripts.eval_entry_file(&mut script_ctx, path) {
             script_ctx.status_message.write_error(&e);
         }
 
-        let next_mode = script_ctx.next_mode;
-        Mode::change_to(&mut mode_ctx, next_mode);
+        if previous_mode_kind == self.mode.kind() {
+            Mode::change_to(self, ModeKind::default());
+        }
     }
 
     pub fn on_pre_render(&mut self, clients: &mut ClientCollection) {
@@ -285,7 +327,7 @@ impl Editor {
         for c in clients.client_refs() {
             let target = c.target;
             let client = c.client;
-            let picker_height = if self.focused_client == target {
+            let picker_height = if clients.focused_client == target {
                 picker_height as _
             } else {
                 0
@@ -318,7 +360,7 @@ impl Editor {
 
         let target_client = TargetClient::Remote(client_handle);
         let buffer_view_handle = clients
-            .get(self.focused_client)
+            .get(clients.focused_client)
             .and_then(|c| c.current_buffer_view_handle())
             .and_then(|h| self.buffer_views.get(h))
             .map(|v| v.clone_with_target_client(target_client))
@@ -345,23 +387,22 @@ impl Editor {
     ) -> EditorLoop {
         let result = match event {
             ClientEvent::Ui(ui) => {
-                let target_client = self.client_target_map.get(target_client);
+                let target_client = clients.client_map.get(target_client);
                 if let Some(client) = clients.get_client_ref(target_client) {
                     *client.ui = ui;
                 }
                 EditorLoop::Continue
             }
             ClientEvent::AsFocusedClient => {
-                self.client_target_map
-                    .map(target_client, self.focused_client);
+                clients.client_map.map(target_client, self.focused_client);
                 EditorLoop::Continue
             }
             ClientEvent::AsClient(target) => {
-                self.client_target_map.map(target_client, target);
+                clients.client_map.map(target_client, target);
                 EditorLoop::Continue
             }
             ClientEvent::OpenBuffer(mut path) => {
-                let target_client = self.client_target_map.get(target_client);
+                let target_client = clients.client_map.get(target_client);
 
                 let mut line_index = None;
                 if let Some(separator_index) = path.rfind(':') {
@@ -372,8 +413,6 @@ impl Editor {
                     }
                 }
 
-                let write_events = self.editor_events.get_stream_and_sink().1;
-
                 match self.buffer_views.buffer_view_handle_from_path(
                     &mut self.buffers,
                     &mut self.word_database,
@@ -381,7 +420,7 @@ impl Editor {
                     &self.current_directory,
                     Path::new(path),
                     line_index,
-                    write_events,
+                    &mut self.editor_events,
                 ) {
                     Ok(handle) => {
                         if let Some(client) = clients.get_mut(target_client) {
@@ -395,54 +434,52 @@ impl Editor {
                 EditorLoop::Continue
             }
             ClientEvent::Key(key) => {
-                let target_client = self.client_target_map.get(target_client);
+                let target_client = clients.client_map.get(target_client);
 
-                if target_client != self.focused_client {
-                    self.focused_client = target_client;
+                if target_client != clients.focused_client {
+                    clients.focused_client = target_client;
                     self.recording_macro = None;
-                    self.buffered_keys.clear();
+                    self.buffered_keys.0.clear();
                 }
 
-                self.buffered_keys.push(key);
+                self.buffered_keys.0.push(key);
 
                 match self
                     .keymaps
-                    .matches(self.mode.kind(), &self.buffered_keys)
+                    .matches(self.mode.kind(), self.buffered_keys.as_slice())
                 {
                     MatchResult::None => (),
                     MatchResult::Prefix => return EditorLoop::Continue,
                     MatchResult::ReplaceWith(replaced_keys) => {
-                        self.buffered_keys.clear();
-                        self.buffered_keys.extend_from_slice(replaced_keys);
+                        self.buffered_keys.0.clear();
+                        self.buffered_keys.0.extend_from_slice(replaced_keys);
                     }
                 }
 
                 'key_queue_loop: loop {
-                    let (buffered_keys, _, mut mode_ctx) =
-                        self.into_mode_context(clients, target_client);
-                    let mut keys = KeysIterator::new(&buffered_keys);
+                    let mut keys = KeysIterator::new();
                     loop {
-                        if keys.index == buffered_keys.len() {
+                        if keys.index == self.buffered_keys.0.len() {
                             break;
                         }
-                        let keys_from_index = mode_ctx.recording_macro.map(|_| keys.index);
+                        let keys_from_index = self.recording_macro.map(|_| keys.index);
 
-                        match Mode::on_client_keys(&mut mode_ctx, &mut keys) {
+                        match Mode::on_client_keys(self, &mut keys) {
                             ModeOperation::Pending => {
                                 return EditorLoop::Continue;
                             }
                             ModeOperation::None => (),
                             ModeOperation::Quit => {
-                                Mode::change_to(&mut mode_ctx, ModeKind::default());
-                                self.buffered_keys.clear();
+                                Mode::change_to(self, ModeKind::default());
+                                self.buffered_keys.0.clear();
                                 return EditorLoop::Quit;
                             }
                             ModeOperation::QuitAll => {
-                                self.buffered_keys.clear();
+                                self.buffered_keys.0.clear();
                                 return EditorLoop::QuitAll;
                             }
                             ModeOperation::EnterMode(next_mode) => {
-                                Mode::change_to(&mut mode_ctx, next_mode);
+                                Mode::change_to(self, next_mode);
                             }
                             ModeOperation::ExecuteMacro(key) => {
                                 self.parse_and_set_keys_in_register(key);
@@ -451,10 +488,10 @@ impl Editor {
                         }
 
                         if let Some((from_index, register_key)) =
-                            keys_from_index.zip(mode_ctx.recording_macro.clone())
+                            keys_from_index.zip(self.recording_macro.clone())
                         {
-                            for key in &buffered_keys[from_index..keys.index] {
-                                mode_ctx
+                            for key in &self.buffered_keys.0[from_index..keys.index] {
+                                self
                                     .registers
                                     .append_fmt(register_key, format_args!("{}", key));
                             }
@@ -463,24 +500,24 @@ impl Editor {
 
                     match self.recording_macro {
                         Some(KEY_QUEUE_REGISTER) => {
-                            self.buffered_keys.clear();
+                            self.buffered_keys.0.clear();
                         }
                         _ => {
                             self.parse_and_set_keys_in_register(KEY_QUEUE_REGISTER);
                             self.registers.set(KEY_QUEUE_REGISTER, "");
                         }
                     }
-                    if self.buffered_keys.is_empty() {
+                    if self.buffered_keys.0.is_empty() {
                         break;
                     }
                 }
 
-                self.buffered_keys.clear();
+                self.buffered_keys.0.clear();
                 self.trigger_event_handlers(clients, target_client);
                 EditorLoop::Continue
             }
             ClientEvent::Resize(width, height) => {
-                let target_client = self.client_target_map.get(target_client);
+                let target_client = clients.client_map.get(target_client);
                 if let Some(client) = clients.get_mut(target_client) {
                     client.viewport_size = (width, height);
                 }
@@ -492,56 +529,12 @@ impl Editor {
     }
 
     pub fn on_idle(&mut self, clients: &mut ClientCollection) {
-        let (_, events) = self.editor_events.get_stream_and_sink();
-        events.enqueue(EditorEvent::Idle);
+        self.editor_events.enqueue(EditorEvent::Idle);
         self.trigger_event_handlers(clients, TargetClient::Local);
     }
 
-    fn into_mode_context<'a>(
-        &'a mut self,
-        clients: &'a mut ClientCollection,
-        target_client: TargetClient,
-    ) -> (
-        &'a [Key],
-        EditorEventsIter<'a>,
-        ModeContext<'a>,
-    ) {
-        let (read_events, write_events) = self.editor_events.get_stream_and_sink();
-        let mode_context = ModeContext {
-            target_client,
-            clients,
-
-            current_directory: &self.current_directory,
-            config: &mut self.config,
-            mode: &mut self.mode,
-
-            buffers: &mut self.buffers,
-            buffer_views: &mut self.buffer_views,
-            word_database: &mut self.word_database,
-
-            recording_macro: &mut self.recording_macro,
-            registers: &mut self.registers,
-            read_line: &mut self.read_line,
-            picker: &mut self.picker,
-
-            status_message: &mut self.status_message,
-
-            editor_events: write_events,
-            keymaps: &mut self.keymaps,
-            scripts: &mut self.scripts,
-            script_callbacks: &mut self.script_callbacks,
-            tasks: &mut self.tasks,
-            lsp: &mut self.lsp,
-        };
-        (
-            &self.buffered_keys,
-            read_events,
-            mode_context,
-        )
-    }
-
     fn parse_and_set_keys_in_register(&mut self, register_key: RegisterKey) {
-        self.buffered_keys.clear();
+        self.buffered_keys.0.clear();
 
         let keys = self.registers.get(register_key);
         if keys.is_empty() {
@@ -550,13 +543,13 @@ impl Editor {
 
         for key in Key::parse_all(keys) {
             match key {
-                Ok(key) => self.buffered_keys.push(key),
+                Ok(key) => self.buffered_keys.0.push(key),
                 Err(error) => {
                     self.status_message.write_fmt(
                         StatusMessageKind::Error,
                         format_args!("error parsing keys '{}'\n{}", keys, &error),
                     );
-                    self.buffered_keys.clear();
+                    self.buffered_keys.0.clear();
                     return;
                 }
             }
@@ -569,44 +562,43 @@ impl Editor {
         target_client: TargetClient,
     ) {
         self.editor_events.flip();
-        let (_, events, mut mode_ctx) = self.into_mode_context(clients, target_client);
-
-        if let None = events.into_iter().next() {
+        if let None = self.editor_events.iter().next() {
             return;
         }
 
-        Mode::on_editor_events(&mut mode_ctx, events);
+        Mode::on_editor_events(self);
 
-        let (scripts, mut script_ctx) = mode_ctx.into_script_context();
-        if let Err(error) = scripts.on_editor_event(&mut script_ctx, events) {
+        let (scripts, mut script_ctx) = self.into_script_context(clients);
+        if let Err(error) = scripts.on_editor_event(&mut script_ctx) {
             script_ctx.status_message.write_error(&error);
         }
 
         let (lsp, mut lsp_ctx) = script_ctx.into_lsp_context();
-        if let Err(error) = lsp.on_editor_events(&mut lsp_ctx, events) {
+        if let Err(error) = lsp.on_editor_events(&mut lsp_ctx) {
             lsp_ctx.status_message.write_error(&error);
         }
 
-        Self::handle_editor_events(&mut mode_ctx, events);
+        self.handle_editor_events(clients);
     }
 
-    fn handle_editor_events(ctx: &mut ModeContext, events: EditorEventsIter) {
-        for event in events {
+    fn handle_editor_events(&mut self, clients: &mut ClientCollection) {
+        for event in self.editor_events.iter() {
             match event {
                 EditorEvent::BufferLoad { handle } => {
-                    if let Some(buffer) = ctx.buffers.get_mut(*handle) {
-                        buffer.refresh_syntax(&ctx.config.syntaxes);
+                    if let Some(buffer) = self.buffers.get_mut(*handle) {
+                        buffer.refresh_syntax(&self.config.syntaxes);
                     }
                 }
                 EditorEvent::BufferSave { handle, new_path } => {
                     if *new_path {
-                        if let Some(buffer) = ctx.buffers.get_mut(*handle) {
-                            buffer.refresh_syntax(&ctx.config.syntaxes);
+                        if let Some(buffer) = self.buffers.get_mut(*handle) {
+                            buffer.refresh_syntax(&self.config.syntaxes);
                         }
                     }
                 }
                 EditorEvent::BufferClose { handle } => {
-                    ctx.buffers.remove(*handle, ctx.clients, ctx.word_database);
+                    self.buffers
+                        .remove(*handle, clients, &mut self.word_database);
                 }
                 _ => (),
             }
@@ -620,15 +612,13 @@ impl Editor {
         handle: TaskHandle,
         result: TaskResult,
     ) {
-        let (_, _, mut mode_ctx) = self.into_mode_context(clients, target_client);
-        let (scripts, mut script_ctx) = mode_ctx.into_script_context();
+        let (scripts, mut script_ctx) = self.into_script_context(clients);
         if let Err(error) = scripts.on_task_event(&mut script_ctx, handle, &result) {
             script_ctx.status_message.write_error(&error);
         }
     }
 
     pub fn on_lsp_event(&mut self, client_handle: LspClientHandle, event: LspServerEvent) {
-        let (_, write_events) = self.editor_events.get_stream_and_sink();
         let mut ctx = LspClientContext {
             current_directory: &self.current_directory,
             config: &mut self.config,
@@ -638,7 +628,7 @@ impl Editor {
             word_database: &mut self.word_database,
 
             status_message: &mut self.status_message,
-            editor_events: write_events,
+            editor_events: &mut self.editor_events,
         };
 
         if let Err(error) = self.lsp.on_server_event(&mut ctx, client_handle, event) {
