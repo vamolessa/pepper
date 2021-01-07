@@ -4,6 +4,7 @@ use crate::{
     buffer_view::BufferViewHandle,
     connection::ConnectionWithClientHandle,
     editor::Editor,
+    editor_event::EditorEvent,
     navigation_history::NavigationHistory,
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
     ui::UiKind,
@@ -28,6 +29,12 @@ impl TargetClient {
             TargetClient::Local => 0,
             TargetClient::Remote(handle) => handle.into_index() + 1,
         }
+    }
+}
+
+impl Default for TargetClient {
+    fn default() -> Self {
+        Self::Local
     }
 }
 
@@ -167,6 +174,9 @@ impl ClientData {
 
 #[derive(Default)]
 pub struct ClientCollection {
+    focused_client: TargetClient,
+    client_map: ClientTargetMap,
+
     local: Client,
     remotes: Vec<Option<Client>>,
     local_data: ClientData,
@@ -174,6 +184,34 @@ pub struct ClientCollection {
 }
 
 impl ClientCollection {
+    pub fn focused_client(&self) -> TargetClient {
+        self.focused_client
+    }
+
+    pub fn current_buffer_view_handle(&self) -> Option<BufferViewHandle> {
+        self.get(self.focused_client)
+            .and_then(|c| c.current_buffer_view_handle())
+    }
+
+    pub fn set_current_buffer_view_handle(
+        &mut self,
+        editor: &mut Editor,
+        handle: Option<BufferViewHandle>,
+    ) {
+        if let Some(client) = self.get_mut(self.focused_client) {
+            client.set_current_buffer_view_handle(handle);
+
+            if let Some(handle) = handle
+                .and_then(|h| editor.buffer_views.get(h))
+                .map(|v| v.buffer_handle)
+            {
+                editor
+                    .editor_events
+                    .enqueue(EditorEvent::BufferOpen { handle });
+            }
+        }
+    }
+
     pub fn on_client_joined(&mut self, client_handle: ConnectionWithClientHandle) {
         let index = client_handle.into_index();
         let min_len = index + 1;
@@ -184,12 +222,23 @@ impl ClientCollection {
         if min_len > self.remote_data.len() {
             self.remote_data.resize_with(min_len, || Default::default());
         }
+
+        self.on_client_joined(client_handle);
+        let target_client = TargetClient::Remote(client_handle);
+        if let Some(client) = self.get_mut(target_client) {
+            //self.set_current_buffer_view_handle(buffer_view_handle);
+        }
     }
 
     pub fn on_client_left(&mut self, client_handle: ConnectionWithClientHandle) {
         let index = client_handle.into_index();
         self.remotes[index] = None;
         self.remote_data[index].reset();
+
+        self.on_client_left(client_handle);
+        if self.focused_client == TargetClient::Remote(client_handle) {
+            self.focused_client = TargetClient::Local;
+        }
     }
 
     pub fn get(&self, target: TargetClient) -> Option<&Client> {
@@ -263,7 +312,7 @@ impl ClientCollection {
 }
 
 #[derive(Default)]
-pub struct ClientTargetMap {
+struct ClientTargetMap {
     local_target: Option<TargetClient>,
     remote_targets: Vec<Option<TargetClient>>,
 }

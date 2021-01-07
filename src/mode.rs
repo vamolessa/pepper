@@ -5,7 +5,7 @@ use crate::{
     buffer_view::{BufferViewCollection, BufferViewHandle},
     client::{ClientCollection, TargetClient},
     config::Config,
-    editor::{EditorLoop, KeysIterator, ReadLine, StatusMessage},
+    editor::{EditorLoop, KeysIterator, ReadLine, StatusMessage, Editor},
     editor_event::{EditorEvent, EditorEventQueue, EditorEventsIter},
     keymap::KeyMapCollection,
     lsp::LspClientCollection,
@@ -114,7 +114,7 @@ impl<'a> ModeContext<'a> {
 }
 
 pub trait ModeState {
-    fn on_enter(_ctx: &mut ModeContext) {}
+    fn on_enter(editor: &mut Editor) {}
     fn on_exit(_ctx: &mut ModeContext) {}
     fn on_client_keys(_ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation;
     fn on_editor_events(_ctx: &mut ModeContext, _events: EditorEventsIter) {}

@@ -8,7 +8,7 @@ use std::{
 use crate::{
     buffer::BufferCollection,
     buffer_view::BufferViewCollection,
-    client::{ClientCollection, ClientTargetMap, TargetClient},
+    client::{ClientCollection, TargetClient},
     client_event::{ClientEvent, Key, LocalEvent},
     config::Config,
     connection::ConnectionWithClientHandle,
@@ -220,13 +220,12 @@ pub struct Editor {
 
     pub tasks: TaskManager,
     pub lsp: LspClientCollection,
+    pub editor_events: EditorEventDoubleQueue,
 
     local_event_sender: mpsc::Sender<LocalEvent>,
-    editor_events: EditorEventDoubleQueue,
     keymaps: KeyMapCollection,
     scripts: ScriptEngine,
     script_callbacks: ScriptCallbacks,
-    client_target_map: ClientTargetMap,
 }
 impl Editor {
     pub fn new(
@@ -255,13 +254,12 @@ impl Editor {
 
             tasks,
             lsp,
+            editor_events: EditorEventDoubleQueue::default(),
 
             local_event_sender,
-            editor_events: EditorEventDoubleQueue::default(),
             keymaps: KeyMapCollection::default(),
             scripts: ScriptEngine::new(),
             script_callbacks: ScriptCallbacks::default(),
-            client_target_map: ClientTargetMap::default(),
         }
     }
 
@@ -317,7 +315,6 @@ impl Editor {
         client_handle: ConnectionWithClientHandle,
     ) {
         clients.on_client_joined(client_handle);
-        self.client_target_map.on_client_joined(client_handle);
 
         let target_client = TargetClient::Remote(client_handle);
         let buffer_view_handle = clients
@@ -338,11 +335,6 @@ impl Editor {
         client_handle: ConnectionWithClientHandle,
     ) {
         clients.on_client_left(client_handle);
-        self.client_target_map.on_client_left(client_handle);
-
-        if self.focused_client == TargetClient::Remote(client_handle) {
-            self.focused_client = TargetClient::Local;
-        }
     }
 
     pub fn on_event(

@@ -85,6 +85,27 @@ impl EditorEventDoubleQueue {
         std::mem::swap(&mut self.read, &mut self.write);
     }
 
+    pub fn enqueue(&mut self, event: EditorEvent) {
+        self.write.events.push(event);
+    }
+
+    pub fn enqueue_buffer_insert(&mut self, handle: BufferHandle, range: BufferRange, text: &str) {
+        let start = self.write.texts.len();
+        self.write.texts.push_str(text);
+        let text = EditorEventText {
+            texts_range: start..self.write.texts.len(),
+        };
+        self.write.events.push(EditorEvent::BufferInsertText {
+            handle,
+            range,
+            text,
+        });
+    }
+
+    pub fn iter(&self) -> EditorEventsIter {
+        EditorEventsIter(&self.read)
+    }
+
     pub fn get_stream_and_sink(&mut self) -> (EditorEventsIter, &mut EditorEventQueue) {
         (EditorEventsIter(&self.read), &mut self.write)
     }
