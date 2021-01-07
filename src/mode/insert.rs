@@ -74,7 +74,7 @@ impl ModeState for State {
                 &mut editor.word_database,
                 handle,
                 "\t",
-                &mut editor.editor_events,
+                &mut editor.events,
             ),
             Key::Enter => {
                 let buffer_view = unwrap_or_none!(editor.buffer_views.get(handle));
@@ -111,7 +111,7 @@ impl ModeState for State {
                         handle,
                         position,
                         text,
-                        &mut editor.editor_events,
+                        &mut editor.events,
                     );
                 }
             }
@@ -123,7 +123,7 @@ impl ModeState for State {
                     &mut editor.word_database,
                     handle,
                     s,
-                    &mut editor.editor_events,
+                    &mut editor.events,
                 );
             }
             Key::Backspace => {
@@ -136,7 +136,7 @@ impl ModeState for State {
                     &mut editor.buffers,
                     &mut editor.word_database,
                     handle,
-                    &mut editor.editor_events,
+                    &mut editor.events,
                 );
             }
             Key::Delete => {
@@ -149,7 +149,7 @@ impl ModeState for State {
                     &mut editor.buffers,
                     &mut editor.word_database,
                     handle,
-                    &mut editor.editor_events,
+                    &mut editor.events,
                 );
             }
             Key::Ctrl('w') => {
@@ -162,7 +162,7 @@ impl ModeState for State {
                     &mut editor.buffers,
                     &mut editor.word_database,
                     handle,
-                    &mut editor.editor_events,
+                    &mut editor.events,
                 );
             }
             Key::Ctrl('n') => {
@@ -212,7 +212,7 @@ fn apply_completion(editor: &mut Editor, handle: BufferViewHandle, cursor_moveme
             &mut editor.word_database,
             handle,
             entry.name,
-            &mut editor.editor_events,
+            &mut editor.events,
         );
     }
 }

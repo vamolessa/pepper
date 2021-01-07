@@ -219,7 +219,7 @@ impl ClientCollection {
                 .map(|v| v.buffer_handle)
             {
                 editor
-                    .editor_events
+                    .events
                     .enqueue(EditorEvent::BufferOpen { handle });
             }
         }

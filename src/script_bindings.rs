@@ -650,7 +650,7 @@ mod buffer {
                 ctx.current_directory,
                 path,
                 line_number.map(|l| l.saturating_sub(1)),
-                ctx.editor_events,
+                ctx.events,
             )
             .map_err(ScriptError::from)?;
         ctx.set_current_buffer_view_handle(Some(buffer_view_handle));
@@ -691,7 +691,7 @@ mod buffer {
             }
 
             ctx.buffer_views
-                .defer_remove_where(ctx.buffers, ctx.editor_events, |view| {
+                .defer_remove_where(ctx.buffers, ctx.events, |view| {
                     view.buffer_handle == handle
                 });
         }
@@ -721,7 +721,7 @@ mod buffer {
             }
 
             ctx.buffer_views
-                .defer_remove_where(ctx.buffers, ctx.editor_events, |view| {
+                .defer_remove_where(ctx.buffers, ctx.events, |view| {
                     view.buffer_handle == handle
                 });
         }
@@ -751,7 +751,7 @@ mod buffer {
             );
 
             ctx.buffer_views
-                .defer_remove_where(ctx.buffers, ctx.editor_events, |_| true);
+                .defer_remove_where(ctx.buffers, ctx.events, |_| true);
             for c in ctx.clients.client_refs() {
                 c.client.set_current_buffer_view_handle(None);
             }
@@ -772,7 +772,7 @@ mod buffer {
         );
 
         ctx.buffer_views
-            .defer_remove_where(ctx.buffers, ctx.editor_events, |_| true);
+            .defer_remove_where(ctx.buffers, ctx.events, |_| true);
         for c in ctx.clients.client_refs() {
             c.client.set_current_buffer_view_handle(None);
         }
@@ -799,7 +799,7 @@ mod buffer {
             None => None,
         };
 
-        if let Err(e) = buffer.save_to_file(path, ctx.editor_events) {
+        if let Err(e) = buffer.save_to_file(path, ctx.events) {
             return Err(ScriptError::from(e.display(buffer).to_string()));
         }
 
@@ -819,7 +819,7 @@ mod buffer {
     ) -> ScriptResult<()> {
         let mut buffer_count = 0;
         for buffer in ctx.buffers.iter_mut() {
-            if let Err(e) = buffer.save_to_file(None, ctx.editor_events) {
+            if let Err(e) = buffer.save_to_file(None, ctx.events) {
                 return Err(ScriptError::from(e.display(buffer).to_string()));
             }
 
@@ -853,7 +853,7 @@ mod buffer {
                 return Ok(());
             }
 
-            match buffer.discard_and_reload_from_file(ctx.word_database, ctx.editor_events) {
+            match buffer.discard_and_reload_from_file(ctx.word_database, ctx.events) {
                 Ok(()) => ctx
                     .status_bar
                     .write_str(StatusMessageKind::Info, "reloaded"),
@@ -878,7 +878,7 @@ mod buffer {
             .or_else(|| current_handle)
             .and_then(|h| buffers.get_mut(h))
         {
-            match buffer.discard_and_reload_from_file(ctx.word_database, ctx.editor_events) {
+            match buffer.discard_and_reload_from_file(ctx.word_database, ctx.events) {
                 Ok(()) => ctx
                     .status_bar
                     .write_str(StatusMessageKind::Info, "reloaded"),
@@ -909,7 +909,7 @@ mod buffer {
             let mut buffer_count = 0;
             for buffer in ctx.buffers.iter_mut() {
                 if let Err(error) =
-                    buffer.discard_and_reload_from_file(ctx.word_database, ctx.editor_events)
+                    buffer.discard_and_reload_from_file(ctx.word_database, ctx.events)
                 {
                     had_error = true;
                     ctx.status_bar.write_fmt(
@@ -939,7 +939,7 @@ mod buffer {
         let mut buffer_count = 0;
         for buffer in ctx.buffers.iter_mut() {
             if let Err(error) =
-                buffer.discard_and_reload_from_file(ctx.word_database, ctx.editor_events)
+                buffer.discard_and_reload_from_file(ctx.word_database, ctx.events)
             {
                 had_error = true;
                 ctx.status_bar.write_fmt(
@@ -1015,7 +1015,7 @@ mod buffer_view {
             ctx.current_directory,
             Path::new(path),
             None,
-            ctx.editor_events,
+            ctx.events,
         ) {
             Ok(handle) => Ok(Some(handle)),
             Err(_) => Ok(None),
@@ -1052,7 +1052,7 @@ mod buffer_view {
                 ctx.word_database,
                 handle,
                 text,
-                ctx.editor_events,
+                ctx.events,
             );
             ctx.edited_buffers = true;
         }
@@ -1073,7 +1073,7 @@ mod buffer_view {
                 handle,
                 BufferPosition::line_col(line, column),
                 text,
-                ctx.editor_events,
+                ctx.events,
             );
             ctx.edited_buffers = true;
         }
@@ -1091,7 +1091,7 @@ mod buffer_view {
                 ctx.buffers,
                 ctx.word_database,
                 handle,
-                ctx.editor_events,
+                ctx.events,
             );
             ctx.edited_buffers = true;
         }
@@ -1119,7 +1119,7 @@ mod buffer_view {
                     BufferPosition::line_col(from_line, from_column),
                     BufferPosition::line_col(to_line, to_column),
                 ),
-                ctx.editor_events,
+                ctx.events,
             );
             ctx.edited_buffers = true;
         }
@@ -1134,7 +1134,7 @@ mod buffer_view {
     ) -> ScriptResult<()> {
         if let Some(handle) = handle.or_else(|| ctx.current_buffer_view_handle()) {
             ctx.buffer_views
-                .undo(ctx.buffers, ctx.word_database, ctx.editor_events, handle);
+                .undo(ctx.buffers, ctx.word_database, ctx.events, handle);
         }
         Ok(())
     }
@@ -1147,7 +1147,7 @@ mod buffer_view {
     ) -> ScriptResult<()> {
         if let Some(handle) = handle.or_else(|| ctx.current_buffer_view_handle()) {
             ctx.buffer_views
-                .redo(ctx.buffers, ctx.word_database, ctx.editor_events, handle);
+                .redo(ctx.buffers, ctx.word_database, ctx.events, handle);
         }
         Ok(())
     }

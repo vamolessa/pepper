@@ -38,7 +38,7 @@ pub struct ClientContext<'a> {
     pub word_database: &'a mut WordDatabase,
 
     pub status_bar: &'a mut StatusBar,
-    pub editor_events: &'a mut EditorEventQueue,
+    pub events: &'a mut EditorEventQueue,
 }
 
 #[derive(Default)]
@@ -531,7 +531,7 @@ impl Client {
             let position =
                 BufferPosition::line_col(line_index, content.line_at(line_index).as_str().len());
             let text = String::from_utf8_lossy(&self.log_write_buf);
-            buffer.insert_text(ctx.word_database, position, &text, ctx.editor_events);
+            buffer.insert_text(ctx.word_database, position, &text, ctx.events);
             self.log_write_buf.clear();
         }
     }
@@ -864,7 +864,7 @@ impl Client {
             return Ok(());
         }
 
-        for event in ctx.editor_events.iter() {
+        for event in ctx.events.iter() {
             match event {
                 EditorEvent::Idle => {
                     helper::send_pending_did_change(self, ctx, json)?;
@@ -881,7 +881,7 @@ impl Client {
                     range,
                     text,
                 } => {
-                    let text = text.as_str(ctx.editor_events);
+                    let text = text.as_str(ctx.events);
                     let range = BufferRange::between(range.from, range.from);
                     self.versioned_buffers.add_edit(*handle, range, text);
                 }

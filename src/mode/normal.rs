@@ -595,7 +595,7 @@ impl State {
                     &mut editor.buffers,
                     &mut editor.word_database,
                     handle,
-                    &mut editor.editor_events,
+                    &mut editor.events,
                 );
                 let buffer_view = unwrap_or_none!(editor.buffer_views.get(handle));
                 unwrap_or_none!(editor.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
@@ -608,7 +608,7 @@ impl State {
                     &mut editor.buffers,
                     &mut editor.word_database,
                     handle,
-                    &mut editor.editor_events,
+                    &mut editor.events,
                 );
 
                 Self::on_edit_keys(editor, keys, keys_from_index);
@@ -656,7 +656,7 @@ impl State {
                             &mut editor.word_database,
                             handle,
                             range,
-                            &mut editor.editor_events,
+                            &mut editor.events,
                         );
                     }
                 }
@@ -694,7 +694,7 @@ impl State {
                             handle,
                             BufferPosition::line_col(line_index, 0),
                             indentation,
-                            &mut editor.editor_events,
+                            &mut editor.events,
                         );
                     }
                 }
@@ -887,7 +887,7 @@ impl State {
                     &mut editor.buffers,
                     &mut editor.word_database,
                     handle,
-                    &mut editor.editor_events,
+                    &mut editor.events,
                 );
                 if let Ok(text) = ClipboardContext::new().and_then(|mut c| c.get_contents()) {
                     editor.buffer_views.insert_text_at_cursor_positions(
@@ -895,7 +895,7 @@ impl State {
                         &mut editor.word_database,
                         handle,
                         &text,
-                        &mut editor.editor_events,
+                        &mut editor.events,
                     );
                 }
                 let buffer_view = unwrap_or_none!(editor.buffer_views.get(handle));
@@ -912,7 +912,7 @@ impl State {
                         &mut editor.buffers,
                         &mut editor.word_database,
                         handle,
-                        &mut editor.editor_events,
+                        &mut editor.events,
                     );
                     if let Some(key) = RegisterKey::from_char(c) {
                         let register = editor.registers.get(key);
@@ -921,7 +921,7 @@ impl State {
                             &mut editor.word_database,
                             handle,
                             register,
-                            &mut editor.editor_events,
+                            &mut editor.events,
                         );
                     }
                     let buffer_view = unwrap_or_none!(editor.buffer_views.get(handle));
@@ -938,7 +938,7 @@ impl State {
                 editor.buffer_views.undo(
                     &mut editor.buffers,
                     &mut editor.word_database,
-                    &mut editor.editor_events,
+                    &mut editor.events,
                     handle,
                 );
                 this.movement_kind = CursorMovementKind::PositionAndAnchor;
@@ -948,7 +948,7 @@ impl State {
                 editor.buffer_views.redo(
                     &mut editor.buffers,
                     &mut editor.word_database,
-                    &mut editor.editor_events,
+                    &mut editor.events,
                     handle,
                 );
                 this.movement_kind = CursorMovementKind::PositionAndAnchor;
@@ -1307,7 +1307,7 @@ fn move_to_diagnostic(
                 &editor.current_directory,
                 path,
                 None,
-                &mut editor.editor_events,
+                &mut editor.events,
             ) {
                 Ok(handle) => handle,
                 Err(error) => {

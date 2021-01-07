@@ -122,7 +122,7 @@ pub mod buffer {
                 &editor.current_directory,
                 Path::new(path),
                 None,
-                &mut editor.editor_events,
+                &mut editor.events,
             ) {
                 Ok(handle) => clients.set_current_buffer_view_handle(editor, target, Some(handle)),
                 Err(error) => editor.status_bar.write_error(&error),

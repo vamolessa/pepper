@@ -382,7 +382,7 @@ pub struct ScriptContext<'a> {
 
     pub status_bar: &'a mut StatusBar,
 
-    pub editor_events: &'a mut EditorEventQueue,
+    pub events: &'a mut EditorEventQueue,
     pub keymaps: &'a mut KeyMapCollection,
     pub script_callbacks: &'a mut script_bindings::ScriptCallbacks,
     pub tasks: &'a mut TaskManager,
@@ -418,7 +418,7 @@ impl<'a> ScriptContext<'a> {
             word_database: self.word_database,
 
             status_bar: self.status_bar,
-            editor_events: self.editor_events,
+            events: self.events,
         };
 
         (self.lsp, ctx)
@@ -540,7 +540,7 @@ impl ScriptEngine {
             }};
         }
 
-        for event in ctx.editor_events.iter() {
+        for event in ctx.events.iter() {
             match event {
                 EditorEvent::Idle => call!(editor.on_idle, ()),
                 EditorEvent::BufferLoad { handle } => call!(buffer.on_load, *handle),

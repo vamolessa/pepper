@@ -160,7 +160,6 @@ pub enum StatusMessageKind {
     Error,
 }
 
-// TODO: rename to 'StatusBar'
 pub struct StatusBar {
     kind: StatusMessageKind,
     message: String,
@@ -229,7 +228,7 @@ pub struct Editor {
 
     pub tasks: TaskManager,
     pub lsp: LspClientCollection,
-    pub editor_events: EditorEventQueue, // TODO: rename to 'events'
+    pub events: EditorEventQueue,
 
     local_event_sender: mpsc::Sender<LocalEvent>,
     keymaps: KeyMapCollection,
@@ -262,7 +261,7 @@ impl Editor {
 
             tasks,
             lsp,
-            editor_events: EditorEventQueue::default(),
+            events: EditorEventQueue::default(),
 
             local_event_sender,
             keymaps: KeyMapCollection::default(),
@@ -295,7 +294,7 @@ impl Editor {
 
             status_bar: &mut self.status_bar,
 
-            editor_events: &mut self.editor_events,
+            events: &mut self.events,
             keymaps: &mut self.keymaps,
             script_callbacks: &mut self.script_callbacks,
             tasks: &mut self.tasks,
@@ -423,7 +422,7 @@ impl Editor {
                     &self.current_directory,
                     Path::new(path),
                     line_index,
-                    &mut self.editor_events,
+                    &mut self.events,
                 ) {
                     Ok(handle) => {
                         if let Some(client) = clients.get_mut(target_client) {
@@ -526,7 +525,7 @@ impl Editor {
     }
 
     pub fn on_idle(&mut self, clients: &mut ClientCollection) {
-        self.editor_events.enqueue(EditorEvent::Idle);
+        self.events.enqueue(EditorEvent::Idle);
         self.trigger_event_handlers(clients, TargetClient::Local);
     }
 
@@ -554,8 +553,8 @@ impl Editor {
     }
 
     fn trigger_event_handlers(&mut self, clients: &mut ClientCollection, target: TargetClient) {
-        self.editor_events.flip();
-        if let None = self.editor_events.iter().next() {
+        self.events.flip();
+        if let None = self.events.iter().next() {
             return;
         }
 
@@ -575,7 +574,7 @@ impl Editor {
     }
 
     fn handle_editor_events(&mut self, clients: &mut ClientCollection) {
-        for event in self.editor_events.iter() {
+        for event in self.events.iter() {
             match event {
                 EditorEvent::BufferLoad { handle } => {
                     if let Some(buffer) = self.buffers.get_mut(*handle) {
@@ -622,7 +621,7 @@ impl Editor {
             word_database: &mut self.word_database,
 
             status_bar: &mut self.status_bar,
-            editor_events: &mut self.editor_events,
+            events: &mut self.events,
         };
 
         if let Err(error) = self.lsp.on_server_event(&mut ctx, client_handle, event) {
