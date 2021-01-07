@@ -604,7 +604,6 @@ impl Editor {
         handle: TaskHandle,
         result: TaskResult,
     ) {
-        // TODO: will have to pass an extra 'target_client' parameter to all functions
         let (scripts, mut script_ctx) = self.into_script_context(clients, target);
         if let Err(error) = scripts.on_task_event(&mut script_ctx, handle, &result) {
             script_ctx.status_bar.write_error(&error);
