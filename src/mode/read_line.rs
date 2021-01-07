@@ -47,7 +47,7 @@ pub mod search {
         fn on_client_keys(
             editor: &mut Editor,
             clients: &mut ClientCollection,
-            keys: &mut KeysIterator,
+            _: &mut KeysIterator,
             poll: ReadLinePoll,
         ) {
             match poll {

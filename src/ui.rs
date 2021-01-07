@@ -1,7 +1,7 @@
 use std::{error::Error, io, sync::mpsc, thread};
 
 use crate::{
-    client::{Client, TargetClient},
+    client::Client,
     client_event::{Key, LocalEvent},
     editor::Editor,
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},

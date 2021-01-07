@@ -37,30 +37,10 @@ pub enum EditorEvent {
     },
 }
 
-// TODO: delete
 #[derive(Default)]
-pub struct EditorEventQueue {
+struct EditorEventQueue {
     events: Vec<EditorEvent>,
     texts: String,
-}
-
-impl EditorEventQueue {
-    pub fn enqueue(&mut self, event: EditorEvent) {
-        self.events.push(event);
-    }
-
-    pub fn enqueue_buffer_insert(&mut self, handle: BufferHandle, range: BufferRange, text: &str) {
-        let start = self.texts.len();
-        self.texts.push_str(text);
-        let text = EditorEventText {
-            texts_range: start..self.texts.len(),
-        };
-        self.events.push(EditorEvent::BufferInsertText {
-            handle,
-            range,
-            text,
-        });
-    }
 }
 
 // TODO: rename to EditorEventQueue
