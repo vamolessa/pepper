@@ -366,12 +366,11 @@ mod tests {
 
         macro_rules! assert_glob {
             ($expected:expr, $pattern:expr, $path:expr) => {
-                if glob.compile($pattern).is_err() {
-                    panic!(
-                        "invalid glob pattern '{}'",
-                        std::str::from_utf8($pattern).unwrap()
-                    );
-                }
+                assert!(
+                    glob.compile($pattern).is_ok(),
+                    "invalid glob pattern '{}'",
+                    std::str::from_utf8($pattern).unwrap()
+                );
                 assert_eq!(
                     $expected,
                     glob.matches($path),

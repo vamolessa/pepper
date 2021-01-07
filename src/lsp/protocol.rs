@@ -288,7 +288,7 @@ fn parse_server_event(json: &Json, body: JsonValue) -> ServerEvent {
 
     let body = match Body::from_json(body, json) {
         Ok(body) => body,
-        Err(_) => panic!(),
+        Err(_) => return ServerEvent::ParseError,
     };
 
     if let JsonValue::String(method) = body.method {
