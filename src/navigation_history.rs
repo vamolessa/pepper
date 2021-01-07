@@ -28,6 +28,7 @@ pub struct NavigationHistory {
 }
 
 impl NavigationHistory {
+    // TODO: remove 'target_client' (get it from 'clients')
     pub fn save_client_snapshot(
         clients: &mut ClientCollection,
         buffer_views: &BufferViewCollection,

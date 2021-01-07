@@ -160,6 +160,7 @@ pub enum StatusMessageKind {
     Error,
 }
 
+// TODO: rename to 'StatusBar'
 pub struct StatusMessage {
     kind: StatusMessageKind,
     message: String,
@@ -222,9 +223,9 @@ pub struct Editor {
     pub read_line: ReadLine,
     pub picker: Picker,
     pub scripts: ScriptEngine,
+    pub script_callbacks: ScriptCallbacks,
 
-    pub focused_client: TargetClient, // TODO: delete
-    pub status_message: StatusMessage,
+    pub status_message: StatusMessage, //TODO: rename to 'status_bar'
 
     pub tasks: TaskManager,
     pub lsp: LspClientCollection,
@@ -232,7 +233,6 @@ pub struct Editor {
 
     local_event_sender: mpsc::Sender<LocalEvent>,
     keymaps: KeyMapCollection,
-    script_callbacks: ScriptCallbacks,
 }
 impl Editor {
     pub fn new(
@@ -256,8 +256,8 @@ impl Editor {
             read_line: ReadLine::default(),
             picker: Picker::default(),
             scripts: ScriptEngine::new(),
+            script_callbacks: ScriptCallbacks::default(),
 
-            focused_client: TargetClient::Local,
             status_message: StatusMessage::new(),
 
             tasks,
@@ -266,7 +266,6 @@ impl Editor {
 
             local_event_sender,
             keymaps: KeyMapCollection::default(),
-            script_callbacks: ScriptCallbacks::default(),
         }
     }
 
@@ -394,7 +393,7 @@ impl Editor {
                 EditorLoop::Continue
             }
             ClientEvent::AsFocusedClient => {
-                clients.client_map.map(target_client, self.focused_client);
+                clients.client_map.map(target_client, clients.focused_client);
                 EditorLoop::Continue
             }
             ClientEvent::AsClient(target) => {

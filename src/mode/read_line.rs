@@ -1,34 +1,39 @@
 use crate::{
-    editor::{KeysIterator, ReadLinePoll},
-    mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
+    client::ClientCollection,
+    editor::{Editor, KeysIterator, ReadLinePoll},
+    mode::{Mode, ModeKind, ModeOperation, ModeState},
     register::SEARCH_REGISTER,
 };
 
 pub struct State {
-    on_client_keys: fn(&mut ModeContext, &mut KeysIterator, ReadLinePoll),
+    on_client_keys: fn(&mut Editor, &mut ClientCollection, &mut KeysIterator, ReadLinePoll),
 }
 
 impl Default for State {
     fn default() -> Self {
         Self {
-            on_client_keys: |_, _, _| (),
+            on_client_keys: |_, _, _, _| (),
         }
     }
 }
 
 impl ModeState for State {
-    fn on_enter(ctx: &mut ModeContext) {
-        ctx.read_line.set_input("");
+    fn on_enter(editor: &mut Editor, _: &mut ClientCollection) {
+        editor.read_line.set_input("");
     }
 
-    fn on_exit(ctx: &mut ModeContext) {
-        ctx.read_line.set_input("");
+    fn on_exit(editor: &mut Editor, _: &mut ClientCollection) {
+        editor.read_line.set_input("");
     }
 
-    fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
-        let poll = ctx.read_line.poll(keys);
-        let func = ctx.mode.read_line_state.on_client_keys;
-        func(ctx, keys, poll);
+    fn on_client_keys(
+        editor: &mut Editor,
+        clients: &mut ClientCollection,
+        keys: &mut KeysIterator,
+    ) -> ModeOperation {
+        let poll = editor.read_line.poll(&editor.buffered_keys, keys);
+        let func = editor.mode.read_line_state.on_client_keys;
+        func(editor, clients, keys, poll);
         ModeOperation::None
     }
 }
@@ -38,46 +43,57 @@ pub mod search {
 
     use crate::navigation_history::{NavigationDirection, NavigationHistory};
 
-    pub fn enter_mode(ctx: &mut ModeContext) {
-        fn on_client_keys(ctx: &mut ModeContext, _: &mut KeysIterator, poll: ReadLinePoll) {
+    pub fn enter_mode(editor: &mut Editor, clients: &mut ClientCollection) {
+        fn on_client_keys(
+            editor: &mut Editor,
+            clients: &mut ClientCollection,
+            keys: &mut KeysIterator,
+            poll: ReadLinePoll,
+        ) {
             match poll {
                 ReadLinePoll::Pending => {
-                    update_search(ctx);
+                    update_search(editor, clients);
                 }
                 ReadLinePoll::Submitted => {
-                    ctx.registers.set(SEARCH_REGISTER, ctx.read_line.input());
-                    Mode::change_to(ctx, ModeKind::default());
+                    editor
+                        .registers
+                        .set(SEARCH_REGISTER, editor.read_line.input());
+                    Mode::change_to(editor, ModeKind::default());
                 }
                 ReadLinePoll::Canceled => {
                     NavigationHistory::move_in_history(
-                        ctx.clients,
-                        ctx.buffer_views,
-                        ctx.target_client,
+                        clients,
+                        &mut editor.buffer_views,
+                        clients.focused_client,
                         NavigationDirection::Backward,
                     );
-                    Mode::change_to(ctx, ModeKind::default());
+                    Mode::change_to(editor, ModeKind::default());
                 }
             }
         }
 
-        NavigationHistory::save_client_snapshot(ctx.clients, ctx.buffer_views, ctx.target_client);
-        ctx.read_line.set_prompt("search:");
-        update_search(ctx);
+        NavigationHistory::save_client_snapshot(
+            clients,
+            &mut editor.buffer_views,
+            clients.focused_client,
+        );
+        editor.read_line.set_prompt("search:");
+        update_search(editor, clients);
 
-        ctx.mode.read_line_state.on_client_keys = on_client_keys;
-        Mode::change_to(ctx, ModeKind::ReadLine);
+        editor.mode.read_line_state.on_client_keys = on_client_keys;
+        Mode::change_to(editor, ModeKind::ReadLine);
     }
 
-    fn update_search(ctx: &mut ModeContext) {
-        for buffer in ctx.buffers.iter_mut() {
+    fn update_search(editor: &mut Editor, clients: &mut ClientCollection) {
+        for buffer in editor.buffers.iter_mut() {
             buffer.set_search("");
         }
 
-        let client = unwrap_or_return!(ctx.clients.get_mut(ctx.target_client));
+        let client = unwrap_or_return!(clients.get_mut(clients.target_client));
         let handle = unwrap_or_return!(client.current_buffer_view_handle());
-        let buffer_view = unwrap_or_return!(ctx.buffer_views.get_mut(handle));
-        let buffer = unwrap_or_return!(ctx.buffers.get_mut(buffer_view.buffer_handle));
-        buffer.set_search(&ctx.read_line.input());
+        let buffer_view = unwrap_or_return!(editor.buffer_views.get_mut(handle));
+        let buffer = unwrap_or_return!(editor.buffers.get_mut(buffer_view.buffer_handle));
+        buffer.set_search(&editor.read_line.input());
         let search_ranges = buffer.search_ranges();
 
         if search_ranges.is_empty() {
@@ -117,14 +133,14 @@ pub mod search {
 }
 
 macro_rules! on_submitted {
-    ($ctx:expr, $poll:expr => $value:expr) => {
+    ($editor:expr, $poll:expr => $value:expr) => {
         match $poll {
             ReadLinePoll::Pending => (),
             ReadLinePoll::Submitted => {
                 $value;
-                Mode::change_to($ctx, ModeKind::default());
+                Mode::change_to($editor, ModeKind::default());
             }
-            ReadLinePoll::Canceled => Mode::change_to($ctx, ModeKind::default()),
+            ReadLinePoll::Canceled => Mode::change_to($editor, ModeKind::default()),
         }
     };
 }
@@ -134,21 +150,27 @@ pub mod filter_cursors {
 
     use crate::{buffer::BufferContent, buffer_position::BufferRange, cursor::Cursor};
 
-    pub fn enter_filter_mode(ctx: &mut ModeContext) {
-        ctx.read_line.set_prompt("filter:");
-        ctx.mode.read_line_state.on_client_keys =
-            |ctx, _, poll| on_submitted!(ctx, poll => on_event_impl(ctx, true));
-        Mode::change_to(ctx, ModeKind::ReadLine);
+    pub fn enter_filter_mode(editor: &mut Editor, clients: &mut ClientCollection) {
+        editor.read_line.set_prompt("filter:");
+        editor.mode.read_line_state.on_client_keys = |editor, clients, _, poll| {
+            on_submitted!(editor, poll => on_event_impl(editor, clients, true));
+        };
+        Mode::change_to(editor, ModeKind::ReadLine);
     }
 
-    pub fn enter_except_mode(ctx: &mut ModeContext) {
-        ctx.read_line.set_prompt("except:");
-        ctx.mode.read_line_state.on_client_keys =
-            |ctx, _, poll| on_submitted!(ctx, poll => on_event_impl(ctx, false));
-        Mode::change_to(ctx, ModeKind::ReadLine);
+    pub fn enter_except_mode(editor: &mut Editor, clients: &mut ClientCollection) {
+        editor.read_line.set_prompt("except:");
+        editor.mode.read_line_state.on_client_keys = |editor, clients, _, poll| {
+            on_submitted!(editor, poll => on_event_impl(editor, clients, false));
+        };
+        Mode::change_to(editor, ModeKind::ReadLine);
     }
 
-    fn on_event_impl(ctx: &mut ModeContext, keep_if_contains_pattern: bool) {
+    fn on_event_impl(
+        editor: &mut Editor,
+        clients: &mut ClientCollection,
+        keep_if_contains_pattern: bool,
+    ) {
         fn range_contains_pattern(
             buffer: &BufferContent,
             range: BufferRange,
@@ -178,16 +200,16 @@ pub mod filter_cursors {
             }
         }
 
-        let pattern = ctx.read_line.input();
+        let pattern = editor.read_line.input();
         let pattern = if pattern.is_empty() {
-            ctx.registers.get(SEARCH_REGISTER)
+            editor.registers.get(SEARCH_REGISTER)
         } else {
             pattern
         };
 
-        let handle = unwrap_or_return!(ctx.current_buffer_view_handle());
-        let buffer_view = unwrap_or_return!(ctx.buffer_views.get_mut(handle));
-        let buffer = unwrap_or_return!(ctx.buffers.get_mut(buffer_view.buffer_handle)).content();
+        let handle = unwrap_or_return!(clients.current_buffer_view_handle());
+        let buffer_view = unwrap_or_return!(editor.buffer_views.get_mut(handle));
+        let buffer = unwrap_or_return!(editor.buffers.get_mut(buffer_view.buffer_handle)).content();
 
         let mut cursors = buffer_view.cursors.mut_guard();
         let main_cursor_position = cursors.main_cursor().position;
@@ -221,7 +243,7 @@ pub mod split_cursors {
         cursor::{Cursor, CursorCollectionMutGuard},
     };
 
-    pub fn enter_by_pattern_mode(ctx: &mut ModeContext) {
+    pub fn enter_by_pattern_mode(editor: &mut Editor) {
         fn add_matches(
             cursors: &mut CursorCollectionMutGuard,
             line: &str,
@@ -241,13 +263,14 @@ pub mod split_cursors {
             }
         }
 
-        ctx.read_line.set_prompt("split-by:");
-        ctx.mode.read_line_state.on_client_keys =
-            |ctx, _, poll| on_submitted!(ctx, poll => on_event_impl(ctx, add_matches));
-        Mode::change_to(ctx, ModeKind::ReadLine);
+        editor.read_line.set_prompt("split-by:");
+        editor.mode.read_line_state.on_client_keys = |editor, clients, _, poll| {
+            on_submitted!(editor, poll => on_event_impl(editor, clients, add_matches));
+        };
+        Mode::change_to(editor, ModeKind::ReadLine);
     }
 
-    pub fn enter_by_separators_mode(ctx: &mut ModeContext) {
+    pub fn enter_by_separators_mode(editor: &mut Editor) {
         fn add_matches(
             cursors: &mut CursorCollectionMutGuard,
             line: &str,
@@ -275,26 +298,28 @@ pub mod split_cursors {
             }
         }
 
-        ctx.read_line.set_prompt("split-on:");
-        ctx.mode.read_line_state.on_client_keys =
-            |ctx, _, poll| on_submitted!(ctx, poll => on_event_impl(ctx, add_matches));
-        Mode::change_to(ctx, ModeKind::ReadLine);
+        editor.read_line.set_prompt("split-on:");
+        editor.mode.read_line_state.on_client_keys = |editor, clients, _, poll| {
+            on_submitted!(editor, poll => on_event_impl(editor, clients, add_matches));
+        };
+        Mode::change_to(editor, ModeKind::ReadLine);
     }
 
     fn on_event_impl(
-        ctx: &mut ModeContext,
+        editor: &mut Editor,
+        clients: &mut ClientCollection,
         add_matches: fn(&mut CursorCollectionMutGuard, &str, &str, BufferPosition),
     ) {
-        let pattern = ctx.read_line.input();
+        let pattern = editor.read_line.input();
         let pattern = if pattern.is_empty() {
-            ctx.registers.get(SEARCH_REGISTER)
+            editor.registers.get(SEARCH_REGISTER)
         } else {
             pattern
         };
 
-        let handle = unwrap_or_return!(ctx.current_buffer_view_handle());
-        let buffer_view = unwrap_or_return!(ctx.buffer_views.get_mut(handle));
-        let buffer = unwrap_or_return!(ctx.buffers.get_mut(buffer_view.buffer_handle)).content();
+        let handle = unwrap_or_return!(clients.current_buffer_view_handle());
+        let buffer_view = unwrap_or_return!(editor.buffer_views.get_mut(handle));
+        let buffer = unwrap_or_return!(editor.buffers.get_mut(buffer_view.buffer_handle)).content();
 
         let mut cursors = buffer_view.cursors.mut_guard();
         let main_cursor_position = cursors.main_cursor().position;
@@ -361,19 +386,19 @@ pub mod goto {
         word_database::WordKind,
     };
 
-    pub fn enter_mode(ctx: &mut ModeContext) {
-        fn on_client_keys(ctx: &mut ModeContext, _: &mut KeysIterator, poll: ReadLinePoll) {
+    pub fn enter_mode(editor: &mut Editor, clients: &mut ClientCollection) {
+        fn on_client_keys(editor: &mut Editor, clients: &mut ClientCollection, _: &mut KeysIterator, poll: ReadLinePoll) {
             match poll {
                 ReadLinePoll::Pending => {
-                    let line_number: usize = match ctx.read_line.input().parse() {
+                    let line_number: usize = match editor.read_line.input().parse() {
                         Ok(number) => number,
                         Err(_) => return,
                     };
                     let line_index = line_number.saturating_sub(1);
 
-                    let handle = unwrap_or_return!(ctx.current_buffer_view_handle());
-                    let buffer_view = unwrap_or_return!(ctx.buffer_views.get_mut(handle));
-                    let buffer = unwrap_or_return!(ctx.buffers.get(buffer_view.buffer_handle));
+                    let handle = unwrap_or_return!(clients.current_buffer_view_handle());
+                    let buffer_view = unwrap_or_return!(editor.buffer_views.get_mut(handle));
+                    let buffer = unwrap_or_return!(editor.buffers.get(buffer_view.buffer_handle));
 
                     let mut position = BufferPosition::line_col(line_index, 0);
                     let (first_word, _, mut right_words) = buffer.content().words_from(position);
@@ -390,23 +415,23 @@ pub mod goto {
                         position,
                     });
                 }
-                ReadLinePoll::Submitted => Mode::change_to(ctx, ModeKind::default()),
+                ReadLinePoll::Submitted => Mode::change_to(editor, ModeKind::default()),
                 ReadLinePoll::Canceled => {
                     NavigationHistory::move_in_history(
-                        ctx.clients,
-                        ctx.buffer_views,
-                        ctx.target_client,
+                        clients,
+                        &mut editor.buffer_views,
+                        clients.focused_client,
                         NavigationDirection::Backward,
                     );
-                    Mode::change_to(ctx, ModeKind::default());
+                    Mode::change_to(editor, ModeKind::default());
                 }
             }
         }
 
-        NavigationHistory::save_client_snapshot(ctx.clients, ctx.buffer_views, ctx.target_client);
-        ctx.read_line.set_prompt("goto-line:");
-        ctx.mode.read_line_state.on_client_keys = on_client_keys;
-        Mode::change_to(ctx, ModeKind::ReadLine);
+        NavigationHistory::save_client_snapshot(clients, &mut editor.buffer_views, clients.focused_client);
+        editor.read_line.set_prompt("goto-line:");
+        editor.mode.read_line_state.on_client_keys = on_client_keys;
+        Mode::change_to(editor, ModeKind::ReadLine);
     }
 }
 
@@ -416,9 +441,9 @@ pub mod custom {
     use crate::script::{ScriptCallback, ScriptContext, ScriptValue};
 
     pub fn enter_mode(ctx: &mut ScriptContext, callback: ScriptCallback) {
-        fn on_client_keys(ctx: &mut ModeContext, _: &mut KeysIterator, poll: ReadLinePoll) {
-            let previous_mode_kind = ctx.mode.kind();
-            let (engine, mut script_ctx) = ctx.into_script_context();
+        fn on_client_keys(editor: &mut Editor, clients: &mut ClientCollection, _: &mut KeysIterator, poll: ReadLinePoll) {
+            let previous_mode_kind = editor.mode.kind();
+            let (engine, mut script_ctx) = editor.into_script_context(clients);
             let result = engine.as_ref_with_ctx(&mut script_ctx, |engine, ctx, guard| {
                 let input = match poll {
                     ReadLinePoll::Pending => return Ok(()),
@@ -438,19 +463,20 @@ pub mod custom {
 
             match result {
                 Ok(()) => {
-                    if ctx.mode.kind() == previous_mode_kind {
-                        Mode::change_to(ctx, ModeKind::default());
+                    if editor.mode.kind() == previous_mode_kind {
+                        Mode::change_to(editor, ModeKind::default());
                     }
                 }
                 Err(error) => {
-                    ctx.status_message.write_error(&error);
-                    Mode::change_to(ctx, ModeKind::default());
+                    editor.status_message.write_error(&error);
+                    Mode::change_to(editor, ModeKind::default());
                 }
             }
         }
 
         ctx.script_callbacks.read_line = Some(callback);
         ctx.mode.read_line_state.on_client_keys = on_client_keys;
+        // TODO: implement
         //Mode::change_to(ctx, ModeKind::ReadLine);
     }
 }

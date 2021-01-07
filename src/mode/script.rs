@@ -24,14 +24,14 @@ impl ModeState for State {
 
     fn on_client_keys(
         editor: &mut Editor,
-        _: &mut ClientCollection,
+        clients: &mut ClientCollection,
         keys: &mut KeysIterator,
     ) -> ModeOperation {
         let this = &mut editor.mode.script_state;
-        match editor.read_line.poll(keys) {
+        match editor.read_line.poll(&editor.buffered_keys, keys) {
             ReadLinePoll::Pending => {
                 keys.put_back();
-                match keys.next() {
+                match keys.next(&editor.buffered_keys) {
                     Key::Ctrl('n') | Key::Ctrl('j') => {
                         this.history_index = editor
                             .scripts
@@ -58,8 +58,7 @@ impl ModeState for State {
 
                 let previous_mode_kind = editor.mode.kind();
 
-                /*
-                let (engine, mut ctx) = ctx.into_script_context();
+                let (engine, mut ctx) = editor.into_script_context(clients);
 
                 let code = ctx.read_line.input();
                 const BUF_CAPACITY: usize = 256;
@@ -80,7 +79,6 @@ impl ModeState for State {
                         EditorLoop::Continue => ctx.status_message.write_error(&error),
                     }
                 }
-                */
 
                 if editor.mode.kind() == previous_mode_kind {
                     Mode::change_to(editor, ModeKind::default());

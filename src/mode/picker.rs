@@ -1,72 +1,73 @@
 use crate::{
     client_event::Key,
-    editor::{KeysIterator, ReadLinePoll},
-    mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
+    client::ClientCollection,
+    editor::{KeysIterator, ReadLinePoll, Editor},
+    mode::{Mode, ModeKind, ModeOperation, ModeState},
     word_database::EmptyWordCollection,
 };
 
 pub struct State {
-    on_client_keys: fn(&mut ModeContext, &mut KeysIterator, ReadLinePoll),
+    on_client_keys: fn(&mut Editor, &mut ClientCollection, &mut KeysIterator, ReadLinePoll),
 }
 
 impl Default for State {
     fn default() -> Self {
         Self {
-            on_client_keys: |_, _, _| (),
+            on_client_keys: |_, _, _, _| (),
         }
     }
 }
 
 impl ModeState for State {
-    fn on_enter(ctx: &mut ModeContext) {
-        ctx.read_line.set_input("");
-        ctx.picker.filter(&EmptyWordCollection, "");
+    fn on_enter(editor: &mut Editor, _: &mut ClientCollection) {
+        editor.read_line.set_input("");
+        editor.picker.filter(&EmptyWordCollection, "");
     }
 
-    fn on_exit(ctx: &mut ModeContext) {
-        ctx.read_line.set_input("");
-        ctx.picker.reset();
+    fn on_exit(editor: &mut Editor, _: &mut ClientCollection) {
+        editor.read_line.set_input("");
+        editor.picker.reset();
     }
 
-    fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
-        let this = &mut ctx.mode.picker_state;
-        match ctx.read_line.poll(keys) {
+    fn on_client_keys(editor: &mut Editor, clients: &mut ClientCollection, keys: &mut KeysIterator) -> ModeOperation {
+        let this = &mut editor.mode.picker_state;
+        match editor.read_line.poll(&editor.buffered_keys, keys) {
             ReadLinePoll::Pending => {
                 keys.put_back();
-                match keys.next() {
-                    Key::Ctrl('n') | Key::Ctrl('j') | Key::Down => ctx.picker.move_cursor(1),
-                    Key::Ctrl('p') | Key::Ctrl('k') | Key::Up => ctx.picker.move_cursor(-1),
+                match keys.next(&editor.buffered_keys) {
+                    Key::Ctrl('n') | Key::Ctrl('j') | Key::Down => editor.picker.move_cursor(1),
+                    Key::Ctrl('p') | Key::Ctrl('k') | Key::Up => editor.picker.move_cursor(-1),
                     Key::Ctrl('d') | Key::PageDown => {
-                        let picker_height = ctx
+                        let picker_height = editor
                             .picker
-                            .height(ctx.config.values.picker_max_height.get() as _)
+                            .height(editor.config.values.picker_max_height.get() as _)
                             as isize;
-                        ctx.picker.move_cursor(picker_height / 2);
+                        editor.picker.move_cursor(picker_height / 2);
                     }
                     Key::Ctrl('u') | Key::PageUp => {
-                        let picker_height = ctx
+                        let picker_height = editor
                             .picker
-                            .height(ctx.config.values.picker_max_height.get() as _)
+                            .height(editor.config.values.picker_max_height.get() as _)
                             as isize;
-                        ctx.picker.move_cursor(-picker_height / 2);
+                        editor.picker.move_cursor(-picker_height / 2);
                     }
                     Key::Ctrl('b') | Key::Home => {
-                        let cursor = ctx.picker.cursor() as isize;
-                        ctx.picker.move_cursor(-cursor);
+                        let cursor = editor.picker.cursor() as isize;
+                        editor.picker.move_cursor(-cursor);
                     }
                     Key::Ctrl('e') | Key::End => {
-                        let cursor = ctx.picker.cursor() as isize;
-                        let entry_count = ctx.picker.height(isize::MAX as _) as isize;
-                        ctx.picker.move_cursor(entry_count - cursor - 1);
+                        let cursor = editor.picker.cursor() as isize;
+                        let entry_count = editor.picker.height(isize::MAX as _) as isize;
+                        editor.picker.move_cursor(entry_count - cursor - 1);
                     }
-                    _ => ctx
+                    _ => editor
                         .picker
-                        .filter(&EmptyWordCollection, ctx.read_line.input()),
+                        .filter(&EmptyWordCollection, editor.read_line.input()),
                 }
 
-                (this.on_client_keys)(ctx, keys, ReadLinePoll::Pending);
+                (this.on_client_keys)(editor, clients, keys, ReadLinePoll::Pending);
             }
-            poll => (this.on_client_keys)(ctx, keys, poll),
+            poll => (this.on_client_keys)(editor, clients, keys, poll),
         }
 
         ModeOperation::None
@@ -80,45 +81,45 @@ pub mod buffer {
 
     use crate::{buffer::Buffer, navigation_history::NavigationHistory, picker::Picker};
 
-    pub fn enter_mode(ctx: &mut ModeContext) {
-        fn on_client_keys(ctx: &mut ModeContext, _: &mut KeysIterator, poll: ReadLinePoll) {
+    pub fn enter_mode(editor: &mut Editor, clients: &mut ClientCollection) {
+        fn on_client_keys(editor: &mut Editor, clients: &mut ClientCollection, _: &mut KeysIterator, poll: ReadLinePoll) {
             match poll {
                 ReadLinePoll::Pending => return,
                 ReadLinePoll::Submitted => (),
                 ReadLinePoll::Canceled => {
-                    Mode::change_to(ctx, ModeKind::default());
+                    Mode::change_to(editor, ModeKind::default());
                     return;
                 }
             }
 
-            let path = match ctx.picker.current_entry(&EmptyWordCollection) {
+            let path = match editor.picker.current_entry(&EmptyWordCollection) {
                 Some(entry) => entry.name,
                 None => {
-                    Mode::change_to(ctx, ModeKind::default());
+                    Mode::change_to(editor, ModeKind::default());
                     return;
                 }
             };
 
             NavigationHistory::save_client_snapshot(
-                ctx.clients,
-                ctx.buffer_views,
-                ctx.target_client,
+                clients,
+                &editor.buffer_views,
+                clients.focused_client,
             );
 
-            match ctx.buffer_views.buffer_view_handle_from_path(
-                ctx.buffers,
-                ctx.word_database,
-                ctx.target_client,
-                ctx.current_directory,
+            match editor.buffer_views.buffer_view_handle_from_path(
+                &mut editor.buffers,
+                &mut editor.word_database,
+                clients.focused_client,
+                &editor.current_directory,
                 Path::new(path),
                 None,
-                ctx.editor_events,
+                &mut editor.editor_events,
             ) {
-                Ok(handle) => ctx.set_current_buffer_view_handle(Some(handle)),
-                Err(error) => ctx.status_message.write_error(&error),
+                Ok(handle) => clients.set_current_buffer_view_handle(editor, Some(handle)),
+                Err(error) => editor.status_message.write_error(&error),
             }
 
-            Mode::change_to(ctx, ModeKind::default());
+            Mode::change_to(editor, ModeKind::default());
         }
 
         fn add_buffer_to_picker(picker: &mut Picker, buffer: &Buffer) {
@@ -127,34 +128,33 @@ pub mod buffer {
             }
         }
 
-        ctx.read_line.set_prompt("buffer:");
-        ctx.picker.reset();
+        editor.read_line.set_prompt("buffer:");
+        editor.picker.reset();
 
-        let buffers = &ctx.buffers;
-        let buffer_views = &ctx.buffer_views;
-        let prevous_buffer_handle = ctx
-            .clients
-            .get(ctx.target_client)
+        let buffers = &editor.buffers;
+        let buffer_views = &editor.buffer_views;
+        let prevous_buffer_handle = clients
+            .get(clients.focused_client)
             .and_then(|c| c.previous_buffer_view_handle())
             .and_then(|h| buffer_views.get(h))
             .map(|v| v.buffer_handle);
 
         if let Some(buffer) = prevous_buffer_handle.and_then(|h| buffers.get(h)) {
-            add_buffer_to_picker(ctx.picker, buffer);
+            add_buffer_to_picker(&mut editor.picker, buffer);
         }
 
-        for buffer in ctx.buffers.iter() {
+        for buffer in editor.buffers.iter() {
             let buffer_handle = buffer.handle();
             if prevous_buffer_handle
                 .map(|h| h != buffer_handle)
                 .unwrap_or(true)
             {
-                add_buffer_to_picker(ctx.picker, buffer);
+                add_buffer_to_picker(&mut editor.picker, buffer);
             }
         }
 
-        ctx.mode.picker_state.on_client_keys = on_client_keys;
-        Mode::change_to(ctx, ModeKind::Picker);
+        editor.mode.picker_state.on_client_keys = on_client_keys;
+        Mode::change_to(editor, ModeKind::Picker);
     }
 }
 
@@ -164,9 +164,9 @@ pub mod custom {
     use crate::script::{ScriptCallback, ScriptContext, ScriptValue};
 
     pub fn enter_mode(ctx: &mut ScriptContext, callback: ScriptCallback) {
-        fn on_client_keys(ctx: &mut ModeContext, _: &mut KeysIterator, poll: ReadLinePoll) {
-            let previous_mode_kind = ctx.mode.kind();
-            let (engine, mut script_ctx) = ctx.into_script_context();
+        fn on_client_keys(editor: &mut Editor, clients: &mut ClientCollection, _: &mut KeysIterator, poll: ReadLinePoll) {
+            let previous_mode_kind = editor.mode.kind();
+            let (engine, mut script_ctx) = editor.into_script_context(clients);
             let result = engine.as_ref_with_ctx(&mut script_ctx, |engine, ctx, guard| {
                 let (name, description) = match poll {
                     ReadLinePoll::Pending => return Ok(()),
@@ -184,7 +184,7 @@ pub mod custom {
                     ReadLinePoll::Canceled => (ScriptValue::Nil, ScriptValue::Nil),
                 };
 
-                if let Some(callback) = ctx.script_callbacks.picker.take() {
+                if let Some(callback) = editor.script_callbacks.picker.take() {
                     callback.call(engine, &guard, (name, description))?;
                     callback.dispose(engine)?;
                 }
@@ -194,19 +194,20 @@ pub mod custom {
 
             match result {
                 Ok(()) => {
-                    if ctx.mode.kind() == previous_mode_kind {
-                        Mode::change_to(ctx, ModeKind::default());
+                    if editor.mode.kind() == previous_mode_kind {
+                        Mode::change_to(editor, ModeKind::default());
                     }
                 }
                 Err(error) => {
-                    ctx.status_message.write_error(&error);
-                    Mode::change_to(ctx, ModeKind::default());
+                    editor.status_message.write_error(&error);
+                    Mode::change_to(editor, ModeKind::default());
                 }
             }
         }
 
         ctx.script_callbacks.picker = Some(callback);
         ctx.mode.picker_state.on_client_keys = on_client_keys;
+        // TODO: implement
         //Mode::change_to(ctx, ModeKind::Picker);
     }
 }
