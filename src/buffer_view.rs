@@ -9,7 +9,7 @@ use crate::{
     buffer_position::{BufferPosition, BufferRange},
     client::TargetClient,
     cursor::{Cursor, CursorCollection},
-    editor_event::EditorEventQueue,
+    editor_event::EditorEventDoubleQueue,
     history::{Edit, EditKind},
     script::ScriptValue,
     word_database::{WordDatabase, WordIter, WordKind},
@@ -391,7 +391,7 @@ impl BufferViewCollection {
     pub fn defer_remove_where<F>(
         &mut self,
         buffers: &mut BufferCollection,
-        events: &mut EditorEventQueue,
+        events: &mut EditorEventDoubleQueue,
         predicate: F,
     ) where
         F: Fn(&BufferView) -> bool,
@@ -428,7 +428,7 @@ impl BufferViewCollection {
         handle: BufferViewHandle,
         position: BufferPosition,
         text: &str,
-        events: &mut EditorEventQueue,
+        events: &mut EditorEventDoubleQueue,
     ) {
         let current_view = match &mut self.buffer_views[handle.0] {
             Some(view) => view,
@@ -453,7 +453,7 @@ impl BufferViewCollection {
         word_database: &mut WordDatabase,
         handle: BufferViewHandle,
         text: &str,
-        events: &mut EditorEventQueue,
+        events: &mut EditorEventDoubleQueue,
     ) {
         let current_view = match &mut self.buffer_views[handle.0] {
             Some(view) => view,
@@ -480,7 +480,7 @@ impl BufferViewCollection {
         word_database: &mut WordDatabase,
         handle: BufferViewHandle,
         range: BufferRange,
-        events: &mut EditorEventQueue,
+        events: &mut EditorEventDoubleQueue,
     ) {
         let current_view = match &mut self.buffer_views[handle.0] {
             Some(view) => view,
@@ -504,7 +504,7 @@ impl BufferViewCollection {
         buffers: &mut BufferCollection,
         word_database: &mut WordDatabase,
         handle: BufferViewHandle,
-        events: &mut EditorEventQueue,
+        events: &mut EditorEventDoubleQueue,
     ) {
         let current_view = match &mut self.buffer_views[handle.0] {
             Some(view) => view,
@@ -532,7 +532,7 @@ impl BufferViewCollection {
         word_database: &mut WordDatabase,
         handle: BufferViewHandle,
         completion: &str,
-        events: &mut EditorEventQueue,
+        events: &mut EditorEventDoubleQueue,
     ) {
         let current_view = match &mut self.buffer_views[handle.0] {
             Some(view) => view,
@@ -598,7 +598,7 @@ impl BufferViewCollection {
         &mut self,
         buffers: &mut BufferCollection,
         word_database: &mut WordDatabase,
-        events: &mut EditorEventQueue,
+        events: &mut EditorEventDoubleQueue,
         handle: BufferViewHandle,
     ) {
         if let Some(buffer) = self.buffer_views[handle.0]
@@ -613,7 +613,7 @@ impl BufferViewCollection {
         &mut self,
         buffers: &mut BufferCollection,
         word_database: &mut WordDatabase,
-        events: &mut EditorEventQueue,
+        events: &mut EditorEventDoubleQueue,
         handle: BufferViewHandle,
     ) {
         if let Some(buffer) = self.buffer_views[handle.0]
@@ -718,7 +718,7 @@ impl BufferViewCollection {
         root: &Path,
         path: &Path,
         line_index: Option<usize>,
-        events: &mut EditorEventQueue,
+        events: &mut EditorEventDoubleQueue,
     ) -> Result<BufferViewHandle, BufferViewError> {
         pub fn try_set_line_index(
             buffer_views: &mut BufferViewCollection,
@@ -778,7 +778,7 @@ mod tests {
 
     struct TestContext {
         pub word_database: WordDatabase,
-        pub events: EditorEventQueue,
+        pub events: EditorEventDoubleQueue,
         pub buffers: BufferCollection,
         pub buffer_views: BufferViewCollection,
         pub buffer_view_handle: BufferViewHandle,
@@ -786,7 +786,7 @@ mod tests {
 
     impl TestContext {
         pub fn with_buffer(text: &str) -> Self {
-            let mut events = EditorEventQueue::default();
+            let mut events = EditorEventDoubleQueue::default();
             let mut word_database = WordDatabase::new();
 
             let mut buffers = BufferCollection::default();

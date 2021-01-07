@@ -9,7 +9,7 @@ use std::{
 use crate::{
     buffer_position::{BufferPosition, BufferRange},
     client::ClientCollection,
-    editor_event::{EditorEvent, EditorEventQueue},
+    editor_event::{EditorEvent, EditorEventDoubleQueue},
     history::{Edit, EditKind, History},
     script::ScriptValue,
     syntax::{HighlightResult, HighlightedBuffer, SyntaxCollection, SyntaxHandle},
@@ -806,7 +806,7 @@ impl Buffer {
         word_database: &mut WordDatabase,
         position: BufferPosition,
         text: &str,
-        events: &mut EditorEventQueue,
+        events: &mut EditorEventDoubleQueue,
     ) -> BufferRange {
         self.search_ranges.clear();
         let position = self.content.clamp_position(position);
@@ -873,7 +873,7 @@ impl Buffer {
         &mut self,
         word_database: &mut WordDatabase,
         mut range: BufferRange,
-        events: &mut EditorEventQueue,
+        events: &mut EditorEventDoubleQueue,
     ) {
         self.search_ranges.clear();
         range.from = self.content.clamp_position(range.from);
@@ -979,7 +979,7 @@ impl Buffer {
     pub fn undo<'a>(
         &'a mut self,
         word_database: &mut WordDatabase,
-        events: &mut EditorEventQueue,
+        events: &mut EditorEventDoubleQueue,
     ) -> impl 'a + Iterator<Item = Edit<'a>> {
         self.history_edits(word_database, events, |h| h.undo_edits())
     }
@@ -987,7 +987,7 @@ impl Buffer {
     pub fn redo<'a>(
         &'a mut self,
         word_database: &mut WordDatabase,
-        events: &mut EditorEventQueue,
+        events: &mut EditorEventDoubleQueue,
     ) -> impl 'a + Iterator<Item = Edit<'a>> {
         self.history_edits(word_database, events, |h| h.redo_edits())
     }
@@ -995,7 +995,7 @@ impl Buffer {
     fn history_edits<'a, F, I>(
         &'a mut self,
         word_database: &mut WordDatabase,
-        events: &mut EditorEventQueue,
+        events: &mut EditorEventDoubleQueue,
         selector: F,
     ) -> I
     where
@@ -1066,7 +1066,7 @@ impl Buffer {
     pub fn save_to_file(
         &mut self,
         path: Option<&Path>,
-        events: &mut EditorEventQueue,
+        events: &mut EditorEventDoubleQueue,
     ) -> Result<(), BufferError> {
         let new_path = match path {
             Some(path) => {
@@ -1103,7 +1103,7 @@ impl Buffer {
     pub fn discard_and_reload_from_file(
         &mut self,
         word_database: &mut WordDatabase,
-        events: &mut EditorEventQueue,
+        events: &mut EditorEventDoubleQueue,
     ) -> Result<(), BufferError> {
         if !self.capabilities.can_save {
             return Ok(());
@@ -1234,7 +1234,7 @@ impl BufferCollection {
             .filter_map(|b| if b.alive { Some(b) } else { None })
     }
 
-    pub fn defer_remove(&mut self, handle: BufferHandle, events: &mut EditorEventQueue) {
+    pub fn defer_remove(&mut self, handle: BufferHandle, events: &mut EditorEventDoubleQueue) {
         let buffer = &mut self.buffers[handle.0];
         if buffer.alive {
             buffer.alive = false;
@@ -1429,7 +1429,7 @@ mod tests {
     #[test]
     fn buffer_delete_undo_redo_single_line() {
         let mut word_database = WordDatabase::new();
-        let mut events = EditorEventQueue::default();
+        let mut events = EditorEventDoubleQueue::default();
 
         let mut buffer = Buffer::new(BufferHandle(0));
         buffer.capabilities = BufferCapabilities::text();
@@ -1464,7 +1464,7 @@ mod tests {
     #[test]
     fn buffer_delete_undo_redo_multi_line() {
         let mut word_database = WordDatabase::new();
-        let mut events = EditorEventQueue::default();
+        let mut events = EditorEventDoubleQueue::default();
 
         let mut buffer = Buffer::new(BufferHandle(0));
         buffer.capabilities = BufferCapabilities::text();
