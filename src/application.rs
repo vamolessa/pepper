@@ -236,7 +236,7 @@ where
             LocalEvent::Idle => editor.on_idle(&mut clients),
             LocalEvent::Repaint => (),
             LocalEvent::Key(key) => {
-                editor.status_message.clear();
+                editor.status_bar.clear();
                 let editor_loop =
                     editor.on_event(&mut clients, TargetClient::Local, ClientEvent::Key(key));
                 if editor_loop.is_quit() {
@@ -261,7 +261,7 @@ where
                         continue;
                     }
                     ConnectionEvent::Stream(stream_id) => {
-                        editor.status_message.clear();
+                        editor.status_bar.clear();
                         let handle = stream_id.into();
                         let editor_loop = connections.receive_events(handle, |event| {
                             editor.on_event(&mut clients, TargetClient::Remote(handle), event)

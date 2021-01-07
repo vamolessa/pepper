@@ -14,8 +14,8 @@ use crate::{
     buffer_view::{BufferViewCollection, BufferViewHandle},
     client::{ClientCollection, TargetClient},
     config::Config,
-    editor::{EditorLoop, ReadLine, StatusMessage},
-    editor_event::{EditorEvent, EditorEventDoubleQueue},
+    editor::{EditorLoop, ReadLine, StatusBar},
+    editor_event::{EditorEvent, EditorEventQueue},
     keymap::KeyMapCollection,
     lsp::{LspClientCollection, LspClientContext},
     mode::{Mode, ModeKind},
@@ -380,9 +380,9 @@ pub struct ScriptContext<'a> {
     pub read_line: &'a mut ReadLine,
     pub picker: &'a mut Picker,
 
-    pub status_message: &'a mut StatusMessage,
+    pub status_bar: &'a mut StatusBar,
 
-    pub editor_events: &'a mut EditorEventDoubleQueue,
+    pub editor_events: &'a mut EditorEventQueue,
     pub keymaps: &'a mut KeyMapCollection,
     pub script_callbacks: &'a mut script_bindings::ScriptCallbacks,
     pub tasks: &'a mut TaskManager,
@@ -417,7 +417,7 @@ impl<'a> ScriptContext<'a> {
             buffer_views: self.buffer_views,
             word_database: self.word_database,
 
-            status_message: self.status_message,
+            status_bar: self.status_bar,
             editor_events: self.editor_events,
         };
 

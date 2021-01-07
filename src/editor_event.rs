@@ -6,7 +6,7 @@ pub struct EditorEventText {
     texts_range: Range<usize>,
 }
 impl EditorEventText {
-    pub fn as_str<'a>(&self, events: &'a EditorEventDoubleQueue) -> &'a str {
+    pub fn as_str<'a>(&self, events: &'a EditorEventQueue) -> &'a str {
         &events.read.texts[self.texts_range.clone()]
     }
 }
@@ -38,19 +38,18 @@ pub enum EditorEvent {
 }
 
 #[derive(Default)]
-struct EditorEventQueue {
+struct EventQueue {
     events: Vec<EditorEvent>,
     texts: String,
 }
 
-// TODO: rename to EditorEventQueue
 #[derive(Default)]
-pub struct EditorEventDoubleQueue {
-    read: EditorEventQueue,
-    write: EditorEventQueue,
+pub struct EditorEventQueue {
+    read: EventQueue,
+    write: EventQueue,
 }
 
-impl EditorEventDoubleQueue {
+impl EditorEventQueue {
     pub fn flip(&mut self) {
         self.read.events.clear();
         self.read.texts.clear();

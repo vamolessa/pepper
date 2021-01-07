@@ -612,7 +612,7 @@ impl State {
                 );
 
                 Self::on_edit_keys(editor, keys, keys_from_index);
-                
+
                 Mode::change_to(editor, clients, target, ModeKind::Insert);
                 return ModeOperation::None;
             }
@@ -864,7 +864,7 @@ impl State {
                 Key::Char('n') => move_to_diagnostic(editor, clients, target, true),
                 Key::Char('p') => move_to_diagnostic(editor, clients, target, false),
                 Key::Char('r') => editor
-                    .status_message
+                    .status_bar
                     .write_str(StatusMessageKind::Info, "rename not yet implemented"),
                 _ => (),
             },
@@ -986,14 +986,13 @@ impl ModeState for State {
         keys: &mut KeysIterator,
     ) -> ModeOperation {
         // TODO: get &Client instead of &mut ClientCollection and TargetClient
-        fn show_hovered_diagnostic_in_status_message(
+        fn show_hovered_diagnostic_in_status_bar(
             editor: &mut Editor,
             clients: &mut ClientCollection,
             target: TargetClient,
         ) {
             let handle = unwrap_or_return!(clients.current_buffer_view_handle(target));
-            let current_message = editor.status_message.message().1;
-            if !current_message.is_empty() {
+            if !editor.status_bar.message().1.is_empty() {
                 return;
             }
             let buffer_view = match editor.buffer_views.get(handle) {
@@ -1018,7 +1017,7 @@ impl ModeState for State {
                     }
                 }) {
                     editor
-                        .status_message
+                        .status_bar
                         .write_str(StatusMessageKind::Info, &diagnostics[index].message);
                     break;
                 }
@@ -1030,7 +1029,7 @@ impl ModeState for State {
                 let op =
                     Self::on_client_keys_with_buffer_view(editor, clients, target, keys, handle);
                 if let ModeOperation::None = op {
-                    show_hovered_diagnostic_in_status_message(editor, clients, target);
+                    show_hovered_diagnostic_in_status_bar(editor, clients, target);
                 }
                 op
             }
@@ -1123,7 +1122,7 @@ fn move_to_search_match<F>(
 
         if search_ranges.is_empty() {
             editor
-                .status_message
+                .status_bar
                 .write_str(StatusMessageKind::Error, "no search result");
             return;
         }
@@ -1302,9 +1301,9 @@ fn move_to_diagnostic(
                 .buffer_views
                 .buffer_view_handle_from_buffer_handle(target, buffer_handle),
             None => match editor.buffer_views.buffer_view_handle_from_path(
+                target,
                 &mut editor.buffers,
                 &mut editor.word_database,
-                target,
                 &editor.current_directory,
                 path,
                 None,
@@ -1312,7 +1311,7 @@ fn move_to_diagnostic(
             ) {
                 Ok(handle) => handle,
                 Err(error) => {
-                    editor.status_message.write_error(&error);
+                    editor.status_bar.write_error(&error);
                     return;
                 }
             },

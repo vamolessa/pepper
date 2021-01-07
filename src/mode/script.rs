@@ -77,7 +77,7 @@ impl ModeState for State {
                     match ctx.editor_loop {
                         EditorLoop::Quit => return ModeOperation::Quit,
                         EditorLoop::QuitAll => return ModeOperation::QuitAll,
-                        EditorLoop::Continue => ctx.status_message.write_error(&error),
+                        EditorLoop::Continue => ctx.status_bar.write_error(&error),
                     }
                 }
 
@@ -100,7 +100,7 @@ fn eval<'a>(
         match value {
             ScriptValue::Nil => (),
             ScriptValue::Function(f) => f.call(&guard, ())?,
-            value => ctx.status_message.write_fmt(
+            value => ctx.status_bar.write_fmt(
                 StatusMessageKind::Info,
                 format_args!("{}", value.display(&guard)),
             ),

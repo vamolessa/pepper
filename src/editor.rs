@@ -12,7 +12,7 @@ use crate::{
     client_event::{ClientEvent, Key, LocalEvent},
     config::Config,
     connection::ConnectionWithClientHandle,
-    editor_event::{EditorEvent, EditorEventDoubleQueue},
+    editor_event::{EditorEvent, EditorEventQueue},
     keymap::{KeyMapCollection, MatchResult},
     lsp::{LspClientCollection, LspClientContext, LspClientHandle, LspServerEvent},
     mode::{Mode, ModeKind, ModeOperation},
@@ -161,11 +161,11 @@ pub enum StatusMessageKind {
 }
 
 // TODO: rename to 'StatusBar'
-pub struct StatusMessage {
+pub struct StatusBar {
     kind: StatusMessageKind,
     message: String,
 }
-impl StatusMessage {
+impl StatusBar {
     pub fn new() -> Self {
         Self {
             kind: StatusMessageKind::Info,
@@ -225,11 +225,11 @@ pub struct Editor {
     pub scripts: ScriptEngine,
     pub script_callbacks: ScriptCallbacks,
 
-    pub status_message: StatusMessage, //TODO: rename to 'status_bar'
+    pub status_bar: StatusBar,
 
     pub tasks: TaskManager,
     pub lsp: LspClientCollection,
-    pub editor_events: EditorEventDoubleQueue, // TODO: rename to 'events'
+    pub editor_events: EditorEventQueue, // TODO: rename to 'events'
 
     local_event_sender: mpsc::Sender<LocalEvent>,
     keymaps: KeyMapCollection,
@@ -258,11 +258,11 @@ impl Editor {
             scripts: ScriptEngine::new(),
             script_callbacks: ScriptCallbacks::default(),
 
-            status_message: StatusMessage::new(),
+            status_bar: StatusBar::new(),
 
             tasks,
             lsp,
-            editor_events: EditorEventDoubleQueue::default(),
+            editor_events: EditorEventQueue::default(),
 
             local_event_sender,
             keymaps: KeyMapCollection::default(),
@@ -293,7 +293,7 @@ impl Editor {
             read_line: &mut self.read_line,
             picker: &mut self.picker,
 
-            status_message: &mut self.status_message,
+            status_bar: &mut self.status_bar,
 
             editor_events: &mut self.editor_events,
             keymaps: &mut self.keymaps,
@@ -309,7 +309,7 @@ impl Editor {
         let (scripts, mut script_ctx) = self.into_script_context(clients, TargetClient::Local);
 
         if let Err(e) = scripts.eval_entry_file(&mut script_ctx, path) {
-            script_ctx.status_message.write_error(&e);
+            script_ctx.status_bar.write_error(&e);
         }
 
         if previous_mode_kind == self.mode.kind() {
@@ -417,9 +417,9 @@ impl Editor {
                 }
 
                 match self.buffer_views.buffer_view_handle_from_path(
+                    target_client,
                     &mut self.buffers,
                     &mut self.word_database,
-                    target_client,
                     &self.current_directory,
                     Path::new(path),
                     line_index,
@@ -430,7 +430,7 @@ impl Editor {
                             client.set_current_buffer_view_handle(Some(handle));
                         }
                     }
-                    Err(error) => self.status_message.write_error(&error),
+                    Err(error) => self.status_bar.write_error(&error),
                 }
 
                 self.trigger_event_handlers(clients, target_client);
@@ -438,9 +438,7 @@ impl Editor {
             }
             ClientEvent::Key(key) => {
                 let target = clients.client_map.get(target);
-
-                if target != clients.focused_target() {
-                    clients.set_focused_target(target);
+                if clients.focus_client(target) {
                     self.recording_macro = None;
                     self.buffered_keys.0.clear();
                 }
@@ -544,7 +542,7 @@ impl Editor {
             match key {
                 Ok(key) => self.buffered_keys.0.push(key),
                 Err(error) => {
-                    self.status_message.write_fmt(
+                    self.status_bar.write_fmt(
                         StatusMessageKind::Error,
                         format_args!("error parsing keys '{}'\n{}", keys, &error),
                     );
@@ -565,12 +563,12 @@ impl Editor {
 
         let (scripts, mut script_ctx) = self.into_script_context(clients, target);
         if let Err(error) = scripts.on_editor_event(&mut script_ctx) {
-            script_ctx.status_message.write_error(&error);
+            script_ctx.status_bar.write_error(&error);
         }
 
         let (lsp, mut lsp_ctx) = script_ctx.into_lsp_context();
         if let Err(error) = lsp.on_editor_events(&mut lsp_ctx) {
-            lsp_ctx.status_message.write_error(&error);
+            lsp_ctx.status_bar.write_error(&error);
         }
 
         self.handle_editor_events(clients);
@@ -610,7 +608,7 @@ impl Editor {
         // TODO: will have to pass an extra 'target_client' parameter to all functions
         let (scripts, mut script_ctx) = self.into_script_context(clients, target);
         if let Err(error) = scripts.on_task_event(&mut script_ctx, handle, &result) {
-            script_ctx.status_message.write_error(&error);
+            script_ctx.status_bar.write_error(&error);
         }
     }
 
@@ -623,12 +621,12 @@ impl Editor {
             buffer_views: &mut self.buffer_views,
             word_database: &mut self.word_database,
 
-            status_message: &mut self.status_message,
+            status_bar: &mut self.status_bar,
             editor_events: &mut self.editor_events,
         };
 
         if let Err(error) = self.lsp.on_server_event(&mut ctx, client_handle, event) {
-            self.status_message.write_error(&error);
+            self.status_bar.write_error(&error);
         }
     }
 }

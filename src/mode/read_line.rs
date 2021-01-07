@@ -487,7 +487,7 @@ pub mod custom {
                     }
                 }
                 Err(error) => {
-                    editor.status_message.write_error(&error);
+                    editor.status_bar.write_error(&error);
                     Mode::change_to(editor, clients, target, ModeKind::default());
                 }
             }

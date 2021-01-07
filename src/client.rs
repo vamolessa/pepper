@@ -178,7 +178,7 @@ impl ClientData {
 // TODO: rename to 'ClientManager'
 #[derive(Default)]
 pub struct ClientCollection {
-    focused_client: TargetClient, // TODO: rename to 'focused_target'
+    focused_client: TargetClient,    // TODO: rename to 'focused_target'
     pub client_map: ClientTargetMap, // TODO: expose through ClientCollection
 
     local: Client,
@@ -192,13 +192,15 @@ impl ClientCollection {
         self.focused_client
     }
 
-    pub fn set_focused_target(&mut self, target: TargetClient) {
+    pub fn focus_client(&mut self, target: TargetClient) -> bool {
+        let changed = target != self.focused_client;
         self.focused_client = target;
+        changed
     }
 
     // TODO: rename
     pub fn current_buffer_view_handle(&self, target: TargetClient) -> Option<BufferViewHandle> {
-        self.get(self.focused_client)
+        self.get(target)
             .and_then(|c| c.current_buffer_view_handle())
     }
 

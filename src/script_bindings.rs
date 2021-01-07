@@ -184,7 +184,7 @@ mod client {
             ctx.editor_loop = EditorLoop::Quit;
             Err(ScriptError::from(QuitError))
         } else {
-            ctx.status_message.write_str(
+            ctx.status_bar.write_str(
                 StatusMessageKind::Error,
                 "there are unsaved changes in buffers. try 'client.force_quit' to force quit",
             );
@@ -213,7 +213,7 @@ mod client {
             ctx.editor_loop = EditorLoop::QuitAll;
             Err(ScriptError::from(QuitError))
         } else {
-            ctx.status_message.write_str(
+            ctx.status_bar.write_str(
                 StatusMessageKind::Error,
                 "there are unsaved changes in buffers. try 'client.force_quit_all' to force quit all",
             );
@@ -277,7 +277,7 @@ mod editor {
         guard: ScriptContextGuard,
         value: ScriptValue,
     ) -> ScriptResult<()> {
-        ctx.status_message.write_fmt(
+        ctx.status_bar.write_fmt(
             StatusMessageKind::Info,
             format_args!("{}", value.display(&guard)),
         );
@@ -399,7 +399,7 @@ mod lsp {
             match client_handle.or_else(|| find_client_for_buffer(ctx, buffer_handle)) {
                 Some(handle) => handle,
                 None => {
-                    ctx.status_message
+                    ctx.status_bar
                         .write_str(StatusMessageKind::Error, "lsp server not running");
                     return Ok(None);
                 }
@@ -409,7 +409,7 @@ mod lsp {
             Some(Ok(value)) => Ok(Some(value)),
             Some(Err(error)) => Err(ScriptError::from(error)),
             None => {
-                ctx.status_message
+                ctx.status_bar
                     .write_str(StatusMessageKind::Error, "lsp server not running");
                 Ok(None)
             }
@@ -644,9 +644,9 @@ mod buffer {
         let buffer_view_handle = ctx
             .buffer_views
             .buffer_view_handle_from_path(
+                ctx.target_client,
                 ctx.buffers,
                 ctx.word_database,
-                ctx.target_client,
                 ctx.current_directory,
                 path,
                 line_number.map(|l| l.saturating_sub(1)),
@@ -670,7 +670,7 @@ mod buffer {
                 .map(|b| b.needs_save())
                 .unwrap_or(false);
             if unsaved {
-                ctx.status_message.write_str(
+                ctx.status_bar.write_str(
                     StatusMessageKind::Error,
                     "there are unsaved changes in buffer. try 'buffer.force_close' to force close",
                 );
@@ -683,10 +683,10 @@ mod buffer {
                 .and_then(|b| b.path())
                 .and_then(|p| p.to_str())
             {
-                ctx.status_message
+                ctx.status_bar
                     .write_fmt(StatusMessageKind::Info, format_args!("closed '{}'", path));
             } else {
-                ctx.status_message
+                ctx.status_bar
                     .write_str(StatusMessageKind::Info, "closed buffer");
             }
 
@@ -713,10 +713,10 @@ mod buffer {
                 .and_then(|b| b.path())
                 .and_then(|p| p.to_str())
             {
-                ctx.status_message
+                ctx.status_bar
                     .write_fmt(StatusMessageKind::Info, format_args!("closed '{}'", path));
             } else {
-                ctx.status_message
+                ctx.status_bar
                     .write_str(StatusMessageKind::Info, "closed buffer");
             }
 
@@ -738,14 +738,14 @@ mod buffer {
     ) -> ScriptResult<()> {
         let unsaved_buffers = ctx.buffers.iter().any(|b| b.needs_save());
         if unsaved_buffers {
-            ctx.status_message.write_str(
+            ctx.status_bar.write_str(
                 StatusMessageKind::Error,
                 "there are unsaved changes in buffers. try 'buffer.force_close_all' to force close all",
             );
             Ok(())
         } else {
             let buffer_count = ctx.buffers.iter().count();
-            ctx.status_message.write_fmt(
+            ctx.status_bar.write_fmt(
                 StatusMessageKind::Info,
                 format_args!("{} buffers closed", buffer_count),
             );
@@ -766,7 +766,7 @@ mod buffer {
         _: (),
     ) -> ScriptResult<()> {
         let buffer_count = ctx.buffers.iter().count();
-        ctx.status_message.write_fmt(
+        ctx.status_bar.write_fmt(
             StatusMessageKind::Info,
             format_args!("{} buffers closed", buffer_count),
         );
@@ -804,7 +804,7 @@ mod buffer {
         }
 
         let path = buffer.path().unwrap_or(Path::new(""));
-        ctx.status_message.write_fmt(
+        ctx.status_bar.write_fmt(
             StatusMessageKind::Info,
             format_args!("saved to '{:?}'", path),
         );
@@ -826,7 +826,7 @@ mod buffer {
             buffer_count += 1;
         }
 
-        ctx.status_message.write_fmt(
+        ctx.status_bar.write_fmt(
             StatusMessageKind::Info,
             format_args!("{} buffers saved", buffer_count),
         );
@@ -846,7 +846,7 @@ mod buffer {
             .and_then(|h| buffers.get_mut(h))
         {
             if buffer.needs_save() {
-                ctx.status_message.write_str(
+                ctx.status_bar.write_str(
                     StatusMessageKind::Error,
                     "there are unsaved changes in buffer. try 'buffer.force_reload' to force reload",
                 );
@@ -855,9 +855,9 @@ mod buffer {
 
             match buffer.discard_and_reload_from_file(ctx.word_database, ctx.editor_events) {
                 Ok(()) => ctx
-                    .status_message
+                    .status_bar
                     .write_str(StatusMessageKind::Info, "reloaded"),
-                Err(error) => ctx.status_message.write_fmt(
+                Err(error) => ctx.status_bar.write_fmt(
                     StatusMessageKind::Error,
                     format_args!("{}", error.display(buffer)),
                 ),
@@ -880,9 +880,9 @@ mod buffer {
         {
             match buffer.discard_and_reload_from_file(ctx.word_database, ctx.editor_events) {
                 Ok(()) => ctx
-                    .status_message
+                    .status_bar
                     .write_str(StatusMessageKind::Info, "reloaded"),
-                Err(error) => ctx.status_message.write_fmt(
+                Err(error) => ctx.status_bar.write_fmt(
                     StatusMessageKind::Error,
                     format_args!("{}", error.display(buffer)),
                 ),
@@ -899,7 +899,7 @@ mod buffer {
     ) -> ScriptResult<()> {
         let unsaved_buffers = ctx.buffers.iter().any(|b| b.needs_save());
         if unsaved_buffers {
-            ctx.status_message.write_str(
+            ctx.status_bar.write_str(
                 StatusMessageKind::Error,
                 "there are unsaved changes in buffers. try 'buffer.force_reload_all' to force reload all",
             );
@@ -912,7 +912,7 @@ mod buffer {
                     buffer.discard_and_reload_from_file(ctx.word_database, ctx.editor_events)
                 {
                     had_error = true;
-                    ctx.status_message.write_fmt(
+                    ctx.status_bar.write_fmt(
                         StatusMessageKind::Error,
                         format_args!("{}", error.display(buffer)),
                     );
@@ -920,7 +920,7 @@ mod buffer {
                 buffer_count += 1;
             }
             if !had_error {
-                ctx.status_message.write_fmt(
+                ctx.status_bar.write_fmt(
                     StatusMessageKind::Info,
                     format_args!("{} buffers reloaded", buffer_count),
                 );
@@ -942,7 +942,7 @@ mod buffer {
                 buffer.discard_and_reload_from_file(ctx.word_database, ctx.editor_events)
             {
                 had_error = true;
-                ctx.status_message.write_fmt(
+                ctx.status_bar.write_fmt(
                     StatusMessageKind::Error,
                     format_args!("{}", error.display(buffer)),
                 );
@@ -950,7 +950,7 @@ mod buffer {
             buffer_count += 1;
         }
         if !had_error {
-            ctx.status_message.write_fmt(
+            ctx.status_bar.write_fmt(
                 StatusMessageKind::Info,
                 format_args!("{} buffers reloaded", buffer_count),
             );
@@ -1009,9 +1009,9 @@ mod buffer_view {
     ) -> ScriptResult<Option<BufferViewHandle>> {
         let path = path.to_str()?;
         match ctx.buffer_views.buffer_view_handle_from_path(
+            ctx.target_client,
             ctx.buffers,
             ctx.word_database,
-            ctx.target_client,
             ctx.current_directory,
             Path::new(path),
             None,

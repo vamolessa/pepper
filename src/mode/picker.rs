@@ -116,16 +116,16 @@ pub mod buffer {
             );
 
             match editor.buffer_views.buffer_view_handle_from_path(
+                target,
                 &mut editor.buffers,
                 &mut editor.word_database,
-                target,
                 &editor.current_directory,
                 Path::new(path),
                 None,
                 &mut editor.editor_events,
             ) {
                 Ok(handle) => clients.set_current_buffer_view_handle(editor, target, Some(handle)),
-                Err(error) => editor.status_message.write_error(&error),
+                Err(error) => editor.status_bar.write_error(&error),
             }
 
             Mode::change_to(editor, clients, target, ModeKind::default());
@@ -214,7 +214,7 @@ pub mod custom {
                     }
                 }
                 Err(error) => {
-                    editor.status_message.write_error(&error);
+                    editor.status_bar.write_error(&error);
                     Mode::change_to(editor, clients, target, ModeKind::default());
                 }
             }

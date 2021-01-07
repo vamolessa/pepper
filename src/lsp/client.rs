@@ -12,8 +12,8 @@ use crate::{
     buffer_view::BufferViewCollection,
     client_event::LocalEvent,
     config::Config,
-    editor::{StatusMessage, StatusMessageKind},
-    editor_event::{EditorEvent, EditorEventDoubleQueue},
+    editor::{StatusBar, StatusMessageKind},
+    editor_event::{EditorEvent, EditorEventQueue},
     glob::Glob,
     json::{
         FromJson, Json, JsonArray, JsonConvertError, JsonInteger, JsonObject, JsonString, JsonValue,
@@ -37,8 +37,8 @@ pub struct ClientContext<'a> {
     pub buffer_views: &'a mut BufferViewCollection,
     pub word_database: &'a mut WordDatabase,
 
-    pub status_message: &'a mut StatusMessage,
-    pub editor_events: &'a mut EditorEventDoubleQueue,
+    pub status_bar: &'a mut StatusBar,
+    pub editor_events: &'a mut EditorEventQueue,
 }
 
 #[derive(Default)]
@@ -664,17 +664,17 @@ impl Client {
                 let message = message.as_str(json);
                 match message_type {
                     1 => ctx
-                        .status_message
+                        .status_bar
                         .write_str(StatusMessageKind::Error, message),
-                    2 => ctx.status_message.write_fmt(
+                    2 => ctx.status_bar.write_fmt(
                         StatusMessageKind::Info,
                         format_args!("warning: {}", message),
                     ),
                     3 => ctx
-                        .status_message
+                        .status_bar
                         .write_fmt(StatusMessageKind::Info, format_args!("info: {}", message)),
                     4 => ctx
-                        .status_message
+                        .status_bar
                         .write_str(StatusMessageKind::Info, message),
                     _ => (),
                 }
@@ -805,7 +805,7 @@ impl Client {
             "textDocument/hover" => {
                 let contents = result.get("contents".into(), json);
                 let info = helper::extract_markup_content(contents, json);
-                ctx.status_message.write_str(StatusMessageKind::Info, info);
+                ctx.status_bar.write_str(StatusMessageKind::Info, info);
             }
             "textDocument/signatureHelp" => {
                 declare_json_object! {
@@ -831,9 +831,9 @@ impl Client {
                         helper::extract_markup_content(signature.documentation, json);
 
                     if documentation.is_empty() {
-                        ctx.status_message.write_str(StatusMessageKind::Info, label);
+                        ctx.status_bar.write_str(StatusMessageKind::Info, label);
                     } else {
-                        ctx.status_message.write_fmt(
+                        ctx.status_bar.write_fmt(
                             StatusMessageKind::Info,
                             format_args!("{}\n{}", documentation, label),
                         );
@@ -1005,7 +1005,7 @@ mod helper {
         json: &Json,
     ) {
         let error_message = error.message.as_str(json);
-        ctx.status_message.write_fmt(
+        ctx.status_bar.write_fmt(
             StatusMessageKind::Error,
             format_args!(
                 "[lsp error code {}] {}: '{}'",
