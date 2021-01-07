@@ -9,7 +9,9 @@ use std::{
 
 use crate::{
     client_event::LocalEvent,
-    json::{FromJson, Json, JsonInteger, JsonKey, JsonObject, JsonString, JsonValue},
+    json::{
+        FromJson, Json, JsonConvertError, JsonInteger, JsonKey, JsonObject, JsonString, JsonValue,
+    },
     lsp::client::ClientHandle,
 };
 
@@ -342,12 +344,10 @@ impl Drop for ServerConnection {
 #[derive(Default, Clone, Copy, PartialEq, Eq)]
 pub struct RequestId(pub usize);
 
-declare_json_object! {
-    pub struct ResponseError {
-        pub code: JsonInteger,
-        pub message: JsonKey,
-        pub data: JsonValue,
-    }
+pub struct ResponseError {
+    pub code: JsonInteger,
+    pub message: JsonKey,
+    pub data: JsonValue,
 }
 impl ResponseError {
     pub fn parse_error() -> Self {
@@ -364,6 +364,28 @@ impl ResponseError {
             message: JsonKey::Str("MethodNotFound"),
             data: JsonValue::Null,
         }
+    }
+}
+impl<'json> FromJson<'json> for ResponseError {
+    fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
+        let value = match value {
+            JsonValue::Object(object) => object,
+            _ => return Err(JsonConvertError),
+        };
+        let mut this = Self {
+            code: JsonInteger::default(),
+            message: JsonKey::default(),
+            data: JsonValue::Null,
+        };
+        for (key, value) in value.members(json) {
+            match key {
+                "code" => this.code = FromJson::from_json(value, json)?,
+                "message" => this.message = FromJson::from_json(value, json)?,
+                "data" => this.data = FromJson::from_json(value, json)?,
+                _ => (),
+            }
+        }
+        Ok(this)
     }
 }
 
