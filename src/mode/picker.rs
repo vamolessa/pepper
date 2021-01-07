@@ -87,7 +87,7 @@ pub mod buffer {
                 ReadLinePoll::Pending => return,
                 ReadLinePoll::Submitted => (),
                 ReadLinePoll::Canceled => {
-                    Mode::change_to(editor, ModeKind::default());
+                    Mode::change_to(editor, clients, ModeKind::default());
                     return;
                 }
             }
@@ -95,7 +95,7 @@ pub mod buffer {
             let path = match editor.picker.current_entry(&EmptyWordCollection) {
                 Some(entry) => entry.name,
                 None => {
-                    Mode::change_to(editor, ModeKind::default());
+                    Mode::change_to(editor, clients, ModeKind::default());
                     return;
                 }
             };
@@ -119,7 +119,7 @@ pub mod buffer {
                 Err(error) => editor.status_message.write_error(&error),
             }
 
-            Mode::change_to(editor, ModeKind::default());
+            Mode::change_to(editor, clients, ModeKind::default());
         }
 
         fn add_buffer_to_picker(picker: &mut Picker, buffer: &Buffer) {
@@ -154,7 +154,7 @@ pub mod buffer {
         }
 
         editor.mode.picker_state.on_client_keys = on_client_keys;
-        Mode::change_to(editor, ModeKind::Picker);
+        Mode::change_to(editor, clients, ModeKind::Picker);
     }
 }
 
@@ -195,12 +195,12 @@ pub mod custom {
             match result {
                 Ok(()) => {
                     if editor.mode.kind() == previous_mode_kind {
-                        Mode::change_to(editor, ModeKind::default());
+                        Mode::change_to(editor, clients, ModeKind::default());
                     }
                 }
                 Err(error) => {
                     editor.status_message.write_error(&error);
-                    Mode::change_to(editor, ModeKind::default());
+                    Mode::change_to(editor, clients, ModeKind::default());
                 }
             }
         }
@@ -208,6 +208,6 @@ pub mod custom {
         ctx.script_callbacks.picker = Some(callback);
         ctx.mode.picker_state.on_client_keys = on_client_keys;
         // TODO: implement
-        //Mode::change_to(ctx, ModeKind::Picker);
+        //Mode::change_to(ctx, clients, ModeKind::Picker);
     }
 }

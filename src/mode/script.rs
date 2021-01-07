@@ -49,7 +49,7 @@ impl ModeState for State {
                     _ => (),
                 }
             }
-            ReadLinePoll::Canceled => Mode::change_to(editor, ModeKind::default()),
+            ReadLinePoll::Canceled => Mode::change_to(editor, clients, ModeKind::default()),
             ReadLinePoll::Submitted => {
                 let input = editor.read_line.input();
                 if !input.starts_with(' ') {
@@ -81,7 +81,7 @@ impl ModeState for State {
                 }
 
                 if editor.mode.kind() == previous_mode_kind {
-                    Mode::change_to(editor, ModeKind::default());
+                    Mode::change_to(editor, clients, ModeKind::default());
                 }
             }
         }

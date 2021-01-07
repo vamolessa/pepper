@@ -62,43 +62,43 @@ impl Mode {
         self.kind
     }
 
-    pub fn change_to(editor: &mut Editor, next: ModeKind) {
+    pub fn change_to(editor: &mut Editor, clients: &mut ClientCollection, next: ModeKind) {
         match editor.mode.kind {
-            ModeKind::Normal => normal::State::on_exit(editor),
-            ModeKind::Insert => insert::State::on_exit(editor),
-            ModeKind::ReadLine => read_line::State::on_exit(editor),
-            ModeKind::Picker => picker::State::on_exit(editor),
-            ModeKind::Script => script::State::on_exit(editor),
+            ModeKind::Normal => normal::State::on_exit(editor, clients),
+            ModeKind::Insert => insert::State::on_exit(editor, clients),
+            ModeKind::ReadLine => read_line::State::on_exit(editor, clients),
+            ModeKind::Picker => picker::State::on_exit(editor, clients),
+            ModeKind::Script => script::State::on_exit(editor, clients),
         }
 
         editor.mode.kind = next;
 
         match editor.mode.kind {
-            ModeKind::Normal => normal::State::on_enter(editor),
-            ModeKind::Insert => insert::State::on_enter(editor),
-            ModeKind::ReadLine => read_line::State::on_enter(editor),
-            ModeKind::Picker => picker::State::on_enter(editor),
-            ModeKind::Script => script::State::on_enter(editor),
+            ModeKind::Normal => normal::State::on_enter(editor, clients),
+            ModeKind::Insert => insert::State::on_enter(editor, clients),
+            ModeKind::ReadLine => read_line::State::on_enter(editor, clients),
+            ModeKind::Picker => picker::State::on_enter(editor, clients),
+            ModeKind::Script => script::State::on_enter(editor, clients),
         }
     }
 
-    pub fn on_client_keys(editor: &mut Editor, keys: &mut KeysIterator) -> ModeOperation {
+    pub fn on_client_keys(editor: &mut Editor, clients: &mut ClientCollection, keys: &mut KeysIterator) -> ModeOperation {
         match editor.mode.kind {
-            ModeKind::Normal => normal::State::on_client_keys(editor, keys),
-            ModeKind::Insert => insert::State::on_client_keys(editor, keys),
-            ModeKind::ReadLine => read_line::State::on_client_keys(editor, keys),
-            ModeKind::Picker => picker::State::on_client_keys(editor, keys),
-            ModeKind::Script => script::State::on_client_keys(editor, keys),
+            ModeKind::Normal => normal::State::on_client_keys(editor, clients, keys),
+            ModeKind::Insert => insert::State::on_client_keys(editor, clients, keys),
+            ModeKind::ReadLine => read_line::State::on_client_keys(editor, clients, keys),
+            ModeKind::Picker => picker::State::on_client_keys(editor, clients, keys),
+            ModeKind::Script => script::State::on_client_keys(editor, clients, keys),
         }
     }
 
-    pub fn on_editor_events(editor: &mut Editor) {
+    pub fn on_editor_events(editor: &mut Editor, clients: &mut ClientCollection) {
         match editor.mode.kind {
-            ModeKind::Normal => normal::State::on_editor_events(editor),
-            ModeKind::Insert => insert::State::on_editor_events(editor),
-            ModeKind::ReadLine => read_line::State::on_editor_events(editor),
-            ModeKind::Picker => picker::State::on_editor_events(editor),
-            ModeKind::Script => script::State::on_editor_events(editor),
+            ModeKind::Normal => normal::State::on_editor_events(editor, clients),
+            ModeKind::Insert => insert::State::on_editor_events(editor, clients),
+            ModeKind::ReadLine => read_line::State::on_editor_events(editor, clients),
+            ModeKind::Picker => picker::State::on_editor_events(editor, clients),
+            ModeKind::Script => script::State::on_editor_events(editor, clients),
         }
     }
 }

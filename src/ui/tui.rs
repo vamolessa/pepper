@@ -19,11 +19,11 @@ use crossterm::{
 use crate::{
     buffer::{Buffer, BufferContent, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
-    client::{Client, TargetClient},
+    client::Client,
     client_event::{Key, LocalEvent},
     cursor::Cursor,
     editor::{Editor, StatusMessageKind},
-    mode::{Mode, ModeKind},
+    mode::ModeKind,
     syntax::{HighlightedBuffer, TokenKind},
     theme,
 };
@@ -162,11 +162,10 @@ where
 pub fn render(
     editor: &Editor,
     client: &Client,
-    target_client: TargetClient,
+    has_focus: bool,
     buffer: &mut Vec<u8>,
     status_bar_buf: &mut String,
 ) {
-    let has_focus = target_client == editor.focused_client;
     let client_view = ClientView::from(editor, client);
 
     draw_buffer(buffer, editor, &client_view, has_focus);
@@ -687,7 +686,7 @@ fn draw_statusbar<W>(
                 if param_count > 0 {
                     let _ = write!(buf, "{}", param_count);
                 };
-                for key in &editor.buffered_keys {
+                for key in editor.buffered_keys.as_slice() {
                     let _ = write!(buf, "{}", key);
                 }
                 buf.push(' ');

@@ -179,8 +179,10 @@ where
 {
     editor.on_pre_render(clients);
 
+    let focused_target = clients.focused_client;
     for c in clients.client_refs() {
-        c.ui.render(editor, c.client, c.target, c.buffer);
+        let has_focus = focused_target == c.target;
+        c.ui.render(editor, c.client, has_focus, c.buffer);
         match c.target {
             TargetClient::Local => ui.display(c.buffer)?,
             TargetClient::Remote(handle) => connections.send_serialized_display(handle, c.buffer),

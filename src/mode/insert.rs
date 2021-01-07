@@ -29,14 +29,13 @@ impl ModeState for State {
         let handle = match clients.current_buffer_view_handle() {
             Some(handle) => handle,
             None => {
-                Mode::change_to(editor, ModeKind::default());
+                Mode::change_to(editor, clients, ModeKind::default());
                 return ModeOperation::None;
             }
         };
 
-        let key = keys.next();
-        let keys = ();
-        let _ = keys;
+        let key = keys.next(&editor.buffered_keys);
+        drop(keys);
 
         editor
             .registers
@@ -49,31 +48,31 @@ impl ModeState for State {
                 return ModeOperation::EnterMode(ModeKind::default());
             }
             Key::Left => unwrap_or_none!(editor.buffer_views.get_mut(handle)).move_cursors(
-                editor.buffers,
+                &editor.buffers,
                 CursorMovement::ColumnsBackward(1),
                 CursorMovementKind::PositionAndAnchor,
             ),
             Key::Down => unwrap_or_none!(editor.buffer_views.get_mut(handle)).move_cursors(
-                editor.buffers,
+                &editor.buffers,
                 CursorMovement::LinesForward(1),
                 CursorMovementKind::PositionAndAnchor,
             ),
             Key::Up => unwrap_or_none!(editor.buffer_views.get_mut(handle)).move_cursors(
-                editor.buffers,
+                &editor.buffers,
                 CursorMovement::LinesBackward(1),
                 CursorMovementKind::PositionAndAnchor,
             ),
             Key::Right => unwrap_or_none!(editor.buffer_views.get_mut(handle)).move_cursors(
-                editor.buffers,
+                &editor.buffers,
                 CursorMovement::ColumnsForward(1),
                 CursorMovementKind::PositionAndAnchor,
             ),
             Key::Tab => editor.buffer_views.insert_text_at_cursor_positions(
-                editor.buffers,
-                editor.word_database,
+                &mut editor.buffers,
+                &mut editor.word_database,
                 handle,
                 "\t",
-                editor.editor_events,
+                &mut editor.editor_events,
             ),
             Key::Enter => {
                 let buffer_view = unwrap_or_none!(editor.buffer_views.get(handle));
@@ -118,11 +117,11 @@ impl ModeState for State {
                 let mut buf = [0; std::mem::size_of::<char>()];
                 let s = c.encode_utf8(&mut buf);
                 editor.buffer_views.insert_text_at_cursor_positions(
-                    editor.buffers,
-                    editor.word_database,
+                    &mut editor.buffers,
+                    &mut editor.word_database,
                     handle,
                     s,
-                    editor.editor_events,
+                    &mut editor.editor_events,
                 );
             }
             Key::Backspace => {

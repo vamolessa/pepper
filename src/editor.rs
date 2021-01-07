@@ -312,7 +312,7 @@ impl Editor {
         }
 
         if previous_mode_kind == self.mode.kind() {
-            Mode::change_to(self, ModeKind::default());
+            Mode::change_to(self, clients, ModeKind::default());
         }
     }
 
@@ -463,13 +463,13 @@ impl Editor {
                         }
                         let keys_from_index = self.recording_macro.map(|_| keys.index);
 
-                        match Mode::on_client_keys(self, &mut keys) {
+                        match Mode::on_client_keys(self, clients, &mut keys) {
                             ModeOperation::Pending => {
                                 return EditorLoop::Continue;
                             }
                             ModeOperation::None => (),
                             ModeOperation::Quit => {
-                                Mode::change_to(self, ModeKind::default());
+                                Mode::change_to(self, clients, ModeKind::default());
                                 self.buffered_keys.0.clear();
                                 return EditorLoop::Quit;
                             }
@@ -478,7 +478,7 @@ impl Editor {
                                 return EditorLoop::QuitAll;
                             }
                             ModeOperation::EnterMode(next_mode) => {
-                                Mode::change_to(self, next_mode);
+                                Mode::change_to(self, clients, next_mode);
                             }
                             ModeOperation::ExecuteMacro(key) => {
                                 self.parse_and_set_keys_in_register(key);
@@ -565,7 +565,7 @@ impl Editor {
             return;
         }
 
-        Mode::on_editor_events(self);
+        Mode::on_editor_events(self, clients);
 
         let (scripts, mut script_ctx) = self.into_script_context(clients);
         if let Err(error) = scripts.on_editor_event(&mut script_ctx) {

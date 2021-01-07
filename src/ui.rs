@@ -22,7 +22,7 @@ impl UiKind {
         &mut self,
         editor: &Editor,
         client: &Client,
-        target_client: TargetClient,
+        has_focus: bool,
         buffer: &mut Vec<u8>,
     ) {
         buffer.clear();
@@ -30,7 +30,7 @@ impl UiKind {
             Self::None => (),
             Self::Tui {
                 ref mut status_bar_buf,
-            } => tui::render(editor, client, target_client, buffer, status_bar_buf),
+            } => tui::render(editor, client, has_focus, buffer, status_bar_buf),
         }
     }
 }
