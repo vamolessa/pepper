@@ -184,7 +184,7 @@ pub mod custom {
                     ReadLinePoll::Canceled => (ScriptValue::Nil, ScriptValue::Nil),
                 };
 
-                if let Some(callback) = editor.script_callbacks.picker.take() {
+                if let Some(callback) = ctx.script_callbacks.picker.take() {
                     callback.call(engine, &guard, (name, description))?;
                     callback.dispose(engine)?;
                 }

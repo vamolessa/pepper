@@ -270,7 +270,7 @@ impl Editor {
     }
 
     pub fn into_script_context<'a>(
-        &'a self,
+        &'a mut self,
         clients: &'a mut ClientCollection,
     ) -> (&'a mut ScriptEngine, ScriptContext<'a>) {
         let ctx = ScriptContext {
@@ -323,10 +323,11 @@ impl Editor {
             self.read_line.input(),
         );
 
+        let focused_target = clients.focused_client;
         for c in clients.client_refs() {
             let target = c.target;
             let client = c.client;
-            let picker_height = if clients.focused_client == target {
+            let picker_height = if focused_target == target {
                 picker_height as _
             } else {
                 0

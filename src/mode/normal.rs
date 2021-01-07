@@ -4,11 +4,12 @@ use crate::{
     buffer::BufferContent,
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
+    client::ClientCollection,
     client_event::Key,
     cursor::Cursor,
-    editor::{KeysIterator, StatusMessageKind},
+    editor::{Editor, KeysIterator, StatusMessageKind},
     lsp::LspDiagnostic,
-    mode::{picker, read_line, Mode, ModeContext, ModeKind, ModeOperation, ModeState},
+    mode::{picker, read_line, Mode, ModeKind, ModeOperation, ModeState},
     navigation_history::{NavigationDirection, NavigationHistory},
     register::{RegisterKey, AUTO_MACRO_REGISTER, SEARCH_REGISTER},
     word_database::WordKind,
@@ -28,67 +29,75 @@ pub struct State {
 }
 
 impl State {
-    fn on_movement_keys(ctx: &mut ModeContext, keys: &KeysIterator, from_index: usize) {
-        let this = &mut ctx.mode.normal_state;
+    fn on_movement_keys(editor: &mut Editor, keys: &KeysIterator, from_index: usize) {
+        let this = &mut editor.mode.normal_state;
         match this.movement_kind {
             CursorMovementKind::PositionAndAnchor => this.is_recording_auto_macro = false,
             CursorMovementKind::PositionOnly => {
                 if !this.is_recording_auto_macro {
-                    ctx.registers.set(AUTO_MACRO_REGISTER, "");
+                    editor.registers.set(AUTO_MACRO_REGISTER, "");
                 }
                 this.is_recording_auto_macro = true;
 
-                if ctx.registers.get(AUTO_MACRO_REGISTER).is_empty() && this.count > 0 {
-                    ctx.registers
+                if editor.registers.get(AUTO_MACRO_REGISTER).is_empty() && this.count > 0 {
+                    editor
+                        .registers
                         .append_fmt(AUTO_MACRO_REGISTER, format_args!("{}", this.count));
                 }
 
-                for key in &keys.keys()[from_index..keys.index()] {
-                    ctx.registers
+                for key in &editor.buffered_keys.as_slice()[from_index..keys.index()] {
+                    editor
+                        .registers
                         .append_fmt(AUTO_MACRO_REGISTER, format_args!("{}", key));
                 }
             }
         }
     }
 
-    fn on_edit_keys(ctx: &mut ModeContext, keys: &KeysIterator, from_index: usize) {
-        let this = &mut ctx.mode.normal_state;
+    fn on_edit_keys(editor: &mut Editor, keys: &KeysIterator, from_index: usize) {
+        let this = &mut editor.mode.normal_state;
         if !this.is_recording_auto_macro {
-            ctx.registers.set(AUTO_MACRO_REGISTER, "");
+            editor.registers.set(AUTO_MACRO_REGISTER, "");
         }
         this.is_recording_auto_macro = false;
 
-        if ctx.registers.get(AUTO_MACRO_REGISTER).is_empty() && this.count > 0 {
-            ctx.registers
+        if editor.registers.get(AUTO_MACRO_REGISTER).is_empty() && this.count > 0 {
+            editor
+                .registers
                 .append_fmt(AUTO_MACRO_REGISTER, format_args!("{}", this.count));
         }
 
-        for key in &keys.keys()[from_index..keys.index()] {
-            ctx.registers
+        for key in &editor.buffered_keys.as_slice()[from_index..keys.index()] {
+            editor
+                .registers
                 .append_fmt(AUTO_MACRO_REGISTER, format_args!("{}", key));
         }
     }
 
-    fn on_event_no_buffer(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
-        let this = &mut ctx.mode.normal_state;
+    fn on_event_no_buffer(
+        editor: &mut Editor,
+        clients: &mut ClientCollection,
+        keys: &mut KeysIterator,
+    ) -> ModeOperation {
+        let this = &mut editor.mode.normal_state;
         this.is_recording_auto_macro = false;
-        match keys.next() {
-            Key::Char('q') => match ctx.recording_macro.take() {
-                Some(_) => *ctx.recording_macro = None,
-                None => match keys.next() {
+        match keys.next(&editor.buffered_keys) {
+            Key::Char('q') => match editor.recording_macro.take() {
+                Some(_) => editor.recording_macro = None,
+                None => match keys.next(&editor.buffered_keys) {
                     Key::None => return ModeOperation::Pending,
                     Key::Char(c) => {
                         if let Some(key) = RegisterKey::from_char(c) {
-                            ctx.registers.set(key, "");
-                            *ctx.recording_macro = Some(key);
+                            editor.registers.set(key, "");
+                            editor.recording_macro = Some(key);
                         }
                     }
                     _ => (),
                 },
             },
             Key::Char('Q') => {
-                *ctx.recording_macro = None;
-                match keys.next() {
+                editor.recording_macro = None;
+                match keys.next(&editor.buffered_keys) {
                     Key::None => return ModeOperation::Pending,
                     Key::Char(c) => match RegisterKey::from_char(c.to_ascii_lowercase()) {
                         Some(key) => return ModeOperation::ExecuteMacro(key),
@@ -97,12 +106,12 @@ impl State {
                     _ => (),
                 }
             }
-            Key::Char(':') => Mode::change_to(ctx, ModeKind::Script),
-            Key::Char('g') => match keys.next() {
+            Key::Char(':') => Mode::change_to(editor, clients, ModeKind::Script),
+            Key::Char('g') => match keys.next(&editor.buffered_keys) {
                 Key::None => return ModeOperation::Pending,
-                Key::Char('b') => picker::buffer::enter_mode(ctx),
+                Key::Char('b') => picker::buffer::enter_mode(editor, clients),
                 Key::Char('a') => {
-                    if let Some(client) = ctx.clients.get_mut(ctx.target_client) {
+                    if let Some(client) = clients.get_mut(clients.focused_client) {
                         client.set_current_buffer_view_handle(client.previous_buffer_view_handle());
                     }
                 }
@@ -120,46 +129,47 @@ impl State {
     }
 
     fn on_client_keys_with_buffer_view(
-        ctx: &mut ModeContext,
+        editor: &mut Editor,
+        clients: &mut ClientCollection,
         keys: &mut KeysIterator,
         handle: BufferViewHandle,
     ) -> ModeOperation {
-        let this = &mut ctx.mode.normal_state;
+        let this = &mut editor.mode.normal_state;
         let keys_from_index = keys.index();
-        match keys.next() {
-            Key::Char('h') => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
-                ctx.buffers,
+        match keys.next(&editor.buffered_keys) {
+            Key::Char('h') => unwrap_or_none!(editor.buffer_views.get_mut(handle)).move_cursors(
+                &editor.buffers,
                 CursorMovement::ColumnsBackward(this.count.max(1) as _),
                 this.movement_kind,
             ),
-            Key::Char('j') => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
-                ctx.buffers,
+            Key::Char('j') => unwrap_or_none!(editor.buffer_views.get_mut(handle)).move_cursors(
+                &editor.buffers,
                 CursorMovement::LinesForward(this.count.max(1) as _),
                 this.movement_kind,
             ),
-            Key::Char('k') => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
-                ctx.buffers,
+            Key::Char('k') => unwrap_or_none!(editor.buffer_views.get_mut(handle)).move_cursors(
+                &editor.buffers,
                 CursorMovement::LinesBackward(this.count.max(1) as _),
                 this.movement_kind,
             ),
-            Key::Char('l') => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
-                ctx.buffers,
+            Key::Char('l') => unwrap_or_none!(editor.buffer_views.get_mut(handle)).move_cursors(
+                &editor.buffers,
                 CursorMovement::ColumnsForward(this.count.max(1) as _),
                 this.movement_kind,
             ),
-            Key::Char('w') => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
-                ctx.buffers,
+            Key::Char('w') => unwrap_or_none!(editor.buffer_views.get_mut(handle)).move_cursors(
+                &editor.buffers,
                 CursorMovement::WordsForward(this.count.max(1) as _),
                 this.movement_kind,
             ),
-            Key::Char('b') => unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
-                ctx.buffers,
+            Key::Char('b') => unwrap_or_none!(editor.buffer_views.get_mut(handle)).move_cursors(
+                &editor.buffers,
                 CursorMovement::WordsBackward(this.count.max(1) as _),
                 this.movement_kind,
             ),
             Key::Char('n') => {
                 let count = this.count.max(1);
-                move_to_search_match(ctx, |len, r| {
+                move_to_search_match(editor, clients, |len, r| {
                     let index = match r {
                         Ok(index) => index + count as usize,
                         Err(index) => index + count as usize - 1,
@@ -169,7 +179,7 @@ impl State {
             }
             Key::Char('p') => {
                 let count = this.count.max(1) as usize;
-                move_to_search_match(ctx, |len, r| {
+                move_to_search_match(editor, clients, |len, r| {
                     let index = match r {
                         Ok(index) => index,
                         Err(index) => index,
@@ -178,7 +188,7 @@ impl State {
                 });
             }
             Key::Char('N') => {
-                search_word_or_move_to_it(ctx, |len, r| {
+                search_word_or_move_to_it(editor, clients, |len, r| {
                     let index = match r {
                         Ok(index) => index + 1,
                         Err(index) => index,
@@ -187,7 +197,7 @@ impl State {
                 });
             }
             Key::Char('P') => {
-                search_word_or_move_to_it(ctx, |len, r| {
+                search_word_or_move_to_it(editor, clients, |len, r| {
                     let index = match r {
                         Ok(index) => index,
                         Err(index) => index,
@@ -197,18 +207,18 @@ impl State {
             }
             Key::Ctrl('n') => {
                 NavigationHistory::move_in_history(
-                    ctx.clients,
-                    ctx.buffer_views,
-                    ctx.target_client,
+                    clients,
+                    &mut editor.buffer_views,
+                    clients.focused_client,
                     NavigationDirection::Forward,
                 );
                 this.movement_kind = CursorMovementKind::PositionAndAnchor;
             }
             Key::Ctrl('p') => {
                 NavigationHistory::move_in_history(
-                    ctx.clients,
-                    ctx.buffer_views,
-                    ctx.target_client,
+                    clients,
+                    &mut editor.buffer_views,
+                    clients.focused_client,
                     NavigationDirection::Backward,
                 );
                 this.movement_kind = CursorMovementKind::PositionAndAnchor;
@@ -239,11 +249,12 @@ impl State {
                     }
                 }
 
-                let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
-                let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle)).content();
+                let buffer_view = unwrap_or_none!(editor.buffer_views.get_mut(handle));
+                let buffer =
+                    unwrap_or_none!(editor.buffers.get(buffer_view.buffer_handle)).content();
                 let mut cursors = buffer_view.cursors.mut_guard();
 
-                match keys.next() {
+                match keys.next(&editor.buffered_keys) {
                     Key::None => return ModeOperation::Pending,
                     Key::Char('w') | Key::Char('W') => {
                         for cursor in &mut cursors[..] {
@@ -320,11 +331,12 @@ impl State {
                     }
                 }
 
-                let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
-                let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle)).content();
+                let buffer_view = unwrap_or_none!(editor.buffer_views.get_mut(handle));
+                let buffer =
+                    unwrap_or_none!(editor.buffers.get(buffer_view.buffer_handle)).content();
                 let mut cursors = buffer_view.cursors.mut_guard();
 
-                match keys.next() {
+                match keys.next(&editor.buffered_keys) {
                     Key::None => return ModeOperation::Pending,
                     Key::Char('w') | Key::Char('W') => {
                         for cursor in &mut cursors[..] {
@@ -373,38 +385,38 @@ impl State {
                 this.movement_kind = CursorMovementKind::PositionOnly;
             }
             Key::Char('g') => {
-                let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
-                match keys.next() {
+                let buffer_view = unwrap_or_none!(editor.buffer_views.get_mut(handle));
+                match keys.next(&editor.buffered_keys) {
                     Key::None => return ModeOperation::Pending,
-                    Key::Char('g') => read_line::goto::enter_mode(ctx),
+                    Key::Char('g') => read_line::goto::enter_mode(editor, clients),
                     Key::Char('h') => buffer_view.move_cursors(
-                        ctx.buffers,
+                        &editor.buffers,
                         CursorMovement::Home,
                         this.movement_kind,
                     ),
                     Key::Char('j') => buffer_view.move_cursors(
-                        ctx.buffers,
+                        &editor.buffers,
                         CursorMovement::LastLine,
                         this.movement_kind,
                     ),
                     Key::Char('k') => buffer_view.move_cursors(
-                        ctx.buffers,
+                        &editor.buffers,
                         CursorMovement::FirstLine,
                         this.movement_kind,
                     ),
                     Key::Char('l') => buffer_view.move_cursors(
-                        ctx.buffers,
+                        &editor.buffers,
                         CursorMovement::End,
                         this.movement_kind,
                     ),
                     Key::Char('i') => buffer_view.move_cursors(
-                        ctx.buffers,
+                        &editor.buffers,
                         CursorMovement::HomeNonWhitespace,
                         this.movement_kind,
                     ),
                     Key::Char('m') => {
-                        let buffer =
-                            unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle)).content();
+                        let buffer = unwrap_or_none!(editor.buffers.get(buffer_view.buffer_handle))
+                            .content();
                         for cursor in &mut buffer_view.cursors.mut_guard()[..] {
                             let mut position = cursor.position;
 
@@ -457,47 +469,47 @@ impl State {
                     _ => {
                         keys.put_back();
                         keys.put_back();
-                        return Self::on_event_no_buffer(ctx, keys);
+                        return Self::on_event_no_buffer(editor, clients, keys);
                     }
                 }
             }
-            Key::Char('f') => match keys.next() {
+            Key::Char('f') => match keys.next(&editor.buffered_keys) {
                 Key::None => return ModeOperation::Pending,
                 Key::Char(ch) => {
                     this.last_char_jump = CharJump::Inclusive(ch);
-                    find_char(ctx, true);
+                    find_char(editor, clients, true);
                 }
                 _ => (),
             },
-            Key::Char('F') => match keys.next() {
+            Key::Char('F') => match keys.next(&editor.buffered_keys) {
                 Key::None => return ModeOperation::Pending,
                 Key::Char(ch) => {
                     this.last_char_jump = CharJump::Inclusive(ch);
-                    find_char(ctx, false);
+                    find_char(editor, clients, false);
                 }
                 _ => (),
             },
-            Key::Char('t') => match keys.next() {
+            Key::Char('t') => match keys.next(&editor.buffered_keys) {
                 Key::None => return ModeOperation::Pending,
                 Key::Char(ch) => {
                     this.last_char_jump = CharJump::Exclusive(ch);
-                    find_char(ctx, true);
+                    find_char(editor, clients, true);
                 }
                 _ => (),
             },
-            Key::Char('T') => match keys.next() {
+            Key::Char('T') => match keys.next(&editor.buffered_keys) {
                 Key::None => return ModeOperation::Pending,
                 Key::Char(ch) => {
                     this.last_char_jump = CharJump::Exclusive(ch);
-                    find_char(ctx, false);
+                    find_char(editor, clients, false);
                 }
                 _ => (),
             },
-            Key::Char(';') => find_char(ctx, true),
-            Key::Char(',') => find_char(ctx, false),
+            Key::Char(';') => find_char(editor, clients, true),
+            Key::Char(',') => find_char(editor, clients, false),
             Key::Char('v') => {
                 let mut had_selection = false;
-                for cursor in &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle))
+                for cursor in &mut unwrap_or_none!(editor.buffer_views.get_mut(handle))
                     .cursors
                     .mut_guard()[..]
                 {
@@ -514,8 +526,8 @@ impl State {
                 };
             }
             Key::Char('V') => {
-                let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
-                let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle)).content();
+                let buffer_view = unwrap_or_none!(editor.buffer_views.get_mut(handle));
+                let buffer = unwrap_or_none!(editor.buffers.get(buffer_view.buffer_handle)).content();
 
                 let count = this.count.max(1);
                 let last_line_index = buffer.line_count().saturating_sub(1);
@@ -546,12 +558,12 @@ impl State {
                 this.movement_kind = CursorMovementKind::PositionOnly;
             }
             Key::Char('z') => {
-                let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
+                let buffer_view = unwrap_or_none!(editor.buffer_views.get(handle));
                 let focused_line_index = buffer_view.cursors.main_cursor().position.line_index;
-                let client = unwrap_or_none!(ctx.clients.get_mut(ctx.target_client));
+                let client = unwrap_or_none!(clients.get_mut(clients.focused_client));
                 let height = client.height as usize;
 
-                match keys.next() {
+                match keys.next(&editor.buffered_keys) {
                     Key::None => return ModeOperation::Pending,
                     Key::Char('z') => client.scroll = focused_line_index.saturating_sub(height / 2),
                     Key::Char('j') => client.scroll = focused_line_index.saturating_sub(height),
@@ -560,65 +572,63 @@ impl State {
                 }
             }
             Key::Ctrl('d') => {
-                let half_height = ctx
-                    .clients
-                    .get(ctx.target_client)
+                let half_height = clients
+                    .get(clients.focused_client)
                     .map(|c| c.height)
                     .unwrap_or(0)
                     / 2;
-                unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
-                    ctx.buffers,
+                unwrap_or_none!(editor.buffer_views.get_mut(handle)).move_cursors(
+                    &editor.buffers,
                     CursorMovement::LinesForward(half_height as _),
                     this.movement_kind,
                 );
             }
             Key::Ctrl('u') => {
-                let half_height = ctx
-                    .clients
-                    .get(ctx.target_client)
+                let half_height = clients
+                    .get(clients.focused_client)
                     .map(|c| c.height)
                     .unwrap_or(0)
                     / 2;
-                unwrap_or_none!(ctx.buffer_views.get_mut(handle)).move_cursors(
-                    ctx.buffers,
+                unwrap_or_none!(editor.buffer_views.get_mut(handle)).move_cursors(
+                    &editor.buffers,
                     CursorMovement::LinesBackward(half_height as _),
                     this.movement_kind,
                 );
             }
             Key::Char('d') => {
-                ctx.buffer_views.delete_in_cursor_ranges(
-                    ctx.buffers,
-                    ctx.word_database,
+                editor.buffer_views.delete_in_cursor_ranges(
+                    &mut editor.buffers,
+                    &mut editor.word_database,
                     handle,
-                    ctx.editor_events,
+                    &mut editor.editor_events,
                 );
-                let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
-                unwrap_or_none!(ctx.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
+                let buffer_view = unwrap_or_none!(editor.buffer_views.get(handle));
+                unwrap_or_none!(editor.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
                 this.movement_kind = CursorMovementKind::PositionAndAnchor;
-                Self::on_edit_keys(ctx, keys, keys_from_index);
+                Self::on_edit_keys(editor, keys, keys_from_index);
                 return ModeOperation::None;
             }
             Key::Char('i') => {
-                ctx.buffer_views.delete_in_cursor_ranges(
-                    ctx.buffers,
-                    ctx.word_database,
+                editor.buffer_views.delete_in_cursor_ranges(
+                    &mut editor.buffers,
+                    &mut editor.word_database,
                     handle,
-                    ctx.editor_events,
+                    &mut editor.editor_events,
                 );
 
-                Self::on_edit_keys(ctx, keys, keys_from_index);
+                Self::on_edit_keys(editor, keys, keys_from_index);
                 return ModeOperation::EnterMode(ModeKind::Insert);
             }
             Key::Char('<') => {
-                let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
+                let buffer_view = unwrap_or_none!(editor.buffer_views.get(handle));
                 let cursor_count = buffer_view.cursors[..].len();
                 let buffer_handle = buffer_view.buffer_handle;
                 let count = this.count.max(1);
 
                 for i in 0..cursor_count {
-                    let range = unwrap_or_none!(ctx.buffer_views.get(handle)).cursors[i].as_range();
+                    let range = unwrap_or_none!(editor.buffer_views.get(handle)).cursors[i].as_range();
                     for line_index in range.from.line_index..=range.to.line_index {
-                        let buffer = unwrap_or_none!(ctx.buffers.get(buffer_handle));
+                        let buffer = unwrap_or_none!(editor.buffers.get(buffer_handle));
                         let line = buffer.content().line_at(line_index).as_str();
                         let mut indentation_column_index = 0;
 
@@ -628,7 +638,7 @@ impl State {
                                 Some((i, c @ '\t')) => i + c.len_utf8(),
                                 Some((i, c @ ' ')) => {
                                     match chars
-                                        .take(ctx.config.values.tab_size.get() as usize - 1)
+                                        .take(editor.config.values.tab_size.get() as usize - 1)
                                         .take_while(|(_, c)| *c == ' ')
                                         .last()
                                     {
@@ -643,30 +653,30 @@ impl State {
                             BufferPosition::line_col(line_index, 0),
                             BufferPosition::line_col(line_index, indentation_column_index),
                         );
-                        ctx.buffer_views.delete_in_range(
-                            ctx.buffers,
-                            ctx.word_database,
+                        editor.buffer_views.delete_in_range(
+                            &mut editor.buffers,
+                            &mut editor.word_database,
                             handle,
                             range,
-                            ctx.editor_events,
+                            &mut editor.editor_events,
                         );
                     }
                 }
-                let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
-                unwrap_or_none!(ctx.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
+                let buffer_view = unwrap_or_none!(editor.buffer_views.get(handle));
+                unwrap_or_none!(editor.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
 
-                Self::on_edit_keys(ctx, keys, keys_from_index);
+                Self::on_edit_keys(editor, keys, keys_from_index);
                 return ModeOperation::None;
             }
             Key::Char('>') => {
-                let cursor_count = unwrap_or_none!(ctx.buffer_views.get(handle)).cursors[..].len();
+                let cursor_count = unwrap_or_none!(editor.buffer_views.get(handle)).cursors[..].len();
                 let count;
                 let fill;
-                if ctx.config.values.indent_with_tabs {
+                if editor.config.values.indent_with_tabs {
                     count = this.count.max(1) as usize;
                     fill = b'\t';
                 } else {
-                    count = this.count.max(1) as usize * ctx.config.values.tab_size.get() as usize;
+                    count = this.count.max(1) as usize * editor.config.values.tab_size.get() as usize;
                     fill = b' ';
                 }
 
@@ -675,30 +685,30 @@ impl State {
                 let indentation = unsafe { std::str::from_utf8_unchecked(&buf[..len]) };
 
                 for i in 0..cursor_count {
-                    let range = unwrap_or_none!(ctx.buffer_views.get(handle)).cursors[i].as_range();
+                    let range = unwrap_or_none!(editor.buffer_views.get(handle)).cursors[i].as_range();
                     for line_index in range.from.line_index..=range.to.line_index {
-                        ctx.buffer_views.insert_text_at_position(
-                            ctx.buffers,
-                            ctx.word_database,
+                        editor.buffer_views.insert_text_at_position(
+                            &mut editor.buffers,
+                            &mut editor.word_database,
                             handle,
                             BufferPosition::line_col(line_index, 0),
                             indentation,
-                            ctx.editor_events,
+                            &mut editor.editor_events,
                         );
                     }
                 }
-                let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
-                unwrap_or_none!(ctx.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
+                let buffer_view = unwrap_or_none!(editor.buffer_views.get(handle));
+                unwrap_or_none!(editor.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
 
-                Self::on_edit_keys(ctx, keys, keys_from_index);
+                Self::on_edit_keys(editor, keys, keys_from_index);
                 return ModeOperation::None;
             }
-            Key::Char('c') | Key::Char('C') => match keys.next() {
+            Key::Char('c') | Key::Char('C') => match keys.next(&editor.buffered_keys) {
                 Key::None => return ModeOperation::Pending,
                 Key::Char('c') => {
-                    let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
+                    let buffer_view = unwrap_or_none!(editor.buffer_views.get_mut(handle));
                     let buffer =
-                        unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle)).content();
+                        unwrap_or_none!(editor.buffers.get(buffer_view.buffer_handle)).content();
 
                     let mut cursors = buffer_view.cursors.mut_guard();
                     let cursor_count = cursors[..].len();
@@ -753,7 +763,7 @@ impl State {
                     this.movement_kind = CursorMovementKind::PositionOnly;
                 }
                 Key::Char('d') => {
-                    let cursors = &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle)).cursors;
+                    let cursors = &mut unwrap_or_none!(editor.buffer_views.get_mut(handle)).cursors;
                     let main_cursor = *cursors.main_cursor();
                     let mut cursors = cursors.mut_guard();
                     cursors.clear();
@@ -764,7 +774,7 @@ impl State {
                     this.movement_kind = CursorMovementKind::PositionOnly;
                 }
                 Key::Char('V') => {
-                    for cursor in &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle))
+                    for cursor in &mut unwrap_or_none!(editor.buffer_views.get_mut(handle))
                         .cursors
                         .mut_guard()[..]
                     {
@@ -773,7 +783,7 @@ impl State {
                     this.movement_kind = CursorMovementKind::PositionAndAnchor;
                 }
                 Key::Char('o') => {
-                    for cursor in &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle))
+                    for cursor in &mut unwrap_or_none!(editor.buffer_views.get_mut(handle))
                         .cursors
                         .mut_guard()[..]
                     {
@@ -781,8 +791,8 @@ impl State {
                     }
                 }
                 Key::Char('j') => {
-                    let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
-                    let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
+                    let buffer_view = unwrap_or_none!(editor.buffer_views.get_mut(handle));
+                    let buffer = unwrap_or_none!(editor.buffers.get(buffer_view.buffer_handle));
                     let mut cursors = buffer_view.cursors.mut_guard();
 
                     if let Some(cursor) = cursors[..].last() {
@@ -800,8 +810,8 @@ impl State {
                     }
                 }
                 Key::Char('k') => {
-                    let buffer_view = unwrap_or_none!(ctx.buffer_views.get_mut(handle));
-                    let buffer = unwrap_or_none!(ctx.buffers.get(buffer_view.buffer_handle));
+                    let buffer_view = unwrap_or_none!(editor.buffer_views.get_mut(handle));
+                    let buffer = unwrap_or_none!(editor.buffers.get(buffer_view.buffer_handle));
                     let mut cursors = buffer_view.cursors.mut_guard();
 
                     if let Some(cursor) = cursors[..].first() {
@@ -819,7 +829,7 @@ impl State {
                     }
                 }
                 Key::Char('n') => {
-                    let cursors = &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle)).cursors;
+                    let cursors = &mut unwrap_or_none!(editor.buffer_views.get_mut(handle)).cursors;
                     let index = cursors.main_cursor_index();
                     let mut cursors = cursors.mut_guard();
                     let cursor_count = cursors[..].len();
@@ -827,35 +837,35 @@ impl State {
                     cursors.set_main_cursor_index((index + offset) % cursor_count);
                 }
                 Key::Char('p') => {
-                    let cursors = &mut unwrap_or_none!(ctx.buffer_views.get_mut(handle)).cursors;
+                    let cursors = &mut unwrap_or_none!(editor.buffer_views.get_mut(handle)).cursors;
                     let index = cursors.main_cursor_index();
                     let mut cursors = cursors.mut_guard();
                     let cursor_count = cursors[..].len();
                     let offset = this.count.max(1) as usize % cursor_count;
                     cursors.set_main_cursor_index((index + cursor_count - offset) % cursor_count);
                 }
-                Key::Char('f') => read_line::filter_cursors::enter_filter_mode(ctx),
-                Key::Char('F') => read_line::filter_cursors::enter_except_mode(ctx),
-                Key::Char('s') => read_line::split_cursors::enter_by_pattern_mode(ctx),
-                Key::Char('S') => read_line::split_cursors::enter_by_separators_mode(ctx),
+                Key::Char('f') => read_line::filter_cursors::enter_filter_mode(editor, clients),
+                Key::Char('F') => read_line::filter_cursors::enter_except_mode(editor, clients),
+                Key::Char('s') => read_line::split_cursors::enter_by_pattern_mode(editor, clients),
+                Key::Char('S') => read_line::split_cursors::enter_by_separators_mode(editor, clients),
                 _ => (),
             },
-            Key::Char('r') => match keys.next() {
+            Key::Char('r') => match keys.next(&editor.buffered_keys) {
                 Key::None => return ModeOperation::Pending,
-                Key::Char('n') => move_to_diagnostic(ctx, true),
-                Key::Char('p') => move_to_diagnostic(ctx, false),
-                Key::Char('r') => ctx
+                Key::Char('n') => move_to_diagnostic(editor, clients, true),
+                Key::Char('p') => move_to_diagnostic(editor, clients, false),
+                Key::Char('r') => editor
                     .status_message
                     .write_str(StatusMessageKind::Info, "rename not yet implemented"),
                 _ => (),
             },
-            Key::Char('s') => read_line::search::enter_mode(ctx),
+            Key::Char('s') => read_line::search::enter_mode(editor, clients),
             Key::Char('y') => {
                 use copypasta::{ClipboardContext, ClipboardProvider};
                 if let Ok(mut clipboard) = ClipboardContext::new() {
-                    let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
+                    let buffer_view = unwrap_or_none!(editor.buffer_views.get(handle));
                     let mut text = String::new();
-                    buffer_view.get_selection_text(ctx.buffers, &mut text);
+                    buffer_view.get_selection_text(&editor.buffers, &mut text);
                     if !text.is_empty() {
                         let _ = clipboard.set_contents(text);
                     }
@@ -864,49 +874,50 @@ impl State {
             }
             Key::Char('Y') => {
                 use copypasta::{ClipboardContext, ClipboardProvider};
-                ctx.buffer_views.delete_in_cursor_ranges(
-                    ctx.buffers,
-                    ctx.word_database,
+                editor.buffer_views.delete_in_cursor_ranges(
+                    &mut editor.buffers,
+                    &mut editor.word_database,
                     handle,
-                    ctx.editor_events,
+                    &mut editor.editor_events,
                 );
                 if let Ok(text) = ClipboardContext::new().and_then(|mut c| c.get_contents()) {
-                    ctx.buffer_views.insert_text_at_cursor_positions(
-                        ctx.buffers,
-                        ctx.word_database,
+                    editor.buffer_views.insert_text_at_cursor_positions(
+                        &mut editor.buffers,
+                        &mut editor.word_database,
                         handle,
                         &text,
-                        ctx.editor_events,
+                        &mut editor.editor_events,
                     );
                 }
-                let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
-                unwrap_or_none!(ctx.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
+                let buffer_view = unwrap_or_none!(editor.buffer_views.get(handle));
+                unwrap_or_none!(editor.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
                 this.movement_kind = CursorMovementKind::PositionAndAnchor;
 
                 this.is_recording_auto_macro = false;
                 return ModeOperation::None;
             }
-            Key::Ctrl('y') => match keys.next() {
+            Key::Ctrl('y') => match keys.next(&editor.buffered_keys) {
                 Key::None => return ModeOperation::Pending,
                 Key::Char(c) => {
-                    ctx.buffer_views.delete_in_cursor_ranges(
-                        ctx.buffers,
-                        ctx.word_database,
+                    editor.buffer_views.delete_in_cursor_ranges(
+                        &mut editor.buffers,
+                        &mut editor.word_database,
                         handle,
-                        ctx.editor_events,
+                        &mut editor.editor_events,
                     );
                     if let Some(key) = RegisterKey::from_char(c) {
-                        let register = ctx.registers.get(key);
-                        ctx.buffer_views.insert_text_at_cursor_positions(
-                            ctx.buffers,
-                            ctx.word_database,
+                        let register = editor.registers.get(key);
+                        editor.buffer_views.insert_text_at_cursor_positions(
+                            &mut editor.buffers,
+                            &mut editor.word_database,
                             handle,
                             register,
-                            ctx.editor_events,
+                            &mut editor.editor_events,
                         );
                     }
-                    let buffer_view = unwrap_or_none!(ctx.buffer_views.get(handle));
-                    unwrap_or_none!(ctx.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
+                    let buffer_view = unwrap_or_none!(editor.buffer_views.get(handle));
+                    unwrap_or_none!(editor.buffers.get_mut(buffer_view.buffer_handle))
+                        .commit_edits();
                     this.movement_kind = CursorMovementKind::PositionAndAnchor;
 
                     this.is_recording_auto_macro = false;
@@ -915,26 +926,34 @@ impl State {
                 _ => (),
             },
             Key::Char('u') => {
-                ctx.buffer_views
-                    .undo(ctx.buffers, ctx.word_database, ctx.editor_events, handle);
+                editor.buffer_views.undo(
+                    &mut editor.buffers,
+                    &mut editor.word_database,
+                    &mut editor.editor_events,
+                    handle,
+                );
                 this.movement_kind = CursorMovementKind::PositionAndAnchor;
                 return ModeOperation::None;
             }
             Key::Char('U') => {
-                ctx.buffer_views
-                    .redo(ctx.buffers, ctx.word_database, ctx.editor_events, handle);
+                editor.buffer_views.redo(
+                    &mut editor.buffers,
+                    &mut editor.word_database,
+                    &mut editor.editor_events,
+                    handle,
+                );
                 this.movement_kind = CursorMovementKind::PositionAndAnchor;
                 return ModeOperation::None;
             }
             _ => {
                 keys.put_back();
-                return Self::on_event_no_buffer(ctx, keys);
+                return Self::on_event_no_buffer(editor, clients, keys);
             }
         }
 
-        Self::on_movement_keys(ctx, keys, keys_from_index);
+        Self::on_movement_keys(editor, keys, keys_from_index);
 
-        ctx.mode.normal_state.count = 0;
+        editor.mode.normal_state.count = 0;
         ModeOperation::None
     }
 }
@@ -951,20 +970,27 @@ impl Default for State {
 }
 
 impl ModeState for State {
-    fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> ModeOperation {
-        fn show_hovered_diagnostic_in_status_message(ctx: &mut ModeContext) {
-            let handle = unwrap_or_return!(ctx.current_buffer_view_handle());
-            let current_message = ctx.status_message.message().1;
+    fn on_client_keys(
+        editor: &mut Editor,
+        clients: &mut ClientCollection,
+        keys: &mut KeysIterator,
+    ) -> ModeOperation {
+        fn show_hovered_diagnostic_in_status_message(
+            editor: &mut Editor,
+            clients: &mut ClientCollection,
+        ) {
+            let handle = unwrap_or_return!(clients.current_buffer_view_handle());
+            let current_message = editor.status_message.message().1;
             if !current_message.is_empty() {
                 return;
             }
-            let buffer_view = match ctx.buffer_views.get(handle) {
+            let buffer_view = match editor.buffer_views.get(handle) {
                 Some(view) => view,
                 None => return,
             };
             let main_position = buffer_view.cursors.main_cursor().position;
 
-            for client in ctx.lsp.clients() {
+            for client in editor.lsp.clients() {
                 let diagnostics = client
                     .diagnostics()
                     .buffer_diagnostics(buffer_view.buffer_handle);
@@ -979,28 +1005,29 @@ impl ModeState for State {
                         Ordering::Equal
                     }
                 }) {
-                    ctx.status_message
+                    editor
+                        .status_message
                         .write_str(StatusMessageKind::Info, &diagnostics[index].message);
                     break;
                 }
             }
         }
 
-        match ctx.current_buffer_view_handle() {
+        match clients.current_buffer_view_handle() {
             Some(handle) => {
-                let op = Self::on_client_keys_with_buffer_view(ctx, keys, handle);
+                let op = Self::on_client_keys_with_buffer_view(editor, clients, keys, handle);
                 if let ModeOperation::None = op {
-                    show_hovered_diagnostic_in_status_message(ctx);
+                    show_hovered_diagnostic_in_status_message(editor, clients);
                 }
                 op
             }
-            None => Self::on_event_no_buffer(ctx, keys),
+            None => Self::on_event_no_buffer(editor, clients, keys),
         }
     }
 }
 
-fn find_char(ctx: &mut ModeContext, forward: bool) {
-    let state = &ctx.mode.normal_state;
+fn find_char(editor: &mut Editor, clients: &mut ClientCollection, forward: bool) {
+    let state = &editor.mode.normal_state;
     let skip;
     let ch;
     let next_ch;
@@ -1018,9 +1045,9 @@ fn find_char(ctx: &mut ModeContext, forward: bool) {
         }
     };
 
-    let handle = unwrap_or_return!(ctx.current_buffer_view_handle());
-    let buffer_view = unwrap_or_return!(ctx.buffer_views.get_mut(handle));
-    let buffer = unwrap_or_return!(ctx.buffers.get(buffer_view.buffer_handle));
+    let handle = unwrap_or_return!(clients.current_buffer_view_handle());
+    let buffer_view = unwrap_or_return!(editor.buffer_views.get_mut(handle));
+    let buffer = unwrap_or_return!(editor.buffers.get(buffer_view.buffer_handle));
 
     let count = state.count.max(1) as _;
     for cursor in &mut buffer_view.cursors.mut_guard()[..] {
@@ -1054,26 +1081,31 @@ fn find_char(ctx: &mut ModeContext, forward: bool) {
     }
 }
 
-fn move_to_search_match<F>(ctx: &mut ModeContext, index_selector: F)
+fn move_to_search_match<F>(editor: &mut Editor, clients: &mut ClientCollection, index_selector: F)
 where
     F: FnOnce(usize, Result<usize, usize>) -> usize,
 {
-    NavigationHistory::save_client_snapshot(ctx.clients, ctx.buffer_views, ctx.target_client);
+    NavigationHistory::save_client_snapshot(
+        clients,
+        &mut editor.buffer_views,
+        clients.focused_client,
+    );
 
-    let handle = unwrap_or_return!(ctx.current_buffer_view_handle());
-    let buffer_view = unwrap_or_return!(ctx.buffer_views.get_mut(handle));
-    let buffer = unwrap_or_return!(ctx.buffers.get_mut(buffer_view.buffer_handle));
+    let handle = unwrap_or_return!(clients.current_buffer_view_handle());
+    let buffer_view = unwrap_or_return!(editor.buffer_views.get_mut(handle));
+    let buffer = unwrap_or_return!(editor.buffers.get_mut(buffer_view.buffer_handle));
 
     let mut search_ranges = buffer.search_ranges();
     if search_ranges.is_empty() {
-        let search = ctx.registers.get(SEARCH_REGISTER);
+        let search = editor.registers.get(SEARCH_REGISTER);
         if !search.is_empty() {
             buffer.set_search(search);
             search_ranges = buffer.search_ranges();
         }
 
         if search_ranges.is_empty() {
-            ctx.status_message
+            editor
+                .status_message
                 .write_str(StatusMessageKind::Error, "no search result");
             return;
         }
@@ -1089,7 +1121,7 @@ where
     let main_cursor = cursors.main_cursor();
     main_cursor.position = search_ranges[next_index].from;
 
-    if let Some(client) = ctx.clients.get_mut(ctx.target_client) {
+    if let Some(client) = clients.get_mut(clients.focused_client) {
         let line_index = main_cursor.position.line_index;
         let height = client.height as usize;
         if line_index < client.scroll || line_index >= client.scroll + height {
@@ -1097,18 +1129,19 @@ where
         }
     }
 
-    if let CursorMovementKind::PositionAndAnchor = ctx.mode.normal_state.movement_kind {
+    if let CursorMovementKind::PositionAndAnchor = editor.mode.normal_state.movement_kind {
         main_cursor.anchor = main_cursor.position;
     }
 }
 
 fn search_word_or_move_to_it(
-    ctx: &mut ModeContext,
+    editor: &mut Editor,
+    clients: &mut ClientCollection,
     index_selector: fn(usize, Result<usize, usize>) -> usize,
 ) {
-    let handle = unwrap_or_return!(ctx.current_buffer_view_handle());
-    let buffer_view = unwrap_or_return!(ctx.buffer_views.get_mut(handle));
-    let buffer = unwrap_or_return!(ctx.buffers.get_mut(buffer_view.buffer_handle));
+    let handle = unwrap_or_return!(clients.current_buffer_view_handle());
+    let buffer_view = unwrap_or_return!(editor.buffer_views.get_mut(handle));
+    let buffer = unwrap_or_return!(editor.buffers.get_mut(buffer_view.buffer_handle));
 
     let main_position = buffer_view.cursors.main_cursor().position;
     let search_ranges = buffer.search_ranges();
@@ -1128,14 +1161,18 @@ fn search_word_or_move_to_it(
             word.text
         });
 
-        ctx.registers.set(SEARCH_REGISTER, search_word);
+        editor.registers.set(SEARCH_REGISTER, search_word);
     } else {
-        NavigationHistory::save_client_snapshot(ctx.clients, ctx.buffer_views, ctx.target_client);
+        NavigationHistory::save_client_snapshot(
+            clients,
+            &mut editor.buffer_views,
+            clients.focused_client,
+        );
 
-        let buffer_view = unwrap_or_return!(ctx.buffer_views.get_mut(handle));
+        let buffer_view = unwrap_or_return!(editor.buffer_views.get_mut(handle));
         let mut range_index = current_range_index;
 
-        for _ in 0..ctx.mode.normal_state.count.max(1) {
+        for _ in 0..editor.mode.normal_state.count.max(1) {
             let i = index_selector(search_ranges.len(), range_index);
             let range = search_ranges[i];
             range_index = Ok(i);
@@ -1147,10 +1184,10 @@ fn search_word_or_move_to_it(
         }
     }
 
-    ctx.mode.normal_state.movement_kind = CursorMovementKind::PositionAndAnchor;
+    editor.mode.normal_state.movement_kind = CursorMovementKind::PositionAndAnchor;
 }
 
-fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) {
+fn move_to_diagnostic(editor: &mut Editor, clients: &mut ClientCollection, forward: bool) {
     enum DirectedIter<I> {
         Forward(I),
         Backward(I),
@@ -1177,12 +1214,12 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) {
         }
     }
 
-    let handle = unwrap_or_return!(ctx.current_buffer_view_handle());
-    let buffer_view = unwrap_or_return!(ctx.buffer_views.get(handle));
+    let handle = unwrap_or_return!(clients.current_buffer_view_handle());
+    let buffer_view = unwrap_or_return!(editor.buffer_views.get(handle));
     let main_position = buffer_view.cursors.main_cursor().position;
 
     let mut diagnostics = DirectedIter::new(
-        ctx.lsp.clients().flat_map(|c| c.diagnostics().iter()),
+        editor.lsp.clients().flat_map(|c| c.diagnostics().iter()),
         forward,
     );
     let mut next_diagnostic = None;
@@ -1228,7 +1265,7 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) {
 
     if let None = next_diagnostic {
         let mut iter = DirectedIter::new(
-            ctx.lsp.clients().flat_map(|c| c.diagnostics().iter()),
+            editor.lsp.clients().flat_map(|c| c.diagnostics().iter()),
             forward,
         );
         next_diagnostic = iter
@@ -1240,30 +1277,34 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) {
 
     if let Some((path, buffer_handle, position)) = next_diagnostic {
         let buffer_view_handle = match buffer_handle {
-            Some(buffer_handle) => ctx
+            Some(buffer_handle) => editor
                 .buffer_views
-                .buffer_view_handle_from_buffer_handle(ctx.target_client, buffer_handle),
-            None => match ctx.buffer_views.buffer_view_handle_from_path(
-                ctx.buffers,
-                ctx.word_database,
-                ctx.target_client,
-                ctx.current_directory,
+                .buffer_view_handle_from_buffer_handle(clients.focused_client, buffer_handle),
+            None => match editor.buffer_views.buffer_view_handle_from_path(
+                &mut editor.buffers,
+                &mut editor.word_database,
+                clients.focused_client,
+                &editor.current_directory,
                 path,
                 None,
-                ctx.editor_events,
+                &mut editor.editor_events,
             ) {
                 Ok(handle) => handle,
                 Err(error) => {
-                    ctx.status_message.write_error(&error);
+                    editor.status_message.write_error(&error);
                     return;
                 }
             },
         };
 
-        NavigationHistory::save_client_snapshot(ctx.clients, ctx.buffer_views, ctx.target_client);
+        NavigationHistory::save_client_snapshot(
+            clients,
+            &mut editor.buffer_views,
+            clients.focused_client,
+        );
 
-        let buffer_view = unwrap_or_return!(ctx.buffer_views.get_mut(buffer_view_handle));
-        let buffer = unwrap_or_return!(ctx.buffers.get(buffer_view.buffer_handle));
+        let buffer_view = unwrap_or_return!(editor.buffer_views.get_mut(buffer_view_handle));
+        let buffer = unwrap_or_return!(editor.buffers.get(buffer_view.buffer_handle));
         let position = buffer.content().saturate_position(position);
 
         let mut cursors = buffer_view.cursors.mut_guard();
@@ -1276,7 +1317,7 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) {
         drop(cursors);
         drop(buffer_view);
 
-        ctx.set_current_buffer_view_handle(Some(buffer_view_handle));
-        ctx.mode.normal_state.movement_kind = CursorMovementKind::PositionAndAnchor;
+        clients.set_current_buffer_view_handle(editor, Some(buffer_view_handle));
+        editor.mode.normal_state.movement_kind = CursorMovementKind::PositionAndAnchor;
     }
 }

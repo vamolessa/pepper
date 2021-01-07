@@ -307,7 +307,7 @@ impl ClientCollection {
 }
 
 #[derive(Default)]
-struct ClientTargetMap {
+pub struct ClientTargetMap {
     local_target: Option<TargetClient>,
     remote_targets: Vec<Option<TargetClient>>,
 }

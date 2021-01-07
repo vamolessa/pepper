@@ -243,7 +243,7 @@ pub mod split_cursors {
         cursor::{Cursor, CursorCollectionMutGuard},
     };
 
-    pub fn enter_by_pattern_mode(editor: &mut Editor) {
+    pub fn enter_by_pattern_mode(editor: &mut Editor, clients: &mut ClientCollection) {
         fn add_matches(
             cursors: &mut CursorCollectionMutGuard,
             line: &str,
@@ -270,7 +270,7 @@ pub mod split_cursors {
         Mode::change_to(editor, clients, ModeKind::ReadLine);
     }
 
-    pub fn enter_by_separators_mode(editor: &mut Editor) {
+    pub fn enter_by_separators_mode(editor: &mut Editor, clients: &mut ClientCollection) {
         fn add_matches(
             cursors: &mut CursorCollectionMutGuard,
             line: &str,
