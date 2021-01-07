@@ -1,14 +1,5 @@
 #![macro_use]
 
-macro_rules! unwrap_or_none {
-    ($e:expr) => {
-        match $e {
-            Some(v) => v,
-            None => return ModeOperation::None,
-        }
-    };
-}
-
 macro_rules! impl_from_script {
     ($type:ty, $from_value:ident => $from:expr) => {
         impl<'lua> mlua::FromLua<'lua> for $type {

@@ -35,7 +35,7 @@ impl ModeState for State {
         clients: &mut ClientCollection,
         target: TargetClient,
         keys: &mut KeysIterator,
-    ) -> ModeOperation {
+    ) -> Option<ModeOperation> {
         let this = &mut editor.mode.picker_state;
         let poll = editor.read_line.poll(&editor.buffered_keys, keys);
         if let ReadLinePoll::Pending = poll {
@@ -73,7 +73,7 @@ impl ModeState for State {
         }
 
         (this.on_client_keys)(editor, clients, target, keys, poll);
-        ModeOperation::None
+        None
     }
 }
 

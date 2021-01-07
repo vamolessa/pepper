@@ -394,9 +394,7 @@ impl Editor {
                 EditorLoop::Continue
             }
             ClientEvent::AsFocusedClient => {
-                clients
-                    .client_map
-                    .map(target, clients.focused_target());
+                clients.client_map.map(target, clients.focused_target());
                 EditorLoop::Continue
             }
             ClientEvent::AsClient(target_client) => {
@@ -465,20 +463,20 @@ impl Editor {
                         let keys_from_index = self.recording_macro.map(|_| keys.index);
 
                         match Mode::on_client_keys(self, clients, target, &mut keys) {
-                            ModeOperation::Pending => {
+                            None => (),
+                            Some(ModeOperation::Pending) => {
                                 return EditorLoop::Continue;
                             }
-                            ModeOperation::None => (),
-                            ModeOperation::Quit => {
+                            Some(ModeOperation::Quit) => {
                                 Mode::change_to(self, clients, target, ModeKind::default());
                                 self.buffered_keys.0.clear();
                                 return EditorLoop::Quit;
                             }
-                            ModeOperation::QuitAll => {
+                            Some(ModeOperation::QuitAll) => {
                                 self.buffered_keys.0.clear();
                                 return EditorLoop::QuitAll;
                             }
-                            ModeOperation::ExecuteMacro(key) => {
+                            Some(ModeOperation::ExecuteMacro(key)) => {
                                 self.parse_and_set_keys_in_register(key);
                                 continue 'key_queue_loop;
                             }

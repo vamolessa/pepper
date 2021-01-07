@@ -7,13 +7,13 @@ use crate::{
 
 pub struct State {
     on_client_keys:
-        fn(&mut Editor, &mut ClientCollection, TargetClient, &mut KeysIterator, ReadLinePoll),
+        fn(&mut Editor, &mut ClientCollection, TargetClient, &mut KeysIterator, ReadLinePoll) -> Option<()>,
 }
 
 impl Default for State {
     fn default() -> Self {
         Self {
-            on_client_keys: |_, _, _, _, _| (),
+            on_client_keys: |_, _, _, _, _| None,
         }
     }
 }
@@ -32,11 +32,11 @@ impl ModeState for State {
         clients: &mut ClientCollection,
         target: TargetClient,
         keys: &mut KeysIterator,
-    ) -> ModeOperation {
+    ) -> Option<ModeOperation> {
         let poll = editor.read_line.poll(&editor.buffered_keys, keys);
         let func = editor.mode.read_line_state.on_client_keys;
         func(editor, clients, target, keys, poll);
-        ModeOperation::None
+        None
     }
 }
 
@@ -52,7 +52,7 @@ pub mod search {
             target: TargetClient,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
-        ) {
+        ) -> Option<()> {
             match poll {
                 ReadLinePoll::Pending => {
                     update_search(editor, clients, target);
@@ -73,6 +73,8 @@ pub mod search {
                     Mode::change_to(editor, clients, target, ModeKind::default());
                 }
             }
+
+            None
         }
 
         NavigationHistory::save_client_snapshot(clients, target, &mut editor.buffer_views);
@@ -157,6 +159,7 @@ pub mod filter_cursors {
         editor.read_line.set_prompt("filter:");
         editor.mode.read_line_state.on_client_keys = |editor, clients, target, _, poll| {
             on_submitted!(editor, clients, target, poll => on_event_impl(editor, clients, target, true));
+            None
         };
         Mode::change_to(editor, clients, target, ModeKind::ReadLine);
     }
@@ -165,6 +168,7 @@ pub mod filter_cursors {
         editor.read_line.set_prompt("except:");
         editor.mode.read_line_state.on_client_keys = |editor, clients, target, _, poll| {
             on_submitted!(editor, clients, target, poll => on_event_impl(editor, clients, target, false));
+            None
         };
         Mode::change_to(editor, clients, target, ModeKind::ReadLine);
     }
@@ -236,6 +240,8 @@ pub mod filter_cursors {
                 position: main_cursor_position,
             });
         }
+
+        None
     }
 }
 
@@ -270,6 +276,7 @@ pub mod split_cursors {
         editor.read_line.set_prompt("split-by:");
         editor.mode.read_line_state.on_client_keys = |editor, clients, target, _, poll| {
             on_submitted!(editor, clients, target, poll => on_event_impl(editor, clients, target, add_matches));
+            None
         };
         Mode::change_to(editor, clients, target, ModeKind::ReadLine);
     }
@@ -305,6 +312,7 @@ pub mod split_cursors {
         editor.read_line.set_prompt("split-on:");
         editor.mode.read_line_state.on_client_keys = |editor, clients, target, _, poll| {
             on_submitted!(editor, clients, target, poll => on_event_impl(editor, clients, target, add_matches));
+            None
         };
         Mode::change_to(editor, clients, target, ModeKind::ReadLine);
     }
@@ -464,7 +472,7 @@ pub mod custom {
             target: TargetClient,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
-        ) {
+        ) -> Option<()> {
             let previous_mode_kind = editor.mode.kind();
             let (engine, mut script_ctx) = editor.into_script_context(clients, target);
             let result = engine.as_ref_with_ctx(&mut script_ctx, |engine, ctx, guard| {
@@ -495,6 +503,8 @@ pub mod custom {
                     Mode::change_to(editor, clients, target, ModeKind::default());
                 }
             }
+
+            None
         }
 
         ctx.script_callbacks.read_line = Some(callback);

@@ -27,7 +27,7 @@ impl ModeState for State {
         clients: &mut ClientCollection,
         target: TargetClient,
         keys: &mut KeysIterator,
-    ) -> ModeOperation {
+    ) -> Option<ModeOperation> {
         let this = &mut editor.mode.script_state;
         match editor.read_line.poll(&editor.buffered_keys, keys) {
             ReadLinePoll::Pending => {
@@ -75,8 +75,8 @@ impl ModeState for State {
 
                 if let Err(error) = result {
                     match ctx.editor_loop {
-                        EditorLoop::Quit => return ModeOperation::Quit,
-                        EditorLoop::QuitAll => return ModeOperation::QuitAll,
+                        EditorLoop::Quit => return Some(ModeOperation::Quit),
+                        EditorLoop::QuitAll => return Some(ModeOperation::QuitAll),
                         EditorLoop::Continue => ctx.status_bar.write_error(&error),
                     }
                 }
@@ -87,7 +87,7 @@ impl ModeState for State {
             }
         }
 
-        ModeOperation::None
+        None
     }
 }
 

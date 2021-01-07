@@ -12,7 +12,6 @@ mod script;
 
 pub enum ModeOperation {
     Pending,
-    None,
     Quit,
     QuitAll,
     ExecuteMacro(RegisterKey),
@@ -26,7 +25,7 @@ pub trait ModeState {
         clients: &mut ClientCollection,
         target: TargetClient,
         keys: &mut KeysIterator,
-    ) -> ModeOperation;
+    ) -> Option<ModeOperation>;
     fn on_editor_events(
         _editor: &mut Editor,
         _clients: &mut ClientCollection,
@@ -97,7 +96,7 @@ impl Mode {
         clients: &mut ClientCollection,
         target: TargetClient,
         keys: &mut KeysIterator,
-    ) -> ModeOperation {
+    ) -> Option<ModeOperation> {
         match editor.mode.kind {
             ModeKind::Normal => normal::State::on_client_keys(editor, clients, target, keys),
             ModeKind::Insert => insert::State::on_client_keys(editor, clients, target, keys),

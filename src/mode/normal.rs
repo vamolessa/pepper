@@ -79,14 +79,14 @@ impl State {
         clients: &mut ClientCollection,
         target: TargetClient,
         keys: &mut KeysIterator,
-    ) -> ModeOperation {
+    ) -> Option<ModeOperation> {
         let this = &mut editor.mode.normal_state;
         this.is_recording_auto_macro = false;
         match keys.next(&editor.buffered_keys) {
             Key::Char('q') => match editor.recording_macro.take() {
                 Some(_) => editor.recording_macro = None,
                 None => match keys.next(&editor.buffered_keys) {
-                    Key::None => return ModeOperation::Pending,
+                    Key::None => return Some(ModeOperation::Pending),
                     Key::Char(c) => {
                         if let Some(key) = RegisterKey::from_char(c) {
                             editor.registers.set(key, "");
@@ -99,9 +99,9 @@ impl State {
             Key::Char('Q') => {
                 editor.recording_macro = None;
                 match keys.next(&editor.buffered_keys) {
-                    Key::None => return ModeOperation::Pending,
+                    Key::None => return Some(ModeOperation::Pending),
                     Key::Char(c) => match RegisterKey::from_char(c.to_ascii_lowercase()) {
-                        Some(key) => return ModeOperation::ExecuteMacro(key),
+                        Some(key) => return Some(ModeOperation::ExecuteMacro(key)),
                         None => (),
                     },
                     _ => (),
@@ -109,7 +109,7 @@ impl State {
             }
             Key::Char(':') => Mode::change_to(editor, clients, target, ModeKind::Script),
             Key::Char('g') => match keys.next(&editor.buffered_keys) {
-                Key::None => return ModeOperation::Pending,
+                Key::None => return Some(ModeOperation::Pending),
                 Key::Char('b') => picker::buffer::enter_mode(editor, clients, target),
                 Key::Char('a') => {
                     if let Some(client) = clients.get_mut(target) {
@@ -126,7 +126,7 @@ impl State {
             _ => (),
         }
 
-        ModeOperation::None
+        None
     }
 
     fn on_client_keys_with_buffer_view(
@@ -135,36 +135,36 @@ impl State {
         target: TargetClient,
         keys: &mut KeysIterator,
         handle: BufferViewHandle,
-    ) -> ModeOperation {
+    ) -> Option<ModeOperation> {
         let this = &mut editor.mode.normal_state;
         let keys_from_index = keys.index();
         match keys.next(&editor.buffered_keys) {
-            Key::Char('h') => unwrap_or_none!(editor.buffer_views.get_mut(handle)).move_cursors(
+            Key::Char('h') => editor.buffer_views.get_mut(handle)?.move_cursors(
                 &editor.buffers,
                 CursorMovement::ColumnsBackward(this.count.max(1) as _),
                 this.movement_kind,
             ),
-            Key::Char('j') => unwrap_or_none!(editor.buffer_views.get_mut(handle)).move_cursors(
+            Key::Char('j') => editor.buffer_views.get_mut(handle)?.move_cursors(
                 &editor.buffers,
                 CursorMovement::LinesForward(this.count.max(1) as _),
                 this.movement_kind,
             ),
-            Key::Char('k') => unwrap_or_none!(editor.buffer_views.get_mut(handle)).move_cursors(
+            Key::Char('k') => editor.buffer_views.get_mut(handle)?.move_cursors(
                 &editor.buffers,
                 CursorMovement::LinesBackward(this.count.max(1) as _),
                 this.movement_kind,
             ),
-            Key::Char('l') => unwrap_or_none!(editor.buffer_views.get_mut(handle)).move_cursors(
+            Key::Char('l') => editor.buffer_views.get_mut(handle)?.move_cursors(
                 &editor.buffers,
                 CursorMovement::ColumnsForward(this.count.max(1) as _),
                 this.movement_kind,
             ),
-            Key::Char('w') => unwrap_or_none!(editor.buffer_views.get_mut(handle)).move_cursors(
+            Key::Char('w') => editor.buffer_views.get_mut(handle)?.move_cursors(
                 &editor.buffers,
                 CursorMovement::WordsForward(this.count.max(1) as _),
                 this.movement_kind,
             ),
-            Key::Char('b') => unwrap_or_none!(editor.buffer_views.get_mut(handle)).move_cursors(
+            Key::Char('b') => editor.buffer_views.get_mut(handle)?.move_cursors(
                 &editor.buffers,
                 CursorMovement::WordsBackward(this.count.max(1) as _),
                 this.movement_kind,
@@ -251,13 +251,12 @@ impl State {
                     }
                 }
 
-                let buffer_view = unwrap_or_none!(editor.buffer_views.get_mut(handle));
-                let buffer =
-                    unwrap_or_none!(editor.buffers.get(buffer_view.buffer_handle)).content();
+                let buffer_view = editor.buffer_views.get_mut(handle)?;
+                let buffer = editor.buffers.get(buffer_view.buffer_handle)?.content();
                 let mut cursors = buffer_view.cursors.mut_guard();
 
                 match keys.next(&editor.buffered_keys) {
-                    Key::None => return ModeOperation::Pending,
+                    Key::None => return Some(ModeOperation::Pending),
                     Key::Char('w') | Key::Char('W') => {
                         for cursor in &mut cursors[..] {
                             let word = buffer.word_at(cursor.position);
@@ -333,13 +332,12 @@ impl State {
                     }
                 }
 
-                let buffer_view = unwrap_or_none!(editor.buffer_views.get_mut(handle));
-                let buffer =
-                    unwrap_or_none!(editor.buffers.get(buffer_view.buffer_handle)).content();
+                let buffer_view = editor.buffer_views.get_mut(handle)?;
+                let buffer = editor.buffers.get(buffer_view.buffer_handle)?.content();
                 let mut cursors = buffer_view.cursors.mut_guard();
 
                 match keys.next(&editor.buffered_keys) {
-                    Key::None => return ModeOperation::Pending,
+                    Key::None => return Some(ModeOperation::Pending),
                     Key::Char('w') | Key::Char('W') => {
                         for cursor in &mut cursors[..] {
                             let (word, mut left_words, mut right_words) =
@@ -387,9 +385,9 @@ impl State {
                 this.movement_kind = CursorMovementKind::PositionOnly;
             }
             Key::Char('g') => {
-                let buffer_view = unwrap_or_none!(editor.buffer_views.get_mut(handle));
+                let buffer_view = editor.buffer_views.get_mut(handle)?;
                 match keys.next(&editor.buffered_keys) {
-                    Key::None => return ModeOperation::Pending,
+                    Key::None => return Some(ModeOperation::Pending),
                     Key::Char('g') => read_line::goto::enter_mode(editor, clients, target),
                     Key::Char('h') => buffer_view.move_cursors(
                         &editor.buffers,
@@ -417,8 +415,7 @@ impl State {
                         this.movement_kind,
                     ),
                     Key::Char('m') => {
-                        let buffer = unwrap_or_none!(editor.buffers.get(buffer_view.buffer_handle))
-                            .content();
+                        let buffer = editor.buffers.get(buffer_view.buffer_handle)?.content();
                         for cursor in &mut buffer_view.cursors.mut_guard()[..] {
                             let mut position = cursor.position;
 
@@ -476,7 +473,7 @@ impl State {
                 }
             }
             Key::Char('f') => match keys.next(&editor.buffered_keys) {
-                Key::None => return ModeOperation::Pending,
+                Key::None => return Some(ModeOperation::Pending),
                 Key::Char(ch) => {
                     this.last_char_jump = CharJump::Inclusive(ch);
                     find_char(editor, clients, target, true);
@@ -484,7 +481,7 @@ impl State {
                 _ => (),
             },
             Key::Char('F') => match keys.next(&editor.buffered_keys) {
-                Key::None => return ModeOperation::Pending,
+                Key::None => return Some(ModeOperation::Pending),
                 Key::Char(ch) => {
                     this.last_char_jump = CharJump::Inclusive(ch);
                     find_char(editor, clients, target, false);
@@ -492,7 +489,7 @@ impl State {
                 _ => (),
             },
             Key::Char('t') => match keys.next(&editor.buffered_keys) {
-                Key::None => return ModeOperation::Pending,
+                Key::None => return Some(ModeOperation::Pending),
                 Key::Char(ch) => {
                     this.last_char_jump = CharJump::Exclusive(ch);
                     find_char(editor, clients, target, true);
@@ -500,21 +497,22 @@ impl State {
                 _ => (),
             },
             Key::Char('T') => match keys.next(&editor.buffered_keys) {
-                Key::None => return ModeOperation::Pending,
+                Key::None => return Some(ModeOperation::Pending),
                 Key::Char(ch) => {
                     this.last_char_jump = CharJump::Exclusive(ch);
                     find_char(editor, clients, target, false);
                 }
                 _ => (),
             },
-            Key::Char(';') => find_char(editor, clients, target, true),
-            Key::Char(',') => find_char(editor, clients, target, false),
+            Key::Char(';') => {
+                find_char(editor, clients, target, true);
+            }
+            Key::Char(',') => {
+                find_char(editor, clients, target, false);
+            }
             Key::Char('v') => {
                 let mut had_selection = false;
-                for cursor in &mut unwrap_or_none!(editor.buffer_views.get_mut(handle))
-                    .cursors
-                    .mut_guard()[..]
-                {
+                for cursor in &mut editor.buffer_views.get_mut(handle)?.cursors.mut_guard()[..] {
                     if cursor.anchor != cursor.position {
                         cursor.anchor = cursor.position;
                         had_selection = true;
@@ -528,9 +526,8 @@ impl State {
                 };
             }
             Key::Char('V') => {
-                let buffer_view = unwrap_or_none!(editor.buffer_views.get_mut(handle));
-                let buffer =
-                    unwrap_or_none!(editor.buffers.get(buffer_view.buffer_handle)).content();
+                let buffer_view = editor.buffer_views.get_mut(handle)?;
+                let buffer = editor.buffers.get(buffer_view.buffer_handle)?.content();
 
                 let count = this.count.max(1);
                 let last_line_index = buffer.line_count().saturating_sub(1);
@@ -561,13 +558,13 @@ impl State {
                 this.movement_kind = CursorMovementKind::PositionOnly;
             }
             Key::Char('z') => {
-                let buffer_view = unwrap_or_none!(editor.buffer_views.get(handle));
+                let buffer_view = editor.buffer_views.get(handle)?;
                 let focused_line_index = buffer_view.cursors.main_cursor().position.line_index;
-                let client = unwrap_or_none!(clients.get_mut(target));
+                let client = clients.get_mut(target)?;
                 let height = client.height as usize;
 
                 match keys.next(&editor.buffered_keys) {
-                    Key::None => return ModeOperation::Pending,
+                    Key::None => return Some(ModeOperation::Pending),
                     Key::Char('z') => client.scroll = focused_line_index.saturating_sub(height / 2),
                     Key::Char('j') => client.scroll = focused_line_index.saturating_sub(height),
                     Key::Char('k') => client.scroll = focused_line_index,
@@ -576,7 +573,7 @@ impl State {
             }
             Key::Ctrl('d') => {
                 let half_height = clients.get(target).map(|c| c.height).unwrap_or(0) / 2;
-                unwrap_or_none!(editor.buffer_views.get_mut(handle)).move_cursors(
+                editor.buffer_views.get_mut(handle)?.move_cursors(
                     &editor.buffers,
                     CursorMovement::LinesForward(half_height as _),
                     this.movement_kind,
@@ -584,7 +581,7 @@ impl State {
             }
             Key::Ctrl('u') => {
                 let half_height = clients.get(target).map(|c| c.height).unwrap_or(0) / 2;
-                unwrap_or_none!(editor.buffer_views.get_mut(handle)).move_cursors(
+                editor.buffer_views.get_mut(handle)?.move_cursors(
                     &editor.buffers,
                     CursorMovement::LinesBackward(half_height as _),
                     this.movement_kind,
@@ -597,11 +594,14 @@ impl State {
                     handle,
                     &mut editor.events,
                 );
-                let buffer_view = unwrap_or_none!(editor.buffer_views.get(handle));
-                unwrap_or_none!(editor.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
+                let buffer_view = editor.buffer_views.get(handle)?;
+                editor
+                    .buffers
+                    .get_mut(buffer_view.buffer_handle)?
+                    .commit_edits();
                 this.movement_kind = CursorMovementKind::PositionAndAnchor;
                 Self::on_edit_keys(editor, keys, keys_from_index);
-                return ModeOperation::None;
+                return None;
             }
             Key::Char('i') => {
                 editor.buffer_views.delete_in_cursor_ranges(
@@ -614,19 +614,18 @@ impl State {
                 Self::on_edit_keys(editor, keys, keys_from_index);
 
                 Mode::change_to(editor, clients, target, ModeKind::Insert);
-                return ModeOperation::None;
+                return None;
             }
             Key::Char('<') => {
-                let buffer_view = unwrap_or_none!(editor.buffer_views.get(handle));
+                let buffer_view = editor.buffer_views.get(handle)?;
                 let cursor_count = buffer_view.cursors[..].len();
                 let buffer_handle = buffer_view.buffer_handle;
                 let count = this.count.max(1);
 
                 for i in 0..cursor_count {
-                    let range =
-                        unwrap_or_none!(editor.buffer_views.get(handle)).cursors[i].as_range();
+                    let range = editor.buffer_views.get(handle)?.cursors[i].as_range();
                     for line_index in range.from.line_index..=range.to.line_index {
-                        let buffer = unwrap_or_none!(editor.buffers.get(buffer_handle));
+                        let buffer = editor.buffers.get(buffer_handle)?;
                         let line = buffer.content().line_at(line_index).as_str();
                         let mut indentation_column_index = 0;
 
@@ -660,15 +659,17 @@ impl State {
                         );
                     }
                 }
-                let buffer_view = unwrap_or_none!(editor.buffer_views.get(handle));
-                unwrap_or_none!(editor.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
+                let buffer_view = editor.buffer_views.get(handle)?;
+                editor
+                    .buffers
+                    .get_mut(buffer_view.buffer_handle)?
+                    .commit_edits();
 
                 Self::on_edit_keys(editor, keys, keys_from_index);
-                return ModeOperation::None;
+                return None;
             }
             Key::Char('>') => {
-                let cursor_count =
-                    unwrap_or_none!(editor.buffer_views.get(handle)).cursors[..].len();
+                let cursor_count = editor.buffer_views.get(handle)?.cursors[..].len();
                 let count;
                 let fill;
                 if editor.config.values.indent_with_tabs {
@@ -685,8 +686,7 @@ impl State {
                 let indentation = unsafe { std::str::from_utf8_unchecked(&buf[..len]) };
 
                 for i in 0..cursor_count {
-                    let range =
-                        unwrap_or_none!(editor.buffer_views.get(handle)).cursors[i].as_range();
+                    let range = editor.buffer_views.get(handle)?.cursors[i].as_range();
                     for line_index in range.from.line_index..=range.to.line_index {
                         editor.buffer_views.insert_text_at_position(
                             &mut editor.buffers,
@@ -698,18 +698,20 @@ impl State {
                         );
                     }
                 }
-                let buffer_view = unwrap_or_none!(editor.buffer_views.get(handle));
-                unwrap_or_none!(editor.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
+                let buffer_view = editor.buffer_views.get(handle)?;
+                editor
+                    .buffers
+                    .get_mut(buffer_view.buffer_handle)?
+                    .commit_edits();
 
                 Self::on_edit_keys(editor, keys, keys_from_index);
-                return ModeOperation::None;
+                return None;
             }
             Key::Char('c') | Key::Char('C') => match keys.next(&editor.buffered_keys) {
-                Key::None => return ModeOperation::Pending,
+                Key::None => return Some(ModeOperation::Pending),
                 Key::Char('c') => {
-                    let buffer_view = unwrap_or_none!(editor.buffer_views.get_mut(handle));
-                    let buffer =
-                        unwrap_or_none!(editor.buffers.get(buffer_view.buffer_handle)).content();
+                    let buffer_view = editor.buffer_views.get_mut(handle)?;
+                    let buffer = editor.buffers.get(buffer_view.buffer_handle)?.content();
 
                     let mut cursors = buffer_view.cursors.mut_guard();
                     let cursor_count = cursors[..].len();
@@ -764,7 +766,7 @@ impl State {
                     this.movement_kind = CursorMovementKind::PositionOnly;
                 }
                 Key::Char('d') => {
-                    let cursors = &mut unwrap_or_none!(editor.buffer_views.get_mut(handle)).cursors;
+                    let cursors = &mut editor.buffer_views.get_mut(handle)?.cursors;
                     let main_cursor = *cursors.main_cursor();
                     let mut cursors = cursors.mut_guard();
                     cursors.clear();
@@ -775,25 +777,21 @@ impl State {
                     this.movement_kind = CursorMovementKind::PositionOnly;
                 }
                 Key::Char('V') => {
-                    for cursor in &mut unwrap_or_none!(editor.buffer_views.get_mut(handle))
-                        .cursors
-                        .mut_guard()[..]
+                    for cursor in &mut editor.buffer_views.get_mut(handle)?.cursors.mut_guard()[..]
                     {
                         cursor.anchor = cursor.position;
                     }
                     this.movement_kind = CursorMovementKind::PositionAndAnchor;
                 }
                 Key::Char('o') => {
-                    for cursor in &mut unwrap_or_none!(editor.buffer_views.get_mut(handle))
-                        .cursors
-                        .mut_guard()[..]
+                    for cursor in &mut editor.buffer_views.get_mut(handle)?.cursors.mut_guard()[..]
                     {
                         std::mem::swap(&mut cursor.anchor, &mut cursor.position);
                     }
                 }
                 Key::Char('j') => {
-                    let buffer_view = unwrap_or_none!(editor.buffer_views.get_mut(handle));
-                    let buffer = unwrap_or_none!(editor.buffers.get(buffer_view.buffer_handle));
+                    let buffer_view = editor.buffer_views.get_mut(handle)?;
+                    let buffer = editor.buffers.get(buffer_view.buffer_handle)?;
                     let mut cursors = buffer_view.cursors.mut_guard();
 
                     if let Some(cursor) = cursors[..].last() {
@@ -811,8 +809,8 @@ impl State {
                     }
                 }
                 Key::Char('k') => {
-                    let buffer_view = unwrap_or_none!(editor.buffer_views.get_mut(handle));
-                    let buffer = unwrap_or_none!(editor.buffers.get(buffer_view.buffer_handle));
+                    let buffer_view = editor.buffer_views.get_mut(handle)?;
+                    let buffer = editor.buffers.get(buffer_view.buffer_handle)?;
                     let mut cursors = buffer_view.cursors.mut_guard();
 
                     if let Some(cursor) = cursors[..].first() {
@@ -830,7 +828,7 @@ impl State {
                     }
                 }
                 Key::Char('n') => {
-                    let cursors = &mut unwrap_or_none!(editor.buffer_views.get_mut(handle)).cursors;
+                    let cursors = &mut editor.buffer_views.get_mut(handle)?.cursors;
                     let index = cursors.main_cursor_index();
                     let mut cursors = cursors.mut_guard();
                     let cursor_count = cursors[..].len();
@@ -838,7 +836,7 @@ impl State {
                     cursors.set_main_cursor_index((index + offset) % cursor_count);
                 }
                 Key::Char('p') => {
-                    let cursors = &mut unwrap_or_none!(editor.buffer_views.get_mut(handle)).cursors;
+                    let cursors = &mut editor.buffer_views.get_mut(handle)?.cursors;
                     let index = cursors.main_cursor_index();
                     let mut cursors = cursors.mut_guard();
                     let cursor_count = cursors[..].len();
@@ -860,9 +858,13 @@ impl State {
                 _ => (),
             },
             Key::Char('r') => match keys.next(&editor.buffered_keys) {
-                Key::None => return ModeOperation::Pending,
-                Key::Char('n') => move_to_diagnostic(editor, clients, target, true),
-                Key::Char('p') => move_to_diagnostic(editor, clients, target, false),
+                Key::None => return Some(ModeOperation::Pending),
+                Key::Char('n') => {
+                    move_to_diagnostic(editor, clients, target, true);
+                }
+                Key::Char('p') => {
+                    move_to_diagnostic(editor, clients, target, false);
+                }
                 Key::Char('r') => editor
                     .status_bar
                     .write_str(StatusMessageKind::Info, "rename not yet implemented"),
@@ -872,7 +874,7 @@ impl State {
             Key::Char('y') => {
                 use copypasta::{ClipboardContext, ClipboardProvider};
                 if let Ok(mut clipboard) = ClipboardContext::new() {
-                    let buffer_view = unwrap_or_none!(editor.buffer_views.get(handle));
+                    let buffer_view = editor.buffer_views.get(handle)?;
                     let mut text = String::new();
                     buffer_view.get_selection_text(&editor.buffers, &mut text);
                     if !text.is_empty() {
@@ -898,15 +900,18 @@ impl State {
                         &mut editor.events,
                     );
                 }
-                let buffer_view = unwrap_or_none!(editor.buffer_views.get(handle));
-                unwrap_or_none!(editor.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
+                let buffer_view = editor.buffer_views.get(handle)?;
+                editor
+                    .buffers
+                    .get_mut(buffer_view.buffer_handle)?
+                    .commit_edits();
                 this.movement_kind = CursorMovementKind::PositionAndAnchor;
 
                 this.is_recording_auto_macro = false;
-                return ModeOperation::None;
+                return None;
             }
             Key::Ctrl('y') => match keys.next(&editor.buffered_keys) {
-                Key::None => return ModeOperation::Pending,
+                Key::None => return Some(ModeOperation::Pending),
                 Key::Char(c) => {
                     editor.buffer_views.delete_in_cursor_ranges(
                         &mut editor.buffers,
@@ -924,13 +929,15 @@ impl State {
                             &mut editor.events,
                         );
                     }
-                    let buffer_view = unwrap_or_none!(editor.buffer_views.get(handle));
-                    unwrap_or_none!(editor.buffers.get_mut(buffer_view.buffer_handle))
+                    let buffer_view = editor.buffer_views.get(handle)?;
+                    editor
+                        .buffers
+                        .get_mut(buffer_view.buffer_handle)?
                         .commit_edits();
                     this.movement_kind = CursorMovementKind::PositionAndAnchor;
 
                     this.is_recording_auto_macro = false;
-                    return ModeOperation::None;
+                    return None;
                 }
                 _ => (),
             },
@@ -942,7 +949,7 @@ impl State {
                     handle,
                 );
                 this.movement_kind = CursorMovementKind::PositionAndAnchor;
-                return ModeOperation::None;
+                return None;
             }
             Key::Char('U') => {
                 editor.buffer_views.redo(
@@ -952,7 +959,7 @@ impl State {
                     handle,
                 );
                 this.movement_kind = CursorMovementKind::PositionAndAnchor;
-                return ModeOperation::None;
+                return None;
             }
             _ => {
                 keys.put_back();
@@ -963,7 +970,7 @@ impl State {
         Self::on_movement_keys(editor, keys, keys_from_index);
 
         editor.mode.normal_state.count = 0;
-        ModeOperation::None
+        None
     }
 }
 
@@ -984,7 +991,7 @@ impl ModeState for State {
         clients: &mut ClientCollection,
         target: TargetClient,
         keys: &mut KeysIterator,
-    ) -> ModeOperation {
+    ) -> Option<ModeOperation> {
         fn show_hovered_diagnostic_in_status_bar(
             editor: &mut Editor,
             clients: &mut ClientCollection,
@@ -1026,7 +1033,7 @@ impl ModeState for State {
             Some(handle) => {
                 let op =
                     Self::on_client_keys_with_buffer_view(editor, clients, target, keys, handle);
-                if let ModeOperation::None = op {
+                if let None = op {
                     show_hovered_diagnostic_in_status_bar(editor, clients, target);
                 }
                 op

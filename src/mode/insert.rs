@@ -26,12 +26,12 @@ impl ModeState for State {
         clients: &mut ClientCollection,
         target: TargetClient,
         keys: &mut KeysIterator,
-    ) -> ModeOperation {
+    ) -> Option<ModeOperation> {
         let handle = match clients.get(target).and_then(|c| c.current_buffer_view_handle()) {
             Some(handle) => handle,
             None => {
                 Mode::change_to(editor, clients, target, ModeKind::default());
-                return ModeOperation::None;
+                return None;
             }
         };
 
@@ -44,27 +44,27 @@ impl ModeState for State {
 
         match key {
             Key::Esc => {
-                let buffer_view = unwrap_or_none!(editor.buffer_views.get(handle));
-                unwrap_or_none!(editor.buffers.get_mut(buffer_view.buffer_handle)).commit_edits();
+                let buffer_view = editor.buffer_views.get(handle)?;
+                editor.buffers.get_mut(buffer_view.buffer_handle)?.commit_edits();
                 Mode::change_to(editor, clients, target, ModeKind::default());
-                return ModeOperation::None;
+                return None;
             }
-            Key::Left => unwrap_or_none!(editor.buffer_views.get_mut(handle)).move_cursors(
+            Key::Left => editor.buffer_views.get_mut(handle)?.move_cursors(
                 &editor.buffers,
                 CursorMovement::ColumnsBackward(1),
                 CursorMovementKind::PositionAndAnchor,
             ),
-            Key::Down => unwrap_or_none!(editor.buffer_views.get_mut(handle)).move_cursors(
+            Key::Down => editor.buffer_views.get_mut(handle)?.move_cursors(
                 &editor.buffers,
                 CursorMovement::LinesForward(1),
                 CursorMovementKind::PositionAndAnchor,
             ),
-            Key::Up => unwrap_or_none!(editor.buffer_views.get_mut(handle)).move_cursors(
+            Key::Up => editor.buffer_views.get_mut(handle)?.move_cursors(
                 &editor.buffers,
                 CursorMovement::LinesBackward(1),
                 CursorMovementKind::PositionAndAnchor,
             ),
-            Key::Right => unwrap_or_none!(editor.buffer_views.get_mut(handle)).move_cursors(
+            Key::Right => editor.buffer_views.get_mut(handle)?.move_cursors(
                 &editor.buffers,
                 CursorMovement::ColumnsForward(1),
                 CursorMovementKind::PositionAndAnchor,
@@ -77,7 +77,7 @@ impl ModeState for State {
                 &mut editor.events,
             ),
             Key::Enter => {
-                let buffer_view = unwrap_or_none!(editor.buffer_views.get(handle));
+                let buffer_view = editor.buffer_views.get(handle)?;
                 let cursor_count = buffer_view.cursors[..].len();
                 let buffer_handle = buffer_view.buffer_handle;
 
@@ -86,8 +86,8 @@ impl ModeState for State {
 
                 for i in 0..cursor_count {
                     let position =
-                        unwrap_or_none!(editor.buffer_views.get(handle)).cursors[i].position;
-                    let buffer = unwrap_or_none!(editor.buffers.get(buffer_handle));
+                        editor.buffer_views.get(handle)?.cursors[i].position;
+                    let buffer = editor.buffers.get(buffer_handle)?;
 
                     let mut len = 1;
                     let indentation_word = buffer
@@ -127,7 +127,7 @@ impl ModeState for State {
                 );
             }
             Key::Backspace => {
-                unwrap_or_none!(editor.buffer_views.get_mut(handle)).move_cursors(
+                editor.buffer_views.get_mut(handle)?.move_cursors(
                     &editor.buffers,
                     CursorMovement::ColumnsBackward(1),
                     CursorMovementKind::PositionOnly,
@@ -140,7 +140,7 @@ impl ModeState for State {
                 );
             }
             Key::Delete => {
-                unwrap_or_none!(editor.buffer_views.get_mut(handle)).move_cursors(
+                editor.buffer_views.get_mut(handle)?.move_cursors(
                     &editor.buffers,
                     CursorMovement::ColumnsForward(1),
                     CursorMovementKind::PositionOnly,
@@ -153,7 +153,7 @@ impl ModeState for State {
                 );
             }
             Key::Ctrl('w') => {
-                unwrap_or_none!(editor.buffer_views.get_mut(handle)).move_cursors(
+                editor.buffer_views.get_mut(handle)?.move_cursors(
                     &editor.buffers,
                     CursorMovement::WordsBackward(1),
                     CursorMovementKind::PositionOnly,
@@ -167,17 +167,17 @@ impl ModeState for State {
             }
             Key::Ctrl('n') => {
                 apply_completion(editor, handle, 1);
-                return ModeOperation::None;
+                return None;
             }
             Key::Ctrl('p') => {
                 apply_completion(editor, handle, -1);
-                return ModeOperation::None;
+                return None;
             }
             _ => (),
         }
 
-        let buffer_view = unwrap_or_none!(editor.buffer_views.get(handle));
-        let buffer = unwrap_or_none!(editor.buffers.get(buffer_view.buffer_handle));
+        let buffer_view = editor.buffer_views.get(handle)?;
+        let buffer = editor.buffers.get(buffer_view.buffer_handle)?;
         let mut word_position = buffer_view.cursors.main_cursor().position;
         word_position.column_byte_index =
             buffer.content().line_at(word_position.line_index).as_str()
@@ -200,7 +200,7 @@ impl ModeState for State {
             editor.picker.clear_filtered();
         }
 
-        ModeOperation::None
+        None
     }
 }
 
