@@ -1,1 +1,0 @@
-parei na parte de atualizar os modes pra usar Editor e ClientCollection ao inves de Context
