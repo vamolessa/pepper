@@ -336,7 +336,7 @@ impl Editor {
             let buffer_views = &self.buffer_views;
             let buffers = &mut self.buffers;
             if let Some(buffer) = client
-                .current_buffer_view_handle()
+                .buffer_view_handle()
                 .and_then(|h| buffer_views.get(h))
                 .map(|v| v.buffer_handle)
                 .and_then(|h| buffers.get_mut(h))
@@ -358,17 +358,15 @@ impl Editor {
     ) {
         clients.on_client_joined(client_handle);
 
-        let target_client = TargetClient::Remote(client_handle);
+        let target = TargetClient::Remote(client_handle);
         let buffer_view_handle = clients
             .get(clients.focused_target())
-            .and_then(|c| c.current_buffer_view_handle())
+            .and_then(|c| c.buffer_view_handle())
             .and_then(|h| self.buffer_views.get(h))
-            .map(|v| v.clone_with_target_client(target_client))
+            .map(|v| v.clone_with_target_client(target))
             .map(|b| self.buffer_views.add(b));
 
-        if let Some(client) = clients.get_mut(target_client) {
-            client.set_current_buffer_view_handle(buffer_view_handle);
-        }
+        clients.set_buffer_view_handle(self, target, buffer_view_handle);
     }
 
     pub fn on_client_left(
@@ -387,8 +385,8 @@ impl Editor {
     ) -> EditorLoop {
         let result = match event {
             ClientEvent::Ui(ui) => {
-                let target_client = clients.client_map.get(target);
-                if let Some(client) = clients.get_client_ref(target_client) {
+                let target = clients.client_map.get(target);
+                if let Some(client) = clients.get_client_ref(target) {
                     *client.ui = ui;
                 }
                 EditorLoop::Continue
@@ -397,12 +395,12 @@ impl Editor {
                 clients.client_map.map(target, clients.focused_target());
                 EditorLoop::Continue
             }
-            ClientEvent::AsClient(target_client) => {
-                clients.client_map.map(target, target_client);
+            ClientEvent::AsClient(as_target) => {
+                clients.client_map.map(target, as_target);
                 EditorLoop::Continue
             }
             ClientEvent::OpenBuffer(mut path) => {
-                let target_client = clients.client_map.get(target);
+                let target = clients.client_map.get(target);
 
                 let mut line_index = None;
                 if let Some(separator_index) = path.rfind(':') {
@@ -414,7 +412,7 @@ impl Editor {
                 }
 
                 match self.buffer_views.buffer_view_handle_from_path(
-                    target_client,
+                    target,
                     &mut self.buffers,
                     &mut self.word_database,
                     &self.current_directory,
@@ -422,15 +420,11 @@ impl Editor {
                     line_index,
                     &mut self.events,
                 ) {
-                    Ok(handle) => {
-                        if let Some(client) = clients.get_mut(target_client) {
-                            client.set_current_buffer_view_handle(Some(handle));
-                        }
-                    }
+                    Ok(handle) => clients.set_buffer_view_handle(self, target, Some(handle)),
                     Err(error) => self.status_bar.write_error(&error),
                 }
 
-                self.trigger_event_handlers(clients, target_client);
+                self.trigger_event_handlers(clients, target);
                 EditorLoop::Continue
             }
             ClientEvent::Key(key) => {

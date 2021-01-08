@@ -169,7 +169,7 @@ mod client {
         Ok(ctx
             .clients
             .get(target)
-            .and_then(|c| c.current_buffer_view_handle()))
+            .and_then(|c| c.buffer_view_handle()))
     }
 
     pub fn quit(
@@ -749,7 +749,8 @@ mod buffer {
             ctx.buffer_views
                 .defer_remove_where(ctx.buffers, ctx.events, |_| true);
             for c in ctx.clients.client_refs() {
-                c.client.set_current_buffer_view_handle(None);
+                // TODO: implement
+                //c.client.set_current_buffer_view_handle(None);
             }
             Ok(())
         }
@@ -770,7 +771,8 @@ mod buffer {
         ctx.buffer_views
             .defer_remove_where(ctx.buffers, ctx.events, |_| true);
         for c in ctx.clients.client_refs() {
-            c.client.set_current_buffer_view_handle(None);
+            // TODO: implement
+            //c.client.set_current_buffer_view_handle(None);
         }
         Ok(())
     }

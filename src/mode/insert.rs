@@ -27,7 +27,7 @@ impl ModeState for State {
         target: TargetClient,
         keys: &mut KeysIterator,
     ) -> Option<ModeOperation> {
-        let handle = match clients.get(target).and_then(|c| c.current_buffer_view_handle()) {
+        let handle = match clients.get(target).and_then(|c| c.buffer_view_handle()) {
             Some(handle) => handle,
             None => {
                 Mode::change_to(editor, clients, target, ModeKind::default());

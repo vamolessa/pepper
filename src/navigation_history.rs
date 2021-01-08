@@ -3,6 +3,7 @@ use crate::{
     buffer_view::{BufferView, BufferViewCollection},
     client::{ClientCollection, TargetClient},
     cursor::Cursor,
+    editor::Editor,
 };
 
 pub enum NavigationDirection {
@@ -37,7 +38,7 @@ impl NavigationHistory {
             Some(client) => client,
             None => return,
         };
-        let view_handle = match client.current_buffer_view_handle() {
+        let view_handle = match client.buffer_view_handle() {
             Some(handle) => handle,
             None => return,
         };
@@ -82,9 +83,9 @@ impl NavigationHistory {
     }
 
     pub fn move_in_history(
+        editor: &mut Editor,
         clients: &mut ClientCollection,
         target: TargetClient,
-        buffer_views: &mut BufferViewCollection,
         direction: NavigationDirection,
     ) {
         let client = match clients.get_mut(target) {
@@ -92,7 +93,7 @@ impl NavigationHistory {
             None => return,
         };
 
-        let current_buffer_view_handle = client.current_buffer_view_handle();
+        let current_buffer_view_handle = client.buffer_view_handle();
 
         let history = &mut client.navigation_history;
         let mut history_index = match history.state {
@@ -117,7 +118,7 @@ impl NavigationHistory {
 
                 if history_index == history.snapshots.len() {
                     if let Some(buffer_view) =
-                        current_buffer_view_handle.and_then(|h| buffer_views.get(h))
+                        current_buffer_view_handle.and_then(|h| editor.buffer_views.get(h))
                     {
                         history.add_snapshot(buffer_view)
                     }
@@ -130,9 +131,10 @@ impl NavigationHistory {
 
         history.state = NavigationState::IterIndex(history_index);
 
-        let view_handle =
-            buffer_views.buffer_view_handle_from_buffer_handle(target, snapshot.buffer_handle);
-        let mut cursors = match buffer_views.get_mut(view_handle) {
+        let view_handle = editor
+            .buffer_views
+            .buffer_view_handle_from_buffer_handle(target, snapshot.buffer_handle);
+        let mut cursors = match editor.buffer_views.get_mut(view_handle) {
             Some(view) => view.cursors.mut_guard(),
             None => return,
         };
@@ -140,8 +142,9 @@ impl NavigationHistory {
         for cursor in history.cursors[snapshot.cursor_range.0..snapshot.cursor_range.1].iter() {
             cursors.add(*cursor);
         }
+        drop(cursors);
 
-        client.set_current_buffer_view_handle(Some(view_handle));
+        clients.set_buffer_view_handle(editor, target, Some(view_handle));
     }
 
     pub fn remove_snapshots_with_buffer_handle(&mut self, buffer_handle: BufferHandle) {

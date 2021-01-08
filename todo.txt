@@ -1,0 +1,1 @@
+agora tem que fazer os scripts lidarem com Editor ao inves de ctx

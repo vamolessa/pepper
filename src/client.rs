@@ -89,22 +89,12 @@ pub struct Client {
 }
 
 impl Client {
-    // TODO: rename to 'buffer_view_handle'
-    pub fn current_buffer_view_handle(&self) -> Option<BufferViewHandle> {
+    pub fn buffer_view_handle(&self) -> Option<BufferViewHandle> {
         self.current_buffer_view_handle
     }
 
     pub fn previous_buffer_view_handle(&self) -> Option<BufferViewHandle> {
         self.previous_buffer_view_handle
-    }
-
-    // TODO: rename to 'set_buffer_view_handle'
-    // TODO: investigate if it's better to only use the method in ClientCollection
-    pub fn set_current_buffer_view_handle(&mut self, handle: Option<BufferViewHandle>) {
-        if self.current_buffer_view_handle != handle {
-            self.previous_buffer_view_handle = self.current_buffer_view_handle;
-            self.current_buffer_view_handle = handle;
-        }
     }
 
     pub fn update_view(&mut self, editor: &Editor, picker_height: u16) {
@@ -178,7 +168,7 @@ impl ClientData {
 // TODO: rename to 'ClientManager'
 #[derive(Default)]
 pub struct ClientCollection {
-    focused_client: TargetClient,    // TODO: rename to 'focused_target'
+    focused_target: TargetClient,
     pub client_map: ClientTargetMap, // TODO: expose through ClientCollection
 
     local: Client,
@@ -189,38 +179,33 @@ pub struct ClientCollection {
 
 impl ClientCollection {
     pub fn focused_target(&self) -> TargetClient {
-        self.focused_client
+        self.focused_target
     }
 
     pub fn focus_client(&mut self, target: TargetClient) -> bool {
-        let changed = target != self.focused_client;
-        self.focused_client = target;
+        let changed = target != self.focused_target;
+        self.focused_target = target;
         changed
     }
 
-    // TODO: rename
-    pub fn current_buffer_view_handle(&self, target: TargetClient) -> Option<BufferViewHandle> {
-        self.get(target)
-            .and_then(|c| c.current_buffer_view_handle())
-    }
-
     // TODO: delte or move it to editor
-    pub fn set_current_buffer_view_handle(
+    pub fn set_buffer_view_handle(
         &mut self,
         editor: &mut Editor,
         target: TargetClient,
         handle: Option<BufferViewHandle>,
     ) {
         if let Some(client) = self.get_mut(target) {
-            client.set_current_buffer_view_handle(handle);
+            if client.current_buffer_view_handle != handle {
+                client.previous_buffer_view_handle = client.current_buffer_view_handle;
+                client.current_buffer_view_handle = handle;
+            }
 
             if let Some(handle) = handle
                 .and_then(|h| editor.buffer_views.get(h))
                 .map(|v| v.buffer_handle)
             {
-                editor
-                    .events
-                    .enqueue(EditorEvent::BufferOpen { handle });
+                editor.events.enqueue(EditorEvent::BufferOpen { handle });
             }
         }
     }
@@ -245,8 +230,8 @@ impl ClientCollection {
         self.remote_data[index].reset();
 
         self.client_map.on_client_left(client_handle);
-        if self.focused_client == TargetClient::Remote(client_handle) {
-            self.focused_client = TargetClient::Local;
+        if self.focused_target == TargetClient::Remote(client_handle) {
+            self.focused_target = TargetClient::Local;
         }
     }
 

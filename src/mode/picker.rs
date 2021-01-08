@@ -120,7 +120,7 @@ pub mod buffer {
                 None,
                 &mut editor.events,
             ) {
-                Ok(handle) => clients.set_current_buffer_view_handle(editor, target, Some(handle)),
+                Ok(handle) => clients.set_buffer_view_handle(editor, target, Some(handle)),
                 Err(error) => editor.status_bar.write_error(&error),
             }
 

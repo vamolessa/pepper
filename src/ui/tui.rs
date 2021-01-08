@@ -186,7 +186,7 @@ struct ClientView<'a> {
 impl<'a> ClientView<'a> {
     pub fn from(editor: &'a Editor, client: &'a Client) -> ClientView<'a> {
         let buffer_view = client
-            .current_buffer_view_handle()
+            .buffer_view_handle()
             .and_then(|h| editor.buffer_views.get(h));
         let buffer_handle = buffer_view.map(|v| v.buffer_handle);
         let buffer = buffer_handle.and_then(|h| editor.buffers.get(h));

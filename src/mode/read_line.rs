@@ -6,8 +6,13 @@ use crate::{
 };
 
 pub struct State {
-    on_client_keys:
-        fn(&mut Editor, &mut ClientCollection, TargetClient, &mut KeysIterator, ReadLinePoll) -> Option<()>,
+    on_client_keys: fn(
+        &mut Editor,
+        &mut ClientCollection,
+        TargetClient,
+        &mut KeysIterator,
+        ReadLinePoll,
+    ) -> Option<()>,
 }
 
 impl Default for State {
@@ -65,9 +70,9 @@ pub mod search {
                 }
                 ReadLinePoll::Canceled => {
                     NavigationHistory::move_in_history(
+                        editor,
                         clients,
                         target,
-                        &mut editor.buffer_views,
                         NavigationDirection::Backward,
                     );
                     Mode::change_to(editor, clients, target, ModeKind::default());
@@ -85,13 +90,17 @@ pub mod search {
         Mode::change_to(editor, clients, target, ModeKind::ReadLine);
     }
 
-    fn update_search(editor: &mut Editor, clients: &mut ClientCollection, target: TargetClient) -> Option<()> {
+    fn update_search(
+        editor: &mut Editor,
+        clients: &mut ClientCollection,
+        target: TargetClient,
+    ) -> Option<()> {
         for buffer in editor.buffers.iter_mut() {
             buffer.set_search("");
         }
 
         let client = clients.get_mut(target)?;
-        let handle = client.current_buffer_view_handle()?;
+        let handle = client.buffer_view_handle()?;
         let buffer_view = editor.buffer_views.get_mut(handle)?;
         let buffer = editor.buffers.get_mut(buffer_view.buffer_handle)?;
         buffer.set_search(&editor.read_line.input());
@@ -155,7 +164,11 @@ pub mod filter_cursors {
 
     use crate::{buffer::BufferContent, buffer_position::BufferRange, cursor::Cursor};
 
-    pub fn enter_filter_mode(editor: &mut Editor, clients: &mut ClientCollection, target: TargetClient) {
+    pub fn enter_filter_mode(
+        editor: &mut Editor,
+        clients: &mut ClientCollection,
+        target: TargetClient,
+    ) {
         editor.read_line.set_prompt("filter:");
         editor.mode.read_line_state.on_client_keys = |editor, clients, target, _, poll| {
             on_submitted!(editor, clients, target, poll => on_event_impl(editor, clients, target, true));
@@ -164,7 +177,11 @@ pub mod filter_cursors {
         Mode::change_to(editor, clients, target, ModeKind::ReadLine);
     }
 
-    pub fn enter_except_mode(editor: &mut Editor, clients: &mut ClientCollection, target: TargetClient) {
+    pub fn enter_except_mode(
+        editor: &mut Editor,
+        clients: &mut ClientCollection,
+        target: TargetClient,
+    ) {
         editor.read_line.set_prompt("except:");
         editor.mode.read_line_state.on_client_keys = |editor, clients, target, _, poll| {
             on_submitted!(editor, clients, target, poll => on_event_impl(editor, clients, target, false));
@@ -215,7 +232,7 @@ pub mod filter_cursors {
             pattern
         };
 
-        let handle = clients.current_buffer_view_handle(target)?;
+        let handle = clients.get(target)?.buffer_view_handle()?;
         let buffer_view = editor.buffer_views.get_mut(handle)?;
         let buffer = editor.buffers.get_mut(buffer_view.buffer_handle)?.content();
 
@@ -253,7 +270,11 @@ pub mod split_cursors {
         cursor::{Cursor, CursorCollectionMutGuard},
     };
 
-    pub fn enter_by_pattern_mode(editor: &mut Editor, clients: &mut ClientCollection, target: TargetClient) {
+    pub fn enter_by_pattern_mode(
+        editor: &mut Editor,
+        clients: &mut ClientCollection,
+        target: TargetClient,
+    ) {
         fn add_matches(
             cursors: &mut CursorCollectionMutGuard,
             line: &str,
@@ -281,7 +302,11 @@ pub mod split_cursors {
         Mode::change_to(editor, clients, target, ModeKind::ReadLine);
     }
 
-    pub fn enter_by_separators_mode(editor: &mut Editor, clients: &mut ClientCollection, target: TargetClient) {
+    pub fn enter_by_separators_mode(
+        editor: &mut Editor,
+        clients: &mut ClientCollection,
+        target: TargetClient,
+    ) {
         fn add_matches(
             cursors: &mut CursorCollectionMutGuard,
             line: &str,
@@ -330,7 +355,7 @@ pub mod split_cursors {
             pattern
         };
 
-        let handle = clients.current_buffer_view_handle(target)?;
+        let handle = clients.get(target)?.buffer_view_handle()?;
         let buffer_view = editor.buffer_views.get_mut(handle)?;
         let buffer = editor.buffers.get_mut(buffer_view.buffer_handle)?.content();
 
@@ -416,7 +441,7 @@ pub mod goto {
                     };
                     let line_index = line_number.saturating_sub(1);
 
-                    let handle = clients.current_buffer_view_handle(target)?;
+                    let handle = clients.get(target)?.buffer_view_handle()?;
                     let buffer_view = editor.buffer_views.get_mut(handle)?;
                     let buffer = editor.buffers.get(buffer_view.buffer_handle)?;
 
@@ -435,12 +460,14 @@ pub mod goto {
                         position,
                     });
                 }
-                ReadLinePoll::Submitted => Mode::change_to(editor, clients, target, ModeKind::default()),
+                ReadLinePoll::Submitted => {
+                    Mode::change_to(editor, clients, target, ModeKind::default())
+                }
                 ReadLinePoll::Canceled => {
                     NavigationHistory::move_in_history(
+                        editor,
                         clients,
                         target,
-                        &mut editor.buffer_views,
                         NavigationDirection::Backward,
                     );
                     Mode::change_to(editor, clients, target, ModeKind::default());
@@ -449,11 +476,7 @@ pub mod goto {
             None
         }
 
-        NavigationHistory::save_client_snapshot(
-            clients,
-            target,
-            &mut editor.buffer_views,
-        );
+        NavigationHistory::save_client_snapshot(clients, target, &mut editor.buffer_views);
         editor.read_line.set_prompt("goto-line:");
         editor.mode.read_line_state.on_client_keys = on_client_keys;
         Mode::change_to(editor, clients, target, ModeKind::ReadLine);
