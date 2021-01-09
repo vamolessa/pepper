@@ -14,7 +14,7 @@ use crate::{
     buffer_view::{BufferViewCollection, BufferViewHandle},
     client::{ClientCollection, TargetClient},
     config::Config,
-    editor::{EditorLoop, ReadLine, StatusBar},
+    editor::{Editor, EditorLoop, ReadLine, StatusBar},
     editor_event::{EditorEvent, EditorEventQueue},
     keymap::KeyMapCollection,
     lsp::{LspClientCollection, LspClientContext},
@@ -153,6 +153,20 @@ impl<'lua> FromLua<'lua> for ScriptArray<'lua> {
 pub struct ScriptFunction<'lua>(LuaFunction<'lua>);
 impl<'lua> ScriptFunction<'lua> {
     pub fn call<A, R>(&self, _: &ScriptContextGuard, args: A) -> ScriptResult<R>
+    where
+        A: ToLuaMulti<'lua>,
+        R: FromLuaMulti<'lua>,
+    {
+        self.0.call(args)
+    }
+
+    pub fn call_new<A, R>(
+        &self,
+        editor: &mut Editor,
+        clients: &mut ClientCollection,
+        target: TargetClient,
+        args: A,
+    ) -> ScriptResult<R>
     where
         A: ToLuaMulti<'lua>,
         R: FromLuaMulti<'lua>,
@@ -431,6 +445,39 @@ struct CurrentDirectory<'a>(&'a Path);
 
 pub struct ScriptContextGuard(());
 
+struct ScriptCallScope<'lua>(&'lua Lua);
+impl<'lua> ScriptCallScope<'lua> {
+    pub fn begin(
+        lua: &'lua Lua,
+        editor: &mut Editor,
+        clients: &mut ClientCollection,
+        target: TargetClient,
+    ) -> ScriptResult<Self> {
+        lua.set_named_registry_value("editor", LuaLightUserData(editor as *mut _ as _))?;
+        lua.set_named_registry_value("clients", LuaLightUserData(clients as *mut _ as _))?;
+        lua.set_named_registry_value("target", target.into_index() as LuaInteger)?;
+        Ok(Self(lua))
+    }
+
+    pub fn get(
+        lua: &'lua Lua,
+    ) -> ScriptResult<(&'lua Editor, &'lua mut ClientCollection, TargetClient)> {
+        let LuaLightUserData(editor) = lua.named_registry_value("editor")?;
+        let editor = unsafe { &mut *(editor as *mut _) };
+        let LuaLightUserData(clients) = lua.named_registry_value("clients")?;
+        let clients = unsafe { &mut *(clients as *mut _) };
+        let target: LuaInteger = lua.named_registry_value("target")?;
+        let target = TargetClient::from_index(target as _);
+        Ok((editor, clients, target))
+    }
+}
+impl<'lua> Drop for ScriptCallScope<'lua> {
+    fn drop(&mut self) {
+        self.0.unset_named_registry_value("editor").unwrap();
+        self.0.unset_named_registry_value("clients").unwrap();
+    }
+}
+
 struct ScriptContextRegistryScope<'lua>(&'lua Lua);
 impl<'lua> ScriptContextRegistryScope<'lua> {
     pub fn new(lua: &'lua Lua, ctx: &mut ScriptContext) -> ScriptResult<Self> {
@@ -698,6 +745,28 @@ impl<'lua> ScriptEngineRef<'lua> {
         self.lua.create_table().map(ScriptArray)
     }
 
+    pub fn create_function<A, R, F>(&self, func: F) -> ScriptResult<ScriptFunction<'lua>>
+    where
+        A: FromLuaMulti<'lua>,
+        R: ToLuaMulti<'lua>,
+        F: 'static + Fn(&mut Editor, &mut ClientCollection, TargetClient, A) -> ScriptResult<R>,
+    {
+        self.lua
+            .create_function(move |lua, args| {
+                let LuaLightUserData(editor) = lua.named_registry_value("editor")?;
+                let editor = unsafe { &mut *(editor as *mut _) };
+
+                let LuaLightUserData(clients) = lua.named_registry_value("clients")?;
+                let clients = unsafe { &mut *(clients as *mut _) };
+
+                let target: LuaInteger = lua.named_registry_value("target")?;
+                let target = TargetClient::from_index(target as _);
+
+                func(editor, clients, target, args)
+            })
+            .map(ScriptFunction)
+    }
+
     pub fn create_ctx_function<A, R, F>(&self, func: F) -> ScriptResult<ScriptFunction<'lua>>
     where
         A: FromLuaMulti<'lua>,
@@ -707,7 +776,7 @@ impl<'lua> ScriptEngineRef<'lua> {
     {
         self.lua
             .create_function(move |lua, args| {
-                let engine = ScriptEngineRef { lua };
+                let engine = ScriptEngineRef::from_lua(lua);
                 let LuaLightUserData(ctx) = lua.named_registry_value("ctx")?;
                 let ctx = unsafe { &mut *(ctx as *mut _) };
                 func(engine, ctx, ScriptContextGuard(()), args)
