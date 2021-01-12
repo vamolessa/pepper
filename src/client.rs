@@ -165,9 +165,8 @@ impl ClientData {
     }
 }
 
-// TODO: rename to 'ClientManager'
 #[derive(Default)]
-pub struct ClientCollection {
+pub struct ClientManager {
     focused_target: TargetClient,
     pub client_map: ClientTargetMap, // TODO: expose through ClientCollection
 
@@ -177,7 +176,7 @@ pub struct ClientCollection {
     remote_data: Vec<ClientData>,
 }
 
-impl ClientCollection {
+impl ClientManager {
     pub fn focused_target(&self) -> TargetClient {
         self.focused_target
     }
@@ -188,7 +187,7 @@ impl ClientCollection {
         changed
     }
 
-    // TODO: delte or move it to editor
+    // TODO: delete or move it to editor
     pub fn set_buffer_view_handle(
         &mut self,
         editor: &mut Editor,

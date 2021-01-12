@@ -4,7 +4,7 @@ use crate::{
     buffer::BufferContent,
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
-    client::{Client, ClientCollection, TargetClient},
+    client::{Client, ClientManager, TargetClient},
     client_event::Key,
     cursor::Cursor,
     editor::{Editor, KeysIterator, StatusMessageKind},
@@ -76,7 +76,7 @@ impl State {
 
     fn on_event_no_buffer(
         editor: &mut Editor,
-        clients: &mut ClientCollection,
+        clients: &mut ClientManager,
         target: TargetClient,
         keys: &mut KeysIterator,
     ) -> Option<ModeOperation> {
@@ -131,7 +131,7 @@ impl State {
 
     fn on_client_keys_with_buffer_view(
         editor: &mut Editor,
-        clients: &mut ClientCollection,
+        clients: &mut ClientManager,
         target: TargetClient,
         keys: &mut KeysIterator,
         handle: BufferViewHandle,
@@ -988,13 +988,13 @@ impl Default for State {
 impl ModeState for State {
     fn on_client_keys(
         editor: &mut Editor,
-        clients: &mut ClientCollection,
+        clients: &mut ClientManager,
         target: TargetClient,
         keys: &mut KeysIterator,
     ) -> Option<ModeOperation> {
         fn show_hovered_diagnostic_in_status_bar(
             editor: &mut Editor,
-            clients: &mut ClientCollection,
+            clients: &mut ClientManager,
             target: TargetClient,
         ) -> Option<()> {
             let handle = clients.get(target)?.buffer_view_handle()?;
@@ -1045,7 +1045,7 @@ impl ModeState for State {
 
 fn find_char(
     editor: &mut Editor,
-    clients: &mut ClientCollection,
+    clients: &mut ClientManager,
     target: TargetClient,
     forward: bool,
 ) -> Option<()> {
@@ -1107,7 +1107,7 @@ fn find_char(
 
 fn move_to_search_match<F>(
     editor: &mut Editor,
-    clients: &mut ClientCollection,
+    clients: &mut ClientManager,
     target: TargetClient,
     index_selector: F,
 ) -> Option<()>
@@ -1162,7 +1162,7 @@ where
 
 fn search_word_or_move_to_it(
     editor: &mut Editor,
-    clients: &mut ClientCollection,
+    clients: &mut ClientManager,
     target: TargetClient,
     index_selector: fn(usize, Result<usize, usize>) -> usize,
 ) -> Option<()> {
@@ -1213,7 +1213,7 @@ fn search_word_or_move_to_it(
 
 fn move_to_diagnostic(
     editor: &mut Editor,
-    clients: &mut ClientCollection,
+    clients: &mut ClientManager,
     target: TargetClient,
     forward: bool,
 ) -> Option<()> {

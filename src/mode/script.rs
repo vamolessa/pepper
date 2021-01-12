@@ -1,5 +1,5 @@
 use crate::{
-    client::{ClientCollection, TargetClient},
+    client::{ClientManager, TargetClient},
     client_event::Key,
     editor::{Editor, EditorLoop, KeysIterator, ReadLinePoll, StatusMessageKind},
     mode::{Mode, ModeKind, ModeOperation, ModeState},
@@ -12,19 +12,19 @@ pub struct State {
 }
 
 impl ModeState for State {
-    fn on_enter(editor: &mut Editor, _: &mut ClientCollection, _: TargetClient) {
+    fn on_enter(editor: &mut Editor, _: &mut ClientManager, _: TargetClient) {
         editor.mode.script_state.history_index = editor.scripts.history_len();
         editor.read_line.set_prompt(":");
         editor.read_line.set_input("");
     }
 
-    fn on_exit(editor: &mut Editor, _: &mut ClientCollection, _: TargetClient) {
+    fn on_exit(editor: &mut Editor, _: &mut ClientManager, _: TargetClient) {
         editor.read_line.set_input("");
     }
 
     fn on_client_keys(
         editor: &mut Editor,
-        clients: &mut ClientCollection,
+        clients: &mut ClientManager,
         target: TargetClient,
         keys: &mut KeysIterator,
     ) -> Option<ModeOperation> {

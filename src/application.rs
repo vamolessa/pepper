@@ -10,7 +10,7 @@ use std::{
 };
 
 use crate::{
-    client::{ClientCollection, TargetClient},
+    client::{ClientManager, TargetClient},
     client_event::{ClientEvent, ClientEventSerializer, Key, LocalEvent},
     connection::{ConnectionWithClientCollection, ConnectionWithServer},
     editor::{Editor, EditorLoop},
@@ -170,7 +170,7 @@ where
 
 fn render_clients<I>(
     editor: &mut Editor,
-    clients: &mut ClientCollection,
+    clients: &mut ClientManager,
     ui: &mut I,
     connections: &mut ConnectionWithClientCollection,
 ) -> UiResult<()>
@@ -208,7 +208,7 @@ where
     let tasks = TaskManager::new(event_sender.clone());
     let lsp = LspClientCollection::new(event_sender.clone());
     let mut editor = Editor::new(current_dir, event_sender.clone(), tasks, lsp);
-    let mut clients = ClientCollection::default();
+    let mut clients = ClientManager::default();
 
     for config in &args.config {
         editor.load_config(&mut clients, config);

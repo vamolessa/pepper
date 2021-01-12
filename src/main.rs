@@ -21,6 +21,7 @@ mod mode;
 mod navigation_history;
 mod pattern;
 mod picker;
+mod platform;
 mod register;
 mod script;
 mod script_bindings;
@@ -129,3 +130,4 @@ fn main() {
         eprintln!("{}", e);
     }
 }
+

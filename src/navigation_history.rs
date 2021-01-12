@@ -1,7 +1,7 @@
 use crate::{
     buffer::BufferHandle,
     buffer_view::{BufferView, BufferViewCollection},
-    client::{ClientCollection, TargetClient},
+    client::{ClientManager, TargetClient},
     cursor::Cursor,
     editor::Editor,
 };
@@ -30,7 +30,7 @@ pub struct NavigationHistory {
 
 impl NavigationHistory {
     pub fn save_client_snapshot(
-        clients: &mut ClientCollection,
+        clients: &mut ClientManager,
         target: TargetClient,
         buffer_views: &BufferViewCollection,
     ) {
@@ -84,7 +84,7 @@ impl NavigationHistory {
 
     pub fn move_in_history(
         editor: &mut Editor,
-        clients: &mut ClientCollection,
+        clients: &mut ClientManager,
         target: TargetClient,
         direction: NavigationDirection,
     ) {

@@ -1,5 +1,5 @@
 use crate::{
-    client::{ClientCollection, TargetClient},
+    client::{ClientManager, TargetClient},
     editor::{Editor, KeysIterator},
     register::RegisterKey,
 };
@@ -18,17 +18,17 @@ pub enum ModeOperation {
 }
 
 pub trait ModeState {
-    fn on_enter(_editor: &mut Editor, _clients: &mut ClientCollection, _target: TargetClient) {}
-    fn on_exit(_editor: &mut Editor, _clients: &mut ClientCollection, _target: TargetClient) {}
+    fn on_enter(_editor: &mut Editor, _clients: &mut ClientManager, _target: TargetClient) {}
+    fn on_exit(_editor: &mut Editor, _clients: &mut ClientManager, _target: TargetClient) {}
     fn on_client_keys(
         editor: &mut Editor,
-        clients: &mut ClientCollection,
+        clients: &mut ClientManager,
         target: TargetClient,
         keys: &mut KeysIterator,
     ) -> Option<ModeOperation>;
     fn on_editor_events(
         _editor: &mut Editor,
-        _clients: &mut ClientCollection,
+        _clients: &mut ClientManager,
         _target: TargetClient,
     ) {
     }
@@ -68,7 +68,7 @@ impl Mode {
 
     pub fn change_to(
         editor: &mut Editor,
-        clients: &mut ClientCollection,
+        clients: &mut ClientManager,
         target: TargetClient,
         next: ModeKind,
     ) {
@@ -93,7 +93,7 @@ impl Mode {
 
     pub fn on_client_keys(
         editor: &mut Editor,
-        clients: &mut ClientCollection,
+        clients: &mut ClientManager,
         target: TargetClient,
         keys: &mut KeysIterator,
     ) -> Option<ModeOperation> {
@@ -108,7 +108,7 @@ impl Mode {
 
     pub fn on_editor_events(
         editor: &mut Editor,
-        clients: &mut ClientCollection,
+        clients: &mut ClientManager,
         target: TargetClient,
     ) {
         match editor.mode.kind {

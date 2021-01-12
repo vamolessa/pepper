@@ -1,5 +1,5 @@
 use crate::{
-    client::{ClientCollection, TargetClient},
+    client::{ClientManager, TargetClient},
     client_event::Key,
     editor::{Editor, KeysIterator, ReadLinePoll},
     mode::{Mode, ModeKind, ModeOperation, ModeState},
@@ -8,7 +8,7 @@ use crate::{
 
 pub struct State {
     on_client_keys:
-        fn(&mut Editor, &mut ClientCollection, TargetClient, &mut KeysIterator, ReadLinePoll),
+        fn(&mut Editor, &mut ClientManager, TargetClient, &mut KeysIterator, ReadLinePoll),
 }
 
 impl Default for State {
@@ -20,19 +20,19 @@ impl Default for State {
 }
 
 impl ModeState for State {
-    fn on_enter(editor: &mut Editor, _: &mut ClientCollection, _: TargetClient) {
+    fn on_enter(editor: &mut Editor, _: &mut ClientManager, _: TargetClient) {
         editor.read_line.set_input("");
         editor.picker.filter(&EmptyWordCollection, "");
     }
 
-    fn on_exit(editor: &mut Editor, _: &mut ClientCollection, _: TargetClient) {
+    fn on_exit(editor: &mut Editor, _: &mut ClientManager, _: TargetClient) {
         editor.read_line.set_input("");
         editor.picker.reset();
     }
 
     fn on_client_keys(
         editor: &mut Editor,
-        clients: &mut ClientCollection,
+        clients: &mut ClientManager,
         target: TargetClient,
         keys: &mut KeysIterator,
     ) -> Option<ModeOperation> {
@@ -84,10 +84,10 @@ pub mod buffer {
 
     use crate::{buffer::Buffer, navigation_history::NavigationHistory, picker::Picker};
 
-    pub fn enter_mode(editor: &mut Editor, clients: &mut ClientCollection, target: TargetClient) {
+    pub fn enter_mode(editor: &mut Editor, clients: &mut ClientManager, target: TargetClient) {
         fn on_client_keys(
             editor: &mut Editor,
-            clients: &mut ClientCollection,
+            clients: &mut ClientManager,
             target: TargetClient,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
@@ -171,7 +171,7 @@ pub mod custom {
     pub fn enter_mode(ctx: &mut ScriptContext, callback: ScriptCallback) {
         fn on_client_keys(
             editor: &mut Editor,
-            clients: &mut ClientCollection,
+            clients: &mut ClientManager,
             target: TargetClient,
             _: &mut KeysIterator,
             poll: ReadLinePoll,

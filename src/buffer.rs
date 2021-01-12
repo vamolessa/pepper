@@ -8,7 +8,7 @@ use std::{
 
 use crate::{
     buffer_position::{BufferPosition, BufferRange},
-    client::ClientCollection,
+    client::ClientManager,
     editor_event::{EditorEvent, EditorEventQueue},
     history::{Edit, EditKind, History},
     script::ScriptValue,
@@ -1245,7 +1245,7 @@ impl BufferCollection {
     pub fn remove(
         &mut self,
         handle: BufferHandle,
-        clients: &mut ClientCollection,
+        clients: &mut ClientManager,
         word_database: &mut WordDatabase,
     ) {
         let buffer = &mut self.buffers[handle.0];

@@ -12,7 +12,7 @@ use mlua::prelude::{
 use crate::{
     buffer::{BufferCollection, BufferHandle},
     buffer_view::{BufferViewCollection, BufferViewHandle},
-    client::{ClientCollection, TargetClient},
+    client::{ClientManager, TargetClient},
     config::Config,
     editor::{Editor, EditorLoop, ReadLine, StatusBar},
     editor_event::{EditorEvent, EditorEventQueue},
@@ -163,7 +163,7 @@ impl<'lua> ScriptFunction<'lua> {
     pub fn call_new<A, R>(
         &self,
         editor: &mut Editor,
-        clients: &mut ClientCollection,
+        clients: &mut ClientManager,
         target: TargetClient,
         args: A,
     ) -> ScriptResult<R>
@@ -377,7 +377,7 @@ impl<'lua, 'value> fmt::Display for ScriptValueDisplay<'lua, 'value> {
 
 pub struct ScriptContext<'a> {
     pub target_client: TargetClient,
-    pub clients: &'a mut ClientCollection,
+    pub clients: &'a mut ClientManager,
     pub editor_loop: EditorLoop,
     pub mode: &'a mut Mode,
     pub next_mode: ModeKind,
@@ -450,7 +450,7 @@ impl<'lua> ScriptCallScope<'lua> {
     pub fn begin(
         lua: &'lua Lua,
         editor: &mut Editor,
-        clients: &mut ClientCollection,
+        clients: &mut ClientManager,
         target: TargetClient,
     ) -> ScriptResult<Self> {
         lua.set_named_registry_value("editor", LuaLightUserData(editor as *mut _ as _))?;
@@ -461,7 +461,7 @@ impl<'lua> ScriptCallScope<'lua> {
 
     pub fn get(
         lua: &'lua Lua,
-    ) -> ScriptResult<(&'lua Editor, &'lua mut ClientCollection, TargetClient)> {
+    ) -> ScriptResult<(&'lua Editor, &'lua mut ClientManager, TargetClient)> {
         let LuaLightUserData(editor) = lua.named_registry_value("editor")?;
         let editor = unsafe { &mut *(editor as *mut _) };
         let LuaLightUserData(clients) = lua.named_registry_value("clients")?;
@@ -749,7 +749,7 @@ impl<'lua> ScriptEngineRef<'lua> {
     where
         A: FromLuaMulti<'lua>,
         R: ToLuaMulti<'lua>,
-        F: 'static + Fn(&mut Editor, &mut ClientCollection, TargetClient, A) -> ScriptResult<R>,
+        F: 'static + Fn(&mut Editor, &mut ClientManager, TargetClient, A) -> ScriptResult<R>,
     {
         self.lua
             .create_function(move |lua, args| {

@@ -8,7 +8,7 @@ use std::{
 use crate::{
     buffer::BufferCollection,
     buffer_view::BufferViewCollection,
-    client::{ClientCollection, TargetClient},
+    client::{ClientManager, TargetClient},
     client_event::{ClientEvent, Key, LocalEvent},
     config::Config,
     connection::ConnectionWithClientHandle,
@@ -270,7 +270,7 @@ impl Editor {
 
     pub fn into_script_context<'a>(
         &'a mut self,
-        clients: &'a mut ClientCollection,
+        clients: &'a mut ClientManager,
         target: TargetClient,
     ) -> (&'a mut ScriptEngine, ScriptContext<'a>) {
         let ctx = ScriptContext {
@@ -303,7 +303,7 @@ impl Editor {
         (&mut self.scripts, ctx)
     }
 
-    pub fn load_config(&mut self, clients: &mut ClientCollection, path: &Path) {
+    pub fn load_config(&mut self, clients: &mut ClientManager, path: &Path) {
         let previous_mode_kind = self.mode.kind();
         let (scripts, mut script_ctx) = self.into_script_context(clients, TargetClient::Local);
 
@@ -316,7 +316,7 @@ impl Editor {
         }
     }
 
-    pub fn on_pre_render(&mut self, clients: &mut ClientCollection) {
+    pub fn on_pre_render(&mut self, clients: &mut ClientManager) {
         let picker_height = self.picker.update_scroll_and_unfiltered_entries(
             self.config.values.picker_max_height.get() as _,
             &EmptyWordCollection,
@@ -353,7 +353,7 @@ impl Editor {
 
     pub fn on_client_joined(
         &mut self,
-        clients: &mut ClientCollection,
+        clients: &mut ClientManager,
         client_handle: ConnectionWithClientHandle,
     ) {
         clients.on_client_joined(client_handle);
@@ -371,7 +371,7 @@ impl Editor {
 
     pub fn on_client_left(
         &mut self,
-        clients: &mut ClientCollection,
+        clients: &mut ClientManager,
         client_handle: ConnectionWithClientHandle,
     ) {
         clients.on_client_left(client_handle);
@@ -379,7 +379,7 @@ impl Editor {
 
     pub fn on_event(
         &mut self,
-        clients: &mut ClientCollection,
+        clients: &mut ClientManager,
         target: TargetClient,
         event: ClientEvent,
     ) -> EditorLoop {
@@ -516,7 +516,7 @@ impl Editor {
         result
     }
 
-    pub fn on_idle(&mut self, clients: &mut ClientCollection) {
+    pub fn on_idle(&mut self, clients: &mut ClientManager) {
         self.events.enqueue(EditorEvent::Idle);
         self.trigger_event_handlers(clients, TargetClient::Local);
     }
@@ -544,7 +544,7 @@ impl Editor {
         }
     }
 
-    fn trigger_event_handlers(&mut self, clients: &mut ClientCollection, target: TargetClient) {
+    fn trigger_event_handlers(&mut self, clients: &mut ClientManager, target: TargetClient) {
         self.events.flip();
         if let None = self.events.iter().next() {
             return;
@@ -565,7 +565,7 @@ impl Editor {
         self.handle_editor_events(clients);
     }
 
-    fn handle_editor_events(&mut self, clients: &mut ClientCollection) {
+    fn handle_editor_events(&mut self, clients: &mut ClientManager) {
         for event in self.events.iter() {
             match event {
                 EditorEvent::BufferLoad { handle } => {
@@ -591,7 +591,7 @@ impl Editor {
 
     pub fn on_task_event(
         &mut self,
-        clients: &mut ClientCollection,
+        clients: &mut ClientManager,
         target: TargetClient,
         handle: TaskHandle,
         result: TaskResult,

@@ -1,5 +1,5 @@
 use crate::{
-    client::{ClientCollection, TargetClient},
+    client::{ClientManager, TargetClient},
     editor::{Editor, KeysIterator, ReadLinePoll},
     mode::{Mode, ModeKind, ModeOperation, ModeState},
     register::SEARCH_REGISTER,
@@ -8,7 +8,7 @@ use crate::{
 pub struct State {
     on_client_keys: fn(
         &mut Editor,
-        &mut ClientCollection,
+        &mut ClientManager,
         TargetClient,
         &mut KeysIterator,
         ReadLinePoll,
@@ -24,17 +24,17 @@ impl Default for State {
 }
 
 impl ModeState for State {
-    fn on_enter(editor: &mut Editor, _: &mut ClientCollection, _: TargetClient) {
+    fn on_enter(editor: &mut Editor, _: &mut ClientManager, _: TargetClient) {
         editor.read_line.set_input("");
     }
 
-    fn on_exit(editor: &mut Editor, _: &mut ClientCollection, _: TargetClient) {
+    fn on_exit(editor: &mut Editor, _: &mut ClientManager, _: TargetClient) {
         editor.read_line.set_input("");
     }
 
     fn on_client_keys(
         editor: &mut Editor,
-        clients: &mut ClientCollection,
+        clients: &mut ClientManager,
         target: TargetClient,
         keys: &mut KeysIterator,
     ) -> Option<ModeOperation> {
@@ -50,10 +50,10 @@ pub mod search {
 
     use crate::navigation_history::{NavigationDirection, NavigationHistory};
 
-    pub fn enter_mode(editor: &mut Editor, clients: &mut ClientCollection, target: TargetClient) {
+    pub fn enter_mode(editor: &mut Editor, clients: &mut ClientManager, target: TargetClient) {
         fn on_client_keys(
             editor: &mut Editor,
-            clients: &mut ClientCollection,
+            clients: &mut ClientManager,
             target: TargetClient,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
@@ -92,7 +92,7 @@ pub mod search {
 
     fn update_search(
         editor: &mut Editor,
-        clients: &mut ClientCollection,
+        clients: &mut ClientManager,
         target: TargetClient,
     ) -> Option<()> {
         for buffer in editor.buffers.iter_mut() {
@@ -166,7 +166,7 @@ pub mod filter_cursors {
 
     pub fn enter_filter_mode(
         editor: &mut Editor,
-        clients: &mut ClientCollection,
+        clients: &mut ClientManager,
         target: TargetClient,
     ) {
         editor.read_line.set_prompt("filter:");
@@ -179,7 +179,7 @@ pub mod filter_cursors {
 
     pub fn enter_except_mode(
         editor: &mut Editor,
-        clients: &mut ClientCollection,
+        clients: &mut ClientManager,
         target: TargetClient,
     ) {
         editor.read_line.set_prompt("except:");
@@ -192,7 +192,7 @@ pub mod filter_cursors {
 
     fn on_event_impl(
         editor: &mut Editor,
-        clients: &mut ClientCollection,
+        clients: &mut ClientManager,
         target: TargetClient,
         keep_if_contains_pattern: bool,
     ) -> Option<()> {
@@ -272,7 +272,7 @@ pub mod split_cursors {
 
     pub fn enter_by_pattern_mode(
         editor: &mut Editor,
-        clients: &mut ClientCollection,
+        clients: &mut ClientManager,
         target: TargetClient,
     ) {
         fn add_matches(
@@ -304,7 +304,7 @@ pub mod split_cursors {
 
     pub fn enter_by_separators_mode(
         editor: &mut Editor,
-        clients: &mut ClientCollection,
+        clients: &mut ClientManager,
         target: TargetClient,
     ) {
         fn add_matches(
@@ -344,7 +344,7 @@ pub mod split_cursors {
 
     fn on_event_impl(
         editor: &mut Editor,
-        clients: &mut ClientCollection,
+        clients: &mut ClientManager,
         target: TargetClient,
         add_matches: fn(&mut CursorCollectionMutGuard, &str, &str, BufferPosition),
     ) -> Option<()> {
@@ -425,10 +425,10 @@ pub mod goto {
         word_database::WordKind,
     };
 
-    pub fn enter_mode(editor: &mut Editor, clients: &mut ClientCollection, target: TargetClient) {
+    pub fn enter_mode(editor: &mut Editor, clients: &mut ClientManager, target: TargetClient) {
         fn on_client_keys(
             editor: &mut Editor,
-            clients: &mut ClientCollection,
+            clients: &mut ClientManager,
             target: TargetClient,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
@@ -491,7 +491,7 @@ pub mod custom {
     pub fn enter_mode(ctx: &mut ScriptContext, callback: ScriptCallback) {
         fn on_client_keys(
             editor: &mut Editor,
-            clients: &mut ClientCollection,
+            clients: &mut ClientManager,
             target: TargetClient,
             _: &mut KeysIterator,
             poll: ReadLinePoll,

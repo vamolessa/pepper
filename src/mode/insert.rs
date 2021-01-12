@@ -1,7 +1,7 @@
 use crate::{
     buffer_position::BufferPosition,
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
-    client::{TargetClient, ClientCollection},
+    client::{TargetClient, ClientManager},
     client_event::Key,
     editor::{Editor, KeysIterator},
     mode::{Mode, ModeKind, ModeOperation, ModeState},
@@ -13,17 +13,17 @@ use crate::{
 pub struct State;
 
 impl ModeState for State {
-    fn on_enter(editor: &mut Editor, _: &mut ClientCollection, _: TargetClient) {
+    fn on_enter(editor: &mut Editor, _: &mut ClientManager, _: TargetClient) {
         editor.picker.reset();
     }
 
-    fn on_exit(editor: &mut Editor, _: &mut ClientCollection, _: TargetClient) {
+    fn on_exit(editor: &mut Editor, _: &mut ClientManager, _: TargetClient) {
         editor.picker.reset();
     }
 
     fn on_client_keys(
         editor: &mut Editor,
-        clients: &mut ClientCollection,
+        clients: &mut ClientManager,
         target: TargetClient,
         keys: &mut KeysIterator,
     ) -> Option<ModeOperation> {
