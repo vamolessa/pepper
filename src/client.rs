@@ -181,13 +181,14 @@ impl ClientManager {
         self.focused_target
     }
 
+    // TODO: maybe change it to handle it from client_events
     pub fn focus_client(&mut self, target: TargetClient) -> bool {
         let changed = target != self.focused_target;
         self.focused_target = target;
         changed
     }
 
-    // TODO: delete or move it to editor
+    // TODO: maybe move it to Editor
     pub fn set_buffer_view_handle(
         &mut self,
         editor: &mut Editor,
