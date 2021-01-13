@@ -26,4 +26,5 @@ fuzzy-matcher = "0.3"
 copypasta = "0.7"
 
 [target.'cfg(windows)'.dependencies]
+winapi = "0.3"
 uds_windows = "0.1"

@@ -436,6 +436,7 @@ dependencies = [
  "mlua",
  "polling",
  "uds_windows",
+ "winapi 0.3.9",
 ]
 
 [[package]]

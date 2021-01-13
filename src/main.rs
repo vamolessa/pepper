@@ -69,58 +69,11 @@ pub struct Args {
 }
 
 fn main() {
-    /*
-    use ui::Ui;
-    let stdout = std::io::stdout();
-    let stdout = stdout.lock();
-    let mut ui = ui::tui::Tui::new(stdout);
-
-    let server_command = std::process::Command::new("rust-analyzer");
-    let (event_sender, event_receiver) = std::sync::mpsc::channel();
-    ui.run_event_loop_in_background(event_sender.clone());
-    let mut lsp = lsp::LspClientCollection::new(event_sender);
-    let current_dir = std::env::current_dir().unwrap();
-    let handle = lsp.start("rust", server_command, &current_dir).unwrap();
-
-    let mut buffers = buffer::BufferCollection::default();
-    let mut buffer_views = buffer_view::BufferViewCollection::default();
-    let mut status_message = editor::StatusMessage::new();
-    let mut ctx = lsp::LspClientContext {
-        root: &current_dir,
-        buffers: &mut buffers,
-        buffer_views: &mut buffer_views,
-        status_message: &mut status_message,
-    };
-
-    for event in event_receiver.iter() {
-        match event {
-            client_event::LocalEvent::Lsp(handle, event) => {
-                lsp.on_server_event(&mut ctx, handle, event).unwrap();
-            }
-            client_event::LocalEvent::Key(client_event::Key::Char('q')) => break,
-            _ => (),
-        }
+    if true {
+        platform::run();
+        return;
     }
 
-    for (i, c) in lsp.iter().enumerate() {
-        println!("# lsp client diagnostics [{}]", i);
-        for (path, diagnostics) in c.diagnostics.iter() {
-            println!("## diagnostics for {}", path.as_os_str().to_str().unwrap());
-            for diagnostic in diagnostics {
-                let r = diagnostic.utf16_range;
-                println!(
-                    "{} @ [({},{}) ({},{})]",
-                    &diagnostic.message,
-                    r.from.line_index,
-                    r.from.column_byte_index,
-                    r.to.line_index,
-                    r.to.column_byte_index
-                );
-            }
-        }
-    };
-    return;
-    // */
     let args: Args = argh::from_env();
     if args.version {
         let name = env!("CARGO_PKG_NAME");
@@ -130,4 +83,3 @@ fn main() {
         eprintln!("{}", e);
     }
 }
-
