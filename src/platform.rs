@@ -206,32 +206,27 @@ impl Key {
                     Key::Tab
                 }
                 'f' => {
-                    let n = match next!() {
-                        '1' => match next!() {
-                            '>' => 1,
-                            '0' => {
-                                consume!('>');
-                                10
-                            }
-                            '1' => {
-                                consume!('>');
-                                11
-                            }
-                            '2' => {
-                                consume!('>');
-                                12
-                            }
-                            c => return Err(KeyParseError::InvalidCharacter(c)),
-                        },
-                        c => {
-                            consume!('>');
+                    let c = next!();
+                    match c.to_digit(10) {
+                        Some(d0) => {
+                            let c = next!();
                             match c.to_digit(10) {
-                                Some(n) => n,
-                                None => return Err(KeyParseError::InvalidCharacter(c)),
+                                Some(d1) => {
+                                    consume!('>');
+                                    let n = d0 * 10 + d1;
+                                    Key::F(n as _)
+                                }
+                                None => {
+                                    if c == '>' {
+                                        Key::F(d0 as _)
+                                    } else {
+                                        return Err(KeyParseError::InvalidCharacter(c));
+                                    }
+                                }
                             }
                         }
-                    };
-                    Key::F(n as _)
+                        None => return Err(KeyParseError::InvalidCharacter(c)),
+                    }
                 }
                 'c' => {
                     consume!('-');
@@ -447,7 +442,7 @@ mod tests {
         assert_eq!(Key::Delete, Key::parse(&mut "<delete>".chars()).unwrap());
         assert_eq!(Key::Esc, Key::parse(&mut "<esc>".chars()).unwrap());
 
-        for n in 1..=12 {
+        for n in 1..=99 {
             let s = format!("<f{}>", n);
             assert_eq!(Key::F(n as _), Key::parse(&mut s.chars()).unwrap());
         }
@@ -508,6 +503,7 @@ mod tests {
         assert_key_serialization!(Key::F(0));
         assert_key_serialization!(Key::F(9));
         assert_key_serialization!(Key::F(12));
+        assert_key_serialization!(Key::F(99));
         assert_key_serialization!(Key::Char('a'));
         assert_key_serialization!(Key::Char('z'));
         assert_key_serialization!(Key::Char('A'));
