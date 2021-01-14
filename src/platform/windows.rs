@@ -12,12 +12,11 @@ use winapi::{
         },
         wincontypes::{
             INPUT_RECORD, KEY_EVENT, LEFT_ALT_PRESSED, LEFT_CTRL_PRESSED, RIGHT_ALT_PRESSED,
-            RIGHT_CTRL_PRESSED, WINDOW_BUFFER_SIZE_EVENT,
+            RIGHT_CTRL_PRESSED, SHIFT_PRESSED, WINDOW_BUFFER_SIZE_EVENT,
         },
         winuser::{
-            VK_BACK, VK_DELETE, VK_DOWN, VK_END, VK_ESCAPE, VK_F1, VK_F10, VK_F11, VK_F12, VK_F2,
-            VK_F20, VK_F21, VK_F22, VK_F23, VK_F24, VK_F3, VK_F4, VK_F5, VK_F6, VK_F7,
-            VK_F8, VK_F9, VK_HOME, VK_LEFT, VK_NEXT, VK_PRIOR, VK_RETURN, VK_RIGHT, VK_TAB, VK_UP,
+            VK_BACK, VK_DELETE, VK_DOWN, VK_END, VK_ESCAPE, VK_F1, VK_F24, VK_HOME, VK_LEFT,
+            VK_NEXT, VK_PRIOR, VK_RETURN, VK_RIGHT, VK_TAB, VK_UP,
         },
     },
 };
@@ -42,7 +41,7 @@ unsafe fn run_unsafe() {
     let output_handle = GetStdHandle(STD_OUTPUT_HANDLE);
 
     let mut original_input_mode = DWORD::default();
-    if GetConsoleMode(input_handle, &mut original_input_mode as _) == FALSE {
+    if GetConsoleMode(input_handle, &mut original_input_mode) == FALSE {
         panic!("could not retrieve original console input mode");
     }
     if SetConsoleMode(input_handle, ENABLE_WINDOW_INPUT) == FALSE {
@@ -50,7 +49,7 @@ unsafe fn run_unsafe() {
     }
 
     let mut original_output_mode = DWORD::default();
-    if GetConsoleMode(output_handle, &mut original_output_mode as _) == FALSE {
+    if GetConsoleMode(output_handle, &mut original_output_mode) == FALSE {
         panic!("could not retrieve original console output mode");
     }
     if SetConsoleMode(
@@ -65,9 +64,9 @@ unsafe fn run_unsafe() {
     let mut event_buffer = [INPUT_RECORD::default(); 32];
 
     // update
-    for _ in 0..10 {
+    'main_loop: loop {
         let mut event_count: DWORD = 0;
-        if GetNumberOfConsoleInputEvents(input_handle, &mut event_count as _) == FALSE {
+        if GetNumberOfConsoleInputEvents(input_handle, &mut event_count) == FALSE {
             panic!("could not read console event count");
         }
 
@@ -81,7 +80,7 @@ unsafe fn run_unsafe() {
             input_handle,
             (&mut event_buffer[..]).as_mut_ptr(),
             event_buffer.len() as _,
-            &mut event_count as _,
+            &mut event_count,
         ) == FALSE
         {
             panic!("could not read console events");
@@ -92,13 +91,57 @@ unsafe fn run_unsafe() {
             match event.EventType {
                 KEY_EVENT => {
                     let event = event.Event.KeyEvent();
-                    if event.bKeyDown == TRUE {
-                        match event.dwControlKeyState {
-                            _ => (),
+                    if event.bKeyDown == FALSE {
+                        continue;
+                    }
+
+                    let control_key_state = event.dwControlKeyState;
+                    let keycode = event.wVirtualKeyCode as i32;
+
+                    const CHAR_A: i32 = b'A' as _;
+                    const CHAR_Z: i32 = b'Z' as _;
+                    let key = match keycode {
+                        VK_BACK => Key::Backspace,
+                        VK_RETURN => Key::Enter,
+                        VK_LEFT => Key::Left,
+                        VK_RIGHT => Key::Right,
+                        VK_UP => Key::Up,
+                        VK_DOWN => Key::Down,
+                        VK_HOME => Key::Home,
+                        VK_END => Key::End,
+                        VK_PRIOR => Key::PageUp,
+                        VK_NEXT => Key::PageDown,
+                        VK_TAB => Key::Tab,
+                        VK_DELETE => Key::Delete,
+                        VK_F1..=VK_F24 => Key::F((keycode - VK_F1 + 1) as _),
+                        VK_ESCAPE => Key::Esc,
+                        CHAR_A..=CHAR_Z => {
+                            const ALT_PRESSED_MASK: DWORD = LEFT_ALT_PRESSED | RIGHT_ALT_PRESSED;
+                            const CTRL_PRESSED_MASK: DWORD = LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED;
+
+                            let c = keycode as u8;
+                            if control_key_state & ALT_PRESSED_MASK != 0 {
+                                Key::Alt(c.to_ascii_lowercase() as _)
+                            } else if control_key_state & CTRL_PRESSED_MASK != 0 {
+                                Key::Ctrl(c.to_ascii_lowercase() as _)
+                            } else if control_key_state & SHIFT_PRESSED != 0 {
+                                Key::Char(c as _)
+                            } else {
+                                Key::Char(c.to_ascii_lowercase() as _)
+                            }
                         }
-                        match event.wVirtualKeyCode {
-                            _ => (),
+                        _ => {
+                            let c = *(event.uChar.AsciiChar()) as u8;
+                            if !c.is_ascii_graphic() {
+                                continue;
+                            }
+
+                            Key::Char(c as _)
                         }
+                    };
+
+                    if let Key::Esc = key {
+                        break 'main_loop;
                     }
                 }
                 WINDOW_BUFFER_SIZE_EVENT => {
@@ -110,11 +153,10 @@ unsafe fn run_unsafe() {
                 _ => (),
             }
         }
-
-        println!("have {} events", event_count);
     }
 
-    println!("hello\nnew line");
+    let a: i8 = -10;
+    println!("hello\nnew line {}", a as u8);
 
     // shutdown
     SetConsoleMode(input_handle, original_input_mode);

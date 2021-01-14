@@ -1,7 +1,7 @@
 use std::{error::Error, fmt, str::Chars};
 
-// TODO: move Key and ConnectionEvent here
-use crate::event_manager::ConnectionEvent;
+// TODO: move ConnectionEvent here
+//use crate::event_manager::ConnectionEvent;
 
 use crate::{
     client::TargetClient,
