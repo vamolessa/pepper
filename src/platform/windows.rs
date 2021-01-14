@@ -14,6 +14,7 @@ use winapi::{
             INPUT_RECORD, KEY_EVENT, LEFT_ALT_PRESSED, LEFT_CTRL_PRESSED, RIGHT_ALT_PRESSED,
             RIGHT_CTRL_PRESSED, SHIFT_PRESSED, WINDOW_BUFFER_SIZE_EVENT,
         },
+        winnt::HANDLE,
         winuser::{
             VK_BACK, VK_DELETE, VK_DOWN, VK_END, VK_ESCAPE, VK_F1, VK_F24, VK_HOME, VK_LEFT,
             VK_NEXT, VK_PRIOR, VK_RETURN, VK_RIGHT, VK_TAB, VK_UP,
@@ -22,6 +23,15 @@ use winapi::{
 };
 
 use crate::platform::{Key, Platform};
+
+struct State {
+    input_handle: HANDLE,
+    output_handle: HANDLE,
+}
+
+impl Platform for State {
+    //
+}
 
 pub fn run() {
     unsafe { run_unsafe() }
@@ -37,23 +47,25 @@ unsafe fn run_unsafe() {
         panic!("could not set ctrl handler");
     }
 
-    let input_handle = GetStdHandle(STD_INPUT_HANDLE);
-    let output_handle = GetStdHandle(STD_OUTPUT_HANDLE);
+    let mut state = State {
+        input_handle: GetStdHandle(STD_INPUT_HANDLE),
+        output_handle: GetStdHandle(STD_OUTPUT_HANDLE),
+    };
 
     let mut original_input_mode = DWORD::default();
-    if GetConsoleMode(input_handle, &mut original_input_mode) == FALSE {
+    if GetConsoleMode(state.input_handle, &mut original_input_mode) == FALSE {
         panic!("could not retrieve original console input mode");
     }
-    if SetConsoleMode(input_handle, ENABLE_WINDOW_INPUT) == FALSE {
+    if SetConsoleMode(state.input_handle, ENABLE_WINDOW_INPUT) == FALSE {
         panic!("could not set console input mode");
     }
 
     let mut original_output_mode = DWORD::default();
-    if GetConsoleMode(output_handle, &mut original_output_mode) == FALSE {
+    if GetConsoleMode(state.output_handle, &mut original_output_mode) == FALSE {
         panic!("could not retrieve original console output mode");
     }
     if SetConsoleMode(
-        output_handle,
+        state.output_handle,
         ENABLE_PROCESSED_OUTPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING,
     ) == FALSE
     {
@@ -66,7 +78,7 @@ unsafe fn run_unsafe() {
     // update
     'main_loop: loop {
         let mut event_count: DWORD = 0;
-        if GetNumberOfConsoleInputEvents(input_handle, &mut event_count) == FALSE {
+        if GetNumberOfConsoleInputEvents(state.input_handle, &mut event_count) == FALSE {
             panic!("could not read console event count");
         }
 
@@ -77,7 +89,7 @@ unsafe fn run_unsafe() {
 
         let mut event_count: DWORD = 0;
         if ReadConsoleInputW(
-            input_handle,
+            state.input_handle,
             (&mut event_buffer[..]).as_mut_ptr(),
             event_buffer.len() as _,
             &mut event_count,
@@ -97,6 +109,7 @@ unsafe fn run_unsafe() {
 
                     let control_key_state = event.dwControlKeyState;
                     let keycode = event.wVirtualKeyCode as i32;
+                    let repeat_count = event.wRepeatCount as usize;
 
                     const CHAR_A: i32 = b'A' as _;
                     const CHAR_Z: i32 = b'Z' as _;
@@ -140,6 +153,8 @@ unsafe fn run_unsafe() {
                         }
                     };
 
+                    println!("key {} * {}", key, repeat_count);
+
                     if let Key::Esc = key {
                         break 'main_loop;
                     }
@@ -155,18 +170,7 @@ unsafe fn run_unsafe() {
         }
     }
 
-    let a: i8 = -10;
-    println!("hello\nnew line {}", a as u8);
-
     // shutdown
-    SetConsoleMode(input_handle, original_input_mode);
-    SetConsoleMode(output_handle, original_output_mode);
-}
-
-struct WindowsPlatform {
-    //
-}
-
-impl Platform for WindowsPlatform {
-    //
+    SetConsoleMode(state.input_handle, original_input_mode);
+    SetConsoleMode(state.output_handle, original_output_mode);
 }
