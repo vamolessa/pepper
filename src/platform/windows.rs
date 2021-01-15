@@ -1,10 +1,16 @@
 use winapi::{
-    shared::minwindef::{BOOL, DWORD, FALSE, TRUE},
+    shared::{
+        minwindef::{BOOL, DWORD, FALSE, TRUE},
+        ntdef::NULL,
+        winerror::WAIT_TIMEOUT,
+    },
     um::{
         consoleapi::{
             GetConsoleMode, GetNumberOfConsoleInputEvents, ReadConsoleInputW,
             SetConsoleCtrlHandler, SetConsoleMode,
         },
+        fileapi::{CreateFileA, OPEN_EXISTING},
+        handleapi::INVALID_HANDLE_VALUE,
         processenv::GetStdHandle,
         synchapi::WaitForMultipleObjects,
         winbase::{INFINITE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, WAIT_FAILED, WAIT_OBJECT_0},
@@ -15,7 +21,7 @@ use winapi::{
             INPUT_RECORD, KEY_EVENT, LEFT_ALT_PRESSED, LEFT_CTRL_PRESSED, RIGHT_ALT_PRESSED,
             RIGHT_CTRL_PRESSED, SHIFT_PRESSED, WINDOW_BUFFER_SIZE_EVENT,
         },
-        winnt::HANDLE,
+        winnt::{GENERIC_READ, GENERIC_WRITE, HANDLE},
         winuser::{
             VK_BACK, VK_DELETE, VK_DOWN, VK_END, VK_ESCAPE, VK_F1, VK_F24, VK_HOME, VK_LEFT,
             VK_NEXT, VK_PRIOR, VK_RETURN, VK_RIGHT, VK_TAB, VK_UP,
@@ -77,8 +83,23 @@ unsafe fn run_unsafe() {
     let event_buffer = &mut [INPUT_RECORD::default(); 32][..];
 
     let mut waiting_handles_len = 1;
-    let waiting_handles = &mut [0 as HANDLE; 64][..];
+    let waiting_handles = &mut [INVALID_HANDLE_VALUE; 64][..];
     waiting_handles[0] = state.input_handle;
+
+    let client_pipe_handle = CreateFileA(
+        "\\\\.\\pipe\\mynamedpipe\0".as_ptr() as _,
+        GENERIC_READ | GENERIC_WRITE,
+        0,
+        NULL as _,
+        OPEN_EXISTING,
+        0,
+        NULL,
+    );
+    if client_pipe_handle == INVALID_HANDLE_VALUE {
+        println!("could not connect to named pipe");
+    } else {
+        println!("connected to named pipe");
+    }
 
     // update
     'main_loop: loop {
@@ -91,15 +112,18 @@ unsafe fn run_unsafe() {
         if wait_result == WAIT_FAILED {
             panic!("failed to wait on events");
         }
+        if wait_result == WAIT_TIMEOUT {
+            continue;
+        }
         if wait_result < WAIT_OBJECT_0 {
             continue;
         }
-        let index = wait_result - WAIT_OBJECT_0;
-        if index >= waiting_handles.len() as _ {
+        let waiting_handle_index = wait_result - WAIT_OBJECT_0;
+        if waiting_handle_index >= waiting_handles.len() as _ {
             continue;
         }
 
-        match index {
+        match waiting_handle_index {
             0 => {
                 let mut event_count: DWORD = 0;
                 if ReadConsoleInputW(
