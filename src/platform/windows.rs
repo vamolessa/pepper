@@ -11,9 +11,13 @@ use winapi::{
         },
         fileapi::{CreateFileA, OPEN_EXISTING},
         handleapi::INVALID_HANDLE_VALUE,
+        namedpipeapi::SetNamedPipeHandleState,
         processenv::GetStdHandle,
         synchapi::WaitForMultipleObjects,
-        winbase::{INFINITE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, WAIT_FAILED, WAIT_OBJECT_0},
+        winbase::{
+            INFINITE, PIPE_READMODE_MESSAGE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, WAIT_FAILED,
+            WAIT_OBJECT_0,
+        },
         wincon::{
             ENABLE_PROCESSED_OUTPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING, ENABLE_WINDOW_INPUT,
         },
@@ -34,8 +38,39 @@ use crate::platform::{Key, Platform};
 struct State {
     input_handle: HANDLE,
     output_handle: HANDLE,
-}
 
+    original_input_mode: DWORD,
+    original_output_mode: DWORD,
+}
+impl State {
+    pub unsafe fn enter_raw_mode(&mut self) {
+        if GetConsoleMode(self.input_handle, &mut self.original_input_mode) == FALSE {
+            panic!("could not retrieve original console input mode");
+        }
+        if SetConsoleMode(self.input_handle, ENABLE_WINDOW_INPUT) == FALSE {
+            panic!("could not set console input mode");
+        }
+
+        if GetConsoleMode(self.output_handle, &mut self.original_output_mode) == FALSE {
+            panic!("could not retrieve original console output mode");
+        }
+        if SetConsoleMode(
+            self.output_handle,
+            ENABLE_PROCESSED_OUTPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING,
+        ) == FALSE
+        {
+            panic!("could not set console output mode");
+        }
+    }
+}
+impl Drop for State {
+    fn drop(&mut self) {
+        unsafe {
+            SetConsoleMode(self.input_handle, self.original_input_mode);
+            SetConsoleMode(self.output_handle, self.original_output_mode);
+        }
+    }
+}
 impl Platform for State {
     //
 }
@@ -45,7 +80,6 @@ pub fn run() {
 }
 
 unsafe fn run_unsafe() {
-    // initialize
     unsafe extern "system" fn ctrl_handler(_ctrl_type: DWORD) -> BOOL {
         FALSE
     }
@@ -54,54 +88,50 @@ unsafe fn run_unsafe() {
         panic!("could not set ctrl handler");
     }
 
+    let client_pipe_handle = CreateFileA(
+        "\\\\.\\pipe\\mynamedpipe\0".as_ptr() as _,
+        GENERIC_READ | GENERIC_WRITE,
+        0,
+        std::ptr::null_mut(),
+        OPEN_EXISTING,
+        0,
+        NULL,
+    );
+
+    if client_pipe_handle != INVALID_HANDLE_VALUE {
+        let mut mode = PIPE_READMODE_MESSAGE;
+        if SetNamedPipeHandleState(
+            client_pipe_handle,
+            &mut mode,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        ) == FALSE
+        {
+            panic!("could not connect to server");
+        }
+
+        println!("connected to named pipe");
+        run_client(client_pipe_handle);
+    } else {
+        println!("could not connect to named pipe");
+    }
+}
+
+unsafe fn run_client(pipe_handle: HANDLE) {
     let mut state = State {
         input_handle: GetStdHandle(STD_INPUT_HANDLE),
         output_handle: GetStdHandle(STD_OUTPUT_HANDLE),
+        original_input_mode: 0,
+        original_output_mode: 0,
     };
+    state.enter_raw_mode();
 
-    let mut original_input_mode = DWORD::default();
-    if GetConsoleMode(state.input_handle, &mut original_input_mode) == FALSE {
-        panic!("could not retrieve original console input mode");
-    }
-    if SetConsoleMode(state.input_handle, ENABLE_WINDOW_INPUT) == FALSE {
-        panic!("could not set console input mode");
-    }
-
-    let mut original_output_mode = DWORD::default();
-    if GetConsoleMode(state.output_handle, &mut original_output_mode) == FALSE {
-        panic!("could not retrieve original console output mode");
-    }
-    if SetConsoleMode(
-        state.output_handle,
-        ENABLE_PROCESSED_OUTPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING,
-    ) == FALSE
-    {
-        panic!("could not set console output mode");
-    }
-
-    // state
     let event_buffer = &mut [INPUT_RECORD::default(); 32][..];
 
     let mut waiting_handles_len = 1;
     let waiting_handles = &mut [INVALID_HANDLE_VALUE; 64][..];
     waiting_handles[0] = state.input_handle;
 
-    let client_pipe_handle = CreateFileA(
-        "\\\\.\\pipe\\mynamedpipe\0".as_ptr() as _,
-        GENERIC_READ | GENERIC_WRITE,
-        0,
-        NULL as _,
-        OPEN_EXISTING,
-        0,
-        NULL,
-    );
-    if client_pipe_handle == INVALID_HANDLE_VALUE {
-        println!("could not connect to named pipe");
-    } else {
-        println!("connected to named pipe");
-    }
-
-    // update
     'main_loop: loop {
         let wait_result = WaitForMultipleObjects(
             waiting_handles_len,
@@ -212,8 +242,4 @@ unsafe fn run_unsafe() {
             _ => (),
         }
     }
-
-    // shutdown
-    SetConsoleMode(state.input_handle, original_input_mode);
-    SetConsoleMode(state.output_handle, original_output_mode);
 }
