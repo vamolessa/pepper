@@ -6,7 +6,8 @@ use winapi::{
             SetConsoleCtrlHandler, SetConsoleMode,
         },
         processenv::GetStdHandle,
-        winbase::{STD_INPUT_HANDLE, STD_OUTPUT_HANDLE},
+        synchapi::WaitForMultipleObjects,
+        winbase::{INFINITE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, WAIT_FAILED, WAIT_OBJECT_0},
         wincon::{
             ENABLE_PROCESSED_OUTPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING, ENABLE_WINDOW_INPUT,
         },
@@ -38,11 +39,11 @@ pub fn run() {
 }
 
 unsafe fn run_unsafe() {
+    // initialize
     unsafe extern "system" fn ctrl_handler(_ctrl_type: DWORD) -> BOOL {
         FALSE
     }
 
-    // initialize
     if SetConsoleCtrlHandler(Some(ctrl_handler), TRUE) == FALSE {
         panic!("could not set ctrl handler");
     }
@@ -73,100 +74,118 @@ unsafe fn run_unsafe() {
     }
 
     // state
-    let mut event_buffer = [INPUT_RECORD::default(); 32];
+    let event_buffer = &mut [INPUT_RECORD::default(); 32][..];
+
+    let mut waiting_handles_len = 1;
+    let waiting_handles = &mut [0 as HANDLE; 64][..];
+    waiting_handles[0] = state.input_handle;
 
     // update
     'main_loop: loop {
-        let mut event_count: DWORD = 0;
-        if GetNumberOfConsoleInputEvents(state.input_handle, &mut event_count) == FALSE {
-            panic!("could not read console event count");
+        let wait_result = WaitForMultipleObjects(
+            waiting_handles_len,
+            waiting_handles.as_mut_ptr(),
+            FALSE,
+            INFINITE,
+        );
+        if wait_result == WAIT_FAILED {
+            panic!("failed to wait on events");
         }
-
-        if event_count == 0 {
-            winapi::um::synchapi::Sleep(100);
+        if wait_result < WAIT_OBJECT_0 {
+            continue;
+        }
+        let index = wait_result - WAIT_OBJECT_0;
+        if index >= waiting_handles.len() as _ {
             continue;
         }
 
-        let mut event_count: DWORD = 0;
-        if ReadConsoleInputW(
-            state.input_handle,
-            (&mut event_buffer[..]).as_mut_ptr(),
-            event_buffer.len() as _,
-            &mut event_count,
-        ) == FALSE
-        {
-            panic!("could not read console events");
-        }
+        match index {
+            0 => {
+                let mut event_count: DWORD = 0;
+                if ReadConsoleInputW(
+                    state.input_handle,
+                    event_buffer.as_mut_ptr(),
+                    event_buffer.len() as _,
+                    &mut event_count,
+                ) == FALSE
+                {
+                    panic!("could not read console events");
+                }
 
-        for i in 0..event_count {
-            let event = event_buffer[i as usize];
-            match event.EventType {
-                KEY_EVENT => {
-                    let event = event.Event.KeyEvent();
-                    if event.bKeyDown == FALSE {
-                        continue;
-                    }
-
-                    let control_key_state = event.dwControlKeyState;
-                    let keycode = event.wVirtualKeyCode as i32;
-                    let repeat_count = event.wRepeatCount as usize;
-
-                    const CHAR_A: i32 = b'A' as _;
-                    const CHAR_Z: i32 = b'Z' as _;
-                    let key = match keycode {
-                        VK_BACK => Key::Backspace,
-                        VK_RETURN => Key::Enter,
-                        VK_LEFT => Key::Left,
-                        VK_RIGHT => Key::Right,
-                        VK_UP => Key::Up,
-                        VK_DOWN => Key::Down,
-                        VK_HOME => Key::Home,
-                        VK_END => Key::End,
-                        VK_PRIOR => Key::PageUp,
-                        VK_NEXT => Key::PageDown,
-                        VK_TAB => Key::Tab,
-                        VK_DELETE => Key::Delete,
-                        VK_F1..=VK_F24 => Key::F((keycode - VK_F1 + 1) as _),
-                        VK_ESCAPE => Key::Esc,
-                        CHAR_A..=CHAR_Z => {
-                            const ALT_PRESSED_MASK: DWORD = LEFT_ALT_PRESSED | RIGHT_ALT_PRESSED;
-                            const CTRL_PRESSED_MASK: DWORD = LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED;
-
-                            let c = keycode as u8;
-                            if control_key_state & ALT_PRESSED_MASK != 0 {
-                                Key::Alt(c.to_ascii_lowercase() as _)
-                            } else if control_key_state & CTRL_PRESSED_MASK != 0 {
-                                Key::Ctrl(c.to_ascii_lowercase() as _)
-                            } else if control_key_state & SHIFT_PRESSED != 0 {
-                                Key::Char(c as _)
-                            } else {
-                                Key::Char(c.to_ascii_lowercase() as _)
-                            }
-                        }
-                        _ => {
-                            let c = *(event.uChar.AsciiChar()) as u8;
-                            if !c.is_ascii_graphic() {
+                for i in 0..event_count {
+                    let event = event_buffer[i as usize];
+                    match event.EventType {
+                        KEY_EVENT => {
+                            let event = event.Event.KeyEvent();
+                            if event.bKeyDown == FALSE {
                                 continue;
                             }
 
-                            Key::Char(c as _)
+                            let control_key_state = event.dwControlKeyState;
+                            let keycode = event.wVirtualKeyCode as i32;
+                            let repeat_count = event.wRepeatCount as usize;
+
+                            const CHAR_A: i32 = b'A' as _;
+                            const CHAR_Z: i32 = b'Z' as _;
+                            let key = match keycode {
+                                VK_BACK => Key::Backspace,
+                                VK_RETURN => Key::Enter,
+                                VK_LEFT => Key::Left,
+                                VK_RIGHT => Key::Right,
+                                VK_UP => Key::Up,
+                                VK_DOWN => Key::Down,
+                                VK_HOME => Key::Home,
+                                VK_END => Key::End,
+                                VK_PRIOR => Key::PageUp,
+                                VK_NEXT => Key::PageDown,
+                                VK_TAB => Key::Tab,
+                                VK_DELETE => Key::Delete,
+                                VK_F1..=VK_F24 => Key::F((keycode - VK_F1 + 1) as _),
+                                VK_ESCAPE => Key::Esc,
+                                CHAR_A..=CHAR_Z => {
+                                    const ALT_PRESSED_MASK: DWORD =
+                                        LEFT_ALT_PRESSED | RIGHT_ALT_PRESSED;
+                                    const CTRL_PRESSED_MASK: DWORD =
+                                        LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED;
+
+                                    let c = keycode as u8;
+                                    if control_key_state & ALT_PRESSED_MASK != 0 {
+                                        Key::Alt(c.to_ascii_lowercase() as _)
+                                    } else if control_key_state & CTRL_PRESSED_MASK != 0 {
+                                        Key::Ctrl(c.to_ascii_lowercase() as _)
+                                    } else if control_key_state & SHIFT_PRESSED != 0 {
+                                        Key::Char(c as _)
+                                    } else {
+                                        Key::Char(c.to_ascii_lowercase() as _)
+                                    }
+                                }
+                                _ => {
+                                    let c = *(event.uChar.AsciiChar()) as u8;
+                                    if !c.is_ascii_graphic() {
+                                        continue;
+                                    }
+
+                                    Key::Char(c as _)
+                                }
+                            };
+
+                            println!("key {} * {}", key, repeat_count);
+
+                            if let Key::Esc = key {
+                                break 'main_loop;
+                            }
                         }
-                    };
-
-                    println!("key {} * {}", key, repeat_count);
-
-                    if let Key::Esc = key {
-                        break 'main_loop;
+                        WINDOW_BUFFER_SIZE_EVENT => {
+                            let size = event.Event.WindowBufferSizeEvent().dwSize;
+                            let x = size.X as u16;
+                            let y = size.Y as u16;
+                            println!("window resized to {}, {}", x, y);
+                        }
+                        _ => (),
                     }
                 }
-                WINDOW_BUFFER_SIZE_EVENT => {
-                    let size = event.Event.WindowBufferSizeEvent().dwSize;
-                    let x = size.X as u16;
-                    let y = size.Y as u16;
-                    println!("window resized to {}, {}", x, y);
-                }
-                _ => (),
             }
+            _ => (),
         }
     }
 
