@@ -90,7 +90,7 @@ unsafe fn wait_for_multiple_objects(
 
 unsafe fn run_server(pipe_path: &[u16]) {
     const MAX_CLIENT_COUNT: usize = 1;
-    const PIPE_BUFFER_LEN: usize = 1024 * 2;
+    const PIPE_BUFFER_LEN: usize = 512;
 
     #[derive(Clone, Copy)]
     struct NamedPipe {
@@ -175,20 +175,20 @@ unsafe fn run_server(pipe_path: &[u16]) {
         };
 
         if pipe.pending_io {
-            let success = GetOverlappedResult(
+            let error = GetOverlappedResult(
                 pipe.handle,
                 &mut pipe.overlapped,
                 &mut pipe.read_bytes_len,
                 FALSE,
-            ) != FALSE;
+            ) == FALSE;
 
             if pipe.connecting {
-                if !success {
+                if error {
                     panic!("could not accept client");
                 }
                 pipe.connecting = false;
             } else {
-                if !success || pipe.read_bytes_len == 0 {
+                if error || pipe.read_bytes_len == 0 {
                     // disconnect and accept new
                     panic!("CLIENT DISCONNECTED");
                     continue;
@@ -200,6 +200,19 @@ unsafe fn run_server(pipe_path: &[u16]) {
                     "received {} bytes! message: '{}'",
                     pipe.read_bytes_len, message
                 );
+
+                let message = b"thank you for your message!";
+                let mut write_bytes_len = 0;
+                if WriteFile(
+                    pipe.handle,
+                    message.as_ptr() as _,
+                    message.len() as _,
+                    &mut write_bytes_len,
+                    std::ptr::null_mut(),
+                ) == FALSE
+                {
+                    panic!("could not send message to client");
+                }
             }
         }
 
@@ -247,6 +260,16 @@ unsafe fn try_run_client(pipe_path: &[u16]) -> bool {
         panic!("could not connect to server");
     }
 
+    let pipe_event_handle = CreateEventW(std::ptr::null_mut(), TRUE, FALSE, std::ptr::null());
+    if pipe_event_handle == NULL {
+        panic!("could not connect to server");
+    }
+    let mut pipe_overlapped = std::mem::zeroed::<OVERLAPPED>();
+    pipe_overlapped.hEvent = pipe_event_handle;
+
+    let mut pipe_pending_io = false;
+    let mut pipe_buf = [0u8; 1024 * 2];
+
     let input_handle = GetStdHandle(STD_INPUT_HANDLE);
     let output_handle = GetStdHandle(STD_OUTPUT_HANDLE);
 
@@ -284,11 +307,12 @@ unsafe fn try_run_client(pipe_path: &[u16]) -> bool {
     }
 
     let event_buffer = &mut [INPUT_RECORD::default(); 32][..];
-    let mut wait_handle = [INVALID_HANDLE_VALUE; 1];
-    wait_handle[0] = input_handle;
+    let mut wait_handles = [INVALID_HANDLE_VALUE; 2];
+    wait_handles[0] = input_handle;
+    wait_handles[1] = pipe_event_handle;
 
     'main_loop: loop {
-        let wait_handle_index = match wait_for_multiple_objects(&mut wait_handle, None) {
+        let wait_handle_index = match wait_for_multiple_objects(&mut wait_handles, None) {
             WaitResult::Signaled(i) => i,
             _ => continue,
         };
@@ -378,7 +402,22 @@ unsafe fn try_run_client(pipe_path: &[u16]) -> bool {
                     }
                 }
             }
-            _ => (),
+            1 => {
+                if pipe_pending_io {
+                    let mut read_bytes_len = 0;
+                    let error = GetOverlappedResult(
+                        pipe_handle,
+                        &mut pipe_overlapped,
+                        &mut read_bytes_len,
+                        FALSE,
+                    ) == FALSE;
+                    if error || read_bytes_len == 0 {
+                        panic!("SERVER DISCONNECTED");
+                    }
+                }
+                // TODO: terminar aqui
+            }
+            _ => unreachable!(),
         }
     }
 
