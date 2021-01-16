@@ -21,7 +21,7 @@ use winapi::{
         winbase::{
             FILE_FLAG_OVERLAPPED, INFINITE, PIPE_ACCESS_DUPLEX, PIPE_READMODE_BYTE, PIPE_TYPE_BYTE,
             PIPE_UNLIMITED_INSTANCES, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, WAIT_ABANDONED_0,
-            WAIT_FAILED, WAIT_OBJECT_0,
+            WAIT_OBJECT_0,
         },
         wincon::{
             ENABLE_PROCESSED_OUTPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING, ENABLE_WINDOW_INPUT,
@@ -92,6 +92,8 @@ unsafe fn wait_for_multiple_objects(handles: &[HANDLE], timeout: Option<Duration
     }
 }
 
+const PIPE_BUFFER_LEN: usize = 512;
+
 enum ReadResult {
     Waiting,
     Ok(usize),
@@ -108,7 +110,7 @@ struct NamedPipe {
     pending_io: bool,
 }
 impl NamedPipe {
-    pub unsafe fn create(path: &[u16], buffer_len: usize) -> Self {
+    pub unsafe fn create(path: &[u16]) -> Self {
         let event_handle = CreateEventW(std::ptr::null_mut(), TRUE, TRUE, std::ptr::null());
         if event_handle == NULL {
             panic!("could not create new connection");
@@ -119,8 +121,8 @@ impl NamedPipe {
             PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
             PIPE_TYPE_BYTE | PIPE_READMODE_BYTE,
             PIPE_UNLIMITED_INSTANCES,
-            buffer_len as _,
-            buffer_len as _,
+            PIPE_BUFFER_LEN as _,
+            PIPE_BUFFER_LEN as _,
             0,
             std::ptr::null_mut(),
         );
@@ -268,35 +270,33 @@ impl NamedPipe {
     }
 }
 
+struct NamedPipeListener {
+    pub pipe: NamedPipe,
+}
+impl NamedPipeListener {
+    pub unsafe fn new(pipe_path: &[u16]) -> Self {
+        let mut pipe = NamedPipe::create(pipe_path);
+        match pipe.accept() {
+            ReadResult::Waiting => Self { pipe },
+            _ => panic!("could not listen for connections"),
+        }
+    }
+
+    pub unsafe fn accept(&mut self, pipe_path: &[u16]) -> Option<NamedPipe> {
+        let mut buf = [0; PIPE_BUFFER_LEN];
+        match self.pipe.read_async(&mut buf) {
+            ReadResult::Waiting => None,
+            ReadResult::Ok(_) => {
+                let mut pipe = Self::new(pipe_path).pipe;
+                std::mem::swap(&mut self.pipe, &mut pipe);
+                Some(pipe)
+            }
+            ReadResult::Err => panic!("could not accept connection {}", GetLastError()),
+        }
+    }
+}
+
 unsafe fn run_server(pipe_path: &[u16]) {
-    const PIPE_BUFFER_LEN: usize = 512;
-
-    struct NamedPipeListener {
-        pub pipe: NamedPipe,
-    }
-    impl NamedPipeListener {
-        pub unsafe fn new(pipe_path: &[u16]) -> Self {
-            let mut pipe = NamedPipe::create(pipe_path, PIPE_BUFFER_LEN);
-            match pipe.accept() {
-                ReadResult::Waiting => Self { pipe },
-                _ => panic!("could not listen for connections"),
-            }
-        }
-
-        pub unsafe fn accept(&mut self, pipe_path: &[u16]) -> Option<NamedPipe> {
-            let mut buf = [0; PIPE_BUFFER_LEN];
-            match self.pipe.read_async(&mut buf) {
-                ReadResult::Waiting => None,
-                ReadResult::Ok(_) => {
-                    let mut pipe = Self::new(pipe_path).pipe;
-                    std::mem::swap(&mut self.pipe, &mut pipe);
-                    Some(pipe)
-                }
-                ReadResult::Err => panic!("could not accept connection {}", GetLastError()),
-            }
-        }
-    }
-
     let mut read_buf = [0; PIPE_BUFFER_LEN];
     let mut wait_handles = Vec::new();
 
@@ -380,7 +380,7 @@ unsafe fn run_client(pipe_path: &[u16]) {
 
     let mut read_buf = [0u8; 1024 * 2];
     let event_buffer = &mut [INPUT_RECORD::default(); 32][..];
-    let mut wait_handles = [input_handle, pipe.event_handle];
+    let wait_handles = [input_handle, pipe.event_handle];
 
     'main_loop: loop {
         let wait_handle_index = match wait_for_multiple_objects(&wait_handles, None) {
