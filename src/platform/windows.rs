@@ -1,20 +1,24 @@
+use std::time::Duration;
+
 use winapi::{
     shared::{
         minwindef::{BOOL, DWORD, FALSE, TRUE},
         ntdef::NULL,
-        winerror::WAIT_TIMEOUT,
+        winerror::{ERROR_IO_PENDING, ERROR_PIPE_CONNECTED, WAIT_TIMEOUT},
     },
     um::{
         consoleapi::{GetConsoleMode, ReadConsoleInputW, SetConsoleCtrlHandler, SetConsoleMode},
+        errhandlingapi::GetLastError,
         fileapi::{CreateFileW, OPEN_EXISTING},
         handleapi::INVALID_HANDLE_VALUE,
         minwinbase::OVERLAPPED,
-        namedpipeapi::{CreateNamedPipeW, SetNamedPipeHandleState},
+        namedpipeapi::{ConnectNamedPipe, CreateNamedPipeW, SetNamedPipeHandleState},
         processenv::GetStdHandle,
-        synchapi::{CreateEventW, WaitForMultipleObjects},
+        synchapi::{CreateEventW, SetEvent, WaitForMultipleObjects},
         winbase::{
             FILE_FLAG_OVERLAPPED, INFINITE, PIPE_ACCESS_DUPLEX, PIPE_READMODE_MESSAGE,
-            PIPE_TYPE_MESSAGE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, WAIT_FAILED, WAIT_OBJECT_0,
+            PIPE_TYPE_MESSAGE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, WAIT_ABANDONED_0, WAIT_FAILED,
+            WAIT_OBJECT_0,
         },
         wincon::{
             ENABLE_PROCESSED_OUTPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING, ENABLE_WINDOW_INPUT,
@@ -57,18 +61,99 @@ unsafe fn run_unsafe() {
     }
 }
 
+enum WaitResult {
+    Signaled(usize),
+    Abandoned(usize),
+    Timeout,
+}
+unsafe fn wait_for_multiple_objects(handles: &mut [HANDLE], timeout: Option<Duration>) -> WaitResult {
+    let timeout = match timeout {
+        Some(duration) => duration.as_millis() as _,
+        None => INFINITE,
+    };
+    let result = WaitForMultipleObjects(handles.len() as _, handles.as_mut_ptr(), FALSE, timeout);
+    let len = handles.len() as DWORD;
+    if result == WAIT_TIMEOUT {
+        WaitResult::Timeout
+    } else if result >= WAIT_OBJECT_0 && result < (WAIT_OBJECT_0 + len) {
+        WaitResult::Signaled((result - WAIT_OBJECT_0) as _)
+    } else if result >= WAIT_ABANDONED_0 && result < (WAIT_ABANDONED_0 + len) {
+        WaitResult::Abandoned((result - WAIT_ABANDONED_0) as _)
+    } else {
+        panic!("could not wait for event")
+    }
+}
+
 unsafe fn run_server(pipe_path: &[u16]) {
+    #[derive(Clone, Copy)]
+    enum NamedPipeState {
+        Connecting,
+        Reading,
+        Writing,
+    }
     #[derive(Clone, Copy)]
     struct NamedPipe {
         pub handle: HANDLE,
         pub overlapped: OVERLAPPED,
+        pub pending_io: bool,
+        pub state: NamedPipeState,
+    }
+    impl NamedPipe {
+        pub unsafe fn new() -> Self {
+            Self {
+                handle: INVALID_HANDLE_VALUE,
+                overlapped: std::mem::zeroed(),
+                pending_io: false,
+                state: NamedPipeState::Connecting,
+            }
+        }
+
+        pub unsafe fn init(&mut self, pipe_path: &[u16], event_handle: HANDLE) {
+            let handle = CreateNamedPipeW(
+                pipe_path.as_ptr(),
+                PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
+                PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE,
+                MAX_CLIENT_COUNT as _,
+                PIPE_BUFFER_LEN as _,
+                PIPE_BUFFER_LEN as _,
+                0,
+                std::ptr::null_mut(),
+            );
+            if handle == INVALID_HANDLE_VALUE {
+                panic!("could not start server");
+            }
+
+            self.handle = handle;
+            self.overlapped.hEvent = event_handle;
+        }
+
+        pub unsafe fn accept_client(&mut self) {
+            if ConnectNamedPipe(self.handle, &mut self.overlapped) != FALSE {
+                panic!("could not accept client");
+            }
+
+            match GetLastError() {
+                ERROR_IO_PENDING => {
+                    self.pending_io = true;
+                    self.state = NamedPipeState::Connecting;
+                }
+                ERROR_PIPE_CONNECTED => {
+                    self.pending_io = false;
+                    self.state = NamedPipeState::Reading;
+                    if SetEvent(self.overlapped.hEvent) == FALSE {
+                        panic!("could not accept client");
+                    }
+                }
+                _ => panic!("could not accept client"),
+            }
+        }
     }
 
     const MAX_CLIENT_COUNT: usize = 4;
     const PIPE_BUFFER_LEN: usize = 1024 * 2;
 
     let mut wait_events = [INVALID_HANDLE_VALUE; MAX_CLIENT_COUNT];
-    let mut pipes = [std::mem::zeroed::<NamedPipe>(); MAX_CLIENT_COUNT];
+    let mut pipes = [NamedPipe::new(); MAX_CLIENT_COUNT];
     let wait_events = &mut wait_events;
 
     for i in 0..MAX_CLIENT_COUNT {
@@ -77,24 +162,11 @@ unsafe fn run_server(pipe_path: &[u16]) {
             panic!("could not start server");
         }
         wait_events[i] = event_handle;
-
-        let pipe_handle = CreateNamedPipeW(
-            pipe_path.as_ptr(),
-            PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
-            PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE,
-            MAX_CLIENT_COUNT as _,
-            PIPE_BUFFER_LEN as _,
-            PIPE_BUFFER_LEN as _,
-            0,
-            std::ptr::null_mut(),
-        );
-        if pipe_handle == INVALID_HANDLE_VALUE {
-            panic!("could not start server");
-        }
-
-        pipes[i].handle = pipe_handle;
-        pipes[i].overlapped.hEvent = event_handle;
+        pipes[i].init(pipe_path, event_handle);
+        pipes[i].accept_client();
     }
+
+    loop {}
 }
 
 unsafe fn try_run_client(pipe_path: &[u16]) -> bool {
@@ -146,32 +218,14 @@ unsafe fn try_run_client(pipe_path: &[u16]) -> bool {
     }
 
     let event_buffer = &mut [INPUT_RECORD::default(); 32][..];
-
-    let waiting_handles_len = 1;
-    let waiting_handles = &mut [INVALID_HANDLE_VALUE; 1][..];
+    let mut waiting_handles = [INVALID_HANDLE_VALUE; 1];
     waiting_handles[0] = input_handle;
 
     'main_loop: loop {
-        let wait_result = WaitForMultipleObjects(
-            waiting_handles_len,
-            waiting_handles.as_mut_ptr(),
-            FALSE,
-            INFINITE,
-        );
-        if wait_result == WAIT_FAILED {
-            panic!("failed to wait on events");
-        }
-        if wait_result == WAIT_TIMEOUT {
-            continue;
-        }
-        if wait_result < WAIT_OBJECT_0 {
-            continue;
-        }
-        let waiting_handle_index = wait_result - WAIT_OBJECT_0;
-        if waiting_handle_index >= waiting_handles.len() as _ {
-            continue;
-        }
-
+        let waiting_handle_index = match wait_for_multiple_objects(&mut waiting_handles, None) {
+            WaitResult::Signaled(i) => i,
+            _ => continue,
+        };
         match waiting_handle_index {
             0 => {
                 let mut event_count: DWORD = 0;
