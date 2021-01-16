@@ -469,13 +469,13 @@ unsafe fn try_run_client(pipe_path: &[u16]) -> bool {
                     panic!("SERVER DISCONNECTED {}", GetLastError());
                 }
                 ReadResult::Ok(len) => {
-                    let message = &pipe_buf[..len];
-                    let message = String::from_utf8_lossy(message);
-                    println!("received {} bytes from server! message: '{}'", len, message);
-
                     if SetEvent(pipe.event_handle) == FALSE {
                         panic!("could not receive next message");
                     }
+
+                    let message = &pipe_buf[..len];
+                    let message = String::from_utf8_lossy(message);
+                    println!("received {} bytes from server! message: '{}'", len, message);
                 }
             },
             _ => unreachable!(),
