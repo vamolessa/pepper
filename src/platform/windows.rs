@@ -13,7 +13,9 @@ use winapi::{
         handleapi::INVALID_HANDLE_VALUE,
         ioapiset::GetOverlappedResult,
         minwinbase::OVERLAPPED,
-        namedpipeapi::{ConnectNamedPipe, CreateNamedPipeW, SetNamedPipeHandleState},
+        namedpipeapi::{
+            ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, SetNamedPipeHandleState,
+        },
         processenv::GetStdHandle,
         synchapi::{CreateEventW, SetEvent, WaitForMultipleObjects},
         winbase::{
@@ -72,16 +74,13 @@ enum WaitResult {
     Abandoned(usize),
     Timeout,
 }
-unsafe fn wait_for_multiple_objects(
-    handles: &mut [HANDLE],
-    timeout: Option<Duration>,
-) -> WaitResult {
+unsafe fn wait_for_multiple_objects(handles: &[HANDLE], timeout: Option<Duration>) -> WaitResult {
     let timeout = match timeout {
         Some(duration) => duration.as_millis() as _,
         None => INFINITE,
     };
     let len = MAXIMUM_WAIT_OBJECTS.min(handles.len() as DWORD);
-    let result = WaitForMultipleObjects(len, handles.as_mut_ptr(), FALSE, timeout);
+    let result = WaitForMultipleObjects(len, handles.as_ptr(), FALSE, timeout);
     if result == WAIT_TIMEOUT {
         WaitResult::Timeout
     } else if result >= WAIT_OBJECT_0 && result < (WAIT_OBJECT_0 + len) {
@@ -271,55 +270,76 @@ impl NamedPipe {
 unsafe fn run_server(pipe_path: &[u16]) {
     const PIPE_BUFFER_LEN: usize = 512;
 
-    struct NamedPipeInstance {
+    struct NamedPipeListener {
         pub pipe: NamedPipe,
-        pub connecting: bool,
-        pub read_buf: [u8; PIPE_BUFFER_LEN],
     }
-    impl NamedPipeInstance {
+    impl NamedPipeListener {
+        unsafe fn new_listening_pipe(pipe_path: &[u16]) -> NamedPipe {
+            let mut pipe = NamedPipe::create(pipe_path, PIPE_BUFFER_LEN);
+            match pipe.accept() {
+                ReadResult::Waiting => pipe,
+                _ => panic!("could not listen for connections"),
+            }
+        }
+
         pub unsafe fn new(pipe_path: &[u16]) -> Self {
             Self {
-                pipe: NamedPipe::create(pipe_path, PIPE_BUFFER_LEN),
-                connecting: false,
-                read_buf: [0; PIPE_BUFFER_LEN],
+                pipe: Self::new_listening_pipe(pipe_path),
             }
         }
 
-        pub unsafe fn accept(&mut self) {
-            match self.pipe.accept() {
-                ReadResult::Waiting => self.connecting = true,
-                ReadResult::Ok(_) => self.connecting = false,
-                ReadResult::Err => panic!("could not accept client"),
+        pub unsafe fn accept(&mut self, pipe_path: &[u16]) -> Option<NamedPipe> {
+            let mut buf = [0; PIPE_BUFFER_LEN];
+            match self.pipe.read_async(&mut buf) {
+                ReadResult::Waiting => None,
+                ReadResult::Ok(_) => {
+                    let mut pipe = Self::new_listening_pipe(pipe_path);
+                    std::mem::swap(&mut self.pipe, &mut pipe);
+                    Some(pipe)
+                }
+                ReadResult::Err => panic!("could not accept connection"),
             }
         }
     }
 
-    let mut pipes = [NamedPipeInstance::new(pipe_path)];
-    let mut wait_events = [pipes[0].pipe.event_handle];
-    pipes[0].accept();
+    let mut read_buf = [0; PIPE_BUFFER_LEN];
+    let mut wait_handles = Vec::new();
+
+    let mut listener = NamedPipeListener::new(pipe_path);
+    let mut pipes = Vec::<NamedPipe>::new();
 
     loop {
-        let pipe = match wait_for_multiple_objects(&mut wait_events, None) {
-            WaitResult::Signaled(i) => &mut pipes[i],
+        wait_handles.clear();
+        wait_handles.push(listener.pipe.event_handle);
+        for pipe in &pipes {
+            wait_handles.push(pipe.event_handle);
+        }
+
+        let pipe = match wait_for_multiple_objects(&wait_handles, None) {
+            WaitResult::Signaled(0) => {
+                if let Some(pipe) = listener.accept(pipe_path) {
+                    pipes.push(pipe);
+                }
+                continue;
+            }
+            WaitResult::Signaled(i) => &mut pipes[i - 1],
             _ => continue,
         };
 
-        match pipe.pipe.read_async(&mut pipe.read_buf) {
+        match pipe.read_async(&mut read_buf) {
             ReadResult::Waiting => (),
-            ReadResult::Ok(0) if pipe.connecting => {
-                pipe.connecting = false;
-            }
             ReadResult::Ok(0) | ReadResult::Err => {
-                // disconnect and accept new
-                panic!("CLIENT DISCONNECTED Err");
+                println!("CLIENT DISCONNECTED");
+                DisconnectNamedPipe(pipe.pipe_handle);
+                println!("AFTER CLIENT DISCONNECT");
             }
             ReadResult::Ok(len) => {
-                let message = &pipe.read_buf[..len];
+                let message = &read_buf[..len];
                 let message = String::from_utf8_lossy(message);
                 println!("received {} bytes from client! message: '{}'", len, message);
 
                 let message = b"thank you for your message!";
-                match pipe.pipe.write(message) {
+                match pipe.write(message) {
                     WriteResult::Ok => (),
                     WriteResult::Err => {
                         panic!("could not send message to client {}", GetLastError())
@@ -363,12 +383,12 @@ unsafe fn run_client(pipe_path: &[u16]) {
         panic!("could not receive next message");
     }
 
-    let mut pipe_buf = [0u8; 1024 * 2];
+    let mut read_buf = [0u8; 1024 * 2];
     let event_buffer = &mut [INPUT_RECORD::default(); 32][..];
     let mut wait_handles = [input_handle, pipe.event_handle];
 
     'main_loop: loop {
-        let wait_handle_index = match wait_for_multiple_objects(&mut wait_handles, None) {
+        let wait_handle_index = match wait_for_multiple_objects(&wait_handles, None) {
             WaitResult::Signaled(i) => i,
             _ => continue,
         };
@@ -463,7 +483,7 @@ unsafe fn run_client(pipe_path: &[u16]) {
                     }
                 }
             }
-            1 => match pipe.read_async(&mut pipe_buf) {
+            1 => match pipe.read_async(&mut read_buf) {
                 ReadResult::Waiting => (),
                 ReadResult::Ok(0) | ReadResult::Err => {
                     break;
@@ -473,7 +493,7 @@ unsafe fn run_client(pipe_path: &[u16]) {
                         panic!("could not receive next message");
                     }
 
-                    let message = &pipe_buf[..len];
+                    let message = &read_buf[..len];
                     let message = String::from_utf8_lossy(message);
                     println!("received {} bytes from server! message: '{}'", len, message);
                 }
