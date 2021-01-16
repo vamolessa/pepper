@@ -152,7 +152,10 @@ impl NamedPipe {
                 }
                 ReadResult::Ok(0)
             }
-            _ => ReadResult::Err,
+            _ => {
+                self.pending_io = false;
+                ReadResult::Err
+            }
         }
     }
 
@@ -200,6 +203,7 @@ impl NamedPipe {
     pub unsafe fn read_async(&mut self, buf: &mut [u8]) -> ReadResult {
         let mut read_len = 0;
         if self.pending_io {
+            self.pending_io = false;
             if GetOverlappedResult(self.pipe_handle, &mut self.overlapped, &mut read_len, FALSE)
                 == FALSE
             {
@@ -216,11 +220,13 @@ impl NamedPipe {
                 &mut self.overlapped,
             ) != FALSE
             {
+                self.pending_io = false;
                 ReadResult::Ok(read_len as _)
             } else if GetLastError() == ERROR_IO_PENDING {
                 self.pending_io = true;
                 ReadResult::Pending
             } else {
+                self.pending_io = false;
                 ReadResult::Err
             }
         }
@@ -281,6 +287,9 @@ unsafe fn run_server(pipe_path: &[u16]) {
 
         match pipe.pipe.read_async(&mut pipe.read_buf) {
             ReadResult::Pending => (),
+            ReadResult::Ok(0) if pipe.connecting => {
+                pipe.connecting = false;
+            }
             ReadResult::Ok(0) | ReadResult::Err => {
                 // disconnect and accept new
                 panic!("CLIENT DISCONNECTED");
@@ -288,7 +297,7 @@ unsafe fn run_server(pipe_path: &[u16]) {
             ReadResult::Ok(len) => {
                 let message = &pipe.read_buf[..len];
                 let message = String::from_utf8_lossy(message);
-                println!("received {} bytes! message: '{}'", len, message);
+                println!("received {} bytes from client! message: '{}'", len, message);
 
                 let message = b"thank you for your message!";
                 match pipe.pipe.write(message) {
@@ -431,17 +440,17 @@ unsafe fn try_run_client(pipe_path: &[u16]) -> bool {
                     }
                 }
             }
-            1 => {
-                match pipe.read_async(&mut pipe_buf) {
-                    ReadResult::Pending => (),
-                    ReadResult::Ok(0) | ReadResult::Err => {
-                        panic!("SERVER DISCONNECTED {}", GetLastError());
-                    }
-                    ReadResult::Ok(len) => {
-                        //
-                    }
+            1 => match pipe.read_async(&mut pipe_buf) {
+                ReadResult::Pending => (),
+                ReadResult::Ok(0) | ReadResult::Err => {
+                    panic!("SERVER DISCONNECTED {}", GetLastError());
                 }
-            }
+                ReadResult::Ok(len) => {
+                    let message = &pipe_buf[..len];
+                    let message = String::from_utf8_lossy(message);
+                    println!("received {} bytes from server! message: '{}'", len, message);
+                }
+            },
             _ => unreachable!(),
         }
     }
