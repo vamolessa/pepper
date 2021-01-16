@@ -210,24 +210,29 @@ impl NamedPipe {
         let mut read_len = 0;
         println!("readasync {}", self.pending_io);
         if self.pending_io {
+            println!("before get overlapped result");
             if GetOverlappedResult(self.pipe_handle, &mut self.overlapped, &mut read_len, FALSE)
                 == FALSE
             {
                 match GetLastError() {
                     ERROR_MORE_DATA => {
+                        println!("get overlapped result error 'more data'");
                         self.pending_io = false;
                         ReadResult::Ok(read_len as _)
                     }
-                    _ => {
+                    error => {
+                        println!("get overlapped result error '{}'", error);
                         self.pending_io = false;
                         ReadResult::Err
                     }
                 }
             } else {
+                println!("get overlapped result success");
                 self.pending_io = false;
                 ReadResult::Ok(read_len as _)
             }
         } else {
+            println!("before read file");
             if ReadFile(
                 self.pipe_handle,
                 buf.as_mut_ptr() as _,
@@ -276,6 +281,7 @@ struct NamedPipeListener {
 impl NamedPipeListener {
     pub unsafe fn new(pipe_path: &[u16]) -> Self {
         let mut pipe = NamedPipe::create(pipe_path);
+        println!("pipe listener accept new");
         match pipe.accept() {
             ReadResult::Waiting => Self { pipe },
             _ => panic!("could not listen for connections"),
@@ -284,6 +290,7 @@ impl NamedPipeListener {
 
     pub unsafe fn accept(&mut self, pipe_path: &[u16]) -> Option<NamedPipe> {
         let mut buf = [0; PIPE_BUFFER_LEN];
+        println!("on listener accept before read async");
         match self.pipe.read_async(&mut buf) {
             ReadResult::Waiting => None,
             ReadResult::Ok(_) => {
@@ -312,6 +319,7 @@ unsafe fn run_server(pipe_path: &[u16]) {
 
         match wait_for_multiple_objects(&wait_handles, None) {
             WaitResult::Signaled(0) => {
+                println!("listener before accept");
                 if let Some(pipe) = listener.accept(pipe_path) {
                     match pipes.iter_mut().find(|p| p.is_some()) {
                         Some(p) => *p = Some(pipe),
@@ -320,6 +328,7 @@ unsafe fn run_server(pipe_path: &[u16]) {
                 }
             }
             WaitResult::Signaled(i) => {
+                println!("signaled {}", i);
                 if let Some((i, pipe)) = pipes
                     .iter_mut()
                     .enumerate()
