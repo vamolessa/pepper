@@ -89,7 +89,7 @@ unsafe fn wait_for_multiple_objects(
 }
 
 unsafe fn run_server(pipe_path: &[u16]) {
-    const MAX_CLIENT_COUNT: usize = 4;
+    const MAX_CLIENT_COUNT: usize = 1;
     const PIPE_BUFFER_LEN: usize = 1024 * 2;
 
     #[derive(Clone, Copy)]
@@ -268,6 +268,19 @@ unsafe fn try_run_client(pipe_path: &[u16]) -> bool {
     ) == FALSE
     {
         panic!("could not set console output mode");
+    }
+
+    let message = b"hello there!";
+    let mut write_bytes_len = 0;
+    if WriteFile(
+        pipe_handle,
+        message.as_ptr() as _,
+        message.len() as _,
+        &mut write_bytes_len,
+        std::ptr::null_mut(),
+    ) == FALSE
+    {
+        panic!("could not send message to server");
     }
 
     let event_buffer = &mut [INPUT_RECORD::default(); 32][..];
