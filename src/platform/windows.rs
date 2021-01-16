@@ -28,7 +28,7 @@ use winapi::{
             INPUT_RECORD, KEY_EVENT, LEFT_ALT_PRESSED, LEFT_CTRL_PRESSED, RIGHT_ALT_PRESSED,
             RIGHT_CTRL_PRESSED, SHIFT_PRESSED, WINDOW_BUFFER_SIZE_EVENT,
         },
-        winnt::{GENERIC_READ, GENERIC_WRITE, HANDLE},
+        winnt::{GENERIC_READ, GENERIC_WRITE, HANDLE, MAXIMUM_WAIT_OBJECTS},
         winuser::{
             VK_BACK, VK_DELETE, VK_DOWN, VK_END, VK_ESCAPE, VK_F1, VK_F24, VK_HOME, VK_LEFT,
             VK_NEXT, VK_PRIOR, VK_RETURN, VK_RIGHT, VK_TAB, VK_UP,
@@ -80,8 +80,8 @@ unsafe fn wait_for_multiple_objects(
         Some(duration) => duration.as_millis() as _,
         None => INFINITE,
     };
-    let result = WaitForMultipleObjects(handles.len() as _, handles.as_mut_ptr(), FALSE, timeout);
-    let len = handles.len() as DWORD;
+    let len = MAXIMUM_WAIT_OBJECTS.min(handles.len() as DWORD);
+    let result = WaitForMultipleObjects(len, handles.as_mut_ptr(), FALSE, timeout);
     if result == WAIT_TIMEOUT {
         WaitResult::Timeout
     } else if result >= WAIT_OBJECT_0 && result < (WAIT_OBJECT_0 + len) {
