@@ -9,8 +9,9 @@ use winapi::{
     um::{
         consoleapi::{GetConsoleMode, ReadConsoleInputW, SetConsoleCtrlHandler, SetConsoleMode},
         errhandlingapi::GetLastError,
-        fileapi::{CreateFileW, OPEN_EXISTING},
+        fileapi::{CreateFileW, ReadFile, WriteFile, OPEN_EXISTING},
         handleapi::INVALID_HANDLE_VALUE,
+        ioapiset::GetOverlappedResult,
         minwinbase::OVERLAPPED,
         namedpipeapi::{ConnectNamedPipe, CreateNamedPipeW, SetNamedPipeHandleState},
         processenv::GetStdHandle,
@@ -66,7 +67,10 @@ enum WaitResult {
     Abandoned(usize),
     Timeout,
 }
-unsafe fn wait_for_multiple_objects(handles: &mut [HANDLE], timeout: Option<Duration>) -> WaitResult {
+unsafe fn wait_for_multiple_objects(
+    handles: &mut [HANDLE],
+    timeout: Option<Duration>,
+) -> WaitResult {
     let timeout = match timeout {
         Some(duration) => duration.as_millis() as _,
         None => INFINITE,
@@ -85,18 +89,17 @@ unsafe fn wait_for_multiple_objects(handles: &mut [HANDLE], timeout: Option<Dura
 }
 
 unsafe fn run_server(pipe_path: &[u16]) {
-    #[derive(Clone, Copy)]
-    enum NamedPipeState {
-        Connecting,
-        Reading,
-        Writing,
-    }
+    const MAX_CLIENT_COUNT: usize = 4;
+    const PIPE_BUFFER_LEN: usize = 1024 * 2;
+
     #[derive(Clone, Copy)]
     struct NamedPipe {
         pub handle: HANDLE,
         pub overlapped: OVERLAPPED,
+        pub connecting: bool,
         pub pending_io: bool,
-        pub state: NamedPipeState,
+        pub read_bytes_len: DWORD,
+        pub read_buf: [u8; PIPE_BUFFER_LEN],
     }
     impl NamedPipe {
         pub unsafe fn new() -> Self {
@@ -104,7 +107,9 @@ unsafe fn run_server(pipe_path: &[u16]) {
                 handle: INVALID_HANDLE_VALUE,
                 overlapped: std::mem::zeroed(),
                 pending_io: false,
-                state: NamedPipeState::Connecting,
+                connecting: false,
+                read_bytes_len: 0,
+                read_buf: [0; PIPE_BUFFER_LEN],
             }
         }
 
@@ -132,14 +137,15 @@ unsafe fn run_server(pipe_path: &[u16]) {
                 panic!("could not accept client");
             }
 
+            self.read_bytes_len = 0;
             match GetLastError() {
                 ERROR_IO_PENDING => {
                     self.pending_io = true;
-                    self.state = NamedPipeState::Connecting;
+                    self.connecting = true;
                 }
                 ERROR_PIPE_CONNECTED => {
                     self.pending_io = false;
-                    self.state = NamedPipeState::Reading;
+                    self.connecting = false;
                     if SetEvent(self.overlapped.hEvent) == FALSE {
                         panic!("could not accept client");
                     }
@@ -149,12 +155,8 @@ unsafe fn run_server(pipe_path: &[u16]) {
         }
     }
 
-    const MAX_CLIENT_COUNT: usize = 4;
-    const PIPE_BUFFER_LEN: usize = 1024 * 2;
-
     let mut wait_events = [INVALID_HANDLE_VALUE; MAX_CLIENT_COUNT];
     let mut pipes = [NamedPipe::new(); MAX_CLIENT_COUNT];
-    let wait_events = &mut wait_events;
 
     for i in 0..MAX_CLIENT_COUNT {
         let event_handle = CreateEventW(std::ptr::null_mut(), TRUE, TRUE, std::ptr::null());
@@ -166,7 +168,58 @@ unsafe fn run_server(pipe_path: &[u16]) {
         pipes[i].accept_client();
     }
 
-    loop {}
+    loop {
+        let pipe = match wait_for_multiple_objects(&mut wait_events, None) {
+            WaitResult::Signaled(i) => &mut pipes[i],
+            _ => continue,
+        };
+
+        if pipe.pending_io {
+            let success = GetOverlappedResult(
+                pipe.handle,
+                &mut pipe.overlapped,
+                &mut pipe.read_bytes_len,
+                FALSE,
+            ) != FALSE;
+
+            if pipe.connecting {
+                if !success {
+                    panic!("could not accept client");
+                }
+                pipe.connecting = false;
+            } else {
+                if !success || pipe.read_bytes_len == 0 {
+                    // disconnect and accept new
+                    panic!("CLIENT DISCONNECTED");
+                    continue;
+                }
+
+                let message = &pipe.read_buf[..(pipe.read_bytes_len as usize)];
+                let message = String::from_utf8_lossy(message);
+                println!(
+                    "received {} bytes! message: '{}'",
+                    pipe.read_bytes_len, message
+                );
+            }
+        }
+
+        let success = ReadFile(
+            pipe.handle,
+            (&mut pipe.read_buf[..]).as_mut_ptr() as _,
+            pipe.read_buf.len() as _,
+            &mut pipe.read_bytes_len,
+            &mut pipe.overlapped,
+        ) != FALSE;
+
+        if success && pipe.read_bytes_len != 0 {
+            pipe.pending_io = false;
+        } else if !success && GetLastError() == ERROR_IO_PENDING {
+            pipe.pending_io = true;
+        } else {
+            // disconnect and accept new
+            panic!("CLIENT DISCONNECTED");
+        }
+    }
 }
 
 unsafe fn try_run_client(pipe_path: &[u16]) -> bool {
@@ -218,15 +271,15 @@ unsafe fn try_run_client(pipe_path: &[u16]) -> bool {
     }
 
     let event_buffer = &mut [INPUT_RECORD::default(); 32][..];
-    let mut waiting_handles = [INVALID_HANDLE_VALUE; 1];
-    waiting_handles[0] = input_handle;
+    let mut wait_handle = [INVALID_HANDLE_VALUE; 1];
+    wait_handle[0] = input_handle;
 
     'main_loop: loop {
-        let waiting_handle_index = match wait_for_multiple_objects(&mut waiting_handles, None) {
+        let wait_handle_index = match wait_for_multiple_objects(&mut wait_handle, None) {
             WaitResult::Signaled(i) => i,
             _ => continue,
         };
-        match waiting_handle_index {
+        match wait_handle_index {
             0 => {
                 let mut event_count: DWORD = 0;
                 if ReadConsoleInputW(
