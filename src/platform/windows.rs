@@ -466,7 +466,7 @@ unsafe fn run_client(pipe_path: &[u16]) {
             1 => match pipe.read_async(&mut pipe_buf) {
                 ReadResult::Waiting => (),
                 ReadResult::Ok(0) | ReadResult::Err => {
-                    panic!("SERVER DISCONNECTED {}", GetLastError());
+                    break;
                 }
                 ReadResult::Ok(len) => {
                     if SetEvent(pipe.event_handle) == FALSE {
@@ -482,6 +482,7 @@ unsafe fn run_client(pipe_path: &[u16]) {
         }
     }
 
+    println!("finish client");
     SetConsoleMode(input_handle, original_input_mode);
     SetConsoleMode(output_handle, original_output_mode);
 }
