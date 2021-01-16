@@ -206,6 +206,7 @@ impl NamedPipe {
 
     pub unsafe fn read_async(&mut self, buf: &mut [u8]) -> ReadResult {
         let mut read_len = 0;
+        println!("readasync {}", self.pending_io);
         if self.pending_io {
             if GetOverlappedResult(self.pipe_handle, &mut self.overlapped, &mut read_len, FALSE)
                 == FALSE
@@ -274,17 +275,11 @@ unsafe fn run_server(pipe_path: &[u16]) {
         pub pipe: NamedPipe,
     }
     impl NamedPipeListener {
-        unsafe fn new_listening_pipe(pipe_path: &[u16]) -> NamedPipe {
+        pub unsafe fn new(pipe_path: &[u16]) -> Self {
             let mut pipe = NamedPipe::create(pipe_path, PIPE_BUFFER_LEN);
             match pipe.accept() {
-                ReadResult::Waiting => pipe,
+                ReadResult::Waiting => Self { pipe },
                 _ => panic!("could not listen for connections"),
-            }
-        }
-
-        pub unsafe fn new(pipe_path: &[u16]) -> Self {
-            Self {
-                pipe: Self::new_listening_pipe(pipe_path),
             }
         }
 
@@ -293,11 +288,11 @@ unsafe fn run_server(pipe_path: &[u16]) {
             match self.pipe.read_async(&mut buf) {
                 ReadResult::Waiting => None,
                 ReadResult::Ok(_) => {
-                    let mut pipe = Self::new_listening_pipe(pipe_path);
+                    let mut pipe = Self::new(pipe_path).pipe;
                     std::mem::swap(&mut self.pipe, &mut pipe);
                     Some(pipe)
                 }
-                ReadResult::Err => panic!("could not accept connection"),
+                ReadResult::Err => panic!("could not accept connection {}", GetLastError()),
             }
         }
     }
