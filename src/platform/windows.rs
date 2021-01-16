@@ -4,7 +4,7 @@ use winapi::{
     shared::{
         minwindef::{BOOL, DWORD, FALSE, TRUE},
         ntdef::NULL,
-        winerror::{ERROR_IO_PENDING, ERROR_PIPE_CONNECTED, WAIT_TIMEOUT},
+        winerror::{ERROR_IO_PENDING, ERROR_MORE_DATA, ERROR_PIPE_CONNECTED, WAIT_TIMEOUT},
     },
     um::{
         consoleapi::{GetConsoleMode, ReadConsoleInputW, SetConsoleCtrlHandler, SetConsoleMode},
@@ -17,9 +17,9 @@ use winapi::{
         processenv::GetStdHandle,
         synchapi::{CreateEventW, SetEvent, WaitForMultipleObjects},
         winbase::{
-            FILE_FLAG_OVERLAPPED, INFINITE, PIPE_ACCESS_DUPLEX, PIPE_READMODE_MESSAGE,
-            PIPE_TYPE_MESSAGE, PIPE_UNLIMITED_INSTANCES, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
-            WAIT_ABANDONED_0, WAIT_FAILED, WAIT_OBJECT_0,
+            FILE_FLAG_OVERLAPPED, INFINITE, PIPE_ACCESS_DUPLEX, PIPE_READMODE_BYTE,
+            PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES,
+            STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, WAIT_ABANDONED_0, WAIT_FAILED, WAIT_OBJECT_0,
         },
         wincon::{
             ENABLE_PROCESSED_OUTPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING, ENABLE_WINDOW_INPUT,
@@ -113,7 +113,7 @@ impl NamedPipe {
         let pipe_handle = CreateNamedPipeW(
             path.as_ptr(),
             PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
-            PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE,
+            PIPE_TYPE_BYTE | PIPE_READMODE_BYTE,
             PIPE_UNLIMITED_INSTANCES,
             buffer_len as _,
             buffer_len as _,
@@ -173,7 +173,7 @@ impl NamedPipe {
             return None;
         }
 
-        let mut mode = PIPE_READMODE_MESSAGE;
+        let mut mode = PIPE_READMODE_BYTE;
         if SetNamedPipeHandleState(
             pipe_handle,
             &mut mode,
@@ -203,12 +203,21 @@ impl NamedPipe {
     pub unsafe fn read_async(&mut self, buf: &mut [u8]) -> ReadResult {
         let mut read_len = 0;
         if self.pending_io {
-            self.pending_io = false;
             if GetOverlappedResult(self.pipe_handle, &mut self.overlapped, &mut read_len, FALSE)
                 == FALSE
             {
-                ReadResult::Err
+                match GetLastError() {
+                    ERROR_MORE_DATA => {
+                        self.pending_io = true;
+                        ReadResult::Ok(read_len as _)
+                    }
+                    _ => {
+                        self.pending_io = false;
+                        ReadResult::Err
+                    }
+                }
             } else {
+                self.pending_io = false;
                 ReadResult::Ok(read_len as _)
             }
         } else {
@@ -218,16 +227,21 @@ impl NamedPipe {
                 buf.len() as _,
                 &mut read_len,
                 &mut self.overlapped,
-            ) != FALSE
+            ) == FALSE
             {
-                self.pending_io = false;
-                ReadResult::Ok(read_len as _)
-            } else if GetLastError() == ERROR_IO_PENDING {
-                self.pending_io = true;
-                ReadResult::Pending
+                match GetLastError() {
+                    ERROR_IO_PENDING => {
+                        self.pending_io = true;
+                        ReadResult::Pending
+                    }
+                    _ => {
+                        self.pending_io = false;
+                        ReadResult::Err
+                    }
+                }
             } else {
                 self.pending_io = false;
-                ReadResult::Err
+                ReadResult::Ok(read_len as _)
             }
         }
     }
@@ -285,14 +299,14 @@ unsafe fn run_server(pipe_path: &[u16]) {
             _ => continue,
         };
 
-        match pipe.pipe.read_async(&mut pipe.read_buf) {
+        match pipe.pipe.read_async(&mut pipe.read_buf[..4]) {
             ReadResult::Pending => (),
             ReadResult::Ok(0) if pipe.connecting => {
                 pipe.connecting = false;
             }
             ReadResult::Ok(0) | ReadResult::Err => {
                 // disconnect and accept new
-                panic!("CLIENT DISCONNECTED");
+                panic!("CLIENT DISCONNECTED Err");
             }
             ReadResult::Ok(len) => {
                 let message = &pipe.read_buf[..len];
