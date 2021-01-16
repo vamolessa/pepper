@@ -17,9 +17,9 @@ use winapi::{
         processenv::GetStdHandle,
         synchapi::{CreateEventW, SetEvent, WaitForMultipleObjects},
         winbase::{
-            FILE_FLAG_OVERLAPPED, INFINITE, PIPE_ACCESS_DUPLEX, PIPE_READMODE_BYTE,
-            PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES,
-            STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, WAIT_ABANDONED_0, WAIT_FAILED, WAIT_OBJECT_0,
+            FILE_FLAG_OVERLAPPED, INFINITE, PIPE_ACCESS_DUPLEX, PIPE_READMODE_BYTE, PIPE_TYPE_BYTE,
+            PIPE_UNLIMITED_INSTANCES, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, WAIT_ABANDONED_0,
+            WAIT_FAILED, WAIT_OBJECT_0,
         },
         wincon::{
             ENABLE_PROCESSED_OUTPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING, ENABLE_WINDOW_INPUT,
@@ -89,7 +89,7 @@ unsafe fn wait_for_multiple_objects(
 }
 
 enum ReadResult {
-    Pending,
+    Waiting,
     Ok(usize),
     Err,
 }
@@ -143,7 +143,7 @@ impl NamedPipe {
         match GetLastError() {
             ERROR_IO_PENDING => {
                 self.pending_io = true;
-                ReadResult::Pending
+                ReadResult::Waiting
             }
             ERROR_PIPE_CONNECTED => {
                 self.pending_io = false;
@@ -166,7 +166,7 @@ impl NamedPipe {
             0,
             std::ptr::null_mut(),
             OPEN_EXISTING,
-            0,
+            FILE_FLAG_OVERLAPPED,
             NULL,
         );
         if pipe_handle == INVALID_HANDLE_VALUE {
@@ -181,7 +181,7 @@ impl NamedPipe {
             std::ptr::null_mut(),
         ) == FALSE
         {
-            panic!("could not establish a connection");
+            panic!("could not establish connection");
         }
 
         let event_handle = CreateEventW(std::ptr::null_mut(), TRUE, FALSE, std::ptr::null());
@@ -208,7 +208,7 @@ impl NamedPipe {
             {
                 match GetLastError() {
                     ERROR_MORE_DATA => {
-                        self.pending_io = true;
+                        self.pending_io = false;
                         ReadResult::Ok(read_len as _)
                     }
                     _ => {
@@ -232,7 +232,7 @@ impl NamedPipe {
                 match GetLastError() {
                     ERROR_IO_PENDING => {
                         self.pending_io = true;
-                        ReadResult::Pending
+                        ReadResult::Waiting
                     }
                     _ => {
                         self.pending_io = false;
@@ -264,7 +264,8 @@ impl NamedPipe {
 }
 
 unsafe fn run_server(pipe_path: &[u16]) {
-    const PIPE_BUFFER_LEN: usize = 512;
+    //const PIPE_BUFFER_LEN: usize = 512;
+    const PIPE_BUFFER_LEN: usize = 64;
 
     struct NamedPipeInstance {
         pub pipe: NamedPipe,
@@ -282,7 +283,7 @@ unsafe fn run_server(pipe_path: &[u16]) {
 
         pub unsafe fn accept(&mut self) {
             match self.pipe.accept() {
-                ReadResult::Pending => self.connecting = true,
+                ReadResult::Waiting => self.connecting = true,
                 ReadResult::Ok(_) => self.connecting = false,
                 ReadResult::Err => panic!("could not accept client"),
             }
@@ -299,8 +300,8 @@ unsafe fn run_server(pipe_path: &[u16]) {
             _ => continue,
         };
 
-        match pipe.pipe.read_async(&mut pipe.read_buf[..4]) {
-            ReadResult::Pending => (),
+        match pipe.pipe.read_async(&mut pipe.read_buf) {
+            ReadResult::Waiting => (),
             ReadResult::Ok(0) if pipe.connecting => {
                 pipe.connecting = false;
             }
@@ -357,6 +358,9 @@ unsafe fn try_run_client(pipe_path: &[u16]) -> bool {
     match pipe.write(b"hello there!") {
         WriteResult::Ok => (),
         WriteResult::Err => panic!("could not send message to server"),
+    }
+    if SetEvent(pipe.event_handle) == FALSE {
+        panic!("could not receive next message");
     }
 
     let mut pipe_buf = [0u8; 1024 * 2];
@@ -438,7 +442,12 @@ unsafe fn try_run_client(pipe_path: &[u16]) -> bool {
                                 }
                             };
 
-                            println!("key {} * {}", key, repeat_count);
+                            let message = format!("key {}", key);
+                            println!("{} x {}", message, repeat_count);
+                            match pipe.write(message.as_bytes()) {
+                                WriteResult::Ok => (),
+                                WriteResult::Err => panic!("could not send message to server"),
+                            }
 
                             if let Key::Esc = key {
                                 break 'main_loop;
@@ -455,7 +464,7 @@ unsafe fn try_run_client(pipe_path: &[u16]) -> bool {
                 }
             }
             1 => match pipe.read_async(&mut pipe_buf) {
-                ReadResult::Pending => (),
+                ReadResult::Waiting => (),
                 ReadResult::Ok(0) | ReadResult::Err => {
                     panic!("SERVER DISCONNECTED {}", GetLastError());
                 }
@@ -463,6 +472,10 @@ unsafe fn try_run_client(pipe_path: &[u16]) -> bool {
                     let message = &pipe_buf[..len];
                     let message = String::from_utf8_lossy(message);
                     println!("received {} bytes from server! message: '{}'", len, message);
+
+                    if SetEvent(pipe.event_handle) == FALSE {
+                        panic!("could not receive next message");
+                    }
                 }
             },
             _ => unreachable!(),
