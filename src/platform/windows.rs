@@ -10,7 +10,7 @@ use winapi::{
         consoleapi::{GetConsoleMode, ReadConsoleInputW, SetConsoleCtrlHandler, SetConsoleMode},
         errhandlingapi::GetLastError,
         fileapi::{CreateFileW, FindFirstFileW, ReadFile, WriteFile, OPEN_EXISTING},
-        handleapi::INVALID_HANDLE_VALUE,
+        handleapi::{CloseHandle, INVALID_HANDLE_VALUE},
         ioapiset::GetOverlappedResult,
         minwinbase::OVERLAPPED,
         namedpipeapi::{
@@ -269,13 +269,6 @@ impl NamedPipe {
         }
     }
 }
-impl Drop for NamedPipe {
-    fn drop(&mut self) {
-        println!("CLIENT DISCONNECTED");
-        unsafe { DisconnectNamedPipe(self.pipe_handle) };
-        println!("AFTER CLIENT DISCONNECT");
-    }
-}
 
 struct NamedPipeListener {
     pub pipe: NamedPipe,
@@ -338,7 +331,10 @@ unsafe fn run_server(pipe_path: &[u16]) {
                 {
                     match pipe.read_async(&mut read_buf) {
                         ReadResult::Waiting => (),
-                        ReadResult::Ok(0) | ReadResult::Err => pipes[i] = None,
+                        ReadResult::Ok(0) | ReadResult::Err => {
+                            DisconnectNamedPipe(pipe.pipe_handle);
+                            pipes[i] = None;
+                        }
                         ReadResult::Ok(len) => {
                             let message = &read_buf[..len];
                             let message = String::from_utf8_lossy(message);
@@ -513,6 +509,8 @@ unsafe fn run_client(pipe_path: &[u16]) {
     }
 
     println!("finish client");
+
+    CloseHandle(pipe.pipe_handle);
     SetConsoleMode(input_handle, original_input_mode);
     SetConsoleMode(output_handle, original_output_mode);
 }
