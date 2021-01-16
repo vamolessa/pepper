@@ -269,6 +269,13 @@ impl NamedPipe {
         }
     }
 }
+impl Drop for NamedPipe {
+    fn drop(&mut self) {
+        println!("CLIENT DISCONNECTED");
+        unsafe { DisconnectNamedPipe(self.pipe_handle) };
+        println!("AFTER CLIENT DISCONNECT");
+    }
+}
 
 struct NamedPipeListener {
     pub pipe: NamedPipe,
@@ -301,47 +308,55 @@ unsafe fn run_server(pipe_path: &[u16]) {
     let mut wait_handles = Vec::new();
 
     let mut listener = NamedPipeListener::new(pipe_path);
-    let mut pipes = Vec::<NamedPipe>::new();
+    let mut pipes = Vec::<Option<NamedPipe>>::new();
 
     loop {
         wait_handles.clear();
         wait_handles.push(listener.pipe.event_handle);
-        for pipe in &pipes {
+        for pipe in pipes.iter().flatten() {
             wait_handles.push(pipe.event_handle);
         }
 
-        let pipe = match wait_for_multiple_objects(&wait_handles, None) {
+        match wait_for_multiple_objects(&wait_handles, None) {
             WaitResult::Signaled(0) => {
                 if let Some(pipe) = listener.accept(pipe_path) {
-                    pipes.push(pipe);
-                }
-                continue;
-            }
-            WaitResult::Signaled(i) => &mut pipes[i - 1],
-            _ => continue,
-        };
-
-        match pipe.read_async(&mut read_buf) {
-            ReadResult::Waiting => (),
-            ReadResult::Ok(0) | ReadResult::Err => {
-                println!("CLIENT DISCONNECTED");
-                DisconnectNamedPipe(pipe.pipe_handle);
-                println!("AFTER CLIENT DISCONNECT");
-            }
-            ReadResult::Ok(len) => {
-                let message = &read_buf[..len];
-                let message = String::from_utf8_lossy(message);
-                println!("received {} bytes from client! message: '{}'", len, message);
-
-                let message = b"thank you for your message!";
-                match pipe.write(message) {
-                    WriteResult::Ok => (),
-                    WriteResult::Err => {
-                        panic!("could not send message to client {}", GetLastError())
+                    match pipes.iter_mut().find(|p| p.is_some()) {
+                        Some(p) => *p = Some(pipe),
+                        None => pipes.push(Some(pipe)),
                     }
                 }
             }
-        }
+            WaitResult::Signaled(i) => {
+                if let Some((i, pipe)) = pipes
+                    .iter_mut()
+                    .enumerate()
+                    .flat_map(|(i, p)| match p {
+                        Some(p) => Some((i, p)),
+                        None => None,
+                    })
+                    .nth(i - 1)
+                {
+                    match pipe.read_async(&mut read_buf) {
+                        ReadResult::Waiting => (),
+                        ReadResult::Ok(0) | ReadResult::Err => pipes[i] = None,
+                        ReadResult::Ok(len) => {
+                            let message = &read_buf[..len];
+                            let message = String::from_utf8_lossy(message);
+                            println!("received {} bytes from client! message: '{}'", len, message);
+
+                            let message = b"thank you for your message!";
+                            match pipe.write(message) {
+                                WriteResult::Ok => (),
+                                WriteResult::Err => {
+                                    panic!("could not send message to client {}", GetLastError())
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            _ => (),
+        };
     }
 }
 
