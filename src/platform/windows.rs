@@ -9,7 +9,7 @@ use winapi::{
     um::{
         consoleapi::{GetConsoleMode, ReadConsoleInputW, SetConsoleCtrlHandler, SetConsoleMode},
         errhandlingapi::GetLastError,
-        fileapi::{CreateFileW, ReadFile, WriteFile, OPEN_EXISTING},
+        fileapi::{CreateFileW, FindFirstFileW, ReadFile, WriteFile, OPEN_EXISTING},
         handleapi::INVALID_HANDLE_VALUE,
         ioapiset::GetOverlappedResult,
         minwinbase::OVERLAPPED,
@@ -57,8 +57,13 @@ unsafe fn run_unsafe() {
     pipe_path.extend(session_name.encode_utf16());
     pipe_path.push(0);
 
-    if !try_run_client(&pipe_path) {
+    let mut find_data = Default::default();
+    if FindFirstFileW(pipe_path.as_ptr(), &mut find_data) == INVALID_HANDLE_VALUE {
+        println!("run server");
         run_server(&pipe_path);
+    } else {
+        println!("run client");
+        run_client(&pipe_path);
     }
 }
 
@@ -159,7 +164,7 @@ impl NamedPipe {
         }
     }
 
-    pub unsafe fn try_connect(path: &[u16]) -> Option<Self> {
+    pub unsafe fn connect(path: &[u16]) -> Self {
         let pipe_handle = CreateFileW(
             path.as_ptr(),
             GENERIC_READ | GENERIC_WRITE,
@@ -170,7 +175,7 @@ impl NamedPipe {
             NULL,
         );
         if pipe_handle == INVALID_HANDLE_VALUE {
-            return None;
+            panic!("could not establish a connection");
         }
 
         let mut mode = PIPE_READMODE_BYTE;
@@ -181,7 +186,7 @@ impl NamedPipe {
             std::ptr::null_mut(),
         ) == FALSE
         {
-            panic!("could not establish connection");
+            panic!("could not establish a connection");
         }
 
         let event_handle = CreateEventW(std::ptr::null_mut(), TRUE, FALSE, std::ptr::null());
@@ -192,12 +197,12 @@ impl NamedPipe {
         let mut overlapped = OVERLAPPED::default();
         overlapped.hEvent = event_handle;
 
-        Some(Self {
+        Self {
             pipe_handle,
             overlapped,
             event_handle,
             pending_io: false,
-        })
+        }
     }
 
     pub unsafe fn read_async(&mut self, buf: &mut [u8]) -> ReadResult {
@@ -264,8 +269,7 @@ impl NamedPipe {
 }
 
 unsafe fn run_server(pipe_path: &[u16]) {
-    //const PIPE_BUFFER_LEN: usize = 512;
-    const PIPE_BUFFER_LEN: usize = 64;
+    const PIPE_BUFFER_LEN: usize = 512;
 
     struct NamedPipeInstance {
         pub pipe: NamedPipe,
@@ -326,12 +330,7 @@ unsafe fn run_server(pipe_path: &[u16]) {
     }
 }
 
-unsafe fn try_run_client(pipe_path: &[u16]) -> bool {
-    let mut pipe = match NamedPipe::try_connect(pipe_path) {
-        Some(pipe) => pipe,
-        None => return false,
-    };
-
+unsafe fn run_client(pipe_path: &[u16]) {
     let input_handle = GetStdHandle(STD_INPUT_HANDLE);
     let output_handle = GetStdHandle(STD_OUTPUT_HANDLE);
 
@@ -355,6 +354,7 @@ unsafe fn try_run_client(pipe_path: &[u16]) -> bool {
         panic!("could not set console output mode");
     }
 
+    let mut pipe = NamedPipe::connect(pipe_path);
     match pipe.write(b"hello there!") {
         WriteResult::Ok => (),
         WriteResult::Err => panic!("could not send message to server"),
@@ -484,5 +484,4 @@ unsafe fn try_run_client(pipe_path: &[u16]) -> bool {
 
     SetConsoleMode(input_handle, original_input_mode);
     SetConsoleMode(output_handle, original_output_mode);
-    true
 }
