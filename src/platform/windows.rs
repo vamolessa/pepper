@@ -111,11 +111,6 @@ struct NamedPipe {
     pending_io: bool,
 }
 impl NamedPipe {
-    pub unsafe fn fix_overlapped(&mut self) {
-        self.overlapped = OVERLAPPED::default();
-        self.overlapped.hEvent = self.event_handle;
-    }
-
     pub unsafe fn create(path: &[u16]) -> Self {
         let event_handle = CreateEventW(std::ptr::null_mut(), TRUE, TRUE, std::ptr::null());
         if event_handle == NULL {
@@ -144,6 +139,15 @@ impl NamedPipe {
             overlapped,
             event_handle,
             pending_io: false,
+        }
+    }
+
+    pub unsafe fn destroy(&mut self) {
+        if CloseHandle(self.pipe_handle) == FALSE {
+            panic!("could not finish connection");
+        }
+        if CloseHandle(self.event_handle) == FALSE {
+            panic!("could not finish connection");
         }
     }
 
@@ -223,7 +227,7 @@ impl NamedPipe {
                         self.pending_io = false;
                         ReadResult::Ok(read_len as _)
                     }
-                    error => {
+                    _ => {
                         self.pending_io = false;
                         ReadResult::Err
                     }
@@ -284,7 +288,8 @@ impl NamedPipeListener {
         match pipe.accept() {
             ReadResult::Waiting => {
                 let mut this = Self { pipe };
-                this.pipe.fix_overlapped();
+                this.pipe.overlapped = OVERLAPPED::default();
+                this.pipe.overlapped.hEvent = this.pipe.event_handle;
                 this
             }
             _ => panic!("could not listen for connections"),
@@ -342,6 +347,7 @@ unsafe fn run_server(pipe_path: &[u16]) {
                         ReadResult::Waiting => (),
                         ReadResult::Ok(0) | ReadResult::Err => {
                             DisconnectNamedPipe(pipe.pipe_handle);
+                            pipe.destroy();
                             pipes[i] = None;
                         }
                         ReadResult::Ok(len) => {
@@ -521,7 +527,7 @@ unsafe fn run_client(pipe_path: &[u16]) {
 
     println!("finish client");
 
-    CloseHandle(pipe.pipe_handle);
+    pipe.destroy();
     SetConsoleMode(input_handle, original_input_mode);
     SetConsoleMode(output_handle, original_output_mode);
 }
