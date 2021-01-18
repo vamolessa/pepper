@@ -69,7 +69,6 @@ unsafe fn run_unsafe() {
     }
 }
 
-#[derive(Debug)]
 enum WaitResult {
     Signaled(usize),
     Abandoned(usize),
@@ -325,6 +324,26 @@ unsafe fn run_server(pipe_path: &[u16]) {
     let mut listener = NamedPipeListener::new(pipe_path);
     let mut pipes = Vec::<Option<NamedPipe>>::new();
 
+    unsafe fn disconnect(pipes: &mut Vec<Option<NamedPipe>>, index: usize) -> bool {
+        if let Some(pipe) = &mut pipes[index] {
+            println!("client [{}] disconnected", index);
+
+            DisconnectNamedPipe(pipe.pipe_handle);
+            pipe.destroy();
+            pipes[index] = None;
+
+            if let Some(i) = pipes.iter().rposition(Option::is_some) {
+                pipes.truncate(i + 1);
+                true
+            } else {
+                pipes.clear();
+                false
+            }
+        } else {
+            true
+        }
+    }
+
     loop {
         wait_handles.clear();
         wait_handles.push(listener.pipe.event_handle);
@@ -354,9 +373,9 @@ unsafe fn run_server(pipe_path: &[u16]) {
                     match pipe.read_async(&mut read_buf) {
                         ReadResult::Waiting => (),
                         ReadResult::Ok(0) | ReadResult::Err => {
-                            DisconnectNamedPipe(pipe.pipe_handle);
-                            pipe.destroy();
-                            pipes[i] = None;
+                            if !disconnect(&mut pipes, i) {
+                                break;
+                            }
                         }
                         ReadResult::Ok(len) => {
                             let message = &read_buf[..len];
@@ -367,19 +386,20 @@ unsafe fn run_server(pipe_path: &[u16]) {
                             match pipe.write(message) {
                                 WriteResult::Ok => (),
                                 WriteResult::Err => {
-                                    panic!("could not send message to client {}", GetLastError())
+                                    if !disconnect(&mut pipes, i) {
+                                        break;
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
-            r => {
-                dbg!(r);
-            }
+            _ => (),
         }
     }
 
+    println!("finish server");
     listener.pipe.destroy();
 }
 
