@@ -53,7 +53,7 @@ unsafe fn run_unsafe() {
         panic!("could not set ctrl handler");
     }
 
-    let session_name = "session_name";
+    let session_name = "pepper_session_name";
     let mut pipe_path = Vec::new();
     pipe_path.extend("\\\\.\\pipe\\".encode_utf16());
     pipe_path.extend(session_name.encode_utf16());
@@ -69,6 +69,7 @@ unsafe fn run_unsafe() {
     }
 }
 
+#[derive(Debug)]
 enum WaitResult {
     Signaled(usize),
     Abandoned(usize),
@@ -148,10 +149,12 @@ impl NamedPipe {
 
         match GetLastError() {
             ERROR_IO_PENDING => {
+                println!("accept io pending");
                 self.pending_io = true;
                 ReadResult::Waiting
             }
             ERROR_PIPE_CONNECTED => {
+                println!("accept pipe connected");
                 self.pending_io = false;
                 if SetEvent(self.event_handle) == FALSE {
                     panic!("could not accept incomming connection");
@@ -159,6 +162,7 @@ impl NamedPipe {
                 ReadResult::Ok(0)
             }
             _ => {
+                println!("accept error");
                 self.pending_io = false;
                 ReadResult::Err
             }
@@ -307,12 +311,16 @@ unsafe fn run_server(pipe_path: &[u16]) {
     let mut read_buf = [0; PIPE_BUFFER_LEN];
     let mut wait_handles = Vec::new();
 
-    let mut listener = NamedPipeListener::new(pipe_path);
+    //let mut listener = NamedPipeListener::new(pipe_path);
+    let mut listener = NamedPipe::create(pipe_path);
+    listener.accept();
+
     let mut pipes = Vec::<Option<NamedPipe>>::new();
 
     loop {
         wait_handles.clear();
-        wait_handles.push(listener.pipe.event_handle);
+        //wait_handles.push(listener.pipe.event_handle);
+        wait_handles.push(listener.pipe_handle);
         for pipe in pipes.iter().flatten() {
             wait_handles.push(pipe.event_handle);
         }
@@ -320,12 +328,19 @@ unsafe fn run_server(pipe_path: &[u16]) {
         match wait_for_multiple_objects(&wait_handles, None) {
             WaitResult::Signaled(0) => {
                 println!("listener before accept");
+                match listener.read_async(&mut read_buf) {
+                    ReadResult::Waiting => println!("waiting"),
+                    ReadResult::Ok(len) => println!("read {}", len),
+                    ReadResult::Err => panic!("read error!"),
+                }
+                /*
                 if let Some(pipe) = listener.accept(pipe_path) {
                     match pipes.iter_mut().find(|p| p.is_some()) {
                         Some(p) => *p = Some(pipe),
                         None => pipes.push(Some(pipe)),
                     }
                 }
+                */
             }
             WaitResult::Signaled(i) => {
                 println!("signaled {}", i);
@@ -360,8 +375,10 @@ unsafe fn run_server(pipe_path: &[u16]) {
                     }
                 }
             }
-            _ => (),
-        };
+            r => {
+                dbg!(r);
+            }
+        }
     }
 }
 
