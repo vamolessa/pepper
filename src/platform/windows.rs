@@ -111,6 +111,11 @@ struct NamedPipe {
     pending_io: bool,
 }
 impl NamedPipe {
+    pub unsafe fn fix_overlapped(&mut self) {
+        self.overlapped = OVERLAPPED::default();
+        self.overlapped.hEvent = self.event_handle;
+    }
+
     pub unsafe fn create(path: &[u16]) -> Self {
         let event_handle = CreateEventW(std::ptr::null_mut(), TRUE, TRUE, std::ptr::null());
         if event_handle == NULL {
@@ -149,12 +154,10 @@ impl NamedPipe {
 
         match GetLastError() {
             ERROR_IO_PENDING => {
-                println!("accept io pending");
                 self.pending_io = true;
                 ReadResult::Waiting
             }
             ERROR_PIPE_CONNECTED => {
-                println!("accept pipe connected");
                 self.pending_io = false;
                 if SetEvent(self.event_handle) == FALSE {
                     panic!("could not accept incomming connection");
@@ -162,7 +165,6 @@ impl NamedPipe {
                 ReadResult::Ok(0)
             }
             _ => {
-                println!("accept error");
                 self.pending_io = false;
                 ReadResult::Err
             }
@@ -212,31 +214,25 @@ impl NamedPipe {
 
     pub unsafe fn read_async(&mut self, buf: &mut [u8]) -> ReadResult {
         let mut read_len = 0;
-        println!("readasync {}", self.pending_io);
         if self.pending_io {
-            println!("before get overlapped result");
             if GetOverlappedResult(self.pipe_handle, &mut self.overlapped, &mut read_len, FALSE)
                 == FALSE
             {
                 match GetLastError() {
                     ERROR_MORE_DATA => {
-                        println!("get overlapped result error 'more data'");
                         self.pending_io = false;
                         ReadResult::Ok(read_len as _)
                     }
                     error => {
-                        println!("get overlapped result error '{}'", error);
                         self.pending_io = false;
                         ReadResult::Err
                     }
                 }
             } else {
-                println!("get overlapped result success");
                 self.pending_io = false;
                 ReadResult::Ok(read_len as _)
             }
         } else {
-            println!("before read file");
             if ReadFile(
                 self.pipe_handle,
                 buf.as_mut_ptr() as _,
@@ -285,16 +281,18 @@ struct NamedPipeListener {
 impl NamedPipeListener {
     pub unsafe fn new(pipe_path: &[u16]) -> Self {
         let mut pipe = NamedPipe::create(pipe_path);
-        println!("pipe listener accept new");
         match pipe.accept() {
-            ReadResult::Waiting => Self { pipe },
+            ReadResult::Waiting => {
+                let mut this = Self { pipe };
+                this.pipe.fix_overlapped();
+                this
+            }
             _ => panic!("could not listen for connections"),
         }
     }
 
     pub unsafe fn accept(&mut self, pipe_path: &[u16]) -> Option<NamedPipe> {
         let mut buf = [0; PIPE_BUFFER_LEN];
-        println!("on listener accept before read async");
         match self.pipe.read_async(&mut buf) {
             ReadResult::Waiting => None,
             ReadResult::Ok(_) => {
@@ -311,39 +309,26 @@ unsafe fn run_server(pipe_path: &[u16]) {
     let mut read_buf = [0; PIPE_BUFFER_LEN];
     let mut wait_handles = Vec::new();
 
-    //let mut listener = NamedPipeListener::new(pipe_path);
-    let mut listener = NamedPipe::create(pipe_path);
-    listener.accept();
-
+    let mut listener = NamedPipeListener::new(pipe_path);
     let mut pipes = Vec::<Option<NamedPipe>>::new();
 
     loop {
         wait_handles.clear();
-        //wait_handles.push(listener.pipe.event_handle);
-        wait_handles.push(listener.pipe_handle);
+        wait_handles.push(listener.pipe.event_handle);
         for pipe in pipes.iter().flatten() {
             wait_handles.push(pipe.event_handle);
         }
 
         match wait_for_multiple_objects(&wait_handles, None) {
             WaitResult::Signaled(0) => {
-                println!("listener before accept");
-                match listener.read_async(&mut read_buf) {
-                    ReadResult::Waiting => println!("waiting"),
-                    ReadResult::Ok(len) => println!("read {}", len),
-                    ReadResult::Err => panic!("read error!"),
-                }
-                /*
                 if let Some(pipe) = listener.accept(pipe_path) {
                     match pipes.iter_mut().find(|p| p.is_some()) {
                         Some(p) => *p = Some(pipe),
                         None => pipes.push(Some(pipe)),
                     }
                 }
-                */
             }
             WaitResult::Signaled(i) => {
-                println!("signaled {}", i);
                 if let Some((i, pipe)) = pipes
                     .iter_mut()
                     .enumerate()
