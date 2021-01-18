@@ -371,6 +371,8 @@ unsafe fn run_server(pipe_path: &[u16]) {
             }
         }
     }
+
+    listener.pipe.destroy();
 }
 
 unsafe fn run_client(pipe_path: &[u16]) {
