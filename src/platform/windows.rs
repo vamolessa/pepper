@@ -104,6 +104,7 @@ enum WriteResult {
     Ok,
     Err,
 }
+
 struct NamedPipe {
     pipe_handle: HANDLE,
     overlapped: OVERLAPPED,
@@ -278,6 +279,18 @@ impl NamedPipe {
         }
     }
 }
+impl Clone for NamedPipe {
+    fn clone(&self) -> Self {
+        let mut overlapped = OVERLAPPED::default();
+        overlapped.hEvent = self.event_handle;
+        Self {
+            pipe_handle: self.pipe_handle,
+            overlapped,
+            event_handle: self.event_handle,
+            pending_io: self.pending_io,
+        }
+    }
+}
 
 struct NamedPipeListener {
     pub pipe: NamedPipe,
@@ -286,12 +299,7 @@ impl NamedPipeListener {
     pub unsafe fn new(pipe_path: &[u16]) -> Self {
         let mut pipe = NamedPipe::create(pipe_path);
         match pipe.accept() {
-            ReadResult::Waiting => {
-                let mut this = Self { pipe };
-                this.pipe.overlapped = OVERLAPPED::default();
-                this.pipe.overlapped.hEvent = this.pipe.event_handle;
-                this
-            }
+            ReadResult::Waiting => Self { pipe: pipe.clone() },
             _ => panic!("could not listen for connections"),
         }
     }
