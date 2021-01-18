@@ -354,7 +354,7 @@ unsafe fn run_server(pipe_path: &[u16]) {
         match wait_for_multiple_objects(&wait_handles, None) {
             WaitResult::Signaled(0) => {
                 if let Some(pipe) = listener.accept(pipe_path) {
-                    match pipes.iter_mut().find(|p| p.is_some()) {
+                    match pipes.iter_mut().find(|p| p.is_none()) {
                         Some(p) => *p = Some(pipe),
                         None => pipes.push(Some(pipe)),
                     }
@@ -380,7 +380,7 @@ unsafe fn run_server(pipe_path: &[u16]) {
                         ReadResult::Ok(len) => {
                             let message = &read_buf[..len];
                             let message = String::from_utf8_lossy(message);
-                            println!("received {} bytes from client! message: '{}'", len, message);
+                            println!("received {} bytes from client {}! message: '{}'", len, i, message);
 
                             let message = b"thank you for your message!";
                             match pipe.write(message) {
