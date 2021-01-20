@@ -1,4 +1,8 @@
-use std::time::Duration;
+use std::{
+    os::windows::io::AsRawHandle,
+    process::{Child, Command, Stdio},
+    time::Duration,
+};
 
 use winapi::{
     shared::{
@@ -104,13 +108,13 @@ enum WriteResult {
     Err,
 }
 
-struct NamedPipe {
+struct Pipe {
     pipe_handle: HANDLE,
     overlapped: OVERLAPPED,
     event_handle: HANDLE,
     pending_io: bool,
 }
-impl NamedPipe {
+impl Pipe {
     pub unsafe fn create(path: &[u16]) -> Self {
         let event_handle = CreateEventW(std::ptr::null_mut(), TRUE, TRUE, std::ptr::null());
         if event_handle == NULL {
@@ -131,48 +135,7 @@ impl NamedPipe {
             panic!("could not create new connection");
         }
 
-        let mut overlapped = OVERLAPPED::default();
-        overlapped.hEvent = event_handle;
-
-        Self {
-            pipe_handle,
-            overlapped,
-            event_handle,
-            pending_io: false,
-        }
-    }
-
-    pub unsafe fn destroy(&mut self) {
-        if CloseHandle(self.pipe_handle) == FALSE {
-            panic!("could not finish connection");
-        }
-        if CloseHandle(self.event_handle) == FALSE {
-            panic!("could not finish connection");
-        }
-    }
-
-    pub unsafe fn accept(&mut self) -> ReadResult {
-        if ConnectNamedPipe(self.pipe_handle, &mut self.overlapped) != FALSE {
-            panic!("could not accept incomming connection");
-        }
-
-        match GetLastError() {
-            ERROR_IO_PENDING => {
-                self.pending_io = true;
-                ReadResult::Waiting
-            }
-            ERROR_PIPE_CONNECTED => {
-                self.pending_io = false;
-                if SetEvent(self.event_handle) == FALSE {
-                    panic!("could not accept incomming connection");
-                }
-                ReadResult::Ok(0)
-            }
-            _ => {
-                self.pending_io = false;
-                ReadResult::Err
-            }
-        }
+        Self::from_handle(pipe_handle)
     }
 
     pub unsafe fn connect(path: &[u16]) -> Self {
@@ -200,7 +163,12 @@ impl NamedPipe {
             panic!("could not establish a connection");
         }
 
-        let event_handle = CreateEventW(std::ptr::null_mut(), TRUE, FALSE, std::ptr::null());
+        Self::from_handle(pipe_handle)
+    }
+
+    pub fn from_handle(pipe_handle: HANDLE) -> Self {
+        let event_handle =
+            unsafe { CreateEventW(std::ptr::null_mut(), TRUE, FALSE, std::ptr::null()) };
         if event_handle == NULL {
             panic!("could not connect to server");
         }
@@ -213,6 +181,30 @@ impl NamedPipe {
             overlapped,
             event_handle,
             pending_io: false,
+        }
+    }
+
+    pub unsafe fn accept(&mut self) -> ReadResult {
+        if ConnectNamedPipe(self.pipe_handle, &mut self.overlapped) != FALSE {
+            panic!("could not accept incomming connection");
+        }
+
+        match GetLastError() {
+            ERROR_IO_PENDING => {
+                self.pending_io = true;
+                ReadResult::Waiting
+            }
+            ERROR_PIPE_CONNECTED => {
+                self.pending_io = false;
+                if SetEvent(self.event_handle) == FALSE {
+                    panic!("could not accept incomming connection");
+                }
+                ReadResult::Ok(0)
+            }
+            _ => {
+                self.pending_io = false;
+                ReadResult::Err
+            }
         }
     }
 
@@ -278,32 +270,50 @@ impl NamedPipe {
         }
     }
 }
-impl Clone for NamedPipe {
-    fn clone(&self) -> Self {
-        let mut overlapped = OVERLAPPED::default();
-        overlapped.hEvent = self.event_handle;
-        Self {
-            pipe_handle: self.pipe_handle,
-            overlapped,
-            event_handle: self.event_handle,
-            pending_io: self.pending_io,
+impl Drop for Pipe {
+    fn drop(&mut self) {
+        println!("dropping pipe");
+        unsafe {
+            if CloseHandle(self.pipe_handle) == FALSE {
+                panic!("could not finish connection");
+            }
+            if CloseHandle(self.event_handle) == FALSE {
+                panic!("could not finish connection");
+            }
         }
     }
 }
 
-struct NamedPipeListener {
-    pub pipe: NamedPipe,
+struct PipeListener {
+    pub pipe: Pipe,
 }
-impl NamedPipeListener {
+impl PipeListener {
     pub unsafe fn new(pipe_path: &[u16]) -> Self {
-        let mut pipe = NamedPipe::create(pipe_path);
+        let mut pipe = Pipe::create(pipe_path);
         match pipe.accept() {
-            ReadResult::Waiting => Self { pipe: pipe.clone() },
+            ReadResult::Waiting => {
+                let Pipe {
+                    pipe_handle,
+                    event_handle,
+                    pending_io,
+                    ..
+                } = pipe;
+                let mut overlapped = OVERLAPPED::default();
+                overlapped.hEvent = event_handle;
+                std::mem::forget(pipe);
+                let pipe = Pipe {
+                    pipe_handle,
+                    overlapped,
+                    event_handle,
+                    pending_io,
+                };
+                Self { pipe }
+            }
             _ => panic!("could not listen for connections"),
         }
     }
 
-    pub unsafe fn accept(&mut self, pipe_path: &[u16]) -> Option<NamedPipe> {
+    pub unsafe fn accept(&mut self, pipe_path: &[u16]) -> Option<Pipe> {
         let mut buf = [0; PIPE_BUFFER_LEN];
         match self.pipe.read_async(&mut buf) {
             ReadResult::Waiting => None,
@@ -317,19 +327,67 @@ impl NamedPipeListener {
     }
 }
 
+struct AsyncChild {
+    child: Child,
+    stdout_pipe: Pipe,
+    stderr_pipe: Pipe,
+}
+impl AsyncChild {
+    pub fn from_child(child: Child) -> Self {
+        let stdout_handle = child.stdout.as_ref().unwrap().as_raw_handle();
+        let stderr_handle = child.stderr.as_ref().unwrap().as_raw_handle();
+        Self {
+            child,
+            stdout_pipe: Pipe::from_handle(stdout_handle),
+            stderr_pipe: Pipe::from_handle(stderr_handle),
+        }
+    }
+}
+
+enum EventSource {
+    ConnectionListener,
+    Connection(usize),
+    ChildStdout(usize),
+    ChildStderr(usize),
+}
+#[derive(Default)]
+struct Events {
+    wait_handles: Vec<HANDLE>,
+    sources: Vec<EventSource>,
+}
+impl Events {
+    pub fn track(&mut self, handle: HANDLE, source: EventSource) {
+        self.wait_handles.push(handle);
+        self.sources.push(source);
+    }
+
+    pub fn wait_one(&mut self, timeout: Option<Duration>) -> Option<EventSource> {
+        let result = match unsafe { wait_for_multiple_objects(&self.wait_handles, timeout) } {
+            WaitResult::Signaled(i) => Some(self.sources.swap_remove(i)),
+            WaitResult::Abandoned(_) => unreachable!(),
+            WaitResult::Timeout => None,
+        };
+
+        self.wait_handles.clear();
+        self.sources.clear();
+        result
+    }
+}
+
 unsafe fn run_server(pipe_path: &[u16]) {
     let mut read_buf = [0; PIPE_BUFFER_LEN];
-    let mut wait_handles = Vec::new();
+    let mut events = Events::default();
 
-    let mut listener = NamedPipeListener::new(pipe_path);
-    let mut pipes = Vec::<Option<NamedPipe>>::new();
+    let mut listener = PipeListener::new(pipe_path);
+    let mut pipes = Vec::<Option<Pipe>>::new();
 
-    unsafe fn disconnect(pipes: &mut Vec<Option<NamedPipe>>, index: usize) -> bool {
+    let mut running_child = None;
+
+    unsafe fn disconnect(pipes: &mut Vec<Option<Pipe>>, index: usize) -> bool {
         if let Some(pipe) = &mut pipes[index] {
             println!("client [{}] disconnected", index);
 
             DisconnectNamedPipe(pipe.pipe_handle);
-            pipe.destroy();
             pipes[index] = None;
 
             if let Some(i) = pipes.iter().rposition(Option::is_some) {
@@ -345,14 +403,15 @@ unsafe fn run_server(pipe_path: &[u16]) {
     }
 
     loop {
-        wait_handles.clear();
-        wait_handles.push(listener.pipe.event_handle);
-        for pipe in pipes.iter().flatten() {
-            wait_handles.push(pipe.event_handle);
+        events.track(listener.pipe.event_handle, EventSource::ConnectionListener);
+        for (i, pipe) in pipes.iter().enumerate() {
+            if let Some(pipe) = pipe {
+                events.track(pipe.event_handle, EventSource::Connection(i));
+            }
         }
 
-        match wait_for_multiple_objects(&wait_handles, None) {
-            WaitResult::Signaled(0) => {
+        match events.wait_one(None) {
+            Some(EventSource::ConnectionListener) => {
                 if let Some(pipe) = listener.accept(pipe_path) {
                     match pipes.iter_mut().find(|p| p.is_none()) {
                         Some(p) => *p = Some(pipe),
@@ -360,16 +419,8 @@ unsafe fn run_server(pipe_path: &[u16]) {
                     }
                 }
             }
-            WaitResult::Signaled(i) => {
-                if let Some((i, pipe)) = pipes
-                    .iter_mut()
-                    .enumerate()
-                    .flat_map(|(i, p)| match p {
-                        Some(p) => Some((i, p)),
-                        None => None,
-                    })
-                    .nth(i - 1)
-                {
+            Some(EventSource::Connection(i)) => {
+                if let Some(pipe) = &mut pipes[i] {
                     match pipe.read_async(&mut read_buf) {
                         ReadResult::Waiting => (),
                         ReadResult::Ok(0) | ReadResult::Err => {
@@ -379,8 +430,25 @@ unsafe fn run_server(pipe_path: &[u16]) {
                         }
                         ReadResult::Ok(len) => {
                             let message = &read_buf[..len];
+                            match Key::parse(&mut message.iter().map(|b| *b as _)) {
+                                Ok(Key::Ctrl('r')) => {
+                                    println!("execute program");
+                                    let child = std::process::Command::new("fd")
+                                        .stdin(std::process::Stdio::null())
+                                        .stdout(std::process::Stdio::piped())
+                                        .stderr(std::process::Stdio::null())
+                                        .spawn()
+                                        .unwrap();
+                                    running_child = Some(AsyncChild::from_child(child));
+                                }
+                                _ => (),
+                            }
+
                             let message = String::from_utf8_lossy(message);
-                            println!("received {} bytes from client {}! message: '{}'", len, i, message);
+                            println!(
+                                "received {} bytes from client {}! message: '{}'",
+                                len, i, message
+                            );
 
                             let message = b"thank you for your message!";
                             match pipe.write(message) {
@@ -395,12 +463,17 @@ unsafe fn run_server(pipe_path: &[u16]) {
                     }
                 }
             }
-            _ => (),
+            Some(EventSource::ChildStdout(i)) => {
+                //
+            }
+            Some(EventSource::ChildStderr(i)) => {
+                //
+            }
+            None => println!("timeout waiting"),
         }
     }
 
     println!("finish server");
-    listener.pipe.destroy();
 }
 
 unsafe fn run_client(pipe_path: &[u16]) {
@@ -427,7 +500,7 @@ unsafe fn run_client(pipe_path: &[u16]) {
         panic!("could not set console output mode");
     }
 
-    let mut pipe = NamedPipe::connect(pipe_path);
+    let mut pipe = Pipe::connect(pipe_path);
     match pipe.write(b"hello there!") {
         WriteResult::Ok => (),
         WriteResult::Err => panic!("could not send message to server"),
@@ -515,8 +588,8 @@ unsafe fn run_client(pipe_path: &[u16]) {
                                 }
                             };
 
-                            let message = format!("key {}", key);
-                            println!("{} x {}", message, repeat_count);
+                            let message = format!("{}", key);
+                            println!("{} key x {}", message, repeat_count);
                             match pipe.write(message.as_bytes()) {
                                 WriteResult::Ok => (),
                                 WriteResult::Err => panic!("could not send message to server"),
@@ -557,7 +630,6 @@ unsafe fn run_client(pipe_path: &[u16]) {
 
     println!("finish client");
 
-    pipe.destroy();
     SetConsoleMode(input_handle, original_input_mode);
     SetConsoleMode(output_handle, original_output_mode);
 }
