@@ -436,23 +436,46 @@ impl PipeToClientListener {
     }
 }
 
+enum ChildPipe {
+    Opened(AsyncIO),
+    Closed,
+}
+impl ChildPipe {
+    pub fn from_handle(handle: Option<HANDLE>) -> Self {
+        match handle {
+            Some(h) => {
+                let io = AsyncIO::from_handle(h, CHILD_BUFFER_LEN);
+                io.event.notify();
+                Self::Opened(io)
+            }
+            None => Self::Closed,
+        }
+    }
+
+    pub fn read_async(&mut self) -> ReadResult {
+        match self {
+            Self::Opened(io) => io.read_async(),
+            Self::Closed => ReadResult::Err,
+        }
+    }
+}
+impl Drop for ChildPipe {
+    fn drop(&mut self) {
+        let mut pipe = Self::Closed;
+        std::mem::swap(self, &mut pipe);
+        std::mem::forget(pipe);
+    }
+}
+
 struct AsyncChild {
     child: Child,
-    stdout: Option<AsyncIO>,
-    stderr: Option<AsyncIO>,
+    stdout: ChildPipe,
+    stderr: ChildPipe,
 }
 impl AsyncChild {
     pub fn from_child(child: Child) -> Self {
-        let stdout = child.stdout.as_ref().map(|s| {
-            let io = AsyncIO::from_handle(s.as_raw_handle(), CHILD_BUFFER_LEN);
-            io.event.notify();
-            io
-        });
-        let stderr = child.stderr.as_ref().map(|s| {
-            let io = AsyncIO::from_handle(s.as_raw_handle(), CHILD_BUFFER_LEN);
-            io.event.notify();
-            io
-        });
+        let stdout = ChildPipe::from_handle(child.stdout.as_ref().map(AsRawHandle::as_raw_handle));
+        let stderr = ChildPipe::from_handle(child.stderr.as_ref().map(AsRawHandle::as_raw_handle));
 
         Self {
             child,
@@ -510,10 +533,10 @@ unsafe fn run_server(pipe_path: &[u16]) {
             events.track(&pipe.event, EventSource::Connection(i));
         }
         for (i, child) in children.iter() {
-            if let Some(io) = &child.stdout {
+            if let ChildPipe::Opened(io) = &child.stdout {
                 events.track(&io.event, EventSource::ChildStdout(i));
             }
-            if let Some(io) = &child.stderr {
+            if let ChildPipe::Opened(io) = &child.stderr {
                 events.track(&io.event, EventSource::ChildStderr(i));
             }
         }
@@ -572,10 +595,16 @@ unsafe fn run_server(pipe_path: &[u16]) {
                 }
             }
             Some(EventSource::ChildStdout(i)) => {
-                if let Some(io) = children.get_mut(i).and_then(|c| c.stdout.as_mut()) {
-                    match io.read_async() {
+                println!("child stdout event before=======");
+                if let Some(child) = children.get_mut(i) {
+                    match child.stdout.read_async() {
                         ReadResult::Waiting => (),
-                        ReadResult::Ok([]) | ReadResult::Err => children.remove(i),
+                        ReadResult::Ok([]) | ReadResult::Err => {
+                            child.stdout = ChildPipe::Closed;
+                            if let ChildPipe::Closed = child.stderr {
+                                children.remove(i);
+                            }
+                        }
                         ReadResult::Ok(buf) => {
                             let message = String::from_utf8_lossy(buf);
                             println!(
@@ -590,10 +619,15 @@ unsafe fn run_server(pipe_path: &[u16]) {
                 println!("child stdout event");
             }
             Some(EventSource::ChildStderr(i)) => {
-                if let Some(io) = children.get_mut(i).and_then(|c| c.stderr.as_mut()) {
-                    match io.read_async() {
+                if let Some(child) = children.get_mut(i) {
+                    match child.stderr.read_async() {
                         ReadResult::Waiting => (),
-                        ReadResult::Ok([]) | ReadResult::Err => children.remove(i),
+                        ReadResult::Ok([]) | ReadResult::Err => {
+                            child.stderr = ChildPipe::Closed;
+                            if let ChildPipe::Closed = child.stdout {
+                                children.remove(i);
+                            }
+                        }
                         ReadResult::Ok(buf) => {
                             let message = String::from_utf8_lossy(buf);
                             println!(
