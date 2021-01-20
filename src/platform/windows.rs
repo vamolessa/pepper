@@ -140,7 +140,7 @@ impl Drop for Event {
 
 struct Overlapped(OVERLAPPED);
 impl Overlapped {
-    pub fn from_event(event: &Event) -> Self {
+    pub fn with_event(event: &Event) -> Self {
         let mut overlapped = OVERLAPPED::default();
         overlapped.hEvent = event.handle();
         Self(overlapped)
@@ -198,13 +198,14 @@ impl Pipe {
             panic!("could not establish a connection");
         }
 
-        Self::from_handle(pipe_handle, buf_len)
+        let this = Self::from_handle(pipe_handle, buf_len);
+        this.event.notify();
+        this
     }
 
     pub fn from_handle(pipe_handle: HANDLE, buf_len: usize) -> Self {
         let event = Event::new();
-        let overlapped = Overlapped::from_event(&event);
-        //event.notify();
+        let overlapped = Overlapped::with_event(&event);
 
         Self {
             pipe_handle,
@@ -326,34 +327,24 @@ impl PipeListener {
             panic!("could not create new connection");
         }
 
-        let event = Event::new();
-        let mut overlapped = Overlapped::from_event(&event);
+        let mut pipe = Pipe::from_handle(pipe_handle, SERVER_PIPE_BUFFER_LEN);
 
-        if unsafe { ConnectNamedPipe(pipe_handle, overlapped.as_mut_ptr()) } != FALSE {
+        if unsafe { ConnectNamedPipe(pipe.pipe_handle, pipe.overlapped.as_mut_ptr()) } != FALSE {
             panic!("could not accept incomming connection");
         }
 
-        let pending_io = match get_last_error() {
+        pipe.pending_io = match get_last_error() {
             ERROR_IO_PENDING => true,
             ERROR_PIPE_CONNECTED => {
                 println!("notify event");
-                event.notify();
+                pipe.event.notify();
                 false
             }
             _ => panic!("could not accept incomming connection"),
         };
 
-        let pipe = Pipe {
-            pipe_handle,
-            overlapped,
-            event,
-            buf: make_buffer(SERVER_PIPE_BUFFER_LEN),
-            pending_io,
-        };
-
-        let mut this = Self { pipe };
-        this.pipe.overlapped.0.hEvent = this.pipe.event.handle();
-        this
+        pipe.overlapped = Overlapped::with_event(&pipe.event);
+        Self { pipe }
     }
 
     pub fn accept(&mut self, pipe_path: &[u16]) -> Option<Pipe> {
@@ -471,7 +462,6 @@ unsafe fn run_server(pipe_path: &[u16]) {
 
         match events.wait_one(None) {
             Some(EventSource::ConnectionListener) => {
-                println!("connection listener event");
                 if let Some(pipe) = listener.accept(pipe_path) {
                     match pipes.iter_mut().find(|p| p.is_none()) {
                         Some(p) => *p = Some(pipe),
@@ -480,7 +470,6 @@ unsafe fn run_server(pipe_path: &[u16]) {
                 }
             }
             Some(EventSource::Connection(i)) => {
-                println!("connection event");
                 if let Some(pipe) = &mut pipes[i] {
                     match pipe.read_async() {
                         ReadResult::Waiting => (),
@@ -569,7 +558,6 @@ unsafe fn run_client(pipe_path: &[u16]) {
         WriteResult::Ok => (),
         WriteResult::Err => panic!("could not send message to server"),
     }
-    pipe.event.notify();
 
     let event_buffer = &mut [INPUT_RECORD::default(); 32][..];
     let wait_handles = [input_handle, pipe.event.handle()];
