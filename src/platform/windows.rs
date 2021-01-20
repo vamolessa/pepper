@@ -336,10 +336,10 @@ impl DerefMut for PipeToServer {
     }
 }
 
-struct PipeListener {
+struct PipeToClientListener {
     io: AsyncIO,
 }
-impl PipeListener {
+impl PipeToClientListener {
     pub fn new(pipe_path: &[u16]) -> Self {
         let pipe_handle = unsafe {
             CreateNamedPipeW(
@@ -445,7 +445,7 @@ impl Events {
 unsafe fn run_server(pipe_path: &[u16]) {
     let mut events = Events::default();
 
-    let mut listener = PipeListener::new(pipe_path);
+    let mut listener = PipeToClientListener::new(pipe_path);
     let mut pipes = Vec::<Option<PipeToClient>>::new();
     let mut running_child: Option<AsyncChild> = None;
 
