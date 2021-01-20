@@ -77,6 +77,12 @@ fn get_last_error() -> DWORD {
     unsafe { GetLastError() }
 }
 
+fn make_buffer(len: usize) -> Box<[u8]> {
+    let mut buf = Vec::with_capacity(len);
+    buf.resize(len, 0);
+    buf.into_boxed_slice()
+}
+
 enum WaitResult {
     Signaled(usize),
     Abandoned(usize),
@@ -195,23 +201,23 @@ impl Pipe {
         Self::from_handle(pipe_handle, buf_len)
     }
 
-    pub fn disconnect_from_client(&self) {
-        unsafe {
-            DisconnectNamedPipe(self.pipe_handle);
-        }
-    }
-
     pub fn from_handle(pipe_handle: HANDLE, buf_len: usize) -> Self {
         let event = Event::new();
         let overlapped = Overlapped::from_event(&event);
-        event.notify();
+        //event.notify();
 
         Self {
             pipe_handle,
             overlapped,
             event,
-            buf: Vec::with_capacity(buf_len).into_boxed_slice(),
+            buf: make_buffer(buf_len),
             pending_io: false,
+        }
+    }
+
+    pub fn disconnect_from_client(&self) {
+        unsafe {
+            DisconnectNamedPipe(self.pipe_handle);
         }
     }
 
@@ -230,7 +236,7 @@ impl Pipe {
                 match get_last_error() {
                     ERROR_MORE_DATA => {
                         self.pending_io = false;
-                        self.event.notify();
+                        //self.event.notify();
                         ReadResult::Ok(&self.buf[..(read_len as usize)])
                     }
                     _ => {
@@ -240,7 +246,7 @@ impl Pipe {
                 }
             } else {
                 self.pending_io = false;
-                self.event.notify();
+                //self.event.notify();
                 ReadResult::Ok(&self.buf[..(read_len as usize)])
             }
         } else {
@@ -266,7 +272,7 @@ impl Pipe {
                 }
             } else {
                 self.pending_io = false;
-                self.event.notify();
+                //self.event.notify();
                 ReadResult::Ok(&self.buf[..(read_len as usize)])
             }
         }
@@ -329,7 +335,11 @@ impl PipeListener {
 
         let pending_io = match get_last_error() {
             ERROR_IO_PENDING => true,
-            ERROR_PIPE_CONNECTED => false,
+            ERROR_PIPE_CONNECTED => {
+                println!("notify event");
+                event.notify();
+                false
+            }
             _ => panic!("could not accept incomming connection"),
         };
 
@@ -337,10 +347,13 @@ impl PipeListener {
             pipe_handle,
             overlapped,
             event,
-            buf: Vec::with_capacity(SERVER_PIPE_BUFFER_LEN).into_boxed_slice(),
+            buf: make_buffer(SERVER_PIPE_BUFFER_LEN),
             pending_io,
         };
-        Self { pipe }
+
+        let mut this = Self { pipe };
+        this.pipe.overlapped.0.hEvent = this.pipe.event.handle();
+        this
     }
 
     pub fn accept(&mut self, pipe_path: &[u16]) -> Option<Pipe> {
@@ -402,7 +415,7 @@ impl Events {
     }
 
     pub fn wait_one(&mut self, timeout: Option<Duration>) -> Option<EventSource> {
-        let result = match unsafe { wait_for_multiple_objects(&self.wait_handles, timeout) } {
+        let result = match wait_for_multiple_objects(&self.wait_handles, timeout) {
             WaitResult::Signaled(i) => Some(self.sources.swap_remove(i)),
             WaitResult::Abandoned(_) => unreachable!(),
             WaitResult::Timeout => None,
@@ -458,6 +471,7 @@ unsafe fn run_server(pipe_path: &[u16]) {
 
         match events.wait_one(None) {
             Some(EventSource::ConnectionListener) => {
+                println!("connection listener event");
                 if let Some(pipe) = listener.accept(pipe_path) {
                     match pipes.iter_mut().find(|p| p.is_none()) {
                         Some(p) => *p = Some(pipe),
@@ -466,6 +480,7 @@ unsafe fn run_server(pipe_path: &[u16]) {
                 }
             }
             Some(EventSource::Connection(i)) => {
+                println!("connection event");
                 if let Some(pipe) = &mut pipes[i] {
                     match pipe.read_async() {
                         ReadResult::Waiting => (),
@@ -513,10 +528,10 @@ unsafe fn run_server(pipe_path: &[u16]) {
                 }
             }
             Some(EventSource::ChildStdout(i)) => {
-                //
+                println!("child stdout event");
             }
             Some(EventSource::ChildStderr(i)) => {
-                //
+                println!("child stderr event");
             }
             None => println!("timeout waiting"),
         }
@@ -554,6 +569,7 @@ unsafe fn run_client(pipe_path: &[u16]) {
         WriteResult::Ok => (),
         WriteResult::Err => panic!("could not send message to server"),
     }
+    pipe.event.notify();
 
     let event_buffer = &mut [INPUT_RECORD::default(); 32][..];
     let wait_handles = [input_handle, pipe.event.handle()];
@@ -666,6 +682,7 @@ unsafe fn run_client(pipe_path: &[u16]) {
                         buf.len(),
                         message
                     );
+                    pipe.event.notify();
                 }
             },
             _ => unreachable!(),
