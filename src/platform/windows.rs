@@ -84,6 +84,53 @@ fn make_buffer(len: usize) -> Box<[u8]> {
     buf.into_boxed_slice()
 }
 
+struct GappedVec<T>(Vec<Option<T>>);
+impl<T> GappedVec<T> {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn push(&mut self, item: T) -> usize {
+        let len = self.0.len();
+        for i in 0..len {
+            if let None = &self.0[i] {
+                self.0[i] = Some(item);
+                return i;
+            }
+        }
+
+        self.0.push(Some(item));
+        len
+    }
+
+    pub fn remove(&mut self, index: usize) {
+        let entry = &mut self.0[index];
+        if entry.is_some() {
+            *entry = None;
+            if let Some(i) = self.0.iter().rposition(Option::is_some) {
+                self.0.truncate(i + 1);
+            } else {
+                self.0.clear();
+            }
+        }
+    }
+
+    pub fn get_mut(&mut self, index: usize) -> Option<&mut T> {
+        self.0[index].as_mut()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn iter<'a>(&'a self) -> impl 'a + Iterator<Item = (usize, &'a T)> {
+        self.0.iter().enumerate().filter_map(|(i, e)| match e {
+            Some(e) => Some((i, e)),
+            None => None,
+        })
+    }
+}
+
 enum WaitResult {
     Signaled(usize),
     Abandoned(usize),
@@ -446,20 +493,8 @@ unsafe fn run_server(pipe_path: &[u16]) {
     let mut events = Events::default();
 
     let mut listener = PipeToClientListener::new(pipe_path);
-    let mut pipes = Vec::<Option<PipeToClient>>::new();
+    let mut pipes = GappedVec::<PipeToClient>::new();
     let mut running_child: Option<AsyncChild> = None;
-
-    unsafe fn disconnect(pipes: &mut Vec<Option<PipeToClient>>, index: usize) {
-        if let Some(pipe) = &mut pipes[index] {
-            println!("client [{}] disconnected", index);
-            pipes[index] = None;
-            if let Some(i) = pipes.iter().rposition(Option::is_some) {
-                pipes.truncate(i + 1);
-            } else {
-                pipes.clear();
-            }
-        }
-    }
 
     fn wait_child(child: &mut Option<AsyncChild>) {
         if let Some(mut child) = child.take() {
@@ -469,10 +504,8 @@ unsafe fn run_server(pipe_path: &[u16]) {
 
     loop {
         events.track(&listener.io.event, EventSource::ConnectionListener);
-        for (i, pipe) in pipes.iter().enumerate() {
-            if let Some(pipe) = pipe {
-                events.track(&pipe.event, EventSource::Connection(i));
-            }
+        for (i, pipe) in pipes.iter() {
+            events.track(&pipe.event, EventSource::Connection(i));
         }
         if let Some(child) = &running_child {
             events.track(&child.stdout_pipe.event, EventSource::ChildStdout(0));
@@ -482,18 +515,15 @@ unsafe fn run_server(pipe_path: &[u16]) {
         match events.wait_one(None) {
             Some(EventSource::ConnectionListener) => {
                 if let Some(pipe) = listener.accept(pipe_path) {
-                    match pipes.iter_mut().find(|p| p.is_none()) {
-                        Some(p) => *p = Some(pipe),
-                        None => pipes.push(Some(pipe)),
-                    }
+                    pipes.push(pipe);
                 }
             }
             Some(EventSource::Connection(i)) => {
-                if let Some(pipe) = &mut pipes[i] {
+                if let Some(pipe) = pipes.get_mut(i) {
                     match pipe.read_async() {
                         ReadResult::Waiting => (),
                         ReadResult::Ok([]) | ReadResult::Err => {
-                            disconnect(&mut pipes, i);
+                            pipes.remove(i);
                             if pipes.is_empty() {
                                 break;
                             }
@@ -525,7 +555,7 @@ unsafe fn run_server(pipe_path: &[u16]) {
                             match pipe.write(message) {
                                 WriteResult::Ok => (),
                                 WriteResult::Err => {
-                                    disconnect(&mut pipes, i);
+                                    pipes.remove(i);
                                     if pipes.is_empty() {
                                         break;
                                     }
