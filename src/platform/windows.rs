@@ -237,7 +237,7 @@ impl Pipe {
                 match get_last_error() {
                     ERROR_MORE_DATA => {
                         self.pending_io = false;
-                        //self.event.notify();
+                        self.event.notify();
                         ReadResult::Ok(&self.buf[..(read_len as usize)])
                     }
                     _ => {
@@ -247,7 +247,7 @@ impl Pipe {
                 }
             } else {
                 self.pending_io = false;
-                //self.event.notify();
+                self.event.notify();
                 ReadResult::Ok(&self.buf[..(read_len as usize)])
             }
         } else {
@@ -273,7 +273,7 @@ impl Pipe {
                 }
             } else {
                 self.pending_io = false;
-                //self.event.notify();
+                self.event.notify();
                 ReadResult::Ok(&self.buf[..(read_len as usize)])
             }
         }
@@ -336,7 +336,6 @@ impl PipeListener {
         pipe.pending_io = match get_last_error() {
             ERROR_IO_PENDING => true,
             ERROR_PIPE_CONNECTED => {
-                println!("notify event");
                 pipe.event.notify();
                 false
             }
@@ -368,17 +367,12 @@ struct AsyncChild {
 impl AsyncChild {
     pub fn from_child(child: Child) -> Self {
         let stdout_handle = child.stdout.as_ref().unwrap().as_raw_handle();
-        let stderr_handle = child.stderr.as_ref().unwrap().as_raw_handle();
         let stdout_pipe = Pipe::from_handle(stdout_handle, CHILD_BUFFER_LEN);
+        stdout_pipe.event.notify();
+
+        let stderr_handle = child.stderr.as_ref().unwrap().as_raw_handle();
         let stderr_pipe = Pipe::from_handle(stderr_handle, CHILD_BUFFER_LEN);
-        /*
-        if unsafe { SetEvent(stdout_pipe.event_handle) } == FALSE {
-            panic!("could not read process stdout");
-        }
-        if unsafe { SetEvent(stderr_pipe.event_handle) } == FALSE {
-            panic!("could not read process stdout");
-        }
-        */
+        stderr_pipe.event.notify();
 
         Self {
             child,
@@ -670,7 +664,6 @@ unsafe fn run_client(pipe_path: &[u16]) {
                         buf.len(),
                         message
                     );
-                    pipe.event.notify();
                 }
             },
             _ => unreachable!(),
