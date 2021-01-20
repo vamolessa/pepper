@@ -337,7 +337,7 @@ impl Drop for PipeToClient {
 
 struct PipeToServer(AsyncIO);
 impl PipeToServer {
-    pub fn connect(path: &[u16], buf_len: usize) -> Self {
+    pub fn connect(path: &[u16]) -> Self {
         let pipe_handle = unsafe {
             CreateFileW(
                 path.as_ptr(),
@@ -366,7 +366,7 @@ impl PipeToServer {
             panic!("could not establish a connection");
         }
 
-        let io = AsyncIO::from_handle(pipe_handle, buf_len);
+        let io = AsyncIO::from_handle(pipe_handle, CLIENT_PIPE_BUFFER_LEN);
         io.event.notify();
         Self(io)
     }
@@ -438,24 +438,32 @@ impl PipeToClientListener {
 
 struct AsyncChild {
     child: Child,
-    stdout_pipe: AsyncIO,
-    stderr_pipe: AsyncIO,
+    stdout: Option<AsyncIO>,
+    stderr: Option<AsyncIO>,
 }
 impl AsyncChild {
     pub fn from_child(child: Child) -> Self {
-        let stdout_handle = child.stdout.as_ref().unwrap().as_raw_handle();
-        let stdout_pipe = AsyncIO::from_handle(stdout_handle, CHILD_BUFFER_LEN);
-        stdout_pipe.event.notify();
-
-        let stderr_handle = child.stderr.as_ref().unwrap().as_raw_handle();
-        let stderr_pipe = AsyncIO::from_handle(stderr_handle, CHILD_BUFFER_LEN);
-        stderr_pipe.event.notify();
+        let stdout = child.stdout.as_ref().map(|s| {
+            let io = AsyncIO::from_handle(s.as_raw_handle(), CHILD_BUFFER_LEN);
+            io.event.notify();
+            io
+        });
+        let stderr = child.stderr.as_ref().map(|s| {
+            let io = AsyncIO::from_handle(s.as_raw_handle(), CHILD_BUFFER_LEN);
+            io.event.notify();
+            io
+        });
 
         Self {
             child,
-            stdout_pipe,
-            stderr_pipe,
+            stdout,
+            stderr,
         }
+    }
+}
+impl Drop for AsyncChild {
+    fn drop(&mut self) {
+        self.child.wait().unwrap();
     }
 }
 
@@ -494,22 +502,20 @@ unsafe fn run_server(pipe_path: &[u16]) {
 
     let mut listener = PipeToClientListener::new(pipe_path);
     let mut pipes = GappedVec::<PipeToClient>::new();
-    let mut running_child: Option<AsyncChild> = None;
-
-    fn wait_child(child: &mut Option<AsyncChild>) {
-        if let Some(mut child) = child.take() {
-            let _ = child.child.wait();
-        }
-    }
+    let mut children = GappedVec::<AsyncChild>::new();
 
     loop {
         events.track(&listener.io.event, EventSource::ConnectionListener);
         for (i, pipe) in pipes.iter() {
             events.track(&pipe.event, EventSource::Connection(i));
         }
-        if let Some(child) = &running_child {
-            events.track(&child.stdout_pipe.event, EventSource::ChildStdout(0));
-            events.track(&child.stderr_pipe.event, EventSource::ChildStderr(0));
+        for (i, child) in children.iter() {
+            if let Some(io) = &child.stdout {
+                events.track(&io.event, EventSource::ChildStdout(i));
+            }
+            if let Some(io) = &child.stderr {
+                events.track(&io.event, EventSource::ChildStderr(i));
+            }
         }
 
         match events.wait_one(None) {
@@ -538,7 +544,7 @@ unsafe fn run_server(pipe_path: &[u16]) {
                                         .stderr(std::process::Stdio::null())
                                         .spawn()
                                         .unwrap();
-                                    running_child = Some(AsyncChild::from_child(child));
+                                    children.push(AsyncChild::from_child(child));
                                 }
                                 _ => (),
                             }
@@ -566,9 +572,39 @@ unsafe fn run_server(pipe_path: &[u16]) {
                 }
             }
             Some(EventSource::ChildStdout(i)) => {
+                if let Some(io) = children.get_mut(i).and_then(|c| c.stdout.as_mut()) {
+                    match io.read_async() {
+                        ReadResult::Waiting => (),
+                        ReadResult::Ok([]) | ReadResult::Err => children.remove(i),
+                        ReadResult::Ok(buf) => {
+                            let message = String::from_utf8_lossy(buf);
+                            println!(
+                                "received {} bytes from child {}! message: '{}'",
+                                buf.len(),
+                                i,
+                                message
+                            );
+                        }
+                    }
+                }
                 println!("child stdout event");
             }
             Some(EventSource::ChildStderr(i)) => {
+                if let Some(io) = children.get_mut(i).and_then(|c| c.stderr.as_mut()) {
+                    match io.read_async() {
+                        ReadResult::Waiting => (),
+                        ReadResult::Ok([]) | ReadResult::Err => children.remove(i),
+                        ReadResult::Ok(buf) => {
+                            let message = String::from_utf8_lossy(buf);
+                            println!(
+                                "received {} bytes from child {}! message: '{}'",
+                                buf.len(),
+                                i,
+                                message
+                            );
+                        }
+                    }
+                }
                 println!("child stderr event");
             }
             None => println!("timeout waiting"),
@@ -602,7 +638,7 @@ unsafe fn run_client(pipe_path: &[u16]) {
         panic!("could not set console output mode");
     }
 
-    let mut pipe = PipeToServer::connect(pipe_path, CLIENT_PIPE_BUFFER_LEN);
+    let mut pipe = PipeToServer::connect(pipe_path);
     match pipe.write(b"hello there!") {
         WriteResult::Ok => (),
         WriteResult::Err => panic!("could not send message to server"),
