@@ -73,18 +73,22 @@ unsafe fn run_unsafe() {
     }
 }
 
+fn get_last_error() -> DWORD {
+    unsafe { GetLastError() }
+}
+
 enum WaitResult {
     Signaled(usize),
     Abandoned(usize),
     Timeout,
 }
-unsafe fn wait_for_multiple_objects(handles: &[HANDLE], timeout: Option<Duration>) -> WaitResult {
+fn wait_for_multiple_objects(handles: &[HANDLE], timeout: Option<Duration>) -> WaitResult {
     let timeout = match timeout {
         Some(duration) => duration.as_millis() as _,
         None => INFINITE,
     };
     let len = MAXIMUM_WAIT_OBJECTS.min(handles.len() as DWORD);
-    let result = WaitForMultipleObjects(len, handles.as_ptr(), FALSE, timeout);
+    let result = unsafe { WaitForMultipleObjects(len, handles.as_ptr(), FALSE, timeout) };
     if result == WAIT_TIMEOUT {
         WaitResult::Timeout
     } else if result >= WAIT_OBJECT_0 && result < (WAIT_OBJECT_0 + len) {
@@ -96,11 +100,54 @@ unsafe fn wait_for_multiple_objects(handles: &[HANDLE], timeout: Option<Duration
     }
 }
 
-const PIPE_BUFFER_LEN: usize = 512;
+const SERVER_PIPE_BUFFER_LEN: usize = 512;
+const CLIENT_PIPE_BUFFER_LEN: usize = 2 * 1024;
+const CHILD_BUFFER_LEN: usize = 2 * 1024;
 
-enum ReadResult {
+struct Event(HANDLE);
+impl Event {
+    pub fn new() -> Self {
+        let handle = unsafe { CreateEventW(std::ptr::null_mut(), TRUE, TRUE, std::ptr::null()) };
+        if handle == NULL {
+            panic!("could not create event");
+        }
+        Self(handle)
+    }
+
+    pub fn handle(&self) -> HANDLE {
+        self.0
+    }
+
+    pub fn notify(&self) {
+        if unsafe { SetEvent(self.0) } == FALSE {
+            panic!("could not set event");
+        }
+    }
+}
+impl Drop for Event {
+    fn drop(&mut self) {
+        if unsafe { CloseHandle(self.0) } == FALSE {
+            panic!("could not drop event");
+        }
+    }
+}
+
+struct Overlapped(OVERLAPPED);
+impl Overlapped {
+    pub fn from_event(event: &Event) -> Self {
+        let mut overlapped = OVERLAPPED::default();
+        overlapped.hEvent = event.handle();
+        Self(overlapped)
+    }
+
+    pub fn as_mut_ptr(&mut self) -> *mut OVERLAPPED {
+        &mut self.0
+    }
+}
+
+enum ReadResult<'a> {
     Waiting,
-    Ok(usize),
+    Ok(&'a [u8]),
     Err,
 }
 enum WriteResult {
@@ -110,114 +157,81 @@ enum WriteResult {
 
 struct Pipe {
     pipe_handle: HANDLE,
-    overlapped: OVERLAPPED,
-    event_handle: HANDLE,
+    overlapped: Overlapped,
+    event: Event,
+    buf: Box<[u8]>,
     pending_io: bool,
 }
 impl Pipe {
-    pub unsafe fn create(path: &[u16]) -> Self {
-        let event_handle = CreateEventW(std::ptr::null_mut(), TRUE, TRUE, std::ptr::null());
-        if event_handle == NULL {
-            panic!("could not create new connection");
-        }
-
-        let pipe_handle = CreateNamedPipeW(
-            path.as_ptr(),
-            PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
-            PIPE_TYPE_BYTE | PIPE_READMODE_BYTE,
-            PIPE_UNLIMITED_INSTANCES,
-            PIPE_BUFFER_LEN as _,
-            PIPE_BUFFER_LEN as _,
-            0,
-            std::ptr::null_mut(),
-        );
-        if pipe_handle == INVALID_HANDLE_VALUE {
-            panic!("could not create new connection");
-        }
-
-        Self::from_handle(pipe_handle)
-    }
-
-    pub unsafe fn connect(path: &[u16]) -> Self {
-        let pipe_handle = CreateFileW(
-            path.as_ptr(),
-            GENERIC_READ | GENERIC_WRITE,
-            0,
-            std::ptr::null_mut(),
-            OPEN_EXISTING,
-            FILE_FLAG_OVERLAPPED,
-            NULL,
-        );
+    pub fn connect(path: &[u16], buf_len: usize) -> Self {
+        let pipe_handle = unsafe {
+            CreateFileW(
+                path.as_ptr(),
+                GENERIC_READ | GENERIC_WRITE,
+                0,
+                std::ptr::null_mut(),
+                OPEN_EXISTING,
+                FILE_FLAG_OVERLAPPED,
+                NULL,
+            )
+        };
         if pipe_handle == INVALID_HANDLE_VALUE {
             panic!("could not establish a connection");
         }
 
         let mut mode = PIPE_READMODE_BYTE;
-        if SetNamedPipeHandleState(
-            pipe_handle,
-            &mut mode,
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-        ) == FALSE
+        if unsafe {
+            SetNamedPipeHandleState(
+                pipe_handle,
+                &mut mode,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        } == FALSE
         {
             panic!("could not establish a connection");
         }
 
-        Self::from_handle(pipe_handle)
+        Self::from_handle(pipe_handle, buf_len)
     }
 
-    pub fn from_handle(pipe_handle: HANDLE) -> Self {
-        let event_handle =
-            unsafe { CreateEventW(std::ptr::null_mut(), TRUE, FALSE, std::ptr::null()) };
-        if event_handle == NULL {
-            panic!("could not connect to server");
+    pub fn disconnect_from_client(&self) {
+        unsafe {
+            DisconnectNamedPipe(self.pipe_handle);
         }
+    }
 
-        let mut overlapped = OVERLAPPED::default();
-        overlapped.hEvent = event_handle;
+    pub fn from_handle(pipe_handle: HANDLE, buf_len: usize) -> Self {
+        let event = Event::new();
+        let overlapped = Overlapped::from_event(&event);
+        event.notify();
 
         Self {
             pipe_handle,
             overlapped,
-            event_handle,
+            event,
+            buf: Vec::with_capacity(buf_len).into_boxed_slice(),
             pending_io: false,
         }
     }
 
-    pub unsafe fn accept(&mut self) -> ReadResult {
-        if ConnectNamedPipe(self.pipe_handle, &mut self.overlapped) != FALSE {
-            panic!("could not accept incomming connection");
-        }
-
-        match GetLastError() {
-            ERROR_IO_PENDING => {
-                self.pending_io = true;
-                ReadResult::Waiting
-            }
-            ERROR_PIPE_CONNECTED => {
-                self.pending_io = false;
-                if SetEvent(self.event_handle) == FALSE {
-                    panic!("could not accept incomming connection");
-                }
-                ReadResult::Ok(0)
-            }
-            _ => {
-                self.pending_io = false;
-                ReadResult::Err
-            }
-        }
-    }
-
-    pub unsafe fn read_async(&mut self, buf: &mut [u8]) -> ReadResult {
+    pub fn read_async(&mut self) -> ReadResult {
         let mut read_len = 0;
         if self.pending_io {
-            if GetOverlappedResult(self.pipe_handle, &mut self.overlapped, &mut read_len, FALSE)
-                == FALSE
+            if unsafe {
+                GetOverlappedResult(
+                    self.pipe_handle,
+                    self.overlapped.as_mut_ptr(),
+                    &mut read_len,
+                    FALSE,
+                )
+            } == FALSE
             {
-                match GetLastError() {
+                match get_last_error() {
                     ERROR_MORE_DATA => {
                         self.pending_io = false;
-                        ReadResult::Ok(read_len as _)
+                        self.event.notify();
+                        ReadResult::Ok(&self.buf[..(read_len as usize)])
                     }
                     _ => {
                         self.pending_io = false;
@@ -226,18 +240,21 @@ impl Pipe {
                 }
             } else {
                 self.pending_io = false;
-                ReadResult::Ok(read_len as _)
+                self.event.notify();
+                ReadResult::Ok(&self.buf[..(read_len as usize)])
             }
         } else {
-            if ReadFile(
-                self.pipe_handle,
-                buf.as_mut_ptr() as _,
-                buf.len() as _,
-                &mut read_len,
-                &mut self.overlapped,
-            ) == FALSE
+            if unsafe {
+                ReadFile(
+                    self.pipe_handle,
+                    self.buf.as_mut_ptr() as _,
+                    self.buf.len() as _,
+                    &mut read_len,
+                    self.overlapped.as_mut_ptr(),
+                )
+            } == FALSE
             {
-                match GetLastError() {
+                match get_last_error() {
                     ERROR_IO_PENDING => {
                         self.pending_io = true;
                         ReadResult::Waiting
@@ -249,7 +266,8 @@ impl Pipe {
                 }
             } else {
                 self.pending_io = false;
-                ReadResult::Ok(read_len as _)
+                self.event.notify();
+                ReadResult::Ok(&self.buf[..(read_len as usize)])
             }
         }
     }
@@ -275,54 +293,65 @@ impl Drop for Pipe {
         println!("dropping pipe");
         unsafe {
             if CloseHandle(self.pipe_handle) == FALSE {
-                panic!("could not finish connection");
-            }
-            if CloseHandle(self.event_handle) == FALSE {
-                panic!("could not finish connection");
+                panic!("could not drop pipe");
             }
         }
     }
 }
 
 struct PipeListener {
-    pub pipe: Pipe,
+    pipe: Pipe,
 }
 impl PipeListener {
-    pub unsafe fn new(pipe_path: &[u16]) -> Self {
-        let mut pipe = Pipe::create(pipe_path);
-        match pipe.accept() {
-            ReadResult::Waiting => {
-                let Pipe {
-                    pipe_handle,
-                    event_handle,
-                    pending_io,
-                    ..
-                } = pipe;
-                let mut overlapped = OVERLAPPED::default();
-                overlapped.hEvent = event_handle;
-                std::mem::forget(pipe);
-                let pipe = Pipe {
-                    pipe_handle,
-                    overlapped,
-                    event_handle,
-                    pending_io,
-                };
-                Self { pipe }
-            }
-            _ => panic!("could not listen for connections"),
+    pub fn new(pipe_path: &[u16]) -> Self {
+        let pipe_handle = unsafe {
+            CreateNamedPipeW(
+                pipe_path.as_ptr(),
+                PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
+                PIPE_TYPE_BYTE | PIPE_READMODE_BYTE,
+                PIPE_UNLIMITED_INSTANCES,
+                SERVER_PIPE_BUFFER_LEN as _,
+                SERVER_PIPE_BUFFER_LEN as _,
+                0,
+                std::ptr::null_mut(),
+            )
+        };
+        if pipe_handle == INVALID_HANDLE_VALUE {
+            panic!("could not create new connection");
         }
+
+        let event = Event::new();
+        let mut overlapped = Overlapped::from_event(&event);
+
+        if unsafe { ConnectNamedPipe(pipe_handle, overlapped.as_mut_ptr()) } != FALSE {
+            panic!("could not accept incomming connection");
+        }
+
+        let pending_io = match get_last_error() {
+            ERROR_IO_PENDING => true,
+            ERROR_PIPE_CONNECTED => false,
+            _ => panic!("could not accept incomming connection"),
+        };
+
+        let pipe = Pipe {
+            pipe_handle,
+            overlapped,
+            event,
+            buf: Vec::with_capacity(SERVER_PIPE_BUFFER_LEN).into_boxed_slice(),
+            pending_io,
+        };
+        Self { pipe }
     }
 
-    pub unsafe fn accept(&mut self, pipe_path: &[u16]) -> Option<Pipe> {
-        let mut buf = [0; PIPE_BUFFER_LEN];
-        match self.pipe.read_async(&mut buf) {
+    pub fn accept(&mut self, pipe_path: &[u16]) -> Option<Pipe> {
+        match self.pipe.read_async() {
             ReadResult::Waiting => None,
             ReadResult::Ok(_) => {
                 let mut pipe = Self::new(pipe_path).pipe;
                 std::mem::swap(&mut self.pipe, &mut pipe);
                 Some(pipe)
             }
-            ReadResult::Err => panic!("could not accept connection {}", GetLastError()),
+            ReadResult::Err => panic!("could not accept connection {}", get_last_error()),
         }
     }
 }
@@ -336,10 +365,21 @@ impl AsyncChild {
     pub fn from_child(child: Child) -> Self {
         let stdout_handle = child.stdout.as_ref().unwrap().as_raw_handle();
         let stderr_handle = child.stderr.as_ref().unwrap().as_raw_handle();
+        let stdout_pipe = Pipe::from_handle(stdout_handle, CHILD_BUFFER_LEN);
+        let stderr_pipe = Pipe::from_handle(stderr_handle, CHILD_BUFFER_LEN);
+        /*
+        if unsafe { SetEvent(stdout_pipe.event_handle) } == FALSE {
+            panic!("could not read process stdout");
+        }
+        if unsafe { SetEvent(stderr_pipe.event_handle) } == FALSE {
+            panic!("could not read process stdout");
+        }
+        */
+
         Self {
             child,
-            stdout_pipe: Pipe::from_handle(stdout_handle),
-            stderr_pipe: Pipe::from_handle(stderr_handle),
+            stdout_pipe,
+            stderr_pipe,
         }
     }
 }
@@ -356,8 +396,8 @@ struct Events {
     sources: Vec<EventSource>,
 }
 impl Events {
-    pub fn track(&mut self, handle: HANDLE, source: EventSource) {
-        self.wait_handles.push(handle);
+    pub fn track(&mut self, event: &Event, source: EventSource) {
+        self.wait_handles.push(event.handle());
         self.sources.push(source);
     }
 
@@ -375,40 +415,46 @@ impl Events {
 }
 
 unsafe fn run_server(pipe_path: &[u16]) {
-    let mut read_buf = [0; PIPE_BUFFER_LEN];
     let mut events = Events::default();
 
     let mut listener = PipeListener::new(pipe_path);
     let mut pipes = Vec::<Option<Pipe>>::new();
+    let mut running_child: Option<AsyncChild> = None;
 
-    let mut running_child = None;
-
-    unsafe fn disconnect(pipes: &mut Vec<Option<Pipe>>, index: usize) -> bool {
+    unsafe fn disconnect(pipes: &mut Vec<Option<Pipe>>, index: usize) {
         if let Some(pipe) = &mut pipes[index] {
             println!("client [{}] disconnected", index);
 
-            DisconnectNamedPipe(pipe.pipe_handle);
+            pipe.disconnect_from_client();
             pipes[index] = None;
 
             if let Some(i) = pipes.iter().rposition(Option::is_some) {
                 pipes.truncate(i + 1);
-                true
             } else {
                 pipes.clear();
-                false
             }
-        } else {
-            true
+        }
+    }
+
+    fn wait_child(child: &mut Option<AsyncChild>) {
+        if let Some(mut child) = child.take() {
+            let _ = child.child.wait();
         }
     }
 
     loop {
-        events.track(listener.pipe.event_handle, EventSource::ConnectionListener);
+        events.track(&listener.pipe.event, EventSource::ConnectionListener);
         for (i, pipe) in pipes.iter().enumerate() {
             if let Some(pipe) = pipe {
-                events.track(pipe.event_handle, EventSource::Connection(i));
+                events.track(&pipe.event, EventSource::Connection(i));
             }
         }
+        /*
+        if let Some(child) = &running_child {
+            events.track(&child.stdout_pipe.event, EventSource::ChildStdout(0));
+            events.track(&child.stderr_pipe.event, EventSource::ChildStderr(0));
+        }
+        */
 
         match events.wait_one(None) {
             Some(EventSource::ConnectionListener) => {
@@ -421,16 +467,16 @@ unsafe fn run_server(pipe_path: &[u16]) {
             }
             Some(EventSource::Connection(i)) => {
                 if let Some(pipe) = &mut pipes[i] {
-                    match pipe.read_async(&mut read_buf) {
+                    match pipe.read_async() {
                         ReadResult::Waiting => (),
-                        ReadResult::Ok(0) | ReadResult::Err => {
-                            if !disconnect(&mut pipes, i) {
+                        ReadResult::Ok([]) | ReadResult::Err => {
+                            disconnect(&mut pipes, i);
+                            if pipes.is_empty() {
                                 break;
                             }
                         }
-                        ReadResult::Ok(len) => {
-                            let message = &read_buf[..len];
-                            match Key::parse(&mut message.iter().map(|b| *b as _)) {
+                        ReadResult::Ok(buf) => {
+                            match Key::parse(&mut buf.iter().map(|b| *b as _)) {
                                 Ok(Key::Ctrl('r')) => {
                                     println!("execute program");
                                     let child = std::process::Command::new("fd")
@@ -444,17 +490,20 @@ unsafe fn run_server(pipe_path: &[u16]) {
                                 _ => (),
                             }
 
-                            let message = String::from_utf8_lossy(message);
+                            let message = String::from_utf8_lossy(buf);
                             println!(
                                 "received {} bytes from client {}! message: '{}'",
-                                len, i, message
+                                buf.len(),
+                                i,
+                                message
                             );
 
                             let message = b"thank you for your message!";
                             match pipe.write(message) {
                                 WriteResult::Ok => (),
                                 WriteResult::Err => {
-                                    if !disconnect(&mut pipes, i) {
+                                    disconnect(&mut pipes, i);
+                                    if pipes.is_empty() {
                                         break;
                                     }
                                 }
@@ -500,18 +549,14 @@ unsafe fn run_client(pipe_path: &[u16]) {
         panic!("could not set console output mode");
     }
 
-    let mut pipe = Pipe::connect(pipe_path);
+    let mut pipe = Pipe::connect(pipe_path, CLIENT_PIPE_BUFFER_LEN);
     match pipe.write(b"hello there!") {
         WriteResult::Ok => (),
         WriteResult::Err => panic!("could not send message to server"),
     }
-    if SetEvent(pipe.event_handle) == FALSE {
-        panic!("could not receive next message");
-    }
 
-    let mut read_buf = [0u8; 1024 * 2];
     let event_buffer = &mut [INPUT_RECORD::default(); 32][..];
-    let wait_handles = [input_handle, pipe.event_handle];
+    let wait_handles = [input_handle, pipe.event.handle()];
 
     'main_loop: loop {
         let wait_handle_index = match wait_for_multiple_objects(&wait_handles, None) {
@@ -609,19 +654,18 @@ unsafe fn run_client(pipe_path: &[u16]) {
                     }
                 }
             }
-            1 => match pipe.read_async(&mut read_buf) {
+            1 => match pipe.read_async() {
                 ReadResult::Waiting => (),
-                ReadResult::Ok(0) | ReadResult::Err => {
+                ReadResult::Ok([]) | ReadResult::Err => {
                     break;
                 }
-                ReadResult::Ok(len) => {
-                    if SetEvent(pipe.event_handle) == FALSE {
-                        panic!("could not receive next message");
-                    }
-
-                    let message = &read_buf[..len];
-                    let message = String::from_utf8_lossy(message);
-                    println!("received {} bytes from server! message: '{}'", len, message);
+                ReadResult::Ok(buf) => {
+                    let message = String::from_utf8_lossy(buf);
+                    println!(
+                        "received {} bytes from server! message: '{}'",
+                        buf.len(),
+                        message
+                    );
                 }
             },
             _ => unreachable!(),
