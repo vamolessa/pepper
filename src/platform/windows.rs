@@ -12,7 +12,7 @@ use winapi::{
         winerror::{ERROR_IO_PENDING, ERROR_MORE_DATA, ERROR_PIPE_CONNECTED, WAIT_TIMEOUT},
     },
     um::{
-        consoleapi::{GetConsoleMode, ReadConsoleInputW, SetConsoleCtrlHandler, SetConsoleMode},
+        consoleapi::{AllocConsole, GetConsoleMode, ReadConsoleInputW, SetConsoleCtrlHandler, SetConsoleMode},
         errhandlingapi::GetLastError,
         fileapi::{CreateFileW, FindFirstFileW, ReadFile, WriteFile, OPEN_EXISTING},
         handleapi::{CloseHandle, INVALID_HANDLE_VALUE},
@@ -29,7 +29,8 @@ use winapi::{
             WAIT_OBJECT_0,
         },
         wincon::{
-            ENABLE_PROCESSED_OUTPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING, ENABLE_WINDOW_INPUT,
+            FreeConsole, ENABLE_PROCESSED_OUTPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING,
+            ENABLE_WINDOW_INPUT,
         },
         wincontypes::{
             INPUT_RECORD, KEY_EVENT, LEFT_ALT_PRESSED, LEFT_CTRL_PRESSED, RIGHT_ALT_PRESSED,
@@ -50,6 +51,14 @@ pub fn run() {
 }
 
 unsafe fn run_unsafe() {
+    eprintln!("hello");
+    let result = FreeConsole();
+    eprintln!("after free console {}", result);
+    std::thread::sleep(Duration::from_secs(2));
+    let result = AllocConsole();
+    eprintln!("after sleep {}", result);
+    return;
+
     unsafe extern "system" fn ctrl_handler(_ctrl_type: DWORD) -> BOOL {
         FALSE
     }
