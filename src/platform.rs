@@ -410,9 +410,11 @@ pub trait ClientApplication: Sized {
 }
 
 pub trait Platform {
-    fn write_to_connection(&mut self, handle: ConnectionHandle, buf: &[u8]) -> bool;
+    fn close_connection(&mut self, handle: ConnectionHandle);
+    fn write_to_connection(&mut self, handle: ConnectionHandle, buf: &[u8]);
     fn spawn_process(&mut self, command: Command) -> io::Result<ProcessHandle>;
-    fn write_to_process(&mut self, handle: ProcessHandle, buf: &[u8]) -> bool;
+    fn kill_process(&mut self, handle: ProcessHandle);
+    fn write_to_process(&mut self, handle: ProcessHandle, buf: &[u8]);
 }
 
 pub fn run<S, C>()
