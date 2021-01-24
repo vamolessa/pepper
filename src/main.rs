@@ -68,7 +68,9 @@ pub struct Args {
     files: Vec<String>,
 }
 
-struct S;
+struct S {
+    connections: Vec<platform::ConnectionHandle>,
+}
 impl platform::ServerApplication for S {
     fn new() -> Option<Self> {
         None
@@ -78,6 +80,20 @@ impl platform::ServerApplication for S {
     where
         P: platform::Platform,
     {
+        match event {
+            platform::ServerEvent::ConnectionOpen(handle) => self.connections.push(handle),
+            platform::ServerEvent::ConnectionClose(handle) => {
+                if let Some(index) = self.connections.iter().position(|c| *c == handle) {
+                    self.connections.remove(index);
+                }
+
+                if self.connections.is_empty() {
+                    return false;
+                }
+            }
+            _ => (),
+        }
+
         true
     }
 }

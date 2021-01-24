@@ -376,9 +376,9 @@ impl<'de> Serialize<'de> for Key {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct ConnectionHandle(pub(crate) usize);
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct ProcessHandle(pub(crate) usize);
 
 pub enum ServerEvent<'a> {
