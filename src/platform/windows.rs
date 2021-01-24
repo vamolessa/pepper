@@ -66,26 +66,19 @@ pub fn run(args: Args) {
     pipe_path.extend(session_name.encode_utf16());
     pipe_path.push(0);
 
-    let input_handle = unsafe { GetStdHandle(STD_INPUT_HANDLE) };
-    let output_handle = unsafe { GetStdHandle(STD_OUTPUT_HANDLE) };
+    let input_handle = get_std_handle(STD_INPUT_HANDLE);
+    let output_handle = get_std_handle(STD_OUTPUT_HANDLE);
 
-    if input_handle == INVALID_HANDLE_VALUE || output_handle == INVALID_HANDLE_VALUE {
-        println!("run server");
-        unsafe { run_server(&pipe_path) };
-    } else {
-        println!("run client");
-        unsafe { run_client(&pipe_path, input_handle, output_handle) };
+    match (input_handle, output_handle) {
+        (Some(input_handle), Some(output_handle)) => {
+            println!("run client");
+            unsafe { run_client(&pipe_path, input_handle, output_handle) };
+        }
+        _ => {
+            println!("run server");
+            unsafe { run_server(&pipe_path) };
+        }
     }
-
-    /*
-    if file_exists(pipe_path) {
-        println!("run server");
-        run_client(&pipe_path);
-    } else {
-        println!("run client");
-        run_server(&pipe_path);
-    }
-    */
 }
 
 fn get_last_error() -> DWORD {
@@ -96,14 +89,23 @@ fn file_exists(path: &[u16]) -> bool {
     unsafe { FindFirstFileW(path.as_ptr(), &mut Default::default()) != INVALID_HANDLE_VALUE }
 }
 
+fn get_std_handle(which: DWORD) -> Option<HANDLE> {
+    let handle = unsafe { GetStdHandle(which) };
+    if handle != NULL && handle != INVALID_HANDLE_VALUE {
+        Some(handle)
+    } else {
+        None
+    }
+}
+
 fn make_buffer(len: usize) -> Box<[u8]> {
     let mut buf = Vec::with_capacity(len);
     buf.resize(len, 0);
     buf.into_boxed_slice()
 }
 
-struct GappedVec<T>(Vec<Option<T>>);
-impl<T> GappedVec<T> {
+struct SlotVec<T>(Vec<Option<T>>);
+impl<T> SlotVec<T> {
     pub fn new() -> Self {
         Self(Vec::new())
     }
@@ -356,10 +358,6 @@ impl Drop for PipeToClient {
 struct PipeToServer(AsyncIO);
 impl PipeToServer {
     pub fn connect(path: &[u16]) -> Self {
-        while !file_exists(path) {
-            std::thread::sleep(Duration::from_millis(1000));
-        }
-
         let pipe_handle = unsafe {
             CreateFileW(
                 path.as_ptr(),
@@ -544,11 +542,15 @@ impl Events {
 }
 
 unsafe fn run_server(pipe_path: &[u16]) {
+    if file_exists(pipe_path) {
+        return;
+    }
+
     let mut events = Events::default();
 
     let mut listener = PipeToClientListener::new(pipe_path);
-    let mut pipes = GappedVec::<PipeToClient>::new();
-    let mut children = GappedVec::<AsyncChild>::new();
+    let mut pipes = SlotVec::<PipeToClient>::new();
+    let mut children = SlotVec::<AsyncChild>::new();
 
     loop {
         events.track(&listener.io.event, EventSource::ConnectionListener);
@@ -672,6 +674,15 @@ unsafe fn run_server(pipe_path: &[u16]) {
 }
 
 unsafe fn run_client(pipe_path: &[u16], input_handle: HANDLE, output_handle: HANDLE) {
+    if !file_exists(pipe_path) {
+        println!("pipe does not exist. running server");
+        //let server =
+
+        while !file_exists(pipe_path) {
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    }
+
     let mut pipe = PipeToServer::connect(pipe_path);
 
     let mut original_input_mode = DWORD::default();
