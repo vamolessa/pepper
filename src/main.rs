@@ -74,10 +74,11 @@ impl platform::ServerApplication for S {
         None
     }
 
-    fn on_event<P>(&mut self, platform: &mut P, event: platform::ServerEvent)
+    fn on_event<P>(&mut self, platform: &mut P, event: platform::ServerEvent) -> bool
     where
         P: platform::Platform,
     {
+        true
     }
 }
 

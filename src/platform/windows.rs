@@ -1,6 +1,6 @@
 use std::{
-    io,
     convert::Into,
+    io,
     ops::{Deref, DerefMut},
     os::windows::io::AsRawHandle,
     process::{Child, Command, Stdio},
@@ -50,7 +50,8 @@ use winapi::{
 };
 
 use crate::platform::{
-    ClientApplication, ConnectionHandle, Key, Platform, ProcessHandle, ServerApplication,
+    ClientApplication, ClientEvent, ConnectionHandle, Key, Platform, ProcessHandle,
+    ServerApplication, ServerEvent,
 };
 
 const SERVER_PIPE_BUFFER_LEN: usize = 512;
@@ -86,7 +87,7 @@ where
         }
         _ => {
             println!("run server");
-            unsafe { run_server(&pipe_path) };
+            unsafe { run_server::<S>(&pipe_path) };
         }
     }
 }
@@ -216,9 +217,9 @@ impl Overlapped {
     }
 }
 
-enum ReadResult<'a> {
+enum ReadResult {
     Waiting,
-    Ok(&'a [u8]),
+    Ok(usize),
     Err,
 }
 enum WriteResult {
@@ -230,11 +231,10 @@ struct AsyncIO {
     handle: Handle,
     overlapped: Overlapped,
     event: Event,
-    buf: Box<[u8]>,
     pending_io: bool,
 }
 impl AsyncIO {
-    pub fn from_handle(handle: Handle, buf_len: usize) -> Self {
+    pub fn from_handle(handle: Handle) -> Self {
         let event = Event::new();
         let overlapped = Overlapped::with_event(&event);
 
@@ -242,12 +242,11 @@ impl AsyncIO {
             handle,
             overlapped,
             event,
-            buf: make_buffer(buf_len),
             pending_io: false,
         }
     }
 
-    pub fn read_async(&mut self) -> ReadResult {
+    pub fn read_async(&mut self, buf: &mut ReadBuf) -> ReadResult {
         let mut read_len = 0;
         if self.pending_io {
             if unsafe {
@@ -263,7 +262,7 @@ impl AsyncIO {
                     ERROR_MORE_DATA => {
                         self.pending_io = false;
                         self.event.notify();
-                        ReadResult::Ok(&self.buf[..(read_len as usize)])
+                        ReadResult::Ok(read_len as _)
                     }
                     _ => {
                         self.pending_io = false;
@@ -273,14 +272,14 @@ impl AsyncIO {
             } else {
                 self.pending_io = false;
                 self.event.notify();
-                ReadResult::Ok(&self.buf[..(read_len as usize)])
+                ReadResult::Ok(read_len as _)
             }
         } else {
             if unsafe {
                 ReadFile(
                     self.handle.0,
-                    self.buf.as_mut_ptr() as _,
-                    self.buf.len() as _,
+                    buf.as_mut_ptr() as _,
+                    buf.len() as _,
                     &mut read_len,
                     self.overlapped.as_mut_ptr(),
                 )
@@ -299,7 +298,7 @@ impl AsyncIO {
             } else {
                 self.pending_io = false;
                 self.event.notify();
-                ReadResult::Ok(&self.buf[..(read_len as usize)])
+                ReadResult::Ok(read_len as _)
             }
         }
     }
@@ -373,7 +372,7 @@ impl PipeToServer {
         }
 
         let pipe_handle = Handle(pipe_handle);
-        let io = AsyncIO::from_handle(pipe_handle, CLIENT_PIPE_BUFFER_LEN);
+        let io = AsyncIO::from_handle(pipe_handle);
         io.event.notify();
         Self(io)
     }
@@ -392,6 +391,7 @@ impl DerefMut for PipeToServer {
 
 struct PipeToClientListener {
     io: AsyncIO,
+    buf: ReadBuf,
 }
 impl PipeToClientListener {
     pub fn new(pipe_path: &[u16]) -> Self {
@@ -412,7 +412,7 @@ impl PipeToClientListener {
         }
 
         let pipe_handle = Handle(pipe_handle);
-        let mut pipe = AsyncIO::from_handle(pipe_handle, SERVER_PIPE_BUFFER_LEN);
+        let mut pipe = AsyncIO::from_handle(pipe_handle);
 
         if unsafe { ConnectNamedPipe(pipe.handle.0, pipe.overlapped.as_mut_ptr()) } != FALSE {
             panic!("could not accept incomming connection");
@@ -428,11 +428,14 @@ impl PipeToClientListener {
         };
 
         pipe.overlapped = Overlapped::with_event(&pipe.event);
-        Self { io: pipe }
+        Self {
+            io: pipe,
+            buf: ReadBuf::new(SERVER_PIPE_BUFFER_LEN),
+        }
     }
 
     pub fn accept(&mut self, pipe_path: &[u16]) -> Option<PipeToClient> {
-        match self.io.read_async() {
+        match self.io.read_async(&mut self.buf) {
             ReadResult::Waiting => None,
             ReadResult::Ok(_) => {
                 let mut io = Self::new(pipe_path).io;
@@ -445,24 +448,24 @@ impl PipeToClientListener {
 }
 
 enum ChildPipe {
-    Opened(AsyncIO),
+    Open(AsyncIO),
     Closed,
 }
 impl ChildPipe {
     pub fn from_handle(handle: Option<Handle>) -> Self {
         match handle {
             Some(h) => {
-                let io = AsyncIO::from_handle(h, CHILD_BUFFER_LEN);
+                let io = AsyncIO::from_handle(h);
                 io.event.notify();
-                Self::Opened(io)
+                Self::Open(io)
             }
             None => Self::Closed,
         }
     }
 
-    pub fn read_async(&mut self) -> ReadResult {
+    pub fn read_async(&mut self, buf: &mut ReadBuf) -> ReadResult {
         match self {
-            Self::Opened(io) => io.read_async(),
+            Self::Open(io) => io.read_async(buf),
             Self::Closed => ReadResult::Err,
         }
     }
@@ -540,6 +543,27 @@ impl Events {
     }
 }
 
+struct ReadBuf(Box<[u8]>);
+impl ReadBuf {
+    pub fn new(len: usize) -> Self {
+        let mut buf = Vec::with_capacity(len);
+        buf.resize(len, 0);
+        Self(buf.into_boxed_slice())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn slice(&self, len: usize) -> &[u8] {
+        &self.0[..len]
+    }
+
+    pub fn as_mut_ptr(&mut self) -> *mut u8 {
+        self.0.as_mut_ptr()
+    }
+}
+
 struct SlotVec<T>(Vec<Option<T>>);
 impl<T> SlotVec<T> {
     pub fn new() -> Self {
@@ -588,10 +612,10 @@ impl<T> SlotVec<T> {
 }
 
 struct State {
-    events : Events,
-    listener : PipeToClientListener,
-    pipes : SlotVec<PipeToClient>,
-    children : SlotVec<AsyncChild>,
+    events: Events,
+    listener: PipeToClientListener,
+    pipes: SlotVec<PipeToClient>,
+    children: SlotVec<AsyncChild>,
 }
 
 impl Platform for State {
@@ -608,10 +632,22 @@ impl Platform for State {
     }
 }
 
-unsafe fn run_server(pipe_path: &[u16]) {
+unsafe fn run_server<A>(pipe_path: &[u16])
+where
+    A: ServerApplication,
+{
     if file_exists(pipe_path) {
         return;
     }
+
+    let mut application = match A::new() {
+        Some(application) => application,
+        None => return,
+    };
+
+    let mut pipe_bufs = SlotVec::<ReadBuf>::new();
+    let mut stdout_bufs = SlotVec::<ReadBuf>::new();
+    let mut stderr_bufs = SlotVec::<ReadBuf>::new();
 
     let mut state = State {
         events: Events::default(),
@@ -620,16 +656,26 @@ unsafe fn run_server(pipe_path: &[u16]) {
         children: SlotVec::new(),
     };
 
+    macro_rules! send_event {
+        ($event:expr) => {
+            if !application.on_event(&mut state, $event) {
+                break;
+            }
+        };
+    }
+
     loop {
-        state.events.track(&state.listener.io.event, EventSource::ConnectionListener);
+        state
+            .events
+            .track(&state.listener.io.event, EventSource::ConnectionListener);
         for (i, pipe) in state.pipes.iter() {
             state.events.track(&pipe.event, EventSource::Connection(i));
         }
         for (i, child) in state.children.iter() {
-            if let ChildPipe::Opened(io) = &child.stdout {
+            if let ChildPipe::Open(io) = &child.stdout {
                 state.events.track(&io.event, EventSource::ChildStdout(i));
             }
-            if let ChildPipe::Opened(io) = &child.stderr {
+            if let ChildPipe::Open(io) = &child.stderr {
                 state.events.track(&io.event, EventSource::ChildStderr(i));
             }
         }
@@ -637,20 +683,26 @@ unsafe fn run_server(pipe_path: &[u16]) {
         match state.events.wait_one(None) {
             Some(EventSource::ConnectionListener) => {
                 if let Some(pipe) = state.listener.accept(pipe_path) {
-                    state.pipes.push(pipe);
+                    let index = state.pipes.push(pipe);
+                    pipe_bufs.push(ReadBuf::new(SERVER_PIPE_BUFFER_LEN));
+                    let handle = ConnectionHandle(index);
+                    send_event!(ServerEvent::ConnectionOpen(handle));
                 }
             }
             Some(EventSource::Connection(i)) => {
                 if let Some(pipe) = state.pipes.get_mut(i) {
-                    match pipe.read_async() {
+                    let buf = pipe_bufs.get_mut(i).unwrap();
+                    let handle = ConnectionHandle(i);
+                    match pipe.read_async(buf) {
                         ReadResult::Waiting => (),
-                        ReadResult::Ok([]) | ReadResult::Err => {
+                        ReadResult::Ok(0) | ReadResult::Err => {
                             state.pipes.remove(i);
-                            if state.pipes.is_empty() {
-                                break;
-                            }
+                            pipe_bufs.remove(i);
+                            send_event!(ServerEvent::ConnectionClose(handle));
                         }
-                        ReadResult::Ok(buf) => {
+                        ReadResult::Ok(len) => {
+                            let buf = buf.slice(len);
+
                             match Key::parse(&mut buf.iter().map(|b| *b as _)) {
                                 Ok(Key::Ctrl('r')) => {
                                     println!("execute program");
@@ -683,22 +735,30 @@ unsafe fn run_server(pipe_path: &[u16]) {
                                     }
                                 }
                             }
+
+                            send_event!(ServerEvent::ConnectionMessage(handle, buf));
                         }
                     }
                 }
             }
             Some(EventSource::ChildStdout(i)) => {
                 if let Some(child) = state.children.get_mut(i) {
-                    match child.stdout.read_async() {
+                    let buf = stdout_bufs.get_mut(i).unwrap();
+                    let handle = ProcessHandle(i);
+                    match child.stdout.read_async(buf) {
                         ReadResult::Waiting => (),
-                        ReadResult::Ok([]) | ReadResult::Err => {
+                        ReadResult::Ok(0) | ReadResult::Err => {
                             child.stdout = ChildPipe::Closed;
                             if let ChildPipe::Closed = child.stderr {
-                                let _status = child.child.wait().unwrap();
+                                let status = child.child.wait().unwrap();
                                 state.children.remove(i);
+                                stdout_bufs.remove(i);
+                                stderr_bufs.remove(i);
+                                send_event!(ServerEvent::ProcessExit(handle, status));
                             }
                         }
-                        ReadResult::Ok(buf) => {
+                        ReadResult::Ok(len) => {
+                            let buf = buf.slice(len);
                             let message = String::from_utf8_lossy(buf);
                             println!(
                                 "received {} bytes from child {}! message: '{}'",
@@ -706,22 +766,29 @@ unsafe fn run_server(pipe_path: &[u16]) {
                                 i,
                                 message
                             );
+                            send_event!(ServerEvent::ProcessStdout(handle, buf));
                         }
                     }
                 }
             }
             Some(EventSource::ChildStderr(i)) => {
                 if let Some(child) = state.children.get_mut(i) {
-                    match child.stderr.read_async() {
+                    let buf = stderr_bufs.get_mut(i).unwrap();
+                    let handle = ProcessHandle(i);
+                    match child.stderr.read_async(buf) {
                         ReadResult::Waiting => (),
-                        ReadResult::Ok([]) | ReadResult::Err => {
+                        ReadResult::Ok(0) | ReadResult::Err => {
                             child.stderr = ChildPipe::Closed;
                             if let ChildPipe::Closed = child.stdout {
-                                let _status = child.child.wait().unwrap();
+                                let status = child.child.wait().unwrap();
                                 state.children.remove(i);
+                                stdout_bufs.remove(i);
+                                stderr_bufs.remove(i);
+                                send_event!(ServerEvent::ProcessExit(handle, status));
                             }
                         }
-                        ReadResult::Ok(buf) => {
+                        ReadResult::Ok(len) => {
+                            let buf = buf.slice(len);
                             let message = String::from_utf8_lossy(buf);
                             println!(
                                 "received {} bytes from child {}! message: '{}'",
@@ -729,6 +796,7 @@ unsafe fn run_server(pipe_path: &[u16]) {
                                 i,
                                 message
                             );
+                            send_event!(ServerEvent::ProcessStderr(handle, buf));
                         }
                     }
                 }
@@ -751,6 +819,7 @@ unsafe fn run_client(pipe_path: &[u16], input_handle: HANDLE, output_handle: HAN
         }
     }
 
+    let mut pipe_buf = ReadBuf::new(CLIENT_PIPE_BUFFER_LEN);
     let mut pipe = PipeToServer::connect(pipe_path);
 
     let mut original_input_mode = DWORD::default();
@@ -877,18 +946,15 @@ unsafe fn run_client(pipe_path: &[u16], input_handle: HANDLE, output_handle: HAN
                     }
                 }
             }
-            1 => match pipe.read_async() {
+            1 => match pipe.read_async(&mut pipe_buf) {
                 ReadResult::Waiting => (),
-                ReadResult::Ok([]) | ReadResult::Err => {
+                ReadResult::Ok(0) | ReadResult::Err => {
                     break;
                 }
-                ReadResult::Ok(buf) => {
+                ReadResult::Ok(len) => {
+                    let buf = pipe_buf.slice(len);
                     let message = String::from_utf8_lossy(buf);
-                    println!(
-                        "received {} bytes from server! message: '{}'",
-                        buf.len(),
-                        message
-                    );
+                    println!("received {} bytes from server! message: '{}'", len, message);
                 }
             },
             _ => unreachable!(),
