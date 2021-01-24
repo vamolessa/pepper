@@ -68,6 +68,30 @@ pub struct Args {
     files: Vec<String>,
 }
 
+struct S;
+impl platform::ServerApplication for S {
+    fn new() -> Option<Self> {
+        None
+    }
+
+    fn on_event<P>(&mut self, platform: &mut P, event: platform::ServerEvent)
+    where
+        P: platform::Platform,
+    {
+    }
+}
+
+struct C;
+impl platform::ClientApplication for C {
+    fn new() -> Option<Self> {
+        None
+    }
+
+    fn on_event(&mut self, event: platform::ClientEvent) -> &[u8] {
+        &[]
+    }
+}
+
 fn main() {
     if false {
         let args: Args = argh::from_env();
@@ -80,7 +104,7 @@ fn main() {
         }
     }
 
-    //platform::run();
+    platform::run::<S, C>();
 
     /*
     let args: Args = argh::from_env();

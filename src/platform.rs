@@ -377,9 +377,9 @@ impl<'de> Serialize<'de> for Key {
 }
 
 #[derive(Clone, Copy)]
-pub struct ConnectionHandle(usize);
+pub struct ConnectionHandle(pub(crate) usize);
 #[derive(Clone, Copy)]
-pub struct ProcessHandle(usize);
+pub struct ProcessHandle(pub(crate) usize);
 
 pub enum ServerEvent<'a> {
     Idle,
@@ -406,7 +406,7 @@ pub trait ServerApplication: Sized {
 
 pub trait ClientApplication: Sized {
     fn new() -> Option<Self>;
-    fn on_event(&mut self, event: ClientEvent, screen: &mut Vec<u8>);
+    fn on_event(&mut self, event: ClientEvent) -> &[u8];
 }
 
 pub trait Platform {

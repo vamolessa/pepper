@@ -1,4 +1,5 @@
 use std::{
+    io,
     convert::Into,
     ops::{Deref, DerefMut},
     os::windows::io::AsRawHandle,
@@ -48,7 +49,9 @@ use winapi::{
     },
 };
 
-use crate::platform::{ClientApplication, Key, Platform, ServerApplication};
+use crate::platform::{
+    ClientApplication, ConnectionHandle, Key, Platform, ProcessHandle, ServerApplication,
+};
 
 const SERVER_PIPE_BUFFER_LEN: usize = 512;
 const CLIENT_PIPE_BUFFER_LEN: usize = 2 * 1024;
@@ -583,44 +586,67 @@ impl<T> SlotVec<T> {
         })
     }
 }
+
+struct State {
+    events : Events,
+    listener : PipeToClientListener,
+    pipes : SlotVec<PipeToClient>,
+    children : SlotVec<AsyncChild>,
+}
+
+impl Platform for State {
+    fn write_to_connection(&mut self, handle: ConnectionHandle, buf: &[u8]) -> bool {
+        true
+    }
+
+    fn spawn_process(&mut self, mut command: Command) -> io::Result<ProcessHandle> {
+        command.spawn().map(|_| ProcessHandle(0))
+    }
+
+    fn write_to_process(&mut self, handle: ProcessHandle, buf: &[u8]) -> bool {
+        true
+    }
+}
+
 unsafe fn run_server(pipe_path: &[u16]) {
     if file_exists(pipe_path) {
         return;
     }
 
-    let mut events = Events::default();
-
-    let mut listener = PipeToClientListener::new(pipe_path);
-    let mut pipes = SlotVec::<PipeToClient>::new();
-    let mut children = SlotVec::<AsyncChild>::new();
+    let mut state = State {
+        events: Events::default(),
+        listener: PipeToClientListener::new(pipe_path),
+        pipes: SlotVec::new(),
+        children: SlotVec::new(),
+    };
 
     loop {
-        events.track(&listener.io.event, EventSource::ConnectionListener);
-        for (i, pipe) in pipes.iter() {
-            events.track(&pipe.event, EventSource::Connection(i));
+        state.events.track(&state.listener.io.event, EventSource::ConnectionListener);
+        for (i, pipe) in state.pipes.iter() {
+            state.events.track(&pipe.event, EventSource::Connection(i));
         }
-        for (i, child) in children.iter() {
+        for (i, child) in state.children.iter() {
             if let ChildPipe::Opened(io) = &child.stdout {
-                events.track(&io.event, EventSource::ChildStdout(i));
+                state.events.track(&io.event, EventSource::ChildStdout(i));
             }
             if let ChildPipe::Opened(io) = &child.stderr {
-                events.track(&io.event, EventSource::ChildStderr(i));
+                state.events.track(&io.event, EventSource::ChildStderr(i));
             }
         }
 
-        match events.wait_one(None) {
+        match state.events.wait_one(None) {
             Some(EventSource::ConnectionListener) => {
-                if let Some(pipe) = listener.accept(pipe_path) {
-                    pipes.push(pipe);
+                if let Some(pipe) = state.listener.accept(pipe_path) {
+                    state.pipes.push(pipe);
                 }
             }
             Some(EventSource::Connection(i)) => {
-                if let Some(pipe) = pipes.get_mut(i) {
+                if let Some(pipe) = state.pipes.get_mut(i) {
                     match pipe.read_async() {
                         ReadResult::Waiting => (),
                         ReadResult::Ok([]) | ReadResult::Err => {
-                            pipes.remove(i);
-                            if pipes.is_empty() {
+                            state.pipes.remove(i);
+                            if state.pipes.is_empty() {
                                 break;
                             }
                         }
@@ -634,7 +660,7 @@ unsafe fn run_server(pipe_path: &[u16]) {
                                         .stderr(std::process::Stdio::null())
                                         .spawn()
                                         .unwrap();
-                                    children.push(AsyncChild::from_child(child));
+                                    state.children.push(AsyncChild::from_child(child));
                                 }
                                 _ => (),
                             }
@@ -651,8 +677,8 @@ unsafe fn run_server(pipe_path: &[u16]) {
                             match pipe.write(message) {
                                 WriteResult::Ok => (),
                                 WriteResult::Err => {
-                                    pipes.remove(i);
-                                    if pipes.is_empty() {
+                                    state.pipes.remove(i);
+                                    if state.pipes.is_empty() {
                                         break;
                                     }
                                 }
@@ -662,14 +688,14 @@ unsafe fn run_server(pipe_path: &[u16]) {
                 }
             }
             Some(EventSource::ChildStdout(i)) => {
-                if let Some(child) = children.get_mut(i) {
+                if let Some(child) = state.children.get_mut(i) {
                     match child.stdout.read_async() {
                         ReadResult::Waiting => (),
                         ReadResult::Ok([]) | ReadResult::Err => {
                             child.stdout = ChildPipe::Closed;
                             if let ChildPipe::Closed = child.stderr {
                                 let _status = child.child.wait().unwrap();
-                                children.remove(i);
+                                state.children.remove(i);
                             }
                         }
                         ReadResult::Ok(buf) => {
@@ -685,14 +711,14 @@ unsafe fn run_server(pipe_path: &[u16]) {
                 }
             }
             Some(EventSource::ChildStderr(i)) => {
-                if let Some(child) = children.get_mut(i) {
+                if let Some(child) = state.children.get_mut(i) {
                     match child.stderr.read_async() {
                         ReadResult::Waiting => (),
                         ReadResult::Ok([]) | ReadResult::Err => {
                             child.stderr = ChildPipe::Closed;
                             if let ChildPipe::Closed = child.stdout {
                                 let _status = child.child.wait().unwrap();
-                                children.remove(i);
+                                state.children.remove(i);
                             }
                         }
                         ReadResult::Ok(buf) => {
