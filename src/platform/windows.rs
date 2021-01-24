@@ -1,4 +1,5 @@
 use std::{
+    convert::Into,
     ops::{Deref, DerefMut},
     os::windows::io::AsRawHandle,
     process::{Child, Command, Stdio},
@@ -23,12 +24,13 @@ use winapi::{
         namedpipeapi::{
             ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, SetNamedPipeHandleState,
         },
-        processenv::GetStdHandle,
+        processenv::{GetCommandLineW, GetStdHandle},
+        processthreadsapi::{CreateProcessW, PROCESS_INFORMATION, STARTUPINFOW},
         synchapi::{CreateEventW, SetEvent, WaitForMultipleObjects},
         winbase::{
-            FILE_FLAG_OVERLAPPED, INFINITE, PIPE_ACCESS_DUPLEX, PIPE_READMODE_BYTE, PIPE_TYPE_BYTE,
-            PIPE_UNLIMITED_INSTANCES, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, WAIT_ABANDONED_0,
-            WAIT_OBJECT_0,
+            DETACHED_PROCESS, FILE_FLAG_OVERLAPPED, INFINITE, NORMAL_PRIORITY_CLASS,
+            PIPE_ACCESS_DUPLEX, PIPE_READMODE_BYTE, PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES,
+            STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, WAIT_ABANDONED_0, WAIT_OBJECT_0,
         },
         wincon::{
             FreeConsole, ENABLE_PROCESSED_OUTPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING,
@@ -50,6 +52,10 @@ use crate::{
     platform::{Key, Platform},
     Args,
 };
+
+const SERVER_PIPE_BUFFER_LEN: usize = 512;
+const CLIENT_PIPE_BUFFER_LEN: usize = 2 * 1024;
+const CHILD_BUFFER_LEN: usize = 2 * 1024;
 
 pub fn run(args: Args) {
     unsafe extern "system" fn ctrl_handler(_ctrl_type: DWORD) -> BOOL {
@@ -98,10 +104,433 @@ fn get_std_handle(which: DWORD) -> Option<HANDLE> {
     }
 }
 
+fn fork_detached() {
+    let mut startup_info = STARTUPINFOW::default();
+    startup_info.cb = std::mem::size_of::<STARTUPINFOW>() as _;
+    let mut process_info = PROCESS_INFORMATION::default();
+
+    let result = unsafe {
+        CreateProcessW(
+            std::ptr::null(),
+            GetCommandLineW(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            FALSE,
+            NORMAL_PRIORITY_CLASS | DETACHED_PROCESS,
+            NULL,
+            std::ptr::null_mut(),
+            &mut startup_info,
+            &mut process_info,
+        )
+    };
+
+    let _ = Handle(process_info.hProcess);
+    let _ = Handle(process_info.hThread);
+
+    if result == FALSE {
+        panic!("could not spawn server");
+    }
+}
+
+enum WaitResult {
+    Signaled(usize),
+    Abandoned(usize),
+    Timeout,
+}
+fn wait_for_multiple_objects(handles: &[HANDLE], timeout: Option<Duration>) -> WaitResult {
+    let timeout = match timeout {
+        Some(duration) => duration.as_millis() as _,
+        None => INFINITE,
+    };
+    let len = MAXIMUM_WAIT_OBJECTS.min(handles.len() as DWORD);
+    let result = unsafe { WaitForMultipleObjects(len, handles.as_ptr(), FALSE, timeout) };
+    if result == WAIT_TIMEOUT {
+        WaitResult::Timeout
+    } else if result >= WAIT_OBJECT_0 && result < (WAIT_OBJECT_0 + len) {
+        WaitResult::Signaled((result - WAIT_OBJECT_0) as _)
+    } else if result >= WAIT_ABANDONED_0 && result < (WAIT_ABANDONED_0 + len) {
+        WaitResult::Abandoned((result - WAIT_ABANDONED_0) as _)
+    } else {
+        panic!("could not wait for event")
+    }
+}
+
 fn make_buffer(len: usize) -> Box<[u8]> {
     let mut buf = Vec::with_capacity(len);
     buf.resize(len, 0);
     buf.into_boxed_slice()
+}
+
+struct Handle(pub HANDLE);
+impl Drop for Handle {
+    fn drop(&mut self) {
+        unsafe { CloseHandle(self.0) };
+    }
+}
+
+struct Event(HANDLE);
+impl Event {
+    pub fn new() -> Self {
+        let handle = unsafe { CreateEventW(std::ptr::null_mut(), TRUE, TRUE, std::ptr::null()) };
+        if handle == NULL {
+            panic!("could not create event");
+        }
+        Self(handle)
+    }
+
+    pub fn handle(&self) -> HANDLE {
+        self.0
+    }
+
+    pub fn notify(&self) {
+        if unsafe { SetEvent(self.0) } == FALSE {
+            panic!("could not set event");
+        }
+    }
+}
+impl Drop for Event {
+    fn drop(&mut self) {
+        unsafe { CloseHandle(self.0) };
+    }
+}
+
+struct Overlapped(OVERLAPPED);
+impl Overlapped {
+    pub fn with_event(event: &Event) -> Self {
+        let mut overlapped = OVERLAPPED::default();
+        overlapped.hEvent = event.handle();
+        Self(overlapped)
+    }
+
+    pub fn as_mut_ptr(&mut self) -> *mut OVERLAPPED {
+        &mut self.0
+    }
+}
+
+enum ReadResult<'a> {
+    Waiting,
+    Ok(&'a [u8]),
+    Err,
+}
+enum WriteResult {
+    Ok,
+    Err,
+}
+
+struct AsyncIO {
+    handle: Handle,
+    overlapped: Overlapped,
+    event: Event,
+    buf: Box<[u8]>,
+    pending_io: bool,
+}
+impl AsyncIO {
+    pub fn from_handle(handle: Handle, buf_len: usize) -> Self {
+        let event = Event::new();
+        let overlapped = Overlapped::with_event(&event);
+
+        Self {
+            handle,
+            overlapped,
+            event,
+            buf: make_buffer(buf_len),
+            pending_io: false,
+        }
+    }
+
+    pub fn read_async(&mut self) -> ReadResult {
+        let mut read_len = 0;
+        if self.pending_io {
+            if unsafe {
+                GetOverlappedResult(
+                    self.handle.0,
+                    self.overlapped.as_mut_ptr(),
+                    &mut read_len,
+                    FALSE,
+                )
+            } == FALSE
+            {
+                match get_last_error() {
+                    ERROR_MORE_DATA => {
+                        self.pending_io = false;
+                        self.event.notify();
+                        ReadResult::Ok(&self.buf[..(read_len as usize)])
+                    }
+                    _ => {
+                        self.pending_io = false;
+                        ReadResult::Err
+                    }
+                }
+            } else {
+                self.pending_io = false;
+                self.event.notify();
+                ReadResult::Ok(&self.buf[..(read_len as usize)])
+            }
+        } else {
+            if unsafe {
+                ReadFile(
+                    self.handle.0,
+                    self.buf.as_mut_ptr() as _,
+                    self.buf.len() as _,
+                    &mut read_len,
+                    self.overlapped.as_mut_ptr(),
+                )
+            } == FALSE
+            {
+                match get_last_error() {
+                    ERROR_IO_PENDING => {
+                        self.pending_io = true;
+                        ReadResult::Waiting
+                    }
+                    _ => {
+                        self.pending_io = false;
+                        ReadResult::Err
+                    }
+                }
+            } else {
+                self.pending_io = false;
+                self.event.notify();
+                ReadResult::Ok(&self.buf[..(read_len as usize)])
+            }
+        }
+    }
+
+    pub unsafe fn write(&mut self, buf: &[u8]) -> WriteResult {
+        let mut write_len = 0;
+        if WriteFile(
+            self.handle.0,
+            buf.as_ptr() as _,
+            buf.len() as _,
+            &mut write_len,
+            std::ptr::null_mut(),
+        ) == FALSE
+        {
+            WriteResult::Err
+        } else {
+            WriteResult::Ok
+        }
+    }
+}
+
+struct PipeToClient(AsyncIO);
+impl Deref for PipeToClient {
+    type Target = AsyncIO;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl DerefMut for PipeToClient {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+impl Drop for PipeToClient {
+    fn drop(&mut self) {
+        println!("dropping pipe to client");
+        unsafe {
+            DisconnectNamedPipe(self.0.handle.0);
+        }
+    }
+}
+
+struct PipeToServer(AsyncIO);
+impl PipeToServer {
+    pub fn connect(path: &[u16]) -> Self {
+        let pipe_handle = unsafe {
+            CreateFileW(
+                path.as_ptr(),
+                GENERIC_READ | GENERIC_WRITE,
+                0,
+                std::ptr::null_mut(),
+                OPEN_EXISTING,
+                FILE_FLAG_OVERLAPPED,
+                NULL,
+            )
+        };
+        if pipe_handle == INVALID_HANDLE_VALUE {
+            panic!("could not establish a connection {}", get_last_error());
+        }
+        println!("pipe handle {}", pipe_handle as usize);
+
+        let mut mode = PIPE_READMODE_BYTE;
+        if unsafe {
+            SetNamedPipeHandleState(
+                pipe_handle,
+                &mut mode,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        } == FALSE
+        {
+            panic!("could not establish a connection");
+        }
+
+        let pipe_handle = Handle(pipe_handle);
+        let io = AsyncIO::from_handle(pipe_handle, CLIENT_PIPE_BUFFER_LEN);
+        io.event.notify();
+        Self(io)
+    }
+}
+impl Deref for PipeToServer {
+    type Target = AsyncIO;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl DerefMut for PipeToServer {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+struct PipeToClientListener {
+    io: AsyncIO,
+}
+impl PipeToClientListener {
+    pub fn new(pipe_path: &[u16]) -> Self {
+        let pipe_handle = unsafe {
+            CreateNamedPipeW(
+                pipe_path.as_ptr(),
+                PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
+                PIPE_TYPE_BYTE | PIPE_READMODE_BYTE,
+                PIPE_UNLIMITED_INSTANCES,
+                SERVER_PIPE_BUFFER_LEN as _,
+                SERVER_PIPE_BUFFER_LEN as _,
+                0,
+                std::ptr::null_mut(),
+            )
+        };
+        if pipe_handle == INVALID_HANDLE_VALUE {
+            panic!("could not create new connection");
+        }
+
+        let pipe_handle = Handle(pipe_handle);
+        let mut pipe = AsyncIO::from_handle(pipe_handle, SERVER_PIPE_BUFFER_LEN);
+
+        if unsafe { ConnectNamedPipe(pipe.handle.0, pipe.overlapped.as_mut_ptr()) } != FALSE {
+            panic!("could not accept incomming connection");
+        }
+
+        pipe.pending_io = match get_last_error() {
+            ERROR_IO_PENDING => true,
+            ERROR_PIPE_CONNECTED => {
+                pipe.event.notify();
+                false
+            }
+            _ => panic!("could not accept incomming connection"),
+        };
+
+        pipe.overlapped = Overlapped::with_event(&pipe.event);
+        Self { io: pipe }
+    }
+
+    pub fn accept(&mut self, pipe_path: &[u16]) -> Option<PipeToClient> {
+        match self.io.read_async() {
+            ReadResult::Waiting => None,
+            ReadResult::Ok(_) => {
+                let mut io = Self::new(pipe_path).io;
+                std::mem::swap(&mut self.io, &mut io);
+                Some(PipeToClient(io))
+            }
+            ReadResult::Err => panic!("could not accept connection {}", get_last_error()),
+        }
+    }
+}
+
+enum ChildPipe {
+    Opened(AsyncIO),
+    Closed,
+}
+impl ChildPipe {
+    pub fn from_handle(handle: Option<Handle>) -> Self {
+        match handle {
+            Some(h) => {
+                let io = AsyncIO::from_handle(h, CHILD_BUFFER_LEN);
+                io.event.notify();
+                Self::Opened(io)
+            }
+            None => Self::Closed,
+        }
+    }
+
+    pub fn read_async(&mut self) -> ReadResult {
+        match self {
+            Self::Opened(io) => io.read_async(),
+            Self::Closed => ReadResult::Err,
+        }
+    }
+}
+impl Drop for ChildPipe {
+    fn drop(&mut self) {
+        let mut pipe = Self::Closed;
+        std::mem::swap(self, &mut pipe);
+        std::mem::forget(pipe);
+    }
+}
+
+struct AsyncChild {
+    child: Child,
+    stdout: ChildPipe,
+    stderr: ChildPipe,
+}
+impl AsyncChild {
+    pub fn from_child(child: Child) -> Self {
+        let stdout = ChildPipe::from_handle(
+            child
+                .stdout
+                .as_ref()
+                .map(AsRawHandle::as_raw_handle)
+                .map(Handle),
+        );
+        let stderr = ChildPipe::from_handle(
+            child
+                .stderr
+                .as_ref()
+                .map(AsRawHandle::as_raw_handle)
+                .map(Handle),
+        );
+
+        Self {
+            child,
+            stdout,
+            stderr,
+        }
+    }
+}
+impl Drop for AsyncChild {
+    fn drop(&mut self) {
+        self.child.wait().unwrap();
+    }
+}
+
+enum EventSource {
+    ConnectionListener,
+    Connection(usize),
+    ChildStdout(usize),
+    ChildStderr(usize),
+}
+#[derive(Default)]
+struct Events {
+    wait_handles: Vec<HANDLE>,
+    sources: Vec<EventSource>,
+}
+impl Events {
+    pub fn track(&mut self, event: &Event, source: EventSource) {
+        self.wait_handles.push(event.handle());
+        self.sources.push(source);
+    }
+
+    pub fn wait_one(&mut self, timeout: Option<Duration>) -> Option<EventSource> {
+        let result = match wait_for_multiple_objects(&self.wait_handles, timeout) {
+            WaitResult::Signaled(i) => Some(self.sources.swap_remove(i)),
+            WaitResult::Abandoned(_) => unreachable!(),
+            WaitResult::Timeout => None,
+        };
+
+        self.wait_handles.clear();
+        self.sources.clear();
+        result
+    }
 }
 
 struct SlotVec<T>(Vec<Option<T>>);
@@ -150,397 +579,6 @@ impl<T> SlotVec<T> {
         })
     }
 }
-
-enum WaitResult {
-    Signaled(usize),
-    Abandoned(usize),
-    Timeout,
-}
-fn wait_for_multiple_objects(handles: &[HANDLE], timeout: Option<Duration>) -> WaitResult {
-    let timeout = match timeout {
-        Some(duration) => duration.as_millis() as _,
-        None => INFINITE,
-    };
-    let len = MAXIMUM_WAIT_OBJECTS.min(handles.len() as DWORD);
-    let result = unsafe { WaitForMultipleObjects(len, handles.as_ptr(), FALSE, timeout) };
-    if result == WAIT_TIMEOUT {
-        WaitResult::Timeout
-    } else if result >= WAIT_OBJECT_0 && result < (WAIT_OBJECT_0 + len) {
-        WaitResult::Signaled((result - WAIT_OBJECT_0) as _)
-    } else if result >= WAIT_ABANDONED_0 && result < (WAIT_ABANDONED_0 + len) {
-        WaitResult::Abandoned((result - WAIT_ABANDONED_0) as _)
-    } else {
-        panic!("could not wait for event")
-    }
-}
-
-const SERVER_PIPE_BUFFER_LEN: usize = 512;
-const CLIENT_PIPE_BUFFER_LEN: usize = 2 * 1024;
-const CHILD_BUFFER_LEN: usize = 2 * 1024;
-
-struct Event(HANDLE);
-impl Event {
-    pub fn new() -> Self {
-        let handle = unsafe { CreateEventW(std::ptr::null_mut(), TRUE, TRUE, std::ptr::null()) };
-        if handle == NULL {
-            panic!("could not create event");
-        }
-        Self(handle)
-    }
-
-    pub fn handle(&self) -> HANDLE {
-        self.0
-    }
-
-    pub fn notify(&self) {
-        if unsafe { SetEvent(self.0) } == FALSE {
-            panic!("could not set event");
-        }
-    }
-}
-impl Drop for Event {
-    fn drop(&mut self) {
-        if unsafe { CloseHandle(self.0) } == FALSE {
-            panic!("could not drop event");
-        }
-    }
-}
-
-struct Overlapped(OVERLAPPED);
-impl Overlapped {
-    pub fn with_event(event: &Event) -> Self {
-        let mut overlapped = OVERLAPPED::default();
-        overlapped.hEvent = event.handle();
-        Self(overlapped)
-    }
-
-    pub fn as_mut_ptr(&mut self) -> *mut OVERLAPPED {
-        &mut self.0
-    }
-}
-
-enum ReadResult<'a> {
-    Waiting,
-    Ok(&'a [u8]),
-    Err,
-}
-enum WriteResult {
-    Ok,
-    Err,
-}
-
-struct AsyncIO {
-    handle: HANDLE,
-    overlapped: Overlapped,
-    event: Event,
-    buf: Box<[u8]>,
-    pending_io: bool,
-}
-impl AsyncIO {
-    pub fn from_handle(handle: HANDLE, buf_len: usize) -> Self {
-        let event = Event::new();
-        let overlapped = Overlapped::with_event(&event);
-
-        Self {
-            handle,
-            overlapped,
-            event,
-            buf: make_buffer(buf_len),
-            pending_io: false,
-        }
-    }
-
-    pub fn read_async(&mut self) -> ReadResult {
-        let mut read_len = 0;
-        if self.pending_io {
-            if unsafe {
-                GetOverlappedResult(
-                    self.handle,
-                    self.overlapped.as_mut_ptr(),
-                    &mut read_len,
-                    FALSE,
-                )
-            } == FALSE
-            {
-                match get_last_error() {
-                    ERROR_MORE_DATA => {
-                        self.pending_io = false;
-                        self.event.notify();
-                        ReadResult::Ok(&self.buf[..(read_len as usize)])
-                    }
-                    _ => {
-                        self.pending_io = false;
-                        ReadResult::Err
-                    }
-                }
-            } else {
-                self.pending_io = false;
-                self.event.notify();
-                ReadResult::Ok(&self.buf[..(read_len as usize)])
-            }
-        } else {
-            if unsafe {
-                ReadFile(
-                    self.handle,
-                    self.buf.as_mut_ptr() as _,
-                    self.buf.len() as _,
-                    &mut read_len,
-                    self.overlapped.as_mut_ptr(),
-                )
-            } == FALSE
-            {
-                match get_last_error() {
-                    ERROR_IO_PENDING => {
-                        self.pending_io = true;
-                        ReadResult::Waiting
-                    }
-                    _ => {
-                        self.pending_io = false;
-                        ReadResult::Err
-                    }
-                }
-            } else {
-                self.pending_io = false;
-                self.event.notify();
-                ReadResult::Ok(&self.buf[..(read_len as usize)])
-            }
-        }
-    }
-
-    pub unsafe fn write(&mut self, buf: &[u8]) -> WriteResult {
-        let mut write_len = 0;
-        if WriteFile(
-            self.handle,
-            buf.as_ptr() as _,
-            buf.len() as _,
-            &mut write_len,
-            std::ptr::null_mut(),
-        ) == FALSE
-        {
-            WriteResult::Err
-        } else {
-            WriteResult::Ok
-        }
-    }
-}
-impl Drop for AsyncIO {
-    fn drop(&mut self) {
-        println!("dropping async");
-        unsafe {
-            if CloseHandle(self.handle) == FALSE {
-                panic!("could not drop pipe");
-            }
-        }
-    }
-}
-
-struct PipeToClient(AsyncIO);
-impl Deref for PipeToClient {
-    type Target = AsyncIO;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-impl DerefMut for PipeToClient {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-impl Drop for PipeToClient {
-    fn drop(&mut self) {
-        println!("dropping pipe to client");
-        unsafe {
-            DisconnectNamedPipe(self.0.handle);
-        }
-    }
-}
-
-struct PipeToServer(AsyncIO);
-impl PipeToServer {
-    pub fn connect(path: &[u16]) -> Self {
-        let pipe_handle = unsafe {
-            CreateFileW(
-                path.as_ptr(),
-                GENERIC_READ | GENERIC_WRITE,
-                0,
-                std::ptr::null_mut(),
-                OPEN_EXISTING,
-                FILE_FLAG_OVERLAPPED,
-                NULL,
-            )
-        };
-        if pipe_handle == INVALID_HANDLE_VALUE {
-            panic!("could not establish a connection {}", get_last_error());
-        }
-        println!("pipe handle {}", pipe_handle as usize);
-
-        let mut mode = PIPE_READMODE_BYTE;
-        if unsafe {
-            SetNamedPipeHandleState(
-                pipe_handle,
-                &mut mode,
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-            )
-        } == FALSE
-        {
-            panic!("could not establish a connection");
-        }
-
-        let io = AsyncIO::from_handle(pipe_handle, CLIENT_PIPE_BUFFER_LEN);
-        io.event.notify();
-        Self(io)
-    }
-}
-impl Deref for PipeToServer {
-    type Target = AsyncIO;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-impl DerefMut for PipeToServer {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-struct PipeToClientListener {
-    io: AsyncIO,
-}
-impl PipeToClientListener {
-    pub fn new(pipe_path: &[u16]) -> Self {
-        let pipe_handle = unsafe {
-            CreateNamedPipeW(
-                pipe_path.as_ptr(),
-                PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
-                PIPE_TYPE_BYTE | PIPE_READMODE_BYTE,
-                PIPE_UNLIMITED_INSTANCES,
-                SERVER_PIPE_BUFFER_LEN as _,
-                SERVER_PIPE_BUFFER_LEN as _,
-                0,
-                std::ptr::null_mut(),
-            )
-        };
-        if pipe_handle == INVALID_HANDLE_VALUE {
-            panic!("could not create new connection");
-        }
-
-        let mut pipe = AsyncIO::from_handle(pipe_handle, SERVER_PIPE_BUFFER_LEN);
-
-        if unsafe { ConnectNamedPipe(pipe.handle, pipe.overlapped.as_mut_ptr()) } != FALSE {
-            panic!("could not accept incomming connection");
-        }
-
-        pipe.pending_io = match get_last_error() {
-            ERROR_IO_PENDING => true,
-            ERROR_PIPE_CONNECTED => {
-                pipe.event.notify();
-                false
-            }
-            _ => panic!("could not accept incomming connection"),
-        };
-
-        pipe.overlapped = Overlapped::with_event(&pipe.event);
-        Self { io: pipe }
-    }
-
-    pub fn accept(&mut self, pipe_path: &[u16]) -> Option<PipeToClient> {
-        match self.io.read_async() {
-            ReadResult::Waiting => None,
-            ReadResult::Ok(_) => {
-                let mut io = Self::new(pipe_path).io;
-                std::mem::swap(&mut self.io, &mut io);
-                Some(PipeToClient(io))
-            }
-            ReadResult::Err => panic!("could not accept connection {}", get_last_error()),
-        }
-    }
-}
-
-enum ChildPipe {
-    Opened(AsyncIO),
-    Closed,
-}
-impl ChildPipe {
-    pub fn from_handle(handle: Option<HANDLE>) -> Self {
-        match handle {
-            Some(h) => {
-                let io = AsyncIO::from_handle(h, CHILD_BUFFER_LEN);
-                io.event.notify();
-                Self::Opened(io)
-            }
-            None => Self::Closed,
-        }
-    }
-
-    pub fn read_async(&mut self) -> ReadResult {
-        match self {
-            Self::Opened(io) => io.read_async(),
-            Self::Closed => ReadResult::Err,
-        }
-    }
-}
-impl Drop for ChildPipe {
-    fn drop(&mut self) {
-        let mut pipe = Self::Closed;
-        std::mem::swap(self, &mut pipe);
-        std::mem::forget(pipe);
-    }
-}
-
-struct AsyncChild {
-    child: Child,
-    stdout: ChildPipe,
-    stderr: ChildPipe,
-}
-impl AsyncChild {
-    pub fn from_child(child: Child) -> Self {
-        let stdout = ChildPipe::from_handle(child.stdout.as_ref().map(AsRawHandle::as_raw_handle));
-        let stderr = ChildPipe::from_handle(child.stderr.as_ref().map(AsRawHandle::as_raw_handle));
-
-        Self {
-            child,
-            stdout,
-            stderr,
-        }
-    }
-}
-impl Drop for AsyncChild {
-    fn drop(&mut self) {
-        self.child.wait().unwrap();
-    }
-}
-
-enum EventSource {
-    ConnectionListener,
-    Connection(usize),
-    ChildStdout(usize),
-    ChildStderr(usize),
-}
-#[derive(Default)]
-struct Events {
-    wait_handles: Vec<HANDLE>,
-    sources: Vec<EventSource>,
-}
-impl Events {
-    pub fn track(&mut self, event: &Event, source: EventSource) {
-        self.wait_handles.push(event.handle());
-        self.sources.push(source);
-    }
-
-    pub fn wait_one(&mut self, timeout: Option<Duration>) -> Option<EventSource> {
-        let result = match wait_for_multiple_objects(&self.wait_handles, timeout) {
-            WaitResult::Signaled(i) => Some(self.sources.swap_remove(i)),
-            WaitResult::Abandoned(_) => unreachable!(),
-            WaitResult::Timeout => None,
-        };
-
-        self.wait_handles.clear();
-        self.sources.clear();
-        result
-    }
-}
-
 unsafe fn run_server(pipe_path: &[u16]) {
     if file_exists(pipe_path) {
         return;
@@ -675,8 +713,9 @@ unsafe fn run_server(pipe_path: &[u16]) {
 
 unsafe fn run_client(pipe_path: &[u16], input_handle: HANDLE, output_handle: HANDLE) {
     if !file_exists(pipe_path) {
-        println!("pipe does not exist. running server");
-        //let server =
+        println!("pipe does not exist. running server...");
+
+        fork_detached();
 
         while !file_exists(pipe_path) {
             std::thread::sleep(Duration::from_millis(100));
