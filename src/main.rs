@@ -69,16 +69,34 @@ pub struct Args {
 }
 
 fn main() {
-    let args: Args = argh::from_env();
-    platform::run(args);
-    return;
+    if false {
+        let args: Args = argh::from_env();
+        if args.version {
+            let name = env!("CARGO_PKG_NAME");
+            let version = env!("CARGO_PKG_VERSION");
+            println!("{} version {}", name, version);
+        } else if let Err(e) = application::run(args) {
+            eprintln!("{}", e);
+        }
+    }
 
+    //platform::run();
+
+    /*
     let args: Args = argh::from_env();
     if args.version {
         let name = env!("CARGO_PKG_NAME");
         let version = env!("CARGO_PKG_VERSION");
         println!("{} version {}", name, version);
-    } else if let Err(e) = application::run(args) {
-        eprintln!("{}", e);
+    } else {
+        if false {
+            if let Err(e) = application::run(args) {
+                eprintln!("{}", e);
+            }
+            return;
+        }
+
+        //platform::run();
     }
+    */
 }

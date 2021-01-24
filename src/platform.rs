@@ -1,12 +1,13 @@
-use std::{error::Error, fmt, str::Chars};
-
-// TODO: move ConnectionEvent here
-//use crate::event_manager::ConnectionEvent;
+use std::{
+    error::Error,
+    fmt, io,
+    process::{Command, ExitStatus},
+    str::Chars,
+};
 
 use crate::{
     client::TargetClient,
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
-    Args,
 };
 
 #[cfg(windows)]
@@ -375,46 +376,55 @@ impl<'de> Serialize<'de> for Key {
     }
 }
 
-pub enum PlatformEvent<'a> {
-    Close,
+#[derive(Clone, Copy)]
+pub struct ConnectionHandle(usize);
+#[derive(Clone, Copy)]
+pub struct ProcessHandle(usize);
+
+pub enum ServerEvent<'a> {
     Idle,
-    Resize(usize, usize),
-    Key(Key),
-    ClientOpen(TargetClient),
-    ClientClose(TargetClient),
-    ClientMessage(TargetClient, &'a [u8]),
-    ServerMessage(&'a [u8]),
-    ProcessStdout(usize, &'a [u8]),
+    ConnectionOpen(ConnectionHandle),
+    ConnectionClose(ConnectionHandle),
+    ConnectionMessage(ConnectionHandle, &'a [u8]),
+    ProcessStdout(ProcessHandle, &'a [u8]),
+    ProcessStderr(ProcessHandle, &'a [u8]),
+    ProcessExit(ProcessHandle, ExitStatus),
 }
 
-pub trait PlatformApplication {
-    fn on_event<P>(&mut self, platform: &mut P)
+pub enum ClientEvent<'a> {
+    Resize(usize, usize),
+    Key(Key),
+    Message(&'a [u8]),
+}
+
+pub trait ServerApplication: Sized {
+    fn new() -> Option<Self>;
+    fn on_event<P>(&mut self, platform: &mut P, event: ServerEvent)
     where
         P: Platform;
 }
 
-pub trait Platform {
-    //
+pub trait ClientApplication: Sized {
+    fn new() -> Option<Self>;
+    fn on_event(&mut self, event: ClientEvent, screen: &mut Vec<u8>);
 }
 
-pub fn run(args: Args) {
+pub trait Platform {
+    fn write_to_connection(&mut self, handle: ConnectionHandle, buf: &[u8]) -> bool;
+    fn spawn_process(&mut self, command: Command) -> io::Result<ProcessHandle>;
+    fn write_to_process(&mut self, handle: ProcessHandle, buf: &[u8]) -> bool;
+}
+
+pub fn run<S, C>()
+where
+    S: ServerApplication,
+    C: ClientApplication,
+{
     #[cfg(windows)]
     {
-        windows::run(args);
+        windows::run::<S, C>();
     }
 }
-
-/*
-for event in platfor_events.iter() {
-    match event {
-        PlatformEvent::Idle => (),
-        PlatformEvent::Key(key) => {
-            editor.on_key(key);
-        }
-        PlatformEvent::
-    }
-}
-*/
 
 #[cfg(test)]
 mod tests {

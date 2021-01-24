@@ -48,16 +48,17 @@ use winapi::{
     },
 };
 
-use crate::{
-    platform::{Key, Platform},
-    Args,
-};
+use crate::platform::{ClientApplication, Key, Platform, ServerApplication};
 
 const SERVER_PIPE_BUFFER_LEN: usize = 512;
 const CLIENT_PIPE_BUFFER_LEN: usize = 2 * 1024;
 const CHILD_BUFFER_LEN: usize = 2 * 1024;
 
-pub fn run(args: Args) {
+pub fn run<S, C>()
+where
+    S: ServerApplication,
+    C: ClientApplication,
+{
     unsafe extern "system" fn ctrl_handler(_ctrl_type: DWORD) -> BOOL {
         FALSE
     }
@@ -667,6 +668,7 @@ unsafe fn run_server(pipe_path: &[u16]) {
                         ReadResult::Ok([]) | ReadResult::Err => {
                             child.stdout = ChildPipe::Closed;
                             if let ChildPipe::Closed = child.stderr {
+                                let _status = child.child.wait().unwrap();
                                 children.remove(i);
                             }
                         }
@@ -689,6 +691,7 @@ unsafe fn run_server(pipe_path: &[u16]) {
                         ReadResult::Ok([]) | ReadResult::Err => {
                             child.stderr = ChildPipe::Closed;
                             if let ChildPipe::Closed = child.stdout {
+                                let _status = child.child.wait().unwrap();
                                 children.remove(i);
                             }
                         }
