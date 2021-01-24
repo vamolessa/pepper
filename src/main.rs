@@ -73,7 +73,9 @@ struct S {
 }
 impl platform::ServerApplication for S {
     fn new() -> Option<Self> {
-        None
+        Some(Self {
+            connections: Vec::new(),
+        })
     }
 
     fn on_event<P>(&mut self, platform: &mut P, event: platform::ServerEvent) -> bool
