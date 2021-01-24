@@ -6,6 +6,7 @@ use std::{error::Error, fmt, str::Chars};
 use crate::{
     client::TargetClient,
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
+    Args,
 };
 
 #[cfg(windows)]
@@ -396,10 +397,10 @@ pub trait Platform {
     //
 }
 
-pub fn run() {
+pub fn run(args: Args) {
     #[cfg(windows)]
     {
-        windows::run();
+        windows::run(args);
     }
 }
 

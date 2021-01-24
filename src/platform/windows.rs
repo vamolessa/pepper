@@ -12,7 +12,9 @@ use winapi::{
         winerror::{ERROR_IO_PENDING, ERROR_MORE_DATA, ERROR_PIPE_CONNECTED, WAIT_TIMEOUT},
     },
     um::{
-        consoleapi::{AllocConsole, GetConsoleMode, ReadConsoleInputW, SetConsoleCtrlHandler, SetConsoleMode},
+        consoleapi::{
+            AllocConsole, GetConsoleMode, ReadConsoleInputW, SetConsoleCtrlHandler, SetConsoleMode,
+        },
         errhandlingapi::GetLastError,
         fileapi::{CreateFileW, FindFirstFileW, ReadFile, WriteFile, OPEN_EXISTING},
         handleapi::{CloseHandle, INVALID_HANDLE_VALUE},
@@ -44,26 +46,17 @@ use winapi::{
     },
 };
 
-use crate::platform::{Key, Platform};
+use crate::{
+    platform::{Key, Platform},
+    Args,
+};
 
-pub fn run() {
-    unsafe { run_unsafe() }
-}
-
-unsafe fn run_unsafe() {
-    eprintln!("hello");
-    let result = FreeConsole();
-    eprintln!("after free console {}", result);
-    std::thread::sleep(Duration::from_secs(2));
-    let result = AllocConsole();
-    eprintln!("after sleep {}", result);
-    return;
-
+pub fn run(args: Args) {
     unsafe extern "system" fn ctrl_handler(_ctrl_type: DWORD) -> BOOL {
         FALSE
     }
 
-    if SetConsoleCtrlHandler(Some(ctrl_handler), TRUE) == FALSE {
+    if unsafe { SetConsoleCtrlHandler(Some(ctrl_handler), TRUE) } == FALSE {
         panic!("could not set ctrl handler");
     }
 
@@ -73,18 +66,34 @@ unsafe fn run_unsafe() {
     pipe_path.extend(session_name.encode_utf16());
     pipe_path.push(0);
 
-    let mut find_data = Default::default();
-    if FindFirstFileW(pipe_path.as_ptr(), &mut find_data) == INVALID_HANDLE_VALUE {
+    let input_handle = unsafe { GetStdHandle(STD_INPUT_HANDLE) };
+    let output_handle = unsafe { GetStdHandle(STD_OUTPUT_HANDLE) };
+
+    if input_handle == INVALID_HANDLE_VALUE || output_handle == INVALID_HANDLE_VALUE {
         println!("run server");
-        run_server(&pipe_path);
+        unsafe { run_server(&pipe_path) };
     } else {
         println!("run client");
-        run_client(&pipe_path);
+        unsafe { run_client(&pipe_path, input_handle, output_handle) };
     }
+
+    /*
+    if file_exists(pipe_path) {
+        println!("run server");
+        run_client(&pipe_path);
+    } else {
+        println!("run client");
+        run_server(&pipe_path);
+    }
+    */
 }
 
 fn get_last_error() -> DWORD {
     unsafe { GetLastError() }
+}
+
+fn file_exists(path: &[u16]) -> bool {
+    unsafe { FindFirstFileW(path.as_ptr(), &mut Default::default()) != INVALID_HANDLE_VALUE }
 }
 
 fn make_buffer(len: usize) -> Box<[u8]> {
@@ -347,6 +356,10 @@ impl Drop for PipeToClient {
 struct PipeToServer(AsyncIO);
 impl PipeToServer {
     pub fn connect(path: &[u16]) -> Self {
+        while !file_exists(path) {
+            std::thread::sleep(Duration::from_millis(1000));
+        }
+
         let pipe_handle = unsafe {
             CreateFileW(
                 path.as_ptr(),
@@ -359,8 +372,9 @@ impl PipeToServer {
             )
         };
         if pipe_handle == INVALID_HANDLE_VALUE {
-            panic!("could not establish a connection");
+            panic!("could not establish a connection {}", get_last_error());
         }
+        println!("pipe handle {}", pipe_handle as usize);
 
         let mut mode = PIPE_READMODE_BYTE;
         if unsafe {
@@ -657,9 +671,8 @@ unsafe fn run_server(pipe_path: &[u16]) {
     println!("finish server");
 }
 
-unsafe fn run_client(pipe_path: &[u16]) {
-    let input_handle = GetStdHandle(STD_INPUT_HANDLE);
-    let output_handle = GetStdHandle(STD_OUTPUT_HANDLE);
+unsafe fn run_client(pipe_path: &[u16], input_handle: HANDLE, output_handle: HANDLE) {
+    let mut pipe = PipeToServer::connect(pipe_path);
 
     let mut original_input_mode = DWORD::default();
     if GetConsoleMode(input_handle, &mut original_input_mode) == FALSE {
@@ -681,7 +694,6 @@ unsafe fn run_client(pipe_path: &[u16]) {
         panic!("could not set console output mode");
     }
 
-    let mut pipe = PipeToServer::connect(pipe_path);
     match pipe.write(b"hello there!") {
         WriteResult::Ok => (),
         WriteResult::Err => panic!("could not send message to server"),

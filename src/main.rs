@@ -69,10 +69,9 @@ pub struct Args {
 }
 
 fn main() {
-    if true {
-        platform::run();
-        return;
-    }
+    let args: Args = argh::from_env();
+    platform::run(args);
+    return;
 
     let args: Args = argh::from_env();
     if args.version {
