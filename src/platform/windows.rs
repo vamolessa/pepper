@@ -28,8 +28,8 @@ use winapi::{
         processthreadsapi::{CreateProcessW, PROCESS_INFORMATION, STARTUPINFOW},
         synchapi::{CreateEventW, SetEvent, WaitForMultipleObjects},
         winbase::{
-            DETACHED_PROCESS, FILE_FLAG_OVERLAPPED, INFINITE, NORMAL_PRIORITY_CLASS,
-            PIPE_ACCESS_DUPLEX, PIPE_READMODE_BYTE, PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES,
+            FILE_FLAG_OVERLAPPED, INFINITE, NORMAL_PRIORITY_CLASS, PIPE_ACCESS_DUPLEX,
+            PIPE_READMODE_BYTE, PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES, STARTF_USESTDHANDLES,
             STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, WAIT_ABANDONED_0, WAIT_OBJECT_0,
         },
         wincon::{
@@ -104,9 +104,14 @@ fn get_std_handle(which: DWORD) -> Option<HANDLE> {
     }
 }
 
-fn fork_detached() {
+fn fork() {
     let mut startup_info = STARTUPINFOW::default();
     startup_info.cb = std::mem::size_of::<STARTUPINFOW>() as _;
+    startup_info.dwFlags = STARTF_USESTDHANDLES;
+    startup_info.hStdInput = INVALID_HANDLE_VALUE;
+    startup_info.hStdOutput = INVALID_HANDLE_VALUE;
+    startup_info.hStdError = INVALID_HANDLE_VALUE;
+
     let mut process_info = PROCESS_INFORMATION::default();
 
     let result = unsafe {
@@ -116,7 +121,7 @@ fn fork_detached() {
             std::ptr::null_mut(),
             std::ptr::null_mut(),
             FALSE,
-            NORMAL_PRIORITY_CLASS | DETACHED_PROCESS,
+            NORMAL_PRIORITY_CLASS,
             NULL,
             std::ptr::null_mut(),
             &mut startup_info,
@@ -326,7 +331,6 @@ impl DerefMut for PipeToClient {
 }
 impl Drop for PipeToClient {
     fn drop(&mut self) {
-        println!("dropping pipe to client");
         unsafe {
             DisconnectNamedPipe(self.0.handle.0);
         }
@@ -350,7 +354,6 @@ impl PipeToServer {
         if pipe_handle == INVALID_HANDLE_VALUE {
             panic!("could not establish a connection {}", get_last_error());
         }
-        println!("pipe handle {}", pipe_handle as usize);
 
         let mut mode = PIPE_READMODE_BYTE;
         if unsafe {
@@ -624,7 +627,7 @@ unsafe fn run_server(pipe_path: &[u16]) {
                             match Key::parse(&mut buf.iter().map(|b| *b as _)) {
                                 Ok(Key::Ctrl('r')) => {
                                     println!("execute program");
-                                    let child = std::process::Command::new("fd")
+                                    let child = std::process::Command::new("fzf")
                                         .stdin(std::process::Stdio::null())
                                         .stdout(std::process::Stdio::piped())
                                         .stderr(std::process::Stdio::null())
@@ -658,7 +661,6 @@ unsafe fn run_server(pipe_path: &[u16]) {
                 }
             }
             Some(EventSource::ChildStdout(i)) => {
-                println!("child stdout event before=======");
                 if let Some(child) = children.get_mut(i) {
                     match child.stdout.read_async() {
                         ReadResult::Waiting => (),
@@ -679,7 +681,6 @@ unsafe fn run_server(pipe_path: &[u16]) {
                         }
                     }
                 }
-                println!("child stdout event");
             }
             Some(EventSource::ChildStderr(i)) => {
                 if let Some(child) = children.get_mut(i) {
@@ -702,7 +703,6 @@ unsafe fn run_server(pipe_path: &[u16]) {
                         }
                     }
                 }
-                println!("child stderr event");
             }
             None => println!("timeout waiting"),
         }
@@ -715,7 +715,7 @@ unsafe fn run_client(pipe_path: &[u16], input_handle: HANDLE, output_handle: HAN
     if !file_exists(pipe_path) {
         println!("pipe does not exist. running server...");
 
-        fork_detached();
+        fork();
 
         while !file_exists(pipe_path) {
             std::thread::sleep(Duration::from_millis(100));
