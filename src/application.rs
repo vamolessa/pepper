@@ -9,6 +9,10 @@ use std::{
     time::Instant,
 };
 
+use crate::platform::{
+    ClientApplication, ConnectionHandle, Platform, ProcessHandle, ServerApplication, ServerEvent,
+};
+
 use crate::{
     client::{ClientManager, TargetClient},
     client_event::{ClientEvent, ClientEventSerializer, Key, LocalEvent},
@@ -20,6 +24,87 @@ use crate::{
     ui::{self, Ui, UiKind, UiResult},
     Args,
 };
+
+fn print_version() {
+    let name = env!("CARGO_PKG_NAME");
+    let version = env!("CARGO_PKG_VERSION");
+    println!("{} version {}", name, version);
+}
+
+pub struct Server {
+    args: Args,
+    connections: Vec<ConnectionHandle>,
+}
+impl ServerApplication for Server {
+    fn new() -> Option<Self> {
+        let args: Args = argh::from_env();
+        if args.version {
+            print_version();
+            return None;
+        }
+
+        let (event_sender, event_receiver) = mpsc::channel();
+        let current_dir = env::current_dir().expect("could not retrieve the current directory");
+        let tasks = TaskManager::new(event_sender.clone());
+        let lsp = LspClientCollection::new(event_sender.clone());
+        let mut editor = Editor::new(current_dir, event_sender.clone(), tasks, lsp);
+        let mut clients = ClientManager::default();
+
+        for config in &args.config {
+            editor.load_config(&mut clients, config);
+        }
+
+        Some(Self {
+            args,
+            connections: Vec::new(),
+        })
+    }
+
+    fn on_event<P>(&mut self, platform: &mut P, event: ServerEvent) -> bool
+    where
+        P: Platform,
+    {
+        match event {
+            ServerEvent::ConnectionOpen(handle) => self.connections.push(handle),
+            ServerEvent::ConnectionClose(handle) => {
+                if let Some(index) = self.connections.iter().position(|c| *c == handle) {
+                    self.connections.remove(index);
+                }
+
+                if self.connections.is_empty() {
+                    return false;
+                }
+            }
+            //ServerEvent::ConnectionMessage(handle) => {
+                //
+            //}
+            _ => (),
+        }
+
+        true
+    }
+}
+
+pub struct Client {
+    //
+}
+impl ClientApplication for Client {
+    fn new() -> Option<Self> {
+        let args: Args = argh::from_env();
+        if args.version {
+            print_version();
+            return None;
+        }
+
+        Some(Self {})
+    }
+
+    fn on_event(&mut self, event: crate::platform::ClientEvent) -> &[u8] {
+        &[]
+    }
+}
+
+// -------------------------------------------
 
 trait Profiler {
     fn begin_frame(&mut self) {}

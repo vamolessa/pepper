@@ -232,21 +232,30 @@ struct AsyncIO {
     overlapped: Overlapped,
     event: Event,
     pending_io: bool,
+    buf: Box<[u8]>,
+    read_len: usize,
 }
 impl AsyncIO {
-    pub fn from_handle(handle: Handle) -> Self {
+    pub fn from_handle(handle: Handle, buf_len: usize) -> Self {
         let event = Event::new();
         let overlapped = Overlapped::with_event(&event);
+
+        let mut buf = Vec::with_capacity(buf_len);
+        buf.resize(buf_len, 0);
+        let buf = buf.into_boxed_slice();
 
         Self {
             handle,
             overlapped,
             event,
             pending_io: false,
+            buf,
+            read_len: 0,
         }
     }
 
-    pub fn read_async(&mut self, buf: &mut ReadBuf) -> ReadResult {
+    pub fn read_async(&mut self) -> ReadResult {
+        self.read_len = 0;
         let mut read_len = 0;
         if self.pending_io {
             if unsafe {
@@ -262,7 +271,8 @@ impl AsyncIO {
                     ERROR_MORE_DATA => {
                         self.pending_io = false;
                         self.event.notify();
-                        ReadResult::Ok(read_len as _)
+                        self.read_len = read_len as _;
+                        ReadResult::Ok(self.read_len)
                     }
                     _ => {
                         self.pending_io = false;
@@ -272,14 +282,15 @@ impl AsyncIO {
             } else {
                 self.pending_io = false;
                 self.event.notify();
-                ReadResult::Ok(read_len as _)
+                self.read_len = read_len as _;
+                ReadResult::Ok(self.read_len)
             }
         } else {
             if unsafe {
                 ReadFile(
                     self.handle.0,
-                    buf.as_mut_ptr() as _,
-                    buf.len() as _,
+                    self.buf.as_mut_ptr() as _,
+                    self.buf.len() as _,
                     &mut read_len,
                     self.overlapped.as_mut_ptr(),
                 )
@@ -298,9 +309,14 @@ impl AsyncIO {
             } else {
                 self.pending_io = false;
                 self.event.notify();
-                ReadResult::Ok(read_len as _)
+                self.read_len = read_len as _;
+                ReadResult::Ok(self.read_len)
             }
         }
+    }
+
+    pub fn get_read_bytes(&self) -> &[u8] {
+        &self.buf[..self.read_len]
     }
 
     pub unsafe fn write(&mut self, buf: &[u8]) -> WriteResult {
@@ -372,7 +388,7 @@ impl PipeToServer {
         }
 
         let pipe_handle = Handle(pipe_handle);
-        let io = AsyncIO::from_handle(pipe_handle);
+        let io = AsyncIO::from_handle(pipe_handle, CLIENT_PIPE_BUFFER_LEN);
         io.event.notify();
         Self(io)
     }
@@ -391,7 +407,6 @@ impl DerefMut for PipeToServer {
 
 struct PipeToClientListener {
     io: AsyncIO,
-    buf: ReadBuf,
 }
 impl PipeToClientListener {
     pub fn new(pipe_path: &[u16]) -> Self {
@@ -412,7 +427,7 @@ impl PipeToClientListener {
         }
 
         let pipe_handle = Handle(pipe_handle);
-        let mut pipe = AsyncIO::from_handle(pipe_handle);
+        let mut pipe = AsyncIO::from_handle(pipe_handle, SERVER_PIPE_BUFFER_LEN);
 
         if unsafe { ConnectNamedPipe(pipe.handle.0, pipe.overlapped.as_mut_ptr()) } != FALSE {
             panic!("could not accept incomming connection");
@@ -428,14 +443,11 @@ impl PipeToClientListener {
         };
 
         pipe.overlapped = Overlapped::with_event(&pipe.event);
-        Self {
-            io: pipe,
-            buf: ReadBuf::with_len(SERVER_PIPE_BUFFER_LEN),
-        }
+        Self { io: pipe }
     }
 
     pub fn accept(&mut self, pipe_path: &[u16]) -> Option<PipeToClient> {
-        match self.io.read_async(&mut self.buf) {
+        match self.io.read_async() {
             ReadResult::Waiting => None,
             ReadResult::Ok(_) => {
                 let mut io = Self::new(pipe_path).io;
@@ -455,18 +467,11 @@ impl ChildPipe {
     pub fn from_handle(handle: Option<Handle>) -> Self {
         match handle {
             Some(h) => {
-                let io = AsyncIO::from_handle(h);
+                let io = AsyncIO::from_handle(h, CHILD_BUFFER_LEN);
                 io.event.notify();
                 Self::Open(io)
             }
             None => Self::Closed,
-        }
-    }
-
-    pub fn read_async(&mut self, buf: &mut ReadBuf) -> ReadResult {
-        match self {
-            Self::Open(io) => io.read_async(buf),
-            Self::Closed => ReadResult::Err,
         }
     }
 }
@@ -540,10 +545,6 @@ impl Events {
 
 struct ReadBuf(Box<[u8]>);
 impl ReadBuf {
-    pub fn empty() -> Self {
-        Self(Box::new([]))
-    }
-
     pub fn with_len(len: usize) -> Self {
         let mut buf = Vec::with_capacity(len);
         buf.resize(len, 0);
@@ -600,27 +601,6 @@ impl<T> SlotVec<T> {
         self.0[index].as_mut()
     }
 
-    pub fn get_mut_or_create_with<F>(&mut self, index: usize, mut creator: F) -> &mut T
-    where
-        F: FnOnce() -> T,
-    {
-        if index >= self.0.len() {
-            self.0.resize_with(index + 1, || None);
-        }
-
-        let entry = &mut self.0[index];
-        match entry {
-            Some(entry) => entry,
-            None => {
-                *entry = Some(creator());
-                match entry {
-                    Some(entry) => entry,
-                    None => unreachable!(),
-                }
-            }
-        }
-    }
-
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
@@ -638,9 +618,6 @@ struct State {
     listener: PipeToClientListener,
     pipes: SlotVec<PipeToClient>,
     children: SlotVec<AsyncChild>,
-    pipe_bufs: SlotVec<ReadBuf>,
-    stdout_bufs: SlotVec<ReadBuf>,
-    stderr_bufs: SlotVec<ReadBuf>,
 }
 
 impl Platform for State {
@@ -683,9 +660,6 @@ where
         listener: PipeToClientListener::new(pipe_path),
         pipes: SlotVec::new(),
         children: SlotVec::new(),
-        pipe_bufs: SlotVec::new(),
-        stdout_bufs: SlotVec::new(),
-        stderr_bufs: SlotVec::new(),
     };
 
     macro_rules! send_event {
@@ -716,143 +690,129 @@ where
             Some(EventSource::ConnectionListener) => {
                 if let Some(pipe) = state.listener.accept(pipe_path) {
                     let index = state.pipes.push(pipe);
-                    state
-                        .pipe_bufs
-                        .push(ReadBuf::with_len(SERVER_PIPE_BUFFER_LEN));
                     let handle = ConnectionHandle(index);
                     send_event!(ServerEvent::ConnectionOpen(handle));
                 }
             }
             Some(EventSource::Connection(i)) => {
-                if let Some(pipe) = state.pipes.get_mut(i) {
-                    let buf = state.pipe_bufs.get_mut(i).unwrap();
-                    let handle = ConnectionHandle(i);
-                    match pipe.read_async(buf) {
-                        ReadResult::Waiting => (),
-                        ReadResult::Ok(0) | ReadResult::Err => {
-                            state.pipes.remove(i);
-                            state.pipe_bufs.remove(i);
-                            send_event!(ServerEvent::ConnectionClose(handle));
+                let pipe = match state.pipes.get_mut(i) {
+                    Some(pipe) => pipe,
+                    None => continue,
+                };
+
+                let handle = ConnectionHandle(i);
+                match pipe.read_async() {
+                    ReadResult::Waiting => (),
+                    ReadResult::Err | ReadResult::Ok(0) => {
+                        state.pipes.remove(i);
+                        send_event!(ServerEvent::ConnectionClose(handle));
+                    }
+                    ReadResult::Ok(_) => {
+                        let bytes = pipe.get_read_bytes();
+                        match Key::parse(&mut bytes.iter().map(|b| *b as _)) {
+                            Ok(Key::Ctrl('r')) => {
+                                println!("execute program");
+                                let child = std::process::Command::new("fzf")
+                                    .stdin(std::process::Stdio::null())
+                                    .stdout(std::process::Stdio::piped())
+                                    .stderr(std::process::Stdio::null())
+                                    .spawn()
+                                    .unwrap();
+                                state.children.push(AsyncChild::from_child(child));
+                            }
+                            _ => (),
                         }
-                        ReadResult::Ok(len) => {
-                            let mut temp = ReadBuf::empty();
-                            std::mem::swap(buf, &mut temp);
-                            let buf = temp.slice(len);
 
-                            match Key::parse(&mut buf.iter().map(|b| *b as _)) {
-                                Ok(Key::Ctrl('r')) => {
-                                    println!("execute program");
-                                    let child = std::process::Command::new("fzf")
-                                        .stdin(std::process::Stdio::null())
-                                        .stdout(std::process::Stdio::piped())
-                                        .stderr(std::process::Stdio::null())
-                                        .spawn()
-                                        .unwrap();
-                                    state.children.push(AsyncChild::from_child(child));
+                        let message = String::from_utf8_lossy(bytes);
+                        println!(
+                            "received {} bytes from client {}! message: '{}'",
+                            bytes.len(),
+                            i,
+                            message
+                        );
+
+                        let message = b"thank you for your message!";
+                        match pipe.write(message) {
+                            WriteResult::Ok => (),
+                            WriteResult::Err => {
+                                state.pipes.remove(i);
+                                if state.pipes.is_empty() {
+                                    break;
                                 }
-                                _ => (),
-                            }
-
-                            let message = String::from_utf8_lossy(buf);
-                            println!(
-                                "received {} bytes from client {}! message: '{}'",
-                                len, i, message
-                            );
-
-                            let message = b"thank you for your message!";
-                            match pipe.write(message) {
-                                WriteResult::Ok => (),
-                                WriteResult::Err => {
-                                    state.pipes.remove(i);
-                                    if state.pipes.is_empty() {
-                                        break;
-                                    }
-                                }
-                            }
-
-                            send_event!(ServerEvent::ConnectionMessage(handle, buf));
-                            if let Some(buf) = state.pipe_bufs.get_mut(i) {
-                                std::mem::swap(buf, &mut temp);
                             }
                         }
+
+                        send_event!(ServerEvent::ConnectionMessage(handle));
                     }
                 }
             }
             Some(EventSource::ChildStdout(i)) => {
-                if let Some(child) = state.children.get_mut(i) {
-                    let buf = state
-                        .stdout_bufs
-                        .get_mut_or_create_with(i, || ReadBuf::with_len(CHILD_BUFFER_LEN));
-                    let handle = ProcessHandle(i);
-                    match child.stdout.read_async(buf) {
-                        ReadResult::Waiting => (),
-                        ReadResult::Ok(0) | ReadResult::Err => {
-                            child.stdout = ChildPipe::Closed;
-                            if let ChildPipe::Closed = child.stderr {
-                                let status = child.child.wait().unwrap();
-                                state.children.remove(i);
-                                state.stdout_bufs.remove(i);
-                                state.stderr_bufs.remove(i);
-                                send_event!(ServerEvent::ProcessExit(handle, status));
-                            }
-                        }
-                        ReadResult::Ok(len) => {
-                            let mut temp = ReadBuf::empty();
-                            std::mem::swap(buf, &mut temp);
-                            let buf = temp.slice(len);
+                let child = match state.children.get_mut(i) {
+                    Some(child) => child,
+                    None => continue,
+                };
+                let io = match child.stdout {
+                    ChildPipe::Open(ref mut io) => io,
+                    ChildPipe::Closed => continue,
+                };
 
-                            let message = String::from_utf8_lossy(buf);
-                            println!(
-                                "received {} bytes from child {}! message: '{}'",
-                                buf.len(),
-                                i,
-                                message
-                            );
-
-                            send_event!(ServerEvent::ProcessStdout(handle, buf));
-                            if let Some(buf) = state.stdout_bufs.get_mut(i) {
-                                std::mem::swap(buf, &mut temp);
-                            }
+                let handle = ProcessHandle(i);
+                match io.read_async() {
+                    ReadResult::Waiting => (),
+                    ReadResult::Err | ReadResult::Ok(0) => {
+                        child.stdout = ChildPipe::Closed;
+                        if let ChildPipe::Closed = child.stderr {
+                            let status = child.child.wait().unwrap();
+                            state.children.remove(i);
+                            send_event!(ServerEvent::ProcessExit(handle, status));
                         }
+                    }
+                    ReadResult::Ok(_) => {
+                        let bytes = io.get_read_bytes();
+                        let message = String::from_utf8_lossy(bytes);
+                        println!(
+                            "received {} bytes from child {}! message: '{}'",
+                            bytes.len(),
+                            i,
+                            message
+                        );
+
+                        send_event!(ServerEvent::ProcessStdout(handle));
                     }
                 }
             }
             Some(EventSource::ChildStderr(i)) => {
-                if let Some(child) = state.children.get_mut(i) {
-                    let buf = state
-                        .stderr_bufs
-                        .get_mut_or_create_with(i, || ReadBuf::with_len(CHILD_BUFFER_LEN));
-                    let handle = ProcessHandle(i);
-                    match child.stderr.read_async(buf) {
-                        ReadResult::Waiting => (),
-                        ReadResult::Ok(0) | ReadResult::Err => {
-                            child.stderr = ChildPipe::Closed;
-                            if let ChildPipe::Closed = child.stdout {
-                                let status = child.child.wait().unwrap();
-                                state.children.remove(i);
-                                state.stdout_bufs.remove(i);
-                                state.stderr_bufs.remove(i);
-                                send_event!(ServerEvent::ProcessExit(handle, status));
-                            }
-                        }
-                        ReadResult::Ok(len) => {
-                            let mut temp = ReadBuf::empty();
-                            std::mem::swap(buf, &mut temp);
-                            let buf = temp.slice(len);
+                let child = match state.children.get_mut(i) {
+                    Some(child) => child,
+                    None => continue,
+                };
+                let io = match child.stderr {
+                    ChildPipe::Open(ref mut io) => io,
+                    ChildPipe::Closed => continue,
+                };
 
-                            let message = String::from_utf8_lossy(buf);
-                            println!(
-                                "received {} bytes from child {}! message: '{}'",
-                                buf.len(),
-                                i,
-                                message
-                            );
-
-                            send_event!(ServerEvent::ProcessStderr(handle, buf));
-                            if let Some(buf) = state.stdout_bufs.get_mut(i) {
-                                std::mem::swap(buf, &mut temp);
-                            }
+                let handle = ProcessHandle(i);
+                match io.read_async() {
+                    ReadResult::Waiting => (),
+                    ReadResult::Err | ReadResult::Ok(0) => {
+                        child.stderr = ChildPipe::Closed;
+                        if let ChildPipe::Closed = child.stdout {
+                            let status = child.child.wait().unwrap();
+                            state.children.remove(i);
+                            send_event!(ServerEvent::ProcessExit(handle, status));
                         }
+                    }
+                    ReadResult::Ok(_) => {
+                        let bytes = io.get_read_bytes();
+                        let message = String::from_utf8_lossy(bytes);
+                        println!(
+                            "received {} bytes from child {}! message: '{}'",
+                            bytes.len(),
+                            i,
+                            message
+                        );
+
+                        send_event!(ServerEvent::ProcessStderr(handle));
                     }
                 }
             }
@@ -874,7 +834,6 @@ unsafe fn run_client(pipe_path: &[u16], input_handle: HANDLE, output_handle: HAN
         }
     }
 
-    let mut pipe_buf = ReadBuf::with_len(CLIENT_PIPE_BUFFER_LEN);
     let mut pipe = PipeToServer::connect(pipe_path);
 
     let mut original_input_mode = DWORD::default();
@@ -1001,13 +960,13 @@ unsafe fn run_client(pipe_path: &[u16], input_handle: HANDLE, output_handle: HAN
                     }
                 }
             }
-            1 => match pipe.read_async(&mut pipe_buf) {
+            1 => match pipe.read_async() {
                 ReadResult::Waiting => (),
                 ReadResult::Ok(0) | ReadResult::Err => {
                     break;
                 }
                 ReadResult::Ok(len) => {
-                    let buf = pipe_buf.slice(len);
+                    let buf = &[0u8];
                     let message = String::from_utf8_lossy(buf);
                     println!("received {} bytes from server! message: '{}'", len, message);
                 }

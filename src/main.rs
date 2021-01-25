@@ -68,78 +68,12 @@ pub struct Args {
     files: Vec<String>,
 }
 
-struct S {
-    connections: Vec<platform::ConnectionHandle>,
-}
-impl platform::ServerApplication for S {
-    fn new() -> Option<Self> {
-        Some(Self {
-            connections: Vec::new(),
-        })
-    }
-
-    fn on_event<P>(&mut self, platform: &mut P, event: platform::ServerEvent) -> bool
-    where
-        P: platform::Platform,
-    {
-        match event {
-            platform::ServerEvent::ConnectionOpen(handle) => self.connections.push(handle),
-            platform::ServerEvent::ConnectionClose(handle) => {
-                if let Some(index) = self.connections.iter().position(|c| *c == handle) {
-                    self.connections.remove(index);
-                }
-
-                if self.connections.is_empty() {
-                    return false;
-                }
-            }
-            _ => (),
-        }
-
-        true
-    }
-}
-
-struct C;
-impl platform::ClientApplication for C {
-    fn new() -> Option<Self> {
-        None
-    }
-
-    fn on_event(&mut self, event: platform::ClientEvent) -> &[u8] {
-        &[]
-    }
-}
-
 fn main() {
     if false {
-        let args: Args = argh::from_env();
-        if args.version {
-            let name = env!("CARGO_PKG_NAME");
-            let version = env!("CARGO_PKG_VERSION");
-            println!("{} version {}", name, version);
-        } else if let Err(e) = application::run(args) {
+        if let Err(e) = application::run(argh::from_env()) {
             eprintln!("{}", e);
         }
     }
 
-    platform::run::<S, C>();
-
-    /*
-    let args: Args = argh::from_env();
-    if args.version {
-        let name = env!("CARGO_PKG_NAME");
-        let version = env!("CARGO_PKG_VERSION");
-        println!("{} version {}", name, version);
-    } else {
-        if false {
-            if let Err(e) = application::run(args) {
-                eprintln!("{}", e);
-            }
-            return;
-        }
-
-        //platform::run();
-    }
-    */
+    platform::run::<application::Server, application::Client>();
 }

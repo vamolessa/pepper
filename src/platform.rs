@@ -381,13 +381,13 @@ pub struct ConnectionHandle(pub(crate) usize);
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct ProcessHandle(pub(crate) usize);
 
-pub enum ServerEvent<'a> {
+pub enum ServerEvent {
     Idle,
     ConnectionOpen(ConnectionHandle),
     ConnectionClose(ConnectionHandle),
-    ConnectionMessage(ConnectionHandle, &'a [u8]),
-    ProcessStdout(ProcessHandle, &'a [u8]),
-    ProcessStderr(ProcessHandle, &'a [u8]),
+    ConnectionMessage(ConnectionHandle),
+    ProcessStdout(ProcessHandle),
+    ProcessStderr(ProcessHandle),
     ProcessExit(ProcessHandle, ExitStatus),
 }
 
