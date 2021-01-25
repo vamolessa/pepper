@@ -51,7 +51,7 @@ use winapi::{
 
 use crate::platform::{
     ClientApplication, ClientEvent, ConnectionHandle, Key, Platform, ProcessHandle,
-    ServerApplication, ServerEvent,
+    ServerApplication, ServerEvent, WriteResult,
 };
 
 const SERVER_PIPE_BUFFER_LEN: usize = 512;
@@ -220,10 +220,6 @@ impl Overlapped {
 enum ReadResult {
     Waiting,
     Ok(usize),
-    Err,
-}
-enum WriteResult {
-    Ok,
     Err,
 }
 
@@ -639,15 +635,16 @@ impl Platform for State {
         }
     }
 
-    fn write_to_connection(&mut self, handle: ConnectionHandle, buf: &[u8]) {
-        if let Some(pipe) = self.pipes.get_mut(handle.0) {
-            match pipe.write(buf) {
-                WriteResult::Ok => (),
+    fn write_to_connection(&mut self, handle: ConnectionHandle, buf: &[u8]) -> WriteResult {
+        match self.pipes.get_mut(handle.0) {
+            Some(pipe) => match pipe.write(buf) {
+                WriteResult::Ok => WriteResult::Ok,
                 WriteResult::Err => {
-                    // TODO: notify that the connection was closed here
                     self.pipes.remove(handle.0);
+                    WriteResult::Err
                 }
             }
+            None => WriteResult::Ok,
         }
     }
 
@@ -681,23 +678,25 @@ impl Platform for State {
         }
     }
 
-    fn write_to_process(&mut self, handle: ProcessHandle, buf: &[u8]) {
+    fn write_to_process(&mut self, handle: ProcessHandle, buf: &[u8]) -> WriteResult {
         if let Some(child) = self.children.get_mut(handle.0) {
             if let Some(ref mut stdin) = child.child.stdin {
                 use io::Write;
-                match stdin.write_all(buf) {
-                    Ok(()) => (),
-                    Err(_) => {
-                        // TODO: notify that the process exited here
-                    }
+                if let Err(_) = stdin.write_all(buf) {
+                    let _ = child.child.kill();
+                    let _ = child.child.wait();
+                    return WriteResult::Err;
                 }
             }
         }
+
+        WriteResult::Ok
     }
 
     fn kill_process(&mut self, handle: ProcessHandle) {
         if let Some(child) = self.children.get_mut(handle.0) {
             let _ = child.child.kill();
+            let _ = child.child.wait();
             self.children.remove(handle.0);
         }
     }

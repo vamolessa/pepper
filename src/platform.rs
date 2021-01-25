@@ -381,6 +381,11 @@ pub struct ConnectionHandle(pub(crate) usize);
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct ProcessHandle(pub(crate) usize);
 
+pub enum WriteResult {
+    Ok,
+    Err,
+}
+
 pub enum ServerEvent {
     Idle,
     ConnectionOpen(ConnectionHandle),
@@ -411,13 +416,13 @@ pub trait ClientApplication: Sized {
 
 pub trait Platform {
     fn read_from_connection(&self, handle: ConnectionHandle) -> &[u8];
-    fn write_to_connection(&mut self, handle: ConnectionHandle, buf: &[u8]);
+    fn write_to_connection(&mut self, handle: ConnectionHandle, buf: &[u8]) -> WriteResult;
     fn close_connection(&mut self, handle: ConnectionHandle);
 
     fn spawn_process(&mut self, command: Command) -> io::Result<ProcessHandle>;
     fn read_from_process_stdout(&self, handle: ProcessHandle) -> &[u8];
     fn read_from_process_stderr(&self, handle: ProcessHandle) -> &[u8];
-    fn write_to_process(&mut self, handle: ProcessHandle, buf: &[u8]);
+    fn write_to_process(&mut self, handle: ProcessHandle, buf: &[u8]) -> WriteResult;
     fn kill_process(&mut self, handle: ProcessHandle);
 }
 
