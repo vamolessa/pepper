@@ -258,15 +258,16 @@ impl AsyncIO {
         self.read_len = 0;
         let mut read_len = 0;
         if self.pending_io {
-            if unsafe {
+            let result = unsafe {
                 GetOverlappedResult(
                     self.handle.0,
                     self.overlapped.as_mut_ptr(),
                     &mut read_len,
                     FALSE,
                 )
-            } == FALSE
-            {
+            };
+
+            if result == FALSE {
                 match get_last_error() {
                     ERROR_MORE_DATA => {
                         self.pending_io = false;
@@ -286,7 +287,7 @@ impl AsyncIO {
                 ReadResult::Ok(self.read_len)
             }
         } else {
-            if unsafe {
+            let result = unsafe {
                 ReadFile(
                     self.handle.0,
                     self.buf.as_mut_ptr() as _,
@@ -294,8 +295,9 @@ impl AsyncIO {
                     &mut read_len,
                     self.overlapped.as_mut_ptr(),
                 )
-            } == FALSE
-            {
+            };
+
+            if result == FALSE {
                 match get_last_error() {
                     ERROR_IO_PENDING => {
                         self.pending_io = true;
@@ -319,16 +321,20 @@ impl AsyncIO {
         &self.buf[..self.read_len]
     }
 
-    pub unsafe fn write(&mut self, buf: &[u8]) -> WriteResult {
+    pub fn write(&mut self, buf: &[u8]) -> WriteResult {
+        // TODO: write all bytes!
         let mut write_len = 0;
-        if WriteFile(
-            self.handle.0,
-            buf.as_ptr() as _,
-            buf.len() as _,
-            &mut write_len,
-            std::ptr::null_mut(),
-        ) == FALSE
-        {
+        let result = unsafe {
+            WriteFile(
+                self.handle.0,
+                buf.as_ptr() as _,
+                buf.len() as _,
+                &mut write_len,
+                std::ptr::null_mut(),
+            )
+        };
+
+        if result == FALSE {
             WriteResult::Err
         } else {
             WriteResult::Ok
@@ -375,15 +381,16 @@ impl PipeToServer {
         }
 
         let mut mode = PIPE_READMODE_BYTE;
-        if unsafe {
+        let result = unsafe {
             SetNamedPipeHandleState(
                 pipe_handle,
                 &mut mode,
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
             )
-        } == FALSE
-        {
+        };
+
+        if result == FALSE {
             panic!("could not establish a connection");
         }
 
@@ -597,6 +604,10 @@ impl<T> SlotVec<T> {
         }
     }
 
+    pub fn get(&self, index: usize) -> Option<&T> {
+        self.0[index].as_ref()
+    }
+
     pub fn get_mut(&mut self, index: usize) -> Option<&mut T> {
         self.0[index].as_mut()
     }
@@ -621,24 +632,74 @@ struct State {
 }
 
 impl Platform for State {
-    fn close_connection(&mut self, handle: ConnectionHandle) {
-        unimplemented!()
+    fn read_from_connection(&self, handle: ConnectionHandle) -> &[u8] {
+        match self.pipes.get(handle.0) {
+            Some(pipe) => pipe.get_read_bytes(),
+            None => &[],
+        }
     }
 
     fn write_to_connection(&mut self, handle: ConnectionHandle, buf: &[u8]) {
-        unimplemented!()
+        if let Some(pipe) = self.pipes.get_mut(handle.0) {
+            match pipe.write(buf) {
+                WriteResult::Ok => (),
+                WriteResult::Err => {
+                    // TODO: notify that the connection was closed here
+                    self.pipes.remove(handle.0);
+                }
+            }
+        }
+    }
+
+    fn close_connection(&mut self, handle: ConnectionHandle) {
+        self.pipes.remove(handle.0);
     }
 
     fn spawn_process(&mut self, mut command: Command) -> io::Result<ProcessHandle> {
-        unimplemented!()
+        let child = command.spawn()?;
+        let index = self.children.push(AsyncChild::from_child(child));
+        Ok(ProcessHandle(index))
     }
 
-    fn kill_process(&mut self, handle: ProcessHandle) {
-        unimplemented!()
+    fn read_from_process_stdout(&self, handle: ProcessHandle) -> &[u8] {
+        match self.children.get(handle.0) {
+            Some(child) => match child.stdout {
+                ChildPipe::Open(ref io) => io.get_read_bytes(),
+                ChildPipe::Closed => &[],
+            },
+            None => &[],
+        }
+    }
+
+    fn read_from_process_stderr(&self, handle: ProcessHandle) -> &[u8] {
+        match self.children.get(handle.0) {
+            Some(child) => match child.stderr {
+                ChildPipe::Open(ref io) => io.get_read_bytes(),
+                ChildPipe::Closed => &[],
+            },
+            None => &[],
+        }
     }
 
     fn write_to_process(&mut self, handle: ProcessHandle, buf: &[u8]) {
-        unimplemented!()
+        if let Some(child) = self.children.get_mut(handle.0) {
+            if let Some(ref mut stdin) = child.child.stdin {
+                use io::Write;
+                match stdin.write_all(buf) {
+                    Ok(()) => (),
+                    Err(_) => {
+                        // TODO: notify that the process exited here
+                    }
+                }
+            }
+        }
+    }
+
+    fn kill_process(&mut self, handle: ProcessHandle) {
+        if let Some(child) = self.children.get_mut(handle.0) {
+            let _ = child.child.kill();
+            self.children.remove(handle.0);
+        }
     }
 }
 
