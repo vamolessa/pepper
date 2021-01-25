@@ -36,7 +36,10 @@ pub struct Server {
     connections: Vec<ConnectionHandle>,
 }
 impl ServerApplication for Server {
-    fn new() -> Option<Self> {
+    fn new<P>(platform: &mut P) -> Option<Self>
+    where
+        P: Platform,
+    {
         let args: Args = argh::from_env();
         if args.version {
             print_version();
@@ -47,7 +50,7 @@ impl ServerApplication for Server {
         let current_dir = env::current_dir().expect("could not retrieve the current directory");
         let tasks = TaskManager::new(event_sender.clone());
         let lsp = LspClientCollection::new(event_sender.clone());
-        let mut editor = Editor::new(current_dir, event_sender.clone(), tasks, lsp);
+        let mut editor = Editor::new(current_dir, tasks, lsp);
         let mut clients = ClientManager::default();
 
         for config in &args.config {
@@ -76,7 +79,7 @@ impl ServerApplication for Server {
                 }
             }
             //ServerEvent::ConnectionMessage(handle) => {
-                //
+            //
             //}
             _ => (),
         }
@@ -104,7 +107,12 @@ impl ClientApplication for Client {
     }
 }
 
-// -------------------------------------------
+// --------------------------------------------------------------------------------------
+// --------------------------------------------------------------------------------------
+// --------------------------------------------------------------------------------------
+// --------------------------------------------------------------------------------------
+// --------------------------------------------------------------------------------------
+// --------------------------------------------------------------------------------------
 
 trait Profiler {
     fn begin_frame(&mut self) {}
@@ -258,11 +266,11 @@ fn render_clients<I>(
     clients: &mut ClientManager,
     ui: &mut I,
     connections: &mut ConnectionWithClientCollection,
-) -> UiResult<()>
+) -> UiResult<bool>
 where
     I: Ui,
 {
-    editor.on_pre_render(clients);
+    let needs_redraw = editor.on_pre_render(clients);
 
     let focused_target = clients.focused_target();
     for c in clients.client_refs() {
@@ -274,7 +282,7 @@ where
         }
     }
 
-    Ok(())
+    Ok(needs_redraw)
 }
 
 fn run_server_with_client<P, I>(
@@ -292,7 +300,7 @@ where
     let current_dir = env::current_dir().map_err(Box::new)?;
     let tasks = TaskManager::new(event_sender.clone());
     let lsp = LspClientCollection::new(event_sender.clone());
-    let mut editor = Editor::new(current_dir, event_sender.clone(), tasks, lsp);
+    let mut editor = Editor::new(current_dir, tasks, lsp);
     let mut clients = ClientManager::default();
 
     for config in &args.config {
@@ -306,7 +314,7 @@ where
     let event_manager = EventManager::new()?;
     let event_registry = event_manager.registry();
     let event_manager_loop = event_manager.run_event_loop_in_background(event_sender.clone());
-    let ui_event_loop = ui.run_event_loop_in_background(event_sender);
+    let ui_event_loop = ui.run_event_loop_in_background(event_sender.clone());
 
     connections.register_listener(&event_registry)?;
 
@@ -374,7 +382,11 @@ where
             }
         }
 
-        render_clients(&mut editor, &mut clients, &mut ui, &mut connections)?;
+        let needs_redraw = render_clients(&mut editor, &mut clients, &mut ui, &mut connections)?;
+        if needs_redraw {
+            event_sender.send(LocalEvent::Repaint)?;
+        }
+
         profiler.end_frame();
     }
 

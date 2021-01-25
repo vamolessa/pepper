@@ -643,7 +643,7 @@ impl Platform for State {
                     self.pipes.remove(handle.0);
                     WriteResult::Err
                 }
-            }
+            },
             None => WriteResult::Ok,
         }
     }
@@ -710,16 +710,16 @@ where
         return;
     }
 
-    let mut application = match A::new() {
-        Some(application) => application,
-        None => return,
-    };
-
     let mut state = State {
         events: Events::default(),
         listener: PipeToClientListener::new(pipe_path),
         pipes: SlotVec::new(),
         children: SlotVec::new(),
+    };
+
+    let mut application = match A::new(&mut state) {
+        Some(application) => application,
+        None => return,
     };
 
     macro_rules! send_event {

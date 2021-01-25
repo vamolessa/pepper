@@ -230,16 +230,10 @@ pub struct Editor {
     pub lsp: LspClientCollection,
     pub events: EditorEventQueue,
 
-    local_event_sender: mpsc::Sender<LocalEvent>,
     keymaps: KeyMapCollection,
 }
 impl Editor {
-    pub fn new(
-        current_directory: PathBuf,
-        local_event_sender: mpsc::Sender<LocalEvent>,
-        tasks: TaskManager,
-        lsp: LspClientCollection,
-    ) -> Self {
+    pub fn new(current_directory: PathBuf, tasks: TaskManager, lsp: LspClientCollection) -> Self {
         Self {
             current_directory,
             config: Config::default(),
@@ -263,7 +257,6 @@ impl Editor {
             lsp,
             events: EditorEventQueue::default(),
 
-            local_event_sender,
             keymaps: KeyMapCollection::default(),
         }
     }
@@ -316,12 +309,14 @@ impl Editor {
         }
     }
 
-    pub fn on_pre_render(&mut self, clients: &mut ClientManager) {
+    pub fn on_pre_render(&mut self, clients: &mut ClientManager) -> bool {
         let picker_height = self.picker.update_scroll_and_unfiltered_entries(
             self.config.values.picker_max_height.get() as _,
             &EmptyWordCollection,
             self.read_line.input(),
         );
+
+        let mut needs_redraw = false;
 
         let focused_target = clients.focused_target();
         for c in clients.client_refs() {
@@ -343,12 +338,14 @@ impl Editor {
             {
                 if let HighlightResult::Pending = buffer.update_highlighting(&self.config.syntaxes)
                 {
-                    let _ = self.local_event_sender.send(LocalEvent::Repaint);
+                    needs_redraw = true;
                 }
             }
 
             client.update_view(self, picker_height);
         }
+
+        needs_redraw
     }
 
     pub fn on_client_joined(

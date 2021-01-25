@@ -403,7 +403,9 @@ pub enum ClientEvent<'a> {
 }
 
 pub trait ServerApplication: Sized {
-    fn new() -> Option<Self>;
+    fn new<P>(platform: &mut P) -> Option<Self>
+    where
+        P: Platform;
     fn on_event<P>(&mut self, platform: &mut P, event: ServerEvent) -> bool
     where
         P: Platform;
