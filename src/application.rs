@@ -16,7 +16,7 @@ use crate::platform::{
 use crate::{
     client::{ClientManager, TargetClient},
     client_event::{ClientEvent, ClientEventSerializer, Key, LocalEvent},
-    connection::{ConnectionWithClientCollection, ConnectionWithServer},
+    connection::ClientEventDeserializationBufCollection,
     editor::{Editor, EditorLoop},
     event_manager::{ConnectionEvent, EventManager},
     lsp::LspClientCollection,
@@ -33,7 +33,9 @@ fn print_version() {
 
 pub struct Server {
     args: Args,
-    connections: Vec<ConnectionHandle>,
+    editor: Editor,
+    clients: ClientManager,
+    event_deserialization_bufs: ClientEventDeserializationBufCollection,
 }
 impl ServerApplication for Server {
     fn new<P>(platform: &mut P) -> Option<Self>
@@ -56,9 +58,13 @@ impl ServerApplication for Server {
             editor.load_config(&mut clients, config);
         }
 
+        let event_deserialization_bufs = ClientEventDeserializationBufCollection::default();
+
         Some(Self {
             args,
-            connections: Vec::new(),
+            editor,
+            clients,
+            event_deserialization_bufs,
         })
     }
 
@@ -67,19 +73,27 @@ impl ServerApplication for Server {
         P: Platform,
     {
         match event {
-            ServerEvent::ConnectionOpen(handle) => self.connections.push(handle),
+            ServerEvent::ConnectionOpen(handle) => self.clients.on_client_joined(handle),
             ServerEvent::ConnectionClose(handle) => {
-                if let Some(index) = self.connections.iter().position(|c| *c == handle) {
-                    self.connections.remove(index);
-                }
-
-                if self.connections.is_empty() {
+                self.clients.on_client_left(handle);
+                if self.clients.iter_mut().next().is_none() {
                     return false;
                 }
             }
-            //ServerEvent::ConnectionMessage(handle) => {
-            //
-            //}
+            ServerEvent::ConnectionMessage(handle) => {
+                let bytes = platform.read_from_connection(handle);
+                let editor_loop = self
+                    .event_deserialization_bufs
+                    .read(handle, bytes, |event| {
+                        // handle event
+                    });
+                match editor_loop {
+                    EditorLoop::Continue => (),
+                    EditorLoop::Quit => platform.close_connection(handle),
+                    EditorLoop::QuitAll => return false,
+                }
+            }
+            // TODO: handle other stuff
             _ => (),
         }
 
@@ -112,34 +126,6 @@ impl ClientApplication for Client {
 // --------------------------------------------------------------------------------------
 // --------------------------------------------------------------------------------------
 // --------------------------------------------------------------------------------------
-
-trait Profiler {
-    fn begin_frame(&mut self) {}
-    fn end_frame(&mut self) {}
-}
-
-struct DummyProfiler;
-impl Profiler for DummyProfiler {}
-
-struct SimpleProfiler(Option<Instant>);
-impl SimpleProfiler {
-    pub fn new() -> Self {
-        Self(None)
-    }
-}
-impl Profiler for SimpleProfiler {
-    fn begin_frame(&mut self) {
-        if let None = self.0 {
-            self.0 = Some(Instant::now())
-        }
-    }
-
-    fn end_frame(&mut self) {
-        if let Some(instant) = self.0.take() {
-            eprintln!("{}", instant.elapsed().as_millis());
-        }
-    }
-}
 
 fn u64_to_str(buf: &mut [u8], value: u64) -> &str {
     use std::fmt::Write;
@@ -213,25 +199,26 @@ fn run_with_ui<I>(args: Args, ui: I, session_socket_path: &Path) -> Result<(), B
 where
     I: Ui,
 {
+    /*
     if let Ok(connection) = ConnectionWithServer::connect(session_socket_path) {
         if args.profile {
-            run_client(args, SimpleProfiler::new(), ui, connection)?;
+            run_client(args, ui, connection)?;
         } else {
-            run_client(args, DummyProfiler, ui, connection)?;
+            run_client(args, ui, connection)?;
         }
     } else if let Ok(listener) = ConnectionWithClientCollection::listen(session_socket_path) {
         if args.profile {
-            run_server_with_client(args, SimpleProfiler::new(), ui, listener)?;
+            run_server_with_client(args, ui, listener)?;
         } else {
-            run_server_with_client(args, DummyProfiler, ui, listener)?;
+            run_server_with_client(args, ui, listener)?;
         }
         fs::remove_file(session_socket_path)?;
     } else if let Ok(()) = fs::remove_file(session_socket_path) {
         let listener = ConnectionWithClientCollection::listen(session_socket_path)?;
         if args.profile {
-            run_server_with_client(args, SimpleProfiler::new(), ui, listener)?;
+            run_server_with_client(args, ui, listener)?;
         } else {
-            run_server_with_client(args, DummyProfiler, ui, listener)?;
+            run_server_with_client(args, ui, listener)?;
         }
         fs::remove_file(session_socket_path)?;
     } else {
@@ -241,6 +228,7 @@ where
     }
 
     Ok(())
+    */
 }
 
 fn client_events_from_args<F>(args: &Args, mut func: F)
@@ -281,22 +269,19 @@ where
     Ok(needs_redraw)
 }
 
-fn run_server_with_client<P, I>(
+fn run_server_with_client<I>(
     _: Args,
-    _: P,
     _: I,
     _: ConnectionWithClientCollection,
 ) -> Result<(), Box<dyn Error>>
 where
-    P: Profiler,
     I: Ui,
 {
     Ok(())
 }
 
-fn run_client<P, I>(_: Args, _: P, _: I, _: ConnectionWithServer) -> Result<(), Box<dyn Error>>
+fn run_client<I>(_: Args, _: I, _: ConnectionWithServer) -> Result<(), Box<dyn Error>>
 where
-    P: Profiler,
     I: Ui,
 {
     Ok(())
@@ -487,6 +472,11 @@ where
     drop(ui_event_loop);
 
     connection.close();
+    //let _ = self.stream.set_nonblocking(false);
+    //let _ = self.read_buf.read_from(&mut self.stream);
+    //let _ = self.stream.write(&[0]);
+    //let _ = self.stream.shutdown(Shutdown::Read);
+
     ui.shutdown()?;
     Ok(())
 }

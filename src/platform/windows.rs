@@ -318,6 +318,10 @@ impl AsyncIO {
     }
 
     pub fn write(&mut self, buf: &[u8]) -> WriteResult {
+        if buf.is_empty() {
+            return WriteResult::Ok;
+        }
+
         // TODO: write all bytes!
         let mut write_len = 0;
         let result = unsafe {

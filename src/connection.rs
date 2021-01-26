@@ -4,19 +4,17 @@ use std::{
     path::Path,
 };
 
-#[cfg(unix)]
-use std::os::unix::net::{UnixListener, UnixStream};
-#[cfg(windows)]
-use uds_windows::{UnixListener, UnixStream};
-
 use crate::{
     client_event::{
         ClientEvent, ClientEventDeserializeResult, ClientEventDeserializer, ClientEventSerializer,
     },
     editor::EditorLoop,
     event_manager::EventRegistry,
+    platform::{ConnectionHandle, Platform},
+    serialization::{DeserializationSlice, Serialize},
 };
 
+/*
 struct ReadBuf {
     buf: Vec<u8>,
     len: usize,
@@ -53,222 +51,66 @@ impl ReadBuf {
         Ok(&self.buf[..self.len])
     }
 }
+*/
 
-pub struct ConnectionWithClient(UnixStream);
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub struct ConnectionWithClientHandle(usize);
-impl ConnectionWithClientHandle {
-    pub fn from_index(index: usize) -> Self {
-        Self(index)
-    }
-
-    pub fn into_index(self) -> usize {
-        self.0
-    }
+#[derive(Default)]
+struct ClientEventDeserializationBuf {
+    buf: Vec<u8>,
 }
 
-pub struct ConnectionWithClientCollection {
-    listener: UnixListener,
-    connections: Vec<Option<ConnectionWithClient>>,
-    closed_connection_indexes: Vec<usize>,
-    read_buf: ReadBuf,
-}
-
-impl ConnectionWithClientCollection {
-    pub fn listen<P>(path: P) -> io::Result<Self>
-    where
-        P: AsRef<Path>,
-    {
-        let listener = UnixListener::bind(path)?;
-        listener.set_nonblocking(true)?;
-
-        Ok(Self {
-            listener,
-            connections: Vec::new(),
-            closed_connection_indexes: Vec::new(),
-            read_buf: ReadBuf::new(),
-        })
-    }
-
-    pub fn register_listener(&self, event_registry: &EventRegistry) -> io::Result<()> {
-        event_registry.register_listener(&self.listener)
-    }
-
-    pub fn listen_next_listener_event(&self, event_registry: &EventRegistry) -> io::Result<()> {
-        event_registry.listen_next_listener_event(&self.listener)
-    }
-
-    pub fn accept_connection(
-        &mut self,
-        event_registry: &EventRegistry,
-    ) -> io::Result<ConnectionWithClientHandle> {
-        let (stream, _) = self.listener.accept()?;
-        stream.set_nonblocking(true)?;
-        let connection = ConnectionWithClient(stream);
-
-        for (i, slot) in self.connections.iter_mut().enumerate() {
-            if slot.is_none() {
-                let handle = ConnectionWithClientHandle(i);
-                event_registry.register_stream(&connection.0, handle.into())?;
-                *slot = Some(connection);
-                return Ok(handle);
-            }
-        }
-
-        let handle = ConnectionWithClientHandle(self.connections.len());
-        event_registry.register_stream(&connection.0, handle.into())?;
-        self.connections.push(Some(connection));
-        Ok(handle)
-    }
-
-    pub fn listen_next_connection_event(
-        &self,
-        handle: ConnectionWithClientHandle,
-        event_registry: &EventRegistry,
-    ) -> io::Result<()> {
-        if let Some(connection) = &self.connections[handle.0] {
-            event_registry.listen_next_stream_event(&connection.0, handle.into())?;
-        }
-
-        Ok(())
-    }
-
-    pub fn close_connection(&mut self, handle: ConnectionWithClientHandle) {
-        if let Some(connection) = &self.connections[handle.0] {
-            let _ = connection.0.shutdown(Shutdown::Both);
-            self.closed_connection_indexes.push(handle.0);
-        }
-    }
-
-    pub fn close_all_connections(&mut self) {
-        for connection in self.connections.iter().flatten() {
-            let _ = connection.0.shutdown(Shutdown::Both);
-        }
-    }
-
-    pub fn unregister_closed_connections(
-        &mut self,
-        event_registry: &EventRegistry,
-    ) -> io::Result<()> {
-        for i in self.closed_connection_indexes.drain(..) {
-            if let Some(connection) = self.connections[i].take() {
-                event_registry.unregister_stream(&connection.0)?;
-            }
-        }
-
-        Ok(())
-    }
-
-    pub fn send_serialized_display(&mut self, handle: ConnectionWithClientHandle, bytes: &[u8]) {
-        if bytes.is_empty() {
-            return;
-        }
-
-        let stream = match &mut self.connections[handle.0] {
-            Some(connection) => &mut connection.0,
-            None => return,
-        };
-
-        if let Err(_) = stream.write_all(bytes).and_then(|_| stream.flush()) {
-            self.close_connection(handle);
-        }
-    }
-
-    pub fn receive_events<F>(
-        &mut self,
-        handle: ConnectionWithClientHandle,
-        mut func: F,
-    ) -> io::Result<EditorLoop>
+impl ClientEventDeserializationBuf {
+    pub fn read<F>(&mut self, bytes: &[u8], mut func: F) -> EditorLoop
     where
         F: FnMut(ClientEvent) -> EditorLoop,
     {
-        let connection = match &mut self.connections[handle.0] {
-            Some(connection) => connection,
-            None => return Ok(EditorLoop::Quit),
-        };
-
-        let bytes = self.read_buf.read_from(&mut connection.0)?;
-        let mut last_editor_loop = EditorLoop::Quit;
-        let mut deserializer = ClientEventDeserializer::from_slice(bytes);
+        self.buf.extend_from_slice(bytes);
+        let mut editor_loop = EditorLoop::Continue;
+        let mut deserializer = DeserializationSlice::from_slice(&self.buf);
 
         loop {
-            match deserializer.deserialize_next() {
-                ClientEventDeserializeResult::Some(event) => {
-                    last_editor_loop = func(event);
-                    if last_editor_loop.is_quit() {
+            if deserializer.as_slice().is_empty() {
+                break;
+            }
+
+            match ClientEvent::deserialize(&mut deserializer) {
+                Ok(event) => {
+                    editor_loop = func(event);
+                    if editor_loop.is_quit() {
                         break;
                     }
                 }
-                ClientEventDeserializeResult::None => break,
-                ClientEventDeserializeResult::Error => {
-                    return Err(io::Error::from(io::ErrorKind::Other))
-                }
+                Err(_) => break,
             }
         }
 
-        Ok(last_editor_loop)
+        let rest_len = deserializer.as_slice().len();
+        self.buf.copy_within((self.buf.len() - rest_len).., 0);
+        self.buf.truncate(rest_len);
+
+        editor_loop
     }
 }
 
-pub struct ConnectionWithServer {
-    stream: UnixStream,
-    read_buf: ReadBuf,
+#[derive(Default)]
+pub struct ConnectionWithClientCollection {
+    bufs: Vec<ClientEventDeserializationBuf>,
 }
 
-impl ConnectionWithServer {
-    pub fn connect<P>(path: P) -> io::Result<Self>
-    where
-        P: AsRef<Path>,
-    {
-        let stream = UnixStream::connect(path)?;
-        stream.set_nonblocking(true)?;
-        Ok(Self {
-            stream,
-            read_buf: ReadBuf::new(),
-        })
-    }
-
-    pub fn close(&mut self) {
-        let _ = self.stream.set_nonblocking(false);
-        //let _ = self.read_buf.read_from(&mut self.stream);
-        let _ = self.stream.write(&[0]);
-        let _ = self.stream.shutdown(Shutdown::Read);
-    }
-
-    pub fn register_connection(&self, event_registry: &EventRegistry) -> io::Result<()> {
-        event_registry.register_stream(
-            &self.stream,
-            ConnectionWithClientHandle::from_index(0).into(),
-        )
-    }
-
-    pub fn listen_next_event(&self, event_registry: &EventRegistry) -> io::Result<()> {
-        event_registry.listen_next_stream_event(
-            &self.stream,
-            ConnectionWithClientHandle::from_index(0).into(),
-        )
-    }
-
-    pub fn send_serialized_events(
+impl ConnectionWithClientCollection {
+    pub fn receive_events<F>(
         &mut self,
-        serializer: &mut ClientEventSerializer,
-    ) -> io::Result<()> {
-        let bytes = serializer.bytes();
-        if bytes.is_empty() {
-            return Ok(());
+        handle: ConnectionHandle,
+        bytes: &[u8],
+        func: F,
+    ) -> EditorLoop
+    where
+        F: FnMut(ClientEvent) -> EditorLoop,
+    {
+        let index = handle.0;
+        if index >= self.bufs.len() {
+            self.bufs.resize_with(index + 1, Default::default);
         }
 
-        let result = self
-            .stream
-            .write_all(bytes)
-            .and_then(|_| self.stream.flush());
-
-        serializer.clear();
-        result
-    }
-
-    pub fn receive_display(&mut self) -> io::Result<&[u8]> {
-        self.read_buf.read_from(&mut self.stream)
+        self.bufs[index].read(bytes, func)
     }
 }

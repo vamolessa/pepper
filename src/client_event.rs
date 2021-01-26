@@ -485,7 +485,7 @@ impl ClientEventSerializer {
 pub enum ClientEventDeserializeResult<'a> {
     Some(ClientEvent<'a>),
     None,
-    Error,
+    Error(&'a [u8]),
 }
 
 pub struct ClientEventDeserializer<'a>(DeserializationSlice<'a>);
@@ -502,7 +502,7 @@ impl<'a> ClientEventDeserializer<'a> {
 
         match ClientEvent::deserialize(&mut self.0) {
             Ok(event) => ClientEventDeserializeResult::Some(event),
-            Err(_) => ClientEventDeserializeResult::Error,
+            Err(_) => ClientEventDeserializeResult::Error(self.0.as_slice()),
         }
     }
 }
