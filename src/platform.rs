@@ -386,6 +386,11 @@ pub enum WriteResult {
     Err,
 }
 
+pub enum ProcessExitStatus {
+    Ok,
+    Err,
+}
+
 pub enum ServerEvent {
     Idle,
     ConnectionOpen(ConnectionHandle),
@@ -393,7 +398,7 @@ pub enum ServerEvent {
     ConnectionMessage(ConnectionHandle),
     ProcessStdout(ProcessHandle),
     ProcessStderr(ProcessHandle),
-    ProcessExit(ProcessHandle, ExitStatus),
+    ProcessExit(ProcessHandle, ProcessExitStatus),
 }
 
 pub enum ClientEvent<'a> {

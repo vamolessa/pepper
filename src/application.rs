@@ -11,6 +11,7 @@ use std::{
 
 use crate::platform::{
     ClientApplication, ConnectionHandle, Platform, ProcessHandle, ServerApplication, ServerEvent,
+    WriteResult,
 };
 
 use crate::{
@@ -36,6 +37,7 @@ pub struct Server {
     editor: Editor,
     clients: ClientManager,
     event_deserialization_bufs: ClientEventDeserializationBufCollection,
+    connections_with_error: Vec<ConnectionHandle>,
 }
 impl ServerApplication for Server {
     fn new<P>(platform: &mut P) -> Option<Self>
@@ -65,6 +67,7 @@ impl ServerApplication for Server {
             editor,
             clients,
             event_deserialization_bufs,
+            connections_with_error: Vec::new(),
         })
     }
 
@@ -73,6 +76,7 @@ impl ServerApplication for Server {
         P: Platform,
     {
         match event {
+            ServerEvent::Idle => (),
             ServerEvent::ConnectionOpen(handle) => self.clients.on_client_joined(handle),
             ServerEvent::ConnectionClose(handle) => {
                 self.clients.on_client_left(handle);
@@ -82,11 +86,13 @@ impl ServerApplication for Server {
             }
             ServerEvent::ConnectionMessage(handle) => {
                 let bytes = platform.read_from_connection(handle);
+                let editor = &mut self.editor;
+                let clients = &mut self.clients;
+                let target = TargetClient(handle);
                 let editor_loop =
                     self.event_deserialization_bufs
                         .receive_events(handle, bytes, |event| {
-                            // handle event
-                            EditorLoop::Continue
+                            editor.on_event(clients, target, event)
                         });
                 match editor_loop {
                     EditorLoop::Continue => (),
@@ -94,8 +100,41 @@ impl ServerApplication for Server {
                     EditorLoop::QuitAll => return false,
                 }
             }
-            // TODO: handle other stuff
-            _ => (),
+            ServerEvent::ProcessStdout(handle) => {
+                let _bytes = platform.read_from_process_stdout(handle);
+                //
+            }
+            ServerEvent::ProcessStderr(handle) => {
+                let _bytes = platform.read_from_process_stderr(handle);
+                //
+            }
+            ServerEvent::ProcessExit(_handle, _status) => {
+                //
+            }
+        }
+
+        let needs_redraw = self.editor.on_pre_render(&mut self.clients);
+        if needs_redraw {
+            // TODO: notify platform for redraw
+        }
+
+        let focused_target = self.clients.focused_target();
+        for c in self.clients.client_refs() {
+            let has_focus = focused_target == c.target;
+            c.ui.render(&self.editor, c.client, has_focus, c.buffer);
+
+            let connection_handle = c.target.0;
+            if let WriteResult::Err = platform.write_to_connection(connection_handle, c.buffer) {
+                self.connections_with_error.push(connection_handle);
+            }
+        }
+
+        for handle in self.connections_with_error.drain(..) {
+            platform.close_connection(handle);
+            self.clients.on_client_left(handle);
+            if self.clients.iter_mut().next().is_none() {
+                return false;
+            }
         }
 
         true

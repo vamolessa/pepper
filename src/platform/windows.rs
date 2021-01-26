@@ -50,8 +50,8 @@ use winapi::{
 };
 
 use crate::platform::{
-    ClientApplication, ClientEvent, ConnectionHandle, Key, Platform, ProcessHandle,
-    ServerApplication, ServerEvent, WriteResult,
+    ClientApplication, ClientEvent, ConnectionHandle, Key, Platform, ProcessExitStatus,
+    ProcessHandle, ServerApplication, ServerEvent, WriteResult,
 };
 
 const SERVER_PIPE_BUFFER_LEN: usize = 512;
@@ -641,14 +641,8 @@ impl Platform for State {
 
     fn write_to_connection(&mut self, handle: ConnectionHandle, buf: &[u8]) -> WriteResult {
         match self.pipes.get_mut(handle.0) {
-            Some(pipe) => match pipe.write(buf) {
-                WriteResult::Ok => WriteResult::Ok,
-                WriteResult::Err => {
-                    self.pipes.remove(handle.0);
-                    WriteResult::Err
-                }
-            },
-            None => WriteResult::Ok,
+            Some(pipe) => pipe.write(buf),
+            None => WriteResult::Err,
         }
     }
 
@@ -686,15 +680,13 @@ impl Platform for State {
         if let Some(child) = self.children.get_mut(handle.0) {
             if let Some(ref mut stdin) = child.child.stdin {
                 use io::Write;
-                if let Err(_) = stdin.write_all(buf) {
-                    let _ = child.child.kill();
-                    let _ = child.child.wait();
-                    return WriteResult::Err;
+                if let Ok(()) = stdin.write_all(buf) {
+                    return WriteResult::Ok;
                 }
             }
         }
 
-        WriteResult::Ok
+        WriteResult::Err
     }
 
     fn kill_process(&mut self, handle: ProcessHandle) {
@@ -826,7 +818,12 @@ where
                     ReadResult::Err | ReadResult::Ok(0) => {
                         child.stdout = ChildPipe::Closed;
                         if let ChildPipe::Closed = child.stderr {
-                            let status = child.child.wait().unwrap();
+                            let status = if child.child.wait().unwrap().success() {
+                                ProcessExitStatus::Ok
+                            } else {
+                                ProcessExitStatus::Err
+                            };
+
                             state.children.remove(i);
                             send_event!(ServerEvent::ProcessExit(handle, status));
                         }
@@ -861,7 +858,12 @@ where
                     ReadResult::Err | ReadResult::Ok(0) => {
                         child.stderr = ChildPipe::Closed;
                         if let ChildPipe::Closed = child.stdout {
-                            let status = child.child.wait().unwrap();
+                            let status = if child.child.wait().unwrap().success() {
+                                ProcessExitStatus::Ok
+                            } else {
+                                ProcessExitStatus::Err
+                            };
+
                             state.children.remove(i);
                             send_event!(ServerEvent::ProcessExit(handle, status));
                         }
