@@ -34,8 +34,7 @@ impl TaskResult {
 }
 
 pub struct TaskManager {
-    task_sender: mpsc::Sender<Task>,
-    worker: TaskWorker,
+    //worker: TaskWorker,
     next_handle: TaskHandle,
 }
 
@@ -46,12 +45,12 @@ struct Task {
 }
 
 impl TaskManager {
-    pub fn new(event_sender: mpsc::Sender<LocalEvent>) -> Self {
-        let (task_sender, task_receiver) = mpsc::channel();
-        let worker = TaskWorker::new(task_receiver, event_sender);
+    pub fn new() -> Self {
+        //let (task_sender, task_receiver) = mpsc::channel();
+        //let worker = TaskWorker::new(task_receiver, event_sender);
         Self {
-            task_sender,
-            worker,
+            //task_sender,
+            //worker,
             next_handle: TaskHandle(0),
         }
     }
@@ -59,18 +58,20 @@ impl TaskManager {
     pub fn request(&mut self, target_client: TargetClient, task: TaskRequest) -> TaskHandle {
         let handle = self.next_handle;
         self.next_handle.0 = self.next_handle.0.wrapping_add(1);
+        /*
         let _ = self.task_sender.send(Task {
             target_client,
             handle,
             request: task,
         });
+        */
         handle
     }
 }
 
 impl Drop for TaskManager {
     fn drop(&mut self) {
-        self.worker.stop(&self.task_sender);
+        //self.worker.stop(&self.task_sender);
     }
 }
 
@@ -89,11 +90,14 @@ impl TaskWorker {
     }
 
     pub fn stop(&self, task_sender: &mpsc::Sender<Task>) {
+        // TODO: implement
+        /*
         let _ = task_sender.send(Task {
             target_client: TargetClient::Local,
             handle: TaskHandle(0),
             request: TaskRequest::Stop,
         });
+        */
     }
 
     fn work(task_receiver: mpsc::Receiver<Task>, event_sender: mpsc::Sender<LocalEvent>) {

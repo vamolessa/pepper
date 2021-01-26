@@ -179,7 +179,7 @@ mod client {
         _: (),
     ) -> ScriptResult<()> {
         let can_quit =
-            ctx.target_client != TargetClient::Local || ctx.buffers.iter().all(|b| !b.needs_save());
+            ctx.target_client != TargetClient::local() || ctx.buffers.iter().all(|b| !b.needs_save());
         if can_quit {
             ctx.editor_loop = EditorLoop::Quit;
             Err(ScriptError::from(QuitError))

@@ -377,9 +377,9 @@ impl<'de> Serialize<'de> for Key {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub struct ConnectionHandle(pub(crate) usize);
+pub struct ConnectionHandle(pub usize);
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub struct ProcessHandle(pub(crate) usize);
+pub struct ProcessHandle(pub usize);
 
 pub enum WriteResult {
     Ok,

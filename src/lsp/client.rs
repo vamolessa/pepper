@@ -663,9 +663,7 @@ impl Client {
                 }
                 let message = message.as_str(json);
                 match message_type {
-                    1 => ctx
-                        .status_bar
-                        .write_str(StatusMessageKind::Error, message),
+                    1 => ctx.status_bar.write_str(StatusMessageKind::Error, message),
                     2 => ctx.status_bar.write_fmt(
                         StatusMessageKind::Info,
                         format_args!("warning: {}", message),
@@ -673,9 +671,7 @@ impl Client {
                     3 => ctx
                         .status_bar
                         .write_fmt(StatusMessageKind::Info, format_args!("info: {}", message)),
-                    4 => ctx
-                        .status_bar
-                        .write_str(StatusMessageKind::Info, message),
+                    4 => ctx.status_bar.write_str(StatusMessageKind::Info, message),
                     _ => (),
                 }
             }
@@ -855,11 +851,7 @@ impl Client {
         self.respond(json, request_id, Err(ResponseError::parse_error()))
     }
 
-    fn on_editor_events(
-        &mut self,
-        ctx: &mut ClientContext,
-        json: &mut Json,
-    ) -> io::Result<()> {
+    fn on_editor_events(&mut self, ctx: &mut ClientContext, json: &mut Json) -> io::Result<()> {
         if !self.initialized {
             return Ok(());
         }
@@ -1239,14 +1231,12 @@ struct ClientCollectionEntry {
 }
 
 pub struct ClientCollection {
-    event_sender: mpsc::Sender<LocalEvent>,
     entries: Vec<Option<ClientCollectionEntry>>,
 }
 
 impl ClientCollection {
-    pub fn new(event_sender: mpsc::Sender<LocalEvent>) -> Self {
+    pub fn new() -> Self {
         Self {
-            event_sender,
             entries: Vec::new(),
         }
     }
@@ -1255,7 +1245,7 @@ impl ClientCollection {
         let handle = self.find_free_slot();
         let json = SharedJson::new();
         let connection =
-            ServerConnection::spawn(command, handle, json.clone(), self.event_sender.clone())?;
+            ServerConnection::spawn(command, handle, json.clone())?;
         let mut entry = ClientCollectionEntry {
             client: Client::new(connection),
             json,
@@ -1348,10 +1338,7 @@ impl ClientCollection {
         Ok(())
     }
 
-    pub fn on_editor_events(
-        &mut self,
-        ctx: &mut ClientContext,
-    ) -> io::Result<()> {
+    pub fn on_editor_events(&mut self, ctx: &mut ClientContext) -> io::Result<()> {
         for entry in self.entries.iter_mut().flatten() {
             let mut json = entry.json.write_lock();
             entry.client.on_editor_events(ctx, json.get())?;

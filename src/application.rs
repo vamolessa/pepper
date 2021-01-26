@@ -46,12 +46,11 @@ impl ServerApplication for Server {
             return None;
         }
 
-        let (event_sender, event_receiver) = mpsc::channel();
         let current_dir = env::current_dir().expect("could not retrieve the current directory");
-        let tasks = TaskManager::new(event_sender.clone());
-        let lsp = LspClientCollection::new(event_sender.clone());
+        let tasks = TaskManager::new();
+        let lsp = LspClientCollection::new();
         let mut editor = Editor::new(current_dir, tasks, lsp);
-        let mut clients = ClientManager::default();
+        let mut clients = ClientManager::new();
 
         for config in &args.config {
             editor.load_config(&mut clients, config);
@@ -276,15 +275,34 @@ where
     for c in clients.client_refs() {
         let has_focus = focused_target == c.target;
         c.ui.render(editor, c.client, has_focus, c.buffer);
-        match c.target {
-            TargetClient::Local => ui.display(c.buffer)?,
-            TargetClient::Remote(handle) => connections.send_serialized_display(handle, c.buffer),
-        }
+        //connections.send_serialized_display(c.target.connection_handle(), c.buffer);
     }
 
     Ok(needs_redraw)
 }
 
+fn run_server_with_client<P, I>(
+    _: Args,
+    _: P,
+    _: I,
+    _: ConnectionWithClientCollection,
+) -> Result<(), Box<dyn Error>>
+where
+    P: Profiler,
+    I: Ui,
+{
+    Ok(())
+}
+
+fn run_client<P, I>(_: Args, _: P, _: I, _: ConnectionWithServer) -> Result<(), Box<dyn Error>>
+where
+    P: Profiler,
+    I: Ui,
+{
+    Ok(())
+}
+
+/*
 fn run_server_with_client<P, I>(
     args: Args,
     mut profiler: P,
@@ -301,7 +319,7 @@ where
     let tasks = TaskManager::new(event_sender.clone());
     let lsp = LspClientCollection::new(event_sender.clone());
     let mut editor = Editor::new(current_dir, tasks, lsp);
-    let mut clients = ClientManager::default();
+    let mut clients = ClientManager::new();
 
     for config in &args.config {
         editor.load_config(&mut clients, config);
@@ -472,3 +490,4 @@ where
     ui.shutdown()?;
     Ok(())
 }
+*/

@@ -231,7 +231,7 @@ impl ServerConnection {
         mut command: Command,
         handle: ClientHandle,
         json: SharedJson,
-        event_sender: mpsc::Sender<LocalEvent>,
+        //event_sender: mpsc::Sender<LocalEvent>,
     ) -> io::Result<Self> {
         let mut process = command
             .stdin(Stdio::piped())
@@ -264,11 +264,13 @@ impl ServerConnection {
                     Ok(body) => parse_server_event(&json, body),
                     _ => ServerEvent::ParseError,
                 };
+                /*
                 if let Err(_) = event_sender.send(LocalEvent::Lsp(handle, event)) {
                     break;
                 }
+                */
             }
-            let _ = event_sender.send(LocalEvent::Lsp(handle, ServerEvent::Closed));
+            //let _ = event_sender.send(LocalEvent::Lsp(handle, ServerEvent::Closed));
         });
 
         Ok(Self { process, stdin })

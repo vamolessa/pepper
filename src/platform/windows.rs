@@ -601,11 +601,11 @@ impl<T> SlotVec<T> {
     }
 
     pub fn get(&self, index: usize) -> Option<&T> {
-        self.0[index].as_ref()
+        self.0.get(index)?.as_ref()
     }
 
     pub fn get_mut(&mut self, index: usize) -> Option<&mut T> {
-        self.0[index].as_mut()
+        self.0.get_mut(index)?.as_mut()
     }
 
     pub fn is_empty(&self) -> bool {

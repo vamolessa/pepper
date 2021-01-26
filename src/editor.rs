@@ -11,9 +11,9 @@ use crate::{
     client::{ClientManager, TargetClient},
     client_event::{ClientEvent, Key, LocalEvent},
     config::Config,
-    connection::ConnectionWithClientHandle,
     editor_event::{EditorEvent, EditorEventQueue},
     keymap::{KeyMapCollection, MatchResult},
+    platform::ConnectionHandle,
     lsp::{LspClientCollection, LspClientContext, LspClientHandle, LspServerEvent},
     mode::{Mode, ModeKind, ModeOperation},
     picker::Picker,
@@ -298,14 +298,14 @@ impl Editor {
 
     pub fn load_config(&mut self, clients: &mut ClientManager, path: &Path) {
         let previous_mode_kind = self.mode.kind();
-        let (scripts, mut script_ctx) = self.into_script_context(clients, TargetClient::Local);
+        let (scripts, mut script_ctx) = self.into_script_context(clients, TargetClient::local());
 
         if let Err(e) = scripts.eval_entry_file(&mut script_ctx, path) {
             script_ctx.status_bar.write_error(&e);
         }
 
         if previous_mode_kind == self.mode.kind() {
-            Mode::change_to(self, clients, TargetClient::Local, ModeKind::default());
+            Mode::change_to(self, clients, TargetClient::local(), ModeKind::default());
         }
     }
 
@@ -351,11 +351,11 @@ impl Editor {
     pub fn on_client_joined(
         &mut self,
         clients: &mut ClientManager,
-        client_handle: ConnectionWithClientHandle,
+        connection_handle: ConnectionHandle,
     ) {
-        clients.on_client_joined(client_handle);
+        clients.on_client_joined(connection_handle);
 
-        let target = TargetClient::Remote(client_handle);
+        let target = TargetClient(connection_handle);
         let buffer_view_handle = clients
             .get(clients.focused_target())
             .and_then(|c| c.buffer_view_handle())
@@ -369,9 +369,9 @@ impl Editor {
     pub fn on_client_left(
         &mut self,
         clients: &mut ClientManager,
-        client_handle: ConnectionWithClientHandle,
+        connection_handle: ConnectionHandle,
     ) {
-        clients.on_client_left(client_handle);
+        clients.on_client_left(connection_handle);
     }
 
     pub fn on_event(
@@ -515,7 +515,7 @@ impl Editor {
 
     pub fn on_idle(&mut self, clients: &mut ClientManager) {
         self.events.enqueue(EditorEvent::Idle);
-        self.trigger_event_handlers(clients, TargetClient::Local);
+        self.trigger_event_handlers(clients, TargetClient::local());
     }
 
     fn parse_and_set_keys_in_register(&mut self, register_key: RegisterKey) {

@@ -2,39 +2,29 @@ use argh::FromArgValue;
 
 use crate::{
     buffer_view::BufferViewHandle,
-    connection::ConnectionWithClientHandle,
     editor::Editor,
     editor_event::EditorEvent,
     navigation_history::NavigationHistory,
+    platform::ConnectionHandle,
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
     ui::UiKind,
 };
 
 #[derive(Clone, Copy, Eq, PartialEq)]
-pub enum TargetClient {
-    Local,
-    Remote(ConnectionWithClientHandle),
-}
+pub struct TargetClient(pub ConnectionHandle);
 
 impl TargetClient {
+    // TODO: remove this
+    pub fn local() -> Self {
+        Self(ConnectionHandle(0))
+    }
+
     pub fn from_index(index: usize) -> Self {
-        match index {
-            0 => TargetClient::Local,
-            _ => TargetClient::Remote(ConnectionWithClientHandle::from_index(index + 1)),
-        }
+        Self(ConnectionHandle(index))
     }
 
     pub fn into_index(self) -> usize {
-        match self {
-            TargetClient::Local => 0,
-            TargetClient::Remote(handle) => handle.into_index() + 1,
-        }
-    }
-}
-
-impl Default for TargetClient {
-    fn default() -> Self {
-        Self::Local
+        self.0 .0
     }
 }
 
@@ -43,13 +33,8 @@ impl<'de> Serialize<'de> for TargetClient {
     where
         S: Serializer,
     {
-        match self {
-            Self::Local => 0u32.serialize(serializer),
-            Self::Remote(handle) => {
-                let index = handle.into_index() as u32 + 1;
-                index.serialize(serializer);
-            }
-        }
+        let index = self.into_index() as u32;
+        index.serialize(serializer);
     }
 
     fn deserialize<D>(deserializer: &mut D) -> Result<Self, DeserializeError>
@@ -57,23 +42,14 @@ impl<'de> Serialize<'de> for TargetClient {
         D: Deserializer<'de>,
     {
         let index = u32::deserialize(deserializer)?;
-        match index {
-            0 => Ok(Self::Local),
-            _ => Ok(Self::Remote(ConnectionWithClientHandle::from_index(
-                index as usize - 1,
-            ))),
-        }
+        Ok(Self(ConnectionHandle(index as _)))
     }
 }
 
 impl FromArgValue for TargetClient {
     fn from_arg_value(value: &str) -> Result<Self, String> {
         let index = value.parse::<usize>().map_err(|e| e.to_string())?;
-
-        match index {
-            0 => Ok(Self::Local),
-            _ => Ok(Self::Remote(ConnectionWithClientHandle::from_index(index))),
-        }
+        Ok(Self(ConnectionHandle(index)))
     }
 }
 
@@ -165,18 +141,23 @@ impl ClientData {
     }
 }
 
-#[derive(Default)]
 pub struct ClientManager {
-    focused_target: TargetClient,
+    focused_target: TargetClient, // TODO: make it Option<TargetClient>
     pub client_map: ClientTargetMap, // TODO: expose through ClientCollection
-
-    local: Client,
-    remotes: Vec<Option<Client>>,
-    local_data: ClientData,
-    remote_data: Vec<ClientData>,
+    clients: Vec<Option<Client>>,
+    data: Vec<ClientData>,
 }
 
 impl ClientManager {
+    pub fn new() -> Self {
+        Self {
+            focused_target: TargetClient::local(),
+            client_map: ClientTargetMap::default(),
+            clients: Vec::new(),
+            data: Vec::new(),
+        }
+    }
+
     pub fn focused_target(&self) -> TargetClient {
         self.focused_target
     }
@@ -210,152 +191,107 @@ impl ClientManager {
         }
     }
 
-    pub fn on_client_joined(&mut self, client_handle: ConnectionWithClientHandle) {
-        let index = client_handle.into_index();
+    pub fn on_client_joined(&mut self, connection_handle: ConnectionHandle) {
+        let index = connection_handle.0;
         let min_len = index + 1;
-        if min_len > self.remotes.len() {
-            self.remotes.resize_with(min_len, || None);
+        if min_len > self.clients.len() {
+            self.clients.resize_with(min_len, || None);
         }
-        self.remotes[index] = Some(Client::default());
-        if min_len > self.remote_data.len() {
-            self.remote_data.resize_with(min_len, || Default::default());
+        self.clients[index] = Some(Client::default());
+        if min_len > self.data.len() {
+            self.data.resize_with(min_len, || Default::default());
         }
 
-        self.client_map.on_client_joined(client_handle);
+        self.client_map.on_client_joined(connection_handle);
     }
 
-    pub fn on_client_left(&mut self, client_handle: ConnectionWithClientHandle) {
-        let index = client_handle.into_index();
-        self.remotes[index] = None;
-        self.remote_data[index].reset();
+    pub fn on_client_left(&mut self, connection_handle: ConnectionHandle) {
+        let target = TargetClient(connection_handle);
+        let index = target.into_index();
+        self.clients[index] = None;
+        self.data[index].reset();
 
-        self.client_map.on_client_left(client_handle);
-        if self.focused_target == TargetClient::Remote(client_handle) {
-            self.focused_target = TargetClient::Local;
+        self.client_map.on_client_left(connection_handle);
+        if self.focused_target == target {
+            self.focused_target = TargetClient::local();
         }
     }
 
     pub fn get(&self, target: TargetClient) -> Option<&Client> {
-        match target {
-            TargetClient::Local => Some(&self.local),
-            TargetClient::Remote(handle) => self.remotes[handle.into_index()].as_ref(),
-        }
+        self.clients[target.into_index()].as_ref()
     }
 
     pub fn get_mut(&mut self, target: TargetClient) -> Option<&mut Client> {
-        match target {
-            TargetClient::Local => Some(&mut self.local),
-            TargetClient::Remote(handle) => self.remotes[handle.into_index()].as_mut(),
-        }
+        self.clients[target.into_index()].as_mut()
     }
 
     pub fn get_client_ref(&mut self, target: TargetClient) -> Option<ClientRef> {
-        match target {
-            TargetClient::Local => Some(ClientRef {
-                ui: &mut self.local_data.ui,
-                target,
-                client: &mut self.local,
-                buffer: &mut self.local_data.display_buffer,
-            }),
-            TargetClient::Remote(handle) => {
-                let index = handle.into_index();
-                match self.remotes[index] {
-                    Some(ref mut c) => {
-                        let data = &mut self.remote_data[index];
-                        Some(ClientRef {
-                            ui: &mut data.ui,
-                            target,
-                            client: c,
-                            buffer: &mut data.display_buffer,
-                        })
-                    }
-                    None => None,
-                }
+        let index = target.into_index();
+        match self.clients[index] {
+            Some(ref mut c) => {
+                let data = &mut self.data[index];
+                Some(ClientRef {
+                    ui: &mut data.ui,
+                    target,
+                    client: c,
+                    buffer: &mut data.display_buffer,
+                })
             }
+            None => None,
         }
     }
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Client> {
-        let remotes = self.remotes.iter_mut().flatten();
-        std::iter::once(&mut self.local).chain(remotes)
+        self.clients.iter_mut().flatten()
     }
 
     pub fn client_refs<'a>(&'a mut self) -> impl Iterator<Item = ClientRef<'a>> {
-        let remotes = self
-            .remotes
+        self.clients
             .iter_mut()
             .enumerate()
-            .zip(self.remote_data.iter_mut())
+            .zip(self.data.iter_mut())
             .flat_map(|((i, c), d)| {
                 c.as_mut().map(move |c| ClientRef {
                     ui: &mut d.ui,
-                    target: TargetClient::Remote(ConnectionWithClientHandle::from_index(i)),
+                    target: TargetClient(ConnectionHandle(i)),
                     client: c,
                     buffer: &mut d.display_buffer,
                 })
-            });
-
-        std::iter::once(ClientRef {
-            ui: &mut self.local_data.ui,
-            target: TargetClient::Local,
-            client: &mut self.local,
-            buffer: &mut self.local_data.display_buffer,
-        })
-        .chain(remotes)
+            })
     }
 }
 
 #[derive(Default)]
 pub struct ClientTargetMap {
-    local_target: Option<TargetClient>,
-    remote_targets: Vec<Option<TargetClient>>,
+    targets: Vec<Option<TargetClient>>,
 }
 
 impl ClientTargetMap {
-    pub fn on_client_joined(&mut self, client_handle: ConnectionWithClientHandle) {
-        let min_len = client_handle.into_index() + 1;
-        if min_len > self.remote_targets.len() {
-            self.remote_targets.resize_with(min_len, || None);
+    pub fn on_client_joined(&mut self, connection_handle: ConnectionHandle) {
+        let min_len = connection_handle.0 + 1;
+        if min_len > self.targets.len() {
+            self.targets.resize_with(min_len, || None);
         }
     }
 
-    pub fn on_client_left(&mut self, client_handle: ConnectionWithClientHandle) {
-        if self.local_target == Some(TargetClient::Remote(client_handle)) {
-            self.local_target = None;
-        }
-
-        self.remote_targets[client_handle.into_index()] = None;
-        for target in &mut self.remote_targets {
-            if *target == Some(TargetClient::Remote(client_handle)) {
+    pub fn on_client_left(&mut self, connection_handle: ConnectionHandle) {
+        self.targets[connection_handle.0] = None;
+        for target in &mut self.targets {
+            if *target == Some(TargetClient(connection_handle)) {
                 *target = None;
             }
         }
     }
 
     pub fn map(&mut self, from: TargetClient, to: TargetClient) {
-        let to = match to {
-            TargetClient::Local => Some(to),
-            TargetClient::Remote(handle) => {
-                if handle.into_index() < self.remote_targets.len() {
-                    Some(to)
-                } else {
-                    None
-                }
-            }
+        self.targets[from.into_index()] = if to.into_index() < self.targets.len() {
+            Some(to)
+        } else {
+            None
         };
-
-        match from {
-            TargetClient::Local => self.local_target = to,
-            TargetClient::Remote(handle) => self.remote_targets[handle.into_index()] = to,
-        }
     }
 
     pub fn get(&self, target: TargetClient) -> TargetClient {
-        match target {
-            TargetClient::Local => self.local_target.unwrap_or(target),
-            TargetClient::Remote(handle) => {
-                self.remote_targets[handle.into_index()].unwrap_or(target)
-            }
-        }
+        self.targets[target.into_index()].unwrap_or(target)
     }
 }
