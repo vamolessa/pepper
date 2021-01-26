@@ -82,11 +82,12 @@ impl ServerApplication for Server {
             }
             ServerEvent::ConnectionMessage(handle) => {
                 let bytes = platform.read_from_connection(handle);
-                let editor_loop = self
-                    .event_deserialization_bufs
-                    .read(handle, bytes, |event| {
-                        // handle event
-                    });
+                let editor_loop =
+                    self.event_deserialization_bufs
+                        .receive_events(handle, bytes, |event| {
+                            // handle event
+                            EditorLoop::Continue
+                        });
                 match editor_loop {
                     EditorLoop::Continue => (),
                     EditorLoop::Quit => platform.close_connection(handle),
@@ -185,6 +186,7 @@ pub fn run(args: Args) -> Result<(), Box<dyn Error>> {
         }
     }
 
+    /*
     if args.as_focused_client || args.as_client.is_some() {
         run_with_ui(args, ui::none_ui::NoneUi, &session_socket_path)
     } else {
@@ -193,42 +195,9 @@ pub fn run(args: Args) -> Result<(), Box<dyn Error>> {
         let ui = ui::tui::Tui::new(stdout);
         run_with_ui(args, ui, &session_socket_path)
     }
-}
-
-fn run_with_ui<I>(args: Args, ui: I, session_socket_path: &Path) -> Result<(), Box<dyn Error>>
-where
-    I: Ui,
-{
-    /*
-    if let Ok(connection) = ConnectionWithServer::connect(session_socket_path) {
-        if args.profile {
-            run_client(args, ui, connection)?;
-        } else {
-            run_client(args, ui, connection)?;
-        }
-    } else if let Ok(listener) = ConnectionWithClientCollection::listen(session_socket_path) {
-        if args.profile {
-            run_server_with_client(args, ui, listener)?;
-        } else {
-            run_server_with_client(args, ui, listener)?;
-        }
-        fs::remove_file(session_socket_path)?;
-    } else if let Ok(()) = fs::remove_file(session_socket_path) {
-        let listener = ConnectionWithClientCollection::listen(session_socket_path)?;
-        if args.profile {
-            run_server_with_client(args, ui, listener)?;
-        } else {
-            run_server_with_client(args, ui, listener)?;
-        }
-        fs::remove_file(session_socket_path)?;
-    } else {
-        return Err(Box::new(ApplicationError(
-            "could not connect to or start the server".into(),
-        )));
-    }
+    */
 
     Ok(())
-    */
 }
 
 fn client_events_from_args<F>(args: &Args, mut func: F)
@@ -248,12 +217,7 @@ where
     }
 }
 
-fn render_clients<I>(
-    editor: &mut Editor,
-    clients: &mut ClientManager,
-    ui: &mut I,
-    connections: &mut ConnectionWithClientCollection,
-) -> UiResult<bool>
+fn render_clients<I>(editor: &mut Editor, clients: &mut ClientManager, ui: &mut I) -> UiResult<bool>
 where
     I: Ui,
 {
@@ -267,24 +231,6 @@ where
     }
 
     Ok(needs_redraw)
-}
-
-fn run_server_with_client<I>(
-    _: Args,
-    _: I,
-    _: ConnectionWithClientCollection,
-) -> Result<(), Box<dyn Error>>
-where
-    I: Ui,
-{
-    Ok(())
-}
-
-fn run_client<I>(_: Args, _: I, _: ConnectionWithServer) -> Result<(), Box<dyn Error>>
-where
-    I: Ui,
-{
-    Ok(())
 }
 
 /*

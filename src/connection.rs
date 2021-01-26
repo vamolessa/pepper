@@ -59,7 +59,7 @@ struct ClientEventDeserializationBuf {
 }
 
 impl ClientEventDeserializationBuf {
-    pub fn read<F>(&mut self, bytes: &[u8], mut func: F) -> EditorLoop
+    pub fn receive_events<F>(&mut self, bytes: &[u8], mut func: F) -> EditorLoop
     where
         F: FnMut(ClientEvent) -> EditorLoop,
     {
@@ -84,7 +84,8 @@ impl ClientEventDeserializationBuf {
         }
 
         let rest_len = deserializer.as_slice().len();
-        self.buf.copy_within((self.buf.len() - rest_len).., 0);
+        let start = self.buf.len() - rest_len;
+        self.buf.copy_within(start.., 0);
         self.buf.truncate(rest_len);
 
         editor_loop
@@ -92,11 +93,11 @@ impl ClientEventDeserializationBuf {
 }
 
 #[derive(Default)]
-pub struct ConnectionWithClientCollection {
+pub struct ClientEventDeserializationBufCollection {
     bufs: Vec<ClientEventDeserializationBuf>,
 }
 
-impl ConnectionWithClientCollection {
+impl ClientEventDeserializationBufCollection {
     pub fn receive_events<F>(
         &mut self,
         handle: ConnectionHandle,
@@ -111,6 +112,6 @@ impl ConnectionWithClientCollection {
             self.bufs.resize_with(index + 1, Default::default);
         }
 
-        self.bufs[index].read(bytes, func)
+        self.bufs[index].receive_events(bytes, func)
     }
 }
