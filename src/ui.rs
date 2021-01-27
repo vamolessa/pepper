@@ -1,8 +1,10 @@
 use std::{error::Error, io, sync::mpsc, thread};
 
+use crate::platform::Key;
+
 use crate::{
     client::Client,
-    client_event::{Key, LocalEvent},
+    client_event::LocalEvent,
     editor::Editor,
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
 };
@@ -25,9 +27,14 @@ impl UiKind {
         has_focus: bool,
         buffer: &mut Vec<u8>,
     ) {
-        buffer.clear();
+        if let Self::None = self {
+            *self = Self::Tui {
+                status_bar_buf: String::new(),
+            };
+        }
+
         match self {
-            Self::None => (),
+            Self::None => unreachable!(),
             Self::Tui {
                 ref mut status_bar_buf,
             } => tui::render(editor, client, has_focus, buffer, status_bar_buf),
@@ -70,11 +77,6 @@ impl<'de> Serialize<'de> for UiKind {
 }
 
 pub trait Ui {
-    fn run_event_loop_in_background(
-        &mut self,
-        event_sender: mpsc::Sender<LocalEvent>,
-    ) -> thread::JoinHandle<()>;
-
     fn init(&mut self) -> UiResult<()> {
         Ok(())
     }

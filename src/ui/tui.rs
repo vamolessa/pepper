@@ -1,9 +1,6 @@
 use std::{
     io::{self, Write},
     iter,
-    sync::mpsc,
-    thread,
-    time::Duration,
 };
 
 use crossterm::{
@@ -11,16 +8,16 @@ use crossterm::{
     style::{
         Attribute, Color, Print, ResetColor, SetAttribute, SetBackgroundColor, SetForegroundColor,
     },
-    terminal,
-    tty::IsTty,
-    Command,
+    terminal, Command,
 };
+
+use crate::platform::Key;
 
 use crate::{
     buffer::{Buffer, BufferContent, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
     client::Client,
-    client_event::{Key, LocalEvent},
+    client_event::LocalEvent,
     cursor::Cursor,
     editor::{Editor, StatusMessageKind},
     mode::ModeKind,
@@ -28,7 +25,69 @@ use crate::{
     theme,
 };
 
-use super::{read_keys_from_stdin, Ui, UiResult};
+use super::{Ui, UiResult};
+
+fn set_title(buf: &mut Vec<u8>, title: &[u8]) {
+    buf.extend_from_slice(b"\x1B]0;");
+    buf.extend_from_slice(title);
+    buf.extend_from_slice(b"{}\x07");
+}
+
+fn enter_alternate_buffer(buf: &mut Vec<u8>) {
+    buf.extend_from_slice(b"\x1B[?1049h");
+}
+
+fn exit_alternate_buffer(buf: &mut Vec<u8>) {
+    buf.extend_from_slice(b"\x1B[?1049l");
+}
+
+fn reset_style(buf: &mut Vec<u8>) {
+    buf.extend_from_slice(b"\x1B[?0m");
+}
+
+fn clear_all(buf: &mut Vec<u8>) {
+    buf.extend_from_slice(b"\x1B[2J");
+}
+
+fn clear_until_new_line(buf: &mut Vec<u8>) {
+    buf.extend_from_slice(b"\x1B[K");
+}
+
+fn hide_cursor(buf: &mut Vec<u8>) {
+    buf.extend_from_slice(b"\x1B[?25l");
+}
+
+fn show_cursor(buf: &mut Vec<u8>) {
+    buf.extend_from_slice(b"\x1B[?25h");
+}
+
+fn move_cursor_to(buf: &mut Vec<u8>, x: usize, y: usize) {
+    let _ = write!(buf, "\x1B[{};{}H", x, y);
+}
+
+fn move_cursor_to_next_line(buf: &mut Vec<u8>) {
+    buf.extend_from_slice(b"\x1B[1D");
+}
+
+fn move_cursor_up(buf: &mut Vec<u8>, count: usize) {
+    let _ = write!(buf, "\x1B[{}A", count);
+}
+
+fn set_background_color(buf: &mut Vec<u8>, color: theme::Color) {
+    let _ = write!(buf, "\x1B[48;2;{};{};{}", color.0, color.1, color.2);
+}
+
+fn set_foreground_color(buf: &mut Vec<u8>, color: theme::Color) {
+    let _ = write!(buf, "\x1B[38;2;{};{};{}", color.0, color.1, color.2);
+}
+
+fn set_underlined(buf: &mut Vec<u8>) {
+    buf.extend_from_slice(b"\x1B[4m");
+}
+
+fn set_no_underlined(buf: &mut Vec<u8>) {
+    buf.extend_from_slice(b"\x1B[4m");
+}
 
 #[inline]
 fn write_command<W, C>(writer: &mut W, command: C)
@@ -97,40 +156,6 @@ impl<W> Ui for Tui<W>
 where
     W: Write,
 {
-    fn run_event_loop_in_background(
-        &mut self,
-        event_sender: mpsc::Sender<LocalEvent>,
-    ) -> thread::JoinHandle<()> {
-        if io::stdin().is_tty() {
-            let size = terminal::size().unwrap_or((0, 0));
-            let _ = event_sender.send(LocalEvent::Resize(size.0, size.1));
-
-            thread::spawn(move || {
-                loop {
-                    match event::poll(Duration::from_millis(1000)) {
-                        Ok(false) => match event_sender.send(LocalEvent::Idle) {
-                            Ok(()) => (),
-                            Err(_) => break,
-                        },
-                        Ok(true) => (),
-                        Err(_) => break,
-                    }
-                    let event = match event::read() {
-                        Ok(event) => event,
-                        Err(_) => break,
-                    };
-                    if let Err(_) = event_sender.send(convert_event(event)) {
-                        break;
-                    }
-                }
-
-                let _ = event_sender.send(LocalEvent::EndOfInput);
-            })
-        } else {
-            thread::spawn(move || read_keys_from_stdin(event_sender))
-        }
-    }
-
     fn init(&mut self) -> UiResult<()> {
         ctrlc::set_handler(|| {}).map_err(Box::new)?;
 

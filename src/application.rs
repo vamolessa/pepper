@@ -10,17 +10,18 @@ use std::{
 };
 
 use crate::platform::{
-    ClientApplication, ConnectionHandle, Platform, ProcessHandle, ServerApplication, ServerEvent,
-    WriteResult,
+    ClientApplication, ConnectionHandle, Key, Platform, PlatformClientEvent, PlatformServerEvent,
+    PlatformWriteResult, ProcessHandle, ServerApplication,
 };
 
 use crate::{
     client::{ClientManager, TargetClient},
-    client_event::{ClientEvent, ClientEventSerializer, Key, LocalEvent},
+    client_event::{ClientEvent, ClientEventSerializer, LocalEvent},
     connection::ClientEventDeserializationBufCollection,
     editor::{Editor, EditorLoop},
     event_manager::{ConnectionEvent, EventManager},
     lsp::LspClientCollection,
+    serialization::{SerializationBuf, Serialize},
     task::TaskManager,
     ui::{self, Ui, UiKind, UiResult},
     Args,
@@ -71,20 +72,20 @@ impl ServerApplication for Server {
         })
     }
 
-    fn on_event<P>(&mut self, platform: &mut P, event: ServerEvent) -> bool
+    fn on_event<P>(&mut self, platform: &mut P, event: PlatformServerEvent) -> bool
     where
         P: Platform,
     {
         match event {
-            ServerEvent::Idle => (),
-            ServerEvent::ConnectionOpen(handle) => self.clients.on_client_joined(handle),
-            ServerEvent::ConnectionClose(handle) => {
+            PlatformServerEvent::Idle => (),
+            PlatformServerEvent::ConnectionOpen(handle) => self.clients.on_client_joined(handle),
+            PlatformServerEvent::ConnectionClose(handle) => {
                 self.clients.on_client_left(handle);
                 if self.clients.iter_mut().next().is_none() {
                     return false;
                 }
             }
-            ServerEvent::ConnectionMessage(handle) => {
+            PlatformServerEvent::ConnectionMessage(handle) => {
                 let bytes = platform.read_from_connection(handle);
                 let editor = &mut self.editor;
                 let clients = &mut self.clients;
@@ -100,15 +101,15 @@ impl ServerApplication for Server {
                     EditorLoop::QuitAll => return false,
                 }
             }
-            ServerEvent::ProcessStdout(handle) => {
+            PlatformServerEvent::ProcessStdout(handle) => {
                 let _bytes = platform.read_from_process_stdout(handle);
                 //
             }
-            ServerEvent::ProcessStderr(handle) => {
+            PlatformServerEvent::ProcessStderr(handle) => {
                 let _bytes = platform.read_from_process_stderr(handle);
                 //
             }
-            ServerEvent::ProcessExit(_handle, _status) => {
+            PlatformServerEvent::ProcessExit(_handle, _status) => {
                 //
             }
         }
@@ -121,10 +122,17 @@ impl ServerApplication for Server {
         let focused_target = self.clients.focused_target();
         for c in self.clients.client_refs() {
             let has_focus = focused_target == c.target;
+            c.buffer.clear();
+            c.buffer.extend_from_slice(&[0; 4]);
             c.ui.render(&self.editor, c.client, has_focus, c.buffer);
+            let len = c.buffer.len() as u32 - 4;
+            let len_bytes = len.to_le_bytes();
+            c.buffer[..4].copy_from_slice(&len_bytes);
 
             let connection_handle = c.target.0;
-            if let WriteResult::Err = platform.write_to_connection(connection_handle, c.buffer) {
+            if let PlatformWriteResult::Err =
+                platform.write_to_connection(connection_handle, c.buffer)
+            {
                 self.connections_with_error.push(connection_handle);
             }
         }
@@ -142,7 +150,8 @@ impl ServerApplication for Server {
 }
 
 pub struct Client {
-    //
+    read_buf: Vec<u8>,
+    write_buf: SerializationBuf,
 }
 impl ClientApplication for Client {
     fn new() -> Option<Self> {
@@ -152,11 +161,43 @@ impl ClientApplication for Client {
             return None;
         }
 
-        Some(Self {})
+        Some(Self {
+            read_buf: Vec::new(),
+            write_buf: SerializationBuf::default(),
+        })
     }
 
-    fn on_event(&mut self, event: crate::platform::ClientEvent) -> &[u8] {
-        &[]
+    fn on_event(&mut self, event: PlatformClientEvent) -> &[u8] {
+        match event {
+            PlatformClientEvent::Key(key) => {
+                ClientEvent::Key(key).serialize(&mut self.write_buf);
+                self.write_buf.clear();
+                self.write_buf.as_slice()
+            }
+            PlatformClientEvent::Resize(width, height) => {
+                //
+                &[]
+            }
+            PlatformClientEvent::Message(message) => {
+                self.read_buf.extend_from_slice(message);
+                let mut len_bytes = [0; 4];
+                if self.read_buf.len() < len_bytes.len() {
+                    return &[];
+                }
+
+                len_bytes.copy_from_slice(&self.read_buf[..4]);
+                let target_len = u32::from_le_bytes(len_bytes) as usize + 4;
+                if self.read_buf.len() < target_len {
+                    return &[];
+                }
+
+                let screen_bytes = unsafe { std::str::from_utf8_unchecked(&self.read_buf[4..]) };
+                print!("{}", screen_bytes);
+                self.read_buf.clear();
+
+                &[]
+            }
+        }
     }
 }
 

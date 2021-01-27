@@ -1,6 +1,7 @@
+use crate::platform::Key;
+
 use crate::{
     client::{ClientManager, TargetClient},
-    client_event::Key,
     editor::{Editor, EditorLoop, KeysIterator, ReadLinePoll, StatusMessageKind},
     mode::{Mode, ModeKind, ModeOperation, ModeState},
     script::{ScriptContext, ScriptEngine, ScriptResult, ScriptValue},

@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 
-use crate::{
-    client_event::{Key, KeyParseAllError},
-    mode::ModeKind,
-};
+use crate::platform::{Key, KeyParseAllError};
+
+use crate::{mode::ModeKind};
 
 pub enum MatchResult<'a> {
     None,

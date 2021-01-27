@@ -1,6 +1,7 @@
+use crate::platform::Key;
+
 use crate::{
     client::{ClientManager, TargetClient},
-    client_event::Key,
     editor::{Editor, KeysIterator, ReadLinePoll},
     mode::{Mode, ModeKind, ModeOperation, ModeState},
     word_database::EmptyWordCollection,

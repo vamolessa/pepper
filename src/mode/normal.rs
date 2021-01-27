@@ -1,11 +1,12 @@
 use std::cmp::Ordering;
 
+use crate::platform::Key;
+
 use crate::{
     buffer::BufferContent,
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     client::{Client, ClientManager, TargetClient},
-    client_event::Key,
     cursor::Cursor,
     editor::{Editor, KeysIterator, StatusMessageKind},
     lsp::LspDiagnostic,

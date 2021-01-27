@@ -50,8 +50,8 @@ use winapi::{
 };
 
 use crate::platform::{
-    ClientApplication, ClientEvent, ConnectionHandle, Key, Platform, ProcessExitStatus,
-    ProcessHandle, ServerApplication, ServerEvent, WriteResult,
+    ClientApplication, PlatformClientEvent, ConnectionHandle, Key, Platform, ProcessExitStatus,
+    ProcessHandle, ServerApplication, PlatformServerEvent, PlatformWriteResult,
 };
 
 const SERVER_PIPE_BUFFER_LEN: usize = 512;
@@ -317,9 +317,9 @@ impl AsyncIO {
         &self.buf[..self.read_len]
     }
 
-    pub fn write(&mut self, buf: &[u8]) -> WriteResult {
+    pub fn write(&mut self, buf: &[u8]) -> PlatformWriteResult {
         if buf.is_empty() {
-            return WriteResult::Ok;
+            return PlatformWriteResult::Ok;
         }
 
         // TODO: write all bytes!
@@ -335,9 +335,9 @@ impl AsyncIO {
         };
 
         if result == FALSE {
-            WriteResult::Err
+            PlatformWriteResult::Err
         } else {
-            WriteResult::Ok
+            PlatformWriteResult::Ok
         }
     }
 }
@@ -639,10 +639,10 @@ impl Platform for State {
         }
     }
 
-    fn write_to_connection(&mut self, handle: ConnectionHandle, buf: &[u8]) -> WriteResult {
+    fn write_to_connection(&mut self, handle: ConnectionHandle, buf: &[u8]) -> PlatformWriteResult {
         match self.pipes.get_mut(handle.0) {
             Some(pipe) => pipe.write(buf),
-            None => WriteResult::Err,
+            None => PlatformWriteResult::Err,
         }
     }
 
@@ -676,17 +676,17 @@ impl Platform for State {
         }
     }
 
-    fn write_to_process(&mut self, handle: ProcessHandle, buf: &[u8]) -> WriteResult {
+    fn write_to_process(&mut self, handle: ProcessHandle, buf: &[u8]) -> PlatformWriteResult {
         if let Some(child) = self.children.get_mut(handle.0) {
             if let Some(ref mut stdin) = child.child.stdin {
                 use io::Write;
                 if let Ok(()) = stdin.write_all(buf) {
-                    return WriteResult::Ok;
+                    return PlatformWriteResult::Ok;
                 }
             }
         }
 
-        WriteResult::Err
+        PlatformWriteResult::Err
     }
 
     fn kill_process(&mut self, handle: ProcessHandle) {
@@ -747,7 +747,7 @@ where
                 if let Some(pipe) = state.listener.accept(pipe_path) {
                     let index = state.pipes.push(pipe);
                     let handle = ConnectionHandle(index);
-                    send_event!(ServerEvent::ConnectionOpen(handle));
+                    send_event!(PlatformServerEvent::ConnectionOpen(handle));
                 }
             }
             Some(EventSource::Connection(i)) => {
@@ -761,7 +761,7 @@ where
                     ReadResult::Waiting => (),
                     ReadResult::Err | ReadResult::Ok(0) => {
                         state.pipes.remove(i);
-                        send_event!(ServerEvent::ConnectionClose(handle));
+                        send_event!(PlatformServerEvent::ConnectionClose(handle));
                     }
                     ReadResult::Ok(_) => {
                         let bytes = pipe.get_read_bytes();
@@ -789,8 +789,8 @@ where
 
                         let message = b"thank you for your message!";
                         match pipe.write(message) {
-                            WriteResult::Ok => (),
-                            WriteResult::Err => {
+                            PlatformWriteResult::Ok => (),
+                            PlatformWriteResult::Err => {
                                 state.pipes.remove(i);
                                 if state.pipes.is_empty() {
                                     break;
@@ -798,7 +798,7 @@ where
                             }
                         }
 
-                        send_event!(ServerEvent::ConnectionMessage(handle));
+                        send_event!(PlatformServerEvent::ConnectionMessage(handle));
                     }
                 }
             }
@@ -825,7 +825,7 @@ where
                             };
 
                             state.children.remove(i);
-                            send_event!(ServerEvent::ProcessExit(handle, status));
+                            send_event!(PlatformServerEvent::ProcessExit(handle, status));
                         }
                     }
                     ReadResult::Ok(_) => {
@@ -838,7 +838,7 @@ where
                             message
                         );
 
-                        send_event!(ServerEvent::ProcessStdout(handle));
+                        send_event!(PlatformServerEvent::ProcessStdout(handle));
                     }
                 }
             }
@@ -865,7 +865,7 @@ where
                             };
 
                             state.children.remove(i);
-                            send_event!(ServerEvent::ProcessExit(handle, status));
+                            send_event!(PlatformServerEvent::ProcessExit(handle, status));
                         }
                     }
                     ReadResult::Ok(_) => {
@@ -878,7 +878,7 @@ where
                             message
                         );
 
-                        send_event!(ServerEvent::ProcessStderr(handle));
+                        send_event!(PlatformServerEvent::ProcessStderr(handle));
                     }
                 }
             }
@@ -923,8 +923,8 @@ unsafe fn run_client(pipe_path: &[u16], input_handle: HANDLE, output_handle: HAN
     }
 
     match pipe.write(b"hello there!") {
-        WriteResult::Ok => (),
-        WriteResult::Err => panic!("could not send message to server"),
+        PlatformWriteResult::Ok => (),
+        PlatformWriteResult::Err => panic!("could not send message to server"),
     }
 
     let event_buffer = &mut [INPUT_RECORD::default(); 32][..];
@@ -1008,8 +1008,8 @@ unsafe fn run_client(pipe_path: &[u16], input_handle: HANDLE, output_handle: HAN
                             let message = format!("{}", key);
                             println!("{} key x {}", message, repeat_count);
                             match pipe.write(message.as_bytes()) {
-                                WriteResult::Ok => (),
-                                WriteResult::Err => panic!("could not send message to server"),
+                                PlatformWriteResult::Ok => (),
+                                PlatformWriteResult::Err => panic!("could not send message to server"),
                             }
 
                             if let Key::Esc = key {

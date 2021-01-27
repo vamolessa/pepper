@@ -1,8 +1,9 @@
+use crate::platform::Key;
+
 use crate::{
     buffer_position::BufferPosition,
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     client::{TargetClient, ClientManager},
-    client_event::Key,
     editor::{Editor, KeysIterator},
     mode::{Mode, ModeKind, ModeOperation, ModeState},
     register::AUTO_MACRO_REGISTER,

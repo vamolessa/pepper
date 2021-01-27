@@ -2,14 +2,15 @@ use std::{
     error::Error,
     fmt,
     path::{Path, PathBuf},
-    sync::mpsc,
 };
+
+use crate::platform::Key;
 
 use crate::{
     buffer::BufferCollection,
     buffer_view::BufferViewCollection,
     client::{ClientManager, TargetClient},
-    client_event::{ClientEvent, Key, LocalEvent},
+    client_event::{ClientEvent, LocalEvent},
     config::Config,
     editor_event::{EditorEvent, EditorEventQueue},
     keymap::{KeyMapCollection, MatchResult},

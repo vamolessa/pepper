@@ -381,7 +381,7 @@ pub struct ConnectionHandle(pub usize);
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct ProcessHandle(pub usize);
 
-pub enum WriteResult {
+pub enum PlatformWriteResult {
     Ok,
     Err,
 }
@@ -391,7 +391,7 @@ pub enum ProcessExitStatus {
     Err,
 }
 
-pub enum ServerEvent {
+pub enum PlatformServerEvent {
     Idle,
     ConnectionOpen(ConnectionHandle),
     ConnectionClose(ConnectionHandle),
@@ -401,7 +401,7 @@ pub enum ServerEvent {
     ProcessExit(ProcessHandle, ProcessExitStatus),
 }
 
-pub enum ClientEvent<'a> {
+pub enum PlatformClientEvent<'a> {
     Resize(usize, usize),
     Key(Key),
     Message(&'a [u8]),
@@ -411,25 +411,25 @@ pub trait ServerApplication: Sized {
     fn new<P>(platform: &mut P) -> Option<Self>
     where
         P: Platform;
-    fn on_event<P>(&mut self, platform: &mut P, event: ServerEvent) -> bool
+    fn on_event<P>(&mut self, platform: &mut P, event: PlatformServerEvent) -> bool
     where
         P: Platform;
 }
 
 pub trait ClientApplication: Sized {
     fn new() -> Option<Self>;
-    fn on_event(&mut self, event: ClientEvent) -> &[u8];
+    fn on_event(&mut self, event: PlatformClientEvent) -> &[u8];
 }
 
 pub trait Platform {
     fn read_from_connection(&self, handle: ConnectionHandle) -> &[u8];
-    fn write_to_connection(&mut self, handle: ConnectionHandle, buf: &[u8]) -> WriteResult;
+    fn write_to_connection(&mut self, handle: ConnectionHandle, buf: &[u8]) -> PlatformWriteResult;
     fn close_connection(&mut self, handle: ConnectionHandle);
 
     fn spawn_process(&mut self, command: Command) -> io::Result<ProcessHandle>;
     fn read_from_process_stdout(&self, handle: ProcessHandle) -> &[u8];
     fn read_from_process_stderr(&self, handle: ProcessHandle) -> &[u8];
-    fn write_to_process(&mut self, handle: ProcessHandle, buf: &[u8]) -> WriteResult;
+    fn write_to_process(&mut self, handle: ProcessHandle, buf: &[u8]) -> PlatformWriteResult;
     fn kill_process(&mut self, handle: ProcessHandle);
 }
 
