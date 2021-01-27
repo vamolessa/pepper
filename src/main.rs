@@ -69,11 +69,5 @@ pub struct Args {
 }
 
 fn main() {
-    if false {
-        if let Err(e) = application::run(argh::from_env()) {
-            eprintln!("{}", e);
-        }
-    }
-
     platform::run::<application::Server, application::Client>();
 }

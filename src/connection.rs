@@ -10,7 +10,7 @@ use crate::{
     },
     editor::EditorLoop,
     event_manager::EventRegistry,
-    platform::{ConnectionHandle, Platform},
+    platform::{ConnectionHandle, ServerPlatform},
     serialization::{DeserializationSlice, Serialize},
 };
 

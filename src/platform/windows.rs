@@ -50,8 +50,9 @@ use winapi::{
 };
 
 use crate::platform::{
-    ClientApplication, PlatformClientEvent, ConnectionHandle, Key, Platform, ProcessExitStatus,
-    ProcessHandle, ServerApplication, PlatformServerEvent, PlatformWriteResult,
+    ClientApplication, ClientPlatform, ConnectionHandle, Key, PlatformClientEvent,
+    PlatformServerEvent, ProcessExitStatus, ProcessHandle, ServerApplication,
+    ServerPlatform,
 };
 
 const SERVER_PIPE_BUFFER_LEN: usize = 512;
@@ -81,14 +82,10 @@ where
     let output_handle = get_std_handle(STD_OUTPUT_HANDLE);
 
     match (input_handle, output_handle) {
-        (Some(input_handle), Some(output_handle)) => {
-            println!("run client");
-            unsafe { run_client(&pipe_path, input_handle, output_handle) };
-        }
-        _ => {
-            println!("run server");
-            unsafe { run_server::<S>(&pipe_path) };
-        }
+        (Some(input_handle), Some(output_handle)) => unsafe {
+            run_client::<C>(&pipe_path, input_handle, output_handle)
+        },
+        _ => unsafe { run_server::<S>(&pipe_path) },
     }
 }
 
@@ -165,12 +162,6 @@ fn wait_for_multiple_objects(handles: &[HANDLE], timeout: Option<Duration>) -> W
     }
 }
 
-fn make_buffer(len: usize) -> Box<[u8]> {
-    let mut buf = Vec::with_capacity(len);
-    buf.resize(len, 0);
-    buf.into_boxed_slice()
-}
-
 struct Handle(pub HANDLE);
 impl Drop for Handle {
     fn drop(&mut self) {
@@ -229,7 +220,6 @@ struct AsyncIO {
     event: Event,
     pending_io: bool,
     buf: Box<[u8]>,
-    read_len: usize,
 }
 impl AsyncIO {
     pub fn from_handle(handle: Handle, buf_len: usize) -> Self {
@@ -246,12 +236,10 @@ impl AsyncIO {
             event,
             pending_io: false,
             buf,
-            read_len: 0,
         }
     }
 
     pub fn read_async(&mut self) -> ReadResult {
-        self.read_len = 0;
         let mut read_len = 0;
         if self.pending_io {
             let result = unsafe {
@@ -268,8 +256,7 @@ impl AsyncIO {
                     ERROR_MORE_DATA => {
                         self.pending_io = false;
                         self.event.notify();
-                        self.read_len = read_len as _;
-                        ReadResult::Ok(self.read_len)
+                        ReadResult::Ok(read_len as _)
                     }
                     _ => {
                         self.pending_io = false;
@@ -279,8 +266,7 @@ impl AsyncIO {
             } else {
                 self.pending_io = false;
                 self.event.notify();
-                self.read_len = read_len as _;
-                ReadResult::Ok(self.read_len)
+                ReadResult::Ok(read_len as _)
             }
         } else {
             let result = unsafe {
@@ -307,22 +293,20 @@ impl AsyncIO {
             } else {
                 self.pending_io = false;
                 self.event.notify();
-                self.read_len = read_len as _;
-                ReadResult::Ok(self.read_len)
+                ReadResult::Ok(read_len as _)
             }
         }
     }
 
-    pub fn get_read_bytes(&self) -> &[u8] {
-        &self.buf[..self.read_len]
+    pub fn get_bytes(&self, len: usize) -> &[u8] {
+        &self.buf[..len]
     }
 
-    pub fn write(&mut self, buf: &[u8]) -> PlatformWriteResult {
+    pub fn write(&mut self, buf: &[u8]) -> bool {
         if buf.is_empty() {
-            return PlatformWriteResult::Ok;
+            return true;
         }
 
-        // TODO: write all bytes!
         let mut write_len = 0;
         let result = unsafe {
             WriteFile(
@@ -334,11 +318,9 @@ impl AsyncIO {
             )
         };
 
-        if result == FALSE {
-            PlatformWriteResult::Err
-        } else {
-            PlatformWriteResult::Ok
-        }
+        // TODO: write all bytes
+        assert_eq!(buf.len(), write_len as usize);
+        result != FALSE
     }
 }
 
@@ -550,27 +532,6 @@ impl Events {
     }
 }
 
-struct ReadBuf(Box<[u8]>);
-impl ReadBuf {
-    pub fn with_len(len: usize) -> Self {
-        let mut buf = Vec::with_capacity(len);
-        buf.resize(len, 0);
-        Self(buf.into_boxed_slice())
-    }
-
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    pub fn slice(&self, len: usize) -> &[u8] {
-        &self.0[..len]
-    }
-
-    pub fn as_mut_ptr(&mut self) -> *mut u8 {
-        self.0.as_mut_ptr()
-    }
-}
-
 struct SlotVec<T>(Vec<Option<T>>);
 impl<T> SlotVec<T> {
     pub fn new() -> Self {
@@ -624,25 +585,23 @@ impl<T> SlotVec<T> {
     }
 }
 
-struct State {
-    events: Events,
-    listener: PipeToClientListener,
+struct ServerState {
     pipes: SlotVec<PipeToClient>,
     children: SlotVec<AsyncChild>,
 }
 
-impl Platform for State {
-    fn read_from_connection(&self, handle: ConnectionHandle) -> &[u8] {
+impl ServerPlatform for ServerState {
+    fn read_from_connection(&self, handle: ConnectionHandle, len: usize) -> &[u8] {
         match self.pipes.get(handle.0) {
-            Some(pipe) => pipe.get_read_bytes(),
+            Some(pipe) => pipe.get_bytes(len),
             None => &[],
         }
     }
 
-    fn write_to_connection(&mut self, handle: ConnectionHandle, buf: &[u8]) -> PlatformWriteResult {
+    fn write_to_connection(&mut self, handle: ConnectionHandle, buf: &[u8]) -> bool {
         match self.pipes.get_mut(handle.0) {
             Some(pipe) => pipe.write(buf),
-            None => PlatformWriteResult::Err,
+            None => false,
         }
     }
 
@@ -656,37 +615,37 @@ impl Platform for State {
         Ok(ProcessHandle(index))
     }
 
-    fn read_from_process_stdout(&self, handle: ProcessHandle) -> &[u8] {
+    fn read_from_process_stdout(&self, handle: ProcessHandle, len: usize) -> &[u8] {
         match self.children.get(handle.0) {
             Some(child) => match child.stdout {
-                ChildPipe::Open(ref io) => io.get_read_bytes(),
+                ChildPipe::Open(ref io) => io.get_bytes(len),
                 ChildPipe::Closed => &[],
             },
             None => &[],
         }
     }
 
-    fn read_from_process_stderr(&self, handle: ProcessHandle) -> &[u8] {
+    fn read_from_process_stderr(&self, handle: ProcessHandle, len: usize) -> &[u8] {
         match self.children.get(handle.0) {
             Some(child) => match child.stderr {
-                ChildPipe::Open(ref io) => io.get_read_bytes(),
+                ChildPipe::Open(ref io) => io.get_bytes(len),
                 ChildPipe::Closed => &[],
             },
             None => &[],
         }
     }
 
-    fn write_to_process(&mut self, handle: ProcessHandle, buf: &[u8]) -> PlatformWriteResult {
+    fn write_to_process(&mut self, handle: ProcessHandle, buf: &[u8]) -> bool {
         if let Some(child) = self.children.get_mut(handle.0) {
             if let Some(ref mut stdin) = child.child.stdin {
                 use io::Write;
                 if let Ok(()) = stdin.write_all(buf) {
-                    return PlatformWriteResult::Ok;
+                    return true;
                 }
             }
         }
 
-        PlatformWriteResult::Err
+        false
     }
 
     fn kill_process(&mut self, handle: ProcessHandle) {
@@ -706,9 +665,9 @@ where
         return;
     }
 
-    let mut state = State {
-        events: Events::default(),
-        listener: PipeToClientListener::new(pipe_path),
+    let mut events = Events::default();
+    let mut listener = PipeToClientListener::new(pipe_path);
+    let mut state = ServerState {
         pipes: SlotVec::new(),
         children: SlotVec::new(),
     };
@@ -727,24 +686,22 @@ where
     }
 
     loop {
-        state
-            .events
-            .track(&state.listener.io.event, EventSource::ConnectionListener);
+        events.track(&listener.io.event, EventSource::ConnectionListener);
         for (i, pipe) in state.pipes.iter() {
-            state.events.track(&pipe.event, EventSource::Connection(i));
+            events.track(&pipe.event, EventSource::Connection(i));
         }
         for (i, child) in state.children.iter() {
             if let ChildPipe::Open(io) = &child.stdout {
-                state.events.track(&io.event, EventSource::ChildStdout(i));
+                events.track(&io.event, EventSource::ChildStdout(i));
             }
             if let ChildPipe::Open(io) = &child.stderr {
-                state.events.track(&io.event, EventSource::ChildStderr(i));
+                events.track(&io.event, EventSource::ChildStderr(i));
             }
         }
 
-        match state.events.wait_one(None) {
+        match events.wait_one(None) {
             Some(EventSource::ConnectionListener) => {
-                if let Some(pipe) = state.listener.accept(pipe_path) {
+                if let Some(pipe) = listener.accept(pipe_path) {
                     let index = state.pipes.push(pipe);
                     let handle = ConnectionHandle(index);
                     send_event!(PlatformServerEvent::ConnectionOpen(handle));
@@ -763,7 +720,8 @@ where
                         state.pipes.remove(i);
                         send_event!(PlatformServerEvent::ConnectionClose(handle));
                     }
-                    ReadResult::Ok(_) => {
+                    ReadResult::Ok(len) => {
+                        /*
                         let bytes = pipe.get_read_bytes();
                         match Key::parse(&mut bytes.iter().map(|b| *b as _)) {
                             Ok(Key::Ctrl('r')) => {
@@ -797,8 +755,9 @@ where
                                 }
                             }
                         }
+                        */
 
-                        send_event!(PlatformServerEvent::ConnectionMessage(handle));
+                        send_event!(PlatformServerEvent::ConnectionMessage(handle, len));
                     }
                 }
             }
@@ -828,17 +787,8 @@ where
                             send_event!(PlatformServerEvent::ProcessExit(handle, status));
                         }
                     }
-                    ReadResult::Ok(_) => {
-                        let bytes = io.get_read_bytes();
-                        let message = String::from_utf8_lossy(bytes);
-                        println!(
-                            "received {} bytes from child {}! message: '{}'",
-                            bytes.len(),
-                            i,
-                            message
-                        );
-
-                        send_event!(PlatformServerEvent::ProcessStdout(handle));
+                    ReadResult::Ok(len) => {
+                        send_event!(PlatformServerEvent::ProcessStdout(handle, len));
                     }
                 }
             }
@@ -868,39 +818,49 @@ where
                             send_event!(PlatformServerEvent::ProcessExit(handle, status));
                         }
                     }
-                    ReadResult::Ok(_) => {
-                        let bytes = io.get_read_bytes();
-                        let message = String::from_utf8_lossy(bytes);
-                        println!(
-                            "received {} bytes from child {}! message: '{}'",
-                            bytes.len(),
-                            i,
-                            message
-                        );
-
-                        send_event!(PlatformServerEvent::ProcessStderr(handle));
+                    ReadResult::Ok(len) => {
+                        send_event!(PlatformServerEvent::ProcessStderr(handle, len));
                     }
                 }
             }
-            None => println!("timeout waiting"),
+            None => panic!("timeout waiting"),
         }
     }
-
-    println!("finish server");
 }
 
-unsafe fn run_client(pipe_path: &[u16], input_handle: HANDLE, output_handle: HANDLE) {
+struct ClientState {
+    pipe: PipeToServer,
+}
+
+impl ClientPlatform for ClientState {
+    fn read(&self, len: usize) -> &[u8] {
+        self.pipe.get_bytes(len)
+    }
+
+    fn write(&mut self, buf: &[u8]) -> bool {
+        self.pipe.write(buf)
+    }
+}
+
+unsafe fn run_client<C>(pipe_path: &[u16], input_handle: HANDLE, output_handle: HANDLE)
+where
+    C: ClientApplication,
+{
+    let mut client = match C::new() {
+        Some(client) => client,
+        None => return,
+    };
+
     if !file_exists(pipe_path) {
-        println!("pipe does not exist. running server...");
-
         fork();
-
         while !file_exists(pipe_path) {
             std::thread::sleep(Duration::from_millis(100));
         }
     }
 
-    let mut pipe = PipeToServer::connect(pipe_path);
+    let mut state = ClientState {
+        pipe: PipeToServer::connect(pipe_path),
+    };
 
     let mut original_input_mode = DWORD::default();
     if GetConsoleMode(input_handle, &mut original_input_mode) == FALSE {
@@ -922,19 +882,17 @@ unsafe fn run_client(pipe_path: &[u16], input_handle: HANDLE, output_handle: HAN
         panic!("could not set console output mode");
     }
 
-    match pipe.write(b"hello there!") {
-        PlatformWriteResult::Ok => (),
-        PlatformWriteResult::Err => panic!("could not send message to server"),
-    }
-
     let event_buffer = &mut [INPUT_RECORD::default(); 32][..];
-    let wait_handles = [input_handle, pipe.event.handle()];
+    let wait_handles = [input_handle, state.pipe.event.handle()];
+    let mut pending_events = Vec::new();
 
     'main_loop: loop {
         let wait_handle_index = match wait_for_multiple_objects(&wait_handles, None) {
             WaitResult::Signaled(i) => i,
             _ => continue,
         };
+
+        pending_events.clear();
         match wait_handle_index {
             0 => {
                 let mut event_count: DWORD = 0;
@@ -1005,43 +963,33 @@ unsafe fn run_client(pipe_path: &[u16], input_handle: HANDLE, output_handle: HAN
                                 }
                             };
 
-                            let message = format!("{}", key);
-                            println!("{} key x {}", message, repeat_count);
-                            match pipe.write(message.as_bytes()) {
-                                PlatformWriteResult::Ok => (),
-                                PlatformWriteResult::Err => panic!("could not send message to server"),
-                            }
-
                             if let Key::Esc = key {
                                 break 'main_loop;
                             }
+
+                            pending_events.push(PlatformClientEvent::Key(key));
                         }
                         WINDOW_BUFFER_SIZE_EVENT => {
                             let size = event.Event.WindowBufferSizeEvent().dwSize;
-                            let x = size.X as u16;
-                            let y = size.Y as u16;
-                            println!("window resized to {}, {}", x, y);
+                            pending_events
+                                .push(PlatformClientEvent::Resize(size.X as _, size.Y as _));
                         }
                         _ => (),
                     }
                 }
             }
-            1 => match pipe.read_async() {
+            1 => match state.pipe.read_async() {
                 ReadResult::Waiting => (),
-                ReadResult::Ok(0) | ReadResult::Err => {
-                    break;
-                }
-                ReadResult::Ok(len) => {
-                    let buf = &[0u8];
-                    let message = String::from_utf8_lossy(buf);
-                    println!("received {} bytes from server! message: '{}'", len, message);
-                }
+                ReadResult::Ok(0) | ReadResult::Err => break,
+                ReadResult::Ok(len) => pending_events.push(PlatformClientEvent::Message(len)),
             },
             _ => unreachable!(),
         }
-    }
 
-    println!("finish client");
+        if !client.on_events(&mut state, &pending_events) {
+            break;
+        }
+    }
 
     SetConsoleMode(input_handle, original_input_mode);
     SetConsoleMode(output_handle, original_output_mode);

@@ -4,14 +4,15 @@ use std::{
     error::Error,
     fmt, fs,
     hash::{Hash, Hasher},
+    io,
     path::Path,
     sync::mpsc,
     time::Instant,
 };
 
 use crate::platform::{
-    ClientApplication, ConnectionHandle, Key, Platform, PlatformClientEvent, PlatformServerEvent,
-    PlatformWriteResult, ProcessHandle, ServerApplication,
+    ClientApplication, ClientPlatform, ConnectionHandle, Key, PlatformClientEvent,
+    PlatformServerEvent, ProcessHandle, ServerApplication, ServerPlatform,
 };
 
 use crate::{
@@ -43,7 +44,7 @@ pub struct Server {
 impl ServerApplication for Server {
     fn new<P>(platform: &mut P) -> Option<Self>
     where
-        P: Platform,
+        P: ServerPlatform,
     {
         let args: Args = argh::from_env();
         if args.version {
@@ -74,7 +75,7 @@ impl ServerApplication for Server {
 
     fn on_event<P>(&mut self, platform: &mut P, event: PlatformServerEvent) -> bool
     where
-        P: Platform,
+        P: ServerPlatform,
     {
         match event {
             PlatformServerEvent::Idle => (),
@@ -85,8 +86,8 @@ impl ServerApplication for Server {
                     return false;
                 }
             }
-            PlatformServerEvent::ConnectionMessage(handle) => {
-                let bytes = platform.read_from_connection(handle);
+            PlatformServerEvent::ConnectionMessage(handle, len) => {
+                let bytes = platform.read_from_connection(handle, len);
                 let editor = &mut self.editor;
                 let clients = &mut self.clients;
                 let target = TargetClient(handle);
@@ -101,12 +102,12 @@ impl ServerApplication for Server {
                     EditorLoop::QuitAll => return false,
                 }
             }
-            PlatformServerEvent::ProcessStdout(handle) => {
-                let _bytes = platform.read_from_process_stdout(handle);
+            PlatformServerEvent::ProcessStdout(handle, len) => {
+                let _bytes = platform.read_from_process_stdout(handle, len);
                 //
             }
-            PlatformServerEvent::ProcessStderr(handle) => {
-                let _bytes = platform.read_from_process_stderr(handle);
+            PlatformServerEvent::ProcessStderr(handle, len) => {
+                let _bytes = platform.read_from_process_stderr(handle, len);
                 //
             }
             PlatformServerEvent::ProcessExit(_handle, _status) => {
@@ -130,9 +131,7 @@ impl ServerApplication for Server {
             c.buffer[..4].copy_from_slice(&len_bytes);
 
             let connection_handle = c.target.0;
-            if let PlatformWriteResult::Err =
-                platform.write_to_connection(connection_handle, c.buffer)
-            {
+            if !platform.write_to_connection(connection_handle, c.buffer) {
                 self.connections_with_error.push(connection_handle);
             }
         }
@@ -152,9 +151,16 @@ impl ServerApplication for Server {
 pub struct Client {
     read_buf: Vec<u8>,
     write_buf: SerializationBuf,
+    stdout: io::StdoutLock<'static>,
 }
 impl ClientApplication for Client {
     fn new() -> Option<Self> {
+        static mut STDOUT: Option<io::Stdout> = None;
+        let stdout = unsafe {
+            STDOUT = Some(io::stdout());
+            STDOUT.as_ref().unwrap().lock()
+        };
+
         let args: Args = argh::from_env();
         if args.version {
             print_version();
@@ -164,40 +170,47 @@ impl ClientApplication for Client {
         Some(Self {
             read_buf: Vec::new(),
             write_buf: SerializationBuf::default(),
+            stdout,
         })
     }
 
-    fn on_event(&mut self, event: PlatformClientEvent) -> &[u8] {
-        match event {
-            PlatformClientEvent::Key(key) => {
-                ClientEvent::Key(key).serialize(&mut self.write_buf);
-                self.write_buf.clear();
-                self.write_buf.as_slice()
-            }
-            PlatformClientEvent::Resize(width, height) => {
-                //
-                &[]
-            }
-            PlatformClientEvent::Message(message) => {
-                self.read_buf.extend_from_slice(message);
-                let mut len_bytes = [0; 4];
-                if self.read_buf.len() < len_bytes.len() {
-                    return &[];
+    fn on_events<P>(&mut self, platform: &mut P, events: &[PlatformClientEvent]) -> bool
+    where
+        P: ClientPlatform,
+    {
+        self.write_buf.clear();
+        for event in events {
+            match event {
+                PlatformClientEvent::Key(key) => {
+                    ClientEvent::Key(*key).serialize(&mut self.write_buf);
                 }
-
-                len_bytes.copy_from_slice(&self.read_buf[..4]);
-                let target_len = u32::from_le_bytes(len_bytes) as usize + 4;
-                if self.read_buf.len() < target_len {
-                    return &[];
+                PlatformClientEvent::Resize(width, height) => {
+                    ClientEvent::Resize(*width as _, *height as _).serialize(&mut self.write_buf);
                 }
+                PlatformClientEvent::Message(len) => {
+                    use io::Write;
 
-                let screen_bytes = unsafe { std::str::from_utf8_unchecked(&self.read_buf[4..]) };
-                print!("{}", screen_bytes);
-                self.read_buf.clear();
+                    let buf = platform.read(*len);
+                    self.read_buf.extend_from_slice(buf);
+                    let mut len_bytes = [0; 4];
+                    if self.read_buf.len() < len_bytes.len() {
+                        continue;
+                    }
 
-                &[]
+                    len_bytes.copy_from_slice(&self.read_buf[..4]);
+                    let target_len = u32::from_le_bytes(len_bytes) as usize + 4;
+                    if self.read_buf.len() < target_len {
+                        continue;
+                    }
+
+                    self.stdout.write_all(&self.read_buf[4..]).unwrap();
+                    self.read_buf.clear();
+                }
             }
         }
+
+        let bytes = self.write_buf.as_slice();
+        bytes.is_empty() || platform.write(bytes)
     }
 }
 
