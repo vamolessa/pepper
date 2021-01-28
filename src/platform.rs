@@ -1,7 +1,5 @@
 use std::{error::Error, fmt, io, process::Command, str::Chars};
 
-use crate::serialization::{DeserializeError, Deserializer, Serialize, Serializer};
-
 #[cfg(windows)]
 mod windows;
 
@@ -284,86 +282,6 @@ impl fmt::Display for Key {
             Key::Ctrl(c) => f.write_fmt(format_args!("<c-{}>", c)),
             Key::Alt(c) => f.write_fmt(format_args!("<a-{}>", c)),
             Key::Esc => f.write_str("<esc>"),
-        }
-    }
-}
-
-impl<'de> Serialize<'de> for Key {
-    fn serialize<S>(&self, serializer: &mut S)
-    where
-        S: Serializer,
-    {
-        match self {
-            Key::None => 0u8.serialize(serializer),
-            Key::Backspace => 1u8.serialize(serializer),
-            Key::Enter => 2u8.serialize(serializer),
-            Key::Left => 3u8.serialize(serializer),
-            Key::Right => 4u8.serialize(serializer),
-            Key::Up => 5u8.serialize(serializer),
-            Key::Down => 6u8.serialize(serializer),
-            Key::Home => 7u8.serialize(serializer),
-            Key::End => 8u8.serialize(serializer),
-            Key::PageUp => 9u8.serialize(serializer),
-            Key::PageDown => 10u8.serialize(serializer),
-            Key::Tab => 11u8.serialize(serializer),
-            Key::Delete => 12u8.serialize(serializer),
-            Key::F(n) => {
-                13u8.serialize(serializer);
-                n.serialize(serializer);
-            }
-            Key::Char(c) => {
-                14u8.serialize(serializer);
-                c.serialize(serializer);
-            }
-            Key::Ctrl(c) => {
-                15u8.serialize(serializer);
-                c.serialize(serializer);
-            }
-            Key::Alt(c) => {
-                16u8.serialize(serializer);
-                c.serialize(serializer);
-            }
-            Key::Esc => 17u8.serialize(serializer),
-        }
-    }
-
-    fn deserialize<D>(deserializer: &mut D) -> Result<Self, DeserializeError>
-    where
-        D: Deserializer<'de>,
-    {
-        let discriminant = u8::deserialize(deserializer)?;
-        match discriminant {
-            0 => Ok(Key::None),
-            1 => Ok(Key::Backspace),
-            2 => Ok(Key::Enter),
-            3 => Ok(Key::Left),
-            4 => Ok(Key::Right),
-            5 => Ok(Key::Up),
-            6 => Ok(Key::Down),
-            7 => Ok(Key::Home),
-            8 => Ok(Key::End),
-            9 => Ok(Key::PageUp),
-            10 => Ok(Key::PageDown),
-            11 => Ok(Key::Tab),
-            12 => Ok(Key::Delete),
-            13 => {
-                let n = u8::deserialize(deserializer)?;
-                Ok(Key::F(n))
-            }
-            14 => {
-                let c = char::deserialize(deserializer)?;
-                Ok(Key::Char(c))
-            }
-            15 => {
-                let c = char::deserialize(deserializer)?;
-                Ok(Key::Ctrl(c))
-            }
-            16 => {
-                let c = char::deserialize(deserializer)?;
-                Ok(Key::Alt(c))
-            }
-            17 => Ok(Key::Esc),
-            _ => Err(DeserializeError),
         }
     }
 }
