@@ -57,8 +57,6 @@ impl ServerApplication for Server {
     where
         P: ServerPlatform,
     {
-        eprintln!("run server");
-
         let current_dir = env::current_dir().expect("could not retrieve the current directory");
         let tasks = TaskManager::new();
         let lsp = LspClientCollection::new();
@@ -83,8 +81,6 @@ impl ServerApplication for Server {
     where
         P: ServerPlatform,
     {
-        eprintln!("on client event");
-
         match event {
             PlatformServerEvent::Idle => (),
             PlatformServerEvent::ConnectionOpen(handle) => self.clients.on_client_joined(handle),
@@ -178,8 +174,6 @@ impl ClientApplication for Client {
     where
         P: ClientPlatform,
     {
-        eprintln!("run client");
-
         static mut STDOUT: Option<io::Stdout> = None;
         let mut stdout = unsafe {
             STDOUT = Some(io::stdout());
@@ -203,6 +197,8 @@ impl ClientApplication for Client {
     where
         P: ClientPlatform,
     {
+        use io::Write;
+
         self.write_buf.clear();
         for event in events {
             match event {
@@ -213,8 +209,6 @@ impl ClientApplication for Client {
                     ClientEvent::Resize(*width as _, *height as _).serialize(&mut self.write_buf);
                 }
                 PlatformClientEvent::Message(len) => {
-                    use io::Write;
-
                     let buf = platform.read(*len);
                     self.read_buf.extend_from_slice(buf);
                     let mut len_bytes = [0; 4];
@@ -223,8 +217,8 @@ impl ClientApplication for Client {
                     }
 
                     len_bytes.copy_from_slice(&self.read_buf[..4]);
-                    let target_len = u32::from_le_bytes(len_bytes) as usize + 4;
-                    if self.read_buf.len() < target_len {
+                    let message_len = u32::from_le_bytes(len_bytes) as usize;
+                    if self.read_buf.len() < message_len + 4 {
                         continue;
                     }
 
@@ -234,6 +228,7 @@ impl ClientApplication for Client {
             }
         }
 
+        self.stdout.flush().unwrap();
         let bytes = self.write_buf.as_slice();
         bytes.is_empty() || platform.write(bytes)
     }
@@ -241,10 +236,12 @@ impl ClientApplication for Client {
 impl Drop for Client {
     fn drop(&mut self) {
         use io::Write;
+
         let mut buf = Vec::new();
         crate::ui::tui::exit_alternate_buffer(&mut buf);
         crate::ui::tui::show_cursor(&mut buf);
         let _ = self.stdout.write_all(&buf);
+        let _ = self.stdout.flush();
     }
 }
 

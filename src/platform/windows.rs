@@ -512,12 +512,14 @@ impl Events {
     }
 
     pub fn wait_one(&mut self, timeout: Option<Duration>) -> Option<EventSource> {
-        let index = wait_for_multiple_objects(&self.wait_handles, timeout)?;
-        let result = self.sources.swap_remove(index);
+        let result = match wait_for_multiple_objects(&self.wait_handles, timeout) {
+            Some(index) => Some(self.sources.swap_remove(index)),
+            None => None,
+        };
 
         self.wait_handles.clear();
         self.sources.clear();
-        Some(result)
+        result
     }
 }
 
@@ -874,7 +876,7 @@ where
     }
 
     let event_buffer = &mut [INPUT_RECORD::default(); 32][..];
-    let wait_handles = [input_handle, state.pipe.event.handle()];
+    let wait_handles = [state.pipe.event.handle(), input_handle];
     let mut pending_events = Vec::new();
 
     let mut console_info = CONSOLE_SCREEN_BUFFER_INFO::default();
@@ -882,9 +884,9 @@ where
         panic!("could not get console info");
     }
 
-    //let width = console_info.dwSize.X;
-    //let height = console_info.dwSize.Y;
-    //pending_events.push(PlatformClientEvent::Resize(width as _, height as _));
+    let width = console_info.dwSize.X;
+    let height = console_info.dwSize.Y;
+    pending_events.push(PlatformClientEvent::Resize(width as _, height as _));
     application.on_events(&mut state, &pending_events);
 
     'main_loop: loop {
@@ -895,7 +897,12 @@ where
 
         pending_events.clear();
         match wait_handle_index {
-            0 => {
+            0 => match state.pipe.read_async() {
+                ReadResult::Waiting => (),
+                ReadResult::Ok(0) | ReadResult::Err => break,
+                ReadResult::Ok(len) => pending_events.push(PlatformClientEvent::Message(len)),
+            },
+            1 => {
                 let mut event_count: DWORD = 0;
                 if ReadConsoleInputW(
                     input_handle,
@@ -981,11 +988,6 @@ where
                     }
                 }
             }
-            1 => match state.pipe.read_async() {
-                ReadResult::Waiting => (),
-                ReadResult::Ok(0) | ReadResult::Err => break,
-                ReadResult::Ok(len) => pending_events.push(PlatformClientEvent::Message(len)),
-            },
             _ => unreachable!(),
         }
 
