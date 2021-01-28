@@ -1,9 +1,4 @@
-use std::{
-    env,
-    error::Error,
-    fmt,
-    io,
-};
+use std::{env, error::Error, fmt, io};
 
 use crate::platform;
 
@@ -32,7 +27,15 @@ impl platform::Args for Args {
 
     fn session(&self) -> Option<&str> {
         match self.session {
-            Some(ref session) => Some(session),
+            Some(ref session) => {
+                if !session.chars().all(char::is_alphanumeric) {
+                    panic!(
+                        "invalid session name '{}'. it can only contain alphanumeric characters",
+                        session
+                    );
+                }
+                Some(session)
+            }
             None => None,
         }
     }
@@ -258,41 +261,7 @@ impl fmt::Display for ApplicationError {
     }
 }
 
-pub fn run(args: Args) -> Result<(), Box<dyn Error>> {
-    let mut session_socket_path = env::temp_dir();
-    session_socket_path.push(env!("CARGO_PKG_NAME"));
-    if !session_socket_path.exists() {
-        std::fs::create_dir_all(&session_socket_path).map_err(|e| Box::new(e))?;
-    }
-
-    match args.session.as_ref() {
-        Some(session) => {
-            if !session.chars().all(char::is_alphanumeric) {
-                return Err(Box::new(ApplicationError(format!(
-                    "invalid session name '{}'. it can only contain alphanumeric characters",
-                    session
-                ))));
-            }
-            session_socket_path.push(session);
-        }
-        None => {
-        }
-    }
-
-    /*
-    if args.as_focused_client || args.as_client.is_some() {
-        run_with_ui(args, ui::none_ui::NoneUi, &session_socket_path)
-    } else {
-        let stdout = std::io::stdout();
-        let stdout = stdout.lock();
-        let ui = ui::tui::Tui::new(stdout);
-        run_with_ui(args, ui, &session_socket_path)
-    }
-    */
-
-    Ok(())
-}
-
+/*
 fn client_events_from_args<F>(args: &Args, mut func: F)
 where
     F: FnMut(ClientEvent),
@@ -309,22 +278,7 @@ where
         func(ClientEvent::OpenBuffer(path));
     }
 }
-
-fn render_clients<I>(editor: &mut Editor, clients: &mut ClientManager, ui: &mut I) -> UiResult<bool>
-where
-    I: Ui,
-{
-    let needs_redraw = editor.on_pre_render(clients);
-
-    let focused_target = clients.focused_target();
-    for c in clients.client_refs() {
-        let has_focus = focused_target == c.target;
-        c.ui.render(editor, c.client, has_focus, c.buffer);
-        //connections.send_serialized_display(c.target.connection_handle(), c.buffer);
-    }
-
-    Ok(needs_redraw)
-}
+*/
 
 /*
 fn run_server_with_client<P, I>(
