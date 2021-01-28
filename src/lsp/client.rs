@@ -3,14 +3,12 @@ use std::{
     ops::Range,
     path::{Path, PathBuf},
     process::{self, Command},
-    sync::mpsc,
 };
 
 use crate::{
     buffer::{BufferCollection, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::BufferViewCollection,
-    client_event::LocalEvent,
     config::Config,
     editor::{StatusBar, StatusMessageKind},
     editor_event::{EditorEvent, EditorEventQueue},

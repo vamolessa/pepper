@@ -2,7 +2,6 @@ use std::{io::Read, process::Child, sync::mpsc, thread};
 
 use crate::{
     client::TargetClient,
-    client_event::LocalEvent,
     script::{ScriptEngineRef, ScriptResult, ScriptValue},
 };
 
@@ -81,9 +80,9 @@ struct TaskWorker {
 impl TaskWorker {
     pub fn new(
         task_receiver: mpsc::Receiver<Task>,
-        event_sender: mpsc::Sender<LocalEvent>,
+        //event_sender: mpsc::Sender<LocalEvent>,
     ) -> Self {
-        let join_handle = thread::spawn(move || Self::work(task_receiver, event_sender));
+        let join_handle = thread::spawn(move || Self::work(task_receiver /*event_sender*/));
         Self {
             _join_handle: join_handle,
         }
@@ -100,14 +99,17 @@ impl TaskWorker {
         */
     }
 
-    fn work(task_receiver: mpsc::Receiver<Task>, event_sender: mpsc::Sender<LocalEvent>) {
+    fn work(task_receiver: mpsc::Receiver<Task> /*event_sender: mpsc::Sender<LocalEvent>*/) {
         for task in task_receiver.iter() {
             macro_rules! send_result {
                 ($result:expr) => {{
+                    let _ = $result;
+                    /*
                     let event = LocalEvent::TaskEvent(task.target_client, task.handle, $result);
                     if let Err(_) = event_sender.send(event) {
                         break;
                     }
+                    */
                 }};
             }
 

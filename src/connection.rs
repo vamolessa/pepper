@@ -1,16 +1,6 @@
-use std::{
-    io::{self, Read, Write},
-    net::Shutdown,
-    path::Path,
-};
-
 use crate::{
-    client_event::{
-        ClientEvent, ClientEventDeserializeResult, ClientEventDeserializer, ClientEventSerializer,
-    },
+    client_event::ClientEvent,
     editor::EditorLoop,
-    event_manager::EventRegistry,
-    platform::ServerPlatform,
     serialization::{DeserializationSlice, Serialize},
 };
 
@@ -98,12 +88,7 @@ pub struct ClientEventDeserializationBufCollection {
 }
 
 impl ClientEventDeserializationBufCollection {
-    pub fn receive_events<F>(
-        &mut self,
-        index: usize,
-        bytes: &[u8],
-        func: F,
-    ) -> EditorLoop
+    pub fn receive_events<F>(&mut self, index: usize, bytes: &[u8], func: F) -> EditorLoop
     where
         F: FnMut(ClientEvent) -> EditorLoop,
     {

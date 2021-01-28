@@ -1,10 +1,9 @@
-use std::{error::Error, io, sync::mpsc, thread};
+use std::{error::Error, io, sync::mpsc};
 
 use crate::platform::Key;
 
 use crate::{
     client::Client,
-    client_event::LocalEvent,
     editor::Editor,
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
 };
@@ -88,6 +87,7 @@ pub trait Ui {
     }
 }
 
+/*
 pub fn read_keys_from_stdin(event_sender: mpsc::Sender<LocalEvent>) {
     use io::BufRead;
 
@@ -117,3 +117,4 @@ pub fn read_keys_from_stdin(event_sender: mpsc::Sender<LocalEvent>) {
 
     let _ = event_sender.send(LocalEvent::EndOfInput);
 }
+*/

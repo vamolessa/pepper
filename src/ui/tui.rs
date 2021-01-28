@@ -17,7 +17,6 @@ use crate::{
     buffer::{Buffer, BufferContent, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
     client::Client,
-    client_event::LocalEvent,
     cursor::Cursor,
     editor::{Editor, StatusMessageKind},
     mode::ModeKind,
@@ -85,36 +84,6 @@ where
     C: Command,
 {
     let _ = handle_command!(writer, command);
-}
-
-fn convert_event(event: event::Event) -> LocalEvent {
-    match event {
-        event::Event::Key(e) => match e.code {
-            event::KeyCode::Backspace => LocalEvent::Key(Key::Backspace),
-            event::KeyCode::Enter => LocalEvent::Key(Key::Enter),
-            event::KeyCode::Left => LocalEvent::Key(Key::Left),
-            event::KeyCode::Right => LocalEvent::Key(Key::Right),
-            event::KeyCode::Up => LocalEvent::Key(Key::Up),
-            event::KeyCode::Down => LocalEvent::Key(Key::Down),
-            event::KeyCode::Home => LocalEvent::Key(Key::Home),
-            event::KeyCode::End => LocalEvent::Key(Key::End),
-            event::KeyCode::PageUp => LocalEvent::Key(Key::PageUp),
-            event::KeyCode::PageDown => LocalEvent::Key(Key::PageDown),
-            event::KeyCode::Tab => LocalEvent::Key(Key::Tab),
-            event::KeyCode::Delete => LocalEvent::Key(Key::Delete),
-            event::KeyCode::F(f) => LocalEvent::Key(Key::F(f)),
-            event::KeyCode::Char('\0') => LocalEvent::None,
-            event::KeyCode::Char(c) => match e.modifiers {
-                event::KeyModifiers::CONTROL => LocalEvent::Key(Key::Ctrl(c)),
-                event::KeyModifiers::ALT => LocalEvent::Key(Key::Alt(c)),
-                _ => LocalEvent::Key(Key::Char(c)),
-            },
-            event::KeyCode::Esc => LocalEvent::Key(Key::Esc),
-            _ => LocalEvent::None,
-        },
-        event::Event::Resize(w, h) => LocalEvent::Resize(w, h),
-        _ => LocalEvent::None,
-    }
 }
 
 const fn convert_color(color: theme::Color) -> Color {

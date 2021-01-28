@@ -10,7 +10,7 @@ use crate::{
     buffer::BufferCollection,
     buffer_view::BufferViewCollection,
     client::{ClientManager, TargetClient},
-    client_event::{ClientEvent, LocalEvent},
+    client_event::{ClientEvent},
     config::Config,
     editor_event::{EditorEvent, EditorEventQueue},
     keymap::{KeyMapCollection, MatchResult},

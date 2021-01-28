@@ -8,7 +8,6 @@ use std::{
 };
 
 use crate::{
-    client_event::LocalEvent,
     json::{
         FromJson, Json, JsonConvertError, JsonInteger, JsonKey, JsonObject, JsonString, JsonValue,
     },

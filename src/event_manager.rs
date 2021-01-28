@@ -5,8 +5,6 @@ use std::{
     thread,
 };
 
-use crate::client_event::LocalEvent;
-
 #[derive(Debug, Clone, Copy)]
 pub struct StreamId(usize);
 

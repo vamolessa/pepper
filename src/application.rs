@@ -2,29 +2,25 @@ use std::{
     collections::hash_map::DefaultHasher,
     env,
     error::Error,
-    fmt, fs,
+    fmt,
     hash::{Hash, Hasher},
     io,
-    path::Path,
-    sync::mpsc,
-    time::Instant,
 };
 
 use crate::platform::{
-    ClientApplication, ClientPlatform, Key, PlatformApplication, PlatformClientEvent,
+    ClientApplication, ClientPlatform, PlatformApplication, PlatformClientEvent,
     PlatformServerEvent, ServerApplication, ServerPlatform,
 };
 
 use crate::{
     client::{ClientManager, TargetClient},
-    client_event::{ClientEvent, ClientEventSerializer, LocalEvent},
+    client_event::ClientEvent,
     connection::ClientEventDeserializationBufCollection,
     editor::{Editor, EditorLoop},
-    event_manager::{ConnectionEvent, EventManager},
     lsp::LspClientCollection,
     serialization::{SerializationBuf, Serialize},
     task::TaskManager,
-    ui::{self, Ui, UiKind, UiResult},
+    ui::{Ui, UiKind, UiResult},
     Args,
 };
 

@@ -2,27 +2,9 @@ use crate::platform::Key;
 
 use crate::{
     client::TargetClient,
-    event_manager::ConnectionEvent,
-    lsp::{LspClientHandle, LspServerEvent},
-    serialization::{
-        DeserializationSlice, DeserializeError, Deserializer, SerializationBuf, Serialize,
-        Serializer,
-    },
-    task::{TaskHandle, TaskResult},
+    serialization::{DeserializeError, Deserializer, Serialize, Serializer},
     ui::UiKind,
 };
-
-pub enum LocalEvent {
-    None,
-    EndOfInput,
-    Idle,
-    Repaint,
-    Key(Key),
-    Resize(u16, u16),
-    Connection(ConnectionEvent),
-    TaskEvent(TargetClient, TaskHandle, TaskResult),
-    Lsp(LspClientHandle, LspServerEvent),
-}
 
 pub enum ClientEvent<'a> {
     Ui(UiKind),
@@ -93,48 +75,6 @@ impl<'de> Serialize<'de> for ClientEvent<'de> {
                 Ok(ClientEvent::Resize(width, height))
             }
             _ => Err(DeserializeError),
-        }
-    }
-}
-
-#[derive(Default)]
-pub struct ClientEventSerializer(SerializationBuf);
-
-impl ClientEventSerializer {
-    pub fn serialize(&mut self, event: ClientEvent) {
-        let _ = event.serialize(&mut self.0);
-    }
-
-    pub fn bytes(&self) -> &[u8] {
-        self.0.as_slice()
-    }
-
-    pub fn clear(&mut self) {
-        self.0.clear();
-    }
-}
-
-pub enum ClientEventDeserializeResult<'a> {
-    Some(ClientEvent<'a>),
-    None,
-    Error(&'a [u8]),
-}
-
-pub struct ClientEventDeserializer<'a>(DeserializationSlice<'a>);
-
-impl<'a> ClientEventDeserializer<'a> {
-    pub fn from_slice(slice: &'a [u8]) -> Self {
-        Self(DeserializationSlice::from_slice(slice))
-    }
-
-    pub fn deserialize_next(&mut self) -> ClientEventDeserializeResult {
-        if self.0.as_slice().is_empty() {
-            return ClientEventDeserializeResult::None;
-        }
-
-        match ClientEvent::deserialize(&mut self.0) {
-            Ok(event) => ClientEventDeserializeResult::Some(event),
-            Err(_) => ClientEventDeserializeResult::Error(self.0.as_slice()),
         }
     }
 }
