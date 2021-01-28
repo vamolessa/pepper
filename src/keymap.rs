@@ -1,8 +1,11 @@
 use std::collections::HashMap;
 
-use crate::platform::{Key, KeyParseAllError};
+use crate::platform::Key;
 
-use crate::{mode::ModeKind};
+use crate::{
+    client_event::{parse_all_keys, KeyParseAllError},
+    mode::ModeKind,
+};
 
 pub enum MatchResult<'a> {
     None,
@@ -34,7 +37,7 @@ impl KeyMapCollection {
     ) -> Result<(), ParseKeyMapError> {
         fn parse_keys(text: &str) -> Result<Vec<Key>, KeyParseAllError> {
             let mut keys = Vec::new();
-            for key in Key::parse_all(text) {
+            for key in parse_all_keys(text) {
                 match key {
                     Ok(key) => keys.push(key),
                     Err(error) => return Err(error),

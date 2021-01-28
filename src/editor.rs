@@ -10,7 +10,7 @@ use crate::{
     buffer::BufferCollection,
     buffer_view::BufferViewCollection,
     client::{ClientManager, TargetClient},
-    client_event::{ClientEvent},
+    client_event::{ClientEvent, parse_all_keys},
     config::Config,
     editor_event::{EditorEvent, EditorEventQueue},
     keymap::{KeyMapCollection, MatchResult},
@@ -520,7 +520,7 @@ impl Editor {
             return;
         }
 
-        for key in Key::parse_all(keys) {
+        for key in parse_all_keys(keys) {
             match key {
                 Ok(key) => self.buffered_keys.0.push(key),
                 Err(error) => {
