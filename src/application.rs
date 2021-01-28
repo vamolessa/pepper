@@ -180,6 +180,15 @@ impl ClientApplication for Client {
             STDOUT.as_ref().unwrap().lock()
         };
 
+        let mut write_buf = SerializationBuf::default();
+        for path in &args.files {
+            ClientEvent::OpenBuffer(path).serialize(&mut write_buf);
+        }
+        let bytes = write_buf.as_slice();
+        if !bytes.is_empty() {
+            platform.write(bytes);
+        }
+
         use io::Write;
         let mut buf = Vec::new();
         crate::ui::tui::enter_alternate_buffer(&mut buf);
@@ -188,7 +197,7 @@ impl ClientApplication for Client {
 
         Self {
             read_buf: Vec::new(),
-            write_buf: SerializationBuf::default(),
+            write_buf,
             stdout,
         }
     }
