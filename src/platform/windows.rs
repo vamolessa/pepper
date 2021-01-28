@@ -50,7 +50,7 @@ use winapi::{
 };
 
 use crate::platform::{
-    ClientApplication, ClientPlatform, Key, PlatformClientEvent, PlatformServerEvent,
+    ClientApplication, ClientPlatform, Key, ClientEvent, ServerEvent,
     ServerApplication, ServerPlatform,
 };
 
@@ -697,7 +697,7 @@ where
             Some(EventSource::ConnectionListener) => {
                 if let Some(pipe) = listener.accept(pipe_path) {
                     let index = state.pipes.push(pipe);
-                    send_event!(PlatformServerEvent::ConnectionOpen { index });
+                    send_event!(ServerEvent::ConnectionOpen { index });
                 }
             }
             Some(EventSource::Connection(index)) => {
@@ -710,7 +710,7 @@ where
                     ReadResult::Waiting => (),
                     ReadResult::Err | ReadResult::Ok(0) => {
                         state.pipes.remove(index);
-                        send_event!(PlatformServerEvent::ConnectionClose { index });
+                        send_event!(ServerEvent::ConnectionClose { index });
                     }
                     ReadResult::Ok(len) => {
                         /*
@@ -749,7 +749,7 @@ where
                         }
                         */
 
-                        send_event!(PlatformServerEvent::ConnectionMessage { index, len });
+                        send_event!(ServerEvent::ConnectionMessage { index, len });
                     }
                 }
             }
@@ -770,11 +770,11 @@ where
                         if let ChildPipe::Closed = child.stderr {
                             let success = child.child.wait().unwrap().success();
                             state.children.remove(index);
-                            send_event!(PlatformServerEvent::ProcessExit { index, success });
+                            send_event!(ServerEvent::ProcessExit { index, success });
                         }
                     }
                     ReadResult::Ok(len) => {
-                        send_event!(PlatformServerEvent::ProcessStdout { index, len });
+                        send_event!(ServerEvent::ProcessStdout { index, len });
                     }
                 }
             }
@@ -795,11 +795,11 @@ where
                         if let ChildPipe::Closed = child.stdout {
                             let success = child.child.wait().unwrap().success();
                             state.children.remove(index);
-                            send_event!(PlatformServerEvent::ProcessExit { index, success });
+                            send_event!(ServerEvent::ProcessExit { index, success });
                         }
                     }
                     ReadResult::Ok(len) => {
-                        send_event!(PlatformServerEvent::ProcessStderr { index, len });
+                        send_event!(ServerEvent::ProcessStderr { index, len });
                     }
                 }
             }
@@ -874,7 +874,7 @@ where
 
     let width = console_info.dwSize.X;
     let height = console_info.dwSize.Y;
-    pending_events.push(PlatformClientEvent::Resize(width as _, height as _));
+    pending_events.push(ClientEvent::Resize(width as _, height as _));
     application.on_events(&mut state, &pending_events);
 
     'main_loop: loop {
@@ -888,7 +888,7 @@ where
             0 => match state.pipe.read_async() {
                 ReadResult::Waiting => (),
                 ReadResult::Ok(0) | ReadResult::Err => break,
-                ReadResult::Ok(len) => pending_events.push(PlatformClientEvent::Message(len)),
+                ReadResult::Ok(len) => pending_events.push(ClientEvent::Message(len)),
             },
             1 => {
                 let mut event_count: DWORD = 0;
@@ -964,13 +964,13 @@ where
                             }
 
                             for _ in 0..repeat_count {
-                                pending_events.push(PlatformClientEvent::Key(key));
+                                pending_events.push(ClientEvent::Key(key));
                             }
                         }
                         WINDOW_BUFFER_SIZE_EVENT => {
                             let size = event.Event.WindowBufferSizeEvent().dwSize;
                             pending_events
-                                .push(PlatformClientEvent::Resize(size.X as _, size.Y as _));
+                                .push(ClientEvent::Resize(size.X as _, size.Y as _));
                         }
                         _ => (),
                     }

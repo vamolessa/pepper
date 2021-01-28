@@ -7,10 +7,7 @@ use std::{
     io,
 };
 
-use crate::platform::{
-    ClientApplication, ClientPlatform, PlatformApplication, PlatformClientEvent,
-    PlatformServerEvent, ServerApplication, ServerPlatform,
-};
+use crate::platform;
 
 use crate::{
     client::{ClientManager, TargetClient},
@@ -24,6 +21,15 @@ use crate::{
     Args,
 };
 
+impl platform::Args for Args {
+    fn session(&self) -> Option<&str> {
+        match self.session {
+            Some(ref session) => Some(session),
+            None => None,
+        }
+    }
+}
+
 fn print_version() {
     let name = env!("CARGO_PKG_NAME");
     let version = env!("CARGO_PKG_VERSION");
@@ -36,7 +42,7 @@ pub struct Server {
     event_deserialization_bufs: ClientEventDeserializationBufCollection,
     connections_with_error: Vec<usize>,
 }
-impl PlatformApplication for Server {
+impl platform::Application for Server {
     type Args = Args;
     fn parse_args() -> Option<Self::Args> {
         let args: Args = argh::from_env();
@@ -48,10 +54,10 @@ impl PlatformApplication for Server {
         Some(args)
     }
 }
-impl ServerApplication for Server {
+impl platform::ServerApplication for Server {
     fn new<P>(args: Self::Args, platform: &mut P) -> Self
     where
-        P: ServerPlatform,
+        P: platform::ServerPlatform,
     {
         let current_dir = env::current_dir().expect("could not retrieve the current directory");
         let tasks = TaskManager::new();
@@ -73,20 +79,20 @@ impl ServerApplication for Server {
         }
     }
 
-    fn on_event<P>(&mut self, platform: &mut P, event: PlatformServerEvent) -> bool
+    fn on_event<P>(&mut self, platform: &mut P, event: platform::ServerEvent) -> bool
     where
-        P: ServerPlatform,
+        P: platform::ServerPlatform,
     {
         match event {
-            PlatformServerEvent::Idle => (),
-            PlatformServerEvent::ConnectionOpen { index } => self.clients.on_client_joined(index),
-            PlatformServerEvent::ConnectionClose { index } => {
+            platform::ServerEvent::Idle => (),
+            platform::ServerEvent::ConnectionOpen { index } => self.clients.on_client_joined(index),
+            platform::ServerEvent::ConnectionClose { index } => {
                 self.clients.on_client_left(index);
                 if self.clients.iter_mut().next().is_none() {
                     return false;
                 }
             }
-            PlatformServerEvent::ConnectionMessage { index, len } => {
+            platform::ServerEvent::ConnectionMessage { index, len } => {
                 let bytes = platform.read_from_connection(index, len);
                 let editor = &mut self.editor;
                 let clients = &mut self.clients;
@@ -102,15 +108,15 @@ impl ServerApplication for Server {
                     EditorLoop::QuitAll => return false,
                 }
             }
-            PlatformServerEvent::ProcessStdout { index, len } => {
+            platform::ServerEvent::ProcessStdout { index, len } => {
                 let _bytes = platform.read_from_process_stdout(index, len);
                 //
             }
-            PlatformServerEvent::ProcessStderr { index, len } => {
+            platform::ServerEvent::ProcessStderr { index, len } => {
                 let _bytes = platform.read_from_process_stderr(index, len);
                 //
             }
-            PlatformServerEvent::ProcessExit { index, success } => {
+            platform::ServerEvent::ProcessExit { index, success } => {
                 //
             }
         }
@@ -154,7 +160,7 @@ pub struct Client {
     write_buf: SerializationBuf,
     stdout: io::StdoutLock<'static>,
 }
-impl PlatformApplication for Client {
+impl platform::Application for Client {
     type Args = Args;
     fn parse_args() -> Option<Self::Args> {
         let args: Args = argh::from_env();
@@ -166,10 +172,10 @@ impl PlatformApplication for Client {
         Some(args)
     }
 }
-impl ClientApplication for Client {
+impl platform::ClientApplication for Client {
     fn new<P>(args: Self::Args, platform: &mut P) -> Self
     where
-        P: ClientPlatform,
+        P: platform::ClientPlatform,
     {
         static mut STDOUT: Option<io::Stdout> = None;
         let mut stdout = unsafe {
@@ -198,22 +204,22 @@ impl ClientApplication for Client {
         }
     }
 
-    fn on_events<P>(&mut self, platform: &mut P, events: &[PlatformClientEvent]) -> bool
+    fn on_events<P>(&mut self, platform: &mut P, events: &[platform::ClientEvent]) -> bool
     where
-        P: ClientPlatform,
+        P: platform::ClientPlatform,
     {
         use io::Write;
 
         self.write_buf.clear();
         for event in events {
             match event {
-                PlatformClientEvent::Key(key) => {
+                platform::ClientEvent::Key(key) => {
                     ClientEvent::Key(*key).serialize(&mut self.write_buf);
                 }
-                PlatformClientEvent::Resize(width, height) => {
+                platform::ClientEvent::Resize(width, height) => {
                     ClientEvent::Resize(*width as _, *height as _).serialize(&mut self.write_buf);
                 }
-                PlatformClientEvent::Message(len) => {
+                platform::ClientEvent::Message(len) => {
                     let buf = platform.read(*len);
                     self.read_buf.extend_from_slice(buf);
                     let mut len_bytes = [0; 4];

@@ -1,14 +1,6 @@
-use std::{
-    error::Error,
-    fmt, io,
-    process::{Command, ExitStatus},
-    str::Chars,
-};
+use std::{error::Error, fmt, io, process::Command, str::Chars};
 
-use crate::{
-    client::TargetClient,
-    serialization::{DeserializeError, Deserializer, Serialize, Serializer},
-};
+use crate::serialization::{DeserializeError, Deserializer, Serialize, Serializer};
 
 #[cfg(windows)]
 mod windows;
@@ -377,7 +369,7 @@ impl<'de> Serialize<'de> for Key {
 }
 
 #[derive(Clone, Copy)]
-pub enum PlatformServerEvent {
+pub enum ServerEvent {
     Idle,
     ConnectionOpen { index: usize },
     ConnectionClose { index: usize },
@@ -388,31 +380,35 @@ pub enum PlatformServerEvent {
 }
 
 #[derive(Clone, Copy)]
-pub enum PlatformClientEvent {
+pub enum ClientEvent {
     Resize(usize, usize),
     Key(Key),
     Message(usize),
 }
 
-pub trait PlatformApplication {
-    type Args;
+pub trait Args {
+    fn session(&self) -> Option<&str>;
+}
+
+pub trait Application {
+    type Args: Args;
     fn parse_args() -> Option<Self::Args>;
 }
 
-pub trait ServerApplication: Sized + PlatformApplication {
+pub trait ServerApplication: Sized + Application {
     fn new<P>(args: Self::Args, platform: &mut P) -> Self
     where
         P: ServerPlatform;
-    fn on_event<P>(&mut self, platform: &mut P, event: PlatformServerEvent) -> bool
+    fn on_event<P>(&mut self, platform: &mut P, event: ServerEvent) -> bool
     where
         P: ServerPlatform;
 }
 
-pub trait ClientApplication: Sized + PlatformApplication {
+pub trait ClientApplication: Sized + Application {
     fn new<P>(args: Self::Args, platform: &mut P) -> Self
     where
         P: ClientPlatform;
-    fn on_events<P>(&mut self, platform: &mut P, event: &[PlatformClientEvent]) -> bool
+    fn on_events<P>(&mut self, platform: &mut P, event: &[ClientEvent]) -> bool
     where
         P: ClientPlatform;
 }
