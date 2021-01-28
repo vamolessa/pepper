@@ -278,9 +278,7 @@ where
         func(ClientEvent::OpenBuffer(path));
     }
 }
-*/
 
-/*
 fn run_server_with_client<P, I>(
     args: Args,
     mut profiler: P,
