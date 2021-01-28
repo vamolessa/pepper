@@ -304,16 +304,13 @@ pub enum ClientEvent {
     Message(usize),
 }
 
-pub trait Args {
+pub trait Args: Sized {
+    fn parse() -> Option<Self>;
     fn session(&self) -> Option<&str>;
 }
 
-pub trait Application {
+pub trait ServerApplication: Sized {
     type Args: Args;
-    fn parse_args() -> Option<Self::Args>;
-}
-
-pub trait ServerApplication: Sized + Application {
     fn new<P>(args: Self::Args, platform: &mut P) -> Self
     where
         P: ServerPlatform;
@@ -322,7 +319,8 @@ pub trait ServerApplication: Sized + Application {
         P: ServerPlatform;
 }
 
-pub trait ClientApplication: Sized + Application {
+pub trait ClientApplication: Sized {
+    type Args: Args;
     fn new<P>(args: Self::Args, platform: &mut P) -> Self
     where
         P: ClientPlatform;
@@ -348,14 +346,15 @@ pub trait ClientPlatform {
     fn write(&mut self, buf: &[u8]) -> bool;
 }
 
-pub fn run<S, C>()
+pub fn run<A, S, C>()
 where
-    S: ServerApplication,
-    C: ClientApplication,
+    A: Args,
+    S: ServerApplication<Args = A>,
+    C: ClientApplication<Args = A>,
 {
     #[cfg(windows)]
     {
-        windows::run::<S, C>();
+        windows::run::<A, S, C>();
     }
 }
 

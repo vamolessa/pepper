@@ -68,5 +68,5 @@ pub struct Args {
 }
 
 fn main() {
-    platform::run::<application::Server, application::Client>();
+    platform::run::<Args, application::Server, application::Client>();
 }

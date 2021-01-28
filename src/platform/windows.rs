@@ -1,5 +1,6 @@
 use std::{
-    convert::Into,
+    collections::hash_map::DefaultHasher,
+    hash::{Hash, Hasher},
     io,
     ops::{Deref, DerefMut},
     os::windows::io::AsRawHandle,
@@ -25,7 +26,7 @@ use winapi::{
         namedpipeapi::{
             ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, SetNamedPipeHandleState,
         },
-        processenv::{GetCommandLineW, GetStdHandle},
+        processenv::{GetCommandLineW, GetCurrentDirectoryW, GetStdHandle},
         processthreadsapi::{CreateProcessW, PROCESS_INFORMATION, STARTUPINFOW},
         synchapi::{CreateEventW, SetEvent, WaitForMultipleObjects},
         winbase::{
@@ -50,46 +51,79 @@ use winapi::{
 };
 
 use crate::platform::{
-    ClientApplication, ClientPlatform, Key, ClientEvent, ServerEvent,
-    ServerApplication, ServerPlatform,
+    Args, ClientApplication, ClientEvent, ClientPlatform, Key, ServerApplication, ServerEvent,
+    ServerPlatform,
 };
 
 const SERVER_PIPE_BUFFER_LEN: usize = 512;
 const CLIENT_PIPE_BUFFER_LEN: usize = 2 * 1024;
 const CHILD_BUFFER_LEN: usize = 2 * 1024;
 
-pub fn run<S, C>()
+pub fn run<A, S, C>()
 where
-    S: ServerApplication,
-    C: ClientApplication,
+    A: Args,
+    S: ServerApplication<Args = A>,
+    C: ClientApplication<Args = A>,
 {
     unsafe extern "system" fn ctrl_handler(_ctrl_type: DWORD) -> BOOL {
         FALSE
     }
 
+    let args = match A::parse() {
+        Some(args) => args,
+        None => return,
+    };
+
     if unsafe { SetConsoleCtrlHandler(Some(ctrl_handler), TRUE) } == FALSE {
         panic!("could not set ctrl handler");
     }
 
-    let session_name = "pepper_session_name";
+    let input_handle = get_std_handle(STD_INPUT_HANDLE);
+    let output_handle = get_std_handle(STD_OUTPUT_HANDLE);
+
     let mut pipe_path = Vec::new();
+    let mut hash_buf = [0u8; 16];
+    let session_name = match args.session() {
+        Some(name) => name,
+        None => {
+            use io::Write;
+            get_current_directory(&mut pipe_path);
+            let mut hasher = DefaultHasher::new();
+            pipe_path.hash(&mut hasher);
+            let current_directory_hash = hasher.finish();
+            let mut cursor = io::Cursor::new(&mut hash_buf[..]);
+            write!(&mut cursor, "{:x}", current_directory_hash).unwrap();
+            let len = cursor.position() as usize;
+            std::str::from_utf8(&hash_buf[..len]).unwrap()
+        }
+    };
+    pipe_path.clear();
     pipe_path.extend("\\\\.\\pipe\\".encode_utf16());
     pipe_path.extend(session_name.encode_utf16());
     pipe_path.push(0);
 
-    let input_handle = get_std_handle(STD_INPUT_HANDLE);
-    let output_handle = get_std_handle(STD_OUTPUT_HANDLE);
+    eprintln!("session name is '{}'", session_name);
 
     match (input_handle, output_handle) {
         (Some(input_handle), Some(output_handle)) => unsafe {
-            run_client::<C>(&pipe_path, input_handle, output_handle)
+            run_client::<C>(args, &pipe_path, input_handle, output_handle)
         },
-        _ => unsafe { run_server::<S>(&pipe_path) },
+        _ => unsafe { run_server::<S>(args, &pipe_path) },
     }
 }
 
 fn get_last_error() -> DWORD {
     unsafe { GetLastError() }
+}
+
+fn get_current_directory(buf: &mut Vec<u16>) {
+    let len = unsafe { GetCurrentDirectoryW(0, std::ptr::null_mut()) } as usize;
+    buf.resize(len, 0);
+    let len = unsafe { GetCurrentDirectoryW(buf.len() as _, buf.as_mut_ptr()) } as usize;
+    if len == 0 {
+        panic!("could not get current directory");
+    }
+    unsafe { buf.set_len(len) }
 }
 
 fn file_exists(path: &[u16]) -> bool {
@@ -650,7 +684,7 @@ impl ServerPlatform for ServerState {
     }
 }
 
-unsafe fn run_server<A>(pipe_path: &[u16])
+unsafe fn run_server<A>(args: A::Args, pipe_path: &[u16])
 where
     A: ServerApplication,
 {
@@ -665,10 +699,6 @@ where
         children: SlotVec::new(),
     };
 
-    let args = match A::parse_args() {
-        Some(args) => args,
-        None => return,
-    };
     let mut application = A::new(args, &mut state);
 
     macro_rules! send_event {
@@ -822,15 +852,14 @@ impl ClientPlatform for ClientState {
     }
 }
 
-unsafe fn run_client<A>(pipe_path: &[u16], input_handle: HANDLE, output_handle: HANDLE)
-where
+unsafe fn run_client<A>(
+    args: A::Args,
+    pipe_path: &[u16],
+    input_handle: HANDLE,
+    output_handle: HANDLE,
+) where
     A: ClientApplication,
 {
-    let args = match A::parse_args() {
-        Some(args) => args,
-        None => return,
-    };
-
     if !file_exists(pipe_path) {
         fork();
         while !file_exists(pipe_path) {
@@ -969,8 +998,7 @@ where
                         }
                         WINDOW_BUFFER_SIZE_EVENT => {
                             let size = event.Event.WindowBufferSizeEvent().dwSize;
-                            pending_events
-                                .push(ClientEvent::Resize(size.X as _, size.Y as _));
+                            pending_events.push(ClientEvent::Resize(size.X as _, size.Y as _));
                         }
                         _ => (),
                     }

@@ -1,9 +1,7 @@
 use std::{
-    collections::hash_map::DefaultHasher,
     env,
     error::Error,
     fmt,
-    hash::{Hash, Hasher},
     io,
 };
 
@@ -22,6 +20,16 @@ use crate::{
 };
 
 impl platform::Args for Args {
+    fn parse() -> Option<Self> {
+        let args: Args = argh::from_env();
+        if args.version {
+            print_version();
+            return None;
+        }
+
+        Some(args)
+    }
+
     fn session(&self) -> Option<&str> {
         match self.session {
             Some(ref session) => Some(session),
@@ -42,19 +50,8 @@ pub struct Server {
     event_deserialization_bufs: ClientEventDeserializationBufCollection,
     connections_with_error: Vec<usize>,
 }
-impl platform::Application for Server {
-    type Args = Args;
-    fn parse_args() -> Option<Self::Args> {
-        let args: Args = argh::from_env();
-        if args.version {
-            print_version();
-            return None;
-        }
-
-        Some(args)
-    }
-}
 impl platform::ServerApplication for Server {
+    type Args = Args;
     fn new<P>(args: Self::Args, platform: &mut P) -> Self
     where
         P: platform::ServerPlatform,
@@ -160,19 +157,8 @@ pub struct Client {
     write_buf: SerializationBuf,
     stdout: io::StdoutLock<'static>,
 }
-impl platform::Application for Client {
-    type Args = Args;
-    fn parse_args() -> Option<Self::Args> {
-        let args: Args = argh::from_env();
-        if args.version {
-            print_version();
-            return None;
-        }
-
-        Some(args)
-    }
-}
 impl platform::ClientApplication for Client {
+    type Args = Args;
     fn new<P>(args: Self::Args, platform: &mut P) -> Self
     where
         P: platform::ClientPlatform,
@@ -263,27 +249,6 @@ impl Drop for Client {
 // --------------------------------------------------------------------------------------
 // --------------------------------------------------------------------------------------
 
-fn u64_to_str(buf: &mut [u8], value: u64) -> &str {
-    use std::fmt::Write;
-    struct Formatter<'a> {
-        buf: &'a mut [u8],
-        len: usize,
-    }
-    impl<'a> Write for Formatter<'a> {
-        fn write_str(&mut self, s: &str) -> fmt::Result {
-            let bytes = s.as_bytes();
-            let len = self.len + bytes.len();
-            self.buf[self.len..len].copy_from_slice(bytes);
-            self.len = len;
-            Ok(())
-        }
-    }
-    let mut formatter = Formatter { buf, len: 0 };
-    let _ = write!(formatter, "{}", value);
-    let formatted = &formatter.buf[..formatter.len];
-    unsafe { std::str::from_utf8_unchecked(formatted) }
-}
-
 #[derive(Debug)]
 pub struct ApplicationError(String);
 impl Error for ApplicationError {}
@@ -311,13 +276,6 @@ pub fn run(args: Args) -> Result<(), Box<dyn Error>> {
             session_socket_path.push(session);
         }
         None => {
-            let current_dir = env::current_dir().map_err(|e| Box::new(e))?;
-            let mut hasher = DefaultHasher::new();
-            current_dir.hash(&mut hasher);
-            let hash = hasher.finish();
-            let mut buf = [0; 32];
-            let hash = u64_to_str(&mut buf, hash);
-            session_socket_path.push(hash);
         }
     }
 
