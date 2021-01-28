@@ -417,6 +417,8 @@ impl Editor {
                 EditorLoop::Continue
             }
             ClientEvent::Key(key) => {
+                self.status_bar.clear();
+
                 let target = clients.client_map.get(target);
                 if clients.focus_client(target) {
                     self.recording_macro = None;

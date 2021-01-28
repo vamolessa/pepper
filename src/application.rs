@@ -91,7 +91,6 @@ impl ServerApplication for Server {
                 }
             }
             PlatformServerEvent::ConnectionMessage { index, len } => {
-                eprintln!("on client event");
                 let bytes = platform.read_from_connection(index, len);
                 let editor = &mut self.editor;
                 let clients = &mut self.clients;
@@ -219,8 +218,6 @@ impl ClientApplication for Client {
                     ClientEvent::Resize(*width as _, *height as _).serialize(&mut self.write_buf);
                 }
                 PlatformClientEvent::Message(len) => {
-                    eprintln!("on server screen with len: {}", len);
-
                     let buf = platform.read(*len);
                     self.read_buf.extend_from_slice(buf);
                     let mut len_bytes = [0; 4];

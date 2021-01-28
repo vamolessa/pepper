@@ -294,25 +294,27 @@ impl AsyncIO {
         &self.buf[..len]
     }
 
-    pub fn write(&mut self, buf: &[u8]) -> bool {
-        if buf.is_empty() {
-            return true;
+    pub fn write(&mut self, mut buf: &[u8]) -> bool {
+        while !buf.is_empty() {
+            let mut write_len = 0;
+            let result = unsafe {
+                WriteFile(
+                    self.handle.0,
+                    buf.as_ptr() as _,
+                    buf.len() as _,
+                    &mut write_len,
+                    std::ptr::null_mut(),
+                )
+            };
+
+            if result == FALSE {
+                return false;
+            }
+
+            buf = &buf[(write_len as usize)..];
         }
 
-        let mut write_len = 0;
-        let result = unsafe {
-            WriteFile(
-                self.handle.0,
-                buf.as_ptr() as _,
-                buf.len() as _,
-                &mut write_len,
-                std::ptr::null_mut(),
-            )
-        };
-
-        // TODO: write all bytes
-        assert_eq!(buf.len(), write_len as usize);
-        result != FALSE
+        true
     }
 }
 
