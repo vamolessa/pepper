@@ -138,12 +138,7 @@ fn fork() {
     }
 }
 
-enum WaitResult {
-    Signaled(usize),
-    Abandoned(usize),
-    Timeout,
-}
-fn wait_for_multiple_objects(handles: &[HANDLE], timeout: Option<Duration>) -> WaitResult {
+fn wait_for_multiple_objects(handles: &[HANDLE], timeout: Option<Duration>) -> Option<usize> {
     let timeout = match timeout {
         Some(duration) => duration.as_millis() as _,
         None => INFINITE,
@@ -151,11 +146,9 @@ fn wait_for_multiple_objects(handles: &[HANDLE], timeout: Option<Duration>) -> W
     let len = MAXIMUM_WAIT_OBJECTS.min(handles.len() as DWORD);
     let result = unsafe { WaitForMultipleObjects(len, handles.as_ptr(), FALSE, timeout) };
     if result == WAIT_TIMEOUT {
-        WaitResult::Timeout
+        None
     } else if result >= WAIT_OBJECT_0 && result < (WAIT_OBJECT_0 + len) {
-        WaitResult::Signaled((result - WAIT_OBJECT_0) as _)
-    } else if result >= WAIT_ABANDONED_0 && result < (WAIT_ABANDONED_0 + len) {
-        WaitResult::Abandoned((result - WAIT_ABANDONED_0) as _)
+        Some((result - WAIT_OBJECT_0) as _)
     } else {
         panic!("could not wait for event")
     }
@@ -519,15 +512,12 @@ impl Events {
     }
 
     pub fn wait_one(&mut self, timeout: Option<Duration>) -> Option<EventSource> {
-        let result = match wait_for_multiple_objects(&self.wait_handles, timeout) {
-            WaitResult::Signaled(i) => Some(self.sources.swap_remove(i)),
-            WaitResult::Abandoned(_) => unreachable!(),
-            WaitResult::Timeout => None,
-        };
+        let index = wait_for_multiple_objects(&self.wait_handles, timeout)?;
+        let result = self.sources.swap_remove(index);
 
         self.wait_handles.clear();
         self.sources.clear();
-        result
+        Some(result)
     }
 }
 
@@ -892,14 +882,14 @@ where
         panic!("could not get console info");
     }
 
-    let width = console_info.srWindow.Right - console_info.srWindow.Left + 1;
-    let height = console_info.srWindow.Bottom - console_info.srWindow.Top + 1;
-    pending_events.push(PlatformClientEvent::Resize(width as _, height as _));
+    //let width = console_info.dwSize.X;
+    //let height = console_info.dwSize.Y;
+    //pending_events.push(PlatformClientEvent::Resize(width as _, height as _));
     application.on_events(&mut state, &pending_events);
 
     'main_loop: loop {
         let wait_handle_index = match wait_for_multiple_objects(&wait_handles, None) {
-            WaitResult::Signaled(i) => i,
+            Some(i) => i,
             _ => continue,
         };
 

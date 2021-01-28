@@ -57,6 +57,8 @@ impl ServerApplication for Server {
     where
         P: ServerPlatform,
     {
+        eprintln!("run server");
+
         let current_dir = env::current_dir().expect("could not retrieve the current directory");
         let tasks = TaskManager::new();
         let lsp = LspClientCollection::new();
@@ -81,6 +83,8 @@ impl ServerApplication for Server {
     where
         P: ServerPlatform,
     {
+        eprintln!("on client event");
+
         match event {
             PlatformServerEvent::Idle => (),
             PlatformServerEvent::ConnectionOpen(handle) => self.clients.on_client_joined(handle),
@@ -174,6 +178,8 @@ impl ClientApplication for Client {
     where
         P: ClientPlatform,
     {
+        eprintln!("run client");
+
         static mut STDOUT: Option<io::Stdout> = None;
         let mut stdout = unsafe {
             STDOUT = Some(io::stdout());
