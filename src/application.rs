@@ -11,8 +11,8 @@ use std::{
 };
 
 use crate::platform::{
-    ClientApplication, ClientPlatform, ConnectionHandle, Key, PlatformClientEvent,
-    PlatformServerEvent, ProcessHandle, ServerApplication, ServerPlatform,
+    ClientApplication, ClientPlatform, ConnectionHandle, Key, PlatformApplication,
+    PlatformClientEvent, PlatformServerEvent, ProcessHandle, ServerApplication, ServerPlatform,
 };
 
 use crate::{
@@ -35,23 +35,28 @@ fn print_version() {
 }
 
 pub struct Server {
-    args: Args,
     editor: Editor,
     clients: ClientManager,
     event_deserialization_bufs: ClientEventDeserializationBufCollection,
     connections_with_error: Vec<ConnectionHandle>,
 }
-impl ServerApplication for Server {
-    fn new<P>(platform: &mut P) -> Option<Self>
-    where
-        P: ServerPlatform,
-    {
+impl PlatformApplication for Server {
+    type Args = Args;
+    fn parse_args() -> Option<Self::Args> {
         let args: Args = argh::from_env();
         if args.version {
             print_version();
             return None;
         }
 
+        Some(args)
+    }
+}
+impl ServerApplication for Server {
+    fn new<P>(args: Self::Args, platform: &mut P) -> Self
+    where
+        P: ServerPlatform,
+    {
         let current_dir = env::current_dir().expect("could not retrieve the current directory");
         let tasks = TaskManager::new();
         let lsp = LspClientCollection::new();
@@ -64,13 +69,12 @@ impl ServerApplication for Server {
 
         let event_deserialization_bufs = ClientEventDeserializationBufCollection::default();
 
-        Some(Self {
-            args,
+        Self {
             editor,
             clients,
             event_deserialization_bufs,
             connections_with_error: Vec::new(),
-        })
+        }
     }
 
     fn on_event<P>(&mut self, platform: &mut P, event: PlatformServerEvent) -> bool
@@ -153,25 +157,40 @@ pub struct Client {
     write_buf: SerializationBuf,
     stdout: io::StdoutLock<'static>,
 }
-impl ClientApplication for Client {
-    fn new() -> Option<Self> {
-        static mut STDOUT: Option<io::Stdout> = None;
-        let stdout = unsafe {
-            STDOUT = Some(io::stdout());
-            STDOUT.as_ref().unwrap().lock()
-        };
-
+impl PlatformApplication for Client {
+    type Args = Args;
+    fn parse_args() -> Option<Self::Args> {
         let args: Args = argh::from_env();
         if args.version {
             print_version();
             return None;
         }
 
-        Some(Self {
+        Some(args)
+    }
+}
+impl ClientApplication for Client {
+    fn new<P>(args: Self::Args, platform: &mut P) -> Self
+    where
+        P: ClientPlatform,
+    {
+        static mut STDOUT: Option<io::Stdout> = None;
+        let mut stdout = unsafe {
+            STDOUT = Some(io::stdout());
+            STDOUT.as_ref().unwrap().lock()
+        };
+
+        use io::Write;
+        let mut buf = Vec::new();
+        crate::ui::tui::enter_alternate_buffer(&mut buf);
+        crate::ui::tui::hide_cursor(&mut buf);
+        let _ = stdout.write_all(&buf);
+
+        Self {
             read_buf: Vec::new(),
             write_buf: SerializationBuf::default(),
             stdout,
-        })
+        }
     }
 
     fn on_events<P>(&mut self, platform: &mut P, events: &[PlatformClientEvent]) -> bool
@@ -211,6 +230,15 @@ impl ClientApplication for Client {
 
         let bytes = self.write_buf.as_slice();
         bytes.is_empty() || platform.write(bytes)
+    }
+}
+impl Drop for Client {
+    fn drop(&mut self) {
+        use io::Write;
+        let mut buf = Vec::new();
+        crate::ui::tui::exit_alternate_buffer(&mut buf);
+        crate::ui::tui::show_cursor(&mut buf);
+        let _ = self.stdout.write_all(&buf);
     }
 }
 

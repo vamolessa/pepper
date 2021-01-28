@@ -34,8 +34,8 @@ use winapi::{
             STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, WAIT_ABANDONED_0, WAIT_OBJECT_0,
         },
         wincon::{
-            FreeConsole, ENABLE_PROCESSED_OUTPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING,
-            ENABLE_WINDOW_INPUT,
+            FreeConsole, GetConsoleScreenBufferInfo, CONSOLE_SCREEN_BUFFER_INFO,
+            ENABLE_PROCESSED_OUTPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING, ENABLE_WINDOW_INPUT,
         },
         wincontypes::{
             INPUT_RECORD, KEY_EVENT, LEFT_ALT_PRESSED, LEFT_CTRL_PRESSED, RIGHT_ALT_PRESSED,
@@ -51,8 +51,7 @@ use winapi::{
 
 use crate::platform::{
     ClientApplication, ClientPlatform, ConnectionHandle, Key, PlatformClientEvent,
-    PlatformServerEvent, ProcessExitStatus, ProcessHandle, ServerApplication,
-    ServerPlatform,
+    PlatformServerEvent, ProcessExitStatus, ProcessHandle, ServerApplication, ServerPlatform,
 };
 
 const SERVER_PIPE_BUFFER_LEN: usize = 512;
@@ -672,10 +671,11 @@ where
         children: SlotVec::new(),
     };
 
-    let mut application = match A::new(&mut state) {
-        Some(application) => application,
+    let args = match A::parse_args() {
+        Some(args) => args,
         None => return,
     };
+    let mut application = A::new(args, &mut state);
 
     macro_rules! send_event {
         ($event:expr) => {
@@ -842,12 +842,12 @@ impl ClientPlatform for ClientState {
     }
 }
 
-unsafe fn run_client<C>(pipe_path: &[u16], input_handle: HANDLE, output_handle: HANDLE)
+unsafe fn run_client<A>(pipe_path: &[u16], input_handle: HANDLE, output_handle: HANDLE)
 where
-    C: ClientApplication,
+    A: ClientApplication,
 {
-    let mut client = match C::new() {
-        Some(client) => client,
+    let args = match A::parse_args() {
+        Some(args) => args,
         None => return,
     };
 
@@ -861,6 +861,7 @@ where
     let mut state = ClientState {
         pipe: PipeToServer::connect(pipe_path),
     };
+    let mut application = A::new(args, &mut state);
 
     let mut original_input_mode = DWORD::default();
     if GetConsoleMode(input_handle, &mut original_input_mode) == FALSE {
@@ -885,6 +886,16 @@ where
     let event_buffer = &mut [INPUT_RECORD::default(); 32][..];
     let wait_handles = [input_handle, state.pipe.event.handle()];
     let mut pending_events = Vec::new();
+
+    let mut console_info = CONSOLE_SCREEN_BUFFER_INFO::default();
+    if GetConsoleScreenBufferInfo(output_handle, &mut console_info) == FALSE {
+        panic!("could not get console info");
+    }
+
+    let width = console_info.srWindow.Right - console_info.srWindow.Left + 1;
+    let height = console_info.srWindow.Bottom - console_info.srWindow.Top + 1;
+    pending_events.push(PlatformClientEvent::Resize(width as _, height as _));
+    application.on_events(&mut state, &pending_events);
 
     'main_loop: loop {
         let wait_handle_index = match wait_for_multiple_objects(&wait_handles, None) {
@@ -967,7 +978,9 @@ where
                                 break 'main_loop;
                             }
 
-                            pending_events.push(PlatformClientEvent::Key(key));
+                            for _ in 0..repeat_count {
+                                pending_events.push(PlatformClientEvent::Key(key));
+                            }
                         }
                         WINDOW_BUFFER_SIZE_EVENT => {
                             let size = event.Event.WindowBufferSizeEvent().dwSize;
@@ -986,7 +999,7 @@ where
             _ => unreachable!(),
         }
 
-        if !client.on_events(&mut state, &pending_events) {
+        if !application.on_events(&mut state, &pending_events) {
             break;
         }
     }

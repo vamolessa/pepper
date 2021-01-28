@@ -405,8 +405,13 @@ pub enum PlatformClientEvent {
     Message(usize),
 }
 
-pub trait ServerApplication: Sized {
-    fn new<P>(platform: &mut P) -> Option<Self>
+pub trait PlatformApplication {
+    type Args;
+    fn parse_args() -> Option<Self::Args>;
+}
+
+pub trait ServerApplication: Sized + PlatformApplication {
+    fn new<P>(args: Self::Args, platform: &mut P) -> Self
     where
         P: ServerPlatform;
     fn on_event<P>(&mut self, platform: &mut P, event: PlatformServerEvent) -> bool
@@ -414,8 +419,10 @@ pub trait ServerApplication: Sized {
         P: ServerPlatform;
 }
 
-pub trait ClientApplication: Sized {
-    fn new() -> Option<Self>;
+pub trait ClientApplication: Sized + PlatformApplication {
+    fn new<P>(args: Self::Args, platform: &mut P) -> Self
+    where
+        P: ClientPlatform;
     fn on_events<P>(&mut self, platform: &mut P, event: &[PlatformClientEvent]) -> bool
     where
         P: ClientPlatform;

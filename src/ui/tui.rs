@@ -33,59 +33,59 @@ fn set_title(buf: &mut Vec<u8>, title: &[u8]) {
     buf.extend_from_slice(b"{}\x07");
 }
 
-fn enter_alternate_buffer(buf: &mut Vec<u8>) {
+pub fn enter_alternate_buffer(buf: &mut Vec<u8>) {
     buf.extend_from_slice(b"\x1B[?1049h");
 }
 
-fn exit_alternate_buffer(buf: &mut Vec<u8>) {
+pub fn exit_alternate_buffer(buf: &mut Vec<u8>) {
     buf.extend_from_slice(b"\x1B[?1049l");
 }
 
-fn reset_style(buf: &mut Vec<u8>) {
+pub fn reset_style(buf: &mut Vec<u8>) {
     buf.extend_from_slice(b"\x1B[?0m");
 }
 
-fn clear_all(buf: &mut Vec<u8>) {
+pub fn clear_all(buf: &mut Vec<u8>) {
     buf.extend_from_slice(b"\x1B[2J");
 }
 
-fn clear_until_new_line(buf: &mut Vec<u8>) {
+pub fn clear_until_new_line(buf: &mut Vec<u8>) {
     buf.extend_from_slice(b"\x1B[K");
 }
 
-fn hide_cursor(buf: &mut Vec<u8>) {
+pub fn hide_cursor(buf: &mut Vec<u8>) {
     buf.extend_from_slice(b"\x1B[?25l");
 }
 
-fn show_cursor(buf: &mut Vec<u8>) {
+pub fn show_cursor(buf: &mut Vec<u8>) {
     buf.extend_from_slice(b"\x1B[?25h");
 }
 
-fn move_cursor_to(buf: &mut Vec<u8>, x: usize, y: usize) {
+pub fn move_cursor_to(buf: &mut Vec<u8>, x: usize, y: usize) {
     let _ = write!(buf, "\x1B[{};{}H", x, y);
 }
 
-fn move_cursor_to_next_line(buf: &mut Vec<u8>) {
+pub fn move_cursor_to_next_line(buf: &mut Vec<u8>) {
     buf.extend_from_slice(b"\x1B[1D");
 }
 
-fn move_cursor_up(buf: &mut Vec<u8>, count: usize) {
+pub fn move_cursor_up(buf: &mut Vec<u8>, count: usize) {
     let _ = write!(buf, "\x1B[{}A", count);
 }
 
-fn set_background_color(buf: &mut Vec<u8>, color: theme::Color) {
+pub fn set_background_color(buf: &mut Vec<u8>, color: theme::Color) {
     let _ = write!(buf, "\x1B[48;2;{};{};{}", color.0, color.1, color.2);
 }
 
-fn set_foreground_color(buf: &mut Vec<u8>, color: theme::Color) {
+pub fn set_foreground_color(buf: &mut Vec<u8>, color: theme::Color) {
     let _ = write!(buf, "\x1B[38;2;{};{};{}", color.0, color.1, color.2);
 }
 
-fn set_underlined(buf: &mut Vec<u8>) {
+pub fn set_underlined(buf: &mut Vec<u8>) {
     buf.extend_from_slice(b"\x1B[4m");
 }
 
-fn set_no_underlined(buf: &mut Vec<u8>) {
+pub fn set_no_underlined(buf: &mut Vec<u8>) {
     buf.extend_from_slice(b"\x1B[4m");
 }
 
