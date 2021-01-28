@@ -50,8 +50,8 @@ use winapi::{
 };
 
 use crate::platform::{
-    ClientApplication, ClientPlatform, ConnectionHandle, Key, PlatformClientEvent,
-    PlatformServerEvent, ProcessExitStatus, ProcessHandle, ServerApplication, ServerPlatform,
+    ClientApplication, ClientPlatform, Key, PlatformClientEvent, PlatformServerEvent,
+    ServerApplication, ServerPlatform,
 };
 
 const SERVER_PIPE_BUFFER_LEN: usize = 512;
@@ -582,32 +582,32 @@ struct ServerState {
 }
 
 impl ServerPlatform for ServerState {
-    fn read_from_connection(&self, handle: ConnectionHandle, len: usize) -> &[u8] {
-        match self.pipes.get(handle.0) {
+    fn read_from_connection(&self, index: usize, len: usize) -> &[u8] {
+        match self.pipes.get(index) {
             Some(pipe) => pipe.get_bytes(len),
             None => &[],
         }
     }
 
-    fn write_to_connection(&mut self, handle: ConnectionHandle, buf: &[u8]) -> bool {
-        match self.pipes.get_mut(handle.0) {
+    fn write_to_connection(&mut self, index: usize, buf: &[u8]) -> bool {
+        match self.pipes.get_mut(index) {
             Some(pipe) => pipe.write(buf),
             None => false,
         }
     }
 
-    fn close_connection(&mut self, handle: ConnectionHandle) {
-        self.pipes.remove(handle.0);
+    fn close_connection(&mut self, index: usize) {
+        self.pipes.remove(index);
     }
 
-    fn spawn_process(&mut self, mut command: Command) -> io::Result<ProcessHandle> {
+    fn spawn_process(&mut self, mut command: Command) -> io::Result<usize> {
         let child = command.spawn()?;
         let index = self.children.push(AsyncChild::from_child(child));
-        Ok(ProcessHandle(index))
+        Ok(index)
     }
 
-    fn read_from_process_stdout(&self, handle: ProcessHandle, len: usize) -> &[u8] {
-        match self.children.get(handle.0) {
+    fn read_from_process_stdout(&self, index: usize, len: usize) -> &[u8] {
+        match self.children.get(index) {
             Some(child) => match child.stdout {
                 ChildPipe::Open(ref io) => io.get_bytes(len),
                 ChildPipe::Closed => &[],
@@ -616,8 +616,8 @@ impl ServerPlatform for ServerState {
         }
     }
 
-    fn read_from_process_stderr(&self, handle: ProcessHandle, len: usize) -> &[u8] {
-        match self.children.get(handle.0) {
+    fn read_from_process_stderr(&self, index: usize, len: usize) -> &[u8] {
+        match self.children.get(index) {
             Some(child) => match child.stderr {
                 ChildPipe::Open(ref io) => io.get_bytes(len),
                 ChildPipe::Closed => &[],
@@ -626,8 +626,8 @@ impl ServerPlatform for ServerState {
         }
     }
 
-    fn write_to_process(&mut self, handle: ProcessHandle, buf: &[u8]) -> bool {
-        if let Some(child) = self.children.get_mut(handle.0) {
+    fn write_to_process(&mut self, index: usize, buf: &[u8]) -> bool {
+        if let Some(child) = self.children.get_mut(index) {
             if let Some(ref mut stdin) = child.child.stdin {
                 use io::Write;
                 if let Ok(()) = stdin.write_all(buf) {
@@ -639,11 +639,11 @@ impl ServerPlatform for ServerState {
         false
     }
 
-    fn kill_process(&mut self, handle: ProcessHandle) {
-        if let Some(child) = self.children.get_mut(handle.0) {
+    fn kill_process(&mut self, index: usize) {
+        if let Some(child) = self.children.get_mut(index) {
             let _ = child.child.kill();
             let _ = child.child.wait();
-            self.children.remove(handle.0);
+            self.children.remove(index);
         }
     }
 }
@@ -695,22 +695,20 @@ where
             Some(EventSource::ConnectionListener) => {
                 if let Some(pipe) = listener.accept(pipe_path) {
                     let index = state.pipes.push(pipe);
-                    let handle = ConnectionHandle(index);
-                    send_event!(PlatformServerEvent::ConnectionOpen(handle));
+                    send_event!(PlatformServerEvent::ConnectionOpen { index });
                 }
             }
-            Some(EventSource::Connection(i)) => {
-                let pipe = match state.pipes.get_mut(i) {
+            Some(EventSource::Connection(index)) => {
+                let pipe = match state.pipes.get_mut(index) {
                     Some(pipe) => pipe,
                     None => continue,
                 };
 
-                let handle = ConnectionHandle(i);
                 match pipe.read_async() {
                     ReadResult::Waiting => (),
                     ReadResult::Err | ReadResult::Ok(0) => {
-                        state.pipes.remove(i);
-                        send_event!(PlatformServerEvent::ConnectionClose(handle));
+                        state.pipes.remove(index);
+                        send_event!(PlatformServerEvent::ConnectionClose { index });
                     }
                     ReadResult::Ok(len) => {
                         /*
@@ -749,12 +747,12 @@ where
                         }
                         */
 
-                        send_event!(PlatformServerEvent::ConnectionMessage(handle, len));
+                        send_event!(PlatformServerEvent::ConnectionMessage { index, len });
                     }
                 }
             }
-            Some(EventSource::ChildStdout(i)) => {
-                let child = match state.children.get_mut(i) {
+            Some(EventSource::ChildStdout(index)) => {
+                let child = match state.children.get_mut(index) {
                     Some(child) => child,
                     None => continue,
                 };
@@ -763,29 +761,23 @@ where
                     ChildPipe::Closed => continue,
                 };
 
-                let handle = ProcessHandle(i);
                 match io.read_async() {
                     ReadResult::Waiting => (),
                     ReadResult::Err | ReadResult::Ok(0) => {
                         child.stdout = ChildPipe::Closed;
                         if let ChildPipe::Closed = child.stderr {
-                            let status = if child.child.wait().unwrap().success() {
-                                ProcessExitStatus::Ok
-                            } else {
-                                ProcessExitStatus::Err
-                            };
-
-                            state.children.remove(i);
-                            send_event!(PlatformServerEvent::ProcessExit(handle, status));
+                            let success = child.child.wait().unwrap().success();
+                            state.children.remove(index);
+                            send_event!(PlatformServerEvent::ProcessExit { index, success });
                         }
                     }
                     ReadResult::Ok(len) => {
-                        send_event!(PlatformServerEvent::ProcessStdout(handle, len));
+                        send_event!(PlatformServerEvent::ProcessStdout { index, len });
                     }
                 }
             }
-            Some(EventSource::ChildStderr(i)) => {
-                let child = match state.children.get_mut(i) {
+            Some(EventSource::ChildStderr(index)) => {
+                let child = match state.children.get_mut(index) {
                     Some(child) => child,
                     None => continue,
                 };
@@ -794,24 +786,18 @@ where
                     ChildPipe::Closed => continue,
                 };
 
-                let handle = ProcessHandle(i);
                 match io.read_async() {
                     ReadResult::Waiting => (),
                     ReadResult::Err | ReadResult::Ok(0) => {
                         child.stderr = ChildPipe::Closed;
                         if let ChildPipe::Closed = child.stdout {
-                            let status = if child.child.wait().unwrap().success() {
-                                ProcessExitStatus::Ok
-                            } else {
-                                ProcessExitStatus::Err
-                            };
-
-                            state.children.remove(i);
-                            send_event!(PlatformServerEvent::ProcessExit(handle, status));
+                            let success = child.child.wait().unwrap().success();
+                            state.children.remove(index);
+                            send_event!(PlatformServerEvent::ProcessExit { index, success });
                         }
                     }
                     ReadResult::Ok(len) => {
-                        send_event!(PlatformServerEvent::ProcessStderr(handle, len));
+                        send_event!(PlatformServerEvent::ProcessStderr { index, len });
                     }
                 }
             }

@@ -10,7 +10,7 @@ use crate::{
     },
     editor::EditorLoop,
     event_manager::EventRegistry,
-    platform::{ConnectionHandle, ServerPlatform},
+    platform::ServerPlatform,
     serialization::{DeserializationSlice, Serialize},
 };
 
@@ -100,14 +100,13 @@ pub struct ClientEventDeserializationBufCollection {
 impl ClientEventDeserializationBufCollection {
     pub fn receive_events<F>(
         &mut self,
-        handle: ConnectionHandle,
+        index: usize,
         bytes: &[u8],
         func: F,
     ) -> EditorLoop
     where
         F: FnMut(ClientEvent) -> EditorLoop,
     {
-        let index = handle.0;
         if index >= self.bufs.len() {
             self.bufs.resize_with(index + 1, Default::default);
         }

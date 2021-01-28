@@ -376,26 +376,15 @@ impl<'de> Serialize<'de> for Key {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub struct ConnectionHandle(pub usize);
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub struct ProcessHandle(pub usize);
-
-#[derive(Clone, Copy)]
-pub enum ProcessExitStatus {
-    Ok,
-    Err,
-}
-
 #[derive(Clone, Copy)]
 pub enum PlatformServerEvent {
     Idle,
-    ConnectionOpen(ConnectionHandle),
-    ConnectionClose(ConnectionHandle),
-    ConnectionMessage(ConnectionHandle, usize),
-    ProcessStdout(ProcessHandle, usize),
-    ProcessStderr(ProcessHandle, usize),
-    ProcessExit(ProcessHandle, ProcessExitStatus),
+    ConnectionOpen { index: usize },
+    ConnectionClose { index: usize },
+    ConnectionMessage { index: usize, len: usize },
+    ProcessStdout { index: usize, len: usize },
+    ProcessStderr { index: usize, len: usize },
+    ProcessExit { index: usize, success: bool },
 }
 
 #[derive(Clone, Copy)]
@@ -429,15 +418,15 @@ pub trait ClientApplication: Sized + PlatformApplication {
 }
 
 pub trait ServerPlatform {
-    fn read_from_connection(&self, handle: ConnectionHandle, len: usize) -> &[u8];
-    fn write_to_connection(&mut self, handle: ConnectionHandle, buf: &[u8]) -> bool;
-    fn close_connection(&mut self, handle: ConnectionHandle);
+    fn read_from_connection(&self, index: usize, len: usize) -> &[u8];
+    fn write_to_connection(&mut self, index: usize, buf: &[u8]) -> bool;
+    fn close_connection(&mut self, index: usize);
 
-    fn spawn_process(&mut self, command: Command) -> io::Result<ProcessHandle>;
-    fn read_from_process_stdout(&self, handle: ProcessHandle, len: usize) -> &[u8];
-    fn read_from_process_stderr(&self, handle: ProcessHandle, len: usize) -> &[u8];
-    fn write_to_process(&mut self, handle: ProcessHandle, buf: &[u8]) -> bool;
-    fn kill_process(&mut self, handle: ProcessHandle);
+    fn spawn_process(&mut self, command: Command) -> io::Result<usize>;
+    fn read_from_process_stdout(&self, index: usize, len: usize) -> &[u8];
+    fn read_from_process_stderr(&self, index: usize, len: usize) -> &[u8];
+    fn write_to_process(&mut self, index: usize, buf: &[u8]) -> bool;
+    fn kill_process(&mut self, index: usize);
 }
 
 pub trait ClientPlatform {

@@ -14,7 +14,6 @@ use crate::{
     config::Config,
     editor_event::{EditorEvent, EditorEventQueue},
     keymap::{KeyMapCollection, MatchResult},
-    platform::ConnectionHandle,
     lsp::{LspClientCollection, LspClientContext, LspClientHandle, LspServerEvent},
     mode::{Mode, ModeKind, ModeOperation},
     picker::Picker,
@@ -349,14 +348,10 @@ impl Editor {
         needs_redraw
     }
 
-    pub fn on_client_joined(
-        &mut self,
-        clients: &mut ClientManager,
-        connection_handle: ConnectionHandle,
-    ) {
-        clients.on_client_joined(connection_handle);
+    pub fn on_client_joined(&mut self, clients: &mut ClientManager, index: usize) {
+        clients.on_client_joined(index);
 
-        let target = TargetClient(connection_handle);
+        let target = TargetClient(index);
         let buffer_view_handle = clients
             .get(clients.focused_target())
             .and_then(|c| c.buffer_view_handle())
@@ -367,12 +362,8 @@ impl Editor {
         clients.set_buffer_view_handle(self, target, buffer_view_handle);
     }
 
-    pub fn on_client_left(
-        &mut self,
-        clients: &mut ClientManager,
-        connection_handle: ConnectionHandle,
-    ) {
-        clients.on_client_left(connection_handle);
+    pub fn on_client_left(&mut self, clients: &mut ClientManager, index: usize) {
+        clients.on_client_left(index);
     }
 
     pub fn on_event(

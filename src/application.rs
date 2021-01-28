@@ -11,8 +11,8 @@ use std::{
 };
 
 use crate::platform::{
-    ClientApplication, ClientPlatform, ConnectionHandle, Key, PlatformApplication,
-    PlatformClientEvent, PlatformServerEvent, ProcessHandle, ServerApplication, ServerPlatform,
+    ClientApplication, ClientPlatform, Key, PlatformApplication, PlatformClientEvent,
+    PlatformServerEvent, ServerApplication, ServerPlatform,
 };
 
 use crate::{
@@ -38,7 +38,7 @@ pub struct Server {
     editor: Editor,
     clients: ClientManager,
     event_deserialization_bufs: ClientEventDeserializationBufCollection,
-    connections_with_error: Vec<ConnectionHandle>,
+    connections_with_error: Vec<usize>,
 }
 impl PlatformApplication for Server {
     type Args = Args;
@@ -83,38 +83,38 @@ impl ServerApplication for Server {
     {
         match event {
             PlatformServerEvent::Idle => (),
-            PlatformServerEvent::ConnectionOpen(handle) => self.clients.on_client_joined(handle),
-            PlatformServerEvent::ConnectionClose(handle) => {
-                self.clients.on_client_left(handle);
+            PlatformServerEvent::ConnectionOpen { index } => self.clients.on_client_joined(index),
+            PlatformServerEvent::ConnectionClose { index } => {
+                self.clients.on_client_left(index);
                 if self.clients.iter_mut().next().is_none() {
                     return false;
                 }
             }
-            PlatformServerEvent::ConnectionMessage(handle, len) => {
-                let bytes = platform.read_from_connection(handle, len);
+            PlatformServerEvent::ConnectionMessage { index, len } => {
+                let bytes = platform.read_from_connection(index, len);
                 let editor = &mut self.editor;
                 let clients = &mut self.clients;
-                let target = TargetClient(handle);
+                let target = TargetClient::from_index(index);
                 let editor_loop =
                     self.event_deserialization_bufs
-                        .receive_events(handle, bytes, |event| {
+                        .receive_events(index, bytes, |event| {
                             editor.on_event(clients, target, event)
                         });
                 match editor_loop {
                     EditorLoop::Continue => (),
-                    EditorLoop::Quit => platform.close_connection(handle),
+                    EditorLoop::Quit => platform.close_connection(index),
                     EditorLoop::QuitAll => return false,
                 }
             }
-            PlatformServerEvent::ProcessStdout(handle, len) => {
-                let _bytes = platform.read_from_process_stdout(handle, len);
+            PlatformServerEvent::ProcessStdout { index, len } => {
+                let _bytes = platform.read_from_process_stdout(index, len);
                 //
             }
-            PlatformServerEvent::ProcessStderr(handle, len) => {
-                let _bytes = platform.read_from_process_stderr(handle, len);
+            PlatformServerEvent::ProcessStderr { index, len } => {
+                let _bytes = platform.read_from_process_stderr(index, len);
                 //
             }
-            PlatformServerEvent::ProcessExit(_handle, _status) => {
+            PlatformServerEvent::ProcessExit { index, success } => {
                 //
             }
         }
@@ -134,9 +134,9 @@ impl ServerApplication for Server {
             let len_bytes = len.to_le_bytes();
             c.buffer[..4].copy_from_slice(&len_bytes);
 
-            let connection_handle = c.target.0;
-            if !platform.write_to_connection(connection_handle, c.buffer) {
-                self.connections_with_error.push(connection_handle);
+            let connection_index = c.target.0;
+            if !platform.write_to_connection(connection_index, c.buffer) {
+                self.connections_with_error.push(connection_index);
             }
         }
 

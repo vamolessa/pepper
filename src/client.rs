@@ -5,26 +5,26 @@ use crate::{
     editor::Editor,
     editor_event::EditorEvent,
     navigation_history::NavigationHistory,
-    platform::ConnectionHandle,
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
     ui::UiKind,
 };
 
+// TODO: remove this and keep only `client_index`
 #[derive(Clone, Copy, Eq, PartialEq)]
-pub struct TargetClient(pub ConnectionHandle);
+pub struct TargetClient(pub usize);
 
 impl TargetClient {
     // TODO: remove this
     pub fn local() -> Self {
-        Self(ConnectionHandle(0))
-    }
-
-    pub fn from_index(index: usize) -> Self {
-        Self(ConnectionHandle(index))
+        Self(0)
     }
 
     pub fn into_index(self) -> usize {
-        self.0 .0
+        self.0
+    }
+
+    pub fn from_index(index: usize) -> TargetClient {
+        TargetClient(index)
     }
 }
 
@@ -33,7 +33,7 @@ impl<'de> Serialize<'de> for TargetClient {
     where
         S: Serializer,
     {
-        let index = self.into_index() as u32;
+        let index = self.0 as u32;
         index.serialize(serializer);
     }
 
@@ -42,14 +42,14 @@ impl<'de> Serialize<'de> for TargetClient {
         D: Deserializer<'de>,
     {
         let index = u32::deserialize(deserializer)?;
-        Ok(Self(ConnectionHandle(index as _)))
+        Ok(Self(index as _))
     }
 }
 
 impl FromArgValue for TargetClient {
     fn from_arg_value(value: &str) -> Result<Self, String> {
         let index = value.parse::<usize>().map_err(|e| e.to_string())?;
-        Ok(Self(ConnectionHandle(index)))
+        Ok(Self(index))
     }
 }
 
@@ -142,7 +142,7 @@ impl ClientData {
 }
 
 pub struct ClientManager {
-    focused_target: TargetClient, // TODO: make it Option<TargetClient>
+    focused_target: TargetClient,    // TODO: make it Option<TargetClient>
     pub client_map: ClientTargetMap, // TODO: expose through ClientCollection
     clients: Vec<Option<Client>>,
     data: Vec<ClientData>,
@@ -191,8 +191,7 @@ impl ClientManager {
         }
     }
 
-    pub fn on_client_joined(&mut self, connection_handle: ConnectionHandle) {
-        let index = connection_handle.0;
+    pub fn on_client_joined(&mut self, index: usize) {
         let min_len = index + 1;
         if min_len > self.clients.len() {
             self.clients.resize_with(min_len, || None);
@@ -202,31 +201,29 @@ impl ClientManager {
             self.data.resize_with(min_len, || Default::default());
         }
 
-        self.client_map.on_client_joined(connection_handle);
+        self.client_map.on_client_joined(index);
     }
 
-    pub fn on_client_left(&mut self, connection_handle: ConnectionHandle) {
-        let target = TargetClient(connection_handle);
-        let index = target.into_index();
+    pub fn on_client_left(&mut self, index: usize) {
         self.clients[index] = None;
         self.data[index].reset();
 
-        self.client_map.on_client_left(connection_handle);
-        if self.focused_target == target {
+        self.client_map.on_client_left(index);
+        if self.focused_target == TargetClient(index) {
             self.focused_target = TargetClient::local();
         }
     }
 
     pub fn get(&self, target: TargetClient) -> Option<&Client> {
-        self.clients[target.into_index()].as_ref()
+        self.clients[target.0].as_ref()
     }
 
     pub fn get_mut(&mut self, target: TargetClient) -> Option<&mut Client> {
-        self.clients[target.into_index()].as_mut()
+        self.clients[target.0].as_mut()
     }
 
     pub fn get_client_ref(&mut self, target: TargetClient) -> Option<ClientRef> {
-        let index = target.into_index();
+        let index = target.0;
         match self.clients[index] {
             Some(ref mut c) => {
                 let data = &mut self.data[index];
@@ -253,7 +250,7 @@ impl ClientManager {
             .flat_map(|((i, c), d)| {
                 c.as_mut().map(move |c| ClientRef {
                     ui: &mut d.ui,
-                    target: TargetClient(ConnectionHandle(i)),
+                    target: TargetClient(i),
                     client: c,
                     buffer: &mut d.display_buffer,
                 })
@@ -267,24 +264,24 @@ pub struct ClientTargetMap {
 }
 
 impl ClientTargetMap {
-    pub fn on_client_joined(&mut self, connection_handle: ConnectionHandle) {
-        let min_len = connection_handle.0 + 1;
+    pub fn on_client_joined(&mut self, index: usize) {
+        let min_len = index + 1;
         if min_len > self.targets.len() {
             self.targets.resize_with(min_len, || None);
         }
     }
 
-    pub fn on_client_left(&mut self, connection_handle: ConnectionHandle) {
-        self.targets[connection_handle.0] = None;
+    pub fn on_client_left(&mut self, index: usize) {
+        self.targets[index] = None;
         for target in &mut self.targets {
-            if *target == Some(TargetClient(connection_handle)) {
+            if *target == Some(TargetClient(index)) {
                 *target = None;
             }
         }
     }
 
     pub fn map(&mut self, from: TargetClient, to: TargetClient) {
-        self.targets[from.into_index()] = if to.into_index() < self.targets.len() {
+        self.targets[from.0] = if to.0 < self.targets.len() {
             Some(to)
         } else {
             None
@@ -292,6 +289,6 @@ impl ClientTargetMap {
     }
 
     pub fn get(&self, target: TargetClient) -> TargetClient {
-        self.targets[target.into_index()].unwrap_or(target)
+        self.targets[target.0].unwrap_or(target)
     }
 }
