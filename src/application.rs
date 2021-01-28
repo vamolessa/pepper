@@ -91,6 +91,7 @@ impl ServerApplication for Server {
                 }
             }
             PlatformServerEvent::ConnectionMessage { index, len } => {
+                eprintln!("on client event");
                 let bytes = platform.read_from_connection(index, len);
                 let editor = &mut self.editor;
                 let clients = &mut self.clients;
@@ -130,6 +131,7 @@ impl ServerApplication for Server {
             c.buffer.clear();
             c.buffer.extend_from_slice(&[0; 4]);
             c.ui.render(&self.editor, c.client, has_focus, c.buffer);
+
             let len = c.buffer.len() as u32 - 4;
             let len_bytes = len.to_le_bytes();
             c.buffer[..4].copy_from_slice(&len_bytes);
@@ -190,10 +192,9 @@ impl ClientApplication for Client {
         }
 
         use io::Write;
-        let mut buf = Vec::new();
-        crate::ui::tui::enter_alternate_buffer(&mut buf);
-        crate::ui::tui::hide_cursor(&mut buf);
-        let _ = stdout.write_all(&buf);
+        let _ = stdout.write_all(crate::ui::tui::ENTER_ALTERNATE_BUFFER_CODE);
+        let _ = stdout.write_all(crate::ui::tui::HIDE_CURSOR_CODE);
+        let _ = stdout.flush();
 
         Self {
             read_buf: Vec::new(),
@@ -218,6 +219,8 @@ impl ClientApplication for Client {
                     ClientEvent::Resize(*width as _, *height as _).serialize(&mut self.write_buf);
                 }
                 PlatformClientEvent::Message(len) => {
+                    eprintln!("on server screen with len: {}", len);
+
                     let buf = platform.read(*len);
                     self.read_buf.extend_from_slice(buf);
                     let mut len_bytes = [0; 4];
@@ -246,10 +249,10 @@ impl Drop for Client {
     fn drop(&mut self) {
         use io::Write;
 
-        let mut buf = Vec::new();
-        crate::ui::tui::exit_alternate_buffer(&mut buf);
-        crate::ui::tui::show_cursor(&mut buf);
-        let _ = self.stdout.write_all(&buf);
+        let _ = self
+            .stdout
+            .write_all(crate::ui::tui::EXIT_ALTERNATE_BUFFER_CODE);
+        let _ = self.stdout.write_all(crate::ui::tui::SHOW_CURSOR_CODE);
         let _ = self.stdout.flush();
     }
 }

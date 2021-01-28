@@ -27,65 +27,54 @@ use crate::{
 
 use super::{Ui, UiResult};
 
+pub const ENTER_ALTERNATE_BUFFER_CODE: &[u8] = b"\x1B[?1049h";
+pub const EXIT_ALTERNATE_BUFFER_CODE: &[u8] = b"\x1B[?1049l";
+pub const HIDE_CURSOR_CODE: &[u8] = b"\x1B[?25l";
+pub const SHOW_CURSOR_CODE: &[u8] = b"\x1B[?25h";
+
 fn set_title(buf: &mut Vec<u8>, title: &[u8]) {
     buf.extend_from_slice(b"\x1B]0;");
     buf.extend_from_slice(title);
     buf.extend_from_slice(b"{}\x07");
 }
 
-pub fn enter_alternate_buffer(buf: &mut Vec<u8>) {
-    buf.extend_from_slice(b"\x1B[?1049h");
-}
-
-pub fn exit_alternate_buffer(buf: &mut Vec<u8>) {
-    buf.extend_from_slice(b"\x1B[?1049l");
-}
-
-pub fn reset_style(buf: &mut Vec<u8>) {
+fn reset_style(buf: &mut Vec<u8>) {
     buf.extend_from_slice(b"\x1B[?0m");
 }
 
-pub fn clear_all(buf: &mut Vec<u8>) {
+fn clear_all(buf: &mut Vec<u8>) {
     buf.extend_from_slice(b"\x1B[2J");
 }
 
-pub fn clear_until_new_line(buf: &mut Vec<u8>) {
+fn clear_until_new_line(buf: &mut Vec<u8>) {
     buf.extend_from_slice(b"\x1B[K");
 }
 
-pub fn hide_cursor(buf: &mut Vec<u8>) {
-    buf.extend_from_slice(b"\x1B[?25l");
-}
-
-pub fn show_cursor(buf: &mut Vec<u8>) {
-    buf.extend_from_slice(b"\x1B[?25h");
-}
-
-pub fn move_cursor_to(buf: &mut Vec<u8>, x: usize, y: usize) {
+fn move_cursor_to(buf: &mut Vec<u8>, x: usize, y: usize) {
     let _ = write!(buf, "\x1B[{};{}H", x, y);
 }
 
-pub fn move_cursor_to_next_line(buf: &mut Vec<u8>) {
+fn move_cursor_to_next_line(buf: &mut Vec<u8>) {
     buf.extend_from_slice(b"\x1B[1D");
 }
 
-pub fn move_cursor_up(buf: &mut Vec<u8>, count: usize) {
+fn move_cursor_up(buf: &mut Vec<u8>, count: usize) {
     let _ = write!(buf, "\x1B[{}A", count);
 }
 
-pub fn set_background_color(buf: &mut Vec<u8>, color: theme::Color) {
+fn set_background_color(buf: &mut Vec<u8>, color: theme::Color) {
     let _ = write!(buf, "\x1B[48;2;{};{};{}", color.0, color.1, color.2);
 }
 
-pub fn set_foreground_color(buf: &mut Vec<u8>, color: theme::Color) {
+fn set_foreground_color(buf: &mut Vec<u8>, color: theme::Color) {
     let _ = write!(buf, "\x1B[38;2;{};{};{}", color.0, color.1, color.2);
 }
 
-pub fn set_underlined(buf: &mut Vec<u8>) {
+fn set_underlined(buf: &mut Vec<u8>) {
     buf.extend_from_slice(b"\x1B[4m");
 }
 
-pub fn set_no_underlined(buf: &mut Vec<u8>) {
+fn set_no_underlined(buf: &mut Vec<u8>) {
     buf.extend_from_slice(b"\x1B[4m");
 }
 
