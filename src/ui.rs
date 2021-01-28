@@ -8,7 +8,6 @@ use crate::{
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
 };
 
-pub mod none_ui;
 pub mod tui;
 
 pub type UiResult<T> = Result<T, Box<dyn 'static + Error>>;
