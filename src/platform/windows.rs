@@ -5,6 +5,7 @@ use std::{
     ops::{Deref, DerefMut},
     os::windows::io::AsRawHandle,
     process::{Child, Command, Stdio},
+    ptr::NonNull,
     time::Duration,
 };
 
@@ -28,12 +29,13 @@ use winapi::{
         },
         processenv::{GetCommandLineW, GetCurrentDirectoryW, GetStdHandle},
         processthreadsapi::{CreateProcessW, PROCESS_INFORMATION, STARTUPINFOW},
+        stringapiset::WideCharToMultiByte,
         synchapi::{CreateEventW, SetEvent, WaitForMultipleObjects},
         winbase::{
-            GlobalLock, GlobalUnlock, FILE_FLAG_OVERLAPPED, INFINITE, NORMAL_PRIORITY_CLASS,
-            PIPE_ACCESS_DUPLEX, PIPE_READMODE_BYTE, PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES,
-            STARTF_USESTDHANDLES, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, WAIT_ABANDONED_0,
-            WAIT_OBJECT_0,
+            GlobalLock, GlobalSize, GlobalUnlock, FILE_FLAG_OVERLAPPED, INFINITE,
+            NORMAL_PRIORITY_CLASS, PIPE_ACCESS_DUPLEX, PIPE_READMODE_BYTE, PIPE_TYPE_BYTE,
+            PIPE_UNLIMITED_INSTANCES, STARTF_USESTDHANDLES, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
+            WAIT_ABANDONED_0, WAIT_OBJECT_0,
         },
         wincon::{
             FreeConsole, GetConsoleScreenBufferInfo, CONSOLE_SCREEN_BUFFER_INFO,
@@ -43,6 +45,7 @@ use winapi::{
             INPUT_RECORD, KEY_EVENT, LEFT_ALT_PRESSED, LEFT_CTRL_PRESSED, RIGHT_ALT_PRESSED,
             RIGHT_CTRL_PRESSED, SHIFT_PRESSED, WINDOW_BUFFER_SIZE_EVENT,
         },
+        winnls::CP_UTF8,
         winnt::{GENERIC_READ, GENERIC_WRITE, HANDLE, MAXIMUM_WAIT_OBJECTS},
         winuser::{
             CloseClipboard, EmptyClipboard, GetClipboardData, OpenClipboard, SetClipboardData,
@@ -196,18 +199,12 @@ fn set_console_mode(console_handle: HANDLE, mode: DWORD) {
     }
 }
 
-fn open_clipboard() {
-    let result = unsafe { OpenClipboard(std::ptr::null_mut()) };
-    if result == FALSE {
-        panic!("could not open clipboard");
-    }
+fn global_lock<T>(handle: HANDLE) -> Option<NonNull<T>> {
+    NonNull::new(unsafe { GlobalLock(handle) as _ })
 }
 
-fn close_clipboard() {
-    let result = unsafe { CloseClipboard() };
-    if result == FALSE {
-        panic!("could not close clipboard");
-    }
+fn global_unlock(handle: HANDLE) {
+    unsafe { GlobalUnlock(handle) };
 }
 
 fn fork() {
@@ -289,6 +286,24 @@ impl Event {
 impl Drop for Event {
     fn drop(&mut self) {
         unsafe { CloseHandle(self.0) };
+    }
+}
+
+struct Clipboard;
+impl Clipboard {
+    pub fn open() {
+        let result = unsafe { OpenClipboard(std::ptr::null_mut()) };
+        if result == FALSE {
+            panic!("could not open clipboard");
+        }
+    }
+}
+impl Drop for Clipboard {
+    fn drop(&mut self) {
+        let result = unsafe { CloseClipboard() };
+        if result == FALSE {
+            panic!("could not close clipboard");
+        }
     }
 }
 
@@ -695,27 +710,63 @@ impl ServerPlatform for ServerState {
     }
 
     fn read_from_clipboard(&mut self, text: &mut String) -> bool {
-        let mut result = false;
+        let clipboard = Clipboard::open();
         text.clear();
-        open_clipboard();
         let handle = unsafe { GetClipboardData(CF_UNICODETEXT) };
-        if handle != NULL {
-            result = true;
-            let data = unsafe { GlobalLock(handle) };
-            if data != NULL {
-                unsafe { GlobalUnlock(handle) };
-            }
+        if handle == NULL {
+            return false;
         }
-        close_clipboard();
-        result
+        let data = match global_lock::<u16>(handle) {
+            Some(data) => data,
+            None => return false,
+        };
+        let data = data.as_ptr();
+        let len = unsafe {
+            WideCharToMultiByte(
+                CP_UTF8,
+                0,
+                data,
+                -1,
+                std::ptr::null_mut(),
+                0,
+                std::ptr::null(),
+                std::ptr::null_mut(),
+            )
+        };
+        if len != 0 {
+            let len = len - 1;
+            let mut temp = String::new();
+            std::mem::swap(text, &mut temp);
+            let mut bytes = temp.into_bytes();
+            bytes.resize(len as usize, 0);
+
+            unsafe {
+                WideCharToMultiByte(
+                    CP_UTF8,
+                    0,
+                    data,
+                    -1,
+                    bytes.as_mut_ptr() as _,
+                    bytes.len() as _,
+                    std::ptr::null(),
+                    std::ptr::null_mut(),
+                );
+            }
+
+            temp = unsafe { String::from_utf8_unchecked(bytes) };
+            std::mem::swap(text, &mut temp);
+        }
+        global_unlock(handle);
+        drop(clipboard);
+        true
     }
 
     fn write_to_clipboard(&mut self, text: &str) {
-        open_clipboard();
+        let clipboard = Clipboard::open();
         unsafe {
             //
         }
-        close_clipboard();
+        drop(clipboard);
     }
 
     fn read_from_connection(&mut self, index: usize, len: usize) -> &[u8] {
