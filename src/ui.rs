@@ -1,7 +1,5 @@
 use std::{io, iter};
 
-use crossterm::{cursor, handle_command, style::Print, terminal, Command};
-
 use crate::{
     buffer::{Buffer, BufferContent, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
@@ -53,15 +51,20 @@ pub const RESET_STYLE_CODE: &[u8] = b"\x1B[0;49m";
 pub const MODE_256_COLORS_CODE: &[u8] = b"\x1B[=19h";
 
 #[inline]
-pub fn set_title(buf: &mut Vec<u8>, title: &[u8]) {
+pub fn set_title(buf: &mut Vec<u8>, title: &str) {
     buf.extend_from_slice(b"\x1B]0;");
-    buf.extend_from_slice(title);
-    buf.extend_from_slice(b"{}\x07");
+    buf.extend_from_slice(title.as_bytes());
+    buf.extend_from_slice(b"\x07");
 }
 
 #[inline]
 pub fn clear_all(buf: &mut Vec<u8>) {
     buf.extend_from_slice(b"\x1B[2J");
+}
+
+#[inline]
+pub fn clear_line(buf: &mut Vec<u8>) {
+    buf.extend_from_slice(b"\x1B[2K");
 }
 
 #[inline]
@@ -77,7 +80,7 @@ pub fn move_cursor_to(buf: &mut Vec<u8>, x: usize, y: usize) {
 
 #[inline]
 pub fn move_cursor_to_next_line(buf: &mut Vec<u8>) {
-    buf.extend_from_slice(b"\x1B[1D");
+    buf.extend_from_slice(b"\x1B[1E");
 }
 
 #[inline]
@@ -106,15 +109,6 @@ pub fn set_underlined(buf: &mut Vec<u8>) {
 #[inline]
 pub fn set_not_underlined(buf: &mut Vec<u8>) {
     buf.extend_from_slice(b"\x1B[24m");
-}
-
-#[inline]
-fn write_command<C>(buf: &mut Vec<u8>, command: C)
-where
-    C: Command,
-{
-    use io::Write;
-    let _ = handle_command!(buf, command);
 }
 
 pub fn render(
@@ -185,6 +179,7 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, client_view: &ClientView, has
     let width = client_view.client.viewport_size.0;
     let height = client_view.client.height;
     let theme = &editor.config.theme;
+    let mut char_buf = [0; std::mem::size_of::<char>()];
 
     let cursor_color = if has_focus && editor.mode.kind() == ModeKind::Insert {
         theme.highlight
@@ -194,7 +189,7 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, client_view: &ClientView, has
 
     let mut text_color = theme.token_text;
 
-    write_command(buf, cursor::MoveTo(0, 0));
+    move_cursor_to(buf, 0, 0);
     set_background_color(buf, theme.background);
     set_foreground_color(buf, text_color);
 
@@ -266,7 +261,7 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, client_view: &ClientView, has
 
         for (char_index, c) in line.as_str().char_indices().chain(iter::once((0, '\0'))) {
             if x >= width {
-                write_command(buf, cursor::MoveToNextLine(1));
+                move_cursor_to_next_line(buf);
 
                 drawn_line_count += 1;
                 x -= width;
@@ -357,24 +352,24 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, client_view: &ClientView, has
 
             match c {
                 '\0' => {
-                    write_command(buf, Print(' '));
+                    buf.push(b' ');
                     x += 1;
                 }
                 ' ' => {
-                    write_command(buf, Print(editor.config.values.visual_space));
+                    buf.push(editor.config.values.visual_space);
                     x += 1;
                 }
                 '\t' => {
-                    write_command(buf, Print(editor.config.values.visual_tab_first));
+                    buf.push(editor.config.values.visual_tab_first);
                     let tab_size = editor.config.values.tab_size.get() as u16;
                     let next_tab_stop = (tab_size - 1) - x % tab_size;
                     for _ in 0..next_tab_stop {
-                        write_command(buf, Print(editor.config.values.visual_tab_repeat));
+                        buf.push(editor.config.values.visual_tab_repeat);
                     }
                     x += next_tab_stop + 1;
                 }
                 _ => {
-                    write_command(buf, Print(c));
+                    buf.extend_from_slice(c.encode_utf8(&mut char_buf).as_bytes());
                     x += 1;
                 }
             }
@@ -384,10 +379,10 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, client_view: &ClientView, has
 
         if x < width {
             set_background_color(buf, theme.background);
-            write_command(buf, terminal::Clear(terminal::ClearType::UntilNewLine));
+            clear_until_new_line(buf);
         }
 
-        write_command(buf, cursor::MoveToNextLine(1));
+        move_cursor_to_next_line(buf);
 
         line_index += 1;
         drawn_line_count += 1;
@@ -400,15 +395,16 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, client_view: &ClientView, has
     set_background_color(buf, theme.background);
     set_foreground_color(buf, theme.token_whitespace);
     for _ in drawn_line_count..height {
-        write_command(buf, Print(editor.config.values.visual_empty));
-        write_command(buf, terminal::Clear(terminal::ClearType::UntilNewLine));
-        write_command(buf, cursor::MoveToNextLine(1));
+        buf.push(editor.config.values.visual_empty);
+        clear_until_new_line(buf);
+        move_cursor_to_next_line(buf);
     }
 }
 
 fn draw_picker(buf: &mut Vec<u8>, editor: &Editor, client_view: &ClientView) {
     let cursor = editor.picker.cursor();
     let scroll = editor.picker.scroll();
+    let mut char_buf = [0; std::mem::size_of::<char>()];
 
     let half_width = client_view.client.viewport_size.0 / 2;
     let half_width = half_width.saturating_sub(1) as usize;
@@ -444,8 +440,8 @@ fn draw_picker(buf: &mut Vec<u8>, editor: &Editor, client_view: &ClientView) {
             ($c:expr) => {
                 x += 1;
                 match $c {
-                    '\t' => write_command(buf, Print(' ')),
-                    c => write_command(buf, Print(c)),
+                    '\t' => buf.push(b' '),
+                    c => buf.extend_from_slice(c.encode_utf8(&mut char_buf).as_bytes()),
                 }
             };
         }
@@ -456,7 +452,7 @@ fn draw_picker(buf: &mut Vec<u8>, editor: &Editor, client_view: &ClientView) {
                 print_char!(c);
             }
         } else {
-            write_command(buf, Print("..."));
+            buf.extend_from_slice(b"...");
             x += 3;
             let name_char_count = name_char_count + 3;
             for c in entry
@@ -468,20 +464,20 @@ fn draw_picker(buf: &mut Vec<u8>, editor: &Editor, client_view: &ClientView) {
             }
         }
         for _ in x..half_width {
-            write_command(buf, Print(' '));
+            buf.push(b' ');
         }
-        write_command(buf, Print('|'));
+        buf.push(b'|');
         x = 0;
         for c in entry.description.chars() {
             if x + 3 > half_width {
-                write_command(buf, Print("..."));
+                buf.extend_from_slice(b"...");
                 break;
             }
             print_char!(c);
         }
 
-        write_command(buf, terminal::Clear(terminal::ClearType::UntilNewLine));
-        write_command(buf, cursor::MoveToNextLine(1));
+        clear_until_new_line(buf);
+        move_cursor_to_next_line(buf);
     }
 }
 
@@ -514,17 +510,17 @@ fn draw_statusbar(
             match editor.mode.kind() {
                 ModeKind::Normal => match editor.recording_macro {
                     Some(key) => {
-                        let text = "recording macro ";
-                        let key = key.to_char();
-                        write_command(buf, Print(text));
-                        write_command(buf, Print(key));
+                        let text = b"recording macro ";
+                        let key = key.as_u8();
+                        buf.extend_from_slice(text);
+                        buf.push(key);
                         Some(text.len() + 1)
                     }
                     None => Some(0),
                 },
                 ModeKind::Insert => {
-                    let text = "-- INSERT --";
-                    write_command(buf, Print(text));
+                    let text = b"-- INSERT --";
+                    buf.extend_from_slice(text);
                     Some(text.len())
                 }
                 ModeKind::Picker | ModeKind::ReadLine | ModeKind::Script => {
@@ -532,42 +528,43 @@ fn draw_statusbar(
 
                     set_background_color(buf, prompt_background_color);
                     set_foreground_color(buf, prompt_foreground_color);
-                    write_command(buf, Print(read_line.prompt()));
+                    buf.extend_from_slice(read_line.prompt().as_bytes());
                     set_background_color(buf, background_color);
                     set_foreground_color(buf, foreground_color);
-                    write_command(buf, Print(read_line.input()));
+                    buf.extend_from_slice(read_line.input().as_bytes());
                     set_background_color(buf, cursor_color);
-                    write_command(buf, Print(' '));
+                    buf.push(b' ');
                     set_background_color(buf, background_color);
                     None
                 }
             }
         } else {
             fn print_line(buf: &mut Vec<u8>, line: &str) {
+                let mut char_buf = [0; std::mem::size_of::<char>()];
                 for c in line.chars() {
                     match c {
-                        '\t' => write_command(buf, Print("    ")),
-                        c => write_command(buf, Print(c)),
+                        '\t' => buf.extend_from_slice(b"    "),
+                        c => buf.extend_from_slice(c.encode_utf8(&mut char_buf).as_bytes()),
                     };
                 }
             }
 
             let prefix = match status_message_kind {
-                StatusMessageKind::Info => "",
-                StatusMessageKind::Error => "error:",
+                StatusMessageKind::Info => &b""[..],
+                StatusMessageKind::Error => &b"error:"[..],
             };
 
             let line_count = status_message.lines().count();
             if line_count > 1 {
                 if prefix.is_empty() {
-                    write_command(buf, cursor::MoveUp((line_count - 1) as _));
+                    move_cursor_up(buf, line_count - 1);
                 } else {
-                    write_command(buf, cursor::MoveUp(line_count as _));
+                    move_cursor_up(buf, line_count);
                     set_background_color(buf, prompt_background_color);
                     set_foreground_color(buf, prompt_foreground_color);
-                    write_command(buf, Print(prefix));
-                    write_command(buf, terminal::Clear(terminal::ClearType::UntilNewLine));
-                    write_command(buf, cursor::MoveToNextLine(1));
+                    buf.extend_from_slice(prefix);
+                    clear_until_new_line(buf);
+                    move_cursor_to_next_line(buf);
                     set_background_color(buf, background_color);
                     set_foreground_color(buf, foreground_color);
                 }
@@ -575,15 +572,15 @@ fn draw_statusbar(
                 for (i, line) in status_message.lines().enumerate() {
                     print_line(buf, line);
                     if i < line_count - 1 {
-                        write_command(buf, terminal::Clear(terminal::ClearType::UntilNewLine));
-                        write_command(buf, cursor::MoveToNextLine(1));
+                        clear_until_new_line(buf);
+                        move_cursor_to_next_line(buf);
                     }
                 }
             } else {
-                write_command(buf, terminal::Clear(terminal::ClearType::CurrentLine));
+                clear_line(buf);
                 set_background_color(buf, prompt_background_color);
                 set_foreground_color(buf, prompt_foreground_color);
-                write_command(buf, Print(prefix));
+                buf.extend_from_slice(prefix);
                 set_background_color(buf, background_color);
                 set_foreground_color(buf, foreground_color);
                 print_line(buf, status_message);
@@ -633,7 +630,7 @@ fn draw_statusbar(
                 status_buf.push('*');
             }
             status_buf.push_str(buffer_path);
-            write_command(buf, terminal::SetTitle(&status_buf[title_start..]));
+            set_title(buf, &status_buf[title_start..]);
 
             if client_view.buffer.is_some() {
                 let line_number = client_view.main_cursor_position.line_index + 1;
@@ -654,18 +651,18 @@ fn draw_statusbar(
             let status_buf = &status_buf[min_index..];
 
             for _ in 0..(available_width - status_buf.len()) {
-                write_command(buf, Print(' '));
+                buf.push(b' ');
             }
-            write_command(buf, Print(status_buf));
+            buf.extend_from_slice(status_buf.as_bytes());
         }
         None => {
             if buffer_needs_save {
                 status_buf.push('*');
             }
             status_buf.push_str(buffer_path);
-            write_command(buf, terminal::SetTitle(&status_buf));
+            set_title(buf, &status_buf);
         }
     }
 
-    write_command(buf, terminal::Clear(terminal::ClearType::UntilNewLine));
+    clear_until_new_line(buf);
 }

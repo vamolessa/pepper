@@ -164,10 +164,7 @@ mod client {
             .map(|i| TargetClient::from_index(i))
             .unwrap_or(ctx.target_client);
 
-        Ok(ctx
-            .clients
-            .get(target)
-            .and_then(|c| c.buffer_view_handle()))
+        Ok(ctx.clients.get(target).and_then(|c| c.buffer_view_handle()))
     }
 
     pub fn quit(
@@ -176,8 +173,8 @@ mod client {
         _: ScriptContextGuard,
         _: (),
     ) -> ScriptResult<()> {
-        let can_quit =
-            ctx.target_client != TargetClient::local() || ctx.buffers.iter().all(|b| !b.needs_save());
+        let can_quit = ctx.target_client != TargetClient::local()
+            || ctx.buffers.iter().all(|b| !b.needs_save());
         if can_quit {
             ctx.editor_loop = EditorLoop::Quit;
             Err(ScriptError::from(QuitError))
@@ -1725,10 +1722,10 @@ mod config {
         ctx: &mut ScriptContext,
         index: ScriptString,
     ) -> ScriptResult<ScriptValue<'script>> {
-        macro_rules! char_to_string {
+        macro_rules! u8_to_stirng {
             ($c:expr) => {{
-                let mut buf = [0; std::mem::size_of::<char>()];
-                ScriptValue::String(engine.create_string($c.encode_utf8(&mut buf).as_bytes())?)
+                let string = engine.create_string(std::slice::from_ref(&$c))?;
+                ScriptValue::String(string)
             }};
         }
 
@@ -1737,10 +1734,10 @@ mod config {
         match index {
             "tab_size" => Ok(ScriptValue::Integer(config.tab_size.get() as _)),
             "indent_with_tabs" => Ok(ScriptValue::Boolean(config.indent_with_tabs)),
-            "visual_empty" => Ok(char_to_string!(config.visual_empty)),
-            "visual_space" => Ok(char_to_string!(config.visual_space)),
-            "visual_tab_first" => Ok(char_to_string!(config.visual_tab_first)),
-            "visual_tab_repeat" => Ok(char_to_string!(config.visual_tab_repeat)),
+            "visual_empty" => Ok(u8_to_stirng!(config.visual_empty)),
+            "visual_space" => Ok(u8_to_stirng!(config.visual_space)),
+            "visual_tab_first" => Ok(u8_to_stirng!(config.visual_tab_first)),
+            "visual_tab_repeat" => Ok(u8_to_stirng!(config.visual_tab_repeat)),
             "picker_max_height" => Ok(ScriptValue::Integer(config.picker_max_height.get() as _)),
             _ => helper::no_such_property_error(index),
         }
