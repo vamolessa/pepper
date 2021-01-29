@@ -665,10 +665,6 @@ impl<T> SlotVec<T> {
         self.0.get_mut(index)?.as_mut()
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
     pub fn iter<'a>(&'a self) -> impl 'a + Iterator<Item = (usize, &'a T)> {
         self.0.iter().enumerate().filter_map(|(i, e)| match e {
             Some(e) => Some((i, e)),
