@@ -55,10 +55,6 @@ use crate::platform::{
     ServerPlatform,
 };
 
-const SERVER_PIPE_BUFFER_LEN: usize = 512;
-const CLIENT_PIPE_BUFFER_LEN: usize = 2 * 1024;
-const CHILD_BUFFER_LEN: usize = 2 * 1024;
-
 pub fn run<A, S, C>()
 where
     A: Args,
@@ -374,7 +370,7 @@ impl Drop for PipeToClient {
 
 struct PipeToServer(AsyncIO);
 impl PipeToServer {
-    pub fn connect(path: &[u16]) -> Self {
+    pub fn connect(path: &[u16], buf_len: usize) -> Self {
         let pipe_handle = unsafe {
             CreateFileW(
                 path.as_ptr(),
@@ -405,7 +401,7 @@ impl PipeToServer {
         }
 
         let pipe_handle = Handle(pipe_handle);
-        let io = AsyncIO::from_handle(pipe_handle, CLIENT_PIPE_BUFFER_LEN);
+        let io = AsyncIO::from_handle(pipe_handle, buf_len);
         io.event.notify();
         Self(io)
     }
@@ -426,15 +422,15 @@ struct PipeToClientListener {
     io: AsyncIO,
 }
 impl PipeToClientListener {
-    pub fn new(pipe_path: &[u16]) -> Self {
+    pub fn new(pipe_path: &[u16], buf_len: usize) -> Self {
         let pipe_handle = unsafe {
             CreateNamedPipeW(
                 pipe_path.as_ptr(),
                 PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
                 PIPE_TYPE_BYTE | PIPE_READMODE_BYTE,
                 PIPE_UNLIMITED_INSTANCES,
-                SERVER_PIPE_BUFFER_LEN as _,
-                SERVER_PIPE_BUFFER_LEN as _,
+                buf_len as _,
+                buf_len as _,
                 0,
                 std::ptr::null_mut(),
             )
@@ -444,7 +440,7 @@ impl PipeToClientListener {
         }
 
         let pipe_handle = Handle(pipe_handle);
-        let mut pipe = AsyncIO::from_handle(pipe_handle, SERVER_PIPE_BUFFER_LEN);
+        let mut pipe = AsyncIO::from_handle(pipe_handle, buf_len);
 
         if unsafe { ConnectNamedPipe(pipe.handle.0, pipe.overlapped.as_mut_ptr()) } != FALSE {
             panic!("could not accept incomming connection");
@@ -463,11 +459,11 @@ impl PipeToClientListener {
         Self { io: pipe }
     }
 
-    pub fn accept(&mut self, pipe_path: &[u16]) -> Option<PipeToClient> {
+    pub fn accept(&mut self, pipe_path: &[u16], buf_len: usize) -> Option<PipeToClient> {
         match self.io.read_async() {
             ReadResult::Waiting => None,
             ReadResult::Ok(_) => {
-                let mut io = Self::new(pipe_path).io;
+                let mut io = Self::new(pipe_path, buf_len).io;
                 std::mem::swap(&mut self.io, &mut io);
                 Some(PipeToClient(io))
             }
@@ -481,10 +477,10 @@ enum ChildPipe {
     Closed,
 }
 impl ChildPipe {
-    pub fn from_handle(handle: Option<Handle>) -> Self {
+    pub fn from_handle(handle: Option<Handle>, buf_len: usize) -> Self {
         match handle {
             Some(h) => {
-                let io = AsyncIO::from_handle(h, CHILD_BUFFER_LEN);
+                let io = AsyncIO::from_handle(h, buf_len);
                 io.event.notify();
                 Self::Open(io)
             }
@@ -506,13 +502,14 @@ struct AsyncChild {
     stderr: ChildPipe,
 }
 impl AsyncChild {
-    pub fn from_child(child: Child) -> Self {
+    pub fn from_child(child: Child, stdout_buf_len: usize, stderr_buf_len: usize) -> Self {
         let stdout = ChildPipe::from_handle(
             child
                 .stdout
                 .as_ref()
                 .map(AsRawHandle::as_raw_handle)
                 .map(Handle),
+            stdout_buf_len,
         );
         let stderr = ChildPipe::from_handle(
             child
@@ -520,6 +517,7 @@ impl AsyncChild {
                 .as_ref()
                 .map(AsRawHandle::as_raw_handle)
                 .map(Handle),
+            stderr_buf_len,
         );
 
         Self {
@@ -636,9 +634,18 @@ impl ServerPlatform for ServerState {
         self.pipes.remove(index);
     }
 
-    fn spawn_process(&mut self, mut command: Command) -> io::Result<usize> {
+    fn spawn_process(
+        &mut self,
+        mut command: Command,
+        stdout_buf_len: usize,
+        stderr_buf_len: usize,
+    ) -> io::Result<usize> {
         let child = command.spawn()?;
-        let index = self.children.push(AsyncChild::from_child(child));
+        let index = self.children.push(AsyncChild::from_child(
+            child,
+            stdout_buf_len,
+            stderr_buf_len,
+        ));
         Ok(index)
     }
 
@@ -692,8 +699,9 @@ where
         return;
     }
 
+    let connection_buffer_len = A::connection_buffer_len();
     let mut events = Events::default();
-    let mut listener = PipeToClientListener::new(pipe_path);
+    let mut listener = PipeToClientListener::new(pipe_path, connection_buffer_len);
     let mut state = ServerState {
         pipes: SlotVec::new(),
         children: SlotVec::new(),
@@ -725,7 +733,7 @@ where
 
         match events.wait_one(None) {
             Some(EventSource::ConnectionListener) => {
-                if let Some(pipe) = listener.accept(pipe_path) {
+                if let Some(pipe) = listener.accept(pipe_path, connection_buffer_len) {
                     let index = state.pipes.push(pipe);
                     send_event!(ServerEvent::ConnectionOpen { index });
                 }
@@ -868,7 +876,7 @@ unsafe fn run_client<A>(
     }
 
     let mut state = ClientState {
-        pipe: PipeToServer::connect(pipe_path),
+        pipe: PipeToServer::connect(pipe_path, A::connection_buffer_len()),
     };
     let mut application = A::new(args, &mut state);
 

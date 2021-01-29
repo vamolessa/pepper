@@ -55,6 +55,11 @@ pub struct Server {
 }
 impl platform::ServerApplication for Server {
     type Args = Args;
+
+    fn connection_buffer_len() -> usize {
+        512
+    }
+
     fn new<P>(args: Self::Args, platform: &mut P) -> Self
     where
         P: platform::ServerPlatform,
@@ -162,6 +167,11 @@ pub struct Client {
 }
 impl platform::ClientApplication for Client {
     type Args = Args;
+
+    fn connection_buffer_len() -> usize {
+        2 * 1024
+    }
+
     fn new<P>(args: Self::Args, platform: &mut P) -> Self
     where
         P: platform::ClientPlatform,

@@ -50,6 +50,7 @@ pub trait Args: Sized {
 
 pub trait ServerApplication: Sized {
     type Args: Args;
+    fn connection_buffer_len() -> usize;
     fn new<P>(args: Self::Args, platform: &mut P) -> Self
     where
         P: ServerPlatform;
@@ -60,6 +61,7 @@ pub trait ServerApplication: Sized {
 
 pub trait ClientApplication: Sized {
     type Args: Args;
+    fn connection_buffer_len() -> usize;
     fn new<P>(args: Self::Args, platform: &mut P) -> Self
     where
         P: ClientPlatform;
@@ -73,7 +75,12 @@ pub trait ServerPlatform {
     fn write_to_connection(&mut self, index: usize, buf: &[u8]) -> bool;
     fn close_connection(&mut self, index: usize);
 
-    fn spawn_process(&mut self, command: Command) -> io::Result<usize>;
+    fn spawn_process(
+        &mut self,
+        command: Command,
+        stdout_buf_len: usize,
+        stderr_buf_len: usize,
+    ) -> io::Result<usize>;
     fn read_from_process_stdout(&self, index: usize, len: usize) -> &[u8];
     fn read_from_process_stderr(&self, index: usize, len: usize) -> &[u8];
     fn write_to_process(&mut self, index: usize, buf: &[u8]) -> bool;
