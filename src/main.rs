@@ -26,7 +26,6 @@ mod script;
 mod script_bindings;
 mod serialization;
 mod syntax;
-mod task;
 mod theme;
 mod ui;
 mod word_database;

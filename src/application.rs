@@ -1,4 +1,4 @@
-use std::{env, error::Error, fmt, io};
+use std::{env, io};
 
 use crate::platform;
 
@@ -9,7 +9,6 @@ use crate::{
     editor::{Editor, EditorLoop},
     lsp::LspClientCollection,
     serialization::{SerializationBuf, Serialize},
-    task::TaskManager,
     Args,
 };
 
@@ -60,9 +59,7 @@ impl platform::ServerApplication for Server {
         P: platform::ServerPlatform,
     {
         let current_dir = env::current_dir().expect("could not retrieve the current directory");
-        let tasks = TaskManager::new();
-        let lsp = LspClientCollection::new();
-        let mut editor = Editor::new(current_dir, tasks, lsp);
+        let mut editor = Editor::new(current_dir);
         let mut clients = ClientManager::new();
 
         for config in &args.config {

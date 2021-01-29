@@ -26,7 +26,6 @@ use crate::{
         ScriptValue,
     },
     syntax::{Syntax, TokenKind},
-    task::{TaskHandle, TaskRequest},
     theme::{Color, THEME_COLOR_NAMES},
 };
 
@@ -47,7 +46,6 @@ pub struct BufferScriptCallbacks {
 pub struct ScriptCallbacks {
     pub read_line: Option<ScriptCallback>,
     pub picker: Option<ScriptCallback>,
-    pub task: Vec<(TaskHandle, ScriptCallback)>,
 
     pub editor: EditorScriptCallbacks,
     pub buffer: BufferScriptCallbacks,
@@ -1498,12 +1496,14 @@ mod process {
             }
         };
 
+        /*
         if let Some(callback) = callback {
             let task_handle = ctx
                 .tasks
                 .request(ctx.target_client, TaskRequest::ChildStream(child));
             engine.add_task_callback(ctx, task_handle, callback)?;
         }
+        */
 
         Ok(())
     }

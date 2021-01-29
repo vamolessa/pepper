@@ -21,7 +21,6 @@ use crate::{
     script::{ScriptContext, ScriptEngine},
     script_bindings::ScriptCallbacks,
     syntax::HighlightResult,
-    task::{TaskHandle, TaskManager, TaskResult},
     word_database::{EmptyWordCollection, WordDatabase},
 };
 
@@ -226,14 +225,13 @@ pub struct Editor {
 
     pub status_bar: StatusBar,
 
-    pub tasks: TaskManager,
     pub lsp: LspClientCollection,
     pub events: EditorEventQueue,
 
     keymaps: KeyMapCollection,
 }
 impl Editor {
-    pub fn new(current_directory: PathBuf, tasks: TaskManager, lsp: LspClientCollection) -> Self {
+    pub fn new(current_directory: PathBuf) -> Self {
         Self {
             current_directory,
             config: Config::default(),
@@ -253,8 +251,7 @@ impl Editor {
 
             status_bar: StatusBar::new(),
 
-            tasks,
-            lsp,
+            lsp: LspClientCollection::new(),
             events: EditorEventQueue::default(),
 
             keymaps: KeyMapCollection::default(),
@@ -290,7 +287,6 @@ impl Editor {
             events: &mut self.events,
             keymaps: &mut self.keymaps,
             script_callbacks: &mut self.script_callbacks,
-            tasks: &mut self.tasks,
             lsp: &mut self.lsp,
         };
         (&mut self.scripts, ctx)
@@ -577,19 +573,6 @@ impl Editor {
                 }
                 _ => (),
             }
-        }
-    }
-
-    pub fn on_task_event(
-        &mut self,
-        clients: &mut ClientManager,
-        target: TargetClient,
-        handle: TaskHandle,
-        result: TaskResult,
-    ) {
-        let (scripts, mut script_ctx) = self.into_script_context(clients, target);
-        if let Err(error) = scripts.on_task_event(&mut script_ctx, handle, &result) {
-            script_ctx.status_bar.write_error(&error);
         }
     }
 

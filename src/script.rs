@@ -22,7 +22,6 @@ use crate::{
     picker::Picker,
     register::RegisterCollection,
     script_bindings,
-    task::{TaskHandle, TaskManager, TaskResult},
     word_database::WordDatabase,
 };
 
@@ -399,7 +398,6 @@ pub struct ScriptContext<'a> {
     pub events: &'a mut EditorEventQueue,
     pub keymaps: &'a mut KeyMapCollection,
     pub script_callbacks: &'a mut script_bindings::ScriptCallbacks,
-    pub tasks: &'a mut TaskManager,
     pub lsp: &'a mut LspClientCollection,
 }
 
@@ -616,33 +614,6 @@ impl ScriptEngine {
         Ok(())
     }
 
-    pub fn on_task_event(
-        &mut self,
-        ctx: &mut ScriptContext,
-        handle: TaskHandle,
-        result: &TaskResult,
-    ) -> ScriptResult<()> {
-        let s = ScriptContextRegistryScope::new(&self.lua, ctx)?;
-        let engine = ScriptEngineRef::from_lua(&self.lua);
-        let guard = ScriptContextGuard(());
-
-        let callbacks = &mut ctx.script_callbacks.task;
-        for i in 0..callbacks.len() {
-            let (h, ref c) = callbacks[i];
-            if h == handle {
-                c.call(engine, &guard, result.to_script_value(engine)?)?;
-                if let TaskResult::Finished = result {
-                    let (_, c) = callbacks.swap_remove(i);
-                    c.dispose(engine)?;
-                }
-                break;
-            }
-        }
-
-        drop(s);
-        Ok(())
-    }
-
     pub fn history_len(&self) -> usize {
         self.history.len()
     }
@@ -789,17 +760,6 @@ impl<'lua> ScriptEngineRef<'lua> {
             .lua
             .create_registry_value(ScriptValue::Function(func))?;
         Ok(ScriptCallback(key))
-    }
-
-    pub fn add_task_callback(
-        &self,
-        ctx: &mut ScriptContext,
-        task_handle: TaskHandle,
-        callback: ScriptFunction,
-    ) -> ScriptResult<()> {
-        let callback = self.create_callback(callback)?;
-        ctx.script_callbacks.task.push((task_handle, callback));
-        Ok(())
     }
 
     pub fn source(&self, _: &ScriptContextGuard, path: &Path) -> ScriptResult<ScriptValue<'lua>> {
