@@ -10,7 +10,6 @@ use crate::{
     lsp::LspClientCollection,
     serialization::{SerializationBuf, Serialize},
     task::TaskManager,
-    ui::{Ui, UiKind, UiResult},
     Args,
 };
 
@@ -18,7 +17,9 @@ impl platform::Args for Args {
     fn parse() -> Option<Self> {
         let args: Args = argh::from_env();
         if args.version {
-            print_version();
+            let name = env!("CARGO_PKG_NAME");
+            let version = env!("CARGO_PKG_VERSION");
+            println!("{} version {}", name, version);
             return None;
         }
 
@@ -41,12 +42,6 @@ impl platform::Args for Args {
     }
 }
 
-fn print_version() {
-    let name = env!("CARGO_PKG_NAME");
-    let version = env!("CARGO_PKG_VERSION");
-    println!("{} version {}", name, version);
-}
-
 pub struct Server {
     editor: Editor,
     clients: ClientManager,
@@ -60,7 +55,7 @@ impl platform::ServerApplication for Server {
         512
     }
 
-    fn new<P>(args: Self::Args, platform: &mut P) -> Self
+    fn new<P>(args: Self::Args, _: &mut P) -> Self
     where
         P: platform::ServerPlatform,
     {
@@ -252,22 +247,6 @@ impl Drop for Client {
             .write_all(crate::ui::tui::EXIT_ALTERNATE_BUFFER_CODE);
         let _ = self.stdout.write_all(crate::ui::tui::SHOW_CURSOR_CODE);
         let _ = self.stdout.flush();
-    }
-}
-
-// --------------------------------------------------------------------------------------
-// --------------------------------------------------------------------------------------
-// --------------------------------------------------------------------------------------
-// --------------------------------------------------------------------------------------
-// --------------------------------------------------------------------------------------
-// --------------------------------------------------------------------------------------
-
-#[derive(Debug)]
-pub struct ApplicationError(String);
-impl Error for ApplicationError {}
-impl fmt::Display for ApplicationError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str(&self.0)
     }
 }
 
