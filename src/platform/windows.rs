@@ -123,7 +123,10 @@ fn get_current_directory(buf: &mut Vec<u16>) {
 }
 
 fn file_exists(path: &[u16]) -> bool {
-    unsafe { FindFirstFileW(path.as_ptr(), &mut Default::default()) != INVALID_HANDLE_VALUE }
+    unsafe {
+        let mut find_file_data = std::mem::zeroed();
+        FindFirstFileW(path.as_ptr(), &mut find_file_data) != INVALID_HANDLE_VALUE
+    }
 }
 
 fn get_std_handle(which: DWORD) -> Option<HANDLE> {
@@ -135,15 +138,56 @@ fn get_std_handle(which: DWORD) -> Option<HANDLE> {
     }
 }
 
+fn get_console_mode(console_handle: HANDLE) -> DWORD {
+    let mut mode = DWORD::default();
+    let result = unsafe { GetConsoleMode(console_handle, &mut mode) };
+    if result == FALSE {
+        panic!("could not get console mode");
+    }
+    mode
+}
+
+fn get_console_size(output_handle: HANDLE) -> (usize, usize) {
+    let mut console_info = unsafe { std::mem::zeroed() };
+    let result = unsafe { GetConsoleScreenBufferInfo(output_handle, &mut console_info) };
+    if result == FALSE {
+        panic!("could not get console info");
+    }
+    (console_info.dwSize.X as _, console_info.dwSize.Y as _)
+}
+
+fn read_console_input(input_handle: HANDLE, events: &mut [INPUT_RECORD]) -> &[INPUT_RECORD] {
+    let mut event_count: DWORD = 0;
+    let result = unsafe {
+        ReadConsoleInputW(
+            input_handle,
+            events.as_mut_ptr(),
+            events.len() as _,
+            &mut event_count,
+        )
+    };
+    if result == FALSE {
+        panic!("could not read console events");
+    }
+    &events[..(event_count as usize)]
+}
+
+fn set_console_mode(console_handle: HANDLE, mode: DWORD) {
+    let result = unsafe { SetConsoleMode(console_handle, mode) };
+    if result == FALSE {
+        panic!("could not set console mode");
+    }
+}
+
 fn fork() {
-    let mut startup_info = STARTUPINFOW::default();
+    let mut startup_info = unsafe { std::mem::zeroed::<STARTUPINFOW>() };
     startup_info.cb = std::mem::size_of::<STARTUPINFOW>() as _;
     startup_info.dwFlags = STARTF_USESTDHANDLES;
     startup_info.hStdInput = INVALID_HANDLE_VALUE;
     startup_info.hStdOutput = INVALID_HANDLE_VALUE;
     startup_info.hStdError = INVALID_HANDLE_VALUE;
 
-    let mut process_info = PROCESS_INFORMATION::default();
+    let mut process_info = unsafe { std::mem::zeroed::<PROCESS_INFORMATION>() };
 
     let result = unsafe {
         CreateProcessW(
@@ -220,7 +264,7 @@ impl Drop for Event {
 struct Overlapped(OVERLAPPED);
 impl Overlapped {
     pub fn with_event(event: &Event) -> Self {
-        let mut overlapped = OVERLAPPED::default();
+        let mut overlapped = unsafe { std::mem::zeroed::<OVERLAPPED>() };
         overlapped.hEvent = event.handle();
         Self(overlapped)
     }
@@ -834,12 +878,8 @@ impl ClientPlatform for ClientState {
     }
 }
 
-unsafe fn run_client<A>(
-    args: A::Args,
-    pipe_path: &[u16],
-    input_handle: HANDLE,
-    output_handle: HANDLE,
-) where
+unsafe fn run_client<A>(args: A::Args, pipe_path: &[u16], input_handle: HANDLE, output_handle: HANDLE)
+where
     A: ClientApplication,
 {
     if !file_exists(pipe_path) {
@@ -854,38 +894,20 @@ unsafe fn run_client<A>(
     };
     let mut application = A::new(args, &mut state);
 
-    let mut original_input_mode = DWORD::default();
-    if GetConsoleMode(input_handle, &mut original_input_mode) == FALSE {
-        panic!("could not retrieve original console input mode");
-    }
-    if SetConsoleMode(input_handle, ENABLE_WINDOW_INPUT) == FALSE {
-        panic!("could not set console input mode");
-    }
-
-    let mut original_output_mode = DWORD::default();
-    if GetConsoleMode(output_handle, &mut original_output_mode) == FALSE {
-        panic!("could not retrieve original console output mode");
-    }
-    if SetConsoleMode(
+    let original_input_mode = get_console_mode(input_handle);
+    set_console_mode(input_handle, ENABLE_WINDOW_INPUT);
+    let original_output_mode = get_console_mode(output_handle);
+    set_console_mode(
         output_handle,
         ENABLE_PROCESSED_OUTPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING,
-    ) == FALSE
-    {
-        panic!("could not set console output mode");
-    }
+    );
 
-    let event_buffer = &mut [INPUT_RECORD::default(); 32][..];
+    let event_buffer = &mut [unsafe { std::mem::zeroed() }; 32][..];
     let wait_handles = [state.pipe.event.handle(), input_handle];
     let mut pending_events = Vec::new();
 
-    let mut console_info = CONSOLE_SCREEN_BUFFER_INFO::default();
-    if GetConsoleScreenBufferInfo(output_handle, &mut console_info) == FALSE {
-        panic!("could not get console info");
-    }
-
-    let width = console_info.dwSize.X;
-    let height = console_info.dwSize.Y;
-    pending_events.push(ClientEvent::Resize(width as _, height as _));
+    let (width, height) = get_console_size(output_handle);
+    pending_events.push(ClientEvent::Resize(width, height));
     application.on_events(&mut state, &pending_events);
 
     'main_loop: loop {
@@ -902,19 +924,8 @@ unsafe fn run_client<A>(
                 ReadResult::Ok(len) => pending_events.push(ClientEvent::Message(len)),
             },
             1 => {
-                let mut event_count: DWORD = 0;
-                if ReadConsoleInputW(
-                    input_handle,
-                    event_buffer.as_mut_ptr(),
-                    event_buffer.len() as _,
-                    &mut event_count,
-                ) == FALSE
-                {
-                    panic!("could not read console events");
-                }
-
-                for i in 0..event_count {
-                    let event = event_buffer[i as usize];
+                let events = read_console_input(input_handle, event_buffer);
+                for event in events {
                     match event.EventType {
                         KEY_EVENT => {
                             let event = event.Event.KeyEvent();
@@ -994,6 +1005,6 @@ unsafe fn run_client<A>(
         }
     }
 
-    SetConsoleMode(input_handle, original_input_mode);
-    SetConsoleMode(output_handle, original_output_mode);
+    set_console_mode(input_handle, original_input_mode);
+    set_console_mode(output_handle, original_output_mode);
 }

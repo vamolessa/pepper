@@ -17,14 +17,10 @@ name = "pepper"
 path = "src/main.rs"
 
 [dependencies]
-ctrlc = "3.1"
-crossterm = "0.18"
 argh = "0.1"
-polling = "2.0"
 mlua = { version = "0.4", features = [ "vendored", "lua54" ] }
 fuzzy-matcher = "0.3"
 copypasta = "0.7"
 
 [target.'cfg(windows)'.dependencies]
-winapi = "0.3"
-uds_windows = "0.1"
+winapi = { version =  "0.3", features = ["winbase", "consoleapi", "processenv", "handleapi", "synchapi", "ioapiset", "namedpipeapi"] }
