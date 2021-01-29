@@ -85,6 +85,7 @@ impl platform::ServerApplication for Server {
     {
         match event {
             platform::ServerEvent::Idle => (),
+            platform::ServerEvent::Redraw => (),
             platform::ServerEvent::ConnectionOpen { index } => self.clients.on_client_joined(index),
             platform::ServerEvent::ConnectionClose { index } => {
                 self.clients.on_client_left(index);
@@ -123,7 +124,7 @@ impl platform::ServerApplication for Server {
 
         let needs_redraw = self.editor.on_pre_render(&mut self.clients);
         if needs_redraw {
-            // TODO: notify platform for redraw
+            platform.request_redraw();
         }
 
         let focused_target = self.clients.focused_target();

@@ -28,6 +28,7 @@ pub enum Key {
 #[derive(Clone, Copy)]
 pub enum ServerEvent {
     Idle,
+    Redraw,
     ConnectionOpen { index: usize },
     ConnectionClose { index: usize },
     ConnectionMessage { index: usize, len: usize },
@@ -71,6 +72,8 @@ pub trait ClientApplication: Sized {
 }
 
 pub trait ServerPlatform {
+    fn request_redraw(&mut self);
+
     fn read_from_connection(&self, index: usize, len: usize) -> &[u8];
     fn write_to_connection(&mut self, index: usize, buf: &[u8]) -> bool;
     fn close_connection(&mut self, index: usize);

@@ -194,7 +194,7 @@ impl Drop for Handle {
 struct Event(HANDLE);
 impl Event {
     pub fn new() -> Self {
-        let handle = unsafe { CreateEventW(std::ptr::null_mut(), TRUE, TRUE, std::ptr::null()) };
+        let handle = unsafe { CreateEventW(std::ptr::null_mut(), TRUE, FALSE, std::ptr::null()) };
         if handle == NULL {
             panic!("could not create event");
         }
@@ -246,6 +246,7 @@ struct AsyncIO {
 impl AsyncIO {
     pub fn from_handle(handle: Handle, buf_len: usize) -> Self {
         let event = Event::new();
+        event.notify();
         let overlapped = Overlapped::with_event(&event);
 
         let mut buf = Vec::with_capacity(buf_len);
@@ -533,6 +534,7 @@ enum EventSource {
     Connection(usize),
     ChildStdout(usize),
     ChildStderr(usize),
+    Redraw,
 }
 #[derive(Default)]
 struct Events {
@@ -611,11 +613,16 @@ impl<T> SlotVec<T> {
 }
 
 struct ServerState {
+    redraw_event: Event,
     pipes: SlotVec<PipeToClient>,
     children: SlotVec<AsyncChild>,
 }
 
 impl ServerPlatform for ServerState {
+    fn request_redraw(&mut self) {
+        self.redraw_event.notify();
+    }
+
     fn read_from_connection(&self, index: usize, len: usize) -> &[u8] {
         match self.pipes.get(index) {
             Some(pipe) => pipe.get_bytes(len),
@@ -703,6 +710,7 @@ where
     let mut events = Events::default();
     let mut listener = PipeToClientListener::new(pipe_path, connection_buffer_len);
     let mut state = ServerState {
+        redraw_event: Event::new(),
         pipes: SlotVec::new(),
         children: SlotVec::new(),
     };
@@ -730,6 +738,7 @@ where
                 events.track(&io.event, EventSource::ChildStderr(i));
             }
         }
+        events.track(&state.redraw_event, EventSource::Redraw);
 
         match events.wait_one(None) {
             Some(EventSource::ConnectionListener) => {
@@ -751,42 +760,6 @@ where
                         send_event!(ServerEvent::ConnectionClose { index });
                     }
                     ReadResult::Ok(len) => {
-                        /*
-                        let bytes = pipe.get_read_bytes();
-                        match Key::parse(&mut bytes.iter().map(|b| *b as _)) {
-                            Ok(Key::Ctrl('r')) => {
-                                println!("execute program");
-                                let child = std::process::Command::new("fzf")
-                                    .stdin(std::process::Stdio::null())
-                                    .stdout(std::process::Stdio::piped())
-                                    .stderr(std::process::Stdio::null())
-                                    .spawn()
-                                    .unwrap();
-                                state.children.push(AsyncChild::from_child(child));
-                            }
-                            _ => (),
-                        }
-
-                        let message = String::from_utf8_lossy(bytes);
-                        println!(
-                            "received {} bytes from client {}! message: '{}'",
-                            bytes.len(),
-                            i,
-                            message
-                        );
-
-                        let message = b"thank you for your message!";
-                        match pipe.write(message) {
-                            PlatformWriteResult::Ok => (),
-                            PlatformWriteResult::Err => {
-                                state.pipes.remove(i);
-                                if state.pipes.is_empty() {
-                                    break;
-                                }
-                            }
-                        }
-                        */
-
                         send_event!(ServerEvent::ConnectionMessage { index, len });
                     }
                 }
@@ -841,6 +814,7 @@ where
                     }
                 }
             }
+            Some(EventSource::Redraw) => send_event!(ServerEvent::Redraw),
             None => panic!("timeout waiting"),
         }
     }
