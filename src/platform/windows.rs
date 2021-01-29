@@ -55,24 +55,20 @@ use crate::platform::{
     ServerPlatform,
 };
 
+const CLIENT_EVENT_BUFFER_LEN: usize = 32;
+
 pub fn run<A, S, C>()
 where
     A: Args,
     S: ServerApplication<Args = A>,
     C: ClientApplication<Args = A>,
 {
-    unsafe extern "system" fn ctrl_handler(_ctrl_type: DWORD) -> BOOL {
-        FALSE
-    }
-
     let args = match A::parse() {
         Some(args) => args,
         None => return,
     };
 
-    if unsafe { SetConsoleCtrlHandler(Some(ctrl_handler), TRUE) } == FALSE {
-        panic!("could not set ctrl handler");
-    }
+    set_ctrlc_handler();
 
     let input_handle = get_std_handle(STD_INPUT_HANDLE);
     let output_handle = get_std_handle(STD_OUTPUT_HANDLE);
@@ -101,15 +97,25 @@ where
     eprintln!("session name is '{}'", session_name);
 
     match (input_handle, output_handle) {
-        (Some(input_handle), Some(output_handle)) => unsafe {
+        (Some(input_handle), Some(output_handle)) => {
             run_client::<C>(args, &pipe_path, input_handle, output_handle)
-        },
-        _ => unsafe { run_server::<S>(args, &pipe_path) },
+        }
+        _ => run_server::<S>(args, &pipe_path),
     }
 }
 
 fn get_last_error() -> DWORD {
     unsafe { GetLastError() }
+}
+
+fn set_ctrlc_handler() {
+    unsafe extern "system" fn ctrl_handler(_ctrl_type: DWORD) -> BOOL {
+        FALSE
+    }
+
+    if unsafe { SetConsoleCtrlHandler(Some(ctrl_handler), TRUE) } == FALSE {
+        panic!("could not set ctrl handler");
+    }
 }
 
 fn get_current_directory(buf: &mut Vec<u16>) {
@@ -742,7 +748,7 @@ impl ServerPlatform for ServerState {
     }
 }
 
-unsafe fn run_server<A>(args: A::Args, pipe_path: &[u16])
+fn run_server<A>(args: A::Args, pipe_path: &[u16])
 where
     A: ServerApplication,
 {
@@ -878,7 +884,7 @@ impl ClientPlatform for ClientState {
     }
 }
 
-unsafe fn run_client<A>(args: A::Args, pipe_path: &[u16], input_handle: HANDLE, output_handle: HANDLE)
+fn run_client<A>(args: A::Args, pipe_path: &[u16], input_handle: HANDLE, output_handle: HANDLE)
 where
     A: ClientApplication,
 {
@@ -902,7 +908,7 @@ where
         ENABLE_PROCESSED_OUTPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING,
     );
 
-    let event_buffer = &mut [unsafe { std::mem::zeroed() }; 32][..];
+    let event_buffer = &mut [unsafe { std::mem::zeroed() }; CLIENT_EVENT_BUFFER_LEN][..];
     let wait_handles = [state.pipe.event.handle(), input_handle];
     let mut pending_events = Vec::new();
 
@@ -928,7 +934,7 @@ where
                 for event in events {
                     match event.EventType {
                         KEY_EVENT => {
-                            let event = event.Event.KeyEvent();
+                            let event = unsafe { event.Event.KeyEvent() };
                             if event.bKeyDown == FALSE {
                                 continue;
                             }
@@ -972,7 +978,7 @@ where
                                     }
                                 }
                                 _ => {
-                                    let c = *(event.uChar.AsciiChar()) as u8;
+                                    let c = *(unsafe { event.uChar.AsciiChar() }) as u8;
                                     if !c.is_ascii_graphic() {
                                         continue;
                                     }
@@ -990,7 +996,7 @@ where
                             }
                         }
                         WINDOW_BUFFER_SIZE_EVENT => {
-                            let size = event.Event.WindowBufferSizeEvent().dwSize;
+                            let size = unsafe { event.Event.WindowBufferSizeEvent().dwSize };
                             pending_events.push(ClientEvent::Resize(size.X as _, size.Y as _));
                         }
                         _ => (),
