@@ -71,6 +71,7 @@ fn main() {
     let mut text = String::new();
     let result = server.read_from_clipboard(&mut text);
     dbg!(result, text);
+    server.write_to_clipboard("ah muleque\nhahaha");
     return;
 
     platform::run::<Args, application::Server, application::Client>();

@@ -29,13 +29,13 @@ use winapi::{
         },
         processenv::{GetCommandLineW, GetCurrentDirectoryW, GetStdHandle},
         processthreadsapi::{CreateProcessW, PROCESS_INFORMATION, STARTUPINFOW},
-        stringapiset::WideCharToMultiByte,
+        stringapiset::{MultiByteToWideChar, WideCharToMultiByte},
         synchapi::{CreateEventW, SetEvent, WaitForMultipleObjects},
         winbase::{
-            GlobalLock, GlobalSize, GlobalUnlock, FILE_FLAG_OVERLAPPED, INFINITE,
-            NORMAL_PRIORITY_CLASS, PIPE_ACCESS_DUPLEX, PIPE_READMODE_BYTE, PIPE_TYPE_BYTE,
-            PIPE_UNLIMITED_INSTANCES, STARTF_USESTDHANDLES, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
-            WAIT_ABANDONED_0, WAIT_OBJECT_0,
+            GlobalAlloc, GlobalFree, GlobalLock, GlobalSize, GlobalUnlock, FILE_FLAG_OVERLAPPED,
+            GMEM_MOVEABLE, INFINITE, NORMAL_PRIORITY_CLASS, PIPE_ACCESS_DUPLEX, PIPE_READMODE_BYTE,
+            PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES, STARTF_USESTDHANDLES, STD_INPUT_HANDLE,
+            STD_OUTPUT_HANDLE, WAIT_ABANDONED_0, WAIT_OBJECT_0,
         },
         wincon::{
             FreeConsole, GetConsoleScreenBufferInfo, CONSOLE_SCREEN_BUFFER_INFO,
@@ -763,8 +763,40 @@ impl ServerPlatform for ServerState {
 
     fn write_to_clipboard(&mut self, text: &str) {
         let clipboard = Clipboard::open();
-        unsafe {
-            //
+        let len = unsafe {
+            MultiByteToWideChar(
+                CP_UTF8,
+                0,
+                text.as_ptr() as _,
+                text.len() as _,
+                std::ptr::null_mut(),
+                0,
+            )
+        };
+        if len != 0 {
+            let size = (len as usize + 1) * std::mem::size_of::<u16>();
+            let handle = unsafe { GlobalAlloc(GMEM_MOVEABLE, size as _) };
+            if handle == NULL {
+                return;
+            }
+            let data = match global_lock::<u16>(handle) {
+                Some(data) => data.as_ptr(),
+                None => {
+                    unsafe { GlobalFree(handle) };
+                    return;
+                }
+            };
+            unsafe {
+                MultiByteToWideChar(CP_UTF8, 0, text.as_ptr() as _, text.len() as _, data, len);
+                std::ptr::write(data.offset(len as isize), 0);
+            }
+            global_unlock(handle);
+
+            unsafe { EmptyClipboard() };
+            let result = unsafe { SetClipboardData(CF_UNICODETEXT, handle) };
+            if result == NULL {
+                unsafe { GlobalFree(handle) };
+            }
         }
         drop(clipboard);
     }
