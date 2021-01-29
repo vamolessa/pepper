@@ -3,14 +3,12 @@ use std::{env, io};
 use crate::platform;
 
 use crate::{
-    ui,
     client::{ClientManager, TargetClient},
     client_event::ClientEvent,
     connection::ClientEventDeserializationBufCollection,
     editor::{Editor, EditorLoop},
-    lsp::LspClientCollection,
     serialization::{SerializationBuf, Serialize},
-    Args,
+    ui, Args,
 };
 
 impl platform::Args for Args {
@@ -55,10 +53,7 @@ impl platform::ServerApplication for Server {
         512
     }
 
-    fn new<P>(args: Self::Args, _: &mut P) -> Self
-    where
-        P: platform::ServerPlatform,
-    {
+    fn new(args: Self::Args, _: &mut dyn platform::ServerPlatform) -> Self {
         let current_dir = env::current_dir().expect("could not retrieve the current directory");
         let mut editor = Editor::new(current_dir);
         let mut clients = ClientManager::new();
@@ -77,10 +72,11 @@ impl platform::ServerApplication for Server {
         }
     }
 
-    fn on_event<P>(&mut self, platform: &mut P, event: platform::ServerEvent) -> bool
-    where
-        P: platform::ServerPlatform,
-    {
+    fn on_event(
+        &mut self,
+        platform: &mut dyn platform::ServerPlatform,
+        event: platform::ServerEvent,
+    ) -> bool {
         match event {
             platform::ServerEvent::Idle => (),
             platform::ServerEvent::Redraw => (),
@@ -130,7 +126,13 @@ impl platform::ServerApplication for Server {
             let has_focus = focused_target == c.target;
             c.display_buffer.clear();
             c.display_buffer.extend_from_slice(&[0; 4]);
-            ui::render(&self.editor, c.client, has_focus, c.display_buffer, c.status_bar_buffer);
+            ui::render(
+                &self.editor,
+                c.client,
+                has_focus,
+                c.display_buffer,
+                c.status_bar_buffer,
+            );
 
             let len = c.display_buffer.len() as u32 - 4;
             let len_bytes = len.to_le_bytes();
@@ -166,10 +168,7 @@ impl platform::ClientApplication for Client {
         2 * 1024
     }
 
-    fn new<P>(args: Self::Args, platform: &mut P) -> Self
-    where
-        P: platform::ClientPlatform,
-    {
+    fn new(args: Self::Args, platform: &mut dyn platform::ClientPlatform) -> Self {
         static mut STDOUT: Option<io::Stdout> = None;
         let mut stdout = unsafe {
             STDOUT = Some(io::stdout());
@@ -198,10 +197,11 @@ impl platform::ClientApplication for Client {
         }
     }
 
-    fn on_events<P>(&mut self, platform: &mut P, events: &[platform::ClientEvent]) -> bool
-    where
-        P: platform::ClientPlatform,
-    {
+    fn on_events(
+        &mut self,
+        platform: &mut dyn platform::ClientPlatform,
+        events: &[platform::ClientEvent],
+    ) -> bool {
         use io::Write;
 
         self.write_buf.clear();
@@ -243,9 +243,7 @@ impl Drop for Client {
     fn drop(&mut self) {
         use io::Write;
 
-        let _ = self
-            .stdout
-            .write_all(ui::EXIT_ALTERNATE_BUFFER_CODE);
+        let _ = self.stdout.write_all(ui::EXIT_ALTERNATE_BUFFER_CODE);
         let _ = self.stdout.write_all(ui::SHOW_CURSOR_CODE);
         let _ = self.stdout.write_all(ui::RESET_STYLE_CODE);
         let _ = self.stdout.flush();

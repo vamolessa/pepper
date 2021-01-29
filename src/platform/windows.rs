@@ -30,9 +30,10 @@ use winapi::{
         processthreadsapi::{CreateProcessW, PROCESS_INFORMATION, STARTUPINFOW},
         synchapi::{CreateEventW, SetEvent, WaitForMultipleObjects},
         winbase::{
-            FILE_FLAG_OVERLAPPED, INFINITE, NORMAL_PRIORITY_CLASS, PIPE_ACCESS_DUPLEX,
-            PIPE_READMODE_BYTE, PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES, STARTF_USESTDHANDLES,
-            STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, WAIT_ABANDONED_0, WAIT_OBJECT_0,
+            GlobalLock, GlobalUnlock, FILE_FLAG_OVERLAPPED, INFINITE, NORMAL_PRIORITY_CLASS,
+            PIPE_ACCESS_DUPLEX, PIPE_READMODE_BYTE, PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES,
+            STARTF_USESTDHANDLES, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, WAIT_ABANDONED_0,
+            WAIT_OBJECT_0,
         },
         wincon::{
             FreeConsole, GetConsoleScreenBufferInfo, CONSOLE_SCREEN_BUFFER_INFO,
@@ -45,8 +46,8 @@ use winapi::{
         winnt::{GENERIC_READ, GENERIC_WRITE, HANDLE, MAXIMUM_WAIT_OBJECTS},
         winuser::{
             CloseClipboard, EmptyClipboard, GetClipboardData, OpenClipboard, SetClipboardData,
-            VK_BACK, VK_DELETE, VK_DOWN, VK_END, VK_ESCAPE, VK_F1, VK_F24, VK_HOME, VK_LEFT,
-            VK_NEXT, VK_PRIOR, VK_RETURN, VK_RIGHT, VK_TAB, VK_UP,
+            CF_UNICODETEXT, VK_BACK, VK_DELETE, VK_DOWN, VK_END, VK_ESCAPE, VK_F1, VK_F24, VK_HOME,
+            VK_LEFT, VK_NEXT, VK_PRIOR, VK_RETURN, VK_RIGHT, VK_TAB, VK_UP,
         },
     },
 };
@@ -57,6 +58,15 @@ use crate::platform::{
 };
 
 const CLIENT_EVENT_BUFFER_LEN: usize = 32;
+
+pub fn debug() -> Box<dyn ServerPlatform> {
+    let state = ServerState {
+        redraw_event: Event::new(),
+        pipes: SlotVec::new(),
+        children: SlotVec::new(),
+    };
+    Box::new(state)
+}
 
 pub fn run<A, S, C>()
 where
@@ -684,13 +694,23 @@ impl ServerPlatform for ServerState {
         self.redraw_event.notify();
     }
 
-    fn read_from_clipboard(&self) -> Option<&str> {
+    fn read_from_clipboard(&mut self, text: &mut String) -> bool {
+        let mut result = false;
+        text.clear();
         open_clipboard();
+        let handle = unsafe { GetClipboardData(CF_UNICODETEXT) };
+        if handle != NULL {
+            result = true;
+            let data = unsafe { GlobalLock(handle) };
+            if data != NULL {
+                unsafe { GlobalUnlock(handle) };
+            }
+        }
         close_clipboard();
-        None
+        result
     }
 
-    fn write_to_clipboard(&self, text: &str) {
+    fn write_to_clipboard(&mut self, text: &str) {
         open_clipboard();
         unsafe {
             //
@@ -698,7 +718,7 @@ impl ServerPlatform for ServerState {
         close_clipboard();
     }
 
-    fn read_from_connection(&self, index: usize, len: usize) -> &[u8] {
+    fn read_from_connection(&mut self, index: usize, len: usize) -> &[u8] {
         match self.pipes.get(index) {
             Some(pipe) => pipe.get_bytes(len),
             None => &[],
@@ -731,7 +751,7 @@ impl ServerPlatform for ServerState {
         Ok(index)
     }
 
-    fn read_from_process_stdout(&self, index: usize, len: usize) -> &[u8] {
+    fn read_from_process_stdout(&mut self, index: usize, len: usize) -> &[u8] {
         match self.children.get(index) {
             Some(child) => match child.stdout {
                 ChildPipe::Open(ref io) => io.get_bytes(len),
@@ -741,7 +761,7 @@ impl ServerPlatform for ServerState {
         }
     }
 
-    fn read_from_process_stderr(&self, index: usize, len: usize) -> &[u8] {
+    fn read_from_process_stderr(&mut self, index: usize, len: usize) -> &[u8] {
         match self.children.get(index) {
             Some(child) => match child.stderr {
                 ChildPipe::Open(ref io) => io.get_bytes(len),

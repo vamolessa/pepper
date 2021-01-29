@@ -67,5 +67,11 @@ pub struct Args {
 }
 
 fn main() {
+    let mut server = platform::debug();
+    let mut text = String::new();
+    let result = server.read_from_clipboard(&mut text);
+    dbg!(result);
+    return;
+
     platform::run::<Args, application::Server, application::Client>();
 }
