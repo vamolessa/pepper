@@ -74,6 +74,9 @@ pub trait ClientApplication: Sized {
 pub trait ServerPlatform {
     fn request_redraw(&mut self);
 
+    fn read_from_clipboard(&self) -> Option<&str>;
+    fn write_to_clipboard(&self, text: &str);
+
     fn read_from_connection(&self, index: usize, len: usize) -> &[u8];
     fn write_to_connection(&mut self, index: usize, buf: &[u8]) -> bool;
     fn close_connection(&mut self, index: usize);

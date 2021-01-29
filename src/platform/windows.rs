@@ -44,6 +44,7 @@ use winapi::{
         },
         winnt::{GENERIC_READ, GENERIC_WRITE, HANDLE, MAXIMUM_WAIT_OBJECTS},
         winuser::{
+            CloseClipboard, EmptyClipboard, GetClipboardData, OpenClipboard, SetClipboardData,
             VK_BACK, VK_DELETE, VK_DOWN, VK_END, VK_ESCAPE, VK_F1, VK_F24, VK_HOME, VK_LEFT,
             VK_NEXT, VK_PRIOR, VK_RETURN, VK_RIGHT, VK_TAB, VK_UP,
         },
@@ -182,6 +183,20 @@ fn set_console_mode(console_handle: HANDLE, mode: DWORD) {
     let result = unsafe { SetConsoleMode(console_handle, mode) };
     if result == FALSE {
         panic!("could not set console mode");
+    }
+}
+
+fn open_clipboard() {
+    let result = unsafe { OpenClipboard(std::ptr::null_mut()) };
+    if result == FALSE {
+        panic!("could not open clipboard");
+    }
+}
+
+fn close_clipboard() {
+    let result = unsafe { CloseClipboard() };
+    if result == FALSE {
+        panic!("could not close clipboard");
     }
 }
 
@@ -671,6 +686,20 @@ struct ServerState {
 impl ServerPlatform for ServerState {
     fn request_redraw(&mut self) {
         self.redraw_event.notify();
+    }
+
+    fn read_from_clipboard(&self) -> Option<&str> {
+        open_clipboard();
+        close_clipboard();
+        None
+    }
+
+    fn write_to_clipboard(&self, text: &str) {
+        open_clipboard();
+        unsafe {
+            //
+        }
+        close_clipboard();
     }
 
     fn read_from_connection(&self, index: usize, len: usize) -> &[u8] {
