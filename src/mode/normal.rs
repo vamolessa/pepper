@@ -873,34 +873,35 @@ impl State {
             },
             Key::Char('s') => read_line::search::enter_mode(editor, clients, target),
             Key::Char('y') => {
-                use copypasta::{ClipboardContext, ClipboardProvider};
-                if let Ok(mut clipboard) = ClipboardContext::new() {
-                    let buffer_view = editor.buffer_views.get(handle)?;
-                    let mut text = String::new();
-                    buffer_view.get_selection_text(&editor.buffers, &mut text);
-                    if !text.is_empty() {
-                        let _ = clipboard.set_contents(text);
-                    }
+                let buffer_view = editor.buffer_views.get(handle)?;
+                let mut text = String::new();
+                buffer_view.get_selection_text(&editor.buffers, &mut text);
+                if !text.is_empty() {
+                    // TODO: implement clipboard
+                    //platform.write_to_clipboard(&text);
                 }
                 this.movement_kind = CursorMovementKind::PositionAndAnchor;
             }
             Key::Char('Y') => {
-                use copypasta::{ClipboardContext, ClipboardProvider};
                 editor.buffer_views.delete_in_cursor_ranges(
                     &mut editor.buffers,
                     &mut editor.word_database,
                     handle,
                     &mut editor.events,
                 );
-                if let Ok(text) = ClipboardContext::new().and_then(|mut c| c.get_contents()) {
-                    editor.buffer_views.insert_text_at_cursor_positions(
-                        &mut editor.buffers,
-                        &mut editor.word_database,
-                        handle,
-                        &text,
-                        &mut editor.events,
-                    );
-                }
+
+                let mut text = String::new();
+                // TODO: implement clipboard
+                //if platform.read_from_clipboard(&mut text) {
+                editor.buffer_views.insert_text_at_cursor_positions(
+                    &mut editor.buffers,
+                    &mut editor.word_database,
+                    handle,
+                    &text,
+                    &mut editor.events,
+                );
+                //}
+
                 let buffer_view = editor.buffer_views.get(handle)?;
                 editor
                     .buffers

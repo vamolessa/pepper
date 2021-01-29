@@ -4,7 +4,7 @@ use std::{
     io,
     ops::{Deref, DerefMut},
     os::windows::io::AsRawHandle,
-    process::{Child, Command, Stdio},
+    process::{Child, Command},
     ptr::NonNull,
     time::Duration,
 };
@@ -16,9 +16,7 @@ use winapi::{
         winerror::{ERROR_IO_PENDING, ERROR_MORE_DATA, ERROR_PIPE_CONNECTED, WAIT_TIMEOUT},
     },
     um::{
-        consoleapi::{
-            AllocConsole, GetConsoleMode, ReadConsoleInputW, SetConsoleCtrlHandler, SetConsoleMode,
-        },
+        consoleapi::{GetConsoleMode, ReadConsoleInputW, SetConsoleCtrlHandler, SetConsoleMode},
         errhandlingapi::GetLastError,
         fileapi::{CreateFileW, FindFirstFileW, ReadFile, WriteFile, OPEN_EXISTING},
         handleapi::{CloseHandle, INVALID_HANDLE_VALUE},
@@ -32,14 +30,14 @@ use winapi::{
         stringapiset::{MultiByteToWideChar, WideCharToMultiByte},
         synchapi::{CreateEventW, SetEvent, WaitForMultipleObjects},
         winbase::{
-            GlobalAlloc, GlobalFree, GlobalLock, GlobalSize, GlobalUnlock, FILE_FLAG_OVERLAPPED,
-            GMEM_MOVEABLE, INFINITE, NORMAL_PRIORITY_CLASS, PIPE_ACCESS_DUPLEX, PIPE_READMODE_BYTE,
+            GlobalAlloc, GlobalFree, GlobalLock, GlobalUnlock, FILE_FLAG_OVERLAPPED, GMEM_MOVEABLE,
+            INFINITE, NORMAL_PRIORITY_CLASS, PIPE_ACCESS_DUPLEX, PIPE_READMODE_BYTE,
             PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES, STARTF_USESTDHANDLES, STD_INPUT_HANDLE,
-            STD_OUTPUT_HANDLE, WAIT_ABANDONED_0, WAIT_OBJECT_0,
+            STD_OUTPUT_HANDLE, WAIT_OBJECT_0,
         },
         wincon::{
-            FreeConsole, GetConsoleScreenBufferInfo, CONSOLE_SCREEN_BUFFER_INFO,
-            ENABLE_PROCESSED_OUTPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING, ENABLE_WINDOW_INPUT,
+            GetConsoleScreenBufferInfo, ENABLE_PROCESSED_OUTPUT,
+            ENABLE_VIRTUAL_TERMINAL_PROCESSING, ENABLE_WINDOW_INPUT,
         },
         wincontypes::{
             INPUT_RECORD, KEY_EVENT, LEFT_ALT_PRESSED, LEFT_CTRL_PRESSED, RIGHT_ALT_PRESSED,
@@ -598,16 +596,14 @@ impl AsyncChild {
             child
                 .stdout
                 .as_ref()
-                .map(AsRawHandle::as_raw_handle)
-                .map(Handle),
+                .map(|s| Handle(s.as_raw_handle() as _)),
             stdout_buf_len,
         );
         let stderr = ChildPipe::from_handle(
             child
                 .stderr
                 .as_ref()
-                .map(AsRawHandle::as_raw_handle)
-                .map(Handle),
+                .map(|s| Handle(s.as_raw_handle() as _)),
             stderr_buf_len,
         );
 

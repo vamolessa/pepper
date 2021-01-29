@@ -10,7 +10,7 @@ use crate::{
     buffer::BufferCollection,
     buffer_view::BufferViewCollection,
     client::{ClientManager, TargetClient},
-    client_event::{ClientEvent, parse_all_keys},
+    client_event::{parse_all_keys, ClientEvent},
     config::Config,
     editor_event::{EditorEvent, EditorEventQueue},
     keymap::{KeyMapCollection, MatchResult},
@@ -138,10 +138,11 @@ impl ReadLine {
                 ReadLinePoll::Pending
             }
             Key::Ctrl('y') => {
-                use copypasta::{ClipboardContext, ClipboardProvider};
-                if let Ok(text) = ClipboardContext::new().and_then(|mut c| c.get_contents()) {
-                    self.input.push_str(&text);
-                }
+                // TODO: implement clipboard
+                let mut text = String::new();
+                //if platform.read_from_clipboard(&mut text) {
+                self.input.push_str(&text);
+                //}
                 ReadLinePoll::Pending
             }
             Key::Char(c) => {

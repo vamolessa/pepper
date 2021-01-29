@@ -3,7 +3,7 @@ use std::{
     io::{self, Cursor, Read, Write},
     path::{Component, Path, Prefix},
     process::{Child, ChildStdin, Command, Stdio},
-    sync::{mpsc, Arc, Mutex, MutexGuard},
+    sync::{Arc, Mutex, MutexGuard},
     thread,
 };
 
