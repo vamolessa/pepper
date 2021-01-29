@@ -3,6 +3,7 @@ use std::{env, io};
 use crate::platform;
 
 use crate::{
+    ui,
     client::{ClientManager, TargetClient},
     client_event::ClientEvent,
     connection::ClientEventDeserializationBufCollection,
@@ -127,16 +128,16 @@ impl platform::ServerApplication for Server {
         let focused_target = self.clients.focused_target();
         for c in self.clients.client_refs() {
             let has_focus = focused_target == c.target;
-            c.buffer.clear();
-            c.buffer.extend_from_slice(&[0; 4]);
-            c.ui.render(&self.editor, c.client, has_focus, c.buffer);
+            c.display_buffer.clear();
+            c.display_buffer.extend_from_slice(&[0; 4]);
+            ui::render(&self.editor, c.client, has_focus, c.display_buffer, c.status_bar_buffer);
 
-            let len = c.buffer.len() as u32 - 4;
+            let len = c.display_buffer.len() as u32 - 4;
             let len_bytes = len.to_le_bytes();
-            c.buffer[..4].copy_from_slice(&len_bytes);
+            c.display_buffer[..4].copy_from_slice(&len_bytes);
 
             let connection_index = c.target.0;
-            if !platform.write_to_connection(connection_index, c.buffer) {
+            if !platform.write_to_connection(connection_index, c.display_buffer) {
                 self.connections_with_error.push(connection_index);
             }
         }
@@ -185,8 +186,8 @@ impl platform::ClientApplication for Client {
         }
 
         use io::Write;
-        let _ = stdout.write_all(crate::ui::tui::ENTER_ALTERNATE_BUFFER_CODE);
-        let _ = stdout.write_all(crate::ui::tui::HIDE_CURSOR_CODE);
+        let _ = stdout.write_all(ui::ENTER_ALTERNATE_BUFFER_CODE);
+        let _ = stdout.write_all(ui::HIDE_CURSOR_CODE);
         let _ = stdout.flush();
 
         Self {
@@ -225,6 +226,7 @@ impl platform::ClientApplication for Client {
                         continue;
                     }
 
+                    self.read_buf.extend_from_slice(ui::RESET_STYLE_CODE);
                     self.stdout.write_all(&self.read_buf[4..]).unwrap();
                     self.read_buf.clear();
                 }
@@ -242,8 +244,8 @@ impl Drop for Client {
 
         let _ = self
             .stdout
-            .write_all(crate::ui::tui::EXIT_ALTERNATE_BUFFER_CODE);
-        let _ = self.stdout.write_all(crate::ui::tui::SHOW_CURSOR_CODE);
+            .write_all(ui::EXIT_ALTERNATE_BUFFER_CODE);
+        let _ = self.stdout.write_all(ui::SHOW_CURSOR_CODE);
         let _ = self.stdout.flush();
     }
 }

@@ -369,13 +369,6 @@ impl Editor {
         event: ClientEvent,
     ) -> EditorLoop {
         let result = match event {
-            ClientEvent::Ui(ui) => {
-                let target = clients.client_map.get(target);
-                if let Some(client) = clients.get_client_ref(target) {
-                    *client.ui = ui;
-                }
-                EditorLoop::Continue
-            }
             ClientEvent::AsFocusedClient => {
                 clients.client_map.map(target, clients.focused_target());
                 EditorLoop::Continue

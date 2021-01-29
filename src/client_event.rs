@@ -5,7 +5,6 @@ use crate::platform::Key;
 use crate::{
     client::TargetClient,
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
-    ui::UiKind,
 };
 
 #[derive(Debug)]
@@ -346,7 +345,6 @@ where
 }
 
 pub enum ClientEvent<'a> {
-    Ui(UiKind),
     AsFocusedClient,
     AsClient(TargetClient),
     OpenBuffer(&'a str),
@@ -360,25 +358,21 @@ impl<'de> Serialize<'de> for ClientEvent<'de> {
         S: Serializer,
     {
         match self {
-            ClientEvent::Ui(ui) => {
-                0u8.serialize(serializer);
-                ui.serialize(serializer);
-            }
-            ClientEvent::AsFocusedClient => 1u8.serialize(serializer),
+            ClientEvent::AsFocusedClient => 0u8.serialize(serializer),
             ClientEvent::AsClient(target_client) => {
-                2u8.serialize(serializer);
+                1u8.serialize(serializer);
                 target_client.serialize(serializer);
             }
             ClientEvent::OpenBuffer(path) => {
-                3u8.serialize(serializer);
+                2u8.serialize(serializer);
                 path.serialize(serializer);
             }
             ClientEvent::Key(key) => {
-                4u8.serialize(serializer);
+                3u8.serialize(serializer);
                 serialize_key(*key, serializer);
             }
             ClientEvent::Resize(width, height) => {
-                5u8.serialize(serializer);
+                4u8.serialize(serializer);
                 width.serialize(serializer);
                 height.serialize(serializer);
             }
@@ -391,24 +385,20 @@ impl<'de> Serialize<'de> for ClientEvent<'de> {
     {
         let discriminant = u8::deserialize(deserializer)?;
         match discriminant {
-            0 => {
-                let ui = UiKind::deserialize(deserializer)?;
-                Ok(ClientEvent::Ui(ui))
-            }
-            1 => Ok(ClientEvent::AsFocusedClient),
-            2 => {
+            0 => Ok(ClientEvent::AsFocusedClient),
+            1 => {
                 let target_client = TargetClient::deserialize(deserializer)?;
                 Ok(ClientEvent::AsClient(target_client))
             }
-            3 => {
+            2 => {
                 let path = <&str>::deserialize(deserializer)?;
                 Ok(ClientEvent::OpenBuffer(path))
             }
-            4 => {
+            3 => {
                 let key = deserialize_key(deserializer)?;
                 Ok(ClientEvent::Key(key))
             }
-            5 => {
+            4 => {
                 let width = u16::deserialize(deserializer)?;
                 let height = u16::deserialize(deserializer)?;
                 Ok(ClientEvent::Resize(width, height))

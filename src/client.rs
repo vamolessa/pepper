@@ -6,7 +6,6 @@ use crate::{
     editor_event::EditorEvent,
     navigation_history::NavigationHistory,
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
-    ui::UiKind,
 };
 
 // TODO: remove this and keep only `client_index`
@@ -118,26 +117,21 @@ impl Client {
 }
 
 pub struct ClientRef<'a> {
-    pub ui: &'a mut UiKind,
     pub target: TargetClient,
     pub client: &'a mut Client,
-    pub buffer: &'a mut Vec<u8>,
+    pub display_buffer: &'a mut Vec<u8>,
+    pub status_bar_buffer: &'a mut String,
 }
 
 #[derive(Default)]
 struct ClientData {
-    pub ui: UiKind,
     pub display_buffer: Vec<u8>,
+    pub status_bar_buffer: String,
 }
 impl ClientData {
     pub fn reset(&mut self) {
-        match self.ui {
-            UiKind::Tui {
-                ref mut status_bar_buf,
-            } => status_bar_buf.clear(),
-            _ => self.ui = UiKind::default(),
-        }
         self.display_buffer.clear();
+        self.status_bar_buffer.clear();
     }
 }
 
@@ -228,10 +222,10 @@ impl ClientManager {
             Some(ref mut c) => {
                 let data = &mut self.data[index];
                 Some(ClientRef {
-                    ui: &mut data.ui,
                     target,
                     client: c,
-                    buffer: &mut data.display_buffer,
+                    display_buffer: &mut data.display_buffer,
+                    status_bar_buffer: &mut data.status_bar_buffer,
                 })
             }
             None => None,
@@ -249,10 +243,10 @@ impl ClientManager {
             .zip(self.data.iter_mut())
             .flat_map(|((i, c), d)| {
                 c.as_mut().map(move |c| ClientRef {
-                    ui: &mut d.ui,
                     target: TargetClient(i),
                     client: c,
-                    buffer: &mut d.display_buffer,
+                    display_buffer: &mut d.display_buffer,
+                    status_bar_buffer: &mut d.status_bar_buffer,
                 })
             })
     }
