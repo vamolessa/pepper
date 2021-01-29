@@ -1,12 +1,6 @@
 use std::{io, iter};
 
-use crossterm::{
-    cursor, handle_command,
-    style::{
-        Attribute, Color, Print, ResetColor, SetAttribute, SetBackgroundColor, SetForegroundColor,
-    },
-    terminal, Command,
-};
+use crossterm::{cursor, handle_command, style::Print, terminal, Command};
 
 use crate::{
     buffer::{Buffer, BufferContent, BufferHandle},
@@ -16,7 +10,7 @@ use crate::{
     editor::{Editor, StatusMessageKind},
     mode::ModeKind,
     syntax::{HighlightedBuffer, TokenKind},
-    theme,
+    theme::Color,
 };
 
 /*
@@ -55,52 +49,63 @@ pub const ENTER_ALTERNATE_BUFFER_CODE: &[u8] = b"\x1B[?1049h";
 pub const EXIT_ALTERNATE_BUFFER_CODE: &[u8] = b"\x1B[?1049l";
 pub const HIDE_CURSOR_CODE: &[u8] = b"\x1B[?25l";
 pub const SHOW_CURSOR_CODE: &[u8] = b"\x1B[?25h";
-pub const RESET_STYLE_CODE: &[u8] = b"\x1B[?0m";
+pub const RESET_STYLE_CODE: &[u8] = b"\x1B[0;49m";
+pub const MODE_256_COLORS_CODE: &[u8] = b"\x1B[=19h";
 
-fn set_title(buf: &mut Vec<u8>, title: &[u8]) {
+#[inline]
+pub fn set_title(buf: &mut Vec<u8>, title: &[u8]) {
     buf.extend_from_slice(b"\x1B]0;");
     buf.extend_from_slice(title);
     buf.extend_from_slice(b"{}\x07");
 }
 
-fn clear_all(buf: &mut Vec<u8>) {
+#[inline]
+pub fn clear_all(buf: &mut Vec<u8>) {
     buf.extend_from_slice(b"\x1B[2J");
 }
 
-fn clear_until_new_line(buf: &mut Vec<u8>) {
-    buf.extend_from_slice(b"\x1B[K");
+#[inline]
+pub fn clear_until_new_line(buf: &mut Vec<u8>) {
+    buf.extend_from_slice(b"\x1B[0K");
 }
 
-fn move_cursor_to(buf: &mut Vec<u8>, x: usize, y: usize) {
+#[inline]
+pub fn move_cursor_to(buf: &mut Vec<u8>, x: usize, y: usize) {
     use io::Write;
     let _ = write!(buf, "\x1B[{};{}H", x, y);
 }
 
-fn move_cursor_to_next_line(buf: &mut Vec<u8>) {
+#[inline]
+pub fn move_cursor_to_next_line(buf: &mut Vec<u8>) {
     buf.extend_from_slice(b"\x1B[1D");
 }
 
-fn move_cursor_up(buf: &mut Vec<u8>, count: usize) {
+#[inline]
+pub fn move_cursor_up(buf: &mut Vec<u8>, count: usize) {
     use io::Write;
     let _ = write!(buf, "\x1B[{}A", count);
 }
 
-fn set_background_color(buf: &mut Vec<u8>, color: theme::Color) {
+#[inline]
+pub fn set_background_color(buf: &mut Vec<u8>, color: Color) {
     use io::Write;
-    let _ = write!(buf, "\x1B[48;2;{};{};{}", color.0, color.1, color.2);
+    let _ = write!(buf, "\x1B[48;2;{};{};{}m", color.0, color.1, color.2);
 }
 
-fn set_foreground_color(buf: &mut Vec<u8>, color: theme::Color) {
+#[inline]
+pub fn set_foreground_color(buf: &mut Vec<u8>, color: Color) {
     use io::Write;
-    let _ = write!(buf, "\x1B[38;2;{};{};{}", color.0, color.1, color.2);
+    let _ = write!(buf, "\x1B[38;2;{};{};{}m", color.0, color.1, color.2);
 }
 
-fn set_underlined(buf: &mut Vec<u8>) {
+#[inline]
+pub fn set_underlined(buf: &mut Vec<u8>) {
     buf.extend_from_slice(b"\x1B[4m");
 }
 
-fn set_no_underlined(buf: &mut Vec<u8>) {
-    buf.extend_from_slice(b"\x1B[4m");
+#[inline]
+pub fn set_not_underlined(buf: &mut Vec<u8>) {
+    buf.extend_from_slice(b"\x1B[24m");
 }
 
 #[inline]
@@ -110,14 +115,6 @@ where
 {
     use io::Write;
     let _ = handle_command!(buf, command);
-}
-
-const fn convert_color(color: theme::Color) -> Color {
-    Color::Rgb {
-        r: color.0,
-        g: color.1,
-        b: color.2,
-    }
 }
 
 pub fn render(
@@ -190,27 +187,16 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, client_view: &ClientView, has
     let theme = &editor.config.theme;
 
     let cursor_color = if has_focus && editor.mode.kind() == ModeKind::Insert {
-        convert_color(theme.highlight)
+        theme.highlight
     } else {
-        convert_color(theme.cursor)
+        theme.cursor
     };
 
-    let background_color = convert_color(theme.background);
-    let token_whitespace_color = convert_color(theme.token_whitespace);
-    let token_text_color = convert_color(theme.token_text);
-    let token_comment_color = convert_color(theme.token_comment);
-    let token_keyword_color = convert_color(theme.token_keyword);
-    let token_modifier_color = convert_color(theme.token_type);
-    let token_symbol_color = convert_color(theme.token_symbol);
-    let token_string_color = convert_color(theme.token_string);
-    let token_literal_color = convert_color(theme.token_literal);
-    let highlight_color = convert_color(theme.highlight);
-
-    let mut text_color = token_text_color;
+    let mut text_color = theme.token_text;
 
     write_command(buf, cursor::MoveTo(0, 0));
-    write_command(buf, SetBackgroundColor(background_color));
-    write_command(buf, SetForegroundColor(text_color));
+    set_background_color(buf, theme.background);
+    set_foreground_color(buf, text_color);
 
     let mut line_index = scroll;
     let mut drawn_line_count = 0;
@@ -276,7 +262,7 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, client_view: &ClientView, has
         let mut column_byte_index = 0;
         let mut x = 0;
 
-        write_command(buf, SetForegroundColor(token_text_color));
+        set_foreground_color(buf, theme.token_text);
 
         for (char_index, c) in line.as_str().char_indices().chain(iter::once((0, '\0'))) {
             if x >= width {
@@ -299,14 +285,14 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, client_view: &ClientView, has
             };
 
             text_color = match token_kind {
-                TokenKind::Whitespace => token_whitespace_color,
-                TokenKind::Text => token_text_color,
-                TokenKind::Comment => token_comment_color,
-                TokenKind::Keyword => token_keyword_color,
-                TokenKind::Type => token_modifier_color,
-                TokenKind::Symbol => token_symbol_color,
-                TokenKind::String => token_string_color,
-                TokenKind::Literal => token_literal_color,
+                TokenKind::Keyword => theme.token_keyword,
+                TokenKind::Type => theme.token_type,
+                TokenKind::Symbol => theme.token_symbol,
+                TokenKind::Literal => theme.token_literal,
+                TokenKind::String => theme.token_string,
+                TokenKind::Comment => theme.token_comment,
+                TokenKind::Text => theme.token_whitespace,
+                TokenKind::Whitespace => theme.token_whitespace,
             };
 
             if current_cursor_range.to < char_position && current_cursor_index < cursors_end_index {
@@ -339,34 +325,34 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, client_view: &ClientView, has
             if inside_diagnostic_range != was_inside_diagnostic_range {
                 was_inside_diagnostic_range = inside_diagnostic_range;
                 if inside_diagnostic_range {
-                    write_command(buf, SetAttribute(Attribute::Underlined));
+                    set_underlined(buf);
                 } else {
-                    write_command(buf, SetAttribute(Attribute::NoUnderline));
+                    set_not_underlined(buf);
                 }
             }
 
             if char_position == current_cursor_position {
                 if draw_state != DrawState::Cursor {
                     draw_state = DrawState::Cursor;
-                    write_command(buf, SetBackgroundColor(cursor_color));
-                    write_command(buf, SetForegroundColor(text_color));
+                    set_background_color(buf, cursor_color);
+                    set_foreground_color(buf, text_color);
                 }
             } else if inside_cursor_range {
                 if draw_state != DrawState::Selection(token_kind) {
                     draw_state = DrawState::Selection(token_kind);
-                    write_command(buf, SetBackgroundColor(text_color));
-                    write_command(buf, SetForegroundColor(background_color));
+                    set_background_color(buf, text_color);
+                    set_foreground_color(buf, theme.background);
                 }
             } else if inside_search_range {
                 if draw_state != DrawState::Highlight {
                     draw_state = DrawState::Highlight;
-                    write_command(buf, SetBackgroundColor(highlight_color));
-                    write_command(buf, SetForegroundColor(background_color));
+                    set_background_color(buf, theme.highlight);
+                    set_foreground_color(buf, theme.background);
                 }
             } else if draw_state != DrawState::Token(token_kind) {
                 draw_state = DrawState::Token(token_kind);
-                write_command(buf, SetBackgroundColor(background_color));
-                write_command(buf, SetForegroundColor(text_color));
+                set_background_color(buf, theme.background);
+                set_foreground_color(buf, text_color);
             }
 
             match c {
@@ -397,7 +383,7 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, client_view: &ClientView, has
         }
 
         if x < width {
-            write_command(buf, SetBackgroundColor(background_color));
+            set_background_color(buf, theme.background);
             write_command(buf, terminal::Clear(terminal::ClearType::UntilNewLine));
         }
 
@@ -411,8 +397,8 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, client_view: &ClientView, has
         }
     }
 
-    write_command(buf, SetBackgroundColor(background_color));
-    write_command(buf, SetForegroundColor(token_whitespace_color));
+    set_background_color(buf, theme.background);
+    set_foreground_color(buf, theme.token_whitespace);
     for _ in drawn_line_count..height {
         write_command(buf, Print(editor.config.values.visual_empty));
         write_command(buf, terminal::Clear(terminal::ClearType::UntilNewLine));
@@ -431,11 +417,11 @@ fn draw_picker(buf: &mut Vec<u8>, editor: &Editor, client_view: &ClientView) {
         .picker
         .height(editor.config.values.picker_max_height.get() as _);
 
-    let background_color = convert_color(editor.config.theme.token_text);
-    let foreground_color = convert_color(editor.config.theme.token_whitespace);
+    let background_color = editor.config.theme.token_text;
+    let foreground_color = editor.config.theme.token_whitespace;
 
-    write_command(buf, SetBackgroundColor(background_color));
-    write_command(buf, SetForegroundColor(foreground_color));
+    set_background_color(buf, background_color);
+    set_foreground_color(buf, foreground_color);
 
     for (i, entry) in editor
         .picker
@@ -445,11 +431,11 @@ fn draw_picker(buf: &mut Vec<u8>, editor: &Editor, client_view: &ClientView) {
         .take(height)
     {
         if i == cursor {
-            write_command(buf, SetForegroundColor(background_color));
-            write_command(buf, SetBackgroundColor(foreground_color));
+            set_background_color(buf, foreground_color);
+            set_foreground_color(buf, background_color);
         } else if i == cursor + 1 {
-            write_command(buf, SetBackgroundColor(background_color));
-            write_command(buf, SetForegroundColor(foreground_color));
+            set_background_color(buf, background_color);
+            set_foreground_color(buf, foreground_color);
         }
 
         let mut x = 0;
@@ -506,18 +492,18 @@ fn draw_statusbar(
     has_focus: bool,
     status_buf: &mut String,
 ) {
-    let background_color = convert_color(editor.config.theme.token_text);
-    let foreground_color = convert_color(editor.config.theme.background);
-    let prompt_background_color = convert_color(editor.config.theme.token_whitespace);
+    let background_color = editor.config.theme.token_text;
+    let foreground_color = editor.config.theme.background;
+    let prompt_background_color = editor.config.theme.token_whitespace;
     let prompt_foreground_color = background_color;
-    let cursor_color = convert_color(editor.config.theme.cursor);
+    let cursor_color = editor.config.theme.cursor;
 
     if has_focus {
-        write_command(buf, SetBackgroundColor(background_color));
-        write_command(buf, SetForegroundColor(foreground_color));
+        set_background_color(buf, background_color);
+        set_foreground_color(buf, foreground_color);
     } else {
-        write_command(buf, SetBackgroundColor(foreground_color));
-        write_command(buf, SetForegroundColor(background_color));
+        set_background_color(buf, foreground_color);
+        set_foreground_color(buf, background_color);
     }
 
     let x = if has_focus {
@@ -544,15 +530,15 @@ fn draw_statusbar(
                 ModeKind::Picker | ModeKind::ReadLine | ModeKind::Script => {
                     let read_line = &editor.read_line;
 
-                    write_command(buf, SetBackgroundColor(prompt_background_color));
-                    write_command(buf, SetForegroundColor(prompt_foreground_color));
+                    set_background_color(buf, prompt_background_color);
+                    set_foreground_color(buf, prompt_foreground_color);
                     write_command(buf, Print(read_line.prompt()));
-                    write_command(buf, SetBackgroundColor(background_color));
-                    write_command(buf, SetForegroundColor(foreground_color));
+                    set_background_color(buf, background_color);
+                    set_foreground_color(buf, foreground_color);
                     write_command(buf, Print(read_line.input()));
-                    write_command(buf, SetBackgroundColor(cursor_color));
+                    set_background_color(buf, cursor_color);
                     write_command(buf, Print(' '));
-                    write_command(buf, SetBackgroundColor(background_color));
+                    set_background_color(buf, background_color);
                     None
                 }
             }
@@ -577,13 +563,13 @@ fn draw_statusbar(
                     write_command(buf, cursor::MoveUp((line_count - 1) as _));
                 } else {
                     write_command(buf, cursor::MoveUp(line_count as _));
-                    write_command(buf, SetBackgroundColor(prompt_background_color));
-                    write_command(buf, SetForegroundColor(prompt_foreground_color));
+                    set_background_color(buf, prompt_background_color);
+                    set_foreground_color(buf, prompt_foreground_color);
                     write_command(buf, Print(prefix));
                     write_command(buf, terminal::Clear(terminal::ClearType::UntilNewLine));
                     write_command(buf, cursor::MoveToNextLine(1));
-                    write_command(buf, SetBackgroundColor(background_color));
-                    write_command(buf, SetForegroundColor(foreground_color));
+                    set_background_color(buf, background_color);
+                    set_foreground_color(buf, foreground_color);
                 }
 
                 for (i, line) in status_message.lines().enumerate() {
@@ -595,11 +581,11 @@ fn draw_statusbar(
                 }
             } else {
                 write_command(buf, terminal::Clear(terminal::ClearType::CurrentLine));
-                write_command(buf, SetBackgroundColor(prompt_background_color));
-                write_command(buf, SetForegroundColor(prompt_foreground_color));
+                set_background_color(buf, prompt_background_color);
+                set_foreground_color(buf, prompt_foreground_color);
                 write_command(buf, Print(prefix));
-                write_command(buf, SetBackgroundColor(background_color));
-                write_command(buf, SetForegroundColor(foreground_color));
+                set_background_color(buf, background_color);
+                set_foreground_color(buf, foreground_color);
                 print_line(buf, status_message);
             }
 

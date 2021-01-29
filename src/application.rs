@@ -188,6 +188,7 @@ impl platform::ClientApplication for Client {
         use io::Write;
         let _ = stdout.write_all(ui::ENTER_ALTERNATE_BUFFER_CODE);
         let _ = stdout.write_all(ui::HIDE_CURSOR_CODE);
+        let _ = stdout.write_all(ui::MODE_256_COLORS_CODE);
         let _ = stdout.flush();
 
         Self {
@@ -246,6 +247,7 @@ impl Drop for Client {
             .stdout
             .write_all(ui::EXIT_ALTERNATE_BUFFER_CODE);
         let _ = self.stdout.write_all(ui::SHOW_CURSOR_CODE);
+        let _ = self.stdout.write_all(ui::RESET_STYLE_CODE);
         let _ = self.stdout.flush();
     }
 }
