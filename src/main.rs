@@ -6,6 +6,7 @@ mod buffer_position;
 mod buffer_view;
 mod client;
 mod client_event;
+mod command;
 mod config;
 mod connection;
 mod cursor;
@@ -67,12 +68,5 @@ pub struct Args {
 }
 
 fn main() {
-    let mut server = platform::debug();
-    let mut text = String::new();
-    let result = server.read_from_clipboard(&mut text);
-    dbg!(result, text);
-    server.write_to_clipboard("ah muleque\nhahaha");
-    return;
-
     platform::run::<Args, application::Server, application::Client>();
 }

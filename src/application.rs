@@ -250,6 +250,7 @@ impl Drop for Client {
     }
 }
 
+// TODO: delete old code
 /*
 fn client_events_from_args<F>(args: &Args, mut func: F)
 where
