@@ -8,7 +8,7 @@ mod insert;
 mod normal;
 pub mod picker;
 pub mod read_line;
-mod script;
+//mod script;
 
 pub enum ModeOperation {
     Pending,
@@ -40,7 +40,6 @@ pub enum ModeKind {
     Insert,
     ReadLine,
     Picker,
-    Script,
 }
 
 impl Default for ModeKind {
@@ -58,7 +57,6 @@ pub struct Mode {
     pub insert_state: insert::State,
     pub read_line_state: read_line::State,
     pub picker_state: picker::State,
-    pub script_state: script::State,
 }
 
 impl Mode {
@@ -77,7 +75,6 @@ impl Mode {
             ModeKind::Insert => insert::State::on_exit(editor, clients, target),
             ModeKind::ReadLine => read_line::State::on_exit(editor, clients, target),
             ModeKind::Picker => picker::State::on_exit(editor, clients, target),
-            ModeKind::Script => script::State::on_exit(editor, clients, target),
         }
 
         editor.mode.kind = next;
@@ -87,7 +84,6 @@ impl Mode {
             ModeKind::Insert => insert::State::on_enter(editor, clients, target),
             ModeKind::ReadLine => read_line::State::on_enter(editor, clients, target),
             ModeKind::Picker => picker::State::on_enter(editor, clients, target),
-            ModeKind::Script => script::State::on_enter(editor, clients, target),
         }
     }
 
@@ -102,7 +98,6 @@ impl Mode {
             ModeKind::Insert => insert::State::on_client_keys(editor, clients, target, keys),
             ModeKind::ReadLine => read_line::State::on_client_keys(editor, clients, target, keys),
             ModeKind::Picker => picker::State::on_client_keys(editor, clients, target, keys),
-            ModeKind::Script => script::State::on_client_keys(editor, clients, target, keys),
         }
     }
 
@@ -116,7 +111,6 @@ impl Mode {
             ModeKind::Insert => insert::State::on_editor_events(editor, clients, target),
             ModeKind::ReadLine => read_line::State::on_editor_events(editor, clients, target),
             ModeKind::Picker => picker::State::on_editor_events(editor, clients, target),
-            ModeKind::Script => script::State::on_editor_events(editor, clients, target),
         }
     }
 }

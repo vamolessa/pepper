@@ -23,8 +23,6 @@ mod pattern;
 mod picker;
 mod platform;
 mod register;
-mod script;
-mod script_bindings;
 mod serialization;
 mod syntax;
 mod theme;

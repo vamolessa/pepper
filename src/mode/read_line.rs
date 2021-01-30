@@ -483,6 +483,7 @@ pub mod goto {
     }
 }
 
+/*
 pub mod custom {
     use super::*;
 
@@ -536,3 +537,4 @@ pub mod custom {
         //Mode::change_to(editor, clients, target, ModeKind::ReadLine);
     }
 }
+*/

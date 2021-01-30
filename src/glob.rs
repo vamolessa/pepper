@@ -195,8 +195,6 @@ impl Glob {
     }
 }
 
-impl_script_userdata!(Glob);
-
 enum Continuation<'this, 'ops> {
     None,
     Next(&'ops [Op], &'this Continuation<'this, 'ops>),

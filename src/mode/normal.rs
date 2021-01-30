@@ -108,7 +108,9 @@ impl State {
                     _ => (),
                 }
             }
-            Key::Char(':') => Mode::change_to(editor, clients, target, ModeKind::Script),
+            Key::F(4) => return Some(ModeOperation::Quit), // TODO: hack to close the editor until we get command mode working
+            // TODO: implement command mode
+            //Key::Char(':') => Mode::change_to(editor, clients, target, ModeKind::Script),
             Key::Char('g') => match keys.next(&editor.buffered_keys) {
                 Key::None => return Some(ModeOperation::Pending),
                 Key::Char('b') => picker::buffer::enter_mode(editor, clients, target),

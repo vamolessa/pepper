@@ -23,7 +23,6 @@ use crate::{
             ServerNotification, ServerRequest, ServerResponse, SharedJson, Uri,
         },
     },
-    script::ScriptValue,
     word_database::WordDatabase,
 };
 
@@ -1217,11 +1216,6 @@ mod helper {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct ClientHandle(usize);
-impl_from_script!(ClientHandle, value => match value {
-    ScriptValue::Integer(n) if n >= 0 => Some(Self(n as _)),
-    _ => None,
-});
-impl_to_script!(ClientHandle, (self, _engine) => ScriptValue::Integer(self.0 as _));
 
 struct ClientCollectionEntry {
     client: Client,

@@ -118,7 +118,7 @@ pub fn render(
     client: &Client,
     has_focus: bool,
     buffer: &mut Vec<u8>,
-    status_bar_buf: &mut String,
+    status_bar_buf: &mut String, // TODO: try to remove this
 ) {
     let client_view = ClientView::from(editor, client);
 
@@ -525,7 +525,7 @@ fn draw_statusbar(
                     buf.extend_from_slice(text);
                     Some(text.len())
                 }
-                ModeKind::Picker | ModeKind::ReadLine | ModeKind::Script => {
+                ModeKind::Picker | ModeKind::ReadLine => {
                     let read_line = &editor.read_line;
 
                     set_background_color(buf, prompt_background_color);

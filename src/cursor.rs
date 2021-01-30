@@ -3,10 +3,7 @@ use std::{
     slice::SliceIndex,
 };
 
-use crate::{
-    buffer_position::{BufferPosition, BufferRange},
-    script::ScriptValue,
-};
+use crate::buffer_position::{BufferPosition, BufferRange};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Cursor {
@@ -29,24 +26,6 @@ impl Cursor {
         self.position = self.position.delete(range);
     }
 }
-
-impl_from_script!(Cursor, value => match &value {
-    ScriptValue::Object(o) => {
-        Some(Cursor {
-            anchor: BufferPosition::line_col(o.get("anchor_line")?, o.get("anchor_column")?),
-            position: BufferPosition::line_col(o.get("position_line")?, o.get("position_column")?),
-        })
-    }
-    _ => None,
-});
-impl_to_script!(Cursor, (self, engine) => {
-    let cursor = engine.create_object()?;
-    cursor.set("anchor_line", self.anchor.line_index)?;
-    cursor.set("anchor_column", self.anchor.column_byte_index)?;
-    cursor.set("position_line", self.position.line_index)?;
-    cursor.set("position_column", self.position.column_byte_index)?;
-    ScriptValue::Object(cursor)
-});
 
 #[derive(Clone)]
 pub struct CursorCollection {

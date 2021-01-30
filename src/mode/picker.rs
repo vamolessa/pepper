@@ -164,6 +164,7 @@ pub mod buffer {
     }
 }
 
+/*
 pub mod custom {
     use super::*;
 
@@ -223,3 +224,4 @@ pub mod custom {
         //Mode::change_to(ctx, clients, target, ModeKind::Picker);
     }
 }
+*/

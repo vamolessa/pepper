@@ -1,40 +1,5 @@
 #![macro_use]
 
-macro_rules! impl_from_script {
-    ($type:ty, $from_value:ident => $from:expr) => {
-        impl<'lua> mlua::FromLua<'lua> for $type {
-            fn from_lua(lua_value: mlua::Value<'lua>, lua: &'lua mlua::Lua) -> mlua::Result<Self> {
-                let $from_value = ScriptValue::from_lua(lua_value, lua)?;
-                match $from {
-                    Some(value) => Ok(value),
-                    None => Err(mlua::Error::FromLuaConversionError {
-                        from: $from_value.type_name(),
-                        to: std::any::type_name::<$type>(),
-                        message: None,
-                    }),
-                }
-            }
-        }
-    };
-}
-
-macro_rules! impl_to_script {
-    ($type:ty, ($to_value:ident, $engine:ident) => $to:expr) => {
-        impl<'lua> mlua::ToLua<'lua> for $type {
-            fn to_lua($to_value: Self, lua: &'lua mlua::Lua) -> mlua::Result<mlua::Value> {
-                let $engine = $crate::script::ScriptEngineRef::from_lua(lua);
-                $to.to_lua(lua)
-            }
-        }
-    };
-}
-
-macro_rules! impl_script_userdata {
-    ($type:ty) => {
-        impl mlua::UserData for $type {}
-    };
-}
-
 macro_rules! declare_json_object {
     (
         $(#[$attribute:meta])*

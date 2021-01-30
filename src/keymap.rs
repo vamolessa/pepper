@@ -99,7 +99,6 @@ impl Default for KeyMapCollection {
             ModeKind::Insert,
             ModeKind::ReadLine,
             ModeKind::Picker,
-            ModeKind::Script,
         ];
 
         for mode in &all_modes {

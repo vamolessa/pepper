@@ -18,8 +18,6 @@ use crate::{
     mode::{Mode, ModeKind, ModeOperation},
     picker::Picker,
     register::{RegisterCollection, RegisterKey, KEY_QUEUE_REGISTER},
-    script::{ScriptContext, ScriptEngine},
-    script_bindings::ScriptCallbacks,
     syntax::HighlightResult,
     word_database::{EmptyWordCollection, WordDatabase},
 };
@@ -221,8 +219,6 @@ pub struct Editor {
     pub registers: RegisterCollection,
     pub read_line: ReadLine,
     pub picker: Picker,
-    pub scripts: ScriptEngine,
-    pub script_callbacks: ScriptCallbacks,
 
     pub status_bar: StatusBar,
 
@@ -247,8 +243,6 @@ impl Editor {
             registers: RegisterCollection::default(),
             read_line: ReadLine::default(),
             picker: Picker::default(),
-            scripts: ScriptEngine::new(),
-            script_callbacks: ScriptCallbacks::default(),
 
             status_bar: StatusBar::new(),
 
@@ -259,41 +253,8 @@ impl Editor {
         }
     }
 
-    pub fn into_script_context<'a>(
-        &'a mut self,
-        clients: &'a mut ClientManager,
-        target: TargetClient,
-    ) -> (&'a mut ScriptEngine, ScriptContext<'a>) {
-        let ctx = ScriptContext {
-            target_client: target,
-            clients,
-            editor_loop: EditorLoop::Continue,
-            mode: &mut self.mode,
-            next_mode: ModeKind::default(),
-            edited_buffers: false,
-
-            current_directory: &self.current_directory,
-            config: &mut self.config,
-
-            buffers: &mut self.buffers,
-            buffer_views: &mut self.buffer_views,
-            word_database: &mut self.word_database,
-
-            registers: &mut self.registers,
-            read_line: &mut self.read_line,
-            picker: &mut self.picker,
-
-            status_bar: &mut self.status_bar,
-
-            events: &mut self.events,
-            keymaps: &mut self.keymaps,
-            script_callbacks: &mut self.script_callbacks,
-            lsp: &mut self.lsp,
-        };
-        (&mut self.scripts, ctx)
-    }
-
     pub fn load_config(&mut self, clients: &mut ClientManager, path: &Path) {
+        /*
         let previous_mode_kind = self.mode.kind();
         let (scripts, mut script_ctx) = self.into_script_context(clients, TargetClient::local());
 
@@ -304,6 +265,7 @@ impl Editor {
         if previous_mode_kind == self.mode.kind() {
             Mode::change_to(self, clients, TargetClient::local(), ModeKind::default());
         }
+        */
     }
 
     pub fn on_pre_render(&mut self, clients: &mut ClientManager) -> bool {
@@ -533,15 +495,12 @@ impl Editor {
 
         Mode::on_editor_events(self, clients, target);
 
-        let (scripts, mut script_ctx) = self.into_script_context(clients, target);
-        if let Err(error) = scripts.on_editor_event(&mut script_ctx) {
-            script_ctx.status_bar.write_error(&error);
-        }
-
-        let (lsp, mut lsp_ctx) = script_ctx.into_lsp_context();
+        // TODO: transformar em função static e só passar o editor
+        /*
         if let Err(error) = lsp.on_editor_events(&mut lsp_ctx) {
             lsp_ctx.status_bar.write_error(&error);
         }
+        */
 
         self.handle_editor_events(clients);
     }
