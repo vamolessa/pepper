@@ -47,6 +47,7 @@ pub enum ClientEvent {
 pub trait Args: Sized {
     fn parse() -> Option<Self>;
     fn session(&self) -> Option<&str>;
+    fn print_session(&self) -> bool;
 }
 
 pub trait ServerApplication: Sized {

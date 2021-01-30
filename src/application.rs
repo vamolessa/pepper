@@ -38,6 +38,10 @@ impl platform::Args for Args {
             None => None,
         }
     }
+
+    fn print_session(&self) -> bool {
+        self.print_session
+    }
 }
 
 pub struct Server {

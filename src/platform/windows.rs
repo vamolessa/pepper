@@ -80,11 +80,6 @@ where
         None => return,
     };
 
-    set_ctrlc_handler();
-
-    let input_handle = get_std_handle(STD_INPUT_HANDLE);
-    let output_handle = get_std_handle(STD_OUTPUT_HANDLE);
-
     let mut pipe_path = Vec::new();
     let mut hash_buf = [0u8; 16];
     let session_name = match args.session() {
@@ -101,12 +96,21 @@ where
             std::str::from_utf8(&hash_buf[..len]).unwrap()
         }
     };
+
+    if args.print_session() {
+        println!("{}", session_name);
+        return;
+    }
+
     pipe_path.clear();
     pipe_path.extend("\\\\.\\pipe\\".encode_utf16());
     pipe_path.extend(session_name.encode_utf16());
     pipe_path.push(0);
 
-    eprintln!("session name is '{}'", session_name);
+    set_ctrlc_handler();
+
+    let input_handle = get_std_handle(STD_INPUT_HANDLE);
+    let output_handle = get_std_handle(STD_OUTPUT_HANDLE);
 
     match (input_handle, output_handle) {
         (Some(input_handle), Some(output_handle)) => {

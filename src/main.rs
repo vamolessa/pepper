@@ -47,6 +47,10 @@ pub struct Args {
     #[argh(option, short = 's')]
     session: Option<String>,
 
+    /// print the computed session name and exits
+    #[argh(switch)]
+    print_session: bool,
+
     /// displays no ui and send events on behalf of the currently focused client
     #[argh(switch)]
     as_focused_client: bool,
