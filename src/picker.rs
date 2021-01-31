@@ -14,13 +14,13 @@ struct CustomPickerEntry {
     pub description: String,
 }
 
-enum FiletedEntrySource {
+enum FilteredEntrySource {
     Custom(usize),
     WordDatabase(usize),
 }
 
 struct FilteredEntry {
-    pub source: FiletedEntrySource,
+    pub source: FilteredEntrySource,
     pub score: i64,
 }
 
@@ -157,7 +157,7 @@ impl Picker {
                 }
 
                 self.filtered_entries.push(FilteredEntry {
-                    source: FiletedEntrySource::WordDatabase(i),
+                    source: FilteredEntrySource::WordDatabase(i),
                     score,
                 });
             }
@@ -181,7 +181,7 @@ impl Picker {
             };
 
             self.filtered_entries.push(FilteredEntry {
-                source: FiletedEntrySource::Custom(i),
+                source: FilteredEntrySource::Custom(i),
                 score,
             });
         }
@@ -199,7 +199,7 @@ impl Picker {
     {
         let entry = self.filtered_entries.get(self.cursor)?;
         match entry.source {
-            FiletedEntrySource::Custom(i) => {
+            FilteredEntrySource::Custom(i) => {
                 let e = &self.custom_entries_buffer[i];
                 Some(PickerEntry {
                     name: &e.name,
@@ -207,7 +207,7 @@ impl Picker {
                     score: entry.score,
                 })
             }
-            FiletedEntrySource::WordDatabase(i) => {
+            FilteredEntrySource::WordDatabase(i) => {
                 self.cached_current_word.clear();
                 self.cached_current_word.push_str(words.word_at(i));
                 Some(PickerEntry {
@@ -224,7 +224,7 @@ impl Picker {
         W: WordCollection,
     {
         self.filtered_entries.iter().map(move |e| match e.source {
-            FiletedEntrySource::Custom(i) => {
+            FilteredEntrySource::Custom(i) => {
                 let entry = &self.custom_entries_buffer[i];
                 PickerEntry {
                     name: &entry.name,
@@ -232,7 +232,7 @@ impl Picker {
                     score: e.score,
                 }
             }
-            FiletedEntrySource::WordDatabase(i) => PickerEntry {
+            FilteredEntrySource::WordDatabase(i) => PickerEntry {
                 name: words.word_at(i),
                 description: "",
                 score: e.score,
