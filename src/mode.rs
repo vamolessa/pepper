@@ -8,7 +8,6 @@ mod insert;
 mod normal;
 pub mod picker;
 pub mod read_line;
-//mod script;
 
 pub enum ModeOperation {
     Pending,
