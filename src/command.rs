@@ -69,20 +69,33 @@ fn parse_command(text: &str) -> (&str, bool, ArgIter) {
         };
 
         let command = &text[..i];
-        let rest = text[(i + 1)..].trim_start();
+        let rest = &text[(i + 1)..];
         return (command, bang, ArgIter { rest });
     }
 
     (text, false, ArgIter { rest: "" })
 }
 
+pub enum ArgParseError {
+    UnterminatedString(usize),
+}
 pub struct ArgIter<'a> {
     rest: &'a str,
 }
-impl<'a> ArgIter<'a> {
-    pub fn next(&mut self) -> Option<&'a str> {
+impl<'a> Iterator for ArgIter<'a> {
+    type Item = Result<&'a str, ArgParseError>;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.rest = self.rest.trim_start();
         if self.rest.is_empty() {
             return None;
+        }
+
+        // TODO: finish
+        match self.rest.as_bytes()[0]
+        {
+            b'"' => todo!("parse string"),
+            b'\'' => todo!("parse string"),
+            _ => (),
         }
 
         None
