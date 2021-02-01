@@ -14,17 +14,17 @@ struct CommandContext<'a> {
 
 struct BuiltinCommand {
     name: &'static str,
-    aliases: &'static [&'static str],
+    alias: Option<&'static str>,
     help: &'static str,
     func: fn(CommandContext) -> Option<CommandOperation>,
 }
 
-pub struct CommandEngine {
+pub struct CommandManager {
     builtin_commands: Vec<BuiltinCommand>,
     executing_command: String,
 }
 
-impl CommandEngine {
+impl CommandManager {
     pub fn register_builtin(&mut self, command: BuiltinCommand) {
         self.builtin_commands.push(command);
     }
@@ -38,44 +38,17 @@ impl CommandEngine {
     }
 }
 
-// ------
-
-fn eval(
-    editor: &mut Editor,
-    clients: &mut ClientManager,
-    client_index: usize,
-) -> Option<CommandOperation> {
-    let command = "";
-    let force = false;
-    match command {
-        "client-quit" | "q" => {
-            //
-        }
-        _ => println!("no such command"),
-    }
-
-    None
-}
-
-fn client_quit2(commands: &mut CommandEngine) {
+fn register_builtin_commands(commands: &mut CommandManager) {
     commands.register_builtin(BuiltinCommand {
-        name: "",
-        aliases: &[],
-        help: "",
-        func: |ctx| None,
+        name: "quit",
+        alias: Some("q"),
+        help: "quit this client",
+        func: |_ctx| {
+            //
+            None
+        },
     });
 }
-
-//#[command("quits this client"), alias("q")]
-fn client_quit(ctx: CommandContext) -> Option<CommandOperation> {
-    None
-}
-
-fn buffer_open(ctx: CommandContext) -> Option<CommandOperation> {
-    None
-}
-
-// ------
 
 // picker-entries-from-process-lines "ls" | picker-pick
 
