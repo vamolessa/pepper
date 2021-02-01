@@ -58,3 +58,16 @@ impl CommandManager {
         None
     }
 }
+
+pub struct ArgIter<'a> {
+    rest: &'a str,
+}
+impl<'a> ArgIter<'a> {
+    pub fn next(&mut self) -> Option<&'a str> {
+        if self.rest.is_empty() {
+            return None;
+        }
+
+        None
+    }
+}

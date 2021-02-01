@@ -63,6 +63,7 @@ pub fn register_all(commands: &mut CommandManager) {
         help: "prints a message to the status bar",
         completion_sources: CompletionSource::None as _,
         func: |ctx| {
+            // TODO: iter args
             ctx.editor
                 .status_bar
                 .write_str(StatusMessageKind::Info, ctx.args);
@@ -76,6 +77,7 @@ pub fn register_all(commands: &mut CommandManager) {
         help: "prints a message to the server's stderr",
         completion_sources: CompletionSource::None as _,
         func: |ctx| {
+            //TODO: iter args
             eprintln!("{}", ctx.args);
             None
         },
