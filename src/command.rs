@@ -59,6 +59,23 @@ impl CommandManager {
     }
 }
 
+fn parse_command(text: &str) -> (&str, bool, ArgIter) {
+    let text = text.trim();
+    for i in 0..text.len() {
+        let bang = match text.as_bytes()[i] {
+            b' ' => false,
+            b'!' => true,
+            _ => continue,
+        };
+
+        let command = &text[..i];
+        let rest = text[(i + 1)..].trim_start();
+        return (command, bang, ArgIter { rest });
+    }
+
+    (text, false, ArgIter { rest: "" })
+}
+
 pub struct ArgIter<'a> {
     rest: &'a str,
 }
@@ -69,5 +86,18 @@ impl<'a> ArgIter<'a> {
         }
 
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn command_parsing() {
+        assert!(matches!(parse_command("command-name"), ("command-name", false, _)));
+        assert!(matches!(parse_command("  command-name  "), ("command-name", false, _)));
+        assert!(matches!(parse_command("  command-name!  "), ("command-name", true, _)));
+        assert!(matches!(parse_command("  command-name!"), ("command-name", true, _)));
     }
 }

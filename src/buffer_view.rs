@@ -769,7 +769,7 @@ impl BufferViewCollection {
 #[cfg(test)]
 mod tests {
     use super::*;
-
+    
     struct TestContext {
         pub word_database: WordDatabase,
         pub events: EditorEventQueue,
@@ -792,7 +792,7 @@ mod tests {
                 &mut events,
             );
 
-            let buffer_view = BufferView::new(TargetClient::Local, buffer.handle());
+            let buffer_view = BufferView::new(TargetClient::local(), buffer.handle());
 
             let mut buffer_views = BufferViewCollection::default();
             let buffer_view_handle = buffer_views.add(buffer_view);
