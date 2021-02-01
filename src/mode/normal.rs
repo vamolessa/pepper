@@ -1010,6 +1010,7 @@ impl ModeState for State {
             let buffer_view = editor.buffer_views.get(handle)?;
             let main_position = buffer_view.cursors.main_cursor().position;
 
+            // TODO: change to list of buffer linters (make lsp more like a plugin)
             for client in editor.lsp.clients() {
                 let diagnostics = client
                     .diagnostics()

@@ -367,7 +367,7 @@ mod lsp {
         Ok(())
     }
 
-    pub fn access_client<F, R, E>(
+    fn access_client<F, R, E>(
         ctx: &mut ScriptContext,
         client_handle: Option<LspClientHandle>,
         buffer_handle: Option<BufferHandle>,

@@ -11,6 +11,7 @@ use crate::{
     buffer_view::BufferViewCollection,
     client::{ClientManager, TargetClient},
     client_event::{parse_all_keys, ClientEvent},
+    command::CommandManager,
     config::Config,
     editor_event::{EditorEvent, EditorEventQueue},
     keymap::{KeyMapCollection, MatchResult},
@@ -222,6 +223,7 @@ pub struct Editor {
 
     pub status_bar: StatusBar,
 
+    pub commands: CommandManager,
     pub lsp: LspClientCollection,
     pub events: EditorEventQueue,
 
@@ -246,6 +248,7 @@ impl Editor {
 
             status_bar: StatusBar::new(),
 
+            commands: CommandManager::new(),
             lsp: LspClientCollection::new(),
             events: EditorEventQueue::default(),
 

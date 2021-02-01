@@ -218,6 +218,8 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, client_view: &ClientView, has
     }
     let search_ranges_end_index = search_ranges.len().saturating_sub(1);
 
+    // TODO: change to list of buffer linters (make lsp more like a plugin)
+    // TODO: buffer_handle will not be needed, only a slice of 'Lints'
     let diagnostics = match client_view.buffer_handle {
         Some(handle) => {
             let mut diagnostics: &[_] = &[];
