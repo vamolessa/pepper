@@ -27,8 +27,8 @@ pub enum Key {
 
 #[derive(Clone, Copy)]
 pub enum ServerEvent {
-    Idle,
     Redraw,
+    Idle,
     ConnectionOpen { index: usize },
     ConnectionClose { index: usize },
     ConnectionMessage { index: usize, len: usize },

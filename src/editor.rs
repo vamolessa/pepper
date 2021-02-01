@@ -414,13 +414,13 @@ impl Editor {
                                 return EditorLoop::QuitAll;
                             }
                             Some(ModeOperation::ExecuteMacro(key)) => {
-                                self.parse_and_set_keys_in_register(key);
+                                self.parse_and_set_keys_from_register(key);
                                 continue 'key_queue_loop;
                             }
                         }
 
-                        if let Some((from_index, register_key)) =
-                            keys_from_index.zip(self.recording_macro.clone())
+                        if let (Some(from_index), Some(register_key)) =
+                            (keys_from_index, self.recording_macro.clone())
                         {
                             for key in &self.buffered_keys.0[from_index..keys.index] {
                                 self.registers
@@ -434,7 +434,7 @@ impl Editor {
                             self.buffered_keys.0.clear();
                         }
                         _ => {
-                            self.parse_and_set_keys_in_register(KEY_QUEUE_REGISTER);
+                            self.parse_and_set_keys_from_register(KEY_QUEUE_REGISTER);
                             self.registers.set(KEY_QUEUE_REGISTER, "");
                         }
                     }
@@ -464,7 +464,7 @@ impl Editor {
         self.trigger_event_handlers(clients, TargetClient::local());
     }
 
-    fn parse_and_set_keys_in_register(&mut self, register_key: RegisterKey) {
+    fn parse_and_set_keys_from_register(&mut self, register_key: RegisterKey) {
         self.buffered_keys.0.clear();
 
         let keys = self.registers.get(register_key);

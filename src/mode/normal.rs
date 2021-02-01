@@ -101,10 +101,12 @@ impl State {
                 editor.recording_macro = None;
                 match keys.next(&editor.buffered_keys) {
                     Key::None => return Some(ModeOperation::Pending),
-                    Key::Char(c) => match RegisterKey::from_char(c.to_ascii_lowercase()) {
-                        Some(key) => return Some(ModeOperation::ExecuteMacro(key)),
-                        None => (),
-                    },
+                    Key::Char(c) => {
+                        // TODO: try just moving the recorded keys to the key queue register
+                        if let Some(key) = RegisterKey::from_char(c.to_ascii_lowercase()) {
+                            return Some(ModeOperation::ExecuteMacro(key));
+                        }
+                    }
                     _ => (),
                 }
             }

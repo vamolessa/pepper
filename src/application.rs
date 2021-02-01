@@ -82,8 +82,8 @@ impl platform::ServerApplication for Server {
         event: platform::ServerEvent,
     ) -> bool {
         match event {
-            platform::ServerEvent::Idle => (),
             platform::ServerEvent::Redraw => (),
+            platform::ServerEvent::Idle => self.editor.on_idle(&mut self.clients),
             platform::ServerEvent::ConnectionOpen { index } => self.clients.on_client_joined(index),
             platform::ServerEvent::ConnectionClose { index } => {
                 self.clients.on_client_left(index);
