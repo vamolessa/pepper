@@ -69,13 +69,39 @@ pub fn register_all(commands: &mut CommandManager) {
             None
         },
     });
+
+    commands.register_builtin(BuiltinCommand {
+        name: "eprint",
+        alias: None,
+        help: "prints a message to the server's stderr",
+        completion_sources: CompletionSource::None as _,
+        func: |ctx| {
+            eprintln!("{}", ctx.args);
+            None
+        },
+    });
+
+    commands.register_builtin(BuiltinCommand {
+        name: "source",
+        alias: None,
+        help: "load a source file and execute its commands",
+        completion_sources: CompletionSource::None as _,
+        func: |ctx| {
+            todo!("source {}", ctx.args);
+        },
+    });
+
+    commands.register_builtin(BuiltinCommand {
+        name: "open",
+        alias: None,
+        help: "open a buffer for editting",
+        completion_sources: CompletionSource::None as _,
+        func: |ctx| {
+            todo!("parse single arg");
+        },
+    });
 }
 
-// editor:
-// - print
-// - eprint
-// - source
-//
 // buffer:
 // - open
 // - save
