@@ -4,6 +4,7 @@ use crate::{
     register::RegisterKey,
 };
 
+mod command;
 mod insert;
 mod normal;
 pub mod picker;
@@ -25,11 +26,7 @@ pub trait ModeState {
         target: TargetClient,
         keys: &mut KeysIterator,
     ) -> Option<ModeOperation>;
-    fn on_editor_events(
-        _editor: &mut Editor,
-        _clients: &mut ClientManager,
-        _target: TargetClient,
-    ) {
+    fn on_editor_events(_editor: &mut Editor, _clients: &mut ClientManager, _target: TargetClient) {
     }
 }
 
@@ -37,6 +34,7 @@ pub trait ModeState {
 pub enum ModeKind {
     Normal,
     Insert,
+    Command,
     ReadLine,
     Picker,
 }
@@ -54,6 +52,7 @@ pub struct Mode {
 
     pub normal_state: normal::State,
     pub insert_state: insert::State,
+    pub command_state: command::State,
     pub read_line_state: read_line::State,
     pub picker_state: picker::State,
 }
@@ -72,6 +71,7 @@ impl Mode {
         match editor.mode.kind {
             ModeKind::Normal => normal::State::on_exit(editor, clients, target),
             ModeKind::Insert => insert::State::on_exit(editor, clients, target),
+            ModeKind::Command => command::State::on_exit(editor, clients, target),
             ModeKind::ReadLine => read_line::State::on_exit(editor, clients, target),
             ModeKind::Picker => picker::State::on_exit(editor, clients, target),
         }
@@ -81,6 +81,7 @@ impl Mode {
         match editor.mode.kind {
             ModeKind::Normal => normal::State::on_enter(editor, clients, target),
             ModeKind::Insert => insert::State::on_enter(editor, clients, target),
+            ModeKind::Command => command::State::on_enter(editor, clients, target),
             ModeKind::ReadLine => read_line::State::on_enter(editor, clients, target),
             ModeKind::Picker => picker::State::on_enter(editor, clients, target),
         }
@@ -95,11 +96,13 @@ impl Mode {
         match editor.mode.kind {
             ModeKind::Normal => normal::State::on_client_keys(editor, clients, target, keys),
             ModeKind::Insert => insert::State::on_client_keys(editor, clients, target, keys),
+            ModeKind::Command => command::State::on_client_keys(editor, clients, target, keys),
             ModeKind::ReadLine => read_line::State::on_client_keys(editor, clients, target, keys),
             ModeKind::Picker => picker::State::on_client_keys(editor, clients, target, keys),
         }
     }
 
+    // TODO: do we really need this?
     pub fn on_editor_events(
         editor: &mut Editor,
         clients: &mut ClientManager,
@@ -108,6 +111,7 @@ impl Mode {
         match editor.mode.kind {
             ModeKind::Normal => normal::State::on_editor_events(editor, clients, target),
             ModeKind::Insert => insert::State::on_editor_events(editor, clients, target),
+            ModeKind::Command => command::State::on_editor_events(editor, clients, target),
             ModeKind::ReadLine => read_line::State::on_editor_events(editor, clients, target),
             ModeKind::Picker => picker::State::on_editor_events(editor, clients, target),
         }

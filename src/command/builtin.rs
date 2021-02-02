@@ -1,8 +1,12 @@
+use std::path::Path;
+
 use crate::{
     buffer::Buffer,
+    client::TargetClient,
     command::{BuiltinCommand, CommandContext, CommandManager, CommandOperation, CompletionSource},
     editor::Editor,
     editor::StatusMessageKind,
+    navigation_history::NavigationHistory,
 };
 
 pub fn register_all(commands: &mut CommandManager) {
@@ -116,7 +120,34 @@ pub fn register_all(commands: &mut CommandManager) {
         completion_sources: CompletionSource::None as _,
         func: |mut ctx| {
             expect_args!(ctx, path);
-            todo!("open {}", path);
+
+            let target_client = TargetClient(ctx.client_index);
+            NavigationHistory::save_client_snapshot(
+                ctx.clients,
+                target_client,
+                &ctx.editor.buffer_views,
+            );
+
+            let path = Path::new(path);
+            let buffer_view_handle = ctx
+                .editor
+                .buffer_views
+                .buffer_view_handle_from_path(
+                    target_client,
+                    &mut ctx.editor.buffers,
+                    &mut ctx.editor.word_database,
+                    &ctx.editor.current_directory,
+                    path,
+                    None, // TODO: implement line_index
+                    &mut ctx.editor.events,
+                )
+                .unwrap();
+            ctx.clients.set_buffer_view_handle(
+                &mut ctx.editor,
+                target_client,
+                Some(buffer_view_handle),
+            );
+            None
         },
     });
 }

@@ -527,7 +527,7 @@ fn draw_statusbar(
                     buf.extend_from_slice(text);
                     Some(text.len())
                 }
-                ModeKind::Picker | ModeKind::ReadLine => {
+                ModeKind::Command | ModeKind::Picker | ModeKind::ReadLine => {
                     let read_line = &editor.read_line;
 
                     set_background_color(buf, prompt_background_color);

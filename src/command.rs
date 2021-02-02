@@ -55,7 +55,7 @@ impl CommandManager {
         self.builtin_commands.push(command);
     }
 
-    pub fn eval(
+    pub fn eval_from_read_line(
         editor: &mut Editor,
         clients: &mut ClientManager,
         client_index: usize,
