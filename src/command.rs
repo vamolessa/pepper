@@ -59,7 +59,7 @@ impl CommandManager {
     }
 }
 
-fn parse_command(text: &str) -> (&str, bool, ArgIter) {
+fn parse_command(text: &str) -> (&str, bool, CommandArgs) {
     let text = text.trim();
     for i in 0..text.len() {
         let bang = match text.as_bytes()[i] {
@@ -70,35 +70,43 @@ fn parse_command(text: &str) -> (&str, bool, ArgIter) {
 
         let command = &text[..i];
         let rest = &text[(i + 1)..];
-        return (command, bang, ArgIter { rest });
+        return (command, bang, CommandArgs { rest });
     }
 
-    (text, false, ArgIter { rest: "" })
+    (text, false, CommandArgs { rest: "" })
 }
 
 pub enum ArgParseError {
-    UnterminatedString(usize),
+    UnterminatedString,
 }
-pub struct ArgIter<'a> {
+pub struct CommandArgs<'a> {
     rest: &'a str,
 }
-impl<'a> Iterator for ArgIter<'a> {
+impl<'a> Iterator for CommandArgs<'a> {
     type Item = Result<&'a str, ArgParseError>;
     fn next(&mut self) -> Option<Self::Item> {
         self.rest = self.rest.trim_start();
-        if self.rest.is_empty() {
-            return None;
+        let mut bytes = self.rest.bytes();
+        match bytes.next() {
+            None => None,
+            Some(delim @ b'"') | Some(delim @ b'\'') => match bytes.position(|b| b == delim) {
+                Some(i) => {
+                    let (arg, rest) = self.rest[1..].split_at(i);
+                    self.rest = &rest[1..];
+                    Some(Ok(arg))
+                }
+                None => Some(Err(ArgParseError::UnterminatedString)),
+            },
+            Some(_) => {
+                let end = match bytes.position(|b| b == b' ' || b == b'"' || b == b'\'') {
+                    Some(i) => i + 1,
+                    None => self.rest.len(),
+                };
+                let (arg, rest) = self.rest.split_at(end);
+                self.rest = rest;
+                Some(Ok(arg))
+            }
         }
-
-        // TODO: finish
-        match self.rest.as_bytes()[0]
-        {
-            b'"' => todo!("parse string"),
-            b'\'' => todo!("parse string"),
-            _ => (),
-        }
-
-        None
     }
 }
 
@@ -108,9 +116,53 @@ mod tests {
 
     #[test]
     fn command_parsing() {
-        assert!(matches!(parse_command("command-name"), ("command-name", false, _)));
-        assert!(matches!(parse_command("  command-name  "), ("command-name", false, _)));
-        assert!(matches!(parse_command("  command-name!  "), ("command-name", true, _)));
-        assert!(matches!(parse_command("  command-name!"), ("command-name", true, _)));
+        macro_rules! assert_command {
+            ($text:expr => ($command:expr, $bang:expr)) => {
+                let (command, bang, _) = parse_command($text);
+                assert_eq!($command, command);
+                assert_eq!($bang, bang);
+            };
+        }
+
+        assert_command!("command-name" => ("command-name", false));
+        assert_command!("  command-name  " => ("command-name", false));
+        assert_command!("  command-name!  " => ("command-name", true));
+        assert_command!("  command-name!" => ("command-name", true));
+    }
+
+    #[test]
+    fn arg_parsing() {
+        macro_rules! assert_next_arg {
+            ($args:expr, $arg:expr) => {
+                match $args.next() {
+                    Some(Ok(arg)) => assert_eq!($arg, arg),
+                    Some(Err(_)) => panic!("arg parse error"),
+                    None => panic!("no more args"),
+                }
+            };
+        }
+
+        fn args_from(text: &str) -> CommandArgs {
+            CommandArgs { rest: text }
+        }
+
+        let mut args = args_from("  aaa  bbb  ccc  ");
+        assert_next_arg!(args, "aaa");
+        assert_next_arg!(args, "bbb");
+        assert_next_arg!(args, "ccc");
+        assert!(args.next().is_none());
+
+        let mut args = args_from("  'aaa'  \"bbb\"  ccc  ");
+        assert_next_arg!(args, "aaa");
+        assert_next_arg!(args, "bbb");
+        assert_next_arg!(args, "ccc");
+        assert!(args.next().is_none());
+
+        let mut args = args_from("  'aaa'\"bbb\"\"ccc\"ddd  ");
+        assert_next_arg!(args, "aaa");
+        assert_next_arg!(args, "bbb");
+        assert_next_arg!(args, "ccc");
+        assert_next_arg!(args, "ddd");
+        assert!(args.next().is_none());
     }
 }
