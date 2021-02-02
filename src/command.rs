@@ -60,6 +60,15 @@ impl CommandManager {
         clients: &mut ClientManager,
         client_index: usize,
     ) -> Option<CommandOperation> {
+        let mut command = String::new();
+        std::mem::swap(&mut command, &mut editor.commands.executing_command);
+        command.clear();
+        command.push_str(editor.read_line.input());
+        editor
+            .status_bar
+            .write(crate::editor::StatusMessageKind::Info)
+            .fmt(format_args!("eval command '{}'", command));
+        std::mem::swap(&mut command, &mut editor.commands.executing_command);
         None
     }
 }
@@ -217,7 +226,7 @@ mod tests {
                     Err($err) => assert_eq!($expect, $value),
                     Err(_) => panic!("other error occurred"),
                 }
-            }
+            };
         }
 
         assert_fail!("", CommandParseError::InvalidCommandName(i) => i == 0);

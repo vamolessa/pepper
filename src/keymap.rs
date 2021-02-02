@@ -97,6 +97,7 @@ impl Default for KeyMapCollection {
         let all_modes = [
             ModeKind::Normal,
             ModeKind::Insert,
+            ModeKind::Command,
             ModeKind::ReadLine,
             ModeKind::Picker,
         ];
