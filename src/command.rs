@@ -165,4 +165,16 @@ mod tests {
         assert_next_arg!(args, "ddd");
         assert!(args.next().is_none());
     }
+
+    #[test]
+    fn full_command_parsing() {
+        let (command, bang, mut args) =
+            parse_command("  command-name! 'my arg 1' 034 another-arg   ");
+        assert_eq!("command-name", command);
+        assert_eq!(true, bang);
+        assert!(matches!(args.next(), Some(Ok("my arg 1"))));
+        assert!(matches!(args.next(), Some(Ok("034"))));
+        assert!(matches!(args.next(), Some(Ok("another-arg"))));
+        assert!(args.next().is_none());
+    }
 }
