@@ -2,6 +2,11 @@ use crate::{client::ClientManager, editor::Editor};
 
 mod builtin;
 
+pub enum CommandParseError {
+    InvalidCommandName(usize),
+    UnterminatedString(usize),
+}
+
 pub enum CommandOperation {
     Quit,
     QuitAll,
@@ -20,7 +25,7 @@ struct CommandContext<'a> {
     clients: &'a mut ClientManager,
     client_index: usize,
     bang: bool,
-    args: &'a str,
+    args: CommandArgs<'a>,
 }
 
 struct BuiltinCommand {
@@ -59,31 +64,60 @@ impl CommandManager {
     }
 }
 
-fn parse_command(text: &str) -> (&str, bool, CommandArgs) {
-    let text = text.trim();
-    for i in 0..text.len() {
-        let bang = match text.as_bytes()[i] {
-            b' ' => false,
-            b'!' => true,
-            _ => continue,
-        };
+fn parse_command(text: &str) -> Result<(&str, bool, CommandArgs), CommandParseError> {
+    let text_original_len = text.len();
+    let text = text.trim_start();
+    let trim_offset = text_original_len - text.len();
+    let text = text.trim_end();
 
-        let command = &text[..i];
-        let rest = &text[(i + 1)..];
-        return (command, bang, CommandArgs { rest });
+    let mut command = text;
+    let mut bang = false;
+    let mut rest = "";
+
+    for i in 0..text.len() {
+        match text.as_bytes()[i] {
+            b' ' => (),
+            b'!' => bang = true,
+            b'"' | b'\'' => return Err(CommandParseError::InvalidCommandName(trim_offset + i)),
+            _ => continue,
+        }
+
+        command = &text[..i];
+        rest = &text[(i + 1)..];
+        break;
     }
 
-    (text, false, CommandArgs { rest: "" })
+    let command = command;
+    let bang = bang;
+    let rest = rest;
+
+    if command.is_empty() {
+        return Err(CommandParseError::InvalidCommandName(trim_offset));
+    }
+
+    let mut bytes = rest.bytes();
+    loop {
+        match bytes.next() {
+            None => break,
+            Some(delim @ b'"') | Some(delim @ b'\'') => {
+                let pending_len = bytes.len();
+                if let None = bytes.position(|b| b == delim) {
+                    let i = rest.len() - pending_len + 1;
+                    return Err(CommandParseError::UnterminatedString(trim_offset + i));
+                }
+            }
+            Some(_) => continue,
+        };
+    }
+
+    Ok((command, bang, CommandArgs { rest }))
 }
 
-pub enum ArgParseError {
-    UnterminatedString,
-}
 pub struct CommandArgs<'a> {
     rest: &'a str,
 }
 impl<'a> Iterator for CommandArgs<'a> {
-    type Item = Result<&'a str, ArgParseError>;
+    type Item = &'a str;
     fn next(&mut self) -> Option<Self::Item> {
         self.rest = self.rest.trim_start();
         let mut bytes = self.rest.bytes();
@@ -93,9 +127,9 @@ impl<'a> Iterator for CommandArgs<'a> {
                 Some(i) => {
                     let (arg, rest) = self.rest[1..].split_at(i);
                     self.rest = &rest[1..];
-                    Some(Ok(arg))
+                    Some(arg)
                 }
-                None => Some(Err(ArgParseError::UnterminatedString)),
+                None => unreachable!(),
             },
             Some(_) => {
                 let end = match bytes.position(|b| b == b' ' || b == b'"' || b == b'\'') {
@@ -104,7 +138,7 @@ impl<'a> Iterator for CommandArgs<'a> {
                 };
                 let (arg, rest) = self.rest.split_at(end);
                 self.rest = rest;
-                Some(Ok(arg))
+                Some(arg)
             }
         }
     }
@@ -118,7 +152,10 @@ mod tests {
     fn command_parsing() {
         macro_rules! assert_command {
             ($text:expr => ($command:expr, $bang:expr)) => {
-                let (command, bang, _) = parse_command($text);
+                let (command, bang, _) = match parse_command($text) {
+                    Ok(command) => command,
+                    Err(_) => panic!("command parse error"),
+                };
                 assert_eq!($command, command);
                 assert_eq!($bang, bang);
             };
@@ -132,49 +169,66 @@ mod tests {
 
     #[test]
     fn arg_parsing() {
-        macro_rules! assert_next_arg {
-            ($args:expr, $arg:expr) => {
-                match $args.next() {
-                    Some(Ok(arg)) => assert_eq!($arg, arg),
-                    Some(Err(_)) => panic!("arg parse error"),
-                    None => panic!("no more args"),
-                }
-            };
-        }
-
         fn args_from(text: &str) -> CommandArgs {
             CommandArgs { rest: text }
         }
 
         let mut args = args_from("  aaa  bbb  ccc  ");
-        assert_next_arg!(args, "aaa");
-        assert_next_arg!(args, "bbb");
-        assert_next_arg!(args, "ccc");
-        assert!(args.next().is_none());
+        assert_eq!(Some("aaa"), args.next());
+        assert_eq!(Some("bbb"), args.next());
+        assert_eq!(Some("ccc"), args.next());
+        assert_eq!(None, args.next());
 
         let mut args = args_from("  'aaa'  \"bbb\"  ccc  ");
-        assert_next_arg!(args, "aaa");
-        assert_next_arg!(args, "bbb");
-        assert_next_arg!(args, "ccc");
-        assert!(args.next().is_none());
+        assert_eq!(Some("aaa"), args.next());
+        assert_eq!(Some("bbb"), args.next());
+        assert_eq!(Some("ccc"), args.next());
+        assert_eq!(None, args.next());
 
         let mut args = args_from("  'aaa'\"bbb\"\"ccc\"ddd  ");
-        assert_next_arg!(args, "aaa");
-        assert_next_arg!(args, "bbb");
-        assert_next_arg!(args, "ccc");
-        assert_next_arg!(args, "ddd");
-        assert!(args.next().is_none());
+        assert_eq!(Some("aaa"), args.next());
+        assert_eq!(Some("bbb"), args.next());
+        assert_eq!(Some("ccc"), args.next());
+        assert_eq!(Some("ddd"), args.next());
+        assert_eq!(None, args.next());
     }
 
     #[test]
     fn full_command_parsing() {
         let (command, bang, mut args) =
-            parse_command("  command-name! 'my arg 1' 034 another-arg   ");
+            match parse_command("  command-name! 'my arg 1' 034 another-arg   ") {
+                Ok(command) => command,
+                Err(_) => panic!("command parse error"),
+            };
         assert_eq!("command-name", command);
         assert_eq!(true, bang);
-        assert!(matches!(args.next(), Some(Ok("my arg 1"))));
-        assert!(matches!(args.next(), Some(Ok("034"))));
-        assert!(matches!(args.next(), Some(Ok("another-arg"))));
-        assert!(args.next().is_none());
+        assert_eq!(Some("my arg 1"), args.next());
+        assert_eq!(Some("034"), args.next());
+        assert_eq!(Some("another-arg"), args.next());
+        assert_eq!(None, args.next());
+    }
+
+    #[test]
+    fn command_parsing_fail() {
+        macro_rules! assert_fail {
+            ($text:expr, $err:pat => $value:ident == $expect:expr) => {
+                match parse_command($text) {
+                    Ok(_) => panic!("command parsed successfuly"),
+                    Err($err) => assert_eq!($expect, $value),
+                    Err(_) => panic!("other error occurred"),
+                }
+            }
+        }
+
+        assert_fail!("", CommandParseError::InvalidCommandName(i) => i == 0);
+        assert_fail!("   ", CommandParseError::InvalidCommandName(i) => i == 3);
+        assert_fail!(" !", CommandParseError::InvalidCommandName(i) => i == 1);
+        assert_fail!("  'aa'", CommandParseError::InvalidCommandName(i) => i == 2);
+        assert_fail!("  \"aa\"", CommandParseError::InvalidCommandName(i) => i == 2);
+        assert_fail!("\"aa\"", CommandParseError::InvalidCommandName(i) => i == 0);
+
+        assert_fail!("c! 'abc", CommandParseError::UnterminatedString(i) => i == 3);
+        assert_fail!("c! '", CommandParseError::UnterminatedString(i) => i == 3);
+        assert_fail!("c! \"'", CommandParseError::UnterminatedString(i) => i == 3);
     }
 }

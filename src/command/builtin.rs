@@ -18,7 +18,7 @@ pub fn register_all(commands: &mut CommandManager) {
 
     macro_rules! expect_empty_args {
         ($ctx:expr) => {
-            if !$ctx.args.is_empty() {
+            if $ctx.args.next().is_some() {
                 error($ctx.editor, "this command expects no args");
                 return None;
             }
@@ -30,7 +30,7 @@ pub fn register_all(commands: &mut CommandManager) {
         alias: Some("q"),
         help: "quits this client. append a '!' to force quit",
         completion_sources: CompletionSource::None as _,
-        func: |ctx| {
+        func: |mut ctx| {
             expect_empty_args!(ctx);
             if ctx.bang || !any_buffer_needs_save(ctx.editor) {
                 Some(CommandOperation::Quit)
@@ -46,7 +46,7 @@ pub fn register_all(commands: &mut CommandManager) {
         alias: Some("qa"),
         help: "quits all clients. append a '!' to force quit all",
         completion_sources: CompletionSource::None as _,
-        func: |ctx| {
+        func: |mut ctx| {
             expect_empty_args!(ctx);
             if ctx.bang || !any_buffer_needs_save(ctx.editor) {
                 Some(CommandOperation::QuitAll)
@@ -64,9 +64,11 @@ pub fn register_all(commands: &mut CommandManager) {
         completion_sources: CompletionSource::None as _,
         func: |ctx| {
             // TODO: iter args
+            /*
             ctx.editor
                 .status_bar
                 .write_str(StatusMessageKind::Info, ctx.args);
+            */
             None
         },
     });
@@ -77,8 +79,12 @@ pub fn register_all(commands: &mut CommandManager) {
         help: "prints a message to the server's stderr",
         completion_sources: CompletionSource::None as _,
         func: |ctx| {
-            //TODO: iter args
-            eprintln!("{}", ctx.args);
+            /*
+            for arg in ctx.args {
+                eprint!("{}", arg);
+            }
+            */
+            eprintln!();
             None
         },
     });
@@ -89,7 +95,7 @@ pub fn register_all(commands: &mut CommandManager) {
         help: "load a source file and execute its commands",
         completion_sources: CompletionSource::None as _,
         func: |ctx| {
-            todo!("source {}", ctx.args);
+            todo!("source");
         },
     });
 
