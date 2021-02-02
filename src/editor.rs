@@ -179,20 +179,28 @@ impl StatusBar {
         self.message.clear();
     }
 
+    // TODO: replace with 'write'
     pub fn write_str(&mut self, kind: StatusMessageKind, message: &str) {
         self.kind = kind;
         self.message.clear();
         self.message.push_str(message);
     }
 
+    // TODO: replace with 'write'
     pub fn write_fmt(&mut self, kind: StatusMessageKind, args: fmt::Arguments) {
         self.kind = kind;
         self.message.clear();
         let _ = fmt::write(&mut self.message, args);
     }
 
+    pub fn write(&mut self, kind: StatusMessageKind) -> StatusBarWrite {
+        self.kind = kind;
+        self.message.clear();
+        StatusBarWrite(self)
+    }
+
     pub fn write_error(&mut self, error: &dyn Error) {
-        use std::fmt::Write;
+        use fmt::Write;
 
         self.kind = StatusMessageKind::Error;
         self.message.clear();
@@ -203,6 +211,16 @@ impl StatusBar {
             let _ = write!(&mut self.message, "{}", e);
             error = e.source();
         }
+    }
+}
+pub struct StatusBarWrite<'a>(&'a mut StatusBar);
+impl<'a> StatusBarWrite<'a> {
+    pub fn str(&mut self, message: &str) {
+        self.0.message.push_str(message);
+    }
+
+    pub fn fmt(&mut self, args: fmt::Arguments) {
+        let _ = fmt::write(&mut self.0.message, args);
     }
 }
 

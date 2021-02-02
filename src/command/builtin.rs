@@ -9,7 +9,8 @@ pub fn register_all(commands: &mut CommandManager) {
     fn error(editor: &mut Editor, message: &str) {
         editor
             .status_bar
-            .write_str(StatusMessageKind::Error, message);
+            .write(StatusMessageKind::Error)
+            .str(message);
     }
 
     fn any_buffer_needs_save(editor: &Editor) -> bool {
@@ -19,10 +20,22 @@ pub fn register_all(commands: &mut CommandManager) {
     macro_rules! expect_empty_args {
         ($ctx:expr) => {
             if $ctx.args.next().is_some() {
-                error($ctx.editor, "this command expects no args");
+                error($ctx.editor, "too many arguments were passed to command");
                 return None;
             }
         };
+    }
+
+    macro_rules! expect_args {
+        ($ctx:expr, $($arg:ident),*) => {
+            $(let $arg = match $ctx.args.next() {
+                Some(arg) => arg,
+                None => {
+                    error($ctx.editor, "too few arguments were passed to command");
+                    return None;
+                }
+            };)*
+        }
     }
 
     commands.register_builtin(BuiltinCommand {
@@ -63,12 +76,10 @@ pub fn register_all(commands: &mut CommandManager) {
         help: "prints a message to the status bar",
         completion_sources: CompletionSource::None as _,
         func: |ctx| {
-            // TODO: iter args
-            /*
-            ctx.editor
-                .status_bar
-                .write_str(StatusMessageKind::Info, ctx.args);
-            */
+            let mut w = ctx.editor.status_bar.write(StatusMessageKind::Info);
+            for arg in ctx.args {
+                w.str(arg);
+            }
             None
         },
     });
@@ -79,11 +90,9 @@ pub fn register_all(commands: &mut CommandManager) {
         help: "prints a message to the server's stderr",
         completion_sources: CompletionSource::None as _,
         func: |ctx| {
-            /*
             for arg in ctx.args {
                 eprint!("{}", arg);
             }
-            */
             eprintln!();
             None
         },
@@ -94,8 +103,9 @@ pub fn register_all(commands: &mut CommandManager) {
         alias: None,
         help: "load a source file and execute its commands",
         completion_sources: CompletionSource::None as _,
-        func: |ctx| {
-            todo!("source");
+        func: |mut ctx| {
+            expect_args!(ctx, source);
+            todo!("source {}", source);
         },
     });
 
@@ -104,8 +114,9 @@ pub fn register_all(commands: &mut CommandManager) {
         alias: None,
         help: "open a buffer for editting",
         completion_sources: CompletionSource::None as _,
-        func: |ctx| {
-            todo!("parse single arg");
+        func: |mut ctx| {
+            expect_args!(ctx, path);
+            todo!("open {}", path);
         },
     });
 }
