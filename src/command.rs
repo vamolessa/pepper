@@ -1,4 +1,7 @@
-use crate::{client::ClientManager, editor::Editor};
+use crate::{
+    client::ClientManager,
+    editor::{Editor, StatusMessageKind},
+};
 
 mod builtin;
 
@@ -64,10 +67,27 @@ impl CommandManager {
         std::mem::swap(&mut command, &mut editor.commands.executing_command);
         command.clear();
         command.push_str(editor.read_line.input());
-        editor
-            .status_bar
-            .write(crate::editor::StatusMessageKind::Info)
-            .fmt(format_args!("eval command '{}'", command));
+        match parse_command(&command) {
+            Ok((command, bang, args)) => {
+                for command in &editor.commands.builtin_commands {
+                    //
+                }
+            }
+            Err(CommandParseError::InvalidCommandName(i)) => {
+                // TODO: point error location
+                editor
+                    .status_bar
+                    .write(StatusMessageKind::Error)
+                    .fmt(format_args!("invalid command name"));
+            }
+            Err(CommandParseError::UnterminatedString(i)) => {
+                // TODO: point error location
+                editor
+                    .status_bar
+                    .write(StatusMessageKind::Error)
+                    .fmt(format_args!("unterminated string"));
+            }
+        }
         std::mem::swap(&mut command, &mut editor.commands.executing_command);
         None
     }
