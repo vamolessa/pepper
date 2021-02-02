@@ -47,7 +47,7 @@ use winapi::{
         winnt::{GENERIC_READ, GENERIC_WRITE, HANDLE, MAXIMUM_WAIT_OBJECTS},
         winuser::{
             CloseClipboard, EmptyClipboard, GetClipboardData, OpenClipboard, SetClipboardData,
-            CF_UNICODETEXT, VK_BACK, VK_DELETE, VK_DOWN, VK_END, VK_ESCAPE, VK_F1, VK_F24, VK_HOME,
+            CF_UNICODETEXT, VK_SPACE, VK_BACK, VK_DELETE, VK_DOWN, VK_END, VK_ESCAPE, VK_F1, VK_F24, VK_HOME,
             VK_LEFT, VK_NEXT, VK_PRIOR, VK_RETURN, VK_RIGHT, VK_TAB, VK_UP,
         },
     },
@@ -1088,6 +1088,7 @@ where
                                 VK_DELETE => Key::Delete,
                                 VK_F1..=VK_F24 => Key::F((keycode - VK_F1 + 1) as _),
                                 VK_ESCAPE => Key::Esc,
+                                VK_SPACE => Key::Char(' '),
                                 CHAR_A..=CHAR_Z => {
                                     const ALT_PRESSED_MASK: DWORD =
                                         LEFT_ALT_PRESSED | RIGHT_ALT_PRESSED;
