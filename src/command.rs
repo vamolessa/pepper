@@ -63,33 +63,49 @@ impl CommandManager {
         clients: &mut ClientManager,
         client_index: usize,
     ) -> Option<CommandOperation> {
+        let mut op = None;
         let mut command = String::new();
         std::mem::swap(&mut command, &mut editor.commands.executing_command);
         command.clear();
         command.push_str(editor.read_line.input());
         match parse_command(&command) {
             Ok((command, bang, args)) => {
-                for command in &editor.commands.builtin_commands {
-                    //
+                match editor
+                    .commands
+                    .builtin_commands
+                    .iter()
+                    .find(|c| c.alias == Some(command) || c.name == command)
+                {
+                    Some(command) => {
+                        let func = command.func;
+                        let ctx = CommandContext {
+                            editor,
+                            clients,
+                            client_index,
+                            bang,
+                            args,
+                        };
+                        op = func(ctx);
+                    }
+                    None => editor
+                        .status_bar
+                        .write(StatusMessageKind::Error)
+                        .fmt(format_args!("could not find command '{}'", command)),
                 }
             }
-            Err(CommandParseError::InvalidCommandName(i)) => {
-                // TODO: point error location
-                editor
-                    .status_bar
-                    .write(StatusMessageKind::Error)
-                    .fmt(format_args!("invalid command name"));
-            }
-            Err(CommandParseError::UnterminatedString(i)) => {
-                // TODO: point error location
-                editor
-                    .status_bar
-                    .write(StatusMessageKind::Error)
-                    .fmt(format_args!("unterminated string"));
-            }
+            // TODO: point error location
+            Err(CommandParseError::InvalidCommandName(i)) => editor
+                .status_bar
+                .write(StatusMessageKind::Error)
+                .fmt(format_args!("invalid command name")),
+            // TODO: point error location
+            Err(CommandParseError::UnterminatedString(i)) => editor
+                .status_bar
+                .write(StatusMessageKind::Error)
+                .fmt(format_args!("unterminated string")),
         }
         std::mem::swap(&mut command, &mut editor.commands.executing_command);
-        None
+        op
     }
 }
 

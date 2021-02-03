@@ -93,7 +93,9 @@ pub trait ClientPlatform {
 
 pub fn debug() -> Box<dyn ServerPlatform> {
     #[cfg(windows)]
-    windows::debug()
+    return windows::debug();
+    #[cfg(not(windows))]
+    panic!("platform not yet supported (but soon :B)");
 }
 
 pub fn run<A, S, C>()
@@ -103,5 +105,7 @@ where
     C: ClientApplication<Args = A>,
 {
     #[cfg(windows)]
-    windows::run::<A, S, C>();
+    return windows::run::<A, S, C>();
+    #[cfg(not(windows))]
+    panic!("platform not yet supported (but soon :B)");
 }

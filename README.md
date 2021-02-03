@@ -1,5 +1,7 @@
 [![build badge](https://github.com/vamolessa/pepper/workflows/rust/badge.svg?branch=master)](https://github.com/vamolessa/pepper)
 
+(I'm currently refactoring the platform layer. So we have to first finish this cleanup before we're able to continue adding features)
+
 ### An opinionated modal editor to simplify code editing from the terminal
 
 ![main screenshot](.github/screenshots/main.png)
