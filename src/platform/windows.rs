@@ -18,7 +18,7 @@ use winapi::{
     um::{
         consoleapi::{GetConsoleMode, ReadConsoleInputW, SetConsoleCtrlHandler, SetConsoleMode},
         errhandlingapi::GetLastError,
-        fileapi::{CreateFileW, FindFirstFileW, ReadFile, WriteFile, OPEN_EXISTING},
+        fileapi::{CreateFileW, FindClose, FindFirstFileW, ReadFile, WriteFile, OPEN_EXISTING},
         handleapi::{CloseHandle, INVALID_HANDLE_VALUE},
         ioapiset::GetOverlappedResult,
         minwinbase::OVERLAPPED,
@@ -47,8 +47,8 @@ use winapi::{
         winnt::{GENERIC_READ, GENERIC_WRITE, HANDLE, MAXIMUM_WAIT_OBJECTS},
         winuser::{
             CloseClipboard, EmptyClipboard, GetClipboardData, OpenClipboard, SetClipboardData,
-            CF_UNICODETEXT, VK_SPACE, VK_BACK, VK_DELETE, VK_DOWN, VK_END, VK_ESCAPE, VK_F1, VK_F24, VK_HOME,
-            VK_LEFT, VK_NEXT, VK_PRIOR, VK_RETURN, VK_RIGHT, VK_TAB, VK_UP,
+            CF_UNICODETEXT, VK_BACK, VK_DELETE, VK_DOWN, VK_END, VK_ESCAPE, VK_F1, VK_F24, VK_HOME,
+            VK_LEFT, VK_NEXT, VK_PRIOR, VK_RETURN, VK_RIGHT, VK_SPACE, VK_TAB, VK_UP,
         },
     },
 };
@@ -144,10 +144,16 @@ fn get_current_directory(buf: &mut Vec<u16>) {
     unsafe { buf.set_len(len) }
 }
 
-fn file_exists(path: &[u16]) -> bool {
+fn pipe_exists(path: &[u16]) -> bool {
     unsafe {
-        let mut find_file_data = std::mem::zeroed();
-        FindFirstFileW(path.as_ptr(), &mut find_file_data) != INVALID_HANDLE_VALUE
+        let mut find_data = std::mem::zeroed();
+        let find_handle = FindFirstFileW(path.as_ptr(), &mut find_data);
+        if find_handle != INVALID_HANDLE_VALUE {
+            FindClose(find_handle);
+            true
+        } else {
+            false
+        }
     }
 }
 
@@ -880,7 +886,7 @@ fn run_server<A>(args: A::Args, pipe_path: &[u16])
 where
     A: ServerApplication,
 {
-    if file_exists(pipe_path) {
+    if pipe_exists(pipe_path) {
         return;
     }
 
@@ -1016,9 +1022,9 @@ fn run_client<A>(args: A::Args, pipe_path: &[u16], input_handle: HANDLE, output_
 where
     A: ClientApplication,
 {
-    if !file_exists(pipe_path) {
+    if !pipe_exists(pipe_path) {
         fork();
-        while !file_exists(pipe_path) {
+        while !pipe_exists(pipe_path) {
             std::thread::sleep(Duration::from_millis(100));
         }
     }

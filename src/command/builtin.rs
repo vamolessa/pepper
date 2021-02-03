@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{borrow::Cow, path::Path};
 
 use crate::{
     buffer::Buffer,
@@ -10,12 +10,8 @@ use crate::{
 };
 
 pub fn register_all(commands: &mut CommandManager) {
-    fn error(editor: &mut Editor, message: &str) {
-        editor
-            .status_bar
-            .write(StatusMessageKind::Error)
-            .str(message);
-    }
+    const UNSAVED_CHANGES_ERROR: &str =
+        "there are unsaved changes in buffers. try appending a '!' to command to force quit";
 
     fn any_buffer_needs_save(editor: &Editor) -> bool {
         editor.buffers.iter().any(|b| b.needs_save())
@@ -24,8 +20,7 @@ pub fn register_all(commands: &mut CommandManager) {
     macro_rules! expect_empty_args {
         ($ctx:expr) => {
             if $ctx.args.next().is_some() {
-                error($ctx.editor, "too many arguments were passed to command");
-                return None;
+                return Err(Cow::Borrowed("too many arguments were passed to command"));
             }
         };
     }
@@ -34,10 +29,7 @@ pub fn register_all(commands: &mut CommandManager) {
         ($ctx:expr, $($arg:ident),*) => {
             $(let $arg = match $ctx.args.next() {
                 Some(arg) => arg,
-                None => {
-                    error($ctx.editor, "too few arguments were passed to command");
-                    return None;
-                }
+                None => return Err(Cow::Borrowed("too few arguments were passed to command")),
             };)*
         }
     }
@@ -50,10 +42,9 @@ pub fn register_all(commands: &mut CommandManager) {
         func: |mut ctx| {
             expect_empty_args!(ctx);
             if ctx.bang || !any_buffer_needs_save(ctx.editor) {
-                Some(CommandOperation::Quit)
+                Ok(Some(CommandOperation::Quit))
             } else {
-                error(ctx.editor, "there are unsaved changes in buffers. try appending a '!' to command to force quit");
-                None
+                Err(Cow::Borrowed(UNSAVED_CHANGES_ERROR))
             }
         },
     });
@@ -66,10 +57,9 @@ pub fn register_all(commands: &mut CommandManager) {
         func: |mut ctx| {
             expect_empty_args!(ctx);
             if ctx.bang || !any_buffer_needs_save(ctx.editor) {
-                Some(CommandOperation::QuitAll)
+                Ok(Some(CommandOperation::QuitAll))
             } else {
-                error(ctx.editor, "there are unsaved changes in buffers. try appending a '!' to command to force quit");
-                None
+                Err(Cow::Borrowed(UNSAVED_CHANGES_ERROR))
             }
         },
     });
@@ -84,7 +74,7 @@ pub fn register_all(commands: &mut CommandManager) {
             for arg in ctx.args {
                 w.str(arg);
             }
-            None
+            Ok(None)
         },
     });
 
@@ -98,7 +88,7 @@ pub fn register_all(commands: &mut CommandManager) {
                 eprint!("{}", arg);
             }
             eprintln!();
-            None
+            Ok(None)
         },
     });
 
@@ -147,7 +137,7 @@ pub fn register_all(commands: &mut CommandManager) {
                 target_client,
                 Some(buffer_view_handle),
             );
-            None
+            Ok(None)
         },
     });
 }

@@ -3,7 +3,7 @@ use crate::platform::Key;
 use crate::{
     client::{ClientManager, TargetClient},
     command::{CommandManager, CommandOperation},
-    editor::{Editor, KeysIterator, ReadLinePoll},
+    editor::{Editor, KeysIterator, ReadLinePoll, StatusMessageKind},
     mode::{Mode, ModeKind, ModeOperation, ModeState},
 };
 
@@ -69,9 +69,16 @@ impl ModeState for State {
                 }
 
                 return match op {
-                    Some(CommandOperation::Quit) => Some(ModeOperation::Quit),
-                    Some(CommandOperation::QuitAll) => Some(ModeOperation::QuitAll),
-                    None => None,
+                    Ok(Some(CommandOperation::Quit)) => Some(ModeOperation::Quit),
+                    Ok(Some(CommandOperation::QuitAll)) => Some(ModeOperation::QuitAll),
+                    Ok(None) => None,
+                    Err(error) => {
+                        editor
+                            .status_bar
+                            .write(StatusMessageKind::Error)
+                            .fmt(format_args!("{}", error));
+                        None
+                    }
                 };
             }
         }

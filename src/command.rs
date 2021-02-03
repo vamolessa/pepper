@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use crate::{
     client::ClientManager,
     editor::{Editor, StatusMessageKind},
@@ -9,6 +11,8 @@ pub enum CommandParseError {
     InvalidCommandName(usize),
     UnterminatedString(usize),
 }
+
+pub type CommandResult = Result<Option<CommandOperation>, Cow<'static, str>>;
 
 pub enum CommandOperation {
     Quit,
@@ -36,7 +40,7 @@ struct BuiltinCommand {
     alias: Option<&'static str>,
     help: &'static str,
     completion_sources: u8,
-    func: fn(CommandContext) -> Option<CommandOperation>,
+    func: fn(CommandContext) -> CommandResult,
 }
 
 pub struct CommandManager {
@@ -62,13 +66,23 @@ impl CommandManager {
         editor: &mut Editor,
         clients: &mut ClientManager,
         client_index: usize,
-    ) -> Option<CommandOperation> {
-        let mut op = None;
+    ) -> CommandResult {
         let mut command = String::new();
         std::mem::swap(&mut command, &mut editor.commands.executing_command);
         command.clear();
         command.push_str(editor.read_line.input());
-        match parse_command(&command) {
+        let result = Self::eval(editor, clients, client_index, &command);
+        std::mem::swap(&mut command, &mut editor.commands.executing_command);
+        result
+    }
+
+    pub fn eval(
+        editor: &mut Editor,
+        clients: &mut ClientManager,
+        client_index: usize,
+        command: &str,
+    ) -> CommandResult {
+        match parse_command(command) {
             Ok((command, bang, args)) => {
                 match editor
                     .commands
@@ -85,7 +99,7 @@ impl CommandManager {
                             bang,
                             args,
                         };
-                        op = func(ctx);
+                        return func(ctx);
                     }
                     None => editor
                         .status_bar
@@ -104,8 +118,8 @@ impl CommandManager {
                 .write(StatusMessageKind::Error)
                 .fmt(format_args!("unterminated string")),
         }
-        std::mem::swap(&mut command, &mut editor.commands.executing_command);
-        op
+
+        Ok(None)
     }
 }
 
