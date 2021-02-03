@@ -41,7 +41,7 @@ use winapi::{
         },
         wincontypes::{
             INPUT_RECORD, KEY_EVENT, LEFT_ALT_PRESSED, LEFT_CTRL_PRESSED, RIGHT_ALT_PRESSED,
-            RIGHT_CTRL_PRESSED, SHIFT_PRESSED, WINDOW_BUFFER_SIZE_EVENT,
+            RIGHT_CTRL_PRESSED, WINDOW_BUFFER_SIZE_EVENT,
         },
         winnls::CP_UTF8,
         winnt::{GENERIC_READ, GENERIC_WRITE, HANDLE, MAXIMUM_WAIT_OBJECTS},
@@ -59,15 +59,6 @@ use crate::platform::{
 };
 
 const CLIENT_EVENT_BUFFER_LEN: usize = 32;
-
-pub fn debug() -> Box<dyn ServerPlatform> {
-    let state = ServerState {
-        redraw_event: Event::new(),
-        pipes: SlotVec::new(),
-        children: SlotVec::new(),
-    };
-    Box::new(state)
-}
 
 pub fn run<A, S, C>()
 where
@@ -1075,6 +1066,7 @@ where
 
                             let control_key_state = event.dwControlKeyState;
                             let keycode = event.wVirtualKeyCode as i32;
+                            let unicode_char = unsafe { *event.uChar.UnicodeChar() };
                             let repeat_count = event.wRepeatCount as usize;
 
                             const CHAR_A: i32 = b'A' as _;
@@ -1094,37 +1086,42 @@ where
                                 VK_DELETE => Key::Delete,
                                 VK_F1..=VK_F24 => Key::F((keycode - VK_F1 + 1) as _),
                                 VK_ESCAPE => Key::Esc,
-                                VK_SPACE => Key::Char(' '),
+                                VK_SPACE => {
+                                    match std::char::decode_utf16(std::iter::once(unicode_char))
+                                        .next()
+                                    {
+                                        Some(Ok(c)) => Key::Char(c),
+                                        _ => continue,
+                                    }
+                                }
                                 CHAR_A..=CHAR_Z => {
                                     const ALT_PRESSED_MASK: DWORD =
                                         LEFT_ALT_PRESSED | RIGHT_ALT_PRESSED;
                                     const CTRL_PRESSED_MASK: DWORD =
                                         LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED;
 
-                                    let c = keycode as u8;
                                     if control_key_state & ALT_PRESSED_MASK != 0 {
+                                        let c = (keycode - CHAR_A) as u8 + b'a';
                                         Key::Alt(c.to_ascii_lowercase() as _)
                                     } else if control_key_state & CTRL_PRESSED_MASK != 0 {
+                                        let c = (keycode - CHAR_A) as u8 + b'a';
                                         Key::Ctrl(c.to_ascii_lowercase() as _)
-                                    } else if control_key_state & SHIFT_PRESSED != 0 {
-                                        Key::Char(c as _)
                                     } else {
-                                        Key::Char(c.to_ascii_lowercase() as _)
+                                        match std::char::decode_utf16(std::iter::once(unicode_char))
+                                            .next()
+                                        {
+                                            Some(Ok(c)) => Key::Char(c),
+                                            _ => continue,
+                                        }
                                     }
                                 }
-                                _ => {
-                                    let c = *(unsafe { event.uChar.AsciiChar() }) as u8;
-                                    if !c.is_ascii_graphic() {
-                                        continue;
-                                    }
-
-                                    Key::Char(c as _)
-                                }
+                                _ => match std::char::decode_utf16(std::iter::once(unicode_char))
+                                    .next()
+                                {
+                                    Some(Ok(c)) if c.is_ascii_graphic() => Key::Char(c),
+                                    _ => continue,
+                                },
                             };
-
-                            if let Key::Esc = key {
-                                break 'main_loop;
-                            }
 
                             for _ in 0..repeat_count {
                                 pending_events.push(ClientEvent::Key(key));

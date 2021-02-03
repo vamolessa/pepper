@@ -91,13 +91,6 @@ pub trait ClientPlatform {
     fn write(&mut self, buf: &[u8]) -> bool;
 }
 
-pub fn debug() -> Box<dyn ServerPlatform> {
-    #[cfg(windows)]
-    return windows::debug();
-    #[cfg(not(windows))]
-    panic!("platform not yet supported (but soon :B)");
-}
-
 pub fn run<A, S, C>()
 where
     A: Args,
@@ -107,5 +100,5 @@ where
     #[cfg(windows)]
     return windows::run::<A, S, C>();
     #[cfg(not(windows))]
-    panic!("platform not yet supported (but soon :B)");
+    panic!("platform not yet supported (soon :D)");
 }
