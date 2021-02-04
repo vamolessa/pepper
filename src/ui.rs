@@ -291,7 +291,7 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, client_view: &ClientView, has
                 TokenKind::Literal => theme.token_literal,
                 TokenKind::String => theme.token_string,
                 TokenKind::Comment => theme.token_comment,
-                TokenKind::Text => theme.token_whitespace,
+                TokenKind::Text => theme.token_text,
                 TokenKind::Whitespace => theme.token_whitespace,
             };
 
