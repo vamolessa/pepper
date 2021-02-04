@@ -1,9 +1,12 @@
-use std::{borrow::Cow, path::Path};
+use std::{borrow::Cow, path::Path, str::FromStr};
 
 use crate::{
     buffer::Buffer,
     client::TargetClient,
-    command::{BuiltinCommand, CommandContext, CommandManager, CommandOperation, CompletionSource},
+    command::{
+        BuiltinCommand, CommandArgs, CommandContext, CommandManager, CommandOperation,
+        CompletionSource,
+    },
     editor::Editor,
     editor::StatusMessageKind,
     navigation_history::NavigationHistory,
@@ -18,20 +21,49 @@ pub fn register_all(commands: &mut CommandManager) {
     }
 
     macro_rules! expect_empty_args {
-        ($ctx:expr) => {
-            if $ctx.args.next().is_some() {
+        ($args:expr) => {
+            if $args.next().is_some() {
                 return Err(Cow::Borrowed("too many arguments were passed to command"));
             }
         };
     }
 
     macro_rules! expect_args {
-        ($ctx:expr, $($arg:ident),*) => {
-            $(let $arg = match $ctx.args.next() {
+        ($args:expr, $($arg:ident),*) => {
+            $(let $arg = match $args.next() {
                 Some(arg) => arg,
                 None => return Err(Cow::Borrowed("too few arguments were passed to command")),
             };)*
         }
+    }
+
+    macro_rules! parse_command_args {
+        ($args:expr, $($arg_name:ident : $arg_type:ty,)*) => {
+            $(let mut $arg_name = None;)*
+            let mut last_args_state = $args.clone();
+            while let Some(arg) in $args.next() {
+                if !arg.starts_with('-') {
+                    $args = last_args_state;
+                    break;
+                }
+                match &arg[..1] {
+                    $(stringify!($arg_name) => match FromCommandArgs::from_command_args(&mut $args) {
+                        Some(arg) => $arg_name = Some(arg),
+                        None => return Err(concat!("no value provided for argument '", stringify!($arg_name), "'")),
+                    })*
+                }
+                last_args_state = $args.clone();
+            }
+        }
+    }
+
+    macro_rules! require_arg {
+        ($arg:expr) => {
+            match $arg {
+                Some(arg) => arg,
+                None => return Err(concat!("argument '", stringify!($arg), "' is required")),
+            }
+        };
     }
 
     commands.register_builtin(BuiltinCommand {
@@ -40,7 +72,7 @@ pub fn register_all(commands: &mut CommandManager) {
         help: "quits this client. append a '!' to force quit",
         completion_sources: CompletionSource::None as _,
         func: |mut ctx| {
-            expect_empty_args!(ctx);
+            expect_empty_args!(ctx.args);
             if ctx.bang || !any_buffer_needs_save(ctx.editor) {
                 Ok(Some(CommandOperation::Quit))
             } else {
@@ -55,7 +87,7 @@ pub fn register_all(commands: &mut CommandManager) {
         help: "quits all clients. append a '!' to force quit all",
         completion_sources: CompletionSource::None as _,
         func: |mut ctx| {
-            expect_empty_args!(ctx);
+            expect_empty_args!(ctx.args);
             if ctx.bang || !any_buffer_needs_save(ctx.editor) {
                 Ok(Some(CommandOperation::QuitAll))
             } else {
@@ -98,7 +130,7 @@ pub fn register_all(commands: &mut CommandManager) {
         help: "load a source file and execute its commands",
         completion_sources: CompletionSource::None as _,
         func: |mut ctx| {
-            expect_args!(ctx, source);
+            expect_args!(ctx.args, source);
             todo!("source {}", source);
         },
     });
@@ -109,7 +141,45 @@ pub fn register_all(commands: &mut CommandManager) {
         help: "open a buffer for editting",
         completion_sources: CompletionSource::None as _,
         func: |mut ctx| {
-            expect_args!(ctx, path);
+            expect_args!(ctx.args, path);
+
+            let target_client = TargetClient(ctx.client_index);
+            NavigationHistory::save_client_snapshot(
+                ctx.clients,
+                target_client,
+                &ctx.editor.buffer_views,
+            );
+
+            let path = Path::new(path);
+            let buffer_view_handle = ctx
+                .editor
+                .buffer_views
+                .buffer_view_handle_from_path(
+                    target_client,
+                    &mut ctx.editor.buffers,
+                    &mut ctx.editor.word_database,
+                    &ctx.editor.current_directory,
+                    path,
+                    None, // TODO: implement line_index
+                    &mut ctx.editor.events,
+                )
+                .unwrap();
+            ctx.clients.set_buffer_view_handle(
+                &mut ctx.editor,
+                target_client,
+                Some(buffer_view_handle),
+            );
+            Ok(None)
+        },
+    });
+
+    commands.register_builtin(BuiltinCommand {
+        name: "close",
+        alias: None,
+        help: "open a buffer for editting",
+        completion_sources: CompletionSource::None as _,
+        func: |mut ctx| {
+            expect_args!(ctx.args, path);
 
             let target_client = TargetClient(ctx.client_index);
             NavigationHistory::save_client_snapshot(

@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, str::FromStr};
 
 use crate::{
     client::ClientManager,
@@ -172,6 +172,7 @@ fn parse_command(text: &str) -> Result<(&str, bool, CommandArgs), CommandParseEr
     Ok((command, bang, CommandArgs { rest }))
 }
 
+#[derive(Clone)]
 pub struct CommandArgs<'a> {
     rest: &'a str,
 }
@@ -199,6 +200,28 @@ impl<'a> Iterator for CommandArgs<'a> {
                 self.rest = rest;
                 Some(arg)
             }
+        }
+    }
+}
+
+pub trait FromCommandArgs<'a>: Sized {
+    fn from_command_args(args: &'a mut CommandArgs<'a>) -> Option<Self>;
+}
+impl<'a> FromCommandArgs<'a> for () {
+    fn from_command_args(_: &'a mut CommandArgs<'a>) -> Option<Self> {
+        Some(())
+    }
+}
+impl<'a> FromCommandArgs<'a> for &'a str {
+    fn from_command_args(args: &'a mut CommandArgs<'a>) -> Option<Self> {
+        args.next()
+    }
+}
+impl<'a> FromCommandArgs<'a> for usize {
+    fn from_command_args(args: &'a mut CommandArgs<'a>) -> Option<Self> {
+        match args.next()?.parse() {
+            Ok(arg) => Some(arg),
+            Err(_) => None,
         }
     }
 }
