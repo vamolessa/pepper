@@ -57,6 +57,7 @@ pub fn set_title(buf: &mut Vec<u8>, title: &str) {
     buf.extend_from_slice(b"\x07");
 }
 
+// TODO: remove this since it seems that we don't use it
 #[inline]
 pub fn clear_all(buf: &mut Vec<u8>) {
     buf.extend_from_slice(b"\x1B[2J");

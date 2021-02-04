@@ -110,7 +110,6 @@ impl State {
                     _ => (),
                 }
             }
-            Key::F(4) => return Some(ModeOperation::Quit), // TODO: hack to close the editor until we get command mode working
             Key::Char(':') => Mode::change_to(editor, clients, target, ModeKind::Command),
             Key::Char('g') => match keys.next(&editor.buffered_keys) {
                 Key::None => return Some(ModeOperation::Pending),
