@@ -1041,7 +1041,7 @@ where
     pending_events.push(ClientEvent::Resize(width, height));
     application.on_events(&mut state, &pending_events);
 
-    'main_loop: loop {
+    loop {
         let wait_handle_index = match wait_for_multiple_objects(&wait_handles, None) {
             Some(i) => i,
             _ => continue,

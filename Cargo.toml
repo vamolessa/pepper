@@ -18,7 +18,6 @@ path = "src/main.rs"
 
 [dependencies]
 argh = "0.1"
-mlua = { version = "0.4", features = [ "vendored", "lua54" ] }
 fuzzy-matcher = "0.3"
 
 [target.'cfg(windows)'.dependencies]
