@@ -20,41 +20,34 @@ pub fn register_all(commands: &mut CommandManager) {
         editor.buffers.iter().any(|b| b.needs_save())
     }
 
-    macro_rules! expect_empty_args {
-        ($args:expr) => {
-            if $args.next().is_some() {
-                return Err(Cow::Borrowed("too many arguments were passed to command"));
-            }
-        };
-    }
-
-    macro_rules! parse_command_args {
-        ($args:expr, $($arg_name:ident : $arg_type:ty,)*) => {
-            $(let mut $arg_name = None;)*
-            let mut last_args_state = $args.clone();
-            while let Some(arg) in $args.next() {
-                if !arg.starts_with('-') {
-                    $args = last_args_state;
-                    break;
+    macro_rules! parse_switches {
+        ($args:expr, $($name:ident,)*) => {
+            $(let mut $name = false;)*
+            for switch in $args.switches() {
+                let switch = switch.as_str(&$args);
+                match switch {
+                    $(stringify!($name) => $name = true,)*
+                    _ => return Err(format!("invalid switch '{}'", switch).into())
                 }
-                match &arg[..1] {
-                    $(stringify!($arg_name) => match FromCommandArgs::from_command_args(&mut $args) {
-                        Some(arg) => $arg_name = Some(arg),
-                        None => return Err(concat!("no value provided for argument '", stringify!($arg_name), "'")),
-                    })*
-                }
-                last_args_state = $args.clone();
             }
         }
     }
 
-    macro_rules! require_arg {
-        ($arg:expr) => {
-            match $arg {
-                Some(arg) => arg,
-                None => return Err(concat!("argument '", stringify!($arg), "' is required")),
+    macro_rules! parse_options {
+        ($args:expr, $($name:ident,)*) => {
+            $(let mut $name = None;)*
+            for (key, value) in $args.options() {
+                let key = key.as_str(&$args);
+                let value = value.as_str(&$args);
+                match key {
+                    $(stringify!($name) => $name = Some(value),)*
+                    _ => {
+                        drop(value);
+                        return Err(format!("invalid option '{}'", key).into());
+                    }
+                }
             }
-        };
+        }
     }
 
     commands.register_builtin(BuiltinCommand {
@@ -64,7 +57,9 @@ pub fn register_all(commands: &mut CommandManager) {
         completion_sources: CompletionSource::None as _,
         params: &[],
         func: |ctx| {
-            // TODO: check empty args
+            parse_switches!(ctx.args,);
+            parse_options!(ctx.args,);
+
             if ctx.bang || !any_buffer_needs_save(ctx.editor) {
                 Ok(Some(CommandOperation::Quit))
             } else {
@@ -80,7 +75,9 @@ pub fn register_all(commands: &mut CommandManager) {
         completion_sources: CompletionSource::None as _,
         params: &[],
         func: |ctx| {
-            // TODO: check empty args
+            parse_switches!(ctx.args,);
+            parse_options!(ctx.args,);
+
             if ctx.bang || !any_buffer_needs_save(ctx.editor) {
                 Ok(Some(CommandOperation::QuitAll))
             } else {
@@ -96,26 +93,22 @@ pub fn register_all(commands: &mut CommandManager) {
         completion_sources: CompletionSource::None as _,
         params: &[],
         func: |ctx| {
-            let mut w = ctx.editor.status_bar.write(StatusMessageKind::Info);
-            for arg in ctx.args.values() {
-                w.str(arg.as_str(ctx.args));
-                w.str(" ");
-            }
-            Ok(None)
-        },
-    });
+            parse_switches!(ctx.args, stderr,);
+            parse_options!(ctx.args,);
 
-    commands.register_builtin(BuiltinCommand {
-        name: "eprint",
-        alias: None,
-        help: "prints a message to the server's stderr",
-        completion_sources: CompletionSource::None as _,
-        params: &[],
-        func: |ctx| {
-            for arg in ctx.args.values() {
-                eprint!("{}", arg.as_str(ctx.args));
+            if stderr {
+                for arg in ctx.args.values() {
+                    eprint!("{}", arg.as_str(ctx.args));
+                }
+                eprintln!();
+            } else {
+                let mut w = ctx.editor.status_bar.write(StatusMessageKind::Info);
+                for arg in ctx.args.values() {
+                    w.str(arg.as_str(ctx.args));
+                    w.str(" ");
+                }
             }
-            eprintln!();
+
             Ok(None)
         },
     });
@@ -127,6 +120,9 @@ pub fn register_all(commands: &mut CommandManager) {
         completion_sources: CompletionSource::None as _,
         params: &[],
         func: |ctx| {
+            parse_switches!(ctx.args,);
+            parse_options!(ctx.args,);
+
             //expect_args!(ctx.args, source);
             todo!();
         },
@@ -139,6 +135,9 @@ pub fn register_all(commands: &mut CommandManager) {
         completion_sources: CompletionSource::None as _,
         params: &[],
         func: |ctx| {
+            parse_switches!(ctx.args,);
+            parse_options!(ctx.args,);
+
             let target_client = TargetClient(ctx.client_index);
             NavigationHistory::save_client_snapshot(
                 ctx.clients,
