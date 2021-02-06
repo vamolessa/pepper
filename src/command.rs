@@ -279,7 +279,7 @@ impl CommandManager {
                     return Err(CommandParseError::InvalidArgument(error_index));
                 }
                 Some((TokenKind::Unterminated, s)) => {
-                    let error_index = error_index(text, s);
+                    let error_index = error_index(text, s) - 1;
                     return Err(CommandParseError::UnterminatedArgument(error_index));
                 }
                 None => break,
@@ -327,7 +327,7 @@ mod tests {
         };
         commands.register_builtin(BuiltinCommand {
             name: "command-name",
-            alias: None,
+            alias: Some("c"),
             help: "",
             completion_sources: CompletionSource::None as _,
             params: &[],
@@ -416,29 +416,30 @@ mod tests {
         }
     }
 
-    /*
     #[test]
     fn command_parsing_fail() {
+        let mut commands = create_commands();
+        
         macro_rules! assert_fail {
-            ($text:expr, $err:pat => $value:ident == $expect:expr) => {
-                match parse_command($text) {
-                    Ok(_) => panic!("command parsed successfuly"),
-                    Err($err) => assert_eq!($expect, $value),
+            ($command:expr, $error_pattern:pat => $value:ident == $expect:expr) => {
+                let result = commands.parse($command);
+                match result {
+                    Ok(_) => panic!("command parsed successfully"),
+                    Err($error_pattern) => assert_eq!($expect, $value),
                     Err(_) => panic!("other error occurred"),
                 }
-            };
+            }
         }
 
         assert_fail!("", CommandParseError::InvalidCommandName(i) => i == 0);
         assert_fail!("   ", CommandParseError::InvalidCommandName(i) => i == 3);
         assert_fail!(" !", CommandParseError::InvalidCommandName(i) => i == 1);
-        assert_fail!("  'aa'", CommandParseError::InvalidCommandName(i) => i == 2);
-        assert_fail!("  \"aa\"", CommandParseError::InvalidCommandName(i) => i == 2);
-        assert_fail!("\"aa\"", CommandParseError::InvalidCommandName(i) => i == 0);
+        assert_fail!("!  'aa'", CommandParseError::InvalidCommandName(i) => i == 0);
+        assert_fail!("c -o=", CommandParseError::InvalidOptionValue(i) => i == 4);
+        assert_fail!("  a \"aa\"", CommandParseError::CommandNotFound(i) => i == 2);
 
         assert_fail!("c! 'abc", CommandParseError::UnterminatedArgument(i) => i == 3);
         assert_fail!("c! '", CommandParseError::UnterminatedArgument(i) => i == 3);
         assert_fail!("c! \"'", CommandParseError::UnterminatedArgument(i) => i == 3);
     }
-    */
 }
