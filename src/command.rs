@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{collections::VecDeque, fmt};
 
 use crate::{
     client::ClientManager,
@@ -6,6 +6,8 @@ use crate::{
 };
 
 mod builtin;
+
+pub const HISTORY_CAPACITY: usize = 10;
 
 pub enum CommandParseError {
     InvalidCommandName(usize),
@@ -60,6 +62,7 @@ pub struct BuiltinCommand {
 pub struct CommandManager {
     builtin_commands: Vec<BuiltinCommand>,
     parsed_args: CommandArgs,
+    history: VecDeque<String>,
 }
 
 impl CommandManager {
@@ -67,6 +70,7 @@ impl CommandManager {
         let mut this = Self {
             builtin_commands: Vec::new(),
             parsed_args: CommandArgs::default(),
+            history: VecDeque::with_capacity(HISTORY_CAPACITY),
         };
         builtin::register_all(&mut this);
         this
@@ -74,6 +78,33 @@ impl CommandManager {
 
     pub fn register_builtin(&mut self, command: BuiltinCommand) {
         self.builtin_commands.push(command);
+    }
+
+    pub fn history_len(&self) -> usize {
+        self.history.len()
+    }
+
+    pub fn history_entry(&self, index: usize) -> &str {
+        match self.history.get(index) {
+            Some(e) => e.as_str(),
+            None => "",
+        }
+    }
+
+    pub fn add_to_history(&mut self, entry: &str) {
+        if entry.is_empty() {
+            return;
+        }
+
+        let mut s = if self.history.len() == self.history.capacity() {
+            self.history.pop_front().unwrap()
+        } else {
+            String::new()
+        };
+
+        s.clear();
+        s.push_str(entry);
+        self.history.push_back(s);
     }
 
     pub fn eval_from_read_line(
@@ -302,7 +333,9 @@ impl CommandManager {
                                 }
                                 Some((TokenKind::Unterminated, s)) => {
                                     let error_index = error_index(text, s);
-                                    return Err(CommandParseError::UnterminatedArgument(error_index));
+                                    return Err(CommandParseError::UnterminatedArgument(
+                                        error_index,
+                                    ));
                                 }
                                 Some((_, s)) => {
                                     let error_index = error_index(text, s);
