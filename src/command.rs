@@ -71,11 +71,7 @@ impl CommandManager {
     ) -> CommandResult {
         let command = editor.read_line.input();
         let result = editor.commands.parse(command);
-        let mut args = CommandArgs::default();
-        std::mem::swap(&mut args, &mut editor.commands.parsed_args);
-        let result = Self::eval_parsed(editor, clients, client_index, result);
-        std::mem::swap(&mut args, &mut editor.commands.parsed_args);
-        result
+        Self::eval_parsed(editor, clients, client_index, result)
     }
 
     pub fn eval(
