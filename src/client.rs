@@ -3,7 +3,7 @@ use argh::FromArgValue;
 use crate::{
     buffer_view::BufferViewHandle,
     editor::Editor,
-    editor_event::EditorEvent,
+    editor_event::{EditorEvent, EditorEventQueue},
     navigation_history::NavigationHistory,
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
 };
@@ -70,6 +70,24 @@ impl Client {
 
     pub fn previous_buffer_view_handle(&self) -> Option<BufferViewHandle> {
         self.previous_buffer_view_handle
+    }
+
+    pub fn set_buffer_view_handle(
+        &mut self,
+        editor: &mut Editor,
+        handle: Option<BufferViewHandle>,
+    ) {
+        if self.current_buffer_view_handle != handle {
+            self.previous_buffer_view_handle = self.current_buffer_view_handle;
+            self.current_buffer_view_handle = handle;
+        }
+
+        if let Some(handle) = handle
+            .and_then(|h| editor.buffer_views.get(h))
+            .map(|v| v.buffer_handle)
+        {
+            editor.events.enqueue(EditorEvent::BufferOpen { handle });
+        }
     }
 
     pub fn update_view(&mut self, editor: &Editor, picker_height: u16) {
@@ -163,7 +181,7 @@ impl ClientManager {
         changed
     }
 
-    // TODO: maybe move it to Editor
+    // TODO: remove
     pub fn set_buffer_view_handle(
         &mut self,
         editor: &mut Editor,

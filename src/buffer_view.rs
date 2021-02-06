@@ -2,6 +2,7 @@ use std::{
     error::Error,
     fmt,
     path::{Path, PathBuf},
+    str::FromStr,
 };
 
 use crate::{
@@ -362,6 +363,15 @@ impl Error for BufferViewError {}
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub struct BufferViewHandle(usize);
+impl FromStr for BufferViewHandle {
+    type Err = ();
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.parse() {
+            Ok(i) => Ok(Self(i)),
+            Err(_) => Err(()),
+        }
+    }
+}
 
 #[derive(Default)]
 pub struct BufferViewCollection {
@@ -383,7 +393,7 @@ impl BufferViewCollection {
         handle
     }
 
-    pub fn defer_remove_where<F>(
+    pub fn defer_remove_buffer_where<F>(
         &mut self,
         buffers: &mut BufferCollection,
         events: &mut EditorEventQueue,
@@ -770,7 +780,7 @@ impl BufferViewCollection {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     struct TestContext {
         pub word_database: WordDatabase,
         pub events: EditorEventQueue,

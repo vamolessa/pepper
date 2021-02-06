@@ -4,6 +4,7 @@ use std::{
     io,
     ops::RangeBounds,
     path::{Path, PathBuf},
+    str::FromStr,
 };
 
 use crate::{
@@ -1149,6 +1150,15 @@ impl Buffer {
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct BufferHandle(pub usize);
+impl FromStr for BufferHandle {
+    type Err = ();
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.parse() {
+            Ok(i) => Ok(Self(i)),
+            Err(_) => Err(()),
+        }
+    }
+}
 
 #[derive(Default)]
 pub struct BufferCollection {

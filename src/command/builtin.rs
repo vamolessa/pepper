@@ -1,7 +1,7 @@
-use std::{borrow::Cow, path::Path};
+use std::path::Path;
 
 use crate::{
-    buffer::Buffer,
+    buffer::{Buffer, BufferHandle},
     client::TargetClient,
     command::{
         BuiltinCommand, CommandArgs, CommandContext, CommandManager, CommandOperation,
@@ -34,13 +34,23 @@ pub fn register_all(commands: &mut CommandManager) {
     }
 
     macro_rules! parse_options {
-        ($ctx:expr, $($name:ident,)*) => {
+        ($ctx:expr, $($name:ident : $type:ty,)*) => {
             $(let mut $name = None;)*
             for (key, value) in $ctx.args.options() {
                 let key = key.as_str($ctx.args);
-                let value = value.as_str($ctx.args);
                 match key {
-                    $(stringify!($name) => $name = Some(value),)*
+                    $(stringify!($name) => {
+                        let value = value.as_str($ctx.args);
+                        $name = match value.parse::<$type>() {
+                            Ok(value) => Some(value),
+                            Err(_) => return $ctx.error(format_args!(
+                                "could not convert option '{}' value '{}' to {}",
+                                key,
+                                value,
+                                std::any::type_name::<$type>()
+                            )),
+                        }
+                    })*
                     _ => {
                         drop(value);
                         return $ctx.error(format_args!("invalid option '{}'", key));
@@ -151,6 +161,7 @@ pub fn register_all(commands: &mut CommandManager) {
                 &ctx.editor.buffer_views,
             );
 
+            let mut last_buffer_view_handle = None;
             for path in ctx.args.values() {
                 let mut path = path.as_str(ctx.args);
 
@@ -163,7 +174,7 @@ pub fn register_all(commands: &mut CommandManager) {
                     }
                 }
 
-                let buffer_view_handle = ctx
+                let handle = ctx
                     .editor
                     .buffer_views
                     .buffer_view_handle_from_path(
@@ -176,11 +187,12 @@ pub fn register_all(commands: &mut CommandManager) {
                         &mut ctx.editor.events,
                     )
                     .unwrap();
-                ctx.clients.set_buffer_view_handle(
-                    ctx.editor,
-                    target_client,
-                    Some(buffer_view_handle),
-                );
+                last_buffer_view_handle = Some(handle);
+            }
+
+            if let Some(handle) = last_buffer_view_handle {
+                ctx.clients
+                    .set_buffer_view_handle(ctx.editor, target_client, Some(handle));
             }
 
             None
@@ -188,22 +200,109 @@ pub fn register_all(commands: &mut CommandManager) {
     });
 
     commands.register_builtin(BuiltinCommand {
-        name: "close",
-        alias: None,
-        help: "open a buffer for editting",
+        name: "save",
+        alias: Some("s"),
+        help: "save buffer",
         completion_sources: CompletionSource::None as _,
         params: &[],
-        func: |_| {
-            todo!();
+        func: |mut ctx| {
+            parse_switches!(ctx,);
+            parse_options!(ctx, handle: BufferHandle,);
+
+            let values = ctx.args.values();
+            if values.is_empty() {
+                let client_index = ctx.client_index?;
+                let client = ctx.clients.get_mut(TargetClient(client_index))?;
+                let handle = match client.buffer_view_handle() {
+                    Some(handle) => handle,
+                    None => return ctx.error(format_args!("no buffer opened")),
+                };
+                let handle = ctx.editor.buffer_views.get(handle)?.buffer_handle;
+                None
+            } else {
+                todo!();
+            }
+        },
+    });
+
+    commands.register_builtin(BuiltinCommand {
+        name: "close",
+        alias: Some("c"),
+        help: "close buffer",
+        completion_sources: CompletionSource::None as _,
+        params: &[],
+        func: |mut ctx| {
+            parse_switches!(ctx,);
+            parse_options!(ctx, handle: BufferHandle,);
+
+            let handle = match handle {
+                Some(handle) => handle,
+                None => {
+                    let client_index = ctx.client_index?;
+                    let client = ctx.clients.get_mut(TargetClient(client_index))?;
+                    let handle = client.buffer_view_handle()?;
+                    ctx.editor.buffer_views.get(handle)?.buffer_handle
+                }
+            };
+
+            if !ctx.bang && ctx.editor.buffers.get(handle)?.needs_save() {
+                return ctx.error(format_args!("{}", UNSAVED_CHANGES_ERROR));
+            }
+
+            let clients = ctx.clients;
+            let editor = ctx.editor;
+            for client in clients.iter_mut() {
+                let maybe_buffer_handle = client
+                    .buffer_view_handle()
+                    .and_then(|h| editor.buffer_views.get(h))
+                    .map(|v| v.buffer_handle);
+                if maybe_buffer_handle == Some(handle) {
+                    client.set_buffer_view_handle(editor, None);
+                }
+            }
+
+            editor
+                .status_bar
+                .write(StatusMessageKind::Info)
+                .str("closed buffer");
+            None
+        },
+    });
+
+    commands.register_builtin(BuiltinCommand {
+        name: "close-all",
+        alias: Some("ca"),
+        help: "close all buffers",
+        completion_sources: CompletionSource::None as _,
+        params: &[],
+        func: |mut ctx| {
+            parse_switches!(ctx,);
+            parse_options!(ctx,);
+
+            if !ctx.bang && ctx.editor.buffers.iter().any(Buffer::needs_save) {
+                return ctx.error(format_args!("{}", UNSAVED_CHANGES_ERROR));
+            }
+
+            let buffer_count = ctx.editor.buffers.iter().count();
+            ctx.editor.buffer_views.defer_remove_buffer_where(
+                &mut ctx.editor.buffers,
+                &mut ctx.editor.events,
+                |_| true,
+            );
+            for client in ctx.clients.iter_mut() {
+                client.set_buffer_view_handle(ctx.editor, None);
+            }
+            ctx.editor
+                .status_bar
+                .write(StatusMessageKind::Info)
+                .fmt(format_args!("{} buffers closed", buffer_count));
+            None
         },
     });
 }
 
 // buffer:
-// - open
 // - save
-// - close[!]
-// - close-all[!]
 // - reload[!]
 // - reload-all[!]
 //
