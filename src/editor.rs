@@ -298,7 +298,7 @@ impl Editor {
 
         for line in text.lines() {
             let line = line.trim();
-            if line.is_empty() {
+            if line.is_empty() || line.starts_with('#') {
                 continue;
             }
 
