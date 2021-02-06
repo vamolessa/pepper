@@ -35,18 +35,26 @@ impl ModeState for State {
                 keys.put_back();
                 match keys.next(&editor.buffered_keys) {
                     Key::Ctrl('n') | Key::Ctrl('j') => {
-                        this.history_index = editor
-                            .commands
-                            .history_len()
-                            .saturating_sub(1)
-                            .min(this.history_index + 1);
-                        let entry = editor.commands.history_entry(this.history_index);
-                        editor.read_line.set_input(entry);
+                        if editor.picker.len() == 0 {
+                            this.history_index = editor
+                                .commands
+                                .history_len()
+                                .saturating_sub(1)
+                                .min(this.history_index + 1);
+                            let entry = editor.commands.history_entry(this.history_index);
+                            editor.read_line.set_input(entry);
+                        } else {
+                            // TODO: autocomplete
+                        }
                     }
                     Key::Ctrl('p') | Key::Ctrl('k') => {
+                        if editor.picker.len() == 0 {
                         this.history_index = this.history_index.saturating_sub(1);
                         let entry = editor.commands.history_entry(this.history_index);
                         editor.read_line.set_input(entry);
+                        } else {
+                            // TODO: autocomplete
+                        }
                     }
                     _ => (),
                 }

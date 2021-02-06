@@ -64,7 +64,7 @@ impl ModeState for State {
                 }
                 Key::Ctrl('e') | Key::End => {
                     let cursor = editor.picker.cursor() as isize;
-                    let entry_count = editor.picker.height(isize::MAX as _) as isize;
+                    let entry_count = editor.picker.len() as isize;
                     editor.picker.move_cursor(entry_count - cursor - 1);
                 }
                 _ => editor

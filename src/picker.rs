@@ -52,6 +52,10 @@ impl Picker {
         self.filtered_entries.len().min(max_height)
     }
 
+    pub fn len(&self) -> usize {
+        self.filtered_entries.len()
+    }
+
     pub fn move_cursor(&mut self, offset: isize) {
         if self.filtered_entries.is_empty() {
             return;
@@ -219,7 +223,7 @@ impl Picker {
         }
     }
 
-    pub fn entries<'a, W>(&'a self, words: &'a W) -> impl 'a + Iterator<Item = PickerEntry<'a>>
+    pub fn entries<'a, W>(&'a self, words: &'a W) -> impl 'a + ExactSizeIterator<Item = PickerEntry<'a>>
     where
         W: WordCollection,
     {

@@ -3,7 +3,7 @@ use crate::platform::Key;
 use crate::{
     buffer_position::BufferPosition,
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
-    client::{TargetClient, ClientManager},
+    client::{ClientManager, TargetClient},
     editor::{Editor, KeysIterator},
     mode::{Mode, ModeKind, ModeOperation, ModeState},
     register::AUTO_MACRO_REGISTER,
@@ -46,7 +46,10 @@ impl ModeState for State {
         match key {
             Key::Esc => {
                 let buffer_view = editor.buffer_views.get(handle)?;
-                editor.buffers.get_mut(buffer_view.buffer_handle)?.commit_edits();
+                editor
+                    .buffers
+                    .get_mut(buffer_view.buffer_handle)?
+                    .commit_edits();
                 Mode::change_to(editor, clients, target, ModeKind::default());
                 return None;
             }
@@ -86,8 +89,7 @@ impl ModeState for State {
                 buf[0] = b'\n';
 
                 for i in 0..cursor_count {
-                    let position =
-                        editor.buffer_views.get(handle)?.cursors[i].position;
+                    let position = editor.buffer_views.get(handle)?.cursors[i].position;
                     let buffer = editor.buffers.get(buffer_handle)?;
 
                     let mut len = 1;
@@ -194,7 +196,7 @@ impl ModeState for State {
                 >= word.end_position().column_byte_index.saturating_sub(1)
         {
             editor.picker.filter(&mut editor.word_database, word.text);
-            if editor.picker.height(usize::MAX) == 1 {
+            if editor.picker.len() == 1 {
                 editor.picker.clear_filtered();
             }
         } else {
