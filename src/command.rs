@@ -47,14 +47,14 @@ pub struct BuiltinCommand {
 
 pub struct CommandManager {
     builtin_commands: Vec<BuiltinCommand>,
-    parsed_arg: CommandArgs,
+    parsed_args: CommandArgs,
 }
 
 impl CommandManager {
     pub fn new() -> Self {
         let mut this = Self {
             builtin_commands: Vec::new(),
-            parsed_arg: CommandArgs::default(),
+            parsed_args: CommandArgs::default(),
         };
         builtin::register_all(&mut this);
         this
@@ -72,9 +72,9 @@ impl CommandManager {
         let command = editor.read_line.input();
         let result = editor.commands.parse(command);
         let mut args = CommandArgs::default();
-        std::mem::swap(&mut args, &mut editor.commands.parsed_arg);
+        std::mem::swap(&mut args, &mut editor.commands.parsed_args);
         let result = Self::eval_parsed(editor, clients, client_index, result);
-        std::mem::swap(&mut args, &mut editor.commands.parsed_arg);
+        std::mem::swap(&mut args, &mut editor.commands.parsed_args);
         result
     }
 
@@ -97,7 +97,7 @@ impl CommandManager {
         match parsed {
             Ok((command, bang)) => {
                 let mut args = CommandArgs::default();
-                std::mem::swap(&mut args, &mut editor.commands.parsed_arg);
+                std::mem::swap(&mut args, &mut editor.commands.parsed_args);
                 let ctx = CommandContext {
                     editor,
                     clients,
@@ -106,7 +106,7 @@ impl CommandManager {
                     args: &args,
                 };
                 let result = command(ctx);
-                std::mem::swap(&mut args, &mut editor.commands.parsed_arg);
+                std::mem::swap(&mut args, &mut editor.commands.parsed_args);
                 result
             }
             // TODO: point error location
@@ -203,8 +203,7 @@ impl CommandManager {
             token.as_ptr() as usize - text.as_ptr() as usize
         }
 
-        self.parsed_arg.texts.clear();
-        self.parsed_arg.args.clear();
+        self.parsed_args.clear();
 
         let mut tokens = TokenIterator { rest: text }.peekable();
 
@@ -243,11 +242,11 @@ impl CommandManager {
         loop {
             match tokens.next() {
                 Some((TokenKind::Text, s)) => {
-                    let range = push_str_and_get_range(&mut self.parsed_arg.texts, s);
-                    self.parsed_arg.args.push(CommandArg::Value(range));
+                    let range = push_str_and_get_range(&mut self.parsed_args.texts, s);
+                    self.parsed_args.values.push(range);
                 }
                 Some((TokenKind::Flag, s)) => {
-                    let flag_range = push_str_and_get_range(&mut self.parsed_arg.texts, s);
+                    let flag_range = push_str_and_get_range(&mut self.parsed_args.texts, s);
                     match tokens.peek() {
                         Some((TokenKind::Equals, equals_slice)) => {
                             let equals_index = error_index(text, equals_slice);
@@ -255,10 +254,8 @@ impl CommandManager {
                             match tokens.next() {
                                 Some((TokenKind::Text, s)) => {
                                     let value_range =
-                                        push_str_and_get_range(&mut self.parsed_arg.texts, s);
-                                    self.parsed_arg
-                                        .args
-                                        .push(CommandArg::Option(flag_range, value_range));
+                                        push_str_and_get_range(&mut self.parsed_args.texts, s);
+                                    self.parsed_args.options.push((flag_range, value_range));
                                 }
                                 Some((_, s)) => {
                                     let error_index = error_index(text, s);
@@ -271,7 +268,7 @@ impl CommandManager {
                                 }
                             }
                         }
-                        _ => self.parsed_arg.args.push(CommandArg::Switch(flag_range)),
+                        _ => self.parsed_args.switches.push(flag_range),
                     }
                 }
                 Some((TokenKind::Equals, s)) | Some((TokenKind::Bang, s)) => {
@@ -300,19 +297,31 @@ impl CommandTextRange {
         &args.texts[(self.from as usize)..(self.to as usize)]
     }
 }
-pub enum CommandArg {
-    Value(CommandTextRange),
-    Switch(CommandTextRange),
-    Option(CommandTextRange, CommandTextRange),
-}
 #[derive(Default)]
 pub struct CommandArgs {
     texts: String,
-    args: Vec<CommandArg>,
+    values: Vec<CommandTextRange>,
+    switches: Vec<CommandTextRange>,
+    options: Vec<(CommandTextRange, CommandTextRange)>,
 }
 impl CommandArgs {
-    pub fn iter(&self) -> impl Iterator<Item = &CommandArg> {
-        self.args.iter()
+    pub fn values(&self) -> &[CommandTextRange] {
+        &self.values
+    }
+
+    pub fn switches(&self) -> &[CommandTextRange] {
+        &self.switches
+    }
+
+    pub fn options(&self) -> &[(CommandTextRange, CommandTextRange)] {
+        &self.options
+    }
+
+    fn clear(&mut self) {
+        self.texts.clear();
+        self.values.clear();
+        self.switches.clear();
+        self.options.clear();
     }
 }
 
@@ -323,7 +332,7 @@ mod tests {
     fn create_commands() -> CommandManager {
         let mut commands = CommandManager {
             builtin_commands: Vec::new(),
-            parsed_arg: CommandArgs::default(),
+            parsed_args: CommandArgs::default(),
         };
         commands.register_builtin(BuiltinCommand {
             name: "command-name",
@@ -359,67 +368,58 @@ mod tests {
 
     #[test]
     fn arg_parsing() {
-        macro_rules! assert_next {
-            ($args:expr, $iter:expr, $arg_pattern:pat => $checks:expr) => {
-                match $iter.next() {
-                    Some($arg_pattern) => $checks,
-                    Some(_) => panic!("unexpected arg kind"),
-                    None => panic!("no more args"),
-                }
-            };
-        }
-
         fn parse_args<'a>(commands: &'a mut CommandManager, params: &str) -> &'a CommandArgs {
             if let Err(_) = commands.parse(&format!("command-name {}", params)) {
                 panic!("command parse error");
             }
-            &commands.parsed_arg
+            &commands.parsed_args
         }
 
         let mut commands = create_commands();
 
-        {
-            let args = parse_args(&mut commands, "  aaa  bbb  ccc  ");
-            let mut iter = args.iter();
-            assert_next!(args, iter, CommandArg::Value(s) => assert_eq!("aaa", s.as_str(&args)));
-            assert_next!(args, iter, CommandArg::Value(s) => assert_eq!("bbb", s.as_str(&args)));
-            assert_next!(args, iter, CommandArg::Value(s) => assert_eq!("ccc", s.as_str(&args)));
-            assert!(iter.next().is_none());
-        }
-        {
-            let args = parse_args(&mut commands, "  'aaa'  \"bbb\"  ccc  ");
-            let mut iter = args.iter();
-            assert_next!(args, iter, CommandArg::Value(s) => assert_eq!("aaa", s.as_str(&args)));
-            assert_next!(args, iter, CommandArg::Value(s) => assert_eq!("bbb", s.as_str(&args)));
-            assert_next!(args, iter, CommandArg::Value(s) => assert_eq!("ccc", s.as_str(&args)));
-            assert!(iter.next().is_none());
-        }
-        {
-            let args = parse_args(&mut commands, "  'aaa'\"bbb\"\"ccc\"ddd  ");
-            let mut iter = args.iter();
-            assert_next!(args, iter, CommandArg::Value(s) => assert_eq!("aaa", s.as_str(&args)));
-            assert_next!(args, iter, CommandArg::Value(s) => assert_eq!("bbb", s.as_str(&args)));
-            assert_next!(args, iter, CommandArg::Value(s) => assert_eq!("ccc", s.as_str(&args)));
-            assert_next!(args, iter, CommandArg::Value(s) => assert_eq!("ddd", s.as_str(&args)));
-            assert!(iter.next().is_none());
-        }
-        {
-            let args = parse_args(&mut commands, "-switch'value'-option=\"option value!\"");
-            let mut iter = args.iter();
-            assert_next!(args, iter, CommandArg::Switch(s) => assert_eq!("switch", s.as_str(&args)));
-            assert_next!(args, iter, CommandArg::Value(s) => assert_eq!("value", s.as_str(&args)));
-            assert_next!(args, iter, CommandArg::Option(k, v) => {
-                assert_eq!("option", k.as_str(&args));
-                assert_eq!("option value!", v.as_str(&args));
-            });
-            assert!(iter.next().is_none());
-        }
+        let args = parse_args(&mut commands, "  aaa  bbb  ccc  ");
+        assert_eq!(3, args.values().len());
+        assert_eq!(0, args.switches().len());
+        assert_eq!(0, args.options().len());
+
+        assert_eq!("aaa", args.values()[0].as_str(&args));
+        assert_eq!("bbb", args.values()[1].as_str(&args));
+        assert_eq!("ccc", args.values()[2].as_str(&args));
+
+        let args = parse_args(&mut commands, "  'aaa'  \"bbb\"  ccc  ");
+        assert_eq!(3, args.values().len());
+        assert_eq!(0, args.switches().len());
+        assert_eq!(0, args.options().len());
+
+        assert_eq!("aaa", args.values()[0].as_str(&args));
+        assert_eq!("bbb", args.values()[1].as_str(&args));
+        assert_eq!("ccc", args.values()[2].as_str(&args));
+
+        let args = parse_args(&mut commands, "  'aaa'\"bbb\"\"ccc\"ddd  ");
+        assert_eq!(4, args.values().len());
+        assert_eq!(0, args.switches().len());
+        assert_eq!(0, args.options().len());
+
+        assert_eq!("aaa", args.values()[0].as_str(&args));
+        assert_eq!("bbb", args.values()[1].as_str(&args));
+        assert_eq!("ccc", args.values()[2].as_str(&args));
+        assert_eq!("ddd", args.values()[3].as_str(&args));
+
+        let args = parse_args(&mut commands, "-switch'value'-option=\"option value!\"");
+        assert_eq!(1, args.values().len());
+        assert_eq!(1, args.switches().len());
+        assert_eq!(1, args.options().len());
+
+        assert_eq!("value", args.values()[0].as_str(&args));
+        assert_eq!("switch", args.switches()[0].as_str(&args));
+        assert_eq!("option", args.options()[0].0.as_str(&args));
+        assert_eq!("option value!", args.options()[0].1.as_str(&args));
     }
 
     #[test]
     fn command_parsing_fail() {
         let mut commands = create_commands();
-        
+
         macro_rules! assert_fail {
             ($command:expr, $error_pattern:pat => $value:ident == $expect:expr) => {
                 let result = commands.parse($command);
@@ -428,7 +428,7 @@ mod tests {
                     Err($error_pattern) => assert_eq!($expect, $value),
                     Err(_) => panic!("other error occurred"),
                 }
-            }
+            };
         }
 
         assert_fail!("", CommandParseError::InvalidCommandName(i) => i == 0);
