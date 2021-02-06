@@ -41,7 +41,7 @@ pub struct Args {
 
     /// load config file at path (repeatable)
     #[argh(option, short = 'c')]
-    config: Vec<std::path::PathBuf>,
+    config: Vec<String>,
 
     /// session name
     #[argh(option, short = 's')]

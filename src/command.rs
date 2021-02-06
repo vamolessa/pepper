@@ -1,23 +1,26 @@
-use std::borrow::Cow;
+use std::fmt;
 
-use crate::{client::ClientManager, editor::Editor};
+use crate::{
+    client::ClientManager,
+    editor::{Editor, StatusBar, StatusMessageKind},
+};
 
 mod builtin;
 
 pub enum CommandParseError {
     InvalidCommandName(usize),
     CommandNotFound(usize),
-    InvalidArgument(usize),
+    InvalidSwitchOrOption(usize),
     InvalidOptionValue(usize),
     UnterminatedArgument(usize),
 }
 
-pub type CommandResult = Result<Option<CommandOperation>, Cow<'static, str>>;
-type CommandFn = fn(CommandContext) -> CommandResult;
+type CommandFn = fn(CommandContext) -> Option<CommandOperation>;
 
 pub enum CommandOperation {
     Quit,
     QuitAll,
+    Error,
 }
 
 #[repr(u8)]
@@ -31,9 +34,18 @@ enum CompletionSource {
 struct CommandContext<'a> {
     editor: &'a mut Editor,
     clients: &'a mut ClientManager,
-    client_index: usize,
+    client_index: Option<usize>,
     bang: bool,
     args: &'a CommandArgs,
+}
+impl<'a> CommandContext<'a> {
+    pub fn error(&mut self, format: fmt::Arguments) -> Option<CommandOperation> {
+        self.editor
+            .status_bar
+            .write(StatusMessageKind::Error)
+            .fmt(format);
+        Some(CommandOperation::Error)
+    }
 }
 
 pub struct BuiltinCommand {
@@ -67,51 +79,86 @@ impl CommandManager {
     pub fn eval_from_read_line(
         editor: &mut Editor,
         clients: &mut ClientManager,
-        client_index: usize,
-    ) -> CommandResult {
+        client_index: Option<usize>,
+    ) -> Option<CommandOperation> {
         let command = editor.read_line.input();
-        let result = editor.commands.parse(command);
-        Self::eval_parsed(editor, clients, client_index, result)
+        match editor.commands.parse(command) {
+            Ok((command, bang)) => Self::eval_parsed(editor, clients, client_index, command, bang),
+            Err(error) => {
+                Self::format_parse_error(&mut editor.status_bar, error, command);
+                Some(CommandOperation::Error)
+            }
+        }
     }
 
     pub fn eval(
         editor: &mut Editor,
         clients: &mut ClientManager,
-        client_index: usize,
+        client_index: Option<usize>,
         command: &str,
-    ) -> CommandResult {
-        let result = editor.commands.parse(command);
-        Self::eval_parsed(editor, clients, client_index, result)
+    ) -> Option<CommandOperation> {
+        match editor.commands.parse(command) {
+            Ok((command, bang)) => Self::eval_parsed(editor, clients, client_index, command, bang),
+            Err(error) => {
+                Self::format_parse_error(&mut editor.status_bar, error, command);
+                Some(CommandOperation::Error)
+            }
+        }
+    }
+
+    fn format_parse_error(status_bar: &mut StatusBar, error: CommandParseError, command: &str) {
+        let mut write = status_bar.write(StatusMessageKind::Error);
+        write.str(command);
+        write.str("\n");
+
+        match error {
+            CommandParseError::InvalidCommandName(i) => write.fmt(format_args!(
+                "{:>index$} invalid command name",
+                '^',
+                index = i + 1
+            )),
+            CommandParseError::CommandNotFound(i) => write.fmt(format_args!(
+                "{:>index$} command command not found",
+                '^',
+                index = i + 1
+            )),
+            CommandParseError::InvalidSwitchOrOption(i) => write.fmt(format_args!(
+                "{:>index$} invalid switch or option",
+                '^',
+                index = i
+            )),
+            CommandParseError::InvalidOptionValue(i) => write.fmt(format_args!(
+                "{:>index$} invalid option value",
+                '^',
+                index = i + 1
+            )),
+            CommandParseError::UnterminatedArgument(i) => write.fmt(format_args!(
+                "{:>index$} unterminated argument",
+                '^',
+                index = i + 1
+            )),
+        }
     }
 
     fn eval_parsed(
         editor: &mut Editor,
         clients: &mut ClientManager,
-        client_index: usize,
-        parsed: Result<(CommandFn, bool), CommandParseError>,
-    ) -> CommandResult {
-        match parsed {
-            Ok((command, bang)) => {
-                let mut args = CommandArgs::default();
-                std::mem::swap(&mut args, &mut editor.commands.parsed_args);
-                let ctx = CommandContext {
-                    editor,
-                    clients,
-                    client_index,
-                    bang,
-                    args: &args,
-                };
-                let result = command(ctx);
-                std::mem::swap(&mut args, &mut editor.commands.parsed_args);
-                result
-            }
-            // TODO: point error location
-            Err(CommandParseError::InvalidCommandName(i)) => Err("invalid command name".into()),
-            Err(CommandParseError::CommandNotFound(i)) => Err("command not found".into()),
-            Err(CommandParseError::InvalidArgument(i)) => Err("invalid argument".into()),
-            Err(CommandParseError::InvalidOptionValue(i)) => Err("invalid option value".into()),
-            Err(CommandParseError::UnterminatedArgument(i)) => Err("unterminated argument".into()),
-        }
+        client_index: Option<usize>,
+        command: CommandFn,
+        bang: bool,
+    ) -> Option<CommandOperation> {
+        let mut args = CommandArgs::default();
+        std::mem::swap(&mut args, &mut editor.commands.parsed_args);
+        let ctx = CommandContext {
+            editor,
+            clients,
+            client_index,
+            bang,
+            args: &args,
+        };
+        let result = command(ctx);
+        std::mem::swap(&mut args, &mut editor.commands.parsed_args);
+        result
     }
 
     fn parse<'a>(&mut self, text: &str) -> Result<(CommandFn, bool), CommandParseError> {
@@ -253,6 +300,10 @@ impl CommandManager {
                                         push_str_and_get_range(&mut self.parsed_args.texts, s);
                                     self.parsed_args.options.push((flag_range, value_range));
                                 }
+                                Some((TokenKind::Unterminated, s)) => {
+                                    let error_index = error_index(text, s);
+                                    return Err(CommandParseError::UnterminatedArgument(error_index));
+                                }
                                 Some((_, s)) => {
                                     let error_index = error_index(text, s);
                                     return Err(CommandParseError::InvalidOptionValue(error_index));
@@ -269,7 +320,7 @@ impl CommandManager {
                 }
                 Some((TokenKind::Equals, s)) | Some((TokenKind::Bang, s)) => {
                     let error_index = error_index(text, s);
-                    return Err(CommandParseError::InvalidArgument(error_index));
+                    return Err(CommandParseError::InvalidSwitchOrOption(error_index));
                 }
                 Some((TokenKind::Unterminated, s)) => {
                     let error_index = error_index(text, s) - 1;
@@ -336,7 +387,7 @@ mod tests {
             help: "",
             completion_sources: CompletionSource::None as _,
             params: &[],
-            func: |_| Ok(None),
+            func: |_| None,
         });
         commands
     }

@@ -62,23 +62,16 @@ impl ModeState for State {
                     //editor.commands.add_to_history(input);
                 }
 
-                let op = CommandManager::eval_from_read_line(editor, clients, target.0);
+                let op = CommandManager::eval_from_read_line(editor, clients, Some(target.0));
 
                 if editor.mode.kind() == ModeKind::Command {
                     Mode::change_to(editor, clients, target, ModeKind::default());
                 }
 
                 return match op {
-                    Ok(Some(CommandOperation::Quit)) => Some(ModeOperation::Quit),
-                    Ok(Some(CommandOperation::QuitAll)) => Some(ModeOperation::QuitAll),
-                    Ok(None) => None,
-                    Err(error) => {
-                        editor
-                            .status_bar
-                            .write(StatusMessageKind::Error)
-                            .fmt(format_args!("{}", error));
-                        None
-                    }
+                    Some(CommandOperation::Quit) => Some(ModeOperation::Quit),
+                    Some(CommandOperation::QuitAll) => Some(ModeOperation::QuitAll),
+                    Some(CommandOperation::Error) | None => None,
                 };
             }
         }

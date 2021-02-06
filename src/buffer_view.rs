@@ -340,6 +340,7 @@ impl BufferView {
     }
 }
 
+// TODO: remove this
 pub enum BufferViewError {
     InvalidPath(PathBuf),
 }

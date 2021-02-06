@@ -1,6 +1,7 @@
 use std::{
     error::Error,
     fmt,
+    fs::File,
     path::{Path, PathBuf},
 };
 
@@ -11,7 +12,7 @@ use crate::{
     buffer_view::BufferViewCollection,
     client::{ClientManager, TargetClient},
     client_event::{parse_all_keys, ClientEvent},
-    command::CommandManager,
+    command::{CommandManager, CommandOperation},
     config::Config,
     editor_event::{EditorEvent, EditorEventQueue},
     keymap::{KeyMapCollection, MatchResult},
@@ -274,19 +275,40 @@ impl Editor {
         }
     }
 
-    pub fn load_config(&mut self, clients: &mut ClientManager, path: &Path) {
-        /*
-        let previous_mode_kind = self.mode.kind();
-        let (scripts, mut script_ctx) = self.into_script_context(clients, TargetClient::local());
+    pub fn load_config(&mut self, clients: &mut ClientManager, path: &str) -> bool {
+        use std::io::Read;
 
-        if let Err(e) = scripts.eval_entry_file(&mut script_ctx, path) {
-            script_ctx.status_bar.write_error(&e);
+        let mut file = match File::open(path) {
+            Ok(file) => file,
+            Err(_) => {
+                self.status_bar
+                    .write(StatusMessageKind::Error)
+                    .fmt(format_args!("could not open config file '{}'", path));
+                return false;
+            }
+        };
+
+        let mut text = String::new();
+        if let Err(_) = file.read_to_string(&mut text) {
+            self.status_bar
+                .write(StatusMessageKind::Error)
+                .fmt(format_args!("could not read config file '{}'", path));
+            return false;
         }
 
-        if previous_mode_kind == self.mode.kind() {
-            Mode::change_to(self, clients, TargetClient::local(), ModeKind::default());
+        for line in text.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+
+            match CommandManager::eval(self, clients, None, line) {
+                Some(CommandOperation::Quit) | Some(CommandOperation::QuitAll) => return true,
+                Some(CommandOperation::Error) | None => (),
+            }
         }
-        */
+
+        true
     }
 
     pub fn on_pre_render(&mut self, clients: &mut ClientManager) -> bool {

@@ -509,9 +509,9 @@ fn draw_statusbar(
 
     let x = if has_focus {
         let (status_message_kind, status_message) = editor.status_bar.message();
-        let status_message = status_message.trim();
+        let status_message = status_message.trim_end();
 
-        if status_message.is_empty() {
+        if status_message.trim_start().is_empty() {
             match editor.mode.kind() {
                 ModeKind::Normal => match editor.recording_macro {
                     Some(key) => {
