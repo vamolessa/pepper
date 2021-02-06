@@ -97,8 +97,9 @@ pub fn register_all(commands: &mut CommandManager) {
         params: &[],
         func: |ctx| {
             let mut w = ctx.editor.status_bar.write(StatusMessageKind::Info);
-            for arg in ctx.args.values().iter() {
+            for arg in ctx.args.values() {
                 w.str(arg.as_str(ctx.args));
+                w.str(" ");
             }
             Ok(None)
         },
@@ -111,7 +112,7 @@ pub fn register_all(commands: &mut CommandManager) {
         completion_sources: CompletionSource::None as _,
         params: &[],
         func: |ctx| {
-            for arg in ctx.args.values().iter() {
+            for arg in ctx.args.values() {
                 eprint!("{}", arg.as_str(ctx.args));
             }
             eprintln!();
@@ -133,7 +134,7 @@ pub fn register_all(commands: &mut CommandManager) {
 
     commands.register_builtin(BuiltinCommand {
         name: "open",
-        alias: None,
+        alias: Some("o"),
         help: "open a buffer for editting",
         completion_sources: CompletionSource::None as _,
         params: &[],
