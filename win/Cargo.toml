@@ -11,5 +11,5 @@ name = "pepper-win"
 path = "main.rs"
 
 [dependencies]
-pepper = { path = "../lib" }
-winapi = { version =  "0.3", features = ["winbase", "winerror", "winuser", "errhandlingapi", "stringapiset", "winnls", "consoleapi", "processenv", "handleapi", "synchapi", "ioapiset", "namedpipeapi"] }
+pepper = { version = "0.5", path = "../lib" }
+winapi = { version = "0.3", features = ["winbase", "winerror", "winuser", "errhandlingapi", "stringapiset", "winnls", "consoleapi", "processenv", "handleapi", "synchapi", "ioapiset", "namedpipeapi"] }
