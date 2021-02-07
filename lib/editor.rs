@@ -200,6 +200,7 @@ impl StatusBar {
         StatusBarWrite(self)
     }
 
+    // TODO: replace with 'write'
     pub fn write_error(&mut self, error: &dyn Error) {
         use fmt::Write;
 

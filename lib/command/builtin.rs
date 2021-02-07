@@ -14,10 +14,21 @@ use crate::{
 
 pub fn register_all(commands: &mut CommandManager) {
     const UNSAVED_CHANGES_ERROR: &str =
-        "there are unsaved changes in buffers. try appending a '!' to command to force quit";
+        "there are unsaved changes in buffer. try appending a '!' to command to force execute";
+    const NO_BUFFER_OPENED_ERROR: &str = "no buffer opened";
 
     fn any_buffer_needs_save(editor: &Editor) -> bool {
         editor.buffers.iter().any(|b| b.needs_save())
+    }
+
+    macro_rules! command_error {
+        ($ctx:expr, $format:literal $(, $value:expr)*) => {{
+            $ctx.editor
+                .status_bar
+                .write(StatusMessageKind::Error)
+                .fmt(format_args!($format, $($value,)*));
+            return Some(CommandOperation::Error);
+        }}
     }
 
     macro_rules! parse_switches {
@@ -69,7 +80,6 @@ pub fn register_all(commands: &mut CommandManager) {
         func: |mut ctx| {
             parse_switches!(ctx,);
             parse_options!(ctx,);
-
             if ctx.bang || !any_buffer_needs_save(ctx.editor) {
                 Some(CommandOperation::Quit)
             } else {
@@ -87,7 +97,6 @@ pub fn register_all(commands: &mut CommandManager) {
         func: |mut ctx| {
             parse_switches!(ctx,);
             parse_options!(ctx,);
-
             if ctx.bang || !any_buffer_needs_save(ctx.editor) {
                 Some(CommandOperation::QuitAll)
             } else {
@@ -103,22 +112,13 @@ pub fn register_all(commands: &mut CommandManager) {
         completion_sources: CompletionSource::None as _,
         params: &[],
         func: |mut ctx| {
-            parse_switches!(ctx, stderr,);
+            parse_switches!(ctx,);
             parse_options!(ctx,);
-
-            if stderr {
-                for arg in ctx.args.values() {
-                    eprint!("{}", arg.as_str(ctx.args));
-                }
-                eprintln!();
-            } else {
-                let mut w = ctx.editor.status_bar.write(StatusMessageKind::Info);
-                for arg in ctx.args.values() {
-                    w.str(arg.as_str(ctx.args));
-                    w.str(" ");
-                }
+            let mut w = ctx.editor.status_bar.write(StatusMessageKind::Info);
+            for arg in ctx.args.values() {
+                w.str(arg.as_str(ctx.args));
+                w.str(" ");
             }
-
             None
         },
     });
@@ -132,14 +132,12 @@ pub fn register_all(commands: &mut CommandManager) {
         func: |mut ctx| {
             parse_switches!(ctx,);
             parse_options!(ctx,);
-
             for path in ctx.args.values() {
                 let path = path.as_str(ctx.args);
                 if !ctx.editor.load_config(ctx.clients, path) {
                     return Some(CommandOperation::Error);
                 }
             }
-
             None
         },
     });
@@ -219,7 +217,7 @@ pub fn register_all(commands: &mut CommandManager) {
                 Some(handle) => handle,
                 None => match ctx.current_buffer_view_handle() {
                     Some(handle) => ctx.editor.buffer_views.get(handle)?.buffer_handle,
-                    None => return ctx.error(format_args!("no buffer opened")),
+                    None => command_error!(ctx, "{}", NO_BUFFER_OPENED_ERROR),
                 },
             };
 
@@ -243,6 +241,125 @@ pub fn register_all(commands: &mut CommandManager) {
     });
 
     commands.register_builtin(BuiltinCommand {
+        name: "save-all",
+        alias: Some("sa"),
+        help: "save all buffers",
+        completion_sources: CompletionSource::None as _,
+        params: &[],
+        func: |mut ctx| {
+            parse_switches!(ctx,);
+            parse_options!(ctx,);
+            let mut count = 0;
+            let mut had_error = false;
+            let mut write = ctx.editor.status_bar.write(StatusMessageKind::Error);
+            for buffer in ctx.editor.buffers.iter_mut() {
+                if let Err(error) = buffer.save_to_file(None, &mut ctx.editor.events) {
+                    if had_error {
+                        write.str("\n");
+                    }
+                    write.fmt(format_args!("{}", error.display(buffer)));
+                    had_error = true;
+                }
+                count += 1;
+            }
+
+            if had_error {
+                Some(CommandOperation::Error)
+            } else {
+                ctx.editor
+                    .status_bar
+                    .write(StatusMessageKind::Info)
+                    .fmt(format_args!("{} buffers saved", count));
+                None
+            }
+        },
+    });
+
+    commands.register_builtin(BuiltinCommand {
+        name: "reload",
+        alias: Some("r"),
+        help: "reload buffer from file",
+        completion_sources: CompletionSource::None as _,
+        params: &[],
+        func: |mut ctx| {
+            parse_switches!(ctx,);
+            parse_options!(ctx, handle: BufferHandle,);
+
+            let handle = match handle {
+                Some(handle) => handle,
+                None => match ctx.current_buffer_view_handle() {
+                    Some(handle) => ctx.editor.buffer_views.get(handle)?.buffer_handle,
+                    None => return ctx.error(format_args!("{}", NO_BUFFER_OPENED_ERROR)),
+                },
+            };
+            let buffer = ctx.editor.buffers.get_mut(handle)?;
+
+            if !ctx.bang && buffer.needs_save() {
+                return ctx.error(format_args!("{}", UNSAVED_CHANGES_ERROR));
+            }
+
+            if let Err(error) = buffer
+                .discard_and_reload_from_file(&mut ctx.editor.word_database, &mut ctx.editor.events)
+            {
+                ctx.editor
+                    .status_bar
+                    .write(StatusMessageKind::Error)
+                    .fmt(format_args!("{}", error.display(buffer)));
+                return Some(CommandOperation::Error);
+            }
+
+            ctx.editor
+                .status_bar
+                .write(StatusMessageKind::Info)
+                .str("buffer reloaded");
+            None
+        },
+    });
+
+    commands.register_builtin(BuiltinCommand {
+        name: "reload-all",
+        alias: Some("ra"),
+        help: "reload all buffers from file",
+        completion_sources: CompletionSource::None as _,
+        params: &[],
+        func: |mut ctx| {
+            parse_switches!(ctx,);
+            parse_options!(ctx,);
+
+            if !ctx.bang && ctx.editor.buffers.iter().any(Buffer::needs_save) {
+                return ctx.error(format_args!("{}", UNSAVED_CHANGES_ERROR));
+            }
+
+            let mut count = 0;
+            let mut had_error = false;
+            let mut write = ctx.editor.status_bar.write(StatusMessageKind::Error);
+            for buffer in ctx.editor.buffers.iter_mut() {
+                if let Err(error) = buffer.discard_and_reload_from_file(
+                    &mut ctx.editor.word_database,
+                    &mut ctx.editor.events,
+                ) {
+                    if had_error {
+                        write.str("\n");
+                    }
+                    write.fmt(format_args!("{}", error.display(buffer)));
+                    had_error = true;
+                }
+                count += 1;
+            }
+
+            if had_error {
+                Some(CommandOperation::Error)
+            } else {
+                ctx.editor
+                    .status_bar
+                    .write(StatusMessageKind::Info)
+                    .fmt(format_args!("{} buffers closed", count));
+                None
+            }
+        },
+    });
+
+    commands.register_builtin(BuiltinCommand {
         name: "close",
         alias: Some("c"),
         help: "close buffer",
@@ -256,13 +373,19 @@ pub fn register_all(commands: &mut CommandManager) {
                 Some(handle) => handle,
                 None => match ctx.current_buffer_view_handle() {
                     Some(handle) => ctx.editor.buffer_views.get(handle)?.buffer_handle,
-                    None => return ctx.error(format_args!("no buffer opened")),
+                    None => return ctx.error(format_args!("{}", NO_BUFFER_OPENED_ERROR)),
                 },
             };
 
             if !ctx.bang && ctx.editor.buffers.get(handle)?.needs_save() {
                 return ctx.error(format_args!("{}", UNSAVED_CHANGES_ERROR));
             }
+
+            ctx.editor.buffer_views.defer_remove_buffer_where(
+                &mut ctx.editor.buffers,
+                &mut ctx.editor.events,
+                |view| view.buffer_handle == handle,
+            );
 
             let clients = ctx.clients;
             let editor = ctx.editor;
@@ -279,7 +402,7 @@ pub fn register_all(commands: &mut CommandManager) {
             editor
                 .status_bar
                 .write(StatusMessageKind::Info)
-                .str("closed buffer");
+                .str("buffer closed");
             None
         },
     });
@@ -295,22 +418,24 @@ pub fn register_all(commands: &mut CommandManager) {
             parse_options!(ctx,);
 
             if !ctx.bang && ctx.editor.buffers.iter().any(Buffer::needs_save) {
-                return ctx.error(format_args!("{}", UNSAVED_CHANGES_ERROR));
+                command_error!(ctx, "{}", UNSAVED_CHANGES_ERROR);
             }
 
-            let buffer_count = ctx.editor.buffers.iter().count();
+            let count = ctx.editor.buffers.iter().count();
             ctx.editor.buffer_views.defer_remove_buffer_where(
                 &mut ctx.editor.buffers,
                 &mut ctx.editor.events,
                 |_| true,
             );
+
             for client in ctx.clients.iter_mut() {
                 client.set_buffer_view_handle(ctx.editor, None);
             }
+
             ctx.editor
                 .status_bar
                 .write(StatusMessageKind::Info)
-                .fmt(format_args!("{} buffers closed", buffer_count));
+                .fmt(format_args!("{} buffers closed", count));
             None
         },
     });
