@@ -1,7 +1,9 @@
 use std::{collections::VecDeque, fmt};
 
 use crate::{
-    client::ClientManager,
+    buffer::BufferHandle,
+    buffer_view::BufferViewHandle,
+    client::{ClientManager, TargetClient},
     editor::{Editor, StatusBar, StatusMessageKind},
 };
 
@@ -41,6 +43,12 @@ struct CommandContext<'a> {
     args: &'a CommandArgs,
 }
 impl<'a> CommandContext<'a> {
+    pub fn current_buffer_view_handle(&self) -> Option<BufferViewHandle> {
+        self.clients
+            .get(TargetClient(self.client_index?))?
+            .buffer_view_handle()
+    }
+
     pub fn error(&mut self, format: fmt::Arguments) -> Option<CommandOperation> {
         self.editor
             .status_bar

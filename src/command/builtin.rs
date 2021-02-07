@@ -209,19 +209,36 @@ pub fn register_all(commands: &mut CommandManager) {
             parse_switches!(ctx,);
             parse_options!(ctx, handle: BufferHandle,);
 
-            let values = ctx.args.values();
-            if values.is_empty() {
-                let client_index = ctx.client_index?;
-                let client = ctx.clients.get_mut(TargetClient(client_index))?;
-                let handle = match client.buffer_view_handle() {
-                    Some(handle) => handle,
+            let new_path = match ctx.args.values() {
+                [] => None,
+                [path] => Some(Path::new(path.as_str(ctx.args))),
+                _ => return ctx.error(format_args!("command expects one 'path' argument at most")),
+            };
+
+            let handle = match handle {
+                Some(handle) => handle,
+                None => match ctx.current_buffer_view_handle() {
+                    Some(handle) => ctx.editor.buffer_views.get(handle)?.buffer_handle,
                     None => return ctx.error(format_args!("no buffer opened")),
-                };
-                let handle = ctx.editor.buffer_views.get(handle)?.buffer_handle;
-                None
-            } else {
-                todo!();
+                },
+            };
+
+            let buffer = ctx.editor.buffers.get_mut(handle)?;
+            if let Err(error) = buffer.save_to_file(new_path, &mut ctx.editor.events) {
+                ctx.editor
+                    .status_bar
+                    .write(StatusMessageKind::Error)
+                    .fmt(format_args!("{}", error.display(buffer)));
+                return Some(CommandOperation::Error);
             }
+
+            let path = buffer.path().unwrap_or(Path::new(""));
+            ctx.editor
+                .status_bar
+                .write(StatusMessageKind::Info)
+                .fmt(format_args!("saved to '{:?}'", path));
+
+            None
         },
     });
 
@@ -237,12 +254,10 @@ pub fn register_all(commands: &mut CommandManager) {
 
             let handle = match handle {
                 Some(handle) => handle,
-                None => {
-                    let client_index = ctx.client_index?;
-                    let client = ctx.clients.get_mut(TargetClient(client_index))?;
-                    let handle = client.buffer_view_handle()?;
-                    ctx.editor.buffer_views.get(handle)?.buffer_handle
-                }
+                None => match ctx.current_buffer_view_handle() {
+                    Some(handle) => ctx.editor.buffer_views.get(handle)?.buffer_handle,
+                    None => return ctx.error(format_args!("no buffer opened")),
+                },
             };
 
             if !ctx.bang && ctx.editor.buffers.get(handle)?.needs_save() {
