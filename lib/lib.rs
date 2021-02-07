@@ -1,33 +1,33 @@
 mod macros;
 
-mod application;
-mod buffer;
-mod buffer_position;
-mod buffer_view;
-mod client;
-mod client_event;
-mod command;
-mod config;
-mod connection;
-mod cursor;
-mod editor;
-mod editor_event;
-mod glob;
-mod history;
-mod json;
-mod keymap;
-mod lsp;
-mod mode;
-mod navigation_history;
-mod pattern;
-mod picker;
-mod platform;
-mod register;
-mod serialization;
-mod syntax;
-mod theme;
-mod ui;
-mod word_database;
+pub mod application;
+pub mod buffer;
+pub mod buffer_position;
+pub mod buffer_view;
+pub mod client;
+pub mod client_event;
+pub mod command;
+pub mod config;
+pub mod connection;
+pub mod cursor;
+pub mod editor;
+pub mod editor_event;
+pub mod glob;
+pub mod history;
+pub mod json;
+pub mod keymap;
+pub mod lsp;
+pub mod mode;
+pub mod navigation_history;
+pub mod pattern;
+pub mod picker;
+pub mod platform;
+pub mod register;
+pub mod serialization;
+pub mod syntax;
+pub mod theme;
+pub mod ui;
+pub mod word_database;
 
 use argh::FromArgs;
 
@@ -37,38 +37,34 @@ use argh::FromArgs;
 pub struct Args {
     /// print version and quit
     #[argh(switch, short = 'v')]
-    version: bool,
+    pub version: bool,
 
     /// load config file at path (repeatable)
     #[argh(option, short = 'c')]
-    config: Vec<String>,
+    pub config: Vec<String>,
 
     /// session name
     #[argh(option, short = 's')]
-    session: Option<String>,
+    pub session: Option<String>,
 
     /// print the computed session name and exits
     #[argh(switch)]
-    print_session: bool,
+    pub print_session: bool,
 
     /// displays no ui and send events on behalf of the currently focused client
     #[argh(switch)]
-    as_focused_client: bool,
+    pub as_focused_client: bool,
 
     /// displays no ui and send events on behalf of the client at index
     #[argh(option)]
-    as_client: Option<client::TargetClient>,
+    pub as_client: Option<client::TargetClient>,
 
     #[argh(switch)]
     /// will print to stderr frames latency
-    profile: bool,
+    pub profile: bool,
 
     /// open files at paths
     /// you can append ':<line-number>' to a path to open it at that line
     #[argh(positional)]
-    files: Vec<String>,
-}
-
-fn main() {
-    platform::run::<Args, application::Server, application::Client>();
+    pub files: Vec<String>,
 }

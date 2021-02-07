@@ -1,8 +1,5 @@
 use std::{io, process::Command};
 
-#[cfg(windows)]
-mod windows;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
     None,
@@ -26,7 +23,7 @@ pub enum Key {
 }
 
 #[derive(Clone, Copy)]
-pub enum ServerEvent {
+pub enum ServerPlatformEvent {
     Redraw,
     Idle,
     ConnectionOpen { index: usize },
@@ -38,7 +35,7 @@ pub enum ServerEvent {
 }
 
 #[derive(Clone, Copy)]
-pub enum ClientEvent {
+pub enum ClientPlatformEvent {
     Resize(usize, usize),
     Key(Key),
     Message(usize),
@@ -48,20 +45,6 @@ pub trait Args: Sized {
     fn parse() -> Option<Self>;
     fn session(&self) -> Option<&str>;
     fn print_session(&self) -> bool;
-}
-
-pub trait ServerApplication: Sized {
-    type Args: Args;
-    fn connection_buffer_len() -> usize;
-    fn new(args: Self::Args, platform: &mut dyn ServerPlatform) -> Self;
-    fn on_event(&mut self, platform: &mut dyn ServerPlatform, event: ServerEvent) -> bool;
-}
-
-pub trait ClientApplication: Sized {
-    type Args: Args;
-    fn connection_buffer_len() -> usize;
-    fn new(args: Self::Args, platform: &mut dyn ClientPlatform) -> Self;
-    fn on_events(&mut self, platform: &mut dyn ClientPlatform, event: &[ClientEvent]) -> bool;
 }
 
 pub trait ServerPlatform {
@@ -89,16 +72,4 @@ pub trait ServerPlatform {
 pub trait ClientPlatform {
     fn read(&self, len: usize) -> &[u8];
     fn write(&mut self, buf: &[u8]) -> bool;
-}
-
-pub fn run<A, S, C>()
-where
-    A: Args,
-    S: ServerApplication<Args = A>,
-    C: ClientApplication<Args = A>,
-{
-    #[cfg(windows)]
-    return windows::run::<A, S, C>();
-    #[cfg(not(windows))]
-    panic!("platform not yet supported (soon :D)");
 }

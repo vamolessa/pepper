@@ -1,0 +1,15 @@
+[package]
+name = "pepper-win"
+version = "0.1.0"
+authors = ["Matheus Lessa"]
+edition = "2018"
+description = "Windows platform layer for Pepper editor"
+license = "GPL-3.0"
+
+[[bin]]
+name = "pepper-win"
+path = "main.rs"
+
+[dependencies]
+pepper = { path = "../lib" }
+winapi = { version =  "0.3", features = ["winbase", "winerror", "winuser", "errhandlingapi", "stringapiset", "winnls", "consoleapi", "processenv", "handleapi", "synchapi", "ioapiset", "namedpipeapi"] }

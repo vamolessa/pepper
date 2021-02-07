@@ -1,18 +1,17 @@
 use std::{env, io};
 
-use crate::platform;
-
 use crate::{
     client::{ClientManager, TargetClient},
     client_event::ClientEvent,
     connection::ClientEventDeserializationBufCollection,
     editor::{Editor, EditorLoop},
+    platform::{ClientPlatform, ClientPlatformEvent, ServerPlatform, ServerPlatformEvent},
     serialization::{SerializationBuf, Serialize},
     ui, Args,
 };
 
-impl platform::Args for Args {
-    fn parse() -> Option<Self> {
+impl Args {
+    pub fn parse() -> Option<Self> {
         let args: Args = argh::from_env();
         if args.version {
             let name = env!("CARGO_PKG_NAME");
@@ -21,43 +20,34 @@ impl platform::Args for Args {
             return None;
         }
 
-        Some(args)
-    }
-
-    fn session(&self) -> Option<&str> {
-        match self.session {
-            Some(ref session) => {
-                if !session.chars().all(char::is_alphanumeric) {
-                    panic!(
-                        "invalid session name '{}'. it can only contain alphanumeric characters",
-                        session
-                    );
-                }
-                Some(session)
+        if let Some(ref session) = args.session {
+            if !session.chars().all(char::is_alphanumeric) {
+                panic!(
+                    "invalid session name '{}'. it can only contain alphanumeric characters",
+                    session
+                );
             }
-            None => None,
         }
-    }
 
-    fn print_session(&self) -> bool {
-        self.print_session
+        Some(args)
     }
 }
 
-pub struct Server {
+pub struct ServerApplication {
     editor: Editor,
     clients: ClientManager,
     event_deserialization_bufs: ClientEventDeserializationBufCollection,
     connections_with_error: Vec<usize>,
 }
-impl platform::ServerApplication for Server {
-    type Args = Args;
-
-    fn connection_buffer_len() -> usize {
+impl ServerApplication {
+    pub fn connection_buffer_len() -> usize {
         512
     }
 
-    fn new(args: Self::Args, _: &mut dyn platform::ServerPlatform) -> Self {
+    pub fn new<P>(args: Args, _: &mut P) -> Self
+    where
+        P: ServerPlatform,
+    {
         let current_dir = env::current_dir().expect("could not retrieve the current directory");
         let mut editor = Editor::new(current_dir);
         let mut clients = ClientManager::new();
@@ -76,22 +66,21 @@ impl platform::ServerApplication for Server {
         }
     }
 
-    fn on_event(
-        &mut self,
-        platform: &mut dyn platform::ServerPlatform,
-        event: platform::ServerEvent,
-    ) -> bool {
+    pub fn on_event<P>(&mut self, platform: &mut P, event: ServerPlatformEvent) -> bool
+    where
+        P: ServerPlatform,
+    {
         match event {
-            platform::ServerEvent::Redraw => (),
-            platform::ServerEvent::Idle => self.editor.on_idle(&mut self.clients),
-            platform::ServerEvent::ConnectionOpen { index } => self.clients.on_client_joined(index),
-            platform::ServerEvent::ConnectionClose { index } => {
+            ServerPlatformEvent::Redraw => (),
+            ServerPlatformEvent::Idle => self.editor.on_idle(&mut self.clients),
+            ServerPlatformEvent::ConnectionOpen { index } => self.clients.on_client_joined(index),
+            ServerPlatformEvent::ConnectionClose { index } => {
                 self.clients.on_client_left(index);
                 if self.clients.iter_mut().next().is_none() {
                     return false;
                 }
             }
-            platform::ServerEvent::ConnectionMessage { index, len } => {
+            ServerPlatformEvent::ConnectionMessage { index, len } => {
                 let bytes = platform.read_from_connection(index, len);
                 let editor = &mut self.editor;
                 let clients = &mut self.clients;
@@ -107,15 +96,15 @@ impl platform::ServerApplication for Server {
                     EditorLoop::QuitAll => return false,
                 }
             }
-            platform::ServerEvent::ProcessStdout { index, len } => {
+            ServerPlatformEvent::ProcessStdout { index, len } => {
                 let _bytes = platform.read_from_process_stdout(index, len);
                 //
             }
-            platform::ServerEvent::ProcessStderr { index, len } => {
+            ServerPlatformEvent::ProcessStderr { index, len } => {
                 let _bytes = platform.read_from_process_stderr(index, len);
                 //
             }
-            platform::ServerEvent::ProcessExit { index, success } => {
+            ServerPlatformEvent::ProcessExit { index, success } => {
                 //
             }
         }
@@ -160,19 +149,20 @@ impl platform::ServerApplication for Server {
     }
 }
 
-pub struct Client {
+pub struct ClientApplication {
     read_buf: Vec<u8>,
     write_buf: SerializationBuf,
     stdout: io::StdoutLock<'static>,
 }
-impl platform::ClientApplication for Client {
-    type Args = Args;
-
-    fn connection_buffer_len() -> usize {
+impl ClientApplication {
+    pub fn connection_buffer_len() -> usize {
         2 * 1024
     }
 
-    fn new(args: Self::Args, platform: &mut dyn platform::ClientPlatform) -> Self {
+    pub fn new<P>(args: Args, platform: &mut P) -> Self
+    where
+        P: ClientPlatform,
+    {
         static mut STDOUT: Option<io::Stdout> = None;
         let mut stdout = unsafe {
             STDOUT = Some(io::stdout());
@@ -201,23 +191,22 @@ impl platform::ClientApplication for Client {
         }
     }
 
-    fn on_events(
-        &mut self,
-        platform: &mut dyn platform::ClientPlatform,
-        events: &[platform::ClientEvent],
-    ) -> bool {
+    pub fn on_events<P>(&mut self, platform: &mut P, events: &[ClientPlatformEvent]) -> bool
+    where
+        P: ClientPlatform,
+    {
         use io::Write;
 
         self.write_buf.clear();
         for event in events {
             match event {
-                platform::ClientEvent::Key(key) => {
+                ClientPlatformEvent::Key(key) => {
                     ClientEvent::Key(*key).serialize(&mut self.write_buf);
                 }
-                platform::ClientEvent::Resize(width, height) => {
+                ClientPlatformEvent::Resize(width, height) => {
                     ClientEvent::Resize(*width as _, *height as _).serialize(&mut self.write_buf);
                 }
-                platform::ClientEvent::Message(len) => {
+                ClientPlatformEvent::Message(len) => {
                     let buf = platform.read(*len);
                     self.read_buf.extend_from_slice(buf);
                     let mut len_bytes = [0; 4];
@@ -243,7 +232,7 @@ impl platform::ClientApplication for Client {
         bytes.is_empty() || platform.write(bytes)
     }
 }
-impl Drop for Client {
+impl Drop for ClientApplication {
     fn drop(&mut self) {
         use io::Write;
 

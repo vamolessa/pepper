@@ -1,24 +1,2 @@
-[package]
-name = "pepper"
-version = "0.5.10"
-authors = ["Matheus Lessa"]
-edition = "2018"
-description = "An opinionated modal editor to simplify code editing from the terminal"
-license = "GPL-3.0"
-
-documentation = "https://github.com/vamolessa/pepper/wiki"
-homepage = "https://vamolessa.github.io/pepper"
-repository = "https://github.com/vamolessa/pepper"
-readme = "README.md"
-categories = ["command-line-utilities", "text-editors"]
-
-[[bin]]
-name = "pepper"
-path = "src/main.rs"
-
-[dependencies]
-argh = "0.1"
-fuzzy-matcher = "0.3"
-
-[target.'cfg(windows)'.dependencies]
-winapi = { version =  "0.3", features = ["winbase", "winerror", "winuser", "errhandlingapi", "stringapiset", "winnls", "consoleapi", "processenv", "handleapi", "synchapi", "ioapiset", "namedpipeapi"] }
+[workspace]
+members = ["lib", "win"]
