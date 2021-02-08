@@ -73,6 +73,40 @@ impl<'a> CommandContext<'a> {
     }
 }
 
+pub struct CommandIter<'a>(&'a str);
+impl<'a> CommandIter<'a> {
+    pub fn new(commands: &'a str) -> Self {
+        CommandIter(commands)
+    }
+}
+impl<'a> Iterator for CommandIter<'a> {
+    type Item = &'a str;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0 = self.0.trim_start();
+        if self.0.is_empty() {
+            return None;
+        }
+
+        let mut bytes = self.0.bytes();
+        loop {
+            match bytes.next() {
+                Some(b'\n') | None => break,
+                Some(b'\\') => {
+                    bytes.next();
+                }
+                Some(b'#') => {
+                    // comments
+                }
+                _ => (),
+            }
+        }
+
+        let (command, rest) = self.0.split_at(self.0.len() - bytes.len());
+        self.0 = rest;
+        Some(command)
+    }
+}
+
 pub struct BuiltinCommand {
     name: &'static str,
     alias: Option<&'static str>,
@@ -246,7 +280,9 @@ impl CommandManager {
                     c.is_ascii_whitespace() || c == '=' || c == '!' || c == '"' || c == '\''
                 }
 
-                self.rest = self.rest.trim_start();
+                self.rest = self
+                    .rest
+                    .trim_start_matches(|c: char| c.is_ascii_whitespace() || c == '\\');
                 if self.rest.is_empty() {
                     return None;
                 }
@@ -487,7 +523,11 @@ mod tests {
     #[test]
     fn arg_parsing() {
         fn parse_args<'a>(commands: &'a mut CommandManager, params: &str) -> &'a CommandArgs {
-            if let Err(_) = commands.parse(&format!("command-name {}", params)) {
+            let mut command = String::new();
+            command.push_str("command-name ");
+            command.push_str(params);
+
+            if let Err(_) = commands.parse(&command) {
                 panic!("command parse error");
             }
             &commands.parsed_args
@@ -523,7 +563,11 @@ mod tests {
         assert_eq!("ccc", args.values()[2].as_str(&args));
         assert_eq!("ddd", args.values()[3].as_str(&args));
 
-        let args = parse_args(&mut commands, "-switch'value'\n-option=\"option value!\"\n");
+        let args = parse_args(
+            &mut commands,
+            "\\\n-switch'value'\\\n-option=\"option value!\"\\\n",
+        );
+
         assert_eq!(1, args.values().len());
         assert_eq!(1, args.switches().len());
         assert_eq!(1, args.options().len());
@@ -559,5 +603,22 @@ mod tests {
         assert_fail!("c! 'abc", CommandParseError::UnterminatedArgument(i) => i == 3);
         assert_fail!("c! '", CommandParseError::UnterminatedArgument(i) => i == 3);
         assert_fail!("c! \"'", CommandParseError::UnterminatedArgument(i) => i == 3);
+    }
+
+    #[test]
+    fn multi_command_line_parsing() {
+        let mut commands = CommandIter::new("command0\ncommand1");
+        assert_eq!(Some("command0\n"), commands.next());
+        assert_eq!(Some("command1"), commands.next());
+        assert_eq!(None, commands.next());
+
+        let mut commands = CommandIter::new("command0\\\n still command0\ncommand1");
+        assert_eq!(Some("command0\\\n still command0\n"), commands.next());
+        assert_eq!(Some("command1"), commands.next());
+        assert_eq!(None, commands.next());
+
+        //let mut commands = CommandIter::new("  # command0\ncommand1");
+        //assert_eq!(Some("command1"), commands.next());
+        //assert_eq!(None, commands.next());
     }
 }

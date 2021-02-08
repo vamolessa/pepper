@@ -12,7 +12,7 @@ use crate::{
     buffer_view::BufferViewCollection,
     client::{ClientManager, TargetClient},
     client_event::{parse_all_keys, ClientEvent},
-    command::{CommandManager, CommandOperation},
+    command::{CommandIter, CommandManager, CommandOperation},
     config::Config,
     editor_event::{EditorEvent, EditorEventQueue},
     keymap::{KeyMapCollection, MatchResult},
@@ -301,13 +301,8 @@ impl Editor {
             return false;
         }
 
-        for line in text.lines() {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') {
-                continue;
-            }
-
-            match CommandManager::eval(self, clients, None, line) {
+        for command in CommandIter::new(&text) {
+            match CommandManager::eval(self, clients, None, command) {
                 Some(CommandOperation::Quit) | Some(CommandOperation::QuitAll) => return true,
                 Some(CommandOperation::Error) | None => (),
             }
