@@ -596,7 +596,6 @@ pub fn register_all(commands: &mut CommandManager) {
         func: |mut ctx| {
             expect_no_bang!(ctx);
             parse_switches!(ctx);
-            parse_options!(ctx, keywords, types, symbols, literals, strings, comments, texts);
 
             let glob = match ctx.args.values() {
                 [glob] => glob.as_str(ctx.args),
@@ -605,13 +604,26 @@ pub fn register_all(commands: &mut CommandManager) {
 
             let mut syntax = Syntax::new();
             syntax.set_glob(glob.as_bytes());
-            //syntax.set_rule(
 
-            if let Some(keywords) = keywords {
-                if let Err(error) = syntax.set_rule(TokenKind::Keyword, keywords) {
-                    return parsing_error(&mut ctx, keywords, &error, 0);
+            macro_rules! parse_syntax_rules {
+                ($($rule:ident : $token_kind:expr),*) => {
+                    parse_options!(ctx $(, $rule)*);
+                    $(if let Some($rule) = $rule {
+                        if let Err(error) = syntax.set_rule($token_kind, $rule) {
+                            return parsing_error(&mut ctx, $rule, &error, 0);
+                        }
+                    })*
                 }
             }
+            parse_syntax_rules! {
+                keywords: TokenKind::Keyword,
+                types: TokenKind::Type,
+                symbols: TokenKind::Symbol,
+                literals: TokenKind::Literal,
+                strings: TokenKind::String,
+                comments: TokenKind::Comment,
+                texts: TokenKind::Text
+            };
 
             ctx.editor.syntaxes.add(syntax);
             for buffer in ctx.editor.buffers.iter_mut() {

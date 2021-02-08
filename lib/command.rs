@@ -228,7 +228,7 @@ impl CommandManager {
         result
     }
 
-    fn parse<'a>(&mut self, text: &str) -> Result<(CommandFn, bool), CommandParseError> {
+    fn parse(&mut self, text: &str) -> Result<(CommandFn, bool), CommandParseError> {
         enum TokenKind {
             Text,
             Flag,
@@ -449,6 +449,7 @@ mod tests {
         let mut commands = CommandManager {
             builtin_commands: Vec::new(),
             parsed_args: CommandArgs::default(),
+            output: CommandOutput(String::new()),
             history: VecDeque::default(),
         };
         commands.register_builtin(BuiltinCommand {
