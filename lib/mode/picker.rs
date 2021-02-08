@@ -47,14 +47,14 @@ impl ModeState for State {
                 Key::Ctrl('d') | Key::PageDown => {
                     let picker_height = editor
                         .picker
-                        .height(editor.config.values.picker_max_height.get() as _)
+                        .height(editor.config.picker_max_height.get() as _)
                         as isize;
                     editor.picker.move_cursor(picker_height / 2);
                 }
                 Key::Ctrl('u') | Key::PageUp => {
                     let picker_height = editor
                         .picker
-                        .height(editor.config.values.picker_max_height.get() as _)
+                        .height(editor.config.picker_max_height.get() as _)
                         as isize;
                     editor.picker.move_cursor(-picker_height / 2);
                 }

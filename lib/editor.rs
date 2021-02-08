@@ -15,12 +15,13 @@ use crate::{
     command::{CommandManager, CommandOperation},
     config::Config,
     editor_event::{EditorEvent, EditorEventQueue},
-    keymap::MatchResult,
+    keymap::{KeyMapCollection, MatchResult},
     lsp::{LspClientCollection, LspClientContext, LspClientHandle, LspServerEvent},
     mode::{Mode, ModeKind, ModeOperation},
     picker::Picker,
     register::{RegisterCollection, RegisterKey, KEY_QUEUE_REGISTER},
-    syntax::HighlightResult,
+    syntax::{HighlightResult, SyntaxCollection},
+    theme::Theme,
     word_database::{EmptyWordCollection, WordDatabase},
 };
 
@@ -229,8 +230,11 @@ impl<'a> StatusBarWrite<'a> {
 pub struct Editor {
     pub current_directory: PathBuf,
     pub config: Config,
-    pub mode: Mode,
+    pub theme: Theme,
+    pub syntaxes: SyntaxCollection,
+    pub keymaps: KeyMapCollection,
 
+    pub mode: Mode,
     pub buffers: BufferCollection,
     pub buffer_views: BufferViewCollection,
     pub word_database: WordDatabase,
@@ -252,6 +256,10 @@ impl Editor {
         Self {
             current_directory,
             config: Config::default(),
+            theme: Theme::default(),
+            syntaxes: SyntaxCollection::new(),
+            keymaps: KeyMapCollection::default(),
+
             mode: Mode::default(),
 
             buffers: Default::default(),
@@ -310,7 +318,7 @@ impl Editor {
 
     pub fn on_pre_render(&mut self, clients: &mut ClientManager) -> bool {
         let picker_height = self.picker.update_scroll_and_unfiltered_entries(
-            self.config.values.picker_max_height.get() as _,
+            self.config.picker_max_height.get() as _,
             &EmptyWordCollection,
             self.read_line.input(),
         );
@@ -335,8 +343,7 @@ impl Editor {
                 .map(|v| v.buffer_handle)
                 .and_then(|h| buffers.get_mut(h))
             {
-                if let HighlightResult::Pending = buffer.update_highlighting(&self.config.syntaxes)
-                {
+                if let HighlightResult::Pending = buffer.update_highlighting(&self.syntaxes) {
                     needs_redraw = true;
                 }
             }
@@ -420,7 +427,6 @@ impl Editor {
                 self.buffered_keys.0.push(key);
 
                 match self
-                    .config
                     .keymaps
                     .matches(self.mode.kind(), self.buffered_keys.as_slice())
                 {
@@ -551,13 +557,13 @@ impl Editor {
             match event {
                 EditorEvent::BufferLoad { handle } => {
                     if let Some(buffer) = self.buffers.get_mut(*handle) {
-                        buffer.refresh_syntax(&self.config.syntaxes);
+                        buffer.refresh_syntax(&self.syntaxes);
                     }
                 }
                 EditorEvent::BufferSave { handle, new_path } => {
                     if *new_path {
                         if let Some(buffer) = self.buffers.get_mut(*handle) {
-                            buffer.refresh_syntax(&self.config.syntaxes);
+                            buffer.refresh_syntax(&self.syntaxes);
                         }
                     }
                 }

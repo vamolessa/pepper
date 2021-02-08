@@ -421,6 +421,7 @@ mod tests {
         let mut commands = CommandManager {
             builtin_commands: Vec::new(),
             parsed_args: CommandArgs::default(),
+            history: VecDeque::default(),
         };
         commands.register_builtin(BuiltinCommand {
             name: "command-name",

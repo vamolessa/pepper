@@ -1,13 +1,7 @@
 use std::num::NonZeroU8;
 
-use crate::{
-    keymap::KeyMapCollection,
-    syntax::SyntaxCollection,
-    theme::{pico8_theme, Theme},
-};
-
 #[derive(Debug, Clone)]
-pub struct ConfigValues {
+pub struct Config {
     pub tab_size: NonZeroU8,
     pub indent_with_tabs: bool,
 
@@ -19,7 +13,7 @@ pub struct ConfigValues {
     pub picker_max_height: NonZeroU8,
 }
 
-impl Default for ConfigValues {
+impl Default for Config {
     fn default() -> Self {
         Self {
             tab_size: NonZeroU8::new(4).unwrap(),
@@ -31,24 +25,6 @@ impl Default for ConfigValues {
             visual_tab_repeat: b' ',
 
             picker_max_height: NonZeroU8::new(8).unwrap(),
-        }
-    }
-}
-
-pub struct Config {
-    pub values: ConfigValues,
-    pub theme: Theme,
-    pub syntaxes: SyntaxCollection,
-    pub keymaps: KeyMapCollection,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            values: ConfigValues::default(),
-            theme: pico8_theme(),
-            syntaxes: SyntaxCollection::new(),
-            keymaps: KeyMapCollection::default(),
         }
     }
 }

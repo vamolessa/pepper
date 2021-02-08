@@ -518,7 +518,7 @@ pub fn register_all(commands: &mut CommandManager) {
                 _ => return ctx.error(format_args!("invalid mode '{}'", mode)),
             };
 
-            match ctx.editor.config.keymaps.parse_and_map(mode, from, to) {
+            match ctx.editor.keymaps.parse_and_map(mode, from, to) {
                 Ok(()) => None,
                 Err(ParseKeyMapError::From(e)) => parsing_error(&mut ctx, from, &e.error, e.index),
                 Err(ParseKeyMapError::To(e)) => parsing_error(&mut ctx, to, &e.error, e.index),

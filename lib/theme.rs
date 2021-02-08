@@ -38,6 +38,12 @@ macro_rules! theme_colors {
     }
 }
 
+impl Default for Theme {
+    fn default() -> Self {
+        pico8_theme()
+    }
+}
+
 theme_colors! {
     background,
     highlight,

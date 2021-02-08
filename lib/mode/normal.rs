@@ -638,7 +638,7 @@ impl State {
                                 Some((i, c @ '\t')) => i + c.len_utf8(),
                                 Some((i, c @ ' ')) => {
                                     match chars
-                                        .take(editor.config.values.tab_size.get() as usize - 1)
+                                        .take(editor.config.tab_size.get() as usize - 1)
                                         .take_while(|(_, c)| *c == ' ')
                                         .last()
                                     {
@@ -675,12 +675,11 @@ impl State {
                 let cursor_count = editor.buffer_views.get(handle)?.cursors[..].len();
                 let count;
                 let fill;
-                if editor.config.values.indent_with_tabs {
+                if editor.config.indent_with_tabs {
                     count = this.count.max(1) as usize;
                     fill = b'\t';
                 } else {
-                    count =
-                        this.count.max(1) as usize * editor.config.values.tab_size.get() as usize;
+                    count = this.count.max(1) as usize * editor.config.tab_size.get() as usize;
                     fill = b' ';
                 }
 

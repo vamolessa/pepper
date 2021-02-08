@@ -181,19 +181,19 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, client_view: &ClientView, has
     let scroll = client_view.client.scroll;
     let width = client_view.client.viewport_size.0;
     let height = client_view.client.height;
-    let theme = &editor.config.theme;
+    let theme = &editor.theme;
     let mut char_buf = [0; std::mem::size_of::<char>()];
 
     let cursor_color = if has_focus && editor.mode.kind() == ModeKind::Insert {
-        theme.highlight
+        editor.theme.highlight
     } else {
-        theme.cursor
+        editor.theme.cursor
     };
 
-    let mut text_color = theme.token_text;
+    let mut text_color = editor.theme.token_text;
 
     move_cursor_to(buf, 0, 0);
-    set_background_color(buf, theme.background);
+    set_background_color(buf, editor.theme.background);
     set_foreground_color(buf, text_color);
 
     let mut line_index = scroll;
@@ -262,7 +262,7 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, client_view: &ClientView, has
         let mut column_byte_index = 0;
         let mut x = 0;
 
-        set_foreground_color(buf, theme.token_text);
+        set_foreground_color(buf, editor.theme.token_text);
 
         for (char_index, c) in line.as_str().char_indices().chain(iter::once((0, '\0'))) {
             if x >= width {
@@ -285,14 +285,14 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, client_view: &ClientView, has
             };
 
             text_color = match token_kind {
-                TokenKind::Keyword => theme.token_keyword,
-                TokenKind::Type => theme.token_type,
-                TokenKind::Symbol => theme.token_symbol,
-                TokenKind::Literal => theme.token_literal,
-                TokenKind::String => theme.token_string,
-                TokenKind::Comment => theme.token_comment,
-                TokenKind::Text => theme.token_text,
-                TokenKind::Whitespace => theme.token_whitespace,
+                TokenKind::Keyword => editor.theme.token_keyword,
+                TokenKind::Type => editor.theme.token_type,
+                TokenKind::Symbol => editor.theme.token_symbol,
+                TokenKind::Literal => editor.theme.token_literal,
+                TokenKind::String => editor.theme.token_string,
+                TokenKind::Comment => editor.theme.token_comment,
+                TokenKind::Text => editor.theme.token_text,
+                TokenKind::Whitespace => editor.theme.token_whitespace,
             };
 
             if current_cursor_range.to < char_position && current_cursor_index < cursors_end_index {
@@ -341,17 +341,17 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, client_view: &ClientView, has
                 if draw_state != DrawState::Selection(token_kind) {
                     draw_state = DrawState::Selection(token_kind);
                     set_background_color(buf, text_color);
-                    set_foreground_color(buf, theme.background);
+                    set_foreground_color(buf, editor.theme.background);
                 }
             } else if inside_search_range {
                 if draw_state != DrawState::Highlight {
                     draw_state = DrawState::Highlight;
-                    set_background_color(buf, theme.highlight);
-                    set_foreground_color(buf, theme.background);
+                    set_background_color(buf, editor.theme.highlight);
+                    set_foreground_color(buf, editor.theme.background);
                 }
             } else if draw_state != DrawState::Token(token_kind) {
                 draw_state = DrawState::Token(token_kind);
-                set_background_color(buf, theme.background);
+                set_background_color(buf, editor.theme.background);
                 set_foreground_color(buf, text_color);
             }
 
@@ -361,15 +361,15 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, client_view: &ClientView, has
                     x += 1;
                 }
                 ' ' => {
-                    buf.push(editor.config.values.visual_space);
+                    buf.push(editor.config.visual_space);
                     x += 1;
                 }
                 '\t' => {
-                    buf.push(editor.config.values.visual_tab_first);
-                    let tab_size = editor.config.values.tab_size.get() as u16;
+                    buf.push(editor.config.visual_tab_first);
+                    let tab_size = editor.config.tab_size.get() as u16;
                     let next_tab_stop = (tab_size - 1) - x % tab_size;
                     for _ in 0..next_tab_stop {
-                        buf.push(editor.config.values.visual_tab_repeat);
+                        buf.push(editor.config.visual_tab_repeat);
                     }
                     x += next_tab_stop + 1;
                 }
@@ -383,7 +383,7 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, client_view: &ClientView, has
         }
 
         if x < width {
-            set_background_color(buf, theme.background);
+            set_background_color(buf, editor.theme.background);
             clear_until_new_line(buf);
         }
 
@@ -397,10 +397,10 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, client_view: &ClientView, has
         }
     }
 
-    set_background_color(buf, theme.background);
-    set_foreground_color(buf, theme.token_whitespace);
+    set_background_color(buf, editor.theme.background);
+    set_foreground_color(buf, editor.theme.token_whitespace);
     for _ in drawn_line_count..height {
-        buf.push(editor.config.values.visual_empty);
+        buf.push(editor.config.visual_empty);
         clear_until_new_line(buf);
         move_cursor_to_next_line(buf);
     }
@@ -416,10 +416,10 @@ fn draw_picker(buf: &mut Vec<u8>, editor: &Editor, client_view: &ClientView) {
 
     let height = editor
         .picker
-        .height(editor.config.values.picker_max_height.get() as _);
+        .height(editor.config.picker_max_height.get() as _);
 
-    let background_color = editor.config.theme.token_text;
-    let foreground_color = editor.config.theme.token_whitespace;
+    let background_color = editor.theme.token_text;
+    let foreground_color = editor.theme.token_whitespace;
 
     set_background_color(buf, background_color);
     set_foreground_color(buf, foreground_color);
@@ -493,11 +493,11 @@ fn draw_statusbar(
     has_focus: bool,
     status_buf: &mut String,
 ) {
-    let background_color = editor.config.theme.token_text;
-    let foreground_color = editor.config.theme.background;
-    let prompt_background_color = editor.config.theme.token_whitespace;
+    let background_color = editor.theme.token_text;
+    let foreground_color = editor.theme.background;
+    let prompt_background_color = editor.theme.token_whitespace;
     let prompt_foreground_color = background_color;
-    let cursor_color = editor.config.theme.cursor;
+    let cursor_color = editor.theme.cursor;
 
     if has_focus {
         set_background_color(buf, background_color);
