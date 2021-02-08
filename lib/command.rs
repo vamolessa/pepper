@@ -82,28 +82,49 @@ impl<'a> CommandIter<'a> {
 impl<'a> Iterator for CommandIter<'a> {
     type Item = &'a str;
     fn next(&mut self) -> Option<Self::Item> {
-        self.0 = self.0.trim_start();
-        if self.0.is_empty() {
-            return None;
-        }
-
-        let mut bytes = self.0.bytes();
         loop {
-            match bytes.next() {
-                Some(b'\n') | None => break,
-                Some(b'\\') => {
-                    bytes.next();
+            self.0 = self.0.trim_start();
+            if self.0.is_empty() {
+                return None;
+            }
+
+            let bytes = self.0.as_bytes();
+            let mut i = 0;
+            loop {
+                if i == bytes.len() {
+                    let command = self.0;
+                    self.0 = "";
+                    return Some(command);
                 }
-                Some(b'#') => {
-                    // comments
+
+                match bytes[i] {
+                    b'\n' => {
+                        let (command, rest) = self.0.split_at(i);
+                        self.0 = rest;
+                        if command.is_empty() {
+                            break;
+                        } else {
+                            return Some(command);
+                        }
+                    }
+                    b'\\' => i += 1,
+                    b'#' => {
+                        let command = &self.0[..i];
+                        while i < bytes.len() && bytes[i] != b'\n' {
+                            i += 1;
+                        }
+                        self.0 = &self.0[i..];
+                        if command.is_empty() {
+                            break;
+                        } else {
+                            return Some(command);
+                        }
+                    }
+                    _ => (),
                 }
-                _ => (),
+                i += 1;
             }
         }
-
-        let (command, rest) = self.0.split_at(self.0.len() - bytes.len());
-        self.0 = rest;
-        Some(command)
     }
 }
 
@@ -608,17 +629,36 @@ mod tests {
     #[test]
     fn multi_command_line_parsing() {
         let mut commands = CommandIter::new("command0\ncommand1");
-        assert_eq!(Some("command0\n"), commands.next());
+        assert_eq!(Some("command0"), commands.next());
+        assert_eq!(Some("command1"), commands.next());
+        assert_eq!(None, commands.next());
+
+        let mut commands = CommandIter::new("command0\n\n\ncommand1");
+        assert_eq!(Some("command0"), commands.next());
         assert_eq!(Some("command1"), commands.next());
         assert_eq!(None, commands.next());
 
         let mut commands = CommandIter::new("command0\\\n still command0\ncommand1");
-        assert_eq!(Some("command0\\\n still command0\n"), commands.next());
+        assert_eq!(Some("command0\\\n still command0"), commands.next());
         assert_eq!(Some("command1"), commands.next());
         assert_eq!(None, commands.next());
 
-        //let mut commands = CommandIter::new("  # command0\ncommand1");
-        //assert_eq!(Some("command1"), commands.next());
-        //assert_eq!(None, commands.next());
+        let mut commands = CommandIter::new("   #command0");
+        assert_eq!(None, commands.next());
+
+        let mut commands = CommandIter::new("command0 # command1");
+        assert_eq!(Some("command0 "), commands.next());
+        assert_eq!(None, commands.next());
+
+        let mut commands = CommandIter::new("    # command0\ncommand1");
+        assert_eq!(Some("command1"), commands.next());
+        assert_eq!(None, commands.next());
+
+        let mut commands = CommandIter::new(
+            "command0# comment\n\n# more comment\n\n# one more comment\ncommand1",
+        );
+        assert_eq!(Some("command0"), commands.next());
+        assert_eq!(Some("command1"), commands.next());
+        assert_eq!(None, commands.next());
     }
 }
