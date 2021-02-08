@@ -20,7 +20,6 @@ impl Color {
 
 macro_rules! theme_colors {
     ($($color:ident,)*) => {
-        #[derive(Debug, Clone)]
         pub struct Theme {
             $(pub $color: Color,)*
         }

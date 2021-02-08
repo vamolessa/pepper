@@ -1,7 +1,6 @@
 use std::{collections::VecDeque, fmt};
 
 use crate::{
-    buffer::BufferHandle,
     buffer_view::BufferViewHandle,
     client::{ClientManager, TargetClient},
     editor::{Editor, StatusBar, StatusMessageKind},
@@ -27,12 +26,12 @@ pub enum CommandOperation {
     Error,
 }
 
-#[repr(u8)]
 enum CompletionSource {
-    None = 0b0,
-    Files = 0b1,
-    Buffers = 0b10,
-    Commands = 0b100,
+    None,
+    Files,
+    Buffers,
+    Commands,
+    Custom(&'static [&'static str]),
 }
 
 struct CommandContext<'a> {
@@ -62,7 +61,7 @@ pub struct BuiltinCommand {
     name: &'static str,
     alias: Option<&'static str>,
     help: &'static str,
-    completion_sources: u8,
+    completion_source: CompletionSource,
     params: &'static [(&'static str, u8)],
     func: CommandFn,
 }
@@ -427,7 +426,7 @@ mod tests {
             name: "command-name",
             alias: Some("c"),
             help: "",
-            completion_sources: CompletionSource::None as _,
+            completion_source: CompletionSource::None,
             params: &[],
             func: |_| None,
         });

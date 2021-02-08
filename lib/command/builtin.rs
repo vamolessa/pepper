@@ -52,7 +52,7 @@ pub fn register_all(commands: &mut CommandManager) {
     macro_rules! parse_values {
         ($ctx:expr, $($name:ident,)*) => {
             //
-        }
+        };
     }
 
     macro_rules! parse_switches {
@@ -99,7 +99,7 @@ pub fn register_all(commands: &mut CommandManager) {
         name: "quit",
         alias: Some("q"),
         help: "quits this client. append a '!' to force quit",
-        completion_sources: CompletionSource::None as _,
+        completion_source: CompletionSource::None,
         params: &[],
         func: |mut ctx| {
             parse_switches!(ctx,);
@@ -116,7 +116,7 @@ pub fn register_all(commands: &mut CommandManager) {
         name: "quit-all",
         alias: Some("qa"),
         help: "quits all clients. append a '!' to force quit all",
-        completion_sources: CompletionSource::None as _,
+        completion_source: CompletionSource::None,
         params: &[],
         func: |mut ctx| {
             parse_switches!(ctx,);
@@ -133,7 +133,7 @@ pub fn register_all(commands: &mut CommandManager) {
         name: "print",
         alias: None,
         help: "prints a message to the status bar",
-        completion_sources: CompletionSource::None as _,
+        completion_source: CompletionSource::None,
         params: &[],
         func: |mut ctx| {
             parse_switches!(ctx,);
@@ -151,7 +151,7 @@ pub fn register_all(commands: &mut CommandManager) {
         name: "source",
         alias: None,
         help: "load a source file and execute its commands",
-        completion_sources: CompletionSource::None as _,
+        completion_source: CompletionSource::None,
         params: &[],
         func: |mut ctx| {
             parse_switches!(ctx,);
@@ -170,7 +170,7 @@ pub fn register_all(commands: &mut CommandManager) {
         name: "open",
         alias: Some("o"),
         help: "open a buffer for editting",
-        completion_sources: CompletionSource::None as _,
+        completion_source: CompletionSource::None,
         params: &[],
         func: |mut ctx| {
             parse_switches!(ctx,);
@@ -225,7 +225,7 @@ pub fn register_all(commands: &mut CommandManager) {
         name: "save",
         alias: Some("s"),
         help: "save buffer",
-        completion_sources: CompletionSource::None as _,
+        completion_source: CompletionSource::None,
         params: &[],
         func: |mut ctx| {
             parse_switches!(ctx,);
@@ -268,7 +268,7 @@ pub fn register_all(commands: &mut CommandManager) {
         name: "save-all",
         alias: Some("sa"),
         help: "save all buffers",
-        completion_sources: CompletionSource::None as _,
+        completion_source: CompletionSource::None,
         params: &[],
         func: |mut ctx| {
             parse_switches!(ctx,);
@@ -303,7 +303,7 @@ pub fn register_all(commands: &mut CommandManager) {
         name: "reload",
         alias: Some("r"),
         help: "reload buffer from file",
-        completion_sources: CompletionSource::None as _,
+        completion_source: CompletionSource::None,
         params: &[],
         func: |mut ctx| {
             parse_switches!(ctx,);
@@ -344,7 +344,7 @@ pub fn register_all(commands: &mut CommandManager) {
         name: "reload-all",
         alias: Some("ra"),
         help: "reload all buffers from file",
-        completion_sources: CompletionSource::None as _,
+        completion_source: CompletionSource::None,
         params: &[],
         func: |mut ctx| {
             parse_switches!(ctx,);
@@ -387,7 +387,7 @@ pub fn register_all(commands: &mut CommandManager) {
         name: "close",
         alias: Some("c"),
         help: "close buffer",
-        completion_sources: CompletionSource::None as _,
+        completion_source: CompletionSource::None,
         params: &[],
         func: |mut ctx| {
             parse_switches!(ctx,);
@@ -435,7 +435,7 @@ pub fn register_all(commands: &mut CommandManager) {
         name: "close-all",
         alias: Some("ca"),
         help: "close all buffers",
-        completion_sources: CompletionSource::None as _,
+        completion_source: CompletionSource::None,
         params: &[],
         func: |mut ctx| {
             parse_switches!(ctx,);
@@ -468,7 +468,7 @@ pub fn register_all(commands: &mut CommandManager) {
         name: "config",
         alias: None,
         help: "change an editor config",
-        completion_sources: CompletionSource::None as _,
+        completion_source: CompletionSource::None,
         params: &[],
         func: |mut ctx| {
             parse_switches!(ctx,);
@@ -491,7 +491,7 @@ pub fn register_all(commands: &mut CommandManager) {
         name: "map",
         alias: None,
         help: "create a keyboard mapping for a mode",
-        completion_sources: CompletionSource::None as _,
+        completion_source: CompletionSource::None,
         params: &[],
         func: |mut ctx| {
             parse_switches!(ctx,);
