@@ -1,6 +1,7 @@
 use std::num::NonZeroU8;
 
 use crate::{
+    keymap::KeyMapCollection,
     syntax::SyntaxCollection,
     theme::{pico8_theme, Theme},
 };
@@ -38,6 +39,7 @@ pub struct Config {
     pub values: ConfigValues,
     pub theme: Theme,
     pub syntaxes: SyntaxCollection,
+    pub keymaps: KeyMapCollection,
 }
 
 impl Default for Config {
@@ -46,6 +48,7 @@ impl Default for Config {
             values: ConfigValues::default(),
             theme: pico8_theme(),
             syntaxes: SyntaxCollection::new(),
+            keymaps: KeyMapCollection::default(),
         }
     }
 }

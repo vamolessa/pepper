@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{fmt, path::Path};
 
 use crate::{
     buffer::{Buffer, BufferHandle},
@@ -9,26 +9,50 @@ use crate::{
     },
     editor::Editor,
     editor::StatusMessageKind,
+    keymap::ParseKeyMapError,
+    mode::ModeKind,
     navigation_history::NavigationHistory,
 };
 
 pub fn register_all(commands: &mut CommandManager) {
-    const UNSAVED_CHANGES_ERROR: &str =
-        "there are unsaved changes in buffer. try appending a '!' to command to force execute";
     const NO_BUFFER_OPENED_ERROR: &str = "no buffer opened";
+
+    fn unsaved_changes_error(
+        ctx: &mut CommandContext,
+        command_name: &str,
+    ) -> Option<CommandOperation> {
+        ctx.error(format_args!(
+            "there are unsaved changes in buffer. try appending a '!' to '{}' to force execute",
+            command_name
+        ))
+    }
 
     fn any_buffer_needs_save(editor: &Editor) -> bool {
         editor.buffers.iter().any(|b| b.needs_save())
     }
 
-    macro_rules! command_error {
-        ($ctx:expr, $format:literal $(, $value:expr)*) => {{
-            $ctx.editor
-                .status_bar
-                .write(StatusMessageKind::Error)
-                .fmt(format_args!($format, $($value,)*));
-            return Some(CommandOperation::Error);
-        }}
+    fn parsing_error(
+        ctx: &mut CommandContext,
+        parsed: &str,
+        message: &dyn fmt::Display,
+        error_index: usize,
+    ) -> Option<CommandOperation> {
+        ctx.editor
+            .status_bar
+            .write(StatusMessageKind::Error)
+            .fmt(format_args!(
+                "{}\n{:>index$} {}",
+                parsed,
+                message,
+                index = error_index + 1
+            ));
+        Some(CommandOperation::Error)
+    }
+
+    macro_rules! parse_values {
+        ($ctx:expr, $($name:ident,)*) => {
+            //
+        }
     }
 
     macro_rules! parse_switches {
@@ -83,7 +107,7 @@ pub fn register_all(commands: &mut CommandManager) {
             if ctx.bang || !any_buffer_needs_save(ctx.editor) {
                 Some(CommandOperation::Quit)
             } else {
-                ctx.error(format_args!("{}", UNSAVED_CHANGES_ERROR))
+                unsaved_changes_error(&mut ctx, "quit")
             }
         },
     });
@@ -100,7 +124,7 @@ pub fn register_all(commands: &mut CommandManager) {
             if ctx.bang || !any_buffer_needs_save(ctx.editor) {
                 Some(CommandOperation::QuitAll)
             } else {
-                ctx.error(format_args!("{}", UNSAVED_CHANGES_ERROR))
+                unsaved_changes_error(&mut ctx, "quit-all")
             }
         },
     });
@@ -217,7 +241,7 @@ pub fn register_all(commands: &mut CommandManager) {
                 Some(handle) => handle,
                 None => match ctx.current_buffer_view_handle() {
                     Some(handle) => ctx.editor.buffer_views.get(handle)?.buffer_handle,
-                    None => command_error!(ctx, "{}", NO_BUFFER_OPENED_ERROR),
+                    None => return ctx.error(format_args!("{}", NO_BUFFER_OPENED_ERROR)),
                 },
             };
 
@@ -295,7 +319,7 @@ pub fn register_all(commands: &mut CommandManager) {
             let buffer = ctx.editor.buffers.get_mut(handle)?;
 
             if !ctx.bang && buffer.needs_save() {
-                return ctx.error(format_args!("{}", UNSAVED_CHANGES_ERROR));
+                return unsaved_changes_error(&mut ctx, "reload");
             }
 
             if let Err(error) = buffer
@@ -327,7 +351,7 @@ pub fn register_all(commands: &mut CommandManager) {
             parse_options!(ctx,);
 
             if !ctx.bang && ctx.editor.buffers.iter().any(Buffer::needs_save) {
-                return ctx.error(format_args!("{}", UNSAVED_CHANGES_ERROR));
+                return unsaved_changes_error(&mut ctx, "reload-all");
             }
 
             let mut count = 0;
@@ -378,7 +402,7 @@ pub fn register_all(commands: &mut CommandManager) {
             };
 
             if !ctx.bang && ctx.editor.buffers.get(handle)?.needs_save() {
-                return ctx.error(format_args!("{}", UNSAVED_CHANGES_ERROR));
+                return unsaved_changes_error(&mut ctx, "close");
             }
 
             ctx.editor.buffer_views.defer_remove_buffer_where(
@@ -418,7 +442,7 @@ pub fn register_all(commands: &mut CommandManager) {
             parse_options!(ctx,);
 
             if !ctx.bang && ctx.editor.buffers.iter().any(Buffer::needs_save) {
-                command_error!(ctx, "{}", UNSAVED_CHANGES_ERROR);
+                return unsaved_changes_error(&mut ctx, "close-all");
             }
 
             let count = ctx.editor.buffers.iter().count();
@@ -439,22 +463,70 @@ pub fn register_all(commands: &mut CommandManager) {
             None
         },
     });
+
+    commands.register_builtin(BuiltinCommand {
+        name: "config",
+        alias: None,
+        help: "change an editor config",
+        completion_sources: CompletionSource::None as _,
+        params: &[],
+        func: |mut ctx| {
+            parse_switches!(ctx,);
+            parse_options!(ctx,);
+
+            let (key, value) = match ctx.args.values() {
+                [key, value] => (key.as_str(ctx.args), value.as_str(ctx.args)),
+                _ => {
+                    return ctx.error(format_args!(
+                        "'config' expects exactly 2 parameters: settings key and its value"
+                    ))
+                }
+            };
+
+            None
+        },
+    });
+
+    commands.register_builtin(BuiltinCommand {
+        name: "map",
+        alias: None,
+        help: "create a keyboard mapping for a mode",
+        completion_sources: CompletionSource::None as _,
+        params: &[],
+        func: |mut ctx| {
+            parse_switches!(ctx,);
+            parse_options!(ctx,);
+
+            let (mode, from, to) = match ctx.args.values() {
+                [mode, from, to] => (
+                    mode.as_str(ctx.args),
+                    from.as_str(ctx.args),
+                    to.as_str(ctx.args),
+                ),
+                _ => {
+                    return ctx.error(format_args!(
+                        "'map' expects exactly 3 parameters: which mode, 'from' keys and 'to' keys"
+                    ));
+                }
+            };
+            let mode = match mode {
+                "normal" => ModeKind::Normal,
+                "insert" => ModeKind::Insert,
+                "read-line" => ModeKind::ReadLine,
+                "picker" => ModeKind::Picker,
+                "command" => ModeKind::Command,
+                _ => return ctx.error(format_args!("invalid mode '{}'", mode)),
+            };
+
+            match ctx.editor.config.keymaps.parse_and_map(mode, from, to) {
+                Ok(()) => None,
+                Err(ParseKeyMapError::From(e)) => parsing_error(&mut ctx, from, &e.error, e.index),
+                Err(ParseKeyMapError::To(e)) => parsing_error(&mut ctx, to, &e.error, e.index),
+            }
+        },
+    });
 }
 
-// buffer:
-// - save
-// - reload[!]
-// - reload-all[!]
-//
-// process:
-// - ???
-//
-// keymap:
-// - map-normap
-// - map-insert
-// - map-read-line
-// - map-picker
-//
 // others:
 // - syntax-rules (???)
 // - config

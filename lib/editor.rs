@@ -15,7 +15,7 @@ use crate::{
     command::{CommandManager, CommandOperation},
     config::Config,
     editor_event::{EditorEvent, EditorEventQueue},
-    keymap::{KeyMapCollection, MatchResult},
+    keymap::MatchResult,
     lsp::{LspClientCollection, LspClientContext, LspClientHandle, LspServerEvent},
     mode::{Mode, ModeKind, ModeOperation},
     picker::Picker,
@@ -246,8 +246,6 @@ pub struct Editor {
     pub commands: CommandManager,
     pub lsp: LspClientCollection,
     pub events: EditorEventQueue,
-
-    keymaps: KeyMapCollection,
 }
 impl Editor {
     pub fn new(current_directory: PathBuf) -> Self {
@@ -271,8 +269,6 @@ impl Editor {
             commands: CommandManager::new(),
             lsp: LspClientCollection::new(),
             events: EditorEventQueue::default(),
-
-            keymaps: KeyMapCollection::default(),
         }
     }
 
@@ -424,6 +420,7 @@ impl Editor {
                 self.buffered_keys.0.push(key);
 
                 match self
+                    .config
                     .keymaps
                     .matches(self.mode.kind(), self.buffered_keys.as_slice())
                 {
