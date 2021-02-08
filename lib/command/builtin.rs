@@ -7,11 +7,12 @@ use crate::{
         BuiltinCommand, CommandArgs, CommandContext, CommandManager, CommandOperation,
         CompletionSource,
     },
-    editor::Editor,
-    editor::StatusMessageKind,
+    config::{ParseConfigError, CONFIG_NAMES},
+    editor::{Editor, StatusMessageKind},
     keymap::ParseKeyMapError,
     mode::ModeKind,
     navigation_history::NavigationHistory,
+    theme::{Color, THEME_COLOR_NAMES},
 };
 
 pub fn register_all(commands: &mut CommandManager) {
@@ -468,22 +469,88 @@ pub fn register_all(commands: &mut CommandManager) {
         name: "config",
         alias: None,
         help: "change an editor config",
-        completion_source: CompletionSource::None,
+        completion_source: CompletionSource::Custom(CONFIG_NAMES),
         params: &[],
         func: |mut ctx| {
             parse_switches!(ctx,);
             parse_options!(ctx,);
 
-            let (key, value) = match ctx.args.values() {
-                [key, value] => (key.as_str(ctx.args), value.as_str(ctx.args)),
-                _ => {
-                    return ctx.error(format_args!(
-                        "'config' expects exactly 2 parameters: settings key and its value"
-                    ))
+            match ctx.args.values() {
+                [key] => {
+                    let key = key.as_str(ctx.args);
+                    match ctx.editor.config.display_config(key) {
+                        Some(display) => {
+                            ctx.editor
+                                .status_bar
+                                .write(StatusMessageKind::Info)
+                                .fmt(format_args!("{}", display));
+                            None
+                        }
+                        None => ctx.error(format_args!("no such config '{}'", key)),
+                    }
                 }
-            };
+                [key, value] => {
+                    let key = key.as_str(ctx.args);
+                    let value = value.as_str(ctx.args);
+                    match ctx.editor.config.parse_config(key, value) {
+                        Ok(()) => None,
+                        Err(ParseConfigError::NotFound) => {
+                            ctx.error(format_args!("no such config '{}'", key))
+                        }
+                        Err(ParseConfigError::InvalidValue) => ctx.error(format_args!(
+                            "invalid value '{}' for config '{}'",
+                            value, key
+                        )),
+                    }
+                }
+                _ => ctx.error(format_args!("'config' expects 1 or 2 parameters")),
+            }
+        },
+    });
 
-            None
+    commands.register_builtin(BuiltinCommand {
+        name: "theme",
+        alias: None,
+        help: "change editor theme color",
+        completion_source: CompletionSource::Custom(THEME_COLOR_NAMES),
+        params: &[],
+        func: |mut ctx| {
+            parse_switches!(ctx,);
+            parse_options!(ctx,);
+
+            match ctx.args.values() {
+                [key] => {
+                    let key = key.as_str(ctx.args);
+                    match ctx.editor.theme.color_from_name(key) {
+                        Some(color) => {
+                            ctx.editor
+                                .status_bar
+                                .write(StatusMessageKind::Info)
+                                .fmt(format_args!("{:x}", color.into_u32()));
+                            None
+                        }
+                        None => ctx.error(format_args!("no such theme color '{}'", key)),
+                    }
+                }
+                [key, value] => {
+                    let key = key.as_str(ctx.args);
+                    let value = value.as_str(ctx.args);
+                    match ctx.editor.theme.color_from_name(key) {
+                        Some(color) => match u32::from_str_radix(value, 16) {
+                            Ok(parsed) => {
+                                *color = Color::from_u32(parsed);
+                                None
+                            }
+                            Err(_) => ctx.error(format_args!(
+                                "invalid value '{}' for color '{}'",
+                                value, key
+                            )),
+                        },
+                        None => ctx.error(format_args!("no such theme color '{}'", key)),
+                    }
+                }
+                _ => ctx.error(format_args!("'config' expects 1 or 2 parameters")),
+            }
         },
     });
 
@@ -504,9 +571,7 @@ pub fn register_all(commands: &mut CommandManager) {
                     to.as_str(ctx.args),
                 ),
                 _ => {
-                    return ctx.error(format_args!(
-                        "'map' expects exactly 3 parameters: which mode, 'from' keys and 'to' keys"
-                    ));
+                    return ctx.error(format_args!("'map' expects exactly 3 parameters"));
                 }
             };
             let mode = match mode {

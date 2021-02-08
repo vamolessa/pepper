@@ -1,37 +1,38 @@
 use std::{fmt, num::NonZeroU8};
 
-pub enum ConfigError {
+pub enum ParseConfigError {
     NotFound,
     InvalidValue,
 }
 
 macro_rules! config_values {
     ($($name:ident: $type:ty = $default:expr,)*) => {
+        pub const CONFIG_NAMES: &[&str] = &[$(stringify!($name),)*];
+
         pub struct Config {
             $(pub $name: $type,)*
         }
 
         impl Config {
-            pub fn parse_config(&mut self, key: &str, value: &str) -> Result<(), ConfigError> {
+            pub fn parse_config(&mut self, key: &str, value: &str) -> Result<(), ParseConfigError> {
                 match key {
                     $(stringify!($name) => match value.parse() {
                         Ok(value) => self.$name = value,
-                        Err(_) => return Err(ConfigError::InvalidValue),
+                        Err(_) => return Err(ParseConfigError::InvalidValue),
                     },)*
-                    _ => return Err(ConfigError::NotFound),
+                    _ => return Err(ParseConfigError::NotFound),
                 }
                 Ok(())
             }
 
-            pub fn display_config(&mut self, key: &str, formatter: &mut fmt::Formatter) -> Result<(), ConfigError> {
+            pub fn display_config(&self, key: &str) -> Option<DisplayConfig> {
                 match key {
-                    $(stringify!($name) => match formatter.write_fmt(format_args!("{}", &self.$name)) {
-                        Ok(()) => (),
-                        Err(_) => return Err(ConfigError::InvalidValue),
-                    },)*
-                    _ => return Err(ConfigError::NotFound),
+                    $(stringify!($name) => Some(DisplayConfig {
+                        config: self,
+                        writter: |c, f| fmt::Display::fmt(&c.$name, f),
+                    }),)*
+                    _ => None,
                 }
-                Ok(())
             }
         }
 
@@ -40,6 +41,17 @@ macro_rules! config_values {
                 Self {
                     $($name: $default,)*
                 }
+            }
+        }
+
+        pub struct DisplayConfig<'a> {
+            config: &'a Config,
+            writter: fn(&Config, &mut fmt::Formatter) -> fmt::Result
+        }
+
+        impl<'a> fmt::Display for DisplayConfig<'a> {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                (self.writter)(self.config, f)
             }
         }
     }
