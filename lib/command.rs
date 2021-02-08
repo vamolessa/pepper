@@ -277,6 +277,7 @@ impl CommandManager {
             _ => StatusMessageKind::Info,
         };
         editor.status_bar.write(message_kind).str(&output.0);
+        output.clear();
 
         std::mem::swap(&mut args, &mut editor.commands.parsed_args);
         std::mem::swap(&mut output, &mut editor.commands.output);
