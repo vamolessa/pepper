@@ -243,7 +243,7 @@ impl CommandManager {
             type Item = (TokenKind, &'a str);
             fn next(&mut self) -> Option<Self::Item> {
                 fn is_separator(c: char) -> bool {
-                    c == ' ' || c == '=' || c == '!' || c == '"' || c == '\''
+                    c.is_ascii_whitespace() || c == '=' || c == '!' || c == '"' || c == '\''
                 }
 
                 self.rest = self.rest.trim_start();
@@ -523,7 +523,7 @@ mod tests {
         assert_eq!("ccc", args.values()[2].as_str(&args));
         assert_eq!("ddd", args.values()[3].as_str(&args));
 
-        let args = parse_args(&mut commands, "-switch'value'-option=\"option value!\"");
+        let args = parse_args(&mut commands, "-switch'value'\n-option=\"option value!\"\n");
         assert_eq!(1, args.values().len());
         assert_eq!(1, args.switches().len());
         assert_eq!(1, args.options().len());
