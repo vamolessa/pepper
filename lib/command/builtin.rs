@@ -24,10 +24,11 @@ pub fn register_all(commands: &mut CommandManager) {
         ctx: &mut CommandContext,
         command_name: &str,
     ) -> Option<CommandOperation> {
-        ctx.error(format_args!(
+        ctx.output.write_fmt(format_args!(
             "there are unsaved changes in buffer. try appending a '!' to '{}' to force execute",
             command_name
-        ))
+        ));
+        Some(CommandOperation::Error)
     }
 
     fn any_buffer_needs_save(editor: &Editor) -> bool {
@@ -40,22 +41,20 @@ pub fn register_all(commands: &mut CommandManager) {
         message: &dyn fmt::Display,
         error_index: usize,
     ) -> Option<CommandOperation> {
-        ctx.editor
-            .status_bar
-            .write(StatusMessageKind::Error)
-            .fmt(format_args!(
-                "{}\n{:>index$} {}",
-                parsed,
-                message,
-                index = error_index + 1
-            ));
+        ctx.output.write_fmt(format_args!(
+            "{}\n{:>index$} {}",
+            parsed,
+            message,
+            index = error_index + 1
+        ));
         Some(CommandOperation::Error)
     }
 
     macro_rules! expect_no_bang {
         ($ctx:expr) => {
             if $ctx.bang {
-                return $ctx.error(format_args!("expected no bang"));
+                $ctx.output.write_str("expected no bang");
+                return Some(CommandOperation::Error);
             }
         };
     }
@@ -63,7 +62,8 @@ pub fn register_all(commands: &mut CommandManager) {
     macro_rules! expect_empty_values {
         ($ctx:expr) => {
             if !$ctx.args.values().is_empty() {
-                return $ctx.error(format_args!("expected no argument values"));
+                $ctx.output.write_str("expected no argument values");
+                return Some(CommandOperation::Error);
             }
         };
     }
@@ -75,7 +75,10 @@ pub fn register_all(commands: &mut CommandManager) {
                 let switch = switch.as_str($ctx.args);
                 match switch {
                     $(stringify!($name) => $name = true,)*
-                    _ => return $ctx.error(format_args!("invalid switch '{}'", switch)),
+                    _ => {
+                        $ctx.output.write_fmt(format_args!("invalid switch '{}'", switch));
+                        return Some(CommandOperation::Error);
+                    }
                 }
             }
         }
@@ -90,7 +93,8 @@ pub fn register_all(commands: &mut CommandManager) {
                     $(stringify!($name) => $name = Some(value.as_str($ctx.args)),)*
                     _ => {
                         drop(value);
-                        return $ctx.error(format_args!("invalid option '{}'", key));
+                        $ctx.output.write_fmt(format_args!("invalid option '{}'", key));
+                        return Some(CommandOperation::Error);
                     }
                 }
             }
@@ -102,7 +106,7 @@ pub fn register_all(commands: &mut CommandManager) {
             match $name.parse::<$type>() {
                 Ok(value) => value,
                 Err(_) => {
-                    return $ctx.error(format_args!(
+                    $ctx.output.write_fmt(format_args!(
                         concat!(
                             "could not convert argument '",
                             stringify!($name),
@@ -110,7 +114,8 @@ pub fn register_all(commands: &mut CommandManager) {
                         ),
                         $name,
                         std::any::type_name::<$type>()
-                    ))
+                    ));
+                    return Some(CommandOperation::Error);
                 }
             }
         };
@@ -274,6 +279,7 @@ pub fn register_all(commands: &mut CommandManager) {
 
             let buffer = ctx.editor.buffers.get_mut(handle)?;
             if let Err(error) = buffer.save_to_file(new_path, &mut ctx.editor.events) {
+
                 ctx.editor
                     .status_bar
                     .write(StatusMessageKind::Error)

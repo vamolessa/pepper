@@ -63,14 +63,6 @@ impl<'a> CommandContext<'a> {
             .get(TargetClient(self.client_index?))?
             .buffer_view_handle()
     }
-
-    pub fn error(&mut self, format: fmt::Arguments) -> Option<CommandOperation> {
-        self.editor
-            .status_bar
-            .write(StatusMessageKind::Error)
-            .fmt(format);
-        Some(CommandOperation::Error)
-    }
 }
 
 pub struct CommandIter<'a>(&'a str);
