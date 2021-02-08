@@ -12,6 +12,7 @@ use crate::{
     keymap::ParseKeyMapError,
     mode::ModeKind,
     navigation_history::NavigationHistory,
+    register::RegisterKey,
     syntax::{Syntax, TokenKind},
     theme::{Color, THEME_COLOR_NAMES},
 };
@@ -260,7 +261,7 @@ pub fn register_all(commands: &mut CommandManager) {
             let new_path = match ctx.args.values() {
                 [] => None,
                 [path] => Some(Path::new(path.as_str(ctx.args))),
-                _ => return ctx.error(format_args!("command expects one 'path' argument at most")),
+                _ => return ctx.error(format_args!("command expects 0 or 1 parameters")),
             };
 
             let handle = match handle {
@@ -535,7 +536,7 @@ pub fn register_all(commands: &mut CommandManager) {
                         )),
                     }
                 }
-                _ => ctx.error(format_args!("'config' expects 1 or 2 parameters")),
+                _ => ctx.error(format_args!("command expects 1 or 2 parameters")),
             }
         },
     });
@@ -582,7 +583,7 @@ pub fn register_all(commands: &mut CommandManager) {
                         None => ctx.error(format_args!("no such theme color '{}'", key)),
                     }
                 }
-                _ => ctx.error(format_args!("'config' expects 1 or 2 parameters")),
+                _ => ctx.error(format_args!("command expects 1 or 2 parameters")),
             }
         },
     });
@@ -599,7 +600,7 @@ pub fn register_all(commands: &mut CommandManager) {
 
             let glob = match ctx.args.values() {
                 [glob] => glob.as_str(ctx.args),
-                _ => return ctx.error(format_args!("'syntax' expects exactly 1 parameter")),
+                _ => return ctx.error(format_args!("command expects exactly 1 parameter")),
             };
 
             let mut syntax = Syntax::new();
@@ -651,7 +652,7 @@ pub fn register_all(commands: &mut CommandManager) {
                     to.as_str(ctx.args),
                 ),
                 _ => {
-                    return ctx.error(format_args!("'map' expects exactly 3 parameters"));
+                    return ctx.error(format_args!("command expects exactly 3 parameters"));
                 }
             };
             let mode = match mode {
@@ -670,12 +671,41 @@ pub fn register_all(commands: &mut CommandManager) {
             }
         },
     });
+
+    commands.register_builtin(BuiltinCommand {
+        name: "register",
+        alias: None,
+        help: "change an editor register",
+        completion_source: CompletionSource::None,
+        flags: &[],
+        func: |mut ctx| {
+            expect_no_bang!(ctx);
+            parse_switches!(ctx);
+            parse_options!(ctx);
+
+            let (key, value) = match ctx.args.values() {
+                [key] => (key.as_str(ctx.args), None),
+                [key, value] => (key.as_str(ctx.args), Some(value.as_str(ctx.args))),
+                _ => return ctx.error(format_args!("command expects 1 or 2 parameters")),
+            };
+            let key = match RegisterKey::from_str(key) {
+                Some(key) => key,
+                None => return ctx.error(format_args!("invalid register key '{}'", key)),
+            };
+            match value {
+                Some(value) => ctx.editor.registers.set(key, value),
+                None => ctx
+                    .editor
+                    .status_bar
+                    .write(StatusMessageKind::Info)
+                    .str(ctx.editor.registers.get(key)),
+            }
+
+            None
+        },
+    });
 }
 
-// others:
-// - syntax-rules (???)
-// - register
-//
 // lsp:
 // - lsp-start
 // - lsp-stop
