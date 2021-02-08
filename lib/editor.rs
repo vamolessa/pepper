@@ -198,7 +198,7 @@ impl StatusBar {
     pub fn write(&mut self, kind: StatusMessageKind) -> StatusBarWrite {
         self.kind = kind;
         self.message.clear();
-        StatusBarWrite(self)
+        StatusBarWrite(&mut self.message)
     }
 
     // TODO: replace with 'write'
@@ -216,14 +216,14 @@ impl StatusBar {
         }
     }
 }
-pub struct StatusBarWrite<'a>(&'a mut StatusBar);
+pub struct StatusBarWrite<'a>(&'a mut String);
 impl<'a> StatusBarWrite<'a> {
     pub fn str(&mut self, message: &str) {
-        self.0.message.push_str(message);
+        self.0.push_str(message);
     }
 
     pub fn fmt(&mut self, args: fmt::Arguments) {
-        let _ = fmt::write(&mut self.0.message, args);
+        let _ = fmt::write(&mut self.0, args);
     }
 }
 

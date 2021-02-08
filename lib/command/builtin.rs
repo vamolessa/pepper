@@ -12,6 +12,7 @@ use crate::{
     keymap::ParseKeyMapError,
     mode::ModeKind,
     navigation_history::NavigationHistory,
+    syntax::{Syntax, TokenKind},
     theme::{Color, THEME_COLOR_NAMES},
 };
 
@@ -50,14 +51,24 @@ pub fn register_all(commands: &mut CommandManager) {
         Some(CommandOperation::Error)
     }
 
-    macro_rules! parse_values {
-        ($ctx:expr, $($name:ident,)*) => {
-            //
+    macro_rules! expect_no_bang {
+        ($ctx:expr) => {
+            if $ctx.bang {
+                return $ctx.error(format_args!("expected no bang"));
+            }
+        };
+    }
+
+    macro_rules! expect_empty_values {
+        ($ctx:expr) => {
+            if !$ctx.args.values().is_empty() {
+                return $ctx.error(format_args!("expected no argument values"));
+            }
         };
     }
 
     macro_rules! parse_switches {
-        ($ctx:expr, $($name:ident,)*) => {
+        ($ctx:expr $(, $name:ident)*) => {
             $(let mut $name = false;)*
             for switch in $ctx.args.switches() {
                 let switch = switch.as_str($ctx.args);
@@ -70,23 +81,12 @@ pub fn register_all(commands: &mut CommandManager) {
     }
 
     macro_rules! parse_options {
-        ($ctx:expr, $($name:ident : $type:ty,)*) => {
+        ($ctx:expr $(, $name:ident)*) => {
             $(let mut $name = None;)*
             for (key, value) in $ctx.args.options() {
                 let key = key.as_str($ctx.args);
                 match key {
-                    $(stringify!($name) => {
-                        let value = value.as_str($ctx.args);
-                        $name = match value.parse::<$type>() {
-                            Ok(value) => Some(value),
-                            Err(_) => return $ctx.error(format_args!(
-                                "could not convert option '{}' value '{}' to {}",
-                                key,
-                                value,
-                                std::any::type_name::<$type>()
-                            )),
-                        }
-                    })*
+                    $(stringify!($name) => $name = Some(value.as_str($ctx.args)),)*
                     _ => {
                         drop(value);
                         return $ctx.error(format_args!("invalid option '{}'", key));
@@ -96,15 +96,35 @@ pub fn register_all(commands: &mut CommandManager) {
         }
     }
 
+    macro_rules! parse_arg {
+        ($ctx:expr, $name:ident : $type:ty) => {
+            match $name.parse::<$type>() {
+                Ok(value) => value,
+                Err(_) => {
+                    return $ctx.error(format_args!(
+                        concat!(
+                            "could not convert argument '",
+                            stringify!($name),
+                            "' value '{}' to {}"
+                        ),
+                        $name,
+                        std::any::type_name::<$type>()
+                    ))
+                }
+            }
+        };
+    }
+
     commands.register_builtin(BuiltinCommand {
         name: "quit",
         alias: Some("q"),
         help: "quits this client. append a '!' to force quit",
         completion_source: CompletionSource::None,
-        params: &[],
+        flags: &[],
         func: |mut ctx| {
-            parse_switches!(ctx,);
-            parse_options!(ctx,);
+            expect_empty_values!(ctx);
+            parse_switches!(ctx);
+            parse_options!(ctx);
             if ctx.bang || !any_buffer_needs_save(ctx.editor) {
                 Some(CommandOperation::Quit)
             } else {
@@ -118,10 +138,11 @@ pub fn register_all(commands: &mut CommandManager) {
         alias: Some("qa"),
         help: "quits all clients. append a '!' to force quit all",
         completion_source: CompletionSource::None,
-        params: &[],
+        flags: &[],
         func: |mut ctx| {
-            parse_switches!(ctx,);
-            parse_options!(ctx,);
+            expect_empty_values!(ctx);
+            parse_switches!(ctx);
+            parse_options!(ctx);
             if ctx.bang || !any_buffer_needs_save(ctx.editor) {
                 Some(CommandOperation::QuitAll)
             } else {
@@ -135,10 +156,11 @@ pub fn register_all(commands: &mut CommandManager) {
         alias: None,
         help: "prints a message to the status bar",
         completion_source: CompletionSource::None,
-        params: &[],
+        flags: &[],
         func: |mut ctx| {
-            parse_switches!(ctx,);
-            parse_options!(ctx,);
+            expect_no_bang!(ctx);
+            parse_switches!(ctx);
+            parse_options!(ctx);
             let mut w = ctx.editor.status_bar.write(StatusMessageKind::Info);
             for arg in ctx.args.values() {
                 w.str(arg.as_str(ctx.args));
@@ -153,10 +175,11 @@ pub fn register_all(commands: &mut CommandManager) {
         alias: None,
         help: "load a source file and execute its commands",
         completion_source: CompletionSource::None,
-        params: &[],
+        flags: &[],
         func: |mut ctx| {
-            parse_switches!(ctx,);
-            parse_options!(ctx,);
+            expect_no_bang!(ctx);
+            parse_switches!(ctx);
+            parse_options!(ctx);
             for path in ctx.args.values() {
                 let path = path.as_str(ctx.args);
                 if !ctx.editor.load_config(ctx.clients, path) {
@@ -172,10 +195,11 @@ pub fn register_all(commands: &mut CommandManager) {
         alias: Some("o"),
         help: "open a buffer for editting",
         completion_source: CompletionSource::None,
-        params: &[],
+        flags: &[],
         func: |mut ctx| {
-            parse_switches!(ctx,);
-            parse_options!(ctx,);
+            expect_no_bang!(ctx);
+            parse_switches!(ctx);
+            parse_options!(ctx);
 
             let target_client = TargetClient(ctx.client_index?);
             NavigationHistory::save_client_snapshot(
@@ -227,10 +251,11 @@ pub fn register_all(commands: &mut CommandManager) {
         alias: Some("s"),
         help: "save buffer",
         completion_source: CompletionSource::None,
-        params: &[],
+        flags: &[],
         func: |mut ctx| {
-            parse_switches!(ctx,);
-            parse_options!(ctx, handle: BufferHandle,);
+            expect_no_bang!(ctx);
+            parse_switches!(ctx);
+            parse_options!(ctx, handle);
 
             let new_path = match ctx.args.values() {
                 [] => None,
@@ -239,7 +264,7 @@ pub fn register_all(commands: &mut CommandManager) {
             };
 
             let handle = match handle {
-                Some(handle) => handle,
+                Some(handle) => parse_arg!(ctx, handle: BufferHandle),
                 None => match ctx.current_buffer_view_handle() {
                     Some(handle) => ctx.editor.buffer_views.get(handle)?.buffer_handle,
                     None => return ctx.error(format_args!("{}", NO_BUFFER_OPENED_ERROR)),
@@ -270,10 +295,12 @@ pub fn register_all(commands: &mut CommandManager) {
         alias: Some("sa"),
         help: "save all buffers",
         completion_source: CompletionSource::None,
-        params: &[],
+        flags: &[],
         func: |mut ctx| {
-            parse_switches!(ctx,);
-            parse_options!(ctx,);
+            expect_no_bang!(ctx);
+            expect_empty_values!(ctx);
+            parse_switches!(ctx);
+            parse_options!(ctx);
             let mut count = 0;
             let mut had_error = false;
             let mut write = ctx.editor.status_bar.write(StatusMessageKind::Error);
@@ -305,13 +332,14 @@ pub fn register_all(commands: &mut CommandManager) {
         alias: Some("r"),
         help: "reload buffer from file",
         completion_source: CompletionSource::None,
-        params: &[],
+        flags: &[],
         func: |mut ctx| {
-            parse_switches!(ctx,);
-            parse_options!(ctx, handle: BufferHandle,);
+            expect_empty_values!(ctx);
+            parse_switches!(ctx);
+            parse_options!(ctx, handle);
 
             let handle = match handle {
-                Some(handle) => handle,
+                Some(handle) => parse_arg!(ctx, handle: BufferHandle),
                 None => match ctx.current_buffer_view_handle() {
                     Some(handle) => ctx.editor.buffer_views.get(handle)?.buffer_handle,
                     None => return ctx.error(format_args!("{}", NO_BUFFER_OPENED_ERROR)),
@@ -346,10 +374,11 @@ pub fn register_all(commands: &mut CommandManager) {
         alias: Some("ra"),
         help: "reload all buffers from file",
         completion_source: CompletionSource::None,
-        params: &[],
+        flags: &[],
         func: |mut ctx| {
-            parse_switches!(ctx,);
-            parse_options!(ctx,);
+            expect_empty_values!(ctx);
+            parse_switches!(ctx);
+            parse_options!(ctx);
 
             if !ctx.bang && ctx.editor.buffers.iter().any(Buffer::needs_save) {
                 return unsaved_changes_error(&mut ctx, "reload-all");
@@ -389,13 +418,14 @@ pub fn register_all(commands: &mut CommandManager) {
         alias: Some("c"),
         help: "close buffer",
         completion_source: CompletionSource::None,
-        params: &[],
+        flags: &[],
         func: |mut ctx| {
-            parse_switches!(ctx,);
-            parse_options!(ctx, handle: BufferHandle,);
+            expect_empty_values!(ctx);
+            parse_switches!(ctx);
+            parse_options!(ctx, handle);
 
             let handle = match handle {
-                Some(handle) => handle,
+                Some(handle) => parse_arg!(ctx, handle: BufferHandle),
                 None => match ctx.current_buffer_view_handle() {
                     Some(handle) => ctx.editor.buffer_views.get(handle)?.buffer_handle,
                     None => return ctx.error(format_args!("{}", NO_BUFFER_OPENED_ERROR)),
@@ -437,10 +467,11 @@ pub fn register_all(commands: &mut CommandManager) {
         alias: Some("ca"),
         help: "close all buffers",
         completion_source: CompletionSource::None,
-        params: &[],
+        flags: &[],
         func: |mut ctx| {
-            parse_switches!(ctx,);
-            parse_options!(ctx,);
+            expect_empty_values!(ctx);
+            parse_switches!(ctx);
+            parse_options!(ctx);
 
             if !ctx.bang && ctx.editor.buffers.iter().any(Buffer::needs_save) {
                 return unsaved_changes_error(&mut ctx, "close-all");
@@ -470,10 +501,11 @@ pub fn register_all(commands: &mut CommandManager) {
         alias: None,
         help: "change an editor config",
         completion_source: CompletionSource::Custom(CONFIG_NAMES),
-        params: &[],
+        flags: &[],
         func: |mut ctx| {
-            parse_switches!(ctx,);
-            parse_options!(ctx,);
+            expect_no_bang!(ctx);
+            parse_switches!(ctx);
+            parse_options!(ctx);
 
             match ctx.args.values() {
                 [key] => {
@@ -513,10 +545,11 @@ pub fn register_all(commands: &mut CommandManager) {
         alias: None,
         help: "change editor theme color",
         completion_source: CompletionSource::Custom(THEME_COLOR_NAMES),
-        params: &[],
+        flags: &[],
         func: |mut ctx| {
-            parse_switches!(ctx,);
-            parse_options!(ctx,);
+            expect_no_bang!(ctx);
+            parse_switches!(ctx);
+            parse_options!(ctx);
 
             match ctx.args.values() {
                 [key] => {
@@ -555,14 +588,49 @@ pub fn register_all(commands: &mut CommandManager) {
     });
 
     commands.register_builtin(BuiltinCommand {
+        name: "syntax",
+        alias: None,
+        help: "create a syntax definition with patterns for files that match a glob",
+        completion_source: CompletionSource::None,
+        flags: &[],
+        func: |mut ctx| {
+            expect_no_bang!(ctx);
+            parse_switches!(ctx);
+            parse_options!(ctx, keywords, types, symbols, literals, strings, comments, texts);
+
+            let glob = match ctx.args.values() {
+                [glob] => glob.as_str(ctx.args),
+                _ => return ctx.error(format_args!("'syntax' expects exactly 1 parameter")),
+            };
+
+            let mut syntax = Syntax::new();
+            syntax.set_glob(glob.as_bytes());
+            //syntax.set_rule(
+
+            if let Some(keywords) = keywords {
+                if let Err(error) = syntax.set_rule(TokenKind::Keyword, keywords) {
+                    return parsing_error(&mut ctx, keywords, &error, 0);
+                }
+            }
+
+            ctx.editor.syntaxes.add(syntax);
+            for buffer in ctx.editor.buffers.iter_mut() {
+                buffer.refresh_syntax(&ctx.editor.syntaxes);
+            }
+            None
+        },
+    });
+
+    commands.register_builtin(BuiltinCommand {
         name: "map",
         alias: None,
         help: "create a keyboard mapping for a mode",
         completion_source: CompletionSource::None,
-        params: &[],
+        flags: &[],
         func: |mut ctx| {
-            parse_switches!(ctx,);
-            parse_options!(ctx,);
+            expect_no_bang!(ctx);
+            parse_switches!(ctx);
+            parse_options!(ctx);
 
             let (mode, from, to) = match ctx.args.values() {
                 [mode, from, to] => (
@@ -594,8 +662,6 @@ pub fn register_all(commands: &mut CommandManager) {
 
 // others:
 // - syntax-rules (???)
-// - config
-// - theme
 // - register
 //
 // lsp:

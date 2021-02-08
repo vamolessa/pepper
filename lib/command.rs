@@ -26,6 +26,21 @@ pub enum CommandOperation {
     Error,
 }
 
+pub struct CommandOutput(String);
+impl CommandOutput {
+    pub fn clear(&mut self) {
+        self.0.clear();
+    }
+
+    pub fn write_str(&mut self, output: &str) {
+        self.0.push_str(output);
+    }
+
+    pub fn write_fmt(&mut self, args: fmt::Arguments) {
+        let _ = fmt::write(&mut self.0, args);
+    }
+}
+
 enum CompletionSource {
     None,
     Files,
@@ -40,6 +55,7 @@ struct CommandContext<'a> {
     client_index: Option<usize>,
     bang: bool,
     args: &'a CommandArgs,
+    output: &'a mut CommandOutput,
 }
 impl<'a> CommandContext<'a> {
     pub fn current_buffer_view_handle(&self) -> Option<BufferViewHandle> {
@@ -62,13 +78,14 @@ pub struct BuiltinCommand {
     alias: Option<&'static str>,
     help: &'static str,
     completion_source: CompletionSource,
-    params: &'static [(&'static str, u8)],
+    flags: &'static [(&'static str, u8)],
     func: CommandFn,
 }
 
 pub struct CommandManager {
     builtin_commands: Vec<BuiltinCommand>,
     parsed_args: CommandArgs,
+    output: CommandOutput,
     history: VecDeque<String>,
 }
 
@@ -77,6 +94,7 @@ impl CommandManager {
         let mut this = Self {
             builtin_commands: Vec::new(),
             parsed_args: CommandArgs::default(),
+            output: CommandOutput(String::new()),
             history: VecDeque::with_capacity(HISTORY_CAPACITY),
         };
         builtin::register_all(&mut this);
@@ -187,15 +205,26 @@ impl CommandManager {
     ) -> Option<CommandOperation> {
         let mut args = CommandArgs::default();
         std::mem::swap(&mut args, &mut editor.commands.parsed_args);
+        let mut output = CommandOutput(String::new());
+        std::mem::swap(&mut output, &mut editor.commands.output);
+
         let ctx = CommandContext {
             editor,
             clients,
             client_index,
             bang,
             args: &args,
+            output: &mut output,
         };
         let result = command(ctx);
+        let message_kind = match result {
+            Some(CommandOperation::Error) => StatusMessageKind::Error,
+            _ => StatusMessageKind::Info,
+        };
+        editor.status_bar.write(message_kind).str(&output.0);
+
         std::mem::swap(&mut args, &mut editor.commands.parsed_args);
+        std::mem::swap(&mut output, &mut editor.commands.output);
         result
     }
 
@@ -427,7 +456,7 @@ mod tests {
             alias: Some("c"),
             help: "",
             completion_source: CompletionSource::None,
-            params: &[],
+            flags: &[],
             func: |_| None,
         });
         commands
