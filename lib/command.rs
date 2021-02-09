@@ -18,12 +18,13 @@ pub enum CommandParseError {
     UnterminatedArgument(usize),
 }
 
-type CommandFn = fn(CommandContext) -> Option<CommandOperation>;
+pub struct CommandError;
+pub type CommandResult = Result<Option<CommandOperation>, CommandError>;
+type CommandFn = fn(CommandContext) -> CommandResult;
 
 pub enum CommandOperation {
     Quit,
     QuitAll,
-    Error,
 }
 
 pub struct CommandOutput(String);
@@ -183,13 +184,13 @@ impl CommandManager {
         editor: &mut Editor,
         clients: &mut ClientManager,
         client_index: Option<usize>,
-    ) -> Option<CommandOperation> {
+    ) -> CommandResult {
         let command = editor.read_line.input();
         match editor.commands.parse(command) {
             Ok((command, bang)) => Self::eval_parsed(editor, clients, client_index, command, bang),
             Err(error) => {
                 Self::format_parse_error(&mut editor.status_bar, error, command);
-                Some(CommandOperation::Error)
+                Err(CommandError)
             }
         }
     }
@@ -199,12 +200,12 @@ impl CommandManager {
         clients: &mut ClientManager,
         client_index: Option<usize>,
         command: &str,
-    ) -> Option<CommandOperation> {
+    ) -> CommandResult {
         match editor.commands.parse(command) {
             Ok((command, bang)) => Self::eval_parsed(editor, clients, client_index, command, bang),
             Err(error) => {
                 Self::format_parse_error(&mut editor.status_bar, error, command);
-                Some(CommandOperation::Error)
+                Err(CommandError)
             }
         }
     }
@@ -249,7 +250,7 @@ impl CommandManager {
         client_index: Option<usize>,
         command: CommandFn,
         bang: bool,
-    ) -> Option<CommandOperation> {
+    ) -> CommandResult {
         let mut args = CommandArgs::default();
         std::mem::swap(&mut args, &mut editor.commands.parsed_args);
         let mut output = CommandOutput(String::new());
@@ -265,8 +266,8 @@ impl CommandManager {
         };
         let result = command(ctx);
         let message_kind = match result {
-            Some(CommandOperation::Error) => StatusMessageKind::Error,
-            _ => StatusMessageKind::Info,
+            Ok(_) => StatusMessageKind::Info,
+            Err(_) => StatusMessageKind::Error,
         };
         editor.status_bar.write(message_kind).str(&output.0);
         output.clear();
@@ -508,7 +509,7 @@ mod tests {
             help: "",
             completion_source: CompletionSource::None,
             flags: &[],
-            func: |_| None,
+            func: |_| Ok(None),
         });
         commands
     }

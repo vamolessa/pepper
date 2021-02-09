@@ -3,6 +3,7 @@ use std::{env, io};
 use crate::{
     client::{ClientManager, TargetClient},
     client_event::ClientEvent,
+    command::CommandOperation,
     connection::ClientEventDeserializationBufCollection,
     editor::{Editor, EditorLoop},
     platform::{ClientPlatform, ClientPlatformEvent, ServerPlatform, ServerPlatformEvent},
@@ -44,7 +45,7 @@ impl ServerApplication {
         512
     }
 
-    pub fn new<P>(args: Args, _: &mut P) -> Self
+    pub fn new<P>(args: Args, _: &mut P) -> Option<Self>
     where
         P: ServerPlatform,
     {
@@ -53,17 +54,26 @@ impl ServerApplication {
         let mut clients = ClientManager::new();
 
         for config in &args.config {
-            editor.load_config(&mut clients, config);
+            match editor.load_config(&mut clients, config) {
+                Ok(None) => (),
+                Ok(Some(CommandOperation::Quit)) | Ok(Some(CommandOperation::QuitAll)) => {
+                    return None;
+                }
+                Err(_) => {
+                    eprintln!("{}", editor.status_bar.message().1);
+                    return None;
+                }
+            }
         }
 
         let event_deserialization_bufs = ClientEventDeserializationBufCollection::default();
 
-        Self {
+        Some(Self {
             editor,
             clients,
             event_deserialization_bufs,
             connections_with_error: Vec::new(),
-        }
+        })
     }
 
     pub fn on_event<P>(&mut self, platform: &mut P, event: ServerPlatformEvent) -> bool

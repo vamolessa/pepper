@@ -883,7 +883,10 @@ fn run_server(args: Args, pipe_path: &[u16]) {
         children: SlotVec::new(),
     };
 
-    let mut application = ServerApplication::new(args, &mut state);
+    let mut application = match ServerApplication::new(args, &mut state) {
+        Some(application) => application,
+        None => return,
+    };
 
     macro_rules! send_event {
         ($event:expr) => {
