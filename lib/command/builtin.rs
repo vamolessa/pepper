@@ -18,51 +18,64 @@ use crate::{
 };
 
 pub fn register_all(commands: &mut CommandManager) {
-    const INVALID_BUFFER_HANDLE: &str = "invalid buffer handle";
+    const INVALID_BUFFER_HANDLE_ERROR: &str = "invalid buffer handle";
     const NO_BUFFER_OPENED_ERROR: &str = "no buffer opened";
-
-    fn unsaved_changes_error(ctx: &mut CommandContext, command_name: &str) -> Option<()> {
-        ctx.output.write_fmt(format_args!(
-            "there are unsaved changes in buffer. try appending a '!' to '{}' to force execute",
-            command_name
-        ));
-        None
-    }
-
-    fn any_buffer_needs_save(editor: &Editor) -> bool {
-        editor.buffers.iter().any(|b| b.needs_save())
-    }
+    const UNSAVED_CHANGES_ERROR: &str =
+        "there are unsaved changes in buffer. try appending a '!' to force execute";
 
     fn parsing_error(
         ctx: &mut CommandContext,
         parsed: &str,
         message: &dyn fmt::Display,
         error_index: usize,
-    ) -> Option<()> {
-        ctx.output.write_fmt(format_args!(
-            "{}\n{:>index$} {}",
-            parsed,
-            message,
-            index = error_index + 1
-        ));
-        None
+    ) {
+        ctx.editor
+            .status_bar
+            .write(StatusMessageKind::Error)
+            .fmt(format_args!(
+                "{}\n{:>index$} {}",
+                parsed,
+                message,
+                index = error_index + 1
+            ));
     }
 
     macro_rules! expect_no_bang {
         ($ctx:expr) => {
             if $ctx.bang {
-                $ctx.output.write_str("expected no bang");
-                return Err(CommandError);
+                $ctx.editor
+                    .status_bar
+                    .write(StatusMessageKind::Error)
+                    .str("command expects no bang");
+                return None;
             }
         };
     }
 
-    macro_rules! expect_empty_values {
-        ($ctx:expr) => {
-            if !$ctx.args.values().is_empty() {
-                $ctx.output.write_str("expected no argument values");
-                return Err(CommandError);
+    macro_rules! parse_values {
+        ($ctx:expr $(, $name:ident)*) => {
+            let mut values = $ctx.args.values().iter();
+            $(let $name = values.next().map(|v| v.as_str($ctx.args));)*
+            if values.next().is_some() {
+                $ctx.editor.status_bar.write(StatusMessageKind::Error).str("too many values passed to command");
+                return None;
             }
+            drop(values);
+        }
+    }
+
+    macro_rules! require_value {
+        ($ctx:expr, $name:ident) => {
+            let $name = match $name {
+                Some(value) => value,
+                None => {
+                    $ctx.editor
+                        .status_bar
+                        .write(StatusMessageKind::Error)
+                        .str(concat!("value '", stringify!($name), "' is required"));
+                    return None;
+                }
+            };
         };
     }
 
@@ -74,8 +87,10 @@ pub fn register_all(commands: &mut CommandManager) {
                 match switch {
                     $(stringify!($name) => $name = true,)*
                     _ => {
-                        $ctx.output.write_fmt(format_args!("invalid switch '{}'", switch));
-                        return Err(CommandError);
+                        $ctx.editor.status_bar.write(StatusMessageKind::Error).fmt(format_args!(
+                            "invalid switch '{}'", switch
+                        ));
+                        return None;
                     }
                 }
             }
@@ -91,8 +106,10 @@ pub fn register_all(commands: &mut CommandManager) {
                     $(stringify!($name) => $name = Some(value.as_str($ctx.args)),)*
                     _ => {
                         drop(value);
-                        $ctx.output.write_fmt(format_args!("invalid option '{}'", key));
-                        return Err(CommandError);
+                        $ctx.editor.status_bar.write(StatusMessageKind::Error).fmt(format_args!(
+                            "invalid option '{}'", key
+                        ));
+                        return None;
                     }
                 }
             }
@@ -104,16 +121,19 @@ pub fn register_all(commands: &mut CommandManager) {
             match $name.parse::<$type>() {
                 Ok(value) => value,
                 Err(_) => {
-                    $ctx.output.write_fmt(format_args!(
-                        concat!(
-                            "could not convert argument '",
-                            stringify!($name),
-                            "' value '{}' to {}"
-                        ),
-                        $name,
-                        std::any::type_name::<$type>()
-                    ));
-                    return Err(CommandError);
+                    $ctx.editor
+                        .status_bar
+                        .write(StatusMessageKind::Error)
+                        .fmt(format_args!(
+                            concat!(
+                                "could not convert argument '",
+                                stringify!($name),
+                                "' value '{}' to {}"
+                            ),
+                            $name,
+                            std::any::type_name::<$type>()
+                        ));
+                    return None;
                 }
             }
         };
@@ -126,13 +146,17 @@ pub fn register_all(commands: &mut CommandManager) {
         completion_source: CompletionSource::None,
         flags: &[],
         func: |mut ctx| {
-            expect_empty_values!(ctx);
+            parse_values!(ctx);
             parse_switches!(ctx);
             parse_options!(ctx);
-            if ctx.bang || !any_buffer_needs_save(ctx.editor) {
-                Ok(Some(CommandOperation::Quit))
+            if ctx.bang || !ctx.editor.buffers.iter().any(Buffer::needs_save) {
+                Some(CommandOperation::Quit)
             } else {
-                unsaved_changes_error(&mut ctx, "quit")
+                ctx.editor
+                    .status_bar
+                    .write(StatusMessageKind::Error)
+                    .str(UNSAVED_CHANGES_ERROR);
+                None
             }
         },
     });
@@ -144,13 +168,17 @@ pub fn register_all(commands: &mut CommandManager) {
         completion_source: CompletionSource::None,
         flags: &[],
         func: |mut ctx| {
-            expect_empty_values!(ctx);
+            parse_values!(ctx);
             parse_switches!(ctx);
             parse_options!(ctx);
-            if ctx.bang || !any_buffer_needs_save(ctx.editor) {
-                Ok(Some(CommandOperation::QuitAll))
+            if ctx.bang || !ctx.editor.buffers.iter().any(Buffer::needs_save) {
+                Some(CommandOperation::QuitAll)
             } else {
-                unsaved_changes_error(&mut ctx, "quit-all")
+                ctx.editor
+                    .status_bar
+                    .write(StatusMessageKind::Error)
+                    .str(UNSAVED_CHANGES_ERROR);
+                None
             }
         },
     });
@@ -170,7 +198,7 @@ pub fn register_all(commands: &mut CommandManager) {
                 w.str(arg.as_str(ctx.args));
                 w.str(" ");
             }
-            Ok(None)
+            None
         },
     });
 
@@ -186,13 +214,13 @@ pub fn register_all(commands: &mut CommandManager) {
             parse_options!(ctx);
             for path in ctx.args.values() {
                 let path = path.as_str(ctx.args);
-                match ctx.editor.load_config(ctx.clients, path) {
-                    Ok(None) => (),
-                    Ok(Some(CommandOperation::Quit)) | Ok(Some(CommandOperation::QuitAll)) => break,
-                    Err(error) => return Err(error),
+                if let Some(CommandOperation::Quit) | Some(CommandOperation::QuitAll) =
+                    ctx.editor.load_config(ctx.clients, path)
+                {
+                    break;
                 }
             }
-            Ok(None)
+            None
         },
     });
 
@@ -209,7 +237,7 @@ pub fn register_all(commands: &mut CommandManager) {
 
             let target_client = match ctx.client_index {
                 Some(i) => TargetClient(i),
-                None => return Ok(None),
+                None => return None,
             };
             NavigationHistory::save_client_snapshot(
                 ctx.clients,
@@ -251,7 +279,7 @@ pub fn register_all(commands: &mut CommandManager) {
                     .set_buffer_view_handle(ctx.editor, target_client, Some(handle));
             }
 
-            Ok(None)
+            None
         },
     });
 
@@ -263,45 +291,41 @@ pub fn register_all(commands: &mut CommandManager) {
         flags: &[],
         func: |ctx| {
             expect_no_bang!(ctx);
+            parse_values!(ctx, path);
             parse_switches!(ctx);
             parse_options!(ctx, handle);
-
-            let new_path = match ctx.args.values() {
-                [] => None,
-                [path] => Some(Path::new(path.as_str(ctx.args))),
-                _ => {
-                    ctx.output.write_str("command expects 0 or 1 parameters");
-                    return Err(CommandError);
-                }
-            };
 
             let handle = match handle {
                 Some(handle) => parse_arg!(ctx, handle: BufferHandle),
                 None => match ctx.current_buffer_view_handle() {
-                    Some(handle) => match ctx.editor.buffer_views.get(handle) {
-                        Some(view) => view.buffer_handle,
-                        None => return Ok(None),
-                    },
+                    Some(handle) => ctx.editor.buffer_views.get(handle)?.buffer_handle,
                     None => {
-                        ctx.output.write_str(NO_BUFFER_OPENED_ERROR);
-                        return Err(CommandError);
+                        ctx.editor
+                            .status_bar
+                            .write(StatusMessageKind::Error)
+                            .str(NO_BUFFER_OPENED_ERROR);
+                        return None;
                     }
                 },
             };
             let buffer = match ctx.editor.buffers.get_mut(handle) {
                 Some(buffer) => buffer,
                 None => {
-                    ctx.output.write_str(INVALID_BUFFER_HANDLE);
-                    return Err(CommandError);
+                    ctx.editor
+                        .status_bar
+                        .write(StatusMessageKind::Error)
+                        .str(INVALID_BUFFER_HANDLE_ERROR);
+                    return None;
                 }
             };
 
-            if let Err(error) = buffer.save_to_file(new_path, &mut ctx.editor.events) {
+            let path = path.map(Path::new);
+            if let Err(error) = buffer.save_to_file(path, &mut ctx.editor.events) {
                 ctx.editor
                     .status_bar
                     .write(StatusMessageKind::Error)
                     .fmt(format_args!("{}", error.display(buffer)));
-                return Err(CommandError);
+                return None;
             }
 
             let path = buffer.path().unwrap_or(Path::new(""));
@@ -310,7 +334,7 @@ pub fn register_all(commands: &mut CommandManager) {
                 .write(StatusMessageKind::Info)
                 .fmt(format_args!("saved to '{:?}'", path));
 
-            Ok(None)
+            None
         },
     });
 
@@ -322,7 +346,7 @@ pub fn register_all(commands: &mut CommandManager) {
         flags: &[],
         func: |ctx| {
             expect_no_bang!(ctx);
-            expect_empty_values!(ctx);
+            parse_values!(ctx);
             parse_switches!(ctx);
             parse_options!(ctx);
             let mut count = 0;
@@ -340,13 +364,13 @@ pub fn register_all(commands: &mut CommandManager) {
             }
 
             if had_error {
-                Err(CommandError)
+                None
             } else {
                 ctx.editor
                     .status_bar
                     .write(StatusMessageKind::Info)
                     .fmt(format_args!("{} buffers saved", count));
-                Ok(None)
+                None
             }
         },
     });
@@ -358,7 +382,7 @@ pub fn register_all(commands: &mut CommandManager) {
         completion_source: CompletionSource::None,
         flags: &[],
         func: |mut ctx| {
-            expect_empty_values!(ctx);
+            parse_values!(ctx);
             parse_switches!(ctx);
             parse_options!(ctx, handle);
 
@@ -371,21 +395,31 @@ pub fn register_all(commands: &mut CommandManager) {
                 {
                     Some(handle) => handle,
                     None => {
-                        ctx.output.write_str(NO_BUFFER_OPENED_ERROR);
-                        return Err(CommandError);
+                        ctx.editor
+                            .status_bar
+                            .write(StatusMessageKind::Error)
+                            .str(NO_BUFFER_OPENED_ERROR);
+                        return None;
                     }
                 },
             };
             let buffer = match ctx.editor.buffers.get_mut(handle) {
                 Some(buffer) => buffer,
                 None => {
-                    ctx.output.write_str(INVALID_BUFFER_HANDLE);
-                    return Err(CommandError);
+                    ctx.editor
+                        .status_bar
+                        .write(StatusMessageKind::Error)
+                        .str(INVALID_BUFFER_HANDLE_ERROR);
+                    return None;
                 }
             };
 
             if !ctx.bang && buffer.needs_save() {
-                return unsaved_changes_error(&mut ctx, "reload");
+                ctx.editor
+                    .status_bar
+                    .write(StatusMessageKind::Error)
+                    .str(UNSAVED_CHANGES_ERROR);
+                return None;
             }
 
             if let Err(error) = buffer
@@ -395,14 +429,14 @@ pub fn register_all(commands: &mut CommandManager) {
                     .status_bar
                     .write(StatusMessageKind::Error)
                     .fmt(format_args!("{}", error.display(buffer)));
-                return Err(CommandError);
+                return None;
             }
 
             ctx.editor
                 .status_bar
                 .write(StatusMessageKind::Info)
                 .str("buffer reloaded");
-            Ok(None)
+            None
         },
     });
 
@@ -413,12 +447,16 @@ pub fn register_all(commands: &mut CommandManager) {
         completion_source: CompletionSource::None,
         flags: &[],
         func: |mut ctx| {
-            expect_empty_values!(ctx);
+            parse_values!(ctx);
             parse_switches!(ctx);
             parse_options!(ctx);
 
             if !ctx.bang && ctx.editor.buffers.iter().any(Buffer::needs_save) {
-                return unsaved_changes_error(&mut ctx, "reload-all");
+                ctx.editor
+                    .status_bar
+                    .write(StatusMessageKind::Error)
+                    .str(UNSAVED_CHANGES_ERROR);
+                return None;
             }
 
             let mut count = 0;
@@ -439,13 +477,13 @@ pub fn register_all(commands: &mut CommandManager) {
             }
 
             if had_error {
-                Err(CommandError)
+                None
             } else {
                 ctx.editor
                     .status_bar
                     .write(StatusMessageKind::Info)
                     .fmt(format_args!("{} buffers closed", count));
-                Ok(None)
+                None
             }
         },
     });
@@ -457,7 +495,7 @@ pub fn register_all(commands: &mut CommandManager) {
         completion_source: CompletionSource::None,
         flags: &[],
         func: |mut ctx| {
-            expect_empty_values!(ctx);
+            parse_values!(ctx);
             parse_switches!(ctx);
             parse_options!(ctx, handle);
 
@@ -470,21 +508,31 @@ pub fn register_all(commands: &mut CommandManager) {
                 {
                     Some(handle) => handle,
                     None => {
-                        ctx.output.write_str(NO_BUFFER_OPENED_ERROR);
-                        return Err(CommandError);
+                        ctx.editor
+                            .status_bar
+                            .write(StatusMessageKind::Error)
+                            .str(NO_BUFFER_OPENED_ERROR);
+                        return None;
                     }
                 },
             };
             let buffer = match ctx.editor.buffers.get(handle) {
                 Some(buffer) => buffer,
                 None => {
-                    ctx.output.write_str(INVALID_BUFFER_HANDLE);
-                    return Err(CommandError);
+                    ctx.editor
+                        .status_bar
+                        .write(StatusMessageKind::Error)
+                        .str(INVALID_BUFFER_HANDLE_ERROR);
+                    return None;
                 }
             };
 
             if !ctx.bang && buffer.needs_save() {
-                return unsaved_changes_error(&mut ctx, "close");
+                ctx.editor
+                    .status_bar
+                    .write(StatusMessageKind::Error)
+                    .str(UNSAVED_CHANGES_ERROR);
+                return None;
             }
 
             ctx.editor.buffer_views.defer_remove_buffer_where(
@@ -509,7 +557,7 @@ pub fn register_all(commands: &mut CommandManager) {
                 .status_bar
                 .write(StatusMessageKind::Info)
                 .str("buffer closed");
-            Ok(None)
+            None
         },
     });
 
@@ -519,13 +567,17 @@ pub fn register_all(commands: &mut CommandManager) {
         help: "close all buffers",
         completion_source: CompletionSource::None,
         flags: &[],
-        func: |mut ctx| {
-            expect_empty_values!(ctx);
+        func: |ctx| {
+            parse_values!(ctx);
             parse_switches!(ctx);
             parse_options!(ctx);
 
             if !ctx.bang && ctx.editor.buffers.iter().any(Buffer::needs_save) {
-                return unsaved_changes_error(&mut ctx, "close-all");
+                ctx.editor
+                    .status_bar
+                    .write(StatusMessageKind::Error)
+                    .str(UNSAVED_CHANGES_ERROR);
+                return None;
             }
 
             let count = ctx.editor.buffers.iter().count();
@@ -543,7 +595,7 @@ pub fn register_all(commands: &mut CommandManager) {
                 .status_bar
                 .write(StatusMessageKind::Info)
                 .fmt(format_args!("{} buffers closed", count));
-            Ok(None)
+            None
         },
     });
 
@@ -555,51 +607,43 @@ pub fn register_all(commands: &mut CommandManager) {
         flags: &[],
         func: |ctx| {
             expect_no_bang!(ctx);
+            parse_values!(ctx, key, value);
             parse_switches!(ctx);
             parse_options!(ctx);
 
-            match ctx.args.values() {
-                [key] => {
-                    let key = key.as_str(ctx.args);
-                    match ctx.editor.config.display_config(key) {
-                        Some(display) => {
-                            ctx.editor
-                                .status_bar
-                                .write(StatusMessageKind::Info)
-                                .fmt(format_args!("{}", display));
-                            Ok(None)
-                        }
-                        None => {
-                            ctx.output
-                                .write_fmt(format_args!("no such config '{}'", key));
-                            Err(CommandError)
-                        }
-                    }
-                }
-                [key, value] => {
-                    let key = key.as_str(ctx.args);
-                    let value = value.as_str(ctx.args);
-                    match ctx.editor.config.parse_config(key, value) {
-                        Ok(()) => Ok(None),
-                        Err(ParseConfigError::NotFound) => {
-                            ctx.output
-                                .write_fmt(format_args!("no such config '{}'", key));
-                            Err(CommandError)
-                        }
-                        Err(ParseConfigError::InvalidValue) => {
-                            ctx.output.write_fmt(format_args!(
-                                "invalid value '{}' for config '{}'",
-                                value, key
-                            ));
-                            Err(CommandError)
-                        }
-                    }
-                }
-                _ => {
-                    ctx.output.write_str("command expects 1 or 2 parameters");
-                    Err(CommandError)
-                }
+            require_value!(ctx, key);
+            match value {
+                Some(value) => match ctx.editor.config.parse_config(key, value) {
+                    Ok(()) => (),
+                    Err(ParseConfigError::NotFound) => ctx
+                        .editor
+                        .status_bar
+                        .write(StatusMessageKind::Error)
+                        .fmt(format_args!("no such config '{}'", key)),
+                    Err(ParseConfigError::InvalidValue) => ctx
+                        .editor
+                        .status_bar
+                        .write(StatusMessageKind::Error)
+                        .fmt(format_args!(
+                            "invalid value '{}' for config '{}'",
+                            value, key
+                        )),
+                },
+                None => match ctx.editor.config.display_config(key) {
+                    Some(display) => ctx
+                        .editor
+                        .status_bar
+                        .write(StatusMessageKind::Info)
+                        .fmt(format_args!("{}", display)),
+                    None => ctx
+                        .editor
+                        .status_bar
+                        .write(StatusMessageKind::Error)
+                        .fmt(format_args!("no such config '{}'", key)),
+                },
             }
+
+            None
         },
     });
 
@@ -611,53 +655,42 @@ pub fn register_all(commands: &mut CommandManager) {
         flags: &[],
         func: |ctx| {
             expect_no_bang!(ctx);
+            parse_values!(ctx, key, value);
             parse_switches!(ctx);
             parse_options!(ctx);
 
-            let (key, value) = match ctx.args.values() {
-                [key] => (key, None),
-                [key, value] => (key, Some(value)),
-                _ => {
-                    ctx.output.write_str("command expects 1 or 2 parameters");
-                    return Err(CommandError);
-                }
-            };
-
-            let key = key.as_str(ctx.args);
+            require_value!(ctx, key);
             let color = match ctx.editor.theme.color_from_name(key) {
                 Some(color) => color,
                 None => {
-                    ctx.output
-                        .write_fmt(format_args!("no such theme color '{}'", key));
-                    return Err(CommandError);
-                }
-            };
-
-            match value {
-                Some(value) => {
-                    let value = value.as_str(ctx.args);
-                    match u32::from_str_radix(value, 16) {
-                        Ok(parsed) => {
-                            *color = Color::from_u32(parsed);
-                            Ok(None)
-                        }
-                        Err(_) => {
-                            ctx.output.write_fmt(format_args!(
-                                "invalid value '{}' for color '{}'",
-                                value, key
-                            ));
-                            Err(CommandError)
-                        }
-                    }
-                }
-                None => {
                     ctx.editor
                         .status_bar
-                        .write(StatusMessageKind::Info)
-                        .fmt(format_args!("{:x}", color.into_u32()));
-                    Ok(None)
+                        .write(StatusMessageKind::Error)
+                        .fmt(format_args!("no such theme color '{}'", key));
+                    return None;
                 }
+            };
+            match value {
+                Some(value) => match u32::from_str_radix(value, 16) {
+                    Ok(parsed) => *color = Color::from_u32(parsed),
+                    Err(_) => {
+                        ctx.editor
+                            .status_bar
+                            .write(StatusMessageKind::Error)
+                            .fmt(format_args!(
+                                "invalid value '{}' for color '{}'",
+                                value, key
+                            ))
+                    }
+                },
+                None => ctx
+                    .editor
+                    .status_bar
+                    .write(StatusMessageKind::Info)
+                    .fmt(format_args!("{:x}", color.into_u32())),
             }
+
+            None
         },
     });
 
@@ -669,15 +702,10 @@ pub fn register_all(commands: &mut CommandManager) {
         flags: &[],
         func: |mut ctx| {
             expect_no_bang!(ctx);
+            parse_values!(ctx, glob);
             parse_switches!(ctx);
 
-            let glob = match ctx.args.values() {
-                [glob] => glob.as_str(ctx.args),
-                _ => {
-                    ctx.output.write_str("command expects exactly 1 parameter");
-                    return Err(CommandError);
-                }
-            };
+            require_value!(ctx, glob);
 
             let mut syntax = Syntax::new();
             syntax.set_glob(glob.as_bytes());
@@ -687,7 +715,8 @@ pub fn register_all(commands: &mut CommandManager) {
                     parse_options!(ctx $(, $rule)*);
                     $(if let Some($rule) = $rule {
                         if let Err(error) = syntax.set_rule($token_kind, $rule) {
-                            return parsing_error(&mut ctx, $rule, &error, 0);
+                            parsing_error(&mut ctx, $rule, &error, 0);
+                            return None;
                         }
                     })*
                 }
@@ -706,7 +735,8 @@ pub fn register_all(commands: &mut CommandManager) {
             for buffer in ctx.editor.buffers.iter_mut() {
                 buffer.refresh_syntax(&ctx.editor.syntaxes);
             }
-            Ok(None)
+
+            None
         },
     });
 
@@ -718,20 +748,13 @@ pub fn register_all(commands: &mut CommandManager) {
         flags: &[],
         func: |mut ctx| {
             expect_no_bang!(ctx);
+            parse_values!(ctx, mode, from, to);
             parse_switches!(ctx);
             parse_options!(ctx);
 
-            let (mode, from, to) = match ctx.args.values() {
-                [mode, from, to] => (
-                    mode.as_str(ctx.args),
-                    from.as_str(ctx.args),
-                    to.as_str(ctx.args),
-                ),
-                _ => {
-                    ctx.output.write_str("command expects exactly 3 parameters");
-                    return Err(CommandError);
-                }
-            };
+            require_value!(ctx, mode);
+            require_value!(ctx, from);
+            require_value!(ctx, to);
 
             let mode = match mode {
                 "normal" => ModeKind::Normal,
@@ -740,17 +763,21 @@ pub fn register_all(commands: &mut CommandManager) {
                 "picker" => ModeKind::Picker,
                 "command" => ModeKind::Command,
                 _ => {
-                    ctx.output
-                        .write_fmt(format_args!("invalid mode '{}'", mode));
-                    return Err(CommandError);
+                    ctx.editor
+                        .status_bar
+                        .write(StatusMessageKind::Error)
+                        .fmt(format_args!("invalid mode '{}'", mode));
+                    return None;
                 }
             };
 
             match ctx.editor.keymaps.parse_and_map(mode, from, to) {
-                Ok(()) => Ok(None),
+                Ok(()) => (),
                 Err(ParseKeyMapError::From(e)) => parsing_error(&mut ctx, from, &e.error, e.index),
                 Err(ParseKeyMapError::To(e)) => parsing_error(&mut ctx, to, &e.error, e.index),
             }
+
+            None
         },
     });
 
@@ -762,24 +789,19 @@ pub fn register_all(commands: &mut CommandManager) {
         flags: &[],
         func: |ctx| {
             expect_no_bang!(ctx);
+            parse_values!(ctx, key, value);
             parse_switches!(ctx);
             parse_options!(ctx);
 
-            let (key, value) = match ctx.args.values() {
-                [key] => (key.as_str(ctx.args), None),
-                [key, value] => (key.as_str(ctx.args), Some(value.as_str(ctx.args))),
-                _ => {
-                    ctx.output.write_str("command expects 1 or 2 parameters");
-                    return Err(CommandError);
-                }
-            };
-
+            require_value!(ctx, key);
             let key = match RegisterKey::from_str(key) {
                 Some(key) => key,
                 None => {
-                    ctx.output
-                        .write_fmt(format_args!("invalid register key '{}'", key));
-                    return Err(CommandError);
+                    ctx.editor
+                        .status_bar
+                        .write(StatusMessageKind::Error)
+                        .fmt(format_args!("invalid register key '{}'", key));
+                    return None;
                 }
             };
 
@@ -792,7 +814,7 @@ pub fn register_all(commands: &mut CommandManager) {
                     .str(ctx.editor.registers.get(key)),
             }
 
-            Ok(None)
+            None
         },
     });
 }
