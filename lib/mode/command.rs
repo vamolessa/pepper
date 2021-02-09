@@ -73,9 +73,9 @@ impl ModeState for State {
                 }
 
                 return match op {
-                    Ok(None) | Err(_) => None,
-                    Ok(Some(CommandOperation::Quit)) => Some(ModeOperation::Quit),
-                    Ok(Some(CommandOperation::QuitAll)) => Some(ModeOperation::QuitAll),
+                    Some(CommandOperation::Quit) => Some(ModeOperation::Quit),
+                    Some(CommandOperation::QuitAll) => Some(ModeOperation::QuitAll),
+                    None => None,
                 };
             }
         }

@@ -4,8 +4,8 @@ use crate::{
     buffer::{Buffer, BufferHandle},
     client::TargetClient,
     command::{
-        BuiltinCommand, CommandArgs, CommandContext, CommandError, CommandManager,
-        CommandOperation, CommandResult, CompletionSource,
+        BuiltinCommand, CommandArgs, CommandContext, CommandManager, CommandOperation,
+        CompletionSource,
     },
     config::{ParseConfigError, CONFIG_NAMES},
     editor::{Editor, StatusMessageKind},
@@ -21,12 +21,12 @@ pub fn register_all(commands: &mut CommandManager) {
     const INVALID_BUFFER_HANDLE: &str = "invalid buffer handle";
     const NO_BUFFER_OPENED_ERROR: &str = "no buffer opened";
 
-    fn unsaved_changes_error(ctx: &mut CommandContext, command_name: &str) -> CommandResult {
+    fn unsaved_changes_error(ctx: &mut CommandContext, command_name: &str) -> Option<()> {
         ctx.output.write_fmt(format_args!(
             "there are unsaved changes in buffer. try appending a '!' to '{}' to force execute",
             command_name
         ));
-        Err(CommandError)
+        None
     }
 
     fn any_buffer_needs_save(editor: &Editor) -> bool {
@@ -38,14 +38,14 @@ pub fn register_all(commands: &mut CommandManager) {
         parsed: &str,
         message: &dyn fmt::Display,
         error_index: usize,
-    ) -> CommandResult {
+    ) -> Option<()> {
         ctx.output.write_fmt(format_args!(
             "{}\n{:>index$} {}",
             parsed,
             message,
             index = error_index + 1
         ));
-        Err(CommandError)
+        None
     }
 
     macro_rules! expect_no_bang {

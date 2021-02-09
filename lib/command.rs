@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, fmt};
+use std::collections::VecDeque;
 
 use crate::{
     buffer_view::BufferViewHandle,
@@ -18,28 +18,11 @@ pub enum CommandParseError {
     UnterminatedArgument(usize),
 }
 
-pub struct CommandError;
-pub type CommandResult = Result<Option<CommandOperation>, CommandError>;
-type CommandFn = fn(CommandContext) -> CommandResult;
+type CommandFn = fn(CommandContext) -> Option<CommandOperation>;
 
 pub enum CommandOperation {
     Quit,
     QuitAll,
-}
-
-pub struct CommandOutput(String);
-impl CommandOutput {
-    pub fn clear(&mut self) {
-        self.0.clear();
-    }
-
-    pub fn write_str(&mut self, output: &str) {
-        self.0.push_str(output);
-    }
-
-    pub fn write_fmt(&mut self, args: fmt::Arguments) {
-        let _ = fmt::write(&mut self.0, args);
-    }
 }
 
 enum CompletionSource {
@@ -56,7 +39,6 @@ struct CommandContext<'a> {
     client_index: Option<usize>,
     bang: bool,
     args: &'a CommandArgs,
-    output: &'a mut CommandOutput,
 }
 impl<'a> CommandContext<'a> {
     pub fn current_buffer_view_handle(&self) -> Option<BufferViewHandle> {
@@ -133,7 +115,6 @@ pub struct BuiltinCommand {
 pub struct CommandManager {
     builtin_commands: Vec<BuiltinCommand>,
     parsed_args: CommandArgs,
-    output: CommandOutput,
     history: VecDeque<String>,
 }
 
@@ -142,7 +123,6 @@ impl CommandManager {
         let mut this = Self {
             builtin_commands: Vec::new(),
             parsed_args: CommandArgs::default(),
-            output: CommandOutput(String::new()),
             history: VecDeque::with_capacity(HISTORY_CAPACITY),
         };
         builtin::register_all(&mut this);
@@ -184,13 +164,13 @@ impl CommandManager {
         editor: &mut Editor,
         clients: &mut ClientManager,
         client_index: Option<usize>,
-    ) -> CommandResult {
+    ) -> Option<CommandOperation> {
         let command = editor.read_line.input();
         match editor.commands.parse(command) {
             Ok((command, bang)) => Self::eval_parsed(editor, clients, client_index, command, bang),
             Err(error) => {
                 Self::format_parse_error(&mut editor.status_bar, error, command);
-                Err(CommandError)
+                None
             }
         }
     }
@@ -200,12 +180,12 @@ impl CommandManager {
         clients: &mut ClientManager,
         client_index: Option<usize>,
         command: &str,
-    ) -> CommandResult {
+    ) -> Option<CommandOperation> {
         match editor.commands.parse(command) {
             Ok((command, bang)) => Self::eval_parsed(editor, clients, client_index, command, bang),
             Err(error) => {
                 Self::format_parse_error(&mut editor.status_bar, error, command);
-                Err(CommandError)
+                None
             }
         }
     }
@@ -250,11 +230,9 @@ impl CommandManager {
         client_index: Option<usize>,
         command: CommandFn,
         bang: bool,
-    ) -> CommandResult {
+    ) -> Option<CommandOperation> {
         let mut args = CommandArgs::default();
         std::mem::swap(&mut args, &mut editor.commands.parsed_args);
-        let mut output = CommandOutput(String::new());
-        std::mem::swap(&mut output, &mut editor.commands.output);
 
         let ctx = CommandContext {
             editor,
@@ -262,18 +240,10 @@ impl CommandManager {
             client_index,
             bang,
             args: &args,
-            output: &mut output,
         };
         let result = command(ctx);
-        let message_kind = match result {
-            Ok(_) => StatusMessageKind::Info,
-            Err(_) => StatusMessageKind::Error,
-        };
-        editor.status_bar.write(message_kind).str(&output.0);
-        output.clear();
 
         std::mem::swap(&mut args, &mut editor.commands.parsed_args);
-        std::mem::swap(&mut output, &mut editor.commands.output);
         result
     }
 
@@ -500,7 +470,6 @@ mod tests {
         let mut commands = CommandManager {
             builtin_commands: Vec::new(),
             parsed_args: CommandArgs::default(),
-            output: CommandOutput(String::new()),
             history: VecDeque::default(),
         };
         commands.register_builtin(BuiltinCommand {
@@ -509,7 +478,7 @@ mod tests {
             help: "",
             completion_source: CompletionSource::None,
             flags: &[],
-            func: |_| Ok(None),
+            func: |_| None,
         });
         commands
     }
@@ -648,9 +617,8 @@ mod tests {
         assert_eq!(Some("command1"), commands.next());
         assert_eq!(None, commands.next());
 
-        let mut commands = CommandIter::new(
-            "command0# comment\n\n# more comment\n\n# one more comment\ncommand1",
-        );
+        let mut commands =
+            CommandIter::new("command0# comment\n\n# more comment\n\n# one more comment\ncommand1");
         assert_eq!(Some("command0"), commands.next());
         assert_eq!(Some("command1"), commands.next());
         assert_eq!(None, commands.next());

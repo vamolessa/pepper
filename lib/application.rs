@@ -54,15 +54,10 @@ impl ServerApplication {
         let mut clients = ClientManager::new();
 
         for config in &args.config {
-            match editor.load_config(&mut clients, config) {
-                Ok(None) => (),
-                Ok(Some(CommandOperation::Quit)) | Ok(Some(CommandOperation::QuitAll)) => {
-                    return None;
-                }
-                Err(_) => {
-                    eprintln!("{}", editor.status_bar.message().1);
-                    return None;
-                }
+            if let Some(CommandOperation::Quit) | Some(CommandOperation::QuitAll) =
+                editor.load_config(&mut clients, config)
+            {
+                return None;
             }
         }
 

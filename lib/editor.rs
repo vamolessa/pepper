@@ -12,7 +12,7 @@ use crate::{
     buffer_view::BufferViewCollection,
     client::{ClientManager, TargetClient},
     client_event::{parse_all_keys, ClientEvent},
-    command::{CommandError, CommandIter, CommandManager, CommandOperation, CommandResult},
+    command::{CommandIter, CommandManager, CommandOperation},
     config::Config,
     editor_event::{EditorEvent, EditorEventQueue},
     keymap::{KeyMapCollection, MatchResult},
@@ -280,7 +280,7 @@ impl Editor {
         }
     }
 
-    pub fn load_config(&mut self, clients: &mut ClientManager, path: &str) -> CommandResult {
+    pub fn load_config(&mut self, clients: &mut ClientManager, path: &str) -> Option<CommandOperation> {
         use std::io::Read;
 
         let mut file = match File::open(path) {
@@ -289,7 +289,7 @@ impl Editor {
                 self.status_bar
                     .write(StatusMessageKind::Error)
                     .fmt(format_args!("could not open config file '{}'", path));
-                return Err(CommandError);
+                return None;
             }
         };
 
@@ -298,18 +298,17 @@ impl Editor {
             self.status_bar
                 .write(StatusMessageKind::Error)
                 .fmt(format_args!("could not read config file '{}'", path));
-            return Err(CommandError);
+            return None;
         }
 
         for command in CommandIter::new(&text) {
             match CommandManager::eval(self, clients, None, command) {
-                Ok(None) => (),
-                Ok(Some(CommandOperation::Quit)) | Ok(Some(CommandOperation::QuitAll)) => break,
-                Err(error) => return Err(error),
+                Some(CommandOperation::Quit) | Some(CommandOperation::QuitAll) => break,
+                None => (),
             }
         }
 
-        Ok(None)
+        None
     }
 
     pub fn on_pre_render(&mut self, clients: &mut ClientManager) -> bool {
