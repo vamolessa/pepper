@@ -145,7 +145,7 @@ pub fn register_all(commands: &mut CommandManager) {
         help: "quits this client. append a '!' to force quit",
         completion_source: CompletionSource::None,
         flags: &[],
-        func: |mut ctx| {
+        func: |ctx| {
             parse_values!(ctx);
             parse_switches!(ctx);
             parse_options!(ctx);
@@ -167,7 +167,7 @@ pub fn register_all(commands: &mut CommandManager) {
         help: "quits all clients. append a '!' to force quit all",
         completion_source: CompletionSource::None,
         flags: &[],
-        func: |mut ctx| {
+        func: |ctx| {
             parse_values!(ctx);
             parse_switches!(ctx);
             parse_options!(ctx);
@@ -381,7 +381,7 @@ pub fn register_all(commands: &mut CommandManager) {
         help: "reload buffer from file",
         completion_source: CompletionSource::None,
         flags: &[],
-        func: |mut ctx| {
+        func: |ctx| {
             parse_values!(ctx);
             parse_switches!(ctx);
             parse_options!(ctx, handle);
@@ -446,7 +446,7 @@ pub fn register_all(commands: &mut CommandManager) {
         help: "reload all buffers from file",
         completion_source: CompletionSource::None,
         flags: &[],
-        func: |mut ctx| {
+        func: |ctx| {
             parse_values!(ctx);
             parse_switches!(ctx);
             parse_options!(ctx);
@@ -494,7 +494,7 @@ pub fn register_all(commands: &mut CommandManager) {
         help: "close buffer",
         completion_source: CompletionSource::None,
         flags: &[],
-        func: |mut ctx| {
+        func: |ctx| {
             parse_values!(ctx);
             parse_switches!(ctx);
             parse_options!(ctx, handle);
