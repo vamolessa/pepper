@@ -324,19 +324,19 @@ where
         11 => Ok(Key::Tab),
         12 => Ok(Key::Delete),
         13 => {
-            let n = u8::deserialize(deserializer)?;
+            let n = Serialize::deserialize(deserializer)?;
             Ok(Key::F(n))
         }
         14 => {
-            let c = char::deserialize(deserializer)?;
+            let c = Serialize::deserialize(deserializer)?;
             Ok(Key::Char(c))
         }
         15 => {
-            let c = char::deserialize(deserializer)?;
+            let c = Serialize::deserialize(deserializer)?;
             Ok(Key::Ctrl(c))
         }
         16 => {
-            let c = char::deserialize(deserializer)?;
+            let c = Serialize::deserialize(deserializer)?;
             Ok(Key::Alt(c))
         }
         17 => Ok(Key::Esc),
@@ -345,11 +345,9 @@ where
 }
 
 pub enum ClientEvent<'a> {
-    AsFocusedClient,
-    AsClient(TargetClient),
-    OpenBuffer(&'a str),
-    Key(Key),
-    Resize(u16, u16),
+    Key(Option<TargetClient>, Key),
+    Resize(Option<TargetClient>, u16, u16),
+    Command(Option<TargetClient>, &'a str),
 }
 
 impl<'de> Serialize<'de> for ClientEvent<'de> {
@@ -358,23 +356,21 @@ impl<'de> Serialize<'de> for ClientEvent<'de> {
         S: Serializer,
     {
         match self {
-            ClientEvent::AsFocusedClient => 0u8.serialize(serializer),
-            ClientEvent::AsClient(target_client) => {
-                1u8.serialize(serializer);
-                target_client.serialize(serializer);
-            }
-            ClientEvent::OpenBuffer(path) => {
-                2u8.serialize(serializer);
-                path.serialize(serializer);
-            }
-            ClientEvent::Key(key) => {
-                3u8.serialize(serializer);
+            ClientEvent::Key(handle, key) => {
+                0u8.serialize(serializer);
+                handle.serialize(serializer);
                 serialize_key(*key, serializer);
             }
-            ClientEvent::Resize(width, height) => {
-                4u8.serialize(serializer);
+            ClientEvent::Resize(handle, width, height) => {
+                1u8.serialize(serializer);
+                handle.serialize(serializer);
                 width.serialize(serializer);
                 height.serialize(serializer);
+            }
+            ClientEvent::Command(handle, command) => {
+                2u8.serialize(serializer);
+                handle.serialize(serializer);
+                command.serialize(serializer);
             }
         }
     }
@@ -385,23 +381,21 @@ impl<'de> Serialize<'de> for ClientEvent<'de> {
     {
         let discriminant = u8::deserialize(deserializer)?;
         match discriminant {
-            0 => Ok(ClientEvent::AsFocusedClient),
-            1 => {
-                let target_client = TargetClient::deserialize(deserializer)?;
-                Ok(ClientEvent::AsClient(target_client))
-            }
-            2 => {
-                let path = <&str>::deserialize(deserializer)?;
-                Ok(ClientEvent::OpenBuffer(path))
-            }
-            3 => {
+            0 => {
+                let handle = Serialize::deserialize(deserializer)?;
                 let key = deserialize_key(deserializer)?;
-                Ok(ClientEvent::Key(key))
+                Ok(ClientEvent::Key(handle, key))
             }
-            4 => {
+            1 => {
+                let handle = Serialize::deserialize(deserializer)?;
                 let width = u16::deserialize(deserializer)?;
                 let height = u16::deserialize(deserializer)?;
-                Ok(ClientEvent::Resize(width, height))
+                Ok(ClientEvent::Resize(handle, width, height))
+            }
+            2 => {
+                let handle = Serialize::deserialize(deserializer)?;
+                let command = <&str>::deserialize(deserializer)?;
+                Ok(ClientEvent::Command(handle, command))
             }
             _ => Err(DeserializeError),
         }

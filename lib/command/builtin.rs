@@ -228,13 +228,10 @@ pub const COMMANDS: &[BuiltinCommand] =
                 parse_switches!(ctx);
                 parse_options!(ctx);
 
-                let target_client = match ctx.client_index {
-                    Some(i) => TargetClient(i),
-                    None => return None,
-                };
+                let client_handle = ctx.client_handle?;
                 NavigationHistory::save_client_snapshot(
                     ctx.clients,
-                    target_client,
+                    client_handle,
                     &ctx.editor.buffer_views,
                 );
 
@@ -252,7 +249,7 @@ pub const COMMANDS: &[BuiltinCommand] =
                     }
 
                     let handle = match ctx.editor.buffer_views.buffer_view_handle_from_path(
-                        target_client,
+                        client_handle,
                         &mut ctx.editor.buffers,
                         &mut ctx.editor.word_database,
                         &ctx.editor.current_directory,
@@ -272,7 +269,7 @@ pub const COMMANDS: &[BuiltinCommand] =
 
                 if let Some(handle) = last_buffer_view_handle {
                     ctx.clients
-                        .set_buffer_view_handle(ctx.editor, target_client, Some(handle));
+                        .set_buffer_view_handle(ctx.editor, client_handle, Some(handle));
                 }
 
                 None

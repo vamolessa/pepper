@@ -1,9 +1,4 @@
-use std::{
-    error::Error,
-    fmt,
-    path::{Path, PathBuf},
-    str::FromStr,
-};
+use std::{path::Path, str::FromStr};
 
 use crate::{
     buffer::{BufferCapabilities, BufferCollection, BufferHandle},
@@ -36,23 +31,24 @@ pub enum CursorMovementKind {
 }
 
 pub struct BufferView {
-    pub target_client: TargetClient,
+    pub client_handle: TargetClient,
     pub buffer_handle: BufferHandle,
     pub cursors: CursorCollection,
 }
 
 impl BufferView {
-    pub fn new(target_client: TargetClient, buffer_handle: BufferHandle) -> Self {
+    pub fn new(client_handle: TargetClient, buffer_handle: BufferHandle) -> Self {
         Self {
-            target_client,
+            client_handle,
             buffer_handle,
             cursors: CursorCollection::new(),
         }
     }
 
-    pub fn clone_with_target_client(&self, target_client: TargetClient) -> Self {
+    // TODO: rename to clone_with_client_handle
+    pub fn clone_with_target_client(&self, client_handle: TargetClient) -> Self {
         Self {
-            target_client,
+            client_handle,
             buffer_handle: self.buffer_handle,
             cursors: self.cursors.clone(),
         }
@@ -682,26 +678,26 @@ impl BufferViewCollection {
 
     pub fn buffer_view_handle_from_buffer_handle(
         &mut self,
-        target_client: TargetClient,
+        client_handle: TargetClient,
         buffer_handle: BufferHandle,
     ) -> BufferViewHandle {
         let current_buffer_view_handle = self
             .iter_with_handles()
             .filter(|(_, view)| {
-                view.buffer_handle == buffer_handle && view.target_client == target_client
+                view.buffer_handle == buffer_handle && view.client_handle == client_handle
             })
             .map(|(h, _)| h)
             .next();
 
         match current_buffer_view_handle {
             Some(handle) => handle,
-            None => self.add(BufferView::new(target_client, buffer_handle)),
+            None => self.add(BufferView::new(client_handle, buffer_handle)),
         }
     }
 
     pub fn buffer_view_handle_from_path(
         &mut self,
-        target_client: TargetClient,
+        client_handle: TargetClient,
         buffers: &mut BufferCollection,
         word_database: &mut WordDatabase,
         root: &Path,
@@ -740,7 +736,7 @@ impl BufferViewCollection {
 
         if let Some(buffer) = buffers.find_with_path(root, path) {
             let buffer_handle = buffer.handle();
-            let handle = self.buffer_view_handle_from_buffer_handle(target_client, buffer_handle);
+            let handle = self.buffer_view_handle_from_buffer_handle(client_handle, buffer_handle);
             try_set_line_index(self, buffers, handle, line_index);
             Ok(handle)
         } else if path.to_str().map(|s| !s.is_empty()).unwrap_or(false) {
@@ -750,7 +746,7 @@ impl BufferViewCollection {
             buffer.set_path(Some(path));
             let _ = buffer.discard_and_reload_from_file(word_database, events);
 
-            let buffer_view = BufferView::new(target_client, buffer.handle());
+            let buffer_view = BufferView::new(client_handle, buffer.handle());
             let handle = self.add(buffer_view);
 
             try_set_line_index(self, buffers, handle, line_index);

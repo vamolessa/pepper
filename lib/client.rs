@@ -3,14 +3,14 @@ use argh::FromArgValue;
 use crate::{
     buffer_view::BufferViewHandle,
     editor::Editor,
-    editor_event::{EditorEvent, EditorEventQueue},
+    editor_event::EditorEvent,
     navigation_history::NavigationHistory,
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
 };
 
-// TODO: remove this and keep only `client_index`
+// TODO: rename to ClientHandle
 #[derive(Default, Clone, Copy, Eq, PartialEq)]
-pub struct TargetClient(pub usize);
+pub struct TargetClient(u16);
 
 impl TargetClient {
     // TODO: remove this
@@ -19,35 +19,45 @@ impl TargetClient {
     }
 
     pub fn into_index(self) -> usize {
-        self.0
+        self.0 as _
     }
 
-    pub fn from_index(index: usize) -> TargetClient {
-        TargetClient(index)
+    pub fn from_index(index: usize) -> Option<TargetClient> {
+        if index <= u16::MAX as usize {
+            Some(TargetClient(index as _))
+        } else {
+            None
+        }
     }
 }
 
-impl<'de> Serialize<'de> for TargetClient {
+impl<'de> Serialize<'de> for Option<TargetClient> {
     fn serialize<S>(&self, serializer: &mut S)
     where
         S: Serializer,
     {
-        let index = self.0 as u32;
-        index.serialize(serializer);
+        match self {
+            Some(TargetClient(i)) => i.serialize(serializer),
+            None => u16::MAX.serialize(serializer),
+        }
     }
 
     fn deserialize<D>(deserializer: &mut D) -> Result<Self, DeserializeError>
     where
         D: Deserializer<'de>,
     {
-        let index = u32::deserialize(deserializer)?;
-        Ok(Self(index as _))
+        match u16::deserialize(deserializer)? {
+            u16::MAX => Ok(None),
+            i => Ok(Some(TargetClient(i))),
+        }
     }
 }
 
 impl FromArgValue for TargetClient {
     fn from_arg_value(value: &str) -> Result<Self, String> {
-        let index = value.parse::<usize>().map_err(|e| e.to_string())?;
+        let index = value
+            .parse::<u16>()
+            .map_err(|e| format!("could not parse client index: {}", e))?;
         Ok(Self(index))
     }
 }
@@ -55,7 +65,7 @@ impl FromArgValue for TargetClient {
 #[derive(Default)]
 pub struct Client {
     active: bool,
-    target: TargetClient,
+    handle: TargetClient,
 
     pub viewport_size: (u16, u16),
     pub scroll: usize,
@@ -85,8 +95,8 @@ impl Client {
         self.previous_buffer_view_handle = None;
     }
 
-    pub fn target(&self) -> TargetClient {
-        self.target
+    pub fn handle(&self) -> TargetClient {
+        self.handle
     }
 
     pub fn buffer_view_handle(&self) -> Option<BufferViewHandle> {
@@ -160,28 +170,26 @@ impl Client {
 }
 
 pub struct ClientManager {
-    focused_target: TargetClient, // TODO: make it focused_index: Option<usize>
-    pub client_map: ClientTargetMap, // TODO: expose through ClientCollection
+    focused_handle: TargetClient, // TODO: make it focused_index: Option<usize>
     clients: Vec<Client>,
 }
 
 impl ClientManager {
     pub fn new() -> Self {
         Self {
-            focused_target: TargetClient::local(),
-            client_map: ClientTargetMap::default(),
+            focused_handle: TargetClient::local(),
             clients: Vec::new(),
         }
     }
 
-    pub fn focused_target(&self) -> TargetClient {
-        self.focused_target
+    pub fn focused_handle(&self) -> TargetClient {
+        self.focused_handle
     }
 
     // TODO: maybe change it to handle it from client_events
-    pub fn focus_client(&mut self, target: TargetClient) -> bool {
-        let changed = target != self.focused_target;
-        self.focused_target = target;
+    pub fn focus_client(&mut self, handle: TargetClient) -> bool {
+        let changed = handle != self.focused_handle;
+        self.focused_handle = handle;
         changed
     }
 
@@ -189,16 +197,16 @@ impl ClientManager {
     pub fn set_buffer_view_handle(
         &mut self,
         editor: &mut Editor,
-        target: TargetClient,
-        handle: Option<BufferViewHandle>,
+        client_handle: TargetClient,
+        buffer_view_handle: Option<BufferViewHandle>,
     ) {
-        if let Some(client) = self.get_mut(target) {
-            if client.current_buffer_view_handle != handle {
+        if let Some(client) = self.get_mut(client_handle) {
+            if client.current_buffer_view_handle != buffer_view_handle {
                 client.previous_buffer_view_handle = client.current_buffer_view_handle;
-                client.current_buffer_view_handle = handle;
+                client.current_buffer_view_handle = buffer_view_handle;
             }
 
-            if let Some(handle) = handle
+            if let Some(handle) = buffer_view_handle
                 .and_then(|h| editor.buffer_views.get(h))
                 .map(|v| v.buffer_handle)
             {
@@ -207,29 +215,26 @@ impl ClientManager {
         }
     }
 
-    pub fn on_client_joined(&mut self, index: usize) {
-        let min_len = index + 1;
+    pub fn on_client_joined(&mut self, handle: TargetClient) {
+        let min_len = handle.into_index() + 1;
         if min_len > self.clients.len() {
             self.clients.resize_with(min_len, Default::default);
         }
 
-        let client = &mut self.clients[index];
+        let client = &mut self.clients[handle.into_index()];
         client.active = true;
-        client.target = TargetClient(index);
-
-        self.client_map.on_client_joined(index);
+        client.handle = handle;
     }
 
-    pub fn on_client_left(&mut self, index: usize) {
-        self.clients[index].dispose();
-        self.client_map.on_client_left(index);
-        if self.focused_target == TargetClient(index) {
-            self.focused_target = TargetClient::local();
+    pub fn on_client_left(&mut self, handle: TargetClient) {
+        self.clients[handle.into_index()].dispose();
+        if self.focused_handle == handle {
+            self.focused_handle = TargetClient::local();
         }
     }
 
-    pub fn get(&self, target: TargetClient) -> Option<&Client> {
-        let client = &self.clients[target.0];
+    pub fn get(&self, handle: TargetClient) -> Option<&Client> {
+        let client = &self.clients[handle.into_index()];
         if client.active {
             Some(client)
         } else {
@@ -237,8 +242,8 @@ impl ClientManager {
         }
     }
 
-    pub fn get_mut(&mut self, target: TargetClient) -> Option<&mut Client> {
-        let client = &mut self.clients[target.0];
+    pub fn get_mut(&mut self, handle: TargetClient) -> Option<&mut Client> {
+        let client = &mut self.clients[handle.into_index()];
         if client.active {
             Some(client)
         } else {
@@ -250,40 +255,5 @@ impl ClientManager {
         self.clients
             .iter_mut()
             .filter_map(|c| if c.active { Some(c) } else { None })
-    }
-}
-
-#[derive(Default)]
-pub struct ClientTargetMap {
-    targets: Vec<Option<TargetClient>>,
-}
-
-impl ClientTargetMap {
-    pub fn on_client_joined(&mut self, index: usize) {
-        let min_len = index + 1;
-        if min_len > self.targets.len() {
-            self.targets.resize_with(min_len, || None);
-        }
-    }
-
-    pub fn on_client_left(&mut self, index: usize) {
-        self.targets[index] = None;
-        for target in &mut self.targets {
-            if *target == Some(TargetClient(index)) {
-                *target = None;
-            }
-        }
-    }
-
-    pub fn map(&mut self, from: TargetClient, to: TargetClient) {
-        self.targets[from.0] = if to.0 < self.targets.len() {
-            Some(to)
-        } else {
-            None
-        };
-    }
-
-    pub fn get(&self, target: TargetClient) -> TargetClient {
-        self.targets[target.0].unwrap_or(target)
     }
 }

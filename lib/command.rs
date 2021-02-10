@@ -36,15 +36,13 @@ enum CompletionSource {
 struct CommandContext<'a> {
     editor: &'a mut Editor,
     clients: &'a mut ClientManager,
-    client_index: Option<usize>,
+    client_handle: Option<TargetClient>,
     bang: bool,
     args: &'a CommandArgs,
 }
 impl<'a> CommandContext<'a> {
     pub fn current_buffer_view_handle(&self) -> Option<BufferViewHandle> {
-        self.clients
-            .get(TargetClient(self.client_index?))?
-            .buffer_view_handle()
+        self.clients.get(self.client_handle?)?.buffer_view_handle()
     }
 }
 
@@ -156,11 +154,11 @@ impl CommandManager {
     pub fn eval_from_read_line(
         editor: &mut Editor,
         clients: &mut ClientManager,
-        client_index: Option<usize>,
+        client_handle: Option<TargetClient>,
     ) -> Option<CommandOperation> {
         let command = editor.read_line.input();
         match editor.commands.parse(command) {
-            Ok((command, bang)) => Self::eval_parsed(editor, clients, client_index, command, bang),
+            Ok((command, bang)) => Self::eval_parsed(editor, clients, client_handle, command, bang),
             Err(error) => {
                 Self::format_parse_error(&mut editor.status_bar, error, command);
                 None
@@ -171,11 +169,11 @@ impl CommandManager {
     pub fn eval(
         editor: &mut Editor,
         clients: &mut ClientManager,
-        client_index: Option<usize>,
+        client_handle: Option<TargetClient>,
         command: &str,
     ) -> Option<CommandOperation> {
         match editor.commands.parse(command) {
-            Ok((command, bang)) => Self::eval_parsed(editor, clients, client_index, command, bang),
+            Ok((command, bang)) => Self::eval_parsed(editor, clients, client_handle, command, bang),
             Err(error) => {
                 Self::format_parse_error(&mut editor.status_bar, error, command);
                 None
@@ -220,7 +218,7 @@ impl CommandManager {
     fn eval_parsed(
         editor: &mut Editor,
         clients: &mut ClientManager,
-        client_index: Option<usize>,
+        client_handle: Option<TargetClient>,
         command: CommandFn,
         bang: bool,
     ) -> Option<CommandOperation> {
@@ -230,7 +228,7 @@ impl CommandManager {
         let ctx = CommandContext {
             editor,
             clients,
-            client_index,
+            client_handle,
             bang,
             args: &args,
         };

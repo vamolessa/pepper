@@ -324,10 +324,9 @@ impl Editor {
 
         let mut needs_redraw = false;
 
-        let focused_target = clients.focused_target();
+        let focused_handle = clients.focused_handle();
         for c in clients.iter_mut() {
-            let target = c.target();
-            let picker_height = if focused_target == target {
+            let picker_height = if focused_handle == c.handle() {
                 picker_height as _
             } else {
                 0
@@ -352,39 +351,31 @@ impl Editor {
         needs_redraw
     }
 
-    pub fn on_client_joined(&mut self, clients: &mut ClientManager, index: usize) {
-        clients.on_client_joined(index);
+    pub fn on_client_joined(&mut self, clients: &mut ClientManager, handle: TargetClient) {
+        clients.on_client_joined(handle);
 
-        let target = TargetClient(index);
         let buffer_view_handle = clients
-            .get(clients.focused_target())
+            .get(clients.focused_handle())
             .and_then(|c| c.buffer_view_handle())
             .and_then(|h| self.buffer_views.get(h))
-            .map(|v| v.clone_with_target_client(target))
+            .map(|v| v.clone_with_target_client(handle))
             .map(|b| self.buffer_views.add(b));
 
-        clients.set_buffer_view_handle(self, target, buffer_view_handle);
+        clients.set_buffer_view_handle(self, handle, buffer_view_handle);
     }
 
-    pub fn on_client_left(&mut self, clients: &mut ClientManager, index: usize) {
-        clients.on_client_left(index);
+    pub fn on_client_left(&mut self, clients: &mut ClientManager, handle: TargetClient) {
+        clients.on_client_left(handle);
     }
 
     pub fn on_event(
         &mut self,
         clients: &mut ClientManager,
-        target: TargetClient,
+        client_handle: TargetClient,
         event: ClientEvent,
     ) -> EditorLoop {
         let result = match event {
-            ClientEvent::AsFocusedClient => {
-                clients.client_map.map(target, clients.focused_target());
-                EditorLoop::Continue
-            }
-            ClientEvent::AsClient(as_target) => {
-                clients.client_map.map(target, as_target);
-                EditorLoop::Continue
-            }
+            /*
             ClientEvent::OpenBuffer(mut path) => {
                 let target = clients.client_map.get(target);
 
@@ -416,11 +407,16 @@ impl Editor {
                 self.trigger_event_handlers(clients, target);
                 EditorLoop::Continue
             }
-            ClientEvent::Key(key) => {
+            */
+            ClientEvent::Key(handle, key) => {
                 self.status_bar.clear();
 
-                let target = clients.client_map.get(target);
-                if clients.focus_client(target) {
+                let handle = match handle {
+                    Some(handle) => handle,
+                    None => client_handle,
+                };
+
+                if clients.focus_client(handle) {
                     self.recording_macro = None;
                     self.buffered_keys.0.clear();
                 }
@@ -447,13 +443,13 @@ impl Editor {
                         }
                         let keys_from_index = self.recording_macro.map(|_| keys.index);
 
-                        match Mode::on_client_keys(self, clients, target, &mut keys) {
+                        match Mode::on_client_keys(self, clients, handle, &mut keys) {
                             None => (),
                             Some(ModeOperation::Pending) => {
                                 return EditorLoop::Continue;
                             }
                             Some(ModeOperation::Quit) => {
-                                Mode::change_to(self, clients, target, ModeKind::default());
+                                Mode::change_to(self, clients, handle, ModeKind::default());
                                 self.buffered_keys.0.clear();
                                 return EditorLoop::Quit;
                             }
@@ -492,15 +488,31 @@ impl Editor {
                 }
 
                 self.buffered_keys.0.clear();
-                self.trigger_event_handlers(clients, target);
+                self.trigger_event_handlers(clients, handle);
                 EditorLoop::Continue
             }
-            ClientEvent::Resize(width, height) => {
-                let target = clients.client_map.get(target);
-                if let Some(client) = clients.get_mut(target) {
+            ClientEvent::Resize(handle, width, height) => {
+                let handle = match handle {
+                    Some(handle) => handle,
+                    None => client_handle,
+                };
+
+                if let Some(client) = clients.get_mut(handle) {
                     client.viewport_size = (width, height);
                 }
                 EditorLoop::Continue
+            }
+            ClientEvent::Command(handle, command) => {
+                let handle = match handle {
+                    Some(handle) => handle,
+                    None => client_handle,
+                };
+
+                match CommandManager::eval(self, clients, Some(handle), command) {
+                    Some(CommandOperation::Quit) => EditorLoop::Quit,
+                    Some(CommandOperation::QuitAll) => EditorLoop::QuitAll,
+                    None => EditorLoop::Continue,
+                }
             }
         };
 
@@ -535,13 +547,13 @@ impl Editor {
         }
     }
 
-    fn trigger_event_handlers(&mut self, clients: &mut ClientManager, target: TargetClient) {
+    fn trigger_event_handlers(&mut self, clients: &mut ClientManager, handle: TargetClient) {
         self.events.flip();
         if let None = self.events.iter().next() {
             return;
         }
 
-        Mode::on_editor_events(self, clients, target);
+        Mode::on_editor_events(self, clients, handle);
 
         // TODO: transformar em função static e só passar o editor
         /*

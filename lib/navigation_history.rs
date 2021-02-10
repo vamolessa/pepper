@@ -37,10 +37,10 @@ impl NavigationHistory {
 
     pub fn save_client_snapshot(
         clients: &mut ClientManager,
-        target: TargetClient,
+        handle: TargetClient,
         buffer_views: &BufferViewCollection,
     ) {
-        let client = match clients.get_mut(target) {
+        let client = match clients.get_mut(handle) {
             Some(client) => client,
             None => return,
         };
@@ -91,10 +91,10 @@ impl NavigationHistory {
     pub fn move_in_history(
         editor: &mut Editor,
         clients: &mut ClientManager,
-        target: TargetClient,
+        handle: TargetClient,
         direction: NavigationDirection,
     ) {
-        let client = match clients.get_mut(target) {
+        let client = match clients.get_mut(handle) {
             Some(client) => client,
             None => return,
         };
@@ -139,7 +139,7 @@ impl NavigationHistory {
 
         let view_handle = editor
             .buffer_views
-            .buffer_view_handle_from_buffer_handle(target, snapshot.buffer_handle);
+            .buffer_view_handle_from_buffer_handle(handle, snapshot.buffer_handle);
         let mut cursors = match editor.buffer_views.get_mut(view_handle) {
             Some(view) => view.cursors.mut_guard(),
             None => return,
@@ -150,7 +150,7 @@ impl NavigationHistory {
         }
         drop(cursors);
 
-        clients.set_buffer_view_handle(editor, target, Some(view_handle));
+        clients.set_buffer_view_handle(editor, handle, Some(view_handle));
     }
 
     pub fn remove_snapshots_with_buffer_handle(&mut self, buffer_handle: BufferHandle) {

@@ -26,7 +26,7 @@ impl ModeState for State {
     fn on_client_keys(
         editor: &mut Editor,
         clients: &mut ClientManager,
-        target: TargetClient,
+        client_handle: TargetClient,
         keys: &mut KeysIterator,
     ) -> Option<ModeOperation> {
         let this = &mut editor.mode.command_state;
@@ -59,17 +59,19 @@ impl ModeState for State {
                     _ => (),
                 }
             }
-            ReadLinePoll::Canceled => Mode::change_to(editor, clients, target, ModeKind::default()),
+            ReadLinePoll::Canceled => {
+                Mode::change_to(editor, clients, client_handle, ModeKind::default())
+            }
             ReadLinePoll::Submitted => {
                 let input = editor.read_line.input();
                 if !input.starts_with(|c: char| c.is_ascii_whitespace()) {
                     editor.commands.add_to_history(input);
                 }
 
-                let op = CommandManager::eval_from_read_line(editor, clients, Some(target.0));
+                let op = CommandManager::eval_from_read_line(editor, clients, Some(client_handle));
 
                 if editor.mode.kind() == ModeKind::Command {
-                    Mode::change_to(editor, clients, target, ModeKind::default());
+                    Mode::change_to(editor, clients, client_handle, ModeKind::default());
                 }
 
                 return match op {

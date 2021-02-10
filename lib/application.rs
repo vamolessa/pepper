@@ -78,22 +78,33 @@ impl ServerApplication {
         match event {
             ServerPlatformEvent::Redraw => (),
             ServerPlatformEvent::Idle => self.editor.on_idle(&mut self.clients),
-            ServerPlatformEvent::ConnectionOpen { index } => self.clients.on_client_joined(index),
+            ServerPlatformEvent::ConnectionOpen { index } => {
+                if let Some(handle) = TargetClient::from_index(index) {
+                    self.clients.on_client_joined(handle)
+                }
+            }
             ServerPlatformEvent::ConnectionClose { index } => {
-                self.clients.on_client_left(index);
-                if self.clients.iter_mut().next().is_none() {
-                    return false;
+                if let Some(handle) = TargetClient::from_index(index) {
+                    self.clients.on_client_left(handle);
+                    if self.clients.iter_mut().next().is_none() {
+                        return false;
+                    }
                 }
             }
             ServerPlatformEvent::ConnectionMessage { index, len } => {
+                let handle = match TargetClient::from_index(index) {
+                    Some(handle) => handle,
+                    None => return true,
+                };
+
                 let bytes = platform.read_from_connection(index, len);
                 let editor = &mut self.editor;
                 let clients = &mut self.clients;
-                let target = TargetClient::from_index(index);
+
                 let editor_loop =
                     self.event_deserialization_bufs
                         .receive_events(index, bytes, |event| {
-                            editor.on_event(clients, target, event)
+                            editor.on_event(clients, handle, event)
                         });
                 match editor_loop {
                     EditorLoop::Continue => (),
@@ -119,9 +130,9 @@ impl ServerApplication {
             platform.request_redraw();
         }
 
-        let focused_target = self.clients.focused_target();
+        let focused_handle = self.clients.focused_handle();
         for c in self.clients.iter_mut() {
-            let has_focus = focused_target == c.target();
+            let has_focus = focused_handle == c.handle();
             c.display_buffer.clear();
             c.display_buffer.extend_from_slice(&[0; 4]);
             ui::render(
@@ -139,17 +150,19 @@ impl ServerApplication {
             let len_bytes = len.to_le_bytes();
             c.display_buffer[..4].copy_from_slice(&len_bytes);
 
-            let connection_index = c.target().0;
+            let connection_index = c.handle().into_index();
             if !platform.write_to_connection(connection_index, &c.display_buffer) {
                 self.connections_with_error.push(connection_index);
             }
         }
 
-        for handle in self.connections_with_error.drain(..) {
-            platform.close_connection(handle);
-            self.clients.on_client_left(handle);
-            if self.clients.iter_mut().next().is_none() {
-                return false;
+        for index in self.connections_with_error.drain(..) {
+            platform.close_connection(index);
+            if let Some(handle) = TargetClient::from_index(index) {
+                self.clients.on_client_left(handle);
+                if self.clients.iter_mut().next().is_none() {
+                    return false;
+                }
             }
         }
 
@@ -158,6 +171,7 @@ impl ServerApplication {
 }
 
 pub struct ClientApplication {
+    as_client_handle: Option<TargetClient>,
     read_buf: Vec<u8>,
     write_buf: SerializationBuf,
     stdout: io::StdoutLock<'static>,
@@ -177,9 +191,14 @@ impl ClientApplication {
             STDOUT.as_ref().unwrap().lock()
         };
 
+        let mut command = String::new();
         let mut write_buf = SerializationBuf::default();
         for path in &args.files {
-            ClientEvent::OpenBuffer(path).serialize(&mut write_buf);
+            command.clear();
+            command.push_str("open '");
+            command.push_str(path);
+            command.push_str("'");
+            ClientEvent::Command(args.as_client, &command).serialize(&mut write_buf);
         }
         let bytes = write_buf.as_slice();
         if !bytes.is_empty() {
@@ -193,6 +212,7 @@ impl ClientApplication {
         let _ = stdout.flush();
 
         Self {
+            as_client_handle: args.as_client,
             read_buf: Vec::new(),
             write_buf,
             stdout,
@@ -209,10 +229,11 @@ impl ClientApplication {
         for event in events {
             match event {
                 ClientPlatformEvent::Key(key) => {
-                    ClientEvent::Key(*key).serialize(&mut self.write_buf);
+                    ClientEvent::Key(self.as_client_handle, *key).serialize(&mut self.write_buf);
                 }
                 ClientPlatformEvent::Resize(width, height) => {
-                    ClientEvent::Resize(*width as _, *height as _).serialize(&mut self.write_buf);
+                    ClientEvent::Resize(self.as_client_handle, *width as _, *height as _)
+                        .serialize(&mut self.write_buf);
                 }
                 ClientPlatformEvent::Message(len) => {
                     let buf = platform.read(*len);
