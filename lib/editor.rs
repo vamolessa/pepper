@@ -358,10 +358,12 @@ impl Editor {
             .get(clients.focused_handle())
             .and_then(|c| c.buffer_view_handle())
             .and_then(|h| self.buffer_views.get(h))
-            .map(|v| v.clone_with_target_client(handle))
+            .map(|v| v.clone_with_client_handle(handle))
             .map(|b| self.buffer_views.add(b));
 
-        clients.set_buffer_view_handle(self, handle, buffer_view_handle);
+        if let Some(client) = clients.get_mut(handle) {
+            client.set_buffer_view_handle(self, buffer_view_handle);
+        }
     }
 
     pub fn on_client_left(&mut self, clients: &mut ClientManager, handle: TargetClient) {

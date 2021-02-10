@@ -45,8 +45,7 @@ impl BufferView {
         }
     }
 
-    // TODO: rename to clone_with_client_handle
-    pub fn clone_with_target_client(&self, client_handle: TargetClient) -> Self {
+    pub fn clone_with_client_handle(&self, client_handle: TargetClient) -> Self {
         Self {
             client_handle,
             buffer_handle: self.buffer_handle,

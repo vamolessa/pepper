@@ -259,18 +259,19 @@ pub const COMMANDS: &[BuiltinCommand] =
                     ) {
                         Ok(handle) => handle,
                         Err(BufferViewError::InvalidPath) => {
-                            // TODO: finish
-                            //ctx.
+                            ctx.editor
+                                .status_bar
+                                .write(StatusMessageKind::Error)
+                                .fmt(format_args!("invalid path '{}'", path));
                             return None;
                         }
                     };
                     last_buffer_view_handle = Some(handle);
                 }
 
-                if let Some(handle) = last_buffer_view_handle {
-                    ctx.clients
-                        .set_buffer_view_handle(ctx.editor, client_handle, Some(handle));
-                }
+                ctx.clients
+                    .get_mut(client_handle)?
+                    .set_buffer_view_handle(ctx.editor, Some(last_buffer_view_handle?));
 
                 None
             },

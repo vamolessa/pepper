@@ -193,28 +193,6 @@ impl ClientManager {
         changed
     }
 
-    // TODO: remove
-    pub fn set_buffer_view_handle(
-        &mut self,
-        editor: &mut Editor,
-        client_handle: TargetClient,
-        buffer_view_handle: Option<BufferViewHandle>,
-    ) {
-        if let Some(client) = self.get_mut(client_handle) {
-            if client.current_buffer_view_handle != buffer_view_handle {
-                client.previous_buffer_view_handle = client.current_buffer_view_handle;
-                client.current_buffer_view_handle = buffer_view_handle;
-            }
-
-            if let Some(handle) = buffer_view_handle
-                .and_then(|h| editor.buffer_views.get(h))
-                .map(|v| v.buffer_handle)
-            {
-                editor.events.enqueue(EditorEvent::BufferOpen { handle });
-            }
-        }
-    }
-
     pub fn on_client_joined(&mut self, handle: TargetClient) {
         let min_len = handle.into_index() + 1;
         if min_len > self.clients.len() {

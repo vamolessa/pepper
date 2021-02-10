@@ -78,7 +78,7 @@ impl State {
     fn on_event_no_buffer(
         editor: &mut Editor,
         clients: &mut ClientManager,
-        target: TargetClient,
+        client_handle: TargetClient,
         keys: &mut KeysIterator,
     ) -> Option<ModeOperation> {
         let this = &mut editor.mode.normal_state;
@@ -110,14 +110,14 @@ impl State {
                     _ => (),
                 }
             }
-            Key::Char(':') => Mode::change_to(editor, clients, target, ModeKind::Command),
+            Key::Char(':') => Mode::change_to(editor, clients, client_handle, ModeKind::Command),
             Key::Char('g') => match keys.next(&editor.buffered_keys) {
                 Key::None => return Some(ModeOperation::Pending),
-                Key::Char('b') => picker::buffer::enter_mode(editor, clients, target),
+                Key::Char('b') => picker::buffer::enter_mode(editor, clients, client_handle),
                 Key::Char('a') => {
-                    let previous_buffer_view_handle =
-                        clients.get(target)?.previous_buffer_view_handle();
-                    clients.set_buffer_view_handle(editor, target, previous_buffer_view_handle);
+                    let client = clients.get_mut(client_handle)?;
+                    let previous_buffer_view_handle = client.previous_buffer_view_handle();
+                    client.set_buffer_view_handle(editor, previous_buffer_view_handle);
                 }
                 _ => (),
             },
@@ -135,7 +135,7 @@ impl State {
     fn on_client_keys_with_buffer_view(
         editor: &mut Editor,
         clients: &mut ClientManager,
-        target: TargetClient,
+        client_handle: TargetClient,
         keys: &mut KeysIterator,
         handle: BufferViewHandle,
     ) -> Option<ModeOperation> {
@@ -174,7 +174,7 @@ impl State {
             ),
             Key::Char('n') => {
                 let count = this.count.max(1);
-                move_to_search_match(editor, clients, target, |len, r| {
+                move_to_search_match(editor, clients, client_handle, |len, r| {
                     let index = match r {
                         Ok(index) => index + count as usize,
                         Err(index) => index + count as usize - 1,
@@ -184,7 +184,7 @@ impl State {
             }
             Key::Char('p') => {
                 let count = this.count.max(1) as usize;
-                move_to_search_match(editor, clients, target, |len, r| {
+                move_to_search_match(editor, clients, client_handle, |len, r| {
                     let index = match r {
                         Ok(index) => index,
                         Err(index) => index,
@@ -193,7 +193,7 @@ impl State {
                 });
             }
             Key::Char('N') => {
-                search_word_or_move_to_it(editor, clients, target, |len, r| {
+                search_word_or_move_to_it(editor, clients, client_handle, |len, r| {
                     let index = match r {
                         Ok(index) => index + 1,
                         Err(index) => index,
@@ -202,7 +202,7 @@ impl State {
                 });
             }
             Key::Char('P') => {
-                search_word_or_move_to_it(editor, clients, target, |len, r| {
+                search_word_or_move_to_it(editor, clients, client_handle, |len, r| {
                     let index = match r {
                         Ok(index) => index,
                         Err(index) => index,
@@ -215,7 +215,7 @@ impl State {
                 NavigationHistory::move_in_history(
                     editor,
                     clients,
-                    target,
+                    client_handle,
                     NavigationDirection::Forward,
                 );
             }
@@ -224,7 +224,7 @@ impl State {
                 NavigationHistory::move_in_history(
                     editor,
                     clients,
-                    target,
+                    client_handle,
                     NavigationDirection::Backward,
                 );
             }
@@ -391,7 +391,7 @@ impl State {
                 let buffer_view = editor.buffer_views.get_mut(handle)?;
                 match keys.next(&editor.buffered_keys) {
                     Key::None => return Some(ModeOperation::Pending),
-                    Key::Char('g') => read_line::goto::enter_mode(editor, clients, target),
+                    Key::Char('g') => read_line::goto::enter_mode(editor, clients, client_handle),
                     Key::Char('h') => buffer_view.move_cursors(
                         &editor.buffers,
                         CursorMovement::Home,
@@ -471,7 +471,7 @@ impl State {
                     _ => {
                         keys.put_back();
                         keys.put_back();
-                        return Self::on_event_no_buffer(editor, clients, target, keys);
+                        return Self::on_event_no_buffer(editor, clients, client_handle, keys);
                     }
                 }
             }
@@ -479,7 +479,7 @@ impl State {
                 Key::None => return Some(ModeOperation::Pending),
                 Key::Char(ch) => {
                     this.last_char_jump = CharJump::Inclusive(ch);
-                    find_char(editor, clients, target, true);
+                    find_char(editor, clients, client_handle, true);
                 }
                 _ => (),
             },
@@ -487,7 +487,7 @@ impl State {
                 Key::None => return Some(ModeOperation::Pending),
                 Key::Char(ch) => {
                     this.last_char_jump = CharJump::Inclusive(ch);
-                    find_char(editor, clients, target, false);
+                    find_char(editor, clients, client_handle, false);
                 }
                 _ => (),
             },
@@ -495,7 +495,7 @@ impl State {
                 Key::None => return Some(ModeOperation::Pending),
                 Key::Char(ch) => {
                     this.last_char_jump = CharJump::Exclusive(ch);
-                    find_char(editor, clients, target, true);
+                    find_char(editor, clients, client_handle, true);
                 }
                 _ => (),
             },
@@ -503,15 +503,15 @@ impl State {
                 Key::None => return Some(ModeOperation::Pending),
                 Key::Char(ch) => {
                     this.last_char_jump = CharJump::Exclusive(ch);
-                    find_char(editor, clients, target, false);
+                    find_char(editor, clients, client_handle, false);
                 }
                 _ => (),
             },
             Key::Char(';') => {
-                find_char(editor, clients, target, true);
+                find_char(editor, clients, client_handle, true);
             }
             Key::Char(',') => {
-                find_char(editor, clients, target, false);
+                find_char(editor, clients, client_handle, false);
             }
             Key::Char('v') => {
                 let mut had_selection = false;
@@ -563,7 +563,7 @@ impl State {
             Key::Char('z') => {
                 let buffer_view = editor.buffer_views.get(handle)?;
                 let focused_line_index = buffer_view.cursors.main_cursor().position.line_index;
-                let client = clients.get_mut(target)?;
+                let client = clients.get_mut(client_handle)?;
                 let height = client.height as usize;
 
                 match keys.next(&editor.buffered_keys) {
@@ -575,7 +575,7 @@ impl State {
                 }
             }
             Key::Ctrl('d') => {
-                let half_height = clients.get(target).map(|c| c.height).unwrap_or(0) / 2;
+                let half_height = clients.get(client_handle).map(|c| c.height).unwrap_or(0) / 2;
                 editor.buffer_views.get_mut(handle)?.move_cursors(
                     &editor.buffers,
                     CursorMovement::LinesForward(half_height as _),
@@ -583,7 +583,7 @@ impl State {
                 );
             }
             Key::Ctrl('u') => {
-                let half_height = clients.get(target).map(|c| c.height).unwrap_or(0) / 2;
+                let half_height = clients.get(client_handle).map(|c| c.height).unwrap_or(0) / 2;
                 editor.buffer_views.get_mut(handle)?.move_cursors(
                     &editor.buffers,
                     CursorMovement::LinesBackward(half_height as _),
@@ -616,7 +616,7 @@ impl State {
 
                 Self::on_edit_keys(editor, keys, keys_from_index);
 
-                Mode::change_to(editor, clients, target, ModeKind::Insert);
+                Mode::change_to(editor, clients, client_handle, ModeKind::Insert);
                 return None;
             }
             Key::Char('<') => {
@@ -846,33 +846,35 @@ impl State {
                     cursors.set_main_cursor_index((index + cursor_count - offset) % cursor_count);
                 }
                 Key::Char('f') => {
-                    read_line::filter_cursors::enter_filter_mode(editor, clients, target)
+                    read_line::filter_cursors::enter_filter_mode(editor, clients, client_handle)
                 }
                 Key::Char('F') => {
-                    read_line::filter_cursors::enter_except_mode(editor, clients, target)
+                    read_line::filter_cursors::enter_except_mode(editor, clients, client_handle)
                 }
                 Key::Char('s') => {
-                    read_line::split_cursors::enter_by_pattern_mode(editor, clients, target)
+                    read_line::split_cursors::enter_by_pattern_mode(editor, clients, client_handle)
                 }
-                Key::Char('S') => {
-                    read_line::split_cursors::enter_by_separators_mode(editor, clients, target)
-                }
+                Key::Char('S') => read_line::split_cursors::enter_by_separators_mode(
+                    editor,
+                    clients,
+                    client_handle,
+                ),
                 _ => (),
             },
             Key::Char('r') => match keys.next(&editor.buffered_keys) {
                 Key::None => return Some(ModeOperation::Pending),
                 Key::Char('n') => {
-                    move_to_diagnostic(editor, clients, target, true);
+                    move_to_diagnostic(editor, clients, client_handle, true);
                 }
                 Key::Char('p') => {
-                    move_to_diagnostic(editor, clients, target, false);
+                    move_to_diagnostic(editor, clients, client_handle, false);
                 }
                 Key::Char('r') => editor
                     .status_bar
                     .write_str(StatusMessageKind::Info, "rename not yet implemented"),
                 _ => (),
             },
-            Key::Char('s') => read_line::search::enter_mode(editor, clients, target),
+            Key::Char('s') => read_line::search::enter_mode(editor, clients, client_handle),
             Key::Char('y') => {
                 let buffer_view = editor.buffer_views.get(handle)?;
                 let mut text = String::new();
@@ -966,7 +968,7 @@ impl State {
             }
             _ => {
                 keys.put_back();
-                return Self::on_event_no_buffer(editor, clients, target, keys);
+                return Self::on_event_no_buffer(editor, clients, client_handle, keys);
             }
         }
 
@@ -992,15 +994,15 @@ impl ModeState for State {
     fn on_client_keys(
         editor: &mut Editor,
         clients: &mut ClientManager,
-        target: TargetClient,
+        client_handle: TargetClient,
         keys: &mut KeysIterator,
     ) -> Option<ModeOperation> {
         fn show_hovered_diagnostic_in_status_bar(
             editor: &mut Editor,
             clients: &mut ClientManager,
-            target: TargetClient,
+            client_handle: TargetClient,
         ) -> Option<()> {
-            let handle = clients.get(target)?.buffer_view_handle()?;
+            let handle = clients.get(client_handle)?.buffer_view_handle()?;
             if !editor.status_bar.message().1.is_empty() {
                 return None;
             }
@@ -1033,16 +1035,24 @@ impl ModeState for State {
             None
         }
 
-        match clients.get(target).and_then(Client::buffer_view_handle) {
+        match clients
+            .get(client_handle)
+            .and_then(Client::buffer_view_handle)
+        {
             Some(handle) => {
-                let op =
-                    Self::on_client_keys_with_buffer_view(editor, clients, target, keys, handle);
+                let op = Self::on_client_keys_with_buffer_view(
+                    editor,
+                    clients,
+                    client_handle,
+                    keys,
+                    handle,
+                );
                 if let None = op {
-                    show_hovered_diagnostic_in_status_bar(editor, clients, target);
+                    show_hovered_diagnostic_in_status_bar(editor, clients, client_handle);
                 }
                 op
             }
-            None => Self::on_event_no_buffer(editor, clients, target, keys),
+            None => Self::on_event_no_buffer(editor, clients, client_handle, keys),
         }
     }
 }
@@ -1050,7 +1060,7 @@ impl ModeState for State {
 fn find_char(
     editor: &mut Editor,
     clients: &mut ClientManager,
-    target: TargetClient,
+    client_handle: TargetClient,
     forward: bool,
 ) -> Option<()> {
     let state = &editor.mode.normal_state;
@@ -1071,7 +1081,7 @@ fn find_char(
         }
     };
 
-    let handle = clients.get(target)?.buffer_view_handle()?;
+    let handle = clients.get(client_handle)?.buffer_view_handle()?;
     let buffer_view = editor.buffer_views.get_mut(handle)?;
     let buffer = editor.buffers.get(buffer_view.buffer_handle)?;
 
@@ -1112,15 +1122,15 @@ fn find_char(
 fn move_to_search_match<F>(
     editor: &mut Editor,
     clients: &mut ClientManager,
-    target: TargetClient,
+    client_handle: TargetClient,
     index_selector: F,
 ) -> Option<()>
 where
     F: FnOnce(usize, Result<usize, usize>) -> usize,
 {
-    NavigationHistory::save_client_snapshot(clients, target, &mut editor.buffer_views);
+    NavigationHistory::save_client_snapshot(clients, client_handle, &mut editor.buffer_views);
 
-    let client = clients.get_mut(target)?;
+    let client = clients.get_mut(client_handle)?;
     let handle = client.buffer_view_handle()?;
     let buffer_view = editor.buffer_views.get_mut(handle)?;
     let buffer = editor.buffers.get_mut(buffer_view.buffer_handle)?;
@@ -1167,10 +1177,10 @@ where
 fn search_word_or_move_to_it(
     editor: &mut Editor,
     clients: &mut ClientManager,
-    target: TargetClient,
+    client_handle: TargetClient,
     index_selector: fn(usize, Result<usize, usize>) -> usize,
 ) -> Option<()> {
-    let handle = clients.get(target)?.buffer_view_handle()?;
+    let handle = clients.get(client_handle)?.buffer_view_handle()?;
     let buffer_view = editor.buffer_views.get_mut(handle)?;
     let buffer = editor.buffers.get_mut(buffer_view.buffer_handle)?;
 
@@ -1194,7 +1204,7 @@ fn search_word_or_move_to_it(
 
         editor.registers.set(SEARCH_REGISTER, search_word);
     } else {
-        NavigationHistory::save_client_snapshot(clients, target, &mut editor.buffer_views);
+        NavigationHistory::save_client_snapshot(clients, client_handle, &mut editor.buffer_views);
 
         let buffer_view = editor.buffer_views.get_mut(handle)?;
         let mut range_index = current_range_index;
@@ -1218,7 +1228,7 @@ fn search_word_or_move_to_it(
 fn move_to_diagnostic(
     editor: &mut Editor,
     clients: &mut ClientManager,
-    target: TargetClient,
+    client_handle: TargetClient,
     forward: bool,
 ) -> Option<()> {
     enum DirectedIter<I> {
@@ -1247,7 +1257,7 @@ fn move_to_diagnostic(
         }
     }
 
-    let handle = clients.get(target)?.buffer_view_handle()?;
+    let handle = clients.get(client_handle)?.buffer_view_handle()?;
     let buffer_view = editor.buffer_views.get(handle)?;
     let main_position = buffer_view.cursors.main_cursor().position;
 
@@ -1312,9 +1322,9 @@ fn move_to_diagnostic(
     let buffer_view_handle = match buffer_handle {
         Some(buffer_handle) => editor
             .buffer_views
-            .buffer_view_handle_from_buffer_handle(target, buffer_handle),
+            .buffer_view_handle_from_buffer_handle(client_handle, buffer_handle),
         None => match editor.buffer_views.buffer_view_handle_from_path(
-            target,
+            client_handle,
             &mut editor.buffers,
             &mut editor.word_database,
             &editor.current_directory,
@@ -1333,7 +1343,7 @@ fn move_to_diagnostic(
         },
     };
 
-    NavigationHistory::save_client_snapshot(clients, target, &mut editor.buffer_views);
+    NavigationHistory::save_client_snapshot(clients, client_handle, &mut editor.buffer_views);
 
     let buffer_view = editor.buffer_views.get_mut(buffer_view_handle)?;
     let buffer = editor.buffers.get(buffer_view.buffer_handle)?;
@@ -1349,8 +1359,8 @@ fn move_to_diagnostic(
     drop(cursors);
     drop(buffer_view);
 
-    clients.set_buffer_view_handle(editor, target, Some(buffer_view_handle));
     editor.mode.normal_state.movement_kind = CursorMovementKind::PositionAndAnchor;
+    clients.get_mut(client_handle)?.set_buffer_view_handle(editor, Some(buffer_view_handle));
 
     None
 }

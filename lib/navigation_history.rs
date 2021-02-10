@@ -150,7 +150,9 @@ impl NavigationHistory {
         }
         drop(cursors);
 
-        clients.set_buffer_view_handle(editor, handle, Some(view_handle));
+        if let Some(client) = clients.get_mut(handle) {
+            client.set_buffer_view_handle(editor, Some(view_handle));
+        }
     }
 
     pub fn remove_snapshots_with_buffer_handle(&mut self, buffer_handle: BufferHandle) {

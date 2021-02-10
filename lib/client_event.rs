@@ -344,6 +344,12 @@ where
     }
 }
 
+// TODO: change from Option<TargetClient> to TargetClient where TargetClient the enum
+// enum TargetClient {
+// FromConnection,
+// Focused,
+// Handle(ClientHandle),
+// }
 pub enum ClientEvent<'a> {
     Key(Option<TargetClient>, Key),
     Resize(Option<TargetClient>, u16, u16),
