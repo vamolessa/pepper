@@ -10,9 +10,9 @@ use crate::{
 
 // TODO: rename to ClientHandle
 #[derive(Default, Clone, Copy, Eq, PartialEq)]
-pub struct TargetClient(u16);
+pub struct ClientHandle(u16);
 
-impl TargetClient {
+impl ClientHandle {
     // TODO: remove this
     pub fn local() -> Self {
         Self(0)
@@ -22,22 +22,22 @@ impl TargetClient {
         self.0 as _
     }
 
-    pub fn from_index(index: usize) -> Option<TargetClient> {
+    pub fn from_index(index: usize) -> Option<ClientHandle> {
         if index <= u16::MAX as usize {
-            Some(TargetClient(index as _))
+            Some(ClientHandle(index as _))
         } else {
             None
         }
     }
 }
 
-impl<'de> Serialize<'de> for Option<TargetClient> {
+impl<'de> Serialize<'de> for Option<ClientHandle> {
     fn serialize<S>(&self, serializer: &mut S)
     where
         S: Serializer,
     {
         match self {
-            Some(TargetClient(i)) => i.serialize(serializer),
+            Some(ClientHandle(i)) => i.serialize(serializer),
             None => u16::MAX.serialize(serializer),
         }
     }
@@ -48,12 +48,12 @@ impl<'de> Serialize<'de> for Option<TargetClient> {
     {
         match u16::deserialize(deserializer)? {
             u16::MAX => Ok(None),
-            i => Ok(Some(TargetClient(i))),
+            i => Ok(Some(ClientHandle(i))),
         }
     }
 }
 
-impl FromArgValue for TargetClient {
+impl FromArgValue for ClientHandle {
     fn from_arg_value(value: &str) -> Result<Self, String> {
         let index = value
             .parse::<u16>()
@@ -65,7 +65,7 @@ impl FromArgValue for TargetClient {
 #[derive(Default)]
 pub struct Client {
     active: bool,
-    handle: TargetClient,
+    handle: ClientHandle,
 
     pub viewport_size: (u16, u16),
     pub scroll: usize,
@@ -95,7 +95,7 @@ impl Client {
         self.previous_buffer_view_handle = None;
     }
 
-    pub fn handle(&self) -> TargetClient {
+    pub fn handle(&self) -> ClientHandle {
         self.handle
     }
 
@@ -170,30 +170,30 @@ impl Client {
 }
 
 pub struct ClientManager {
-    focused_handle: TargetClient, // TODO: make it focused_index: Option<usize>
+    focused_handle: ClientHandle, // TODO: make it focused_index: Option<usize>
     clients: Vec<Client>,
 }
 
 impl ClientManager {
     pub fn new() -> Self {
         Self {
-            focused_handle: TargetClient::local(),
+            focused_handle: ClientHandle::local(),
             clients: Vec::new(),
         }
     }
 
-    pub fn focused_handle(&self) -> TargetClient {
+    pub fn focused_handle(&self) -> ClientHandle {
         self.focused_handle
     }
 
     // TODO: maybe change it to handle it from client_events
-    pub fn focus_client(&mut self, handle: TargetClient) -> bool {
+    pub fn focus_client(&mut self, handle: ClientHandle) -> bool {
         let changed = handle != self.focused_handle;
         self.focused_handle = handle;
         changed
     }
 
-    pub fn on_client_joined(&mut self, handle: TargetClient) {
+    pub fn on_client_joined(&mut self, handle: ClientHandle) {
         let min_len = handle.into_index() + 1;
         if min_len > self.clients.len() {
             self.clients.resize_with(min_len, Default::default);
@@ -204,14 +204,14 @@ impl ClientManager {
         client.handle = handle;
     }
 
-    pub fn on_client_left(&mut self, handle: TargetClient) {
+    pub fn on_client_left(&mut self, handle: ClientHandle) {
         self.clients[handle.into_index()].dispose();
         if self.focused_handle == handle {
-            self.focused_handle = TargetClient::local();
+            self.focused_handle = ClientHandle::local();
         }
     }
 
-    pub fn get(&self, handle: TargetClient) -> Option<&Client> {
+    pub fn get(&self, handle: ClientHandle) -> Option<&Client> {
         let client = &self.clients[handle.into_index()];
         if client.active {
             Some(client)
@@ -220,7 +220,7 @@ impl ClientManager {
         }
     }
 
-    pub fn get_mut(&mut self, handle: TargetClient) -> Option<&mut Client> {
+    pub fn get_mut(&mut self, handle: ClientHandle) -> Option<&mut Client> {
         let client = &mut self.clients[handle.into_index()];
         if client.active {
             Some(client)

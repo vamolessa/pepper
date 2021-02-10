@@ -6,7 +6,7 @@ use crate::{
     buffer::BufferContent,
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{BufferViewError, BufferViewHandle, CursorMovement, CursorMovementKind},
-    client::{Client, ClientManager, TargetClient},
+    client::{Client, ClientManager, ClientHandle},
     cursor::Cursor,
     editor::{Editor, KeysIterator, StatusMessageKind},
     lsp::LspDiagnostic,
@@ -78,7 +78,7 @@ impl State {
     fn on_event_no_buffer(
         editor: &mut Editor,
         clients: &mut ClientManager,
-        client_handle: TargetClient,
+        client_handle: ClientHandle,
         keys: &mut KeysIterator,
     ) -> Option<ModeOperation> {
         let this = &mut editor.mode.normal_state;
@@ -135,7 +135,7 @@ impl State {
     fn on_client_keys_with_buffer_view(
         editor: &mut Editor,
         clients: &mut ClientManager,
-        client_handle: TargetClient,
+        client_handle: ClientHandle,
         keys: &mut KeysIterator,
         handle: BufferViewHandle,
     ) -> Option<ModeOperation> {
@@ -994,13 +994,13 @@ impl ModeState for State {
     fn on_client_keys(
         editor: &mut Editor,
         clients: &mut ClientManager,
-        client_handle: TargetClient,
+        client_handle: ClientHandle,
         keys: &mut KeysIterator,
     ) -> Option<ModeOperation> {
         fn show_hovered_diagnostic_in_status_bar(
             editor: &mut Editor,
             clients: &mut ClientManager,
-            client_handle: TargetClient,
+            client_handle: ClientHandle,
         ) -> Option<()> {
             let handle = clients.get(client_handle)?.buffer_view_handle()?;
             if !editor.status_bar.message().1.is_empty() {
@@ -1060,7 +1060,7 @@ impl ModeState for State {
 fn find_char(
     editor: &mut Editor,
     clients: &mut ClientManager,
-    client_handle: TargetClient,
+    client_handle: ClientHandle,
     forward: bool,
 ) -> Option<()> {
     let state = &editor.mode.normal_state;
@@ -1122,7 +1122,7 @@ fn find_char(
 fn move_to_search_match<F>(
     editor: &mut Editor,
     clients: &mut ClientManager,
-    client_handle: TargetClient,
+    client_handle: ClientHandle,
     index_selector: F,
 ) -> Option<()>
 where
@@ -1177,7 +1177,7 @@ where
 fn search_word_or_move_to_it(
     editor: &mut Editor,
     clients: &mut ClientManager,
-    client_handle: TargetClient,
+    client_handle: ClientHandle,
     index_selector: fn(usize, Result<usize, usize>) -> usize,
 ) -> Option<()> {
     let handle = clients.get(client_handle)?.buffer_view_handle()?;
@@ -1228,7 +1228,7 @@ fn search_word_or_move_to_it(
 fn move_to_diagnostic(
     editor: &mut Editor,
     clients: &mut ClientManager,
-    client_handle: TargetClient,
+    client_handle: ClientHandle,
     forward: bool,
 ) -> Option<()> {
     enum DirectedIter<I> {

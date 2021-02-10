@@ -3,7 +3,7 @@ use std::{error::Error, fmt, str::Chars};
 use crate::platform::Key;
 
 use crate::{
-    client::TargetClient,
+    client::ClientHandle,
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
 };
 
@@ -351,9 +351,9 @@ where
 // Handle(ClientHandle),
 // }
 pub enum ClientEvent<'a> {
-    Key(Option<TargetClient>, Key),
-    Resize(Option<TargetClient>, u16, u16),
-    Command(Option<TargetClient>, &'a str),
+    Key(Option<ClientHandle>, Key),
+    Resize(Option<ClientHandle>, u16, u16),
+    Command(Option<ClientHandle>, &'a str),
 }
 
 impl<'de> Serialize<'de> for ClientEvent<'de> {

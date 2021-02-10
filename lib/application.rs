@@ -1,7 +1,7 @@
 use std::{env, io};
 
 use crate::{
-    client::{ClientManager, TargetClient},
+    client::{ClientManager, ClientHandle},
     client_event::ClientEvent,
     command::CommandOperation,
     connection::ClientEventDeserializationBufCollection,
@@ -79,12 +79,12 @@ impl ServerApplication {
             ServerPlatformEvent::Redraw => (),
             ServerPlatformEvent::Idle => self.editor.on_idle(&mut self.clients),
             ServerPlatformEvent::ConnectionOpen { index } => {
-                if let Some(handle) = TargetClient::from_index(index) {
+                if let Some(handle) = ClientHandle::from_index(index) {
                     self.clients.on_client_joined(handle)
                 }
             }
             ServerPlatformEvent::ConnectionClose { index } => {
-                if let Some(handle) = TargetClient::from_index(index) {
+                if let Some(handle) = ClientHandle::from_index(index) {
                     self.clients.on_client_left(handle);
                     if self.clients.iter_mut().next().is_none() {
                         return false;
@@ -92,7 +92,7 @@ impl ServerApplication {
                 }
             }
             ServerPlatformEvent::ConnectionMessage { index, len } => {
-                let handle = match TargetClient::from_index(index) {
+                let handle = match ClientHandle::from_index(index) {
                     Some(handle) => handle,
                     None => return true,
                 };
@@ -158,7 +158,7 @@ impl ServerApplication {
 
         for index in self.connections_with_error.drain(..) {
             platform.close_connection(index);
-            if let Some(handle) = TargetClient::from_index(index) {
+            if let Some(handle) = ClientHandle::from_index(index) {
                 self.clients.on_client_left(handle);
                 if self.clients.iter_mut().next().is_none() {
                     return false;
@@ -171,7 +171,7 @@ impl ServerApplication {
 }
 
 pub struct ClientApplication {
-    as_client_handle: Option<TargetClient>,
+    as_client_handle: Option<ClientHandle>,
     read_buf: Vec<u8>,
     write_buf: SerializationBuf,
     stdout: io::StdoutLock<'static>,

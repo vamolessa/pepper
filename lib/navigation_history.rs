@@ -1,7 +1,7 @@
 use crate::{
     buffer::BufferHandle,
     buffer_view::{BufferView, BufferViewCollection},
-    client::{ClientManager, TargetClient},
+    client::{ClientManager, ClientHandle},
     cursor::Cursor,
     editor::Editor,
 };
@@ -37,7 +37,7 @@ impl NavigationHistory {
 
     pub fn save_client_snapshot(
         clients: &mut ClientManager,
-        handle: TargetClient,
+        handle: ClientHandle,
         buffer_views: &BufferViewCollection,
     ) {
         let client = match clients.get_mut(handle) {
@@ -91,7 +91,7 @@ impl NavigationHistory {
     pub fn move_in_history(
         editor: &mut Editor,
         clients: &mut ClientManager,
-        handle: TargetClient,
+        handle: ClientHandle,
         direction: NavigationDirection,
     ) {
         let client = match clients.get_mut(handle) {

@@ -1,5 +1,5 @@
 use crate::{
-    client::{ClientManager, TargetClient},
+    client::{ClientManager, ClientHandle},
     editor::{Editor, KeysIterator, ReadLinePoll},
     mode::{Mode, ModeKind, ModeOperation, ModeState},
     register::SEARCH_REGISTER,
@@ -9,7 +9,7 @@ pub struct State {
     on_client_keys: fn(
         &mut Editor,
         &mut ClientManager,
-        TargetClient,
+        ClientHandle,
         &mut KeysIterator,
         ReadLinePoll,
     ) -> Option<()>,
@@ -24,18 +24,18 @@ impl Default for State {
 }
 
 impl ModeState for State {
-    fn on_enter(editor: &mut Editor, _: &mut ClientManager, _: TargetClient) {
+    fn on_enter(editor: &mut Editor, _: &mut ClientManager, _: ClientHandle) {
         editor.read_line.set_input("");
     }
 
-    fn on_exit(editor: &mut Editor, _: &mut ClientManager, _: TargetClient) {
+    fn on_exit(editor: &mut Editor, _: &mut ClientManager, _: ClientHandle) {
         editor.read_line.set_input("");
     }
 
     fn on_client_keys(
         editor: &mut Editor,
         clients: &mut ClientManager,
-        target: TargetClient,
+        target: ClientHandle,
         keys: &mut KeysIterator,
     ) -> Option<ModeOperation> {
         let poll = editor.read_line.poll(&editor.buffered_keys, keys);
@@ -50,11 +50,11 @@ pub mod search {
 
     use crate::navigation_history::{NavigationDirection, NavigationHistory};
 
-    pub fn enter_mode(editor: &mut Editor, clients: &mut ClientManager, target: TargetClient) {
+    pub fn enter_mode(editor: &mut Editor, clients: &mut ClientManager, target: ClientHandle) {
         fn on_client_keys(
             editor: &mut Editor,
             clients: &mut ClientManager,
-            target: TargetClient,
+            target: ClientHandle,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
         ) -> Option<()> {
@@ -93,7 +93,7 @@ pub mod search {
     fn update_search(
         editor: &mut Editor,
         clients: &mut ClientManager,
-        target: TargetClient,
+        target: ClientHandle,
     ) -> Option<()> {
         for buffer in editor.buffers.iter_mut() {
             buffer.set_search("");
@@ -167,7 +167,7 @@ pub mod filter_cursors {
     pub fn enter_filter_mode(
         editor: &mut Editor,
         clients: &mut ClientManager,
-        target: TargetClient,
+        target: ClientHandle,
     ) {
         editor.read_line.set_prompt("filter:");
         editor.mode.read_line_state.on_client_keys = |editor, clients, target, _, poll| {
@@ -180,7 +180,7 @@ pub mod filter_cursors {
     pub fn enter_except_mode(
         editor: &mut Editor,
         clients: &mut ClientManager,
-        target: TargetClient,
+        target: ClientHandle,
     ) {
         editor.read_line.set_prompt("except:");
         editor.mode.read_line_state.on_client_keys = |editor, clients, target, _, poll| {
@@ -193,7 +193,7 @@ pub mod filter_cursors {
     fn on_event_impl(
         editor: &mut Editor,
         clients: &mut ClientManager,
-        target: TargetClient,
+        target: ClientHandle,
         keep_if_contains_pattern: bool,
     ) -> Option<()> {
         fn range_contains_pattern(
@@ -273,7 +273,7 @@ pub mod split_cursors {
     pub fn enter_by_pattern_mode(
         editor: &mut Editor,
         clients: &mut ClientManager,
-        target: TargetClient,
+        target: ClientHandle,
     ) {
         fn add_matches(
             cursors: &mut CursorCollectionMutGuard,
@@ -305,7 +305,7 @@ pub mod split_cursors {
     pub fn enter_by_separators_mode(
         editor: &mut Editor,
         clients: &mut ClientManager,
-        target: TargetClient,
+        target: ClientHandle,
     ) {
         fn add_matches(
             cursors: &mut CursorCollectionMutGuard,
@@ -345,7 +345,7 @@ pub mod split_cursors {
     fn on_event_impl(
         editor: &mut Editor,
         clients: &mut ClientManager,
-        target: TargetClient,
+        target: ClientHandle,
         add_matches: fn(&mut CursorCollectionMutGuard, &str, &str, BufferPosition),
     ) -> Option<()> {
         let pattern = editor.read_line.input();
@@ -425,11 +425,11 @@ pub mod goto {
         word_database::WordKind,
     };
 
-    pub fn enter_mode(editor: &mut Editor, clients: &mut ClientManager, target: TargetClient) {
+    pub fn enter_mode(editor: &mut Editor, clients: &mut ClientManager, target: ClientHandle) {
         fn on_client_keys(
             editor: &mut Editor,
             clients: &mut ClientManager,
-            target: TargetClient,
+            target: ClientHandle,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
         ) -> Option<()> {

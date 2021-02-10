@@ -57,7 +57,7 @@ pub struct Args {
 
     /// displays no ui and send events on behalf of the client at index
     #[argh(option)]
-    pub as_client: Option<client::TargetClient>,
+    pub as_client: Option<client::ClientHandle>,
 
     #[argh(switch)]
     /// will print to stderr frames latency

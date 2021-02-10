@@ -2,7 +2,7 @@ use crate::platform::Key;
 
 use crate::{
     buffer_view::BufferViewError,
-    client::{ClientManager, TargetClient},
+    client::{ClientManager, ClientHandle},
     editor::{Editor, KeysIterator, ReadLinePoll, StatusMessageKind},
     mode::{Mode, ModeKind, ModeOperation, ModeState},
     word_database::EmptyWordCollection,
@@ -10,7 +10,7 @@ use crate::{
 
 pub struct State {
     on_client_keys:
-        fn(&mut Editor, &mut ClientManager, TargetClient, &mut KeysIterator, ReadLinePoll),
+        fn(&mut Editor, &mut ClientManager, ClientHandle, &mut KeysIterator, ReadLinePoll),
 }
 
 impl Default for State {
@@ -22,12 +22,12 @@ impl Default for State {
 }
 
 impl ModeState for State {
-    fn on_enter(editor: &mut Editor, _: &mut ClientManager, _: TargetClient) {
+    fn on_enter(editor: &mut Editor, _: &mut ClientManager, _: ClientHandle) {
         editor.read_line.set_input("");
         editor.picker.filter(&EmptyWordCollection, "");
     }
 
-    fn on_exit(editor: &mut Editor, _: &mut ClientManager, _: TargetClient) {
+    fn on_exit(editor: &mut Editor, _: &mut ClientManager, _: ClientHandle) {
         editor.read_line.set_input("");
         editor.picker.reset();
     }
@@ -35,7 +35,7 @@ impl ModeState for State {
     fn on_client_keys(
         editor: &mut Editor,
         clients: &mut ClientManager,
-        client_handle: TargetClient,
+        client_handle: ClientHandle,
         keys: &mut KeysIterator,
     ) -> Option<ModeOperation> {
         let this = &mut editor.mode.picker_state;
@@ -89,12 +89,12 @@ pub mod buffer {
     pub fn enter_mode(
         editor: &mut Editor,
         clients: &mut ClientManager,
-        client_handle: TargetClient,
+        client_handle: ClientHandle,
     ) {
         fn on_client_keys(
             editor: &mut Editor,
             clients: &mut ClientManager,
-            client_handle: TargetClient,
+            client_handle: ClientHandle,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
         ) {

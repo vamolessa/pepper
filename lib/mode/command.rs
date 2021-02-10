@@ -1,7 +1,7 @@
 use crate::platform::Key;
 
 use crate::{
-    client::{ClientManager, TargetClient},
+    client::{ClientManager, ClientHandle},
     command::{CommandManager, CommandOperation},
     editor::{Editor, KeysIterator, ReadLinePoll},
     mode::{Mode, ModeKind, ModeOperation, ModeState},
@@ -13,20 +13,20 @@ pub struct State {
 }
 
 impl ModeState for State {
-    fn on_enter(editor: &mut Editor, _: &mut ClientManager, _: TargetClient) {
+    fn on_enter(editor: &mut Editor, _: &mut ClientManager, _: ClientHandle) {
         editor.mode.command_state.history_index = editor.commands.history_len();
         editor.read_line.set_prompt(":");
         editor.read_line.set_input("");
     }
 
-    fn on_exit(editor: &mut Editor, _: &mut ClientManager, _: TargetClient) {
+    fn on_exit(editor: &mut Editor, _: &mut ClientManager, _: ClientHandle) {
         editor.read_line.set_input("");
     }
 
     fn on_client_keys(
         editor: &mut Editor,
         clients: &mut ClientManager,
-        client_handle: TargetClient,
+        client_handle: ClientHandle,
         keys: &mut KeysIterator,
     ) -> Option<ModeOperation> {
         let this = &mut editor.mode.command_state;

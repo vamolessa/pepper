@@ -10,7 +10,7 @@ use crate::platform::Key;
 use crate::{
     buffer::BufferCollection,
     buffer_view::{BufferViewCollection, BufferViewError},
-    client::{ClientManager, TargetClient},
+    client::{ClientManager, ClientHandle},
     client_event::{parse_all_keys, ClientEvent},
     command::{CommandIter, CommandManager, CommandOperation},
     config::Config,
@@ -351,7 +351,7 @@ impl Editor {
         needs_redraw
     }
 
-    pub fn on_client_joined(&mut self, clients: &mut ClientManager, handle: TargetClient) {
+    pub fn on_client_joined(&mut self, clients: &mut ClientManager, handle: ClientHandle) {
         clients.on_client_joined(handle);
 
         let buffer_view_handle = clients
@@ -366,14 +366,14 @@ impl Editor {
         }
     }
 
-    pub fn on_client_left(&mut self, clients: &mut ClientManager, handle: TargetClient) {
+    pub fn on_client_left(&mut self, clients: &mut ClientManager, handle: ClientHandle) {
         clients.on_client_left(handle);
     }
 
     pub fn on_event(
         &mut self,
         clients: &mut ClientManager,
-        client_handle: TargetClient,
+        client_handle: ClientHandle,
         event: ClientEvent,
     ) -> EditorLoop {
         let result = match event {
@@ -523,7 +523,7 @@ impl Editor {
 
     pub fn on_idle(&mut self, clients: &mut ClientManager) {
         self.events.enqueue(EditorEvent::Idle);
-        self.trigger_event_handlers(clients, TargetClient::local());
+        self.trigger_event_handlers(clients, ClientHandle::local());
     }
 
     fn parse_and_set_keys_from_register(&mut self, register_key: RegisterKey) {
@@ -549,7 +549,7 @@ impl Editor {
         }
     }
 
-    fn trigger_event_handlers(&mut self, clients: &mut ClientManager, handle: TargetClient) {
+    fn trigger_event_handlers(&mut self, clients: &mut ClientManager, handle: ClientHandle) {
         self.events.flip();
         if let None = self.events.iter().next() {
             return;

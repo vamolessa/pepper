@@ -3,7 +3,7 @@ use crate::platform::Key;
 use crate::{
     buffer_position::BufferPosition,
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
-    client::{ClientManager, TargetClient},
+    client::{ClientManager, ClientHandle},
     editor::{Editor, KeysIterator},
     mode::{Mode, ModeKind, ModeOperation, ModeState},
     register::AUTO_MACRO_REGISTER,
@@ -14,18 +14,18 @@ use crate::{
 pub struct State;
 
 impl ModeState for State {
-    fn on_enter(editor: &mut Editor, _: &mut ClientManager, _: TargetClient) {
+    fn on_enter(editor: &mut Editor, _: &mut ClientManager, _: ClientHandle) {
         editor.picker.reset();
     }
 
-    fn on_exit(editor: &mut Editor, _: &mut ClientManager, _: TargetClient) {
+    fn on_exit(editor: &mut Editor, _: &mut ClientManager, _: ClientHandle) {
         editor.picker.reset();
     }
 
     fn on_client_keys(
         editor: &mut Editor,
         clients: &mut ClientManager,
-        target: TargetClient,
+        target: ClientHandle,
         keys: &mut KeysIterator,
     ) -> Option<ModeOperation> {
         let handle = match clients.get(target).and_then(|c| c.buffer_view_handle()) {

@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use crate::{
     buffer_view::BufferViewHandle,
-    client::{ClientManager, TargetClient},
+    client::{ClientManager, ClientHandle},
     editor::{Editor, StatusBar, StatusMessageKind},
 };
 
@@ -36,7 +36,7 @@ enum CompletionSource {
 struct CommandContext<'a> {
     editor: &'a mut Editor,
     clients: &'a mut ClientManager,
-    client_handle: Option<TargetClient>,
+    client_handle: Option<ClientHandle>,
     bang: bool,
     args: &'a CommandArgs,
 }
@@ -154,7 +154,7 @@ impl CommandManager {
     pub fn eval_from_read_line(
         editor: &mut Editor,
         clients: &mut ClientManager,
-        client_handle: Option<TargetClient>,
+        client_handle: Option<ClientHandle>,
     ) -> Option<CommandOperation> {
         let command = editor.read_line.input();
         match editor.commands.parse(command) {
@@ -169,7 +169,7 @@ impl CommandManager {
     pub fn eval(
         editor: &mut Editor,
         clients: &mut ClientManager,
-        client_handle: Option<TargetClient>,
+        client_handle: Option<ClientHandle>,
         command: &str,
     ) -> Option<CommandOperation> {
         match editor.commands.parse(command) {
@@ -218,7 +218,7 @@ impl CommandManager {
     fn eval_parsed(
         editor: &mut Editor,
         clients: &mut ClientManager,
-        client_handle: Option<TargetClient>,
+        client_handle: Option<ClientHandle>,
         command: CommandFn,
         bang: bool,
     ) -> Option<CommandOperation> {

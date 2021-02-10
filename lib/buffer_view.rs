@@ -3,7 +3,7 @@ use std::{path::Path, str::FromStr};
 use crate::{
     buffer::{BufferCapabilities, BufferCollection, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
-    client::TargetClient,
+    client::ClientHandle,
     cursor::{Cursor, CursorCollection},
     editor_event::EditorEventQueue,
     history::{Edit, EditKind},
@@ -31,13 +31,13 @@ pub enum CursorMovementKind {
 }
 
 pub struct BufferView {
-    pub client_handle: TargetClient,
+    pub client_handle: ClientHandle,
     pub buffer_handle: BufferHandle,
     pub cursors: CursorCollection,
 }
 
 impl BufferView {
-    pub fn new(client_handle: TargetClient, buffer_handle: BufferHandle) -> Self {
+    pub fn new(client_handle: ClientHandle, buffer_handle: BufferHandle) -> Self {
         Self {
             client_handle,
             buffer_handle,
@@ -45,7 +45,7 @@ impl BufferView {
         }
     }
 
-    pub fn clone_with_client_handle(&self, client_handle: TargetClient) -> Self {
+    pub fn clone_with_client_handle(&self, client_handle: ClientHandle) -> Self {
         Self {
             client_handle,
             buffer_handle: self.buffer_handle,
@@ -677,7 +677,7 @@ impl BufferViewCollection {
 
     pub fn buffer_view_handle_from_buffer_handle(
         &mut self,
-        client_handle: TargetClient,
+        client_handle: ClientHandle,
         buffer_handle: BufferHandle,
     ) -> BufferViewHandle {
         let current_buffer_view_handle = self
@@ -696,7 +696,7 @@ impl BufferViewCollection {
 
     pub fn buffer_view_handle_from_path(
         &mut self,
-        client_handle: TargetClient,
+        client_handle: ClientHandle,
         buffers: &mut BufferCollection,
         word_database: &mut WordDatabase,
         root: &Path,
@@ -782,7 +782,7 @@ mod tests {
                 &mut events,
             );
 
-            let buffer_view = BufferView::new(TargetClient::local(), buffer.handle());
+            let buffer_view = BufferView::new(ClientHandle::local(), buffer.handle());
 
             let mut buffer_views = BufferViewCollection::default();
             let buffer_view_handle = buffer_views.add(buffer_view);

@@ -3,7 +3,7 @@ use std::{fmt, path::Path};
 use crate::{
     buffer::{Buffer, BufferHandle},
     buffer_view::BufferViewError,
-    client::TargetClient,
+    client::ClientHandle,
     command::{
         BuiltinCommand, CommandArgs, CommandContext, CommandManager, CommandOperation,
         CompletionSource,
