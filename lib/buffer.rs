@@ -691,7 +691,7 @@ impl<'a> fmt::Display for BufferErrorDisplay<'a> {
 pub struct Buffer {
     alive: bool,
     handle: BufferHandle,
-    path: PathBuf, // TODO: change to String for ease of use
+    path: PathBuf,
     content: BufferContent,
     syntax_handle: SyntaxHandle,
     highlighted: HighlightedBuffer,
