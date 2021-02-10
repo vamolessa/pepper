@@ -3,7 +3,7 @@ use std::{io, iter};
 use crate::{
     buffer::{Buffer, BufferContent, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
-    client::Client,
+    buffer_view::BufferViewHandle,
     cursor::Cursor,
     editor::{Editor, StatusMessageKind},
     mode::ModeKind,
@@ -55,12 +55,6 @@ pub fn set_title(buf: &mut Vec<u8>, title: &str) {
     buf.extend_from_slice(b"\x1B]0;");
     buf.extend_from_slice(title.as_bytes());
     buf.extend_from_slice(b"\x07");
-}
-
-// TODO: remove this since it seems that we don't use it
-#[inline]
-pub fn clear_all(buf: &mut Vec<u8>) {
-    buf.extend_from_slice(b"\x1B[2J");
 }
 
 #[inline]
@@ -116,33 +110,43 @@ pub fn set_not_underlined(buf: &mut Vec<u8>) {
 // TODO: then move ClientData into Client
 pub fn render(
     editor: &Editor,
-    client: &Client,
+    buffer_view_handle: Option<BufferViewHandle>,
+    width: usize,
+    height: usize,
+    scroll: usize,
     has_focus: bool,
     buffer: &mut Vec<u8>,
     status_bar_buf: &mut String, // TODO: try to remove this
 ) {
-    let client_view = ClientView::from(editor, client);
+    let view = View::new(editor, buffer_view_handle, width, height, scroll);
 
-    draw_buffer(buffer, editor, &client_view, has_focus);
+    draw_buffer(buffer, editor, &view, has_focus);
     if has_focus {
-        draw_picker(buffer, editor, &client_view);
+        draw_picker(buffer, editor, &view);
     }
-    draw_statusbar(buffer, editor, &client_view, has_focus, status_bar_buf);
+    draw_statusbar(buffer, editor, &view, has_focus, status_bar_buf);
 }
 
-struct ClientView<'a> {
-    client: &'a Client,
+struct View<'a> {
     buffer_handle: Option<BufferHandle>,
     buffer: Option<&'a Buffer>,
     main_cursor_position: BufferPosition,
     cursors: &'a [Cursor],
+
+    width: usize,
+    height: usize,
+    scroll: usize,
 }
 
-impl<'a> ClientView<'a> {
-    pub fn from(editor: &'a Editor, client: &'a Client) -> ClientView<'a> {
-        let buffer_view = client
-            .buffer_view_handle()
-            .and_then(|h| editor.buffer_views.get(h));
+impl<'a> View<'a> {
+    pub fn new(
+        editor: &'a Editor,
+        buffer_view_handle: Option<BufferViewHandle>,
+        width: usize,
+        height: usize,
+        scroll: usize,
+    ) -> View<'a> {
+        let buffer_view = buffer_view_handle.and_then(|h| editor.buffer_views.get(h));
         let buffer_handle = buffer_view.map(|v| v.buffer_handle);
         let buffer = buffer_handle.and_then(|h| editor.buffers.get(h));
 
@@ -159,17 +163,20 @@ impl<'a> ClientView<'a> {
             }
         };
 
-        ClientView {
-            client,
+        View {
             buffer_handle,
             buffer,
             main_cursor_position,
             cursors,
+
+            width,
+            height,
+            scroll,
         }
     }
 }
 
-fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, client_view: &ClientView, has_focus: bool) {
+fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool) {
     #[derive(Clone, Copy, PartialEq, Eq)]
     enum DrawState {
         Token(TokenKind),
@@ -178,9 +185,6 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, client_view: &ClientView, has
         Cursor,
     }
 
-    let scroll = client_view.client.scroll;
-    let width = client_view.client.viewport_size.0;
-    let height = client_view.client.height;
     let theme = &editor.theme;
     let mut char_buf = [0; std::mem::size_of::<char>()];
 
@@ -196,16 +200,16 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, client_view: &ClientView, has
     set_background_color(buf, editor.theme.background);
     set_foreground_color(buf, text_color);
 
-    let mut line_index = scroll;
+    let mut line_index = view.scroll;
     let mut drawn_line_count = 0;
 
-    let cursors = &client_view.cursors[..];
+    let cursors = &view.cursors[..];
     let cursors_end_index = cursors.len().saturating_sub(1);
 
     let buffer_content;
     let highlighted_buffer;
     let search_ranges;
-    match client_view.buffer {
+    match view.buffer {
         Some(buffer) => {
             buffer_content = buffer.content();
             highlighted_buffer = buffer.highlighted();
@@ -221,7 +225,7 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, client_view: &ClientView, has
 
     // TODO: change to list of buffer linters (make lsp more like a plugin)
     // TODO: buffer_handle will not be needed, only a slice of 'Lints'
-    let diagnostics = match client_view.buffer_handle {
+    let diagnostics = match view.buffer_handle {
         Some(handle) => {
             let mut diagnostics: &[_] = &[];
             for client in editor.lsp.clients() {
@@ -265,13 +269,13 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, client_view: &ClientView, has
         set_foreground_color(buf, editor.theme.token_text);
 
         for (char_index, c) in line.as_str().char_indices().chain(iter::once((0, '\0'))) {
-            if x >= width {
+            if x >= view.width {
                 move_cursor_to_next_line(buf);
 
                 drawn_line_count += 1;
-                x -= width;
+                x -= view.width;
 
-                if drawn_line_count >= height {
+                if drawn_line_count >= view.height {
                     break 'lines_loop;
                 }
             }
@@ -366,7 +370,7 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, client_view: &ClientView, has
                 }
                 '\t' => {
                     buf.push(editor.config.visual_tab_first);
-                    let tab_size = editor.config.tab_size.get() as u16;
+                    let tab_size = editor.config.tab_size.get() as usize;
                     let next_tab_stop = (tab_size - 1) - x % tab_size;
                     for _ in 0..next_tab_stop {
                         buf.push(editor.config.visual_tab_repeat);
@@ -382,7 +386,7 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, client_view: &ClientView, has
             column_byte_index += c.len_utf8();
         }
 
-        if x < width {
+        if x < view.width {
             set_background_color(buf, editor.theme.background);
             clear_until_new_line(buf);
         }
@@ -392,26 +396,26 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, client_view: &ClientView, has
         line_index += 1;
         drawn_line_count += 1;
 
-        if drawn_line_count >= height {
+        if drawn_line_count >= view.height {
             break;
         }
     }
 
     set_background_color(buf, editor.theme.background);
     set_foreground_color(buf, editor.theme.token_whitespace);
-    for _ in drawn_line_count..height {
+    for _ in drawn_line_count..view.height {
         buf.push(editor.config.visual_empty);
         clear_until_new_line(buf);
         move_cursor_to_next_line(buf);
     }
 }
 
-fn draw_picker(buf: &mut Vec<u8>, editor: &Editor, client_view: &ClientView) {
+fn draw_picker(buf: &mut Vec<u8>, editor: &Editor, view: &View) {
     let cursor = editor.picker.cursor();
     let scroll = editor.picker.scroll();
     let mut char_buf = [0; std::mem::size_of::<char>()];
 
-    let half_width = client_view.client.viewport_size.0 / 2;
+    let half_width = view.width / 2;
     let half_width = half_width.saturating_sub(1) as usize;
 
     let height = editor
@@ -489,7 +493,7 @@ fn draw_picker(buf: &mut Vec<u8>, editor: &Editor, client_view: &ClientView) {
 fn draw_statusbar(
     buf: &mut Vec<u8>,
     editor: &Editor,
-    client_view: &ClientView,
+    view: &View,
     has_focus: bool,
     status_buf: &mut String,
 ) {
@@ -599,7 +603,7 @@ fn draw_statusbar(
 
     let buffer_needs_save;
     let buffer_path;
-    match client_view.buffer {
+    match view.buffer {
         Some(buffer) => {
             buffer_needs_save = buffer.needs_save();
             buffer_path = buffer.path().and_then(|p| p.to_str()).unwrap_or("");
@@ -637,14 +641,14 @@ fn draw_statusbar(
             status_buf.push_str(buffer_path);
             set_title(buf, &status_buf[title_start..]);
 
-            if client_view.buffer.is_some() {
-                let line_number = client_view.main_cursor_position.line_index + 1;
-                let column_number = client_view.main_cursor_position.column_byte_index + 1;
+            if view.buffer.is_some() {
+                let line_number = view.main_cursor_position.line_index + 1;
+                let column_number = view.main_cursor_position.column_byte_index + 1;
                 let _ = write!(status_buf, ":{},{}", line_number, column_number);
             }
             status_buf.push(' ');
 
-            let available_width = client_view.client.viewport_size.0 as usize - x;
+            let available_width = view.width as usize - x;
 
             let min_index = status_buf.len() - status_buf.len().min(available_width);
             let min_index = status_buf

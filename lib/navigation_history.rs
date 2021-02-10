@@ -29,6 +29,12 @@ pub struct NavigationHistory {
 }
 
 impl NavigationHistory {
+    pub fn clear(&mut self) {
+        self.cursors.clear();
+        self.snapshots.clear();
+        self.state = NavigationState::IterIndex(0);
+    }
+
     pub fn save_client_snapshot(
         clients: &mut ClientManager,
         target: TargetClient,

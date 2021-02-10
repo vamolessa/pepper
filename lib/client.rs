@@ -9,7 +9,7 @@ use crate::{
 };
 
 // TODO: remove this and keep only `client_index`
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Default, Clone, Copy, Eq, PartialEq)]
 pub struct TargetClient(pub usize);
 
 impl TargetClient {
@@ -54,16 +54,41 @@ impl FromArgValue for TargetClient {
 
 #[derive(Default)]
 pub struct Client {
+    active: bool,
+    target: TargetClient,
+
     pub viewport_size: (u16, u16),
     pub scroll: usize,
     pub height: u16,
     pub navigation_history: NavigationHistory,
+
+    pub display_buffer: Vec<u8>,
+    pub status_bar_buffer: String, // TODO: try to remove this
 
     current_buffer_view_handle: Option<BufferViewHandle>,
     previous_buffer_view_handle: Option<BufferViewHandle>,
 }
 
 impl Client {
+    fn dispose(&mut self) {
+        self.active = false;
+
+        self.viewport_size = (0, 0);
+        self.scroll = 0;
+        self.height = 0;
+        self.navigation_history.clear();
+
+        self.display_buffer.clear();
+        self.status_bar_buffer.clear();
+
+        self.current_buffer_view_handle = None;
+        self.previous_buffer_view_handle = None;
+    }
+
+    pub fn target(&self) -> TargetClient {
+        self.target
+    }
+
     pub fn buffer_view_handle(&self) -> Option<BufferViewHandle> {
         self.current_buffer_view_handle
     }
@@ -134,30 +159,10 @@ impl Client {
     }
 }
 
-pub struct ClientRef<'a> {
-    pub target: TargetClient,
-    pub client: &'a mut Client,
-    pub display_buffer: &'a mut Vec<u8>,
-    pub status_bar_buffer: &'a mut String,
-}
-
-#[derive(Default)]
-struct ClientData {
-    pub display_buffer: Vec<u8>,
-    pub status_bar_buffer: String,
-}
-impl ClientData {
-    pub fn reset(&mut self) {
-        self.display_buffer.clear();
-        self.status_bar_buffer.clear();
-    }
-}
-
 pub struct ClientManager {
-    focused_target: TargetClient,    // TODO: make it Option<TargetClient>
+    focused_target: TargetClient, // TODO: make it focused_index: Option<usize>
     pub client_map: ClientTargetMap, // TODO: expose through ClientCollection
-    clients: Vec<Option<Client>>,
-    data: Vec<ClientData>,
+    clients: Vec<Client>,
 }
 
 impl ClientManager {
@@ -166,7 +171,6 @@ impl ClientManager {
             focused_target: TargetClient::local(),
             client_map: ClientTargetMap::default(),
             clients: Vec::new(),
-            data: Vec::new(),
         }
     }
 
@@ -206,20 +210,18 @@ impl ClientManager {
     pub fn on_client_joined(&mut self, index: usize) {
         let min_len = index + 1;
         if min_len > self.clients.len() {
-            self.clients.resize_with(min_len, || None);
+            self.clients.resize_with(min_len, Default::default);
         }
-        self.clients[index] = Some(Client::default());
-        if min_len > self.data.len() {
-            self.data.resize_with(min_len, || Default::default());
-        }
+
+        let client = &mut self.clients[index];
+        client.active = true;
+        client.target = TargetClient(index);
 
         self.client_map.on_client_joined(index);
     }
 
     pub fn on_client_left(&mut self, index: usize) {
-        self.clients[index] = None;
-        self.data[index].reset();
-
+        self.clients[index].dispose();
         self.client_map.on_client_left(index);
         if self.focused_target == TargetClient(index) {
             self.focused_target = TargetClient::local();
@@ -227,46 +229,27 @@ impl ClientManager {
     }
 
     pub fn get(&self, target: TargetClient) -> Option<&Client> {
-        self.clients[target.0].as_ref()
+        let client = &self.clients[target.0];
+        if client.active {
+            Some(client)
+        } else {
+            None
+        }
     }
 
     pub fn get_mut(&mut self, target: TargetClient) -> Option<&mut Client> {
-        self.clients[target.0].as_mut()
-    }
-
-    pub fn get_client_ref(&mut self, target: TargetClient) -> Option<ClientRef> {
-        let index = target.0;
-        match self.clients[index] {
-            Some(ref mut c) => {
-                let data = &mut self.data[index];
-                Some(ClientRef {
-                    target,
-                    client: c,
-                    display_buffer: &mut data.display_buffer,
-                    status_bar_buffer: &mut data.status_bar_buffer,
-                })
-            }
-            None => None,
+        let client = &mut self.clients[target.0];
+        if client.active {
+            Some(client)
+        } else {
+            None
         }
     }
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Client> {
-        self.clients.iter_mut().flatten()
-    }
-
-    pub fn client_refs<'a>(&'a mut self) -> impl Iterator<Item = ClientRef<'a>> {
         self.clients
             .iter_mut()
-            .enumerate()
-            .zip(self.data.iter_mut())
-            .flat_map(|((i, c), d)| {
-                c.as_mut().map(move |c| ClientRef {
-                    target: TargetClient(i),
-                    client: c,
-                    display_buffer: &mut d.display_buffer,
-                    status_bar_buffer: &mut d.status_bar_buffer,
-                })
-            })
+            .filter_map(|c| if c.active { Some(c) } else { None })
     }
 }
 

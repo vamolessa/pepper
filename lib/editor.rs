@@ -325,9 +325,8 @@ impl Editor {
         let mut needs_redraw = false;
 
         let focused_target = clients.focused_target();
-        for c in clients.client_refs() {
-            let target = c.target;
-            let client = c.client;
+        for c in clients.iter_mut() {
+            let target = c.target();
             let picker_height = if focused_target == target {
                 picker_height as _
             } else {
@@ -336,7 +335,7 @@ impl Editor {
 
             let buffer_views = &self.buffer_views;
             let buffers = &mut self.buffers;
-            if let Some(buffer) = client
+            if let Some(buffer) = c
                 .buffer_view_handle()
                 .and_then(|h| buffer_views.get(h))
                 .map(|v| v.buffer_handle)
@@ -347,7 +346,7 @@ impl Editor {
                 }
             }
 
-            client.update_view(self, picker_height);
+            c.update_view(self, picker_height);
         }
 
         needs_redraw

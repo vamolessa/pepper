@@ -120,24 +120,27 @@ impl ServerApplication {
         }
 
         let focused_target = self.clients.focused_target();
-        for c in self.clients.client_refs() {
-            let has_focus = focused_target == c.target;
+        for c in self.clients.iter_mut() {
+            let has_focus = focused_target == c.target();
             c.display_buffer.clear();
             c.display_buffer.extend_from_slice(&[0; 4]);
             ui::render(
                 &self.editor,
-                c.client,
+                c.buffer_view_handle(),
+                c.viewport_size.0 as _,
+                c.viewport_size.1 as _,
+                c.scroll,
                 has_focus,
-                c.display_buffer,
-                c.status_bar_buffer,
+                &mut c.display_buffer,
+                &mut c.status_bar_buffer,
             );
 
             let len = c.display_buffer.len() as u32 - 4;
             let len_bytes = len.to_le_bytes();
             c.display_buffer[..4].copy_from_slice(&len_bytes);
 
-            let connection_index = c.target.0;
-            if !platform.write_to_connection(connection_index, c.display_buffer) {
+            let connection_index = c.target().0;
+            if !platform.write_to_connection(connection_index, &c.display_buffer) {
                 self.connections_with_error.push(connection_index);
             }
         }
