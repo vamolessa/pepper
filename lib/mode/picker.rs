@@ -1,8 +1,9 @@
 use crate::platform::Key;
 
 use crate::{
+    buffer_view::BufferViewError,
     client::{ClientManager, TargetClient},
-    editor::{Editor, KeysIterator, ReadLinePoll},
+    editor::{Editor, KeysIterator, ReadLinePoll, StatusMessageKind},
     mode::{Mode, ModeKind, ModeOperation, ModeState},
     word_database::EmptyWordCollection,
 };
@@ -122,7 +123,10 @@ pub mod buffer {
                 &mut editor.events,
             ) {
                 Ok(handle) => clients.set_buffer_view_handle(editor, target, Some(handle)),
-                Err(error) => editor.status_bar.write_error(&error),
+                Err(BufferViewError::InvalidPath) => editor
+                    .status_bar
+                    .write(StatusMessageKind::Error)
+                    .fmt(format_args!("invalid path '{}'", path)),
             }
 
             Mode::change_to(editor, clients, target, ModeKind::default());
@@ -163,65 +167,3 @@ pub mod buffer {
         Mode::change_to(editor, clients, target, ModeKind::Picker);
     }
 }
-
-/*
-pub mod custom {
-    use super::*;
-
-    use crate::script::{ScriptCallback, ScriptContext, ScriptValue};
-
-    pub fn enter_mode(ctx: &mut ScriptContext, callback: ScriptCallback) {
-        fn on_client_keys(
-            editor: &mut Editor,
-            clients: &mut ClientManager,
-            target: TargetClient,
-            _: &mut KeysIterator,
-            poll: ReadLinePoll,
-        ) {
-            let previous_mode_kind = editor.mode.kind();
-            let (engine, mut script_ctx) = editor.into_script_context(clients, target);
-            let result = engine.as_ref_with_ctx(&mut script_ctx, |engine, ctx, guard| {
-                let (name, description) = match poll {
-                    ReadLinePoll::Pending => return Ok(()),
-                    ReadLinePoll::Submitted => {
-                        match ctx.picker.current_entry(&EmptyWordCollection) {
-                            Some(entry) => (
-                                ScriptValue::String(engine.create_string(entry.name.as_bytes())?),
-                                ScriptValue::String(
-                                    engine.create_string(entry.description.as_bytes())?,
-                                ),
-                            ),
-                            None => (ScriptValue::Nil, ScriptValue::Nil),
-                        }
-                    }
-                    ReadLinePoll::Canceled => (ScriptValue::Nil, ScriptValue::Nil),
-                };
-
-                if let Some(callback) = ctx.script_callbacks.picker.take() {
-                    callback.call(engine, &guard, (name, description))?;
-                    callback.dispose(engine)?;
-                }
-
-                Ok(())
-            });
-
-            match result {
-                Ok(()) => {
-                    if editor.mode.kind() == previous_mode_kind {
-                        Mode::change_to(editor, clients, target, ModeKind::default());
-                    }
-                }
-                Err(error) => {
-                    editor.status_bar.write_error(&error);
-                    Mode::change_to(editor, clients, target, ModeKind::default());
-                }
-            }
-        }
-
-        ctx.script_callbacks.picker = Some(callback);
-        ctx.mode.picker_state.on_client_keys = on_client_keys;
-        // TODO: implement
-        //Mode::change_to(ctx, clients, target, ModeKind::Picker);
-    }
-}
-*/

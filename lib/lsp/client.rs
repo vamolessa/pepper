@@ -208,6 +208,7 @@ declare_json_object! {
     }
 }
 
+// TODO: move to buffer.rs
 pub struct Diagnostic {
     pub message: String,
     pub utf16_range: BufferRange,

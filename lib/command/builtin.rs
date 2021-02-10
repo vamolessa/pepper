@@ -2,6 +2,7 @@ use std::{fmt, path::Path};
 
 use crate::{
     buffer::{Buffer, BufferHandle},
+    buffer_view::BufferViewError,
     client::TargetClient,
     command::{
         BuiltinCommand, CommandArgs, CommandContext, CommandManager, CommandOperation,
@@ -250,19 +251,22 @@ pub const COMMANDS: &[BuiltinCommand] =
                         }
                     }
 
-                    let handle = ctx
-                        .editor
-                        .buffer_views
-                        .buffer_view_handle_from_path(
-                            target_client,
-                            &mut ctx.editor.buffers,
-                            &mut ctx.editor.word_database,
-                            &ctx.editor.current_directory,
-                            Path::new(path),
-                            line_index,
-                            &mut ctx.editor.events,
-                        )
-                        .unwrap();
+                    let handle = match ctx.editor.buffer_views.buffer_view_handle_from_path(
+                        target_client,
+                        &mut ctx.editor.buffers,
+                        &mut ctx.editor.word_database,
+                        &ctx.editor.current_directory,
+                        Path::new(path),
+                        line_index,
+                        &mut ctx.editor.events,
+                    ) {
+                        Ok(handle) => handle,
+                        Err(BufferViewError::InvalidPath) => {
+                            // TODO: finish
+                            //ctx.
+                            return None;
+                        }
+                    };
                     last_buffer_view_handle = Some(handle);
                 }
 

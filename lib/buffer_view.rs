@@ -341,25 +341,9 @@ impl BufferView {
     }
 }
 
-// TODO: remove this
 pub enum BufferViewError {
-    InvalidPath(PathBuf),
+    InvalidPath,
 }
-impl fmt::Display for BufferViewError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            BufferViewError::InvalidPath(path) => {
-                f.write_fmt(format_args!("invalid path '{:?}'", path))
-            }
-        }
-    }
-}
-impl fmt::Debug for BufferViewError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Display::fmt(self, f)
-    }
-}
-impl Error for BufferViewError {}
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub struct BufferViewHandle(usize);
@@ -772,7 +756,7 @@ impl BufferViewCollection {
             try_set_line_index(self, buffers, handle, line_index);
             Ok(handle)
         } else {
-            Err(BufferViewError::InvalidPath(path.into()))
+            Err(BufferViewError::InvalidPath)
         }
     }
 }

@@ -9,7 +9,7 @@ use crate::platform::Key;
 
 use crate::{
     buffer::BufferCollection,
-    buffer_view::BufferViewCollection,
+    buffer_view::{BufferViewCollection, BufferViewError},
     client::{ClientManager, TargetClient},
     client_event::{parse_all_keys, ClientEvent},
     command::{CommandIter, CommandManager, CommandOperation},
@@ -280,7 +280,11 @@ impl Editor {
         }
     }
 
-    pub fn load_config(&mut self, clients: &mut ClientManager, path: &str) -> Option<CommandOperation> {
+    pub fn load_config(
+        &mut self,
+        clients: &mut ClientManager,
+        path: &str,
+    ) -> Option<CommandOperation> {
         use std::io::Read;
 
         let mut file = match File::open(path) {
@@ -404,7 +408,10 @@ impl Editor {
                     &mut self.events,
                 ) {
                     Ok(handle) => clients.set_buffer_view_handle(self, target, Some(handle)),
-                    Err(error) => self.status_bar.write_error(&error),
+                    Err(BufferViewError::InvalidPath) => self
+                        .status_bar
+                        .write(StatusMessageKind::Error)
+                        .fmt(format_args!("invalid path '{}'", path)),
                 }
 
                 self.trigger_event_handlers(clients, target);

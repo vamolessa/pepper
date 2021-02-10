@@ -5,7 +5,7 @@ use crate::platform::Key;
 use crate::{
     buffer::BufferContent,
     buffer_position::{BufferPosition, BufferRange},
-    buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
+    buffer_view::{BufferViewError, BufferViewHandle, CursorMovement, CursorMovementKind},
     client::{Client, ClientManager, TargetClient},
     cursor::Cursor,
     editor::{Editor, KeysIterator, StatusMessageKind},
@@ -1323,8 +1323,11 @@ fn move_to_diagnostic(
             &mut editor.events,
         ) {
             Ok(handle) => handle,
-            Err(error) => {
-                editor.status_bar.write_error(&error);
+            Err(BufferViewError::InvalidPath) => {
+                editor
+                    .status_bar
+                    .write(StatusMessageKind::Error)
+                    .fmt(format_args!("invalid path '{:?}'", path));
                 return None;
             }
         },

@@ -102,7 +102,7 @@ impl Mode {
         }
     }
 
-    // TODO: do we really need this?
+    // TODO: do we really need modes to handle editor events?
     pub fn on_editor_events(
         editor: &mut Editor,
         clients: &mut ClientManager,

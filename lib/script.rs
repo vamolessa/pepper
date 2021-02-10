@@ -416,7 +416,6 @@ impl<'a> ScriptContext<'a> {
 
     pub fn set_current_buffer_view_handle(&mut self, handle: Option<BufferViewHandle>) {
         if let Some(client) = self.clients.get_mut(self.target_client) {
-            // TODO: implement
             //client.set_current_buffer_view_handle(handle);
         }
     }

@@ -3,7 +3,7 @@ use crate::platform::Key;
 use crate::{
     client::{ClientManager, TargetClient},
     command::{CommandManager, CommandOperation},
-    editor::{Editor, KeysIterator, ReadLinePoll, StatusMessageKind},
+    editor::{Editor, KeysIterator, ReadLinePoll},
     mode::{Mode, ModeKind, ModeOperation, ModeState},
 };
 
@@ -49,9 +49,9 @@ impl ModeState for State {
                     }
                     Key::Ctrl('p') | Key::Ctrl('k') => {
                         if editor.picker.len() == 0 {
-                        this.history_index = this.history_index.saturating_sub(1);
-                        let entry = editor.commands.history_entry(this.history_index);
-                        editor.read_line.set_input(entry);
+                            this.history_index = this.history_index.saturating_sub(1);
+                            let entry = editor.commands.history_entry(this.history_index);
+                            editor.read_line.set_input(entry);
                         } else {
                             // TODO: autocomplete
                         }

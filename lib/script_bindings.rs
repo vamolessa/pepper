@@ -744,7 +744,6 @@ mod buffer {
             ctx.buffer_views
                 .defer_remove_where(ctx.buffers, ctx.events, |_| true);
             for c in ctx.clients.client_refs() {
-                // TODO: implement
                 //c.client.set_current_buffer_view_handle(None);
             }
             Ok(())
@@ -766,7 +765,6 @@ mod buffer {
         ctx.buffer_views
             .defer_remove_where(ctx.buffers, ctx.events, |_| true);
         for c in ctx.clients.client_refs() {
-            // TODO: implement
             //c.client.set_current_buffer_view_handle(None);
         }
         Ok(())
