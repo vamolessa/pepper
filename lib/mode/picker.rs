@@ -35,7 +35,7 @@ impl ModeState for State {
     fn on_client_keys(
         editor: &mut Editor,
         clients: &mut ClientManager,
-        target: TargetClient,
+        client_handle: TargetClient,
         keys: &mut KeysIterator,
     ) -> Option<ModeOperation> {
         let this = &mut editor.mode.picker_state;
@@ -74,7 +74,7 @@ impl ModeState for State {
             }
         }
 
-        (this.on_client_keys)(editor, clients, target, keys, poll);
+        (this.on_client_keys)(editor, clients, client_handle, keys, poll);
         None
     }
 }
@@ -86,11 +86,15 @@ pub mod buffer {
 
     use crate::{buffer::Buffer, navigation_history::NavigationHistory, picker::Picker};
 
-    pub fn enter_mode(editor: &mut Editor, clients: &mut ClientManager, target: TargetClient) {
+    pub fn enter_mode(
+        editor: &mut Editor,
+        clients: &mut ClientManager,
+        client_handle: TargetClient,
+    ) {
         fn on_client_keys(
             editor: &mut Editor,
             clients: &mut ClientManager,
-            target: TargetClient,
+            client_handle: TargetClient,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
         ) {
@@ -98,7 +102,7 @@ pub mod buffer {
                 ReadLinePoll::Pending => return,
                 ReadLinePoll::Submitted => (),
                 ReadLinePoll::Canceled => {
-                    Mode::change_to(editor, clients, target, ModeKind::default());
+                    Mode::change_to(editor, clients, client_handle, ModeKind::default());
                     return;
                 }
             }
@@ -106,15 +110,15 @@ pub mod buffer {
             let path = match editor.picker.current_entry(&EmptyWordCollection) {
                 Some(entry) => entry.name,
                 None => {
-                    Mode::change_to(editor, clients, target, ModeKind::default());
+                    Mode::change_to(editor, clients, client_handle, ModeKind::default());
                     return;
                 }
             };
 
-            NavigationHistory::save_client_snapshot(clients, target, &editor.buffer_views);
+            NavigationHistory::save_client_snapshot(clients, client_handle, &editor.buffer_views);
 
             match editor.buffer_views.buffer_view_handle_from_path(
-                target,
+                client_handle,
                 &mut editor.buffers,
                 &mut editor.word_database,
                 &editor.current_directory,
@@ -122,14 +126,18 @@ pub mod buffer {
                 None,
                 &mut editor.events,
             ) {
-                Ok(handle) => clients.set_buffer_view_handle(editor, target, Some(handle)),
+                Ok(handle) => {
+                    if let Some(client) = clients.get_mut(client_handle) {
+                        client.set_buffer_view_handle(editor, Some(handle));
+                    }
+                }
                 Err(BufferViewError::InvalidPath) => editor
                     .status_bar
                     .write(StatusMessageKind::Error)
                     .fmt(format_args!("invalid path '{}'", path)),
             }
 
-            Mode::change_to(editor, clients, target, ModeKind::default());
+            Mode::change_to(editor, clients, client_handle, ModeKind::default());
         }
 
         fn add_buffer_to_picker(picker: &mut Picker, buffer: &Buffer) {
@@ -144,7 +152,7 @@ pub mod buffer {
         let buffers = &editor.buffers;
         let buffer_views = &editor.buffer_views;
         let prevous_buffer_handle = clients
-            .get(target)
+            .get(client_handle)
             .and_then(|c| c.previous_buffer_view_handle())
             .and_then(|h| buffer_views.get(h))
             .map(|v| v.buffer_handle);
@@ -164,6 +172,6 @@ pub mod buffer {
         }
 
         editor.mode.picker_state.on_client_keys = on_client_keys;
-        Mode::change_to(editor, clients, target, ModeKind::Picker);
+        Mode::change_to(editor, clients, client_handle, ModeKind::Picker);
     }
 }
