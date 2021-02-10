@@ -181,8 +181,8 @@ impl CommandManager {
         }
     }
 
-    fn format_parse_error(status_bar: &mut EditorOutput, error: CommandParseError, command: &str) {
-        let mut write = status_bar.write(EditorOutputTarget::Error);
+    fn format_parse_error(output: &mut EditorOutput, error: CommandParseError, command: &str) {
+        let mut write = output.write(EditorOutputTarget::Error);
         write.str(command);
         write.str("\n");
 

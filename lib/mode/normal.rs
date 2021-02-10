@@ -6,9 +6,9 @@ use crate::{
     buffer::BufferContent,
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{BufferViewError, BufferViewHandle, CursorMovement, CursorMovementKind},
-    client::{Client, ClientManager, ClientHandle},
+    client::{Client, ClientHandle, ClientManager},
     cursor::Cursor,
-    editor::{Editor, KeysIterator, EditorOutputTarget},
+    editor::{Editor, EditorOutputTarget, KeysIterator},
     lsp::LspDiagnostic,
     mode::{picker, read_line, Mode, ModeKind, ModeOperation, ModeState},
     navigation_history::{NavigationDirection, NavigationHistory},
@@ -997,7 +997,7 @@ impl ModeState for State {
         client_handle: ClientHandle,
         keys: &mut KeysIterator,
     ) -> Option<ModeOperation> {
-        fn show_hovered_diagnostic_in_status_bar(
+        fn show_hovered_diagnostic(
             editor: &mut Editor,
             clients: &mut ClientManager,
             client_handle: ClientHandle,
@@ -1048,7 +1048,7 @@ impl ModeState for State {
                     handle,
                 );
                 if let None = op {
-                    show_hovered_diagnostic_in_status_bar(editor, clients, client_handle);
+                    show_hovered_diagnostic(editor, clients, client_handle);
                 }
                 op
             }
@@ -1360,7 +1360,9 @@ fn move_to_diagnostic(
     drop(buffer_view);
 
     editor.mode.normal_state.movement_kind = CursorMovementKind::PositionAndAnchor;
-    clients.get_mut(client_handle)?.set_buffer_view_handle(editor, Some(buffer_view_handle));
+    clients
+        .get_mut(client_handle)?
+        .set_buffer_view_handle(editor, Some(buffer_view_handle));
 
     None
 }

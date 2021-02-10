@@ -73,7 +73,7 @@ pub struct Client {
     pub navigation_history: NavigationHistory,
 
     pub display_buffer: Vec<u8>,
-    pub status_bar_buffer: String, // TODO: try to remove this
+    pub output_buffer: String, // TODO: try to remove this
 
     current_buffer_view_handle: Option<BufferViewHandle>,
     previous_buffer_view_handle: Option<BufferViewHandle>,
@@ -89,7 +89,7 @@ impl Client {
         self.navigation_history.clear();
 
         self.display_buffer.clear();
-        self.status_bar_buffer.clear();
+        self.output_buffer.clear();
 
         self.current_buffer_view_handle = None;
         self.previous_buffer_view_handle = None;

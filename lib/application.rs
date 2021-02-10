@@ -143,7 +143,7 @@ impl ServerApplication {
                 c.scroll,
                 has_focus,
                 &mut c.display_buffer,
-                &mut c.status_bar_buffer,
+                &mut c.output_buffer,
             );
 
             let len = c.display_buffer.len() as u32 - 4;
