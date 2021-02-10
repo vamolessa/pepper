@@ -151,24 +151,24 @@ impl ReadLine {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum EditorOutputTarget {
-    Info,
+pub enum EditorOutputKind {
+    StatusBar,
     Error,
 }
 
 pub struct EditorOutput {
-    kind: EditorOutputTarget,
+    kind: EditorOutputKind,
     message: String,
 }
 impl EditorOutput {
     pub fn new() -> Self {
         Self {
-            kind: EditorOutputTarget::Info,
+            kind: EditorOutputKind::StatusBar,
             message: String::new(),
         }
     }
 
-    pub fn message(&self) -> (EditorOutputTarget, &str) {
+    pub fn message(&self) -> (EditorOutputKind, &str) {
         (self.kind, &self.message)
     }
 
@@ -177,20 +177,20 @@ impl EditorOutput {
     }
 
     // TODO: replace with 'write'
-    pub fn write_str(&mut self, kind: EditorOutputTarget, message: &str) {
+    pub fn write_str(&mut self, kind: EditorOutputKind, message: &str) {
         self.kind = kind;
         self.message.clear();
         self.message.push_str(message);
     }
 
     // TODO: replace with 'write'
-    pub fn write_fmt(&mut self, kind: EditorOutputTarget, args: fmt::Arguments) {
+    pub fn write_fmt(&mut self, kind: EditorOutputKind, args: fmt::Arguments) {
         self.kind = kind;
         self.message.clear();
         let _ = fmt::write(&mut self.message, args);
     }
 
-    pub fn write(&mut self, kind: EditorOutputTarget) -> StatusBarWrite {
+    pub fn write(&mut self, kind: EditorOutputKind) -> StatusBarWrite {
         self.kind = kind;
         self.message.clear();
         StatusBarWrite(&mut self.message)
@@ -200,7 +200,7 @@ impl EditorOutput {
     pub fn write_error(&mut self, error: &dyn Error) {
         use fmt::Write;
 
-        self.kind = EditorOutputTarget::Error;
+        self.kind = EditorOutputKind::Error;
         self.message.clear();
         let _ = write!(&mut self.message, "{}", error);
         let mut error = error.source();
@@ -286,7 +286,7 @@ impl Editor {
             Ok(file) => file,
             Err(_) => {
                 self.output
-                    .write(EditorOutputTarget::Error)
+                    .write(EditorOutputKind::Error)
                     .fmt(format_args!("could not open config file '{}'", path));
                 return None;
             }
@@ -295,7 +295,7 @@ impl Editor {
         let mut text = String::new();
         if let Err(_) = file.read_to_string(&mut text) {
             self.output
-                .write(EditorOutputTarget::Error)
+                .write(EditorOutputKind::Error)
                 .fmt(format_args!("could not read config file '{}'", path));
             return None;
         }
@@ -502,7 +502,7 @@ impl Editor {
                 Ok(key) => self.buffered_keys.0.push(key),
                 Err(error) => {
                     self.output.write_fmt(
-                        EditorOutputTarget::Error,
+                        EditorOutputKind::Error,
                         format_args!("error parsing keys '{}'\n{}", keys, &error),
                     );
                     self.buffered_keys.0.clear();

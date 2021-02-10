@@ -8,7 +8,7 @@ use crate::{
     buffer_view::{BufferViewError, BufferViewHandle, CursorMovement, CursorMovementKind},
     client::{Client, ClientHandle, ClientManager},
     cursor::Cursor,
-    editor::{Editor, EditorOutputTarget, KeysIterator},
+    editor::{Editor, EditorOutputKind, KeysIterator},
     lsp::LspDiagnostic,
     mode::{picker, read_line, Mode, ModeKind, ModeOperation, ModeState},
     navigation_history::{NavigationDirection, NavigationHistory},
@@ -871,7 +871,7 @@ impl State {
                 }
                 Key::Char('r') => editor
                     .output
-                    .write_str(EditorOutputTarget::Info, "rename not yet implemented"),
+                    .write_str(EditorOutputKind::StatusBar, "rename not yet implemented"),
                 _ => (),
             },
             Key::Char('s') => read_line::search::enter_mode(editor, clients, client_handle),
@@ -1027,7 +1027,7 @@ impl ModeState for State {
                 }) {
                     editor
                         .output
-                        .write_str(EditorOutputTarget::Info, &diagnostics[index].message);
+                        .write_str(EditorOutputKind::StatusBar, &diagnostics[index].message);
                     break;
                 }
             }
@@ -1146,7 +1146,7 @@ where
         if search_ranges.is_empty() {
             editor
                 .output
-                .write_str(EditorOutputTarget::Error, "no search result");
+                .write_str(EditorOutputKind::Error, "no search result");
             return None;
         }
     }
@@ -1336,7 +1336,7 @@ fn move_to_diagnostic(
             Err(BufferViewError::InvalidPath) => {
                 editor
                     .output
-                    .write(EditorOutputTarget::Error)
+                    .write(EditorOutputKind::Error)
                     .fmt(format_args!("invalid path '{:?}'", path));
                 return None;
             }

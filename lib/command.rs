@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use crate::{
     buffer_view::BufferViewHandle,
     client::{ClientManager, ClientHandle},
-    editor::{Editor, EditorOutput, EditorOutputTarget},
+    editor::{Editor, EditorOutput, EditorOutputKind},
 };
 
 mod builtin;
@@ -182,7 +182,7 @@ impl CommandManager {
     }
 
     fn format_parse_error(output: &mut EditorOutput, error: CommandParseError, command: &str) {
-        let mut write = output.write(EditorOutputTarget::Error);
+        let mut write = output.write(EditorOutputKind::Error);
         write.str(command);
         write.str("\n");
 

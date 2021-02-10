@@ -3,7 +3,7 @@ use crate::platform::Key;
 use crate::{
     buffer_view::BufferViewError,
     client::{ClientManager, ClientHandle},
-    editor::{Editor, KeysIterator, ReadLinePoll, EditorOutputTarget},
+    editor::{Editor, KeysIterator, ReadLinePoll, EditorOutputKind},
     mode::{Mode, ModeKind, ModeOperation, ModeState},
     word_database::EmptyWordCollection,
 };
@@ -133,7 +133,7 @@ pub mod buffer {
                 }
                 Err(BufferViewError::InvalidPath) => editor
                     .output
-                    .write(EditorOutputTarget::Error)
+                    .write(EditorOutputKind::Error)
                     .fmt(format_args!("invalid path '{}'", path)),
             }
 

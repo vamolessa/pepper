@@ -10,7 +10,7 @@ use crate::{
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::BufferViewCollection,
     config::Config,
-    editor::{EditorOutput, EditorOutputTarget},
+    editor::{EditorOutput, EditorOutputKind},
     editor_event::{EditorEvent, EditorEventQueue},
     glob::Glob,
     json::{
@@ -661,15 +661,15 @@ impl Client {
                 }
                 let message = message.as_str(json);
                 match message_type {
-                    1 => ctx.status_bar.write_str(EditorOutputTarget::Error, message),
+                    1 => ctx.status_bar.write_str(EditorOutputKind::Error, message),
                     2 => ctx.status_bar.write_fmt(
-                        EditorOutputTarget::Info,
+                        EditorOutputKind::StatusBar,
                         format_args!("warning: {}", message),
                     ),
                     3 => ctx
                         .status_bar
-                        .write_fmt(EditorOutputTarget::Info, format_args!("info: {}", message)),
-                    4 => ctx.status_bar.write_str(EditorOutputTarget::Info, message),
+                        .write_fmt(EditorOutputKind::StatusBar, format_args!("info: {}", message)),
+                    4 => ctx.status_bar.write_str(EditorOutputKind::StatusBar, message),
                     _ => (),
                 }
             }
@@ -799,7 +799,7 @@ impl Client {
             "textDocument/hover" => {
                 let contents = result.get("contents".into(), json);
                 let info = helper::extract_markup_content(contents, json);
-                ctx.status_bar.write_str(EditorOutputTarget::Info, info);
+                ctx.status_bar.write_str(EditorOutputKind::StatusBar, info);
             }
             "textDocument/signatureHelp" => {
                 declare_json_object! {
@@ -825,10 +825,10 @@ impl Client {
                         helper::extract_markup_content(signature.documentation, json);
 
                     if documentation.is_empty() {
-                        ctx.status_bar.write_str(EditorOutputTarget::Info, label);
+                        ctx.status_bar.write_str(EditorOutputKind::StatusBar, label);
                     } else {
                         ctx.status_bar.write_fmt(
-                            EditorOutputTarget::Info,
+                            EditorOutputKind::StatusBar,
                             format_args!("{}\n{}", documentation, label),
                         );
                     }
@@ -996,7 +996,7 @@ mod helper {
     ) {
         let error_message = error.message.as_str(json);
         ctx.status_bar.write_fmt(
-            EditorOutputTarget::Error,
+            EditorOutputKind::Error,
             format_args!(
                 "[lsp error code {}] {}: '{}'",
                 error.code, method, error_message

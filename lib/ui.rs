@@ -5,7 +5,7 @@ use crate::{
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::BufferViewHandle,
     cursor::Cursor,
-    editor::{Editor, EditorOutputTarget},
+    editor::{Editor, EditorOutputKind},
     mode::ModeKind,
     syntax::{HighlightedBuffer, TokenKind},
     theme::Color,
@@ -559,8 +559,8 @@ fn draw_statusbar(
             }
 
             let prefix = match message_target {
-                EditorOutputTarget::Info => &b""[..],
-                EditorOutputTarget::Error => &b"error:"[..],
+                EditorOutputKind::StatusBar => &[],
+                EditorOutputKind::Error => &b"error:"[..],
             };
 
             let line_count = message.lines().count();

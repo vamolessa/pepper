@@ -9,7 +9,7 @@ use crate::{
         CompletionSource,
     },
     config::{ParseConfigError, CONFIG_NAMES},
-    editor::{Editor, EditorOutputTarget},
+    editor::{Editor, EditorOutputKind},
     keymap::ParseKeyMapError,
     mode::ModeKind,
     navigation_history::NavigationHistory,
@@ -31,7 +31,7 @@ fn parsing_error(
 ) {
     ctx.editor
         .output
-        .write(EditorOutputTarget::Error)
+        .write(EditorOutputKind::Error)
         .fmt(format_args!(
             "{}\n{:>index$} {}",
             parsed,
@@ -45,7 +45,7 @@ macro_rules! expect_no_bang {
         if $ctx.bang {
             $ctx.editor
                 .output
-                .write(EditorOutputTarget::Error)
+                .write(EditorOutputKind::Error)
                 .str("command expects no bang");
             return None;
         }
@@ -57,7 +57,7 @@ macro_rules! parse_values {
         let mut values = $ctx.args.values().iter();
         $(let $name = values.next().map(|v| v.as_str($ctx.args));)*
             if values.next().is_some() {
-                $ctx.editor.output.write(EditorOutputTarget::Error).str("too many values passed to command");
+                $ctx.editor.output.write(EditorOutputKind::Error).str("too many values passed to command");
                 return None;
             }
         drop(values);
@@ -71,7 +71,7 @@ macro_rules! require_value {
             None => {
                 $ctx.editor
                     .output
-                    .write(EditorOutputTarget::Error)
+                    .write(EditorOutputKind::Error)
                     .str(concat!("value '", stringify!($name), "' is required"));
                 return None;
             }
@@ -87,7 +87,7 @@ macro_rules! parse_switches {
                 match switch {
                     $(stringify!($name) => $name = true,)*
                         _ => {
-                            $ctx.editor.output.write(EditorOutputTarget::Error).fmt(format_args!(
+                            $ctx.editor.output.write(EditorOutputKind::Error).fmt(format_args!(
                                     "invalid switch '{}'", switch
                                     ));
                             return None;
@@ -106,7 +106,7 @@ macro_rules! parse_options {
                     $(stringify!($name) => $name = Some(value.as_str($ctx.args)),)*
                         _ => {
                             drop(value);
-                            $ctx.editor.output.write(EditorOutputTarget::Error).fmt(format_args!(
+                            $ctx.editor.output.write(EditorOutputKind::Error).fmt(format_args!(
                                     "invalid option '{}'", key
                                     ));
                             return None;
@@ -123,7 +123,7 @@ macro_rules! parse_arg {
             Err(_) => {
                 $ctx.editor
                     .output
-                    .write(EditorOutputTarget::Error)
+                    .write(EditorOutputKind::Error)
                     .fmt(format_args!(
                         concat!(
                             "could not convert argument '",
@@ -154,7 +154,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             } else {
                 ctx.editor
                     .output
-                    .write(EditorOutputTarget::Error)
+                    .write(EditorOutputKind::Error)
                     .str(UNSAVED_CHANGES_ERROR);
                 None
             }
@@ -174,7 +174,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             } else {
                 ctx.editor
                     .output
-                    .write(EditorOutputTarget::Error)
+                    .write(EditorOutputKind::Error)
                     .str(UNSAVED_CHANGES_ERROR);
                 None
             }
@@ -189,7 +189,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             expect_no_bang!(ctx);
             parse_switches!(ctx);
             parse_options!(ctx);
-            let mut w = ctx.editor.output.write(EditorOutputTarget::Info);
+            let mut w = ctx.editor.output.write(EditorOutputKind::StatusBar);
             for arg in ctx.args.values() {
                 w.str(arg.as_str(ctx.args));
                 w.str(" ");
@@ -260,7 +260,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                     Err(BufferViewError::InvalidPath) => {
                         ctx.editor
                             .output
-                            .write(EditorOutputTarget::Error)
+                            .write(EditorOutputKind::Error)
                             .fmt(format_args!("invalid path '{}'", path));
                         return None;
                     }
@@ -293,7 +293,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                     None => {
                         ctx.editor
                             .output
-                            .write(EditorOutputTarget::Error)
+                            .write(EditorOutputKind::Error)
                             .str(NO_BUFFER_OPENED_ERROR);
                         return None;
                     }
@@ -304,7 +304,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 None => {
                     ctx.editor
                         .output
-                        .write(EditorOutputTarget::Error)
+                        .write(EditorOutputKind::Error)
                         .str(INVALID_BUFFER_HANDLE_ERROR);
                     return None;
                 }
@@ -314,7 +314,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             if let Err(error) = buffer.save_to_file(path, &mut ctx.editor.events) {
                 ctx.editor
                     .output
-                    .write(EditorOutputTarget::Error)
+                    .write(EditorOutputKind::Error)
                     .fmt(format_args!("{}", error.display(buffer)));
                 return None;
             }
@@ -322,7 +322,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             let path = buffer.path().unwrap_or(Path::new(""));
             ctx.editor
                 .output
-                .write(EditorOutputTarget::Info)
+                .write(EditorOutputKind::StatusBar)
                 .fmt(format_args!("saved to '{:?}'", path));
 
             None
@@ -340,7 +340,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             parse_options!(ctx);
             let mut count = 0;
             let mut had_error = false;
-            let mut write = ctx.editor.output.write(EditorOutputTarget::Error);
+            let mut write = ctx.editor.output.write(EditorOutputKind::Error);
             for buffer in ctx.editor.buffers.iter_mut() {
                 if let Err(error) = buffer.save_to_file(None, &mut ctx.editor.events) {
                     if had_error {
@@ -357,7 +357,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             } else {
                 ctx.editor
                     .output
-                    .write(EditorOutputTarget::Info)
+                    .write(EditorOutputKind::StatusBar)
                     .fmt(format_args!("{} buffers saved", count));
                 None
             }
@@ -384,7 +384,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                     None => {
                         ctx.editor
                             .output
-                            .write(EditorOutputTarget::Error)
+                            .write(EditorOutputKind::Error)
                             .str(NO_BUFFER_OPENED_ERROR);
                         return None;
                     }
@@ -395,7 +395,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 None => {
                     ctx.editor
                         .output
-                        .write(EditorOutputTarget::Error)
+                        .write(EditorOutputKind::Error)
                         .str(INVALID_BUFFER_HANDLE_ERROR);
                     return None;
                 }
@@ -404,7 +404,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             if !ctx.bang && buffer.needs_save() {
                 ctx.editor
                     .output
-                    .write(EditorOutputTarget::Error)
+                    .write(EditorOutputKind::Error)
                     .str(UNSAVED_CHANGES_ERROR);
                 return None;
             }
@@ -414,14 +414,14 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             {
                 ctx.editor
                     .output
-                    .write(EditorOutputTarget::Error)
+                    .write(EditorOutputKind::Error)
                     .fmt(format_args!("{}", error.display(buffer)));
                 return None;
             }
 
             ctx.editor
                 .output
-                .write(EditorOutputTarget::Info)
+                .write(EditorOutputKind::StatusBar)
                 .str("buffer reloaded");
             None
         },
@@ -439,14 +439,14 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             if !ctx.bang && ctx.editor.buffers.iter().any(Buffer::needs_save) {
                 ctx.editor
                     .output
-                    .write(EditorOutputTarget::Error)
+                    .write(EditorOutputKind::Error)
                     .str(UNSAVED_CHANGES_ERROR);
                 return None;
             }
 
             let mut count = 0;
             let mut had_error = false;
-            let mut write = ctx.editor.output.write(EditorOutputTarget::Error);
+            let mut write = ctx.editor.output.write(EditorOutputKind::Error);
             for buffer in ctx.editor.buffers.iter_mut() {
                 if let Err(error) = buffer.discard_and_reload_from_file(
                     &mut ctx.editor.word_database,
@@ -466,7 +466,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             } else {
                 ctx.editor
                     .output
-                    .write(EditorOutputTarget::Info)
+                    .write(EditorOutputKind::StatusBar)
                     .fmt(format_args!("{} buffers closed", count));
                 None
             }
@@ -493,7 +493,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                     None => {
                         ctx.editor
                             .output
-                            .write(EditorOutputTarget::Error)
+                            .write(EditorOutputKind::Error)
                             .str(NO_BUFFER_OPENED_ERROR);
                         return None;
                     }
@@ -504,7 +504,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 None => {
                     ctx.editor
                         .output
-                        .write(EditorOutputTarget::Error)
+                        .write(EditorOutputKind::Error)
                         .str(INVALID_BUFFER_HANDLE_ERROR);
                     return None;
                 }
@@ -513,7 +513,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             if !ctx.bang && buffer.needs_save() {
                 ctx.editor
                     .output
-                    .write(EditorOutputTarget::Error)
+                    .write(EditorOutputKind::Error)
                     .str(UNSAVED_CHANGES_ERROR);
                 return None;
             }
@@ -538,7 +538,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
 
             editor
                 .output
-                .write(EditorOutputTarget::Info)
+                .write(EditorOutputKind::StatusBar)
                 .str("buffer closed");
             None
         },
@@ -556,7 +556,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             if !ctx.bang && ctx.editor.buffers.iter().any(Buffer::needs_save) {
                 ctx.editor
                     .output
-                    .write(EditorOutputTarget::Error)
+                    .write(EditorOutputKind::Error)
                     .str(UNSAVED_CHANGES_ERROR);
                 return None;
             }
@@ -574,7 +574,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
 
             ctx.editor
                 .output
-                .write(EditorOutputTarget::Info)
+                .write(EditorOutputKind::StatusBar)
                 .fmt(format_args!("{} buffers closed", count));
             None
         },
@@ -597,12 +597,12 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                     Err(ParseConfigError::NotFound) => ctx
                         .editor
                         .output
-                        .write(EditorOutputTarget::Error)
+                        .write(EditorOutputKind::Error)
                         .fmt(format_args!("no such config '{}'", key)),
                     Err(ParseConfigError::InvalidValue) => ctx
                         .editor
                         .output
-                        .write(EditorOutputTarget::Error)
+                        .write(EditorOutputKind::Error)
                         .fmt(format_args!(
                             "invalid value '{}' for config '{}'",
                             value, key
@@ -612,12 +612,12 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                     Some(display) => ctx
                         .editor
                         .output
-                        .write(EditorOutputTarget::Info)
+                        .write(EditorOutputKind::StatusBar)
                         .fmt(format_args!("{}", display)),
                     None => ctx
                         .editor
                         .output
-                        .write(EditorOutputTarget::Error)
+                        .write(EditorOutputKind::Error)
                         .fmt(format_args!("no such config '{}'", key)),
                 },
             }
@@ -642,7 +642,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 None => {
                     ctx.editor
                         .output
-                        .write(EditorOutputTarget::Error)
+                        .write(EditorOutputKind::Error)
                         .fmt(format_args!("no such theme color '{}'", key));
                     return None;
                 }
@@ -653,7 +653,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                     Err(_) => ctx
                         .editor
                         .output
-                        .write(EditorOutputTarget::Error)
+                        .write(EditorOutputKind::Error)
                         .fmt(format_args!(
                             "invalid value '{}' for color '{}'",
                             value, key
@@ -662,7 +662,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 None => ctx
                     .editor
                     .output
-                    .write(EditorOutputTarget::Info)
+                    .write(EditorOutputKind::StatusBar)
                     .fmt(format_args!("{:x}", color.into_u32())),
             }
 
@@ -737,7 +737,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 _ => {
                     ctx.editor
                         .output
-                        .write(EditorOutputTarget::Error)
+                        .write(EditorOutputKind::Error)
                         .fmt(format_args!("invalid mode '{}'", mode));
                     return None;
                 }
@@ -769,7 +769,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 None => {
                     ctx.editor
                         .output
-                        .write(EditorOutputTarget::Error)
+                        .write(EditorOutputKind::Error)
                         .fmt(format_args!("invalid register key '{}'", key));
                     return None;
                 }
@@ -780,7 +780,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 None => ctx
                     .editor
                     .output
-                    .write(EditorOutputTarget::Info)
+                    .write(EditorOutputKind::StatusBar)
                     .str(ctx.editor.registers.get(key)),
             }
 
