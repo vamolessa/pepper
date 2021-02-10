@@ -5,7 +5,7 @@ use crate::{
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::BufferViewHandle,
     cursor::Cursor,
-    editor::{Editor, StatusMessageKind},
+    editor::{Editor, EditorOutputTarget},
     mode::ModeKind,
     syntax::{HighlightedBuffer, TokenKind},
     theme::Color,
@@ -512,7 +512,7 @@ fn draw_statusbar(
     }
 
     let x = if has_focus {
-        let (status_message_kind, status_message) = editor.status_bar.message();
+        let (status_message_kind, status_message) = editor.output.message();
         let status_message = status_message.trim_end();
 
         if status_message.trim_start().is_empty() {
@@ -559,8 +559,8 @@ fn draw_statusbar(
             }
 
             let prefix = match status_message_kind {
-                StatusMessageKind::Info => &b""[..],
-                StatusMessageKind::Error => &b"error:"[..],
+                EditorOutputTarget::Info => &b""[..],
+                EditorOutputTarget::Error => &b"error:"[..],
             };
 
             let line_count = status_message.lines().count();

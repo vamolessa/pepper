@@ -8,7 +8,7 @@ use crate::{
     buffer_view::{BufferViewError, BufferViewHandle, CursorMovement, CursorMovementKind},
     client::{Client, ClientManager, ClientHandle},
     cursor::Cursor,
-    editor::{Editor, KeysIterator, StatusMessageKind},
+    editor::{Editor, KeysIterator, EditorOutputTarget},
     lsp::LspDiagnostic,
     mode::{picker, read_line, Mode, ModeKind, ModeOperation, ModeState},
     navigation_history::{NavigationDirection, NavigationHistory},
@@ -870,8 +870,8 @@ impl State {
                     move_to_diagnostic(editor, clients, client_handle, false);
                 }
                 Key::Char('r') => editor
-                    .status_bar
-                    .write_str(StatusMessageKind::Info, "rename not yet implemented"),
+                    .output
+                    .write_str(EditorOutputTarget::Info, "rename not yet implemented"),
                 _ => (),
             },
             Key::Char('s') => read_line::search::enter_mode(editor, clients, client_handle),
@@ -1003,7 +1003,7 @@ impl ModeState for State {
             client_handle: ClientHandle,
         ) -> Option<()> {
             let handle = clients.get(client_handle)?.buffer_view_handle()?;
-            if !editor.status_bar.message().1.is_empty() {
+            if !editor.output.message().1.is_empty() {
                 return None;
             }
             let buffer_view = editor.buffer_views.get(handle)?;
@@ -1026,8 +1026,8 @@ impl ModeState for State {
                     }
                 }) {
                     editor
-                        .status_bar
-                        .write_str(StatusMessageKind::Info, &diagnostics[index].message);
+                        .output
+                        .write_str(EditorOutputTarget::Info, &diagnostics[index].message);
                     break;
                 }
             }
@@ -1145,8 +1145,8 @@ where
 
         if search_ranges.is_empty() {
             editor
-                .status_bar
-                .write_str(StatusMessageKind::Error, "no search result");
+                .output
+                .write_str(EditorOutputTarget::Error, "no search result");
             return None;
         }
     }
@@ -1335,8 +1335,8 @@ fn move_to_diagnostic(
             Ok(handle) => handle,
             Err(BufferViewError::InvalidPath) => {
                 editor
-                    .status_bar
-                    .write(StatusMessageKind::Error)
+                    .output
+                    .write(EditorOutputTarget::Error)
                     .fmt(format_args!("invalid path '{:?}'", path));
                 return None;
             }

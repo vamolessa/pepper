@@ -1,7 +1,7 @@
 use std::{env, io};
 
 use crate::{
-    client::{ClientManager, ClientHandle},
+    client::{ClientHandle, ClientManager},
     client_event::ClientEvent,
     command::CommandOperation,
     connection::ClientEventDeserializationBufCollection,
@@ -191,19 +191,22 @@ impl ClientApplication {
             STDOUT.as_ref().unwrap().lock()
         };
 
-        let mut command = String::new();
         let mut write_buf = SerializationBuf::default();
-        for path in &args.files {
-            command.clear();
-            command.push_str("open '");
-            command.push_str(path);
-            command.push_str("'");
-            ClientEvent::Command(args.as_client, &command).serialize(&mut write_buf);
+
+        if !args.files.is_empty() {
+            let mut open_buffers_command = String::new();
+            open_buffers_command.push_str("open");
+
+            for path in &args.files {
+                open_buffers_command.push_str(" '");
+                open_buffers_command.push_str(path);
+                open_buffers_command.push_str("'");
+            }
+
+            ClientEvent::Command(args.as_client, &open_buffers_command).serialize(&mut write_buf);
         }
-        let bytes = write_buf.as_slice();
-        if !bytes.is_empty() {
-            platform.write(bytes);
-        }
+
+        platform.write(write_buf.as_slice());
 
         use io::Write;
         let _ = stdout.write_all(ui::ENTER_ALTERNATE_BUFFER_CODE);

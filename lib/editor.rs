@@ -1,15 +1,10 @@
-use std::{
-    error::Error,
-    fmt,
-    fs::File,
-    path::{Path, PathBuf},
-};
+use std::{error::Error, fmt, fs::File, path::PathBuf};
 
 use crate::platform::Key;
 
 use crate::{
     buffer::BufferCollection,
-    buffer_view::{BufferViewCollection, BufferViewError},
+    buffer_view::BufferViewCollection,
     client::{ClientHandle, ClientManager},
     client_event::{parse_all_keys, ClientEvent},
     command::{CommandIter, CommandManager, CommandOperation},
@@ -156,24 +151,24 @@ impl ReadLine {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum StatusMessageKind {
+pub enum EditorOutputTarget {
     Info,
     Error,
 }
 
-pub struct StatusBar {
-    kind: StatusMessageKind,
+pub struct EditorOutput {
+    kind: EditorOutputTarget,
     message: String,
 }
-impl StatusBar {
+impl EditorOutput {
     pub fn new() -> Self {
         Self {
-            kind: StatusMessageKind::Info,
+            kind: EditorOutputTarget::Info,
             message: String::new(),
         }
     }
 
-    pub fn message(&self) -> (StatusMessageKind, &str) {
+    pub fn message(&self) -> (EditorOutputTarget, &str) {
         (self.kind, &self.message)
     }
 
@@ -182,20 +177,20 @@ impl StatusBar {
     }
 
     // TODO: replace with 'write'
-    pub fn write_str(&mut self, kind: StatusMessageKind, message: &str) {
+    pub fn write_str(&mut self, kind: EditorOutputTarget, message: &str) {
         self.kind = kind;
         self.message.clear();
         self.message.push_str(message);
     }
 
     // TODO: replace with 'write'
-    pub fn write_fmt(&mut self, kind: StatusMessageKind, args: fmt::Arguments) {
+    pub fn write_fmt(&mut self, kind: EditorOutputTarget, args: fmt::Arguments) {
         self.kind = kind;
         self.message.clear();
         let _ = fmt::write(&mut self.message, args);
     }
 
-    pub fn write(&mut self, kind: StatusMessageKind) -> StatusBarWrite {
+    pub fn write(&mut self, kind: EditorOutputTarget) -> StatusBarWrite {
         self.kind = kind;
         self.message.clear();
         StatusBarWrite(&mut self.message)
@@ -205,7 +200,7 @@ impl StatusBar {
     pub fn write_error(&mut self, error: &dyn Error) {
         use fmt::Write;
 
-        self.kind = StatusMessageKind::Error;
+        self.kind = EditorOutputTarget::Error;
         self.message.clear();
         let _ = write!(&mut self.message, "{}", error);
         let mut error = error.source();
@@ -245,7 +240,7 @@ pub struct Editor {
     pub read_line: ReadLine,
     pub picker: Picker,
 
-    pub status_bar: StatusBar,
+    pub output: EditorOutput,
 
     pub commands: CommandManager,
     pub lsp: LspClientCollection,
@@ -272,7 +267,7 @@ impl Editor {
             read_line: ReadLine::default(),
             picker: Picker::default(),
 
-            status_bar: StatusBar::new(),
+            output: EditorOutput::new(),
 
             commands: CommandManager::new(),
             lsp: LspClientCollection::new(),
@@ -290,8 +285,8 @@ impl Editor {
         let mut file = match File::open(path) {
             Ok(file) => file,
             Err(_) => {
-                self.status_bar
-                    .write(StatusMessageKind::Error)
+                self.output
+                    .write(EditorOutputTarget::Error)
                     .fmt(format_args!("could not open config file '{}'", path));
                 return None;
             }
@@ -299,8 +294,8 @@ impl Editor {
 
         let mut text = String::new();
         if let Err(_) = file.read_to_string(&mut text) {
-            self.status_bar
-                .write(StatusMessageKind::Error)
+            self.output
+                .write(EditorOutputTarget::Error)
                 .fmt(format_args!("could not read config file '{}'", path));
             return None;
         }
@@ -378,41 +373,8 @@ impl Editor {
         event: ClientEvent,
     ) -> EditorLoop {
         let result = match event {
-            /*
-            ClientEvent::OpenBuffer(mut path) => {
-                let target = clients.client_map.get(target);
-
-                let mut line_index = None;
-                if let Some(separator_index) = path.rfind(':') {
-                    if let Ok(n) = path[(separator_index + 1)..].parse() {
-                        let n: usize = n;
-                        line_index = Some(n.saturating_sub(1));
-                        path = &path[..separator_index];
-                    }
-                }
-
-                match self.buffer_views.buffer_view_handle_from_path(
-                    target,
-                    &mut self.buffers,
-                    &mut self.word_database,
-                    &self.current_directory,
-                    Path::new(path),
-                    line_index,
-                    &mut self.events,
-                ) {
-                    Ok(handle) => clients.set_buffer_view_handle(self, target, Some(handle)),
-                    Err(BufferViewError::InvalidPath) => self
-                        .status_bar
-                        .write(StatusMessageKind::Error)
-                        .fmt(format_args!("invalid path '{}'", path)),
-                }
-
-                self.trigger_event_handlers(clients, target);
-                EditorLoop::Continue
-            }
-            */
             ClientEvent::Key(handle, key) => {
-                self.status_bar.clear();
+                self.output.clear();
 
                 let handle = match handle {
                     Some(handle) => handle,
@@ -539,8 +501,8 @@ impl Editor {
             match key {
                 Ok(key) => self.buffered_keys.0.push(key),
                 Err(error) => {
-                    self.status_bar.write_fmt(
-                        StatusMessageKind::Error,
+                    self.output.write_fmt(
+                        EditorOutputTarget::Error,
                         format_args!("error parsing keys '{}'\n{}", keys, &error),
                     );
                     self.buffered_keys.0.clear();
@@ -601,12 +563,12 @@ impl Editor {
             buffer_views: &mut self.buffer_views,
             word_database: &mut self.word_database,
 
-            status_bar: &mut self.status_bar,
+            status_bar: &mut self.output,
             events: &mut self.events,
         };
 
         if let Err(error) = self.lsp.on_server_event(&mut ctx, client_handle, event) {
-            self.status_bar.write_error(&error);
+            self.output.write_error(&error);
         }
     }
 }
