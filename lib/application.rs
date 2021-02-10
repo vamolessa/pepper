@@ -132,7 +132,7 @@ impl ServerApplication {
 
         let focused_handle = self.clients.focused_handle();
         for c in self.clients.iter_mut() {
-            let has_focus = focused_handle == c.handle();
+            let has_focus = focused_handle == Some(c.handle());
             c.display_buffer.clear();
             c.display_buffer.extend_from_slice(&[0; 4]);
             ui::render(

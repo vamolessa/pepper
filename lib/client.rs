@@ -170,26 +170,26 @@ impl Client {
 }
 
 pub struct ClientManager {
-    focused_handle: ClientHandle, // TODO: make it focused_index: Option<usize>
+    focused_handle: Option<ClientHandle>,
     clients: Vec<Client>,
 }
 
 impl ClientManager {
     pub fn new() -> Self {
         Self {
-            focused_handle: ClientHandle::local(),
+            focused_handle: None,
             clients: Vec::new(),
         }
     }
 
-    pub fn focused_handle(&self) -> ClientHandle {
+    pub fn focused_handle(&self) -> Option<ClientHandle> {
         self.focused_handle
     }
 
     // TODO: maybe change it to handle it from client_events
     pub fn focus_client(&mut self, handle: ClientHandle) -> bool {
-        let changed = handle != self.focused_handle;
-        self.focused_handle = handle;
+        let changed = Some(handle) != self.focused_handle;
+        self.focused_handle = Some(handle);
         changed
     }
 
@@ -206,8 +206,8 @@ impl ClientManager {
 
     pub fn on_client_left(&mut self, handle: ClientHandle) {
         self.clients[handle.into_index()].dispose();
-        if self.focused_handle == handle {
-            self.focused_handle = ClientHandle::local();
+        if self.focused_handle == Some(handle) {
+            self.focused_handle = None;
         }
     }
 

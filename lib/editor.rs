@@ -10,7 +10,7 @@ use crate::platform::Key;
 use crate::{
     buffer::BufferCollection,
     buffer_view::{BufferViewCollection, BufferViewError},
-    client::{ClientManager, ClientHandle},
+    client::{ClientHandle, ClientManager},
     client_event::{parse_all_keys, ClientEvent},
     command::{CommandIter, CommandManager, CommandOperation},
     config::Config,
@@ -323,10 +323,10 @@ impl Editor {
         );
 
         let mut needs_redraw = false;
-
         let focused_handle = clients.focused_handle();
+
         for c in clients.iter_mut() {
-            let picker_height = if focused_handle == c.handle() {
+            let picker_height = if focused_handle == Some(c.handle()) {
                 picker_height as _
             } else {
                 0
@@ -355,7 +355,8 @@ impl Editor {
         clients.on_client_joined(handle);
 
         let buffer_view_handle = clients
-            .get(clients.focused_handle())
+            .focused_handle()
+            .and_then(|h| clients.get(h))
             .and_then(|c| c.buffer_view_handle())
             .and_then(|h| self.buffer_views.get(h))
             .map(|v| v.clone_with_client_handle(handle))
