@@ -104,33 +104,26 @@ impl<'a> Iterator for CommandIter<'a> {
 }
 
 pub struct BuiltinCommand {
-    name: &'static str,
-    alias: Option<&'static str>,
+    names: &'static [&'static str],
     help: &'static str,
     completion_source: CompletionSource,
-    flags: &'static [(&'static str, u8)],
+    flags: &'static [(&'static str, CompletionSource)],
     func: CommandFn,
 }
 
 pub struct CommandManager {
-    builtin_commands: Vec<BuiltinCommand>,
+    builtin_commands: &'static [BuiltinCommand],
     parsed_args: CommandArgs,
     history: VecDeque<String>,
 }
 
 impl CommandManager {
     pub fn new() -> Self {
-        let mut this = Self {
-            builtin_commands: Vec::new(),
+        Self {
+            builtin_commands: builtin::COMMANDS,
             parsed_args: CommandArgs::default(),
             history: VecDeque::with_capacity(HISTORY_CAPACITY),
-        };
-        builtin::register_all(&mut this);
-        this
-    }
-
-    pub fn register_builtin(&mut self, command: BuiltinCommand) {
-        self.builtin_commands.push(command);
+        }
     }
 
     pub fn history_len(&self) -> usize {
@@ -340,11 +333,7 @@ impl CommandManager {
 
         let command = match tokens.next() {
             Some((TokenKind::Text, s)) => {
-                match self
-                    .builtin_commands
-                    .iter()
-                    .find(|c| c.alias == Some(s) || c.name == s)
-                {
+                match self.builtin_commands.iter().find(|&c| c.names.contains(&s)) {
                     Some(command) => command.func,
                     None => {
                         let error_index = error_index(text, s);
@@ -467,20 +456,19 @@ mod tests {
     use super::*;
 
     fn create_commands() -> CommandManager {
-        let mut commands = CommandManager {
-            builtin_commands: Vec::new(),
-            parsed_args: CommandArgs::default(),
-            history: VecDeque::default(),
-        };
-        commands.register_builtin(BuiltinCommand {
-            name: "command-name",
-            alias: Some("c"),
+        let builtin_commands = &[BuiltinCommand {
+            names: &["command-name", "c"],
             help: "",
             completion_source: CompletionSource::None,
             flags: &[],
             func: |_| None,
-        });
-        commands
+        }];
+
+        CommandManager {
+            builtin_commands,
+            parsed_args: CommandArgs::default(),
+            history: VecDeque::default(),
+        }
     }
 
     #[test]
