@@ -4,15 +4,12 @@ use crate::{
     buffer::{Buffer, BufferHandle},
     buffer_position::BufferPosition,
     buffer_view::BufferViewError,
-    client::ClientHandle,
-    command::{
-        BuiltinCommand, CommandArgs, CommandContext, CommandManager, CommandOperation,
-        CompletionSource,
-    },
+    command::{BuiltinCommand, CommandContext, CommandOperation, CompletionSource},
     config::{ParseConfigError, CONFIG_NAMES},
     editor::{Editor, EditorOutputKind},
+    json::Json,
     keymap::ParseKeyMapError,
-    lsp::{LspClient, LspClientHandle},
+    lsp::{LspClient, LspClientCollection, LspClientHandle},
     mode::ModeKind,
     navigation_history::NavigationHistory,
     register::RegisterKey,
@@ -843,50 +840,64 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
 ];
 
-/*
-fn access_client<F>(
+fn access_client<F, R, E>(
     editor: &mut Editor,
     client_handle: Option<LspClientHandle>,
     buffer_handle: Option<BufferHandle>,
     func: F,
-) -> Option<()>
+) -> Option<R>
 where
-    F: FnOnce(&mut LspClientContext, &mut LspClient, &mut Json) -> Option<()>,
-    E: 'static + fmt::Display,
+    F: FnOnce(&mut Editor, &mut LspClient, &mut Json) -> Result<R, E>,
+    E: fmt::Display,
 {
     fn find_client_for_buffer(
-        ctx: &ScriptContext,
+        editor: &Editor,
         buffer_handle: Option<BufferHandle>,
     ) -> Option<LspClientHandle> {
         let buffer_handle = buffer_handle?;
-        let buffer_path_bytes = ctx.buffers.get(buffer_handle)?.path()?.to_str()?.as_bytes();
-        let (client_handle, _) = ctx
+        let buffer_path_bytes = editor
+            .buffers
+            .get(buffer_handle)?
+            .path()?
+            .to_str()?
+            .as_bytes();
+        let (client_handle, _) = editor
             .lsp
             .client_with_handles()
             .find(|(_, c)| c.handles_path(buffer_path_bytes))?;
         Some(client_handle)
     }
 
-    let client_handle = match client_handle.or_else(|| find_client_for_buffer(ctx, buffer_handle)) {
+    let client_handle = client_handle.or_else(|| find_client_for_buffer(editor, buffer_handle));
+    let client_handle = match client_handle {
         Some(handle) => handle,
         None => {
-            ctx.status_bar
-                .write_str(StatusMessageKind::Error, "lsp server not running");
-            return Ok(None);
+            editor
+                .output
+                .write(EditorOutputKind::Error)
+                .str("lsp server not running");
+            return None;
         }
     };
-    let (lsp, mut ctx) = ctx.into_lsp_context();
-    match lsp.access(client_handle, |client, json| func(&mut ctx, client, json)) {
-        Some(Ok(value)) => Ok(Some(value)),
-        Some(Err(error)) => Err(ScriptError::from(error)),
+
+    match LspClientCollection::access(editor, client_handle, func) {
+        Some(Ok(value)) => Some(value),
+        Some(Err(error)) => {
+            editor
+                .output
+                .write(EditorOutputKind::Error)
+                .fmt(format_args!("{}", error));
+            None
+        }
         None => {
-            ctx.status_bar
-                .write_str(StatusMessageKind::Error, "lsp server not running");
-            Ok(None)
+            editor
+                .output
+                .write(EditorOutputKind::Error)
+                .str("lsp server not running");
+            None
         }
     }
 }
-*/
 
 // lsp:
 // - lsp-hover

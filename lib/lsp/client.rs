@@ -1283,17 +1283,16 @@ impl ClientCollection {
         }
     }
 
-    pub fn access<F, R>(&mut self, handle: ClientHandle, func: F) -> Option<R>
+    pub fn access<F, R>(editor: &mut Editor, handle: ClientHandle, func: F) -> Option<R>
     where
-        F: FnOnce(&mut Client, &mut Json) -> R,
+        F: FnOnce(&mut Editor, &mut Client, &mut Json) -> R,
     {
-        match &mut self.entries[handle.0] {
-            Some(entry) => {
-                let mut json = entry.json.write_lock();
-                Some(func(&mut entry.client, json.get()))
-            }
-            None => None,
-        }
+        let mut entry = editor.lsp.entries[handle.0].take()?;
+        let mut json = entry.json.write_lock();
+        let result = func(editor, &mut entry.client, json.get());
+        drop(json);
+        editor.lsp.entries[handle.0] = Some(entry);
+        Some(result)
     }
 
     pub fn clients(&self) -> impl DoubleEndedIterator<Item = &Client> {
