@@ -2,6 +2,7 @@ use std::{fmt, path::Path, process::Command};
 
 use crate::{
     buffer::{Buffer, BufferHandle},
+    buffer_position::BufferPosition,
     buffer_view::BufferViewError,
     client::ClientHandle,
     command::{
@@ -11,6 +12,7 @@ use crate::{
     config::{ParseConfigError, CONFIG_NAMES},
     editor::{Editor, EditorOutputKind},
     keymap::ParseKeyMapError,
+    lsp::{LspClient, LspClientHandle},
     mode::ModeKind,
     navigation_history::NavigationHistory,
     register::RegisterKey,
@@ -18,8 +20,6 @@ use crate::{
     theme::{Color, THEME_COLOR_NAMES},
 };
 
-const INVALID_BUFFER_HANDLE_ERROR: &str = "invalid buffer handle";
-const NO_BUFFER_OPENED_ERROR: &str = "no buffer opened";
 const UNSAVED_CHANGES_ERROR: &str =
     "there are unsaved changes in buffer. try appending a '!' to force execute";
 
@@ -286,35 +286,18 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         help: "save buffer",
         completion_source: CompletionSource::None,
         flags: &[],
-        func: |ctx| {
+        func: |mut ctx| {
             expect_no_bang!(ctx);
             parse_values!(ctx, path);
             parse_switches!(ctx);
-            parse_options!(ctx, handle);
+            parse_options!(ctx, buffer);
 
-            let handle = match handle {
-                Some(handle) => parse_arg!(ctx, handle: BufferHandle),
-                None => match ctx.current_buffer_view_handle() {
-                    Some(handle) => ctx.editor.buffer_views.get(handle)?.buffer_handle,
-                    None => {
-                        ctx.editor
-                            .output
-                            .write(EditorOutputKind::Error)
-                            .str(NO_BUFFER_OPENED_ERROR);
-                        return None;
-                    }
-                },
+            let handle = match buffer {
+                Some(buffer) => parse_arg!(ctx, buffer: BufferHandle),
+                None => ctx.current_buffer_handle_or_error()?,
             };
-            let buffer = match ctx.editor.buffers.get_mut(handle) {
-                Some(buffer) => buffer,
-                None => {
-                    ctx.editor
-                        .output
-                        .write(EditorOutputKind::Error)
-                        .str(INVALID_BUFFER_HANDLE_ERROR);
-                    return None;
-                }
-            };
+            let handle = ctx.validate_buffer_handle(handle)?;
+            let buffer = ctx.editor.buffers.get_mut(handle)?;
 
             let path = path.map(Path::new);
             if let Err(error) = buffer.save_to_file(path, &mut ctx.editor.events) {
@@ -374,38 +357,17 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         help: "reload buffer from file",
         completion_source: CompletionSource::None,
         flags: &[],
-        func: |ctx| {
+        func: |mut ctx| {
             parse_values!(ctx);
             parse_switches!(ctx);
-            parse_options!(ctx, handle);
+            parse_options!(ctx, buffer);
 
-            let handle = match handle {
-                Some(handle) => parse_arg!(ctx, handle: BufferHandle),
-                None => match ctx
-                    .current_buffer_view_handle()
-                    .and_then(|h| ctx.editor.buffer_views.get(h))
-                    .map(|v| v.buffer_handle)
-                {
-                    Some(handle) => handle,
-                    None => {
-                        ctx.editor
-                            .output
-                            .write(EditorOutputKind::Error)
-                            .str(NO_BUFFER_OPENED_ERROR);
-                        return None;
-                    }
-                },
+            let handle = match buffer {
+                Some(buffer) => parse_arg!(ctx, buffer: BufferHandle),
+                None => ctx.current_buffer_handle_or_error()?,
             };
-            let buffer = match ctx.editor.buffers.get_mut(handle) {
-                Some(buffer) => buffer,
-                None => {
-                    ctx.editor
-                        .output
-                        .write(EditorOutputKind::Error)
-                        .str(INVALID_BUFFER_HANDLE_ERROR);
-                    return None;
-                }
-            };
+            let handle = ctx.validate_buffer_handle(handle)?;
+            let buffer = ctx.editor.buffers.get_mut(handle)?;
 
             if !ctx.bang && buffer.needs_save() {
                 ctx.editor
@@ -483,38 +445,17 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         help: "close buffer",
         completion_source: CompletionSource::None,
         flags: &[],
-        func: |ctx| {
+        func: |mut ctx| {
             parse_values!(ctx);
             parse_switches!(ctx);
-            parse_options!(ctx, handle);
+            parse_options!(ctx, buffer);
 
-            let handle = match handle {
-                Some(handle) => parse_arg!(ctx, handle: BufferHandle),
-                None => match ctx
-                    .current_buffer_view_handle()
-                    .and_then(|h| ctx.editor.buffer_views.get(h))
-                    .map(|v| v.buffer_handle)
-                {
-                    Some(handle) => handle,
-                    None => {
-                        ctx.editor
-                            .output
-                            .write(EditorOutputKind::Error)
-                            .str(NO_BUFFER_OPENED_ERROR);
-                        return None;
-                    }
-                },
+            let handle = match buffer {
+                Some(buffer) => parse_arg!(ctx, buffer: BufferHandle),
+                None => ctx.current_buffer_handle_or_error()?,
             };
-            let buffer = match ctx.editor.buffers.get(handle) {
-                Some(buffer) => buffer,
-                None => {
-                    ctx.editor
-                        .output
-                        .write(EditorOutputKind::Error)
-                        .str(INVALID_BUFFER_HANDLE_ERROR);
-                    return None;
-                }
-            };
+            let handle = ctx.validate_buffer_handle(handle)?;
+            let buffer = ctx.editor.buffers.get(handle)?;
 
             if !ctx.bang && buffer.needs_save() {
                 ctx.editor
@@ -843,11 +784,111 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             None
         },
     },
+    BuiltinCommand {
+        names: &["lsp-stop"],
+        help: "stop a lsp server",
+        completion_source: CompletionSource::None,
+        flags: &[],
+        func: |ctx| {
+            expect_no_bang!(ctx);
+            parse_values!(ctx);
+            parse_switches!(ctx);
+            parse_options!(ctx, client);
+
+            match client {
+                Some(client) => {
+                    let client = parse_arg!(ctx, client: LspClientHandle);
+                    ctx.editor.lsp.stop(client);
+                }
+                None => ctx.editor.lsp.stop_all(),
+            }
+
+            None
+        },
+    },
+    BuiltinCommand {
+        names: &["lsp-hover"],
+        help: "perform a lsp hover action",
+        completion_source: CompletionSource::None,
+        flags: &[],
+        func: |mut ctx| {
+            expect_no_bang!(ctx);
+            parse_values!(ctx);
+            parse_switches!(ctx);
+            parse_options!(ctx, client, buffer, position);
+
+            let client_handle = match client {
+                Some(client) => Some(parse_arg!(ctx, client: LspClientHandle)),
+                None => None,
+            };
+            let buffer_handle = match buffer {
+                Some(buffer) => parse_arg!(ctx, buffer: BufferHandle),
+                None => ctx.current_buffer_handle_or_error()?,
+            };
+            let position = match position {
+                Some(position) => parse_arg!(ctx, position: BufferPosition),
+                None => {
+                    let handle = ctx.current_buffer_view_handle_or_error()?;
+                    ctx.editor
+                        .buffer_views
+                        .get(handle)?
+                        .cursors
+                        .main_cursor()
+                        .position
+                }
+            };
+
+            None
+        },
+    },
 ];
 
+/*
+fn access_client<F>(
+    editor: &mut Editor,
+    client_handle: Option<LspClientHandle>,
+    buffer_handle: Option<BufferHandle>,
+    func: F,
+) -> Option<()>
+where
+    F: FnOnce(&mut LspClientContext, &mut LspClient, &mut Json) -> Option<()>,
+    E: 'static + fmt::Display,
+{
+    fn find_client_for_buffer(
+        ctx: &ScriptContext,
+        buffer_handle: Option<BufferHandle>,
+    ) -> Option<LspClientHandle> {
+        let buffer_handle = buffer_handle?;
+        let buffer_path_bytes = ctx.buffers.get(buffer_handle)?.path()?.to_str()?.as_bytes();
+        let (client_handle, _) = ctx
+            .lsp
+            .client_with_handles()
+            .find(|(_, c)| c.handles_path(buffer_path_bytes))?;
+        Some(client_handle)
+    }
+
+    let client_handle = match client_handle.or_else(|| find_client_for_buffer(ctx, buffer_handle)) {
+        Some(handle) => handle,
+        None => {
+            ctx.status_bar
+                .write_str(StatusMessageKind::Error, "lsp server not running");
+            return Ok(None);
+        }
+    };
+    let (lsp, mut ctx) = ctx.into_lsp_context();
+    match lsp.access(client_handle, |client, json| func(&mut ctx, client, json)) {
+        Some(Ok(value)) => Ok(Some(value)),
+        Some(Err(error)) => Err(ScriptError::from(error)),
+        None => {
+            ctx.status_bar
+                .write_str(StatusMessageKind::Error, "lsp server not running");
+            Ok(None)
+        }
+    }
+}
+*/
+
 // lsp:
-// - lsp-start
-// - lsp-stop
 // - lsp-hover
 // - lsp-signature-help
 // - lsp-open-log

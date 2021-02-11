@@ -1268,8 +1268,15 @@ impl ClientCollection {
             let _ = entry
                 .client
                 .notify(json.get(), "exit", JsonObject::default());
+            drop(json);
+            self.entries[handle.0] = None;
         }
-        self.entries[handle.0] = None;
+    }
+
+    pub fn stop_all(&mut self) {
+        for i in 0..self.entries.len() {
+            self.stop(ClientHandle(i));
+        }
     }
 
     pub fn access<F, R>(&mut self, handle: ClientHandle, func: F) -> Option<R>

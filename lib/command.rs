@@ -1,8 +1,9 @@
 use std::collections::VecDeque;
 
 use crate::{
+    buffer::BufferHandle,
     buffer_view::BufferViewHandle,
-    client::{ClientManager, ClientHandle},
+    client::{Client, ClientHandle, ClientManager},
     editor::{Editor, EditorOutput, EditorOutputKind},
 };
 
@@ -11,6 +12,7 @@ mod builtin;
 pub const HISTORY_CAPACITY: usize = 10;
 
 pub enum CommandParseError {
+    ReentrantParsing,
     InvalidCommandName(usize),
     CommandNotFound(usize),
     InvalidSwitchOrOption(usize),
@@ -41,8 +43,53 @@ struct CommandContext<'a> {
     args: &'a CommandArgs,
 }
 impl<'a> CommandContext<'a> {
-    pub fn current_buffer_view_handle(&self) -> Option<BufferViewHandle> {
-        self.clients.get(self.client_handle?)?.buffer_view_handle()
+    pub fn current_buffer_view_handle_or_error(&mut self) -> Option<BufferViewHandle> {
+        match self
+            .client_handle
+            .and_then(|h| self.clients.get(h))
+            .and_then(Client::buffer_view_handle)
+        {
+            Some(handle) => Some(handle),
+            None => {
+                self.editor
+                    .output
+                    .write(EditorOutputKind::Error)
+                    .str("no buffer view opened");
+                None
+            }
+        }
+    }
+
+    pub fn current_buffer_handle_or_error(&mut self) -> Option<BufferHandle> {
+        let buffer_view_handle = self.current_buffer_view_handle_or_error()?;
+        match self
+            .editor
+            .buffer_views
+            .get(buffer_view_handle)
+            .map(|v| v.buffer_handle)
+        {
+            Some(handle) => Some(handle),
+            None => {
+                self.editor
+                    .output
+                    .write(EditorOutputKind::Error)
+                    .str("no buffer opened");
+                None
+            }
+        }
+    }
+
+    pub fn validate_buffer_handle(&mut self, handle: BufferHandle) -> Option<BufferHandle> {
+        match self.editor.buffers.get(handle) {
+            Some(_) => Some(handle),
+            None => {
+                self.editor
+                    .output
+                    .write(EditorOutputKind::Error)
+                    .str("invalid buffer handle");
+                None
+            }
+        }
     }
 }
 
@@ -111,7 +158,7 @@ pub struct BuiltinCommand {
 
 pub struct CommandManager {
     builtin_commands: &'static [BuiltinCommand],
-    parsed_args: CommandArgs,
+    parsed_args: Option<CommandArgs>,
     history: VecDeque<String>,
 }
 
@@ -119,7 +166,7 @@ impl CommandManager {
     pub fn new() -> Self {
         Self {
             builtin_commands: builtin::COMMANDS,
-            parsed_args: CommandArgs::default(),
+            parsed_args: Some(CommandArgs::default()),
             history: VecDeque::with_capacity(HISTORY_CAPACITY),
         }
     }
@@ -187,6 +234,7 @@ impl CommandManager {
         write.str("\n");
 
         match error {
+            CommandParseError::ReentrantParsing => write.str("reentrant command parsing"),
             CommandParseError::InvalidCommandName(i) => write.fmt(format_args!(
                 "{:>index$} invalid command name",
                 '^',
@@ -222,9 +270,7 @@ impl CommandManager {
         command: CommandFn,
         bang: bool,
     ) -> Option<CommandOperation> {
-        let mut args = CommandArgs::default();
-        std::mem::swap(&mut args, &mut editor.commands.parsed_args);
-
+        let args = editor.commands.parsed_args.take()?;
         let ctx = CommandContext {
             editor,
             clients,
@@ -233,8 +279,7 @@ impl CommandManager {
             args: &args,
         };
         let result = command(ctx);
-
-        std::mem::swap(&mut args, &mut editor.commands.parsed_args);
+        editor.commands.parsed_args = Some(args);
         result
     }
 
@@ -325,7 +370,12 @@ impl CommandManager {
             token.as_ptr() as usize - text.as_ptr() as usize
         }
 
-        self.parsed_args.clear();
+        let args = match self.parsed_args {
+            Some(ref mut args) => args,
+            None => return Err(CommandParseError::ReentrantParsing),
+        };
+
+        args.clear();
 
         let mut tokens = TokenIterator { rest: text }.peekable();
 
@@ -360,20 +410,19 @@ impl CommandManager {
         loop {
             match tokens.next() {
                 Some((TokenKind::Text, s)) => {
-                    let range = push_str_and_get_range(&mut self.parsed_args.texts, s);
-                    self.parsed_args.values.push(range);
+                    let range = push_str_and_get_range(&mut args.texts, s);
+                    args.values.push(range);
                 }
                 Some((TokenKind::Flag, s)) => {
-                    let flag_range = push_str_and_get_range(&mut self.parsed_args.texts, s);
+                    let flag_range = push_str_and_get_range(&mut args.texts, s);
                     match tokens.peek() {
                         Some((TokenKind::Equals, equals_slice)) => {
                             let equals_index = error_index(text, equals_slice);
                             tokens.next();
                             match tokens.next() {
                                 Some((TokenKind::Text, s)) => {
-                                    let value_range =
-                                        push_str_and_get_range(&mut self.parsed_args.texts, s);
-                                    self.parsed_args.options.push((flag_range, value_range));
+                                    let value_range = push_str_and_get_range(&mut args.texts, s);
+                                    args.options.push((flag_range, value_range));
                                 }
                                 Some((TokenKind::Unterminated, s)) => {
                                     let error_index = error_index(text, s);
@@ -392,7 +441,7 @@ impl CommandManager {
                                 }
                             }
                         }
-                        _ => self.parsed_args.switches.push(flag_range),
+                        _ => args.switches.push(flag_range),
                     }
                 }
                 Some((TokenKind::Equals, s)) | Some((TokenKind::Bang, s)) => {
@@ -464,7 +513,7 @@ mod tests {
 
         CommandManager {
             builtin_commands,
-            parsed_args: CommandArgs::default(),
+            parsed_args: Some(CommandArgs::default()),
             history: VecDeque::default(),
         }
     }

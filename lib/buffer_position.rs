@@ -1,6 +1,7 @@
 use std::{
     cmp::{Ord, Ordering, PartialOrd},
     fmt,
+    str::FromStr,
 };
 
 #[derive(Default, Copy, Clone, PartialEq, Eq)]
@@ -90,6 +91,32 @@ impl Ord for BufferPosition {
 impl PartialOrd for BufferPosition {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
+    }
+}
+
+impl fmt::Display for BufferPosition {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.line_index.fmt(f)?;
+        f.write_str(",")?;
+        self.column_byte_index.fmt(f)?;
+        Ok(())
+    }
+}
+
+impl FromStr for BufferPosition {
+    type Err = ();
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut parts = s.split(',');
+        let line_index = parts.next().ok_or(())?.parse().map_err(|_| ())?;
+        let column_byte_index = parts.next().ok_or(())?.parse().map_err(|_| ())?;
+        if parts.next().is_some() {
+            Err(())
+        } else {
+            Ok(BufferPosition {
+                line_index,
+                column_byte_index,
+            })
+        }
     }
 }
 
