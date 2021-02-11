@@ -1,7 +1,7 @@
 use std::{fmt, path::Path, process::Command};
 
 use crate::{
-    buffer::{Buffer, BufferHandle},
+    buffer::{Buffer, BufferCapabilities, BufferHandle},
     buffer_position::BufferPosition,
     buffer_view::BufferViewError,
     command::{BuiltinCommand, CommandContext, CommandOperation, CompletionSource},
@@ -738,10 +738,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         flags: &[],
         func: |ctx| {
             expect_no_bang!(ctx);
-            parse_switches!(ctx);
+            parse_switches!(ctx, log);
             parse_options!(ctx, root);
 
-            let (command, args) = match ctx.args.values() {
+            let (command_name, args) = match ctx.args.values() {
                 [command, args @ ..] => (command.as_str(ctx.args), args),
                 _ => {
                     ctx.editor
@@ -752,7 +752,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 }
             };
 
-            let mut command = Command::new(command);
+            let mut command = Command::new(command_name);
             for arg in args {
                 let arg = arg.as_str(ctx.args);
                 command.arg(arg);
@@ -765,11 +765,28 @@ pub const COMMANDS: &[BuiltinCommand] = &[
 
             match ctx.editor.lsp.start(command, root) {
                 Ok(handle) => {
-                    let _ = handle;
+                    if let (true, Some(client_handle)) = (log, ctx.client_handle) {
+                        let clients = ctx.clients;
+                        LspClientCollection::access(ctx.editor, handle, |editor, client, _| {
+                            let buffer = editor.buffers.new(BufferCapabilities::log());
+                            let buffer_handle = buffer.handle();
+                            buffer.set_path(Some(Path::new(command_name)));
+                            client.set_log_buffer(Some(buffer_handle));
+                            let buffer_view_handle =
+                                editor.buffer_views.buffer_view_handle_from_buffer_handle(
+                                    client_handle,
+                                    buffer_handle,
+                                );
+                            if let Some(client) = clients.get_mut(client_handle) {
+                                client.set_buffer_view_handle(Some(buffer_view_handle));
+                            }
+                        });
+                    }
+
                     ctx.editor
                         .output
                         .write(EditorOutputKind::Info)
-                        .fmt(format_args!("{}", 87));
+                        .fmt(format_args!("{}", handle));
                 }
                 Err(error) => ctx
                     .editor
@@ -803,6 +820,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             None
         },
     },
+    // TODO: compress code
     BuiltinCommand {
         names: &["lsp-hover"],
         help: "perform a lsp hover action",
@@ -835,7 +853,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 }
             };
 
-            access_client(
+            access_lsp(
                 ctx.editor,
                 client_handle,
                 Some(buffer_handle),
@@ -845,9 +863,51 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             None
         },
     },
+    BuiltinCommand {
+        names: &["lsp-signature-help"],
+        help: "perform a lsp hover action",
+        completion_source: CompletionSource::None,
+        flags: &[],
+        func: |mut ctx| {
+            expect_no_bang!(ctx);
+            parse_values!(ctx);
+            parse_switches!(ctx);
+            parse_options!(ctx, client, buffer, position);
+
+            let client_handle = match client {
+                Some(client) => Some(parse_arg!(ctx, client: LspClientHandle)),
+                None => None,
+            };
+            let buffer_handle = match buffer {
+                Some(buffer) => parse_arg!(ctx, buffer: BufferHandle),
+                None => ctx.current_buffer_handle_or_error()?,
+            };
+            let position = match position {
+                Some(position) => parse_arg!(ctx, position: BufferPosition),
+                None => {
+                    let handle = ctx.current_buffer_view_handle_or_error()?;
+                    ctx.editor
+                        .buffer_views
+                        .get(handle)?
+                        .cursors
+                        .main_cursor()
+                        .position
+                }
+            };
+
+            access_lsp(
+                ctx.editor,
+                client_handle,
+                Some(buffer_handle),
+                |editor, client, json| client.signature_help(editor, json, buffer_handle, position),
+            );
+
+            None
+        },
+    },
 ];
 
-fn access_client<F, R, E>(
+fn access_lsp<F, R, E>(
     editor: &mut Editor,
     client_handle: Option<LspClientHandle>,
     buffer_handle: Option<BufferHandle>,
@@ -905,8 +965,3 @@ where
         }
     }
 }
-
-// lsp:
-// - lsp-hover
-// - lsp-signature-help
-// - lsp-open-log
