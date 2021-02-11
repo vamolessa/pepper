@@ -559,7 +559,7 @@ fn draw_statusbar(
             }
 
             let prefix = match message_target {
-                EditorOutputKind::StatusBar => &[],
+                EditorOutputKind::Info => &[],
                 EditorOutputKind::Error => &b"error:"[..],
             };
 

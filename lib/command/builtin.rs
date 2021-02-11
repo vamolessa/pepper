@@ -1,4 +1,4 @@
-use std::{fmt, path::Path};
+use std::{fmt, path::Path, process::Command};
 
 use crate::{
     buffer::{Buffer, BufferHandle},
@@ -189,7 +189,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             expect_no_bang!(ctx);
             parse_switches!(ctx);
             parse_options!(ctx);
-            let mut w = ctx.editor.output.write(EditorOutputKind::StatusBar);
+            let mut w = ctx.editor.output.write(EditorOutputKind::Info);
             for arg in ctx.args.values() {
                 w.str(arg.as_str(ctx.args));
                 w.str(" ");
@@ -322,7 +322,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             let path = buffer.path().unwrap_or(Path::new(""));
             ctx.editor
                 .output
-                .write(EditorOutputKind::StatusBar)
+                .write(EditorOutputKind::Info)
                 .fmt(format_args!("saved to '{:?}'", path));
 
             None
@@ -357,7 +357,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             } else {
                 ctx.editor
                     .output
-                    .write(EditorOutputKind::StatusBar)
+                    .write(EditorOutputKind::Info)
                     .fmt(format_args!("{} buffers saved", count));
                 None
             }
@@ -421,7 +421,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
 
             ctx.editor
                 .output
-                .write(EditorOutputKind::StatusBar)
+                .write(EditorOutputKind::Info)
                 .str("buffer reloaded");
             None
         },
@@ -466,7 +466,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             } else {
                 ctx.editor
                     .output
-                    .write(EditorOutputKind::StatusBar)
+                    .write(EditorOutputKind::Info)
                     .fmt(format_args!("{} buffers closed", count));
                 None
             }
@@ -538,7 +538,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
 
             editor
                 .output
-                .write(EditorOutputKind::StatusBar)
+                .write(EditorOutputKind::Info)
                 .str("buffer closed");
             None
         },
@@ -574,7 +574,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
 
             ctx.editor
                 .output
-                .write(EditorOutputKind::StatusBar)
+                .write(EditorOutputKind::Info)
                 .fmt(format_args!("{} buffers closed", count));
             None
         },
@@ -612,7 +612,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                     Some(display) => ctx
                         .editor
                         .output
-                        .write(EditorOutputKind::StatusBar)
+                        .write(EditorOutputKind::Info)
                         .fmt(format_args!("{}", display)),
                     None => ctx
                         .editor
@@ -662,7 +662,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 None => ctx
                     .editor
                     .output
-                    .write(EditorOutputKind::StatusBar)
+                    .write(EditorOutputKind::Info)
                     .fmt(format_args!("{:x}", color.into_u32())),
             }
 
@@ -780,8 +780,58 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 None => ctx
                     .editor
                     .output
-                    .write(EditorOutputKind::StatusBar)
+                    .write(EditorOutputKind::Info)
                     .str(ctx.editor.registers.get(key)),
+            }
+
+            None
+        },
+    },
+    BuiltinCommand {
+        names: &["lsp-start"],
+        help: "start a lsp server",
+        completion_source: CompletionSource::None,
+        flags: &[],
+        func: |ctx| {
+            expect_no_bang!(ctx);
+            parse_switches!(ctx);
+            parse_options!(ctx, root);
+
+            let (command, args) = match ctx.args.values() {
+                [command, args @ ..] => (command.as_str(ctx.args), args),
+                _ => {
+                    ctx.editor
+                        .output
+                        .write(EditorOutputKind::Error)
+                        .str("value 'command' is required");
+                    return None;
+                }
+            };
+
+            let mut command = Command::new(command);
+            for arg in args {
+                let arg = arg.as_str(ctx.args);
+                command.arg(arg);
+            }
+
+            let root = match root {
+                Some(root) => Path::new(root),
+                None => ctx.editor.current_directory.as_path(),
+            };
+
+            match ctx.editor.lsp.start(command, root) {
+                Ok(handle) => {
+                    let _ = handle;
+                    ctx.editor
+                        .output
+                        .write(EditorOutputKind::Info)
+                        .fmt(format_args!("{}", 87));
+                }
+                Err(error) => ctx
+                    .editor
+                    .output
+                    .write(EditorOutputKind::Error)
+                    .fmt(format_args!("{}", &error)),
             }
 
             None

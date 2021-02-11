@@ -663,13 +663,13 @@ impl Client {
                 match message_type {
                     1 => ctx.status_bar.write_str(EditorOutputKind::Error, message),
                     2 => ctx.status_bar.write_fmt(
-                        EditorOutputKind::StatusBar,
+                        EditorOutputKind::Info,
                         format_args!("warning: {}", message),
                     ),
                     3 => ctx
                         .status_bar
-                        .write_fmt(EditorOutputKind::StatusBar, format_args!("info: {}", message)),
-                    4 => ctx.status_bar.write_str(EditorOutputKind::StatusBar, message),
+                        .write_fmt(EditorOutputKind::Info, format_args!("info: {}", message)),
+                    4 => ctx.status_bar.write_str(EditorOutputKind::Info, message),
                     _ => (),
                 }
             }
@@ -799,7 +799,7 @@ impl Client {
             "textDocument/hover" => {
                 let contents = result.get("contents".into(), json);
                 let info = helper::extract_markup_content(contents, json);
-                ctx.status_bar.write_str(EditorOutputKind::StatusBar, info);
+                ctx.status_bar.write_str(EditorOutputKind::Info, info);
             }
             "textDocument/signatureHelp" => {
                 declare_json_object! {
@@ -825,10 +825,10 @@ impl Client {
                         helper::extract_markup_content(signature.documentation, json);
 
                     if documentation.is_empty() {
-                        ctx.status_bar.write_str(EditorOutputKind::StatusBar, label);
+                        ctx.status_bar.write_str(EditorOutputKind::Info, label);
                     } else {
                         ctx.status_bar.write_fmt(
-                            EditorOutputKind::StatusBar,
+                            EditorOutputKind::Info,
                             format_args!("{}\n{}", documentation, label),
                         );
                     }

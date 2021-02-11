@@ -152,7 +152,7 @@ impl ReadLine {
 
 #[derive(Debug, Clone, Copy)]
 pub enum EditorOutputKind {
-    StatusBar,
+    Info,
     Error,
 }
 
@@ -163,7 +163,7 @@ pub struct EditorOutput {
 impl EditorOutput {
     pub fn new() -> Self {
         Self {
-            kind: EditorOutputKind::StatusBar,
+            kind: EditorOutputKind::Info,
             message: String::new(),
         }
     }

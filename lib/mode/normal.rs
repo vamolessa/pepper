@@ -871,7 +871,7 @@ impl State {
                 }
                 Key::Char('r') => editor
                     .output
-                    .write_str(EditorOutputKind::StatusBar, "rename not yet implemented"),
+                    .write_str(EditorOutputKind::Info, "rename not yet implemented"),
                 _ => (),
             },
             Key::Char('s') => read_line::search::enter_mode(editor, clients, client_handle),
@@ -1027,7 +1027,7 @@ impl ModeState for State {
                 }) {
                     editor
                         .output
-                        .write_str(EditorOutputKind::StatusBar, &diagnostics[index].message);
+                        .write_str(EditorOutputKind::Info, &diagnostics[index].message);
                     break;
                 }
             }
