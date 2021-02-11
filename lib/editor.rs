@@ -11,7 +11,7 @@ use crate::{
     config::Config,
     editor_event::{EditorEvent, EditorEventQueue},
     keymap::{KeyMapCollection, MatchResult},
-    lsp::{LspClientCollection, LspClientContext, LspClientHandle, LspServerEvent},
+    lsp::{LspClientCollection, LspClientHandle, LspServerEvent},
     mode::{Mode, ModeKind, ModeOperation},
     picker::Picker,
     register::{RegisterCollection, RegisterKey, KEY_QUEUE_REGISTER},
@@ -519,14 +519,11 @@ impl Editor {
         }
 
         Mode::on_editor_events(self, clients, handle);
-
-        // TODO: transformar em função static e só passar o editor
-        /*
-        if let Err(error) = lsp.on_editor_events(&mut lsp_ctx) {
-            lsp_ctx.status_bar.write_error(&error);
+        if let Err(error) = LspClientCollection::on_editor_events(self) {
+            self.output
+                .write(EditorOutputKind::Error)
+                .fmt(format_args!("{}", error));
         }
-        */
-
         self.handle_editor_events(clients);
     }
 
@@ -555,20 +552,10 @@ impl Editor {
     }
 
     pub fn on_lsp_event(&mut self, client_handle: LspClientHandle, event: LspServerEvent) {
-        let mut ctx = LspClientContext {
-            current_directory: &self.current_directory,
-            config: &mut self.config,
-
-            buffers: &mut self.buffers,
-            buffer_views: &mut self.buffer_views,
-            word_database: &mut self.word_database,
-
-            status_bar: &mut self.output,
-            events: &mut self.events,
-        };
-
-        if let Err(error) = self.lsp.on_server_event(&mut ctx, client_handle, event) {
-            self.output.write_error(&error);
+        if let Err(error) = LspClientCollection::on_server_event(self, client_handle, event) {
+            self.output
+                .write(EditorOutputKind::Error)
+                .fmt(format_args!("{}", error));
         }
     }
 }

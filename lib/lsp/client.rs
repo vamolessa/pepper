@@ -7,12 +7,10 @@ use std::{
 };
 
 use crate::{
-    buffer::{BufferCollection, BufferHandle},
+    buffer::BufferHandle,
     buffer_position::{BufferPosition, BufferRange},
-    buffer_view::BufferViewCollection,
-    config::Config,
-    editor::{EditorOutput, EditorOutputKind},
-    editor_event::{EditorEvent, EditorEventQueue},
+    editor::{Editor, EditorOutput, EditorOutputKind},
+    editor_event::EditorEvent,
     glob::Glob,
     json::{
         FromJson, Json, JsonArray, JsonConvertError, JsonInteger, JsonObject, JsonString, JsonValue,
@@ -24,20 +22,7 @@ use crate::{
             ServerNotification, ServerRequest, ServerResponse, SharedJson, Uri,
         },
     },
-    word_database::WordDatabase,
 };
-
-pub struct ClientContext<'a> {
-    pub current_directory: &'a Path,
-    pub config: &'a mut Config,
-
-    pub buffers: &'a mut BufferCollection,
-    pub buffer_views: &'a mut BufferViewCollection,
-    pub word_database: &'a mut WordDatabase,
-
-    pub status_bar: &'a mut EditorOutput,
-    pub events: &'a mut EditorEventQueue,
-}
 
 #[derive(Default)]
 struct GenericCapability(bool);
@@ -325,7 +310,7 @@ impl DiagnosticCollection {
 
     fn path_diagnostics_mut(
         &mut self,
-        ctx: &ClientContext,
+        editor: &Editor,
         path: &Path,
     ) -> &mut BufferDiagnosticCollection {
         let buffer_diagnostics = &mut self.buffer_diagnostics;
@@ -338,9 +323,9 @@ impl DiagnosticCollection {
         }
 
         let mut buffer_handle = None;
-        for buffer in ctx.buffers.iter() {
+        for buffer in editor.buffers.iter() {
             if let Some(buffer_path) = buffer.path() {
-                if are_same_path_with_root(ctx.current_directory, buffer_path, path) {
+                if are_same_path_with_root(&editor.current_directory, buffer_path, path) {
                     buffer_handle = Some(buffer.handle());
                     break;
                 }
@@ -374,15 +359,19 @@ impl DiagnosticCollection {
             .map(|d| (d.path.as_path(), d.buffer_handle, &d.diagnostics[..d.len]))
     }
 
-    pub fn on_load_buffer(&mut self, ctx: &ClientContext, buffer_handle: BufferHandle) {
-        let buffer_path = match ctx.buffers.get(buffer_handle).and_then(|b| b.path()) {
+    pub fn on_load_buffer(&mut self, editor: &Editor, buffer_handle: BufferHandle) {
+        let buffer_path = match editor.buffers.get(buffer_handle).and_then(|b| b.path()) {
             Some(path) => path,
             None => return,
         };
 
         for diagnostics in &mut self.buffer_diagnostics {
             if let None = diagnostics.buffer_handle {
-                if are_same_path_with_root(ctx.current_directory, buffer_path, &diagnostics.path) {
+                if are_same_path_with_root(
+                    &editor.current_directory,
+                    buffer_path,
+                    &diagnostics.path,
+                ) {
                     diagnostics.buffer_handle = Some(buffer_handle);
                     return;
                 }
@@ -390,8 +379,8 @@ impl DiagnosticCollection {
         }
     }
 
-    pub fn on_save_buffer(&mut self, ctx: &ClientContext, buffer_handle: BufferHandle) {
-        let buffer_path = match ctx.buffers.get(buffer_handle).and_then(|b| b.path()) {
+    pub fn on_save_buffer(&mut self, editor: &Editor, buffer_handle: BufferHandle) {
+        let buffer_path = match editor.buffers.get(buffer_handle).and_then(|b| b.path()) {
             Some(path) => path,
             None => return,
         };
@@ -399,7 +388,11 @@ impl DiagnosticCollection {
         for diagnostics in &mut self.buffer_diagnostics {
             if diagnostics.buffer_handle == Some(buffer_handle) {
                 diagnostics.buffer_handle = None;
-                if are_same_path_with_root(ctx.current_directory, buffer_path, &diagnostics.path) {
+                if are_same_path_with_root(
+                    &editor.current_directory,
+                    buffer_path,
+                    &diagnostics.path,
+                ) {
                     diagnostics.buffer_handle = Some(buffer_handle);
                     return;
                 }
@@ -466,7 +459,7 @@ impl Client {
 
     pub fn hover(
         &mut self,
-        ctx: &ClientContext,
+        editor: &Editor,
         json: &mut Json,
         buffer_handle: BufferHandle,
         position: BufferPosition,
@@ -475,8 +468,9 @@ impl Client {
             return Ok(());
         }
 
-        if let Some(buffer_path) = ctx.buffers.get(buffer_handle).and_then(|b| b.path()) {
-            let text_document = helper::text_document_with_id(ctx, buffer_path, json);
+        if let Some(buffer_path) = editor.buffers.get(buffer_handle).and_then(|b| b.path()) {
+            let text_document =
+                helper::text_document_with_id(&editor.current_directory, buffer_path, json);
             let position = helper::position(position, json);
 
             let mut params = JsonObject::default();
@@ -490,7 +484,7 @@ impl Client {
 
     pub fn signature_help(
         &mut self,
-        ctx: &ClientContext,
+        editor: &Editor,
         json: &mut Json,
         buffer_handle: BufferHandle,
         position: BufferPosition,
@@ -499,8 +493,9 @@ impl Client {
             return Ok(());
         }
 
-        if let Some(buffer_path) = ctx.buffers.get(buffer_handle).and_then(|b| b.path()) {
-            let text_document = helper::text_document_with_id(ctx, buffer_path, json);
+        if let Some(buffer_path) = editor.buffers.get(buffer_handle).and_then(|b| b.path()) {
+            let text_document =
+                helper::text_document_with_id(&editor.current_directory, buffer_path, json);
             let position = helper::position(position, json);
 
             let mut params = JsonObject::default();
@@ -522,22 +517,27 @@ impl Client {
         }
     }
 
-    fn flush_log_buffer(&mut self, ctx: &mut ClientContext) {
-        let buffers = &mut *ctx.buffers;
+    fn flush_log_buffer(&mut self, editor: &mut Editor) {
+        let buffers = &mut editor.buffers;
         if let Some(buffer) = self.log_buffer_handle.and_then(|h| buffers.get_mut(h)) {
             let content = buffer.content();
             let line_index = content.line_count() - 1;
             let position =
                 BufferPosition::line_col(line_index, content.line_at(line_index).as_str().len());
             let text = String::from_utf8_lossy(&self.log_write_buf);
-            buffer.insert_text(ctx.word_database, position, &text, ctx.events);
+            buffer.insert_text(
+                &mut editor.word_database,
+                position,
+                &text,
+                &mut editor.events,
+            );
             self.log_write_buf.clear();
         }
     }
 
     fn on_request(
         &mut self,
-        ctx: &mut ClientContext,
+        editor: &mut Editor,
         json: &mut Json,
         request: ServerRequest,
     ) -> io::Result<()> {
@@ -620,7 +620,7 @@ impl Client {
 
     fn on_notification(
         &mut self,
-        ctx: &mut ClientContext,
+        editor: &mut Editor,
         json: &mut Json,
         notification: ServerNotification,
     ) -> io::Result<()> {
@@ -662,14 +662,16 @@ impl Client {
                 }
                 let message = message.as_str(json);
                 match message_type {
-                    1 => ctx.status_bar.write_str(EditorOutputKind::Error, message),
-                    2 => ctx
-                        .status_bar
-                        .write_fmt(EditorOutputKind::Info, format_args!("warning: {}", message)),
-                    3 => ctx
-                        .status_bar
-                        .write_fmt(EditorOutputKind::Info, format_args!("info: {}", message)),
-                    4 => ctx.status_bar.write_str(EditorOutputKind::Info, message),
+                    1 => editor.output.write(EditorOutputKind::Error).str(message),
+                    2 => editor
+                        .output
+                        .write(EditorOutputKind::Info)
+                        .fmt(format_args!("warning: {}", message)),
+                    3 => editor
+                        .output
+                        .write(EditorOutputKind::Info)
+                        .fmt(format_args!("info: {}", message)),
+                    4 => editor.output.write(EditorOutputKind::Info).str(message),
                     _ => (),
                 }
             }
@@ -688,7 +690,7 @@ impl Client {
                     _ => return Ok(()),
                 };
 
-                let diagnostics = self.diagnostics.path_diagnostics_mut(ctx, path);
+                let diagnostics = self.diagnostics.path_diagnostics_mut(editor, path);
                 for diagnostic in params.diagnostics.elements(json) {
                     declare_json_object! {
                         #[derive(Default)]
@@ -730,7 +732,7 @@ impl Client {
 
     fn on_response(
         &mut self,
-        ctx: &mut ClientContext,
+        editor: &mut Editor,
         json: &mut Json,
         response: ServerResponse,
     ) -> io::Result<()> {
@@ -781,7 +783,7 @@ impl Client {
         let result = match response.result {
             Ok(result) => result,
             Err(error) => {
-                helper::write_response_error(ctx, method, error, json);
+                helper::write_response_error(&mut editor.output, method, error, json);
                 return Ok(());
             }
         };
@@ -792,14 +794,14 @@ impl Client {
                 self.initialized = true;
                 self.notify(json, "initialized", JsonObject::default())?;
 
-                for buffer in ctx.buffers.iter() {
-                    helper::send_did_open(self, ctx, json, buffer.handle())?;
+                for buffer in editor.buffers.iter() {
+                    helper::send_did_open(self, editor, json, buffer.handle())?;
                 }
             }
             "textDocument/hover" => {
                 let contents = result.get("contents".into(), json);
                 let info = helper::extract_markup_content(contents, json);
-                ctx.status_bar.write_str(EditorOutputKind::Info, info);
+                editor.output.write(EditorOutputKind::Info).str(info);
             }
             "textDocument/signatureHelp" => {
                 declare_json_object! {
@@ -825,12 +827,12 @@ impl Client {
                         helper::extract_markup_content(signature.documentation, json);
 
                     if documentation.is_empty() {
-                        ctx.status_bar.write_str(EditorOutputKind::Info, label);
+                        editor.output.write(EditorOutputKind::Info).str(label);
                     } else {
-                        ctx.status_bar.write_fmt(
-                            EditorOutputKind::Info,
-                            format_args!("{}\n{}", documentation, label),
-                        );
+                        editor
+                            .output
+                            .write(EditorOutputKind::Info)
+                            .fmt(format_args!("{}\n{}", documentation, label));
                     }
                 }
             }
@@ -849,28 +851,28 @@ impl Client {
         self.respond(json, request_id, Err(ResponseError::parse_error()))
     }
 
-    fn on_editor_events(&mut self, ctx: &mut ClientContext, json: &mut Json) -> io::Result<()> {
+    fn on_editor_events(&mut self, editor: &Editor, json: &mut Json) -> io::Result<()> {
         if !self.initialized {
             return Ok(());
         }
 
-        for event in ctx.events.iter() {
+        for event in editor.events.iter() {
             match event {
                 EditorEvent::Idle => {
-                    helper::send_pending_did_change(self, ctx, json)?;
+                    helper::send_pending_did_change(self, editor, json)?;
                 }
                 EditorEvent::BufferOpen { handle } => {
                     let handle = *handle;
                     self.versioned_buffers.dispose(handle);
-                    self.diagnostics.on_load_buffer(ctx, handle);
-                    helper::send_did_open(self, ctx, json, handle)?;
+                    self.diagnostics.on_load_buffer(editor, handle);
+                    helper::send_did_open(self, editor, json, handle)?;
                 }
                 EditorEvent::BufferInsertText {
                     handle,
                     range,
                     text,
                 } => {
-                    let text = text.as_str(ctx.events);
+                    let text = text.as_str(&editor.events);
                     let range = BufferRange::between(range.from, range.from);
                     self.versioned_buffers.add_edit(*handle, range, text);
                 }
@@ -879,9 +881,9 @@ impl Client {
                 }
                 EditorEvent::BufferSave { handle, .. } => {
                     let handle = *handle;
-                    self.diagnostics.on_save_buffer(ctx, handle);
-                    helper::send_pending_did_change(self, ctx, json)?;
-                    helper::send_did_save(self, ctx, json, handle)?;
+                    self.diagnostics.on_save_buffer(editor, handle);
+                    helper::send_pending_did_change(self, editor, json)?;
+                    helper::send_did_save(self, editor, json, handle)?;
                 }
                 EditorEvent::BufferClose { handle } => {
                     let handle = *handle;
@@ -890,7 +892,7 @@ impl Client {
                     }
                     self.versioned_buffers.dispose(handle);
                     self.diagnostics.on_close_buffer(handle);
-                    helper::send_did_close(self, ctx, json, handle)?;
+                    helper::send_did_close(self, editor, json, handle)?;
                 }
             }
         }
@@ -988,32 +990,33 @@ mod helper {
     use super::*;
 
     pub fn write_response_error(
-        ctx: &mut ClientContext,
+        output: &mut EditorOutput,
         method: &str,
         error: ResponseError,
         json: &Json,
     ) {
         let error_message = error.message.as_str(json);
-        ctx.status_bar.write_fmt(
-            EditorOutputKind::Error,
-            format_args!(
-                "[lsp error code {}] {}: '{}'",
-                error.code, method, error_message
-            ),
-        );
+        output.write(EditorOutputKind::Error).fmt(format_args!(
+            "[lsp error code {}] {}: '{}'",
+            error.code, method, error_message
+        ));
     }
 
-    pub fn get_path_uri<'a>(ctx: &'a ClientContext, path: &'a Path) -> Uri<'a> {
+    pub fn get_path_uri<'a>(current_directory: &'a Path, path: &'a Path) -> Uri<'a> {
         if path.is_absolute() {
             Uri::AbsolutePath(path)
         } else {
-            Uri::RelativePath(ctx.current_directory, path)
+            Uri::RelativePath(current_directory, path)
         }
     }
 
-    pub fn text_document_with_id(ctx: &ClientContext, path: &Path, json: &mut Json) -> JsonObject {
+    pub fn text_document_with_id(
+        current_directory: &Path,
+        path: &Path,
+        json: &mut Json,
+    ) -> JsonObject {
         let mut id = JsonObject::default();
-        let uri = json.fmt_string(format_args!("{}", get_path_uri(ctx, path)));
+        let uri = json.fmt_string(format_args!("{}", get_path_uri(current_directory, path)));
         id.set("uri".into(), uri.into(), json);
         id
     }
@@ -1049,7 +1052,7 @@ mod helper {
 
     pub fn send_did_open(
         client: &mut Client,
-        ctx: &ClientContext,
+        editor: &Editor,
         json: &mut Json,
         buffer_handle: BufferHandle,
     ) -> io::Result<()> {
@@ -1057,7 +1060,7 @@ mod helper {
             return Ok(());
         }
 
-        let buffer = match ctx.buffers.get(buffer_handle) {
+        let buffer = match editor.buffers.get(buffer_handle) {
             Some(buffer) => buffer,
             None => return Ok(()),
         };
@@ -1069,7 +1072,7 @@ mod helper {
             None => return Ok(()),
         };
 
-        let mut text_document = text_document_with_id(ctx, buffer_path, json);
+        let mut text_document = text_document_with_id(&editor.current_directory, buffer_path, json);
         let language_id = json.create_string(protocol::path_to_language_id(buffer_path));
         text_document.set("languageId".into(), language_id.into(), json);
         text_document.set("version".into(), JsonValue::Integer(0), json);
@@ -1084,7 +1087,7 @@ mod helper {
 
     pub fn send_pending_did_change(
         client: &mut Client,
-        ctx: &ClientContext,
+        editor: &Editor,
         json: &mut Json,
     ) -> io::Result<()> {
         if let TextDocumentSyncKind::None = client.server_capabilities.textDocumentSync.change {
@@ -1093,7 +1096,7 @@ mod helper {
 
         let mut versioned_buffers = std::mem::take(&mut client.versioned_buffers);
         for (buffer_handle, versioned_buffer) in versioned_buffers.iter_pending_mut() {
-            let buffer = match ctx.buffers.get(buffer_handle) {
+            let buffer = match editor.buffers.get(buffer_handle) {
                 Some(buffer) => buffer,
                 None => continue,
             };
@@ -1105,7 +1108,8 @@ mod helper {
                 None => continue,
             };
 
-            let mut text_document = text_document_with_id(ctx, buffer_path, json);
+            let mut text_document =
+                text_document_with_id(&editor.current_directory, buffer_path, json);
             text_document.set(
                 "version".into(),
                 JsonValue::Integer(versioned_buffer.version as _),
@@ -1152,7 +1156,7 @@ mod helper {
 
     pub fn send_did_save(
         client: &mut Client,
-        ctx: &ClientContext,
+        editor: &Editor,
         json: &mut Json,
         buffer_handle: BufferHandle,
     ) -> io::Result<()> {
@@ -1160,7 +1164,7 @@ mod helper {
             return Ok(());
         }
 
-        let buffer = match ctx.buffers.get(buffer_handle) {
+        let buffer = match editor.buffers.get(buffer_handle) {
             Some(buffer) => buffer,
             None => return Ok(()),
         };
@@ -1172,7 +1176,7 @@ mod helper {
             None => return Ok(()),
         };
 
-        let text_document = text_document_with_id(ctx, buffer_path, json);
+        let text_document = text_document_with_id(&editor.current_directory, buffer_path, json);
         let mut params = JsonObject::default();
         params.set("textDocument".into(), text_document.into(), json);
 
@@ -1186,7 +1190,7 @@ mod helper {
 
     pub fn send_did_close(
         client: &mut Client,
-        ctx: &ClientContext,
+        editor: &Editor,
         json: &mut Json,
         buffer_handle: BufferHandle,
     ) -> io::Result<()> {
@@ -1194,7 +1198,7 @@ mod helper {
             return Ok(());
         }
 
-        let buffer = match ctx.buffers.get(buffer_handle) {
+        let buffer = match editor.buffers.get(buffer_handle) {
             Some(buffer) => buffer,
             None => return Ok(()),
         };
@@ -1206,7 +1210,7 @@ mod helper {
             None => return Ok(()),
         };
 
-        let text_document = text_document_with_id(ctx, buffer_path, json);
+        let text_document = text_document_with_id(&editor.current_directory, buffer_path, json);
         let mut params = JsonObject::default();
         params.set("textDocument".into(), text_document.into(), json);
 
@@ -1307,53 +1311,47 @@ impl ClientCollection {
     }
 
     pub fn on_server_event(
-        &mut self,
-        ctx: &mut ClientContext,
+        editor: &mut Editor,
         handle: ClientHandle,
         event: ServerEvent,
     ) -> io::Result<()> {
-        match event {
-            ServerEvent::Closed => {
-                self.stop(handle);
-            }
-            ServerEvent::ParseError => {
-                if let Some(entry) = self.entries[handle.0].as_mut() {
-                    let mut json = entry.json.read_lock();
-                    entry.client.on_parse_error(json.get(), JsonValue::Null)?;
-                    entry.client.flush_log_buffer(ctx);
+        if let Some(mut entry) = editor.lsp.entries[handle.0].take() {
+            let mut json = entry.json.read_lock();
+            let result = match event {
+                ServerEvent::Closed => {
+                    editor.lsp.stop(handle);
+                    Ok(())
                 }
-            }
-            ServerEvent::Request(request) => {
-                if let Some(entry) = self.entries[handle.0].as_mut() {
-                    let mut json = entry.json.read_lock();
-                    entry.client.on_request(ctx, json.get(), request)?;
-                    entry.client.flush_log_buffer(ctx);
+                ServerEvent::ParseError => entry.client.on_parse_error(json.get(), JsonValue::Null),
+                ServerEvent::Request(request) => {
+                    entry.client.on_request(editor, json.get(), request)
                 }
-            }
-            ServerEvent::Notification(notification) => {
-                if let Some(entry) = self.entries[handle.0].as_mut() {
-                    let mut json = entry.json.read_lock();
+                ServerEvent::Notification(notification) => {
                     entry
                         .client
-                        .on_notification(ctx, json.get(), notification)?;
-                    entry.client.flush_log_buffer(ctx);
+                        .on_notification(editor, json.get(), notification)
                 }
-            }
-            ServerEvent::Response(response) => {
-                if let Some(entry) = self.entries[handle.0].as_mut() {
-                    let mut json = entry.json.read_lock();
-                    entry.client.on_response(ctx, json.get(), response)?;
-                    entry.client.flush_log_buffer(ctx);
+                ServerEvent::Response(response) => {
+                    entry.client.on_response(editor, json.get(), response)
                 }
-            }
+            };
+            entry.client.flush_log_buffer(editor);
+            drop(json);
+            editor.lsp.entries[handle.0] = Some(entry);
+            result?;
         }
         Ok(())
     }
 
-    pub fn on_editor_events(&mut self, ctx: &mut ClientContext) -> io::Result<()> {
-        for entry in self.entries.iter_mut().flatten() {
-            let mut json = entry.json.write_lock();
-            entry.client.on_editor_events(ctx, json.get())?;
+    pub fn on_editor_events(editor: &mut Editor) -> io::Result<()> {
+        for i in 0..editor.lsp.entries.len() {
+            if let Some(mut entry) = editor.lsp.entries[i].take() {
+                let mut json = entry.json.write_lock();
+                let result = entry.client.on_editor_events(editor, json.get());
+                drop(json);
+                editor.lsp.entries[i] = Some(entry);
+                result?;
+            }
         }
         Ok(())
     }
