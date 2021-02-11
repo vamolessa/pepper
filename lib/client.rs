@@ -107,21 +107,10 @@ impl Client {
         self.previous_buffer_view_handle
     }
 
-    pub fn set_buffer_view_handle(
-        &mut self,
-        editor: &mut Editor,
-        handle: Option<BufferViewHandle>,
-    ) {
+    pub fn set_buffer_view_handle(&mut self, handle: Option<BufferViewHandle>) {
         if self.current_buffer_view_handle != handle {
             self.previous_buffer_view_handle = self.current_buffer_view_handle;
             self.current_buffer_view_handle = handle;
-        }
-
-        if let Some(handle) = handle
-            .and_then(|h| editor.buffer_views.get(h))
-            .map(|v| v.buffer_handle)
-        {
-            editor.events.enqueue(EditorEvent::BufferOpen { handle });
         }
     }
 

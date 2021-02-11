@@ -2,7 +2,7 @@
 
 use std::ops::Range;
 
-use crate::{buffer::BufferHandle, buffer_position::BufferRange};
+use crate::{buffer::BufferHandle, buffer_position::BufferRange, buffer_view::BufferViewHandle};
 
 pub struct EditorEventText {
     texts_range: Range<usize>,
@@ -15,9 +15,6 @@ impl EditorEventText {
 
 pub enum EditorEvent {
     Idle,
-    BufferLoad {
-        handle: BufferHandle,
-    },
     BufferOpen {
         handle: BufferHandle,
     },

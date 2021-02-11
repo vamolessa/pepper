@@ -234,7 +234,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 &ctx.editor.buffer_views,
             );
 
-            let mut last_buffer_view_handle = None;
+            let mut had_error = false;
+            let mut w = ctx.editor.output.write(EditorOutputKind::Info);
+
             for path in ctx.args.values() {
                 let mut path = path.as_str(ctx.args);
 
@@ -247,7 +249,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                     }
                 }
 
-                let handle = match ctx.editor.buffer_views.buffer_view_handle_from_path(
+                match ctx.editor.buffer_views.buffer_view_handle_from_path(
                     client_handle,
                     &mut ctx.editor.buffers,
                     &mut ctx.editor.word_database,
@@ -256,21 +258,25 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                     line_index,
                     &mut ctx.editor.events,
                 ) {
-                    Ok(handle) => handle,
-                    Err(BufferViewError::InvalidPath) => {
-                        ctx.editor
-                            .output
-                            .write(EditorOutputKind::Error)
-                            .fmt(format_args!("invalid path '{}'", path));
-                        return None;
+                    Ok(handle) => {
+                        ctx.clients
+                            .get_mut(client_handle)?
+                            .set_buffer_view_handle(Some(handle));
+                        if !had_error {
+                            w.fmt(format_args!("{}\n", handle));
+                        }
                     }
-                };
-                last_buffer_view_handle = Some(handle);
+                    Err(BufferViewError::InvalidPath) => {
+                        if !had_error {
+                            had_error = true;
+                            w = ctx.editor.output.write(EditorOutputKind::Error);
+                            w.fmt(format_args!("invalid path '{}'", path));
+                        } else {
+                            w.fmt(format_args!("\ninvalid path '{}'", path));
+                        }
+                    }
+                }
             }
-
-            ctx.clients
-                .get_mut(client_handle)?
-                .set_buffer_view_handle(ctx.editor, Some(last_buffer_view_handle?));
 
             None
         },
@@ -532,7 +538,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                     .and_then(|h| editor.buffer_views.get(h))
                     .map(|v| v.buffer_handle);
                 if maybe_buffer_handle == Some(handle) {
-                    client.set_buffer_view_handle(editor, None);
+                    client.set_buffer_view_handle(None);
                 }
             }
 
@@ -569,7 +575,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             );
 
             for client in ctx.clients.iter_mut() {
-                client.set_buffer_view_handle(ctx.editor, None);
+                client.set_buffer_view_handle(None);
             }
 
             ctx.editor

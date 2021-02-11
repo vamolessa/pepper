@@ -117,7 +117,7 @@ impl State {
                 Key::Char('a') => {
                     let client = clients.get_mut(client_handle)?;
                     let previous_buffer_view_handle = client.previous_buffer_view_handle();
-                    client.set_buffer_view_handle(editor, previous_buffer_view_handle);
+                    client.set_buffer_view_handle(previous_buffer_view_handle);
                 }
                 _ => (),
             },
@@ -1362,7 +1362,7 @@ fn move_to_diagnostic(
     editor.mode.normal_state.movement_kind = CursorMovementKind::PositionAndAnchor;
     clients
         .get_mut(client_handle)?
-        .set_buffer_view_handle(editor, Some(buffer_view_handle));
+        .set_buffer_view_handle(Some(buffer_view_handle));
 
     None
 }

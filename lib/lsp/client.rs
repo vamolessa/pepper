@@ -1,8 +1,9 @@
 use std::{
-    io,
+    fmt, io,
     ops::Range,
     path::{Path, PathBuf},
     process::{self, Command},
+    str::FromStr,
 };
 
 use crate::{
@@ -662,10 +663,9 @@ impl Client {
                 let message = message.as_str(json);
                 match message_type {
                     1 => ctx.status_bar.write_str(EditorOutputKind::Error, message),
-                    2 => ctx.status_bar.write_fmt(
-                        EditorOutputKind::Info,
-                        format_args!("warning: {}", message),
-                    ),
+                    2 => ctx
+                        .status_bar
+                        .write_fmt(EditorOutputKind::Info, format_args!("warning: {}", message)),
                     3 => ctx
                         .status_bar
                         .write_fmt(EditorOutputKind::Info, format_args!("info: {}", message)),
@@ -859,13 +859,12 @@ impl Client {
                 EditorEvent::Idle => {
                     helper::send_pending_did_change(self, ctx, json)?;
                 }
-                EditorEvent::BufferLoad { handle } => {
+                EditorEvent::BufferOpen { handle } => {
                     let handle = *handle;
                     self.versioned_buffers.dispose(handle);
                     self.diagnostics.on_load_buffer(ctx, handle);
                     helper::send_did_open(self, ctx, json, handle)?;
                 }
-                EditorEvent::BufferOpen { .. } => (),
                 EditorEvent::BufferInsertText {
                     handle,
                     range,
@@ -1217,6 +1216,20 @@ mod helper {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct ClientHandle(usize);
+impl fmt::Display for ClientHandle {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+impl FromStr for ClientHandle {
+    type Err = ();
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.parse() {
+            Ok(i) => Ok(Self(i)),
+            Err(_) => Err(()),
+        }
+    }
+}
 
 struct ClientCollectionEntry {
     client: Client,
@@ -1237,8 +1250,7 @@ impl ClientCollection {
     pub fn start(&mut self, command: Command, root: &Path) -> io::Result<ClientHandle> {
         let handle = self.find_free_slot();
         let json = SharedJson::new();
-        let connection =
-            ServerConnection::spawn(command, handle, json.clone())?;
+        let connection = ServerConnection::spawn(command, handle, json.clone())?;
         let mut entry = ClientCollectionEntry {
             client: Client::new(connection),
             json,

@@ -128,7 +128,7 @@ pub mod buffer {
             ) {
                 Ok(handle) => {
                     if let Some(client) = clients.get_mut(client_handle) {
-                        client.set_buffer_view_handle(editor, Some(handle));
+                        client.set_buffer_view_handle(Some(handle));
                     }
                 }
                 Err(BufferViewError::InvalidPath) => editor

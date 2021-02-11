@@ -358,7 +358,7 @@ impl Editor {
             .map(|b| self.buffer_views.add(b));
 
         if let Some(client) = clients.get_mut(handle) {
-            client.set_buffer_view_handle(self, buffer_view_handle);
+            client.set_buffer_view_handle(buffer_view_handle);
         }
     }
 
@@ -533,7 +533,7 @@ impl Editor {
     fn handle_editor_events(&mut self, clients: &mut ClientManager) {
         for event in self.events.iter() {
             match event {
-                EditorEvent::BufferLoad { handle } => {
+                EditorEvent::BufferOpen { handle } => {
                     if let Some(buffer) = self.buffers.get_mut(*handle) {
                         buffer.refresh_syntax(&self.syntaxes);
                     }

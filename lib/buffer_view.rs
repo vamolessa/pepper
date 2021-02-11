@@ -1,4 +1,4 @@
-use std::{path::Path, str::FromStr};
+use std::{fmt, path::Path, str::FromStr};
 
 use crate::{
     buffer::{BufferCapabilities, BufferCollection, BufferHandle},
@@ -342,6 +342,11 @@ pub enum BufferViewError {
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub struct BufferViewHandle(usize);
+impl fmt::Display for BufferViewHandle {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
 impl FromStr for BufferViewHandle {
     type Err = ();
     fn from_str(s: &str) -> Result<Self, Self::Err> {

@@ -1,7 +1,7 @@
 use crate::{
     buffer::BufferHandle,
     buffer_view::{BufferView, BufferViewCollection},
-    client::{ClientManager, ClientHandle},
+    client::{ClientHandle, ClientManager},
     cursor::Cursor,
     editor::Editor,
 };
@@ -151,7 +151,7 @@ impl NavigationHistory {
         drop(cursors);
 
         if let Some(client) = clients.get_mut(handle) {
-            client.set_buffer_view_handle(editor, Some(view_handle));
+            client.set_buffer_view_handle(Some(view_handle));
         }
     }
 

@@ -1128,7 +1128,7 @@ impl Buffer {
             BufferPosition::line_col(self.content.line_count() - 1, 0),
         ));
 
-        events.enqueue(EditorEvent::BufferLoad {
+        events.enqueue(EditorEvent::BufferOpen {
             handle: self.handle,
         });
 
@@ -1150,6 +1150,11 @@ impl Buffer {
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct BufferHandle(pub usize);
+impl fmt::Display for BufferHandle {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
 impl FromStr for BufferHandle {
     type Err = ();
     fn from_str(s: &str) -> Result<Self, Self::Err> {
