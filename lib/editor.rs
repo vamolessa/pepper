@@ -1,7 +1,5 @@
 use std::{error::Error, fmt, fs::File, path::PathBuf};
 
-use crate::platform::Key;
-
 use crate::{
     buffer::BufferCollection,
     buffer_view::BufferViewCollection,
@@ -14,6 +12,7 @@ use crate::{
     lsp::{LspClientCollection, LspClientHandle, LspServerEvent},
     mode::{Mode, ModeKind, ModeOperation},
     picker::Picker,
+    platform::{Key, ServerPlatform},
     register::{RegisterCollection, RegisterKey, KEY_QUEUE_REGISTER},
     syntax::{HighlightResult, SyntaxCollection},
     theme::Theme,
@@ -100,6 +99,7 @@ impl ReadLine {
 
     pub fn poll(
         &mut self,
+        platform: &mut dyn ServerPlatform,
         buffered_keys: &BufferedKeys,
         keys_iter: &mut KeysIterator,
     ) -> ReadLinePoll {
@@ -134,11 +134,10 @@ impl ReadLine {
                 ReadLinePoll::Pending
             }
             Key::Ctrl('y') => {
-                // TODO: implement clipboard
                 let mut text = String::new();
-                //if platform.read_from_clipboard(&mut text) {
-                self.input.push_str(&text);
-                //}
+                if platform.read_from_clipboard(&mut text) {
+                    self.input.push_str(&text);
+                }
                 ReadLinePoll::Pending
             }
             Key::Char(c) => {

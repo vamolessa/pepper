@@ -3,9 +3,8 @@ use crate::platform::Key;
 use crate::{
     buffer_position::BufferPosition,
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
-    client::{ClientManager, ClientHandle},
     editor::{Editor, KeysIterator},
-    mode::{Mode, ModeKind, ModeOperation, ModeState},
+    mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     register::AUTO_MACRO_REGISTER,
     word_database::WordKind,
 };
@@ -14,74 +13,73 @@ use crate::{
 pub struct State;
 
 impl ModeState for State {
-    fn on_enter(editor: &mut Editor, _: &mut ClientManager, _: ClientHandle) {
-        editor.picker.reset();
+    fn on_enter(ctx: &mut ModeContext) {
+        ctx.editor.picker.reset();
     }
 
-    fn on_exit(editor: &mut Editor, _: &mut ClientManager, _: ClientHandle) {
-        editor.picker.reset();
+    fn on_exit(ctx: &mut ModeContext) {
+        ctx.editor.picker.reset();
     }
 
-    fn on_client_keys(
-        editor: &mut Editor,
-        clients: &mut ClientManager,
-        target: ClientHandle,
-        keys: &mut KeysIterator,
-    ) -> Option<ModeOperation> {
-        let handle = match clients.get(target).and_then(|c| c.buffer_view_handle()) {
+    fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> Option<ModeOperation> {
+        let handle = match ctx
+            .clients
+            .get(ctx.client_handle)
+            .and_then(|c| c.buffer_view_handle())
+        {
             Some(handle) => handle,
             None => {
-                Mode::change_to(editor, clients, target, ModeKind::default());
+                Mode::change_to(ctx, ModeKind::default());
                 return None;
             }
         };
 
-        let key = keys.next(&editor.buffered_keys);
+        let key = keys.next(&ctx.editor.buffered_keys);
         drop(keys);
 
-        editor
+        ctx.editor
             .registers
             .append_fmt(AUTO_MACRO_REGISTER, format_args!("{}", key));
 
         match key {
             Key::Esc => {
-                let buffer_view = editor.buffer_views.get(handle)?;
-                editor
+                let buffer_view = ctx.editor.buffer_views.get(handle)?;
+                ctx.editor
                     .buffers
                     .get_mut(buffer_view.buffer_handle)?
                     .commit_edits();
-                Mode::change_to(editor, clients, target, ModeKind::default());
+                Mode::change_to(ctx, ModeKind::default());
                 return None;
             }
-            Key::Left => editor.buffer_views.get_mut(handle)?.move_cursors(
-                &editor.buffers,
+            Key::Left => ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
+                &ctx.editor.buffers,
                 CursorMovement::ColumnsBackward(1),
                 CursorMovementKind::PositionAndAnchor,
             ),
-            Key::Down => editor.buffer_views.get_mut(handle)?.move_cursors(
-                &editor.buffers,
+            Key::Down => ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
+                &ctx.editor.buffers,
                 CursorMovement::LinesForward(1),
                 CursorMovementKind::PositionAndAnchor,
             ),
-            Key::Up => editor.buffer_views.get_mut(handle)?.move_cursors(
-                &editor.buffers,
+            Key::Up => ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
+                &ctx.editor.buffers,
                 CursorMovement::LinesBackward(1),
                 CursorMovementKind::PositionAndAnchor,
             ),
-            Key::Right => editor.buffer_views.get_mut(handle)?.move_cursors(
-                &editor.buffers,
+            Key::Right => ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
+                &ctx.editor.buffers,
                 CursorMovement::ColumnsForward(1),
                 CursorMovementKind::PositionAndAnchor,
             ),
-            Key::Tab => editor.buffer_views.insert_text_at_cursor_positions(
-                &mut editor.buffers,
-                &mut editor.word_database,
+            Key::Tab => ctx.editor.buffer_views.insert_text_at_cursor_positions(
+                &mut ctx.editor.buffers,
+                &mut ctx.editor.word_database,
                 handle,
                 "\t",
-                &mut editor.events,
+                &mut ctx.editor.events,
             ),
             Key::Enter => {
-                let buffer_view = editor.buffer_views.get(handle)?;
+                let buffer_view = ctx.editor.buffer_views.get(handle)?;
                 let cursor_count = buffer_view.cursors[..].len();
                 let buffer_handle = buffer_view.buffer_handle;
 
@@ -89,8 +87,8 @@ impl ModeState for State {
                 buf[0] = b'\n';
 
                 for i in 0..cursor_count {
-                    let position = editor.buffer_views.get(handle)?.cursors[i].position;
-                    let buffer = editor.buffers.get(buffer_handle)?;
+                    let position = ctx.editor.buffer_views.get(handle)?.cursors[i].position;
+                    let buffer = ctx.editor.buffers.get(buffer_handle)?;
 
                     let mut len = 1;
                     let indentation_word = buffer
@@ -108,79 +106,79 @@ impl ModeState for State {
 
                     let text = std::str::from_utf8(&buf[..len]).unwrap_or("\n");
 
-                    editor.buffer_views.insert_text_at_position(
-                        &mut editor.buffers,
-                        &mut editor.word_database,
+                    ctx.editor.buffer_views.insert_text_at_position(
+                        &mut ctx.editor.buffers,
+                        &mut ctx.editor.word_database,
                         handle,
                         position,
                         text,
-                        &mut editor.events,
+                        &mut ctx.editor.events,
                     );
                 }
             }
             Key::Char(c) => {
                 let mut buf = [0; std::mem::size_of::<char>()];
                 let s = c.encode_utf8(&mut buf);
-                editor.buffer_views.insert_text_at_cursor_positions(
-                    &mut editor.buffers,
-                    &mut editor.word_database,
+                ctx.editor.buffer_views.insert_text_at_cursor_positions(
+                    &mut ctx.editor.buffers,
+                    &mut ctx.editor.word_database,
                     handle,
                     s,
-                    &mut editor.events,
+                    &mut ctx.editor.events,
                 );
             }
             Key::Backspace => {
-                editor.buffer_views.get_mut(handle)?.move_cursors(
-                    &editor.buffers,
+                ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
+                    &ctx.editor.buffers,
                     CursorMovement::ColumnsBackward(1),
                     CursorMovementKind::PositionOnly,
                 );
-                editor.buffer_views.delete_in_cursor_ranges(
-                    &mut editor.buffers,
-                    &mut editor.word_database,
+                ctx.editor.buffer_views.delete_in_cursor_ranges(
+                    &mut ctx.editor.buffers,
+                    &mut ctx.editor.word_database,
                     handle,
-                    &mut editor.events,
+                    &mut ctx.editor.events,
                 );
             }
             Key::Delete => {
-                editor.buffer_views.get_mut(handle)?.move_cursors(
-                    &editor.buffers,
+                ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
+                    &ctx.editor.buffers,
                     CursorMovement::ColumnsForward(1),
                     CursorMovementKind::PositionOnly,
                 );
-                editor.buffer_views.delete_in_cursor_ranges(
-                    &mut editor.buffers,
-                    &mut editor.word_database,
+                ctx.editor.buffer_views.delete_in_cursor_ranges(
+                    &mut ctx.editor.buffers,
+                    &mut ctx.editor.word_database,
                     handle,
-                    &mut editor.events,
+                    &mut ctx.editor.events,
                 );
             }
             Key::Ctrl('w') => {
-                editor.buffer_views.get_mut(handle)?.move_cursors(
-                    &editor.buffers,
+                ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
+                    &ctx.editor.buffers,
                     CursorMovement::WordsBackward(1),
                     CursorMovementKind::PositionOnly,
                 );
-                editor.buffer_views.delete_in_cursor_ranges(
-                    &mut editor.buffers,
-                    &mut editor.word_database,
+                ctx.editor.buffer_views.delete_in_cursor_ranges(
+                    &mut ctx.editor.buffers,
+                    &mut ctx.editor.word_database,
                     handle,
-                    &mut editor.events,
+                    &mut ctx.editor.events,
                 );
             }
             Key::Ctrl('n') => {
-                apply_completion(editor, handle, 1);
+                apply_completion(ctx.editor, handle, 1);
                 return None;
             }
             Key::Ctrl('p') => {
-                apply_completion(editor, handle, -1);
+                apply_completion(ctx.editor, handle, -1);
                 return None;
             }
             _ => (),
         }
 
-        let buffer_view = editor.buffer_views.get(handle)?;
-        let buffer = editor.buffers.get(buffer_view.buffer_handle)?;
+        let buffer_view = ctx.editor.buffer_views.get(handle)?;
+        let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle)?;
         let mut word_position = buffer_view.cursors.main_cursor().position;
         word_position.column_byte_index =
             buffer.content().line_at(word_position.line_index).as_str()
@@ -195,12 +193,14 @@ impl ModeState for State {
             && word_position.column_byte_index
                 >= word.end_position().column_byte_index.saturating_sub(1)
         {
-            editor.picker.filter(&mut editor.word_database, word.text);
-            if editor.picker.len() == 1 {
-                editor.picker.clear_filtered();
+            ctx.editor
+                .picker
+                .filter(&mut ctx.editor.word_database, word.text);
+            if ctx.editor.picker.len() == 1 {
+                ctx.editor.picker.clear_filtered();
             }
         } else {
-            editor.picker.clear_filtered();
+            ctx.editor.picker.clear_filtered();
         }
 
         None

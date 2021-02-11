@@ -91,10 +91,10 @@ impl NavigationHistory {
     pub fn move_in_history(
         editor: &mut Editor,
         clients: &mut ClientManager,
-        handle: ClientHandle,
+        client_handle: ClientHandle,
         direction: NavigationDirection,
     ) {
-        let client = match clients.get_mut(handle) {
+        let client = match clients.get_mut(client_handle) {
             Some(client) => client,
             None => return,
         };
@@ -139,7 +139,7 @@ impl NavigationHistory {
 
         let view_handle = editor
             .buffer_views
-            .buffer_view_handle_from_buffer_handle(handle, snapshot.buffer_handle);
+            .buffer_view_handle_from_buffer_handle(client_handle, snapshot.buffer_handle);
         let mut cursors = match editor.buffer_views.get_mut(view_handle) {
             Some(view) => view.cursors.mut_guard(),
             None => return,
@@ -150,7 +150,7 @@ impl NavigationHistory {
         }
         drop(cursors);
 
-        if let Some(client) = clients.get_mut(handle) {
+        if let Some(client) = clients.get_mut(client_handle) {
             client.set_buffer_view_handle(Some(view_handle));
         }
     }

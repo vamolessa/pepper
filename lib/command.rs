@@ -549,7 +549,7 @@ mod tests {
             if let Err(_) = commands.parse(&command) {
                 panic!("command parse error");
             }
-            &commands.parsed_args
+            commands.parsed_args.as_ref().unwrap()
         }
 
         let mut commands = create_commands();
