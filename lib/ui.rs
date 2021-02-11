@@ -185,7 +185,6 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
         Cursor,
     }
 
-    let theme = &editor.theme;
     let mut char_buf = [0; std::mem::size_of::<char>()];
 
     let cursor_color = if has_focus && editor.mode.kind() == ModeKind::Insert {

@@ -3,7 +3,6 @@ use argh::FromArgValue;
 use crate::{
     buffer_view::BufferViewHandle,
     editor::Editor,
-    editor_event::EditorEvent,
     navigation_history::NavigationHistory,
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
 };

@@ -835,6 +835,13 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 }
             };
 
+            access_client(
+                ctx.editor,
+                client_handle,
+                Some(buffer_handle),
+                |editor, client, json| client.hover(editor, json, buffer_handle, position),
+            );
+
             None
         },
     },

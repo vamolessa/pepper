@@ -2,7 +2,7 @@
 
 use std::ops::Range;
 
-use crate::{buffer::BufferHandle, buffer_position::BufferRange, buffer_view::BufferViewHandle};
+use crate::{buffer::BufferHandle, buffer_position::BufferRange};
 
 pub struct EditorEventText {
     texts_range: Range<usize>,

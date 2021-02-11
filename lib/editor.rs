@@ -453,7 +453,7 @@ impl Editor {
                 }
 
                 self.buffered_keys.0.clear();
-                self.trigger_event_handlers(clients, handle);
+                self.trigger_event_handlers(clients);
                 EditorLoop::Continue
             }
             ClientEvent::Resize(handle, width, height) => {
@@ -486,7 +486,7 @@ impl Editor {
 
     pub fn on_idle(&mut self, clients: &mut ClientManager) {
         self.events.enqueue(EditorEvent::Idle);
-        self.trigger_event_handlers(clients, ClientHandle::local());
+        self.trigger_event_handlers(clients);
     }
 
     fn parse_and_set_keys_from_register(&mut self, register_key: RegisterKey) {
@@ -512,13 +512,12 @@ impl Editor {
         }
     }
 
-    fn trigger_event_handlers(&mut self, clients: &mut ClientManager, handle: ClientHandle) {
+    fn trigger_event_handlers(&mut self, clients: &mut ClientManager) {
         self.events.flip();
         if let None = self.events.iter().next() {
             return;
         }
 
-        Mode::on_editor_events(self, clients, handle);
         if let Err(error) = LspClientCollection::on_editor_events(self) {
             self.output
                 .write(EditorOutputKind::Error)
