@@ -104,7 +104,7 @@ impl ServerApplication {
                 let editor_loop =
                     self.event_deserialization_bufs
                         .receive_events(index, bytes, |event| {
-                            editor.on_event(clients, handle, event)
+                            editor.on_event(platform, clients, handle, event)
                         });
                 match editor_loop {
                     EditorLoop::Continue => (),

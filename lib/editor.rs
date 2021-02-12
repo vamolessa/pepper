@@ -10,7 +10,7 @@ use crate::{
     editor_event::{EditorEvent, EditorEventQueue},
     keymap::{KeyMapCollection, MatchResult},
     lsp::{LspClientCollection, LspClientHandle, LspServerEvent},
-    mode::{Mode, ModeKind, ModeOperation},
+    mode::{Mode, ModeContext, ModeKind, ModeOperation},
     picker::Picker,
     platform::{Key, ServerPlatform},
     register::{RegisterCollection, RegisterKey, KEY_QUEUE_REGISTER},
@@ -367,6 +367,7 @@ impl Editor {
 
     pub fn on_event(
         &mut self,
+        platform: &mut dyn ServerPlatform,
         clients: &mut ClientManager,
         client_handle: ClientHandle,
         event: ClientEvent,
@@ -375,12 +376,12 @@ impl Editor {
             ClientEvent::Key(handle, key) => {
                 self.output.clear();
 
-                let handle = match handle {
+                let client_handle = match handle {
                     Some(handle) => handle,
                     None => client_handle,
                 };
 
-                if clients.focus_client(handle) {
+                if clients.focus_client(client_handle) {
                     self.recording_macro = None;
                     self.buffered_keys.0.clear();
                 }
@@ -407,13 +408,19 @@ impl Editor {
                         }
                         let keys_from_index = self.recording_macro.map(|_| keys.index);
 
-                        match Mode::on_client_keys(self, clients, handle, &mut keys) {
+                        let mut ctx = ModeContext {
+                            platform,
+                            editor: self,
+                            clients,
+                            client_handle,
+                        };
+                        match Mode::on_client_keys(&mut ctx, &mut keys) {
                             None => (),
                             Some(ModeOperation::Pending) => {
                                 return EditorLoop::Continue;
                             }
                             Some(ModeOperation::Quit) => {
-                                Mode::change_to(self, clients, handle, ModeKind::default());
+                                Mode::change_to(&mut ctx, ModeKind::default());
                                 self.buffered_keys.0.clear();
                                 return EditorLoop::Quit;
                             }
@@ -456,23 +463,23 @@ impl Editor {
                 EditorLoop::Continue
             }
             ClientEvent::Resize(handle, width, height) => {
-                let handle = match handle {
+                let client_handle = match handle {
                     Some(handle) => handle,
                     None => client_handle,
                 };
 
-                if let Some(client) = clients.get_mut(handle) {
+                if let Some(client) = clients.get_mut(client_handle) {
                     client.viewport_size = (width, height);
                 }
                 EditorLoop::Continue
             }
             ClientEvent::Command(handle, command) => {
-                let handle = match handle {
+                let client_handle = match handle {
                     Some(handle) => handle,
                     None => client_handle,
                 };
 
-                match CommandManager::eval(self, clients, Some(handle), command) {
+                match CommandManager::eval(self, clients, Some(client_handle), command) {
                     Some(CommandOperation::Quit) => EditorLoop::Quit,
                     Some(CommandOperation::QuitAll) => EditorLoop::QuitAll,
                     None => EditorLoop::Continue,

@@ -10,7 +10,7 @@ use crate::{
     cursor::Cursor,
     editor::{Editor, EditorOutputKind, KeysIterator},
     lsp::LspDiagnostic,
-    mode::{picker, read_line, Mode, ModeKind, ModeOperation, ModeState},
+    mode::{ModeContext, picker, read_line, Mode, ModeKind, ModeOperation, ModeState},
     navigation_history::{NavigationDirection, NavigationHistory},
     register::{RegisterKey, AUTO_MACRO_REGISTER, SEARCH_REGISTER},
     word_database::WordKind,
@@ -76,30 +76,28 @@ impl State {
     }
 
     fn on_event_no_buffer(
-        editor: &mut Editor,
-        clients: &mut ClientManager,
-        client_handle: ClientHandle,
+        ctx: &mut ModeContext,
         keys: &mut KeysIterator,
     ) -> Option<ModeOperation> {
-        let this = &mut editor.mode.normal_state;
+        let this = &mut ctx.editor.mode.normal_state;
         this.is_recording_auto_macro = false;
-        match keys.next(&editor.buffered_keys) {
-            Key::Char('q') => match editor.recording_macro.take() {
-                Some(_) => editor.recording_macro = None,
-                None => match keys.next(&editor.buffered_keys) {
+        match keys.next(&ctx.editor.buffered_keys) {
+            Key::Char('q') => match ctx.editor.recording_macro.take() {
+                Some(_) => ctx.editor.recording_macro = None,
+                None => match keys.next(&ctx.editor.buffered_keys) {
                     Key::None => return Some(ModeOperation::Pending),
                     Key::Char(c) => {
                         if let Some(key) = RegisterKey::from_char(c) {
-                            editor.registers.set(key, "");
-                            editor.recording_macro = Some(key);
+                            ctx.editor.registers.set(key, "");
+                            ctx.editor.recording_macro = Some(key);
                         }
                     }
                     _ => (),
                 },
             },
             Key::Char('Q') => {
-                editor.recording_macro = None;
-                match keys.next(&editor.buffered_keys) {
+                ctx.editor.recording_macro = None;
+                match keys.next(&ctx.editor.buffered_keys) {
                     Key::None => return Some(ModeOperation::Pending),
                     Key::Char(c) => {
                         // TODO: try just moving the recorded keys to the key queue register
@@ -110,12 +108,12 @@ impl State {
                     _ => (),
                 }
             }
-            Key::Char(':') => Mode::change_to(editor, clients, client_handle, ModeKind::Command),
-            Key::Char('g') => match keys.next(&editor.buffered_keys) {
+            Key::Char(':') => Mode::change_to(ctx, ModeKind::Command),
+            Key::Char('g') => match keys.next(&ctx.editor.buffered_keys) {
                 Key::None => return Some(ModeOperation::Pending),
-                Key::Char('b') => picker::buffer::enter_mode(editor, clients, client_handle),
+                Key::Char('b') => picker::buffer::enter_mode(ctx),
                 Key::Char('a') => {
-                    let client = clients.get_mut(client_handle)?;
+                    let client = ctx.clients.get_mut(ctx.client_handle)?;
                     let previous_buffer_view_handle = client.previous_buffer_view_handle();
                     client.set_buffer_view_handle(previous_buffer_view_handle);
                 }
@@ -133,48 +131,46 @@ impl State {
     }
 
     fn on_client_keys_with_buffer_view(
-        editor: &mut Editor,
-        clients: &mut ClientManager,
-        client_handle: ClientHandle,
+        ctx: &mut ModeContext,
         keys: &mut KeysIterator,
         handle: BufferViewHandle,
     ) -> Option<ModeOperation> {
-        let this = &mut editor.mode.normal_state;
+        let this = &mut ctx.editor.mode.normal_state;
         let keys_from_index = keys.index();
-        match keys.next(&editor.buffered_keys) {
-            Key::Char('h') => editor.buffer_views.get_mut(handle)?.move_cursors(
-                &editor.buffers,
+        match keys.next(&ctx.editor.buffered_keys) {
+            Key::Char('h') => ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
+                &ctx.editor.buffers,
                 CursorMovement::ColumnsBackward(this.count.max(1) as _),
                 this.movement_kind,
             ),
-            Key::Char('j') => editor.buffer_views.get_mut(handle)?.move_cursors(
-                &editor.buffers,
+            Key::Char('j') => ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
+                &ctx.editor.buffers,
                 CursorMovement::LinesForward(this.count.max(1) as _),
                 this.movement_kind,
             ),
-            Key::Char('k') => editor.buffer_views.get_mut(handle)?.move_cursors(
-                &editor.buffers,
+            Key::Char('k') => ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
+                &ctx.editor.buffers,
                 CursorMovement::LinesBackward(this.count.max(1) as _),
                 this.movement_kind,
             ),
-            Key::Char('l') => editor.buffer_views.get_mut(handle)?.move_cursors(
-                &editor.buffers,
+            Key::Char('l') => ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
+                &ctx.editor.buffers,
                 CursorMovement::ColumnsForward(this.count.max(1) as _),
                 this.movement_kind,
             ),
-            Key::Char('w') => editor.buffer_views.get_mut(handle)?.move_cursors(
-                &editor.buffers,
+            Key::Char('w') => ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
+                &ctx.editor.buffers,
                 CursorMovement::WordsForward(this.count.max(1) as _),
                 this.movement_kind,
             ),
-            Key::Char('b') => editor.buffer_views.get_mut(handle)?.move_cursors(
-                &editor.buffers,
+            Key::Char('b') => ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
+                &ctx.editor.buffers,
                 CursorMovement::WordsBackward(this.count.max(1) as _),
                 this.movement_kind,
             ),
             Key::Char('n') => {
                 let count = this.count.max(1);
-                move_to_search_match(editor, clients, client_handle, |len, r| {
+                move_to_search_match(ctx, |len, r| {
                     let index = match r {
                         Ok(index) => index + count as usize,
                         Err(index) => index + count as usize - 1,
@@ -184,7 +180,7 @@ impl State {
             }
             Key::Char('p') => {
                 let count = this.count.max(1) as usize;
-                move_to_search_match(editor, clients, client_handle, |len, r| {
+                move_to_search_match(ctx, |len, r| {
                     let index = match r {
                         Ok(index) => index,
                         Err(index) => index,
@@ -193,7 +189,7 @@ impl State {
                 });
             }
             Key::Char('N') => {
-                search_word_or_move_to_it(editor, clients, client_handle, |len, r| {
+                search_word_or_move_to_it(ctx, |len, r| {
                     let index = match r {
                         Ok(index) => index + 1,
                         Err(index) => index,
@@ -202,7 +198,7 @@ impl State {
                 });
             }
             Key::Char('P') => {
-                search_word_or_move_to_it(editor, clients, client_handle, |len, r| {
+                search_word_or_move_to_it(ctx, |len, r| {
                     let index = match r {
                         Ok(index) => index,
                         Err(index) => index,
@@ -213,18 +209,18 @@ impl State {
             Key::Ctrl('n') => {
                 this.movement_kind = CursorMovementKind::PositionAndAnchor;
                 NavigationHistory::move_in_history(
-                    editor,
-                    clients,
-                    client_handle,
+                    ctx.editor,
+                    ctx.clients,
+                    ctx.client_handle,
                     NavigationDirection::Forward,
                 );
             }
             Key::Ctrl('p') => {
                 this.movement_kind = CursorMovementKind::PositionAndAnchor;
                 NavigationHistory::move_in_history(
-                    editor,
-                    clients,
-                    client_handle,
+                    ctx.editor,
+                    ctx.clients,
+                    ctx.client_handle,
                     NavigationDirection::Backward,
                 );
             }
@@ -254,11 +250,11 @@ impl State {
                     }
                 }
 
-                let buffer_view = editor.buffer_views.get_mut(handle)?;
-                let buffer = editor.buffers.get(buffer_view.buffer_handle)?.content();
+                let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle)?.content();
                 let mut cursors = buffer_view.cursors.mut_guard();
 
-                match keys.next(&editor.buffered_keys) {
+                match keys.next(&ctx.editor.buffered_keys) {
                     Key::None => return Some(ModeOperation::Pending),
                     Key::Char('w') | Key::Char('W') => {
                         for cursor in &mut cursors[..] {
@@ -335,11 +331,11 @@ impl State {
                     }
                 }
 
-                let buffer_view = editor.buffer_views.get_mut(handle)?;
-                let buffer = editor.buffers.get(buffer_view.buffer_handle)?.content();
+                let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle)?.content();
                 let mut cursors = buffer_view.cursors.mut_guard();
 
-                match keys.next(&editor.buffered_keys) {
+                match keys.next(&ctx.editor.buffered_keys) {
                     Key::None => return Some(ModeOperation::Pending),
                     Key::Char('w') | Key::Char('W') => {
                         for cursor in &mut cursors[..] {
@@ -388,37 +384,37 @@ impl State {
                 this.movement_kind = CursorMovementKind::PositionOnly;
             }
             Key::Char('g') => {
-                let buffer_view = editor.buffer_views.get_mut(handle)?;
-                match keys.next(&editor.buffered_keys) {
+                let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                match keys.next(&ctx.editor.buffered_keys) {
                     Key::None => return Some(ModeOperation::Pending),
-                    Key::Char('g') => read_line::goto::enter_mode(editor, clients, client_handle),
+                    Key::Char('g') => read_line::goto::enter_mode(ctx),
                     Key::Char('h') => buffer_view.move_cursors(
-                        &editor.buffers,
+                        &ctx.editor.buffers,
                         CursorMovement::Home,
                         this.movement_kind,
                     ),
                     Key::Char('j') => buffer_view.move_cursors(
-                        &editor.buffers,
+                        &ctx.editor.buffers,
                         CursorMovement::LastLine,
                         this.movement_kind,
                     ),
                     Key::Char('k') => buffer_view.move_cursors(
-                        &editor.buffers,
+                        &ctx.editor.buffers,
                         CursorMovement::FirstLine,
                         this.movement_kind,
                     ),
                     Key::Char('l') => buffer_view.move_cursors(
-                        &editor.buffers,
+                        &ctx.editor.buffers,
                         CursorMovement::End,
                         this.movement_kind,
                     ),
                     Key::Char('i') => buffer_view.move_cursors(
-                        &editor.buffers,
+                        &ctx.editor.buffers,
                         CursorMovement::HomeNonWhitespace,
                         this.movement_kind,
                     ),
                     Key::Char('m') => {
-                        let buffer = editor.buffers.get(buffer_view.buffer_handle)?.content();
+                        let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle)?.content();
                         for cursor in &mut buffer_view.cursors.mut_guard()[..] {
                             let mut position = cursor.position;
 
