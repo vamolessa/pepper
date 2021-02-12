@@ -101,17 +101,16 @@ impl ServerApplication {
                 let editor = &mut self.editor;
                 let clients = &mut self.clients;
 
-                let editor_loop =
-                    self.event_deserialization_bufs
-                        .receive_events(index, bytes, |event| {
-                            // TODO: fix this
-                            //editor.on_event(platform, clients, handle, event)
-                            EditorLoop::Continue
-                        });
-                match editor_loop {
-                    EditorLoop::Continue => (),
-                    EditorLoop::Quit => platform.close_connection(index),
-                    EditorLoop::QuitAll => return false,
+                let mut events = self.event_deserialization_bufs.receive_events(index, bytes);
+                while let Some(event) = events.next() {
+                    match editor.on_event(platform, clients, handle, event) {
+                        EditorLoop::Continue => (),
+                        EditorLoop::Quit => {
+                            platform.close_connection(index);
+                            break;
+                        }
+                        EditorLoop::QuitAll => return false,
+                    }
                 }
             }
             ServerPlatformEvent::ProcessStdout { index, len } => {

@@ -2,7 +2,6 @@
 
 use crate::{
     client_event::ClientEvent,
-    editor::EditorLoop,
     serialization::{DeserializationSlice, Serialize},
 };
 
@@ -45,44 +44,42 @@ impl ReadBuf {
 }
 */
 
-#[derive(Default)]
-struct ClientEventDeserializationBuf {
-    buf: Vec<u8>,
+pub struct ClientEventIter<'data> {
+    buf: &'data mut Vec<u8>,
+    read_len: usize,
 }
-
-impl ClientEventDeserializationBuf {
-    pub fn receive_events<F>(&mut self, bytes: &[u8], mut func: F) -> EditorLoop
-    where
-        F: FnMut(ClientEvent) -> EditorLoop,
-    {
-        self.buf.extend_from_slice(bytes);
-        let mut editor_loop = EditorLoop::Continue;
-        let mut deserializer = DeserializationSlice::from_slice(&self.buf);
-
-        loop {
-            if deserializer.as_slice().is_empty() {
-                break;
-            }
-
-            match ClientEvent::deserialize(&mut deserializer) {
-                Ok(event) => {
-                    editor_loop = func(event);
-                    if editor_loop.is_quit() {
-                        break;
-                    }
-                }
-                Err(_) => break,
-            }
+impl<'this, 'data: 'this> ClientEventIter<'data> {
+    pub fn next(&'this mut self) -> Option<ClientEvent<'data>> {
+        let slice = &self.buf[self.read_len..];
+        if slice.is_empty() {
+            return None;
         }
 
-        let rest_len = deserializer.as_slice().len();
-        let start = self.buf.len() - rest_len;
-        self.buf.copy_within(start.., 0);
-        self.buf.truncate(rest_len);
+        let slice = unsafe { std::slice::from_raw_parts(slice.as_ptr(), slice.len()) };
 
-        editor_loop
+        let mut deserializer = DeserializationSlice::from_slice(slice);
+        match ClientEvent::deserialize(&mut deserializer) {
+            Ok(event) => {
+                self.read_len += slice.len() - deserializer.as_slice().len();
+                Some(event)
+            }
+            Err(_) => {
+                self.read_len = self.buf.len();
+                None
+            }
+        }
     }
 }
+impl<'data> Drop for ClientEventIter<'data> {
+    fn drop(&mut self) {
+        let rest_len = self.buf.len() - self.read_len;
+        self.buf.copy_within(self.read_len.., 0);
+        self.buf.truncate(rest_len);
+    }
+}
+
+#[derive(Default)]
+struct ClientEventDeserializationBuf(Vec<u8>);
 
 #[derive(Default)]
 pub struct ClientEventDeserializationBufCollection {
@@ -90,14 +87,13 @@ pub struct ClientEventDeserializationBufCollection {
 }
 
 impl ClientEventDeserializationBufCollection {
-    pub fn receive_events<F>(&mut self, index: usize, bytes: &[u8], func: F) -> EditorLoop
-    where
-        F: FnMut(ClientEvent) -> EditorLoop,
-    {
+    pub fn receive_events<'a>(&'a mut self, index: usize, bytes: &[u8]) -> ClientEventIter<'a> {
         if index >= self.bufs.len() {
             self.bufs.resize_with(index + 1, Default::default);
         }
 
-        self.bufs[index].receive_events(bytes, func)
+        let buf = &mut self.bufs[index].0;
+        buf.extend_from_slice(bytes);
+        ClientEventIter { buf, read_len: 0 }
     }
 }
