@@ -49,7 +49,6 @@ impl Default for ModeKind {
 #[derive(Default)]
 pub struct Mode {
     kind: ModeKind,
-    scratch_buf: String,
 
     pub normal_state: normal::State,
     pub insert_state: insert::State,
