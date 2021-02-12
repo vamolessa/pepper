@@ -865,7 +865,8 @@ impl State {
                 Key::Char('r') => ctx
                     .editor
                     .output
-                    .write_str(EditorOutputKind::Info, "rename not yet implemented"),
+                    .write(EditorOutputKind::Info)
+                    .str("rename not yet implemented"),
                 _ => (),
             },
             Key::Char('s') => read_line::search::enter_mode(ctx),
@@ -1013,7 +1014,8 @@ impl ModeState for State {
                 }) {
                     ctx.editor
                         .output
-                        .write_str(EditorOutputKind::Info, &diagnostics[index].message);
+                        .write(EditorOutputKind::Info)
+                        .str(&diagnostics[index].message);
                     break;
                 }
             }
@@ -1121,7 +1123,8 @@ where
         if search_ranges.is_empty() {
             ctx.editor
                 .output
-                .write_str(EditorOutputKind::Error, "no search result");
+                .write(EditorOutputKind::Error)
+                .str("no search result");
             return None;
         }
     }

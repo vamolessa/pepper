@@ -787,7 +787,8 @@ mod tests {
                 &mut events,
             );
 
-            let buffer_view = BufferView::new(ClientHandle::local(), buffer.handle());
+            let buffer_view =
+                BufferView::new(ClientHandle::from_index(0).unwrap(), buffer.handle());
 
             let mut buffer_views = BufferViewCollection::default();
             let buffer_view_handle = buffer_views.add(buffer_view);

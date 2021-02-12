@@ -106,8 +106,6 @@ pub fn set_not_underlined(buf: &mut Vec<u8>) {
     buf.extend_from_slice(b"\x1B[24m");
 }
 
-// TODO: take width, height, scroll and buffer_view_handle instead of client
-// TODO: then move ClientData into Client
 pub fn render(
     editor: &Editor,
     buffer_view_handle: Option<BufferViewHandle>,

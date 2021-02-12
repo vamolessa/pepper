@@ -1,10 +1,10 @@
-use std::{error::Error, fmt, fs::File, path::PathBuf};
+use std::{fmt, fs::File, path::PathBuf};
 
 use crate::{
     buffer::BufferCollection,
     buffer_view::BufferViewCollection,
     client::{ClientHandle, ClientManager},
-    client_event::{parse_all_keys, ClientEvent},
+    client_event::{parse_all_keys, ClientEvent, ClientEventSource},
     command::{CommandIter, CommandManager, CommandOperation},
     config::Config,
     editor_event::{EditorEvent, EditorEventQueue},
@@ -175,43 +175,14 @@ impl EditorOutput {
         self.message.clear();
     }
 
-    // TODO: replace with 'write'
-    pub fn write_str(&mut self, kind: EditorOutputKind, message: &str) {
+    pub fn write(&mut self, kind: EditorOutputKind) -> EditorOutputWrite {
         self.kind = kind;
         self.message.clear();
-        self.message.push_str(message);
-    }
-
-    // TODO: replace with 'write'
-    pub fn write_fmt(&mut self, kind: EditorOutputKind, args: fmt::Arguments) {
-        self.kind = kind;
-        self.message.clear();
-        let _ = fmt::write(&mut self.message, args);
-    }
-
-    pub fn write(&mut self, kind: EditorOutputKind) -> StatusBarWrite {
-        self.kind = kind;
-        self.message.clear();
-        StatusBarWrite(&mut self.message)
-    }
-
-    // TODO: replace with 'write'
-    pub fn write_error(&mut self, error: &dyn Error) {
-        use fmt::Write;
-
-        self.kind = EditorOutputKind::Error;
-        self.message.clear();
-        let _ = write!(&mut self.message, "{}", error);
-        let mut error = error.source();
-        while let Some(e) = error {
-            self.message.push('\n');
-            let _ = write!(&mut self.message, "{}", e);
-            error = e.source();
-        }
+        EditorOutputWrite(&mut self.message)
     }
 }
-pub struct StatusBarWrite<'a>(&'a mut String);
-impl<'a> StatusBarWrite<'a> {
+pub struct EditorOutputWrite<'a>(&'a mut String);
+impl<'a> EditorOutputWrite<'a> {
     pub fn str(&mut self, message: &str) {
         self.0.push_str(message);
     }
@@ -373,12 +344,16 @@ impl Editor {
         event: ClientEvent,
     ) -> EditorLoop {
         let result = match event {
-            ClientEvent::Key(handle, key) => {
+            ClientEvent::Key(source, key) => {
                 self.output.clear();
 
-                let client_handle = match handle {
-                    Some(handle) => handle,
-                    None => client_handle,
+                let client_handle = match source {
+                    ClientEventSource::ConnectionClient => client_handle,
+                    ClientEventSource::FocusedClient => match clients.focused_handle() {
+                        Some(handle) => handle,
+                        None => return EditorLoop::Continue,
+                    },
+                    ClientEventSource::ClientHandle(handle) => handle,
                 };
 
                 if clients.focus_client(client_handle) {
@@ -463,10 +438,14 @@ impl Editor {
                 self.trigger_event_handlers(clients);
                 EditorLoop::Continue
             }
-            ClientEvent::Resize(handle, width, height) => {
-                let client_handle = match handle {
-                    Some(handle) => handle,
-                    None => client_handle,
+            ClientEvent::Resize(source, width, height) => {
+                let client_handle = match source {
+                    ClientEventSource::ConnectionClient => client_handle,
+                    ClientEventSource::FocusedClient => match clients.focused_handle() {
+                        Some(handle) => handle,
+                        None => return EditorLoop::Continue,
+                    },
+                    ClientEventSource::ClientHandle(handle) => handle,
                 };
 
                 if let Some(client) = clients.get_mut(client_handle) {
@@ -474,10 +453,14 @@ impl Editor {
                 }
                 EditorLoop::Continue
             }
-            ClientEvent::Command(handle, command) => {
-                let client_handle = match handle {
-                    Some(handle) => handle,
-                    None => client_handle,
+            ClientEvent::Command(source, command) => {
+                let client_handle = match source {
+                    ClientEventSource::ConnectionClient => client_handle,
+                    ClientEventSource::FocusedClient => match clients.focused_handle() {
+                        Some(handle) => handle,
+                        None => return EditorLoop::Continue,
+                    },
+                    ClientEventSource::ClientHandle(handle) => handle,
                 };
 
                 match CommandManager::eval(self, clients, Some(client_handle), command) {
@@ -508,10 +491,9 @@ impl Editor {
             match key {
                 Ok(key) => self.buffered_keys.0.push(key),
                 Err(error) => {
-                    self.output.write_fmt(
-                        EditorOutputKind::Error,
-                        format_args!("error parsing keys '{}'\n{}", keys, &error),
-                    );
+                    self.output
+                        .write(EditorOutputKind::Error)
+                        .fmt(format_args!("error parsing keys '{}'\n{}", keys, &error));
                     self.buffered_keys.0.clear();
                     return;
                 }

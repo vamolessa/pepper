@@ -2,7 +2,7 @@ use std::{env, io};
 
 use crate::{
     client::{ClientHandle, ClientManager},
-    client_event::ClientEvent,
+    client_event::{ClientEvent, ClientEventSource},
     command::CommandOperation,
     connection::ClientEventDeserializationBufCollection,
     editor::{Editor, EditorLoop},
@@ -173,7 +173,7 @@ impl ServerApplication {
 }
 
 pub struct ClientApplication {
-    as_client_handle: Option<ClientHandle>,
+    client_event_source: ClientEventSource,
     read_buf: Vec<u8>,
     write_buf: SerializationBuf,
     stdout: io::StdoutLock<'static>,
@@ -193,6 +193,14 @@ impl ClientApplication {
             STDOUT.as_ref().unwrap().lock()
         };
 
+        let client_event_source = if args.as_focused_client {
+            ClientEventSource::FocusedClient
+        } else if let Some(handle) = args.as_client {
+            ClientEventSource::ClientHandle(handle)
+        } else {
+            ClientEventSource::ConnectionClient
+        };
+
         let mut write_buf = SerializationBuf::default();
 
         if !args.files.is_empty() {
@@ -205,7 +213,8 @@ impl ClientApplication {
                 open_buffers_command.push_str("'");
             }
 
-            ClientEvent::Command(args.as_client, &open_buffers_command).serialize(&mut write_buf);
+            ClientEvent::Command(client_event_source, &open_buffers_command)
+                .serialize(&mut write_buf);
         }
 
         platform.write(write_buf.as_slice());
@@ -217,7 +226,7 @@ impl ClientApplication {
         let _ = stdout.flush();
 
         Self {
-            as_client_handle: args.as_client,
+            client_event_source,
             read_buf: Vec::new(),
             write_buf,
             stdout,
@@ -234,10 +243,10 @@ impl ClientApplication {
         for event in events {
             match event {
                 ClientPlatformEvent::Key(key) => {
-                    ClientEvent::Key(self.as_client_handle, *key).serialize(&mut self.write_buf);
+                    ClientEvent::Key(self.client_event_source, *key).serialize(&mut self.write_buf);
                 }
                 ClientPlatformEvent::Resize(width, height) => {
-                    ClientEvent::Resize(self.as_client_handle, *width as _, *height as _)
+                    ClientEvent::Resize(self.client_event_source, *width as _, *height as _)
                         .serialize(&mut self.write_buf);
                 }
                 ClientPlatformEvent::Message(len) => {

@@ -7,16 +7,10 @@ use crate::{
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
 };
 
-// TODO: rename to ClientHandle
 #[derive(Default, Clone, Copy, Eq, PartialEq)]
 pub struct ClientHandle(u16);
 
 impl ClientHandle {
-    // TODO: remove this
-    pub fn local() -> Self {
-        Self(0)
-    }
-
     pub fn into_index(self) -> usize {
         self.0 as _
     }
@@ -30,25 +24,19 @@ impl ClientHandle {
     }
 }
 
-impl<'de> Serialize<'de> for Option<ClientHandle> {
+impl<'de> Serialize<'de> for ClientHandle {
     fn serialize<S>(&self, serializer: &mut S)
     where
         S: Serializer,
     {
-        match self {
-            Some(ClientHandle(i)) => i.serialize(serializer),
-            None => u16::MAX.serialize(serializer),
-        }
+        self.0.serialize(serializer);
     }
 
     fn deserialize<D>(deserializer: &mut D) -> Result<Self, DeserializeError>
     where
         D: Deserializer<'de>,
     {
-        match u16::deserialize(deserializer)? {
-            u16::MAX => Ok(None),
-            i => Ok(Some(ClientHandle(i))),
-        }
+        Ok(Self(u16::deserialize(deserializer)?))
     }
 }
 
@@ -174,7 +162,6 @@ impl ClientManager {
         self.focused_handle
     }
 
-    // TODO: maybe change it to handle it from client_events
     pub fn focus_client(&mut self, handle: ClientHandle) -> bool {
         let changed = Some(handle) != self.focused_handle;
         self.focused_handle = Some(handle);
