@@ -1122,7 +1122,8 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: HANDLE, output_handle
                         }
                         WINDOW_BUFFER_SIZE_EVENT => {
                             let size = unsafe { event.Event.WindowBufferSizeEvent().dwSize };
-                            pending_events.push(ClientPlatformEvent::Resize(size.X as _, size.Y as _));
+                            pending_events
+                                .push(ClientPlatformEvent::Resize(size.X as _, size.Y as _));
                         }
                         _ => (),
                     }

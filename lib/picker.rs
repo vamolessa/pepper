@@ -210,17 +210,18 @@ impl Picker {
                     score: entry.score,
                 })
             }
-            FilteredEntrySource::WordDatabase(i) => {
-                Some(PickerEntry {
-                    name: words.word_at(i),
-                    description: "",
-                    score: entry.score,
-                })
-            }
+            FilteredEntrySource::WordDatabase(i) => Some(PickerEntry {
+                name: words.word_at(i),
+                description: "",
+                score: entry.score,
+            }),
         }
     }
 
-    pub fn entries<'a, W>(&'a self, words: &'a W) -> impl 'a + ExactSizeIterator<Item = PickerEntry<'a>>
+    pub fn entries<'a, W>(
+        &'a self,
+        words: &'a W,
+    ) -> impl 'a + ExactSizeIterator<Item = PickerEntry<'a>>
     where
         W: WordCollection,
     {
