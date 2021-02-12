@@ -19,15 +19,15 @@ pub enum ModeOperation {
 }
 
 pub struct ModeContext<'a> {
-    platform: &'a mut dyn ServerPlatform,
-    editor: &'a mut Editor,
-    clients: &'a mut ClientManager,
-    client_handle: ClientHandle,
+    pub platform: &'a mut dyn ServerPlatform,
+    pub editor: &'a mut Editor,
+    pub clients: &'a mut ClientManager,
+    pub client_handle: ClientHandle,
 }
 
 pub trait ModeState {
-    fn on_enter(ctx: &mut ModeContext) {}
-    fn on_exit(ctx: &mut ModeContext) {}
+    fn on_enter(ctx: &mut ModeContext);
+    fn on_exit(ctx: &mut ModeContext);
     fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> Option<ModeOperation>;
 }
 
@@ -83,10 +83,7 @@ impl Mode {
         }
     }
 
-    pub fn on_client_keys(
-        ctx: &mut ModeContext,
-        keys: &mut KeysIterator,
-    ) -> Option<ModeOperation> {
+    pub fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> Option<ModeOperation> {
         match ctx.editor.mode.kind {
             ModeKind::Normal => normal::State::on_client_keys(ctx, keys),
             ModeKind::Insert => insert::State::on_client_keys(ctx, keys),

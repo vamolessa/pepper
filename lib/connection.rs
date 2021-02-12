@@ -1,3 +1,5 @@
+// TODO: merge with editor.rs??
+
 use crate::{
     client_event::ClientEvent,
     editor::EditorLoop,

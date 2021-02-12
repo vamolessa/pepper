@@ -438,8 +438,9 @@ impl Editor {
                             (keys_from_index, self.recording_macro.clone())
                         {
                             for key in &self.buffered_keys.0[from_index..keys.index] {
-                                self.registers
-                                    .append_fmt(register_key, format_args!("{}", key));
+                                use fmt::Write;
+                                let register = self.registers.get_mut(register_key);
+                                let _ = write!(register, "{}", key);
                             }
                         }
                     }
@@ -450,7 +451,7 @@ impl Editor {
                         }
                         _ => {
                             self.parse_and_set_keys_from_register(KEY_QUEUE_REGISTER);
-                            self.registers.set(KEY_QUEUE_REGISTER, "");
+                            self.registers.get_mut(KEY_QUEUE_REGISTER).clear();
                         }
                     }
                     if self.buffered_keys.0.is_empty() {

@@ -1,8 +1,7 @@
-use std::fmt;
-
 pub const SEARCH_REGISTER: RegisterKey = RegisterKey::from_char_unchecked('s');
 pub const KEY_QUEUE_REGISTER: RegisterKey = RegisterKey::from_char_unchecked('k');
 pub const AUTO_MACRO_REGISTER: RegisterKey = RegisterKey::from_char_unchecked('a');
+pub const TEMP_REGISTER: RegisterKey = RegisterKey::from_char_unchecked('t');
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct RegisterKey(u8);
@@ -45,14 +44,7 @@ impl RegisterCollection {
         &self.registers[key.0 as usize]
     }
 
-    pub fn append_fmt(&mut self, key: RegisterKey, args: fmt::Arguments) {
-        let register = &mut self.registers[key.0 as usize];
-        let _ = fmt::write(register, args);
-    }
-
-    pub fn set(&mut self, key: RegisterKey, value: &str) {
-        let register = &mut self.registers[key.0 as usize];
-        register.clear();
-        register.push_str(value);
+    pub fn get_mut(&mut self, key: RegisterKey) -> &mut String {
+        &mut self.registers[key.0 as usize]
     }
 }

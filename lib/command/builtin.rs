@@ -720,7 +720,11 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             };
 
             match value {
-                Some(value) => ctx.editor.registers.set(key, value),
+                Some(value) => {
+                    let register = ctx.editor.registers.get_mut(key);
+                    register.clear();
+                    register.push_str(value);
+                }
                 None => ctx
                     .editor
                     .output

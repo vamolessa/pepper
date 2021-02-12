@@ -52,9 +52,9 @@ pub mod search {
                     update_search(ctx);
                 }
                 ReadLinePoll::Submitted => {
-                    ctx.editor
-                        .registers
-                        .set(SEARCH_REGISTER, ctx.editor.read_line.input());
+                    let register = ctx.editor.registers.get_mut(SEARCH_REGISTER);
+                    register.clear();
+                    register.push_str(ctx.editor.read_line.input());
                     Mode::change_to(ctx, ModeKind::default());
                 }
                 ReadLinePoll::Canceled => {

@@ -1,11 +1,12 @@
-use crate::platform::Key;
+use std::fmt::Write;
 
 use crate::{
     buffer_position::BufferPosition,
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     editor::{Editor, KeysIterator},
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
-    register::AUTO_MACRO_REGISTER,
+    platform::Key,
+    register::{AUTO_MACRO_REGISTER, TEMP_REGISTER},
     word_database::WordKind,
 };
 
@@ -37,9 +38,8 @@ impl ModeState for State {
         let key = keys.next(&ctx.editor.buffered_keys);
         drop(keys);
 
-        ctx.editor
-            .registers
-            .append_fmt(AUTO_MACRO_REGISTER, format_args!("{}", key));
+        let register = ctx.editor.registers.get_mut(AUTO_MACRO_REGISTER);
+        let _ = write!(register, "{}", key);
 
         match key {
             Key::Esc => {
@@ -83,37 +83,34 @@ impl ModeState for State {
                 let cursor_count = buffer_view.cursors[..].len();
                 let buffer_handle = buffer_view.buffer_handle;
 
-                let mut buf = [0; 128];
-                buf[0] = b'\n';
+                let temp_register = ctx.editor.registers.get_mut(TEMP_REGISTER);
+                let previous_len = temp_register.len();
 
                 for i in 0..cursor_count {
                     let position = ctx.editor.buffer_views.get(handle)?.cursors[i].position;
                     let buffer = ctx.editor.buffers.get(buffer_handle)?;
 
-                    let mut len = 1;
+                    temp_register.push('\n');
+
                     let indentation_word = buffer
                         .content()
                         .word_at(BufferPosition::line_col(position.line_index, 0));
                     if indentation_word.kind == WordKind::Whitespace {
-                        let indentation_len = position
-                            .column_byte_index
-                            .min(indentation_word.text.len())
-                            .min(buf.len() - 1);
-                        len += indentation_len;
-                        buf[1..len]
-                            .copy_from_slice(indentation_word.text[..indentation_len].as_bytes());
+                        let indentation_len =
+                            position.column_byte_index.min(indentation_word.text.len());
+                        temp_register.push_str(&indentation_word.text[..indentation_len]);
                     }
-
-                    let text = std::str::from_utf8(&buf[..len]).unwrap_or("\n");
 
                     ctx.editor.buffer_views.insert_text_at_position(
                         &mut ctx.editor.buffers,
                         &mut ctx.editor.word_database,
                         handle,
                         position,
-                        text,
+                        &temp_register[previous_len..],
                         &mut ctx.editor.events,
                     );
+
+                    temp_register.truncate(previous_len);
                 }
             }
             Key::Char(c) => {
