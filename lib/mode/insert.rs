@@ -207,12 +207,18 @@ impl ModeState for State {
 fn apply_completion(editor: &mut Editor, handle: BufferViewHandle, cursor_movement: isize) {
     editor.picker.move_cursor(cursor_movement);
     if let Some(entry) = editor.picker.current_entry(&mut editor.word_database) {
+        let temp_register = editor.registers.get_mut(TEMP_REGISTER);
+        let previous_len = temp_register.len();
+        temp_register.push_str(entry.name);
+
         editor.buffer_views.apply_completion(
             &mut editor.buffers,
             &mut editor.word_database,
             handle,
-            entry.name,
+            &temp_register[previous_len..],
             &mut editor.events,
         );
+
+        temp_register.truncate(previous_len);
     }
 }

@@ -36,7 +36,6 @@ pub struct Picker {
     scroll: usize,
 
     has_unfiltered_entries: bool,
-    cached_current_word: String,
 }
 
 impl Picker {
@@ -197,7 +196,7 @@ impl Picker {
             .min(self.filtered_entries.len().saturating_sub(1));
     }
 
-    pub fn current_entry<'a, W>(&'a mut self, words: &W) -> Option<PickerEntry<'a>>
+    pub fn current_entry<'a, W>(&'a self, words: &'a W) -> Option<PickerEntry<'a>>
     where
         W: WordCollection,
     {
@@ -212,10 +211,8 @@ impl Picker {
                 })
             }
             FilteredEntrySource::WordDatabase(i) => {
-                self.cached_current_word.clear();
-                self.cached_current_word.push_str(words.word_at(i));
                 Some(PickerEntry {
-                    name: &self.cached_current_word,
+                    name: words.word_at(i),
                     description: "",
                     score: entry.score,
                 })
