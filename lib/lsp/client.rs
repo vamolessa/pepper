@@ -22,6 +22,7 @@ use crate::{
             ServerNotification, ServerRequest, ServerResponse, SharedJson, Uri,
         },
     },
+    platform::ServerPlatform,
 };
 
 #[derive(Default)]
@@ -1251,7 +1252,12 @@ impl ClientCollection {
         }
     }
 
-    pub fn start(&mut self, command: Command, root: &Path) -> io::Result<ClientHandle> {
+    pub fn start(
+        &mut self,
+        platform: &dyn ServerPlatform,
+        command: Command,
+        root: &Path,
+    ) -> io::Result<ClientHandle> {
         let handle = self.find_free_slot();
         let json = SharedJson::new();
         let connection = ServerConnection::spawn(command, handle, json.clone())?;

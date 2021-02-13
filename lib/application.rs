@@ -45,7 +45,7 @@ impl ServerApplication {
         512
     }
 
-    pub fn new<P>(args: Args, _: &mut P) -> Option<Self>
+    pub fn new<P>(args: Args, platform: &mut P) -> Option<Self>
     where
         P: ServerPlatform,
     {
@@ -55,7 +55,7 @@ impl ServerApplication {
 
         for config in &args.config {
             if let Some(CommandOperation::Quit) | Some(CommandOperation::QuitAll) =
-                editor.load_config(&mut clients, config)
+                editor.load_config(platform, &mut clients, config)
             {
                 return None;
             }

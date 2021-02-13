@@ -67,6 +67,7 @@ impl ModeState for State {
 
                 let op = CommandManager::eval_from_read_line(
                     ctx.editor,
+                    ctx.platform,
                     ctx.clients,
                     Some(ctx.client_handle),
                 );

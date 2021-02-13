@@ -247,6 +247,7 @@ impl Editor {
 
     pub fn load_config(
         &mut self,
+        platform: &mut dyn ServerPlatform,
         clients: &mut ClientManager,
         path: &str,
     ) -> Option<CommandOperation> {
@@ -271,7 +272,7 @@ impl Editor {
         }
 
         for command in CommandIter::new(&text) {
-            match CommandManager::eval(self, clients, None, command) {
+            match CommandManager::eval(self, platform, clients, None, command) {
                 Some(CommandOperation::Quit) | Some(CommandOperation::QuitAll) => break,
                 None => (),
             }
@@ -384,8 +385,8 @@ impl Editor {
                         let keys_from_index = self.recording_macro.map(|_| keys.index);
 
                         let mut ctx = ModeContext {
-                            platform,
                             editor: self,
+                            platform,
                             clients,
                             client_handle,
                         };
@@ -463,7 +464,7 @@ impl Editor {
                     ClientEventSource::ClientHandle(handle) => handle,
                 };
 
-                match CommandManager::eval(self, clients, Some(client_handle), command) {
+                match CommandManager::eval(self, platform, clients, Some(client_handle), command) {
                     Some(CommandOperation::Quit) => EditorLoop::Quit,
                     Some(CommandOperation::QuitAll) => EditorLoop::QuitAll,
                     None => EditorLoop::Continue,

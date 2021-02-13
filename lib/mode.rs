@@ -19,8 +19,8 @@ pub enum ModeOperation {
 }
 
 pub struct ModeContext<'a> {
-    pub platform: &'a mut dyn ServerPlatform,
     pub editor: &'a mut Editor,
+    pub platform: &'a mut dyn ServerPlatform,
     pub clients: &'a mut ClientManager,
     pub client_handle: ClientHandle,
 }

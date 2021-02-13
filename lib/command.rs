@@ -5,6 +5,7 @@ use crate::{
     buffer_view::BufferViewHandle,
     client::{Client, ClientHandle, ClientManager},
     editor::{Editor, EditorOutput, EditorOutputKind},
+    platform::ServerPlatform,
 };
 
 mod builtin;
@@ -37,6 +38,7 @@ enum CompletionSource {
 
 struct CommandContext<'a> {
     editor: &'a mut Editor,
+    platform: &'a mut dyn ServerPlatform,
     clients: &'a mut ClientManager,
     client_handle: Option<ClientHandle>,
     bang: bool,
@@ -200,12 +202,15 @@ impl CommandManager {
 
     pub fn eval_from_read_line(
         editor: &mut Editor,
+        platform: &mut dyn ServerPlatform,
         clients: &mut ClientManager,
         client_handle: Option<ClientHandle>,
     ) -> Option<CommandOperation> {
         let command = editor.read_line.input();
         match editor.commands.parse(command) {
-            Ok((command, bang)) => Self::eval_parsed(editor, clients, client_handle, command, bang),
+            Ok((command, bang)) => {
+                Self::eval_parsed(editor, platform, clients, client_handle, command, bang)
+            }
             Err(error) => {
                 Self::format_parse_error(&mut editor.output, error, command);
                 None
@@ -215,12 +220,15 @@ impl CommandManager {
 
     pub fn eval(
         editor: &mut Editor,
+        platform: &mut dyn ServerPlatform,
         clients: &mut ClientManager,
         client_handle: Option<ClientHandle>,
         command: &str,
     ) -> Option<CommandOperation> {
         match editor.commands.parse(command) {
-            Ok((command, bang)) => Self::eval_parsed(editor, clients, client_handle, command, bang),
+            Ok((command, bang)) => {
+                Self::eval_parsed(editor, platform, clients, client_handle, command, bang)
+            }
             Err(error) => {
                 Self::format_parse_error(&mut editor.output, error, command);
                 None
@@ -265,6 +273,7 @@ impl CommandManager {
 
     fn eval_parsed(
         editor: &mut Editor,
+        platform: &mut dyn ServerPlatform,
         clients: &mut ClientManager,
         client_handle: Option<ClientHandle>,
         command: CommandFn,
@@ -273,6 +282,7 @@ impl CommandManager {
         let args = editor.commands.parsed_args.take()?;
         let ctx = CommandContext {
             editor,
+            platform,
             clients,
             client_handle,
             bang,

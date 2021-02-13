@@ -206,7 +206,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             for path in ctx.args.values() {
                 let path = path.as_str(ctx.args);
                 if let Some(CommandOperation::Quit) | Some(CommandOperation::QuitAll) =
-                    ctx.editor.load_config(ctx.clients, path)
+                    ctx.editor.load_config(ctx.platform, ctx.clients, path)
                 {
                     break;
                 }
@@ -767,7 +767,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 None => ctx.editor.current_directory.as_path(),
             };
 
-            match ctx.editor.lsp.start(command, root) {
+            match ctx.editor.lsp.start(ctx.platform, command, root) {
                 Ok(handle) => {
                     if let (true, Some(client_handle)) = (log, ctx.client_handle) {
                         let clients = ctx.clients;
