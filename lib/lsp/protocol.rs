@@ -8,11 +8,11 @@ use std::{
 };
 
 use crate::{
-    platform::ServerPlatform,
     json::{
         FromJson, Json, JsonConvertError, JsonInteger, JsonKey, JsonObject, JsonString, JsonValue,
     },
     lsp::client::ClientHandle,
+    platform::ServerPlatform,
 };
 
 pub struct SharedJsonGuard {
@@ -222,23 +222,20 @@ pub struct ServerResponse {
 }
 
 pub struct ServerConnection {
-    process: Child,
-    stdin: ChildStdin,
+    process_index: usize,
 }
 
 impl ServerConnection {
-    pub fn spawn(
-        platform: &mut dyn ServerPlatform,
-        mut command: Command,
-        handle: ClientHandle,
-        json: SharedJson,
-        //event_sender: mpsc::Sender<LocalEvent>,
-    ) -> io::Result<Self> {
-        let mut process = command
+    pub fn spawn(platform: &mut dyn ServerPlatform, mut command: Command) -> io::Result<Self> {
+        command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()?;
+            .stderr(Stdio::null());
+
+        let process_index = platform.spawn_process(command, 4 * 1024, 0)?;
+        Ok(Self { process_index })
+
+        /*
         let stdin = process
             .stdin
             .take()
@@ -265,16 +262,18 @@ impl ServerConnection {
                     Ok(body) => parse_server_event(&json, body),
                     _ => ServerEvent::ParseError,
                 };
-                /*
                 if let Err(_) = event_sender.send(LocalEvent::Lsp(handle, event)) {
                     break;
                 }
-                */
             }
-            //let _ = event_sender.send(LocalEvent::Lsp(handle, ServerEvent::Closed));
+            let _ = event_sender.send(LocalEvent::Lsp(handle, ServerEvent::Closed));
         });
+        */
+    }
 
-        Ok(Self { process, stdin })
+    pub fn write(&mut self, platform: &mut dyn ServerPlatform, buf: &[u8]) -> io::Result<()> {
+        platform.write_to_process(self.process_index, buf);
+        Ok(())
     }
 }
 
@@ -328,6 +327,7 @@ fn parse_server_event(json: &Json, body: JsonValue) -> ServerEvent {
     }
 }
 
+/*
 impl Write for ServerConnection {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.stdin.write(buf)
@@ -343,6 +343,7 @@ impl Drop for ServerConnection {
         let _ = self.process.kill();
     }
 }
+*/
 
 #[derive(Default, Clone, Copy, PartialEq, Eq)]
 pub struct RequestId(pub usize);
@@ -467,7 +468,12 @@ impl Protocol {
         self.send_body(json, body.into())
     }
 
-    fn send_body(&mut self, json: &mut Json, body: JsonValue) -> io::Result<()> {
+    fn send_body(
+        &mut self,
+        platform: &mut dyn ServerPlatform,
+        json: &mut Json,
+        body: JsonValue,
+    ) -> io::Result<()> {
         json.write(&mut self.body_buffer, &body)?;
 
         self.write_buffer.clear();
@@ -478,7 +484,7 @@ impl Protocol {
         )?;
         self.write_buffer.append(&mut self.body_buffer);
 
-        self.server_connection.write(&self.write_buffer)?;
+        self.server_connection.write(platform, &self.write_buffer)?;
         Ok(())
     }
 }

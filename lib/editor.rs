@@ -337,7 +337,7 @@ impl Editor {
         clients.on_client_left(handle);
     }
 
-    pub fn on_event(
+    pub fn on_client_event(
         &mut self,
         platform: &mut dyn ServerPlatform,
         clients: &mut ClientManager,
@@ -538,6 +538,18 @@ impl Editor {
                 _ => (),
             }
         }
+    }
+
+    pub fn on_process_stdout(&mut self, platform: &mut dyn ServerPlatform, process_index: usize, bytes: &[u8]) {
+        //
+    }
+
+    pub fn on_process_stderr(&mut self, platform: &mut dyn ServerPlatform, process_index: usize, bytes: &[u8]) {
+        //
+    }
+
+    pub fn on_process_exit(&mut self, platform: &mut dyn ServerPlatform, process_index: usize, success: bool) {
+        //
     }
 
     pub fn on_lsp_event(&mut self, client_handle: LspClientHandle, event: LspServerEvent) {

@@ -98,12 +98,13 @@ impl ServerApplication {
                 };
 
                 let bytes = platform.read_from_connection(index, len);
-                let editor = &mut self.editor;
-                let clients = &mut self.clients;
-
                 let mut events = self.event_deserialization_bufs.receive_events(index, bytes);
+
                 while let Some(event) = events.next() {
-                    match editor.on_event(platform, clients, handle, event) {
+                    match self
+                        .editor
+                        .on_client_event(platform, &mut self.clients, handle, event)
+                    {
                         EditorLoop::Continue => (),
                         EditorLoop::Quit => {
                             platform.close_connection(index);
@@ -114,15 +115,15 @@ impl ServerApplication {
                 }
             }
             ServerPlatformEvent::ProcessStdout { index, len } => {
-                let _bytes = platform.read_from_process_stdout(index, len);
-                //
+                let bytes = platform.read_from_process_stdout(index, len);
+                self.editor.on_process_stdout(platform, index, bytes);
             }
             ServerPlatformEvent::ProcessStderr { index, len } => {
-                let _bytes = platform.read_from_process_stderr(index, len);
-                //
+                let bytes = platform.read_from_process_stderr(index, len);
+                self.editor.on_process_stderr(platform, index, bytes);
             }
             ServerPlatformEvent::ProcessExit { index, success } => {
-                //
+                self.editor.on_process_exit(platform, index, success);
             }
         }
 

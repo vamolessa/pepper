@@ -1254,13 +1254,13 @@ impl ClientCollection {
 
     pub fn start(
         &mut self,
-        platform: &dyn ServerPlatform,
+        platform: &mut dyn ServerPlatform,
         command: Command,
         root: &Path,
     ) -> io::Result<ClientHandle> {
         let handle = self.find_free_slot();
         let json = SharedJson::new();
-        let connection = ServerConnection::spawn(command, handle, json.clone())?;
+        let connection = ServerConnection::spawn(platform, command)?;
         let mut entry = ClientCollectionEntry {
             client: Client::new(connection),
             json,
