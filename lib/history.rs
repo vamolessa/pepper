@@ -152,21 +152,29 @@ impl History {
             }
         }
 
+        // TODO: da pra simplificar mais isso aqui
+        #[inline]
+        fn fix_other_edits<FB, FT>(
+            group_edits: &mut [EditInternal],
+            current_index: usize,
+            mut fix_buffer_range: FB,
+            mut fix_text_range: FT,
+        ) where
+            FB: FnMut(&mut EditInternal),
+            FT: FnMut(&mut EditInternal),
+        {
+            for edit in &mut group_edits[..current_index] {
+                fix_text_range(edit);
+            }
+            for edit in &mut group_edits[(current_index + 1)..] {
+                fix_buffer_range(edit);
+                fix_text_range(edit);
+            }
+        }
+
         let group_edits = &mut self.edits[current_group_start..];
         let edit_text_len = edit.text.len();
         for (i, other_edit) in group_edits.iter_mut().enumerate() {
-            macro_rules! fix_other_edits {
-                ($edit:ident => $fix_buffer_range:expr, $fix_text_range:expr,) => {
-                    for $edit in &mut group_edits[..i] {
-                        $fix_text_range;
-                    }
-                    for $edit in &mut group_edits[(i + 1)..] {
-                        $fix_buffer_range;
-                        $fix_text_range;
-                    }
-                };
-            }
-
             match (other_edit.kind, edit.kind) {
                 (EditKind::Insert, EditKind::Insert) => {
                     // -- insert --
@@ -176,9 +184,12 @@ impl History {
                         self.texts.insert_str(fix_text_start, edit.text);
                         other_edit.buffer_range.to = edit.range.to;
                         other_edit.text_range.end += edit_text_len;
-                        fix_other_edits!(e =>
-                            insert_buffer_range(e, edit.range),
-                            insert_text_range(e, fix_text_start, edit_text_len),
+
+                        fix_other_edits(
+                            group_edits,
+                            i,
+                            |e| insert_buffer_range(e, edit.range),
+                            |e| insert_text_range(e, fix_text_start, edit_text_len),
                         );
                         return true;
                     // -- insert --
@@ -188,9 +199,12 @@ impl History {
                         self.texts.insert_str(fix_text_start, edit.text);
                         other_edit.buffer_range.to = other_edit.buffer_range.to.insert(edit.range);
                         other_edit.text_range.end += edit_text_len;
-                        fix_other_edits!(e =>
-                            insert_buffer_range(e, edit.range),
-                            insert_text_range(e, fix_text_start, edit_text_len),
+
+                        fix_other_edits(
+                            group_edits,
+                            i,
+                            |e| insert_buffer_range(e, edit.range),
+                            |e| insert_text_range(e, fix_text_start, edit_text_len),
                         );
                         return true;
                     }
@@ -203,9 +217,12 @@ impl History {
                         self.texts.insert_str(fix_text_start, edit.text);
                         other_edit.buffer_range.to = other_edit.buffer_range.to.insert(edit.range);
                         other_edit.text_range.end += edit_text_len;
-                        fix_other_edits!(e =>
-                            delete_buffer_range(e, edit.range),
-                            insert_text_range(e, fix_text_start, edit_text_len),
+
+                        fix_other_edits(
+                            group_edits,
+                            i,
+                            |e| delete_buffer_range(e, edit.range),
+                            |e| insert_text_range(e, fix_text_start, edit_text_len),
                         );
                         return true;
                     //             -- delete --
@@ -215,9 +232,12 @@ impl History {
                         self.texts.insert_str(fix_text_start, edit.text);
                         other_edit.buffer_range.from = edit.range.from;
                         other_edit.text_range.end += edit_text_len;
-                        fix_other_edits!(e =>
-                            delete_buffer_range(e, edit.range),
-                            insert_text_range(e, fix_text_start, edit_text_len),
+
+                        fix_other_edits(
+                            group_edits,
+                            i,
+                            |e| delete_buffer_range(e, edit.range),
+                            |e| insert_text_range(e, fix_text_start, edit_text_len),
                         );
                         return true;
                     }
@@ -235,9 +255,12 @@ impl History {
                             other_edit.buffer_range.to =
                                 other_edit.buffer_range.to.delete(edit.range);
                             other_edit.text_range.end -= edit_text_len;
-                            fix_other_edits!(e =>
-                                delete_buffer_range(e, edit.range),
-                                delete_text_range(e, fix_text_start, edit_text_len),
+
+                            fix_other_edits(
+                                group_edits,
+                                i,
+                                |e| delete_buffer_range(e, edit.range),
+                                |e| delete_text_range(e, fix_text_start, edit_text_len),
                             );
                             return true;
                         }
@@ -253,9 +276,12 @@ impl History {
                             self.texts.drain(deleted_text_range);
                             other_edit.buffer_range.to = edit.range.from;
                             other_edit.text_range.end -= edit_text_len;
-                            fix_other_edits!(e =>
-                                delete_buffer_range(e, edit.range),
-                                delete_text_range(e, fix_text_start, edit_text_len),
+
+                            fix_other_edits(
+                                group_edits,
+                                i,
+                                |e| delete_buffer_range(e, edit.range),
+                                |e| delete_text_range(e, fix_text_start, edit_text_len),
                             );
                             return true;
                         }
@@ -282,9 +308,12 @@ impl History {
                                 fix_text_start + edit_text_len - other_text_len;
                             let other_text_end_diff =
                                 previous_other_text_end - other_edit.text_range.end;
-                            fix_other_edits!(e =>
-                                delete_buffer_range(e, edit.range),
-                                insert_text_range(e, fix_text_start, other_text_end_diff),
+
+                            fix_other_edits(
+                                group_edits,
+                                i,
+                                |e| delete_buffer_range(e, edit.range),
+                                |e| insert_text_range(e, fix_text_start, other_text_end_diff),
                             );
                             return true;
                         }
@@ -311,9 +340,12 @@ impl History {
                                 fix_text_start + edit_text_len - other_text_len;
                             let other_text_end_diff =
                                 previous_other_text_end - other_edit.text_range.end;
-                            fix_other_edits!(e =>
-                                delete_buffer_range(e, edit.range),
-                                insert_text_range(e, fix_text_start, other_text_end_diff),
+
+                            fix_other_edits(
+                                group_edits,
+                                i,
+                                |e| delete_buffer_range(e, edit.range),
+                                |e| insert_text_range(e, fix_text_start, other_text_end_diff),
                             );
                             return true;
                         }
