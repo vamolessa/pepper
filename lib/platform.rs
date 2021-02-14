@@ -54,7 +54,7 @@ pub trait Args: Sized {
     fn print_session(&self) -> bool;
 }
 
-pub trait ServerPlatform {
+pub trait Platform {
     fn read_from_clipboard(&mut self, text: &mut String) -> bool;
     fn write_to_clipboard(&mut self, text: &str);
 
@@ -73,10 +73,3 @@ pub trait ServerPlatform {
     fn write_to_process(&mut self, index: usize, buf: &[u8]) -> bool;
     fn kill_process(&mut self, index: usize);
 }
-
-/*
-pub trait ClientPlatform {
-    fn read(&self, len: usize) -> &[u8];
-    fn write(&mut self, buf: &[u8]) -> bool;
-}
-*/

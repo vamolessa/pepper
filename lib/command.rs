@@ -5,7 +5,7 @@ use crate::{
     buffer_view::BufferViewHandle,
     client::{Client, ClientHandle, ClientManager},
     editor::{Editor, EditorOutput, EditorOutputKind},
-    platform::ServerPlatform,
+    platform::Platform,
 };
 
 mod builtin;
@@ -38,7 +38,7 @@ enum CompletionSource {
 
 struct CommandContext<'a> {
     editor: &'a mut Editor,
-    platform: &'a mut dyn ServerPlatform,
+    platform: &'a mut dyn Platform,
     clients: &'a mut ClientManager,
     client_handle: Option<ClientHandle>,
     bang: bool,
@@ -202,7 +202,7 @@ impl CommandManager {
 
     pub fn eval_from_read_line(
         editor: &mut Editor,
-        platform: &mut dyn ServerPlatform,
+        platform: &mut dyn Platform,
         clients: &mut ClientManager,
         client_handle: Option<ClientHandle>,
     ) -> Option<CommandOperation> {
@@ -220,7 +220,7 @@ impl CommandManager {
 
     pub fn eval(
         editor: &mut Editor,
-        platform: &mut dyn ServerPlatform,
+        platform: &mut dyn Platform,
         clients: &mut ClientManager,
         client_handle: Option<ClientHandle>,
         command: &str,
@@ -273,7 +273,7 @@ impl CommandManager {
 
     fn eval_parsed(
         editor: &mut Editor,
-        platform: &mut dyn ServerPlatform,
+        platform: &mut dyn Platform,
         clients: &mut ClientManager,
         client_handle: Option<ClientHandle>,
         command: CommandFn,

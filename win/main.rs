@@ -55,7 +55,7 @@ use winapi::{
 
 use pepper::{
     application::{ClientApplication, ServerApplication},
-    platform::{Key, PlatformWriter, RawPlatformWriter, ServerPlatform, ServerPlatformEvent},
+    platform::{Key, PlatformWriter, RawPlatformWriter, Platform, ServerPlatformEvent},
     Args,
 };
 
@@ -726,7 +726,7 @@ struct ServerState {
     children: SlotVec<AsyncChild>,
 }
 
-impl ServerPlatform for ServerState {
+impl Platform for ServerState {
     fn read_from_clipboard(&mut self, text: &mut String) -> bool {
         let clipboard = Clipboard::open();
         text.clear();

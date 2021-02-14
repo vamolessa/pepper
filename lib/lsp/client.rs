@@ -22,7 +22,7 @@ use crate::{
             ServerNotification, ServerRequest, ServerResponse, SharedJson, Uri,
         },
     },
-    platform::ServerPlatform,
+    platform::Platform,
 };
 
 #[derive(Default)]
@@ -1254,7 +1254,7 @@ impl ClientCollection {
 
     pub fn start(
         &mut self,
-        platform: &mut dyn ServerPlatform,
+        platform: &mut dyn Platform,
         command: Command,
         root: &Path,
     ) -> io::Result<ClientHandle> {

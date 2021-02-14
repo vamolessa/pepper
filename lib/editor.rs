@@ -12,7 +12,7 @@ use crate::{
     lsp::{LspClientCollection, LspClientHandle, LspServerEvent},
     mode::{Mode, ModeContext, ModeKind, ModeOperation},
     picker::Picker,
-    platform::{Key, ServerPlatform},
+    platform::{Key, Platform},
     register::{RegisterCollection, RegisterKey, KEY_QUEUE_REGISTER},
     syntax::{HighlightResult, SyntaxCollection},
     theme::Theme,
@@ -99,7 +99,7 @@ impl ReadLine {
 
     pub fn poll(
         &mut self,
-        platform: &mut dyn ServerPlatform,
+        platform: &mut dyn Platform,
         buffered_keys: &BufferedKeys,
         keys_iter: &mut KeysIterator,
     ) -> ReadLinePoll {
@@ -247,7 +247,7 @@ impl Editor {
 
     pub fn load_config(
         &mut self,
-        platform: &mut dyn ServerPlatform,
+        platform: &mut dyn Platform,
         clients: &mut ClientManager,
         path: &str,
     ) -> Option<CommandOperation> {
@@ -339,7 +339,7 @@ impl Editor {
 
     pub fn on_client_event(
         &mut self,
-        platform: &mut dyn ServerPlatform,
+        platform: &mut dyn Platform,
         clients: &mut ClientManager,
         client_handle: ClientHandle,
         event: ClientEvent,
@@ -540,15 +540,15 @@ impl Editor {
         }
     }
 
-    pub fn on_process_stdout(&mut self, platform: &mut dyn ServerPlatform, process_index: usize, bytes: &[u8]) {
+    pub fn on_process_stdout(&mut self, platform: &mut dyn Platform, process_index: usize, bytes: &[u8]) {
         //
     }
 
-    pub fn on_process_stderr(&mut self, platform: &mut dyn ServerPlatform, process_index: usize, bytes: &[u8]) {
+    pub fn on_process_stderr(&mut self, platform: &mut dyn Platform, process_index: usize, bytes: &[u8]) {
         //
     }
 
-    pub fn on_process_exit(&mut self, platform: &mut dyn ServerPlatform, process_index: usize, success: bool) {
+    pub fn on_process_exit(&mut self, platform: &mut dyn Platform, process_index: usize, success: bool) {
         //
     }
 

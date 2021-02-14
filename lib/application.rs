@@ -6,7 +6,7 @@ use crate::{
     command::CommandOperation,
     connection::ClientEventDeserializationBufCollection,
     editor::{Editor, EditorLoop},
-    platform::{Key, PlatformWriter, ServerPlatform, ServerPlatformEvent},
+    platform::{Key, PlatformWriter, Platform, ServerPlatformEvent},
     serialization::{SerializationBuf, Serialize},
     ui, Args,
 };
@@ -47,7 +47,7 @@ impl ServerApplication {
 
     pub fn new<P>(args: Args, platform: &mut P) -> Option<Self>
     where
-        P: ServerPlatform,
+        P: Platform,
     {
         let current_dir = env::current_dir().expect("could not retrieve the current directory");
         let mut editor = Editor::new(current_dir);
@@ -73,7 +73,7 @@ impl ServerApplication {
 
     pub fn on_event<P>(&mut self, platform: &mut P, event: ServerPlatformEvent) -> bool
     where
-        P: ServerPlatform,
+        P: Platform,
     {
         match event {
             ServerPlatformEvent::ConnectionOpen { index } => {

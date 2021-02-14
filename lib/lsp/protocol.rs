@@ -12,7 +12,7 @@ use crate::{
         FromJson, Json, JsonConvertError, JsonInteger, JsonKey, JsonObject, JsonString, JsonValue,
     },
     lsp::client::ClientHandle,
-    platform::ServerPlatform,
+    platform::Platform,
 };
 
 pub struct SharedJsonGuard {
@@ -226,7 +226,7 @@ pub struct ServerConnection {
 }
 
 impl ServerConnection {
-    pub fn spawn(platform: &mut dyn ServerPlatform, mut command: Command) -> io::Result<Self> {
+    pub fn spawn(platform: &mut dyn Platform, mut command: Command) -> io::Result<Self> {
         command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -271,7 +271,7 @@ impl ServerConnection {
         */
     }
 
-    pub fn write(&mut self, platform: &mut dyn ServerPlatform, buf: &[u8]) -> io::Result<()> {
+    pub fn write(&mut self, platform: &mut dyn Platform, buf: &[u8]) -> io::Result<()> {
         platform.write_to_process(self.process_index, buf);
         Ok(())
     }
