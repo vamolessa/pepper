@@ -235,40 +235,28 @@ impl ClientApplication {
         message: &[u8],
         writer: PlatformWriter,
     ) -> bool {
-        true
-    }
-
-    /*
-    pub fn on_events<P>(&mut self, platform: &mut P, events: &[ClientPlatformEvent]) -> bool
-    where
-        P: ClientPlatform,
-    {
         use io::Write;
 
         self.write_buf.clear();
-        for event in events {
-            match event {
-                ClientPlatformEvent::Key(key) => {
-                    ClientEvent::Key(self.client_event_source, *key).serialize(&mut self.write_buf);
-                }
-                ClientPlatformEvent::Resize(width, height) => {
-                    ClientEvent::Resize(self.client_event_source, *width as _, *height as _)
-                        .serialize(&mut self.write_buf);
-                }
-                ClientPlatformEvent::Message(len) => {
-                    let buf = platform.read(*len);
-                    self.read_buf.extend_from_slice(buf);
-                    let mut len_bytes = [0; 4];
-                    if self.read_buf.len() < len_bytes.len() {
-                        continue;
-                    }
 
-                    len_bytes.copy_from_slice(&self.read_buf[..4]);
-                    let message_len = u32::from_le_bytes(len_bytes) as usize;
-                    if self.read_buf.len() < message_len + 4 {
-                        continue;
-                    }
+        if let Some((width, height)) = resize {
+            ClientEvent::Resize(self.client_event_source, width as _, height as _)
+                .serialize(&mut self.write_buf);
+        }
 
+        for key in keys {
+            ClientEvent::Key(self.client_event_source, *key).serialize(&mut self.write_buf);
+        }
+
+        if !message.is_empty() {
+            self.read_buf.extend_from_slice(message);
+            let mut len_bytes = [0; 4];
+
+            if self.read_buf.len() >= len_bytes.len() {
+                len_bytes.copy_from_slice(&self.read_buf[..4]);
+                let message_len = u32::from_le_bytes(len_bytes) as usize;
+
+                if self.read_buf.len() >= message_len + 4 {
                     self.read_buf.extend_from_slice(ui::RESET_STYLE_CODE);
                     self.stdout.write_all(&self.read_buf[4..]).unwrap();
                     self.read_buf.clear();
@@ -278,9 +266,8 @@ impl ClientApplication {
 
         self.stdout.flush().unwrap();
         let bytes = self.write_buf.as_slice();
-        bytes.is_empty() || platform.write(bytes)
+        bytes.is_empty() || writer.write(bytes)
     }
-    */
 }
 impl Drop for ClientApplication {
     fn drop(&mut self) {
