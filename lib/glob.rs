@@ -204,12 +204,6 @@ fn matches_recursive<'data, 'cont>(
     mut path: &'data [u8],
     continuation: &'cont Continuation<'cont, 'data>,
 ) -> bool {
-    macro_rules! advance {
-        ($slice:ident, $len:expr) => {
-            $slice = &$slice[$len..]
-        };
-    }
-
     #[inline]
     fn is_path_separator(b: &u8) -> bool {
         std::path::is_separator(*b as _)
@@ -235,20 +229,20 @@ fn matches_recursive<'data, 'cont>(
                 if !path.starts_with(prefix) {
                     return false;
                 }
-                advance!(path, prefix.len());
+                path = &path[prefix.len()..];
             }
             Op::Separator => {
                 if path.is_empty() || !is_path_separator(&path[0]) {
                     return false;
                 }
-                advance!(path, 1);
+                path = &path[1..];
             }
             Op::Skip { len } => {
                 let len = *len as usize;
                 if path.len() < len || path[..len].iter().any(is_path_separator) {
                     return false;
                 }
-                advance!(path, len);
+                path = &path[len..];
             }
             Op::Many => loop {
                 if matches_recursive(ops, bytes, path, continuation) {
@@ -257,7 +251,7 @@ fn matches_recursive<'data, 'cont>(
                 if path.is_empty() || is_path_separator(&path[0]) {
                     return false;
                 }
-                advance!(path, 1);
+                path = &path[1..];
             },
             Op::ManyComponents => loop {
                 if matches_recursive(ops, bytes, path, continuation) {
@@ -267,7 +261,7 @@ fn matches_recursive<'data, 'cont>(
                     return false;
                 }
                 match path.iter().position(is_path_separator) {
-                    Some(i) => advance!(path, i + 1),
+                    Some(i) => path = &path[(i + 1)..],
                     None => return false,
                 }
             },
@@ -276,7 +270,7 @@ fn matches_recursive<'data, 'cont>(
                     return false;
                 }
                 let b = path[0];
-                advance!(path, 1);
+                path = &path[1..];
                 for range in bytes[(*start as usize)..].chunks(2).take(*count as _) {
                     let start = range[0];
                     let end = range[1];
@@ -291,7 +285,7 @@ fn matches_recursive<'data, 'cont>(
                     return false;
                 }
                 let b = path[0];
-                advance!(path, 1);
+                path = &path[1..];
                 for range in bytes[(*start as usize)..].chunks(2).take(*count as _) {
                     let start = range[0];
                     let end = range[1];
@@ -308,12 +302,12 @@ fn matches_recursive<'data, 'cont>(
                         Op::SubPattern { len } => len as usize,
                         _ => return false,
                     };
-                    advance!(ops, 1);
+                    ops = &ops[1..];
                     let continuation = Continuation::Next(jump, continuation);
                     if matches_recursive(&ops[..len], bytes, path, &continuation) {
                         return true;
                     }
-                    advance!(ops, len);
+                    ops = &ops[len..];
                 }
             }
             Op::SubPattern { .. } => unreachable!(),
