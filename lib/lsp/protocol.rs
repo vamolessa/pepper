@@ -470,7 +470,7 @@ impl Protocol {
 
     fn send_body(
         &mut self,
-        platform: &mut dyn ServerPlatform,
+        //platform: &mut dyn ServerPlatform,
         json: &mut Json,
         body: JsonValue,
     ) -> io::Result<()> {
@@ -484,7 +484,7 @@ impl Protocol {
         )?;
         self.write_buffer.append(&mut self.body_buffer);
 
-        self.server_connection.write(platform, &self.write_buffer)?;
+        //self.server_connection.write(platform, &self.write_buffer)?;
         Ok(())
     }
 }

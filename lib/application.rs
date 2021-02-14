@@ -116,14 +116,14 @@ impl ServerApplication {
             }
             ServerPlatformEvent::ProcessStdout { index, len } => {
                 let bytes = platform.read_from_process_stdout(index, len);
-                self.editor.on_process_stdout(platform, index, bytes);
+                //self.editor.on_process_stdout(platform, index, bytes);
             }
             ServerPlatformEvent::ProcessStderr { index, len } => {
                 let bytes = platform.read_from_process_stderr(index, len);
-                self.editor.on_process_stderr(platform, index, bytes);
+                //self.editor.on_process_stderr(platform, index, bytes);
             }
             ServerPlatformEvent::ProcessExit { index, success } => {
-                self.editor.on_process_exit(platform, index, success);
+                //self.editor.on_process_exit(platform, index, success);
             }
         }
 
