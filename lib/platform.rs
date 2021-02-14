@@ -24,8 +24,6 @@ pub enum Key {
 
 #[derive(Clone, Copy)]
 pub enum ServerPlatformEvent {
-    Redraw,
-    Idle,
     ConnectionOpen { index: usize },
     ConnectionClose { index: usize },
     ConnectionMessage { index: usize, len: usize },
@@ -48,8 +46,6 @@ pub trait Args: Sized {
 }
 
 pub trait ServerPlatform {
-    fn request_redraw(&mut self);
-
     fn read_from_clipboard(&mut self, text: &mut String) -> bool;
     fn write_to_clipboard(&mut self, text: &str);
 

@@ -617,7 +617,6 @@ enum EventSource {
     Connection(usize),
     ChildStdout(usize),
     ChildStderr(usize),
-    Redraw,
 }
 #[derive(Default)]
 struct Events {
@@ -692,16 +691,11 @@ impl<T> SlotVec<T> {
 }
 
 struct ServerState {
-    redraw_event: Event,
     pipes: SlotVec<PipeToClient>,
     children: SlotVec<AsyncChild>,
 }
 
 impl ServerPlatform for ServerState {
-    fn request_redraw(&mut self) {
-        self.redraw_event.notify();
-    }
-
     fn read_from_clipboard(&mut self, text: &mut String) -> bool {
         let clipboard = Clipboard::open();
         text.clear();
@@ -878,7 +872,6 @@ fn run_server(args: Args, pipe_path: &[u16]) {
     let mut events = Events::default();
     let mut listener = PipeToClientListener::new(pipe_path, connection_buffer_len);
     let mut state = ServerState {
-        redraw_event: Event::new(),
         pipes: SlotVec::new(),
         children: SlotVec::new(),
     };
@@ -909,7 +902,6 @@ fn run_server(args: Args, pipe_path: &[u16]) {
                 events.track(&io.event, EventSource::ChildStderr(i));
             }
         }
-        events.track(&state.redraw_event, EventSource::Redraw);
 
         match events.wait_one(None) {
             Some(EventSource::ConnectionListener) => {
@@ -985,7 +977,6 @@ fn run_server(args: Args, pipe_path: &[u16]) {
                     }
                 }
             }
-            Some(EventSource::Redraw) => send_event!(ServerPlatformEvent::Redraw),
             None => panic!("timeout waiting"),
         }
     }

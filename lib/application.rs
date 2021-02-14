@@ -76,8 +76,6 @@ impl ServerApplication {
         P: ServerPlatform,
     {
         match event {
-            ServerPlatformEvent::Redraw => (),
-            ServerPlatformEvent::Idle => self.editor.on_idle(&mut self.clients),
             ServerPlatformEvent::ConnectionOpen { index } => {
                 if let Some(handle) = ClientHandle::from_index(index) {
                     self.clients.on_client_joined(handle)
@@ -129,7 +127,7 @@ impl ServerApplication {
 
         let needs_redraw = self.editor.on_pre_render(&mut self.clients);
         if needs_redraw {
-            platform.request_redraw();
+            //platform.request_redraw();
         }
 
         let focused_handle = self.clients.focused_handle();
