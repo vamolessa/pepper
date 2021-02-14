@@ -6,7 +6,7 @@ use crate::{
     command::CommandOperation,
     connection::ClientEventDeserializationBufCollection,
     editor::{Editor, EditorLoop},
-    platform::{ClientPlatform, ClientPlatformEvent, ServerPlatform, ServerPlatformEvent},
+    platform::{Key, PlatformWriter, ServerPlatform, ServerPlatformEvent},
     serialization::{SerializationBuf, Serialize},
     ui, Args,
 };
@@ -181,10 +181,7 @@ impl ClientApplication {
         2 * 1024
     }
 
-    pub fn new<P>(args: Args, platform: &mut P) -> Self
-    where
-        P: ClientPlatform,
-    {
+    pub fn new(args: Args, writer: PlatformWriter) -> Self {
         static mut STDOUT: Option<io::Stdout> = None;
         let mut stdout = unsafe {
             STDOUT = Some(io::stdout());
@@ -215,7 +212,7 @@ impl ClientApplication {
                 .serialize(&mut write_buf);
         }
 
-        platform.write(write_buf.as_slice());
+        writer.write(write_buf.as_slice());
 
         use io::Write;
         let _ = stdout.write_all(ui::ENTER_ALTERNATE_BUFFER_CODE);
@@ -231,6 +228,17 @@ impl ClientApplication {
         }
     }
 
+    pub fn update(
+        &mut self,
+        resize: Option<(usize, usize)>,
+        keys: &[Key],
+        message: &[u8],
+        writer: PlatformWriter,
+    ) -> bool {
+        true
+    }
+
+    /*
     pub fn on_events<P>(&mut self, platform: &mut P, events: &[ClientPlatformEvent]) -> bool
     where
         P: ClientPlatform,
@@ -272,6 +280,7 @@ impl ClientApplication {
         let bytes = self.write_buf.as_slice();
         bytes.is_empty() || platform.write(bytes)
     }
+    */
 }
 impl Drop for ClientApplication {
     fn drop(&mut self) {

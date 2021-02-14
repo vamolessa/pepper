@@ -55,7 +55,7 @@ use winapi::{
 
 use pepper::{
     application::{ClientApplication, ServerApplication},
-    platform::{ClientPlatform, ClientPlatformEvent, Key, ServerPlatform, ServerPlatformEvent},
+    platform::{Key, PlatformWriter, RawPlatformWriter, ServerPlatform, ServerPlatformEvent},
     Args,
 };
 
@@ -408,6 +408,37 @@ impl AsyncIO {
 
     pub fn get_bytes(&self, len: usize) -> &[u8] {
         &self.buf[..len]
+    }
+
+    pub fn get_writer(&self) -> PlatformWriter {
+        fn write(data: *mut (), mut buf: &[u8]) -> bool {
+            while !buf.is_empty() {
+                let mut write_len = 0;
+                let result = unsafe {
+                    WriteFile(
+                        data as _,
+                        buf.as_ptr() as _,
+                        buf.len() as _,
+                        &mut write_len,
+                        std::ptr::null_mut(),
+                    )
+                };
+
+                if result == FALSE {
+                    return false;
+                }
+
+                buf = &buf[(write_len as usize)..];
+            }
+
+            true
+        }
+
+        let writer = RawPlatformWriter {
+            data: self.handle.0 as _,
+            write,
+        };
+        unsafe { PlatformWriter::from_raw(writer) }
     }
 
     pub fn write(&mut self, mut buf: &[u8]) -> bool {
@@ -982,20 +1013,6 @@ fn run_server(args: Args, pipe_path: &[u16]) {
     }
 }
 
-struct ClientState {
-    pipe: PipeToServer,
-}
-
-impl ClientPlatform for ClientState {
-    fn read(&self, len: usize) -> &[u8] {
-        self.pipe.get_bytes(len)
-    }
-
-    fn write(&mut self, buf: &[u8]) -> bool {
-        self.pipe.write(buf)
-    }
-}
-
 fn run_client(args: Args, pipe_path: &[u16], input_handle: HANDLE, output_handle: HANDLE) {
     if !pipe_exists(pipe_path) {
         fork();
@@ -1004,10 +1021,8 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: HANDLE, output_handle
         }
     }
 
-    let mut state = ClientState {
-        pipe: PipeToServer::connect(pipe_path, ClientApplication::connection_buffer_len()),
-    };
-    let mut application = ClientApplication::new(args, &mut state);
+    let mut pipe = PipeToServer::connect(pipe_path, ClientApplication::connection_buffer_len());
+    let mut application = ClientApplication::new(args, pipe.get_writer());
 
     let original_input_mode = get_console_mode(input_handle);
     set_console_mode(input_handle, ENABLE_WINDOW_INPUT);
@@ -1017,13 +1032,15 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: HANDLE, output_handle
         ENABLE_PROCESSED_OUTPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING,
     );
 
-    let event_buffer = &mut [unsafe { std::mem::zeroed() }; CLIENT_EVENT_BUFFER_LEN][..];
-    let wait_handles = [state.pipe.event.handle(), input_handle];
-    let mut pending_events = Vec::new();
+    let mut event_buffer = [unsafe { std::mem::zeroed() }; CLIENT_EVENT_BUFFER_LEN];
+    let wait_handles = [pipe.event.handle(), input_handle];
+
+    let mut keys = Vec::new();
 
     let (width, height) = get_console_size(output_handle);
-    pending_events.push(ClientPlatformEvent::Resize(width, height));
-    application.on_events(&mut state, &pending_events);
+    if !application.update(Some((width, height)), &[], &[], pipe.get_writer()) {
+        return;
+    }
 
     loop {
         let wait_handle_index = match wait_for_multiple_objects(&wait_handles, None) {
@@ -1031,15 +1048,18 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: HANDLE, output_handle
             _ => continue,
         };
 
-        pending_events.clear();
+        let mut resize = None;
+        keys.clear();
+        let mut message = &[][..];
+
         match wait_handle_index {
-            0 => match state.pipe.read_async() {
+            0 => match pipe.read_async() {
                 ReadResult::Waiting => (),
                 ReadResult::Ok(0) | ReadResult::Err => break,
-                ReadResult::Ok(len) => pending_events.push(ClientPlatformEvent::Message(len)),
+                ReadResult::Ok(len) => message = pipe.get_bytes(len),
             },
             1 => {
-                let events = read_console_input(input_handle, event_buffer);
+                let events = read_console_input(input_handle, &mut event_buffer);
                 for event in events {
                     match event.EventType {
                         KEY_EVENT => {
@@ -1108,13 +1128,12 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: HANDLE, output_handle
                             };
 
                             for _ in 0..repeat_count {
-                                pending_events.push(ClientPlatformEvent::Key(key));
+                                keys.push(key);
                             }
                         }
                         WINDOW_BUFFER_SIZE_EVENT => {
                             let size = unsafe { event.Event.WindowBufferSizeEvent().dwSize };
-                            pending_events
-                                .push(ClientPlatformEvent::Resize(size.X as _, size.Y as _));
+                            resize = Some((size.X as _, size.Y as _));
                         }
                         _ => (),
                     }
@@ -1123,7 +1142,7 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: HANDLE, output_handle
             _ => unreachable!(),
         }
 
-        if !application.on_events(&mut state, &pending_events) {
+        if !application.update(resize, &keys, message, pipe.get_writer()) {
             break;
         }
     }

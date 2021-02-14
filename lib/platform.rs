@@ -32,11 +32,20 @@ pub enum ServerPlatformEvent {
     ProcessExit { index: usize, success: bool },
 }
 
-#[derive(Clone, Copy)]
-pub enum ClientPlatformEvent {
-    Resize(usize, usize),
-    Key(Key),
-    Message(usize),
+pub struct PlatformWriter(RawPlatformWriter);
+impl PlatformWriter {
+    pub unsafe fn from_raw(raw: RawPlatformWriter) -> Self {
+        Self(raw)
+    }
+
+    pub fn write(&self, buf: &[u8]) -> bool {
+        (self.0.write)(self.0.data, buf)
+    }
+}
+
+pub struct RawPlatformWriter {
+    pub data: *mut (),
+    pub write: fn(*mut (), &[u8]) -> bool,
 }
 
 pub trait Args: Sized {
@@ -65,7 +74,9 @@ pub trait ServerPlatform {
     fn kill_process(&mut self, index: usize);
 }
 
+/*
 pub trait ClientPlatform {
     fn read(&self, len: usize) -> &[u8];
     fn write(&mut self, buf: &[u8]) -> bool;
 }
+*/
