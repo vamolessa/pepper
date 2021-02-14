@@ -55,9 +55,17 @@ use winapi::{
 
 use pepper::{
     application::{ClientApplication, ServerApplication},
-    platform::{Key, PlatformWriter, RawPlatformWriter, Platform, ServerPlatformEvent},
+    platform::{Key, Platform, PlatformWriter, RawPlatformWriter, ServerPlatformEvent},
     Args,
 };
+
+// max event count = 64
+// 1 connection listener
+// 13 connections
+// 25 process stdout
+// 25 process stderr
+const MAX_CONNECTION_COUNT: usize = 13;
+const MAX_PROCESS_COUNT: usize = 25;
 
 const CLIENT_EVENT_BUFFER_LEN: usize = 32;
 
@@ -672,58 +680,11 @@ impl Events {
     }
 }
 
-struct SlotVec<T>(Vec<Option<T>>);
-impl<T> SlotVec<T> {
-    pub fn new() -> Self {
-        Self(Vec::new())
-    }
-
-    pub fn push(&mut self, item: T) -> usize {
-        let len = self.0.len();
-        for i in 0..len {
-            if let None = &self.0[i] {
-                self.0[i] = Some(item);
-                return i;
-            }
-        }
-
-        self.0.push(Some(item));
-        len
-    }
-
-    pub fn remove(&mut self, index: usize) {
-        if index < self.0.len() {
-            let entry = &mut self.0[index];
-            if entry.is_some() {
-                *entry = None;
-                if let Some(i) = self.0.iter().rposition(Option::is_some) {
-                    self.0.truncate(i + 1);
-                } else {
-                    self.0.clear();
-                }
-            }
-        }
-    }
-
-    pub fn get(&self, index: usize) -> Option<&T> {
-        self.0.get(index)?.as_ref()
-    }
-
-    pub fn get_mut(&mut self, index: usize) -> Option<&mut T> {
-        self.0.get_mut(index)?.as_mut()
-    }
-
-    pub fn iter<'a>(&'a self) -> impl 'a + Iterator<Item = (usize, &'a T)> {
-        self.0.iter().enumerate().filter_map(|(i, e)| match e {
-            Some(e) => Some((i, e)),
-            None => None,
-        })
-    }
-}
-
 struct ServerState {
-    pipes: SlotVec<PipeToClient>,
-    children: SlotVec<AsyncChild>,
+    pipes: [Option<PipeToClient>; MAX_CONNECTION_COUNT],
+    pipes_len: usize,
+    children: [Option<AsyncChild>; MAX_PROCESS_COUNT],
+    children_len: usize,
 }
 
 impl Platform for ServerState {
@@ -820,21 +781,29 @@ impl Platform for ServerState {
     }
 
     fn read_from_connection(&mut self, index: usize, len: usize) -> &[u8] {
-        match self.pipes.get(index) {
-            Some(pipe) => pipe.get_bytes(len),
+        if index >= self.pipes_len {
+            return &[];
+        }
+        match self.pipes[index] {
+            Some(ref pipe) => pipe.get_bytes(len),
             None => &[],
         }
     }
 
     fn write_to_connection(&mut self, index: usize, buf: &[u8]) -> bool {
-        match self.pipes.get_mut(index) {
-            Some(pipe) => pipe.write(buf),
+        if index >= self.pipes_len {
+            return false;
+        }
+        match self.pipes[index] {
+            Some(ref mut pipe) => pipe.write(buf),
             None => false,
         }
     }
 
     fn close_connection(&mut self, index: usize) {
-        self.pipes.remove(index);
+        if index < self.pipes_len {
+            self.pipes[index] = None;
+        }
     }
 
     fn spawn_process(
@@ -843,18 +812,27 @@ impl Platform for ServerState {
         stdout_buf_len: usize,
         stderr_buf_len: usize,
     ) -> io::Result<usize> {
-        let child = command.spawn()?;
-        let index = self.children.push(AsyncChild::from_child(
-            child,
+        let index = self.children_len;
+        if index >= self.children.len() {
+            return Err(io::Error::from(io::ErrorKind::Other));
+        }
+
+        self.children[index] = Some(AsyncChild::from_child(
+            command.spawn()?,
             stdout_buf_len,
             stderr_buf_len,
         ));
+        self.children_len += 1;
+
         Ok(index)
     }
 
     fn read_from_process_stdout(&mut self, index: usize, len: usize) -> &[u8] {
-        match self.children.get(index) {
-            Some(child) => match child.stdout {
+        if index >= self.children_len {
+            return &[];
+        }
+        match self.children[index] {
+            Some(ref child) => match child.stdout {
                 ChildPipe::Open(ref io) => io.get_bytes(len),
                 ChildPipe::Closed => &[],
             },
@@ -863,8 +841,11 @@ impl Platform for ServerState {
     }
 
     fn read_from_process_stderr(&mut self, index: usize, len: usize) -> &[u8] {
-        match self.children.get(index) {
-            Some(child) => match child.stderr {
+        if index >= self.children_len {
+            return &[];
+        }
+        match self.children[index] {
+            Some(ref child) => match child.stderr {
                 ChildPipe::Open(ref io) => io.get_bytes(len),
                 ChildPipe::Closed => &[],
             },
@@ -873,7 +854,10 @@ impl Platform for ServerState {
     }
 
     fn write_to_process(&mut self, index: usize, buf: &[u8]) -> bool {
-        if let Some(child) = self.children.get_mut(index) {
+        if index >= self.children_len {
+            return false;
+        }
+        if let Some(ref mut child) = self.children[index] {
             if let Some(ref mut stdin) = child.child.stdin {
                 use io::Write;
                 if let Ok(()) = stdin.write_all(buf) {
@@ -886,10 +870,13 @@ impl Platform for ServerState {
     }
 
     fn kill_process(&mut self, index: usize) {
-        if let Some(child) = self.children.get_mut(index) {
+        if index >= self.children_len {
+            return;
+        }
+        if let Some(ref mut child) = self.children[index] {
             let _ = child.child.kill();
             let _ = child.child.wait();
-            self.children.remove(index);
+            self.children[index] = None;
         }
     }
 }
@@ -903,8 +890,10 @@ fn run_server(args: Args, pipe_path: &[u16]) {
     let mut events = Events::default();
     let mut listener = PipeToClientListener::new(pipe_path, connection_buffer_len);
     let mut state = ServerState {
-        pipes: SlotVec::new(),
-        children: SlotVec::new(),
+        pipes: Default::default(),
+        pipes_len: 0,
+        children: Default::default(),
+        children_len: 0,
     };
 
     let mut application = match ServerApplication::new(args, &mut state) {
@@ -922,35 +911,46 @@ fn run_server(args: Args, pipe_path: &[u16]) {
 
     loop {
         events.track(&listener.io.event, EventSource::ConnectionListener);
-        for (i, pipe) in state.pipes.iter() {
-            events.track(&pipe.event, EventSource::Connection(i));
-        }
-        for (i, child) in state.children.iter() {
-            if let ChildPipe::Open(io) = &child.stdout {
-                events.track(&io.event, EventSource::ChildStdout(i));
+        for i in 0..state.pipes_len {
+            if let Some(pipe) = &state.pipes[i] {
+                events.track(&pipe.event, EventSource::Connection(i));
             }
-            if let ChildPipe::Open(io) = &child.stderr {
-                events.track(&io.event, EventSource::ChildStderr(i));
+        }
+        for i in 0..state.children_len {
+            if let Some(child) = &state.children[i] {
+                if let ChildPipe::Open(io) = &child.stdout {
+                    events.track(&io.event, EventSource::ChildStdout(i));
+                }
+                if let ChildPipe::Open(io) = &child.stderr {
+                    events.track(&io.event, EventSource::ChildStderr(i));
+                }
             }
         }
 
         match events.wait_one(None) {
             Some(EventSource::ConnectionListener) => {
                 if let Some(pipe) = listener.accept(pipe_path, connection_buffer_len) {
-                    let index = state.pipes.push(pipe);
-                    send_event!(ServerPlatformEvent::ConnectionOpen { index });
+                    if state.pipes_len < state.pipes.len() {
+                        let index = state.pipes_len;
+                        state.pipes_len += 1;
+                        state.pipes[index] = Some(pipe);
+                        send_event!(ServerPlatformEvent::ConnectionOpen { index });
+                    }
                 }
             }
             Some(EventSource::Connection(index)) => {
-                let pipe = match state.pipes.get_mut(index) {
-                    Some(pipe) => pipe,
+                if index >= state.pipes.len() {
+                    continue;
+                }
+                let pipe = match state.pipes[index] {
+                    Some(ref mut pipe) => pipe,
                     None => continue,
                 };
 
                 match pipe.read_async() {
                     ReadResult::Waiting => (),
                     ReadResult::Err | ReadResult::Ok(0) => {
-                        state.pipes.remove(index);
+                        state.pipes[index] = None;
                         send_event!(ServerPlatformEvent::ConnectionClose { index });
                     }
                     ReadResult::Ok(len) => {
@@ -959,8 +959,11 @@ fn run_server(args: Args, pipe_path: &[u16]) {
                 }
             }
             Some(EventSource::ChildStdout(index)) => {
-                let child = match state.children.get_mut(index) {
-                    Some(child) => child,
+                if index >= state.children.len() {
+                    continue;
+                }
+                let child = match state.children[index] {
+                    Some(ref mut child) => child,
                     None => continue,
                 };
                 let io = match child.stdout {
@@ -974,7 +977,7 @@ fn run_server(args: Args, pipe_path: &[u16]) {
                         child.stdout = ChildPipe::Closed;
                         if let ChildPipe::Closed = child.stderr {
                             let success = child.child.wait().unwrap().success();
-                            state.children.remove(index);
+                            state.children[index] = None;
                             send_event!(ServerPlatformEvent::ProcessExit { index, success });
                         }
                     }
@@ -984,8 +987,11 @@ fn run_server(args: Args, pipe_path: &[u16]) {
                 }
             }
             Some(EventSource::ChildStderr(index)) => {
-                let child = match state.children.get_mut(index) {
-                    Some(child) => child,
+                if index >= state.children.len() {
+                    continue;
+                }
+                let child = match state.children[index] {
+                    Some(ref mut child) => child,
                     None => continue,
                 };
                 let io = match child.stderr {
@@ -999,7 +1005,7 @@ fn run_server(args: Args, pipe_path: &[u16]) {
                         child.stderr = ChildPipe::Closed;
                         if let ChildPipe::Closed = child.stdout {
                             let success = child.child.wait().unwrap().success();
-                            state.children.remove(index);
+                            state.children[index] = None;
                             send_event!(ServerPlatformEvent::ProcessExit { index, success });
                         }
                     }
