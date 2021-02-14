@@ -46,36 +46,34 @@ impl Glob {
         let mut start_ops_index = self.ops.len();
         let mut index = 0;
 
-        macro_rules! next {
-            () => {{
-                let i = index;
-                if i < pattern.len() {
-                    index += 1;
-                    Some(pattern[i])
-                } else {
-                    None
-                }
-            }};
+        #[inline]
+        fn next(pattern: &[u8], index: &mut usize) -> Option<u8> {
+            let i = *index;
+            if i < pattern.len() {
+                *index += 1;
+                Some(pattern[i])
+            } else {
+                None
+            }
         }
 
-        macro_rules! peek {
-            () => {
-                if index < pattern.len() {
-                    Some(pattern[index])
-                } else {
-                    None
-                }
-            };
+        #[inline]
+        fn peek(pattern: &[u8], index: usize) -> Option<u8> {
+            if index < pattern.len() {
+                Some(pattern[index])
+            } else {
+                None
+            }
         }
 
         loop {
-            match next!() {
+            match next(pattern, &mut index) {
                 None => break,
                 Some(b'?') => match self.ops[start_ops_index..].last_mut() {
                     Some(Op::Skip { len }) => *len += 1,
                     _ => self.ops.push(Op::Skip { len: 1 }),
                 },
-                Some(b'*') => match peek!() {
+                Some(b'*') => match peek(pattern, index) {
                     Some(b'*') => {
                         match self.ops.last() {
                             None | Some(Op::Separator) => (),
@@ -83,7 +81,7 @@ impl Glob {
                         }
 
                         index += 1;
-                        match peek!() {
+                        match peek(pattern, index) {
                             None => self.ops.push(Op::ManyComponents),
                             Some(b'/') => {
                                 index += 1;
@@ -95,7 +93,7 @@ impl Glob {
                     _ => self.ops.push(Op::Many),
                 },
                 Some(b'[') => {
-                    let inverse = match peek!() {
+                    let inverse = match peek(pattern, index) {
                         Some(b'!') => {
                             index += 1;
                             true
@@ -104,15 +102,15 @@ impl Glob {
                     };
                     let start = self.bytes.len();
                     loop {
-                        let start = match next!() {
+                        let start = match next(pattern, &mut index) {
                             None => return Err(InvalidGlobError),
                             Some(b']') => break,
                             Some(b) => b,
                         };
-                        let end = match peek!() {
+                        let end = match peek(pattern, index) {
                             Some(b'-') => {
                                 index += 1;
-                                let end = match next!() {
+                                let end = match next(pattern, &mut index) {
                                     None | Some(b']') => return Err(InvalidGlobError),
                                     Some(b) => b,
                                 };
@@ -152,7 +150,7 @@ impl Glob {
                             _ => unreachable!(),
                         }
 
-                        match next!() {
+                        match next(pattern, &mut index) {
                             Some(b'}') => break,
                             Some(b',') => continue,
                             _ => return Err(InvalidGlobError),

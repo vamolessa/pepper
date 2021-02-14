@@ -238,18 +238,17 @@ enum Op {
 }
 
 impl fmt::Debug for Op {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         const WIDTH: usize = 14;
-        macro_rules! p {
-            ($name:expr, $okj:expr, $erj:expr) => {
-                f.write_fmt(format_args!(
-                    "{:width$}{} {}",
-                    $name,
-                    $okj.0,
-                    $erj.0,
-                    width = WIDTH
-                ));
-            };
+
+        fn p(f: &mut fmt::Formatter, name: &str, okj: &Jump, erj: &Jump) -> fmt::Result {
+            f.write_fmt(format_args!(
+                "{:width$}{} {}",
+                name,
+                okj.0,
+                erj.0,
+                width = WIDTH
+            ))
         }
 
         match self {
@@ -268,8 +267,8 @@ impl fmt::Debug for Op {
                 jump.0,
                 width = WIDTH - 4
             )),
-            Op::EndAnchor(okj, erj) => p!("EndAnchor", okj, erj),
-            Op::SkipOne(okj, erj) => p!("SkipOne", okj, erj),
+            Op::EndAnchor(okj, erj) => p(f, "EndAnchor", okj, erj),
+            Op::SkipOne(okj, erj) => p(f, "SkipOne", okj, erj),
             Op::SkipMany(okj, erj, len) => f.write_fmt(format_args!(
                 "{:width$}[{}] {} {}",
                 "SkipMany",
@@ -278,11 +277,11 @@ impl fmt::Debug for Op {
                 erj.0,
                 width = WIDTH - 4
             )),
-            Op::Alphabetic(okj, erj) => p!("Alphabetic", okj, erj),
-            Op::Lower(okj, erj) => p!("Lower", okj, erj),
-            Op::Upper(okj, erj) => p!("Upper", okj, erj),
-            Op::Digit(okj, erj) => p!("Digit", okj, erj),
-            Op::Alphanumeric(okj, erj) => p!("Alphanumeric", okj, erj),
+            Op::Alphabetic(okj, erj) => p(f, "Alphabetic", okj, erj),
+            Op::Lower(okj, erj) => p(f, "Lower", okj, erj),
+            Op::Upper(okj, erj) => p(f, "Upper", okj, erj),
+            Op::Digit(okj, erj) => p(f, "Digit", okj, erj),
+            Op::Alphanumeric(okj, erj) => p(f, "Alphanumeric", okj, erj),
             Op::Byte(okj, erj, byte) => f.write_fmt(format_args!(
                 "{:width$}'{}' {} {}",
                 "Byte",

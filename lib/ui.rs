@@ -410,7 +410,6 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
 fn draw_picker(buf: &mut Vec<u8>, editor: &Editor, view: &View) {
     let cursor = editor.picker.cursor();
     let scroll = editor.picker.scroll();
-    let mut char_buf = [0; std::mem::size_of::<char>()];
 
     let half_width = view.width / 2;
     let half_width = half_width.saturating_sub(1) as usize;
@@ -442,20 +441,21 @@ fn draw_picker(buf: &mut Vec<u8>, editor: &Editor, view: &View) {
 
         let mut x = 0;
 
-        macro_rules! print_char {
-            ($c:expr) => {
-                x += 1;
-                match $c {
-                    '\t' => buf.push(b' '),
-                    c => buf.extend_from_slice(c.encode_utf8(&mut char_buf).as_bytes()),
-                }
-            };
+        #[inline]
+        fn print_char(buf: &mut Vec<u8>, x: &mut usize, c: char) {
+            let mut char_buf = [0; std::mem::size_of::<char>()];
+
+            *x += 1;
+            match c {
+                '\t' => buf.push(b' '),
+                c => buf.extend_from_slice(c.encode_utf8(&mut char_buf).as_bytes()),
+            }
         }
 
         let name_char_count = entry.name.chars().count();
         if name_char_count < half_width {
             for c in entry.name.chars() {
-                print_char!(c);
+                print_char(buf, &mut x, c);
             }
         } else {
             buf.extend_from_slice(b"...");
@@ -466,7 +466,7 @@ fn draw_picker(buf: &mut Vec<u8>, editor: &Editor, view: &View) {
                 .chars()
                 .skip(name_char_count.saturating_sub(half_width))
             {
-                print_char!(c);
+                print_char(buf, &mut x, c);
             }
         }
         for _ in x..half_width {
@@ -479,7 +479,7 @@ fn draw_picker(buf: &mut Vec<u8>, editor: &Editor, view: &View) {
                 buf.extend_from_slice(b"...");
                 break;
             }
-            print_char!(c);
+            print_char(buf, &mut x, c);
         }
 
         clear_until_new_line(buf);

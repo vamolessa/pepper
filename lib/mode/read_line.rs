@@ -133,17 +133,16 @@ pub mod search {
     }
 }
 
-macro_rules! on_submitted {
-    ($ctx:expr, $poll:expr => $value:expr) => {
-        match $poll {
-            ReadLinePoll::Pending => (),
-            ReadLinePoll::Submitted => {
-                $value;
-                Mode::change_to($ctx, ModeKind::default());
-            }
-            ReadLinePoll::Canceled => Mode::change_to($ctx, ModeKind::default()),
+#[inline]
+fn on_submitted(ctx: &mut ModeContext, poll: ReadLinePoll, proc: fn(&mut ModeContext)) {
+    match poll {
+        ReadLinePoll::Pending => (),
+        ReadLinePoll::Submitted => {
+            proc(ctx);
+            Mode::change_to(ctx, ModeKind::default());
         }
-    };
+        ReadLinePoll::Canceled => Mode::change_to(ctx, ModeKind::default()),
+    }
 }
 
 pub mod filter_cursors {
@@ -154,7 +153,9 @@ pub mod filter_cursors {
     pub fn enter_filter_mode(ctx: &mut ModeContext) {
         ctx.editor.read_line.set_prompt("filter:");
         ctx.editor.mode.read_line_state.on_client_keys = |ctx, _, poll| {
-            on_submitted!(ctx, poll => on_event_impl(ctx, true));
+            on_submitted(ctx, poll, |ctx| {
+                on_event_impl(ctx, true);
+            });
             None
         };
         Mode::change_to(ctx, ModeKind::ReadLine);
@@ -163,7 +164,9 @@ pub mod filter_cursors {
     pub fn enter_except_mode(ctx: &mut ModeContext) {
         ctx.editor.read_line.set_prompt("except:");
         ctx.editor.mode.read_line_state.on_client_keys = |ctx, _, poll| {
-            on_submitted!(ctx, poll => on_event_impl(ctx, false));
+            on_submitted(ctx, poll, |ctx| {
+                on_event_impl(ctx, false);
+            });
             None
         };
         Mode::change_to(ctx, ModeKind::ReadLine);
@@ -270,7 +273,9 @@ pub mod split_cursors {
 
         ctx.editor.read_line.set_prompt("split-by:");
         ctx.editor.mode.read_line_state.on_client_keys = |ctx, _, poll| {
-            on_submitted!(ctx, poll => on_event_impl(ctx, add_matches));
+            on_submitted(ctx, poll, |ctx| {
+                on_event_impl(ctx, add_matches);
+            });
             None
         };
         Mode::change_to(ctx, ModeKind::ReadLine);
@@ -306,7 +311,9 @@ pub mod split_cursors {
 
         ctx.editor.read_line.set_prompt("split-on:");
         ctx.editor.mode.read_line_state.on_client_keys = |ctx, _, poll| {
-            on_submitted!(ctx, poll => on_event_impl(ctx, add_matches));
+            on_submitted(ctx, poll, |ctx| {
+                on_event_impl(ctx, add_matches);
+            });
             None
         };
         Mode::change_to(ctx, ModeKind::ReadLine);
