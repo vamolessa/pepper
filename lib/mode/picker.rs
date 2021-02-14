@@ -1,9 +1,8 @@
-use crate::platform::Key;
-
 use crate::{
     buffer_view::BufferViewError,
     editor::{EditorOutputKind, KeysIterator, ReadLinePoll},
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
+    platform::Key,
     word_database::EmptyWordCollection,
 };
 

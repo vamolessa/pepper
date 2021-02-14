@@ -8,6 +8,7 @@ use std::{
 };
 
 use crate::{
+    platform::ServerPlatform,
     json::{
         FromJson, Json, JsonConvertError, JsonInteger, JsonKey, JsonObject, JsonString, JsonValue,
     },
@@ -227,6 +228,7 @@ pub struct ServerConnection {
 
 impl ServerConnection {
     pub fn spawn(
+        platform: &mut dyn ServerPlatform,
         mut command: Command,
         handle: ClientHandle,
         json: SharedJson,

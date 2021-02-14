@@ -1,9 +1,8 @@
 use std::{error::Error, fmt, str::Chars};
 
-use crate::platform::Key;
-
 use crate::{
     client::ClientHandle,
+    platform::Key,
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
 };
 

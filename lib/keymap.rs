@@ -1,10 +1,9 @@
 use std::collections::HashMap;
 
-use crate::platform::Key;
-
 use crate::{
     client_event::{parse_all_keys, KeyParseAllError},
     mode::ModeKind,
+    platform::Key,
 };
 
 pub enum MatchResult<'a> {

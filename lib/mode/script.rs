@@ -1,9 +1,8 @@
-use crate::platform::Key;
-
 use crate::{
     client::{ClientManager, TargetClient},
     editor::{Editor, EditorLoop, KeysIterator, ReadLinePoll, StatusMessageKind},
     mode::{Mode, ModeKind, ModeOperation, ModeState},
+    platform::Key,
     script::{ScriptContext, ScriptEngine, ScriptResult, ScriptValue},
 };
 

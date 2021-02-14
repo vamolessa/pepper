@@ -1,9 +1,8 @@
-use crate::platform::Key;
-
 use crate::{
     command::{CommandManager, CommandOperation},
     editor::{KeysIterator, ReadLinePoll},
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
+    platform::Key,
 };
 
 #[derive(Default)]
