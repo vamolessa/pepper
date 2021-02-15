@@ -611,10 +611,10 @@ impl Drop for ConnectionToClient {
     }
 }
 
-struct PipeToClientListener {
+struct ConnectionToClientListener {
     io: AsyncIO,
 }
-impl PipeToClientListener {
+impl ConnectionToClientListener {
     pub fn new(pipe_path: &[u16], buf_len: usize) -> Self {
         let pipe_handle = unsafe {
             CreateNamedPipeW(
@@ -787,7 +787,7 @@ impl Events {
         self.len += 1;
     }
 
-    pub fn wait_one(&mut self, timeout: Option<Duration>) -> Option<EventSource> {
+    pub fn wait_next(&mut self, timeout: Option<Duration>) -> Option<EventSource> {
         let len = self.len;
         self.len = 0;
         match wait_for_multiple_objects(&self.wait_handles[..len], timeout) {
@@ -917,7 +917,7 @@ fn run_server(args: Args, pipe_path: &[u16]) {
 
     let connection_buffer_len = ServerApplication::connection_buffer_len();
     let mut events = Events::new();
-    let mut listener = PipeToClientListener::new(pipe_path, connection_buffer_len);
+    let mut listener = ConnectionToClientListener::new(pipe_path, connection_buffer_len);
     let mut state = ServerState {
         pipes: Default::default(),
         pipes_len: 0,
@@ -965,7 +965,7 @@ fn run_server(args: Args, pipe_path: &[u16]) {
             }
         }
 
-        match events.wait_one(None) {
+        match events.wait_next(None) {
             Some(EventSource::ConnectionListener) => {
                 if let Some(pipe) = listener.accept(pipe_path, connection_buffer_len) {
                     if state.pipes_len < state.pipes.len() {
