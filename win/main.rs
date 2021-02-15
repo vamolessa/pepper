@@ -3,7 +3,7 @@ use std::{
     hash::{Hash, Hasher},
     io,
     ops::{Deref, DerefMut},
-    os::windows::io::AsRawHandle,
+    os::windows::io::{AsRawHandle, IntoRawHandle},
     process::{Child, Command},
     ptr::NonNull,
     sync::atomic::AtomicPtr,
@@ -547,7 +547,7 @@ impl AsyncIO {
         &self.buf[..len]
     }
 
-    pub fn write(&mut self, buf: &[u8]) -> bool {
+    pub fn write(&self, buf: &[u8]) -> bool {
         write_all_bytes(self.handle.0, buf)
     }
 }
@@ -706,7 +706,8 @@ struct AsyncChild {
     stderr: ChildPipe,
 }
 impl AsyncChild {
-    pub fn from_child(child: Child, stdout_buf_len: usize, stderr_buf_len: usize) -> Self {
+    pub fn from_child(mut child: Child, stdout_buf_len: usize, stderr_buf_len: usize) -> Self {
+        // TODO: needs to be raw handle!
         let stdout = ChildPipe::from_handle(
             child
                 .stdout
@@ -774,7 +775,7 @@ struct ServerState {
 }
 
 impl Platform for ServerState {
-    fn read_from_connection(&mut self, index: usize, len: usize) -> &[u8] {
+    fn read_from_connection(&self, index: usize, len: usize) -> &[u8] {
         if index >= self.pipes_len {
             return &[];
         }
@@ -784,12 +785,12 @@ impl Platform for ServerState {
         }
     }
 
-    fn write_to_connection(&mut self, index: usize, buf: &[u8]) -> bool {
+    fn write_to_connection(&self, index: usize, buf: &[u8]) -> bool {
         if index >= self.pipes_len {
             return false;
         }
         match self.pipes[index] {
-            Some(ref mut pipe) => pipe.write(buf),
+            Some(ref pipe) => pipe.write(buf),
             None => false,
         }
     }

@@ -55,8 +55,8 @@ impl PlatformClipboard {
 }
 
 pub trait Platform {
-    fn read_from_connection(&mut self, index: usize, len: usize) -> &[u8];
-    fn write_to_connection(&mut self, index: usize, buf: &[u8]) -> bool;
+    fn read_from_connection(&self, index: usize, len: usize) -> &[u8];
+    fn write_to_connection(&self, index: usize, buf: &[u8]) -> bool;
     fn close_connection(&mut self, index: usize);
 
     fn spawn_process(
