@@ -64,127 +64,127 @@ pub fn parse_all_keys<'a>(raw: &'a str) -> KeyParser<'a> {
 }
 
 pub fn parse_key(chars: &mut impl Iterator<Item = char>) -> Result<Key, KeyParseError> {
-    macro_rules! next {
-        () => {
-            match chars.next() {
-                Some(element) => element,
-                None => return Err(KeyParseError::UnexpectedEnd),
-            }
-        };
+    #[inline]
+    fn next(chars: &mut impl Iterator<Item = char>) -> Result<char, KeyParseError> {
+        match chars.next() {
+            Some(c) => Ok(c),
+            None => Err(KeyParseError::UnexpectedEnd),
+        }
     }
 
-    macro_rules! consume {
-        ($character:expr) => {
-            let c = next!();
-            if c != $character {
-                return Err(KeyParseError::InvalidCharacter(c));
-            }
-        };
+    #[inline]
+    fn consume(chars: &mut impl Iterator<Item = char>, c: char) -> Result<(), KeyParseError> {
+        let next = next(chars)?;
+        if c == next {
+            Ok(())
+        } else {
+            Err(KeyParseError::InvalidCharacter(next))
+        }
     }
 
-    macro_rules! consume_str {
-        ($str:expr) => {
-            for c in $str.chars() {
-                consume!(c);
-            }
-        };
+    #[inline]
+    fn consume_str(chars: &mut impl Iterator<Item = char>, s: &str) -> Result<(), KeyParseError> {
+        for c in s.chars() {
+            consume(chars, c)?
+        }
+        Ok(())
     }
 
-    let key = match next!() {
-        '<' => match next!() {
+    let key = match next(chars)? {
+        '<' => match next(chars)? {
             'b' => {
-                consume_str!("ackspace>");
+                consume_str(chars, "ackspace>")?;
                 Key::Backspace
             }
             's' => {
-                consume_str!("pace>");
+                consume_str(chars, "pace>")?;
                 Key::Char(' ')
             }
-            'e' => match next!() {
-                'n' => match next!() {
+            'e' => match next(chars)? {
+                'n' => match next(chars)? {
                     't' => {
-                        consume_str!("er>");
+                        consume_str(chars, "er>")?;
                         Key::Enter
                     }
                     'd' => {
-                        consume!('>');
+                        consume(chars, '>')?;
                         Key::End
                     }
                     c => return Err(KeyParseError::InvalidCharacter(c)),
                 },
                 's' => {
-                    consume_str!("c>");
+                    consume_str(chars, "c>")?;
                     Key::Esc
                 }
                 c => return Err(KeyParseError::InvalidCharacter(c)),
             },
             'l' => {
-                consume!('e');
-                match next!() {
+                consume(chars, 'e')?;
+                match next(chars)? {
                     's' => {
-                        consume_str!("s>");
+                        consume_str(chars, "s>")?;
                         Key::Char('<')
                     }
                     'f' => {
-                        consume_str!("t>");
+                        consume_str(chars, "t>")?;
                         Key::Left
                     }
                     c => return Err(KeyParseError::InvalidCharacter(c)),
                 }
             }
             'g' => {
-                consume_str!("reater>");
+                consume_str(chars, "reater>")?;
                 Key::Char('>')
             }
             'r' => {
-                consume_str!("ight>");
+                consume_str(chars, "ight>")?;
                 Key::Right
             }
             'u' => {
-                consume_str!("p>");
+                consume_str(chars, "p>")?;
                 Key::Up
             }
-            'd' => match next!() {
+            'd' => match next(chars)? {
                 'o' => {
-                    consume_str!("wn>");
+                    consume_str(chars, "wn>")?;
                     Key::Down
                 }
                 'e' => {
-                    consume_str!("lete>");
+                    consume_str(chars, "lete>")?;
                     Key::Delete
                 }
                 c => return Err(KeyParseError::InvalidCharacter(c)),
             },
             'h' => {
-                consume_str!("ome>");
+                consume_str(chars, "ome>")?;
                 Key::Home
             }
             'p' => {
-                consume_str!("age");
-                match next!() {
+                consume_str(chars, "age")?;
+                match next(chars)? {
                     'u' => {
-                        consume_str!("p>");
+                        consume_str(chars, "p>")?;
                         Key::PageUp
                     }
                     'd' => {
-                        consume_str!("own>");
+                        consume_str(chars, "own>")?;
                         Key::PageDown
                     }
                     c => return Err(KeyParseError::InvalidCharacter(c)),
                 }
             }
             't' => {
-                consume_str!("ab>");
+                consume_str(chars, "ab>")?;
                 Key::Tab
             }
             'f' => {
-                let c = next!();
+                let c = next(chars)?;
                 match c.to_digit(10) {
                     Some(d0) => {
-                        let c = next!();
+                        let c = next(chars)?;
                         match c.to_digit(10) {
                             Some(d1) => {
-                                consume!('>');
+                                consume(chars, '>')?;
                                 let n = d0 * 10 + d1;
                                 Key::F(n as _)
                             }
@@ -201,25 +201,25 @@ pub fn parse_key(chars: &mut impl Iterator<Item = char>) -> Result<Key, KeyParse
                 }
             }
             'c' => {
-                consume!('-');
-                let c = next!();
+                consume(chars, '-')?;
+                let c = next(chars)?;
                 let key = if c.is_ascii_alphanumeric() {
                     Key::Ctrl(c)
                 } else {
                     return Err(KeyParseError::InvalidCharacter(c));
                 };
-                consume!('>');
+                consume(chars, '>')?;
                 key
             }
             'a' => {
-                consume!('-');
-                let c = next!();
+                consume(chars, '-')?;
+                let c = next(chars)?;
                 let key = if c.is_ascii_alphanumeric() {
                     Key::Alt(c)
                 } else {
                     return Err(KeyParseError::InvalidCharacter(c));
                 };
-                consume!('>');
+                consume(chars, '>')?;
                 key
             }
             c => return Err(KeyParseError::InvalidCharacter(c)),

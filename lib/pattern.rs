@@ -80,16 +80,18 @@ impl Pattern {
         let ops = &self.ops;
         let mut op_index = state.op_index;
 
-        macro_rules! check {
-            ($e:expr, $okj:expr, $erj:expr) => {{
-                if !bytes.is_empty() && $e {
-                    op_index = $okj.0 as _;
-                    bytes = &bytes[1..];
-                } else {
-                    op_index = $erj.0 as _;
-                }
-            }};
-        };
+        #[inline]
+        fn jump<F>(bytes: &mut &[u8], okj: Jump, erj: Jump, predicate: F) -> usize
+        where
+            F: Fn(u8) -> bool,
+        {
+            if !bytes.is_empty() && predicate(bytes[0]) {
+                *bytes = &bytes[1..];
+                okj.0 as _
+            } else {
+                erj.0 as _
+            }
+        }
 
         loop {
             match ops[op_index] {
@@ -125,7 +127,7 @@ impl Pattern {
                         op_index = erj.0 as _;
                     }
                 }
-                Op::SkipOne(okj, erj) => check!(true, okj, erj),
+                Op::SkipOne(okj, erj) => op_index = jump(&mut bytes, okj, erj, |_| true),
                 Op::SkipMany(okj, erj, len) => {
                     let len = len.0 as usize;
                     if bytes.len() >= len {
@@ -136,15 +138,21 @@ impl Pattern {
                     }
                 }
                 Op::Alphabetic(okj, erj) => {
-                    check!(bytes[0].is_ascii_alphabetic(), okj, erj)
+                    op_index = jump(&mut bytes, okj, erj, |b| b.is_ascii_alphabetic());
                 }
-                Op::Lower(okj, erj) => check!(bytes[0].is_ascii_lowercase(), okj, erj),
-                Op::Upper(okj, erj) => check!(bytes[0].is_ascii_uppercase(), okj, erj),
-                Op::Digit(okj, erj) => check!(bytes[0].is_ascii_digit(), okj, erj),
+                Op::Lower(okj, erj) => {
+                    op_index = jump(&mut bytes, okj, erj, |b| b.is_ascii_lowercase());
+                }
+                Op::Upper(okj, erj) => {
+                    op_index = jump(&mut bytes, okj, erj, |b| b.is_ascii_uppercase());
+                }
+                Op::Digit(okj, erj) => {
+                    op_index = jump(&mut bytes, okj, erj, |b| b.is_ascii_digit());
+                }
                 Op::Alphanumeric(okj, erj) => {
-                    check!(bytes[0].is_ascii_alphanumeric(), okj, erj)
+                    op_index = jump(&mut bytes, okj, erj, |b| b.is_ascii_alphanumeric());
                 }
-                Op::Byte(okj, erj, b) => check!(bytes[0] == b, okj, erj),
+                Op::Byte(okj, erj, byte) => op_index = jump(&mut bytes, okj, erj, |b| b == byte),
                 Op::Bytes3(okj, erj, bs) => {
                     if bytes.len() >= 3
                         && bytes[0] == bs[0]
@@ -656,33 +664,32 @@ impl<'a> PatternCompiler<'a> {
         }
     }
 
-    fn remove_jump_at(&mut self, i: usize, mut jump: Jump) {
-        self.ops.remove(i);
+    fn remove_jump_at(&mut self, index: usize, mut jump: Jump) {
+        self.ops.remove(index);
 
-        if jump.0 as usize > i {
+        if jump.0 as usize > index {
             jump.0 -= 1;
         }
 
-        if self.start_jump.0 as usize > i {
+        if self.start_jump.0 as usize > index {
             self.start_jump.0 -= 1;
-        } else if self.start_jump.0 as usize == i {
+        } else if self.start_jump.0 as usize == index {
             self.start_jump = jump;
         }
 
-        macro_rules! fix_jump {
-            ($j:ident) => {
-                if $j.0 as usize > i {
-                    $j.0 -= 1;
-                } else if $j.0 as usize == i {
-                    *$j = jump;
-                }
-            };
+        #[inline]
+        fn fix_jump(jump: &mut Jump, index: usize, removed_jump: Jump) {
+            if jump.0 as usize > index {
+                jump.0 -= 1;
+            } else if jump.0 as usize == index {
+                *jump = removed_jump;
+            }
         }
 
         for op in self.ops.iter_mut() {
             match op {
                 Op::Ok | Op::Error => (),
-                Op::Reset(j) | Op::Unwind(j, _) => fix_jump!(j),
+                Op::Reset(j) | Op::Unwind(j, _) => fix_jump(j, index, jump),
                 Op::EndAnchor(okj, erj)
                 | Op::SkipOne(okj, erj)
                 | Op::SkipMany(okj, erj, _)
@@ -693,8 +700,8 @@ impl<'a> PatternCompiler<'a> {
                 | Op::Alphanumeric(okj, erj)
                 | Op::Byte(okj, erj, _)
                 | Op::Bytes3(okj, erj, _) => {
-                    fix_jump!(okj);
-                    fix_jump!(erj);
+                    fix_jump(okj, index, jump);
+                    fix_jump(erj, index, jump);
                 }
             }
         }
@@ -730,18 +737,17 @@ impl<'a> PatternCompiler<'a> {
             self.start_jump.0 -= 2;
         }
 
-        macro_rules! fix_jump {
-            ($j:ident) => {
-                if $j.0 as usize > index {
-                    $j.0 -= 2;
-                }
-            };
+        #[inline]
+        fn fix_jump(jump: &mut Jump, index: usize) {
+            if jump.0 as usize > index {
+                jump.0 -= 2;
+            }
         }
 
         for op in self.ops.iter_mut() {
             match op {
                 Op::Ok | Op::Error => (),
-                Op::Reset(j) | Op::Unwind(j, _) => fix_jump!(j),
+                Op::Reset(j) | Op::Unwind(j, _) => fix_jump(j, index),
                 Op::EndAnchor(okj, erj)
                 | Op::SkipOne(okj, erj)
                 | Op::SkipMany(okj, erj, _)
@@ -752,8 +758,8 @@ impl<'a> PatternCompiler<'a> {
                 | Op::Alphanumeric(okj, erj)
                 | Op::Byte(okj, erj, _)
                 | Op::Bytes3(okj, erj, _) => {
-                    fix_jump!(okj);
-                    fix_jump!(erj);
+                    fix_jump(okj, index);
+                    fix_jump(erj, index);
                 }
             }
         }
@@ -798,18 +804,17 @@ impl<'a> PatternCompiler<'a> {
             self.start_jump.0 -= 5;
         }
 
-        macro_rules! fix_jump {
-            ($j:ident) => {
-                if $j.0 as usize > index {
-                    $j.0 -= 5;
-                }
-            };
+        #[inline]
+        fn fix_jump(jump: &mut Jump, index: usize) {
+            if jump.0 as usize > index {
+                jump.0 -= 5;
+            }
         }
 
         for op in self.ops.iter_mut() {
             match op {
                 Op::Ok | Op::Error => (),
-                Op::Reset(j) | Op::Unwind(j, _) => fix_jump!(j),
+                Op::Reset(j) | Op::Unwind(j, _) => fix_jump(j, index),
                 Op::EndAnchor(okj, erj)
                 | Op::SkipOne(okj, erj)
                 | Op::SkipMany(okj, erj, _)
@@ -820,8 +825,8 @@ impl<'a> PatternCompiler<'a> {
                 | Op::Alphanumeric(okj, erj)
                 | Op::Byte(okj, erj, _)
                 | Op::Bytes3(okj, erj, _) => {
-                    fix_jump!(okj);
-                    fix_jump!(erj);
+                    fix_jump(okj, index);
+                    fix_jump(erj, index);
                 }
             }
         }
