@@ -65,8 +65,8 @@ pub trait Platform {
         stdout_buf_len: usize,
         stderr_buf_len: usize,
     ) -> io::Result<usize>;
-    fn read_from_process_stdout(&mut self, index: usize, len: usize) -> &[u8];
-    fn read_from_process_stderr(&mut self, index: usize, len: usize) -> &[u8];
-    fn write_to_process(&mut self, index: usize, buf: &[u8]) -> bool;
+    fn read_from_process_stdout(&self, index: usize, len: usize) -> &[u8];
+    fn read_from_process_stderr(&self, index: usize, len: usize) -> &[u8];
+    fn write_to_process(&self, index: usize, buf: &[u8]) -> bool;
     fn kill_process(&mut self, index: usize);
 }
