@@ -5,7 +5,7 @@ use std::{
     os::windows::io::IntoRawHandle,
     process::{Child, Command},
     ptr::NonNull,
-    sync::atomic::{AtomicBool, AtomicPtr, Ordering},
+    sync::atomic::{AtomicBool, Ordering},
     time::Duration,
 };
 
@@ -59,13 +59,10 @@ use pepper::{
     Args,
 };
 
-// max event count = 64
-// 1 connection listener
-// 13 connections
-// 25 process stdout
-// 25 process stderr
 const MAX_CONNECTION_COUNT: usize = 13;
 const MAX_PROCESS_COUNT: usize = 25;
+const MAX_EVENT_COUNT: usize = 1 + MAX_CONNECTION_COUNT + 2 * MAX_PROCESS_COUNT;
+const _ASSERT_MAX_EVENT_COUNT_IS_64: [(); 64] = [(); MAX_EVENT_COUNT];
 
 const CLIENT_EVENT_BUFFER_LEN: usize = 32;
 
@@ -463,7 +460,6 @@ struct AsyncIO {
     event: Event,
     pending_io: bool,
     buf: Box<[u8]>,
-    pending_read: AtomicBool,
 }
 impl AsyncIO {
     pub fn from_handle(handle: Handle, buf_len: usize) -> Self {
@@ -481,12 +477,11 @@ impl AsyncIO {
             event,
             pending_io: false,
             buf,
-            pending_read: AtomicBool::new(false),
         }
     }
 
-    pub fn pending_read(&self) -> bool {
-        self.pending_read.load(Ordering::SeqCst)
+    pub fn event(&self) -> Option<&Event> {
+        Some(&self.event)
     }
 
     pub fn read_async(&mut self) -> ReadResult {
@@ -549,7 +544,6 @@ impl AsyncIO {
     }
 
     pub fn get_bytes(&self, len: usize) -> &[u8] {
-        self.pending_read.store(false, Ordering::SeqCst);
         &self.buf[..len]
     }
 
@@ -558,56 +552,62 @@ impl AsyncIO {
     }
 }
 
-struct PipeToClient {
-    pub io: AsyncIO,
+#[derive(Default)]
+struct ConnectionToClient {
+    active: AtomicBool,
+    io: Option<AsyncIO>,
 }
-impl Drop for PipeToClient {
-    fn drop(&mut self) {
-        unsafe {
-            DisconnectNamedPipe(self.io.handle.0);
+impl ConnectionToClient {
+    pub fn new(io: AsyncIO) -> Self {
+        ConnectionToClient {
+            active: AtomicBool::new(true),
+            io: Some(io),
+        }
+    }
+
+    pub fn io(&self) -> Option<&AsyncIO> {
+        if !self.active.load(Ordering::Acquire) {
+            return None;
+        }
+
+        match self.io {
+            Some(ref io) => Some(io),
+            None => None,
+        }
+    }
+
+    pub fn io_mut(&mut self) -> Option<&mut AsyncIO> {
+        if !self.active.load(Ordering::Acquire) {
+            return None;
+        }
+
+        match self.io {
+            Some(ref mut io) => Some(io),
+            None => None,
+        }
+    }
+
+    pub fn deactivate(&self) {
+        self.active.store(false, Ordering::Release);
+    }
+
+    pub fn close_if_innactive(&mut self) {
+        if !self.active.load(Ordering::Acquire) {
+            self.close();
+        }
+    }
+
+    pub fn close(&mut self) {
+        if let Some(io) = self.io.take() {
+            self.active.store(false, Ordering::Release);
+            unsafe { DisconnectNamedPipe(io.handle.0) };
+            self.io = None;
         }
     }
 }
-
-struct PipeToServer {
-    pub io: AsyncIO,
-}
-impl PipeToServer {
-    pub fn connect(path: &[u16], buf_len: usize) -> Self {
-        let pipe_handle = unsafe {
-            CreateFileW(
-                path.as_ptr(),
-                GENERIC_READ | GENERIC_WRITE,
-                0,
-                std::ptr::null_mut(),
-                OPEN_EXISTING,
-                FILE_FLAG_OVERLAPPED,
-                NULL,
-            )
-        };
-        if pipe_handle == INVALID_HANDLE_VALUE {
-            panic!("could not establish a connection {}", get_last_error());
-        }
-
-        let mut mode = PIPE_READMODE_BYTE;
-        let result = unsafe {
-            SetNamedPipeHandleState(
-                pipe_handle,
-                &mut mode,
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-            )
-        };
-
-        if result == FALSE {
-            panic!("could not establish a connection");
-        }
-
-        let pipe_handle = Handle(pipe_handle);
-        let io = AsyncIO::from_handle(pipe_handle, buf_len);
-        io.event.notify();
-
-        Self { io }
+impl Drop for ConnectionToClient {
+    fn drop(&mut self) {
+        self.close();
     }
 }
 
@@ -652,17 +652,54 @@ impl PipeToClientListener {
         Self { io: pipe }
     }
 
-    pub fn accept(&mut self, pipe_path: &[u16], buf_len: usize) -> Option<PipeToClient> {
+    pub fn accept(&mut self, pipe_path: &[u16], buf_len: usize) -> Option<ConnectionToClient> {
         match self.io.read_async() {
             ReadResult::Waiting => None,
             ReadResult::Ok(_) => {
                 let mut io = Self::new(pipe_path, buf_len).io;
                 std::mem::swap(&mut self.io, &mut io);
-                Some(PipeToClient { io })
+                Some(ConnectionToClient::new(io))
             }
             ReadResult::Err => panic!("could not accept connection {}", get_last_error()),
         }
     }
+}
+
+fn connect_to_server(path: &[u16], buf_len: usize) -> AsyncIO {
+    let pipe_handle = unsafe {
+        CreateFileW(
+            path.as_ptr(),
+            GENERIC_READ | GENERIC_WRITE,
+            0,
+            std::ptr::null_mut(),
+            OPEN_EXISTING,
+            FILE_FLAG_OVERLAPPED,
+            NULL,
+        )
+    };
+    if pipe_handle == INVALID_HANDLE_VALUE {
+        panic!("could not establish a connection {}", get_last_error());
+    }
+
+    let mut mode = PIPE_READMODE_BYTE;
+    let result = unsafe {
+        SetNamedPipeHandleState(
+            pipe_handle,
+            &mut mode,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        )
+    };
+
+    if result == FALSE {
+        panic!("could not establish a connection");
+    }
+
+    let pipe_handle = Handle(pipe_handle);
+    let io = AsyncIO::from_handle(pipe_handle, buf_len);
+    io.event.notify();
+
+    io
 }
 
 enum ChildPipe {
@@ -726,38 +763,46 @@ enum EventSource {
     ChildStdout(usize),
     ChildStderr(usize),
 }
-#[derive(Default)]
 struct Events {
-    wait_handles: Vec<HANDLE>,
-    sources: Vec<EventSource>,
+    wait_handles: [HANDLE; MAX_EVENT_COUNT],
+    sources: [EventSource; MAX_EVENT_COUNT],
+    len: usize,
 }
 impl Events {
+    pub fn new() -> Self {
+        const DEFAULT_EVENT_SOURCE: EventSource = EventSource::ConnectionListener;
+
+        Self {
+            wait_handles: [NULL; MAX_EVENT_COUNT],
+            sources: [DEFAULT_EVENT_SOURCE; MAX_EVENT_COUNT],
+            len: 0,
+        }
+    }
+
     pub fn track(&mut self, event: &Event, source: EventSource) {
-        self.wait_handles.push(event.handle());
-        self.sources.push(source);
+        let index = self.len;
+        debug_assert!(index < MAX_EVENT_COUNT);
+        self.wait_handles[index] = event.handle();
+        self.sources[index] = source;
+        self.len += 1;
     }
 
     pub fn wait_one(&mut self, timeout: Option<Duration>) -> Option<EventSource> {
-        let result = match wait_for_multiple_objects(&self.wait_handles, timeout) {
-            Some(index) => Some(self.sources.swap_remove(index)),
+        let len = self.len;
+        self.len = 0;
+        match wait_for_multiple_objects(&self.wait_handles[..len], timeout) {
+            Some(index) => {
+                let mut source = EventSource::ConnectionListener;
+                std::mem::swap(&mut source, &mut self.sources[index]);
+                Some(source)
+            }
             None => None,
-        };
-
-        self.wait_handles.clear();
-        self.sources.clear();
-        result
+        }
     }
 }
 
-// TODO: finish this??
-const NULL_ATOMIC_PTR: AtomicPtr<()> = AtomicPtr::new(std::ptr::null_mut());
-static CONNECTION_HANDLES: [AtomicPtr<()>; MAX_CONNECTION_COUNT] =
-    [NULL_ATOMIC_PTR; MAX_CONNECTION_COUNT];
-static PROCESS_STDIN_HANDLES: [AtomicPtr<()>; MAX_PROCESS_COUNT] =
-    [NULL_ATOMIC_PTR; MAX_PROCESS_COUNT];
-
 struct ServerState {
-    pipes: [Option<PipeToClient>; MAX_CONNECTION_COUNT],
+    pipes: [ConnectionToClient; MAX_CONNECTION_COUNT],
     pipes_len: usize,
     children: [Option<AsyncChild>; MAX_PROCESS_COUNT],
     children_len: usize,
@@ -768,8 +813,8 @@ impl Platform for ServerState {
         if index >= self.pipes_len {
             return &[];
         }
-        match self.pipes[index] {
-            Some(ref pipe) => pipe.io.get_bytes(len),
+        match self.pipes[index].io() {
+            Some(io) => io.get_bytes(len),
             None => &[],
         }
     }
@@ -778,15 +823,15 @@ impl Platform for ServerState {
         if index >= self.pipes_len {
             return false;
         }
-        match self.pipes[index] {
-            Some(ref pipe) => pipe.io.write(buf),
+        match self.pipes[index].io() {
+            Some(io) => io.write(buf),
             None => false,
         }
     }
 
-    fn close_connection(&mut self, index: usize) {
+    fn close_connection(&self, index: usize) {
         if index < self.pipes_len {
-            self.pipes[index] = None;
+            self.pipes[index].deactivate();
         }
     }
 
@@ -850,15 +895,18 @@ impl Platform for ServerState {
         false
     }
 
-    fn kill_process(&mut self, index: usize) {
+    fn kill_process(&self, index: usize) {
         if index >= self.children_len {
             return;
         }
+        // TODO
+        /*
         if let Some(ref mut child) = self.children[index] {
             let _ = child.child.kill();
             let _ = child.child.wait();
             self.children[index] = None;
         }
+        */
     }
 }
 
@@ -868,7 +916,7 @@ fn run_server(args: Args, pipe_path: &[u16]) {
     }
 
     let connection_buffer_len = ServerApplication::connection_buffer_len();
-    let mut events = Events::default();
+    let mut events = Events::new();
     let mut listener = PipeToClientListener::new(pipe_path, connection_buffer_len);
     let mut state = ServerState {
         pipes: Default::default(),
@@ -898,22 +946,20 @@ fn run_server(args: Args, pipe_path: &[u16]) {
     loop {
         events.track(&listener.io.event, EventSource::ConnectionListener);
         for i in 0..state.pipes_len {
-            if let Some(pipe) = &state.pipes[i] {
-                if !pipe.io.pending_read() {
-                    events.track(&pipe.io.event, EventSource::Connection(i));
-                }
+            if let Some(event) = state.pipes[i].io().and_then(|io| io.event()) {
+                events.track(event, EventSource::Connection(i));
             }
         }
         for i in 0..state.children_len {
             if let Some(child) = &state.children[i] {
                 if let ChildPipe::Open(io) = &child.stdout {
-                    if !io.pending_read() {
-                        events.track(&io.event, EventSource::ChildStdout(i));
+                    if let Some(event) = io.event() {
+                        events.track(event, EventSource::ChildStdout(i));
                     }
                 }
                 if let ChildPipe::Open(io) = &child.stderr {
-                    if !io.pending_read() {
-                        events.track(&io.event, EventSource::ChildStderr(i));
+                    if let Some(event) = io.event() {
+                        events.track(event, EventSource::ChildStderr(i));
                     }
                 }
             }
@@ -925,7 +971,7 @@ fn run_server(args: Args, pipe_path: &[u16]) {
                     if state.pipes_len < state.pipes.len() {
                         let index = state.pipes_len;
                         state.pipes_len += 1;
-                        state.pipes[index] = Some(pipe);
+                        state.pipes[index] = pipe;
                         send_event!(ServerPlatformEvent::ConnectionOpen { index });
                     }
                 }
@@ -934,15 +980,15 @@ fn run_server(args: Args, pipe_path: &[u16]) {
                 if index >= state.pipes.len() {
                     continue;
                 }
-                let pipe = match state.pipes[index] {
-                    Some(ref mut pipe) => pipe,
+                let pipe = match state.pipes[index].io_mut() {
+                    Some(io) => io,
                     None => continue,
                 };
 
-                match pipe.io.read_async() {
+                match pipe.read_async() {
                     ReadResult::Waiting => (),
                     ReadResult::Err | ReadResult::Ok(0) => {
-                        state.pipes[index] = None;
+                        state.pipes[index].close();
                         send_event!(ServerPlatformEvent::ConnectionClose { index });
                     }
                     ReadResult::Ok(len) => {
@@ -1008,6 +1054,10 @@ fn run_server(args: Args, pipe_path: &[u16]) {
             }
             None => panic!("timeout waiting"),
         }
+
+        for i in 0..state.pipes_len {
+            state.pipes[i].close_if_innactive();
+        }
     }
 }
 
@@ -1019,10 +1069,10 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: HANDLE, output_handle
         }
     }
 
-    let mut pipe = PipeToServer::connect(pipe_path, ClientApplication::connection_buffer_len());
+    let mut pipe = connect_to_server(pipe_path, ClientApplication::connection_buffer_len());
     let mut application = ClientApplication::new();
 
-    if !pipe.io.write(application.init(args)) {
+    if !pipe.write(application.init(args)) {
         return;
     }
 
@@ -1032,13 +1082,13 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: HANDLE, output_handle
     console_output_mode.set(ENABLE_PROCESSED_OUTPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
 
     let mut event_buffer = [unsafe { std::mem::zeroed() }; CLIENT_EVENT_BUFFER_LEN];
-    let wait_handles = [pipe.io.event.handle(), input_handle];
+    let wait_handles = [pipe.event.handle(), input_handle];
 
     let mut keys = Vec::new();
 
     let (width, height) = get_console_size(output_handle);
     let bytes = application.update(Some((width, height)), &[], &[]);
-    if !pipe.io.write(bytes) {
+    if !pipe.write(bytes) {
         return;
     }
 
@@ -1053,10 +1103,10 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: HANDLE, output_handle
         let mut message = &[][..];
 
         match wait_handle_index {
-            0 => match pipe.io.read_async() {
+            0 => match pipe.read_async() {
                 ReadResult::Waiting => (),
                 ReadResult::Ok(0) | ReadResult::Err => break,
-                ReadResult::Ok(len) => message = pipe.io.get_bytes(len),
+                ReadResult::Ok(len) => message = pipe.get_bytes(len),
             },
             1 => {
                 let events = read_console_input(input_handle, &mut event_buffer);
@@ -1143,7 +1193,7 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: HANDLE, output_handle
         }
 
         let bytes = application.update(resize, &keys, message);
-        if !pipe.io.write(bytes) {
+        if !pipe.write(bytes) {
             break;
         }
     }
