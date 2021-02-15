@@ -707,19 +707,18 @@ struct AsyncChild {
 }
 impl AsyncChild {
     pub fn from_child(mut child: Child, stdout_buf_len: usize, stderr_buf_len: usize) -> Self {
-        // TODO: needs to be raw handle!
         let stdout = ChildPipe::from_handle(
             child
                 .stdout
-                .as_ref()
-                .map(|s| Handle(s.as_raw_handle() as _)),
+                .take()
+                .map(|s| Handle(s.into_raw_handle() as _)),
             stdout_buf_len,
         );
         let stderr = ChildPipe::from_handle(
             child
                 .stderr
-                .as_ref()
-                .map(|s| Handle(s.as_raw_handle() as _)),
+                .take()
+                .map(|s| Handle(s.into_raw_handle() as _)),
             stderr_buf_len,
         );
 
@@ -1029,7 +1028,10 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: HANDLE, output_handle
 
     let mut pipe = PipeToServer::connect(pipe_path, ClientApplication::connection_buffer_len());
     let mut application = ClientApplication::new();
-    pipe.write(application.init(args));
+
+    if !pipe.write(application.init(args)) {
+        return;
+    }
 
     let console_input_mode = ConsoleMode::new(input_handle);
     console_input_mode.set(ENABLE_WINDOW_INPUT);
@@ -1043,10 +1045,9 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: HANDLE, output_handle
 
     let (width, height) = get_console_size(output_handle);
     let bytes = application.update(Some((width, height)), &[], &[]);
-    if bytes.is_empty() {
+    if !pipe.write(bytes) {
         return;
     }
-    pipe.write(bytes);
 
     loop {
         let wait_handle_index = match wait_for_multiple_objects(&wait_handles, None) {
@@ -1149,9 +1150,8 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: HANDLE, output_handle
         }
 
         let bytes = application.update(resize, &keys, message);
-        if bytes.is_empty() {
+        if !pipe.write(bytes) {
             break;
         }
-        pipe.write(bytes);
     }
 }
