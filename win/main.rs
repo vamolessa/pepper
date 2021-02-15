@@ -6,6 +6,7 @@ use std::{
     os::windows::io::AsRawHandle,
     process::{Child, Command},
     ptr::NonNull,
+    sync::atomic::AtomicPtr,
     time::Duration,
 };
 
@@ -161,15 +162,6 @@ fn get_std_handle(which: DWORD) -> Option<HANDLE> {
     }
 }
 
-fn get_console_mode(console_handle: HANDLE) -> DWORD {
-    let mut mode = DWORD::default();
-    let result = unsafe { GetConsoleMode(console_handle, &mut mode) };
-    if result == FALSE {
-        panic!("could not get console mode");
-    }
-    mode
-}
-
 fn get_console_size(output_handle: HANDLE) -> (usize, usize) {
     let mut console_info = unsafe { std::mem::zeroed() };
     let result = unsafe { GetConsoleScreenBufferInfo(output_handle, &mut console_info) };
@@ -195,11 +187,26 @@ fn read_console_input(input_handle: HANDLE, events: &mut [INPUT_RECORD]) -> &[IN
     &events[..(event_count as usize)]
 }
 
-fn set_console_mode(console_handle: HANDLE, mode: DWORD) {
-    let result = unsafe { SetConsoleMode(console_handle, mode) };
-    if result == FALSE {
-        panic!("could not set console mode");
+pub fn write_all_bytes(handle: HANDLE, mut buf: &[u8]) -> bool {
+    while !buf.is_empty() {
+        let mut write_len = 0;
+        let result = unsafe {
+            WriteFile(
+                handle,
+                buf.as_ptr() as _,
+                buf.len() as _,
+                &mut write_len,
+                std::ptr::null_mut(),
+            )
+        };
+        if result == FALSE {
+            return false;
+        }
+
+        buf = &buf[(write_len as usize)..];
     }
+
+    true
 }
 
 fn global_lock<T>(handle: HANDLE) -> Option<NonNull<T>> {
@@ -323,6 +330,36 @@ impl Overlapped {
     }
 }
 
+struct ConsoleMode {
+    console_handle: HANDLE,
+    original_mode: DWORD,
+}
+impl ConsoleMode {
+    pub fn new(console_handle: HANDLE) -> Self {
+        let mut original_mode = DWORD::default();
+        let result = unsafe { GetConsoleMode(console_handle, &mut original_mode) };
+        if result == FALSE {
+            panic!("could not get console mode");
+        }
+        Self {
+            console_handle,
+            original_mode,
+        }
+    }
+
+    pub fn set(&self, mode: DWORD) {
+        let result = unsafe { SetConsoleMode(self.console_handle, mode) };
+        if result == FALSE {
+            panic!("could not set console mode");
+        }
+    }
+}
+impl Drop for ConsoleMode {
+    fn drop(&mut self) {
+        self.set(self.original_mode);
+    }
+}
+
 enum ReadResult {
     Waiting,
     Ok(usize),
@@ -418,58 +455,8 @@ impl AsyncIO {
         &self.buf[..len]
     }
 
-    pub fn get_writer(&self) -> PlatformWriter {
-        fn write(data: *mut (), mut buf: &[u8]) -> bool {
-            while !buf.is_empty() {
-                let mut write_len = 0;
-                let result = unsafe {
-                    WriteFile(
-                        data as _,
-                        buf.as_ptr() as _,
-                        buf.len() as _,
-                        &mut write_len,
-                        std::ptr::null_mut(),
-                    )
-                };
-
-                if result == FALSE {
-                    return false;
-                }
-
-                buf = &buf[(write_len as usize)..];
-            }
-
-            true
-        }
-
-        let writer = RawPlatformWriter {
-            data: self.handle.0 as _,
-            write,
-        };
-        unsafe { PlatformWriter::from_raw(writer) }
-    }
-
-    pub fn write(&mut self, mut buf: &[u8]) -> bool {
-        while !buf.is_empty() {
-            let mut write_len = 0;
-            let result = unsafe {
-                WriteFile(
-                    self.handle.0,
-                    buf.as_ptr() as _,
-                    buf.len() as _,
-                    &mut write_len,
-                    std::ptr::null_mut(),
-                )
-            };
-
-            if result == FALSE {
-                return false;
-            }
-
-            buf = &buf[(write_len as usize)..];
-        }
-
-        true
+    pub fn write(&mut self, buf: &[u8]) -> bool {
+        write_all_bytes(self.handle.0, buf)
     }
 }
 
@@ -679,6 +666,12 @@ impl Events {
         result
     }
 }
+
+const NULL_ATOMIC_PTR: AtomicPtr<()> = AtomicPtr::new(std::ptr::null_mut());
+static CONNECTION_HANDLES: [AtomicPtr<()>; MAX_CONNECTION_COUNT] =
+    [NULL_ATOMIC_PTR; MAX_CONNECTION_COUNT];
+static PROCESS_STDIN_HANDLES: [AtomicPtr<()>; MAX_PROCESS_COUNT] =
+    [NULL_ATOMIC_PTR; MAX_PROCESS_COUNT];
 
 struct ServerState {
     pipes: [Option<PipeToClient>; MAX_CONNECTION_COUNT],
@@ -1028,15 +1021,13 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: HANDLE, output_handle
     }
 
     let mut pipe = PipeToServer::connect(pipe_path, ClientApplication::connection_buffer_len());
-    let mut application = ClientApplication::new(args, pipe.get_writer());
+    let mut application = ClientApplication::new();
+    pipe.write(application.init(args));
 
-    let original_input_mode = get_console_mode(input_handle);
-    set_console_mode(input_handle, ENABLE_WINDOW_INPUT);
-    let original_output_mode = get_console_mode(output_handle);
-    set_console_mode(
-        output_handle,
-        ENABLE_PROCESSED_OUTPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING,
-    );
+    let console_input_mode = ConsoleMode::new(input_handle);
+    console_input_mode.set(ENABLE_WINDOW_INPUT);
+    let console_output_mode = ConsoleMode::new(output_handle);
+    console_output_mode.set(ENABLE_PROCESSED_OUTPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
 
     let mut event_buffer = [unsafe { std::mem::zeroed() }; CLIENT_EVENT_BUFFER_LEN];
     let wait_handles = [pipe.event.handle(), input_handle];
@@ -1044,9 +1035,11 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: HANDLE, output_handle
     let mut keys = Vec::new();
 
     let (width, height) = get_console_size(output_handle);
-    if !application.update(Some((width, height)), &[], &[], pipe.get_writer()) {
+    let bytes = application.update(Some((width, height)), &[], &[]);
+    if bytes.is_empty() {
         return;
     }
+    pipe.write(bytes);
 
     loop {
         let wait_handle_index = match wait_for_multiple_objects(&wait_handles, None) {
@@ -1148,11 +1141,10 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: HANDLE, output_handle
             _ => unreachable!(),
         }
 
-        if !application.update(resize, &keys, message, pipe.get_writer()) {
+        let bytes = application.update(resize, &keys, message);
+        if bytes.is_empty() {
             break;
         }
+        pipe.write(bytes);
     }
-
-    set_console_mode(input_handle, original_input_mode);
-    set_console_mode(output_handle, original_output_mode);
 }

@@ -6,7 +6,7 @@ use crate::{
     command::CommandOperation,
     connection::ClientEventDeserializationBufCollection,
     editor::{Editor, EditorLoop},
-    platform::{Key, PlatformWriter, Platform, ServerPlatformEvent},
+    platform::{Key, Platform, PlatformWriter, ServerPlatformEvent},
     serialization::{SerializationBuf, Serialize},
     ui, Args,
 };
@@ -181,14 +181,29 @@ impl ClientApplication {
         2 * 1024
     }
 
-    pub fn new(args: Args, writer: PlatformWriter) -> Self {
+    pub fn new() -> Self {
         static mut STDOUT: Option<io::Stdout> = None;
         let mut stdout = unsafe {
             STDOUT = Some(io::stdout());
             STDOUT.as_ref().unwrap().lock()
         };
 
-        let client_event_source = if args.as_focused_client {
+        use io::Write;
+        let _ = stdout.write_all(ui::ENTER_ALTERNATE_BUFFER_CODE);
+        let _ = stdout.write_all(ui::HIDE_CURSOR_CODE);
+        let _ = stdout.write_all(ui::MODE_256_COLORS_CODE);
+        let _ = stdout.flush();
+
+        Self {
+            client_event_source: ClientEventSource::ConnectionClient,
+            read_buf: Vec::new(),
+            write_buf: SerializationBuf::default(),
+            stdout,
+        }
+    }
+
+    pub fn init<'a>(&'a mut self, args: Args) -> &'a [u8] {
+        self.client_event_source = if args.as_focused_client {
             ClientEventSource::FocusedClient
         } else if let Some(handle) = args.as_client {
             ClientEventSource::ClientHandle(handle)
@@ -196,7 +211,7 @@ impl ClientApplication {
             ClientEventSource::ConnectionClient
         };
 
-        let mut write_buf = SerializationBuf::default();
+        self.write_buf.clear();
 
         if !args.files.is_empty() {
             let mut open_buffers_command = String::new();
@@ -208,33 +223,19 @@ impl ClientApplication {
                 open_buffers_command.push_str("'");
             }
 
-            ClientEvent::Command(client_event_source, &open_buffers_command)
-                .serialize(&mut write_buf);
+            ClientEvent::Command(self.client_event_source, &open_buffers_command)
+                .serialize(&mut self.write_buf);
         }
 
-        writer.write(write_buf.as_slice());
-
-        use io::Write;
-        let _ = stdout.write_all(ui::ENTER_ALTERNATE_BUFFER_CODE);
-        let _ = stdout.write_all(ui::HIDE_CURSOR_CODE);
-        let _ = stdout.write_all(ui::MODE_256_COLORS_CODE);
-        let _ = stdout.flush();
-
-        Self {
-            client_event_source,
-            read_buf: Vec::new(),
-            write_buf,
-            stdout,
-        }
+        self.write_buf.as_slice()
     }
 
-    pub fn update(
-        &mut self,
+    pub fn update<'a>(
+        &'a mut self,
         resize: Option<(usize, usize)>,
         keys: &[Key],
         message: &[u8],
-        writer: PlatformWriter,
-    ) -> bool {
+    ) -> &'a [u8] {
         use io::Write;
 
         self.write_buf.clear();
@@ -265,8 +266,7 @@ impl ClientApplication {
         }
 
         self.stdout.flush().unwrap();
-        let bytes = self.write_buf.as_slice();
-        bytes.is_empty() || writer.write(bytes)
+        self.write_buf.as_slice()
     }
 }
 impl Drop for ClientApplication {
