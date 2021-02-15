@@ -81,7 +81,7 @@ impl Pattern {
         let mut op_index = state.op_index;
 
         #[inline]
-        fn jump<F>(bytes: &mut &[u8], okj: Jump, erj: Jump, predicate: F) -> usize
+        fn check_and_jump<F>(bytes: &mut &[u8], okj: Jump, erj: Jump, predicate: F) -> usize
         where
             F: Fn(u8) -> bool,
         {
@@ -127,7 +127,7 @@ impl Pattern {
                         op_index = erj.0 as _;
                     }
                 }
-                Op::SkipOne(okj, erj) => op_index = jump(&mut bytes, okj, erj, |_| true),
+                Op::SkipOne(okj, erj) => op_index = check_and_jump(&mut bytes, okj, erj, |_| true),
                 Op::SkipMany(okj, erj, len) => {
                     let len = len.0 as usize;
                     if bytes.len() >= len {
@@ -138,21 +138,23 @@ impl Pattern {
                     }
                 }
                 Op::Alphabetic(okj, erj) => {
-                    op_index = jump(&mut bytes, okj, erj, |b| b.is_ascii_alphabetic());
+                    op_index = check_and_jump(&mut bytes, okj, erj, |b| b.is_ascii_alphabetic());
                 }
                 Op::Lower(okj, erj) => {
-                    op_index = jump(&mut bytes, okj, erj, |b| b.is_ascii_lowercase());
+                    op_index = check_and_jump(&mut bytes, okj, erj, |b| b.is_ascii_lowercase());
                 }
                 Op::Upper(okj, erj) => {
-                    op_index = jump(&mut bytes, okj, erj, |b| b.is_ascii_uppercase());
+                    op_index = check_and_jump(&mut bytes, okj, erj, |b| b.is_ascii_uppercase());
                 }
                 Op::Digit(okj, erj) => {
-                    op_index = jump(&mut bytes, okj, erj, |b| b.is_ascii_digit());
+                    op_index = check_and_jump(&mut bytes, okj, erj, |b| b.is_ascii_digit());
                 }
                 Op::Alphanumeric(okj, erj) => {
-                    op_index = jump(&mut bytes, okj, erj, |b| b.is_ascii_alphanumeric());
+                    op_index = check_and_jump(&mut bytes, okj, erj, |b| b.is_ascii_alphanumeric());
                 }
-                Op::Byte(okj, erj, byte) => op_index = jump(&mut bytes, okj, erj, |b| b == byte),
+                Op::Byte(okj, erj, byte) => {
+                    op_index = check_and_jump(&mut bytes, okj, erj, |b| b == byte)
+                }
                 Op::Bytes3(okj, erj, bs) => {
                     if bytes.len() >= 3
                         && bytes[0] == bs[0]
