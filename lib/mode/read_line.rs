@@ -29,7 +29,7 @@ impl ModeState for State {
         let poll = ctx
             .editor
             .read_line
-            .poll(ctx.platform, &ctx.editor.buffered_keys, keys);
+            .poll(ctx.clipboard, &ctx.editor.buffered_keys, keys);
         let func = ctx.editor.mode.read_line_state.on_client_keys;
         func(ctx, keys, poll);
         None

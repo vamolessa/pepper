@@ -12,7 +12,7 @@ use crate::{
     lsp::{LspClientCollection, LspClientHandle, LspServerEvent},
     mode::{Mode, ModeContext, ModeKind, ModeOperation},
     picker::Picker,
-    platform::{Key, Platform},
+    platform::{Key, Platform, PlatformClipboard},
     register::{RegisterCollection, RegisterKey, KEY_QUEUE_REGISTER},
     syntax::{HighlightResult, SyntaxCollection},
     theme::Theme,
@@ -99,7 +99,7 @@ impl ReadLine {
 
     pub fn poll(
         &mut self,
-        platform: &mut dyn Platform,
+        clipboard: &PlatformClipboard,
         buffered_keys: &BufferedKeys,
         keys_iter: &mut KeysIterator,
     ) -> ReadLinePoll {
@@ -135,7 +135,7 @@ impl ReadLine {
             }
             Key::Ctrl('y') => {
                 let mut text = String::new();
-                if platform.read_from_clipboard(&mut text) {
+                if clipboard.read(&mut text) {
                     self.input.push_str(&text);
                 }
                 ReadLinePoll::Pending
@@ -340,6 +340,7 @@ impl Editor {
     pub fn on_client_event(
         &mut self,
         platform: &mut dyn Platform,
+        clipboard: &PlatformClipboard,
         clients: &mut ClientManager,
         client_handle: ClientHandle,
         event: ClientEvent,
@@ -387,6 +388,7 @@ impl Editor {
                         let mut ctx = ModeContext {
                             editor: self,
                             platform,
+                            clipboard,
                             clients,
                             client_handle,
                         };
@@ -540,15 +542,30 @@ impl Editor {
         }
     }
 
-    pub fn on_process_stdout(&mut self, platform: &mut dyn Platform, process_index: usize, bytes: &[u8]) {
+    pub fn on_process_stdout(
+        &mut self,
+        platform: &mut dyn Platform,
+        process_index: usize,
+        bytes: &[u8],
+    ) {
         //
     }
 
-    pub fn on_process_stderr(&mut self, platform: &mut dyn Platform, process_index: usize, bytes: &[u8]) {
+    pub fn on_process_stderr(
+        &mut self,
+        platform: &mut dyn Platform,
+        process_index: usize,
+        bytes: &[u8],
+    ) {
         //
     }
 
-    pub fn on_process_exit(&mut self, platform: &mut dyn Platform, process_index: usize, success: bool) {
+    pub fn on_process_exit(
+        &mut self,
+        platform: &mut dyn Platform,
+        process_index: usize,
+        success: bool,
+    ) {
         //
     }
 

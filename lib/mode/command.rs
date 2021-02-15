@@ -26,7 +26,7 @@ impl ModeState for State {
         match ctx
             .editor
             .read_line
-            .poll(ctx.platform, &ctx.editor.buffered_keys, keys)
+            .poll(ctx.clipboard, &ctx.editor.buffered_keys, keys)
         {
             ReadLinePoll::Pending => {
                 keys.put_back();

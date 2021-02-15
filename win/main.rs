@@ -56,7 +56,7 @@ use winapi::{
 
 use pepper::{
     application::{ClientApplication, ServerApplication},
-    platform::{Key, Platform, PlatformWriter, RawPlatformWriter, ServerPlatformEvent},
+    platform::{Key, Platform, PlatformClipboard, RawPlatformClipboard, ServerPlatformEvent},
     Args,
 };
 
@@ -264,6 +264,98 @@ fn wait_for_multiple_objects(handles: &[HANDLE], timeout: Option<Duration>) -> O
     } else {
         panic!("could not wait for event")
     }
+}
+
+fn read_from_clipboard(text: &mut String) -> bool {
+    let clipboard = Clipboard::open();
+    text.clear();
+    let handle = unsafe { GetClipboardData(CF_UNICODETEXT) };
+    if handle == NULL {
+        return false;
+    }
+    let data = match global_lock::<u16>(handle) {
+        Some(data) => data,
+        None => return false,
+    };
+    let data = data.as_ptr();
+    let len = unsafe {
+        WideCharToMultiByte(
+            CP_UTF8,
+            0,
+            data,
+            -1,
+            std::ptr::null_mut(),
+            0,
+            std::ptr::null(),
+            std::ptr::null_mut(),
+        )
+    };
+    if len != 0 {
+        let len = len - 1;
+        let mut temp = String::new();
+        std::mem::swap(text, &mut temp);
+        let mut bytes = temp.into_bytes();
+        bytes.resize(len as usize, 0);
+
+        unsafe {
+            WideCharToMultiByte(
+                CP_UTF8,
+                0,
+                data,
+                -1,
+                bytes.as_mut_ptr() as _,
+                bytes.len() as _,
+                std::ptr::null(),
+                std::ptr::null_mut(),
+            );
+        }
+
+        temp = unsafe { String::from_utf8_unchecked(bytes) };
+        std::mem::swap(text, &mut temp);
+    }
+    global_unlock(handle);
+    drop(clipboard);
+    true
+}
+
+fn write_to_clipboard(text: &str) {
+    let clipboard = Clipboard::open();
+    let len = unsafe {
+        MultiByteToWideChar(
+            CP_UTF8,
+            0,
+            text.as_ptr() as _,
+            text.len() as _,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    if len != 0 {
+        let size = (len as usize + 1) * std::mem::size_of::<u16>();
+        let handle = unsafe { GlobalAlloc(GMEM_MOVEABLE, size as _) };
+        if handle == NULL {
+            return;
+        }
+        let data = match global_lock::<u16>(handle) {
+            Some(data) => data.as_ptr(),
+            None => {
+                unsafe { GlobalFree(handle) };
+                return;
+            }
+        };
+        unsafe {
+            MultiByteToWideChar(CP_UTF8, 0, text.as_ptr() as _, text.len() as _, data, len);
+            std::ptr::write(data.offset(len as isize), 0);
+        }
+        global_unlock(handle);
+
+        unsafe { EmptyClipboard() };
+        let result = unsafe { SetClipboardData(CF_UNICODETEXT, handle) };
+        if result == NULL {
+            unsafe { GlobalFree(handle) };
+        }
+    }
+    drop(clipboard);
 }
 
 struct Handle(pub HANDLE);
@@ -667,6 +759,7 @@ impl Events {
     }
 }
 
+// TODO: finish this??
 const NULL_ATOMIC_PTR: AtomicPtr<()> = AtomicPtr::new(std::ptr::null_mut());
 static CONNECTION_HANDLES: [AtomicPtr<()>; MAX_CONNECTION_COUNT] =
     [NULL_ATOMIC_PTR; MAX_CONNECTION_COUNT];
@@ -681,98 +774,6 @@ struct ServerState {
 }
 
 impl Platform for ServerState {
-    fn read_from_clipboard(&mut self, text: &mut String) -> bool {
-        let clipboard = Clipboard::open();
-        text.clear();
-        let handle = unsafe { GetClipboardData(CF_UNICODETEXT) };
-        if handle == NULL {
-            return false;
-        }
-        let data = match global_lock::<u16>(handle) {
-            Some(data) => data,
-            None => return false,
-        };
-        let data = data.as_ptr();
-        let len = unsafe {
-            WideCharToMultiByte(
-                CP_UTF8,
-                0,
-                data,
-                -1,
-                std::ptr::null_mut(),
-                0,
-                std::ptr::null(),
-                std::ptr::null_mut(),
-            )
-        };
-        if len != 0 {
-            let len = len - 1;
-            let mut temp = String::new();
-            std::mem::swap(text, &mut temp);
-            let mut bytes = temp.into_bytes();
-            bytes.resize(len as usize, 0);
-
-            unsafe {
-                WideCharToMultiByte(
-                    CP_UTF8,
-                    0,
-                    data,
-                    -1,
-                    bytes.as_mut_ptr() as _,
-                    bytes.len() as _,
-                    std::ptr::null(),
-                    std::ptr::null_mut(),
-                );
-            }
-
-            temp = unsafe { String::from_utf8_unchecked(bytes) };
-            std::mem::swap(text, &mut temp);
-        }
-        global_unlock(handle);
-        drop(clipboard);
-        true
-    }
-
-    fn write_to_clipboard(&mut self, text: &str) {
-        let clipboard = Clipboard::open();
-        let len = unsafe {
-            MultiByteToWideChar(
-                CP_UTF8,
-                0,
-                text.as_ptr() as _,
-                text.len() as _,
-                std::ptr::null_mut(),
-                0,
-            )
-        };
-        if len != 0 {
-            let size = (len as usize + 1) * std::mem::size_of::<u16>();
-            let handle = unsafe { GlobalAlloc(GMEM_MOVEABLE, size as _) };
-            if handle == NULL {
-                return;
-            }
-            let data = match global_lock::<u16>(handle) {
-                Some(data) => data.as_ptr(),
-                None => {
-                    unsafe { GlobalFree(handle) };
-                    return;
-                }
-            };
-            unsafe {
-                MultiByteToWideChar(CP_UTF8, 0, text.as_ptr() as _, text.len() as _, data, len);
-                std::ptr::write(data.offset(len as isize), 0);
-            }
-            global_unlock(handle);
-
-            unsafe { EmptyClipboard() };
-            let result = unsafe { SetClipboardData(CF_UNICODETEXT, handle) };
-            if result == NULL {
-                unsafe { GlobalFree(handle) };
-            }
-        }
-        drop(clipboard);
-    }
-
     fn read_from_connection(&mut self, index: usize, len: usize) -> &[u8] {
         if index >= self.pipes_len {
             return &[];
@@ -889,7 +890,12 @@ fn run_server(args: Args, pipe_path: &[u16]) {
         children_len: 0,
     };
 
-    let mut application = match ServerApplication::new(args, &mut state) {
+    let clipboard = RawPlatformClipboard {
+        read: read_from_clipboard,
+        write: write_to_clipboard,
+    };
+    let clipboard = unsafe { PlatformClipboard::from_raw(clipboard) };
+    let mut application = match ServerApplication::new(args, &mut state, clipboard) {
         Some(application) => application,
         None => return,
     };

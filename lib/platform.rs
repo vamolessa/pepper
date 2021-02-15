@@ -32,32 +32,29 @@ pub enum ServerPlatformEvent {
     ProcessExit { index: usize, success: bool },
 }
 
-pub struct PlatformWriter(RawPlatformWriter);
-impl PlatformWriter {
-    pub unsafe fn from_raw(raw: RawPlatformWriter) -> Self {
+pub struct RawPlatformClipboard {
+    pub read: fn(text: &mut String) -> bool,
+    pub write: fn(text: &str),
+}
+
+pub struct PlatformClipboard(RawPlatformClipboard);
+impl PlatformClipboard {
+    pub unsafe fn from_raw(raw: RawPlatformClipboard) -> Self {
         Self(raw)
     }
 
-    pub fn write(&self, buf: &[u8]) -> bool {
-        (self.0.write)(self.0.data, buf)
+    #[inline]
+    pub fn read(&self, text: &mut String) -> bool {
+        (self.0.read)(text)
+    }
+
+    #[inline]
+    pub fn write(&self, text: &str) {
+        (self.0.write)(text)
     }
 }
 
-pub struct RawPlatformWriter {
-    pub data: *mut (),
-    pub write: fn(*mut (), &[u8]) -> bool,
-}
-
-pub trait Args: Sized {
-    fn parse() -> Option<Self>;
-    fn session(&self) -> Option<&str>;
-    fn print_session(&self) -> bool;
-}
-
 pub trait Platform {
-    fn read_from_clipboard(&mut self, text: &mut String) -> bool;
-    fn write_to_clipboard(&mut self, text: &str);
-
     fn read_from_connection(&mut self, index: usize, len: usize) -> &[u8];
     fn write_to_connection(&mut self, index: usize, buf: &[u8]) -> bool;
     fn close_connection(&mut self, index: usize);

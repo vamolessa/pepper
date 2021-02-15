@@ -6,7 +6,7 @@ use crate::{
     command::CommandOperation,
     connection::ClientEventDeserializationBufCollection,
     editor::{Editor, EditorLoop},
-    platform::{Key, Platform, PlatformWriter, ServerPlatformEvent},
+    platform::{Key, Platform, PlatformClipboard, ServerPlatformEvent},
     serialization::{SerializationBuf, Serialize},
     ui, Args,
 };
@@ -36,6 +36,7 @@ impl Args {
 
 pub struct ServerApplication {
     editor: Editor,
+    clipboard: PlatformClipboard,
     clients: ClientManager,
     event_deserialization_bufs: ClientEventDeserializationBufCollection,
     connections_with_error: Vec<usize>,
@@ -45,7 +46,7 @@ impl ServerApplication {
         512
     }
 
-    pub fn new<P>(args: Args, platform: &mut P) -> Option<Self>
+    pub fn new<P>(args: Args, platform: &mut P, clipboard: PlatformClipboard) -> Option<Self>
     where
         P: Platform,
     {
@@ -65,6 +66,7 @@ impl ServerApplication {
 
         Some(Self {
             editor,
+            clipboard,
             clients,
             event_deserialization_bufs,
             connections_with_error: Vec::new(),
@@ -99,10 +101,13 @@ impl ServerApplication {
                 let mut events = self.event_deserialization_bufs.receive_events(index, bytes);
 
                 while let Some(event) = events.next() {
-                    match self
-                        .editor
-                        .on_client_event(platform, &mut self.clients, handle, event)
-                    {
+                    match self.editor.on_client_event(
+                        platform,
+                        &self.clipboard,
+                        &mut self.clients,
+                        handle,
+                        event,
+                    ) {
                         EditorLoop::Continue => (),
                         EditorLoop::Quit => {
                             platform.close_connection(index);
