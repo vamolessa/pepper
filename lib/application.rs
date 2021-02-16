@@ -97,7 +97,9 @@ impl ServerApplication {
                     None => return true,
                 };
 
-                let bytes = platform.read_from_connection(index, len);
+                // TODO
+                //let bytes = platform.read_from_connection(index, len);
+                let bytes = &[];
                 let mut events = self.event_deserialization_bufs.receive_events(index, bytes);
 
                 while let Some(event) = events.next() {
@@ -118,11 +120,11 @@ impl ServerApplication {
                 }
             }
             ServerPlatformEvent::ProcessStdout { index, len } => {
-                let bytes = platform.read_from_process_stdout(index, len);
+                //let bytes = platform.read_from_process_stdout(index, len);
                 //self.editor.on_process_stdout(platform, index, bytes);
             }
             ServerPlatformEvent::ProcessStderr { index, len } => {
-                let bytes = platform.read_from_process_stderr(index, len);
+                //let bytes = platform.read_from_process_stderr(index, len);
                 //self.editor.on_process_stderr(platform, index, bytes);
             }
             ServerPlatformEvent::ProcessExit { index, success } => {

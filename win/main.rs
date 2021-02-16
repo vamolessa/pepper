@@ -5,7 +5,7 @@ use std::{
     os::windows::io::IntoRawHandle,
     process::{Child, Command},
     ptr::NonNull,
-    sync::atomic::{AtomicBool, AtomicPtr, Ordering},
+    sync::mpsc,
     time::Duration,
 };
 
@@ -55,7 +55,10 @@ use winapi::{
 
 use pepper::{
     application::{ClientApplication, ServerApplication},
-    platform::{Key, Platform, PlatformClipboard, RawPlatformClipboard, ServerPlatformEvent},
+    platform::{
+        Key, Platform, PlatformBuf, PlatformBufPool, PlatformClipboard, RawPlatformClipboard,
+        ServerPlatformEvent,
+    },
     Args,
 };
 
@@ -196,22 +199,28 @@ enum ReadResult {
 }
 
 struct AsyncReader {
+    handle: Handle,
     event: Event,
     overlapped: Overlapped,
     pending_io: bool,
 }
 
 impl AsyncReader {
-    pub fn new() -> Self {
+    pub fn new(handle: Handle) -> Self {
         let event = Event::new();
         event.notify();
         let overlapped = Overlapped::with_event(&event);
 
         Self {
+            handle,
             event,
             overlapped,
             pending_io: false,
         }
+    }
+
+    pub fn handle(&self) -> &Handle {
+        &self.handle
     }
 
     pub fn event(&self) -> &Event {
@@ -222,11 +231,16 @@ impl AsyncReader {
         &mut self.overlapped
     }
 
-    pub fn read_async(&mut self, handle: &Handle, buf: &mut [u8]) -> ReadResult {
+    pub fn read_async(&mut self, buf: &mut [u8]) -> ReadResult {
         let mut read_len = 0;
         if self.pending_io {
             let result = unsafe {
-                GetOverlappedResult(handle.0, self.overlapped.as_mut_ptr(), &mut read_len, FALSE)
+                GetOverlappedResult(
+                    self.handle.0,
+                    self.overlapped.as_mut_ptr(),
+                    &mut read_len,
+                    FALSE,
+                )
             };
 
             if result == FALSE {
@@ -249,7 +263,7 @@ impl AsyncReader {
         } else {
             let result = unsafe {
                 ReadFile(
-                    handle.0,
+                    self.handle.0,
                     buf.as_mut_ptr() as _,
                     buf.len() as _,
                     &mut read_len,
@@ -277,12 +291,12 @@ impl AsyncReader {
     }
 }
 
-pub fn write_all_bytes(handle: HANDLE, mut buf: &[u8]) -> bool {
+pub fn write_all_bytes(handle: &Handle, mut buf: &[u8]) -> bool {
     while !buf.is_empty() {
         let mut write_len = 0;
         let result = unsafe {
             WriteFile(
-                handle,
+                handle.0,
                 buf.as_ptr() as _,
                 buf.len() as _,
                 &mut write_len,
@@ -542,39 +556,31 @@ impl Drop for ConsoleMode {
     }
 }
 
-#[derive(Default)]
 struct ConnectionToClient {
     reader: AsyncReader,
-    buf: Vec<u8>,
+    reading_buf: Option<PlatformBuf>,
 }
 impl ConnectionToClient {
-    pub fn new(reader: AsyncReader, buf: Vec<u8>) -> Self {
-        ConnectionToClient {
+    pub fn new(reader: AsyncReader) -> Self {
+        Self {
             reader: reader,
-            buf,
+            reading_buf: None,
         }
     }
 
-    pub fn close(&mut self) {
-        if let Some(io) = self.io.take() {
-            unsafe { DisconnectNamedPipe(io.handle.0) };
-            self.io = None;
-        }
-    }
-}
-impl Drop for ConnectionToClient {
-    fn drop(&mut self) {
-        self.close();
+    pub fn close(&mut self, handle: &Handle) {
+        unsafe { DisconnectNamedPipe(handle.0) };
+        self.reading_buf = None;
     }
 }
 
 struct ConnectionToClientListener {
-    pipe_handle: Handle,
     reader: AsyncReader,
+    buf: Box<[u8]>,
 }
 impl ConnectionToClientListener {
-    pub fn new(pipe_path: &[u16], buf_len: usize) -> Self {
-        let pipe_handle = unsafe {
+    fn new_listen_reader(pipe_path: &[u16], buf_len: usize) -> AsyncReader {
+        let handle = unsafe {
             CreateNamedPipeW(
                 pipe_path.as_ptr(),
                 PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
@@ -586,14 +592,14 @@ impl ConnectionToClientListener {
                 std::ptr::null_mut(),
             )
         };
-        if pipe_handle == INVALID_HANDLE_VALUE {
+        if handle == INVALID_HANDLE_VALUE {
             panic!("could not create new connection");
         }
 
-        let pipe_handle = Handle(pipe_handle);
-        let mut reader = AsyncReader::new();
+        let mut reader = AsyncReader::new(Handle(handle));
 
-        if unsafe { ConnectNamedPipe(pipe_handle.0, reader.overlapped().as_mut_ptr()) } != FALSE {
+        if unsafe { ConnectNamedPipe(reader.handle().0, reader.overlapped().as_mut_ptr()) } != FALSE
+        {
             panic!("could not accept incomming connection");
         }
 
@@ -605,67 +611,104 @@ impl ConnectionToClientListener {
             }
             _ => panic!("could not accept incomming connection"),
         };
-
         reader.overlapped = Overlapped::with_event(reader.event());
-        Self {
-            pipe_handle,
-            reader,
-        }
+
+        reader
     }
 
-    pub fn accept(&mut self, pipe_path: &[u16], buf_len: usize) -> Option<ConnectionToClient> {
+    pub fn new(pipe_path: &[u16], buf_len: usize) -> Self {
+        let reader = Self::new_listen_reader(pipe_path, buf_len);
+
         let mut buf = Vec::with_capacity(buf_len);
         buf.resize(buf_len, 0);
+        let buf = buf.into_boxed_slice();
 
-        match self.reader.read_async(&self.pipe_handle, &mut buf) {
+        Self { reader, buf }
+    }
+
+    pub fn event(&self) -> &Event {
+        self.reader.event()
+    }
+
+    pub fn accept(&mut self, pipe_path: &[u16]) -> Option<ConnectionToClient> {
+        match self.reader.read_async(&mut self.buf) {
             ReadResult::Waiting => None,
             ReadResult::Ok(_) => {
-                let mut listener = Self::new(pipe_path, buf_len);
-                std::mem::swap(&mut listener, self);
-                Some(ConnectionToClient::new(
-                    listener.pipe_handle,
-                    listener.reader,
-                    buf,
-                ))
+                let mut reader = Self::new_listen_reader(pipe_path, self.buf.len());
+                std::mem::swap(&mut reader, &mut self.reader);
+                Some(ConnectionToClient::new(reader))
             }
             ReadResult::Err => panic!("could not accept connection {}", get_last_error()),
         }
     }
 }
 
-fn connect_to_server(path: &[u16]) -> Handle {
-    let pipe_handle = unsafe {
-        CreateFileW(
-            path.as_ptr(),
-            GENERIC_READ | GENERIC_WRITE,
-            0,
-            std::ptr::null_mut(),
-            OPEN_EXISTING,
-            FILE_FLAG_OVERLAPPED,
-            NULL,
-        )
-    };
-    if pipe_handle == INVALID_HANDLE_VALUE {
-        panic!("could not establish a connection {}", get_last_error());
+struct ConnectionToServer {
+    reader: AsyncReader,
+    buf: Box<[u8]>,
+}
+impl ConnectionToServer {
+    pub fn connect(path: &[u16], buf_len: usize) -> Self {
+        let handle = unsafe {
+            CreateFileW(
+                path.as_ptr(),
+                GENERIC_READ | GENERIC_WRITE,
+                0,
+                std::ptr::null_mut(),
+                OPEN_EXISTING,
+                FILE_FLAG_OVERLAPPED,
+                NULL,
+            )
+        };
+        if handle == INVALID_HANDLE_VALUE {
+            panic!("could not establish a connection {}", get_last_error());
+        }
+
+        let mut mode = PIPE_READMODE_BYTE;
+        let result = unsafe {
+            SetNamedPipeHandleState(
+                handle,
+                &mut mode,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+
+        if result == FALSE {
+            panic!("could not establish a connection");
+        }
+
+        let reader = AsyncReader::new(Handle(handle));
+        let mut buf = Vec::with_capacity(buf_len);
+        buf.resize(buf_len, 0);
+        let buf = buf.into_boxed_slice();
+
+        Self { reader, buf }
     }
 
-    let mut mode = PIPE_READMODE_BYTE;
-    let result = unsafe {
-        SetNamedPipeHandleState(
-            pipe_handle,
-            &mut mode,
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-        )
-    };
-
-    if result == FALSE {
-        panic!("could not establish a connection");
+    pub fn event(&self) -> &Event {
+        self.reader.event()
     }
 
-    Handle(pipe_handle)
+    pub fn write(&mut self, buf: &[u8]) -> bool {
+        write_all_bytes(self.reader.handle(), buf)
+    }
+
+    pub fn read_async(&mut self) -> Result<Option<&[u8]>, ()> {
+        match self.reader.read_async(&mut self.buf) {
+            ReadResult::Waiting => Ok(None),
+            ReadResult::Ok(0) | ReadResult::Err => Err(()),
+            ReadResult::Ok(len) => Ok(Some(&self.buf[..len])),
+        }
+    }
+}
+impl Drop for ConnectionToServer {
+    fn drop(&mut self) {
+        unsafe { DisconnectNamedPipe(self.reader.handle().0) };
+    }
 }
 
+/*
 enum ChildPipe {
     Open(AsyncIO),
     Closed,
@@ -720,6 +763,7 @@ impl AsyncChild {
         }
     }
 }
+*/
 
 enum EventSource {
     ConnectionListener,
@@ -765,115 +809,6 @@ impl Events {
     }
 }
 
-struct ServerState {
-    pipes: [ConnectionToClient; MAX_CONNECTION_COUNT],
-    pipes_len: usize,
-    children: [Option<AsyncChild>; MAX_PROCESS_COUNT],
-    children_len: usize,
-}
-
-impl Platform for ServerState {
-    fn read_from_connection(&self, index: usize, len: usize) -> &[u8] {
-        if index >= self.pipes_len {
-            return &[];
-        }
-        match self.pipes[index].io() {
-            Some(io) => io.get_bytes(len),
-            None => &[],
-        }
-    }
-
-    fn write_to_connection(&self, index: usize, buf: &[u8]) -> bool {
-        if index >= self.pipes_len {
-            return false;
-        }
-        match self.pipes[index].io() {
-            Some(io) => io.write(buf),
-            None => false,
-        }
-    }
-
-    fn close_connection(&self, index: usize) {
-        if index < self.pipes_len {
-            self.pipes[index].deactivate();
-        }
-    }
-
-    fn spawn_process(
-        &mut self,
-        mut command: Command,
-        stdout_buf_len: usize,
-        stderr_buf_len: usize,
-    ) -> io::Result<usize> {
-        let index = self.children_len;
-        if index >= self.children.len() {
-            return Err(io::Error::from(io::ErrorKind::Other));
-        }
-
-        self.children[index] = Some(AsyncChild::from_child(
-            command.spawn()?,
-            stdout_buf_len,
-            stderr_buf_len,
-        ));
-        self.children_len += 1;
-
-        Ok(index)
-    }
-
-    fn read_from_process_stdout(&self, index: usize, len: usize) -> &[u8] {
-        if index >= self.children_len {
-            return &[];
-        }
-        match self.children[index] {
-            Some(ref child) => match child.stdout {
-                ChildPipe::Open(ref io) => io.get_bytes(len),
-                ChildPipe::Closed => &[],
-            },
-            None => &[],
-        }
-    }
-
-    fn read_from_process_stderr(&self, index: usize, len: usize) -> &[u8] {
-        if index >= self.children_len {
-            return &[];
-        }
-        match self.children[index] {
-            Some(ref child) => match child.stderr {
-                ChildPipe::Open(ref io) => io.get_bytes(len),
-                ChildPipe::Closed => &[],
-            },
-            None => &[],
-        }
-    }
-
-    fn write_to_process(&self, index: usize, buf: &[u8]) -> bool {
-        if index >= self.children_len {
-            return false;
-        }
-        if let Some(ref child) = self.children[index] {
-            if let Some(ref stdin) = child.stdin {
-                return write_all_bytes(stdin.0, buf);
-            }
-        }
-
-        false
-    }
-
-    fn kill_process(&self, index: usize) {
-        if index >= self.children_len {
-            return;
-        }
-        // TODO
-        /*
-        if let Some(ref mut child) = self.children[index] {
-            let _ = child.child.kill();
-            let _ = child.child.wait();
-            self.children[index] = None;
-        }
-        */
-    }
-}
-
 fn run_server(args: Args, pipe_path: &[u16]) {
     if pipe_exists(pipe_path) {
         return;
@@ -883,15 +818,7 @@ fn run_server(args: Args, pipe_path: &[u16]) {
     let mut events = Events::new();
     let mut listener = ConnectionToClientListener::new(pipe_path, connection_buffer_len);
 
-    const NULL_ATOMIC_PTR: AtomicPtr<()> = AtomicPtr::new(std::ptr::null_mut());
-    let pipe_event_handles = [NULL_ATOMIC_PTR; MAX_CONNECTION_COUNT];
-
-    let mut state = ServerState {
-        pipes: Default::default(),
-        pipes_len: 0,
-        children: Default::default(),
-        children_len: 0,
-    };
+    let mut connections: [Option<ConnectionToClient>; MAX_CONNECTION_COUNT] = Default::default();
 
     let clipboard = RawPlatformClipboard {
         read: read_from_clipboard,
@@ -903,22 +830,20 @@ fn run_server(args: Args, pipe_path: &[u16]) {
         None => return,
     };
 
-    macro_rules! send_event {
-        ($event:expr) => {
-            if !application.on_event(&mut state, $event) {
-                break;
-            }
-        };
-    }
-
     loop {
-        events.track(&listener.io.event, EventSource::ConnectionListener);
-        for i in 0..state.pipes_len {
+        events.track(&listener.event(), EventSource::ConnectionListener);
+        for (i, connection) in state.connections.iter().enumerate() {
+            if connection.is_some() {
+                //events.track
+            }
+        }
+        for i in 0..state.connections.len() {
             if let Some(event) = state.pipes[i].io().and_then(|io| io.event()) {
                 events.track(event, EventSource::Connection(i));
             }
         }
-        for i in 0..state.children_len {
+        /*
+        for i in 0..state.children.len() {
             if let Some(child) = &state.children[i] {
                 if let ChildPipe::Open(io) = &child.stdout {
                     if let Some(event) = io.event() {
@@ -932,7 +857,9 @@ fn run_server(args: Args, pipe_path: &[u16]) {
                 }
             }
         }
+        */
 
+        /*
         match events.wait_next(None) {
             Some(EventSource::ConnectionListener) => {
                 if let Some(pipe) = listener.accept(pipe_path, connection_buffer_len) {
@@ -1022,6 +949,7 @@ fn run_server(args: Args, pipe_path: &[u16]) {
             }
             None => panic!("timeout waiting"),
         }
+        */
     }
 }
 
@@ -1033,14 +961,12 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: HANDLE, output_handle
         }
     }
 
-    let pipe_handle = connect_to_server(pipe_path);
-    let pipe_reader = AsyncReader::new();
-    let mut pipe_buf = Vec::with_capacity(ClientApplication::connection_buffer_len());
-    pipe_buf.resize(pipe_buf.capacity(), 0);
-
+    let connection =
+        ConnectionToServer::connect(pipe_path, ClientApplication::connection_buffer_len());
     let mut application = ClientApplication::new();
 
-    if !write_all_bytes(pipe_handle.0, application.init(args)) {
+    let bytes = application.init(args);
+    if !connection.write(bytes) {
         return;
     }
 
@@ -1051,11 +977,11 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: HANDLE, output_handle
 
     let mut console_event_buf = [unsafe { std::mem::zeroed() }; CLIENT_CONSOLE_EVENT_BUFFER_LEN];
     let mut keys = Vec::with_capacity(CLIENT_CONSOLE_EVENT_BUFFER_LEN);
-    let wait_handles = [pipe_reader.event().handle(), input_handle];
+    let wait_handles = [connection.event().handle(), input_handle];
 
     let (width, height) = get_console_size(output_handle);
     let bytes = application.update(Some((width, height)), &[], &[]);
-    if !write_all_bytes(pipe_handle.0, bytes) {
+    if !connection.write(bytes) {
         return;
     }
 
@@ -1070,10 +996,10 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: HANDLE, output_handle
         let mut message = &[][..];
 
         match wait_handle_index {
-            0 => match pipe_reader.read_async(&pipe_handle, &mut pipe_buf) {
-                ReadResult::Waiting => (),
-                ReadResult::Ok(0) | ReadResult::Err => break,
-                ReadResult::Ok(len) => message = &pipe_buf[..len],
+            0 => match connection.read_async() {
+                Ok(None) => (),
+                Ok(Some(bytes)) => message = bytes,
+                Err(()) => break,
             },
             1 => {
                 let events = read_console_input(input_handle, &mut console_event_buf);
@@ -1160,7 +1086,7 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: HANDLE, output_handle
         }
 
         let bytes = application.update(resize, &keys, message);
-        if !write_all_bytes(pipe_handle.0, bytes) {
+        if !connection.write(bytes) {
             break;
         }
     }
