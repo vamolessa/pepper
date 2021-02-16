@@ -84,17 +84,23 @@ pub enum PlatformServerRequest {
 
 pub struct RawPlatformServerChannel {
     pub data: *mut (),
-    pub request: fn(*mut (), PlatformServerRequest),
+    pub enqueue_request: fn(*mut (), PlatformServerRequest),
+    pub flush: fn(*mut ()),
 }
 pub struct PlatformServerChannel(RawPlatformServerChannel);
 impl PlatformServerChannel {
-    unsafe fn from_raw(raw: RawPlatformServerChannel) -> Self {
+    pub unsafe fn from_raw(raw: RawPlatformServerChannel) -> Self {
         Self(raw)
     }
 
     #[inline]
-    pub fn request(&self, request: PlatformServerRequest) {
-        (self.0.request)(self.0.data, request);
+    pub fn enqueue_request(&self, request: PlatformServerRequest) {
+        (self.0.enqueue_request)(self.0.data, request);
+    }
+
+    #[inline]
+    pub fn flush(&self) {
+        (self.0.flush)(self.0.data);
     }
 }
 

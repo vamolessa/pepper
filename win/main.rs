@@ -57,7 +57,8 @@ use pepper::{
     application::{ClientApplication, ServerApplication},
     platform::{
         Key, Platform, PlatformBuf, PlatformBufPool, PlatformClipboard, PlatformConnectionHandle,
-        PlatformProcessHandle, PlatformServerRequest, RawPlatformClipboard, ServerPlatformEvent,
+        PlatformProcessHandle, PlatformServerChannel, PlatformServerRequest, RawPlatformClipboard,
+        RawPlatformServerChannel, ServerPlatformEvent,
     },
     Args,
 };
@@ -838,21 +839,18 @@ impl Events {
     }
 }
 
-fn run_server(args: Args, pipe_path: &[u16]) {
-    static mut NEW_REQUEST_EVENT: Event = Event(NULL);
+struct ChannelData {
+    pub event: Event,
+    pub sender: mpsc::Sender<PlatformServerRequest>,
+}
 
+fn run_server(args: Args, pipe_path: &[u16]) {
     if pipe_exists(pipe_path) {
         return;
     }
 
     let connection_buffer_len = ServerApplication::connection_buffer_len();
     let mut events = Events::new();
-
-    let new_request_event = unsafe {
-        NEW_REQUEST_EVENT = Event::new();
-        &NEW_REQUEST_EVENT
-    };
-
     let mut listener = ConnectionToClientListener::new(pipe_path, connection_buffer_len);
 
     let mut connections: [Option<ConnectionToClient>; MAX_CONNECTION_COUNT] = Default::default();
@@ -860,6 +858,23 @@ fn run_server(args: Args, pipe_path: &[u16]) {
 
     let (event_sender, event_receiver) = mpsc::channel();
     let (request_sender, request_receiver) = mpsc::channel();
+
+    let channel_data = ChannelData {
+        event: Event::new(),
+        sender: request_sender,
+    };
+    let channel = RawPlatformServerChannel {
+        data: &channel_data as *const _ as _,
+        enqueue_request: |data, request| {
+            let data = unsafe { &*(data as *const ChannelData) };
+            let _ = data.sender.send(request);
+        },
+        flush: |data| {
+            let data = unsafe { &*(data as *const ChannelData) };
+            data.event.notify();
+        },
+    };
+    let channel = unsafe { PlatformServerChannel::from_raw(channel) };
 
     let clipboard = RawPlatformClipboard {
         read: read_from_clipboard,
@@ -876,7 +891,7 @@ fn run_server(args: Args, pipe_path: &[u16]) {
     */
 
     loop {
-        events.track(new_request_event, EventSource::NewRequest);
+        events.track(&channel_data.event, EventSource::NewRequest);
         events.track(&listener.event(), EventSource::ConnectionListener);
         for (i, connection) in connections.iter().enumerate() {
             if let Some(connection) = connection {
@@ -956,10 +971,28 @@ fn run_server(args: Args, pipe_path: &[u16]) {
             }
             Some(EventSource::Connection(i)) => {
                 if let Some(ref mut connection) = connections[i] {
+                    let handle = PlatformConnectionHandle(i);
                     match connection
                         .read_async(ServerApplication::connection_buffer_len(), &mut buf_pool)
                     {
-                        _ => todo!(),
+                        Ok(None) => (),
+                        Ok(Some(buf)) => {
+                            if event_sender
+                                .send(ServerPlatformEvent::ConnectionMessage { handle, buf })
+                                .is_err()
+                            {
+                                return;
+                            }
+                        }
+                        Err(()) => {
+                            connections[i] = None;
+                            if event_sender
+                                .send(ServerPlatformEvent::ConnectionClose { handle })
+                                .is_err()
+                            {
+                                return;
+                            }
+                        }
                     }
                 }
             }
