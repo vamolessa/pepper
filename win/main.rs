@@ -56,15 +56,15 @@ use winapi::{
 use pepper::{
     application::{ClientApplication, ServerApplication},
     platform::{
-        Key, Platform, PlatformBuf, PlatformBufPool, PlatformClipboard, RawPlatformClipboard,
-        ServerPlatformEvent,
+        Key, Platform, PlatformBuf, PlatformBufPool, PlatformClipboard, PlatformServerRequest,
+        RawPlatformClipboard, ServerPlatformEvent,
     },
     Args,
 };
 
-const MAX_CONNECTION_COUNT: usize = 13;
+const MAX_CONNECTION_COUNT: usize = 12;
 const MAX_PROCESS_COUNT: usize = 25;
-const MAX_EVENT_COUNT: usize = 1 + MAX_CONNECTION_COUNT + 2 * MAX_PROCESS_COUNT;
+const MAX_EVENT_COUNT: usize = 1 + 1 + MAX_CONNECTION_COUNT + 2 * MAX_PROCESS_COUNT;
 const _ASSERT_MAX_EVENT_COUNT_IS_64: [(); 64] = [(); MAX_EVENT_COUNT];
 
 const CLIENT_CONSOLE_EVENT_BUFFER_LEN: usize = 32;
@@ -291,7 +291,7 @@ impl AsyncReader {
     }
 }
 
-pub fn write_all_bytes(handle: &Handle, mut buf: &[u8]) -> bool {
+fn write_all_bytes(handle: &Handle, mut buf: &[u8]) -> bool {
     while !buf.is_empty() {
         let mut write_len = 0;
         let result = unsafe {
@@ -558,19 +558,31 @@ impl Drop for ConsoleMode {
 
 struct ConnectionToClient {
     reader: AsyncReader,
-    reading_buf: Option<PlatformBuf>,
+    read_buf: Option<PlatformBuf>,
 }
 impl ConnectionToClient {
     pub fn new(reader: AsyncReader) -> Self {
         Self {
             reader: reader,
-            reading_buf: None,
+            read_buf: None,
         }
     }
 
-    pub fn close(&mut self, handle: &Handle) {
-        unsafe { DisconnectNamedPipe(handle.0) };
-        self.reading_buf = None;
+    pub fn event(&self) -> Option<&Event> {
+        if self.read_buf.is_some() {
+            Some(self.reader.event())
+        } else {
+            None
+        }
+    }
+
+    pub fn write(&self, buf: &[u8]) -> bool {
+        write_all_bytes(self.reader.handle(), buf)
+    }
+}
+impl Drop for ConnectionToClient {
+    fn drop(&mut self) {
+        unsafe { DisconnectNamedPipe(self.reader.handle().0) };
     }
 }
 
@@ -702,11 +714,6 @@ impl ConnectionToServer {
         }
     }
 }
-impl Drop for ConnectionToServer {
-    fn drop(&mut self) {
-        unsafe { DisconnectNamedPipe(self.reader.handle().0) };
-    }
-}
 
 /*
 enum ChildPipe {
@@ -766,6 +773,7 @@ impl AsyncChild {
 */
 
 enum EventSource {
+    NewRequest,
     ConnectionListener,
     Connection(usize),
     ChildStdout(usize),
@@ -810,35 +818,83 @@ impl Events {
 }
 
 fn run_server(args: Args, pipe_path: &[u16]) {
+    static mut NEW_REQUEST_EVENT: Event = Event(NULL);
+
     if pipe_exists(pipe_path) {
         return;
     }
 
     let connection_buffer_len = ServerApplication::connection_buffer_len();
     let mut events = Events::new();
+
+    let new_request_event = unsafe {
+        NEW_REQUEST_EVENT = Event::new();
+        &NEW_REQUEST_EVENT
+    };
+
     let mut listener = ConnectionToClientListener::new(pipe_path, connection_buffer_len);
 
     let mut connections: [Option<ConnectionToClient>; MAX_CONNECTION_COUNT] = Default::default();
+
+    let (event_sender, event_receiver) = mpsc::channel();
+    let (request_sender, request_receiver) = mpsc::channel();
 
     let clipboard = RawPlatformClipboard {
         read: read_from_clipboard,
         write: write_to_clipboard,
     };
     let clipboard = unsafe { PlatformClipboard::from_raw(clipboard) };
+
+    // TODO: ServerApplication::run(args, 'event_receiver', 'request_sender', clipboard);
+    /*
     let mut application = match ServerApplication::new(args, &mut state, clipboard) {
         Some(application) => application,
         None => return,
     };
+    */
 
     loop {
-        events.track(&listener.event(), EventSource::ConnectionListener);
-        for (i, connection) in state.connections.iter().enumerate() {
-            if connection.is_some() {
-                //events.track
+        loop {
+            match request_receiver.try_recv() {
+                Ok(PlatformServerRequest::WriteToConnection { handle, buf }) => {
+                    if let Some(ref mut connection) = connections[handle.0] {
+                        if !connection.write(buf.as_bytes()) {
+                            connections[handle.0] = None;
+                            if event_sender
+                                .send(ServerPlatformEvent::ConnectionClose { handle })
+                                .is_err()
+                            {
+                                return;
+                            }
+                        }
+                    }
+                }
+                Ok(PlatformServerRequest::CloseConnection { handle }) => {
+                    connections[handle.0] = None;
+                }
+                Ok(PlatformServerRequest::SpawnProcess {
+                    tag,
+                    command,
+                    stdout_buf_len,
+                    stderr_buf_len,
+                }) => {
+                    todo!();
+                }
+                Ok(PlatformServerRequest::WriteToProcess { handle, buf }) => {
+                    todo!();
+                }
+                Ok(PlatformServerRequest::KillProcess { handle }) => {
+                    todo!();
+                }
+                Err(mpsc::TryRecvError::Empty) => break,
+                Err(mpsc::TryRecvError::Disconnected) => return,
             }
         }
-        for i in 0..state.connections.len() {
-            if let Some(event) = state.pipes[i].io().and_then(|io| io.event()) {
+
+        events.track(new_request_event, EventSource::NewRequest);
+        events.track(&listener.event(), EventSource::ConnectionListener);
+        for (i, connection) in connections.iter().enumerate() {
+            if let Some(event) = connection.as_ref().and_then(|c| c.event()) {
                 events.track(event, EventSource::Connection(i));
             }
         }
@@ -961,7 +1017,7 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: HANDLE, output_handle
         }
     }
 
-    let connection =
+    let mut connection =
         ConnectionToServer::connect(pipe_path, ClientApplication::connection_buffer_len());
     let mut application = ClientApplication::new();
 

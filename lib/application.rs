@@ -78,29 +78,30 @@ impl ServerApplication {
         P: Platform,
     {
         match event {
-            ServerPlatformEvent::ConnectionOpen { index } => {
-                if let Some(handle) = ClientHandle::from_index(index) {
+            ServerPlatformEvent::ConnectionOpen { handle } => {
+                if let Some(handle) = ClientHandle::from_index(handle.0) {
                     self.clients.on_client_joined(handle)
                 }
             }
-            ServerPlatformEvent::ConnectionClose { index } => {
-                if let Some(handle) = ClientHandle::from_index(index) {
+            ServerPlatformEvent::ConnectionClose { handle } => {
+                if let Some(handle) = ClientHandle::from_index(handle.0) {
                     self.clients.on_client_left(handle);
                     if self.clients.iter_mut().next().is_none() {
                         return false;
                     }
                 }
             }
-            ServerPlatformEvent::ConnectionMessage { index, len } => {
-                let handle = match ClientHandle::from_index(index) {
+            ServerPlatformEvent::ConnectionMessage { handle, buf } => {
+                let handle = match ClientHandle::from_index(handle.0) {
                     Some(handle) => handle,
                     None => return true,
                 };
 
                 // TODO
+                /*
                 //let bytes = platform.read_from_connection(index, len);
                 let bytes = &[];
-                let mut events = self.event_deserialization_bufs.receive_events(index, bytes);
+                let mut events = self.event_deserialization_bufs.receive_events(handle.0, bytes);
 
                 while let Some(event) = events.next() {
                     match self.editor.on_client_event(
@@ -112,12 +113,13 @@ impl ServerApplication {
                     ) {
                         EditorLoop::Continue => (),
                         EditorLoop::Quit => {
-                            platform.close_connection(index);
+                            platform.close_connection(handle.0);
                             break;
                         }
                         EditorLoop::QuitAll => return false,
                     }
                 }
+                */
             }
             ServerPlatformEvent::ProcessStdout { index, len } => {
                 //let bytes = platform.read_from_process_stdout(index, len);
