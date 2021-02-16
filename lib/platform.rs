@@ -136,7 +136,7 @@ pub struct PlatformBufPool {
     bufs: Vec<PlatformBuf>,
 }
 impl PlatformBufPool {
-    pub fn aquire(&mut self) -> PlatformBuf {
+    pub fn acquire(&mut self) -> PlatformBuf {
         for (i, buf) in self.bufs.iter_mut().enumerate() {
             if Arc::get_mut(&mut buf.0).is_some() {
                 return self.bufs.swap_remove(i);

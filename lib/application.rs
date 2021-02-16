@@ -42,7 +42,7 @@ pub struct ServerApplication {
     connections_with_error: Vec<usize>,
 }
 impl ServerApplication {
-    pub fn connection_buffer_len() -> usize {
+    pub const fn connection_buffer_len() -> usize {
         512
     }
 
@@ -186,7 +186,7 @@ pub struct ClientApplication {
     stdout: io::StdoutLock<'static>,
 }
 impl ClientApplication {
-    pub fn connection_buffer_len() -> usize {
+    pub const fn connection_buffer_len() -> usize {
         2 * 1024
     }
 

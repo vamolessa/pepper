@@ -56,8 +56,8 @@ use winapi::{
 use pepper::{
     application::{ClientApplication, ServerApplication},
     platform::{
-        Key, Platform, PlatformBuf, PlatformBufPool, PlatformClipboard, PlatformServerRequest,
-        RawPlatformClipboard, ServerPlatformEvent,
+        Key, Platform, PlatformBuf, PlatformBufPool, PlatformClipboard, PlatformConnectionHandle,
+        PlatformProcessHandle, PlatformServerRequest, RawPlatformClipboard, ServerPlatformEvent,
     },
     Args,
 };
@@ -204,7 +204,6 @@ struct AsyncReader {
     overlapped: Overlapped,
     pending_io: bool,
 }
-
 impl AsyncReader {
     pub fn new(handle: Handle) -> Self {
         let event = Event::new();
@@ -233,6 +232,7 @@ impl AsyncReader {
 
     pub fn read_async(&mut self, buf: &mut [u8]) -> ReadResult {
         let mut read_len = 0;
+        // TODO: remove redundancy with pending_io
         if self.pending_io {
             let result = unsafe {
                 GetOverlappedResult(
@@ -558,21 +558,42 @@ impl Drop for ConsoleMode {
 
 struct ConnectionToClient {
     reader: AsyncReader,
-    read_buf: Option<PlatformBuf>,
+    current_read_buf: Option<PlatformBuf>,
 }
 impl ConnectionToClient {
     pub fn new(reader: AsyncReader) -> Self {
         Self {
-            reader: reader,
-            read_buf: None,
+            reader,
+            current_read_buf: None,
         }
     }
 
-    pub fn event(&self) -> Option<&Event> {
-        if self.read_buf.is_some() {
-            Some(self.reader.event())
-        } else {
-            None
+    pub fn event(&self) -> &Event {
+        self.reader.event()
+    }
+
+    pub fn read_async(
+        &mut self,
+        buf_len: usize,
+        buf_pool: &mut PlatformBufPool,
+    ) -> Result<Option<PlatformBuf>, ()> {
+        let mut read_buf = match self.current_read_buf.take() {
+            Some(buf) => buf,
+            None => buf_pool.acquire(),
+        };
+        let buf = read_buf.write().unwrap();
+        buf.resize(buf_len, 0);
+
+        match self.reader.read_async(buf) {
+            ReadResult::Waiting => {
+                self.current_read_buf = Some(read_buf);
+                Ok(None)
+            }
+            ReadResult::Ok(len) => {
+                buf.truncate(len);
+                Ok(Some(read_buf))
+            }
+            ReadResult::Err => Err(()),
         }
     }
 
@@ -706,11 +727,11 @@ impl ConnectionToServer {
         write_all_bytes(self.reader.handle(), buf)
     }
 
-    pub fn read_async(&mut self) -> Result<Option<&[u8]>, ()> {
+    pub fn read_async(&mut self) -> Result<&[u8], ()> {
         match self.reader.read_async(&mut self.buf) {
-            ReadResult::Waiting => Ok(None),
+            ReadResult::Waiting => Ok(&[]),
             ReadResult::Ok(0) | ReadResult::Err => Err(()),
-            ReadResult::Ok(len) => Ok(Some(&self.buf[..len])),
+            ReadResult::Ok(len) => Ok(&self.buf[..len]),
         }
     }
 }
@@ -835,6 +856,7 @@ fn run_server(args: Args, pipe_path: &[u16]) {
     let mut listener = ConnectionToClientListener::new(pipe_path, connection_buffer_len);
 
     let mut connections: [Option<ConnectionToClient>; MAX_CONNECTION_COUNT] = Default::default();
+    let mut buf_pool = PlatformBufPool::default();
 
     let (event_sender, event_receiver) = mpsc::channel();
     let (request_sender, request_receiver) = mpsc::channel();
@@ -854,48 +876,11 @@ fn run_server(args: Args, pipe_path: &[u16]) {
     */
 
     loop {
-        loop {
-            match request_receiver.try_recv() {
-                Ok(PlatformServerRequest::WriteToConnection { handle, buf }) => {
-                    if let Some(ref mut connection) = connections[handle.0] {
-                        if !connection.write(buf.as_bytes()) {
-                            connections[handle.0] = None;
-                            if event_sender
-                                .send(ServerPlatformEvent::ConnectionClose { handle })
-                                .is_err()
-                            {
-                                return;
-                            }
-                        }
-                    }
-                }
-                Ok(PlatformServerRequest::CloseConnection { handle }) => {
-                    connections[handle.0] = None;
-                }
-                Ok(PlatformServerRequest::SpawnProcess {
-                    tag,
-                    command,
-                    stdout_buf_len,
-                    stderr_buf_len,
-                }) => {
-                    todo!();
-                }
-                Ok(PlatformServerRequest::WriteToProcess { handle, buf }) => {
-                    todo!();
-                }
-                Ok(PlatformServerRequest::KillProcess { handle }) => {
-                    todo!();
-                }
-                Err(mpsc::TryRecvError::Empty) => break,
-                Err(mpsc::TryRecvError::Disconnected) => return,
-            }
-        }
-
         events.track(new_request_event, EventSource::NewRequest);
         events.track(&listener.event(), EventSource::ConnectionListener);
         for (i, connection) in connections.iter().enumerate() {
-            if let Some(event) = connection.as_ref().and_then(|c| c.event()) {
-                events.track(event, EventSource::Connection(i));
+            if let Some(connection) = connection {
+                events.track(connection.event(), EventSource::Connection(i));
             }
         }
         /*
@@ -914,6 +899,72 @@ fn run_server(args: Args, pipe_path: &[u16]) {
             }
         }
         */
+
+        match events.wait_next(None) {
+            Some(EventSource::NewRequest) => {
+                for request in request_receiver.try_iter() {
+                    match request {
+                        PlatformServerRequest::WriteToConnection { handle, buf } => {
+                            if let Some(ref mut connection) = connections[handle.0] {
+                                if !connection.write(buf.as_bytes()) {
+                                    connections[handle.0] = None;
+                                    if event_sender
+                                        .send(ServerPlatformEvent::ConnectionClose { handle })
+                                        .is_err()
+                                    {
+                                        return;
+                                    }
+                                }
+                            }
+                        }
+                        PlatformServerRequest::CloseConnection { handle } => {
+                            connections[handle.0] = None;
+                        }
+                        PlatformServerRequest::SpawnProcess {
+                            tag,
+                            command,
+                            stdout_buf_len,
+                            stderr_buf_len,
+                        } => {
+                            todo!();
+                        }
+                        PlatformServerRequest::WriteToProcess { handle, buf } => {
+                            todo!();
+                        }
+                        PlatformServerRequest::KillProcess { handle } => {
+                            todo!();
+                        }
+                    }
+                }
+            }
+            Some(EventSource::ConnectionListener) => {
+                if let Some(connection) = listener.accept(pipe_path) {
+                    for (i, c) in connections.iter_mut().enumerate() {
+                        if c.is_none() {
+                            *c = Some(connection);
+                            let handle = PlatformConnectionHandle(i);
+                            if event_sender
+                                .send(ServerPlatformEvent::ConnectionOpen { handle })
+                                .is_err()
+                            {
+                                return;
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+            Some(EventSource::Connection(i)) => {
+                if let Some(ref mut connection) = connections[i] {
+                    match connection
+                        .read_async(ServerApplication::connection_buffer_len(), &mut buf_pool)
+                    {
+                        _ => todo!(),
+                    }
+                }
+            }
+            _ => todo!(),
+        }
 
         /*
         match events.wait_next(None) {
@@ -1053,8 +1104,7 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: HANDLE, output_handle
 
         match wait_handle_index {
             0 => match connection.read_async() {
-                Ok(None) => (),
-                Ok(Some(bytes)) => message = bytes,
+                Ok(bytes) => message = bytes,
                 Err(()) => break,
             },
             1 => {

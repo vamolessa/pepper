@@ -54,7 +54,7 @@ impl BufferLinePool {
         Self { pool: Vec::new() }
     }
 
-    // TODO: rename to aquire
+    // TODO: rename to acquire
     pub fn rent(&mut self) -> BufferLine {
         match self.pool.pop() {
             Some(mut line) => {
