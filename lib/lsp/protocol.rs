@@ -226,14 +226,15 @@ pub struct ServerConnection {
 }
 
 impl ServerConnection {
-    pub fn spawn(platform: &mut dyn Platform, mut command: Command) -> io::Result<Self> {
+    pub fn spawn(platform: &dyn Platform, mut command: Command) -> io::Result<Self> {
         command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
 
-        let process_index = platform.spawn_process(command, 4 * 1024, 0)?;
-        Ok(Self { process_index })
+        // TODO: use new platform request
+        //let process_index = platform.spawn_process(command, 4 * 1024, 0)?;
+        Ok(Self { process_index: 0 })
 
         /*
         let stdin = process
@@ -272,7 +273,8 @@ impl ServerConnection {
     }
 
     pub fn write(&mut self, platform: &mut dyn Platform, buf: &[u8]) -> io::Result<()> {
-        platform.write_to_process(self.process_index, buf);
+        // TODO: change to new platform request
+        //platform.write_to_process(self.process_index, buf);
         Ok(())
     }
 }

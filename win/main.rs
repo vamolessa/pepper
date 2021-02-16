@@ -2,10 +2,8 @@ use std::{
     collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},
     io,
-    os::windows::io::IntoRawHandle,
-    process::{Child, Command},
     ptr::NonNull,
-    sync::mpsc,
+    sync::{mpsc, Arc},
     time::Duration,
 };
 
@@ -56,9 +54,8 @@ use winapi::{
 use pepper::{
     application::{ClientApplication, ServerApplication},
     platform::{
-        Key, Platform, PlatformBuf, PlatformBufPool, PlatformClipboard, PlatformConnectionHandle,
-        PlatformProcessHandle, PlatformServerChannel, PlatformServerRequest, RawPlatformClipboard,
-        RawPlatformServerChannel, ServerPlatformEvent,
+        Key, Platform, PlatformBuf, PlatformBufPool, PlatformConnectionHandle,
+        PlatformProcessHandle, PlatformServerRequest, RawPlatformClipboard, ServerPlatformEvent,
     },
     Args,
 };
@@ -110,9 +107,11 @@ fn main() {
 
     match (input_handle, output_handle) {
         (Some(input_handle), Some(output_handle)) => {
-            run_client(args, &pipe_path, input_handle, output_handle)
+            run_client(args, &pipe_path, input_handle, output_handle);
         }
-        _ => run_server(args, &pipe_path),
+        _ => {
+            let _ = run_server(args, &pipe_path);
+        }
     }
 }
 
@@ -839,14 +838,33 @@ impl Events {
     }
 }
 
-struct ChannelData {
-    pub event: Event,
-    pub sender: mpsc::Sender<PlatformServerRequest>,
+struct WindowsPlatform {
+    pub new_request_event: Event,
+    pub request_sender: mpsc::Sender<PlatformServerRequest>,
+}
+unsafe impl Send for WindowsPlatform {}
+unsafe impl Sync for WindowsPlatform {}
+impl Platform for WindowsPlatform {
+    fn read_from_clipboard(&self, text: &mut String) -> bool {
+        read_from_clipboard(text)
+    }
+
+    fn write_to_clipboard(&self, text: &str) {
+        write_to_clipboard(text)
+    }
+
+    fn enqueue_request(&self, request: PlatformServerRequest) {
+        let _ = self.request_sender.send(request);
+    }
+
+    fn flush_requests(&self) {
+        self.new_request_event.notify();
+    }
 }
 
-fn run_server(args: Args, pipe_path: &[u16]) {
+fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), ()> {
     if pipe_exists(pipe_path) {
-        return;
+        return Ok(());
     }
 
     let connection_buffer_len = ServerApplication::connection_buffer_len();
@@ -856,32 +874,17 @@ fn run_server(args: Args, pipe_path: &[u16]) {
     let mut connections: [Option<ConnectionToClient>; MAX_CONNECTION_COUNT] = Default::default();
     let mut buf_pool = PlatformBufPool::default();
 
-    let (event_sender, event_receiver) = mpsc::channel();
     let (request_sender, request_receiver) = mpsc::channel();
 
-    let channel_data = ChannelData {
-        event: Event::new(),
-        sender: request_sender,
-    };
-    let channel = RawPlatformServerChannel {
-        data: &channel_data as *const _ as _,
-        enqueue_request: |data, request| {
-            let data = unsafe { &*(data as *const ChannelData) };
-            let _ = data.sender.send(request);
-        },
-        flush: |data| {
-            let data = unsafe { &*(data as *const ChannelData) };
-            data.event.notify();
-        },
-    };
-    let channel = unsafe { PlatformServerChannel::from_raw(channel) };
+    let platform = Arc::new(WindowsPlatform {
+        new_request_event: Event::new(),
+        request_sender,
+    });
 
-    let clipboard = RawPlatformClipboard {
-        read: read_from_clipboard,
-        write: write_to_clipboard,
+    let event_sender = match ServerApplication::run(args, platform.clone()) {
+        Some(sender) => sender,
+        None => return Ok(()),
     };
-    let clipboard = unsafe { PlatformClipboard::from_raw(clipboard) };
-
     // TODO: ServerApplication::run(args, 'event_receiver', 'request_sender', clipboard);
     /*
     let mut application = match ServerApplication::new(args, &mut state, clipboard) {
@@ -891,7 +894,14 @@ fn run_server(args: Args, pipe_path: &[u16]) {
     */
 
     loop {
-        events.track(&channel_data.event, EventSource::NewRequest);
+        fn send_event(
+            sender: &mpsc::Sender<ServerPlatformEvent>,
+            event: ServerPlatformEvent,
+        ) -> Result<(), ()> {
+            sender.send(event).map_err(|_| ())
+        }
+
+        events.track(&platform.new_request_event, EventSource::NewRequest);
         events.track(&listener.event(), EventSource::ConnectionListener);
         for (i, connection) in connections.iter().enumerate() {
             if let Some(connection) = connection {
@@ -923,12 +933,10 @@ fn run_server(args: Args, pipe_path: &[u16]) {
                             if let Some(ref mut connection) = connections[handle.0] {
                                 if !connection.write(buf.as_bytes()) {
                                     connections[handle.0] = None;
-                                    if event_sender
-                                        .send(ServerPlatformEvent::ConnectionClose { handle })
-                                        .is_err()
-                                    {
-                                        return;
-                                    }
+                                    send_event(
+                                        &event_sender,
+                                        ServerPlatformEvent::ConnectionClose { handle },
+                                    )?;
                                 }
                             }
                         }
@@ -958,12 +966,10 @@ fn run_server(args: Args, pipe_path: &[u16]) {
                         if c.is_none() {
                             *c = Some(connection);
                             let handle = PlatformConnectionHandle(i);
-                            if event_sender
-                                .send(ServerPlatformEvent::ConnectionOpen { handle })
-                                .is_err()
-                            {
-                                return;
-                            }
+                            send_event(
+                                &event_sender,
+                                ServerPlatformEvent::ConnectionOpen { handle },
+                            )?;
                             break;
                         }
                     }
@@ -976,22 +982,16 @@ fn run_server(args: Args, pipe_path: &[u16]) {
                         .read_async(ServerApplication::connection_buffer_len(), &mut buf_pool)
                     {
                         Ok(None) => (),
-                        Ok(Some(buf)) => {
-                            if event_sender
-                                .send(ServerPlatformEvent::ConnectionMessage { handle, buf })
-                                .is_err()
-                            {
-                                return;
-                            }
-                        }
+                        Ok(Some(buf)) => send_event(
+                            &event_sender,
+                            ServerPlatformEvent::ConnectionMessage { handle, buf },
+                        )?,
                         Err(()) => {
                             connections[i] = None;
-                            if event_sender
-                                .send(ServerPlatformEvent::ConnectionClose { handle })
-                                .is_err()
-                            {
-                                return;
-                            }
+                            send_event(
+                                &event_sender,
+                                ServerPlatformEvent::ConnectionClose { handle },
+                            )?;
                         }
                     }
                 }

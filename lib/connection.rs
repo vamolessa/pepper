@@ -81,6 +81,7 @@ impl<'data> Drop for ClientEventIter<'data> {
 #[derive(Default)]
 struct ClientEventDeserializationBuf(Vec<u8>);
 
+// TODO: rename to ClientEventReceiver
 #[derive(Default)]
 pub struct ClientEventDeserializationBufCollection {
     bufs: Vec<ClientEventDeserializationBuf>,

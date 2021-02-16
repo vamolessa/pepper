@@ -1,4 +1,4 @@
-use std::{io, process::Command, sync::Arc};
+use std::{process::Command, sync::Arc};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
@@ -82,28 +82,14 @@ pub enum PlatformServerRequest {
     },
 }
 
-pub struct RawPlatformServerChannel {
-    pub data: *mut (),
-    pub enqueue_request: fn(*mut (), PlatformServerRequest),
-    pub flush: fn(*mut ()),
-}
-pub struct PlatformServerChannel(RawPlatformServerChannel);
-impl PlatformServerChannel {
-    pub unsafe fn from_raw(raw: RawPlatformServerChannel) -> Self {
-        Self(raw)
-    }
-
-    #[inline]
-    pub fn enqueue_request(&self, request: PlatformServerRequest) {
-        (self.0.enqueue_request)(self.0.data, request);
-    }
-
-    #[inline]
-    pub fn flush(&self) {
-        (self.0.flush)(self.0.data);
-    }
+pub trait Platform: Send + Sync {
+    fn read_from_clipboard(&self, text: &mut String) -> bool;
+    fn write_to_clipboard(&self, text: &str);
+    fn enqueue_request(&self, request: PlatformServerRequest);
+    fn flush_requests(&self);
 }
 
+// TODO: delete
 pub struct RawPlatformClipboard {
     pub read: fn(text: &mut String) -> bool,
     pub write: fn(text: &str),
@@ -155,18 +141,4 @@ impl PlatformBufPool {
     pub fn release(&mut self, buf: PlatformBuf) {
         self.bufs.push(buf);
     }
-}
-
-pub trait Platform {
-    fn write_to_connection(&self, index: usize, buf: &[u8]) -> bool;
-    fn close_connection(&self, index: usize);
-
-    fn spawn_process(
-        &mut self,
-        command: Command,
-        stdout_buf_len: usize,
-        stderr_buf_len: usize,
-    ) -> io::Result<usize>;
-    fn write_to_process(&self, index: usize, buf: &[u8]) -> bool;
-    fn kill_process(&self, index: usize);
 }

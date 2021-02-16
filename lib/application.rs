@@ -1,4 +1,7 @@
-use std::{env, io};
+use std::{
+    env, io,
+    sync::{mpsc, Arc},
+};
 
 use crate::{
     client::{ClientHandle, ClientManager},
@@ -46,6 +49,42 @@ impl ServerApplication {
         512
     }
 
+    pub fn run(
+        args: Args,
+        platform: Arc<dyn Platform>,
+    ) -> Option<mpsc::Sender<ServerPlatformEvent>> {
+        let current_dir = env::current_dir().expect("could not retrieve the current directory");
+        let mut editor = Editor::new(current_dir);
+        let mut clients = ClientManager::new();
+
+        /*
+        for config in &args.config {
+            if let Some(CommandOperation::Quit) | Some(CommandOperation::QuitAll) =
+                editor.load_config(platform, &mut clients, config)
+            {
+                return false;
+            }
+        }
+        */
+
+        let (event_sender, event_receiver) = mpsc::channel();
+
+        std::thread::spawn(move || {
+            Self::run_application(editor, clients, platform, event_receiver);
+        });
+
+        Some(event_sender)
+    }
+
+    fn run_application(
+        editor: Editor,
+        clients: ClientManager,
+        platform: Arc<dyn Platform>,
+        event_receiver: mpsc::Receiver<ServerPlatformEvent>,
+    ) {
+        let platform = platform.as_ref();
+    }
+
     pub fn new<P>(args: Args, platform: &mut P, clipboard: PlatformClipboard) -> Option<Self>
     where
         P: Platform,
@@ -73,6 +112,7 @@ impl ServerApplication {
         })
     }
 
+    /*
     pub fn on_event<P>(&mut self, platform: &mut P, event: ServerPlatformEvent) -> bool
     where
         P: Platform,
@@ -177,6 +217,7 @@ impl ServerApplication {
 
         true
     }
+    */
 }
 
 pub struct ClientApplication {
