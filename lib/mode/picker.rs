@@ -34,7 +34,7 @@ impl ModeState for State {
         let poll = ctx
             .editor
             .read_line
-            .poll(ctx.clipboard, &ctx.editor.buffered_keys, keys);
+            .poll(ctx.platform, &ctx.editor.buffered_keys, keys);
         if let ReadLinePoll::Pending = poll {
             keys.put_back();
             match keys.next(&ctx.editor.buffered_keys) {

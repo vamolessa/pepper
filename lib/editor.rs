@@ -12,7 +12,7 @@ use crate::{
     lsp::{LspClientCollection, LspClientHandle, LspServerEvent},
     mode::{Mode, ModeContext, ModeKind, ModeOperation},
     picker::Picker,
-    platform::{Key, Platform, PlatformClipboard},
+    platform::{Key, Platform},
     register::{RegisterCollection, RegisterKey, KEY_QUEUE_REGISTER},
     syntax::{HighlightResult, SyntaxCollection},
     theme::Theme,
@@ -99,7 +99,7 @@ impl ReadLine {
 
     pub fn poll(
         &mut self,
-        clipboard: &PlatformClipboard,
+        platform: &dyn Platform,
         buffered_keys: &BufferedKeys,
         keys_iter: &mut KeysIterator,
     ) -> ReadLinePoll {
@@ -135,7 +135,7 @@ impl ReadLine {
             }
             Key::Ctrl('y') => {
                 let mut text = String::new();
-                if clipboard.read(&mut text) {
+                if platform.read_from_clipboard(&mut text) {
                     self.input.push_str(&text);
                 }
                 ReadLinePoll::Pending
@@ -247,7 +247,7 @@ impl Editor {
 
     pub fn load_config(
         &mut self,
-        platform: &mut dyn Platform,
+        platform: &dyn Platform,
         clients: &mut ClientManager,
         path: &str,
     ) -> Option<CommandOperation> {
@@ -340,7 +340,6 @@ impl Editor {
     pub fn on_client_event(
         &mut self,
         platform: &mut dyn Platform,
-        clipboard: &PlatformClipboard,
         clients: &mut ClientManager,
         client_handle: ClientHandle,
         event: ClientEvent,
@@ -388,7 +387,6 @@ impl Editor {
                         let mut ctx = ModeContext {
                             editor: self,
                             platform,
-                            clipboard,
                             clients,
                             client_handle,
                         };

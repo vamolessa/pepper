@@ -89,28 +89,6 @@ pub trait Platform: Send + Sync {
     fn flush_requests(&self);
 }
 
-// TODO: delete
-pub struct RawPlatformClipboard {
-    pub read: fn(text: &mut String) -> bool,
-    pub write: fn(text: &str),
-}
-pub struct PlatformClipboard(RawPlatformClipboard);
-impl PlatformClipboard {
-    pub unsafe fn from_raw(raw: RawPlatformClipboard) -> Self {
-        Self(raw)
-    }
-
-    #[inline]
-    pub fn read(&self, text: &mut String) -> bool {
-        (self.0.read)(text)
-    }
-
-    #[inline]
-    pub fn write(&self, text: &str) {
-        (self.0.write)(text);
-    }
-}
-
 #[derive(Clone)]
 pub struct PlatformBuf(Arc<Vec<u8>>);
 impl PlatformBuf {

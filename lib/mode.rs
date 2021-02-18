@@ -1,7 +1,7 @@
 use crate::{
     client::{ClientHandle, ClientManager},
     editor::{Editor, KeysIterator},
-    platform::{PlatformClipboard, Platform},
+    platform::Platform,
     register::RegisterKey,
 };
 
@@ -20,8 +20,7 @@ pub enum ModeOperation {
 
 pub struct ModeContext<'a> {
     pub editor: &'a mut Editor,
-    pub platform: &'a mut dyn Platform,
-    pub clipboard: &'a PlatformClipboard,
+    pub platform: &'a dyn Platform,
     pub clients: &'a mut ClientManager,
     pub client_handle: ClientHandle,
 }

@@ -875,7 +875,7 @@ impl State {
                 let temp_register = ctx.editor.registers.get_mut(TEMP_REGISTER);
                 buffer_view.get_selection_text(&ctx.editor.buffers, temp_register);
                 if !temp_register.is_empty() {
-                    ctx.clipboard.write(&temp_register);
+                    ctx.platform.write_to_clipboard(&temp_register);
                 }
                 this.movement_kind = CursorMovementKind::PositionAndAnchor;
             }
@@ -888,7 +888,7 @@ impl State {
                 );
 
                 let temp_register = ctx.editor.registers.get_mut(TEMP_REGISTER);
-                if ctx.clipboard.read(temp_register) {
+                if ctx.platform.read_from_clipboard(temp_register) {
                     ctx.editor.buffer_views.insert_text_at_cursor_positions(
                         &mut ctx.editor.buffers,
                         &mut ctx.editor.word_database,

@@ -55,7 +55,7 @@ use pepper::{
     application::{ClientApplication, ServerApplication},
     platform::{
         Key, Platform, PlatformBuf, PlatformBufPool, PlatformConnectionHandle,
-        PlatformProcessHandle, PlatformServerRequest, RawPlatformClipboard, ServerPlatformEvent,
+        PlatformProcessHandle, PlatformServerRequest, ServerPlatformEvent,
     },
     Args,
 };
@@ -867,9 +867,9 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), ()> {
         return Ok(());
     }
 
-    let connection_buffer_len = ServerApplication::connection_buffer_len();
     let mut events = Events::new();
-    let mut listener = ConnectionToClientListener::new(pipe_path, connection_buffer_len);
+    let mut listener =
+        ConnectionToClientListener::new(pipe_path, ServerApplication::connection_buffer_len());
 
     let mut connections: [Option<ConnectionToClient>; MAX_CONNECTION_COUNT] = Default::default();
     let mut buf_pool = PlatformBufPool::default();
@@ -885,7 +885,6 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), ()> {
         Some(sender) => sender,
         None => return Ok(()),
     };
-    // TODO: ServerApplication::run(args, 'event_receiver', 'request_sender', clipboard);
     /*
     let mut application = match ServerApplication::new(args, &mut state, clipboard) {
         Some(application) => application,

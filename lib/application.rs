@@ -9,7 +9,7 @@ use crate::{
     command::CommandOperation,
     connection::ClientEventDeserializationBufCollection,
     editor::{Editor, EditorLoop},
-    platform::{Key, Platform, PlatformClipboard, ServerPlatformEvent},
+    platform::{Key, Platform, ServerPlatformEvent},
     serialization::{SerializationBuf, Serialize},
     ui, Args,
 };
@@ -39,7 +39,6 @@ impl Args {
 
 pub struct ServerApplication {
     editor: Editor,
-    clipboard: PlatformClipboard,
     clients: ClientManager,
     event_deserialization_bufs: ClientEventDeserializationBufCollection,
     connections_with_error: Vec<usize>,
@@ -57,15 +56,13 @@ impl ServerApplication {
         let mut editor = Editor::new(current_dir);
         let mut clients = ClientManager::new();
 
-        /*
         for config in &args.config {
             if let Some(CommandOperation::Quit) | Some(CommandOperation::QuitAll) =
-                editor.load_config(platform, &mut clients, config)
+                editor.load_config(platform.as_ref(), &mut clients, config)
             {
-                return false;
+                return None;
             }
         }
-        */
 
         let (event_sender, event_receiver) = mpsc::channel();
 
@@ -85,7 +82,8 @@ impl ServerApplication {
         let platform = platform.as_ref();
     }
 
-    pub fn new<P>(args: Args, platform: &mut P, clipboard: PlatformClipboard) -> Option<Self>
+    /*
+    pub fn new<P>(args: Args, platform: &mut P) -> Option<Self>
     where
         P: Platform,
     {
@@ -112,7 +110,6 @@ impl ServerApplication {
         })
     }
 
-    /*
     pub fn on_event<P>(&mut self, platform: &mut P, event: ServerPlatformEvent) -> bool
     where
         P: Platform,

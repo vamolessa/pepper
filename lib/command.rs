@@ -38,7 +38,7 @@ enum CompletionSource {
 
 struct CommandContext<'a> {
     editor: &'a mut Editor,
-    platform: &'a mut dyn Platform,
+    platform: &'a dyn Platform,
     clients: &'a mut ClientManager,
     client_handle: Option<ClientHandle>,
     bang: bool,
@@ -202,7 +202,7 @@ impl CommandManager {
 
     pub fn eval_from_read_line(
         editor: &mut Editor,
-        platform: &mut dyn Platform,
+        platform: &dyn Platform,
         clients: &mut ClientManager,
         client_handle: Option<ClientHandle>,
     ) -> Option<CommandOperation> {
@@ -220,7 +220,7 @@ impl CommandManager {
 
     pub fn eval(
         editor: &mut Editor,
-        platform: &mut dyn Platform,
+        platform: &dyn Platform,
         clients: &mut ClientManager,
         client_handle: Option<ClientHandle>,
         command: &str,
@@ -273,7 +273,7 @@ impl CommandManager {
 
     fn eval_parsed(
         editor: &mut Editor,
-        platform: &mut dyn Platform,
+        platform: &dyn Platform,
         clients: &mut ClientManager,
         client_handle: Option<ClientHandle>,
         command: CommandFn,
