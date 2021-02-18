@@ -491,9 +491,7 @@ impl Event {
 }
 impl Drop for Event {
     fn drop(&mut self) {
-        if self.0 != std::ptr::null_mut() {
-            unsafe { CloseHandle(self.0) };
-        }
+        unsafe { CloseHandle(self.0) };
     }
 }
 
@@ -840,7 +838,10 @@ impl Events {
     }
 }
 
-static mut NEW_REQUEST_EVENT: Event = Event(std::ptr::null_mut());
+fn get_new_request_event() -> &'static Event {
+    static mut EVENT: Option<Event> = None;
+    unsafe { EVENT.get_or_insert_with(|| Event::new()) }
+}
 
 fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
     if pipe_exists(pipe_path) {
@@ -856,11 +857,10 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
 
     let (request_sender, request_receiver) = mpsc::channel();
 
-    unsafe { NEW_REQUEST_EVENT = Event::new() };
     let platform = Platform::new(
         read_from_clipboard,
         write_to_clipboard,
-        || unsafe { NEW_REQUEST_EVENT.notify() },
+        || get_new_request_event().notify(),
         request_sender,
     );
 
@@ -869,8 +869,10 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
         None => return Ok(()),
     };
 
+    let new_request_event = get_new_request_event();
+
     loop {
-        events.track(unsafe { &NEW_REQUEST_EVENT }, EventSource::NewRequest);
+        events.track(new_request_event, EventSource::NewRequest);
         events.track(&listener.event(), EventSource::ConnectionListener);
         for (i, connection) in connections.iter().enumerate() {
             if let Some(connection) = connection {
