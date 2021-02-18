@@ -11,11 +11,21 @@ use crate::{
     editor::{Editor, EditorLoop},
     platform::{
         Key, Platform, PlatformBuf, PlatformConnectionHandle, PlatformProcessHandle,
-        PlatformProcessTag,
+        PlatformProcessTag, PlatformServerRequest,
     },
     serialization::{SerializationBuf, Serialize},
     ui, Args,
 };
+
+pub struct AnyError;
+impl<T> From<T> for AnyError
+where
+    T: std::error::Error,
+{
+    fn from(_: T) -> Self {
+        Self
+    }
+}
 
 impl Args {
     pub fn parse() -> Option<Self> {
@@ -41,6 +51,8 @@ impl Args {
 }
 
 pub enum ApplicationEvent {
+    Idle,
+    Redraw,
     ConnectionOpen {
         handle: PlatformConnectionHandle,
     },
@@ -57,11 +69,11 @@ pub enum ApplicationEvent {
     },
     ProcessStdout {
         handle: PlatformProcessHandle,
-        len: usize,
+        buf: PlatformBuf,
     },
     ProcessStderr {
         handle: PlatformProcessHandle,
-        len: usize,
+        buf: PlatformBuf,
     },
     ProcessExit {
         handle: PlatformProcessHandle,
@@ -90,8 +102,17 @@ impl ServerApplication {
 
         let (event_sender, event_receiver) = mpsc::channel();
 
+        let event_sender_clone = event_sender.clone();
         std::thread::spawn(move || {
-            Self::run_application(editor, clients, platform, event_receiver);
+            let _ = Self::run_application(
+                editor,
+                clients,
+                platform.clone(),
+                event_sender_clone,
+                event_receiver,
+            );
+            platform.enqueue_request(PlatformServerRequest::Exit);
+            platform.flush_requests();
         });
 
         Some(event_sender)
@@ -101,29 +122,104 @@ impl ServerApplication {
         mut editor: Editor,
         mut clients: ClientManager,
         platform: Arc<dyn Platform>,
+        event_sender: mpsc::Sender<ApplicationEvent>,
         event_receiver: mpsc::Receiver<ApplicationEvent>,
-    ) {
+    ) -> Result<(), AnyError> {
         let platform = platform.as_ref();
-        let event_deserialization_bufs = ClientEventDeserializationBufCollection::default();
+        let mut event_deserialization_bufs = ClientEventDeserializationBufCollection::default();
 
-        for event in event_receiver.iter() {
+        'event_loop: for event in event_receiver.iter() {
             match event {
+                ApplicationEvent::Idle => editor.on_idle(&mut clients),
+                ApplicationEvent::Redraw => (),
                 ApplicationEvent::ConnectionOpen { handle } => {
-                    if let Some(handle) = ClientHandle::from_index(handle.0) {
-                        clients.on_client_joined(handle);
+                    if let Some(client_handle) = ClientHandle::from_index(handle.0) {
+                        clients.on_client_joined(client_handle);
                     }
                 }
                 ApplicationEvent::ConnectionClose { handle } => {
-                    if let Some(handle) = ClientHandle::from_index(handle.0) {
-                        clients.on_client_left(handle);
+                    if let Some(client_handle) = ClientHandle::from_index(handle.0) {
+                        clients.on_client_left(client_handle);
                         if clients.iter_mut().next().is_none() {
-                            break;
+                            break 'event_loop;
                         }
                     }
                 }
+                ApplicationEvent::ConnectionMessage { handle, buf } => {
+                    let client_handle = match ClientHandle::from_index(handle.0) {
+                        Some(handle) => handle,
+                        None => break 'event_loop,
+                    };
+
+                    let mut events =
+                        event_deserialization_bufs.receive_events(client_handle, buf.as_bytes());
+                    while let Some(event) = events.next() {
+                        match editor.on_client_event(platform, &mut clients, client_handle, event) {
+                            EditorLoop::Continue => (),
+                            EditorLoop::Quit => {
+                                platform.enqueue_request(PlatformServerRequest::CloseConnection {
+                                    handle,
+                                });
+                                break;
+                            }
+                            EditorLoop::QuitAll => break 'event_loop,
+                        }
+                    }
+                }
+                ApplicationEvent::ProcessSpawned { handle, tag } => {
+                    //
+                    todo!()
+                }
+                ApplicationEvent::ProcessStdout { handle, buf } => {
+                    //
+                    todo!()
+                }
+                ApplicationEvent::ProcessExit { handle, success } => {
+                    //
+                    todo!()
+                }
                 _ => (),
             }
+
+            let needs_redraw = editor.on_pre_render(&mut clients);
+            if needs_redraw {
+                event_sender.send(ApplicationEvent::Redraw)?;
+            }
+
+            let focused_client_handle = clients.focused_handle();
+            for c in clients.iter_mut() {
+                let has_focus = focused_client_handle == Some(c.handle());
+
+                // TODO: replace display_buffer with PlatformBuf
+                //let buf = platform.write_buf();
+
+                c.display_buffer.clear();
+                c.display_buffer.extend_from_slice(&[0; 4]);
+                ui::render(
+                    &editor,
+                    c.buffer_view_handle(),
+                    c.viewport_size.0 as _,
+                    c.viewport_size.1 as _,
+                    c.scroll,
+                    has_focus,
+                    &mut c.display_buffer,
+                    &mut c.output_buffer,
+                );
+
+                let len = c.display_buffer.len() as u32 - 4;
+                let len_bytes = len.to_le_bytes();
+                c.display_buffer[..4].copy_from_slice(&len_bytes);
+
+                // TODO
+                /*
+                let handle = c.connection_handle();
+                platform.enqueue_request(PlatformServerRequest::WriteToConnection { handle, buf });
+                */
+            }
+            platform.flush_requests();
         }
+
+        Ok(())
     }
 
     /*

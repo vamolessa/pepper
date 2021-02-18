@@ -1,6 +1,7 @@
 // TODO: merge with editor.rs??
 
 use crate::{
+    client::ClientHandle,
     client_event::ClientEvent,
     serialization::{DeserializationSlice, Serialize},
 };
@@ -88,7 +89,12 @@ pub struct ClientEventDeserializationBufCollection {
 }
 
 impl ClientEventDeserializationBufCollection {
-    pub fn receive_events<'a>(&'a mut self, index: usize, bytes: &[u8]) -> ClientEventIter<'a> {
+    pub fn receive_events<'a>(
+        &'a mut self,
+        client_handle: ClientHandle,
+        bytes: &[u8],
+    ) -> ClientEventIter<'a> {
+        let index = client_handle.into_index();
         if index >= self.bufs.len() {
             self.bufs.resize_with(index + 1, Default::default);
         }

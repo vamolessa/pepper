@@ -52,7 +52,7 @@ use winapi::{
 };
 
 use pepper::{
-    application::{ApplicationEvent, ClientApplication, ServerApplication},
+    application::{AnyError, ApplicationEvent, ClientApplication, ServerApplication},
     platform::{
         Key, Platform, PlatformBuf, PlatformBufPool, PlatformConnectionHandle,
         PlatformProcessHandle, PlatformServerRequest,
@@ -862,17 +862,7 @@ impl Platform for WindowsPlatform {
     }
 }
 
-struct RunServerError;
-impl<T> From<T> for RunServerError
-where
-    T: std::error::Error,
-{
-    fn from(_: T) -> Self {
-        Self
-    }
-}
-
-fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), RunServerError> {
+fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
     if pipe_exists(pipe_path) {
         return Ok(());
     }
@@ -897,13 +887,6 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), RunServerError> {
     };
 
     loop {
-        fn send_event(
-            sender: &mpsc::Sender<ApplicationEvent>,
-            event: ApplicationEvent,
-        ) -> Result<(), ()> {
-            sender.send(event).map_err(|_| ())
-        }
-
         events.track(&platform.new_request_event, EventSource::NewRequest);
         events.track(&listener.event(), EventSource::ConnectionListener);
         for (i, connection) in connections.iter().enumerate() {

@@ -339,7 +339,7 @@ impl Editor {
 
     pub fn on_client_event(
         &mut self,
-        platform: &mut dyn Platform,
+        platform: &dyn Platform,
         clients: &mut ClientManager,
         client_handle: ClientHandle,
         event: ClientEvent,
