@@ -9,7 +9,10 @@ use crate::{
     command::CommandOperation,
     connection::ClientEventDeserializationBufCollection,
     editor::{Editor, EditorLoop},
-    platform::{Key, Platform, ServerPlatformEvent},
+    platform::{
+        Key, Platform, PlatformBuf, PlatformConnectionHandle, PlatformProcessHandle,
+        PlatformProcessTag,
+    },
     serialization::{SerializationBuf, Serialize},
     ui, Args,
 };
@@ -37,21 +40,42 @@ impl Args {
     }
 }
 
-pub struct ServerApplication {
-    editor: Editor,
-    clients: ClientManager,
-    event_deserialization_bufs: ClientEventDeserializationBufCollection,
-    connections_with_error: Vec<usize>,
+pub enum ApplicationEvent {
+    ConnectionOpen {
+        handle: PlatformConnectionHandle,
+    },
+    ConnectionClose {
+        handle: PlatformConnectionHandle,
+    },
+    ConnectionMessage {
+        handle: PlatformConnectionHandle,
+        buf: PlatformBuf,
+    },
+    ProcessSpawned {
+        handle: PlatformProcessHandle,
+        tag: PlatformProcessTag,
+    },
+    ProcessStdout {
+        handle: PlatformProcessHandle,
+        len: usize,
+    },
+    ProcessStderr {
+        handle: PlatformProcessHandle,
+        len: usize,
+    },
+    ProcessExit {
+        handle: PlatformProcessHandle,
+        success: bool,
+    },
 }
+
+pub struct ServerApplication;
 impl ServerApplication {
     pub const fn connection_buffer_len() -> usize {
         512
     }
 
-    pub fn run(
-        args: Args,
-        platform: Arc<dyn Platform>,
-    ) -> Option<mpsc::Sender<ServerPlatformEvent>> {
+    pub fn run(args: Args, platform: Arc<dyn Platform>) -> Option<mpsc::Sender<ApplicationEvent>> {
         let current_dir = env::current_dir().expect("could not retrieve the current directory");
         let mut editor = Editor::new(current_dir);
         let mut clients = ClientManager::new();
@@ -74,12 +98,32 @@ impl ServerApplication {
     }
 
     fn run_application(
-        editor: Editor,
-        clients: ClientManager,
+        mut editor: Editor,
+        mut clients: ClientManager,
         platform: Arc<dyn Platform>,
-        event_receiver: mpsc::Receiver<ServerPlatformEvent>,
+        event_receiver: mpsc::Receiver<ApplicationEvent>,
     ) {
         let platform = platform.as_ref();
+        let event_deserialization_bufs = ClientEventDeserializationBufCollection::default();
+
+        for event in event_receiver.iter() {
+            match event {
+                ApplicationEvent::ConnectionOpen { handle } => {
+                    if let Some(handle) = ClientHandle::from_index(handle.0) {
+                        clients.on_client_joined(handle);
+                    }
+                }
+                ApplicationEvent::ConnectionClose { handle } => {
+                    if let Some(handle) = ClientHandle::from_index(handle.0) {
+                        clients.on_client_left(handle);
+                        if clients.iter_mut().next().is_none() {
+                            break;
+                        }
+                    }
+                }
+                _ => (),
+            }
+        }
     }
 
     /*

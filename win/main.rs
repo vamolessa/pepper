@@ -52,10 +52,10 @@ use winapi::{
 };
 
 use pepper::{
-    application::{ClientApplication, ServerApplication},
+    application::{ApplicationEvent, ClientApplication, ServerApplication},
     platform::{
         Key, Platform, PlatformBuf, PlatformBufPool, PlatformConnectionHandle,
-        PlatformProcessHandle, PlatformServerRequest, ServerPlatformEvent,
+        PlatformProcessHandle, PlatformServerRequest,
     },
     Args,
 };
@@ -862,7 +862,17 @@ impl Platform for WindowsPlatform {
     }
 }
 
-fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), ()> {
+struct RunServerError;
+impl<T> From<T> for RunServerError
+where
+    T: std::error::Error,
+{
+    fn from(_: T) -> Self {
+        Self
+    }
+}
+
+fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), RunServerError> {
     if pipe_exists(pipe_path) {
         return Ok(());
     }
@@ -885,17 +895,11 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), ()> {
         Some(sender) => sender,
         None => return Ok(()),
     };
-    /*
-    let mut application = match ServerApplication::new(args, &mut state, clipboard) {
-        Some(application) => application,
-        None => return,
-    };
-    */
 
     loop {
         fn send_event(
-            sender: &mpsc::Sender<ServerPlatformEvent>,
-            event: ServerPlatformEvent,
+            sender: &mpsc::Sender<ApplicationEvent>,
+            event: ApplicationEvent,
         ) -> Result<(), ()> {
             sender.send(event).map_err(|_| ())
         }
@@ -928,14 +932,13 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), ()> {
             Some(EventSource::NewRequest) => {
                 for request in request_receiver.try_iter() {
                     match request {
+                        PlatformServerRequest::Exit => return Ok(()),
                         PlatformServerRequest::WriteToConnection { handle, buf } => {
                             if let Some(ref mut connection) = connections[handle.0] {
                                 if !connection.write(buf.as_bytes()) {
                                     connections[handle.0] = None;
-                                    send_event(
-                                        &event_sender,
-                                        ServerPlatformEvent::ConnectionClose { handle },
-                                    )?;
+                                    event_sender
+                                        .send(ApplicationEvent::ConnectionClose { handle })?;
                                 }
                             }
                         }
@@ -965,10 +968,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), ()> {
                         if c.is_none() {
                             *c = Some(connection);
                             let handle = PlatformConnectionHandle(i);
-                            send_event(
-                                &event_sender,
-                                ServerPlatformEvent::ConnectionOpen { handle },
-                            )?;
+                            event_sender.send(ApplicationEvent::ConnectionOpen { handle })?;
                             break;
                         }
                     }
@@ -981,16 +981,11 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), ()> {
                         .read_async(ServerApplication::connection_buffer_len(), &mut buf_pool)
                     {
                         Ok(None) => (),
-                        Ok(Some(buf)) => send_event(
-                            &event_sender,
-                            ServerPlatformEvent::ConnectionMessage { handle, buf },
-                        )?,
+                        Ok(Some(buf)) => event_sender
+                            .send(ApplicationEvent::ConnectionMessage { handle, buf })?,
                         Err(()) => {
                             connections[i] = None;
-                            send_event(
-                                &event_sender,
-                                ServerPlatformEvent::ConnectionClose { handle },
-                            )?;
+                            event_sender.send(ApplicationEvent::ConnectionClose { handle })?;
                         }
                     }
                 }

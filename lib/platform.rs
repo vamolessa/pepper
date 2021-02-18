@@ -32,34 +32,8 @@ pub struct PlatformConnectionHandle(pub usize);
 #[derive(Clone, Copy)]
 pub struct PlatformProcessHandle(pub usize);
 
-// TODO: rename to PlatformServerEvent
-// TODO: add ProcessSpawned { handle: PlatformProcessHandle, tag: PlatformProcessTag }
-pub enum ServerPlatformEvent {
-    ConnectionOpen {
-        handle: PlatformConnectionHandle,
-    },
-    ConnectionClose {
-        handle: PlatformConnectionHandle,
-    },
-    ConnectionMessage {
-        handle: PlatformConnectionHandle,
-        buf: PlatformBuf,
-    },
-    ProcessStdout {
-        index: usize,
-        len: usize,
-    },
-    ProcessStderr {
-        index: usize,
-        len: usize,
-    },
-    ProcessExit {
-        index: usize,
-        success: bool,
-    },
-}
-
 pub enum PlatformServerRequest {
+    Exit,
     WriteToConnection {
         handle: PlatformConnectionHandle,
         buf: PlatformBuf,
