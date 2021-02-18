@@ -20,7 +20,7 @@ pub enum ModeOperation {
 
 pub struct ModeContext<'a> {
     pub editor: &'a mut Editor,
-    pub platform: &'a dyn Platform,
+    pub platform: &'a mut Platform,
     pub clients: &'a mut ClientManager,
     pub client_handle: ClientHandle,
 }

@@ -109,9 +109,7 @@ fn main() {
         (Some(input_handle), Some(output_handle)) => {
             run_client(args, &pipe_path, input_handle, output_handle);
         }
-        _ => {
-            let _ = run_server(args, &pipe_path);
-        }
+        _ => run_server(args, &pipe_path),
     }
 }
 
@@ -491,7 +489,9 @@ impl Event {
 }
 impl Drop for Event {
     fn drop(&mut self) {
-        unsafe { CloseHandle(self.0) };
+        if self.0 != std::ptr::null_mut() {
+            unsafe { CloseHandle(self.0) };
+        }
     }
 }
 
@@ -838,31 +838,13 @@ impl Events {
     }
 }
 
-struct WindowsPlatform {
-    pub new_request_event: Event,
-    pub request_sender: mpsc::Sender<PlatformServerRequest>,
-}
-unsafe impl Send for WindowsPlatform {}
-unsafe impl Sync for WindowsPlatform {}
-impl Platform for WindowsPlatform {
-    fn read_from_clipboard(&self, text: &mut String) -> bool {
-        read_from_clipboard(text)
-    }
+static mut NEW_REQUEST_EVENT: Event = Event(std::ptr::null_mut());
 
-    fn write_to_clipboard(&self, text: &str) {
-        write_to_clipboard(text)
-    }
-
-    fn enqueue_request(&self, request: PlatformServerRequest) {
-        let _ = self.request_sender.send(request);
-    }
-
-    fn flush_requests(&self) {
-        self.new_request_event.notify();
-    }
+fn run_server(args: Args, pipe_path: &[u16]) {
+    let _ = try_run_server(args, pipe_path);
 }
 
-fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
+fn try_run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
     if pipe_exists(pipe_path) {
         return Ok(());
     }
@@ -876,18 +858,21 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
 
     let (request_sender, request_receiver) = mpsc::channel();
 
-    let platform = Arc::new(WindowsPlatform {
-        new_request_event: Event::new(),
+    unsafe { NEW_REQUEST_EVENT = Event::new() };
+    let platform = Platform::new(
+        read_from_clipboard,
+        write_to_clipboard,
+        || unsafe { NEW_REQUEST_EVENT.notify() },
         request_sender,
-    });
+    );
 
-    let event_sender = match ServerApplication::run(args, platform.clone()) {
+    let event_sender = match ServerApplication::run(args, platform) {
         Some(sender) => sender,
         None => return Ok(()),
     };
 
     loop {
-        events.track(&platform.new_request_event, EventSource::NewRequest);
+        events.track(unsafe { &NEW_REQUEST_EVENT }, EventSource::NewRequest);
         events.track(&listener.event(), EventSource::ConnectionListener);
         for (i, connection) in connections.iter().enumerate() {
             if let Some(connection) = connection {

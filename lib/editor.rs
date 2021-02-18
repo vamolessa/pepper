@@ -99,7 +99,7 @@ impl ReadLine {
 
     pub fn poll(
         &mut self,
-        platform: &dyn Platform,
+        platform: &mut Platform,
         buffered_keys: &BufferedKeys,
         keys_iter: &mut KeysIterator,
     ) -> ReadLinePoll {
@@ -247,7 +247,7 @@ impl Editor {
 
     pub fn load_config(
         &mut self,
-        platform: &dyn Platform,
+        platform: &mut Platform,
         clients: &mut ClientManager,
         path: &str,
     ) -> Option<CommandOperation> {
@@ -339,7 +339,7 @@ impl Editor {
 
     pub fn on_client_event(
         &mut self,
-        platform: &dyn Platform,
+        platform: &mut Platform,
         clients: &mut ClientManager,
         client_handle: ClientHandle,
         event: ClientEvent,
@@ -542,7 +542,7 @@ impl Editor {
 
     pub fn on_process_stdout(
         &mut self,
-        platform: &mut dyn Platform,
+        platform: &mut Platform,
         process_index: usize,
         bytes: &[u8],
     ) {
@@ -551,7 +551,7 @@ impl Editor {
 
     pub fn on_process_stderr(
         &mut self,
-        platform: &mut dyn Platform,
+        platform: &mut Platform,
         process_index: usize,
         bytes: &[u8],
     ) {
@@ -560,7 +560,7 @@ impl Editor {
 
     pub fn on_process_exit(
         &mut self,
-        platform: &mut dyn Platform,
+        platform: &mut Platform,
         process_index: usize,
         success: bool,
     ) {

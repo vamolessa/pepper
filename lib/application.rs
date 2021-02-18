@@ -87,14 +87,14 @@ impl ServerApplication {
         512
     }
 
-    pub fn run(args: Args, platform: Arc<dyn Platform>) -> Option<mpsc::Sender<ApplicationEvent>> {
+    pub fn run(args: Args, mut platform: Platform) -> Option<mpsc::Sender<ApplicationEvent>> {
         let current_dir = env::current_dir().expect("could not retrieve the current directory");
         let mut editor = Editor::new(current_dir);
         let mut clients = ClientManager::new();
 
         for config in &args.config {
             if let Some(CommandOperation::Quit) | Some(CommandOperation::QuitAll) =
-                editor.load_config(platform.as_ref(), &mut clients, config)
+                editor.load_config(&mut platform, &mut clients, config)
             {
                 return None;
             }
@@ -107,7 +107,7 @@ impl ServerApplication {
             let _ = Self::run_application(
                 editor,
                 clients,
-                platform.clone(),
+                &mut platform,
                 event_sender_clone,
                 event_receiver,
             );
@@ -121,11 +121,10 @@ impl ServerApplication {
     fn run_application(
         mut editor: Editor,
         mut clients: ClientManager,
-        platform: Arc<dyn Platform>,
+        platform: &mut Platform,
         event_sender: mpsc::Sender<ApplicationEvent>,
         event_receiver: mpsc::Receiver<ApplicationEvent>,
     ) -> Result<(), AnyError> {
-        let platform = platform.as_ref();
         let mut event_deserialization_bufs = ClientEventDeserializationBufCollection::default();
 
         'event_loop: for event in event_receiver.iter() {

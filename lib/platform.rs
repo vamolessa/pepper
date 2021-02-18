@@ -1,4 +1,7 @@
-use std::{process::Command, sync::Arc};
+use std::{
+    process::Command,
+    sync::{mpsc, Arc},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
@@ -56,13 +59,48 @@ pub enum PlatformServerRequest {
     },
 }
 
-// TODO: maybe rename to PlatformImpl
-// and make a mutable Platform struct that knows if it should flush requests or not
-pub trait Platform: Send + Sync {
-    fn read_from_clipboard(&self, text: &mut String) -> bool;
-    fn write_to_clipboard(&self, text: &str);
-    fn enqueue_request(&self, request: PlatformServerRequest);
-    fn flush_requests(&self);
+pub struct Platform {
+    read_from_clipboard: fn(&mut String) -> bool,
+    write_to_clipboard: fn(&str),
+    flush_requests: fn(),
+    request_sender: mpsc::Sender<PlatformServerRequest>,
+    needs_flushing: bool,
+}
+impl Platform {
+    pub fn new(
+        read_from_clipboard: fn(&mut String) -> bool,
+        write_to_clipboard: fn(&str),
+        flush_requests: fn(),
+        request_sender: mpsc::Sender<PlatformServerRequest>,
+    ) -> Self {
+        Self {
+            read_from_clipboard,
+            write_to_clipboard,
+            flush_requests,
+            request_sender,
+            needs_flushing: false,
+        }
+    }
+
+    pub fn read_from_clipboard(&self, text: &mut String) -> bool {
+        (self.read_from_clipboard)(text)
+    }
+
+    pub fn write_to_clipboard(&self, text: &str) {
+        (self.write_to_clipboard)(text)
+    }
+
+    pub fn enqueue_request(&mut self, request: PlatformServerRequest) {
+        self.needs_flushing = true;
+        let _ = self.request_sender.send(request);
+    }
+
+    pub fn flush_requests(&mut self) {
+        if self.needs_flushing {
+            self.needs_flushing = false;
+            (self.flush_requests)();
+        }
+    }
 }
 
 #[derive(Clone)]

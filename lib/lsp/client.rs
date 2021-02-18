@@ -1254,7 +1254,7 @@ impl ClientCollection {
 
     pub fn start(
         &mut self,
-        platform: &dyn Platform,
+        platform: &mut Platform,
         command: Command,
         root: &Path,
     ) -> io::Result<ClientHandle> {

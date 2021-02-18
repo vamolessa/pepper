@@ -226,7 +226,7 @@ pub struct ServerConnection {
 }
 
 impl ServerConnection {
-    pub fn spawn(platform: &dyn Platform, mut command: Command) -> io::Result<Self> {
+    pub fn spawn(platform: &mut Platform, mut command: Command) -> io::Result<Self> {
         command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -272,7 +272,7 @@ impl ServerConnection {
         */
     }
 
-    pub fn write(&mut self, platform: &mut dyn Platform, buf: &[u8]) -> io::Result<()> {
+    pub fn write(&mut self, platform: &mut Platform, buf: &[u8]) -> io::Result<()> {
         // TODO: change to new platform request
         //platform.write_to_process(self.process_index, buf);
         Ok(())
