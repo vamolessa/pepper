@@ -109,7 +109,9 @@ fn main() {
         (Some(input_handle), Some(output_handle)) => {
             run_client(args, &pipe_path, input_handle, output_handle);
         }
-        _ => run_server(args, &pipe_path),
+        _ => {
+            let _ = run_server(args, &pipe_path);
+        }
     }
 }
 
@@ -840,11 +842,7 @@ impl Events {
 
 static mut NEW_REQUEST_EVENT: Event = Event(std::ptr::null_mut());
 
-fn run_server(args: Args, pipe_path: &[u16]) {
-    let _ = try_run_server(args, pipe_path);
-}
-
-fn try_run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
+fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
     if pipe_exists(pipe_path) {
         return Ok(());
     }
