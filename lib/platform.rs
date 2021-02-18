@@ -56,6 +56,8 @@ pub enum PlatformServerRequest {
     },
 }
 
+// TODO: maybe rename to PlatformImpl
+// and make a mutable Platform struct that knows if it should flush requests or not
 pub trait Platform: Send + Sync {
     fn read_from_clipboard(&self, text: &mut String) -> bool;
     fn write_to_clipboard(&self, text: &str);
