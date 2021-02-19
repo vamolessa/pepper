@@ -4,7 +4,6 @@ use crate::{
     buffer_view::BufferViewHandle,
     editor::Editor,
     navigation_history::NavigationHistory,
-    platform::ConnectionHandle,
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
 };
 
@@ -83,10 +82,6 @@ impl Client {
 
     pub fn handle(&self) -> ClientHandle {
         self.handle
-    }
-
-    pub fn connection_handle(&self) -> ConnectionHandle {
-        ConnectionHandle(self.handle.into_index())
     }
 
     pub fn buffer_view_handle(&self) -> Option<BufferViewHandle> {

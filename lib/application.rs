@@ -7,7 +7,7 @@ use crate::{
     connection::ClientEventDeserializationBufCollection,
     editor::{Editor, EditorLoop},
     lsp,
-    platform::{ConnectionHandle, Key, Platform, PlatformRequest, ProcessHandle, SharedBuf},
+    platform::{Key, Platform, PlatformRequest, ProcessHandle, SharedBuf},
     serialization::{SerializationBuf, Serialize},
     ui, Args,
 };
@@ -55,13 +55,13 @@ pub enum ApplicationEvent {
     Idle,
     Redraw,
     ConnectionOpen {
-        handle: ConnectionHandle,
+        handle: ClientHandle,
     },
     ConnectionClose {
-        handle: ConnectionHandle,
+        handle: ClientHandle,
     },
     ConnectionMessage {
-        handle: ConnectionHandle,
+        handle: ClientHandle,
         buf: SharedBuf,
     },
     ProcessSpawned {
@@ -135,36 +135,27 @@ impl ServerApplication {
                     ApplicationEvent::Idle => editor.on_idle(&mut clients),
                     ApplicationEvent::Redraw => (),
                     ApplicationEvent::ConnectionOpen { handle } => {
-                        if let Some(client_handle) = ClientHandle::from_index(handle.0) {
-                            clients.on_client_joined(client_handle);
-                        }
+                        clients.on_client_joined(handle);
                     }
                     ApplicationEvent::ConnectionClose { handle } => {
-                        if let Some(client_handle) = ClientHandle::from_index(handle.0) {
-                            clients.on_client_left(client_handle);
-                            if clients.iter_mut().next().is_none() {
-                                break 'event_loop;
-                            }
+                        clients.on_client_left(handle);
+                        if clients.iter_mut().next().is_none() {
+                            break 'event_loop;
                         }
                     }
                     ApplicationEvent::ConnectionMessage { handle, buf } => {
-                        let client_handle = match ClientHandle::from_index(handle.0) {
-                            Some(handle) => handle,
-                            None => break 'event_loop,
-                        };
-
                         let mut events = event_deserialization_bufs
-                            .receive_events(client_handle, buf.as_bytes());
+                            .receive_events(handle, buf.as_bytes());
                         while let Some(event) = events.next() {
                             match editor.on_client_event(
                                 platform,
                                 &mut clients,
-                                client_handle,
+                                handle,
                                 event,
                             ) {
                                 EditorLoop::Continue => (),
                                 EditorLoop::Quit => {
-                                    platform.enqueue_request(PlatformRequest::CloseConnection {
+                                    platform.enqueue_request(PlatformRequest::CloseClient {
                                         handle,
                                     });
                                     break;
@@ -237,10 +228,10 @@ impl ServerApplication {
                 let len_bytes = len.to_le_bytes();
                 render_buf[..4].copy_from_slice(&len_bytes);
 
-                let handle = c.connection_handle();
+                let handle = c.handle();
                 let buf = buf.share();
                 platform.buf_pool.release(buf.clone());
-                platform.enqueue_request(PlatformRequest::WriteToConnection { handle, buf });
+                platform.enqueue_request(PlatformRequest::WriteToClient { handle, buf });
             }
 
             platform.flush_requests();

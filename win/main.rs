@@ -58,16 +58,14 @@ use winapi::{
 
 use pepper::{
     application::{AnyError, ApplicationEvent, ClientApplication, ProcessTag, ServerApplication},
-    platform::{
-        BufPool, ConnectionHandle, ExclusiveBuf, Key, Platform, PlatformRequest, ProcessHandle,
-        SharedBuf,
-    },
+    client::ClientHandle,
+    platform::{BufPool, ExclusiveBuf, Key, Platform, PlatformRequest, ProcessHandle, SharedBuf},
     Args,
 };
 
-const MAX_CONNECTION_COUNT: usize = 12;
+const MAX_CLIENT_COUNT: usize = 12;
 const MAX_PROCESS_COUNT: usize = 25;
-const MAX_EVENT_COUNT: usize = 1 + 1 + MAX_CONNECTION_COUNT + 2 * MAX_PROCESS_COUNT;
+const MAX_EVENT_COUNT: usize = 1 + 1 + MAX_CLIENT_COUNT + 2 * MAX_PROCESS_COUNT;
 const _ASSERT_MAX_EVENT_COUNT_IS_64: [(); 64] = [(); MAX_EVENT_COUNT];
 
 const CLIENT_CONSOLE_EVENT_BUFFER_LEN: usize = 32;
@@ -905,7 +903,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
     let mut listener =
         ConnectionToClientListener::new(pipe_path, ServerApplication::connection_buffer_len());
 
-    let mut connections: [Option<ConnectionToClient>; MAX_CONNECTION_COUNT] = Default::default();
+    let mut client_connections: [Option<ConnectionToClient>; MAX_CLIENT_COUNT] = Default::default();
     let mut processes: [Option<AsyncProcess>; MAX_PROCESS_COUNT] = Default::default();
     let mut buf_pool = BufPool::default();
 
@@ -928,7 +926,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
     loop {
         events.track(&new_request_event, EventSource::NewRequest);
         events.track(listener.event(), EventSource::ConnectionListener);
-        for (i, connection) in connections.iter().enumerate() {
+        for (i, connection) in client_connections.iter().enumerate() {
             if let Some(connection) = connection {
                 events.track(connection.event(), EventSource::Connection(i));
             }
@@ -949,17 +947,17 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                 for request in request_receiver.try_iter() {
                     match request {
                         PlatformRequest::Exit => return Ok(()),
-                        PlatformRequest::WriteToConnection { handle, buf } => {
-                            if let Some(ref mut connection) = connections[handle.0] {
+                        PlatformRequest::WriteToClient { handle, buf } => {
+                            if let Some(ref mut connection) = client_connections[handle.into_index()] {
                                 if !connection.write(buf.as_bytes()) {
-                                    connections[handle.0] = None;
+                                    client_connections[handle.into_index()] = None;
                                     event_sender
                                         .send(ApplicationEvent::ConnectionClose { handle })?;
                                 }
                             }
                         }
-                        PlatformRequest::CloseConnection { handle } => {
-                            connections[handle.0] = None;
+                        PlatformRequest::CloseClient { handle } => {
+                            client_connections[handle.into_index()] = None;
                             event_sender.send(ApplicationEvent::ConnectionClose { handle })?;
                         }
                         PlatformRequest::SpawnProcess {
@@ -1025,10 +1023,10 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
             }
             Some(EventSource::ConnectionListener) => {
                 if let Some(connection) = listener.accept(pipe_path) {
-                    for (i, c) in connections.iter_mut().enumerate() {
+                    for (i, c) in client_connections.iter_mut().enumerate() {
                         if c.is_none() {
                             *c = Some(connection);
-                            let handle = ConnectionHandle(i);
+                            let handle = ClientHandle::from_index(i).unwrap();
                             event_sender.send(ApplicationEvent::ConnectionOpen { handle })?;
                             break;
                         }
@@ -1036,8 +1034,8 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                 }
             }
             Some(EventSource::Connection(i)) => {
-                if let Some(ref mut connection) = connections[i] {
-                    let handle = ConnectionHandle(i);
+                if let Some(ref mut connection) = client_connections[i] {
+                    let handle = ClientHandle::from_index(i).unwrap();
                     match connection
                         .read_async(ServerApplication::connection_buffer_len(), &mut buf_pool)
                     {
@@ -1045,7 +1043,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                         Ok(Some(buf)) => event_sender
                             .send(ApplicationEvent::ConnectionMessage { handle, buf })?,
                         Err(()) => {
-                            connections[i] = None;
+                            client_connections[i] = None;
                             event_sender.send(ApplicationEvent::ConnectionClose { handle })?;
                         }
                     }

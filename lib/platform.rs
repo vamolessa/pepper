@@ -3,7 +3,7 @@ use std::{
     sync::{mpsc, Arc},
 };
 
-use crate::application::ProcessTag;
+use crate::{client::ClientHandle, application::ProcessTag};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
@@ -28,19 +28,16 @@ pub enum Key {
 }
 
 #[derive(Clone, Copy)]
-pub struct ConnectionHandle(pub usize);
-
-#[derive(Clone, Copy)]
 pub struct ProcessHandle(pub usize);
 
 pub enum PlatformRequest {
     Exit,
-    WriteToConnection {
-        handle: ConnectionHandle,
+    WriteToClient {
+        handle: ClientHandle,
         buf: SharedBuf,
     },
-    CloseConnection {
-        handle: ConnectionHandle,
+    CloseClient {
+        handle: ClientHandle,
     },
     SpawnProcess {
         tag: ProcessTag,
