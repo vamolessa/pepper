@@ -187,7 +187,7 @@ impl ServerApplication {
                     }
                     ApplicationEvent::ProcessExit { tag, success } => match tag {
                         ProcessTag::Lsp(client_handle) => {
-                            editor.on_lsp_process_exit(client_handle, success)
+                            editor.on_lsp_process_exit(client_handle)
                         }
                         _ => (),
                     },

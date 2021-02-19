@@ -3,7 +3,7 @@ use std::{
     sync::{mpsc, Arc},
 };
 
-use crate::{client::ClientHandle, application::ProcessTag};
+use crate::{application::ProcessTag, client::ClientHandle};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {

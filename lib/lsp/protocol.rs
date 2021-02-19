@@ -12,7 +12,7 @@ use crate::{
         FromJson, Json, JsonConvertError, JsonInteger, JsonKey, JsonObject, JsonString, JsonValue,
     },
     lsp::client::ClientHandle,
-    platform::Platform,
+    platform::{Platform, ProcessHandle},
 };
 
 pub struct SharedJsonGuard {
@@ -396,20 +396,24 @@ impl<'json> FromJson<'json> for ResponseError {
 }
 
 pub struct Protocol {
-    server_connection: ServerConnection,
+    process_handle: Option<ProcessHandle>,
     body_buffer: Vec<u8>,
     write_buffer: Vec<u8>,
     next_request_id: usize,
 }
 
 impl Protocol {
-    pub fn new(server_connection: ServerConnection) -> Self {
+    pub fn new() -> Self {
         Self {
-            server_connection,
+            process_handle: None,
             body_buffer: Vec::new(),
             write_buffer: Vec::new(),
             next_request_id: 1,
         }
+    }
+
+    pub fn set_process_handle(&mut self, handle: ProcessHandle) {
+        self.process_handle = Some(handle);
     }
 
     pub fn request(

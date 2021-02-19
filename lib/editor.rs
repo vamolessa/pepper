@@ -540,27 +540,29 @@ impl Editor {
         }
     }
 
-    pub fn on_lsp_process_spawned(&mut self, client_handle: lsp::ClientHandle, process_handle: ProcessHandle) {
-        //
+    pub fn on_lsp_process_spawned(
+        &mut self,
+        client_handle: lsp::ClientHandle,
+        process_handle: ProcessHandle,
+    ) {
+        if let Err(error) =
+            lsp::ClientCollection::on_process_spawned(self, client_handle, process_handle)
+        {
+            self.output
+                .write(EditorOutputKind::Error)
+                .fmt(format_args!("{}", error));
+        }
     }
 
     pub fn on_lsp_process_stdout(&mut self, client_handle: lsp::ClientHandle, bytes: &[u8]) {
-        /*
-        if let Err(error) = LspClientCollection::on_server_event(self, client_handle, event) {
+        if let Err(error) = lsp::ClientCollection::on_process_stdout(self, client_handle, bytes) {
             self.output
                 .write(EditorOutputKind::Error)
                 .fmt(format_args!("{}", error));
         }
-        */
     }
 
-    pub fn on_lsp_process_exit(&mut self, client_handle: lsp::ClientHandle, success: bool) {
-        /*
-        if let Err(error) = lsp::ClientCollection::on_server_event(self, event) {
-            self.output
-                .write(EditorOutputKind::Error)
-                .fmt(format_args!("{}", error));
-        }
-        */
+    pub fn on_lsp_process_exit(&mut self, client_handle: lsp::ClientHandle) {
+        lsp::ClientCollection::on_process_exit(self, client_handle);
     }
 }

@@ -2,11 +2,12 @@ use std::{
     fmt, io,
     ops::Range,
     path::{Path, PathBuf},
-    process::{self, Command},
+    process::{self, Command, Stdio},
     str::FromStr,
 };
 
 use crate::{
+    application::ProcessTag,
     buffer::BufferHandle,
     buffer_position::{BufferPosition, BufferRange},
     editor::{Editor, EditorOutput, EditorOutputKind},
@@ -22,7 +23,7 @@ use crate::{
             ServerNotification, ServerRequest, ServerResponse, SharedJson, Uri,
         },
     },
-    platform::Platform,
+    platform::{Platform, PlatformRequest, ProcessHandle},
 };
 
 #[derive(Default)]
@@ -413,6 +414,7 @@ impl DiagnosticCollection {
 
 pub struct Client {
     protocol: Protocol,
+    root: PathBuf,
     pending_requests: PendingRequestColection,
 
     initialized: bool,
@@ -425,9 +427,10 @@ pub struct Client {
 }
 
 impl Client {
-    fn new(connection: ServerConnection) -> Self {
+    fn new(root: PathBuf) -> Self {
         Self {
-            protocol: Protocol::new(connection),
+            protocol: Protocol::new(),
+            root,
             pending_requests: PendingRequestColection::default(),
 
             initialized: false,
@@ -961,7 +964,7 @@ impl Client {
         self.protocol.notify(json, method, params)
     }
 
-    fn initialize(&mut self, json: &mut Json, root: &Path) -> io::Result<()> {
+    fn initialize(&mut self, json: &mut Json) -> io::Result<()> {
         let mut params = JsonObject::default();
         params.set(
             "processId".into(),
@@ -974,7 +977,7 @@ impl Client {
         client_info.set("name".into(), env!("CARGO_PKG_VERSION").into(), json);
         params.set("clientInfo".into(), client_info.into(), json);
 
-        let root = json.fmt_string(format_args!("{}", Uri::AbsolutePath(root)));
+        let root = json.fmt_string(format_args!("{}", Uri::AbsolutePath(&self.root)));
         params.set("rootUri".into(), root.into(), json);
 
         params.set(
@@ -1257,20 +1260,24 @@ impl ClientCollection {
     pub fn start(
         &mut self,
         platform: &mut Platform,
-        command: Command,
-        root: &Path,
+        mut command: Command,
+        root: PathBuf,
     ) -> io::Result<ClientHandle> {
         let handle = self.find_free_slot();
-        let json = SharedJson::new();
-        let connection = ServerConnection::spawn(platform, command)?;
-        let mut entry = ClientCollectionEntry {
-            client: Client::new(connection),
-            json,
-        };
-        entry
-            .client
-            .initialize(entry.json.write_lock().get(), root)?;
-        self.entries[handle.0] = Some(entry);
+        command
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null());
+        platform.enqueue_request(PlatformRequest::SpawnProcess {
+            tag: ProcessTag::Lsp(handle),
+            command,
+            stdout_buf_len: 4 * 1024, // TODO: cleanup
+            stderr_buf_len: 0,
+        });
+        self.entries[handle.0] = Some(ClientCollectionEntry {
+            client: Client::new(root),
+            json: SharedJson::new(),
+        });
         Ok(handle)
     }
 
@@ -1315,6 +1322,30 @@ impl ClientCollection {
             Some(e) => Some((ClientHandle(i), &e.client)),
             None => None,
         })
+    }
+
+    pub fn on_process_spawned(
+        editor: &mut Editor,
+        handle: ClientHandle,
+        process_handle: ProcessHandle,
+    ) -> io::Result<()> {
+        if let Some(mut entry) = editor.lsp.entries[handle.0].take() {
+            entry.client.protocol.set_process_handle(process_handle);
+            entry.client.initialize(entry.json.write_lock().get())?;
+        }
+        Ok(())
+    }
+
+    pub fn on_process_stdout(
+        editor: &mut Editor,
+        handle: ClientHandle,
+        bytes: &[u8],
+    ) -> io::Result<()> {
+        Ok(())
+    }
+
+    pub fn on_process_exit(editor: &mut Editor, handle: ClientHandle) {
+        editor.lsp.entries[handle.0] = None;
     }
 
     pub fn on_server_event(

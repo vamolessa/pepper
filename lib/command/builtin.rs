@@ -767,7 +767,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 None => ctx.editor.current_directory.as_path(),
             };
 
-            match ctx.editor.lsp.start(ctx.platform, command, root) {
+            match ctx.editor.lsp.start(ctx.platform, command, root.into()) {
                 Ok(handle) => {
                     if let (true, Some(client_handle)) = (log, ctx.client_handle) {
                         let clients = ctx.clients;
