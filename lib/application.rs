@@ -128,6 +128,8 @@ impl ServerApplication {
     ) -> Result<(), AnyError> {
         let mut event_deserialization_bufs = ClientEventDeserializationBufCollection::default();
 
+        let mut process_output = Vec::new();
+
         'event_loop: loop {
             let mut event = event_receiver.recv()?;
             loop {
@@ -144,20 +146,14 @@ impl ServerApplication {
                         }
                     }
                     ApplicationEvent::ConnectionMessage { handle, buf } => {
-                        let mut events = event_deserialization_bufs
-                            .receive_events(handle, buf.as_bytes());
+                        let mut events =
+                            event_deserialization_bufs.receive_events(handle, buf.as_bytes());
                         while let Some(event) = events.next() {
-                            match editor.on_client_event(
-                                platform,
-                                &mut clients,
-                                handle,
-                                event,
-                            ) {
+                            match editor.on_client_event(platform, &mut clients, handle, event) {
                                 EditorLoop::Continue => (),
                                 EditorLoop::Quit => {
-                                    platform.enqueue_request(PlatformRequest::CloseClient {
-                                        handle,
-                                    });
+                                    platform
+                                        .enqueue_request(PlatformRequest::CloseClient { handle });
                                     break;
                                 }
                                 EditorLoop::QuitAll => break 'event_loop,
@@ -168,13 +164,20 @@ impl ServerApplication {
                         ProcessTag::Lsp(client_handle) => {
                             editor.on_lsp_process_spawned(client_handle, handle)
                         }
-                        _ => (),
+                        ProcessTag::Command(_) => {
+                            eprintln!("spawned process");
+                            process_output.clear();
+                        }
                     },
                     ApplicationEvent::ProcessStdout { tag, buf } => {
                         let bytes = buf.as_bytes();
                         match tag {
                             ProcessTag::Lsp(client_handle) => {
                                 editor.on_lsp_process_stdout(client_handle, bytes)
+                            }
+                            ProcessTag::Command(_) => {
+                                eprintln!("received process bytes {}", bytes.len());
+                                process_output.extend_from_slice(bytes);
                             }
                             _ => (),
                         }
@@ -186,10 +189,15 @@ impl ServerApplication {
                         }
                     }
                     ApplicationEvent::ProcessExit { tag, success } => match tag {
-                        ProcessTag::Lsp(client_handle) => {
-                            editor.on_lsp_process_exit(client_handle)
+                        ProcessTag::Lsp(client_handle) => editor.on_lsp_process_exit(client_handle),
+                        ProcessTag::Command(_) => {
+                            eprintln!("process exit");
+                            let message = std::str::from_utf8(&process_output).unwrap();
+                            editor
+                                .output
+                                .write(crate::editor::EditorOutputKind::Info)
+                                .fmt(format_args!("out: {}", message));
                         }
-                        _ => (),
                     },
                 }
 

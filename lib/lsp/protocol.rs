@@ -15,6 +15,8 @@ use crate::{
     platform::{Platform, ProcessHandle},
 };
 
+pub const BUFFER_LEN: usize = 4 * 1024;
+
 pub struct SharedJsonGuard {
     json: Json,
     pending_consume_count: usize,
@@ -227,11 +229,6 @@ pub struct ServerConnection {
 
 impl ServerConnection {
     pub fn spawn(platform: &mut Platform, mut command: Command) -> io::Result<Self> {
-        command
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null());
-
         // TODO: use new platform request
         //let process_index = platform.spawn_process(command, 4 * 1024, 0)?;
         Ok(Self { process_index: 0 })
@@ -398,6 +395,7 @@ impl<'json> FromJson<'json> for ResponseError {
 pub struct Protocol {
     process_handle: Option<ProcessHandle>,
     body_buffer: Vec<u8>,
+    read_buffer: ReadBuf,
     write_buffer: Vec<u8>,
     next_request_id: usize,
 }
@@ -407,6 +405,7 @@ impl Protocol {
         Self {
             process_handle: None,
             body_buffer: Vec::new(),
+            read_buffer: ReadBuf::new(),
             write_buffer: Vec::new(),
             next_request_id: 1,
         }
@@ -414,6 +413,26 @@ impl Protocol {
 
     pub fn set_process_handle(&mut self, handle: ProcessHandle) {
         self.process_handle = Some(handle);
+    }
+
+    pub fn parse_events(&mut self, bytes: &[u8]) {
+        /*
+        let content_bytes = match self.read_buffer.read_content_from(&mut stdout) {
+            [] => break,
+            bytes => bytes,
+        };
+
+        let mut reader = Cursor::new(content_bytes);
+        let mut json = json.parse_lock();
+        let json = json.get();
+        let event = match json.read(&mut reader) {
+            Ok(body) => parse_server_event(&json, body),
+            _ => ServerEvent::ParseError,
+        };
+        if let Err(_) = event_sender.send(LocalEvent::Lsp(handle, event)) {
+            break;
+        }
+        */
     }
 
     pub fn request(
@@ -539,7 +558,7 @@ struct ReadBuf {
 
 impl ReadBuf {
     pub fn new() -> Self {
-        let mut buf = Vec::with_capacity(4 * 1024);
+        let mut buf = Vec::with_capacity(BUFFER_LEN);
         buf.resize(buf.capacity(), 0);
         Self {
             buf,

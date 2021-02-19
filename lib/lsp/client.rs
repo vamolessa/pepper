@@ -1341,6 +1341,9 @@ impl ClientCollection {
         handle: ClientHandle,
         bytes: &[u8],
     ) -> io::Result<()> {
+        if let Some(mut entry) = editor.lsp.entries[handle.0].take() {
+            entry.client.protocol.parse_events(bytes);
+        }
         Ok(())
     }
 

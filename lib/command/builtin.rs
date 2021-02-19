@@ -1,6 +1,11 @@
-use std::{fmt, path::Path, process::Command};
+use std::{
+    fmt,
+    path::Path,
+    process::{Command, Stdio},
+};
 
 use crate::{
+    application::ProcessTag,
     buffer::{Buffer, BufferCapabilities, BufferHandle},
     buffer_position::BufferPosition,
     buffer_view::BufferViewError,
@@ -12,6 +17,7 @@ use crate::{
     lsp,
     mode::ModeKind,
     navigation_history::NavigationHistory,
+    platform::PlatformRequest,
     register::RegisterKey,
     syntax::{Syntax, TokenKind},
     theme::{Color, THEME_COLOR_NAMES},
@@ -731,6 +737,35 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                     .write(EditorOutputKind::Info)
                     .str(ctx.editor.registers.get(key)),
             }
+
+            None
+        },
+    },
+    BuiltinCommand {
+        names: &["run"],
+        help: "",
+        completion_source: CompletionSource::None,
+        flags: &[],
+        func: |ctx| {
+            expect_no_bang!(ctx);
+            parse_values!(ctx, command);
+            parse_switches!(ctx);
+            parse_options!(ctx);
+
+            require_value!(ctx, command);
+            eprintln!("request spawn process '{}'", command);
+
+            let mut command = Command::new(command);
+            command.stdin(Stdio::null());
+            command.stdout(Stdio::piped());
+            command.stderr(Stdio::null());
+
+            ctx.platform.enqueue_request(PlatformRequest::SpawnProcess {
+                tag: ProcessTag::Command(0),
+                command,
+                stdout_buf_len: 4 * 1024,
+                stderr_buf_len: 0,
+            });
 
             None
         },
