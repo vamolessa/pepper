@@ -7,7 +7,7 @@ use crate::{
     client::Client,
     cursor::Cursor,
     editor::{Editor, EditorOutputKind, KeysIterator},
-    lsp::LspDiagnostic,
+    lsp,
     mode::{picker, read_line, Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     navigation_history::{NavigationDirection, NavigationHistory},
     platform::Key,
@@ -1272,7 +1272,7 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) -> Option<()> {
         break;
     }
 
-    fn select_diagnostic_position(diagnostics: &[LspDiagnostic], forward: bool) -> BufferPosition {
+    fn select_diagnostic_position(diagnostics: &[lsp::Diagnostic], forward: bool) -> BufferPosition {
         if forward {
             diagnostics[0].utf16_range.from
         } else {

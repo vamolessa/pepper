@@ -9,10 +9,10 @@ use crate::{
     config::Config,
     editor_event::{EditorEvent, EditorEventQueue},
     keymap::{KeyMapCollection, MatchResult},
-    lsp::{LspClientCollection, LspClientHandle, LspServerEvent},
+    lsp,
     mode::{Mode, ModeContext, ModeKind, ModeOperation},
     picker::Picker,
-    platform::{Key, Platform},
+    platform::{Key, Platform, ProcessHandle},
     register::{RegisterCollection, RegisterKey, KEY_QUEUE_REGISTER},
     syntax::{HighlightResult, SyntaxCollection},
     theme::Theme,
@@ -213,7 +213,7 @@ pub struct Editor {
     pub output: EditorOutput,
 
     pub commands: CommandManager,
-    pub lsp: LspClientCollection,
+    pub lsp: lsp::ClientCollection,
     pub events: EditorEventQueue,
 }
 impl Editor {
@@ -240,7 +240,7 @@ impl Editor {
             output: EditorOutput::new(),
 
             commands: CommandManager::new(),
-            lsp: LspClientCollection::new(),
+            lsp: lsp::ClientCollection::new(),
             events: EditorEventQueue::default(),
         }
     }
@@ -508,7 +508,7 @@ impl Editor {
             return;
         }
 
-        if let Err(error) = LspClientCollection::on_editor_events(self) {
+        if let Err(error) = lsp::ClientCollection::on_editor_events(self) {
             self.output
                 .write(EditorOutputKind::Error)
                 .fmt(format_args!("{}", error));
@@ -540,38 +540,27 @@ impl Editor {
         }
     }
 
-    pub fn on_process_stdout(
-        &mut self,
-        platform: &mut Platform,
-        process_index: usize,
-        bytes: &[u8],
-    ) {
+    pub fn on_lsp_process_spawned(&mut self, client_handle: lsp::ClientHandle, process_handle: ProcessHandle) {
         //
     }
 
-    pub fn on_process_stderr(
-        &mut self,
-        platform: &mut Platform,
-        process_index: usize,
-        bytes: &[u8],
-    ) {
-        //
-    }
-
-    pub fn on_process_exit(
-        &mut self,
-        platform: &mut Platform,
-        process_index: usize,
-        success: bool,
-    ) {
-        //
-    }
-
-    pub fn on_lsp_event(&mut self, client_handle: LspClientHandle, event: LspServerEvent) {
+    pub fn on_lsp_process_stdout(&mut self, client_handle: lsp::ClientHandle, bytes: &[u8]) {
+        /*
         if let Err(error) = LspClientCollection::on_server_event(self, client_handle, event) {
             self.output
                 .write(EditorOutputKind::Error)
                 .fmt(format_args!("{}", error));
         }
+        */
+    }
+
+    pub fn on_lsp_process_exit(&mut self, client_handle: lsp::ClientHandle, success: bool) {
+        /*
+        if let Err(error) = lsp::ClientCollection::on_server_event(self, event) {
+            self.output
+                .write(EditorOutputKind::Error)
+                .fmt(format_args!("{}", error));
+        }
+        */
     }
 }

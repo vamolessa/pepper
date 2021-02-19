@@ -9,7 +9,7 @@ use crate::{
     editor::{Editor, EditorOutputKind},
     json::Json,
     keymap::ParseKeyMapError,
-    lsp::{LspClient, LspClientCollection, LspClientHandle},
+    lsp,
     mode::ModeKind,
     navigation_history::NavigationHistory,
     register::RegisterKey,
@@ -771,7 +771,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 Ok(handle) => {
                     if let (true, Some(client_handle)) = (log, ctx.client_handle) {
                         let clients = ctx.clients;
-                        LspClientCollection::access(ctx.editor, handle, |editor, client, _| {
+                        lsp::ClientCollection::access(ctx.editor, handle, |editor, client, _| {
                             let buffer = editor.buffers.new(BufferCapabilities::log());
                             let buffer_handle = buffer.handle();
                             buffer.set_path(Some(Path::new(command_name)));
@@ -815,7 +815,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
 
             match client {
                 Some(client) => {
-                    let client = parse_arg!(ctx, client: LspClientHandle);
+                    let client = parse_arg!(ctx, client: lsp::ClientHandle);
                     ctx.editor.lsp.stop(client);
                 }
                 None => ctx.editor.lsp.stop_all(),
@@ -837,7 +837,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             parse_options!(ctx, client, buffer, position);
 
             let client_handle = match client {
-                Some(client) => Some(parse_arg!(ctx, client: LspClientHandle)),
+                Some(client) => Some(parse_arg!(ctx, client: lsp::ClientHandle)),
                 None => None,
             };
             let buffer_handle = match buffer {
@@ -879,7 +879,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             parse_options!(ctx, client, buffer, position);
 
             let client_handle = match client {
-                Some(client) => Some(parse_arg!(ctx, client: LspClientHandle)),
+                Some(client) => Some(parse_arg!(ctx, client: lsp::ClientHandle)),
                 None => None,
             };
             let buffer_handle = match buffer {
@@ -913,18 +913,18 @@ pub const COMMANDS: &[BuiltinCommand] = &[
 
 fn access_lsp<F, R, E>(
     editor: &mut Editor,
-    client_handle: Option<LspClientHandle>,
+    client_handle: Option<lsp::ClientHandle>,
     buffer_handle: Option<BufferHandle>,
     func: F,
 ) -> Option<R>
 where
-    F: FnOnce(&mut Editor, &mut LspClient, &mut Json) -> Result<R, E>,
+    F: FnOnce(&mut Editor, &mut lsp::Client, &mut Json) -> Result<R, E>,
     E: fmt::Display,
 {
     fn find_client_for_buffer(
         editor: &Editor,
         buffer_handle: Option<BufferHandle>,
-    ) -> Option<LspClientHandle> {
+    ) -> Option<lsp::ClientHandle> {
         let buffer_handle = buffer_handle?;
         let buffer_path_bytes = editor
             .buffers
@@ -951,7 +951,7 @@ where
         }
     };
 
-    match LspClientCollection::access(editor, client_handle, func) {
+    match lsp::ClientCollection::access(editor, client_handle, func) {
         Some(Ok(value)) => Some(value),
         Some(Err(error)) => {
             editor

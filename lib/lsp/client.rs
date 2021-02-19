@@ -1236,11 +1236,13 @@ impl FromStr for ClientHandle {
     }
 }
 
+// TODO: rename to ClientManagerEntry
 struct ClientCollectionEntry {
     client: Client,
     json: SharedJson,
 }
 
+// TODO: rename to ClientManager
 pub struct ClientCollection {
     entries: Vec<Option<ClientCollectionEntry>>,
 }

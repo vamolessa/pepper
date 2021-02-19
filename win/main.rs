@@ -59,8 +59,8 @@ use winapi::{
 use pepper::{
     application::{AnyError, ApplicationEvent, ClientApplication, ProcessTag, ServerApplication},
     platform::{
-        ExclusiveBuf, Key, Platform, BufPool, ConnectionHandle,
-        ProcessHandle, PlatformRequest, SharedBuf,
+        BufPool, ConnectionHandle, ExclusiveBuf, Key, Platform, PlatformRequest, ProcessHandle,
+        SharedBuf,
     },
     Args,
 };
@@ -768,10 +768,7 @@ impl ProcessPipe {
         self.reader.event()
     }
 
-    pub fn read_async(
-        &mut self,
-        buf_pool: &mut BufPool,
-    ) -> Result<Option<SharedBuf>, ()> {
+    pub fn read_async(&mut self, buf_pool: &mut BufPool) -> Result<Option<SharedBuf>, ()> {
         let mut read_buf = match self.current_read_buf.take() {
             Some(buf) => buf,
             None => buf_pool.acquire(),
@@ -971,7 +968,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                             stdout_buf_len,
                             stderr_buf_len,
                         } => {
-                            for p in processes.iter_mut() {
+                            for (i, p) in processes.iter_mut().enumerate() {
                                 if p.is_some() {
                                     continue;
                                 }
@@ -990,6 +987,9 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                                     stdout_buf_len,
                                     stderr_buf_len,
                                 ));
+                                let handle = ProcessHandle(i);
+                                event_sender
+                                    .send(ApplicationEvent::ProcessSpawned { tag, handle })?;
                                 break;
                             }
                         }
@@ -1002,7 +1002,6 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                                         process.kill();
                                         processes[handle.0] = None;
                                         event_sender.send(ApplicationEvent::ProcessExit {
-                                            handle,
                                             tag,
                                             success: false,
                                         })?;
@@ -1016,7 +1015,6 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                                 process.kill();
                                 processes[handle.0] = None;
                                 event_sender.send(ApplicationEvent::ProcessExit {
-                                    handle,
                                     tag,
                                     success: false,
                                 })?;
@@ -1056,12 +1054,10 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
             Some(EventSource::ProcessStdout(i)) => {
                 if let Some(ref mut process) = processes[i] {
                     if let Some(ref mut pipe) = process.stdout {
-                        let handle = ProcessHandle(i);
                         match pipe.read_async(&mut buf_pool) {
                             Ok(None) => (),
                             Ok(Some(buf)) => {
                                 event_sender.send(ApplicationEvent::ProcessStdout {
-                                    handle,
                                     tag: process.tag,
                                     buf,
                                 })?
@@ -1072,11 +1068,8 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                                     let tag = process.tag;
                                     let success = process.wait();
                                     processes[i] = None;
-                                    event_sender.send(ApplicationEvent::ProcessExit {
-                                        handle,
-                                        tag,
-                                        success,
-                                    })?;
+                                    event_sender
+                                        .send(ApplicationEvent::ProcessExit { tag, success })?;
                                 }
                             }
                         }
@@ -1086,12 +1079,10 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
             Some(EventSource::ProcessStderr(i)) => {
                 if let Some(ref mut process) = processes[i] {
                     if let Some(ref mut pipe) = process.stderr {
-                        let handle = ProcessHandle(i);
                         match pipe.read_async(&mut buf_pool) {
                             Ok(None) => (),
                             Ok(Some(buf)) => {
                                 event_sender.send(ApplicationEvent::ProcessStdout {
-                                    handle,
                                     tag: process.tag,
                                     buf,
                                 })?
@@ -1102,11 +1093,8 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                                     let tag = process.tag;
                                     let success = process.wait();
                                     processes[i] = None;
-                                    event_sender.send(ApplicationEvent::ProcessExit {
-                                        handle,
-                                        tag,
-                                        success,
-                                    })?;
+                                    event_sender
+                                        .send(ApplicationEvent::ProcessExit { tag, success })?;
                                 }
                             }
                         }
