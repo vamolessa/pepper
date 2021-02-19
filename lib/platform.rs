@@ -3,6 +3,8 @@ use std::{
     sync::{mpsc, Arc},
 };
 
+use crate::application::ProcessTag;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
     None,
@@ -25,10 +27,6 @@ pub enum Key {
     Esc,
 }
 
-pub enum PlatformProcessTag {
-    Command(usize),
-}
-
 #[derive(Clone, Copy)]
 pub struct PlatformConnectionHandle(pub usize);
 
@@ -45,7 +43,7 @@ pub enum PlatformServerRequest {
         handle: PlatformConnectionHandle,
     },
     SpawnProcess {
-        tag: PlatformProcessTag,
+        tag: ProcessTag,
         command: Command,
         stdout_buf_len: usize,
         stderr_buf_len: usize,

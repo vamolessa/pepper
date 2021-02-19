@@ -7,8 +7,8 @@ use crate::{
     connection::ClientEventDeserializationBufCollection,
     editor::{Editor, EditorLoop},
     platform::{
-        Key, Platform, PlatformConnectionHandle, PlatformProcessHandle, PlatformProcessTag,
-        PlatformServerRequest, SharedPlatformBuf,
+        Key, Platform, PlatformConnectionHandle, PlatformProcessHandle, PlatformServerRequest,
+        SharedPlatformBuf,
     },
     serialization::{SerializationBuf, Serialize},
     ui, Args,
@@ -47,6 +47,11 @@ impl Args {
     }
 }
 
+#[derive(Clone, Copy)]
+pub enum ProcessTag {
+    Command(usize),
+}
+
 pub enum ApplicationEvent {
     Idle,
     Redraw,
@@ -60,20 +65,19 @@ pub enum ApplicationEvent {
         handle: PlatformConnectionHandle,
         buf: SharedPlatformBuf,
     },
-    ProcessSpawned {
-        handle: PlatformProcessHandle,
-        tag: PlatformProcessTag,
-    },
     ProcessStdout {
         handle: PlatformProcessHandle,
+        tag: ProcessTag,
         buf: SharedPlatformBuf,
     },
     ProcessStderr {
         handle: PlatformProcessHandle,
+        tag: ProcessTag,
         buf: SharedPlatformBuf,
     },
     ProcessExit {
         handle: PlatformProcessHandle,
+        tag: ProcessTag,
         success: bool,
     },
 }
@@ -169,19 +173,22 @@ impl ServerApplication {
                             }
                         }
                     }
-                    ApplicationEvent::ProcessSpawned { handle, tag } => {
+                    ApplicationEvent::ProcessStdout { handle, tag, buf } => {
                         //
                         todo!()
                     }
-                    ApplicationEvent::ProcessStdout { handle, buf } => {
+                    ApplicationEvent::ProcessStderr { handle, tag, buf } => {
                         //
                         todo!()
                     }
-                    ApplicationEvent::ProcessExit { handle, success } => {
+                    ApplicationEvent::ProcessExit {
+                        handle,
+                        tag,
+                        success,
+                    } => {
                         //
                         todo!()
                     }
-                    _ => (),
                 }
 
                 event = match event_receiver.try_recv() {
@@ -221,6 +228,7 @@ impl ServerApplication {
 
                 let handle = c.connection_handle();
                 let buf = buf.share();
+                platform.buf_pool.release(buf.clone());
                 platform.enqueue_request(PlatformServerRequest::WriteToConnection { handle, buf });
             }
 
