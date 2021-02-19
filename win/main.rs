@@ -203,8 +203,7 @@ struct AsyncReader {
 }
 impl AsyncReader {
     pub fn new(handle: Handle) -> Self {
-        //let event = Event::manual();
-        let event = Event::automatic();
+        let event = Event::manual();
         event.notify();
         let overlapped = Overlapped::with_event(&event);
 
@@ -871,18 +870,16 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
     let mut connections: [Option<ConnectionToClient>; MAX_CONNECTION_COUNT] = Default::default();
     let mut buf_pool = PlatformBufPool::default();
 
-    let (request_sender, request_receiver) = mpsc::channel();
+    let new_request_event = Event::automatic();
+    NEW_REQUEST_EVENT_HANDLE.store(new_request_event.0 as _, Ordering::Relaxed);
 
+    let (request_sender, request_receiver) = mpsc::channel();
     let platform = Platform::new(
         read_from_clipboard,
         write_to_clipboard,
         || set_event(NEW_REQUEST_EVENT_HANDLE.load(Ordering::Relaxed) as _),
         request_sender,
     );
-
-    let new_request_event = Event::automatic();
-    new_request_event.notify();
-    NEW_REQUEST_EVENT_HANDLE.store(new_request_event.0 as _, Ordering::Relaxed);
 
     let event_sender = match ServerApplication::run(args, platform) {
         Some(sender) => sender,
