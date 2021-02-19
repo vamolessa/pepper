@@ -1,7 +1,4 @@
-use std::{
-    env, io,
-    sync::{mpsc, Arc},
-};
+use std::{env, io, sync::mpsc};
 
 use crate::{
     client::{ClientHandle, ClientManager},
@@ -10,8 +7,8 @@ use crate::{
     connection::ClientEventDeserializationBufCollection,
     editor::{Editor, EditorLoop},
     platform::{
-        Key, Platform, PlatformBuf, PlatformConnectionHandle, PlatformProcessHandle,
-        PlatformProcessTag, PlatformServerRequest,
+        Key, Platform, PlatformConnectionHandle, PlatformProcessHandle, PlatformProcessTag,
+        PlatformServerRequest, SharedPlatformBuf,
     },
     serialization::{SerializationBuf, Serialize},
     ui, Args,
@@ -61,7 +58,7 @@ pub enum ApplicationEvent {
     },
     ConnectionMessage {
         handle: PlatformConnectionHandle,
-        buf: PlatformBuf,
+        buf: SharedPlatformBuf,
     },
     ProcessSpawned {
         handle: PlatformProcessHandle,
@@ -69,11 +66,11 @@ pub enum ApplicationEvent {
     },
     ProcessStdout {
         handle: PlatformProcessHandle,
-        buf: PlatformBuf,
+        buf: SharedPlatformBuf,
     },
     ProcessStderr {
         handle: PlatformProcessHandle,
-        buf: PlatformBuf,
+        buf: SharedPlatformBuf,
     },
     ProcessExit {
         handle: PlatformProcessHandle,
@@ -127,57 +124,71 @@ impl ServerApplication {
     ) -> Result<(), AnyError> {
         let mut event_deserialization_bufs = ClientEventDeserializationBufCollection::default();
 
-        'event_loop: for event in event_receiver.iter() {
-            match event {
-                ApplicationEvent::Idle => editor.on_idle(&mut clients),
-                ApplicationEvent::Redraw => (),
-                ApplicationEvent::ConnectionOpen { handle } => {
-                    if let Some(client_handle) = ClientHandle::from_index(handle.0) {
-                        clients.on_client_joined(client_handle);
-                    }
-                }
-                ApplicationEvent::ConnectionClose { handle } => {
-                    if let Some(client_handle) = ClientHandle::from_index(handle.0) {
-                        clients.on_client_left(client_handle);
-                        if clients.iter_mut().next().is_none() {
-                            break 'event_loop;
+        'event_loop: loop {
+            let mut event = event_receiver.recv()?;
+            loop {
+                match event {
+                    ApplicationEvent::Idle => editor.on_idle(&mut clients),
+                    ApplicationEvent::Redraw => (),
+                    ApplicationEvent::ConnectionOpen { handle } => {
+                        if let Some(client_handle) = ClientHandle::from_index(handle.0) {
+                            clients.on_client_joined(client_handle);
                         }
                     }
-                }
-                ApplicationEvent::ConnectionMessage { handle, buf } => {
-                    let client_handle = match ClientHandle::from_index(handle.0) {
-                        Some(handle) => handle,
-                        None => break 'event_loop,
-                    };
-
-                    let mut events =
-                        event_deserialization_bufs.receive_events(client_handle, buf.as_bytes());
-                    while let Some(event) = events.next() {
-                        match editor.on_client_event(platform, &mut clients, client_handle, event) {
-                            EditorLoop::Continue => (),
-                            EditorLoop::Quit => {
-                                platform.enqueue_request(PlatformServerRequest::CloseConnection {
-                                    handle,
-                                });
-                                break;
+                    ApplicationEvent::ConnectionClose { handle } => {
+                        if let Some(client_handle) = ClientHandle::from_index(handle.0) {
+                            clients.on_client_left(client_handle);
+                            if clients.iter_mut().next().is_none() {
+                                break 'event_loop;
                             }
-                            EditorLoop::QuitAll => break 'event_loop,
                         }
                     }
+                    ApplicationEvent::ConnectionMessage { handle, buf } => {
+                        let client_handle = match ClientHandle::from_index(handle.0) {
+                            Some(handle) => handle,
+                            None => break 'event_loop,
+                        };
+
+                        let mut events = event_deserialization_bufs
+                            .receive_events(client_handle, buf.as_bytes());
+                        while let Some(event) = events.next() {
+                            match editor.on_client_event(
+                                platform,
+                                &mut clients,
+                                client_handle,
+                                event,
+                            ) {
+                                EditorLoop::Continue => (),
+                                EditorLoop::Quit => {
+                                    platform.enqueue_request(
+                                        PlatformServerRequest::CloseConnection { handle },
+                                    );
+                                    break;
+                                }
+                                EditorLoop::QuitAll => break 'event_loop,
+                            }
+                        }
+                    }
+                    ApplicationEvent::ProcessSpawned { handle, tag } => {
+                        //
+                        todo!()
+                    }
+                    ApplicationEvent::ProcessStdout { handle, buf } => {
+                        //
+                        todo!()
+                    }
+                    ApplicationEvent::ProcessExit { handle, success } => {
+                        //
+                        todo!()
+                    }
+                    _ => (),
                 }
-                ApplicationEvent::ProcessSpawned { handle, tag } => {
-                    //
-                    todo!()
-                }
-                ApplicationEvent::ProcessStdout { handle, buf } => {
-                    //
-                    todo!()
-                }
-                ApplicationEvent::ProcessExit { handle, success } => {
-                    //
-                    todo!()
-                }
-                _ => (),
+
+                event = match event_receiver.try_recv() {
+                    Ok(event) => event,
+                    Err(mpsc::TryRecvError::Empty) => break,
+                    Err(mpsc::TryRecvError::Disconnected) => return Err(AnyError),
+                };
             }
 
             let needs_redraw = editor.on_pre_render(&mut clients);
@@ -189,11 +200,10 @@ impl ServerApplication {
             for c in clients.iter_mut() {
                 let has_focus = focused_client_handle == Some(c.handle());
 
-                // TODO: replace display_buffer with PlatformBuf
-                //let buf = platform.write_buf();
-
-                c.display_buffer.clear();
-                c.display_buffer.extend_from_slice(&[0; 4]);
+                let mut buf = platform.buf_pool.acquire();
+                let render_buf = buf.write();
+                render_buf.clear();
+                render_buf.extend_from_slice(&[0; 4]);
                 ui::render(
                     &editor,
                     c.buffer_view_handle(),
@@ -201,20 +211,19 @@ impl ServerApplication {
                     c.viewport_size.1 as _,
                     c.scroll,
                     has_focus,
-                    &mut c.display_buffer,
-                    &mut c.output_buffer,
+                    render_buf,
+                    &mut c.status_bar_buffer,
                 );
 
-                let len = c.display_buffer.len() as u32 - 4;
+                let len = render_buf.len() as u32 - 4;
                 let len_bytes = len.to_le_bytes();
-                c.display_buffer[..4].copy_from_slice(&len_bytes);
+                render_buf[..4].copy_from_slice(&len_bytes);
 
-                // TODO
-                /*
                 let handle = c.connection_handle();
+                let buf = buf.share();
                 platform.enqueue_request(PlatformServerRequest::WriteToConnection { handle, buf });
-                */
             }
+
             platform.flush_requests();
         }
 

@@ -39,7 +39,7 @@ pub enum PlatformServerRequest {
     Exit,
     WriteToConnection {
         handle: PlatformConnectionHandle,
-        buf: PlatformBuf,
+        buf: SharedPlatformBuf,
     },
     CloseConnection {
         handle: PlatformConnectionHandle,
@@ -52,7 +52,7 @@ pub enum PlatformServerRequest {
     },
     WriteToProcess {
         handle: PlatformProcessHandle,
-        buf: PlatformBuf,
+        buf: SharedPlatformBuf,
     },
     KillProcess {
         handle: PlatformProcessHandle,
@@ -65,6 +65,7 @@ pub struct Platform {
     flush_requests: fn(),
     request_sender: mpsc::Sender<PlatformServerRequest>,
     needs_flushing: bool,
+    pub buf_pool: PlatformBufPool,
 }
 impl Platform {
     pub fn new(
@@ -79,6 +80,7 @@ impl Platform {
             flush_requests,
             request_sender,
             needs_flushing: false,
+            buf_pool: PlatformBufPool::default(),
         }
     }
 
@@ -103,34 +105,42 @@ impl Platform {
     }
 }
 
-#[derive(Clone)]
-pub struct PlatformBuf(Arc<Vec<u8>>);
-impl PlatformBuf {
-    pub fn as_bytes(&self) -> &[u8] {
-        &self.0
+pub struct ExclusivePlatformBuf(Arc<Vec<u8>>);
+impl ExclusivePlatformBuf {
+    pub fn share(self) -> SharedPlatformBuf {
+        SharedPlatformBuf(self.0)
     }
 
-    pub fn write(&mut self) -> Option<&mut Vec<u8>> {
-        Arc::get_mut(&mut self.0)
+    pub fn write(&mut self) -> &mut Vec<u8> {
+        Arc::get_mut(&mut self.0).unwrap()
+    }
+}
+
+#[derive(Clone)]
+pub struct SharedPlatformBuf(Arc<Vec<u8>>);
+impl SharedPlatformBuf {
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
     }
 }
 
 #[derive(Default)]
 pub struct PlatformBufPool {
-    bufs: Vec<PlatformBuf>,
+    bufs: Vec<SharedPlatformBuf>,
 }
 impl PlatformBufPool {
-    pub fn acquire(&mut self) -> PlatformBuf {
+    pub fn acquire(&mut self) -> ExclusivePlatformBuf {
         for (i, buf) in self.bufs.iter_mut().enumerate() {
             if Arc::get_mut(&mut buf.0).is_some() {
-                return self.bufs.swap_remove(i);
+                let buf = self.bufs.swap_remove(i);
+                return ExclusivePlatformBuf(buf.0);
             }
         }
 
-        PlatformBuf(Arc::new(Vec::new()))
+        ExclusivePlatformBuf(Arc::new(Vec::new()))
     }
 
-    pub fn release(&mut self, buf: PlatformBuf) {
+    pub fn release(&mut self, buf: SharedPlatformBuf) {
         self.bufs.push(buf);
     }
 }

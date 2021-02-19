@@ -4,6 +4,7 @@ use crate::{
     buffer_view::BufferViewHandle,
     editor::Editor,
     navigation_history::NavigationHistory,
+    platform::PlatformConnectionHandle,
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
 };
 
@@ -59,8 +60,7 @@ pub struct Client {
     pub height: u16,
     pub navigation_history: NavigationHistory,
 
-    pub display_buffer: Vec<u8>,
-    pub output_buffer: String, // TODO: try to remove this
+    pub status_bar_buffer: String, // TODO: try to remove this
 
     current_buffer_view_handle: Option<BufferViewHandle>,
     previous_buffer_view_handle: Option<BufferViewHandle>,
@@ -75,8 +75,7 @@ impl Client {
         self.height = 0;
         self.navigation_history.clear();
 
-        self.display_buffer.clear();
-        self.output_buffer.clear();
+        self.status_bar_buffer.clear();
 
         self.current_buffer_view_handle = None;
         self.previous_buffer_view_handle = None;
@@ -84,6 +83,10 @@ impl Client {
 
     pub fn handle(&self) -> ClientHandle {
         self.handle
+    }
+
+    pub fn connection_handle(&self) -> PlatformConnectionHandle {
+        PlatformConnectionHandle(self.handle.into_index())
     }
 
     pub fn buffer_view_handle(&self) -> Option<BufferViewHandle> {

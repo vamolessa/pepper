@@ -3,7 +3,10 @@ use std::{
     hash::{Hash, Hasher},
     io,
     ptr::NonNull,
-    sync::{mpsc, Arc},
+    sync::{
+        atomic::{AtomicPtr, Ordering},
+        mpsc, Once,
+    },
     time::Duration,
 };
 
@@ -30,8 +33,8 @@ use winapi::{
         winbase::{
             GlobalAlloc, GlobalFree, GlobalLock, GlobalUnlock, FILE_FLAG_OVERLAPPED, GMEM_MOVEABLE,
             INFINITE, NORMAL_PRIORITY_CLASS, PIPE_ACCESS_DUPLEX, PIPE_READMODE_BYTE,
-            PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES, STARTF_USESTDHANDLES, STD_INPUT_HANDLE,
-            STD_OUTPUT_HANDLE, WAIT_OBJECT_0,
+            PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES, STARTF_USESTDHANDLES, STD_ERROR_HANDLE,
+            STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, WAIT_OBJECT_0,
         },
         wincon::{
             GetConsoleScreenBufferInfo, ENABLE_PROCESSED_OUTPUT,
@@ -54,8 +57,8 @@ use winapi::{
 use pepper::{
     application::{AnyError, ApplicationEvent, ClientApplication, ServerApplication},
     platform::{
-        Key, Platform, PlatformBuf, PlatformBufPool, PlatformConnectionHandle,
-        PlatformProcessHandle, PlatformServerRequest,
+        ExclusivePlatformBuf, Key, Platform, PlatformBufPool, PlatformConnectionHandle,
+        PlatformProcessHandle, PlatformServerRequest, SharedPlatformBuf,
     },
     Args,
 };
@@ -186,12 +189,6 @@ fn read_console_input(input_handle: HANDLE, events: &mut [INPUT_RECORD]) -> &[IN
     &events[..(event_count as usize)]
 }
 
-fn make_buf(len: usize) -> Vec<u8> {
-    let mut buf = Vec::with_capacity(len);
-    buf.resize(len, 0);
-    buf
-}
-
 enum ReadResult {
     Waiting,
     Ok(usize),
@@ -206,7 +203,8 @@ struct AsyncReader {
 }
 impl AsyncReader {
     pub fn new(handle: Handle) -> Self {
-        let event = Event::new();
+        //let event = Event::manual();
+        let event = Event::automatic();
         event.notify();
         let overlapped = Overlapped::with_event(&event);
 
@@ -469,14 +467,37 @@ impl Drop for Handle {
     }
 }
 
+fn create_event(manual_reset: bool, initial_state: bool) -> HANDLE {
+    let manual_reset = if manual_reset { TRUE } else { FALSE };
+    let initial_state = if initial_state { TRUE } else { FALSE };
+    let handle = unsafe {
+        CreateEventW(
+            std::ptr::null_mut(),
+            manual_reset,
+            initial_state,
+            std::ptr::null(),
+        )
+    };
+    if handle == NULL {
+        panic!("could not create event");
+    }
+    handle
+}
+
+fn set_event(handle: HANDLE) {
+    if unsafe { SetEvent(handle) } == FALSE {
+        panic!("could not set event");
+    }
+}
+
 struct Event(HANDLE);
 impl Event {
-    pub fn new() -> Self {
-        let handle = unsafe { CreateEventW(std::ptr::null_mut(), TRUE, FALSE, std::ptr::null()) };
-        if handle == NULL {
-            panic!("could not create event");
-        }
-        Self(handle)
+    pub fn automatic() -> Self {
+        Self(create_event(false, false))
+    }
+
+    pub fn manual() -> Self {
+        Self(create_event(true, false))
     }
 
     pub fn handle(&self) -> HANDLE {
@@ -484,9 +505,7 @@ impl Event {
     }
 
     pub fn notify(&self) {
-        if unsafe { SetEvent(self.0) } == FALSE {
-            panic!("could not set event");
-        }
+        set_event(self.0);
     }
 }
 impl Drop for Event {
@@ -558,7 +577,7 @@ impl Drop for ConsoleMode {
 
 struct ConnectionToClient {
     reader: AsyncReader,
-    current_read_buf: Option<PlatformBuf>,
+    current_read_buf: Option<ExclusivePlatformBuf>,
 }
 impl ConnectionToClient {
     pub fn new(reader: AsyncReader) -> Self {
@@ -576,12 +595,12 @@ impl ConnectionToClient {
         &mut self,
         buf_len: usize,
         buf_pool: &mut PlatformBufPool,
-    ) -> Result<Option<PlatformBuf>, ()> {
+    ) -> Result<Option<SharedPlatformBuf>, ()> {
         let mut read_buf = match self.current_read_buf.take() {
             Some(buf) => buf,
             None => buf_pool.acquire(),
         };
-        let buf = read_buf.write().unwrap();
+        let buf = read_buf.write();
         buf.resize(buf_len, 0);
 
         match self.reader.read_async(buf) {
@@ -591,7 +610,7 @@ impl ConnectionToClient {
             }
             ReadResult::Ok(len) => {
                 buf.truncate(len);
-                Ok(Some(read_buf))
+                Ok(Some(read_buf.share()))
             }
             ReadResult::Err => Err(()),
         }
@@ -838,10 +857,7 @@ impl Events {
     }
 }
 
-fn get_new_request_event() -> &'static Event {
-    static mut EVENT: Option<Event> = None;
-    unsafe { EVENT.get_or_insert_with(|| Event::new()) }
-}
+static NEW_REQUEST_EVENT_HANDLE: AtomicPtr<()> = AtomicPtr::new(std::ptr::null_mut());
 
 fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
     if pipe_exists(pipe_path) {
@@ -860,20 +876,22 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
     let platform = Platform::new(
         read_from_clipboard,
         write_to_clipboard,
-        || get_new_request_event().notify(),
+        || set_event(NEW_REQUEST_EVENT_HANDLE.load(Ordering::Relaxed) as _),
         request_sender,
     );
+
+    let new_request_event = Event::automatic();
+    new_request_event.notify();
+    NEW_REQUEST_EVENT_HANDLE.store(new_request_event.0 as _, Ordering::Relaxed);
 
     let event_sender = match ServerApplication::run(args, platform) {
         Some(sender) => sender,
         None => return Ok(()),
     };
 
-    let new_request_event = get_new_request_event();
-
     loop {
-        events.track(new_request_event, EventSource::NewRequest);
-        events.track(&listener.event(), EventSource::ConnectionListener);
+        events.track(&new_request_event, EventSource::NewRequest);
+        events.track(listener.event(), EventSource::ConnectionListener);
         for (i, connection) in connections.iter().enumerate() {
             if let Some(connection) = connection {
                 events.track(connection.event(), EventSource::Connection(i));
@@ -912,6 +930,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                         }
                         PlatformServerRequest::CloseConnection { handle } => {
                             connections[handle.0] = None;
+                            event_sender.send(ApplicationEvent::ConnectionClose { handle })?;
                         }
                         PlatformServerRequest::SpawnProcess {
                             tag,
