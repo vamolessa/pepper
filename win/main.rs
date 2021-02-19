@@ -3,7 +3,7 @@ use std::{
     hash::{Hash, Hasher},
     io,
     os::windows::io::IntoRawHandle,
-    process::Child,
+    process::{Child, ChildStdin},
     ptr::NonNull,
     sync::{
         atomic::{AtomicPtr, Ordering},
@@ -794,7 +794,7 @@ impl ProcessPipe {
 }
 
 struct AsyncProcess {
-    pub child: Child,
+    child: Child,
     pub stdout: Option<ProcessPipe>,
     pub stderr: Option<ProcessPipe>,
 }
@@ -822,6 +822,26 @@ impl AsyncProcess {
             stdout,
             stderr,
         }
+    }
+
+    pub fn stdin(&mut self) -> Option<&mut ChildStdin> {
+        self.child.stdin.as_mut()
+    }
+
+    pub fn wait(&mut self) -> bool {
+        self.stdout = None;
+        self.stderr = None;
+        match self.child.wait() {
+            Ok(status) => status.success(),
+            Err(_) => false,
+        }
+    }
+
+    pub fn kill(&mut self) {
+        self.stdout = None;
+        self.stderr = None;
+        let _ = self.child.kill();
+        let _ = self.child.wait();
     }
 }
 
@@ -966,11 +986,10 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                         }
                         PlatformServerRequest::WriteToProcess { handle, buf } => {
                             if let Some(ref mut process) = processes[handle.0] {
-                                if let Some(ref mut pipe) = process.child.stdin {
+                                if let Some(pipe) = process.stdin() {
                                     use io::Write;
                                     if pipe.write_all(buf.as_bytes()).is_err() {
-                                        let _ = process.child.kill();
-                                        let _ = process.child.wait();
+                                        process.kill();
                                         processes[handle.0] = None;
                                         event_sender.send(ApplicationEvent::ProcessExit {
                                             handle,
@@ -982,8 +1001,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                         }
                         PlatformServerRequest::KillProcess { handle } => {
                             if let Some(ref mut process) = processes[handle.0] {
-                                let _ = process.child.kill();
-                                let _ = process.child.wait();
+                                process.kill();
                                 processes[handle.0] = None;
                                 event_sender.send(ApplicationEvent::ProcessExit {
                                     handle,
@@ -1033,7 +1051,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                             Err(()) => {
                                 process.stdout = None;
                                 if process.stderr.is_none() {
-                                    let success = process.child.wait().unwrap().success();
+                                    let success = process.wait();
                                     processes[i] = None;
                                     event_sender
                                         .send(ApplicationEvent::ProcessExit { handle, success })?;
@@ -1054,7 +1072,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                             Err(()) => {
                                 process.stderr = None;
                                 if process.stdout.is_none() {
-                                    let success = process.child.wait().unwrap().success();
+                                    let success = process.wait();
                                     processes[i] = None;
                                     event_sender
                                         .send(ApplicationEvent::ProcessExit { handle, success })?;
