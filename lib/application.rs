@@ -7,8 +7,8 @@ use crate::{
     connection::ClientEventDeserializationBufCollection,
     editor::{Editor, EditorLoop},
     platform::{
-        Key, Platform, PlatformConnectionHandle, PlatformProcessHandle, PlatformServerRequest,
-        SharedPlatformBuf,
+        Key, Platform, ConnectionHandle, ProcessHandle, PlatformRequest,
+        SharedBuf,
     },
     serialization::{SerializationBuf, Serialize},
     ui, Args,
@@ -56,27 +56,27 @@ pub enum ApplicationEvent {
     Idle,
     Redraw,
     ConnectionOpen {
-        handle: PlatformConnectionHandle,
+        handle: ConnectionHandle,
     },
     ConnectionClose {
-        handle: PlatformConnectionHandle,
+        handle: ConnectionHandle,
     },
     ConnectionMessage {
-        handle: PlatformConnectionHandle,
-        buf: SharedPlatformBuf,
+        handle: ConnectionHandle,
+        buf: SharedBuf,
     },
     ProcessStdout {
-        handle: PlatformProcessHandle,
+        handle: ProcessHandle,
         tag: ProcessTag,
-        buf: SharedPlatformBuf,
+        buf: SharedBuf,
     },
     ProcessStderr {
-        handle: PlatformProcessHandle,
+        handle: ProcessHandle,
         tag: ProcessTag,
-        buf: SharedPlatformBuf,
+        buf: SharedBuf,
     },
     ProcessExit {
-        handle: PlatformProcessHandle,
+        handle: ProcessHandle,
         tag: ProcessTag,
         success: bool,
     },
@@ -112,7 +112,7 @@ impl ServerApplication {
                 event_sender_clone,
                 event_receiver,
             );
-            platform.enqueue_request(PlatformServerRequest::Exit);
+            platform.enqueue_request(PlatformRequest::Exit);
             platform.flush_requests();
         });
 
@@ -165,7 +165,7 @@ impl ServerApplication {
                                 EditorLoop::Continue => (),
                                 EditorLoop::Quit => {
                                     platform.enqueue_request(
-                                        PlatformServerRequest::CloseConnection { handle },
+                                        PlatformRequest::CloseConnection { handle },
                                     );
                                     break;
                                 }
@@ -229,7 +229,7 @@ impl ServerApplication {
                 let handle = c.connection_handle();
                 let buf = buf.share();
                 platform.buf_pool.release(buf.clone());
-                platform.enqueue_request(PlatformServerRequest::WriteToConnection { handle, buf });
+                platform.enqueue_request(PlatformRequest::WriteToConnection { handle, buf });
             }
 
             platform.flush_requests();

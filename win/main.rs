@@ -59,8 +59,8 @@ use winapi::{
 use pepper::{
     application::{AnyError, ApplicationEvent, ClientApplication, ProcessTag, ServerApplication},
     platform::{
-        ExclusivePlatformBuf, Key, Platform, PlatformBufPool, PlatformConnectionHandle,
-        PlatformProcessHandle, PlatformServerRequest, SharedPlatformBuf,
+        ExclusiveBuf, Key, Platform, BufPool, ConnectionHandle,
+        ProcessHandle, PlatformRequest, SharedBuf,
     },
     Args,
 };
@@ -570,7 +570,7 @@ impl Drop for ConsoleMode {
 
 struct ConnectionToClient {
     reader: AsyncReader,
-    current_read_buf: Option<ExclusivePlatformBuf>,
+    current_read_buf: Option<ExclusiveBuf>,
 }
 impl ConnectionToClient {
     pub fn new(reader: AsyncReader) -> Self {
@@ -587,8 +587,8 @@ impl ConnectionToClient {
     pub fn read_async(
         &mut self,
         buf_len: usize,
-        buf_pool: &mut PlatformBufPool,
-    ) -> Result<Option<SharedPlatformBuf>, ()> {
+        buf_pool: &mut BufPool,
+    ) -> Result<Option<SharedBuf>, ()> {
         let mut read_buf = match self.current_read_buf.take() {
             Some(buf) => buf,
             None => buf_pool.acquire(),
@@ -751,7 +751,7 @@ impl ConnectionToServer {
 struct ProcessPipe {
     reader: AsyncReader,
     buf_len: usize,
-    current_read_buf: Option<ExclusivePlatformBuf>,
+    current_read_buf: Option<ExclusiveBuf>,
 }
 impl ProcessPipe {
     pub fn new(reader: AsyncReader, buf_len: usize) -> Self {
@@ -770,8 +770,8 @@ impl ProcessPipe {
 
     pub fn read_async(
         &mut self,
-        buf_pool: &mut PlatformBufPool,
-    ) -> Result<Option<SharedPlatformBuf>, ()> {
+        buf_pool: &mut BufPool,
+    ) -> Result<Option<SharedBuf>, ()> {
         let mut read_buf = match self.current_read_buf.take() {
             Some(buf) => buf,
             None => buf_pool.acquire(),
@@ -910,7 +910,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
 
     let mut connections: [Option<ConnectionToClient>; MAX_CONNECTION_COUNT] = Default::default();
     let mut processes: [Option<AsyncProcess>; MAX_PROCESS_COUNT] = Default::default();
-    let mut buf_pool = PlatformBufPool::default();
+    let mut buf_pool = BufPool::default();
 
     let new_request_event = Event::automatic();
     NEW_REQUEST_EVENT_HANDLE.store(new_request_event.0 as _, Ordering::Relaxed);
@@ -951,8 +951,8 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
             Some(EventSource::NewRequest) => {
                 for request in request_receiver.try_iter() {
                     match request {
-                        PlatformServerRequest::Exit => return Ok(()),
-                        PlatformServerRequest::WriteToConnection { handle, buf } => {
+                        PlatformRequest::Exit => return Ok(()),
+                        PlatformRequest::WriteToConnection { handle, buf } => {
                             if let Some(ref mut connection) = connections[handle.0] {
                                 if !connection.write(buf.as_bytes()) {
                                     connections[handle.0] = None;
@@ -961,11 +961,11 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                                 }
                             }
                         }
-                        PlatformServerRequest::CloseConnection { handle } => {
+                        PlatformRequest::CloseConnection { handle } => {
                             connections[handle.0] = None;
                             event_sender.send(ApplicationEvent::ConnectionClose { handle })?;
                         }
-                        PlatformServerRequest::SpawnProcess {
+                        PlatformRequest::SpawnProcess {
                             tag,
                             mut command,
                             stdout_buf_len,
@@ -993,7 +993,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                                 break;
                             }
                         }
-                        PlatformServerRequest::WriteToProcess { handle, buf } => {
+                        PlatformRequest::WriteToProcess { handle, buf } => {
                             if let Some(ref mut process) = processes[handle.0] {
                                 if let Some(pipe) = process.stdin() {
                                     use io::Write;
@@ -1010,7 +1010,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                                 }
                             }
                         }
-                        PlatformServerRequest::KillProcess { handle } => {
+                        PlatformRequest::KillProcess { handle } => {
                             if let Some(ref mut process) = processes[handle.0] {
                                 let tag = process.tag;
                                 process.kill();
@@ -1030,7 +1030,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                     for (i, c) in connections.iter_mut().enumerate() {
                         if c.is_none() {
                             *c = Some(connection);
-                            let handle = PlatformConnectionHandle(i);
+                            let handle = ConnectionHandle(i);
                             event_sender.send(ApplicationEvent::ConnectionOpen { handle })?;
                             break;
                         }
@@ -1039,7 +1039,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
             }
             Some(EventSource::Connection(i)) => {
                 if let Some(ref mut connection) = connections[i] {
-                    let handle = PlatformConnectionHandle(i);
+                    let handle = ConnectionHandle(i);
                     match connection
                         .read_async(ServerApplication::connection_buffer_len(), &mut buf_pool)
                     {
@@ -1056,7 +1056,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
             Some(EventSource::ProcessStdout(i)) => {
                 if let Some(ref mut process) = processes[i] {
                     if let Some(ref mut pipe) = process.stdout {
-                        let handle = PlatformProcessHandle(i);
+                        let handle = ProcessHandle(i);
                         match pipe.read_async(&mut buf_pool) {
                             Ok(None) => (),
                             Ok(Some(buf)) => {
@@ -1086,7 +1086,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
             Some(EventSource::ProcessStderr(i)) => {
                 if let Some(ref mut process) = processes[i] {
                     if let Some(ref mut pipe) = process.stderr {
-                        let handle = PlatformProcessHandle(i);
+                        let handle = ProcessHandle(i);
                         match pipe.read_async(&mut buf_pool) {
                             Ok(None) => (),
                             Ok(Some(buf)) => {

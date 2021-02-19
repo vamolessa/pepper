@@ -28,19 +28,19 @@ pub enum Key {
 }
 
 #[derive(Clone, Copy)]
-pub struct PlatformConnectionHandle(pub usize);
+pub struct ConnectionHandle(pub usize);
 
 #[derive(Clone, Copy)]
-pub struct PlatformProcessHandle(pub usize);
+pub struct ProcessHandle(pub usize);
 
-pub enum PlatformServerRequest {
+pub enum PlatformRequest {
     Exit,
     WriteToConnection {
-        handle: PlatformConnectionHandle,
-        buf: SharedPlatformBuf,
+        handle: ConnectionHandle,
+        buf: SharedBuf,
     },
     CloseConnection {
-        handle: PlatformConnectionHandle,
+        handle: ConnectionHandle,
     },
     SpawnProcess {
         tag: ProcessTag,
@@ -49,11 +49,11 @@ pub enum PlatformServerRequest {
         stderr_buf_len: usize,
     },
     WriteToProcess {
-        handle: PlatformProcessHandle,
-        buf: SharedPlatformBuf,
+        handle: ProcessHandle,
+        buf: SharedBuf,
     },
     KillProcess {
-        handle: PlatformProcessHandle,
+        handle: ProcessHandle,
     },
 }
 
@@ -61,16 +61,16 @@ pub struct Platform {
     read_from_clipboard: fn(&mut String) -> bool,
     write_to_clipboard: fn(&str),
     flush_requests: fn(),
-    request_sender: mpsc::Sender<PlatformServerRequest>,
+    request_sender: mpsc::Sender<PlatformRequest>,
     needs_flushing: bool,
-    pub buf_pool: PlatformBufPool,
+    pub buf_pool: BufPool,
 }
 impl Platform {
     pub fn new(
         read_from_clipboard: fn(&mut String) -> bool,
         write_to_clipboard: fn(&str),
         flush_requests: fn(),
-        request_sender: mpsc::Sender<PlatformServerRequest>,
+        request_sender: mpsc::Sender<PlatformRequest>,
     ) -> Self {
         Self {
             read_from_clipboard,
@@ -78,7 +78,7 @@ impl Platform {
             flush_requests,
             request_sender,
             needs_flushing: false,
-            buf_pool: PlatformBufPool::default(),
+            buf_pool: BufPool::default(),
         }
     }
 
@@ -90,7 +90,7 @@ impl Platform {
         (self.write_to_clipboard)(text)
     }
 
-    pub fn enqueue_request(&mut self, request: PlatformServerRequest) {
+    pub fn enqueue_request(&mut self, request: PlatformRequest) {
         self.needs_flushing = true;
         let _ = self.request_sender.send(request);
     }
@@ -103,10 +103,10 @@ impl Platform {
     }
 }
 
-pub struct ExclusivePlatformBuf(Arc<Vec<u8>>);
-impl ExclusivePlatformBuf {
-    pub fn share(self) -> SharedPlatformBuf {
-        SharedPlatformBuf(self.0)
+pub struct ExclusiveBuf(Arc<Vec<u8>>);
+impl ExclusiveBuf {
+    pub fn share(self) -> SharedBuf {
+        SharedBuf(self.0)
     }
 
     pub fn write(&mut self) -> &mut Vec<u8> {
@@ -115,30 +115,30 @@ impl ExclusivePlatformBuf {
 }
 
 #[derive(Clone)]
-pub struct SharedPlatformBuf(Arc<Vec<u8>>);
-impl SharedPlatformBuf {
+pub struct SharedBuf(Arc<Vec<u8>>);
+impl SharedBuf {
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
     }
 }
 
 #[derive(Default)]
-pub struct PlatformBufPool {
-    bufs: Vec<SharedPlatformBuf>,
+pub struct BufPool {
+    bufs: Vec<SharedBuf>,
 }
-impl PlatformBufPool {
-    pub fn acquire(&mut self) -> ExclusivePlatformBuf {
+impl BufPool {
+    pub fn acquire(&mut self) -> ExclusiveBuf {
         for (i, buf) in self.bufs.iter_mut().enumerate() {
             if Arc::get_mut(&mut buf.0).is_some() {
                 let buf = self.bufs.swap_remove(i);
-                return ExclusivePlatformBuf(buf.0);
+                return ExclusiveBuf(buf.0);
             }
         }
 
-        ExclusivePlatformBuf(Arc::new(Vec::new()))
+        ExclusiveBuf(Arc::new(Vec::new()))
     }
 
-    pub fn release(&mut self, buf: SharedPlatformBuf) {
+    pub fn release(&mut self, buf: SharedBuf) {
         self.bufs.push(buf);
     }
 }
