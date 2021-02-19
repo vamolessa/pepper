@@ -2,10 +2,12 @@ use std::{
     collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},
     io,
+    os::windows::io::IntoRawHandle,
+    process::Child,
     ptr::NonNull,
     sync::{
         atomic::{AtomicPtr, Ordering},
-        mpsc, Once,
+        mpsc,
     },
     time::Duration,
 };
@@ -33,8 +35,8 @@ use winapi::{
         winbase::{
             GlobalAlloc, GlobalFree, GlobalLock, GlobalUnlock, FILE_FLAG_OVERLAPPED, GMEM_MOVEABLE,
             INFINITE, NORMAL_PRIORITY_CLASS, PIPE_ACCESS_DUPLEX, PIPE_READMODE_BYTE,
-            PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES, STARTF_USESTDHANDLES, STD_ERROR_HANDLE,
-            STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, WAIT_OBJECT_0,
+            PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES, STARTF_USESTDHANDLES, STD_INPUT_HANDLE,
+            STD_OUTPUT_HANDLE, WAIT_OBJECT_0,
         },
         wincon::{
             GetConsoleScreenBufferInfo, ENABLE_PROCESSED_OUTPUT,
@@ -229,7 +231,6 @@ impl AsyncReader {
 
     pub fn read_async(&mut self, buf: &mut [u8]) -> ReadResult {
         let mut read_len = 0;
-        // TODO: remove redundancy with pending_io
         if self.pending_io {
             let result = unsafe {
                 GetOverlappedResult(
@@ -240,20 +241,17 @@ impl AsyncReader {
                 )
             };
 
+            self.pending_io = false;
+
             if result == FALSE {
                 match get_last_error() {
                     ERROR_MORE_DATA => {
-                        self.pending_io = false;
                         self.event.notify();
                         ReadResult::Ok(read_len as _)
                     }
-                    _ => {
-                        self.pending_io = false;
-                        ReadResult::Err
-                    }
+                    _ => ReadResult::Err,
                 }
             } else {
-                self.pending_io = false;
                 self.event.notify();
                 ReadResult::Ok(read_len as _)
             }
@@ -274,13 +272,9 @@ impl AsyncReader {
                         self.pending_io = true;
                         ReadResult::Waiting
                     }
-                    _ => {
-                        self.pending_io = false;
-                        ReadResult::Err
-                    }
+                    _ => ReadResult::Err,
                 }
             } else {
-                self.pending_io = false;
                 self.event.notify();
                 ReadResult::Ok(read_len as _)
             }
@@ -754,69 +748,89 @@ impl ConnectionToServer {
     }
 }
 
-/*
-enum ChildPipe {
-    Open(AsyncIO),
-    Closed,
+struct ProcessPipe {
+    reader: AsyncReader,
+    buf_len: usize,
+    current_read_buf: Option<ExclusivePlatformBuf>,
 }
-impl ChildPipe {
-    pub fn from_handle(handle: Option<Handle>, buf_len: usize) -> Self {
-        match handle {
-            Some(h) => {
-                let io = AsyncIO::from_handle(h, buf_len);
-                io.event.notify();
-                Self::Open(io)
+impl ProcessPipe {
+    pub fn new(reader: AsyncReader, buf_len: usize) -> Self {
+        reader.event.notify();
+
+        Self {
+            reader,
+            buf_len,
+            current_read_buf: None,
+        }
+    }
+
+    pub fn event(&self) -> &Event {
+        self.reader.event()
+    }
+
+    pub fn read_async(
+        &mut self,
+        buf_pool: &mut PlatformBufPool,
+    ) -> Result<Option<SharedPlatformBuf>, ()> {
+        let mut read_buf = match self.current_read_buf.take() {
+            Some(buf) => buf,
+            None => buf_pool.acquire(),
+        };
+        let buf = read_buf.write();
+        buf.resize(self.buf_len, 0);
+
+        match self.reader.read_async(buf) {
+            ReadResult::Waiting => {
+                self.current_read_buf = Some(read_buf);
+                Ok(None)
             }
-            None => Self::Closed,
+            ReadResult::Ok(len) => {
+                buf.truncate(len);
+                Ok(Some(read_buf.share()))
+            }
+            ReadResult::Err => Err(()),
         }
     }
 }
-impl Drop for ChildPipe {
-    fn drop(&mut self) {
-        let mut pipe = Self::Closed;
-        std::mem::swap(self, &mut pipe);
-        std::mem::forget(pipe);
-    }
-}
 
-struct AsyncChild {
-    child: Child,
-    stdin: Option<Handle>,
-    stdout: ChildPipe,
-    stderr: ChildPipe,
+struct AsyncProcess {
+    pub child: Child,
+    pub stdout: Option<ProcessPipe>,
+    pub stderr: Option<ProcessPipe>,
 }
-impl AsyncChild {
-    pub fn from_child(mut child: Child, stdout_buf_len: usize, stderr_buf_len: usize) -> Self {
-        let stdin = child.stdin.take().map(|s| Handle(s.into_raw_handle() as _));
+impl AsyncProcess {
+    pub fn new(mut child: Child, stdout_buf_len: usize, stderr_buf_len: usize) -> Self {
+        fn raw_handle_to_pipe(handle: HANDLE, buf_len: usize) -> ProcessPipe {
+            let reader = AsyncReader::new(Handle(handle));
+            ProcessPipe::new(reader, buf_len)
+        }
 
         let stdout = child
             .stdout
             .take()
-            .map(|s| Handle(s.into_raw_handle() as _));
-        let stdout = ChildPipe::from_handle(stdout, stdout_buf_len);
+            .map(IntoRawHandle::into_raw_handle)
+            .map(|h| raw_handle_to_pipe(h as _, stdout_buf_len));
 
         let stderr = child
             .stderr
             .take()
-            .map(|s| Handle(s.into_raw_handle() as _));
-        let stderr = ChildPipe::from_handle(stderr, stderr_buf_len);
+            .map(IntoRawHandle::into_raw_handle)
+            .map(|h| raw_handle_to_pipe(h as _, stderr_buf_len));
 
         Self {
             child,
-            stdin,
             stdout,
             stderr,
         }
     }
 }
-*/
 
 enum EventSource {
     NewRequest,
     ConnectionListener,
     Connection(usize),
-    ChildStdout(usize),
-    ChildStderr(usize),
+    ProcessStdout(usize),
+    ProcessStderr(usize),
 }
 struct Events {
     wait_handles: [HANDLE; MAX_EVENT_COUNT],
@@ -868,6 +882,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
         ConnectionToClientListener::new(pipe_path, ServerApplication::connection_buffer_len());
 
     let mut connections: [Option<ConnectionToClient>; MAX_CONNECTION_COUNT] = Default::default();
+    let mut processes: [Option<AsyncProcess>; MAX_PROCESS_COUNT] = Default::default();
     let mut buf_pool = PlatformBufPool::default();
 
     let new_request_event = Event::automatic();
@@ -894,22 +909,16 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                 events.track(connection.event(), EventSource::Connection(i));
             }
         }
-        /*
-        for i in 0..state.children.len() {
-            if let Some(child) = &state.children[i] {
-                if let ChildPipe::Open(io) = &child.stdout {
-                    if let Some(event) = io.event() {
-                        events.track(event, EventSource::ChildStdout(i));
-                    }
+        for (i, process) in processes.iter().enumerate() {
+            if let Some(process) = process {
+                if let Some(ref stdout) = process.stdout {
+                    events.track(stdout.event(), EventSource::ProcessStdout(i));
                 }
-                if let ChildPipe::Open(io) = &child.stderr {
-                    if let Some(event) = io.event() {
-                        events.track(event, EventSource::ChildStderr(i));
-                    }
+                if let Some(ref stderr) = process.stderr {
+                    events.track(stderr.event(), EventSource::ProcessStderr(i));
                 }
             }
         }
-        */
 
         match events.wait_next(None) {
             Some(EventSource::NewRequest) => {
@@ -931,17 +940,56 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                         }
                         PlatformServerRequest::SpawnProcess {
                             tag,
-                            command,
+                            mut command,
                             stdout_buf_len,
                             stderr_buf_len,
                         } => {
-                            todo!();
+                            for (i, p) in processes.iter_mut().enumerate() {
+                                if p.is_some() {
+                                    continue;
+                                }
+
+                                let child = match command.spawn() {
+                                    Ok(child) => child,
+                                    Err(_) => {
+                                        // TODO: notify here that error occurred?
+                                        continue;
+                                    }
+                                };
+
+                                *p = Some(AsyncProcess::new(child, stdout_buf_len, stderr_buf_len));
+                                let handle = PlatformProcessHandle(i);
+                                event_sender
+                                    .send(ApplicationEvent::ProcessSpawned { handle, tag })?;
+                                break;
+                            }
                         }
                         PlatformServerRequest::WriteToProcess { handle, buf } => {
-                            todo!();
+                            if let Some(ref mut process) = processes[handle.0] {
+                                if let Some(ref mut pipe) = process.child.stdin {
+                                    use io::Write;
+                                    if pipe.write_all(buf.as_bytes()).is_err() {
+                                        let _ = process.child.kill();
+                                        let _ = process.child.wait();
+                                        processes[handle.0] = None;
+                                        event_sender.send(ApplicationEvent::ProcessExit {
+                                            handle,
+                                            success: false,
+                                        })?;
+                                    }
+                                }
+                            }
                         }
                         PlatformServerRequest::KillProcess { handle } => {
-                            todo!();
+                            if let Some(ref mut process) = processes[handle.0] {
+                                let _ = process.child.kill();
+                                let _ = process.child.wait();
+                                processes[handle.0] = None;
+                                event_sender.send(ApplicationEvent::ProcessExit {
+                                    handle,
+                                    success: false,
+                                })?;
+                            }
                         }
                     }
                 }
@@ -974,100 +1022,50 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                     }
                 }
             }
-            _ => todo!(),
-        }
-
-        /*
-        match events.wait_next(None) {
-            Some(EventSource::ConnectionListener) => {
-                if let Some(pipe) = listener.accept(pipe_path, connection_buffer_len) {
-                    if state.pipes_len < state.pipes.len() {
-                        let index = state.pipes_len;
-                        state.pipes_len += 1;
-                        state.pipes[index] = pipe;
-                        send_event!(ServerPlatformEvent::ConnectionOpen { index });
-                    }
-                }
-            }
-            Some(EventSource::Connection(index)) => {
-                if index >= state.pipes.len() {
-                    continue;
-                }
-                let pipe = match state.pipes[index].io_mut() {
-                    Some(io) => io,
-                    None => continue,
-                };
-
-                match pipe.read_async() {
-                    ReadResult::Waiting => (),
-                    ReadResult::Err | ReadResult::Ok(0) => {
-                        state.pipes[index].close();
-                        send_event!(ServerPlatformEvent::ConnectionClose { index });
-                    }
-                    ReadResult::Ok(len) => {
-                        send_event!(ServerPlatformEvent::ConnectionMessage { index, len });
-                    }
-                }
-            }
-            Some(EventSource::ChildStdout(index)) => {
-                if index >= state.children.len() {
-                    continue;
-                }
-                let child = match state.children[index] {
-                    Some(ref mut child) => child,
-                    None => continue,
-                };
-                let io = match child.stdout {
-                    ChildPipe::Open(ref mut io) => io,
-                    ChildPipe::Closed => continue,
-                };
-
-                match io.read_async() {
-                    ReadResult::Waiting => (),
-                    ReadResult::Err | ReadResult::Ok(0) => {
-                        child.stdout = ChildPipe::Closed;
-                        if let ChildPipe::Closed = child.stderr {
-                            let success = child.child.wait().unwrap().success();
-                            state.children[index] = None;
-                            send_event!(ServerPlatformEvent::ProcessExit { index, success });
+            Some(EventSource::ProcessStdout(i)) => {
+                if let Some(ref mut process) = processes[i] {
+                    if let Some(ref mut pipe) = process.stdout {
+                        let handle = PlatformProcessHandle(i);
+                        match pipe.read_async(&mut buf_pool) {
+                            Ok(None) => (),
+                            Ok(Some(buf)) => event_sender
+                                .send(ApplicationEvent::ProcessStdout { handle, buf })?,
+                            Err(()) => {
+                                process.stdout = None;
+                                if process.stderr.is_none() {
+                                    let success = process.child.wait().unwrap().success();
+                                    processes[i] = None;
+                                    event_sender
+                                        .send(ApplicationEvent::ProcessExit { handle, success })?;
+                                }
+                            }
                         }
                     }
-                    ReadResult::Ok(len) => {
-                        send_event!(ServerPlatformEvent::ProcessStdout { index, len });
-                    }
                 }
             }
-            Some(EventSource::ChildStderr(index)) => {
-                if index >= state.children.len() {
-                    continue;
-                }
-                let child = match state.children[index] {
-                    Some(ref mut child) => child,
-                    None => continue,
-                };
-                let io = match child.stderr {
-                    ChildPipe::Open(ref mut io) => io,
-                    ChildPipe::Closed => continue,
-                };
-
-                match io.read_async() {
-                    ReadResult::Waiting => (),
-                    ReadResult::Err | ReadResult::Ok(0) => {
-                        child.stderr = ChildPipe::Closed;
-                        if let ChildPipe::Closed = child.stdout {
-                            let success = child.child.wait().unwrap().success();
-                            state.children[index] = None;
-                            send_event!(ServerPlatformEvent::ProcessExit { index, success });
+            Some(EventSource::ProcessStderr(i)) => {
+                if let Some(ref mut process) = processes[i] {
+                    if let Some(ref mut pipe) = process.stderr {
+                        let handle = PlatformProcessHandle(i);
+                        match pipe.read_async(&mut buf_pool) {
+                            Ok(None) => (),
+                            Ok(Some(buf)) => event_sender
+                                .send(ApplicationEvent::ProcessStdout { handle, buf })?,
+                            Err(()) => {
+                                process.stderr = None;
+                                if process.stdout.is_none() {
+                                    let success = process.child.wait().unwrap().success();
+                                    processes[i] = None;
+                                    event_sender
+                                        .send(ApplicationEvent::ProcessExit { handle, success })?;
+                                }
+                            }
                         }
                     }
-                    ReadResult::Ok(len) => {
-                        send_event!(ServerPlatformEvent::ProcessStderr { index, len });
-                    }
                 }
             }
-            None => panic!("timeout waiting"),
+            _ => unreachable!(),
         }
-        */
     }
 }
 
