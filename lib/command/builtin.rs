@@ -17,7 +17,7 @@ use crate::{
     lsp,
     mode::ModeKind,
     navigation_history::NavigationHistory,
-    platform::PlatformRequest,
+    platform::{Platform, PlatformRequest},
     register::RegisterKey,
     syntax::{Syntax, TokenKind},
     theme::{Color, THEME_COLOR_NAMES},
@@ -843,41 +843,18 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             None
         },
     },
-    // TODO: compress code
     BuiltinCommand {
         names: &["lsp-hover"],
         help: "perform a lsp hover action",
         completion_source: CompletionSource::None,
         flags: &[],
         func: |mut ctx| {
-            expect_no_bang!(ctx);
-            parse_values!(ctx);
-            parse_switches!(ctx);
-            parse_options!(ctx, client, buffer, position);
-
-            let client_handle = match client {
-                Some(client) => Some(parse_arg!(ctx, client: lsp::ClientHandle)),
-                None => None,
-            };
-            let buffer_handle = match buffer {
-                Some(buffer) => parse_arg!(ctx, buffer: BufferHandle),
-                None => ctx.current_buffer_handle_or_error()?,
-            };
-            let position = match position {
-                Some(position) => parse_arg!(ctx, position: BufferPosition),
-                None => get_main_cursor_position(&mut ctx)?,
-            };
-
-            let platform = ctx.platform;
-            access_lsp(
-                ctx.editor,
-                client_handle,
-                Some(buffer_handle),
-                |editor, client, json| {
+            access_lsp_with_position(
+                &mut ctx,
+                |editor, client, platform, json, buffer_handle, position| {
                     client.hover(editor, platform, json, buffer_handle, position)
                 },
             );
-
             None
         },
     },
@@ -887,34 +864,12 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         completion_source: CompletionSource::None,
         flags: &[],
         func: |mut ctx| {
-            expect_no_bang!(ctx);
-            parse_values!(ctx);
-            parse_switches!(ctx);
-            parse_options!(ctx, client, buffer, position);
-
-            let client_handle = match client {
-                Some(client) => Some(parse_arg!(ctx, client: lsp::ClientHandle)),
-                None => None,
-            };
-            let buffer_handle = match buffer {
-                Some(buffer) => parse_arg!(ctx, buffer: BufferHandle),
-                None => ctx.current_buffer_handle_or_error()?,
-            };
-            let position = match position {
-                Some(position) => parse_arg!(ctx, position: BufferPosition),
-                None => get_main_cursor_position(&mut ctx)?,
-            };
-
-            let platform = ctx.platform;
-            access_lsp(
-                ctx.editor,
-                client_handle,
-                Some(buffer_handle),
-                |editor, client, json| {
+            access_lsp_with_position(
+                &mut ctx,
+                |editor, client, platform, json, buffer_handle, position| {
                     client.signature_help(editor, platform, json, buffer_handle, position)
                 },
             );
-
             None
         },
     },
@@ -968,4 +923,44 @@ fn access_lsp<A>(
             .write(EditorOutputKind::Error)
             .str("lsp server not running");
     }
+}
+
+fn access_lsp_with_position<A>(ctx: &mut CommandContext, accessor: A) -> Option<()>
+where
+    A: FnOnce(
+        &mut Editor,
+        &mut lsp::Client,
+        &mut Platform,
+        &mut Json,
+        BufferHandle,
+        BufferPosition,
+    ),
+{
+    expect_no_bang!(ctx);
+    parse_values!(ctx);
+    parse_switches!(ctx);
+    parse_options!(ctx, client, buffer, position);
+
+    let client_handle = match client {
+        Some(client) => Some(parse_arg!(ctx, client: lsp::ClientHandle)),
+        None => None,
+    };
+    let buffer_handle = match buffer {
+        Some(buffer) => parse_arg!(ctx, buffer: BufferHandle),
+        None => ctx.current_buffer_handle_or_error()?,
+    };
+    let position = match position {
+        Some(position) => parse_arg!(ctx, position: BufferPosition),
+        None => get_main_cursor_position(ctx)?,
+    };
+
+    let platform = &mut *ctx.platform;
+    access_lsp(
+        ctx.editor,
+        client_handle,
+        Some(buffer_handle),
+        |editor, client, json| accessor(editor, client, platform, json, buffer_handle, position),
+    );
+
+    None
 }

@@ -54,8 +54,7 @@ impl BufferLinePool {
         Self { pool: Vec::new() }
     }
 
-    // TODO: rename to acquire
-    pub fn rent(&mut self) -> BufferLine {
+    pub fn acquire(&mut self) -> BufferLine {
         match self.pool.pop() {
             Some(mut line) => {
                 line.text.clear();
@@ -66,8 +65,7 @@ impl BufferLinePool {
         }
     }
 
-    // TODO: rename to release
-    pub fn dispose(&mut self, line: BufferLine) {
+    pub fn release(&mut self, line: BufferLine) {
         self.pool.push(line);
     }
 }
@@ -245,14 +243,14 @@ impl BufferContent {
         R: io::BufRead,
     {
         for line in self.lines.drain(..) {
-            self.line_pool.dispose(line);
+            self.line_pool.release(line);
         }
 
         loop {
-            let mut line = self.line_pool.rent();
+            let mut line = self.line_pool.acquire();
             match read.read_line(&mut line.text) {
                 Ok(0) => {
-                    self.line_pool.dispose(line);
+                    self.line_pool.release(line);
                     break;
                 }
                 Ok(_) => {
@@ -271,7 +269,7 @@ impl BufferContent {
         }
 
         if self.lines.is_empty() {
-            self.lines.push(self.line_pool.rent());
+            self.lines.push(self.line_pool.acquire());
         }
         Ok(())
     }
@@ -385,7 +383,7 @@ impl BufferContent {
             );
             BufferRange::between(position, end_position)
         } else {
-            let mut split_line = self.line_pool.rent();
+            let mut split_line = self.line_pool.acquire();
             self.lines[position.line_index].split_off(&mut split_line, position.column_byte_index);
 
             let mut line_count = 0;
@@ -396,7 +394,7 @@ impl BufferContent {
             for line_text in lines {
                 line_count += 1;
 
-                let mut line = self.line_pool.rent();
+                let mut line = self.line_pool.acquire();
                 line.push_text(line_text);
                 self.lines.insert(position.line_index + line_count, line);
             }
@@ -431,7 +429,7 @@ impl BufferContent {
             let lines_range = (from.line_index + 1)..to.line_index;
             if lines_range.start < lines_range.end {
                 for line in self.lines.drain(lines_range) {
-                    self.line_pool.dispose(line);
+                    self.line_pool.release(line);
                 }
             }
             let to_line_index = from.line_index + 1;
@@ -444,9 +442,9 @@ impl BufferContent {
 
     pub fn clear(&mut self) {
         for line in self.lines.drain(..) {
-            self.line_pool.dispose(line);
+            self.line_pool.release(line);
         }
-        self.lines.push(self.line_pool.rent());
+        self.lines.push(self.line_pool.acquire());
     }
 
     pub fn words_from<'a>(
@@ -1288,7 +1286,7 @@ mod tests {
     #[test]
     fn buffer_line_char_count() {
         let mut line_pool = BufferLinePool::new();
-        let mut line = line_pool.rent();
+        let mut line = line_pool.acquire();
         line.push_text("abc");
         assert_eq!(3, line.char_count());
         line.insert_text(1, "def");
