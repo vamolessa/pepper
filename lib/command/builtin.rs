@@ -91,8 +91,8 @@ macro_rules! parse_switches {
                     $(stringify!($name) => $name = true,)*
                         _ => {
                             $ctx.editor.output.write(EditorOutputKind::Error).fmt(format_args!(
-                                    "invalid switch '{}'", switch
-                                    ));
+                                "invalid switch '{}'", switch
+                            ));
                             return None;
                         }
                 }
@@ -110,8 +110,8 @@ macro_rules! parse_options {
                         _ => {
                             drop(value);
                             $ctx.editor.output.write(EditorOutputKind::Error).fmt(format_args!(
-                                    "invalid option '{}'", key
-                                    ));
+                                "invalid option '{}'", key
+                            ));
                             return None;
                         }
                 }
@@ -865,15 +865,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             };
             let position = match position {
                 Some(position) => parse_arg!(ctx, position: BufferPosition),
-                None => {
-                    let handle = ctx.current_buffer_view_handle_or_error()?;
-                    ctx.editor
-                        .buffer_views
-                        .get(handle)?
-                        .cursors
-                        .main_cursor()
-                        .position
-                }
+                None => get_main_cursor_position(&mut ctx)?,
             };
 
             let platform = ctx.platform;
@@ -910,15 +902,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             };
             let position = match position {
                 Some(position) => parse_arg!(ctx, position: BufferPosition),
-                None => {
-                    let handle = ctx.current_buffer_view_handle_or_error()?;
-                    ctx.editor
-                        .buffer_views
-                        .get(handle)?
-                        .cursors
-                        .main_cursor()
-                        .position
-                }
+                None => get_main_cursor_position(&mut ctx)?,
             };
 
             let platform = ctx.platform;
@@ -936,14 +920,25 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
 ];
 
-fn access_lsp<F, R>(
+fn get_main_cursor_position(ctx: &mut CommandContext) -> Option<BufferPosition> {
+    let handle = ctx.current_buffer_view_handle_or_error()?;
+    let position = ctx
+        .editor
+        .buffer_views
+        .get(handle)?
+        .cursors
+        .main_cursor()
+        .position;
+    Some(position)
+}
+
+fn access_lsp<A>(
     editor: &mut Editor,
     client_handle: Option<lsp::ClientHandle>,
     buffer_handle: Option<BufferHandle>,
-    func: F,
-) -> Option<R>
-where
-    F: FnOnce(&mut Editor, &mut lsp::Client, &mut Json) -> R,
+    accessor: A,
+) where
+    A: FnOnce(&mut Editor, &mut lsp::Client, &mut Json),
 {
     fn find_client_for_buffer(
         editor: &Editor,
@@ -963,17 +958,14 @@ where
         Some(client_handle)
     }
 
-    match client_handle
+    if client_handle
         .or_else(|| find_client_for_buffer(editor, buffer_handle))
-        .and_then(|h| lsp::ClientManager::access(editor, h, func))
+        .and_then(|h| lsp::ClientManager::access(editor, h, accessor))
+        .is_none()
     {
-        Some(result) => Some(result),
-        None => {
-            editor
-                .output
-                .write(EditorOutputKind::Error)
-                .str("lsp server not running");
-            None
-        }
+        editor
+            .output
+            .write(EditorOutputKind::Error)
+            .str("lsp server not running");
     }
 }

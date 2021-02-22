@@ -1314,12 +1314,12 @@ impl ClientManager {
         }
     }
 
-    pub fn access<F, R>(editor: &mut Editor, handle: ClientHandle, func: F) -> Option<R>
+    pub fn access<A, R>(editor: &mut Editor, handle: ClientHandle, accessor: A) -> Option<R>
     where
-        F: FnOnce(&mut Editor, &mut Client, &mut Json) -> R,
+        A: FnOnce(&mut Editor, &mut Client, &mut Json) -> R,
     {
         let mut entry = editor.lsp.entries[handle.0].take()?;
-        let result = func(editor, &mut entry.client, &mut entry.json);
+        let result = accessor(editor, &mut entry.client, &mut entry.json);
         editor.lsp.entries[handle.0] = Some(entry);
         Some(result)
     }
