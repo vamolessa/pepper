@@ -4,7 +4,7 @@ use crate::{
     client::{ClientHandle, ClientManager},
     client_event::{ClientEvent, ClientEventSource},
     command::CommandOperation,
-    connection::ClientEventDeserializationBufCollection,
+    connection::ClientEventReceiver,
     editor::{Editor, EditorLoop},
     lsp,
     platform::{Key, Platform, PlatformRequest, ProcessHandle, SharedBuf},
@@ -126,8 +126,7 @@ impl ServerApplication {
         event_sender: mpsc::Sender<ApplicationEvent>,
         event_receiver: mpsc::Receiver<ApplicationEvent>,
     ) -> Result<(), AnyError> {
-        let mut event_deserialization_bufs = ClientEventDeserializationBufCollection::default();
-
+        let mut client_event_receiver = ClientEventReceiver::default();
         let mut process_output = Vec::new();
 
         'event_loop: loop {
@@ -147,7 +146,7 @@ impl ServerApplication {
                     }
                     ApplicationEvent::ConnectionMessage { handle, buf } => {
                         let mut events =
-                            event_deserialization_bufs.receive_events(handle, buf.as_bytes());
+                            client_event_receiver.receive_events(handle, buf.as_bytes());
                         while let Some(event) = events.next() {
                             match editor.on_client_event(platform, &mut clients, handle, event) {
                                 EditorLoop::Continue => (),

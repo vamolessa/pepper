@@ -1,6 +1,7 @@
 use std::{
     fmt,
     io::{self, Cursor, Read, Write},
+    ops::Range,
     path::{Component, Path, Prefix},
     process::{Child, ChildStdin, Command, Stdio},
     sync::{Arc, Mutex, MutexGuard},
@@ -223,17 +224,16 @@ pub struct ServerResponse {
     pub result: Result<JsonValue, ResponseError>,
 }
 
+/*
 pub struct ServerConnection {
     process_index: usize,
 }
 
 impl ServerConnection {
     pub fn spawn(platform: &mut Platform, mut command: Command) -> io::Result<Self> {
-        // TODO: use new platform request
         //let process_index = platform.spawn_process(command, 4 * 1024, 0)?;
         Ok(Self { process_index: 0 })
 
-        /*
         let stdin = process
             .stdin
             .take()
@@ -266,67 +266,14 @@ impl ServerConnection {
             }
             let _ = event_sender.send(LocalEvent::Lsp(handle, ServerEvent::Closed));
         });
-        */
     }
 
     pub fn write(&mut self, platform: &mut Platform, buf: &[u8]) -> io::Result<()> {
-        // TODO: change to new platform request
         //platform.write_to_process(self.process_index, buf);
         Ok(())
     }
 }
 
-fn parse_server_event(json: &Json, body: JsonValue) -> ServerEvent {
-    declare_json_object! {
-        struct Body {
-            id: JsonValue,
-            method: JsonValue,
-            params: JsonValue,
-            result: JsonValue,
-            error: Option<ResponseError>,
-        }
-    }
-
-    let body = match Body::from_json(body, json) {
-        Ok(body) => body,
-        Err(_) => return ServerEvent::ParseError,
-    };
-
-    if let JsonValue::String(method) = body.method {
-        match body.id {
-            JsonValue::Integer(_) | JsonValue::String(_) => ServerEvent::Request(ServerRequest {
-                id: body.id,
-                method,
-                params: body.params,
-            }),
-            JsonValue::Null => ServerEvent::Notification(ServerNotification {
-                method,
-                params: body.params,
-            }),
-            _ => return ServerEvent::ParseError,
-        }
-    } else if let Some(error) = body.error {
-        let id = match body.id {
-            JsonValue::Integer(n) if n > 0 => n as _,
-            _ => return ServerEvent::ParseError,
-        };
-        ServerEvent::Response(ServerResponse {
-            id: RequestId(id),
-            result: Err(error),
-        })
-    } else {
-        let id = match body.id {
-            JsonValue::Integer(n) if n > 0 => n as _,
-            _ => return ServerEvent::ParseError,
-        };
-        ServerEvent::Response(ServerResponse {
-            id: RequestId(id),
-            result: Ok(body.result),
-        })
-    }
-}
-
-/*
 impl Write for ServerConnection {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.stdin.write(buf)
@@ -392,11 +339,95 @@ impl<'json> FromJson<'json> for ResponseError {
     }
 }
 
+fn try_get_content_range(buf: &[u8]) -> Option<Range<usize>> {
+    fn find_pattern_end(buf: &[u8], pattern: &[u8]) -> Option<usize> {
+        let len = pattern.len();
+        buf.windows(len).position(|w| w == pattern).map(|p| p + len)
+    }
+
+    fn parse_number(buf: &[u8]) -> usize {
+        let mut n = 0;
+        for b in buf {
+            if b.is_ascii_digit() {
+                n *= 10;
+                n += (b - b'0') as usize;
+            } else {
+                break;
+            }
+        }
+        n
+    }
+
+    let content_length_index = find_pattern_end(buf, b"Content-Length: ")?;
+    let buf = &buf[content_length_index..];
+    let content_index = find_pattern_end(buf, b"\r\n\r\n")?;
+    let content_len = parse_number(buf);
+    let buf = &buf[content_index..];
+
+    if buf.len() >= content_len {
+        let start = content_length_index + content_index;
+        let end = start + content_len;
+        Some(start..end)
+    } else {
+        None
+    }
+}
+
+fn parse_server_event(json: &Json, body: JsonValue) -> ServerEvent {
+    declare_json_object! {
+        struct Body {
+            id: JsonValue,
+            method: JsonValue,
+            params: JsonValue,
+            result: JsonValue,
+            error: Option<ResponseError>,
+        }
+    }
+
+    let body = match Body::from_json(body, json) {
+        Ok(body) => body,
+        Err(_) => return ServerEvent::ParseError,
+    };
+
+    if let JsonValue::String(method) = body.method {
+        match body.id {
+            JsonValue::Integer(_) | JsonValue::String(_) => ServerEvent::Request(ServerRequest {
+                id: body.id,
+                method,
+                params: body.params,
+            }),
+            JsonValue::Null => ServerEvent::Notification(ServerNotification {
+                method,
+                params: body.params,
+            }),
+            _ => return ServerEvent::ParseError,
+        }
+    } else if let Some(error) = body.error {
+        let id = match body.id {
+            JsonValue::Integer(n) if n > 0 => n as _,
+            _ => return ServerEvent::ParseError,
+        };
+        ServerEvent::Response(ServerResponse {
+            id: RequestId(id),
+            result: Err(error),
+        })
+    } else {
+        let id = match body.id {
+            JsonValue::Integer(n) if n > 0 => n as _,
+            _ => return ServerEvent::ParseError,
+        };
+        ServerEvent::Response(ServerResponse {
+            id: RequestId(id),
+            result: Ok(body.result),
+        })
+    }
+}
+
 pub struct Protocol {
     process_handle: Option<ProcessHandle>,
-    body_buffer: Vec<u8>,
-    read_buffer: ReadBuf,
-    write_buffer: Vec<u8>,
+    budy_buf: Vec<u8>,
+    read_buf: Vec<u8>,
+    write_buf: Vec<u8>,
     next_request_id: usize,
 }
 
@@ -404,9 +435,9 @@ impl Protocol {
     pub fn new() -> Self {
         Self {
             process_handle: None,
-            body_buffer: Vec::new(),
-            read_buffer: ReadBuf::new(),
-            write_buffer: Vec::new(),
+            budy_buf: Vec::new(),
+            read_buf: Vec::new(),
+            write_buf: Vec::new(),
             next_request_id: 1,
         }
     }
@@ -415,24 +446,28 @@ impl Protocol {
         self.process_handle = Some(handle);
     }
 
-    pub fn parse_events(&mut self, bytes: &[u8]) {
-        /*
-        let content_bytes = match self.read_buffer.read_content_from(&mut stdout) {
-            [] => break,
-            bytes => bytes,
-        };
+    pub fn read_from_server(&mut self, bytes: &[u8]) {
+        self.read_buf.extend_from_slice(bytes);
+    }
 
-        let mut reader = Cursor::new(content_bytes);
-        let mut json = json.parse_lock();
-        let json = json.get();
+    pub fn try_parse_read_server_event(&mut self, json: &mut Json) -> Option<ServerEvent> {
+        if self.read_buf.is_empty() {
+            return None;
+        }
+
+        let range = try_get_content_range(&self.read_buf)?;
+        let read_len = range.end;
+        let mut reader = Cursor::new(&self.read_buf[range]);
         let event = match json.read(&mut reader) {
-            Ok(body) => parse_server_event(&json, body),
+            Ok(body) => parse_server_event(json, body),
             _ => ServerEvent::ParseError,
         };
-        if let Err(_) = event_sender.send(LocalEvent::Lsp(handle, event)) {
-            break;
-        }
-        */
+
+        let rest_len = self.read_buf.len() - read_len;
+        self.read_buf.copy_within(read_len.., 0);
+        self.read_buf.truncate(rest_len);
+
+        Some(event)
     }
 
     pub fn request(
@@ -499,15 +534,15 @@ impl Protocol {
         json: &mut Json,
         body: JsonValue,
     ) -> io::Result<()> {
-        json.write(&mut self.body_buffer, &body)?;
+        json.write(&mut self.budy_buf, &body)?;
 
-        self.write_buffer.clear();
+        self.write_buf.clear();
         write!(
-            self.write_buffer,
+            self.write_buf,
             "Content-Length: {}\r\n\r\n",
-            self.body_buffer.len()
+            self.budy_buf.len()
         )?;
-        self.write_buffer.append(&mut self.body_buffer);
+        self.write_buf.append(&mut self.budy_buf);
 
         //self.server_connection.write(platform, &self.write_buffer)?;
         Ok(())
@@ -550,6 +585,7 @@ impl PendingRequestColection {
     }
 }
 
+/*
 struct ReadBuf {
     buf: Vec<u8>,
     read_index: usize,
@@ -643,3 +679,4 @@ impl ReadBuf {
         &self.buf[content_start_index..content_end_index]
     }
 }
+*/

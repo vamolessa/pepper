@@ -806,7 +806,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 Ok(handle) => {
                     if let (true, Some(client_handle)) = (log, ctx.client_handle) {
                         let clients = ctx.clients;
-                        lsp::ClientCollection::access(ctx.editor, handle, |editor, client, _| {
+                        lsp::ClientManager::access(ctx.editor, handle, |editor, client, _| {
                             let buffer = editor.buffers.new(BufferCapabilities::log());
                             let buffer_handle = buffer.handle();
                             buffer.set_path(Some(Path::new(command_name)));
@@ -986,7 +986,7 @@ where
         }
     };
 
-    match lsp::ClientCollection::access(editor, client_handle, func) {
+    match lsp::ClientManager::access(editor, client_handle, func) {
         Some(Ok(value)) => Some(value),
         Some(Err(error)) => {
             editor

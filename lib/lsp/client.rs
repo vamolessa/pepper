@@ -19,8 +19,8 @@ use crate::{
     lsp::{
         capabilities,
         protocol::{
-            self, PendingRequestColection, Protocol, ResponseError, ServerConnection, ServerEvent,
-            ServerNotification, ServerRequest, ServerResponse, SharedJson, Uri,
+            self, PendingRequestColection, Protocol, ResponseError, ServerEvent,
+            ServerNotification, ServerRequest, ServerResponse, Uri,
         },
     },
     platform::{Platform, PlatformRequest, ProcessHandle},
@@ -1239,18 +1239,16 @@ impl FromStr for ClientHandle {
     }
 }
 
-// TODO: rename to ClientManagerEntry
-struct ClientCollectionEntry {
+struct ClientManagerEntry {
     client: Client,
-    json: SharedJson,
+    json: Json,
 }
 
-// TODO: rename to ClientManager
-pub struct ClientCollection {
-    entries: Vec<Option<ClientCollectionEntry>>,
+pub struct ClientManager {
+    entries: Vec<Option<ClientManagerEntry>>,
 }
 
-impl ClientCollection {
+impl ClientManager {
     pub fn new() -> Self {
         Self {
             entries: Vec::new(),
@@ -1271,23 +1269,21 @@ impl ClientCollection {
         platform.enqueue_request(PlatformRequest::SpawnProcess {
             tag: ProcessTag::Lsp(handle),
             command,
-            stdout_buf_len: 4 * 1024, // TODO: cleanup
+            stdout_buf_len: protocol::BUFFER_LEN,
             stderr_buf_len: 0,
         });
-        self.entries[handle.0] = Some(ClientCollectionEntry {
+        self.entries[handle.0] = Some(ClientManagerEntry {
             client: Client::new(root),
-            json: SharedJson::new(),
+            json: Json::new(),
         });
         Ok(handle)
     }
 
     pub fn stop(&mut self, handle: ClientHandle) {
         if let Some(entry) = &mut self.entries[handle.0] {
-            let mut json = entry.json.write_lock();
             let _ = entry
                 .client
-                .notify(json.get(), "exit", JsonObject::default());
-            drop(json);
+                .notify(&mut entry.json, "exit", JsonObject::default());
             self.entries[handle.0] = None;
         }
     }
@@ -1303,9 +1299,7 @@ impl ClientCollection {
         F: FnOnce(&mut Editor, &mut Client, &mut Json) -> R,
     {
         let mut entry = editor.lsp.entries[handle.0].take()?;
-        let mut json = entry.json.write_lock();
-        let result = func(editor, &mut entry.client, json.get());
-        drop(json);
+        let result = func(editor, &mut entry.client, &mut entry.json);
         editor.lsp.entries[handle.0] = Some(entry);
         Some(result)
     }
@@ -1331,7 +1325,7 @@ impl ClientCollection {
     ) -> io::Result<()> {
         if let Some(mut entry) = editor.lsp.entries[handle.0].take() {
             entry.client.protocol.set_process_handle(process_handle);
-            entry.client.initialize(entry.json.write_lock().get())?;
+            entry.client.initialize(&mut entry.json)?;
         }
         Ok(())
     }
@@ -1341,9 +1335,36 @@ impl ClientCollection {
         handle: ClientHandle,
         bytes: &[u8],
     ) -> io::Result<()> {
-        if let Some(mut entry) = editor.lsp.entries[handle.0].take() {
-            entry.client.protocol.parse_events(bytes);
+        let (mut client, mut json) = match editor.lsp.entries[handle.0].take() {
+            Some(entry) => (entry.client, entry.json),
+            None => return Ok(()),
+        };
+
+        client.protocol.read_from_server(bytes);
+        loop {
+            let result = match client.protocol.try_parse_read_server_event(&mut json) {
+                Some(ServerEvent::Closed) => {
+                    editor.lsp.stop(handle);
+                    Ok(())
+                }
+                Some(ServerEvent::ParseError) => client.on_parse_error(&mut json, JsonValue::Null),
+                Some(ServerEvent::Request(request)) => {
+                    client.on_request(editor, &mut json, request)
+                }
+                Some(ServerEvent::Notification(notification)) => {
+                    client.on_notification(editor, &mut json, notification)
+                }
+                Some(ServerEvent::Response(response)) => {
+                    client.on_response(editor, &mut json, response)
+                }
+                None => break,
+            };
+
+            client.flush_log_buffer(editor);
+            result?;
         }
+
+        editor.lsp.entries[handle.0] = Some(ClientManagerEntry { client, json });
         Ok(())
     }
 
@@ -1351,45 +1372,10 @@ impl ClientCollection {
         editor.lsp.entries[handle.0] = None;
     }
 
-    pub fn on_server_event(
-        editor: &mut Editor,
-        handle: ClientHandle,
-        event: ServerEvent,
-    ) -> io::Result<()> {
-        if let Some(mut entry) = editor.lsp.entries[handle.0].take() {
-            let mut json = entry.json.read_lock();
-            let result = match event {
-                ServerEvent::Closed => {
-                    editor.lsp.stop(handle);
-                    Ok(())
-                }
-                ServerEvent::ParseError => entry.client.on_parse_error(json.get(), JsonValue::Null),
-                ServerEvent::Request(request) => {
-                    entry.client.on_request(editor, json.get(), request)
-                }
-                ServerEvent::Notification(notification) => {
-                    entry
-                        .client
-                        .on_notification(editor, json.get(), notification)
-                }
-                ServerEvent::Response(response) => {
-                    entry.client.on_response(editor, json.get(), response)
-                }
-            };
-            entry.client.flush_log_buffer(editor);
-            drop(json);
-            editor.lsp.entries[handle.0] = Some(entry);
-            result?;
-        }
-        Ok(())
-    }
-
     pub fn on_editor_events(editor: &mut Editor) -> io::Result<()> {
         for i in 0..editor.lsp.entries.len() {
             if let Some(mut entry) = editor.lsp.entries[i].take() {
-                let mut json = entry.json.write_lock();
-                let result = entry.client.on_editor_events(editor, json.get());
-                drop(json);
+                let result = entry.client.on_editor_events(editor, &mut entry.json);
                 editor.lsp.entries[i] = Some(entry);
                 result?;
             }

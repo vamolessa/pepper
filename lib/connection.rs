@@ -56,18 +56,16 @@ impl<'this, 'data: 'this> ClientEventIter<'data> {
             return None;
         }
 
+        self.read_len = self.buf.len();
         let slice = unsafe { std::slice::from_raw_parts(slice.as_ptr(), slice.len()) };
 
         let mut deserializer = DeserializationSlice::from_slice(slice);
         match ClientEvent::deserialize(&mut deserializer) {
             Ok(event) => {
-                self.read_len += slice.len() - deserializer.as_slice().len();
+                self.read_len -= deserializer.as_slice().len();
                 Some(event)
             }
-            Err(_) => {
-                self.read_len = self.buf.len();
-                None
-            }
+            Err(_) => None,
         }
     }
 }
@@ -80,15 +78,11 @@ impl<'data> Drop for ClientEventIter<'data> {
 }
 
 #[derive(Default)]
-struct ClientEventDeserializationBuf(Vec<u8>);
-
-// TODO: rename to ClientEventReceiver
-#[derive(Default)]
-pub struct ClientEventDeserializationBufCollection {
-    bufs: Vec<ClientEventDeserializationBuf>,
+pub struct ClientEventReceiver {
+    bufs: Vec<Vec<u8>>,
 }
 
-impl ClientEventDeserializationBufCollection {
+impl ClientEventReceiver {
     pub fn receive_events<'a>(
         &'a mut self,
         client_handle: ClientHandle,
@@ -99,7 +93,7 @@ impl ClientEventDeserializationBufCollection {
             self.bufs.resize_with(index + 1, Default::default);
         }
 
-        let buf = &mut self.bufs[index].0;
+        let buf = &mut self.bufs[index];
         buf.extend_from_slice(bytes);
         ClientEventIter { buf, read_len: 0 }
     }

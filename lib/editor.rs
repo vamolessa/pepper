@@ -213,7 +213,7 @@ pub struct Editor {
     pub output: EditorOutput,
 
     pub commands: CommandManager,
-    pub lsp: lsp::ClientCollection,
+    pub lsp: lsp::ClientManager,
     pub events: EditorEventQueue,
 }
 impl Editor {
@@ -240,7 +240,7 @@ impl Editor {
             output: EditorOutput::new(),
 
             commands: CommandManager::new(),
-            lsp: lsp::ClientCollection::new(),
+            lsp: lsp::ClientManager::new(),
             events: EditorEventQueue::default(),
         }
     }
@@ -508,7 +508,7 @@ impl Editor {
             return;
         }
 
-        if let Err(error) = lsp::ClientCollection::on_editor_events(self) {
+        if let Err(error) = lsp::ClientManager::on_editor_events(self) {
             self.output
                 .write(EditorOutputKind::Error)
                 .fmt(format_args!("{}", error));
@@ -546,7 +546,7 @@ impl Editor {
         process_handle: ProcessHandle,
     ) {
         if let Err(error) =
-            lsp::ClientCollection::on_process_spawned(self, client_handle, process_handle)
+            lsp::ClientManager::on_process_spawned(self, client_handle, process_handle)
         {
             self.output
                 .write(EditorOutputKind::Error)
@@ -555,7 +555,7 @@ impl Editor {
     }
 
     pub fn on_lsp_process_stdout(&mut self, client_handle: lsp::ClientHandle, bytes: &[u8]) {
-        if let Err(error) = lsp::ClientCollection::on_process_stdout(self, client_handle, bytes) {
+        if let Err(error) = lsp::ClientManager::on_process_stdout(self, client_handle, bytes) {
             self.output
                 .write(EditorOutputKind::Error)
                 .fmt(format_args!("{}", error));
@@ -563,6 +563,6 @@ impl Editor {
     }
 
     pub fn on_lsp_process_exit(&mut self, client_handle: lsp::ClientHandle) {
-        lsp::ClientCollection::on_process_exit(self, client_handle);
+        lsp::ClientManager::on_process_exit(self, client_handle);
     }
 }
