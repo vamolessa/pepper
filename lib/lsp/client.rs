@@ -1340,8 +1340,8 @@ impl ClientManager {
             None => return Ok(()),
         };
 
-        client.protocol.read_from_server(bytes);
-        while let Some(event) = client.protocol.try_parse_read_server_event(&mut json) {
+        let mut events = client.protocol.parse_events(bytes);
+        while let Some(event) = events.next(&mut client.protocol, &mut json) {
             let result = match event {
                 ServerEvent::Closed => {
                     editor.lsp.stop(handle);
@@ -1357,6 +1357,7 @@ impl ClientManager {
             client.flush_log_buffer(editor);
             result?;
         }
+        events.finish(&mut client.protocol);
 
         editor.lsp.entries[handle.0] = Some(ClientManagerEntry { client, json });
         Ok(())

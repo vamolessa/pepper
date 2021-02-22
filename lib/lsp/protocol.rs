@@ -423,6 +423,33 @@ fn parse_server_event(json: &Json, body: JsonValue) -> ServerEvent {
     }
 }
 
+pub struct ServerEventIter {
+    read_len: usize,
+}
+impl ServerEventIter {
+    pub fn next(&mut self, protocol: &mut Protocol, json: &mut Json) -> Option<ServerEvent> {
+        let slice = &protocol.read_buf[self.read_len..];
+        if slice.is_empty() {
+            return None;
+        }
+
+        let range = try_get_content_range(slice)?;
+        self.read_len += range.end;
+        let mut reader = Cursor::new(&slice[range]);
+        let event = match json.read(&mut reader) {
+            Ok(body) => parse_server_event(json, body),
+            _ => ServerEvent::ParseError,
+        };
+        Some(event)
+    }
+
+    pub fn finish(&self, protocol: &mut Protocol) {
+        let rest_len = protocol.read_buf.len() - self.read_len;
+        protocol.read_buf.copy_within(self.read_len.., 0);
+        protocol.read_buf.truncate(rest_len);
+    }
+}
+
 pub struct Protocol {
     process_handle: Option<ProcessHandle>,
     budy_buf: Vec<u8>,
@@ -446,28 +473,9 @@ impl Protocol {
         self.process_handle = Some(handle);
     }
 
-    pub fn read_from_server(&mut self, bytes: &[u8]) {
+    pub fn parse_events(&mut self, bytes: &[u8]) -> ServerEventIter {
         self.read_buf.extend_from_slice(bytes);
-    }
-
-    pub fn try_parse_read_server_event(&mut self, json: &mut Json) -> Option<ServerEvent> {
-        if self.read_buf.is_empty() {
-            return None;
-        }
-
-        let range = try_get_content_range(&self.read_buf)?;
-        let read_len = range.end;
-        let mut reader = Cursor::new(&self.read_buf[range]);
-        let event = match json.read(&mut reader) {
-            Ok(body) => parse_server_event(json, body),
-            _ => ServerEvent::ParseError,
-        };
-
-        let rest_len = self.read_buf.len() - read_len;
-        self.read_buf.copy_within(read_len.., 0);
-        self.read_buf.truncate(rest_len);
-
-        Some(event)
+        ServerEventIter { read_len: 0 }
     }
 
     pub fn request(
