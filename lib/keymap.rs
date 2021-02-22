@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    client_event::{parse_all_keys, KeyParseAllError},
+    events::{parse_all_keys, KeyParseAllError},
     mode::ModeKind,
     platform::Key,
 };

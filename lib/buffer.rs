@@ -10,7 +10,7 @@ use std::{
 use crate::{
     buffer_position::{BufferPosition, BufferRange},
     client::ClientManager,
-    editor_event::{EditorEvent, EditorEventQueue},
+    events::{EditorEvent, EditorEventQueue},
     history::{Edit, EditKind, History},
     syntax::{HighlightResult, HighlightedBuffer, SyntaxCollection, SyntaxHandle},
     word_database::{WordDatabase, WordIter, WordKind},

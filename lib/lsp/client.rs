@@ -11,7 +11,7 @@ use crate::{
     buffer::BufferHandle,
     buffer_position::{BufferPosition, BufferRange},
     editor::{Editor, EditorOutput, EditorOutputKind},
-    editor_event::EditorEvent,
+    events::EditorEvent,
     glob::Glob,
     json::{
         FromJson, Json, JsonArray, JsonConvertError, JsonInteger, JsonObject, JsonString, JsonValue,

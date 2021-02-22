@@ -1,10 +1,85 @@
-use std::{error::Error, fmt, str::Chars};
+use std::{error::Error, fmt, ops::Range, str::Chars};
 
 use crate::{
+    buffer::BufferHandle,
+    buffer_position::BufferRange,
     client::ClientHandle,
     platform::Key,
-    serialization::{DeserializeError, Deserializer, Serialize, Serializer},
+    serialization::{DeserializationSlice, DeserializeError, Deserializer, Serialize, Serializer},
 };
+
+pub struct EditorEventText {
+    texts_range: Range<usize>,
+}
+impl EditorEventText {
+    pub fn as_str<'a>(&self, events: &'a EditorEventQueue) -> &'a str {
+        &events.read.texts[self.texts_range.clone()]
+    }
+}
+
+pub enum EditorEvent {
+    Idle,
+    BufferOpen {
+        handle: BufferHandle,
+    },
+    BufferInsertText {
+        handle: BufferHandle,
+        range: BufferRange,
+        text: EditorEventText,
+    },
+    BufferDeleteText {
+        handle: BufferHandle,
+        range: BufferRange,
+    },
+    BufferSave {
+        handle: BufferHandle,
+        new_path: bool,
+    },
+    BufferClose {
+        handle: BufferHandle,
+    },
+}
+
+#[derive(Default)]
+struct EventQueue {
+    events: Vec<EditorEvent>,
+    texts: String,
+}
+
+#[derive(Default)]
+pub struct EditorEventQueue {
+    read: EventQueue,
+    write: EventQueue,
+}
+
+impl EditorEventQueue {
+    pub fn flip(&mut self) {
+        self.read.events.clear();
+        self.read.texts.clear();
+        std::mem::swap(&mut self.read, &mut self.write);
+    }
+
+    pub fn enqueue(&mut self, event: EditorEvent) {
+        self.write.events.push(event);
+    }
+
+    pub fn enqueue_buffer_insert(&mut self, handle: BufferHandle, range: BufferRange, text: &str) {
+        let start = self.write.texts.len();
+        self.write.texts.push_str(text);
+        let text = EditorEventText {
+            texts_range: start..self.write.texts.len(),
+        };
+        self.write.events.push(EditorEvent::BufferInsertText {
+            handle,
+            range,
+            text,
+        });
+    }
+
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a EditorEvent> {
+        self.read.events.iter()
+    }
+}
 
 #[derive(Debug)]
 pub enum KeyParseError {
@@ -432,6 +507,59 @@ impl<'de> Serialize<'de> for ClientEvent<'de> {
                 Ok(ClientEvent::Command(handle, command))
             }
             _ => Err(DeserializeError),
+        }
+    }
+}
+
+pub struct ClientEventIter {
+    buf_index: usize,
+    read_len: usize,
+}
+impl ClientEventIter {
+    pub fn next<'a>(&mut self, receiver: &'a ClientEventReceiver) -> Option<ClientEvent<'a>> {
+        let buf = &receiver.bufs[self.buf_index];
+        let slice = &buf[self.read_len..];
+        if slice.is_empty() {
+            return None;
+        }
+
+        let mut deserializer = DeserializationSlice::from_slice(slice);
+        match ClientEvent::deserialize(&mut deserializer) {
+            Ok(event) => {
+                self.read_len = buf.len() - deserializer.as_slice().len();
+                Some(event)
+            }
+            Err(_) => {
+                self.read_len = buf.len();
+                None
+            }
+        }
+    }
+
+    pub fn finish(&self, receiver: &mut ClientEventReceiver) {
+        let buf = &mut receiver.bufs[self.buf_index];
+        let rest_len = buf.len() - self.read_len;
+        buf.copy_within(self.read_len.., 0);
+        buf.truncate(rest_len);
+    }
+}
+
+#[derive(Default)]
+pub struct ClientEventReceiver {
+    bufs: Vec<Vec<u8>>,
+}
+
+impl ClientEventReceiver {
+    pub fn receive_events(&mut self, client_handle: ClientHandle, bytes: &[u8]) -> ClientEventIter {
+        let buf_index = client_handle.into_index();
+        if buf_index >= self.bufs.len() {
+            self.bufs.resize_with(buf_index + 1, Default::default);
+        }
+        let buf = &mut self.bufs[buf_index];
+        buf.extend_from_slice(bytes);
+        ClientEventIter {
+            buf_index,
+            read_len: 0,
         }
     }
 }

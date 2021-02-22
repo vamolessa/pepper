@@ -2,10 +2,9 @@ use std::{env, io, sync::mpsc};
 
 use crate::{
     client::{ClientHandle, ClientManager},
-    client_event::{ClientEvent, ClientEventSource},
     command::CommandOperation,
-    connection::ClientEventReceiver,
     editor::{Editor, EditorLoop},
+    events::{ClientEventReceiver, ClientEvent, ClientEventSource},
     lsp,
     platform::{Key, Platform, PlatformRequest, ProcessHandle, SharedBuf},
     serialization::{SerializationBuf, Serialize},
@@ -187,7 +186,6 @@ impl ServerApplication {
                                 eprintln!("received process bytes {}", bytes.len());
                                 process_output.extend_from_slice(bytes);
                             }
-                            _ => (),
                         }
                     }
                     ApplicationEvent::ProcessStderr { tag, buf } => {

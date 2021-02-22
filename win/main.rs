@@ -948,7 +948,9 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                     match request {
                         PlatformRequest::Exit => return Ok(()),
                         PlatformRequest::WriteToClient { handle, buf } => {
-                            if let Some(ref mut connection) = client_connections[handle.into_index()] {
+                            if let Some(ref mut connection) =
+                                client_connections[handle.into_index()]
+                            {
                                 if !connection.write(buf.as_bytes()) {
                                     client_connections[handle.into_index()] = None;
                                     event_sender
@@ -971,23 +973,25 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                                     continue;
                                 }
 
-                                let child = match command.spawn() {
-                                    Ok(child) => child,
-                                    Err(_) => {
-                                        // TODO: notify here that error occurred?
-                                        continue;
-                                    }
-                                };
-
-                                *p = Some(AsyncProcess::new(
-                                    child,
-                                    tag,
-                                    stdout_buf_len,
-                                    stderr_buf_len,
-                                ));
                                 let handle = ProcessHandle(i);
-                                event_sender
-                                    .send(ApplicationEvent::ProcessSpawned { tag, handle })?;
+                                match command.spawn() {
+                                    Ok(child) => {
+                                        *p = Some(AsyncProcess::new(
+                                            child,
+                                            tag,
+                                            stdout_buf_len,
+                                            stderr_buf_len,
+                                        ));
+                                        event_sender.send(ApplicationEvent::ProcessSpawned {
+                                            tag,
+                                            handle,
+                                        })?;
+                                    }
+                                    Err(_) => event_sender.send(ApplicationEvent::ProcessExit {
+                                        tag,
+                                        success: false,
+                                    })?,
+                                }
                                 break;
                             }
                         }
