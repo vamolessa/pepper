@@ -45,35 +45,36 @@ impl ReadBuf {
 }
 */
 
-pub struct ClientEventIter<'data> {
-    buf: &'data mut Vec<u8>,
+pub struct ClientEventIter {
+    buf_index: usize,
     read_len: usize,
 }
-impl<'this, 'data: 'this> ClientEventIter<'data> {
-    pub fn next(&'this mut self) -> Option<ClientEvent<'data>> {
-        let slice = &self.buf[self.read_len..];
+impl ClientEventIter {
+    pub fn next<'a>(&mut self, receiver: &'a ClientEventReceiver) -> Option<ClientEvent<'a>> {
+        let buf = &receiver.bufs[self.buf_index];
+        let slice = &buf[self.read_len..];
         if slice.is_empty() {
             return None;
         }
 
-        self.read_len = self.buf.len();
-        let slice = unsafe { std::slice::from_raw_parts(slice.as_ptr(), slice.len()) };
-
         let mut deserializer = DeserializationSlice::from_slice(slice);
         match ClientEvent::deserialize(&mut deserializer) {
             Ok(event) => {
-                self.read_len -= deserializer.as_slice().len();
+                self.read_len = buf.len() - deserializer.as_slice().len();
                 Some(event)
             }
-            Err(_) => None,
+            Err(_) => {
+                self.read_len = buf.len();
+                None
+            }
         }
     }
-}
-impl<'data> Drop for ClientEventIter<'data> {
-    fn drop(&mut self) {
-        let rest_len = self.buf.len() - self.read_len;
-        self.buf.copy_within(self.read_len.., 0);
-        self.buf.truncate(rest_len);
+
+    pub fn finish(&self, receiver: &mut ClientEventReceiver) {
+        let buf = &mut receiver.bufs[self.buf_index];
+        let rest_len = buf.len() - self.read_len;
+        buf.copy_within(self.read_len.., 0);
+        buf.truncate(rest_len);
     }
 }
 
@@ -83,18 +84,16 @@ pub struct ClientEventReceiver {
 }
 
 impl ClientEventReceiver {
-    pub fn receive_events<'a>(
-        &'a mut self,
-        client_handle: ClientHandle,
-        bytes: &[u8],
-    ) -> ClientEventIter<'a> {
-        let index = client_handle.into_index();
-        if index >= self.bufs.len() {
-            self.bufs.resize_with(index + 1, Default::default);
+    pub fn receive_events(&mut self, client_handle: ClientHandle, bytes: &[u8]) -> ClientEventIter {
+        let buf_index = client_handle.into_index();
+        if buf_index >= self.bufs.len() {
+            self.bufs.resize_with(buf_index + 1, Default::default);
         }
-
-        let buf = &mut self.bufs[index];
+        let buf = &mut self.bufs[buf_index];
         buf.extend_from_slice(bytes);
-        ClientEventIter { buf, read_len: 0 }
+        ClientEventIter {
+            buf_index,
+            read_len: 0,
+        }
     }
 }

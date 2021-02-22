@@ -147,7 +147,7 @@ impl ServerApplication {
                     ApplicationEvent::ConnectionMessage { handle, buf } => {
                         let mut events =
                             client_event_receiver.receive_events(handle, buf.as_bytes());
-                        while let Some(event) = events.next() {
+                        while let Some(event) = events.next(&client_event_receiver) {
                             match editor.on_client_event(platform, &mut clients, handle, event) {
                                 EditorLoop::Continue => (),
                                 EditorLoop::Quit => {
@@ -158,6 +158,7 @@ impl ServerApplication {
                                 EditorLoop::QuitAll => break 'event_loop,
                             }
                         }
+                        events.finish(&mut client_event_receiver);
                     }
                     ApplicationEvent::ProcessSpawned { tag, handle } => match tag {
                         ProcessTag::Lsp(client_handle) => {
