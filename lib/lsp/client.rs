@@ -1341,25 +1341,19 @@ impl ClientManager {
         };
 
         client.protocol.read_from_server(bytes);
-        loop {
-            let result = match client.protocol.try_parse_read_server_event(&mut json) {
-                Some(ServerEvent::Closed) => {
+        while let Some(event) = client.protocol.try_parse_read_server_event(&mut json) {
+            let result = match event {
+                ServerEvent::Closed => {
                     editor.lsp.stop(handle);
                     Ok(())
                 }
-                Some(ServerEvent::ParseError) => client.on_parse_error(&mut json, JsonValue::Null),
-                Some(ServerEvent::Request(request)) => {
-                    client.on_request(editor, &mut json, request)
-                }
-                Some(ServerEvent::Notification(notification)) => {
+                ServerEvent::ParseError => client.on_parse_error(&mut json, JsonValue::Null),
+                ServerEvent::Request(request) => client.on_request(editor, &mut json, request),
+                ServerEvent::Notification(notification) => {
                     client.on_notification(editor, &mut json, notification)
                 }
-                Some(ServerEvent::Response(response)) => {
-                    client.on_response(editor, &mut json, response)
-                }
-                None => break,
+                ServerEvent::Response(response) => client.on_response(editor, &mut json, response),
             };
-
             client.flush_log_buffer(editor);
             result?;
         }
