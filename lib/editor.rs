@@ -339,9 +339,9 @@ impl Editor {
 
     pub fn on_client_event(
         &mut self,
-        platform: &mut Platform,
         clients: &mut ClientManager,
         client_handle: ClientHandle,
+        platform: &mut Platform,
         event: ClientEvent,
     ) -> EditorLoop {
         let result = match event {
@@ -436,7 +436,7 @@ impl Editor {
                 }
 
                 self.buffered_keys.0.clear();
-                self.trigger_event_handlers(clients);
+                self.trigger_event_handlers(clients, platform);
                 EditorLoop::Continue
             }
             ClientEvent::Resize(source, width, height) => {
@@ -475,9 +475,9 @@ impl Editor {
         result
     }
 
-    pub fn on_idle(&mut self, clients: &mut ClientManager) {
+    pub fn on_idle(&mut self, clients: &mut ClientManager, platform: &mut Platform) {
         self.events.enqueue(EditorEvent::Idle);
-        self.trigger_event_handlers(clients);
+        self.trigger_event_handlers(clients, platform);
     }
 
     fn parse_and_set_keys_from_register(&mut self, register_key: RegisterKey) {
@@ -502,17 +502,13 @@ impl Editor {
         }
     }
 
-    fn trigger_event_handlers(&mut self, clients: &mut ClientManager) {
+    fn trigger_event_handlers(&mut self, clients: &mut ClientManager, platform: &mut Platform) {
         self.events.flip();
         if let None = self.events.iter().next() {
             return;
         }
 
-        if let Err(error) = lsp::ClientManager::on_editor_events(self) {
-            self.output
-                .write(EditorOutputKind::Error)
-                .fmt(format_args!("{}", error));
-        }
+        lsp::ClientManager::on_editor_events(self, platform);
         self.handle_editor_events(clients);
     }
 
@@ -538,31 +534,5 @@ impl Editor {
                 _ => (),
             }
         }
-    }
-
-    pub fn on_lsp_process_spawned(
-        &mut self,
-        client_handle: lsp::ClientHandle,
-        process_handle: ProcessHandle,
-    ) {
-        if let Err(error) =
-            lsp::ClientManager::on_process_spawned(self, client_handle, process_handle)
-        {
-            self.output
-                .write(EditorOutputKind::Error)
-                .fmt(format_args!("{}", error));
-        }
-    }
-
-    pub fn on_lsp_process_stdout(&mut self, client_handle: lsp::ClientHandle, bytes: &[u8]) {
-        if let Err(error) = lsp::ClientManager::on_process_stdout(self, client_handle, bytes) {
-            self.output
-                .write(EditorOutputKind::Error)
-                .fmt(format_args!("{}", error));
-        }
-    }
-
-    pub fn on_lsp_process_exit(&mut self, client_handle: lsp::ClientHandle) {
-        lsp::ClientManager::on_process_exit(self, client_handle);
     }
 }

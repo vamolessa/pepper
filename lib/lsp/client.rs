@@ -464,12 +464,13 @@ impl Client {
     pub fn hover(
         &mut self,
         editor: &Editor,
+        platform: &mut Platform,
         json: &mut Json,
         buffer_handle: BufferHandle,
         position: BufferPosition,
-    ) -> io::Result<()> {
+    ) {
         if !self.server_capabilities.hoverProvider.0 {
-            return Ok(());
+            return;
         }
 
         if let Some(buffer_path) = editor.buffers.get(buffer_handle).and_then(|b| b.path()) {
@@ -481,20 +482,20 @@ impl Client {
             params.set("textDocument".into(), text_document.into(), json);
             params.set("position".into(), position.into(), json);
 
-            self.request(json, "textDocument/hover", params)?;
+            self.request(platform, json, "textDocument/hover", params);
         }
-        Ok(())
     }
 
     pub fn signature_help(
         &mut self,
         editor: &Editor,
+        platform: &mut Platform,
         json: &mut Json,
         buffer_handle: BufferHandle,
         position: BufferPosition,
-    ) -> io::Result<()> {
+    ) {
         if !self.server_capabilities.signatureHelpProvider.on {
-            return Ok(());
+            return;
         }
 
         if let Some(buffer_path) = editor.buffers.get(buffer_handle).and_then(|b| b.path()) {
@@ -506,9 +507,8 @@ impl Client {
             params.set("textDocument".into(), text_document.into(), json);
             params.set("position".into(), position.into(), json);
 
-            self.request(json, "textDocument/signatureHelp", params)?;
+            self.request(platform, json, "textDocument/signatureHelp", params);
         }
-        Ok(())
     }
 
     fn write_to_log_buffer<F>(&mut self, writer: F)
@@ -542,19 +542,22 @@ impl Client {
     fn on_request(
         &mut self,
         editor: &mut Editor,
+        platform: &mut Platform,
         json: &mut Json,
         request: ServerRequest,
-    ) -> io::Result<()> {
+    ) {
         macro_rules! deserialize {
             ($value:expr) => {
                 match FromJson::from_json($value, &json) {
                     Ok(value) => value,
                     Err(_) => {
-                        return self.respond(
+                        self.respond(
+                            platform,
                             json,
                             JsonValue::Null,
                             Err(ResponseError::parse_error()),
-                        )
+                        );
+                        return;
                     }
                 }
             };
@@ -563,13 +566,13 @@ impl Client {
         self.write_to_log_buffer(|buf| {
             use io::Write;
             let _ = write!(buf, "receive request\nid: ");
-            let _ = json.write(buf, &request.id);
+            json.write(buf, &request.id);
             let _ = write!(
                 buf,
                 "\nmethod: '{}'\nparams:\n",
                 request.method.as_str(json)
             );
-            let _ = json.write(buf, &request.params);
+            json.write(buf, &request.params);
         });
 
         match request.method.as_str(&json) {
@@ -604,11 +607,13 @@ impl Client {
                                 let mut glob = Glob::default();
                                 if let Err(_) = glob.compile(pattern.as_bytes()) {
                                     self.document_selectors.clear();
-                                    return self.respond(
+                                    self.respond(
+                                        platform,
                                         json,
                                         request.id,
                                         Err(ResponseError::parse_error()),
                                     );
+                                    return;
                                 }
                                 self.document_selectors.push(glob);
                             }
@@ -616,28 +621,36 @@ impl Client {
                         _ => (),
                     }
                 }
-                self.respond(json, request.id, Ok(JsonValue::Null))
+                self.respond(platform, json, request.id, Ok(JsonValue::Null));
             }
-            _ => self.respond(json, request.id, Err(ResponseError::method_not_found())),
+            _ => self.respond(
+                platform,
+                json,
+                request.id,
+                Err(ResponseError::method_not_found()),
+            ),
         }
     }
 
     fn on_notification(
         &mut self,
         editor: &mut Editor,
+        platform: &mut Platform,
         json: &mut Json,
         notification: ServerNotification,
-    ) -> io::Result<()> {
+    ) {
         macro_rules! deserialize {
             ($value:expr) => {
                 match FromJson::from_json($value, &json) {
                     Ok(value) => value,
                     Err(_) => {
-                        return self.respond(
+                        self.respond(
+                            platform,
                             json,
                             JsonValue::Null,
                             Err(ResponseError::parse_error()),
-                        )
+                        );
+                        return;
                     }
                 }
             };
@@ -650,7 +663,7 @@ impl Client {
                 "receive notification\nmethod: '{}'\nparams:\n",
                 notification.method.as_str(json)
             );
-            let _ = json.write(buf, &notification.params);
+            json.write(buf, &notification.params);
         });
 
         match notification.method.as_str(json) {
@@ -691,7 +704,7 @@ impl Client {
                 let uri = params.uri.as_str(json);
                 let path = match Uri::parse(uri) {
                     Uri::AbsolutePath(path) => path,
-                    _ => return Ok(()),
+                    _ => return,
                 };
 
                 let diagnostics = self.diagnostics.path_diagnostics_mut(editor, path);
@@ -730,26 +743,27 @@ impl Client {
             }
             _ => (),
         }
-
-        Ok(())
     }
 
     fn on_response(
         &mut self,
         editor: &mut Editor,
+        platform: &mut Platform,
         json: &mut Json,
         response: ServerResponse,
-    ) -> io::Result<()> {
+    ) {
         macro_rules! deserialize {
             ($value:expr) => {
                 match FromJson::from_json($value, json) {
                     Ok(value) => value,
                     Err(_) => {
-                        return self.respond(
+                        self.respond(
+                            platform,
                             json,
                             JsonValue::Null,
                             Err(ResponseError::parse_error()),
-                        )
+                        );
+                        return;
                     }
                 }
             };
@@ -757,7 +771,7 @@ impl Client {
 
         let method = match self.pending_requests.take(response.id) {
             Some(method) => method,
-            None => return Ok(()),
+            None => return,
         };
 
         self.write_to_log_buffer(|buf| {
@@ -770,7 +784,7 @@ impl Client {
             match &response.result {
                 Ok(result) => {
                     let _ = write!(buf, "result:\n");
-                    let _ = json.write(buf, result);
+                    json.write(buf, result);
                 }
                 Err(error) => {
                     let _ = write!(
@@ -779,7 +793,7 @@ impl Client {
                         error.code,
                         error.message.as_str(json)
                     );
-                    let _ = json.write(buf, &error.data);
+                    json.write(buf, &error.data);
                 }
             }
         });
@@ -788,7 +802,7 @@ impl Client {
             Ok(result) => result,
             Err(error) => {
                 helper::write_response_error(&mut editor.output, method, error, json);
-                return Ok(());
+                return;
             }
         };
 
@@ -796,10 +810,10 @@ impl Client {
             "initialize" => {
                 self.server_capabilities = deserialize!(result.get("capabilities", json));
                 self.initialized = true;
-                self.notify(json, "initialized", JsonObject::default())?;
+                self.notify(platform, json, "initialized", JsonObject::default());
 
                 for buffer in editor.buffers.iter() {
-                    helper::send_did_open(self, editor, json, buffer.handle())?;
+                    helper::send_did_open(self, platform, editor, json, buffer.handle());
                 }
             }
             "textDocument/hover" => {
@@ -842,34 +856,37 @@ impl Client {
             }
             _ => (),
         }
-
-        Ok(())
     }
 
-    fn on_parse_error(&mut self, json: &mut Json, request_id: JsonValue) -> io::Result<()> {
+    fn on_parse_error(&mut self, platform: &mut Platform, json: &mut Json, request_id: JsonValue) {
         self.write_to_log_buffer(|buf| {
             use io::Write;
             let _ = write!(buf, "send parse error\nrequest_id: ");
-            let _ = json.write(buf, &request_id);
+            json.write(buf, &request_id);
         });
-        self.respond(json, request_id, Err(ResponseError::parse_error()))
+        self.respond(
+            platform,
+            json,
+            request_id,
+            Err(ResponseError::parse_error()),
+        )
     }
 
-    fn on_editor_events(&mut self, editor: &Editor, json: &mut Json) -> io::Result<()> {
+    fn on_editor_events(&mut self, editor: &Editor, platform: &mut Platform, json: &mut Json) {
         if !self.initialized {
-            return Ok(());
+            return;
         }
 
         for event in editor.events.iter() {
             match event {
                 EditorEvent::Idle => {
-                    helper::send_pending_did_change(self, editor, json)?;
+                    helper::send_pending_did_change(self, platform, editor, json);
                 }
                 EditorEvent::BufferOpen { handle } => {
                     let handle = *handle;
                     self.versioned_buffers.dispose(handle);
                     self.diagnostics.on_load_buffer(editor, handle);
-                    helper::send_did_open(self, editor, json, handle)?;
+                    helper::send_did_open(self, platform, editor, json, handle);
                 }
                 EditorEvent::BufferInsertText {
                     handle,
@@ -886,8 +903,8 @@ impl Client {
                 EditorEvent::BufferSave { handle, .. } => {
                     let handle = *handle;
                     self.diagnostics.on_save_buffer(editor, handle);
-                    helper::send_pending_did_change(self, editor, json)?;
-                    helper::send_did_save(self, editor, json, handle)?;
+                    helper::send_pending_did_change(self, platform, editor, json);
+                    helper::send_did_save(self, platform, editor, json, handle);
                 }
                 EditorEvent::BufferClose { handle } => {
                     let handle = *handle;
@@ -896,44 +913,44 @@ impl Client {
                     }
                     self.versioned_buffers.dispose(handle);
                     self.diagnostics.on_close_buffer(handle);
-                    helper::send_did_close(self, editor, json, handle)?;
+                    helper::send_did_close(self, platform, editor, json, handle);
                 }
             }
         }
-        Ok(())
     }
 
     fn request(
         &mut self,
+        platform: &mut Platform,
         json: &mut Json,
         method: &'static str,
         params: JsonObject,
-    ) -> io::Result<()> {
+    ) {
         let params = params.into();
         self.write_to_log_buffer(|buf| {
             use io::Write;
             let _ = write!(buf, "send request\nmethod: '{}'\nparams:\n", method);
-            let _ = json.write(buf, &params);
+            json.write(buf, &params);
         });
-        let id = self.protocol.request(json, method, params)?;
+        let id = self.protocol.request(platform, json, method, params);
         self.pending_requests.add(id, method);
-        Ok(())
     }
 
     fn respond(
         &mut self,
+        platform: &mut Platform,
         json: &mut Json,
         request_id: JsonValue,
         result: Result<JsonValue, ResponseError>,
-    ) -> io::Result<()> {
+    ) {
         self.write_to_log_buffer(|buf| {
             use io::Write;
             let _ = write!(buf, "send response\nid: ");
-            let _ = json.write(buf, &request_id);
+            json.write(buf, &request_id);
             match &result {
                 Ok(result) => {
                     let _ = write!(buf, "\nresult:\n");
-                    let _ = json.write(buf, result);
+                    json.write(buf, result);
                 }
                 Err(error) => {
                     let _ = write!(
@@ -942,29 +959,30 @@ impl Client {
                         error.code,
                         error.message.as_str(json)
                     );
-                    let _ = json.write(buf, &error.data);
+                    json.write(buf, &error.data);
                 }
             }
         });
-        self.protocol.respond(json, request_id, result)
+        self.protocol.respond(platform, json, request_id, result);
     }
 
     fn notify(
         &mut self,
+        platform: &mut Platform,
         json: &mut Json,
         method: &'static str,
         params: JsonObject,
-    ) -> io::Result<()> {
+    ) {
         let params = params.into();
         self.write_to_log_buffer(|buf| {
             use io::Write;
             let _ = write!(buf, "send notification\nmethod: '{}'\nparams:\n", method);
-            let _ = json.write(buf, &params);
+            json.write(buf, &params);
         });
-        self.protocol.notify(json, method, params)
+        self.protocol.notify(platform, json, method, params);
     }
 
-    fn initialize(&mut self, json: &mut Json) -> io::Result<()> {
+    fn initialize(&mut self, platform: &mut Platform, json: &mut Json) {
         let mut params = JsonObject::default();
         params.set(
             "processId".into(),
@@ -986,7 +1004,7 @@ impl Client {
             json,
         );
 
-        self.request(json, "initialize", params)
+        self.request(platform, json, "initialize", params)
     }
 }
 
@@ -1056,24 +1074,25 @@ mod helper {
 
     pub fn send_did_open(
         client: &mut Client,
+        platform: &mut Platform,
         editor: &Editor,
         json: &mut Json,
         buffer_handle: BufferHandle,
-    ) -> io::Result<()> {
+    ) {
         if !client.server_capabilities.textDocumentSync.open_close {
-            return Ok(());
+            return;
         }
 
         let buffer = match editor.buffers.get(buffer_handle) {
             Some(buffer) => buffer,
-            None => return Ok(()),
+            None => return,
         };
         if !buffer.capabilities().can_save {
-            return Ok(());
+            return;
         }
         let buffer_path = match buffer.path() {
             Some(path) => path,
-            None => return Ok(()),
+            None => return,
         };
 
         let mut text_document = text_document_with_id(&editor.current_directory, buffer_path, json);
@@ -1086,16 +1105,17 @@ mod helper {
         let mut params = JsonObject::default();
         params.set("textDocument".into(), text_document.into(), json);
 
-        client.notify(json, "textDocument/didOpen", params.into())
+        client.notify(platform, json, "textDocument/didOpen", params.into());
     }
 
     pub fn send_pending_did_change(
         client: &mut Client,
+        platform: &mut Platform,
         editor: &Editor,
         json: &mut Json,
-    ) -> io::Result<()> {
+    ) {
         if let TextDocumentSyncKind::None = client.server_capabilities.textDocumentSync.change {
-            return Ok(());
+            return;
         }
 
         let mut versioned_buffers = std::mem::take(&mut client.versioned_buffers);
@@ -1151,33 +1171,32 @@ mod helper {
             params.set("contentChanges".into(), content_changes.into(), json);
 
             versioned_buffer.flush();
-            client.notify(json, "textDocument/didChange", params.into())?;
+            client.notify(platform, json, "textDocument/didChange", params.into());
         }
         std::mem::swap(&mut client.versioned_buffers, &mut versioned_buffers);
-
-        return Ok(());
     }
 
     pub fn send_did_save(
         client: &mut Client,
+        platform: &mut Platform,
         editor: &Editor,
         json: &mut Json,
         buffer_handle: BufferHandle,
-    ) -> io::Result<()> {
+    ) {
         if let TextDocumentSyncKind::None = client.server_capabilities.textDocumentSync.save {
-            return Ok(());
+            return;
         }
 
         let buffer = match editor.buffers.get(buffer_handle) {
             Some(buffer) => buffer,
-            None => return Ok(()),
+            None => return,
         };
         if !buffer.capabilities().can_save {
-            return Ok(());
+            return;
         }
         let buffer_path = match buffer.path() {
             Some(path) => path,
-            None => return Ok(()),
+            None => return,
         };
 
         let text_document = text_document_with_id(&editor.current_directory, buffer_path, json);
@@ -1189,36 +1208,37 @@ mod helper {
             params.set("text".into(), text.into(), json);
         }
 
-        client.notify(json, "textDocument/didSave", params.into())
+        client.notify(platform, json, "textDocument/didSave", params.into())
     }
 
     pub fn send_did_close(
         client: &mut Client,
+        platform: &mut Platform,
         editor: &Editor,
         json: &mut Json,
         buffer_handle: BufferHandle,
-    ) -> io::Result<()> {
+    ) {
         if !client.server_capabilities.textDocumentSync.open_close {
-            return Ok(());
+            return;
         }
 
         let buffer = match editor.buffers.get(buffer_handle) {
             Some(buffer) => buffer,
-            None => return Ok(()),
+            None => return,
         };
         if !buffer.capabilities().can_save {
-            return Ok(());
+            return;
         }
         let buffer_path = match buffer.path() {
             Some(path) => path,
-            None => return Ok(()),
+            None => return,
         };
 
         let text_document = text_document_with_id(&editor.current_directory, buffer_path, json);
         let mut params = JsonObject::default();
         params.set("textDocument".into(), text_document.into(), json);
 
-        client.notify(json, "textDocument/didClose", params.into())
+        client.notify(platform, json, "textDocument/didClose", params.into());
     }
 }
 
@@ -1260,7 +1280,7 @@ impl ClientManager {
         platform: &mut Platform,
         mut command: Command,
         root: PathBuf,
-    ) -> io::Result<ClientHandle> {
+    ) -> ClientHandle {
         let handle = self.find_free_slot();
         command
             .stdin(Stdio::piped())
@@ -1276,21 +1296,21 @@ impl ClientManager {
             client: Client::new(root),
             json: Json::new(),
         });
-        Ok(handle)
+        handle
     }
 
-    pub fn stop(&mut self, handle: ClientHandle) {
+    pub fn stop(&mut self, platform: &mut Platform, handle: ClientHandle) {
         if let Some(entry) = &mut self.entries[handle.0] {
             let _ = entry
                 .client
-                .notify(&mut entry.json, "exit", JsonObject::default());
+                .notify(platform, &mut entry.json, "exit", JsonObject::default());
             self.entries[handle.0] = None;
         }
     }
 
-    pub fn stop_all(&mut self) {
+    pub fn stop_all(&mut self, platform: &mut Platform) {
         for i in 0..self.entries.len() {
-            self.stop(ClientHandle(i));
+            self.stop(platform, ClientHandle(i));
         }
     }
 
@@ -1320,62 +1340,64 @@ impl ClientManager {
 
     pub fn on_process_spawned(
         editor: &mut Editor,
+        platform: &mut Platform,
         handle: ClientHandle,
         process_handle: ProcessHandle,
-    ) -> io::Result<()> {
+    ) {
         if let Some(mut entry) = editor.lsp.entries[handle.0].take() {
             entry.client.protocol.set_process_handle(process_handle);
-            entry.client.initialize(&mut entry.json)?;
+            entry.client.initialize(platform, &mut entry.json);
         }
-        Ok(())
     }
 
     pub fn on_process_stdout(
         editor: &mut Editor,
+        platform: &mut Platform,
         handle: ClientHandle,
         bytes: &[u8],
-    ) -> io::Result<()> {
+    ) {
         let (mut client, mut json) = match editor.lsp.entries[handle.0].take() {
             Some(entry) => (entry.client, entry.json),
-            None => return Ok(()),
+            None => return,
         };
 
         let mut events = client.protocol.parse_events(bytes);
         while let Some(event) = events.next(&mut client.protocol, &mut json) {
-            let result = match event {
-                ServerEvent::Closed => {
-                    editor.lsp.stop(handle);
-                    Ok(())
+            match event {
+                ServerEvent::Closed => editor.lsp.stop(platform, handle),
+                ServerEvent::ParseError => {
+                    client.on_parse_error(platform, &mut json, JsonValue::Null)
                 }
-                ServerEvent::ParseError => client.on_parse_error(&mut json, JsonValue::Null),
-                ServerEvent::Request(request) => client.on_request(editor, &mut json, request),
+                ServerEvent::Request(request) => {
+                    client.on_request(editor, platform, &mut json, request)
+                }
                 ServerEvent::Notification(notification) => {
-                    client.on_notification(editor, &mut json, notification)
+                    client.on_notification(editor, platform, &mut json, notification)
                 }
-                ServerEvent::Response(response) => client.on_response(editor, &mut json, response),
-            };
+                ServerEvent::Response(response) => {
+                    client.on_response(editor, platform, &mut json, response)
+                }
+            }
             client.flush_log_buffer(editor);
-            result?;
         }
         events.finish(&mut client.protocol);
 
         editor.lsp.entries[handle.0] = Some(ClientManagerEntry { client, json });
-        Ok(())
     }
 
     pub fn on_process_exit(editor: &mut Editor, handle: ClientHandle) {
         editor.lsp.entries[handle.0] = None;
     }
 
-    pub fn on_editor_events(editor: &mut Editor) -> io::Result<()> {
+    pub fn on_editor_events(editor: &mut Editor, platform: &mut Platform) {
         for i in 0..editor.lsp.entries.len() {
             if let Some(mut entry) = editor.lsp.entries[i].take() {
-                let result = entry.client.on_editor_events(editor, &mut entry.json);
+                entry
+                    .client
+                    .on_editor_events(editor, platform, &mut entry.json);
                 editor.lsp.entries[i] = Some(entry);
-                result?;
             }
         }
-        Ok(())
     }
 
     fn find_free_slot(&mut self) -> ClientHandle {

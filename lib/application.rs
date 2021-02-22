@@ -133,7 +133,7 @@ impl ServerApplication {
             let mut event = event_receiver.recv()?;
             loop {
                 match event {
-                    ApplicationEvent::Idle => editor.on_idle(&mut clients),
+                    ApplicationEvent::Idle => editor.on_idle(&mut clients, platform),
                     ApplicationEvent::Redraw => (),
                     ApplicationEvent::ConnectionOpen { handle } => {
                         clients.on_client_joined(handle);
@@ -148,7 +148,7 @@ impl ServerApplication {
                         let mut events =
                             client_event_receiver.receive_events(handle, buf.as_bytes());
                         while let Some(event) = events.next(&client_event_receiver) {
-                            match editor.on_client_event(platform, &mut clients, handle, event) {
+                            match editor.on_client_event(&mut clients, handle, platform, event) {
                                 EditorLoop::Continue => (),
                                 EditorLoop::Quit => {
                                     platform
@@ -161,9 +161,12 @@ impl ServerApplication {
                         events.finish(&mut client_event_receiver);
                     }
                     ApplicationEvent::ProcessSpawned { tag, handle } => match tag {
-                        ProcessTag::Lsp(client_handle) => {
-                            editor.on_lsp_process_spawned(client_handle, handle)
-                        }
+                        ProcessTag::Lsp(client_handle) => lsp::ClientManager::on_process_spawned(
+                            &mut editor,
+                            platform,
+                            client_handle,
+                            handle,
+                        ),
                         ProcessTag::Command(_) => {
                             eprintln!("spawned process");
                             process_output.clear();
@@ -173,7 +176,12 @@ impl ServerApplication {
                         let bytes = buf.as_bytes();
                         match tag {
                             ProcessTag::Lsp(client_handle) => {
-                                editor.on_lsp_process_stdout(client_handle, bytes)
+                                lsp::ClientManager::on_process_stdout(
+                                    &mut editor,
+                                    platform,
+                                    client_handle,
+                                    bytes,
+                                )
                             }
                             ProcessTag::Command(_) => {
                                 eprintln!("received process bytes {}", bytes.len());
@@ -189,7 +197,9 @@ impl ServerApplication {
                         }
                     }
                     ApplicationEvent::ProcessExit { tag, success } => match tag {
-                        ProcessTag::Lsp(client_handle) => editor.on_lsp_process_exit(client_handle),
+                        ProcessTag::Lsp(client_handle) => {
+                            lsp::ClientManager::on_process_exit(&mut editor, client_handle)
+                        }
                         ProcessTag::Command(_) => {
                             eprintln!("process exit");
                             let message = std::str::from_utf8(&process_output).unwrap();

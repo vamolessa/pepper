@@ -1,61 +1,17 @@
 use std::{
-    fmt,
-    io::{self, Cursor, Read, Write},
+    fmt, io,
     ops::Range,
     path::{Component, Path, Prefix},
-    process::{Child, ChildStdin, Command, Stdio},
-    sync::{Arc, Mutex, MutexGuard},
-    thread,
 };
 
 use crate::{
     json::{
         FromJson, Json, JsonConvertError, JsonInteger, JsonKey, JsonObject, JsonString, JsonValue,
     },
-    lsp::client::ClientHandle,
-    platform::{Platform, ProcessHandle},
+    platform::{Platform, PlatformRequest, ProcessHandle},
 };
 
 pub const BUFFER_LEN: usize = 4 * 1024;
-
-pub struct SharedJsonGuard {
-    json: Json,
-    pending_consume_count: usize,
-}
-impl SharedJsonGuard {
-    pub fn get(&mut self) -> &mut Json {
-        &mut self.json
-    }
-}
-#[derive(Clone)]
-pub struct SharedJson(Arc<Mutex<SharedJsonGuard>>);
-impl SharedJson {
-    pub fn new() -> Self {
-        Self(Arc::new(Mutex::new(SharedJsonGuard {
-            json: Json::new(),
-            pending_consume_count: 0,
-        })))
-    }
-
-    fn parse_lock(&self) -> MutexGuard<SharedJsonGuard> {
-        let mut json = self.0.lock().unwrap();
-        if json.pending_consume_count == 0 {
-            json.json.clear();
-        }
-        json.pending_consume_count += 1;
-        json
-    }
-
-    pub fn read_lock(&mut self) -> MutexGuard<SharedJsonGuard> {
-        let mut json = self.0.lock().unwrap();
-        json.pending_consume_count -= 1;
-        json
-    }
-
-    pub fn write_lock(&mut self) -> MutexGuard<SharedJsonGuard> {
-        self.0.lock().unwrap()
-    }
-}
 
 pub enum Uri<'a> {
     None,
@@ -224,73 +180,6 @@ pub struct ServerResponse {
     pub result: Result<JsonValue, ResponseError>,
 }
 
-/*
-pub struct ServerConnection {
-    process_index: usize,
-}
-
-impl ServerConnection {
-    pub fn spawn(platform: &mut Platform, mut command: Command) -> io::Result<Self> {
-        //let process_index = platform.spawn_process(command, 4 * 1024, 0)?;
-        Ok(Self { process_index: 0 })
-
-        let stdin = process
-            .stdin
-            .take()
-            .ok_or(io::Error::from(io::ErrorKind::WriteZero))?;
-        let stdout = process
-            .stdout
-            .take()
-            .ok_or(io::Error::from(io::ErrorKind::UnexpectedEof))?;
-
-        thread::spawn(move || {
-            let mut stdout = stdout;
-            let mut buf = ReadBuf::new();
-
-            loop {
-                let content_bytes = match buf.read_content_from(&mut stdout) {
-                    [] => break,
-                    bytes => bytes,
-                };
-
-                let mut reader = Cursor::new(content_bytes);
-                let mut json = json.parse_lock();
-                let json = json.get();
-                let event = match json.read(&mut reader) {
-                    Ok(body) => parse_server_event(&json, body),
-                    _ => ServerEvent::ParseError,
-                };
-                if let Err(_) = event_sender.send(LocalEvent::Lsp(handle, event)) {
-                    break;
-                }
-            }
-            let _ = event_sender.send(LocalEvent::Lsp(handle, ServerEvent::Closed));
-        });
-    }
-
-    pub fn write(&mut self, platform: &mut Platform, buf: &[u8]) -> io::Result<()> {
-        //platform.write_to_process(self.process_index, buf);
-        Ok(())
-    }
-}
-
-impl Write for ServerConnection {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.stdin.write(buf)
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        self.stdin.flush()
-    }
-}
-
-impl Drop for ServerConnection {
-    fn drop(&mut self) {
-        let _ = self.process.kill();
-    }
-}
-*/
-
 #[derive(Default, Clone, Copy, PartialEq, Eq)]
 pub struct RequestId(pub usize);
 
@@ -435,7 +324,7 @@ impl ServerEventIter {
 
         let range = try_get_content_range(slice)?;
         self.read_len += range.end;
-        let mut reader = Cursor::new(&slice[range]);
+        let mut reader = io::Cursor::new(&slice[range]);
         let event = match json.read(&mut reader) {
             Ok(body) => parse_server_event(json, body),
             _ => ServerEvent::ParseError,
@@ -452,9 +341,8 @@ impl ServerEventIter {
 
 pub struct Protocol {
     process_handle: Option<ProcessHandle>,
-    budy_buf: Vec<u8>,
+    body_buf: Vec<u8>,
     read_buf: Vec<u8>,
-    write_buf: Vec<u8>,
     next_request_id: usize,
 }
 
@@ -462,9 +350,8 @@ impl Protocol {
     pub fn new() -> Self {
         Self {
             process_handle: None,
-            budy_buf: Vec::new(),
+            body_buf: Vec::new(),
             read_buf: Vec::new(),
-            write_buf: Vec::new(),
             next_request_id: 1,
         }
     }
@@ -480,10 +367,11 @@ impl Protocol {
 
     pub fn request(
         &mut self,
+        platform: &mut Platform,
         json: &mut Json,
         method: &'static str,
         params: JsonValue,
-    ) -> io::Result<RequestId> {
+    ) -> RequestId {
         let id = self.next_request_id;
 
         let mut body = JsonObject::default();
@@ -493,31 +381,33 @@ impl Protocol {
         body.set("params".into(), params, json);
 
         self.next_request_id += 1;
-        self.send_body(json, body.into())?;
+        self.send_body(platform, json, body.into());
 
-        Ok(RequestId(id))
+        RequestId(id)
     }
 
     pub fn notify(
         &mut self,
+        platform: &mut Platform,
         json: &mut Json,
         method: &'static str,
         params: JsonValue,
-    ) -> io::Result<()> {
+    ) {
         let mut body = JsonObject::default();
         body.set("jsonrpc".into(), "2.0".into(), json);
         body.set("method".into(), method.into(), json);
         body.set("params".into(), params, json);
 
-        self.send_body(json, body.into())
+        self.send_body(platform, json, body.into());
     }
 
     pub fn respond(
         &mut self,
+        platform: &mut Platform,
         json: &mut Json,
         request_id: JsonValue,
         result: Result<JsonValue, ResponseError>,
-    ) -> io::Result<()> {
+    ) {
         let mut body = JsonObject::default();
         body.set("id".into(), request_id, json);
 
@@ -533,27 +423,34 @@ impl Protocol {
             }
         }
 
-        self.send_body(json, body.into())
+        self.send_body(platform, json, body.into());
     }
 
     fn send_body(
         &mut self,
-        //platform: &mut dyn ServerPlatform,
+        platform: &mut Platform,
         json: &mut Json,
         body: JsonValue,
-    ) -> io::Result<()> {
-        json.write(&mut self.budy_buf, &body)?;
+    ) {
+        use io::Write;
 
-        self.write_buf.clear();
-        write!(
-            self.write_buf,
+        let mut buf = platform.buf_pool.acquire();
+        let write_buf = buf.write();
+        write_buf.clear();
+
+        json.write(&mut self.body_buf, &body);
+
+        let _ = write!(
+            write_buf,
             "Content-Length: {}\r\n\r\n",
-            self.budy_buf.len()
-        )?;
-        self.write_buf.append(&mut self.budy_buf);
+            self.body_buf.len()
+        );
+        write_buf.append(&mut self.body_buf);
 
-        //self.server_connection.write(platform, &self.write_buffer)?;
-        Ok(())
+        if let Some(handle) = self.process_handle {
+            let buf = buf.share();
+            platform.enqueue_request(PlatformRequest::WriteToProcess { handle, buf });
+        }
     }
 }
 
