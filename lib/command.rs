@@ -14,6 +14,7 @@ pub const MAX_COMMAND_ARGUMENT_VALUE_COUNT: usize = 16;
 pub const MAX_COMMAND_ARGUMENT_FLAG_COUNT: usize = 16;
 pub const HISTORY_CAPACITY: usize = 10;
 
+// TODO: create a wrapper that is Display (would also embed the original command &str)
 pub enum CommandParseError<'a> {
     InvalidCommandName(&'a str),
     CommandNotFound(&'a str),
@@ -203,29 +204,8 @@ impl CommandManager {
         self.history.push_back(s);
     }
 
-    pub fn eval_from_read_line(
-        editor: &mut Editor,
-        platform: &mut Platform,
-        clients: &mut ClientManager,
-        client_handle: Option<ClientHandle>,
-    ) -> Option<CommandOperation> {
-        // TODO: try to remove this memmory allocation
-        let command = editor.read_line.input().to_string();
-        match editor.commands.parse(&command) {
-            Ok((command, args)) => command(CommandContext {
-                editor,
-                platform,
-                clients,
-                client_handle,
-                args: &args,
-            }),
-            Err(error) => {
-                Self::format_parse_error(&mut editor.output, error, &command);
-                None
-            }
-        }
-    }
-
+    // TODO: return Result<Option<CommandOperation>, CommandParseError> at first
+    // then we change it to Result<CommandOperation, CommandError>
     pub fn eval(
         editor: &mut Editor,
         platform: &mut Platform,
@@ -304,7 +284,7 @@ impl CommandManager {
     }
 
     fn parse<'a>(
-        &mut self,
+        &self,
         text: &'a str,
     ) -> Result<(CommandFn, CommandArgs<'a>), CommandParseError<'a>> {
         enum TokenKind {
@@ -454,8 +434,10 @@ impl CommandManager {
                         Some((_, s)) => return Err(CommandParseError::InvalidFlagValue(s)),
                         None => return Err(CommandParseError::InvalidFlagValue(equals_token)),
                     },
-                    Some(token) => peeked_token = Some(token),
-                    None => add_flag(&mut args, flag_token, "")?,
+                    token => {
+                        add_flag(&mut args, flag_token, "")?;
+                        peeked_token = token;
+                    }
                 },
                 (TokenKind::Equals, s) | (TokenKind::Bang, s) => {
                     return Err(CommandParseError::InvalidArgument(s))
@@ -472,7 +454,7 @@ impl CommandManager {
 
 #[derive(Default)]
 pub struct CommandArgs<'a> {
-    bang: bool,
+    pub bang: bool,
     values: [&'a str; MAX_COMMAND_ARGUMENT_VALUE_COUNT],
     values_len: usize,
     flags: [(&'a str, &'a str); MAX_COMMAND_ARGUMENT_FLAG_COUNT],
@@ -488,7 +470,6 @@ impl<'a> CommandArgs<'a> {
     }
 }
 
-/*
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -497,16 +478,16 @@ mod tests {
         let builtin_commands = &[BuiltinCommand {
             names: &["command-name", "c"],
             help: "",
-            accepts_bang: false,
-            values_completion_source: None,
-            switches: &[],
-            options: &[],
+            accepts_bang: true,
+            required_values: &[],
+            optional_values: &[],
+            extra_values: None,
+            flags: &[],
             func: |_| None,
         }];
 
         CommandManager {
             builtin_commands,
-            parsed_args: Some(CommandArgs::default()),
             history: VecDeque::default(),
         }
     }
@@ -517,12 +498,12 @@ mod tests {
 
         macro_rules! assert_command {
             ($text:expr => bang = $bang:expr) => {
-                let (func, bang) = match commands.parse($text) {
+                let (func, args) = match commands.parse($text) {
                     Ok(result) => result,
                     Err(_) => panic!("command parse error"),
                 };
                 assert_eq!(commands.builtin_commands[0].func as usize, func as usize);
-                assert_eq!($bang, bang);
+                assert_eq!($bang, args.bang);
             };
         }
 
@@ -534,70 +515,62 @@ mod tests {
 
     #[test]
     fn arg_parsing() {
-        fn parse_args<'a>(commands: &'a mut CommandManager, params: &str) -> &'a CommandArgs {
-            let mut command = String::new();
-            command.push_str("command-name ");
-            command.push_str(params);
-
-            if let Err(_) = commands.parse(&command) {
-                panic!("command parse error");
+        fn parse_args<'a>(commands: &CommandManager, command: &'a str) -> CommandArgs<'a> {
+            match commands.parse(command) {
+                Ok((_, args)) => args,
+                Err(_) => panic!("command '{}' parse error", command),
             }
-            commands.parsed_args.as_ref().unwrap()
         }
 
-        let mut commands = create_commands();
+        let commands = create_commands();
 
-        let args = parse_args(&mut commands, "  aaa  bbb  ccc  ");
+        let args = parse_args(&commands, "c  aaa  bbb  ccc  ");
         assert_eq!(3, args.values().len());
-        assert_eq!(0, args.switches().len());
-        assert_eq!(0, args.options().len());
+        assert_eq!(0, args.flags().len());
 
-        assert_eq!("aaa", args.values()[0].as_str(&args));
-        assert_eq!("bbb", args.values()[1].as_str(&args));
-        assert_eq!("ccc", args.values()[2].as_str(&args));
+        assert_eq!("aaa", args.values()[0]);
+        assert_eq!("bbb", args.values()[1]);
+        assert_eq!("ccc", args.values()[2]);
 
-        let args = parse_args(&mut commands, "  'aaa'  \"bbb\"  ccc  ");
+        let args = parse_args(&commands, "c  'aaa'  \"bbb\"  ccc  ");
         assert_eq!(3, args.values().len());
-        assert_eq!(0, args.switches().len());
-        assert_eq!(0, args.options().len());
+        assert_eq!(0, args.flags().len());
 
-        assert_eq!("aaa", args.values()[0].as_str(&args));
-        assert_eq!("bbb", args.values()[1].as_str(&args));
-        assert_eq!("ccc", args.values()[2].as_str(&args));
+        assert_eq!("aaa", args.values()[0]);
+        assert_eq!("bbb", args.values()[1]);
+        assert_eq!("ccc", args.values()[2]);
 
-        let args = parse_args(&mut commands, "  'aaa'\"bbb\"\"ccc\"ddd  ");
+        let args = parse_args(&commands, "c  'aaa'\"bbb\"\"ccc\"ddd  ");
         assert_eq!(4, args.values().len());
-        assert_eq!(0, args.switches().len());
-        assert_eq!(0, args.options().len());
+        assert_eq!(0, args.flags().len());
 
-        assert_eq!("aaa", args.values()[0].as_str(&args));
-        assert_eq!("bbb", args.values()[1].as_str(&args));
-        assert_eq!("ccc", args.values()[2].as_str(&args));
-        assert_eq!("ddd", args.values()[3].as_str(&args));
+        assert_eq!("aaa", args.values()[0]);
+        assert_eq!("bbb", args.values()[1]);
+        assert_eq!("ccc", args.values()[2]);
+        assert_eq!("ddd", args.values()[3]);
 
         let args = parse_args(
-            &mut commands,
-            "\\\n-switch'value'\\\n-option=\"option value!\"\\\n",
+            &commands,
+            "c \\\n-switch'value'\\\n-option=\"option value!\"\\\n",
         );
 
         assert_eq!(1, args.values().len());
-        assert_eq!(1, args.switches().len());
-        assert_eq!(1, args.options().len());
+        assert_eq!(2, args.flags().len());
 
-        assert_eq!("value", args.values()[0].as_str(&args));
-        assert_eq!("switch", args.switches()[0].as_str(&args));
-        assert_eq!("option", args.options()[0].0.as_str(&args));
-        assert_eq!("option value!", args.options()[0].1.as_str(&args));
+        assert_eq!("value", args.values()[0]);
+        assert_eq!("switch", args.flags()[0].0);
+        assert_eq!("", args.flags()[0].1);
+        assert_eq!("option", args.flags()[1].0);
+        assert_eq!("option value!", args.flags()[1].1);
     }
 
     #[test]
     fn command_parsing_fail() {
-        let mut commands = create_commands();
+        let commands = create_commands();
 
         macro_rules! assert_fail {
             ($command:expr, $error_pattern:pat => $value:ident == $expect:expr) => {
-                let result = commands.parse($command);
-                match result {
+                match commands.parse($command) {
                     Ok(_) => panic!("command parsed successfully"),
                     Err($error_pattern) => assert_eq!($expect, $value),
                     Err(_) => panic!("other error occurred"),
@@ -605,16 +578,24 @@ mod tests {
             };
         }
 
-        assert_fail!("", CommandParseError::InvalidCommandName(i) => i == 0);
-        assert_fail!("   ", CommandParseError::InvalidCommandName(i) => i == 3);
-        assert_fail!(" !", CommandParseError::InvalidCommandName(i) => i == 1);
-        assert_fail!("!  'aa'", CommandParseError::InvalidCommandName(i) => i == 0);
-        assert_fail!("c -o=", CommandParseError::InvalidOptionValue(i) => i == 4);
-        assert_fail!("  a \"aa\"", CommandParseError::CommandNotFound(i) => i == 2);
+        assert_fail!("", CommandParseError::InvalidCommandName(s) => s == "");
+        assert_fail!("   ", CommandParseError::InvalidCommandName(s) => s == "");
+        assert_fail!(" !", CommandParseError::InvalidCommandName(s) => s == "!");
+        assert_fail!("!  'aa'", CommandParseError::InvalidCommandName(s) => s == "!");
+        assert_fail!("c -o=", CommandParseError::InvalidFlagValue(s) => s == "=");
+        assert_fail!("  a \"aa\"", CommandParseError::CommandNotFound(s) => s == "a");
 
-        assert_fail!("c! 'abc", CommandParseError::UnterminatedArgument(i) => i == 3);
-        assert_fail!("c! '", CommandParseError::UnterminatedArgument(i) => i == 3);
-        assert_fail!("c! \"'", CommandParseError::UnterminatedArgument(i) => i == 3);
+        assert_fail!("c! 'abc", CommandParseError::UnterminatedArgument(s) => s == "abc");
+        assert_fail!("c! '", CommandParseError::UnterminatedArgument(s) => s == "");
+        assert_fail!("c! \"'", CommandParseError::UnterminatedArgument(s) => s == "'");
+
+        let mut too_many_values_command = String::new();
+        too_many_values_command.push('c');
+        for _ in 0..MAX_COMMAND_ARGUMENT_VALUE_COUNT {
+            too_many_values_command.push_str(" a");
+        }
+        too_many_values_command.push_str(" b");
+        assert_fail!(&too_many_values_command, CommandParseError::TooManyValues(s) => s == "b");
     }
 
     #[test]
@@ -652,4 +633,3 @@ mod tests {
         assert_eq!(None, commands.next());
     }
 }
-*/

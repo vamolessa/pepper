@@ -1,6 +1,6 @@
 use crate::{
     command::{CommandManager, CommandOperation},
-    editor::{KeysIterator, ReadLinePoll},
+    editor::{EditorOutputKind, KeysIterator, ReadLinePoll},
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     platform::Key,
 };
@@ -64,11 +64,27 @@ impl ModeState for State {
                     ctx.editor.commands.add_to_history(input);
                 }
 
-                let op = CommandManager::eval_from_read_line(
+                let mut command_buf = [0; 256];
+                if input.len() > command_buf.len() {
+                    ctx.editor
+                        .output
+                        .write(EditorOutputKind::Error)
+                        .fmt(format_args!(
+                            "command is too long. max is {} bytes. got {}",
+                            command_buf.len(),
+                            input.len()
+                        ));
+                    return None;
+                }
+                command_buf[..input.len()].copy_from_slice(input.as_bytes());
+                let command = unsafe { std::str::from_utf8_unchecked(&command_buf[..input.len()]) };
+
+                let op = CommandManager::eval(
                     ctx.editor,
                     ctx.platform,
                     ctx.clients,
                     Some(ctx.client_handle),
+                    command,
                 );
 
                 if ctx.editor.mode.kind() == ModeKind::Command {
