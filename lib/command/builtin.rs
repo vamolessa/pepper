@@ -57,8 +57,8 @@ macro_rules! expect_no_bang {
 
 macro_rules! parse_values {
     ($ctx:expr $(, $name:ident)*) => {
-        let mut values = $ctx.args.values().iter();
-        $(let $name = values.next().map(|v| v.as_str($ctx.args));)*
+        let mut values = $ctx.editor.commands.args().values().iter();
+        $(let $name = values.next().map(|v| v.as_str($ctx.editor.commands.args()));)*
             if values.next().is_some() {
                 $ctx.editor.output.write(EditorOutputKind::Error).str("too many values passed to command");
                 return None;
@@ -85,8 +85,8 @@ macro_rules! require_value {
 macro_rules! parse_switches {
     ($ctx:expr $(, $name:ident)*) => {
         $(let mut $name = false;)*
-            for switch in $ctx.args.switches() {
-                let switch = switch.as_str($ctx.args);
+            for switch in $ctx.editor.commands.args().switches() {
+                let switch = switch.as_str($ctx.editor.commands.args());
                 match switch {
                     $(stringify!($name) => $name = true,)*
                         _ => {
@@ -103,10 +103,10 @@ macro_rules! parse_switches {
 macro_rules! parse_options {
     ($ctx:expr $(, $name:ident)*) => {
         $(let mut $name = None;)*
-            for (key, value) in $ctx.args.options() {
-                let key = key.as_str($ctx.args);
+            for (key, value) in $ctx.editor.commands.args().options() {
+                let key = key.as_str($ctx.editor.commands.args());
                 match key {
-                    $(stringify!($name) => $name = Some(value.as_str($ctx.args)),)*
+                    $(stringify!($name) => $name = Some(value.as_str($ctx.editor.commands.args())),)*
                         _ => {
                             drop(value);
                             $ctx.editor.output.write(EditorOutputKind::Error).fmt(format_args!(
@@ -116,6 +116,27 @@ macro_rules! parse_options {
                         }
                 }
             }
+    }
+}
+
+fn parse_arg2<T>(ctx: &mut CommandContext, name: &'static str, value: &str) -> Option<T>
+where
+    T: 'static + std::str::FromStr,
+{
+    match value.parse() {
+        Ok(value) => Some(value),
+        Err(_) => {
+            ctx.editor
+                .output
+                .write(EditorOutputKind::Error)
+                .fmt(format_args!(
+                    "could not convert argument '{}' value '{}' to {}",
+                    name,
+                    value,
+                    std::any::type_name::<T>()
+                ));
+            None
+        }
     }
 }
 
@@ -146,8 +167,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["quit", "q"],
         help: "quits this client. append a '!' to force quit",
-        completion_source: CompletionSource::None,
-        flags: &[],
+        values_completion_source: None,
+        switches: &[],
+        options: &[],
         func: |ctx| {
             parse_values!(ctx);
             parse_switches!(ctx);
@@ -166,8 +188,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["quit-all", "qa"],
         help: "quits all clients. append a '!' to force quit all",
-        completion_source: CompletionSource::None,
-        flags: &[],
+        values_completion_source: None,
+        switches: &[],
+        options: &[],
         func: |ctx| {
             parse_values!(ctx);
             parse_switches!(ctx);
@@ -186,31 +209,36 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["print"],
         help: "prints a message to the status bar",
-        completion_source: CompletionSource::None,
-        flags: &[],
+        values_completion_source: None,
+        switches: &[],
+        options: &[],
         func: |ctx| {
             expect_no_bang!(ctx);
             parse_switches!(ctx);
             parse_options!(ctx);
             let mut w = ctx.editor.output.write(EditorOutputKind::Info);
-            for arg in ctx.args.values() {
-                w.str(arg.as_str(ctx.args));
+            let args = ctx.editor.commands.args();
+            for arg in args.values() {
+                w.str(arg.as_str(args));
                 w.str(" ");
             }
             None
         },
     },
+    /*
     BuiltinCommand {
         names: &["source"],
         help: "load a source file and execute its commands",
-        completion_source: CompletionSource::None,
-        flags: &[],
+        values_completion_source: None,
+        switches: &[],
+        options: &[],
         func: |ctx| {
             expect_no_bang!(ctx);
             parse_switches!(ctx);
             parse_options!(ctx);
-            for path in ctx.args.values() {
-                let path = path.as_str(ctx.args);
+            let args = ctx.editor.commands.args();
+            for path in args.values() {
+                let path = path.as_str(args);
                 if let Some(CommandOperation::Quit) | Some(CommandOperation::QuitAll) =
                     ctx.editor.load_config(ctx.platform, ctx.clients, path)
                 {
@@ -220,11 +248,13 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             None
         },
     },
+    */
     BuiltinCommand {
         names: &["open", "o"],
         help: "open a buffer for editting",
-        completion_source: CompletionSource::None,
-        flags: &[],
+        values_completion_source: None,
+        switches: &[],
+        options: &[],
         func: |ctx| {
             expect_no_bang!(ctx);
             parse_switches!(ctx);
@@ -239,9 +269,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
 
             let mut had_error = false;
             let mut w = ctx.editor.output.write(EditorOutputKind::Info);
+            let args = ctx.editor.commands.args();
 
-            for path in ctx.args.values() {
-                let mut path = path.as_str(ctx.args);
+            for path in args.values() {
+                let mut path = path.as_str(args);
 
                 let mut line_index = None;
                 if let Some(separator_index) = path.rfind(':') {
@@ -287,8 +318,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["save", "s"],
         help: "save buffer",
-        completion_source: CompletionSource::None,
-        flags: &[],
+        values_completion_source: None,
+        switches: &[],
+        options: &[],
         func: |mut ctx| {
             expect_no_bang!(ctx);
             parse_values!(ctx, path);
@@ -303,6 +335,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             let buffer = ctx.editor.buffers.get_mut(handle)?;
 
             let path = path.map(Path::new);
+            /*
             if let Err(error) = buffer.save_to_file(path, &mut ctx.editor.events) {
                 ctx.editor
                     .output
@@ -316,6 +349,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 .output
                 .write(EditorOutputKind::Info)
                 .fmt(format_args!("saved to '{:?}'", path));
+            */
 
             None
         },
@@ -323,8 +357,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["save-all", "sa"],
         help: "save all buffers",
-        completion_source: CompletionSource::None,
-        flags: &[],
+        values_completion_source: None,
+        switches: &[],
+        options: &[],
         func: |ctx| {
             expect_no_bang!(ctx);
             parse_values!(ctx);
@@ -358,8 +393,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["reload", "r"],
         help: "reload buffer from file",
-        completion_source: CompletionSource::None,
-        flags: &[],
+        values_completion_source: None,
+        switches: &[],
+        options: &[],
         func: |mut ctx| {
             parse_values!(ctx);
             parse_switches!(ctx);
@@ -400,8 +436,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["reload-all", "ra"],
         help: "reload all buffers from file",
-        completion_source: CompletionSource::None,
-        flags: &[],
+        values_completion_source: None,
+        switches: &[],
+        options: &[],
         func: |ctx| {
             parse_values!(ctx);
             parse_switches!(ctx);
@@ -446,8 +483,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["close", "c"],
         help: "close buffer",
-        completion_source: CompletionSource::None,
-        flags: &[],
+        values_completion_source: None,
+        switches: &[],
+        options: &[],
         func: |mut ctx| {
             parse_values!(ctx);
             parse_switches!(ctx);
@@ -496,8 +534,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["close-all", "ca"],
         help: "close all buffers",
-        completion_source: CompletionSource::None,
-        flags: &[],
+        values_completion_source: None,
+        switches: &[],
+        options: &[],
         func: |ctx| {
             parse_values!(ctx);
             parse_switches!(ctx);
@@ -529,11 +568,13 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             None
         },
     },
+    /*
     BuiltinCommand {
         names: &["config"],
         help: "change an editor config",
-        completion_source: CompletionSource::Custom(CONFIG_NAMES),
-        flags: &[],
+        values_completion_source: CompletionSource::Custom(CONFIG_NAMES),
+        switches: &[],
+        options: &[],
         func: |ctx| {
             expect_no_bang!(ctx);
             parse_values!(ctx, key, value);
@@ -578,8 +619,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["theme"],
         help: "change editor theme color",
-        completion_source: CompletionSource::Custom(THEME_COLOR_NAMES),
-        flags: &[],
+        values_completion_source: CompletionSource::Custom(THEME_COLOR_NAMES),
+        switches: &[],
+        options: &[],
         func: |ctx| {
             expect_no_bang!(ctx);
             parse_values!(ctx, key, value);
@@ -622,8 +664,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["syntax"],
         help: "create a syntax definition with patterns for files that match a glob",
-        completion_source: CompletionSource::None,
-        flags: &[],
+        values_completion_source: None,
+        switches: &[],
+        options: &[],
         func: |mut ctx| {
             expect_no_bang!(ctx);
             parse_values!(ctx, glob);
@@ -666,8 +709,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["map"],
         help: "create a keyboard mapping for a mode",
-        completion_source: CompletionSource::None,
-        flags: &[],
+        values_completion_source: None,
+        switches: &[],
+        options: &[],
         func: |mut ctx| {
             expect_no_bang!(ctx);
             parse_values!(ctx, mode, from, to);
@@ -705,8 +749,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["register"],
         help: "change an editor register",
-        completion_source: CompletionSource::None,
-        flags: &[],
+        values_completion_source: None,
+        switches: &[],
+        options: &[],
         func: |ctx| {
             expect_no_bang!(ctx);
             parse_values!(ctx, key, value);
@@ -744,8 +789,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["run"],
         help: "",
-        completion_source: CompletionSource::None,
-        flags: &[],
+        values_completion_source: None,
+        switches: &[],
+        options: &[],
         func: |ctx| {
             expect_no_bang!(ctx);
             parse_values!(ctx, command);
@@ -773,15 +819,17 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["lsp-start"],
         help: "start a lsp server",
-        completion_source: CompletionSource::None,
-        flags: &[],
+        values_completion_source: None,
+        switches: &[],
+        options: &[],
         func: |ctx| {
             expect_no_bang!(ctx);
             parse_switches!(ctx, log);
             parse_options!(ctx, root);
 
-            let (command_name, args) = match ctx.args.values() {
-                [command, args @ ..] => (command.as_str(ctx.args), args),
+            let args = ctx.editor.commands.args();
+            let (command_name, command_args) = match args.values() {
+                [command, command_args @ ..] => (command.as_str(args), command_args),
                 _ => {
                     ctx.editor
                         .output
@@ -792,8 +840,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             };
 
             let mut command = Command::new(command_name);
-            for arg in args {
-                let arg = arg.as_str(ctx.args);
+            for arg in command_args {
+                let arg = arg.as_str(args);
                 command.arg(arg);
             }
 
@@ -824,8 +872,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["lsp-stop"],
         help: "stop a lsp server",
-        completion_source: CompletionSource::None,
-        flags: &[],
+        values_completion_source: None,
+        switches: &[],
+        options: &[],
         func: |ctx| {
             expect_no_bang!(ctx);
             parse_values!(ctx);
@@ -846,8 +895,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["lsp-hover"],
         help: "perform a lsp hover action",
-        completion_source: CompletionSource::None,
-        flags: &[],
+        values_completion_source: None,
+        switches: &[],
+        options: &[],
         func: |mut ctx| {
             access_lsp_with_position(
                 &mut ctx,
@@ -861,8 +911,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["lsp-signature-help"],
         help: "perform a lsp hover action",
-        completion_source: CompletionSource::None,
-        flags: &[],
+        values_completion_source: None,
+        switches: &[],
+        options: &[],
         func: |mut ctx| {
             access_lsp_with_position(
                 &mut ctx,
@@ -873,6 +924,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             None
         },
     },
+    */
 ];
 
 fn get_main_cursor_position(ctx: &mut CommandContext) -> Option<BufferPosition> {
@@ -925,6 +977,7 @@ fn access_lsp<A>(
     }
 }
 
+/*
 fn access_lsp_with_position<A>(ctx: &mut CommandContext, accessor: A) -> Option<()>
 where
     A: FnOnce(
@@ -964,3 +1017,4 @@ where
 
     None
 }
+*/

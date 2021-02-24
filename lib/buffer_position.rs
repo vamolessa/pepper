@@ -4,6 +4,7 @@ use std::{
     str::FromStr,
 };
 
+// TODO: change to u32
 #[derive(Default, Copy, Clone, PartialEq, Eq)]
 pub struct BufferPosition {
     pub line_index: usize,

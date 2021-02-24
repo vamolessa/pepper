@@ -29,7 +29,6 @@ pub enum CommandOperation {
 }
 
 enum CompletionSource {
-    None,
     Files,
     Buffers,
     Commands,
@@ -153,8 +152,9 @@ impl<'a> Iterator for CommandIter<'a> {
 pub struct BuiltinCommand {
     names: &'static [&'static str],
     help: &'static str,
-    completion_source: CompletionSource,
-    flags: &'static [(&'static str, CompletionSource)],
+    values_completion_source: Option<CompletionSource>,
+    switches: &'static [&'static str],
+    options: &'static [(&'static str, Option<CompletionSource>)],
     func: CommandFn,
 }
 
@@ -198,6 +198,10 @@ impl CommandManager {
         s.clear();
         s.push_str(entry);
         self.history.push_back(s);
+    }
+
+    pub fn args(&self) -> &CommandArgs {
+        self.parsed_args.as_ref().unwrap()
     }
 
     pub fn eval_from_read_line(
@@ -516,8 +520,9 @@ mod tests {
         let builtin_commands = &[BuiltinCommand {
             names: &["command-name", "c"],
             help: "",
-            completion_source: CompletionSource::None,
-            flags: &[],
+            values_completion_source: None,
+            switches: &[],
+            options: &[],
             func: |_| None,
         }];
 
