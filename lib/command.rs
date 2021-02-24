@@ -317,55 +317,54 @@ impl CommandManager {
         struct TokenIterator<'a> {
             rest: &'a str,
         }
-        impl<'a> TokenIterator<'a> {
-            fn next_token(mut rest: &'a str) -> Option<(TokenKind, &'a str, &'a str)> {
-                fn is_separator(c: char) -> bool {
-                    c.is_ascii_whitespace() || c == '=' || c == '!' || c == '"' || c == '\''
-                }
-
-                rest = rest.trim_start_matches(|c: char| c.is_ascii_whitespace() || c == '\\');
-                if rest.is_empty() {
-                    return None;
-                }
-
-                match rest.as_bytes()[0] {
-                    b'-' => {
-                        rest = &rest[1..];
-                        let (token, rest) = match rest.find(is_separator) {
-                            Some(i) => rest.split_at(i),
-                            None => (rest, ""),
-                        };
-                        Some((TokenKind::Flag, token, rest))
-                    }
-                    delim @ b'"' | delim @ b'\'' => {
-                        rest = &rest[1..];
-                        match rest.find(delim as char) {
-                            Some(i) => Some((TokenKind::Text, &rest[..i], &rest[(i + 1)..])),
-                            None => Some((TokenKind::Unterminated, rest, "")),
-                        }
-                    }
-                    b'=' => {
-                        let (token, rest) = rest.split_at(1);
-                        Some((TokenKind::Equals, token, rest))
-                    }
-                    b'!' => {
-                        let (token, rest) = rest.split_at(1);
-                        Some((TokenKind::Bang, token, rest))
-                    }
-                    _ => match rest.find(is_separator) {
-                        Some(i) => {
-                            let (token, rest) = rest.split_at(i);
-                            Some((TokenKind::Text, token, rest))
-                        }
-                        None => Some((TokenKind::Text, rest, "")),
-                    },
-                }
-            }
-        }
         impl<'a> Iterator for TokenIterator<'a> {
             type Item = (TokenKind, &'a str);
             fn next(&mut self) -> Option<Self::Item> {
-                match Self::next_token(self.rest) {
+                fn next_token(mut rest: &str) -> Option<(TokenKind, &str, &str)> {
+                    fn is_separator(c: char) -> bool {
+                        c.is_ascii_whitespace() || c == '=' || c == '!' || c == '"' || c == '\''
+                    }
+
+                    rest = rest.trim_start_matches(|c: char| c.is_ascii_whitespace() || c == '\\');
+                    if rest.is_empty() {
+                        return None;
+                    }
+
+                    match rest.as_bytes()[0] {
+                        b'-' => {
+                            rest = &rest[1..];
+                            let (token, rest) = match rest.find(is_separator) {
+                                Some(i) => rest.split_at(i),
+                                None => (rest, ""),
+                            };
+                            Some((TokenKind::Flag, token, rest))
+                        }
+                        delim @ b'"' | delim @ b'\'' => {
+                            rest = &rest[1..];
+                            match rest.find(delim as char) {
+                                Some(i) => Some((TokenKind::Text, &rest[..i], &rest[(i + 1)..])),
+                                None => Some((TokenKind::Unterminated, rest, "")),
+                            }
+                        }
+                        b'=' => {
+                            let (token, rest) = rest.split_at(1);
+                            Some((TokenKind::Equals, token, rest))
+                        }
+                        b'!' => {
+                            let (token, rest) = rest.split_at(1);
+                            Some((TokenKind::Bang, token, rest))
+                        }
+                        _ => match rest.find(is_separator) {
+                            Some(i) => {
+                                let (token, rest) = rest.split_at(i);
+                                Some((TokenKind::Text, token, rest))
+                            }
+                            None => Some((TokenKind::Text, rest, "")),
+                        },
+                    }
+                }
+
+                match next_token(self.rest) {
                     Some((kind, token, rest)) => {
                         self.rest = rest;
                         Some((kind, token))
