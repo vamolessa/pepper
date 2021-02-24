@@ -43,18 +43,6 @@ fn parsing_error(
         ));
 }
 
-macro_rules! expect_no_bang {
-    ($ctx:expr) => {
-        if $ctx.bang {
-            $ctx.editor
-                .output
-                .write(EditorOutputKind::Error)
-                .str("command expects no bang");
-            return None;
-        }
-    };
-}
-
 macro_rules! parse_values {
     ($ctx:expr $(, $name:ident)*) => {
         let mut values = $ctx.editor.commands.args().values().iter();
@@ -167,9 +155,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["quit", "q"],
         help: "quits this client. append a '!' to force quit",
+        accepts_bang: true,
         values_completion_source: None,
-        switches: &[],
-        options: &[],
+        flags: &[],
         func: |ctx| {
             parse_values!(ctx);
             parse_switches!(ctx);
@@ -188,9 +176,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["quit-all", "qa"],
         help: "quits all clients. append a '!' to force quit all",
+        accepts_bang: true,
         values_completion_source: None,
-        switches: &[],
-        options: &[],
+        flags: &[],
         func: |ctx| {
             parse_values!(ctx);
             parse_switches!(ctx);
@@ -209,11 +197,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["print"],
         help: "prints a message to the status bar",
+        accepts_bang: false,
         values_completion_source: None,
-        switches: &[],
-        options: &[],
+        flags: &[],
         func: |ctx| {
-            expect_no_bang!(ctx);
             parse_switches!(ctx);
             parse_options!(ctx);
             let mut w = ctx.editor.output.write(EditorOutputKind::Info);
@@ -229,11 +216,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["source"],
         help: "load a source file and execute its commands",
+        accepts_bang: false,
         values_completion_source: None,
-        switches: &[],
-        options: &[],
+        flags: &[],
         func: |ctx| {
-            expect_no_bang!(ctx);
             parse_switches!(ctx);
             parse_options!(ctx);
             let args = ctx.editor.commands.args();
@@ -252,11 +238,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["open", "o"],
         help: "open a buffer for editting",
+        accepts_bang: false,
         values_completion_source: None,
-        switches: &[],
-        options: &[],
+        flags: &[],
         func: |ctx| {
-            expect_no_bang!(ctx);
             parse_switches!(ctx);
             parse_options!(ctx);
 
@@ -315,14 +300,35 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             None
         },
     },
+    /*
     BuiltinCommand {
         names: &["save", "s"],
         help: "save buffer",
-        values_completion_source: None,
-        switches: &[],
-        options: &[],
+        accepts_bang: false,
+        required_values: &[],
+        optional_values: &["path"],
+        extra_values: None,
+        flags: &[],
         func: |mut ctx| {
-            expect_no_bang!(ctx);
+            let path = ctx.args.parse_required_value()?;
+
+
+            let path = ctx.args.parse_required_values()?;
+
+            let path = match ctx.args.optional_values() {
+                [path] => path,
+                _ => return None,
+            };
+        },
+    },
+    */
+    BuiltinCommand {
+        names: &["save", "s"],
+        help: "save buffer",
+        accepts_bang: false,
+        values_completion_source: None,
+        flags: &[],
+        func: |mut ctx| {
             parse_values!(ctx, path);
             parse_switches!(ctx);
             parse_options!(ctx, buffer);
@@ -357,11 +363,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["save-all", "sa"],
         help: "save all buffers",
+        accepts_bang: false,
         values_completion_source: None,
-        switches: &[],
-        options: &[],
+        flags: &[],
         func: |ctx| {
-            expect_no_bang!(ctx);
             parse_values!(ctx);
             parse_switches!(ctx);
             parse_options!(ctx);
@@ -393,9 +398,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["reload", "r"],
         help: "reload buffer from file",
+        accepts_bang: true,
         values_completion_source: None,
-        switches: &[],
-        options: &[],
+        flags: &[],
         func: |mut ctx| {
             parse_values!(ctx);
             parse_switches!(ctx);
@@ -436,9 +441,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["reload-all", "ra"],
         help: "reload all buffers from file",
+        accepts_bang: true,
         values_completion_source: None,
-        switches: &[],
-        options: &[],
+        flags: &[],
         func: |ctx| {
             parse_values!(ctx);
             parse_switches!(ctx);
@@ -483,9 +488,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["close", "c"],
         help: "close buffer",
+        accepts_bang: true,
         values_completion_source: None,
-        switches: &[],
-        options: &[],
+        flags: &[],
         func: |mut ctx| {
             parse_values!(ctx);
             parse_switches!(ctx);
@@ -534,9 +539,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["close-all", "ca"],
         help: "close all buffers",
+        accepts_bang: true,
         values_completion_source: None,
-        switches: &[],
-        options: &[],
+        flags: &[],
         func: |ctx| {
             parse_values!(ctx);
             parse_switches!(ctx);
@@ -572,11 +577,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["config"],
         help: "change an editor config",
+        accepts_bang: false,
         values_completion_source: CompletionSource::Custom(CONFIG_NAMES),
-        switches: &[],
-        options: &[],
+        flags: &[],
         func: |ctx| {
-            expect_no_bang!(ctx);
             parse_values!(ctx, key, value);
             parse_switches!(ctx);
             parse_options!(ctx);
@@ -619,11 +623,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["theme"],
         help: "change editor theme color",
+        accepts_bang: false,
         values_completion_source: CompletionSource::Custom(THEME_COLOR_NAMES),
-        switches: &[],
-        options: &[],
+        flags: &[],
         func: |ctx| {
-            expect_no_bang!(ctx);
             parse_values!(ctx, key, value);
             parse_switches!(ctx);
             parse_options!(ctx);
@@ -664,11 +667,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["syntax"],
         help: "create a syntax definition with patterns for files that match a glob",
+        accepts_bang: false,
         values_completion_source: None,
-        switches: &[],
-        options: &[],
+        flags: &[],
         func: |mut ctx| {
-            expect_no_bang!(ctx);
             parse_values!(ctx, glob);
             parse_switches!(ctx);
 
@@ -709,11 +711,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["map"],
         help: "create a keyboard mapping for a mode",
+        accepts_bang: false,
         values_completion_source: None,
-        switches: &[],
-        options: &[],
+        flags: &[],
         func: |mut ctx| {
-            expect_no_bang!(ctx);
             parse_values!(ctx, mode, from, to);
             parse_switches!(ctx);
             parse_options!(ctx);
@@ -749,11 +750,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["register"],
         help: "change an editor register",
+        accepts_bang: false,
         values_completion_source: None,
-        switches: &[],
-        options: &[],
+        flags: &[],
         func: |ctx| {
-            expect_no_bang!(ctx);
             parse_values!(ctx, key, value);
             parse_switches!(ctx);
             parse_options!(ctx);
@@ -789,11 +789,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["run"],
         help: "",
+        accepts_bang: false,
         values_completion_source: None,
-        switches: &[],
-        options: &[],
+        flags: &[],
         func: |ctx| {
-            expect_no_bang!(ctx);
             parse_values!(ctx, command);
             parse_switches!(ctx);
             parse_options!(ctx);
@@ -819,11 +818,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["lsp-start"],
         help: "start a lsp server",
+        accepts_bang: false,
         values_completion_source: None,
-        switches: &[],
-        options: &[],
+        flags: &[],
         func: |ctx| {
-            expect_no_bang!(ctx);
             parse_switches!(ctx, log);
             parse_options!(ctx, root);
 
@@ -872,11 +870,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["lsp-stop"],
         help: "stop a lsp server",
+        accepts_bang: false,
         values_completion_source: None,
-        switches: &[],
-        options: &[],
+        flags: &[],
         func: |ctx| {
-            expect_no_bang!(ctx);
             parse_values!(ctx);
             parse_switches!(ctx);
             parse_options!(ctx, client);
@@ -895,9 +892,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["lsp-hover"],
         help: "perform a lsp hover action",
+        accepts_bang: false,
         values_completion_source: None,
-        switches: &[],
-        options: &[],
+        flags: &[],
         func: |mut ctx| {
             access_lsp_with_position(
                 &mut ctx,
@@ -911,9 +908,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["lsp-signature-help"],
         help: "perform a lsp hover action",
+        accepts_bang: false,
         values_completion_source: None,
-        switches: &[],
-        options: &[],
+        flags: &[],
         func: |mut ctx| {
             access_lsp_with_position(
                 &mut ctx,
@@ -989,7 +986,6 @@ where
         BufferPosition,
     ),
 {
-    expect_no_bang!(ctx);
     parse_values!(ctx);
     parse_switches!(ctx);
     parse_options!(ctx, client, buffer, position);

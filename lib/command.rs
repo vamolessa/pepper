@@ -8,17 +8,21 @@ use crate::{
     platform::Platform,
 };
 
-mod builtin;
+//mod builtin;
 
+pub const MAX_COMMAND_ARGUMENT_VALUE_COUNT: usize = 16;
+pub const MAX_COMMAND_ARGUMENT_FLAG_COUNT: usize = 16;
 pub const HISTORY_CAPACITY: usize = 10;
 
-pub enum CommandParseError {
-    ReentrantParsing,
-    InvalidCommandName(usize),
-    CommandNotFound(usize),
-    InvalidSwitchOrOption(usize),
-    InvalidOptionValue(usize),
-    UnterminatedArgument(usize),
+pub enum CommandParseError<'a> {
+    InvalidCommandName(&'a str),
+    CommandNotFound(&'a str),
+    CommandDoesNotAcceptBang(&'a str),
+    InvalidArgument(&'a str),
+    InvalidFlagValue(&'a str),
+    UnterminatedArgument(&'a str),
+    TooManyValues(&'a str),
+    TooManyFlags(&'a str),
 }
 
 type CommandFn = fn(CommandContext) -> Option<CommandOperation>;
@@ -28,20 +32,19 @@ pub enum CommandOperation {
     QuitAll,
 }
 
-enum CompletionSource {
+pub enum CompletionSource {
     Files,
     Buffers,
     Commands,
     Custom(&'static [&'static str]),
 }
 
-struct CommandContext<'a> {
-    editor: &'a mut Editor,
-    platform: &'a mut Platform,
-    clients: &'a mut ClientManager,
-    client_handle: Option<ClientHandle>,
-    bang: bool,
-    args: &'a CommandArgs,
+pub struct CommandContext<'a> {
+    pub editor: &'a mut Editor,
+    pub platform: &'a mut Platform,
+    pub clients: &'a mut ClientManager,
+    pub client_handle: Option<ClientHandle>,
+    pub args: &'a CommandArgs<'a>,
 }
 impl<'a> CommandContext<'a> {
     pub fn current_buffer_view_handle_or_error(&mut self) -> Option<BufferViewHandle> {
@@ -152,23 +155,23 @@ impl<'a> Iterator for CommandIter<'a> {
 pub struct BuiltinCommand {
     names: &'static [&'static str],
     help: &'static str,
-    values_completion_source: Option<CompletionSource>,
-    switches: &'static [&'static str],
-    options: &'static [(&'static str, Option<CompletionSource>)],
+    accepts_bang: bool,
+    required_values: &'static [(&'static str, Option<CompletionSource>)],
+    optional_values: &'static [(&'static str, Option<CompletionSource>)],
+    extra_values: Option<Option<CompletionSource>>,
+    flags: &'static [(&'static str, Option<CompletionSource>)],
     func: CommandFn,
 }
 
 pub struct CommandManager {
     builtin_commands: &'static [BuiltinCommand],
-    parsed_args: Option<CommandArgs>,
     history: VecDeque<String>,
 }
 
 impl CommandManager {
     pub fn new() -> Self {
         Self {
-            builtin_commands: builtin::COMMANDS,
-            parsed_args: Some(CommandArgs::default()),
+            builtin_commands: &[], //builtin::COMMANDS,
             history: VecDeque::with_capacity(HISTORY_CAPACITY),
         }
     }
@@ -200,23 +203,24 @@ impl CommandManager {
         self.history.push_back(s);
     }
 
-    pub fn args(&self) -> &CommandArgs {
-        self.parsed_args.as_ref().unwrap()
-    }
-
     pub fn eval_from_read_line(
         editor: &mut Editor,
         platform: &mut Platform,
         clients: &mut ClientManager,
         client_handle: Option<ClientHandle>,
     ) -> Option<CommandOperation> {
-        let command = editor.read_line.input();
-        match editor.commands.parse(command) {
-            Ok((command, bang)) => {
-                Self::eval_parsed(editor, platform, clients, client_handle, command, bang)
-            }
+        // TODO: try to remove this memmory allocation
+        let command = editor.read_line.input().to_string();
+        match editor.commands.parse(&command) {
+            Ok((command, args)) => command(CommandContext {
+                editor,
+                platform,
+                clients,
+                client_handle,
+                args: &args,
+            }),
             Err(error) => {
-                Self::format_parse_error(&mut editor.output, error, command);
+                Self::format_parse_error(&mut editor.output, error, &command);
                 None
             }
         }
@@ -230,9 +234,13 @@ impl CommandManager {
         command: &str,
     ) -> Option<CommandOperation> {
         match editor.commands.parse(command) {
-            Ok((command, bang)) => {
-                Self::eval_parsed(editor, platform, clients, client_handle, command, bang)
-            }
+            Ok((command, args)) => command(CommandContext {
+                editor,
+                platform,
+                clients,
+                client_handle,
+                args: &args,
+            }),
             Err(error) => {
                 Self::format_parse_error(&mut editor.output, error, command);
                 None
@@ -245,59 +253,60 @@ impl CommandManager {
         write.str(command);
         write.str("\n");
 
+        fn error_offset(command: &str, token: &str) -> usize {
+            token.as_ptr() as usize - command.as_ptr() as usize + 1
+        }
+
         match error {
-            CommandParseError::ReentrantParsing => write.str("reentrant command parsing"),
-            CommandParseError::InvalidCommandName(i) => write.fmt(format_args!(
-                "{:>index$} invalid command name",
+            CommandParseError::InvalidCommandName(s) => write.fmt(format_args!(
+                "{:>offset$} invalid command name",
                 '^',
-                index = i + 1
+                offset = error_offset(command, s),
             )),
-            CommandParseError::CommandNotFound(i) => write.fmt(format_args!(
-                "{:>index$} command command not found",
+            CommandParseError::CommandNotFound(s) => write.fmt(format_args!(
+                "{:>offset$} command not found",
                 '^',
-                index = i + 1
+                offset = error_offset(command, s),
             )),
-            CommandParseError::InvalidSwitchOrOption(i) => write.fmt(format_args!(
-                "{:>index$} invalid switch or option",
+            CommandParseError::CommandDoesNotAcceptBang(s) => write.fmt(format_args!(
+                "{:>offset$} command does not accept bang",
                 '^',
-                index = i
+                offset = error_offset(command, s),
             )),
-            CommandParseError::InvalidOptionValue(i) => write.fmt(format_args!(
-                "{:>index$} invalid option value",
+            CommandParseError::InvalidArgument(s) => write.fmt(format_args!(
+                "{:>offset$} invalid argument",
                 '^',
-                index = i + 1
+                offset = error_offset(command, s)
             )),
-            CommandParseError::UnterminatedArgument(i) => write.fmt(format_args!(
-                "{:>index$} unterminated argument",
+            CommandParseError::InvalidFlagValue(s) => write.fmt(format_args!(
+                "{:>offset$} invalid flag value",
                 '^',
-                index = i + 1
+                offset = error_offset(command, s),
+            )),
+            CommandParseError::UnterminatedArgument(s) => write.fmt(format_args!(
+                "{:>offset$} unterminated argument",
+                '^',
+                offset = error_offset(command, s),
+            )),
+            CommandParseError::TooManyValues(s) => write.fmt(format_args!(
+                "{:>offset$} more than {} values passed to command",
+                '^',
+                MAX_COMMAND_ARGUMENT_VALUE_COUNT,
+                offset = error_offset(command, s),
+            )),
+            CommandParseError::TooManyFlags(s) => write.fmt(format_args!(
+                "{:>offset$} more than {} flags passed to command",
+                '^',
+                MAX_COMMAND_ARGUMENT_FLAG_COUNT,
+                offset = error_offset(command, s),
             )),
         }
     }
 
-    fn eval_parsed(
-        editor: &mut Editor,
-        platform: &mut Platform,
-        clients: &mut ClientManager,
-        client_handle: Option<ClientHandle>,
-        command: CommandFn,
-        bang: bool,
-    ) -> Option<CommandOperation> {
-        let args = editor.commands.parsed_args.take()?;
-        let ctx = CommandContext {
-            editor,
-            platform,
-            clients,
-            client_handle,
-            bang,
-            args: &args,
-        };
-        let result = command(ctx);
-        editor.commands.parsed_args = Some(args);
-        result
-    }
-
-    fn parse(&mut self, text: &str) -> Result<(CommandFn, bool), CommandParseError> {
+    fn parse<'a>(
+        &mut self,
+        text: &'a str,
+    ) -> Result<(CommandFn, CommandArgs<'a>), CommandParseError<'a>> {
         enum TokenKind {
             Text,
             Flag,
@@ -308,210 +317,179 @@ impl CommandManager {
         struct TokenIterator<'a> {
             rest: &'a str,
         }
-        impl<'a> Iterator for TokenIterator<'a> {
-            type Item = (TokenKind, &'a str);
-            fn next(&mut self) -> Option<Self::Item> {
+        impl<'a> TokenIterator<'a> {
+            fn next_token(mut rest: &'a str) -> Option<(TokenKind, &'a str, &'a str)> {
                 fn is_separator(c: char) -> bool {
                     c.is_ascii_whitespace() || c == '=' || c == '!' || c == '"' || c == '\''
                 }
 
-                self.rest = self
-                    .rest
-                    .trim_start_matches(|c: char| c.is_ascii_whitespace() || c == '\\');
-                if self.rest.is_empty() {
+                rest = rest.trim_start_matches(|c: char| c.is_ascii_whitespace() || c == '\\');
+                if rest.is_empty() {
                     return None;
                 }
 
-                match self.rest.as_bytes()[0] {
+                match rest.as_bytes()[0] {
                     b'-' => {
-                        self.rest = &self.rest[1..];
-                        let (token, rest) = match self.rest.find(is_separator) {
-                            Some(i) => self.rest.split_at(i),
-                            None => (self.rest, ""),
+                        rest = &rest[1..];
+                        let (token, rest) = match rest.find(is_separator) {
+                            Some(i) => rest.split_at(i),
+                            None => (rest, ""),
                         };
-                        self.rest = rest;
-                        Some((TokenKind::Flag, token))
+                        Some((TokenKind::Flag, token, rest))
                     }
                     delim @ b'"' | delim @ b'\'' => {
-                        self.rest = &self.rest[1..];
-                        match self.rest.find(delim as char) {
-                            Some(i) => {
-                                let (token, rest) = (&self.rest[..i], &self.rest[(i + 1)..]);
-                                self.rest = rest;
-                                Some((TokenKind::Text, token))
-                            }
-                            None => {
-                                let token = self.rest;
-                                self.rest = "";
-                                Some((TokenKind::Unterminated, token))
-                            }
+                        rest = &rest[1..];
+                        match rest.find(delim as char) {
+                            Some(i) => Some((TokenKind::Text, &rest[..i], &rest[(i + 1)..])),
+                            None => Some((TokenKind::Unterminated, rest, "")),
                         }
                     }
                     b'=' => {
-                        let (token, rest) = self.rest.split_at(1);
-                        self.rest = rest;
-                        Some((TokenKind::Equals, token))
+                        let (token, rest) = rest.split_at(1);
+                        Some((TokenKind::Equals, token, rest))
                     }
                     b'!' => {
-                        let (token, rest) = self.rest.split_at(1);
-                        self.rest = rest;
-                        Some((TokenKind::Bang, token))
+                        let (token, rest) = rest.split_at(1);
+                        Some((TokenKind::Bang, token, rest))
                     }
-                    _ => match self.rest.find(is_separator) {
+                    _ => match rest.find(is_separator) {
                         Some(i) => {
-                            let (token, rest) = self.rest.split_at(i);
-                            self.rest = rest;
-                            Some((TokenKind::Text, token))
+                            let (token, rest) = rest.split_at(i);
+                            Some((TokenKind::Text, token, rest))
                         }
-                        None => {
-                            let token = self.rest;
-                            self.rest = "";
-                            Some((TokenKind::Text, token))
-                        }
+                        None => Some((TokenKind::Text, rest, "")),
                     },
                 }
             }
         }
-
-        fn push_str_and_get_range(texts: &mut String, s: &str) -> CommandTextRange {
-            let from = texts.len() as _;
-            texts.push_str(s);
-            let to = texts.len() as _;
-            CommandTextRange { from, to }
-        }
-
-        fn error_index(text: &str, token: &str) -> usize {
-            token.as_ptr() as usize - text.as_ptr() as usize
-        }
-
-        let args = match self.parsed_args {
-            Some(ref mut args) => args,
-            None => return Err(CommandParseError::ReentrantParsing),
-        };
-
-        args.clear();
-
-        let mut tokens = TokenIterator { rest: text }.peekable();
-
-        let command = match tokens.next() {
-            Some((TokenKind::Text, s)) => {
-                match self.builtin_commands.iter().find(|&c| c.names.contains(&s)) {
-                    Some(command) => command.func,
-                    None => {
-                        let error_index = error_index(text, s);
-                        return Err(CommandParseError::CommandNotFound(error_index));
+        impl<'a> Iterator for TokenIterator<'a> {
+            type Item = (TokenKind, &'a str);
+            fn next(&mut self) -> Option<Self::Item> {
+                match Self::next_token(self.rest) {
+                    Some((kind, token, rest)) => {
+                        self.rest = rest;
+                        Some((kind, token))
                     }
+                    None => None,
                 }
             }
-            Some((_, s)) => {
-                let error_index = error_index(text, s);
-                return Err(CommandParseError::InvalidCommandName(error_index));
+        }
+
+        fn add_value<'a>(
+            args: &mut CommandArgs<'a>,
+            value: &'a str,
+        ) -> Result<(), CommandParseError<'a>> {
+            if args.values_len < args.values.len() {
+                args.values[args.values_len] = value;
+                args.values_len += 1;
+                Ok(())
+            } else {
+                Err(CommandParseError::TooManyValues(value))
             }
-            None => {
-                let error_index = error_index(text, text.trim_start());
-                return Err(CommandParseError::InvalidCommandName(error_index));
+        }
+
+        fn add_flag<'a>(
+            args: &mut CommandArgs<'a>,
+            key: &'a str,
+            value: &'a str,
+        ) -> Result<(), CommandParseError<'a>> {
+            if args.flags_len < args.flags.len() {
+                args.flags[args.flags_len] = (key, value);
+                args.flags_len += 1;
+                Ok(())
+            } else {
+                Err(CommandParseError::TooManyFlags(key))
+            }
+        }
+
+        let mut args = CommandArgs::default();
+        let mut tokens = TokenIterator { rest: text };
+        let mut peeked_token = None;
+
+        let command = match tokens.next() {
+            Some((TokenKind::Text, s)) => s,
+            Some((_, s)) => return Err(CommandParseError::InvalidCommandName(s)),
+            None => return Err(CommandParseError::InvalidCommandName(text.trim_start())),
+        };
+
+        args.bang = match tokens.next() {
+            Some((TokenKind::Bang, _)) => true,
+            token => {
+                peeked_token = token;
+                false
             }
         };
 
-        let bang = match tokens.peek() {
-            Some((TokenKind::Bang, _)) => {
-                tokens.next();
-                true
+        let command = match self
+            .builtin_commands
+            .iter()
+            .find(|&c| c.names.contains(&command))
+        {
+            Some(definition) => {
+                if !args.bang || definition.accepts_bang {
+                    definition.func
+                } else {
+                    return Err(CommandParseError::CommandDoesNotAcceptBang(command));
+                }
             }
-            _ => false,
+            None => return Err(CommandParseError::CommandNotFound(command)),
         };
 
         loop {
-            match tokens.next() {
-                Some((TokenKind::Text, s)) => {
-                    let range = push_str_and_get_range(&mut args.texts, s);
-                    args.values.push(range);
-                }
-                Some((TokenKind::Flag, s)) => {
-                    let flag_range = push_str_and_get_range(&mut args.texts, s);
-                    match tokens.peek() {
-                        Some((TokenKind::Equals, equals_slice)) => {
-                            let equals_index = error_index(text, equals_slice);
-                            tokens.next();
-                            match tokens.next() {
-                                Some((TokenKind::Text, s)) => {
-                                    let value_range = push_str_and_get_range(&mut args.texts, s);
-                                    args.options.push((flag_range, value_range));
-                                }
-                                Some((TokenKind::Unterminated, s)) => {
-                                    let error_index = error_index(text, s);
-                                    return Err(CommandParseError::UnterminatedArgument(
-                                        error_index,
-                                    ));
-                                }
-                                Some((_, s)) => {
-                                    let error_index = error_index(text, s);
-                                    return Err(CommandParseError::InvalidOptionValue(error_index));
-                                }
-                                None => {
-                                    return Err(CommandParseError::InvalidOptionValue(
-                                        equals_index,
-                                    ));
-                                }
-                            }
+            let token = match peeked_token.take() {
+                Some(token) => token,
+                None => match tokens.next() {
+                    Some(token) => token,
+                    None => break,
+                },
+            };
+
+            match token {
+                (TokenKind::Text, s) => add_value(&mut args, s)?,
+                (TokenKind::Flag, flag_token) => match tokens.next() {
+                    Some((TokenKind::Equals, equals_token)) => match tokens.next() {
+                        Some((TokenKind::Text, s)) => add_flag(&mut args, flag_token, s)?,
+                        Some((TokenKind::Unterminated, s)) => {
+                            return Err(CommandParseError::UnterminatedArgument(s))
                         }
-                        _ => args.switches.push(flag_range),
-                    }
+                        Some((_, s)) => return Err(CommandParseError::InvalidFlagValue(s)),
+                        None => return Err(CommandParseError::InvalidFlagValue(equals_token)),
+                    },
+                    Some(token) => peeked_token = Some(token),
+                    None => add_flag(&mut args, flag_token, "")?,
+                },
+                (TokenKind::Equals, s) | (TokenKind::Bang, s) => {
+                    return Err(CommandParseError::InvalidArgument(s))
                 }
-                Some((TokenKind::Equals, s)) | Some((TokenKind::Bang, s)) => {
-                    let error_index = error_index(text, s);
-                    return Err(CommandParseError::InvalidSwitchOrOption(error_index));
+                (TokenKind::Unterminated, s) => {
+                    return Err(CommandParseError::UnterminatedArgument(s))
                 }
-                Some((TokenKind::Unterminated, s)) => {
-                    let error_index = error_index(text, s) - 1;
-                    return Err(CommandParseError::UnterminatedArgument(error_index));
-                }
-                None => break,
             }
         }
 
-        Ok((command, bang))
+        Ok((command, args))
     }
 }
 
-#[derive(Clone, Copy)]
-pub struct CommandTextRange {
-    from: u16,
-    to: u16,
-}
-impl CommandTextRange {
-    pub fn as_str(self, args: &CommandArgs) -> &str {
-        &args.texts[(self.from as usize)..(self.to as usize)]
-    }
-}
 #[derive(Default)]
-pub struct CommandArgs {
-    texts: String,
-    values: Vec<CommandTextRange>,
-    switches: Vec<CommandTextRange>,
-    options: Vec<(CommandTextRange, CommandTextRange)>,
+pub struct CommandArgs<'a> {
+    bang: bool,
+    values: [&'a str; MAX_COMMAND_ARGUMENT_VALUE_COUNT],
+    values_len: usize,
+    flags: [(&'a str, &'a str); MAX_COMMAND_ARGUMENT_FLAG_COUNT],
+    flags_len: usize,
 }
-impl CommandArgs {
-    pub fn values(&self) -> &[CommandTextRange] {
-        &self.values
+impl<'a> CommandArgs<'a> {
+    pub fn values(&self) -> &[&'a str] {
+        &self.values[..self.values_len]
     }
 
-    pub fn switches(&self) -> &[CommandTextRange] {
-        &self.switches
-    }
-
-    pub fn options(&self) -> &[(CommandTextRange, CommandTextRange)] {
-        &self.options
-    }
-
-    fn clear(&mut self) {
-        self.texts.clear();
-        self.values.clear();
-        self.switches.clear();
-        self.options.clear();
+    pub fn flags(&self) -> &[(&'a str, &'a str)] {
+        &self.flags[..self.flags_len]
     }
 }
 
+/*
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -520,6 +498,7 @@ mod tests {
         let builtin_commands = &[BuiltinCommand {
             names: &["command-name", "c"],
             help: "",
+            accepts_bang: false,
             values_completion_source: None,
             switches: &[],
             options: &[],
@@ -674,3 +653,4 @@ mod tests {
         assert_eq!(None, commands.next());
     }
 }
+*/
