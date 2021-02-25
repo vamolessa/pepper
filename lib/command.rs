@@ -15,18 +15,25 @@ pub const MAX_COMMAND_ARGUMENT_FLAG_COUNT: usize = 16;
 pub const HISTORY_CAPACITY: usize = 10;
 
 // TODO: create a wrapper that is Display (would also embed the original command &str)
-pub enum CommandParseError<'a> {
-    InvalidCommandName(&'a str),
-    CommandNotFound(&'a str),
-    CommandDoesNotAcceptBang(&'a str),
-    InvalidArgument(&'a str),
-    InvalidFlagValue(&'a str),
-    UnterminatedArgument(&'a str),
-    TooManyValues(&'a str),
-    TooManyFlags(&'a str),
+pub enum CommandParseError<'command> {
+    InvalidCommandName(&'command str),
+    CommandNotFound(&'command str),
+    CommandDoesNotAcceptBang(&'command str),
+    InvalidArgument(&'command str),
+    InvalidFlagValue(&'command str),
+    UnterminatedArgument(&'command str),
+    TooManyValues(&'command str),
+    TooManyFlags(&'command str),
 }
 
-type CommandFn = fn(CommandContext) -> Option<CommandOperation>;
+pub enum CommandError<'command> {
+    NoOperation,
+    ParseError(CommandParseError<'command>),
+}
+
+type CommandFn = for<'state, 'command> fn(
+    CommandContext<'state, 'command>,
+) -> Result<CommandOperation, CommandError<'command>>;
 
 pub enum CommandOperation {
     Quit,
@@ -40,14 +47,14 @@ pub enum CompletionSource {
     Custom(&'static [&'static str]),
 }
 
-pub struct CommandContext<'a> {
-    pub editor: &'a mut Editor,
-    pub platform: &'a mut Platform,
-    pub clients: &'a mut ClientManager,
+pub struct CommandContext<'state, 'command> {
+    pub editor: &'state mut Editor,
+    pub platform: &'state mut Platform,
+    pub clients: &'state mut ClientManager,
     pub client_handle: Option<ClientHandle>,
-    pub args: &'a CommandArgs<'a>,
+    pub args: &'state CommandArgs<'command>,
 }
-impl<'a> CommandContext<'a> {
+impl<'state, 'command> CommandContext<'state, 'command> {
     pub fn current_buffer_view_handle_or_error(&mut self) -> Option<BufferViewHandle> {
         match self
             .client_handle
@@ -153,6 +160,10 @@ impl<'a> Iterator for CommandIter<'a> {
     }
 }
 
+enum CommandSource {
+    Builtin(usize),
+}
+
 pub struct BuiltinCommand {
     names: &'static [&'static str],
     help: &'static str,
@@ -206,25 +217,27 @@ impl CommandManager {
 
     // TODO: return Result<Option<CommandOperation>, CommandParseError> at first
     // then we change it to Result<CommandOperation, CommandError>
-    pub fn eval(
+    pub fn eval<'a>(
         editor: &mut Editor,
         platform: &mut Platform,
         clients: &mut ClientManager,
         client_handle: Option<ClientHandle>,
-        command: &str,
-    ) -> Option<CommandOperation> {
+        command: &'a str,
+    ) -> Result<CommandOperation, CommandError<'a>> {
         match editor.commands.parse(command) {
-            Ok((command, args)) => command(CommandContext {
-                editor,
-                platform,
-                clients,
-                client_handle,
-                args: &args,
-            }),
-            Err(error) => {
-                Self::format_parse_error(&mut editor.output, error, command);
-                None
+            Ok((source, args)) => {
+                let command = match source {
+                    CommandSource::Builtin(i) => editor.commands.builtin_commands[i].func,
+                };
+                command(CommandContext {
+                    editor,
+                    platform,
+                    clients,
+                    client_handle,
+                    args: &args,
+                })
             }
+            Err(error) => Err(CommandError::ParseError(error)),
         }
     }
 
@@ -286,7 +299,7 @@ impl CommandManager {
     fn parse<'a>(
         &self,
         text: &'a str,
-    ) -> Result<(CommandFn, CommandArgs<'a>), CommandParseError<'a>> {
+    ) -> Result<(CommandSource, CommandArgs<'a>), CommandParseError<'a>> {
         enum TokenKind {
             Text,
             Flag,
@@ -399,17 +412,16 @@ impl CommandManager {
             }
         };
 
-        let command = match self
+        let source = match self
             .builtin_commands
             .iter()
-            .find(|&c| c.names.contains(&command))
+            .position(|c| c.names.contains(&command))
         {
-            Some(definition) => {
-                if !args.bang || definition.accepts_bang {
-                    definition.func
-                } else {
+            Some(i) => {
+                if args.bang && self.builtin_commands[i].accepts_bang {
                     return Err(CommandParseError::CommandDoesNotAcceptBang(command));
                 }
+                CommandSource::Builtin(i)
             }
             None => return Err(CommandParseError::CommandNotFound(command)),
         };
@@ -448,7 +460,7 @@ impl CommandManager {
             }
         }
 
-        Ok((command, args))
+        Ok((source, args))
     }
 }
 
@@ -461,13 +473,7 @@ pub struct CommandArgs<'a> {
     flags_len: usize,
 }
 impl<'a> CommandArgs<'a> {
-    pub fn values(&self) -> &[&'a str] {
-        &self.values[..self.values_len]
-    }
-
-    pub fn flags(&self) -> &[(&'a str, &'a str)] {
-        &self.flags[..self.flags_len]
-    }
+    //
 }
 
 #[cfg(test)]
@@ -483,7 +489,7 @@ mod tests {
             optional_values: &[],
             extra_values: None,
             flags: &[],
-            func: |_| None,
+            func: |_| Err(CommandError::NoOperation),
         }];
 
         CommandManager {
@@ -498,11 +504,11 @@ mod tests {
 
         macro_rules! assert_command {
             ($text:expr => bang = $bang:expr) => {
-                let (func, args) = match commands.parse($text) {
+                let (source, args) = match commands.parse($text) {
                     Ok(result) => result,
                     Err(_) => panic!("command parse error"),
                 };
-                assert_eq!(commands.builtin_commands[0].func as usize, func as usize);
+                assert!(matches!(source, CommandSource::Builtin(0)));
                 assert_eq!($bang, args.bang);
             };
         }
@@ -525,43 +531,43 @@ mod tests {
         let commands = create_commands();
 
         let args = parse_args(&commands, "c  aaa  bbb  ccc  ");
-        assert_eq!(3, args.values().len());
-        assert_eq!(0, args.flags().len());
+        assert_eq!(3, args.values_len);
+        assert_eq!(0, args.flags_len);
 
-        assert_eq!("aaa", args.values()[0]);
-        assert_eq!("bbb", args.values()[1]);
-        assert_eq!("ccc", args.values()[2]);
+        assert_eq!("aaa", args.values[0]);
+        assert_eq!("bbb", args.values[1]);
+        assert_eq!("ccc", args.values[2]);
 
         let args = parse_args(&commands, "c  'aaa'  \"bbb\"  ccc  ");
-        assert_eq!(3, args.values().len());
-        assert_eq!(0, args.flags().len());
+        assert_eq!(3, args.values_len);
+        assert_eq!(0, args.flags_len);
 
-        assert_eq!("aaa", args.values()[0]);
-        assert_eq!("bbb", args.values()[1]);
-        assert_eq!("ccc", args.values()[2]);
+        assert_eq!("aaa", args.values[0]);
+        assert_eq!("bbb", args.values[1]);
+        assert_eq!("ccc", args.values[2]);
 
         let args = parse_args(&commands, "c  'aaa'\"bbb\"\"ccc\"ddd  ");
-        assert_eq!(4, args.values().len());
-        assert_eq!(0, args.flags().len());
+        assert_eq!(4, args.values_len);
+        assert_eq!(0, args.flags_len);
 
-        assert_eq!("aaa", args.values()[0]);
-        assert_eq!("bbb", args.values()[1]);
-        assert_eq!("ccc", args.values()[2]);
-        assert_eq!("ddd", args.values()[3]);
+        assert_eq!("aaa", args.values[0]);
+        assert_eq!("bbb", args.values[1]);
+        assert_eq!("ccc", args.values[2]);
+        assert_eq!("ddd", args.values[3]);
 
         let args = parse_args(
             &commands,
             "c \\\n-switch'value'\\\n-option=\"option value!\"\\\n",
         );
 
-        assert_eq!(1, args.values().len());
-        assert_eq!(2, args.flags().len());
+        assert_eq!(1, args.values_len);
+        assert_eq!(2, args.flags_len);
 
-        assert_eq!("value", args.values()[0]);
-        assert_eq!("switch", args.flags()[0].0);
-        assert_eq!("", args.flags()[0].1);
-        assert_eq!("option", args.flags()[1].0);
-        assert_eq!("option value!", args.flags()[1].1);
+        assert_eq!("value", args.values[0]);
+        assert_eq!("switch", args.flags[0].0);
+        assert_eq!("", args.flags[0].1);
+        assert_eq!("option", args.flags[1].0);
+        assert_eq!("option value!", args.flags[1].1);
     }
 
     #[test]

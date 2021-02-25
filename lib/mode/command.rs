@@ -1,5 +1,5 @@
 use crate::{
-    command::{CommandManager, CommandOperation},
+    command::{CommandManager, CommandOperation, CommandError},
     editor::{EditorOutputKind, KeysIterator, ReadLinePoll},
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     platform::Key,
@@ -92,9 +92,13 @@ impl ModeState for State {
                 }
 
                 return match op {
-                    Some(CommandOperation::Quit) => Some(ModeOperation::Quit),
-                    Some(CommandOperation::QuitAll) => Some(ModeOperation::QuitAll),
-                    None => None,
+                    Err(CommandError::NoOperation) => None,
+                    Ok(CommandOperation::Quit) => Some(ModeOperation::Quit),
+                    Ok(CommandOperation::QuitAll) => Some(ModeOperation::QuitAll),
+                    Err(error) => {
+                        // TODO: display error
+                        None
+                    }
                 };
             }
         }

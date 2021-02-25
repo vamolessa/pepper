@@ -4,7 +4,7 @@ use crate::{
     buffer::BufferCollection,
     buffer_view::BufferViewCollection,
     client::{ClientHandle, ClientManager},
-    command::{CommandIter, CommandManager, CommandOperation},
+    command::{CommandError, CommandIter, CommandManager, CommandOperation},
     config::Config,
     events::{parse_all_keys, ClientEvent, ClientEventSource, EditorEvent, EditorEventQueue},
     keymap::{KeyMapCollection, MatchResult},
@@ -272,8 +272,14 @@ impl Editor {
 
         for command in CommandIter::new(&text) {
             match CommandManager::eval(self, platform, clients, None, command) {
-                Some(CommandOperation::Quit) | Some(CommandOperation::QuitAll) => break,
-                None => (),
+                Err(CommandError::NoOperation) => (),
+                Ok(op @ CommandOperation::Quit) | Ok(op @ CommandOperation::QuitAll) => {
+                    return Some(op)
+                }
+                Err(error) => {
+                    // TODO: display error
+                    break;
+                }
             }
         }
 
@@ -464,9 +470,13 @@ impl Editor {
                 };
 
                 match CommandManager::eval(self, platform, clients, Some(client_handle), command) {
-                    Some(CommandOperation::Quit) => EditorLoop::Quit,
-                    Some(CommandOperation::QuitAll) => EditorLoop::QuitAll,
-                    None => EditorLoop::Continue,
+                    Err(CommandError::NoOperation) => EditorLoop::Continue,
+                    Ok(CommandOperation::Quit) => EditorLoop::Quit,
+                    Ok(CommandOperation::QuitAll) => EditorLoop::QuitAll,
+                    Err(error) => {
+                        // TODO: display error
+                        EditorLoop::Continue
+                    }
                 }
             }
         };
