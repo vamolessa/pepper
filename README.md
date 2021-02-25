@@ -82,14 +82,9 @@ Please [open an issue](https://github.com/vamolessa/pepper/issues)
 
 In the spirit of [Handmade](https://handmade.network/), almost all features are coded from scratch using simple stable Rust code.
 These are the only external crates being used in the project (mainly because of crossplatform):
-- `ctrlc`: prevents closing application on `ctrl-c` on all platforms
-- `crossterm`: crossplatform terminal interaction
-- `copypasta`: crossplatform clipboard api
-- `polling`: crossplatform socket events
-- `argh`: process complex cli args. eases rapid prototyping of new cli features
-- `mlua`: adds support for lua scripting
+- `argh`: provides good cli interface
 - `fuzzy-matcher`: fuzzy matching for the picker ui. it could be replaced, however it's implementation does not get in the way and has minimal dependencies
-- `uds_windows` (windows-only): unix domain sockets for windows
+- `winapi` (windows-only): needed to implement windows platform layer
 
 # modal editing
 
@@ -122,6 +117,8 @@ That is, the cursor is not a one-char selection but only a visual cue to indicat
 It's possible to kinda follow Pepper's development history in this [twitter thread](https://twitter.com/ahvamolessa/status/1276978064166182913)
 
 # big features todo
+- linux platform layer
+- mac/bsd platform layer
 - language server protocol (in progress)
 - debug adapter protocol
 
@@ -133,5 +130,5 @@ Please consider purchasing in order to support both the development of new featu
 I'll be forever grateful :)
 
 <iframe src="https://itch.io/embed/810985?border_width=0" width="206" height="165" frameborder="0">
-  <a href="https://vamolessa.itch.io/pepper">pepper by Matheus Lessa Rodrigues</a>
+  <a href="https://vamolessa.itch.io/pepper">pepper by Matheus Lessa</a>
 </iframe>
