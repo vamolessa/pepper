@@ -1,7 +1,7 @@
 use crate::{
     command::{CommandError, CommandManager, CommandOperation},
     editor::KeysIterator,
-    editor_utils::{EditorOutputKind, ReadLinePoll},
+    editor_utils::{MessageKind, ReadLinePoll},
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     platform::Key,
 };
@@ -68,8 +68,8 @@ impl ModeState for State {
                 let mut command_buf = [0; 256];
                 if input.len() > command_buf.len() {
                     ctx.editor
-                        .output
-                        .write(EditorOutputKind::Error)
+                        .status_bar
+                        .write(MessageKind::Error)
                         .fmt(format_args!(
                             "command is too long. max is {} bytes. got {}",
                             command_buf.len(),
@@ -96,8 +96,8 @@ impl ModeState for State {
                     Ok(Some(CommandOperation::QuitAll)) => Some(ModeOperation::QuitAll),
                     Err(error) => {
                         ctx.editor
-                            .output
-                            .write(EditorOutputKind::Error)
+                            .status_bar
+                            .write(MessageKind::Error)
                             .fmt(format_args!("{}", error.display(command)));
                         None
                     }

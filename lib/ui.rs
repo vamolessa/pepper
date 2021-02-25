@@ -6,7 +6,7 @@ use crate::{
     buffer_view::BufferViewHandle,
     cursor::Cursor,
     editor::Editor,
-    editor_utils::EditorOutputKind,
+    editor_utils::MessageKind,
     mode::ModeKind,
     syntax::{HighlightedBuffer, TokenKind},
     theme::Color,
@@ -116,7 +116,7 @@ pub fn render(
     scroll: usize,
     has_focus: bool,
     buffer: &mut Vec<u8>,
-    output_buf: &mut String, // TODO: try to remove this
+    status_bar_buf: &mut String, // TODO: try to remove this
 ) {
     let view = View::new(editor, buffer_view_handle, width, height, scroll);
 
@@ -124,7 +124,7 @@ pub fn render(
     if has_focus {
         draw_picker(buffer, editor, &view);
     }
-    draw_statusbar(buffer, editor, &view, has_focus, output_buf);
+    draw_statusbar(buffer, editor, &view, has_focus, status_bar_buf);
 }
 
 struct View<'a> {
@@ -494,7 +494,7 @@ fn draw_statusbar(
     editor: &Editor,
     view: &View,
     has_focus: bool,
-    output_buf: &mut String,
+    status_bar_buf: &mut String,
 ) {
     let background_color = editor.theme.token_text;
     let foreground_color = editor.theme.background;
@@ -511,7 +511,7 @@ fn draw_statusbar(
     }
 
     let x = if has_focus {
-        let (message_target, message) = editor.output.message();
+        let (message_target, message) = editor.status_bar.message();
         let message = message.trim_end();
 
         if message.trim_start().is_empty() {
@@ -558,8 +558,8 @@ fn draw_statusbar(
             }
 
             let prefix = match message_target {
-                EditorOutputKind::Info => &[],
-                EditorOutputKind::Error => &b"error:"[..],
+                MessageKind::Info => &[],
+                MessageKind::Error => &b"error:"[..],
             };
 
             let line_count = message.lines().count();
@@ -613,7 +613,7 @@ fn draw_statusbar(
         }
     };
 
-    output_buf.clear();
+    status_bar_buf.clear();
     match x {
         Some(x) => {
             use std::fmt::Write;
@@ -625,50 +625,50 @@ fn draw_statusbar(
 
             if has_focus {
                 if param_count > 0 {
-                    let _ = write!(output_buf, "{}", param_count);
+                    let _ = write!(status_bar_buf, "{}", param_count);
                 };
                 for key in editor.buffered_keys.as_slice() {
-                    let _ = write!(output_buf, "{}", key);
+                    let _ = write!(status_bar_buf, "{}", key);
                 }
-                output_buf.push(' ');
+                status_bar_buf.push(' ');
             }
 
-            let title_start = output_buf.len();
+            let title_start = status_bar_buf.len();
             if buffer_needs_save {
-                output_buf.push('*');
+                status_bar_buf.push('*');
             }
-            output_buf.push_str(buffer_path);
-            set_title(buf, &output_buf[title_start..]);
+            status_bar_buf.push_str(buffer_path);
+            set_title(buf, &status_bar_buf[title_start..]);
 
             if view.buffer.is_some() {
                 let line_number = view.main_cursor_position.line_index + 1;
                 let column_number = view.main_cursor_position.column_byte_index + 1;
-                let _ = write!(output_buf, ":{},{}", line_number, column_number);
+                let _ = write!(status_bar_buf, ":{},{}", line_number, column_number);
             }
-            output_buf.push(' ');
+            status_bar_buf.push(' ');
 
             let available_width = view.width as usize - x;
 
-            let min_index = output_buf.len() - output_buf.len().min(available_width);
-            let min_index = output_buf
+            let min_index = status_bar_buf.len() - status_bar_buf.len().min(available_width);
+            let min_index = status_bar_buf
                 .char_indices()
                 .map(|(i, _)| i)
                 .filter(|i| *i >= min_index)
                 .next()
-                .unwrap_or(output_buf.len());
-            let output_buf = &output_buf[min_index..];
+                .unwrap_or(status_bar_buf.len());
+            let status_bar_buf = &status_bar_buf[min_index..];
 
-            for _ in 0..(available_width - output_buf.len()) {
+            for _ in 0..(available_width - status_bar_buf.len()) {
                 buf.push(b' ');
             }
-            buf.extend_from_slice(output_buf.as_bytes());
+            buf.extend_from_slice(status_bar_buf.as_bytes());
         }
         None => {
             if buffer_needs_save {
-                output_buf.push('*');
+                status_bar_buf.push('*');
             }
-            output_buf.push_str(buffer_path);
-            set_title(buf, &output_buf);
+            status_bar_buf.push_str(buffer_path);
+            set_title(buf, &status_bar_buf);
         }
     }
 

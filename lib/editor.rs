@@ -12,7 +12,7 @@ use crate::{
     mode::{Mode, ModeContext, ModeKind, ModeOperation},
     picker::Picker,
     platform::{Key, Platform},
-    editor_utils::{ReadLine, EditorOutput, EditorOutputKind},
+    editor_utils::{ReadLine, StatusBar, MessageKind},
     register::{RegisterCollection, RegisterKey, KEY_QUEUE_REGISTER},
     syntax::{HighlightResult, SyntaxCollection},
     theme::Theme,
@@ -84,7 +84,7 @@ pub struct Editor {
     pub read_line: ReadLine,
     pub picker: Picker,
 
-    pub output: EditorOutput,
+    pub status_bar: StatusBar,
 
     pub commands: CommandManager,
     pub lsp: lsp::ClientManager,
@@ -111,7 +111,7 @@ impl Editor {
             read_line: ReadLine::default(),
             picker: Picker::default(),
 
-            output: EditorOutput::new(),
+            status_bar: StatusBar::new(),
 
             commands: CommandManager::new(),
             lsp: lsp::ClientManager::new(),
@@ -130,8 +130,8 @@ impl Editor {
         let mut file = match File::open(path) {
             Ok(file) => file,
             Err(_) => {
-                self.output
-                    .write(EditorOutputKind::Error)
+                self.status_bar
+                    .write(MessageKind::Error)
                     .fmt(format_args!("could not open config file '{}'", path));
                 return None;
             }
@@ -139,8 +139,8 @@ impl Editor {
 
         let mut text = String::new();
         if let Err(_) = file.read_to_string(&mut text) {
-            self.output
-                .write(EditorOutputKind::Error)
+            self.status_bar
+                .write(MessageKind::Error)
                 .fmt(format_args!("could not read config file '{}'", path));
             return None;
         }
@@ -154,8 +154,8 @@ impl Editor {
                 Ok(Some(op @ CommandOperation::Quit))
                 | Ok(Some(op @ CommandOperation::QuitAll)) => return Some(op),
                 Err(error) => {
-                    self.output
-                        .write(EditorOutputKind::Error)
+                    self.status_bar
+                        .write(MessageKind::Error)
                         .fmt(format_args!("{}", error.display(command)));
                     break;
                 }
@@ -230,7 +230,7 @@ impl Editor {
     ) -> EditorLoop {
         let result = match event {
             ClientEvent::Key(source, key) => {
-                self.output.clear();
+                self.status_bar.clear();
 
                 let client_handle = match source {
                     ClientEventSource::ConnectionClient => client_handle,
@@ -362,8 +362,8 @@ impl Editor {
                     Ok(Some(CommandOperation::Quit)) => EditorLoop::Quit,
                     Ok(Some(CommandOperation::QuitAll)) => EditorLoop::QuitAll,
                     Err(error) => {
-                        self.output
-                            .write(EditorOutputKind::Error)
+                        self.status_bar
+                            .write(MessageKind::Error)
                             .fmt(format_args!("{}", error.display(command)));
                         EditorLoop::Continue
                     }
@@ -391,8 +391,8 @@ impl Editor {
             match key {
                 Ok(key) => self.buffered_keys.0.push(key),
                 Err(error) => {
-                    self.output
-                        .write(EditorOutputKind::Error)
+                    self.status_bar
+                        .write(MessageKind::Error)
                         .fmt(format_args!("error parsing keys '{}'\n{}", keys, &error));
                     self.buffered_keys.0.clear();
                     return;

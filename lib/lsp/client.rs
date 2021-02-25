@@ -11,7 +11,7 @@ use crate::{
     buffer::BufferHandle,
     buffer_position::{BufferPosition, BufferRange},
     editor::Editor,
-    editor_utils::{EditorOutput, EditorOutputKind},
+    editor_utils::{StatusBar, MessageKind},
     events::EditorEvent,
     glob::Glob,
     json::{
@@ -680,16 +680,16 @@ impl Client {
                 }
                 let message = message.as_str(json);
                 match message_type {
-                    1 => editor.output.write(EditorOutputKind::Error).str(message),
+                    1 => editor.status_bar.write(MessageKind::Error).str(message),
                     2 => editor
-                        .output
-                        .write(EditorOutputKind::Info)
+                        .status_bar
+                        .write(MessageKind::Info)
                         .fmt(format_args!("warning: {}", message)),
                     3 => editor
-                        .output
-                        .write(EditorOutputKind::Info)
+                        .status_bar
+                        .write(MessageKind::Info)
                         .fmt(format_args!("info: {}", message)),
-                    4 => editor.output.write(EditorOutputKind::Info).str(message),
+                    4 => editor.status_bar.write(MessageKind::Info).str(message),
                     _ => (),
                 }
             }
@@ -802,7 +802,7 @@ impl Client {
         let result = match response.result {
             Ok(result) => result,
             Err(error) => {
-                helper::write_response_error(&mut editor.output, method, error, json);
+                helper::write_response_error(&mut editor.status_bar, method, error, json);
                 return;
             }
         };
@@ -820,7 +820,7 @@ impl Client {
             "textDocument/hover" => {
                 let contents = result.get("contents".into(), json);
                 let info = helper::extract_markup_content(contents, json);
-                editor.output.write(EditorOutputKind::Info).str(info);
+                editor.status_bar.write(MessageKind::Info).str(info);
             }
             "textDocument/signatureHelp" => {
                 declare_json_object! {
@@ -846,11 +846,11 @@ impl Client {
                         helper::extract_markup_content(signature.documentation, json);
 
                     if documentation.is_empty() {
-                        editor.output.write(EditorOutputKind::Info).str(label);
+                        editor.status_bar.write(MessageKind::Info).str(label);
                     } else {
                         editor
-                            .output
-                            .write(EditorOutputKind::Info)
+                            .status_bar
+                            .write(MessageKind::Info)
                             .fmt(format_args!("{}\n{}", documentation, label));
                     }
                 }
@@ -1013,13 +1013,13 @@ mod helper {
     use super::*;
 
     pub fn write_response_error(
-        output: &mut EditorOutput,
+        status_bar: &mut StatusBar,
         method: &str,
         error: ResponseError,
         json: &Json,
     ) {
         let error_message = error.message.as_str(json);
-        output.write(EditorOutputKind::Error).fmt(format_args!(
+        status_bar.write(MessageKind::Error).fmt(format_args!(
             "[lsp error code {}] {}: '{}'",
             error.code, method, error_message
         ));

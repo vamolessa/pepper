@@ -89,24 +89,24 @@ impl ReadLine {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum EditorOutputKind {
+pub enum MessageKind {
     Info,
     Error,
 }
 
-pub struct EditorOutput {
-    kind: EditorOutputKind,
+pub struct StatusBar {
+    kind: MessageKind,
     message: String,
 }
-impl EditorOutput {
+impl StatusBar {
     pub fn new() -> Self {
         Self {
-            kind: EditorOutputKind::Info,
+            kind: MessageKind::Info,
             message: String::new(),
         }
     }
 
-    pub fn message(&self) -> (EditorOutputKind, &str) {
+    pub fn message(&self) -> (MessageKind, &str) {
         (self.kind, &self.message)
     }
 
@@ -114,7 +114,7 @@ impl EditorOutput {
         self.message.clear();
     }
 
-    pub fn write(&mut self, kind: EditorOutputKind) -> EditorOutputWrite {
+    pub fn write(&mut self, kind: MessageKind) -> EditorOutputWrite {
         self.kind = kind;
         self.message.clear();
         EditorOutputWrite(&mut self.message)
@@ -130,3 +130,5 @@ impl<'a> EditorOutputWrite<'a> {
         let _ = fmt::write(&mut self.0, args);
     }
 }
+
+

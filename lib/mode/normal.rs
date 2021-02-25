@@ -7,7 +7,7 @@ use crate::{
     client::Client,
     cursor::Cursor,
     editor::{Editor, KeysIterator},
-    editor_utils::EditorOutputKind,
+    editor_utils::MessageKind,
     lsp,
     mode::{picker, read_line, Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     navigation_history::{NavigationDirection, NavigationHistory},
@@ -865,8 +865,8 @@ impl State {
                 }
                 Key::Char('r') => ctx
                     .editor
-                    .output
-                    .write(EditorOutputKind::Info)
+                    .status_bar
+                    .write(MessageKind::Info)
                     .str("rename not yet implemented"),
                 _ => (),
             },
@@ -991,7 +991,7 @@ impl ModeState for State {
     fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> Option<ModeOperation> {
         fn show_hovered_diagnostic(ctx: &mut ModeContext) -> Option<()> {
             let handle = ctx.clients.get(ctx.client_handle)?.buffer_view_handle()?;
-            if !ctx.editor.output.message().1.is_empty() {
+            if !ctx.editor.status_bar.message().1.is_empty() {
                 return None;
             }
             let buffer_view = ctx.editor.buffer_views.get(handle)?;
@@ -1014,8 +1014,8 @@ impl ModeState for State {
                     }
                 }) {
                     ctx.editor
-                        .output
-                        .write(EditorOutputKind::Info)
+                        .status_bar
+                        .write(MessageKind::Info)
                         .str(&diagnostics[index].message);
                     break;
                 }
@@ -1123,8 +1123,8 @@ where
 
         if search_ranges.is_empty() {
             ctx.editor
-                .output
-                .write(EditorOutputKind::Error)
+                .status_bar
+                .write(MessageKind::Error)
                 .str("no search result");
             return None;
         }
@@ -1320,8 +1320,8 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) -> Option<()> {
             Ok(handle) => handle,
             Err(BufferViewError::InvalidPath) => {
                 ctx.editor
-                    .output
-                    .write(EditorOutputKind::Error)
+                    .status_bar
+                    .write(MessageKind::Error)
                     .fmt(format_args!("invalid path '{:?}'", path));
                 return None;
             }

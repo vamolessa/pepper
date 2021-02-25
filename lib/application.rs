@@ -202,8 +202,8 @@ impl ServerApplication {
                             eprintln!("process exit");
                             let message = std::str::from_utf8(&process_output).unwrap();
                             editor
-                                .output
-                                .write(crate::editor_utils::EditorOutputKind::Info)
+                                .status_bar
+                                .write(crate::editor_utils::MessageKind::Info)
                                 .fmt(format_args!("out: {}", message));
                         }
                     },

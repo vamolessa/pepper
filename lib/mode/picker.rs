@@ -1,7 +1,7 @@
 use crate::{
     buffer_view::BufferViewError,
     editor::KeysIterator,
-    editor_utils::{EditorOutputKind, ReadLinePoll},
+    editor_utils::{MessageKind, ReadLinePoll},
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     platform::Key,
     word_database::EmptyWordCollection,
@@ -126,8 +126,8 @@ pub mod buffer {
                 }
                 Err(BufferViewError::InvalidPath) => ctx
                     .editor
-                    .output
-                    .write(EditorOutputKind::Error)
+                    .status_bar
+                    .write(MessageKind::Error)
                     .fmt(format_args!("invalid path '{}'", path)),
             }
 

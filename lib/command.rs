@@ -5,7 +5,7 @@ use crate::{
     buffer_view::BufferViewHandle,
     client::{Client, ClientHandle, ClientManager},
     editor::Editor,
-    editor_utils::EditorOutputKind,
+    editor_utils::MessageKind,
     platform::Platform,
 };
 
@@ -144,8 +144,8 @@ impl<'state, 'command> CommandContext<'state, 'command> {
             Some(handle) => Some(handle),
             None => {
                 self.editor
-                    .output
-                    .write(EditorOutputKind::Error)
+                    .status_bar
+                    .write(MessageKind::Error)
                     .str("no buffer view opened");
                 None
             }
@@ -163,8 +163,8 @@ impl<'state, 'command> CommandContext<'state, 'command> {
             Some(handle) => Some(handle),
             None => {
                 self.editor
-                    .output
-                    .write(EditorOutputKind::Error)
+                    .status_bar
+                    .write(MessageKind::Error)
                     .str("no buffer opened");
                 None
             }
@@ -176,8 +176,8 @@ impl<'state, 'command> CommandContext<'state, 'command> {
             Some(_) => Some(handle),
             None => {
                 self.editor
-                    .output
-                    .write(EditorOutputKind::Error)
+                    .status_bar
+                    .write(MessageKind::Error)
                     .str("invalid buffer handle");
                 None
             }
