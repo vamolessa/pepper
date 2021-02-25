@@ -1,10 +1,10 @@
-use std::collections::VecDeque;
+use std::{collections::VecDeque, fmt};
 
 use crate::{
     buffer::BufferHandle,
     buffer_view::BufferViewHandle,
     client::{Client, ClientHandle, ClientManager},
-    editor::{Editor, EditorOutput, EditorOutputKind},
+    editor::{Editor, EditorOutputKind},
     platform::Platform,
 };
 
@@ -14,7 +14,6 @@ pub const MAX_COMMAND_ARGUMENT_VALUE_COUNT: usize = 16;
 pub const MAX_COMMAND_ARGUMENT_FLAG_COUNT: usize = 16;
 pub const HISTORY_CAPACITY: usize = 10;
 
-// TODO: create a wrapper that is Display (would also embed the original command &str)
 pub enum CommandParseError<'command> {
     InvalidCommandName(&'command str),
     CommandNotFound(&'command str),
@@ -29,6 +28,77 @@ pub enum CommandParseError<'command> {
 pub enum CommandError<'command> {
     NoOperation,
     ParseError(CommandParseError<'command>),
+}
+impl<'command> CommandError<'command> {
+    pub fn display<'error>(
+        &'error self,
+        command: &'command str,
+    ) -> CommandErrorDisplay<'command, 'error> {
+        CommandErrorDisplay {
+            command,
+            error: self,
+        }
+    }
+}
+
+pub struct CommandErrorDisplay<'command, 'error> {
+    command: &'command str,
+    error: &'error CommandError<'command>,
+}
+impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fn error_offset(command: &str, token: &str) -> usize {
+            token.as_ptr() as usize - command.as_ptr() as usize + 1
+        }
+
+        match self.error {
+            CommandError::NoOperation => Ok(()),
+            CommandError::ParseError(ref error) => match error {
+                CommandParseError::InvalidCommandName(s) => f.write_fmt(format_args!(
+                    "{:>offset$} invalid command name",
+                    '^',
+                    offset = error_offset(self.command, s),
+                )),
+                CommandParseError::CommandNotFound(s) => f.write_fmt(format_args!(
+                    "{:>offset$} command not found",
+                    '^',
+                    offset = error_offset(self.command, s),
+                )),
+                CommandParseError::CommandDoesNotAcceptBang(s) => f.write_fmt(format_args!(
+                    "{:>offset$} command does not accept bang",
+                    '^',
+                    offset = error_offset(self.command, s),
+                )),
+                CommandParseError::InvalidArgument(s) => f.write_fmt(format_args!(
+                    "{:>offset$} invalid argument",
+                    '^',
+                    offset = error_offset(self.command, s)
+                )),
+                CommandParseError::InvalidFlagValue(s) => f.write_fmt(format_args!(
+                    "{:>offset$} invalid flag value",
+                    '^',
+                    offset = error_offset(self.command, s),
+                )),
+                CommandParseError::UnterminatedArgument(s) => f.write_fmt(format_args!(
+                    "{:>offset$} unterminated argument",
+                    '^',
+                    offset = error_offset(self.command, s),
+                )),
+                CommandParseError::TooManyValues(s) => f.write_fmt(format_args!(
+                    "{:>offset$} more than {} values passed to command",
+                    '^',
+                    MAX_COMMAND_ARGUMENT_VALUE_COUNT,
+                    offset = error_offset(self.command, s),
+                )),
+                CommandParseError::TooManyFlags(s) => f.write_fmt(format_args!(
+                    "{:>offset$} more than {} flags passed to command",
+                    '^',
+                    MAX_COMMAND_ARGUMENT_FLAG_COUNT,
+                    offset = error_offset(self.command, s),
+                )),
+            },
+        }
+    }
 }
 
 type CommandFn = for<'state, 'command> fn(
@@ -215,8 +285,6 @@ impl CommandManager {
         self.history.push_back(s);
     }
 
-    // TODO: return Result<Option<CommandOperation>, CommandParseError> at first
-    // then we change it to Result<CommandOperation, CommandError>
     pub fn eval<'a>(
         editor: &mut Editor,
         platform: &mut Platform,
@@ -238,61 +306,6 @@ impl CommandManager {
                 })
             }
             Err(error) => Err(CommandError::ParseError(error)),
-        }
-    }
-
-    fn format_parse_error(output: &mut EditorOutput, error: CommandParseError, command: &str) {
-        let mut write = output.write(EditorOutputKind::Error);
-        write.str(command);
-        write.str("\n");
-
-        fn error_offset(command: &str, token: &str) -> usize {
-            token.as_ptr() as usize - command.as_ptr() as usize + 1
-        }
-
-        match error {
-            CommandParseError::InvalidCommandName(s) => write.fmt(format_args!(
-                "{:>offset$} invalid command name",
-                '^',
-                offset = error_offset(command, s),
-            )),
-            CommandParseError::CommandNotFound(s) => write.fmt(format_args!(
-                "{:>offset$} command not found",
-                '^',
-                offset = error_offset(command, s),
-            )),
-            CommandParseError::CommandDoesNotAcceptBang(s) => write.fmt(format_args!(
-                "{:>offset$} command does not accept bang",
-                '^',
-                offset = error_offset(command, s),
-            )),
-            CommandParseError::InvalidArgument(s) => write.fmt(format_args!(
-                "{:>offset$} invalid argument",
-                '^',
-                offset = error_offset(command, s)
-            )),
-            CommandParseError::InvalidFlagValue(s) => write.fmt(format_args!(
-                "{:>offset$} invalid flag value",
-                '^',
-                offset = error_offset(command, s),
-            )),
-            CommandParseError::UnterminatedArgument(s) => write.fmt(format_args!(
-                "{:>offset$} unterminated argument",
-                '^',
-                offset = error_offset(command, s),
-            )),
-            CommandParseError::TooManyValues(s) => write.fmt(format_args!(
-                "{:>offset$} more than {} values passed to command",
-                '^',
-                MAX_COMMAND_ARGUMENT_VALUE_COUNT,
-                offset = error_offset(command, s),
-            )),
-            CommandParseError::TooManyFlags(s) => write.fmt(format_args!(
-                "{:>offset$} more than {} flags passed to command",
-                '^',
-                MAX_COMMAND_ARGUMENT_FLAG_COUNT,
-                offset = error_offset(command, s),
-            )),
         }
     }
 
@@ -472,9 +485,6 @@ pub struct CommandArgs<'a> {
     flags: [(&'a str, &'a str); MAX_COMMAND_ARGUMENT_FLAG_COUNT],
     flags_len: usize,
 }
-impl<'a> CommandArgs<'a> {
-    //
-}
 
 #[cfg(test)]
 mod tests {
@@ -500,7 +510,7 @@ mod tests {
 
     #[test]
     fn command_parsing() {
-        let mut commands = create_commands();
+        let commands = create_commands();
 
         macro_rules! assert_command {
             ($text:expr => bang = $bang:expr) => {
