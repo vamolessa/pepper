@@ -277,7 +277,9 @@ impl Editor {
                     return Some(op)
                 }
                 Err(error) => {
-                    // TODO: display error
+                    self.output
+                        .write(EditorOutputKind::Error)
+                        .fmt(format_args!("{}", error.display(command)));
                     break;
                 }
             }
@@ -474,7 +476,9 @@ impl Editor {
                     Ok(CommandOperation::Quit) => EditorLoop::Quit,
                     Ok(CommandOperation::QuitAll) => EditorLoop::QuitAll,
                     Err(error) => {
-                        // TODO: display error
+                        self.output
+                            .write(EditorOutputKind::Error)
+                            .fmt(format_args!("{}", error.display(command)));
                         EditorLoop::Continue
                     }
                 }

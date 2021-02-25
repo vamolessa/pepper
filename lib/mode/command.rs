@@ -1,5 +1,5 @@
 use crate::{
-    command::{CommandManager, CommandOperation, CommandError},
+    command::{CommandError, CommandManager, CommandOperation},
     editor::{EditorOutputKind, KeysIterator, ReadLinePoll},
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     platform::Key,
@@ -96,7 +96,10 @@ impl ModeState for State {
                     Ok(CommandOperation::Quit) => Some(ModeOperation::Quit),
                     Ok(CommandOperation::QuitAll) => Some(ModeOperation::QuitAll),
                     Err(error) => {
-                        // TODO: display error
+                        ctx.editor
+                            .output
+                            .write(EditorOutputKind::Error)
+                            .fmt(format_args!("{}", error.display(command)));
                         None
                     }
                 };
