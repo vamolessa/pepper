@@ -1,5 +1,6 @@
 use crate::{
-    editor::{KeysIterator, ReadLinePoll},
+    editor::KeysIterator,
+    editor_utils::ReadLinePoll,
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     register::SEARCH_REGISTER,
 };

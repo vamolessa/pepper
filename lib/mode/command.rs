@@ -1,6 +1,7 @@
 use crate::{
     command::{CommandError, CommandManager, CommandOperation},
-    editor::{EditorOutputKind, KeysIterator, ReadLinePoll},
+    editor::KeysIterator,
+    editor_utils::{EditorOutputKind, ReadLinePoll},
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     platform::Key,
 };
@@ -79,17 +80,20 @@ impl ModeState for State {
                 command_buf[..input.len()].copy_from_slice(input.as_bytes());
                 let command = unsafe { std::str::from_utf8_unchecked(&command_buf[..input.len()]) };
 
+                // TODO: prevent allocation here
+                let mut output = String::new();
                 let op = CommandManager::eval_command(
                     ctx.editor,
                     ctx.platform,
                     ctx.clients,
                     Some(ctx.client_handle),
                     command,
+                    &mut output,
                 );
                 let op = match op {
-                    Ok((None, _)) | Err(CommandError::Aborted) => None,
-                    Ok((Some(CommandOperation::Quit), _)) => Some(ModeOperation::Quit),
-                    Ok((Some(CommandOperation::QuitAll), _)) => Some(ModeOperation::QuitAll),
+                    Ok(None) | Err(CommandError::Aborted) => None,
+                    Ok(Some(CommandOperation::Quit)) => Some(ModeOperation::Quit),
+                    Ok(Some(CommandOperation::QuitAll)) => Some(ModeOperation::QuitAll),
                     Err(error) => {
                         ctx.editor
                             .output

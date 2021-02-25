@@ -203,7 +203,7 @@ impl ServerApplication {
                             let message = std::str::from_utf8(&process_output).unwrap();
                             editor
                                 .output
-                                .write(crate::editor::EditorOutputKind::Info)
+                                .write(crate::editor_utils::EditorOutputKind::Info)
                                 .fmt(format_args!("out: {}", message));
                         }
                     },

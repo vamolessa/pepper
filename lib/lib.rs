@@ -1,6 +1,5 @@
 mod macros;
 
-pub mod events;
 pub mod application;
 pub mod buffer;
 pub mod buffer_position;
@@ -10,6 +9,8 @@ pub mod command;
 pub mod config;
 pub mod cursor;
 pub mod editor;
+pub mod editor_utils;
+pub mod events;
 pub mod glob;
 pub mod history;
 pub mod json;

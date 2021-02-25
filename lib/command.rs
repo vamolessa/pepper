@@ -1,10 +1,11 @@
-use std::{collections::VecDeque, fmt, ops::Range};
+use std::{collections::VecDeque, fmt};
 
 use crate::{
     buffer::BufferHandle,
     buffer_view::BufferViewHandle,
     client::{Client, ClientHandle, ClientManager},
-    editor::{Editor, EditorOutputKind},
+    editor::Editor,
+    editor_utils::EditorOutputKind,
     platform::Platform,
 };
 
@@ -117,15 +118,6 @@ type CommandFn =
 pub enum CommandOperation {
     Quit,
     QuitAll,
-}
-
-pub struct CommandOutput {
-    index: usize,
-}
-impl CommandOutput {
-    pub fn as_str<'a>(&self, commands: &'a CommandManager) -> &'a str {
-        &self.output_stack[self.range.clone()]
-    }
 }
 
 pub enum CompletionSource {
@@ -314,31 +306,26 @@ impl CommandManager {
         let _ = fmt::write(&mut self.output_stack, args);
     }
 
-    pub fn eval_command<'output, 'command>(
-        editor: &'output mut Editor,
+    pub fn eval_command<'command>(
+        editor: &mut Editor,
         platform: &mut Platform,
         clients: &mut ClientManager,
         client_handle: Option<ClientHandle>,
         command: &'command str,
-    ) -> Result<(Option<CommandOperation>, CommandOutput<'output>), CommandError<'command>> {
+        output: &mut String,
+    ) -> Result<Option<CommandOperation>, CommandError<'command>> {
         match editor.commands.parse(command) {
             Ok((source, mut args)) => {
                 let command = match source {
                     CommandSource::Builtin(i) => editor.commands.builtin_commands[i].func,
                 };
-                let previous_top = editor.commands.output_stack.len();
-                let result = command(CommandContext {
+                command(CommandContext {
                     editor,
                     platform,
                     clients,
                     client_handle,
                     args: &mut args,
-                });
-                let output = CommandOutput {
-                    output_stack: &mut editor.commands.output_stack,
-                    previous_top,
-                };
-                result.map(|op| (op, output))
+                })
             }
             Err(error) => Err(CommandError::ParseError(error)),
         }

@@ -10,7 +10,8 @@ use crate::{
     application::ProcessTag,
     buffer::BufferHandle,
     buffer_position::{BufferPosition, BufferRange},
-    editor::{Editor, EditorOutput, EditorOutputKind},
+    editor::Editor,
+    editor_utils::{EditorOutput, EditorOutputKind},
     events::EditorEvent,
     glob::Glob,
     json::{

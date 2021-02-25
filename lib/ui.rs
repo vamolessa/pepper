@@ -5,12 +5,14 @@ use crate::{
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::BufferViewHandle,
     cursor::Cursor,
-    editor::{Editor, EditorOutputKind},
+    editor::Editor,
+    editor_utils::EditorOutputKind,
     mode::ModeKind,
     syntax::{HighlightedBuffer, TokenKind},
     theme::Color,
 };
 
+// TODO: remove?
 /*
 pub fn read_keys_from_stdin(event_sender: mpsc::Sender<LocalEvent>) {
     use io::BufRead;
