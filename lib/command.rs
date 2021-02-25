@@ -10,19 +10,22 @@ use crate::{
 
 //mod builtin;
 
-pub const MAX_COMMAND_ARGUMENT_VALUE_COUNT: usize = 16;
-pub const MAX_COMMAND_ARGUMENT_FLAG_COUNT: usize = 16;
+pub const MAX_REQUIRED_VALUES_LEN: usize = 4;
+pub const MAX_OTHER_VALUES_LEN: usize = 8;
+pub const MAX_FLAGS_LEN: usize = 8;
 pub const HISTORY_CAPACITY: usize = 10;
 
+#[derive(Debug)]
 pub enum CommandParseError<'command> {
     InvalidCommandName(&'command str),
     CommandNotFound(&'command str),
     CommandDoesNotAcceptBang(&'command str),
-    InvalidArgument(&'command str),
-    InvalidFlagValue(&'command str),
     UnterminatedArgument(&'command str),
-    TooManyValues(&'command str),
-    TooManyFlags(&'command str),
+    InvalidArgument(&'command str),
+    TooFewValues(&'command str, u8),
+    TooManyValues(&'command str, u8),
+    UnknownFlag(&'command str),
+    InvalidFlagValue(&'command str),
 }
 
 pub enum CommandError<'command> {
@@ -69,31 +72,36 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
                     '^',
                     offset = error_offset(self.command, s),
                 )),
-                CommandParseError::InvalidArgument(s) => f.write_fmt(format_args!(
-                    "{:>offset$} invalid argument",
-                    '^',
-                    offset = error_offset(self.command, s)
-                )),
-                CommandParseError::InvalidFlagValue(s) => f.write_fmt(format_args!(
-                    "{:>offset$} invalid flag value",
-                    '^',
-                    offset = error_offset(self.command, s),
-                )),
                 CommandParseError::UnterminatedArgument(s) => f.write_fmt(format_args!(
                     "{:>offset$} unterminated argument",
                     '^',
                     offset = error_offset(self.command, s),
                 )),
-                CommandParseError::TooManyValues(s) => f.write_fmt(format_args!(
-                    "{:>offset$} more than {} values passed to command",
+                CommandParseError::InvalidArgument(s) => f.write_fmt(format_args!(
+                    "{:>offset$} invalid argument",
                     '^',
-                    MAX_COMMAND_ARGUMENT_VALUE_COUNT,
+                    offset = error_offset(self.command, s)
+                )),
+                CommandParseError::TooFewValues(s, min) => f.write_fmt(format_args!(
+                    "{:>offset$} command expects at least {} values",
+                    '^',
+                    min,
                     offset = error_offset(self.command, s),
                 )),
-                CommandParseError::TooManyFlags(s) => f.write_fmt(format_args!(
-                    "{:>offset$} more than {} flags passed to command",
+                CommandParseError::TooManyValues(s, max) => f.write_fmt(format_args!(
+                    "{:>offset$} command expects at most {} values",
                     '^',
-                    MAX_COMMAND_ARGUMENT_FLAG_COUNT,
+                    max,
+                    offset = error_offset(self.command, s),
+                )),
+                CommandParseError::UnknownFlag(s) => f.write_fmt(format_args!(
+                    "{:>offset$} unknown flag",
+                    '^',
+                    offset = error_offset(self.command, s),
+                )),
+                CommandParseError::InvalidFlagValue(s) => f.write_fmt(format_args!(
+                    "{:>offset$} invalid flag value",
+                    '^',
                     offset = error_offset(self.command, s),
                 )),
             },
@@ -122,7 +130,7 @@ pub struct CommandContext<'state, 'command> {
     pub platform: &'state mut Platform,
     pub clients: &'state mut ClientManager,
     pub client_handle: Option<ClientHandle>,
-    pub args: &'state CommandArgs<'command>,
+    pub args: &'state mut CommandArgs<'command>,
 }
 impl<'state, 'command> CommandContext<'state, 'command> {
     pub fn current_buffer_view_handle_or_error(&mut self) -> Option<BufferViewHandle> {
@@ -293,7 +301,7 @@ impl CommandManager {
         command: &'a str,
     ) -> Result<CommandOperation, CommandError<'a>> {
         match editor.commands.parse(command) {
-            Ok((source, args)) => {
+            Ok((source, mut args)) => {
                 let command = match source {
                     CommandSource::Builtin(i) => editor.commands.builtin_commands[i].func,
                 };
@@ -302,7 +310,7 @@ impl CommandManager {
                     platform,
                     clients,
                     client_handle,
-                    args: &args,
+                    args: &mut args,
                 })
             }
             Err(error) => Err(CommandError::ParseError(error)),
@@ -380,38 +388,57 @@ impl CommandManager {
             }
         }
 
+        struct CommandParamsInfo<'a> {
+            min_values_len: u8,
+            max_values_len: Option<u8>,
+            flags: &'a [(&'a str, Option<CompletionSource>)],
+        }
+
         fn add_value<'a>(
+            params: &CommandParamsInfo,
             args: &mut CommandArgs<'a>,
+            values_count: &mut u8,
             value: &'a str,
         ) -> Result<(), CommandParseError<'a>> {
-            if args.values_len < args.values.len() {
-                args.values[args.values_len] = value;
-                args.values_len += 1;
-                Ok(())
+            if *values_count < params.min_values_len {
+                args.required_values[*values_count as usize] = value;
             } else {
-                Err(CommandParseError::TooManyValues(value))
+                let len = *values_count - params.min_values_len;
+                let max = params
+                    .max_values_len
+                    .unwrap_or(args.other_values.len() as u8);
+                if len < max {
+                    args.other_values[len as usize] = Some(value);
+                } else {
+                    let max = max + params.min_values_len;
+                    return Err(CommandParseError::TooManyValues(value, max));
+                }
             }
+            *values_count += 1;
+            Ok(())
         }
 
         fn add_flag<'a>(
+            params: &CommandParamsInfo,
             args: &mut CommandArgs<'a>,
             key: &'a str,
             value: &'a str,
         ) -> Result<(), CommandParseError<'a>> {
-            if args.flags_len < args.flags.len() {
-                args.flags[args.flags_len] = (key, value);
-                args.flags_len += 1;
-                Ok(())
-            } else {
-                Err(CommandParseError::TooManyFlags(key))
+            match params.flags.iter().position(|f| f.0 == key) {
+                Some(i) => {
+                    args.flags[i] = Some(value);
+                    Ok(())
+                }
+                None => Err(CommandParseError::UnknownFlag(key)),
             }
         }
 
+        let mut values_count = 0;
         let mut args = CommandArgs::default();
         let mut tokens = TokenIterator { rest: text };
         let mut peeked_token = None;
 
-        let command = match tokens.next() {
+        let command_name = match tokens.next() {
             Some((TokenKind::Text, s)) => s,
             Some((_, s)) => return Err(CommandParseError::InvalidCommandName(s)),
             None => return Err(CommandParseError::InvalidCommandName(text.trim_start())),
@@ -425,18 +452,29 @@ impl CommandManager {
             }
         };
 
-        let source = match self
+        let (source, params) = match self
             .builtin_commands
             .iter()
-            .position(|c| c.names.contains(&command))
+            .position(|c| c.names.contains(&command_name))
         {
             Some(i) => {
-                if args.bang && self.builtin_commands[i].accepts_bang {
-                    return Err(CommandParseError::CommandDoesNotAcceptBang(command));
+                let command = &self.builtin_commands[i];
+                if args.bang && !command.accepts_bang {
+                    return Err(CommandParseError::CommandDoesNotAcceptBang(command_name));
                 }
-                CommandSource::Builtin(i)
+                let params = CommandParamsInfo {
+                    min_values_len: command.required_values.len() as _,
+                    max_values_len: match command.extra_values {
+                        Some(_) => None,
+                        None => Some(
+                            (command.required_values.len() + command.optional_values.len()) as _,
+                        ),
+                    },
+                    flags: &command.flags,
+                };
+                (CommandSource::Builtin(i), params)
             }
-            None => return Err(CommandParseError::CommandNotFound(command)),
+            None => return Err(CommandParseError::CommandNotFound(command_name)),
         };
 
         loop {
@@ -449,10 +487,10 @@ impl CommandManager {
             };
 
             match token {
-                (TokenKind::Text, s) => add_value(&mut args, s)?,
+                (TokenKind::Text, s) => add_value(&params, &mut args, &mut values_count, s)?,
                 (TokenKind::Flag, flag_token) => match tokens.next() {
                     Some((TokenKind::Equals, equals_token)) => match tokens.next() {
-                        Some((TokenKind::Text, s)) => add_flag(&mut args, flag_token, s)?,
+                        Some((TokenKind::Text, s)) => add_flag(&params, &mut args, flag_token, s)?,
                         Some((TokenKind::Unterminated, s)) => {
                             return Err(CommandParseError::UnterminatedArgument(s))
                         }
@@ -460,7 +498,7 @@ impl CommandManager {
                         None => return Err(CommandParseError::InvalidFlagValue(equals_token)),
                     },
                     token => {
-                        add_flag(&mut args, flag_token, "")?;
+                        add_flag(&params, &mut args, flag_token, "")?;
                         peeked_token = token;
                     }
                 },
@@ -473,6 +511,16 @@ impl CommandManager {
             }
         }
 
+        if values_count < params.min_values_len {
+            let token = if values_count > 0 {
+                args.required_values[values_count as usize - 1]
+            } else {
+                command_name
+            };
+            let min = params.min_values_len;
+            return Err(CommandParseError::TooFewValues(token, min));
+        }
+
         Ok((source, args))
     }
 }
@@ -480,10 +528,9 @@ impl CommandManager {
 #[derive(Default)]
 pub struct CommandArgs<'a> {
     pub bang: bool,
-    values: [&'a str; MAX_COMMAND_ARGUMENT_VALUE_COUNT],
-    values_len: usize,
-    flags: [(&'a str, &'a str); MAX_COMMAND_ARGUMENT_FLAG_COUNT],
-    flags_len: usize,
+    pub required_values: [&'a str; MAX_REQUIRED_VALUES_LEN],
+    pub other_values: [Option<&'a str>; MAX_OTHER_VALUES_LEN],
+    pub flags: [Option<&'a str>; MAX_FLAGS_LEN],
 }
 
 #[cfg(test)]
@@ -497,8 +544,8 @@ mod tests {
             accepts_bang: true,
             required_values: &[],
             optional_values: &[],
-            extra_values: None,
-            flags: &[],
+            extra_values: Some(None),
+            flags: &[("switch", None), ("option", None)],
             func: |_| Err(CommandError::NoOperation),
         }];
 
@@ -516,7 +563,7 @@ mod tests {
             ($text:expr => bang = $bang:expr) => {
                 let (source, args) = match commands.parse($text) {
                     Ok(result) => result,
-                    Err(_) => panic!("command parse error"),
+                    Err(e) => panic!("command parse error {:?}", e),
                 };
                 assert!(matches!(source, CommandSource::Builtin(0)));
                 assert_eq!($bang, args.bang);
@@ -538,46 +585,25 @@ mod tests {
             }
         }
 
+        fn other_values_vec<'a>(args: &CommandArgs<'a>) -> Vec<&'a str> {
+            args.other_values.iter().flatten().cloned().collect()
+        }
+
         let commands = create_commands();
-
         let args = parse_args(&commands, "c  aaa  bbb  ccc  ");
-        assert_eq!(3, args.values_len);
-        assert_eq!(0, args.flags_len);
-
-        assert_eq!("aaa", args.values[0]);
-        assert_eq!("bbb", args.values[1]);
-        assert_eq!("ccc", args.values[2]);
-
+        assert_eq!(["aaa", "bbb", "ccc"], &other_values_vec(&args)[..]);
         let args = parse_args(&commands, "c  'aaa'  \"bbb\"  ccc  ");
-        assert_eq!(3, args.values_len);
-        assert_eq!(0, args.flags_len);
-
-        assert_eq!("aaa", args.values[0]);
-        assert_eq!("bbb", args.values[1]);
-        assert_eq!("ccc", args.values[2]);
-
+        assert_eq!(["aaa", "bbb", "ccc"], &other_values_vec(&args)[..]);
         let args = parse_args(&commands, "c  'aaa'\"bbb\"\"ccc\"ddd  ");
-        assert_eq!(4, args.values_len);
-        assert_eq!(0, args.flags_len);
-
-        assert_eq!("aaa", args.values[0]);
-        assert_eq!("bbb", args.values[1]);
-        assert_eq!("ccc", args.values[2]);
-        assert_eq!("ddd", args.values[3]);
+        assert_eq!(["aaa", "bbb", "ccc", "ddd"], &other_values_vec(&args)[..]);
 
         let args = parse_args(
             &commands,
             "c \\\n-switch'value'\\\n-option=\"option value!\"\\\n",
         );
-
-        assert_eq!(1, args.values_len);
-        assert_eq!(2, args.flags_len);
-
-        assert_eq!("value", args.values[0]);
-        assert_eq!("switch", args.flags[0].0);
-        assert_eq!("", args.flags[0].1);
-        assert_eq!("option", args.flags[1].0);
-        assert_eq!("option value!", args.flags[1].1);
+        assert_eq!(["value"], &other_values_vec(&args)[..]);
+        assert_eq!(Some(""), args.flags[0]);
+        assert_eq!(Some("option value!"), args.flags[1]);
     }
 
     #[test]
@@ -589,7 +615,7 @@ mod tests {
                 match commands.parse($command) {
                     Ok(_) => panic!("command parsed successfully"),
                     Err($error_pattern) => assert_eq!($expect, $value),
-                    Err(_) => panic!("other error occurred"),
+                    Err(e) => panic!("other error occurred {:?}", e),
                 }
             };
         }
@@ -598,20 +624,21 @@ mod tests {
         assert_fail!("   ", CommandParseError::InvalidCommandName(s) => s == "");
         assert_fail!(" !", CommandParseError::InvalidCommandName(s) => s == "!");
         assert_fail!("!  'aa'", CommandParseError::InvalidCommandName(s) => s == "!");
-        assert_fail!("c -o=", CommandParseError::InvalidFlagValue(s) => s == "=");
+        assert_fail!("c -option=", CommandParseError::InvalidFlagValue(s) => s == "=");
         assert_fail!("  a \"aa\"", CommandParseError::CommandNotFound(s) => s == "a");
 
         assert_fail!("c! 'abc", CommandParseError::UnterminatedArgument(s) => s == "abc");
         assert_fail!("c! '", CommandParseError::UnterminatedArgument(s) => s == "");
         assert_fail!("c! \"'", CommandParseError::UnterminatedArgument(s) => s == "'");
 
+        const TOO_MANY_VALUES_LEN: u8 = MAX_OTHER_VALUES_LEN as _;
         let mut too_many_values_command = String::new();
         too_many_values_command.push('c');
-        for _ in 0..MAX_COMMAND_ARGUMENT_VALUE_COUNT {
+        for _ in 0..TOO_MANY_VALUES_LEN {
             too_many_values_command.push_str(" a");
         }
         too_many_values_command.push_str(" b");
-        assert_fail!(&too_many_values_command, CommandParseError::TooManyValues(s) => s == "b");
+        assert_fail!(&too_many_values_command, CommandParseError::TooManyValues(s, TOO_MANY_VALUES_LEN) => s == "b");
     }
 
     #[test]
