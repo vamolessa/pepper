@@ -80,7 +80,6 @@ impl ModeState for State {
                 command_buf[..input.len()].copy_from_slice(input.as_bytes());
                 let command = unsafe { std::str::from_utf8_unchecked(&command_buf[..input.len()]) };
 
-                // TODO: prevent allocation here
                 let mut output = String::new();
                 let op = CommandManager::eval_command(
                     ctx.editor,
@@ -95,10 +94,11 @@ impl ModeState for State {
                     Ok(Some(CommandOperation::Quit)) => Some(ModeOperation::Quit),
                     Ok(Some(CommandOperation::QuitAll)) => Some(ModeOperation::QuitAll),
                     Err(error) => {
+                        let buffers = &ctx.editor.buffers;
                         ctx.editor
                             .status_bar
                             .write(MessageKind::Error)
-                            .fmt(format_args!("{}", error.display(command)));
+                            .fmt(format_args!("{}", error.display(command, buffers)));
                         None
                     }
                 };

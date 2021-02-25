@@ -656,7 +656,7 @@ pub enum BufferError {
     CouldNotWriteFile,
 }
 impl BufferError {
-    pub fn display(self, buffer: &Buffer) -> BufferErrorDisplay {
+    pub fn display<'a>(&'a self, buffer: &'a Buffer) -> BufferErrorDisplay<'a> {
         BufferErrorDisplay {
             error: self,
             buffer,
@@ -664,7 +664,7 @@ impl BufferError {
     }
 }
 pub struct BufferErrorDisplay<'a> {
-    error: BufferError,
+    error: &'a BufferError,
     buffer: &'a Buffer,
 }
 impl<'a> fmt::Display for BufferErrorDisplay<'a> {

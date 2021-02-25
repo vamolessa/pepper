@@ -6,13 +6,13 @@ use crate::{
     client::{ClientHandle, ClientManager},
     command::{CommandError, CommandIter, CommandManager, CommandOperation},
     config::Config,
+    editor_utils::{MessageKind, ReadLine, StatusBar, StringPool},
     events::{parse_all_keys, ClientEvent, ClientEventSource, EditorEvent, EditorEventQueue},
     keymap::{KeyMapCollection, MatchResult},
     lsp,
     mode::{Mode, ModeContext, ModeKind, ModeOperation},
     picker::Picker,
     platform::{Key, Platform},
-    editor_utils::{StringPool, ReadLine, StatusBar, MessageKind},
     register::{RegisterCollection, RegisterKey, KEY_QUEUE_REGISTER},
     syntax::{HighlightResult, SyntaxCollection},
     theme::Theme,
@@ -157,7 +157,7 @@ impl Editor {
                 Err(error) => {
                     self.status_bar
                         .write(MessageKind::Error)
-                        .fmt(format_args!("{}", error.display(command)));
+                        .fmt(format_args!("{}", error.display(command, &self.buffers)));
                     break;
                 }
             }
@@ -365,7 +365,7 @@ impl Editor {
                     Err(error) => {
                         self.status_bar
                             .write(MessageKind::Error)
-                            .fmt(format_args!("{}", error.display(command)));
+                            .fmt(format_args!("{}", error.display(command, &self.buffers)));
                         EditorControlFlow::Continue
                     }
                 };

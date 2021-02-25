@@ -1,15 +1,14 @@
-use std::{collections::VecDeque, fmt};
+use std::{any, collections::VecDeque, fmt, str::FromStr};
 
 use crate::{
-    buffer::BufferHandle,
+    buffer::{Buffer, BufferCollection, BufferError, BufferHandle},
     buffer_view::BufferViewHandle,
     client::{Client, ClientHandle, ClientManager},
     editor::Editor,
-    editor_utils::MessageKind,
     platform::Platform,
 };
 
-//mod builtin;
+mod builtin;
 
 pub const MAX_REQUIRED_VALUES_LEN: usize = 4;
 pub const MAX_OTHER_VALUES_LEN: usize = 8;
@@ -32,14 +31,22 @@ pub enum CommandParseError<'command> {
 pub enum CommandError<'command> {
     Aborted,
     ParseError(CommandParseError<'command>),
+    UnsavedChanges,
+    NoBufferOpened,
+    InvalidBufferHandle(BufferHandle),
+    InvalidPath(&'command str),
+    ParseValueError(&'command str, &'static str),
+    BufferError(BufferError, BufferHandle),
 }
 impl<'command> CommandError<'command> {
     pub fn display<'error>(
         &'error self,
         command: &'command str,
+        buffers: &'error BufferCollection,
     ) -> CommandErrorDisplay<'command, 'error> {
         CommandErrorDisplay {
             command,
+            buffers,
             error: self,
         }
     }
@@ -47,6 +54,7 @@ impl<'command> CommandError<'command> {
 
 pub struct CommandErrorDisplay<'command, 'error> {
     command: &'command str,
+    buffers: &'error BufferCollection,
     error: &'error CommandError<'command>,
 }
 impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
@@ -58,54 +66,69 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
         match self.error {
             CommandError::Aborted => Ok(()),
             CommandError::ParseError(ref error) => match error {
-                CommandParseError::InvalidCommandName(s) => f.write_fmt(format_args!(
+                CommandParseError::InvalidCommandName(token) => f.write_fmt(format_args!(
                     "{:>offset$} invalid command name",
                     '^',
-                    offset = error_offset(self.command, s),
+                    offset = error_offset(self.command, token),
                 )),
-                CommandParseError::CommandNotFound(s) => f.write_fmt(format_args!(
+                CommandParseError::CommandNotFound(token) => f.write_fmt(format_args!(
                     "{:>offset$} command not found",
                     '^',
-                    offset = error_offset(self.command, s),
+                    offset = error_offset(self.command, token),
                 )),
-                CommandParseError::CommandDoesNotAcceptBang(s) => f.write_fmt(format_args!(
+                CommandParseError::CommandDoesNotAcceptBang(token) => f.write_fmt(format_args!(
                     "{:>offset$} command does not accept bang",
                     '^',
-                    offset = error_offset(self.command, s),
+                    offset = error_offset(self.command, token),
                 )),
-                CommandParseError::UnterminatedArgument(s) => f.write_fmt(format_args!(
+                CommandParseError::UnterminatedArgument(token) => f.write_fmt(format_args!(
                     "{:>offset$} unterminated argument",
                     '^',
-                    offset = error_offset(self.command, s),
+                    offset = error_offset(self.command, token),
                 )),
-                CommandParseError::InvalidArgument(s) => f.write_fmt(format_args!(
+                CommandParseError::InvalidArgument(token) => f.write_fmt(format_args!(
                     "{:>offset$} invalid argument",
                     '^',
-                    offset = error_offset(self.command, s)
+                    offset = error_offset(self.command, token)
                 )),
-                CommandParseError::TooFewValues(s, min) => f.write_fmt(format_args!(
+                CommandParseError::TooFewValues(token, min) => f.write_fmt(format_args!(
                     "{:>offset$} command expects at least {} values",
                     '^',
                     min,
-                    offset = error_offset(self.command, s),
+                    offset = error_offset(self.command, token),
                 )),
-                CommandParseError::TooManyValues(s, max) => f.write_fmt(format_args!(
+                CommandParseError::TooManyValues(token, max) => f.write_fmt(format_args!(
                     "{:>offset$} command expects at most {} values",
                     '^',
                     max,
-                    offset = error_offset(self.command, s),
+                    offset = error_offset(self.command, token),
                 )),
-                CommandParseError::UnknownFlag(s) => f.write_fmt(format_args!(
+                CommandParseError::UnknownFlag(token) => f.write_fmt(format_args!(
                     "{:>offset$} unknown flag",
                     '^',
-                    offset = error_offset(self.command, s),
+                    offset = error_offset(self.command, token),
                 )),
-                CommandParseError::InvalidFlagValue(s) => f.write_fmt(format_args!(
+                CommandParseError::InvalidFlagValue(token) => f.write_fmt(format_args!(
                     "{:>offset$} invalid flag value",
                     '^',
-                    offset = error_offset(self.command, s),
+                    offset = error_offset(self.command, token),
                 )),
             },
+            CommandError::UnsavedChanges => f.write_str(
+                "there are unsaved changes in buffer. try appending a '!' to command name to force execute",
+            ),
+            CommandError::NoBufferOpened => f.write_str("no buffer opened"),
+            CommandError::InvalidBufferHandle(handle) => f.write_fmt(format_args!("invalid buffer handle {}", handle)),
+            CommandError::InvalidPath(path) => f.write_fmt(format_args!(
+                "{:>offset$} invalid path '{}'", '^', path, offset = error_offset(self.command, path)
+            )),
+            CommandError::ParseValueError(flag, type_name) => f.write_fmt(format_args!(
+                "{:>offset$} could not parse '{}' as {}", '^', flag, type_name, offset= error_offset(self.command, flag)
+            )),
+            CommandError::BufferError(error, handle) => match self.buffers.get(*handle) {
+                Some(buffer) => f.write_fmt(format_args!("{}", error.display(buffer))),
+                None => Ok(()),
+            }
         }
     }
 }
@@ -133,54 +156,54 @@ pub struct CommandContext<'state, 'command> {
     pub clients: &'state mut ClientManager,
     pub client_handle: Option<ClientHandle>,
     pub args: &'state mut CommandArgs<'command>,
+    pub output: &'state mut String,
 }
 impl<'state, 'command> CommandContext<'state, 'command> {
-    pub fn current_buffer_view_handle_or_error(&mut self) -> Option<BufferViewHandle> {
+    pub fn current_buffer_view_handle(&self) -> Result<BufferViewHandle, CommandError<'command>> {
         match self
             .client_handle
             .and_then(|h| self.clients.get(h))
             .and_then(Client::buffer_view_handle)
         {
-            Some(handle) => Some(handle),
-            None => {
-                self.editor
-                    .status_bar
-                    .write(MessageKind::Error)
-                    .str("no buffer view opened");
-                None
-            }
+            Some(handle) => Ok(handle),
+            None => Err(CommandError::NoBufferOpened),
         }
     }
 
-    pub fn current_buffer_handle_or_error(&mut self) -> Option<BufferHandle> {
-        let buffer_view_handle = self.current_buffer_view_handle_or_error()?;
+    pub fn current_buffer_handle(&self) -> Result<BufferHandle, CommandError<'command>> {
+        let buffer_view_handle = self.current_buffer_view_handle()?;
         match self
             .editor
             .buffer_views
             .get(buffer_view_handle)
             .map(|v| v.buffer_handle)
         {
-            Some(handle) => Some(handle),
-            None => {
-                self.editor
-                    .status_bar
-                    .write(MessageKind::Error)
-                    .str("no buffer opened");
-                None
-            }
+            Some(handle) => Ok(handle),
+            None => Err(CommandError::NoBufferOpened),
         }
     }
 
-    pub fn validate_buffer_handle(&mut self, handle: BufferHandle) -> Option<BufferHandle> {
-        match self.editor.buffers.get(handle) {
-            Some(_) => Some(handle),
-            None => {
-                self.editor
-                    .status_bar
-                    .write(MessageKind::Error)
-                    .str("invalid buffer handle");
-                None
-            }
+    pub fn assert_can_discard_all_buffers(&self) -> Result<(), CommandError<'command>> {
+        if self.args.bang || !self.editor.buffers.iter().any(Buffer::needs_save) {
+            Ok(())
+        } else {
+            Err(CommandError::UnsavedChanges)
+        }
+    }
+
+    pub fn assert_can_discard_buffer(
+        &self,
+        handle: BufferHandle,
+    ) -> Result<(), CommandError<'command>> {
+        let buffer = self
+            .editor
+            .buffers
+            .get(handle)
+            .ok_or(CommandError::InvalidBufferHandle(handle))?;
+        if self.args.bang || !buffer.needs_save() {
+            Ok(())
+        } else {
+            Err(CommandError::UnsavedChanges)
         }
     }
 }
@@ -264,8 +287,7 @@ pub struct CommandManager {
 impl CommandManager {
     pub fn new() -> Self {
         Self {
-            // TODO: use builtin::COMMANDS
-            builtin_commands: &[], //builtin::COMMANDS,
+            builtin_commands: builtin::COMMANDS,
             history: VecDeque::with_capacity(HISTORY_CAPACITY),
             output_stack: String::new(),
         }
@@ -325,6 +347,7 @@ impl CommandManager {
                     clients,
                     client_handle,
                     args: &mut args,
+                    output,
                 })
             }
             Err(error) => Err(CommandError::ParseError(error)),
@@ -545,6 +568,20 @@ pub struct CommandArgs<'a> {
     pub required_values: [&'a str; MAX_REQUIRED_VALUES_LEN],
     pub other_values: [Option<&'a str>; MAX_OTHER_VALUES_LEN],
     pub flags: [Option<&'a str>; MAX_FLAGS_LEN],
+}
+impl<'a> CommandArgs<'a> {
+    pub fn parse_flag<T>(&self, index: usize) -> Result<Option<T>, CommandError<'a>>
+    where
+        T: 'static + FromStr,
+    {
+        match self.flags[index] {
+            Some(flag) => match flag.parse() {
+                Ok(value) => Ok(Some(value)),
+                Err(_) => Err(CommandError::ParseValueError(flag, any::type_name::<T>())),
+            },
+            None => Ok(None),
+        }
+    }
 }
 
 #[cfg(test)]

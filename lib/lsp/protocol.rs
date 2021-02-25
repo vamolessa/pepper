@@ -426,12 +426,7 @@ impl Protocol {
         self.send_body(platform, json, body.into());
     }
 
-    fn send_body(
-        &mut self,
-        platform: &mut Platform,
-        json: &mut Json,
-        body: JsonValue,
-    ) {
+    fn send_body(&mut self, platform: &mut Platform, json: &mut Json, body: JsonValue) {
         use io::Write;
 
         let mut buf = platform.buf_pool.acquire();
@@ -440,11 +435,7 @@ impl Protocol {
 
         json.write(&mut self.body_buf, &body);
 
-        let _ = write!(
-            write_buf,
-            "Content-Length: {}\r\n\r\n",
-            self.body_buf.len()
-        );
+        let _ = write!(write_buf, "Content-Length: {}\r\n\r\n", self.body_buf.len());
         write_buf.append(&mut self.body_buf);
 
         if let Some(handle) = self.process_handle {

@@ -11,7 +11,7 @@ use crate::{
     buffer::BufferHandle,
     buffer_position::{BufferPosition, BufferRange},
     editor::Editor,
-    editor_utils::{StatusBar, MessageKind},
+    editor_utils::{MessageKind, StatusBar},
     events::EditorEvent,
     glob::Glob,
     json::{

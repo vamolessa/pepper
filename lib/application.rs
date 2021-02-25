@@ -4,7 +4,7 @@ use crate::{
     client::{ClientHandle, ClientManager},
     command::CommandOperation,
     editor::{Editor, EditorControlFlow},
-    events::{ClientEventReceiver, ClientEvent, ClientEventSource},
+    events::{ClientEvent, ClientEventReceiver, ClientEventSource},
     lsp,
     platform::{Key, Platform, PlatformRequest, ProcessHandle, SharedBuf},
     serialization::{SerializationBuf, Serialize},
