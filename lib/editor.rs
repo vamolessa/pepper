@@ -271,11 +271,10 @@ impl Editor {
         }
 
         for command in CommandIter::new(&text) {
-            match CommandManager::eval(self, platform, clients, None, command) {
-                Err(CommandError::NoOperation) => (),
-                Ok(op @ CommandOperation::Quit) | Ok(op @ CommandOperation::QuitAll) => {
-                    return Some(op)
-                }
+            match CommandManager::eval_command(self, platform, clients, None, command) {
+                Ok((None, _)) | Err(CommandError::Aborted) => (),
+                Ok((Some(op @ CommandOperation::Quit), _))
+                | Ok((Some(op @ CommandOperation::QuitAll), _)) => return Some(op),
                 Err(error) => {
                     self.output
                         .write(EditorOutputKind::Error)
@@ -471,10 +470,16 @@ impl Editor {
                     ClientEventSource::ClientHandle(handle) => handle,
                 };
 
-                match CommandManager::eval(self, platform, clients, Some(client_handle), command) {
-                    Err(CommandError::NoOperation) => EditorLoop::Continue,
-                    Ok(CommandOperation::Quit) => EditorLoop::Quit,
-                    Ok(CommandOperation::QuitAll) => EditorLoop::QuitAll,
+                match CommandManager::eval_command(
+                    self,
+                    platform,
+                    clients,
+                    Some(client_handle),
+                    command,
+                ) {
+                    Ok((None, _)) | Err(CommandError::Aborted) => EditorLoop::Continue,
+                    Ok((Some(CommandOperation::Quit), _)) => EditorLoop::Quit,
+                    Ok((Some(CommandOperation::QuitAll), _)) => EditorLoop::QuitAll,
                     Err(error) => {
                         self.output
                             .write(EditorOutputKind::Error)

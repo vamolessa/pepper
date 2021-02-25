@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, fmt};
+use std::{collections::VecDeque, fmt, ops::Range};
 
 use crate::{
     buffer::BufferHandle,
@@ -29,7 +29,7 @@ pub enum CommandParseError<'command> {
 }
 
 pub enum CommandError<'command> {
-    NoOperation,
+    Aborted,
     ParseError(CommandParseError<'command>),
 }
 impl<'command> CommandError<'command> {
@@ -55,7 +55,7 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
         }
 
         match self.error {
-            CommandError::NoOperation => Ok(()),
+            CommandError::Aborted => Ok(()),
             CommandError::ParseError(ref error) => match error {
                 CommandParseError::InvalidCommandName(s) => f.write_fmt(format_args!(
                     "{:>offset$} invalid command name",
@@ -109,13 +109,23 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
     }
 }
 
-type CommandFn = for<'state, 'command> fn(
-    CommandContext<'state, 'command>,
-) -> Result<CommandOperation, CommandError<'command>>;
+type CommandFn =
+    for<'state, 'command> fn(
+        CommandContext<'state, 'command>,
+    ) -> Result<Option<CommandOperation>, CommandError<'command>>;
 
 pub enum CommandOperation {
     Quit,
     QuitAll,
+}
+
+pub struct CommandOutput {
+    index: usize,
+}
+impl CommandOutput {
+    pub fn as_str<'a>(&self, commands: &'a CommandManager) -> &'a str {
+        &self.output_stack[self.range.clone()]
+    }
 }
 
 pub enum CompletionSource {
@@ -256,13 +266,16 @@ pub struct BuiltinCommand {
 pub struct CommandManager {
     builtin_commands: &'static [BuiltinCommand],
     history: VecDeque<String>,
+    output_stack: String,
 }
 
 impl CommandManager {
     pub fn new() -> Self {
         Self {
+            // TODO: use builtin::COMMANDS
             builtin_commands: &[], //builtin::COMMANDS,
             history: VecDeque::with_capacity(HISTORY_CAPACITY),
+            output_stack: String::new(),
         }
     }
 
@@ -293,25 +306,39 @@ impl CommandManager {
         self.history.push_back(s);
     }
 
-    pub fn eval<'a>(
-        editor: &mut Editor,
+    pub fn push_output_str(&mut self, output: &str) {
+        self.output_stack.push_str(output);
+    }
+
+    pub fn push_output_fmt(&mut self, args: fmt::Arguments) {
+        let _ = fmt::write(&mut self.output_stack, args);
+    }
+
+    pub fn eval_command<'output, 'command>(
+        editor: &'output mut Editor,
         platform: &mut Platform,
         clients: &mut ClientManager,
         client_handle: Option<ClientHandle>,
-        command: &'a str,
-    ) -> Result<CommandOperation, CommandError<'a>> {
+        command: &'command str,
+    ) -> Result<(Option<CommandOperation>, CommandOutput<'output>), CommandError<'command>> {
         match editor.commands.parse(command) {
             Ok((source, mut args)) => {
                 let command = match source {
                     CommandSource::Builtin(i) => editor.commands.builtin_commands[i].func,
                 };
-                command(CommandContext {
+                let previous_top = editor.commands.output_stack.len();
+                let result = command(CommandContext {
                     editor,
                     platform,
                     clients,
                     client_handle,
                     args: &mut args,
-                })
+                });
+                let output = CommandOutput {
+                    output_stack: &mut editor.commands.output_stack,
+                    previous_top,
+                };
+                result.map(|op| (op, output))
             }
             Err(error) => Err(CommandError::ParseError(error)),
         }
@@ -546,12 +573,13 @@ mod tests {
             optional_values: &[],
             extra_values: Some(None),
             flags: &[("switch", None), ("option", None)],
-            func: |_| Err(CommandError::NoOperation),
+            func: |_| Ok(None),
         }];
 
         CommandManager {
             builtin_commands,
-            history: VecDeque::default(),
+            history: Default::default(),
+            output_stack: Default::default(),
         }
     }
 
