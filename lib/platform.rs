@@ -121,13 +121,13 @@ impl SharedBuf {
 
 #[derive(Default)]
 pub struct BufPool {
-    bufs: Vec<SharedBuf>,
+    pool: Vec<SharedBuf>,
 }
 impl BufPool {
     pub fn acquire(&mut self) -> ExclusiveBuf {
-        for (i, buf) in self.bufs.iter_mut().enumerate() {
+        for (i, buf) in self.pool.iter_mut().enumerate() {
             if Arc::get_mut(&mut buf.0).is_some() {
-                let buf = self.bufs.swap_remove(i);
+                let buf = self.pool.swap_remove(i);
                 return ExclusiveBuf(buf.0);
             }
         }
@@ -136,6 +136,6 @@ impl BufPool {
     }
 
     pub fn release(&mut self, buf: SharedBuf) {
-        self.bufs.push(buf);
+        self.pool.push(buf);
     }
 }

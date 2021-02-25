@@ -3,7 +3,7 @@ use std::{env, io, sync::mpsc};
 use crate::{
     client::{ClientHandle, ClientManager},
     command::CommandOperation,
-    editor::{Editor, EditorLoop},
+    editor::{Editor, EditorControlFlow},
     events::{ClientEventReceiver, ClientEvent, ClientEventSource},
     lsp,
     platform::{Key, Platform, PlatformRequest, ProcessHandle, SharedBuf},
@@ -148,13 +148,13 @@ impl ServerApplication {
                             client_event_receiver.receive_events(handle, buf.as_bytes());
                         while let Some(event) = events.next(&client_event_receiver) {
                             match editor.on_client_event(&mut clients, handle, platform, event) {
-                                EditorLoop::Continue => (),
-                                EditorLoop::Quit => {
+                                EditorControlFlow::Continue => (),
+                                EditorControlFlow::Quit => {
                                     platform
                                         .enqueue_request(PlatformRequest::CloseClient { handle });
                                     break;
                                 }
-                                EditorLoop::QuitAll => break 'event_loop,
+                                EditorControlFlow::QuitAll => break 'event_loop,
                             }
                         }
                         events.finish(&mut client_event_receiver);

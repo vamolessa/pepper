@@ -12,7 +12,7 @@ use crate::{
     mode::{Mode, ModeContext, ModeKind, ModeOperation},
     picker::Picker,
     platform::{Key, Platform},
-    editor_utils::{ReadLine, StatusBar, MessageKind},
+    editor_utils::{StringPool, ReadLine, StatusBar, MessageKind},
     register::{RegisterCollection, RegisterKey, KEY_QUEUE_REGISTER},
     syntax::{HighlightResult, SyntaxCollection},
     theme::Theme,
@@ -20,14 +20,14 @@ use crate::{
 };
 
 #[derive(Clone, Copy)]
-pub enum EditorLoop {
+pub enum EditorControlFlow {
     Quit,
     QuitAll,
     Continue,
 }
-impl EditorLoop {
+impl EditorControlFlow {
     pub fn is_quit(self) -> bool {
-        matches!(self, EditorLoop::Quit | EditorLoop::QuitAll)
+        matches!(self, EditorControlFlow::Quit | EditorControlFlow::QuitAll)
     }
 }
 
@@ -83,6 +83,7 @@ pub struct Editor {
     pub registers: RegisterCollection,
     pub read_line: ReadLine,
     pub picker: Picker,
+    pub string_pool: StringPool,
 
     pub status_bar: StatusBar,
 
@@ -110,6 +111,7 @@ impl Editor {
             registers: RegisterCollection::default(),
             read_line: ReadLine::default(),
             picker: Picker::default(),
+            string_pool: StringPool::default(),
 
             status_bar: StatusBar::new(),
 
@@ -145,8 +147,7 @@ impl Editor {
             return None;
         }
 
-        // TODO: prevent allocation here
-        let mut output = String::new();
+        let mut output = self.string_pool.acquire();
         for command in CommandIter::new(&text) {
             match CommandManager::eval_command(self, platform, clients, None, command, &mut output)
             {
@@ -161,6 +162,7 @@ impl Editor {
                 }
             }
         }
+        self.string_pool.release(output);
 
         None
     }
@@ -227,7 +229,7 @@ impl Editor {
         client_handle: ClientHandle,
         platform: &mut Platform,
         event: ClientEvent,
-    ) -> EditorLoop {
+    ) -> EditorControlFlow {
         let result = match event {
             ClientEvent::Key(source, key) => {
                 self.status_bar.clear();
@@ -236,7 +238,7 @@ impl Editor {
                     ClientEventSource::ConnectionClient => client_handle,
                     ClientEventSource::FocusedClient => match clients.focused_handle() {
                         Some(handle) => handle,
-                        None => return EditorLoop::Continue,
+                        None => return EditorControlFlow::Continue,
                     },
                     ClientEventSource::ClientHandle(handle) => handle,
                 };
@@ -253,7 +255,7 @@ impl Editor {
                     .matches(self.mode.kind(), self.buffered_keys.as_slice())
                 {
                     MatchResult::None => (),
-                    MatchResult::Prefix => return EditorLoop::Continue,
+                    MatchResult::Prefix => return EditorControlFlow::Continue,
                     MatchResult::ReplaceWith(replaced_keys) => {
                         self.buffered_keys.0.clear();
                         self.buffered_keys.0.extend_from_slice(replaced_keys);
@@ -277,16 +279,16 @@ impl Editor {
                         match Mode::on_client_keys(&mut ctx, &mut keys) {
                             None => (),
                             Some(ModeOperation::Pending) => {
-                                return EditorLoop::Continue;
+                                return EditorControlFlow::Continue;
                             }
                             Some(ModeOperation::Quit) => {
                                 Mode::change_to(&mut ctx, ModeKind::default());
                                 self.buffered_keys.0.clear();
-                                return EditorLoop::Quit;
+                                return EditorControlFlow::Quit;
                             }
                             Some(ModeOperation::QuitAll) => {
                                 self.buffered_keys.0.clear();
-                                return EditorLoop::QuitAll;
+                                return EditorControlFlow::QuitAll;
                             }
                             Some(ModeOperation::ExecuteMacro(key)) => {
                                 self.parse_and_set_keys_from_register(key);
@@ -321,14 +323,14 @@ impl Editor {
 
                 self.buffered_keys.0.clear();
                 self.trigger_event_handlers(clients, platform);
-                EditorLoop::Continue
+                EditorControlFlow::Continue
             }
             ClientEvent::Resize(source, width, height) => {
                 let client_handle = match source {
                     ClientEventSource::ConnectionClient => client_handle,
                     ClientEventSource::FocusedClient => match clients.focused_handle() {
                         Some(handle) => handle,
-                        None => return EditorLoop::Continue,
+                        None => return EditorControlFlow::Continue,
                     },
                     ClientEventSource::ClientHandle(handle) => handle,
                 };
@@ -336,21 +338,20 @@ impl Editor {
                 if let Some(client) = clients.get_mut(client_handle) {
                     client.viewport_size = (width, height);
                 }
-                EditorLoop::Continue
+                EditorControlFlow::Continue
             }
             ClientEvent::Command(source, command) => {
                 let client_handle = match source {
                     ClientEventSource::ConnectionClient => client_handle,
                     ClientEventSource::FocusedClient => match clients.focused_handle() {
                         Some(handle) => handle,
-                        None => return EditorLoop::Continue,
+                        None => return EditorControlFlow::Continue,
                     },
                     ClientEventSource::ClientHandle(handle) => handle,
                 };
 
-                // TODO: prevent allocation here
-                let mut output = String::new();
-                match CommandManager::eval_command(
+                let mut output = self.string_pool.acquire();
+                let flow = match CommandManager::eval_command(
                     self,
                     platform,
                     clients,
@@ -358,16 +359,18 @@ impl Editor {
                     command,
                     &mut output,
                 ) {
-                    Ok(None) | Err(CommandError::Aborted) => EditorLoop::Continue,
-                    Ok(Some(CommandOperation::Quit)) => EditorLoop::Quit,
-                    Ok(Some(CommandOperation::QuitAll)) => EditorLoop::QuitAll,
+                    Ok(None) | Err(CommandError::Aborted) => EditorControlFlow::Continue,
+                    Ok(Some(CommandOperation::Quit)) => EditorControlFlow::Quit,
+                    Ok(Some(CommandOperation::QuitAll)) => EditorControlFlow::QuitAll,
                     Err(error) => {
                         self.status_bar
                             .write(MessageKind::Error)
                             .fmt(format_args!("{}", error.display(command)));
-                        EditorLoop::Continue
+                        EditorControlFlow::Continue
                     }
-                }
+                };
+                self.string_pool.release(output);
+                flow
             }
         };
 

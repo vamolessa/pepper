@@ -12,7 +12,7 @@ use crate::{
     mode::{picker, read_line, Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     navigation_history::{NavigationDirection, NavigationHistory},
     platform::Key,
-    register::{RegisterKey, AUTO_MACRO_REGISTER, SEARCH_REGISTER, TEMP_REGISTER},
+    register::{RegisterKey, AUTO_MACRO_REGISTER, SEARCH_REGISTER},
     word_database::WordKind,
 };
 
@@ -682,10 +682,8 @@ impl State {
                     std::iter::repeat(' ').take(count)
                 };
 
-                let temp_register = ctx.editor.registers.get_mut(TEMP_REGISTER);
-                let previous_len = temp_register.len();
-                temp_register.extend(extender);
-
+                let mut buf = ctx.editor.string_pool.acquire();
+                buf.extend(extender);
                 for i in 0..cursor_count {
                     let range = ctx.editor.buffer_views.get(handle)?.cursors[i].as_range();
                     for line_index in range.from.line_index..=range.to.line_index {
@@ -694,13 +692,12 @@ impl State {
                             &mut ctx.editor.word_database,
                             handle,
                             BufferPosition::line_col(line_index, 0),
-                            &temp_register[previous_len..],
+                            &buf,
                             &mut ctx.editor.events,
                         );
                     }
                 }
-
-                temp_register.truncate(previous_len);
+                ctx.editor.string_pool.release(buf);
 
                 let buffer_view = ctx.editor.buffer_views.get(handle)?;
                 ctx.editor
@@ -873,11 +870,12 @@ impl State {
             Key::Char('s') => read_line::search::enter_mode(ctx),
             Key::Char('y') => {
                 let buffer_view = ctx.editor.buffer_views.get(handle)?;
-                let temp_register = ctx.editor.registers.get_mut(TEMP_REGISTER);
-                buffer_view.get_selection_text(&ctx.editor.buffers, temp_register);
-                if !temp_register.is_empty() {
-                    ctx.platform.write_to_clipboard(&temp_register);
+                let mut buf = ctx.editor.string_pool.acquire();
+                buffer_view.get_selection_text(&ctx.editor.buffers, &mut buf);
+                if !buf.is_empty() {
+                    ctx.platform.write_to_clipboard(&buf);
                 }
+                ctx.editor.string_pool.release(buf);
                 this.movement_kind = CursorMovementKind::PositionAndAnchor;
             }
             Key::Char('Y') => {
@@ -888,16 +886,17 @@ impl State {
                     &mut ctx.editor.events,
                 );
 
-                let temp_register = ctx.editor.registers.get_mut(TEMP_REGISTER);
-                if ctx.platform.read_from_clipboard(temp_register) {
+                let mut buf = ctx.editor.string_pool.acquire();
+                if ctx.platform.read_from_clipboard(&mut buf) {
                     ctx.editor.buffer_views.insert_text_at_cursor_positions(
                         &mut ctx.editor.buffers,
                         &mut ctx.editor.word_database,
                         handle,
-                        &temp_register,
+                        &buf,
                         &mut ctx.editor.events,
                     );
                 }
+                ctx.editor.string_pool.release(buf);
 
                 let buffer_view = ctx.editor.buffer_views.get(handle)?;
                 ctx.editor
@@ -1273,7 +1272,10 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) -> Option<()> {
         break;
     }
 
-    fn select_diagnostic_position(diagnostics: &[lsp::Diagnostic], forward: bool) -> BufferPosition {
+    fn select_diagnostic_position(
+        diagnostics: &[lsp::Diagnostic],
+        forward: bool,
+    ) -> BufferPosition {
         if forward {
             diagnostics[0].utf16_range.from
         } else {

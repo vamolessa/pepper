@@ -131,4 +131,20 @@ impl<'a> EditorOutputWrite<'a> {
     }
 }
 
+#[derive(Default)]
+pub struct StringPool {
+    pool: Vec<String>,
+}
+impl StringPool {
+    pub fn acquire(&mut self) -> String {
+        match self.pool.pop() {
+            Some(s) => s,
+            None => String::new(),
+        }
+    }
 
+    pub fn release(&mut self, mut s: String) {
+        s.clear();
+        self.pool.push(s);
+    }
+}

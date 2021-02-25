@@ -6,7 +6,7 @@ use crate::{
     editor::{Editor, KeysIterator},
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     platform::Key,
-    register::{AUTO_MACRO_REGISTER, TEMP_REGISTER},
+    register::AUTO_MACRO_REGISTER,
     word_database::WordKind,
 };
 
@@ -83,14 +83,12 @@ impl ModeState for State {
                 let cursor_count = buffer_view.cursors[..].len();
                 let buffer_handle = buffer_view.buffer_handle;
 
-                let temp_register = ctx.editor.registers.get_mut(TEMP_REGISTER);
-                let previous_len = temp_register.len();
-
+                let mut buf = ctx.editor.string_pool.acquire();
                 for i in 0..cursor_count {
                     let position = ctx.editor.buffer_views.get(handle)?.cursors[i].position;
                     let buffer = ctx.editor.buffers.get(buffer_handle)?;
 
-                    temp_register.push('\n');
+                    buf.push('\n');
 
                     let indentation_word = buffer
                         .content()
@@ -98,7 +96,7 @@ impl ModeState for State {
                     if indentation_word.kind == WordKind::Whitespace {
                         let indentation_len =
                             position.column_byte_index.min(indentation_word.text.len());
-                        temp_register.push_str(&indentation_word.text[..indentation_len]);
+                        buf.push_str(&indentation_word.text[..indentation_len]);
                     }
 
                     ctx.editor.buffer_views.insert_text_at_position(
@@ -106,12 +104,13 @@ impl ModeState for State {
                         &mut ctx.editor.word_database,
                         handle,
                         position,
-                        &temp_register[previous_len..],
+                        &buf,
                         &mut ctx.editor.events,
                     );
 
-                    temp_register.truncate(previous_len);
+                    buf.clear();
                 }
+                ctx.editor.string_pool.release(buf);
             }
             Key::Char(c) => {
                 let mut buf = [0; std::mem::size_of::<char>()];
@@ -207,18 +206,15 @@ impl ModeState for State {
 fn apply_completion(editor: &mut Editor, handle: BufferViewHandle, cursor_movement: isize) {
     editor.picker.move_cursor(cursor_movement);
     if let Some(entry) = editor.picker.current_entry(&mut editor.word_database) {
-        let temp_register = editor.registers.get_mut(TEMP_REGISTER);
-        let previous_len = temp_register.len();
-        temp_register.push_str(entry.name);
-
+        let mut buf = editor.string_pool.acquire();
+        buf.push_str(entry.name);
         editor.buffer_views.apply_completion(
             &mut editor.buffers,
             &mut editor.word_database,
             handle,
-            &temp_register[previous_len..],
+            &buf,
             &mut editor.events,
         );
-
-        temp_register.truncate(previous_len);
+        editor.string_pool.release(buf);
     }
 }

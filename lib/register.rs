@@ -1,7 +1,6 @@
 pub const SEARCH_REGISTER: RegisterKey = RegisterKey::from_char_unchecked('s');
 pub const KEY_QUEUE_REGISTER: RegisterKey = RegisterKey::from_char_unchecked('k');
 pub const AUTO_MACRO_REGISTER: RegisterKey = RegisterKey::from_char_unchecked('a');
-pub const TEMP_REGISTER: RegisterKey = RegisterKey::from_char_unchecked('t');
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct RegisterKey(u8);
