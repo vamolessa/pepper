@@ -390,6 +390,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         ],
         func: |ctx| {
             let glob = ctx.args.required_values[0];
+
             let mut syntax = Syntax::new();
             syntax
                 .set_glob(glob.as_bytes())
@@ -404,11 +405,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 TokenKind::Comment,
                 TokenKind::Text,
             ];
-
-            for (kind, flag) in kinds.iter().zip(ctx.args.flags.iter()) {
+            for (&kind, &flag) in kinds.iter().zip(ctx.args.flags.iter()) {
                 if let Some(flag) = flag {
                     syntax
-                        .set_rule(*kind, flag)
+                        .set_rule(kind, flag)
                         .map_err(|e| CommandError::PatternError(flag, e))?;
                 }
             }
@@ -420,103 +420,84 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             Ok(None)
         },
     },
-    /*
     BuiltinCommand {
         names: &["map"],
         help: "create a keyboard mapping for a mode",
         accepts_bang: false,
-        required_values: &[],
+        required_values: &[("from", None), ("to", None)],
         optional_values: &[],
         extra_values: None,
-        flags: &[],
-        func: |mut ctx| {
-            parse_values!(ctx, mode, from, to);
-            parse_switches!(ctx);
-            parse_options!(ctx);
+        flags: &[
+            ("normal", None),
+            ("insert", None),
+            ("read-line", None),
+            ("picker", None),
+            ("command", None),
+        ],
+        func: |ctx| {
+            let from = ctx.args.required_values[0];
+            let to = ctx.args.required_values[0];
 
-            require_value!(ctx, mode);
-            require_value!(ctx, from);
-            require_value!(ctx, to);
-
-            let mode = match mode {
-                "normal" => ModeKind::Normal,
-                "insert" => ModeKind::Insert,
-                "read-line" => ModeKind::ReadLine,
-                "picker" => ModeKind::Picker,
-                "command" => ModeKind::Command,
-                _ => {
+            let kinds = [
+                ModeKind::Normal,
+                ModeKind::Insert,
+                ModeKind::ReadLine,
+                ModeKind::Picker,
+                ModeKind::Command,
+            ];
+            for (&kind, flag) in kinds.iter().zip(ctx.args.flags.iter()) {
+                if flag.is_some() {
                     ctx.editor
-                        .output
-                        .write(EditorOutputKind::Error)
-                        .fmt(format_args!("invalid mode '{}'", mode));
-                    return None;
+                        .keymaps
+                        .parse_and_map(kind, from, to)
+                        .map_err(|e| match e {
+                            ParseKeyMapError::From(e) => {
+                                CommandError::KeyParseError(&from[e.index..], e.error)
+                            }
+                            ParseKeyMapError::To(e) => {
+                                CommandError::KeyParseError(&to[e.index..], e.error)
+                            }
+                        })?;
                 }
-            };
-
-            match ctx.editor.keymaps.parse_and_map(mode, from, to) {
-                Ok(()) => (),
-                Err(ParseKeyMapError::From(e)) => parsing_error(&mut ctx, from, &e.error, e.index),
-                Err(ParseKeyMapError::To(e)) => parsing_error(&mut ctx, to, &e.error, e.index),
             }
-
-            None
+            Ok(None)
         },
     },
     BuiltinCommand {
         names: &["register"],
         help: "change an editor register",
         accepts_bang: false,
-        required_values: &[],
-        optional_values: &[],
+        required_values: &[("key", None)],
+        optional_values: &[("value", None)],
         extra_values: None,
         flags: &[],
         func: |ctx| {
-            parse_values!(ctx, key, value);
-            parse_switches!(ctx);
-            parse_options!(ctx);
-
-            require_value!(ctx, key);
-            let key = match RegisterKey::from_str(key) {
-                Some(key) => key,
-                None => {
-                    ctx.editor
-                        .output
-                        .write(EditorOutputKind::Error)
-                        .fmt(format_args!("invalid register key '{}'", key));
-                    return None;
-                }
+            let key = ctx.args.required_values[0];
+            let value = ctx.args.other_values[0];
+            let register = match RegisterKey::from_str(key) {
+                Some(key) => ctx.editor.registers.get_mut(key),
+                None => return Err(CommandError::InvalidRegisterKey(key)),
             };
-
             match value {
                 Some(value) => {
-                    let register = ctx.editor.registers.get_mut(key);
                     register.clear();
                     register.push_str(value);
                 }
-                None => ctx
-                    .editor
-                    .output
-                    .write(EditorOutputKind::Info)
-                    .str(ctx.editor.registers.get(key)),
+                None => ctx.output.push_str(register),
             }
-
-            None
+            Ok(None)
         },
     },
     BuiltinCommand {
         names: &["run"],
         help: "",
         accepts_bang: false,
-        required_values: &[],
+        required_values: &[("command", None)],
         optional_values: &[],
         extra_values: None,
         flags: &[],
         func: |ctx| {
-            parse_values!(ctx, command);
-            parse_switches!(ctx);
-            parse_options!(ctx);
-
-            require_value!(ctx, command);
+            let command = ctx.args.required_values[0];
             eprintln!("request spawn process '{}'", command);
 
             let mut command = Command::new(command);
@@ -530,10 +511,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 stdout_buf_len: 4 * 1024,
                 stderr_buf_len: 0,
             });
-
-            None
+            Ok(None)
         },
     },
+    /*
     BuiltinCommand {
         names: &["lsp-start"],
         help: "start a lsp server",

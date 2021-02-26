@@ -1,13 +1,14 @@
 use std::{any, collections::VecDeque, fmt, str::FromStr};
 
 use crate::{
-    pattern::PatternError,
-    syntax::TokenKind,
     buffer::{Buffer, BufferCollection, BufferError, BufferHandle},
     buffer_view::BufferViewHandle,
     client::{Client, ClientHandle, ClientManager},
     editor::Editor,
+    events::KeyParseError,
+    pattern::PatternError,
     platform::Platform,
+    syntax::TokenKind,
 };
 
 mod builtin;
@@ -54,6 +55,8 @@ pub enum CommandError<'command> {
     },
     InvalidGlob(&'command str),
     PatternError(&'command str, PatternError),
+    KeyParseError(&'command str, KeyParseError),
+    InvalidRegisterKey(&'command str),
 }
 impl<'command> CommandError<'command> {
     pub fn display<'error>(
@@ -189,6 +192,17 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
                 '^',
                 error,
                 offset = error_offset(self.command, pattern),
+            )),
+            CommandError::KeyParseError(keys, error) => f.write_fmt(format_args!(
+                "{:>offset$} {}",
+                '^',
+                error,
+                offset = error_offset(self.command, keys),
+            )),
+            CommandError::InvalidRegisterKey(key) => f.write_fmt(format_args!(
+                "{:>offset$} invalid register key",
+                '^',
+                offset = error_offset(self.command, key),
             )),
         }
     }
