@@ -3,7 +3,7 @@ use std::{cmp::Ordering, ops::Range};
 use crate::{
     buffer::BufferContent,
     buffer_position::BufferRange,
-    glob::Glob,
+    glob::{InvalidGlobError, Glob},
     pattern::{MatchResult, Pattern, PatternError, PatternState},
 };
 
@@ -63,8 +63,8 @@ impl Syntax {
         }
     }
 
-    pub fn set_glob(&mut self, pattern: &[u8]) {
-        let _ = self.glob.compile(pattern);
+    pub fn set_glob(&mut self, pattern: &[u8]) -> Result<(), InvalidGlobError> {
+        self.glob.compile(pattern)
     }
 
     pub fn set_rule(&mut self, kind: TokenKind, pattern: &str) -> Result<(), PatternError> {

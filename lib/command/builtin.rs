@@ -153,7 +153,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 .ok_or(CommandError::InvalidBufferHandle(handle))?;
             buffer
                 .save_to_file(path.map(Path::new), &mut ctx.editor.events)
-                .map_err(|e| CommandError::BufferError(e, handle))?;
+                .map_err(|e| CommandError::BufferError(handle, e))?;
 
             let path = buffer.path().unwrap_or(Path::new(""));
             ctx.editor
@@ -176,7 +176,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             for buffer in ctx.editor.buffers.iter_mut() {
                 buffer
                     .save_to_file(None, &mut ctx.editor.events)
-                    .map_err(|e| CommandError::BufferError(e, buffer.handle()))?;
+                    .map_err(|e| CommandError::BufferError(buffer.handle(), e))?;
                 count += 1;
             }
             ctx.editor
@@ -208,7 +208,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
 
             buffer
                 .discard_and_reload_from_file(&mut ctx.editor.word_database, &mut ctx.editor.events)
-                .map_err(|e| CommandError::BufferError(e, handle))?;
+                .map_err(|e| CommandError::BufferError(handle, e))?;
 
             ctx.editor
                 .status_bar
@@ -234,7 +234,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                         &mut ctx.editor.word_database,
                         &mut ctx.editor.events,
                     )
-                    .map_err(|e| CommandError::BufferError(e, buffer.handle()))?;
+                    .map_err(|e| CommandError::BufferError(buffer.handle(), e))?;
                 count += 1;
             }
             ctx.editor
@@ -312,147 +312,115 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             Ok(None)
         },
     },
-    /*
     BuiltinCommand {
         names: &["config"],
         help: "change an editor config",
         accepts_bang: false,
-        required_values: &[],
-        optional_values: &[],
+        required_values: &[("key", Some(CompletionSource::Custom(CONFIG_NAMES)))],
+        optional_values: &[("value", None)],
         extra_values: None,
         flags: &[],
         func: |ctx| {
-            parse_values!(ctx, key, value);
-            parse_switches!(ctx);
-            parse_options!(ctx);
-
-            require_value!(ctx, key);
+            let key = ctx.args.required_values[0];
+            let value = ctx.args.other_values[0];
             match value {
                 Some(value) => match ctx.editor.config.parse_config(key, value) {
-                    Ok(()) => (),
-                    Err(ParseConfigError::NotFound) => ctx
-                        .editor
-                        .output
-                        .write(EditorOutputKind::Error)
-                        .fmt(format_args!("no such config '{}'", key)),
-                    Err(ParseConfigError::InvalidValue) => ctx
-                        .editor
-                        .output
-                        .write(EditorOutputKind::Error)
-                        .fmt(format_args!(
-                            "invalid value '{}' for config '{}'",
-                            value, key
-                        )),
+                    Ok(()) => Ok(None),
+                    Err(ParseConfigError::NotFound) => Err(CommandError::ConfigNotFound(key)),
+                    Err(ParseConfigError::InvalidValue) => {
+                        Err(CommandError::InvalidConfigValue { key, value })
+                    }
                 },
                 None => match ctx.editor.config.display_config(key) {
-                    Some(display) => ctx
-                        .editor
-                        .output
-                        .write(EditorOutputKind::Info)
-                        .fmt(format_args!("{}", display)),
-                    None => ctx
-                        .editor
-                        .output
-                        .write(EditorOutputKind::Error)
-                        .fmt(format_args!("no such config '{}'", key)),
+                    Some(display) => {
+                        use fmt::Write;
+                        let _ = write!(ctx.output, "{}", display);
+                        Ok(None)
+                    }
+                    None => Err(CommandError::ConfigNotFound(key)),
                 },
             }
-
-            None
         },
     },
     BuiltinCommand {
         names: &["theme"],
         help: "change editor theme color",
         accepts_bang: false,
-        required_values: &[],
-        optional_values: &[],
+        required_values: &[("key", Some(CompletionSource::Custom(THEME_COLOR_NAMES)))],
+        optional_values: &[("value", None)],
         extra_values: None,
         flags: &[],
         func: |ctx| {
-            parse_values!(ctx, key, value);
-            parse_switches!(ctx);
-            parse_options!(ctx);
-
-            require_value!(ctx, key);
-            let color = match ctx.editor.theme.color_from_name(key) {
-                Some(color) => color,
-                None => {
-                    ctx.editor
-                        .output
-                        .write(EditorOutputKind::Error)
-                        .fmt(format_args!("no such theme color '{}'", key));
-                    return None;
-                }
-            };
+            let key = ctx.args.required_values[0];
+            let value = ctx.args.other_values[0];
+            let color = ctx
+                .editor
+                .theme
+                .color_from_name(key)
+                .ok_or(CommandError::ConfigNotFound(key))?;
             match value {
-                Some(value) => match u32::from_str_radix(value, 16) {
-                    Ok(parsed) => *color = Color::from_u32(parsed),
-                    Err(_) => ctx
-                        .editor
-                        .output
-                        .write(EditorOutputKind::Error)
-                        .fmt(format_args!(
-                            "invalid value '{}' for color '{}'",
-                            value, key
-                        )),
-                },
-                None => ctx
-                    .editor
-                    .output
-                    .write(EditorOutputKind::Info)
-                    .fmt(format_args!("{:x}", color.into_u32())),
+                Some(value) => {
+                    let encoded = u32::from_str_radix(value, 16)
+                        .map_err(|_| CommandError::InvalidColorValue { key, value })?;
+                    *color = Color::from_u32(encoded);
+                }
+                None => {
+                    use fmt::Write;
+                    let _ = write!(ctx.output, "{:x}", color.into_u32());
+                }
             }
-
-            None
+            Ok(None)
         },
     },
     BuiltinCommand {
         names: &["syntax"],
         help: "create a syntax definition with patterns for files that match a glob",
         accepts_bang: false,
-        required_values: &[],
+        required_values: &[("glob", None)],
         optional_values: &[],
         extra_values: None,
-        flags: &[],
-        func: |mut ctx| {
-            parse_values!(ctx, glob);
-            parse_switches!(ctx);
-
-            require_value!(ctx, glob);
-
+        flags: &[
+            ("keywords", None),
+            ("types", None),
+            ("symbols", None),
+            ("literals", None),
+            ("strings", None),
+            ("comments", None),
+            ("texts", None),
+        ],
+        func: |ctx| {
+            let glob = ctx.args.required_values[0];
             let mut syntax = Syntax::new();
-            syntax.set_glob(glob.as_bytes());
+            syntax
+                .set_glob(glob.as_bytes())
+                .map_err(|_| CommandError::InvalidGlob(glob))?;
 
-            macro_rules! parse_syntax_rules {
-                ($($rule:ident : $token_kind:expr),*) => {
-                    parse_options!(ctx $(, $rule)*);
-                    $(if let Some($rule) = $rule {
-                        if let Err(error) = syntax.set_rule($token_kind, $rule) {
-                            parsing_error(&mut ctx, $rule, &error, 0);
-                            return None;
-                        }
-                    })*
+            let kinds = [
+                TokenKind::Keyword,
+                TokenKind::Type,
+                TokenKind::Symbol,
+                TokenKind::Literal,
+                TokenKind::String,
+                TokenKind::Comment,
+                TokenKind::Text,
+            ];
+
+            for (kind, flag) in kinds.iter().zip(ctx.args.flags.iter()) {
+                if let Some(flag) = flag {
+                    syntax
+                        .set_rule(*kind, flag)
+                        .map_err(|e| CommandError::PatternError(flag, e))?;
                 }
             }
-            parse_syntax_rules! {
-                keywords: TokenKind::Keyword,
-                types: TokenKind::Type,
-                symbols: TokenKind::Symbol,
-                literals: TokenKind::Literal,
-                strings: TokenKind::String,
-                comments: TokenKind::Comment,
-                texts: TokenKind::Text
-            };
 
             ctx.editor.syntaxes.add(syntax);
             for buffer in ctx.editor.buffers.iter_mut() {
                 buffer.refresh_syntax(&ctx.editor.syntaxes);
             }
-
-            None
+            Ok(None)
         },
     },
+    /*
     BuiltinCommand {
         names: &["map"],
         help: "create a keyboard mapping for a mode",

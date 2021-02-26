@@ -1,6 +1,8 @@
 use std::{any, collections::VecDeque, fmt, str::FromStr};
 
 use crate::{
+    pattern::PatternError,
+    syntax::TokenKind,
     buffer::{Buffer, BufferCollection, BufferError, BufferHandle},
     buffer_view::BufferViewHandle,
     client::{Client, ClientHandle, ClientManager},
@@ -35,8 +37,23 @@ pub enum CommandError<'command> {
     NoBufferOpened,
     InvalidBufferHandle(BufferHandle),
     InvalidPath(&'command str),
-    ParseValueError(&'command str, &'static str),
-    BufferError(BufferError, BufferHandle),
+    ParseValueError {
+        value: &'command str,
+        type_name: &'static str,
+    },
+    BufferError(BufferHandle, BufferError),
+    ConfigNotFound(&'command str),
+    InvalidConfigValue {
+        key: &'command str,
+        value: &'command str,
+    },
+    ColorNotFound(&'command str),
+    InvalidColorValue {
+        key: &'command str,
+        value: &'command str,
+    },
+    InvalidGlob(&'command str),
+    PatternError(&'command str, PatternError),
 }
 impl<'command> CommandError<'command> {
     pub fn display<'error>(
@@ -89,7 +106,7 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
                 CommandParseError::InvalidArgument(token) => f.write_fmt(format_args!(
                     "{:>offset$} invalid argument",
                     '^',
-                    offset = error_offset(self.command, token)
+                    offset = error_offset(self.command, token),
                 )),
                 CommandParseError::TooFewValues(token, min) => f.write_fmt(format_args!(
                     "{:>offset$} command expects at least {} values",
@@ -120,15 +137,59 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
             CommandError::NoBufferOpened => f.write_str("no buffer opened"),
             CommandError::InvalidBufferHandle(handle) => f.write_fmt(format_args!("invalid buffer handle {}", handle)),
             CommandError::InvalidPath(path) => f.write_fmt(format_args!(
-                "{:>offset$} invalid path '{}'", '^', path, offset = error_offset(self.command, path)
+                "{:>offset$} invalid path '{}'",
+                '^',
+                path,
+                offset = error_offset(self.command, path),
             )),
-            CommandError::ParseValueError(flag, type_name) => f.write_fmt(format_args!(
-                "{:>offset$} could not parse '{}' as {}", '^', flag, type_name, offset= error_offset(self.command, flag)
+            CommandError::ParseValueError{value, type_name} => f.write_fmt(format_args!(
+                "{:>offset$} could not parse '{}' as {}",
+                '^',
+                value,
+                type_name,
+                offset = error_offset(self.command, value),
             )),
-            CommandError::BufferError(error, handle) => match self.buffers.get(*handle) {
+            CommandError::BufferError(handle, error) => match self.buffers.get(*handle) {
                 Some(buffer) => f.write_fmt(format_args!("{}", error.display(buffer))),
                 None => Ok(()),
             }
+            CommandError::ConfigNotFound(key) => f.write_fmt(format_args!(
+                "{:>offset$} no such config '{}'",
+                '^',
+                key,
+                offset = error_offset(self.command, key),
+            )),
+            CommandError::InvalidConfigValue{key, value} => f.write_fmt(format_args!(
+                "{:>offset$} invalid value '{}' for config '{}'",
+                '^',
+                value,
+                key,
+                offset = error_offset(self.command, value),
+            )),
+            CommandError::ColorNotFound(key) => f.write_fmt(format_args!(
+                "{:>offset$} no such theme color '{}'",
+                '^',
+                key,
+                offset = error_offset(self.command, key),
+            )),
+            CommandError::InvalidColorValue{key, value} => f.write_fmt(format_args!(
+                "{:>offset$} invalid value '{}' for theme color '{}'",
+                '^',
+                value,
+                key,
+                offset = error_offset(self.command, value),
+            )),
+            CommandError::InvalidGlob(glob) => f.write_fmt(format_args!(
+                "{:>offset$} invalid glob",
+                '^',
+                offset = error_offset(self.command, glob),
+            )),
+            CommandError::PatternError(pattern, error) => f.write_fmt(format_args!(
+                "{:>offset$} {}",
+                '^',
+                error,
+                offset = error_offset(self.command, pattern),
+            )),
         }
     }
 }
@@ -575,9 +636,12 @@ impl<'a> CommandArgs<'a> {
         T: 'static + FromStr,
     {
         match self.flags[index] {
-            Some(flag) => match flag.parse() {
+            Some(value) => match value.parse() {
                 Ok(value) => Ok(Some(value)),
-                Err(_) => Err(CommandError::ParseValueError(flag, any::type_name::<T>())),
+                Err(_) => Err(CommandError::ParseValueError {
+                    value,
+                    type_name: any::type_name::<T>(),
+                }),
             },
             None => Ok(None),
         }
