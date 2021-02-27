@@ -3,7 +3,7 @@ use std::{cmp::Ordering, ops::Range};
 use crate::{
     buffer::BufferContent,
     buffer_position::BufferRange,
-    glob::{InvalidGlobError, Glob},
+    glob::{Glob, InvalidGlobError},
     pattern::{MatchResult, Pattern, PatternError, PatternState},
 };
 
