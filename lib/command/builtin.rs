@@ -436,7 +436,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         ],
         func: |ctx| {
             let from = ctx.args.required_values[0];
-            let to = ctx.args.required_values[0];
+            let to = ctx.args.required_values[1];
 
             let kinds = [
                 ModeKind::Normal,
@@ -445,20 +445,23 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 ModeKind::Picker,
                 ModeKind::Command,
             ];
+
             for (&kind, flag) in kinds.iter().zip(ctx.args.flags.iter()) {
-                if !flag.is_empty() {
-                    ctx.editor
-                        .keymaps
-                        .parse_and_map(kind, from, to)
-                        .map_err(|e| match e {
-                            ParseKeyMapError::From(e) => {
-                                CommandError::KeyParseError(&from[e.index..], e.error)
-                            }
-                            ParseKeyMapError::To(e) => {
-                                CommandError::KeyParseError(&to[e.index..], e.error)
-                            }
-                        })?;
+                if flag.is_empty() {
+                    continue;
                 }
+
+                ctx.editor
+                    .keymaps
+                    .parse_and_map(kind, from, to)
+                    .map_err(|e| match e {
+                        ParseKeyMapError::From(e) => {
+                            CommandError::KeyParseError(&from[e.index..], e.error)
+                        }
+                        ParseKeyMapError::To(e) => {
+                            CommandError::KeyParseError(&to[e.index..], e.error)
+                        }
+                    })?;
             }
             Ok(None)
         },
