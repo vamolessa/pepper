@@ -8,7 +8,6 @@ use crate::{
     events::KeyParseError,
     pattern::PatternError,
     platform::Platform,
-    syntax::TokenKind,
 };
 
 mod builtin;
@@ -80,131 +79,123 @@ pub struct CommandErrorDisplay<'command, 'error> {
 }
 impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fn error_offset(command: &str, token: &str) -> usize {
-            token.as_ptr() as usize - command.as_ptr() as usize + 1
+        fn write(
+            this: &CommandErrorDisplay,
+            f: &mut fmt::Formatter,
+            error_token: &str,
+            message: fmt::Arguments,
+        ) -> fmt::Result {
+            let error_offset = error_token.as_ptr() as usize - this.command.as_ptr() as usize;
+            let error_len = error_token.len();
+            write!(
+                f,
+                "{}\n{: >offset$}{:^<len$}\n",
+                this.command,
+                "",
+                "",
+                offset = error_offset,
+                len = error_len
+            )?;
+            f.write_fmt(message)?;
+            Ok(())
         }
 
         match self.error {
             CommandError::Aborted => Ok(()),
             CommandError::ParseError(ref error) => match error {
-                CommandParseError::InvalidCommandName(token) => f.write_fmt(format_args!(
-                    "{:>offset$} invalid command name",
-                    '^',
-                    offset = error_offset(self.command, token),
-                )),
-                CommandParseError::CommandNotFound(token) => f.write_fmt(format_args!(
-                    "{:>offset$} command not found",
-                    '^',
-                    offset = error_offset(self.command, token),
-                )),
-                CommandParseError::CommandDoesNotAcceptBang(token) => f.write_fmt(format_args!(
-                    "{:>offset$} command does not accept bang",
-                    '^',
-                    offset = error_offset(self.command, token),
-                )),
-                CommandParseError::UnterminatedArgument(token) => f.write_fmt(format_args!(
-                    "{:>offset$} unterminated argument",
-                    '^',
-                    offset = error_offset(self.command, token),
-                )),
-                CommandParseError::InvalidArgument(token) => f.write_fmt(format_args!(
-                    "{:>offset$} invalid argument",
-                    '^',
-                    offset = error_offset(self.command, token),
-                )),
-                CommandParseError::TooFewValues(token, min) => f.write_fmt(format_args!(
-                    "{:>offset$} command expects at least {} values",
-                    '^',
-                    min,
-                    offset = error_offset(self.command, token),
-                )),
-                CommandParseError::TooManyValues(token, max) => f.write_fmt(format_args!(
-                    "{:>offset$} command expects at most {} values",
-                    '^',
-                    max,
-                    offset = error_offset(self.command, token),
-                )),
-                CommandParseError::UnknownFlag(token) => f.write_fmt(format_args!(
-                    "{:>offset$} unknown flag",
-                    '^',
-                    offset = error_offset(self.command, token),
-                )),
-                CommandParseError::InvalidFlagValue(token) => f.write_fmt(format_args!(
-                    "{:>offset$} invalid flag value",
-                    '^',
-                    offset = error_offset(self.command, token),
-                )),
+                CommandParseError::InvalidCommandName(token) => write(
+                    self,
+                    f,
+                    token,
+                    format_args!("invalid command name '{}'", token),
+                ),
+                CommandParseError::CommandNotFound(token) => {
+                    write(self, f, token, format_args!("no such command '{}'", token))
+                }
+                CommandParseError::CommandDoesNotAcceptBang(token) => write(
+                    self,
+                    f,
+                    token,
+                    format_args!("command '{}' does not accept bang", token),
+                ),
+                CommandParseError::UnterminatedArgument(token) => {
+                    write(self, f, token, format_args!("unterminated argument"))
+                }
+                CommandParseError::InvalidArgument(token) => {
+                    write(self, f, token, format_args!("invalid argument '{}'", token))
+                }
+                CommandParseError::TooFewValues(token, min) => write(
+                    self,
+                    f,
+                    token,
+                    format_args!("command expects at least {} values", min),
+                ),
+                CommandParseError::TooManyValues(token, max) => write(
+                    self,
+                    f,
+                    token,
+                    format_args!("command expects at most {} values", max),
+                ),
+                CommandParseError::UnknownFlag(token) => {
+                    write(self, f, token, format_args!("unkown flag '{}'", token))
+                }
+                CommandParseError::InvalidFlagValue(token) => write(
+                    self,
+                    f,
+                    token,
+                    format_args!("invalid flag value '{}'", token),
+                ),
             },
             CommandError::UnsavedChanges => f.write_str(
-                "there are unsaved changes in buffer. try appending a '!' to command name to force execute",
+                "there are unsaved changes. try appending a '!' to command name to force execute",
             ),
             CommandError::NoBufferOpened => f.write_str("no buffer opened"),
-            CommandError::InvalidBufferHandle(handle) => f.write_fmt(format_args!("invalid buffer handle {}", handle)),
-            CommandError::InvalidPath(path) => f.write_fmt(format_args!(
-                "{:>offset$} invalid path '{}'",
-                '^',
-                path,
-                offset = error_offset(self.command, path),
-            )),
-            CommandError::ParseValueError{value, type_name} => f.write_fmt(format_args!(
-                "{:>offset$} could not parse '{}' as {}",
-                '^',
+            CommandError::InvalidBufferHandle(handle) => {
+                f.write_fmt(format_args!("invalid buffer handle {}", handle))
+            }
+            CommandError::InvalidPath(path) => {
+                write(self, f, path, format_args!("invalid path '{}'", path))
+            }
+            CommandError::ParseValueError { value, type_name } => write(
+                self,
+                f,
                 value,
-                type_name,
-                offset = error_offset(self.command, value),
-            )),
+                format_args!("could not parse '{}' as {}", value, type_name),
+            ),
             CommandError::BufferError(handle, error) => match self.buffers.get(*handle) {
                 Some(buffer) => f.write_fmt(format_args!("{}", error.display(buffer))),
                 None => Ok(()),
+            },
+            CommandError::ConfigNotFound(key) => {
+                write(self, f, key, format_args!("no such config '{}'", key))
             }
-            CommandError::ConfigNotFound(key) => f.write_fmt(format_args!(
-                "{:>offset$} no such config '{}'",
-                '^',
-                key,
-                offset = error_offset(self.command, key),
-            )),
-            CommandError::InvalidConfigValue{key, value} => f.write_fmt(format_args!(
-                "{:>offset$} invalid value '{}' for config '{}'",
-                '^',
+            CommandError::InvalidConfigValue { key, value } => write(
+                self,
+                f,
                 value,
-                key,
-                offset = error_offset(self.command, value),
-            )),
-            CommandError::ColorNotFound(key) => f.write_fmt(format_args!(
-                "{:>offset$} no such theme color '{}'",
-                '^',
-                key,
-                offset = error_offset(self.command, key),
-            )),
-            CommandError::InvalidColorValue{key, value} => f.write_fmt(format_args!(
-                "{:>offset$} invalid value '{}' for theme color '{}'",
-                '^',
+                format_args!("invalid value '{}' for config '{}'", value, key),
+            ),
+            CommandError::ColorNotFound(key) => {
+                write(self, f, key, format_args!("no such theme color '{}'", key))
+            }
+            CommandError::InvalidColorValue { key, value } => write(
+                self,
+                f,
                 value,
-                key,
-                offset = error_offset(self.command, value),
-            )),
-            CommandError::InvalidGlob(glob) => f.write_fmt(format_args!(
-                "{:>offset$} invalid glob",
-                '^',
-                offset = error_offset(self.command, glob),
-            )),
-            CommandError::PatternError(pattern, error) => f.write_fmt(format_args!(
-                "{:>offset$} {}",
-                '^',
-                error,
-                offset = error_offset(self.command, pattern),
-            )),
-            CommandError::KeyParseError(keys, error) => f.write_fmt(format_args!(
-                "{:>offset$} {}",
-                '^',
-                error,
-                offset = error_offset(self.command, keys),
-            )),
-            CommandError::InvalidRegisterKey(key) => f.write_fmt(format_args!(
-                "{:>offset$} invalid register key",
-                '^',
-                offset = error_offset(self.command, key),
-            )),
+                format_args!("invalid value '{}' for theme color '{}'", value, key),
+            ),
+            CommandError::InvalidGlob(glob) => {
+                write(self, f, glob, format_args!("invalid glob '{}'", glob))
+            }
+            CommandError::PatternError(pattern, error) => {
+                write(self, f, pattern, format_args!("{}", error))
+            }
+            CommandError::KeyParseError(keys, error) => {
+                write(self, f, keys, format_args!("{}", error))
+            }
+            CommandError::InvalidRegisterKey(key) => {
+                write(self, f, key, format_args!("invalid register key '{}'", key))
+            }
             CommandError::LspServerNotRunning => f.write_str("lsp server not running"),
         }
     }
