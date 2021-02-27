@@ -191,7 +191,7 @@ impl ModeState for State {
         {
             ctx.editor
                 .picker
-                .filter(&mut ctx.editor.word_database, word.text);
+                .filter(ctx.editor.word_database.word_indices(), word.text);
             if ctx.editor.picker.len() == 1 {
                 ctx.editor.picker.clear_filtered();
             }
@@ -205,7 +205,10 @@ impl ModeState for State {
 
 fn apply_completion(editor: &mut Editor, handle: BufferViewHandle, cursor_movement: isize) {
     editor.picker.move_cursor(cursor_movement);
-    if let Some(entry) = editor.picker.current_entry(&mut editor.word_database) {
+    if let Some(entry) = editor
+        .picker
+        .current_entry(&editor.word_database, &editor.commands)
+    {
         let mut buf = editor.string_pool.acquire();
         buf.push_str(entry.name);
         editor.buffer_views.apply_completion(

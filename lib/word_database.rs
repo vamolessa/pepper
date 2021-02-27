@@ -125,6 +125,14 @@ pub struct WordIndicesIter<'a> {
     words: &'a [Word],
     next_index: usize,
 }
+impl<'a> WordIndicesIter<'a> {
+    pub fn empty() -> Self {
+        Self {
+            words: &[],
+            next_index: 0,
+        }
+    }
+}
 impl<'a> Iterator for WordIndicesIter<'a> {
     type Item = (usize, &'a str);
 
@@ -139,25 +147,6 @@ impl<'a> Iterator for WordIndicesIter<'a> {
         }
 
         None
-    }
-}
-
-pub trait WordCollection {
-    fn word_at(&self, index: usize) -> &str;
-    fn word_indices(&self) -> WordIndicesIter;
-}
-
-pub struct EmptyWordCollection;
-impl WordCollection for EmptyWordCollection {
-    fn word_at(&self, _: usize) -> &str {
-        ""
-    }
-
-    fn word_indices(&self) -> WordIndicesIter {
-        WordIndicesIter {
-            words: &[],
-            next_index: 0,
-        }
     }
 }
 
@@ -215,14 +204,12 @@ impl WordDatabase {
             }
         }
     }
-}
 
-impl WordCollection for WordDatabase {
-    fn word_at(&self, index: usize) -> &str {
+    pub fn word_at(&self, index: usize) -> &str {
         &self.words[index].text
     }
 
-    fn word_indices(&self) -> WordIndicesIter {
+    pub fn word_indices(&self) -> WordIndicesIter {
         WordIndicesIter {
             words: &self.words,
             next_index: 0,

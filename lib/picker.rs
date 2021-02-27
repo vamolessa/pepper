@@ -1,6 +1,9 @@
 use fuzzy_matcher::{skim::SkimMatcherV2, FuzzyMatcher};
 
-use crate::word_database::WordCollection;
+use crate::{
+    command::{CommandManager, CommandSource},
+    word_database::{WordDatabase, WordIndicesIter},
+};
 
 #[derive(Default, Clone, Copy)]
 pub struct PickerEntry<'a> {
@@ -17,6 +20,7 @@ struct CustomPickerEntry {
 enum FilteredEntrySource {
     Custom(usize),
     WordDatabase(usize),
+    Command(CommandSource),
 }
 
 struct FilteredEntry {
@@ -89,17 +93,14 @@ impl Picker {
         }
     }
 
-    pub fn update_scroll_and_unfiltered_entries<W>(
+    pub fn update_scroll_and_unfiltered_entries(
         &mut self,
         max_height: usize,
-        words: &W,
+        word_indices: WordIndicesIter,
         pattern: &str,
-    ) -> usize
-    where
-        W: WordCollection,
-    {
+    ) -> usize {
         if self.has_unfiltered_entries {
-            self.filter(words, pattern);
+            self.filter(word_indices, pattern);
         }
 
         let height = self.height(max_height);
@@ -146,14 +147,11 @@ impl Picker {
         self.scroll = 0;
     }
 
-    pub fn filter<W>(&mut self, words: &W, pattern: &str)
-    where
-        W: WordCollection,
-    {
+    pub fn filter(&mut self, word_indices: WordIndicesIter, pattern: &str) {
         self.has_unfiltered_entries = false;
         self.filtered_entries.clear();
 
-        for (i, word) in words.word_indices() {
+        for (i, word) in word_indices {
             if let Some(mut score) = self.matcher.fuzzy_match(word, pattern) {
                 if word.len() == pattern.len() {
                     score += 1;
@@ -196,49 +194,55 @@ impl Picker {
             .min(self.filtered_entries.len().saturating_sub(1));
     }
 
-    pub fn current_entry<'a, W>(&'a self, words: &'a W) -> Option<PickerEntry<'a>>
-    where
-        W: WordCollection,
-    {
+    pub fn current_entry<'a>(
+        &'a self,
+        words: &'a WordDatabase,
+        commands: &'a CommandManager,
+    ) -> Option<PickerEntry<'a>> {
         let entry = self.filtered_entries.get(self.cursor)?;
-        match entry.source {
-            FilteredEntrySource::Custom(i) => {
-                let e = &self.custom_entries_buffer[i];
-                Some(PickerEntry {
-                    name: &e.name,
-                    description: &e.description,
-                    score: entry.score,
-                })
-            }
-            FilteredEntrySource::WordDatabase(i) => Some(PickerEntry {
-                name: words.word_at(i),
-                description: "",
-                score: entry.score,
-            }),
-        }
+        let entry = filtered_to_picker_entry(entry, &self.custom_entries_buffer, words, commands);
+        Some(entry)
     }
 
-    pub fn entries<'a, W>(
+    pub fn entries<'a>(
         &'a self,
-        words: &'a W,
-    ) -> impl 'a + ExactSizeIterator<Item = PickerEntry<'a>>
-    where
-        W: WordCollection,
-    {
-        self.filtered_entries.iter().map(move |e| match e.source {
-            FilteredEntrySource::Custom(i) => {
-                let entry = &self.custom_entries_buffer[i];
-                PickerEntry {
-                    name: &entry.name,
-                    description: &entry.description,
-                    score: e.score,
-                }
+        words: &'a WordDatabase,
+        commands: &'a CommandManager,
+    ) -> impl 'a + ExactSizeIterator<Item = PickerEntry<'a>> {
+        let custom_entries = &self.custom_entries_buffer[..];
+        self.filtered_entries
+            .iter()
+            .map(move |e| filtered_to_picker_entry(e, custom_entries, words, commands))
+    }
+}
+
+fn filtered_to_picker_entry<'a>(
+    entry: &FilteredEntry,
+    custom_entries: &'a [CustomPickerEntry],
+    words: &'a WordDatabase,
+    commands: &'a CommandManager,
+) -> PickerEntry<'a> {
+    match entry.source {
+        FilteredEntrySource::Custom(i) => {
+            let e = &custom_entries[i];
+            PickerEntry {
+                name: &e.name,
+                description: &e.description,
+                score: entry.score,
             }
-            FilteredEntrySource::WordDatabase(i) => PickerEntry {
-                name: words.word_at(i),
-                description: "",
-                score: e.score,
-            },
-        })
+        }
+        FilteredEntrySource::WordDatabase(i) => PickerEntry {
+            name: words.word_at(i),
+            description: "",
+            score: entry.score,
+        },
+        FilteredEntrySource::Command(CommandSource::Builtin(i)) => {
+            let command = &commands.builtin_commands()[i];
+            PickerEntry {
+                name: &command.names[0],
+                description: command.description,
+                score: entry.score,
+            }
+        }
     }
 }

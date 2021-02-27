@@ -16,7 +16,7 @@ use crate::{
     register::{RegisterCollection, RegisterKey, KEY_QUEUE_REGISTER},
     syntax::{HighlightResult, SyntaxCollection},
     theme::Theme,
-    word_database::{EmptyWordCollection, WordDatabase},
+    word_database::{WordIndicesIter, WordDatabase},
 };
 
 #[derive(Clone, Copy)]
@@ -170,7 +170,7 @@ impl Editor {
     pub fn on_pre_render(&mut self, clients: &mut ClientManager) -> bool {
         let picker_height = self.picker.update_scroll_and_unfiltered_entries(
             self.config.picker_max_height.get() as _,
-            &EmptyWordCollection,
+            WordIndicesIter::empty(),
             self.read_line.input(),
         );
 

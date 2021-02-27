@@ -428,7 +428,7 @@ fn draw_picker(buf: &mut Vec<u8>, editor: &Editor, view: &View) {
 
     for (i, entry) in editor
         .picker
-        .entries(&editor.word_database)
+        .entries(&editor.word_database, &editor.commands)
         .enumerate()
         .skip(scroll)
         .take(height)

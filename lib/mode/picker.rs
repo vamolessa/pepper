@@ -4,7 +4,7 @@ use crate::{
     editor_utils::{MessageKind, ReadLinePoll},
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     platform::Key,
-    word_database::EmptyWordCollection,
+    word_database::WordIndicesIter,
 };
 
 pub struct State {
@@ -22,7 +22,7 @@ impl Default for State {
 impl ModeState for State {
     fn on_enter(ctx: &mut ModeContext) {
         ctx.editor.read_line.set_input("");
-        ctx.editor.picker.filter(&EmptyWordCollection, "");
+        ctx.editor.picker.filter(WordIndicesIter::empty(), "");
     }
 
     fn on_exit(ctx: &mut ModeContext) {
@@ -69,7 +69,7 @@ impl ModeState for State {
                 _ => ctx
                     .editor
                     .picker
-                    .filter(&EmptyWordCollection, ctx.editor.read_line.input()),
+                    .filter(WordIndicesIter::empty(), ctx.editor.read_line.input()),
             }
         }
 
@@ -96,7 +96,11 @@ pub mod buffer {
                 }
             }
 
-            let path = match ctx.editor.picker.current_entry(&EmptyWordCollection) {
+            let path = match ctx
+                .editor
+                .picker
+                .current_entry(&ctx.editor.word_database, &ctx.editor.commands)
+            {
                 Some(entry) => entry.name,
                 None => {
                     Mode::change_to(ctx, ModeKind::default());
@@ -109,6 +113,10 @@ pub mod buffer {
                 ctx.client_handle,
                 &ctx.editor.buffer_views,
             );
+
+            let mut buf = ctx.editor.string_pool.acquire();
+            buf.push_str(path);
+            let path = &buf[..];
 
             match ctx.editor.buffer_views.buffer_view_handle_from_path(
                 ctx.client_handle,
@@ -131,6 +139,7 @@ pub mod buffer {
                     .fmt(format_args!("invalid path '{}'", path)),
             }
 
+            ctx.editor.string_pool.release(buf);
             Mode::change_to(ctx, ModeKind::default());
         }
 
