@@ -6,10 +6,13 @@ use std::{
 
 use crate::{
     application::ProcessTag,
-    buffer::{Buffer, BufferCapabilities, BufferHandle},
+    buffer::{BufferCapabilities, BufferHandle},
     buffer_position::BufferPosition,
     buffer_view::BufferViewError,
-    command::{BuiltinCommand, CommandContext, CommandError, CommandOperation, CompletionSource},
+    command::{
+        BuiltinCommand, CommandContext, CommandError, CommandOperation, CommandSource,
+        CompletionSource,
+    },
     config::{ParseConfigError, CONFIG_NAMES},
     editor::Editor,
     editor_utils::MessageKind,
@@ -26,9 +29,83 @@ use crate::{
 
 pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
+        names: &["help", "h"],
+        description: "prints help about command",
+        bang_usage: None,
+        required_values: &[("command-name", Some(CompletionSource::Commands))],
+        optional_values: &[],
+        extra_values: None,
+        flags: &[],
+        func: |ctx| {
+            let command_name = ctx.args.required_values[0];
+            let commands = &ctx.editor.commands;
+            let source = match commands.find_command(command_name) {
+                Some(source) => source,
+                None => return Err(CommandError::CommandNotFound(command_name)),
+            };
+
+            let name;
+            let aliases;
+            let description;
+            let bang_usage;
+            let flags;
+            let required_values;
+            let optional_values;
+            let extra_values;
+
+            match source {
+                CommandSource::Builtin(i) => {
+                    let command = &commands.builtin_commands()[i];
+                    name = command.names[0];
+                    aliases = &command.names[1..];
+                    description = command.description;
+                    bang_usage = command.bang_usage;
+                    flags = command.flags;
+                    required_values = command.required_values;
+                    optional_values = command.optional_values;
+                    extra_values = command.extra_values.as_ref();
+                }
+            }
+
+            let mut write = ctx.editor.status_bar.write(MessageKind::Info);
+
+            write.fmt(format_args!("{}\nusage: {}", name, name));
+            if bang_usage.is_some() {
+                write.str("[!]");
+            }
+            for (flag, _) in flags {
+                write.fmt(format_args!(" [-{}]", flag));
+            }
+            for (value, _) in required_values {
+                write.fmt(format_args!(" {}", value));
+            }
+            for (value, _) in optional_values {
+                write.fmt(format_args!(" [{}]", value));
+            }
+            if let Some((values, _)) = extra_values {
+                write.fmt(format_args!(" {}...", values));
+            }
+
+            write.fmt(format_args!("\ndescription: {}\n", description));
+            if let Some(usage) = bang_usage {
+                write.fmt(format_args!("with '!': {}\n", usage));
+            }
+
+            if !aliases.is_empty() {
+                write.str("aliases: ");
+                write.fmt(format_args!("{}", aliases[0]));
+                for alias in &aliases[1..] {
+                    write.fmt(format_args!(", {}", alias));
+                }
+            }
+
+            Ok(None)
+        },
+    },
+    BuiltinCommand {
         names: &["quit", "q"],
-        help: "quits this client. append a '!' to force quit",
-        accepts_bang: true,
+        description: "quits this client",
+        bang_usage: Some("ignore unsaved changes"),
         required_values: &[],
         optional_values: &[],
         extra_values: None,
@@ -42,8 +119,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["quit-all", "qa"],
-        help: "quits all clients. append a '!' to force quit all",
-        accepts_bang: true,
+        description: "quits all clients",
+        bang_usage: Some("ignore unsaved changes"),
         required_values: &[],
         optional_values: &[],
         extra_values: None,
@@ -54,12 +131,12 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
-        names: &["print"],
-        help: "prints a message to the status bar",
-        accepts_bang: false,
+        names: &["print", "p"],
+        description: "prints values to the status bar",
+        bang_usage: None,
         required_values: &[],
         optional_values: &[],
-        extra_values: Some(None),
+        extra_values: Some(("values", None)),
         flags: &[],
         func: |ctx| {
             let mut w = ctx.editor.status_bar.write(MessageKind::Info);
@@ -72,8 +149,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["source"],
-        help: "load a source file and execute its commands",
-        accepts_bang: false,
+        description: "load a source file and execute its commands",
+        bang_usage: None,
         required_values: &[("path", Some(CompletionSource::Files))],
         optional_values: &[],
         extra_values: None,
@@ -86,8 +163,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["open", "o"],
-        help: "open a buffer for editting",
-        accepts_bang: false,
+        description: "open a buffer for editting",
+        bang_usage: None,
         required_values: &[("path", Some(CompletionSource::Files))],
         optional_values: &[],
         extra_values: None,
@@ -134,8 +211,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["save", "s"],
-        help: "save buffer",
-        accepts_bang: false,
+        description: "save buffer",
+        bang_usage: None,
         required_values: &[],
         optional_values: &[("path", Some(CompletionSource::Files))],
         extra_values: None,
@@ -165,8 +242,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["save-all", "sa"],
-        help: "save all buffers",
-        accepts_bang: false,
+        description: "save all buffers",
+        bang_usage: None,
         required_values: &[],
         optional_values: &[],
         extra_values: None,
@@ -188,8 +265,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["reload", "r"],
-        help: "reload buffer from file",
-        accepts_bang: true,
+        description: "reload buffer from file",
+        bang_usage: Some("ignore unsaved changes"),
         required_values: &[],
         optional_values: &[],
         extra_values: None,
@@ -219,8 +296,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["reload-all", "ra"],
-        help: "reload all buffers from file",
-        accepts_bang: true,
+        description: "reload all buffers from file",
+        bang_usage: Some("ignore unsaved changes"),
         required_values: &[],
         optional_values: &[],
         extra_values: None,
@@ -246,8 +323,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["close", "c"],
-        help: "close buffer",
-        accepts_bang: true,
+        description: "close buffer",
+        bang_usage: Some("ignore unsaved changes"),
         required_values: &[],
         optional_values: &[],
         extra_values: None,
@@ -286,8 +363,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["close-all", "ca"],
-        help: "close all buffers",
-        accepts_bang: true,
+        description: "close all buffers",
+        bang_usage: Some("ignore unsaved changes"),
         required_values: &[],
         optional_values: &[],
         extra_values: None,
@@ -314,8 +391,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["config"],
-        help: "change an editor config",
-        accepts_bang: false,
+        description: "change an editor config",
+        bang_usage: None,
         required_values: &[("key", Some(CompletionSource::Custom(CONFIG_NAMES)))],
         optional_values: &[("value", None)],
         extra_values: None,
@@ -344,8 +421,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["theme"],
-        help: "change editor theme color",
-        accepts_bang: false,
+        description: "change editor theme color",
+        bang_usage: None,
         required_values: &[("key", Some(CompletionSource::Custom(THEME_COLOR_NAMES)))],
         optional_values: &[("value", None)],
         extra_values: None,
@@ -374,8 +451,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["syntax"],
-        help: "create a syntax definition with patterns for files that match a glob",
-        accepts_bang: false,
+        description: "create a syntax definition with patterns for files that match a glob",
+        bang_usage: None,
         required_values: &[("glob", None)],
         optional_values: &[],
         extra_values: None,
@@ -422,8 +499,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["map"],
-        help: "create a keyboard mapping for a mode",
-        accepts_bang: false,
+        description: "create a keyboard mapping for a mode",
+        bang_usage: None,
         required_values: &[("from", None), ("to", None)],
         optional_values: &[],
         extra_values: None,
@@ -468,8 +545,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["register"],
-        help: "change an editor register",
-        accepts_bang: false,
+        description: "change an editor register",
+        bang_usage: None,
         required_values: &[("key", None)],
         optional_values: &[("value", None)],
         extra_values: None,
@@ -493,8 +570,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["run"],
-        help: "",
-        accepts_bang: false,
+        description: "",
+        bang_usage: None,
         required_values: &[("command", None)],
         optional_values: &[],
         extra_values: None,
@@ -519,11 +596,11 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["lsp-start"],
-        help: "start a lsp server",
-        accepts_bang: false,
-        required_values: &[("command", None)],
+        description: "start a lsp server",
+        bang_usage: None,
+        required_values: &[("server-command", None)],
         optional_values: &[],
-        extra_values: Some(None),
+        extra_values: Some(("server-args", None)),
         flags: &[("root", Some(CompletionSource::Files)), ("log", None)],
         func: |ctx| {
             let command_name = ctx.args.required_values[0];
@@ -563,8 +640,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["lsp-stop"],
-        help: "stop a lsp server",
-        accepts_bang: false,
+        description: "stop a lsp server",
+        bang_usage: None,
         required_values: &[],
         optional_values: &[],
         extra_values: None,
@@ -579,8 +656,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["lsp-hover"],
-        help: "perform a lsp hover action",
-        accepts_bang: false,
+        description: "perform a lsp hover action",
+        bang_usage: None,
         required_values: &[],
         optional_values: &[],
         extra_values: None,
@@ -597,8 +674,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["lsp-signature-help"],
-        help: "perform a lsp hover action",
-        accepts_bang: false,
+        description: "perform a lsp hover action",
+        bang_usage: None,
         required_values: &[],
         optional_values: &[],
         extra_values: None,

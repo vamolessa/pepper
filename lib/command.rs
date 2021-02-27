@@ -17,7 +17,6 @@ pub const MAX_OTHER_VALUES_LEN: usize = 8;
 pub const MAX_FLAGS_LEN: usize = 8;
 pub const HISTORY_CAPACITY: usize = 10;
 
-#[derive(Debug)]
 pub enum CommandParseError<'command> {
     InvalidCommandName(&'command str),
     CommandNotFound(&'command str),
@@ -33,6 +32,7 @@ pub enum CommandParseError<'command> {
 pub enum CommandError<'command> {
     Aborted,
     ParseError(CommandParseError<'command>),
+    CommandNotFound(&'command str),
     UnsavedChanges,
     NoBufferOpened,
     InvalidBufferHandle(BufferHandle),
@@ -146,6 +146,9 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
                     format_args!("invalid flag value '{}'", token),
                 ),
             },
+            CommandError::CommandNotFound(command) => {
+                f.write_fmt(format_args!("no such command '{}'", command))
+            }
             CommandError::UnsavedChanges => f.write_str(
                 "there are unsaved changes. try appending a '!' to command name to force execute",
             ),
@@ -331,17 +334,17 @@ impl<'a> Iterator for CommandIter<'a> {
     }
 }
 
-enum CommandSource {
+pub enum CommandSource {
     Builtin(usize),
 }
 
 pub struct BuiltinCommand {
     names: &'static [&'static str],
-    help: &'static str,
-    accepts_bang: bool,
+    description: &'static str,
+    bang_usage: Option<&'static str>,
     required_values: &'static [(&'static str, Option<CompletionSource>)],
     optional_values: &'static [(&'static str, Option<CompletionSource>)],
-    extra_values: Option<Option<CompletionSource>>,
+    extra_values: Option<(&'static str, Option<CompletionSource>)>,
     flags: &'static [(&'static str, Option<CompletionSource>)],
     func: CommandFn,
 }
@@ -349,7 +352,6 @@ pub struct BuiltinCommand {
 pub struct CommandManager {
     builtin_commands: &'static [BuiltinCommand],
     history: VecDeque<String>,
-    output_stack: String,
 }
 
 impl CommandManager {
@@ -357,8 +359,22 @@ impl CommandManager {
         Self {
             builtin_commands: builtin::COMMANDS,
             history: VecDeque::with_capacity(HISTORY_CAPACITY),
-            output_stack: String::new(),
         }
+    }
+
+    pub fn find_command(&self, name: &str) -> Option<CommandSource> {
+        match self
+            .builtin_commands
+            .iter()
+            .position(|c| c.names.contains(&name))
+        {
+            Some(i) => Some(CommandSource::Builtin(i)),
+            None => None,
+        }
+    }
+
+    pub fn builtin_commands(&self) -> &[BuiltinCommand] {
+        &self.builtin_commands
     }
 
     pub fn history_len(&self) -> usize {
@@ -386,14 +402,6 @@ impl CommandManager {
         s.clear();
         s.push_str(entry);
         self.history.push_back(s);
-    }
-
-    pub fn push_output_str(&mut self, output: &str) {
-        self.output_stack.push_str(output);
-    }
-
-    pub fn push_output_fmt(&mut self, args: fmt::Arguments) {
-        let _ = fmt::write(&mut self.output_stack, args);
     }
 
     pub fn eval_command<'command>(
@@ -557,17 +565,17 @@ impl CommandManager {
             }
         };
 
-        let (source, params) = match self
-            .builtin_commands
-            .iter()
-            .position(|c| c.names.contains(&command_name))
-        {
-            Some(i) => {
+        let source = match self.find_command(command_name) {
+            Some(source) => source,
+            None => return Err(CommandParseError::CommandNotFound(command_name)),
+        };
+        let params = match source {
+            CommandSource::Builtin(i) => {
                 let command = &self.builtin_commands[i];
-                if args.bang && !command.accepts_bang {
+                if args.bang && command.bang_usage.is_none() {
                     return Err(CommandParseError::CommandDoesNotAcceptBang(command_name));
                 }
-                let params = CommandParamsInfo {
+                CommandParamsInfo {
                     min_values_len: command.required_values.len() as _,
                     max_values_len: match command.extra_values {
                         Some(_) => None,
@@ -576,10 +584,8 @@ impl CommandManager {
                         ),
                     },
                     flags: &command.flags,
-                };
-                (CommandSource::Builtin(i), params)
+                }
             }
-            None => return Err(CommandParseError::CommandNotFound(command_name)),
         };
 
         loop {
@@ -664,11 +670,11 @@ mod tests {
     fn create_commands() -> CommandManager {
         let builtin_commands = &[BuiltinCommand {
             names: &["command-name", "c"],
-            help: "",
-            accepts_bang: true,
+            description: "",
+            bang_usage: Some(""),
             required_values: &[],
             optional_values: &[],
-            extra_values: Some(None),
+            extra_values: Some(("", None)),
             flags: &[("switch", None), ("option", None)],
             func: |_| Ok(None),
         }];
@@ -676,7 +682,6 @@ mod tests {
         CommandManager {
             builtin_commands,
             history: Default::default(),
-            output_stack: Default::default(),
         }
     }
 
@@ -688,7 +693,7 @@ mod tests {
             ($text:expr => bang = $bang:expr) => {
                 let (source, args) = match commands.parse($text) {
                     Ok(result) => result,
-                    Err(e) => panic!("command parse error {:?}", e),
+                    Err(_) => panic!("command parse error"),
                 };
                 assert!(matches!(source, CommandSource::Builtin(0)));
                 assert_eq!($bang, args.bang);
@@ -740,7 +745,7 @@ mod tests {
                 match commands.parse($command) {
                     Ok(_) => panic!("command parsed successfully"),
                     Err($error_pattern) => assert_eq!($expect, $value),
-                    Err(e) => panic!("other error occurred {:?}", e),
+                    Err(_) => panic!("other error occurred"),
                 }
             };
         }
