@@ -57,6 +57,7 @@ pub enum CommandError<'command> {
     PatternError(&'command str, PatternError),
     KeyParseError(&'command str, KeyParseError),
     InvalidRegisterKey(&'command str),
+    LspServerNotRunning,
 }
 impl<'command> CommandError<'command> {
     pub fn display<'error>(
@@ -204,6 +205,7 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
                 '^',
                 offset = error_offset(self.command, key),
             )),
+            CommandError::LspServerNotRunning => f.write_str("lsp server not running"),
         }
     }
 }
@@ -538,7 +540,7 @@ impl CommandManager {
         ) -> Result<(), CommandParseError<'a>> {
             match params.flags.iter().position(|f| f.0 == key) {
                 Some(i) => {
-                    args.flags[i] = Some(value);
+                    args.flags[i] = value;
                     Ok(())
                 }
                 None => Err(CommandParseError::UnknownFlag(key)),
@@ -610,7 +612,7 @@ impl CommandManager {
                         None => return Err(CommandParseError::InvalidFlagValue(equals_token)),
                     },
                     token => {
-                        add_flag(&params, &mut args, flag_token, "")?;
+                        add_flag(&params, &mut args, flag_token, "true")?;
                         peeked_token = token;
                     }
                 },
@@ -642,22 +644,24 @@ pub struct CommandArgs<'a> {
     pub bang: bool,
     pub required_values: [&'a str; MAX_REQUIRED_VALUES_LEN],
     pub other_values: [Option<&'a str>; MAX_OTHER_VALUES_LEN],
-    pub flags: [Option<&'a str>; MAX_FLAGS_LEN],
+    pub flags: [&'a str; MAX_FLAGS_LEN],
 }
 impl<'a> CommandArgs<'a> {
     pub fn parse_flag<T>(&self, index: usize) -> Result<Option<T>, CommandError<'a>>
     where
         T: 'static + FromStr,
     {
-        match self.flags[index] {
-            Some(value) => match value.parse() {
+        let value = self.flags[index];
+        if value.is_empty() {
+            Ok(None)
+        } else {
+            match value.parse() {
                 Ok(value) => Ok(Some(value)),
                 Err(_) => Err(CommandError::ParseValueError {
                     value,
                     type_name: any::type_name::<T>(),
                 }),
-            },
-            None => Ok(None),
+            }
         }
     }
 }
@@ -732,8 +736,8 @@ mod tests {
             "c \\\n-switch'value'\\\n-option=\"option value!\"\\\n",
         );
         assert_eq!(["value"], &other_values_vec(&args)[..]);
-        assert_eq!(Some(""), args.flags[0]);
-        assert_eq!(Some("option value!"), args.flags[1]);
+        assert_eq!("", args.flags[0]);
+        assert_eq!("option value!", args.flags[1]);
     }
 
     #[test]

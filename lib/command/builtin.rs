@@ -406,7 +406,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 TokenKind::Text,
             ];
             for (&kind, &flag) in kinds.iter().zip(ctx.args.flags.iter()) {
-                if let Some(flag) = flag {
+                if !flag.is_empty() {
                     syntax
                         .set_rule(kind, flag)
                         .map_err(|e| CommandError::PatternError(flag, e))?;
@@ -446,7 +446,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 ModeKind::Command,
             ];
             for (&kind, flag) in kinds.iter().zip(ctx.args.flags.iter()) {
-                if flag.is_some() {
+                if !flag.is_empty() {
                     ctx.editor
                         .keymaps
                         .parse_and_map(kind, from, to)
@@ -514,40 +514,28 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             Ok(None)
         },
     },
-    /*
     BuiltinCommand {
         names: &["lsp-start"],
         help: "start a lsp server",
         accepts_bang: false,
-        required_values: &[],
+        required_values: &[("command", None)],
         optional_values: &[],
-        extra_values: None,
-        flags: &[],
+        extra_values: Some(None),
+        flags: &[("root", Some(CompletionSource::Files)), ("log", None)],
         func: |ctx| {
-            parse_switches!(ctx, log);
-            parse_options!(ctx, root);
-
-            let args = ctx.editor.commands.args();
-            let (command_name, command_args) = match args.values() {
-                [command, command_args @ ..] => (command.as_str(args), command_args),
-                _ => {
-                    ctx.editor
-                        .output
-                        .write(EditorOutputKind::Error)
-                        .str("value 'command' is required");
-                    return None;
-                }
-            };
+            let command_name = ctx.args.required_values[0];
+            let root = ctx.args.flags[0];
+            let log = !ctx.args.flags[1].is_empty();
 
             let mut command = Command::new(command_name);
-            for arg in command_args {
-                let arg = arg.as_str(args);
+            for &arg in ctx.args.other_values.iter().flatten() {
                 command.arg(arg);
             }
 
-            let root = match root {
-                Some(root) => Path::new(root),
-                None => ctx.editor.current_directory.as_path(),
+            let root = if root.is_empty() {
+                ctx.editor.current_directory.as_path()
+            } else {
+                Path::new(root)
             };
 
             let handle = ctx.editor.lsp.start(ctx.platform, command, root.into());
@@ -566,7 +554,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                     }
                 });
             }
-            None
+
+            Ok(None)
         },
     },
     BuiltinCommand {
@@ -576,21 +565,13 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         required_values: &[],
         optional_values: &[],
         extra_values: None,
-        flags: &[],
+        flags: &[("client", None)],
         func: |ctx| {
-            parse_values!(ctx);
-            parse_switches!(ctx);
-            parse_options!(ctx, client);
-
-            match client {
-                Some(client) => {
-                    let client = parse_arg!(ctx, client: lsp::ClientHandle);
-                    ctx.editor.lsp.stop(ctx.platform, client);
-                }
+            match ctx.args.parse_flag(0)? {
+                Some(client) => ctx.editor.lsp.stop(ctx.platform, client),
                 None => ctx.editor.lsp.stop_all(ctx.platform),
             }
-
-            None
+            Ok(None)
         },
     },
     BuiltinCommand {
@@ -600,15 +581,15 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         required_values: &[],
         optional_values: &[],
         extra_values: None,
-        flags: &[],
+        flags: &[("client", None), ("buffer", None), ("position", None)],
         func: |mut ctx| {
             access_lsp_with_position(
                 &mut ctx,
                 |editor, client, platform, json, buffer_handle, position| {
                     client.hover(editor, platform, json, buffer_handle, position)
                 },
-            );
-            None
+            )?;
+            Ok(None)
         },
     },
     BuiltinCommand {
@@ -618,39 +599,41 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         required_values: &[],
         optional_values: &[],
         extra_values: None,
-        flags: &[],
+        flags: &[("client", None), ("buffer", None), ("position", None)],
         func: |mut ctx| {
             access_lsp_with_position(
                 &mut ctx,
                 |editor, client, platform, json, buffer_handle, position| {
                     client.signature_help(editor, platform, json, buffer_handle, position)
                 },
-            );
-            None
+            )?;
+            Ok(None)
         },
     },
-    */
 ];
 
-/*
-fn get_main_cursor_position(ctx: &mut CommandContext) -> Option<BufferPosition> {
-    let handle = ctx.current_buffer_view_handle_or_error()?;
+fn get_main_cursor_position<'state, 'command>(
+    ctx: &CommandContext<'state, 'command>,
+) -> Result<BufferPosition, CommandError<'command>> {
+    let handle = ctx.current_buffer_view_handle()?;
     let position = ctx
         .editor
         .buffer_views
-        .get(handle)?
+        .get(handle)
+        .ok_or(CommandError::Aborted)?
         .cursors
         .main_cursor()
         .position;
-    Some(position)
+    Ok(position)
 }
 
-fn access_lsp<A>(
+fn access_lsp<'command, A>(
     editor: &mut Editor,
     client_handle: Option<lsp::ClientHandle>,
     buffer_handle: Option<BufferHandle>,
     accessor: A,
-) where
+) -> Result<(), CommandError<'command>>
+where
     A: FnOnce(&mut Editor, &mut lsp::Client, &mut Json),
 {
     fn find_client_for_buffer(
@@ -671,21 +654,19 @@ fn access_lsp<A>(
         Some(client_handle)
     }
 
-    if client_handle
+    match client_handle
         .or_else(|| find_client_for_buffer(editor, buffer_handle))
         .and_then(|h| lsp::ClientManager::access(editor, h, accessor))
-        .is_none()
     {
-        editor
-            .output
-            .write(EditorOutputKind::Error)
-            .str("lsp server not running");
+        Some(()) => Ok(()),
+        None => Err(CommandError::LspServerNotRunning),
     }
 }
-*/
 
-/*
-fn access_lsp_with_position<A>(ctx: &mut CommandContext, accessor: A) -> Option<()>
+fn access_lsp_with_position<'state, 'command, A>(
+    ctx: &mut CommandContext<'state, 'command>,
+    accessor: A,
+) -> Result<(), CommandError<'command>>
 where
     A: FnOnce(
         &mut Editor,
@@ -696,20 +677,16 @@ where
         BufferPosition,
     ),
 {
-    parse_values!(ctx);
-    parse_switches!(ctx);
-    parse_options!(ctx, client, buffer, position);
-
-    let client_handle = match client {
-        Some(client) => Some(parse_arg!(ctx, client: lsp::ClientHandle)),
+    let client_handle = match ctx.args.parse_flag(0)? {
+        Some(handle) => Some(handle),
         None => None,
     };
-    let buffer_handle = match buffer {
-        Some(buffer) => parse_arg!(ctx, buffer: BufferHandle),
-        None => ctx.current_buffer_handle_or_error()?,
+    let buffer_handle = match ctx.args.parse_flag(1)? {
+        Some(handle) => handle,
+        None => ctx.current_buffer_handle()?,
     };
-    let position = match position {
-        Some(position) => parse_arg!(ctx, position: BufferPosition),
+    let position = match ctx.args.parse_flag(2)? {
+        Some(position) => position,
         None => get_main_cursor_position(ctx)?,
     };
 
@@ -719,8 +696,5 @@ where
         client_handle,
         Some(buffer_handle),
         |editor, client, json| accessor(editor, client, platform, json, buffer_handle, position),
-    );
-
-    None
+    )
 }
-*/
