@@ -339,14 +339,14 @@ pub enum CommandSource {
 }
 
 pub struct BuiltinCommand {
-    names: &'static [&'static str],
-    description: &'static str,
-    bang_usage: Option<&'static str>,
-    required_values: &'static [(&'static str, Option<CompletionSource>)],
-    optional_values: &'static [(&'static str, Option<CompletionSource>)],
-    extra_values: Option<(&'static str, Option<CompletionSource>)>,
-    flags: &'static [(&'static str, Option<CompletionSource>)],
-    func: CommandFn,
+    pub names: &'static [&'static str],
+    pub description: &'static str,
+    pub bang_usage: Option<&'static str>,
+    pub required_values: &'static [(&'static str, Option<CompletionSource>)],
+    pub optional_values: &'static [(&'static str, Option<CompletionSource>)],
+    pub extra_values: Option<(&'static str, Option<CompletionSource>)>,
+    pub flags: &'static [(&'static str, Option<CompletionSource>)],
+    pub func: CommandFn,
 }
 
 pub struct CommandManager {

@@ -568,6 +568,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             Ok(None)
         },
     },
+    // TODO: remove this command
     BuiltinCommand {
         names: &["run"],
         description: "",
