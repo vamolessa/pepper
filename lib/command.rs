@@ -732,7 +732,7 @@ mod tests {
             "c \\\n-switch'value'\\\n-option=\"option value!\"\\\n",
         );
         assert_eq!(["value"], &other_values_vec(&args)[..]);
-        assert_eq!("", args.flags[0]);
+        assert_eq!("true", args.flags[0]);
         assert_eq!("option value!", args.flags[1]);
     }
 
