@@ -116,7 +116,7 @@ impl Picker {
         height
     }
 
-    pub fn reset(&mut self) {
+    pub fn clear(&mut self) {
         self.clear_filtered();
         self.custom_entries_len = 0;
     }

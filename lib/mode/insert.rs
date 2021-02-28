@@ -15,11 +15,11 @@ pub struct State;
 
 impl ModeState for State {
     fn on_enter(ctx: &mut ModeContext) {
-        ctx.editor.picker.reset();
+        ctx.editor.picker.clear();
     }
 
     fn on_exit(ctx: &mut ModeContext) {
-        ctx.editor.picker.reset();
+        ctx.editor.picker.clear();
     }
 
     fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> Option<ModeOperation> {

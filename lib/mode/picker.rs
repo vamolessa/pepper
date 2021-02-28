@@ -27,7 +27,7 @@ impl ModeState for State {
 
     fn on_exit(ctx: &mut ModeContext) {
         ctx.editor.read_line.set_input("");
-        ctx.editor.picker.reset();
+        ctx.editor.picker.clear();
     }
 
     fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> Option<ModeOperation> {
@@ -150,7 +150,7 @@ pub mod buffer {
         }
 
         ctx.editor.read_line.set_prompt("buffer:");
-        ctx.editor.picker.reset();
+        ctx.editor.picker.clear();
 
         let buffers = &ctx.editor.buffers;
         let buffer_views = &ctx.editor.buffer_views;

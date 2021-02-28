@@ -334,6 +334,74 @@ impl<'a> Iterator for CommandIter<'a> {
     }
 }
 
+#[derive(Clone, Copy)]
+pub enum CommandTokenKind {
+    Text,
+    Flag,
+    Equals,
+    Bang,
+    Unterminated,
+}
+pub struct CommandTokenIter<'a> {
+    pub rest: &'a str,
+}
+impl<'a> Iterator for CommandTokenIter<'a> {
+    type Item = (CommandTokenKind, &'a str);
+    fn next(&mut self) -> Option<Self::Item> {
+        fn next_token(mut rest: &str) -> Option<(CommandTokenKind, &str, &str)> {
+            fn is_separator(c: char) -> bool {
+                c.is_ascii_whitespace() || c == '=' || c == '!' || c == '"' || c == '\''
+            }
+
+            rest = rest.trim_start_matches(|c: char| c.is_ascii_whitespace() || c == '\\');
+            if rest.is_empty() {
+                return None;
+            }
+
+            match rest.as_bytes()[0] {
+                b'-' => {
+                    rest = &rest[1..];
+                    let (token, rest) = match rest.find(is_separator) {
+                        Some(i) => rest.split_at(i),
+                        None => (rest, ""),
+                    };
+                    Some((CommandTokenKind::Flag, token, rest))
+                }
+                delim @ b'"' | delim @ b'\'' => {
+                    rest = &rest[1..];
+                    match rest.find(delim as char) {
+                        Some(i) => Some((CommandTokenKind::Text, &rest[..i], &rest[(i + 1)..])),
+                        None => Some((CommandTokenKind::Unterminated, rest, "")),
+                    }
+                }
+                b'=' => {
+                    let (token, rest) = rest.split_at(1);
+                    Some((CommandTokenKind::Equals, token, rest))
+                }
+                b'!' => {
+                    let (token, rest) = rest.split_at(1);
+                    Some((CommandTokenKind::Bang, token, rest))
+                }
+                _ => match rest.find(is_separator) {
+                    Some(i) => {
+                        let (token, rest) = rest.split_at(i);
+                        Some((CommandTokenKind::Text, token, rest))
+                    }
+                    None => Some((CommandTokenKind::Text, rest, "")),
+                },
+            }
+        }
+
+        match next_token(self.rest) {
+            Some((kind, token, rest)) => {
+                self.rest = rest;
+                Some((kind, token))
+            }
+            None => None,
+        }
+    }
+}
+
 pub enum CommandSource {
     Builtin(usize),
 }
@@ -434,73 +502,6 @@ impl CommandManager {
         &self,
         text: &'a str,
     ) -> Result<(CommandSource, CommandArgs<'a>), CommandParseError<'a>> {
-        enum TokenKind {
-            Text,
-            Flag,
-            Equals,
-            Bang,
-            Unterminated,
-        }
-        struct TokenIterator<'a> {
-            rest: &'a str,
-        }
-        impl<'a> Iterator for TokenIterator<'a> {
-            type Item = (TokenKind, &'a str);
-            fn next(&mut self) -> Option<Self::Item> {
-                fn next_token(mut rest: &str) -> Option<(TokenKind, &str, &str)> {
-                    fn is_separator(c: char) -> bool {
-                        c.is_ascii_whitespace() || c == '=' || c == '!' || c == '"' || c == '\''
-                    }
-
-                    rest = rest.trim_start_matches(|c: char| c.is_ascii_whitespace() || c == '\\');
-                    if rest.is_empty() {
-                        return None;
-                    }
-
-                    match rest.as_bytes()[0] {
-                        b'-' => {
-                            rest = &rest[1..];
-                            let (token, rest) = match rest.find(is_separator) {
-                                Some(i) => rest.split_at(i),
-                                None => (rest, ""),
-                            };
-                            Some((TokenKind::Flag, token, rest))
-                        }
-                        delim @ b'"' | delim @ b'\'' => {
-                            rest = &rest[1..];
-                            match rest.find(delim as char) {
-                                Some(i) => Some((TokenKind::Text, &rest[..i], &rest[(i + 1)..])),
-                                None => Some((TokenKind::Unterminated, rest, "")),
-                            }
-                        }
-                        b'=' => {
-                            let (token, rest) = rest.split_at(1);
-                            Some((TokenKind::Equals, token, rest))
-                        }
-                        b'!' => {
-                            let (token, rest) = rest.split_at(1);
-                            Some((TokenKind::Bang, token, rest))
-                        }
-                        _ => match rest.find(is_separator) {
-                            Some(i) => {
-                                let (token, rest) = rest.split_at(i);
-                                Some((TokenKind::Text, token, rest))
-                            }
-                            None => Some((TokenKind::Text, rest, "")),
-                        },
-                    }
-                }
-
-                match next_token(self.rest) {
-                    Some((kind, token, rest)) => {
-                        self.rest = rest;
-                        Some((kind, token))
-                    }
-                    None => None,
-                }
-            }
-        }
-
         struct CommandParamsInfo<'a> {
             min_values_len: u8,
             max_values_len: Option<u8>,
@@ -548,17 +549,17 @@ impl CommandManager {
 
         let mut values_count = 0;
         let mut args = CommandArgs::default();
-        let mut tokens = TokenIterator { rest: text };
+        let mut tokens = CommandTokenIter { rest: text };
         let mut peeked_token = None;
 
         let command_name = match tokens.next() {
-            Some((TokenKind::Text, s)) => s,
+            Some((CommandTokenKind::Text, s)) => s,
             Some((_, s)) => return Err(CommandParseError::InvalidCommandName(s)),
             None => return Err(CommandParseError::InvalidCommandName(text.trim_start())),
         };
 
         args.bang = match tokens.next() {
-            Some((TokenKind::Bang, _)) => true,
+            Some((CommandTokenKind::Bang, _)) => true,
             token => {
                 peeked_token = token;
                 false
@@ -598,11 +599,13 @@ impl CommandManager {
             };
 
             match token {
-                (TokenKind::Text, s) => add_value(&params, &mut args, &mut values_count, s)?,
-                (TokenKind::Flag, flag_token) => match tokens.next() {
-                    Some((TokenKind::Equals, equals_token)) => match tokens.next() {
-                        Some((TokenKind::Text, s)) => add_flag(&params, &mut args, flag_token, s)?,
-                        Some((TokenKind::Unterminated, s)) => {
+                (CommandTokenKind::Text, s) => add_value(&params, &mut args, &mut values_count, s)?,
+                (CommandTokenKind::Flag, flag_token) => match tokens.next() {
+                    Some((CommandTokenKind::Equals, equals_token)) => match tokens.next() {
+                        Some((CommandTokenKind::Text, s)) => {
+                            add_flag(&params, &mut args, flag_token, s)?
+                        }
+                        Some((CommandTokenKind::Unterminated, s)) => {
                             return Err(CommandParseError::UnterminatedArgument(s))
                         }
                         Some((_, s)) => return Err(CommandParseError::InvalidFlagValue(s)),
@@ -613,10 +616,10 @@ impl CommandManager {
                         peeked_token = token;
                     }
                 },
-                (TokenKind::Equals, s) | (TokenKind::Bang, s) => {
+                (CommandTokenKind::Equals, s) | (CommandTokenKind::Bang, s) => {
                     return Err(CommandParseError::InvalidArgument(s))
                 }
-                (TokenKind::Unterminated, s) => {
+                (CommandTokenKind::Unterminated, s) => {
                     return Err(CommandParseError::UnterminatedArgument(s))
                 }
             }
