@@ -22,18 +22,17 @@ impl ReadLine {
         &self.prompt
     }
 
-    pub fn input(&self) -> &str {
-        &self.input
-    }
-
     pub fn set_prompt(&mut self, prompt: &str) {
         self.prompt.clear();
         self.prompt.push_str(prompt);
     }
+    
+    pub fn input(&self) -> &str {
+        &self.input
+    }
 
-    pub fn set_input(&mut self, input: &str) {
-        self.input.clear();
-        self.input.push_str(input);
+    pub fn input_mut(&mut self) -> &mut String {
+        &mut self.input
     }
 
     pub fn poll(

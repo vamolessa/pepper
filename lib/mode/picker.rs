@@ -21,12 +21,12 @@ impl Default for State {
 
 impl ModeState for State {
     fn on_enter(ctx: &mut ModeContext) {
-        ctx.editor.read_line.set_input("");
+        ctx.editor.read_line.input_mut().clear();
         ctx.editor.picker.filter(WordIndicesIter::empty(), "");
     }
 
     fn on_exit(ctx: &mut ModeContext) {
-        ctx.editor.read_line.set_input("");
+        ctx.editor.read_line.input_mut().clear();
         ctx.editor.picker.clear();
     }
 

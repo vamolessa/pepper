@@ -1,6 +1,6 @@
 use crate::{
     command::{CommandError, CommandManager, CommandOperation, CommandTokenIter, CommandTokenKind},
-    editor::KeysIterator,
+    editor::{Editor, KeysIterator},
     editor_utils::{MessageKind, ReadLinePoll},
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     platform::Key,
@@ -33,11 +33,11 @@ impl ModeState for State {
         ctx.editor.mode.command_state.picker_state =
             PickerState::NavigatingHistory(ctx.editor.commands.history_len());
         ctx.editor.read_line.set_prompt(":");
-        ctx.editor.read_line.set_input("");
+        ctx.editor.read_line.input_mut().clear();
     }
 
     fn on_exit(ctx: &mut ModeContext) {
-        ctx.editor.read_line.set_input("");
+        ctx.editor.read_line.input_mut().clear();
     }
 
     fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> Option<ModeOperation> {
@@ -59,19 +59,23 @@ impl ModeState for State {
                                 .saturating_sub(1)
                                 .min(*i + 1);
                             let entry = ctx.editor.commands.history_entry(*i);
-                            ctx.editor.read_line.set_input(entry);
+                            let input = ctx.editor.read_line.input_mut();
+                            input.clear();
+                            input.push_str(entry);
                         }
-                        PickerState::TypingCommand(_) => ctx.editor.picker.move_cursor(1),
+                        PickerState::TypingCommand(_) => apply_completion(ctx.editor, 1),
                     },
                     Key::Ctrl('p') | Key::Ctrl('k') => match state.picker_state {
                         PickerState::NavigatingHistory(ref mut i) => {
                             *i = i.saturating_sub(1);
                             let entry = ctx.editor.commands.history_entry(*i);
-                            ctx.editor.read_line.set_input(entry);
+                            let input = ctx.editor.read_line.input_mut();
+                            input.clear();
+                            input.push_str(entry);
                         }
-                        PickerState::TypingCommand(_) => ctx.editor.picker.move_cursor(-1),
+                        PickerState::TypingCommand(_) => apply_completion(ctx.editor, -1),
                     },
-                    _ => autocomplete(ctx),
+                    _ => update_autocomplete_entries(ctx),
                 }
             }
             ReadLinePoll::Canceled => Mode::change_to(ctx, ModeKind::default()),
@@ -131,7 +135,17 @@ impl ModeState for State {
     }
 }
 
-fn autocomplete(ctx: &mut ModeContext) {
+fn apply_completion(editor: &mut Editor, cursor_movement: isize) {
+    editor.picker.move_cursor(1);
+    if let Some(entry) = editor
+        .picker
+        .current_entry(&editor.word_database, &editor.commands)
+    {
+        //editor.read_line.input();
+    }
+}
+
+fn update_autocomplete_entries(ctx: &mut ModeContext) {
     let state = &mut ctx.editor.mode.command_state;
     let completion_state = match &mut state.picker_state {
         PickerState::NavigatingHistory(_) => return,
