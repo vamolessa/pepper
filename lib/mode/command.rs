@@ -19,11 +19,13 @@ enum PickerState {
 
 pub struct State {
     picker_state: PickerState,
+    completion_index: usize,
 }
 impl Default for State {
     fn default() -> Self {
         Self {
             picker_state: PickerState::TypingCommand(CompletionState::Dirty),
+            completion_index: 0,
         }
     }
 }
@@ -63,7 +65,7 @@ impl ModeState for State {
                             input.clear();
                             input.push_str(entry);
                         }
-                        PickerState::TypingCommand(_) => apply_completion(ctx.editor, 1),
+                        PickerState::TypingCommand(_) => apply_completion(ctx, 1),
                     },
                     Key::Ctrl('p') | Key::Ctrl('k') => match state.picker_state {
                         PickerState::NavigatingHistory(ref mut i) => {
@@ -73,7 +75,7 @@ impl ModeState for State {
                             input.clear();
                             input.push_str(entry);
                         }
-                        PickerState::TypingCommand(_) => apply_completion(ctx.editor, -1),
+                        PickerState::TypingCommand(_) => apply_completion(ctx, -1),
                     },
                     _ => update_autocomplete_entries(ctx),
                 }
@@ -135,13 +137,16 @@ impl ModeState for State {
     }
 }
 
-fn apply_completion(editor: &mut Editor, cursor_movement: isize) {
-    editor.picker.move_cursor(1);
-    if let Some(entry) = editor
+fn apply_completion(ctx: &mut ModeContext, cursor_movement: isize) {
+    ctx.editor.picker.move_cursor(cursor_movement);
+    if let Some(entry) = ctx
+        .editor
         .picker
-        .current_entry(&editor.word_database, &editor.commands)
+        .current_entry(&ctx.editor.word_database, &ctx.editor.commands)
     {
-        //editor.read_line.input();
+        let input = ctx.editor.read_line.input_mut();
+        input.truncate(ctx.editor.mode.command_state.completion_index);
+        input.push_str(entry.name);
     }
 }
 
@@ -160,6 +165,7 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
         None => {
             ctx.editor.picker.clear();
             state.picker_state = PickerState::NavigatingHistory(ctx.editor.commands.history_len());
+            state.completion_index = 0;
             return;
         }
     };
@@ -172,7 +178,7 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
 
     let mut completion_target = None;
     let mut value_arg_count = 0;
-    let mut last_token = None;
+    let mut last_arg_token = None;
     let mut last_flag_name = None;
     let mut before_last_token_kind = CommandTokenKind::Text;
 
@@ -194,11 +200,11 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
             CommandTokenKind::Unterminated => None,
         };
         before_last_token_kind = kind;
-        last_token = Some(token);
+        last_arg_token = Some(token);
     }
 
-    match last_token {
-        Some(last_token) => {
+    match last_arg_token {
+        Some(last_arg_token) => {
             let completion_target = match completion_target {
                 Some(target) => target,
                 None => {
@@ -207,7 +213,12 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
             };
         }
         None => {
-            //
+            state.completion_index = first_token.as_ptr() as usize - input.as_ptr() as usize;
+            if !matches!(completion_state, CompletionState::CommandName) {
+                *completion_state = CompletionState::CommandName;
+            }
+
+            // TODO: command name completion
         }
     }
 }
