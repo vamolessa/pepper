@@ -412,6 +412,7 @@ pub struct BuiltinCommand {
     pub bang_usage: Option<&'static str>,
     pub required_values: &'static [(&'static str, Option<CompletionSource>)],
     pub optional_values: &'static [(&'static str, Option<CompletionSource>)],
+    // TODO: remove
     pub extra_values: Option<(&'static str, Option<CompletionSource>)>,
     pub flags: &'static [(&'static str, Option<CompletionSource>)],
     pub func: CommandFn,
@@ -642,6 +643,7 @@ impl CommandManager {
 #[derive(Default)]
 pub struct CommandArgs<'a> {
     pub bang: bool,
+    // TODO: make it only `pub values: [&'a str; MAX_VALUES_LEN]`
     pub required_values: [&'a str; MAX_REQUIRED_VALUES_LEN],
     pub other_values: [Option<&'a str>; MAX_OTHER_VALUES_LEN],
     pub flags: [&'a str; MAX_FLAGS_LEN],
