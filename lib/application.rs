@@ -276,10 +276,10 @@ impl ClientApplication {
         };
 
         use io::Write;
-        let _ = stdout.write_all(ui::ENTER_ALTERNATE_BUFFER_CODE);
-        let _ = stdout.write_all(ui::HIDE_CURSOR_CODE);
-        let _ = stdout.write_all(ui::MODE_256_COLORS_CODE);
-        let _ = stdout.flush();
+        stdout.write_all(ui::ENTER_ALTERNATE_BUFFER_CODE).unwrap();
+        stdout.write_all(ui::HIDE_CURSOR_CODE).unwrap();
+        stdout.write_all(ui::MODE_256_COLORS_CODE).unwrap();
+        stdout.flush().unwrap();
 
         Self {
             client_event_source: ClientEventSource::ConnectionClient,
@@ -299,6 +299,8 @@ impl ClientApplication {
         };
 
         self.write_buf.clear();
+        // TODO: it crashes if this is uncommented :(
+        //ClientEvent::Key(self.client_event_source, Key::None).serialize(&mut self.write_buf);
 
         if !args.files.is_empty() {
             let mut open_buffers_command = String::new();
