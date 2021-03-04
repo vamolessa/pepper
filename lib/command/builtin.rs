@@ -34,10 +34,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         bang_usage: None,
         required_values: &[("command-name", Some(CompletionSource::Commands))],
         optional_values: &[],
-        extra_values: None,
         flags: &[],
         func: |ctx| {
-            let command_name = ctx.args.required_values[0];
+            let command_name = ctx.args.values[0];
             let commands = &ctx.editor.commands;
             let source = match commands.find_command(command_name) {
                 Some(source) => source,
@@ -51,7 +50,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             let flags;
             let required_values;
             let optional_values;
-            let extra_values;
 
             match source {
                 CommandSource::Builtin(i) => {
@@ -63,7 +61,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                     flags = command.flags;
                     required_values = command.required_values;
                     optional_values = command.optional_values;
-                    extra_values = command.extra_values.as_ref();
                 }
             }
 
@@ -81,9 +78,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             }
             for (value, _) in optional_values {
                 write.fmt(format_args!(" [{}]", value));
-            }
-            if let Some((values, _)) = extra_values {
-                write.fmt(format_args!(" {}...", values));
             }
 
             write.fmt(format_args!("\ndescription: {}\n", description));
@@ -108,7 +102,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         bang_usage: Some("ignore unsaved changes"),
         required_values: &[],
         optional_values: &[],
-        extra_values: None,
         flags: &[],
         func: |ctx| {
             if ctx.clients.iter_mut().count() == 1 {
@@ -123,7 +116,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         bang_usage: Some("ignore unsaved changes"),
         required_values: &[],
         optional_values: &[],
-        extra_values: None,
         flags: &[],
         func: |ctx| {
             ctx.assert_can_discard_all_buffers()?;
@@ -134,16 +126,12 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         names: &["print", "p"],
         description: "prints values to the status bar",
         bang_usage: None,
-        required_values: &[],
+        required_values: &[("message", None)],
         optional_values: &[],
-        extra_values: Some(("values", None)),
         flags: &[],
         func: |ctx| {
-            let mut w = ctx.editor.status_bar.write(MessageKind::Info);
-            for arg in ctx.args.other_values.iter().flatten() {
-                w.str(arg);
-                w.str(" ");
-            }
+            let message = ctx.args.values[0];
+            ctx.editor.status_bar.write(MessageKind::Info).str(message);
             Ok(None)
         },
     },
@@ -153,10 +141,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         bang_usage: None,
         required_values: &[("path", Some(CompletionSource::Files))],
         optional_values: &[],
-        extra_values: None,
         flags: &[],
         func: |ctx| {
-            let path = ctx.args.required_values[0];
+            let path = ctx.args.values[0];
             let op = ctx.editor.load_config(ctx.platform, ctx.clients, path);
             Ok(op)
         },
@@ -167,7 +154,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         bang_usage: None,
         required_values: &[("path", Some(CompletionSource::Files))],
         optional_values: &[],
-        extra_values: None,
         flags: &[],
         func: |ctx| {
             let client_handle = ctx.client_handle.ok_or(CommandError::Aborted)?;
@@ -177,7 +163,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 &ctx.editor.buffer_views,
             );
 
-            let mut path = ctx.args.required_values[0];
+            let mut path = ctx.args.values[0];
             let mut line_index = None;
             if let Some(separator_index) = path.rfind(':') {
                 if let Ok(n) = path[(separator_index + 1)..].parse() {
@@ -215,10 +201,15 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         bang_usage: None,
         required_values: &[],
         optional_values: &[("path", Some(CompletionSource::Files))],
-        extra_values: None,
         flags: &[("buffer", None)],
         func: |ctx| {
-            let path = ctx.args.other_values[0];
+            let path = ctx.args.values[0];
+            let path = if path.is_empty() {
+                None
+            } else {
+                Some(Path::new(path))
+            };
+
             let handle = match ctx.args.parse_flag(0)? {
                 Some(handle) => handle,
                 None => ctx.current_buffer_handle()?,
@@ -228,8 +219,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 .buffers
                 .get_mut(handle)
                 .ok_or(CommandError::InvalidBufferHandle(handle))?;
+
             buffer
-                .save_to_file(path.map(Path::new), &mut ctx.editor.events)
+                .save_to_file(path, &mut ctx.editor.events)
                 .map_err(|e| CommandError::BufferError(handle, e))?;
 
             let path = buffer.path().unwrap_or(Path::new(""));
@@ -246,7 +238,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         bang_usage: None,
         required_values: &[],
         optional_values: &[],
-        extra_values: None,
         flags: &[],
         func: |ctx| {
             let mut count = 0;
@@ -269,7 +260,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         bang_usage: Some("ignore unsaved changes"),
         required_values: &[],
         optional_values: &[],
-        extra_values: None,
         flags: &[("buffer", None)],
         func: |ctx| {
             let handle = match ctx.args.parse_flag(0)? {
@@ -300,7 +290,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         bang_usage: Some("ignore unsaved changes"),
         required_values: &[],
         optional_values: &[],
-        extra_values: None,
         flags: &[],
         func: |ctx| {
             ctx.assert_can_discard_all_buffers()?;
@@ -327,7 +316,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         bang_usage: Some("ignore unsaved changes"),
         required_values: &[],
         optional_values: &[],
-        extra_values: None,
         flags: &[("buffer", None)],
         func: |ctx| {
             let handle = match ctx.args.parse_flag(0)? {
@@ -367,7 +355,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         bang_usage: Some("ignore unsaved changes"),
         required_values: &[],
         optional_values: &[],
-        extra_values: None,
         flags: &[],
         func: |ctx| {
             ctx.assert_can_discard_all_buffers()?;
@@ -395,27 +382,27 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         bang_usage: None,
         required_values: &[("key", Some(CompletionSource::Custom(CONFIG_NAMES)))],
         optional_values: &[("value", None)],
-        extra_values: None,
         flags: &[],
         func: |ctx| {
-            let key = ctx.args.required_values[0];
-            let value = ctx.args.other_values[0];
-            match value {
-                Some(value) => match ctx.editor.config.parse_config(key, value) {
-                    Ok(()) => Ok(None),
-                    Err(ParseConfigError::NotFound) => Err(CommandError::ConfigNotFound(key)),
-                    Err(ParseConfigError::InvalidValue) => {
-                        Err(CommandError::InvalidConfigValue { key, value })
-                    }
-                },
-                None => match ctx.editor.config.display_config(key) {
+            let key = ctx.args.values[0];
+            let value = ctx.args.values[1];
+            if value.is_empty() {
+                match ctx.editor.config.display_config(key) {
                     Some(display) => {
                         use fmt::Write;
                         let _ = write!(ctx.output, "{}", display);
                         Ok(None)
                     }
                     None => Err(CommandError::ConfigNotFound(key)),
-                },
+                }
+            } else {
+                match ctx.editor.config.parse_config(key, value) {
+                    Ok(()) => Ok(None),
+                    Err(ParseConfigError::NotFound) => Err(CommandError::ConfigNotFound(key)),
+                    Err(ParseConfigError::InvalidValue) => {
+                        Err(CommandError::InvalidConfigValue { key, value })
+                    }
+                }
             }
         },
     },
@@ -425,26 +412,22 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         bang_usage: None,
         required_values: &[("key", Some(CompletionSource::Custom(THEME_COLOR_NAMES)))],
         optional_values: &[("value", None)],
-        extra_values: None,
         flags: &[],
         func: |ctx| {
-            let key = ctx.args.required_values[0];
-            let value = ctx.args.other_values[0];
+            let key = ctx.args.values[0];
+            let value = ctx.args.values[1];
             let color = ctx
                 .editor
                 .theme
                 .color_from_name(key)
                 .ok_or(CommandError::ConfigNotFound(key))?;
-            match value {
-                Some(value) => {
-                    let encoded = u32::from_str_radix(value, 16)
-                        .map_err(|_| CommandError::InvalidColorValue { key, value })?;
-                    *color = Color::from_u32(encoded);
-                }
-                None => {
-                    use fmt::Write;
-                    let _ = write!(ctx.output, "{:x}", color.into_u32());
-                }
+            if value.is_empty() {
+                use fmt::Write;
+                let _ = write!(ctx.output, "{:x}", color.into_u32());
+            } else {
+                let encoded = u32::from_str_radix(value, 16)
+                    .map_err(|_| CommandError::InvalidColorValue { key, value })?;
+                *color = Color::from_u32(encoded);
             }
             Ok(None)
         },
@@ -455,7 +438,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         bang_usage: None,
         required_values: &[("glob", None)],
         optional_values: &[],
-        extra_values: None,
         flags: &[
             ("keywords", None),
             ("types", None),
@@ -466,7 +448,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             ("texts", None),
         ],
         func: |ctx| {
-            let glob = ctx.args.required_values[0];
+            let glob = ctx.args.values[0];
 
             let mut syntax = Syntax::new();
             syntax
@@ -503,7 +485,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         bang_usage: None,
         required_values: &[("from", None), ("to", None)],
         optional_values: &[],
-        extra_values: None,
         flags: &[
             ("normal", None),
             ("insert", None),
@@ -512,8 +493,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             ("command", None),
         ],
         func: |ctx| {
-            let from = ctx.args.required_values[0];
-            let to = ctx.args.required_values[1];
+            let from = ctx.args.values[0];
+            let to = ctx.args.values[1];
 
             let kinds = [
                 ModeKind::Normal,
@@ -549,21 +530,19 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         bang_usage: None,
         required_values: &[("key", None)],
         optional_values: &[("value", None)],
-        extra_values: None,
         flags: &[],
         func: |ctx| {
-            let key = ctx.args.required_values[0];
-            let value = ctx.args.other_values[0];
+            let key = ctx.args.values[0];
+            let value = ctx.args.values[1];
             let register = match RegisterKey::from_str(key) {
                 Some(key) => ctx.editor.registers.get_mut(key),
                 None => return Err(CommandError::InvalidRegisterKey(key)),
             };
-            match value {
-                Some(value) => {
-                    register.clear();
-                    register.push_str(value);
-                }
-                None => ctx.output.push_str(register),
+            if value.is_empty() {
+                ctx.output.push_str(register);
+            } else {
+                register.clear();
+                register.push_str(value);
             }
             Ok(None)
         },
@@ -575,10 +554,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         bang_usage: None,
         required_values: &[("command", None)],
         optional_values: &[],
-        extra_values: None,
         flags: &[],
         func: |ctx| {
-            let command = ctx.args.required_values[0];
+            let command = ctx.args.values[0];
             eprintln!("request spawn process '{}'", command);
 
             let mut command = Command::new(command);
@@ -600,18 +578,15 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         description: "start a lsp server",
         bang_usage: None,
         required_values: &[("server-command", None)],
-        optional_values: &[],
-        extra_values: Some(("server-args", None)),
+        optional_values: &[("server-args", None)],
         flags: &[("root", Some(CompletionSource::Files)), ("log", None)],
         func: |ctx| {
-            let command_name = ctx.args.required_values[0];
+            let command_name = ctx.args.values[0];
             let root = ctx.args.flags[0];
             let log = !ctx.args.flags[1].is_empty();
 
             let mut command = Command::new(command_name);
-            for &arg in ctx.args.other_values.iter().flatten() {
-                command.arg(arg);
-            }
+            command.arg(ctx.args.values[1]);
 
             let root = if root.is_empty() {
                 ctx.editor.current_directory.as_path()
@@ -645,7 +620,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         bang_usage: None,
         required_values: &[],
         optional_values: &[],
-        extra_values: None,
         flags: &[("client", None)],
         func: |ctx| {
             match ctx.args.parse_flag(0)? {
@@ -661,7 +635,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         bang_usage: None,
         required_values: &[],
         optional_values: &[],
-        extra_values: None,
         flags: &[("client", None), ("buffer", None), ("position", None)],
         func: |mut ctx| {
             access_lsp_with_position(
@@ -679,7 +652,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         bang_usage: None,
         required_values: &[],
         optional_values: &[],
-        extra_values: None,
         flags: &[("client", None), ("buffer", None), ("position", None)],
         func: |mut ctx| {
             access_lsp_with_position(

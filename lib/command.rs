@@ -12,8 +12,7 @@ use crate::{
 
 mod builtin;
 
-pub const MAX_REQUIRED_VALUES_LEN: usize = 4;
-pub const MAX_OTHER_VALUES_LEN: usize = 8;
+pub const MAX_VALUES_LEN: usize = 8;
 pub const MAX_FLAGS_LEN: usize = 8;
 pub const HISTORY_CAPACITY: usize = 10;
 
@@ -412,8 +411,6 @@ pub struct BuiltinCommand {
     pub bang_usage: Option<&'static str>,
     pub required_values: &'static [(&'static str, Option<CompletionSource>)],
     pub optional_values: &'static [(&'static str, Option<CompletionSource>)],
-    // TODO: remove
-    pub extra_values: Option<(&'static str, Option<CompletionSource>)>,
     pub flags: &'static [(&'static str, Option<CompletionSource>)],
     pub func: CommandFn,
 }
@@ -504,8 +501,8 @@ impl CommandManager {
         text: &'a str,
     ) -> Result<(CommandSource, CommandArgs<'a>), CommandParseError<'a>> {
         struct CommandParamsInfo<'a> {
-            min_values_len: u8,
-            max_values_len: Option<u8>,
+            min_values_len: usize,
+            max_values_len: usize,
             flags: &'a [(&'a str, Option<CompletionSource>)],
         }
 
@@ -515,22 +512,15 @@ impl CommandManager {
             values_count: &mut u8,
             value: &'a str,
         ) -> Result<(), CommandParseError<'a>> {
-            if *values_count < params.min_values_len {
-                args.required_values[*values_count as usize] = value;
+            let index = *values_count as usize;
+            if index < params.max_values_len {
+                args.values[index] = value;
+                *values_count += 1;
+                Ok(())
             } else {
-                let len = *values_count - params.min_values_len;
-                let max = params
-                    .max_values_len
-                    .unwrap_or(args.other_values.len() as u8);
-                if len < max {
-                    args.other_values[len as usize] = Some(value);
-                } else {
-                    let max = max + params.min_values_len;
-                    return Err(CommandParseError::TooManyValues(value, max));
-                }
+                let max = params.max_values_len as _;
+                Err(CommandParseError::TooManyValues(value, max))
             }
-            *values_count += 1;
-            Ok(())
         }
 
         fn add_flag<'a>(
@@ -578,13 +568,8 @@ impl CommandManager {
                     return Err(CommandParseError::CommandDoesNotAcceptBang(command_name));
                 }
                 CommandParamsInfo {
-                    min_values_len: command.required_values.len() as _,
-                    max_values_len: match command.extra_values {
-                        Some(_) => None,
-                        None => Some(
-                            (command.required_values.len() + command.optional_values.len()) as _,
-                        ),
-                    },
+                    min_values_len: command.required_values.len(),
+                    max_values_len: command.required_values.len() + command.optional_values.len(),
                     flags: &command.flags,
                 }
             }
@@ -626,13 +611,14 @@ impl CommandManager {
             }
         }
 
+        let values_count = values_count as usize;
         if values_count < params.min_values_len {
             let token = if values_count > 0 {
-                args.required_values[values_count as usize - 1]
+                args.values[values_count - 1]
             } else {
                 command_name
             };
-            let min = params.min_values_len;
+            let min = params.min_values_len as _;
             return Err(CommandParseError::TooFewValues(token, min));
         }
 
@@ -643,9 +629,7 @@ impl CommandManager {
 #[derive(Default)]
 pub struct CommandArgs<'a> {
     pub bang: bool,
-    // TODO: make it only `pub values: [&'a str; MAX_VALUES_LEN]`
-    pub required_values: [&'a str; MAX_REQUIRED_VALUES_LEN],
-    pub other_values: [Option<&'a str>; MAX_OTHER_VALUES_LEN],
+    pub values: [&'a str; MAX_VALUES_LEN],
     pub flags: [&'a str; MAX_FLAGS_LEN],
 }
 impl<'a> CommandArgs<'a> {
@@ -678,8 +662,7 @@ mod tests {
             description: "",
             bang_usage: Some(""),
             required_values: &[],
-            optional_values: &[],
-            extra_values: Some(("", None)),
+            optional_values: &[("", None), ("", None), ("", None), ("", None)],
             flags: &[("switch", None), ("option", None)],
             func: |_| Ok(None),
         }];
@@ -720,23 +703,30 @@ mod tests {
             }
         }
 
-        fn other_values_vec<'a>(args: &CommandArgs<'a>) -> Vec<&'a str> {
-            args.other_values.iter().flatten().cloned().collect()
+        fn values_vec<'a>(args: &CommandArgs<'a>) -> Vec<&'a str> {
+            let mut values = Vec::new();
+            for value in args.values.iter() {
+                if value.is_empty() {
+                    break;
+                }
+                values.push(*value);
+            }
+            values
         }
 
         let commands = create_commands();
         let args = parse_args(&commands, "c  aaa  bbb  ccc  ");
-        assert_eq!(["aaa", "bbb", "ccc"], &other_values_vec(&args)[..]);
+        assert_eq!(["aaa", "bbb", "ccc"], &values_vec(&args)[..]);
         let args = parse_args(&commands, "c  'aaa'  \"bbb\"  ccc  ");
-        assert_eq!(["aaa", "bbb", "ccc"], &other_values_vec(&args)[..]);
+        assert_eq!(["aaa", "bbb", "ccc"], &values_vec(&args)[..]);
         let args = parse_args(&commands, "c  'aaa'\"bbb\"\"ccc\"ddd  ");
-        assert_eq!(["aaa", "bbb", "ccc", "ddd"], &other_values_vec(&args)[..]);
+        assert_eq!(["aaa", "bbb", "ccc", "ddd"], &values_vec(&args)[..]);
 
         let args = parse_args(
             &commands,
             "c \\\n-switch'value'\\\n-option=\"option value!\"\\\n",
         );
-        assert_eq!(["value"], &other_values_vec(&args)[..]);
+        assert_eq!(["value"], &values_vec(&args)[..]);
         assert_eq!("true", args.flags[0]);
         assert_eq!("option value!", args.flags[1]);
     }
@@ -766,14 +756,14 @@ mod tests {
         assert_fail!("c! '", CommandParseError::UnterminatedArgument(s) => s == "");
         assert_fail!("c! \"'", CommandParseError::UnterminatedArgument(s) => s == "'");
 
-        const TOO_MANY_VALUES_LEN: u8 = MAX_OTHER_VALUES_LEN as _;
+        const MAX_VALUES_LEN: u8 = 4;
         let mut too_many_values_command = String::new();
         too_many_values_command.push('c');
-        for _ in 0..TOO_MANY_VALUES_LEN {
+        for _ in 0..MAX_VALUES_LEN {
             too_many_values_command.push_str(" a");
         }
         too_many_values_command.push_str(" b");
-        assert_fail!(&too_many_values_command, CommandParseError::TooManyValues(s, TOO_MANY_VALUES_LEN) => s == "b");
+        assert_fail!(&too_many_values_command, CommandParseError::TooManyValues(s, MAX_VALUES_LEN) => s == "b");
     }
 
     #[test]
