@@ -9,7 +9,6 @@ use crate::{
 enum CompletionState {
     Dirty,
     CommandName,
-    CommandFlag,
 }
 
 enum PickerState {

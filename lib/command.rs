@@ -12,7 +12,7 @@ use crate::{
 
 //mod builtin;
 
-pub const MAX_PARAMETERS_LEN: usize = 8;
+pub const PARAMETERS_CAPACITY: usize = 8;
 pub const HISTORY_CAPACITY: usize = 10;
 
 pub enum CommandParseError<'command> {
@@ -33,8 +33,8 @@ pub enum CommandError<'command> {
     NoBufferOpened,
     InvalidBufferHandle(BufferHandle),
     InvalidPath(&'command str),
-    ParseValueError {
-        value: &'command str,
+    ParseArgError {
+        arg: &'command str,
         type_name: &'static str,
     },
     BufferError(BufferHandle, BufferError),
@@ -146,11 +146,11 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
             CommandError::InvalidPath(path) => {
                 write(self, f, path, format_args!("invalid path '{}'", path))
             }
-            CommandError::ParseValueError { value, type_name } => write(
+            CommandError::ParseArgError { arg, type_name } => write(
                 self,
                 f,
-                value,
-                format_args!("could not parse '{}' as {}", value, type_name),
+                arg,
+                format_args!("could not parse '{}' as {}", arg, type_name),
             ),
             CommandError::BufferError(handle, error) => match self.buffers.get(*handle) {
                 Some(buffer) => f.write_fmt(format_args!("{}", error.display(buffer))),
@@ -213,10 +213,29 @@ pub struct CommandContext<'state, 'command> {
     pub platform: &'state mut Platform,
     pub clients: &'state mut ClientManager,
     pub client_handle: Option<ClientHandle>,
-    pub args: &'state mut CommandArgs<'command>,
+    pub bang: bool,
+    pub args: [&'command str; PARAMETERS_CAPACITY],
     pub output: &'state mut String,
 }
 impl<'state, 'command> CommandContext<'state, 'command> {
+    pub fn parse_arg<T>(&self, index: usize) -> Result<Option<T>, CommandError<'command>>
+    where
+        T: 'static + FromStr,
+    {
+        let arg = self.args[index];
+        if arg.is_empty() {
+            Ok(None)
+        } else {
+            match arg.parse() {
+                Ok(arg) => Ok(Some(arg)),
+                Err(_) => Err(CommandError::ParseArgError {
+                    arg,
+                    type_name: any::type_name::<T>(),
+                }),
+            }
+        }
+    }
+
     pub fn current_buffer_view_handle(&self) -> Result<BufferViewHandle, CommandError<'command>> {
         match self
             .client_handle
@@ -242,7 +261,7 @@ impl<'state, 'command> CommandContext<'state, 'command> {
     }
 
     pub fn assert_can_discard_all_buffers(&self) -> Result<(), CommandError<'command>> {
-        if self.args.bang || !self.editor.buffers.iter().any(Buffer::needs_save) {
+        if self.bang || !self.editor.buffers.iter().any(Buffer::needs_save) {
             Ok(())
         } else {
             Err(CommandError::UnsavedChanges)
@@ -258,7 +277,7 @@ impl<'state, 'command> CommandContext<'state, 'command> {
             .buffers
             .get(handle)
             .ok_or(CommandError::InvalidBufferHandle(handle))?;
-        if self.args.bang || !buffer.needs_save() {
+        if self.bang || !buffer.needs_save() {
             Ok(())
         } else {
             Err(CommandError::UnsavedChanges)
@@ -450,7 +469,7 @@ impl CommandManager {
         output: &mut String,
     ) -> Result<Option<CommandOperation>, CommandError<'command>> {
         match editor.commands.parse(command) {
-            Ok((source, mut args)) => {
+            Ok((source, bang, args)) => {
                 let command = match source {
                     CommandSource::Builtin(i) => editor.commands.builtin_commands[i].func,
                 };
@@ -459,7 +478,8 @@ impl CommandManager {
                     platform,
                     clients,
                     client_handle,
-                    args: &mut args,
+                    bang,
+                    args,
                     output,
                 })
             }
@@ -470,9 +490,9 @@ impl CommandManager {
     fn parse<'a>(
         &self,
         text: &'a str,
-    ) -> Result<(CommandSource, CommandArgs<'a>), CommandParseError<'a>> {
+    ) -> Result<(CommandSource, bool, [&'a str; PARAMETERS_CAPACITY]), CommandParseError<'a>> {
         let mut arg_count = 0;
-        let mut args = CommandArgs::default();
+        let mut args = [""; PARAMETERS_CAPACITY];
         let mut tokens = CommandTokenIter { rest: text };
         let mut peeked_token = None;
 
@@ -482,7 +502,7 @@ impl CommandManager {
             None => return Err(CommandParseError::InvalidCommandName(text.trim_start())),
         };
 
-        args.bang = match tokens.next() {
+        let bang = match tokens.next() {
             Some((CommandTokenKind::Bang, _)) => true,
             token => {
                 peeked_token = token;
@@ -497,7 +517,7 @@ impl CommandManager {
         let param_count = match source {
             CommandSource::Builtin(i) => {
                 let command = &self.builtin_commands[i];
-                if args.bang && command.bang_usage.is_none() {
+                if bang && command.bang_usage.is_none() {
                     return Err(CommandParseError::CommandDoesNotAcceptBang(command_name));
                 }
                 command.params.len() as _
@@ -518,7 +538,7 @@ impl CommandManager {
                     if arg_count == param_count {
                         return Err(CommandParseError::TooManyArguments(s, param_count));
                     }
-                    args.values[arg_count as usize] = s;
+                    args[arg_count as usize] = s;
                     arg_count += 1;
                 }
                 (CommandTokenKind::Bang, s) => return Err(CommandParseError::InvalidArgument(s)),
@@ -530,39 +550,14 @@ impl CommandManager {
 
         if arg_count < param_count {
             let token = if arg_count > 0 {
-                args.values[arg_count as usize - 1]
+                args[arg_count as usize - 1]
             } else {
                 command_name
             };
             return Err(CommandParseError::TooFewArguments(token, param_count));
         }
 
-        Ok((source, args))
-    }
-}
-
-#[derive(Default)]
-pub struct CommandArgs<'a> {
-    pub bang: bool,
-    pub values: [&'a str; MAX_PARAMETERS_LEN],
-}
-impl<'a> CommandArgs<'a> {
-    pub fn parse_at<T>(&self, index: usize) -> Result<Option<T>, CommandError<'a>>
-    where
-        T: 'static + FromStr,
-    {
-        let value = self.values[index];
-        if value.is_empty() {
-            Ok(None)
-        } else {
-            match value.parse() {
-                Ok(value) => Ok(Some(value)),
-                Err(_) => Err(CommandError::ParseValueError {
-                    value,
-                    type_name: any::type_name::<T>(),
-                }),
-            }
-        }
+        Ok((source, bang, args))
     }
 }
 
@@ -587,37 +582,37 @@ mod tests {
 
     #[test]
     fn command_parsing() {
-        let commands = create_commands();
-
-        macro_rules! assert_command {
-            ($text:expr => bang = $bang:expr) => {
-                let (source, args) = match commands.parse($text) {
-                    Ok(result) => result,
-                    Err(_) => panic!("command parse error"),
-                };
-                assert!(matches!(source, CommandSource::Builtin(0)));
-                assert_eq!($bang, args.bang);
+        fn assert_bang(commands: &CommandManager, command: &str, expect_bang: bool) {
+            let (source, bang, _) = match commands.parse(command) {
+                Ok(result) => result,
+                Err(_) => panic!("command parse error"),
             };
+            assert!(matches!(source, CommandSource::Builtin(0)));
+            assert_eq!(expect_bang, bang);
         }
 
-        assert_command!("command-name" => bang = false);
-        assert_command!("  command-name  " => bang = false);
-        assert_command!("  command-name!  " => bang = true);
-        assert_command!("  command-name!" => bang = true);
+        let commands = create_commands();
+        assert_bang(&commands, "command-name", false);
+        assert_bang(&commands, "  command-name  ", false);
+        assert_bang(&commands, "  command-name!  ", true);
+        assert_bang(&commands, "  command-name!", true);
     }
 
     #[test]
     fn arg_parsing() {
-        fn parse_args<'a>(commands: &CommandManager, command: &'a str) -> CommandArgs<'a> {
+        fn parse_args<'a>(
+            commands: &CommandManager,
+            command: &'a str,
+        ) -> [&'a str; PARAMETERS_CAPACITY] {
             match commands.parse(command) {
-                Ok((_, args)) => args,
+                Ok((_, _, args)) => args,
                 Err(_) => panic!("command '{}' parse error", command),
             }
         }
 
-        fn values_vec<'a>(args: &CommandArgs<'a>) -> Vec<&'a str> {
+        fn collect<'a>(args: &[&'a str]) -> Vec<&'a str> {
             let mut values = Vec::new();
-            for value in args.values.iter() {
+            for value in args {
                 if value.is_empty() {
                     break;
                 }
@@ -628,11 +623,11 @@ mod tests {
 
         let commands = create_commands();
         let args = parse_args(&commands, "c  aaa  bbb  ccc  ");
-        assert_eq!(["aaa", "bbb", "ccc"], &values_vec(&args)[..]);
+        assert_eq!(["aaa", "bbb", "ccc"], &collect(&args)[..]);
         let args = parse_args(&commands, "c  'aaa'  \"bbb\"  ccc  ");
-        assert_eq!(["aaa", "bbb", "ccc"], &values_vec(&args)[..]);
+        assert_eq!(["aaa", "bbb", "ccc"], &collect(&args)[..]);
         let args = parse_args(&commands, "c  \"aaa\"\"bbb\"ccc  ");
-        assert_eq!(["aaa", "bbb", "ccc"], &values_vec(&args)[..]);
+        assert_eq!(["aaa", "bbb", "ccc"], &collect(&args)[..]);
     }
 
     #[test]
