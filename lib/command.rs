@@ -10,7 +10,7 @@ use crate::{
     platform::Platform,
 };
 
-//mod builtin;
+mod builtin;
 
 pub const PARAMETERS_CAPACITY: usize = 8;
 pub const HISTORY_CAPACITY: usize = 10;
@@ -50,6 +50,7 @@ pub enum CommandError<'command> {
     },
     InvalidGlob(&'command str),
     PatternError(&'command str, PatternError),
+    InvalidModeError(&'command str),
     KeyParseError(&'command str, KeyParseError),
     InvalidRegisterKey(&'command str),
     LspServerNotRunning,
@@ -180,6 +181,9 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
             CommandError::PatternError(pattern, error) => {
                 write(self, f, pattern, format_args!("{}", error))
             }
+            CommandError::InvalidModeError(mode) => {
+                write(self, f, mode, format_args!("no such mode '{}'", mode))
+            }
             CommandError::KeyParseError(keys, error) => {
                 write(self, f, keys, format_args!("{}", error))
             }
@@ -193,7 +197,7 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
 
 type CommandFn =
     for<'state, 'command> fn(
-        CommandContext<'state, 'command>,
+        &mut CommandContext<'state, 'command>,
     ) -> Result<Option<CommandOperation>, CommandError<'command>>;
 
 pub enum CommandOperation {
@@ -218,21 +222,17 @@ pub struct CommandContext<'state, 'command> {
     pub output: &'state mut String,
 }
 impl<'state, 'command> CommandContext<'state, 'command> {
-    pub fn parse_arg<T>(&self, index: usize) -> Result<Option<T>, CommandError<'command>>
+    pub fn parse_arg<T>(&self, index: usize) -> Result<T, CommandError<'command>>
     where
         T: 'static + FromStr,
     {
         let arg = self.args[index];
-        if arg.is_empty() {
-            Ok(None)
-        } else {
-            match arg.parse() {
-                Ok(arg) => Ok(Some(arg)),
-                Err(_) => Err(CommandError::ParseArgError {
-                    arg,
-                    type_name: any::type_name::<T>(),
-                }),
-            }
+        match arg.parse() {
+            Ok(arg) => Ok(arg),
+            Err(_) => Err(CommandError::ParseArgError {
+                arg,
+                type_name: any::type_name::<T>(),
+            }),
         }
     }
 
@@ -412,8 +412,7 @@ pub struct CommandManager {
 impl CommandManager {
     pub fn new() -> Self {
         Self {
-            //builtin_commands: builtin::COMMANDS,
-            builtin_commands: &[],
+            builtin_commands: builtin::COMMANDS,
             history: VecDeque::with_capacity(HISTORY_CAPACITY),
         }
     }
@@ -473,7 +472,7 @@ impl CommandManager {
                 let command = match source {
                     CommandSource::Builtin(i) => editor.commands.builtin_commands[i].func,
                 };
-                command(CommandContext {
+                let mut ctx = CommandContext {
                     editor,
                     platform,
                     clients,
@@ -481,7 +480,8 @@ impl CommandManager {
                     bang,
                     args,
                     output,
-                })
+                };
+                command(&mut ctx)
             }
             Err(error) => Err(CommandError::ParseError(error)),
         }
@@ -566,19 +566,22 @@ mod tests {
     use super::*;
 
     fn create_commands() -> CommandManager {
-        let builtin_commands = &[BuiltinCommand {
-            names: &["cmd0"],
-            description: "",
-            bang_usage: Some(""),
-            params: &[],
-            func: |_| Ok(None),
-        }, BuiltinCommand {
-            names: &["command-name", "c"],
-            description: "",
-            bang_usage: Some(""),
-            params: &[("", None), ("", None), ("", None)],
-            func: |_| Ok(None),
-        }];
+        let builtin_commands = &[
+            BuiltinCommand {
+                names: &["cmd0"],
+                description: "",
+                bang_usage: Some(""),
+                params: &[],
+                func: |_| Ok(None),
+            },
+            BuiltinCommand {
+                names: &["command-name", "c"],
+                description: "",
+                bang_usage: Some(""),
+                params: &[("", None), ("", None), ("", None)],
+                func: |_| Ok(None),
+            },
+        ];
 
         CommandManager {
             builtin_commands,

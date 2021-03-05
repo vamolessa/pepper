@@ -1,6 +1,6 @@
 use crate::{
     command::{CommandError, CommandManager, CommandOperation, CommandTokenIter, CommandTokenKind},
-    editor::{Editor, KeysIterator},
+    editor::KeysIterator,
     editor_utils::{MessageKind, ReadLinePoll},
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     platform::Key,
