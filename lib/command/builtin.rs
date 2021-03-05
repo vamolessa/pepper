@@ -635,7 +635,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         bang_usage: None,
         required_values: &[],
         optional_values: &[],
-        flags: &[("client", None), ("buffer", None), ("position", None)],
+        flags: &[("buffer", None), ("position", None)],
         func: |mut ctx| {
             access_lsp_with_position(
                 &mut ctx,
@@ -652,7 +652,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         bang_usage: None,
         required_values: &[],
         optional_values: &[],
-        flags: &[("client", None), ("buffer", None), ("position", None)],
+        flags: &[("buffer", None), ("position", None)],
         func: |mut ctx| {
             access_lsp_with_position(
                 &mut ctx,
@@ -680,35 +680,32 @@ fn get_main_cursor_position<'state, 'command>(
     Ok(position)
 }
 
+fn find_lsp_client_for_buffer(
+    editor: &Editor,
+    buffer_handle: BufferHandle,
+) -> Option<lsp::ClientHandle> {
+    let buffer_path_bytes = editor
+        .buffers
+        .get(buffer_handle)?
+        .path()?
+        .to_str()?
+        .as_bytes();
+    let (client_handle, _) = editor
+        .lsp
+        .client_with_handles()
+        .find(|(_, c)| c.handles_path(buffer_path_bytes))?;
+    Some(client_handle)
+}
+
 fn access_lsp<'command, A>(
     editor: &mut Editor,
-    client_handle: Option<lsp::ClientHandle>,
-    buffer_handle: Option<BufferHandle>,
+    buffer_handle: BufferHandle,
     accessor: A,
 ) -> Result<(), CommandError<'command>>
 where
     A: FnOnce(&mut Editor, &mut lsp::Client, &mut Json),
 {
-    fn find_client_for_buffer(
-        editor: &Editor,
-        buffer_handle: Option<BufferHandle>,
-    ) -> Option<lsp::ClientHandle> {
-        let buffer_handle = buffer_handle?;
-        let buffer_path_bytes = editor
-            .buffers
-            .get(buffer_handle)?
-            .path()?
-            .to_str()?
-            .as_bytes();
-        let (client_handle, _) = editor
-            .lsp
-            .client_with_handles()
-            .find(|(_, c)| c.handles_path(buffer_path_bytes))?;
-        Some(client_handle)
-    }
-
-    match client_handle
-        .or_else(|| find_client_for_buffer(editor, buffer_handle))
+    match find_lsp_client_for_buffer(editor, buffer_handle)
         .and_then(|h| lsp::ClientManager::access(editor, h, accessor))
     {
         Some(()) => Ok(()),
@@ -730,24 +727,17 @@ where
         BufferPosition,
     ),
 {
-    let client_handle = match ctx.args.parse_flag(0)? {
-        Some(handle) => Some(handle),
-        None => None,
-    };
-    let buffer_handle = match ctx.args.parse_flag(1)? {
+    let buffer_handle = match ctx.args.parse_flag(0)? {
         Some(handle) => handle,
         None => ctx.current_buffer_handle()?,
     };
-    let position = match ctx.args.parse_flag(2)? {
+    let position = match ctx.args.parse_flag(1)? {
         Some(position) => position,
         None => get_main_cursor_position(ctx)?,
     };
 
     let platform = &mut *ctx.platform;
-    access_lsp(
-        ctx.editor,
-        client_handle,
-        Some(buffer_handle),
-        |editor, client, json| accessor(editor, client, platform, json, buffer_handle, position),
-    )
+    access_lsp(ctx.editor, buffer_handle, |editor, client, json| {
+        accessor(editor, client, platform, json, buffer_handle, position)
+    })
 }

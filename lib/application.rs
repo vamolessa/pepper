@@ -290,17 +290,18 @@ impl ClientApplication {
     }
 
     pub fn init<'a>(&'a mut self, args: Args) -> &'a [u8] {
+        self.write_buf.clear();
+
         self.client_event_source = if args.as_focused_client {
             ClientEventSource::FocusedClient
         } else if let Some(handle) = args.as_client {
             ClientEventSource::ClientHandle(handle)
         } else {
+            // TODO: it crashes if this is uncommented :(
+            ClientEvent::Key(ClientEventSource::ConnectionClient, Key::None)
+                .serialize(&mut self.write_buf);
             ClientEventSource::ConnectionClient
         };
-
-        self.write_buf.clear();
-        // TODO: it crashes if this is uncommented :(
-        //ClientEvent::Key(self.client_event_source, Key::None).serialize(&mut self.write_buf);
 
         if !args.files.is_empty() {
             let mut open_buffers_command = String::new();

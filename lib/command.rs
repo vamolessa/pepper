@@ -10,10 +10,9 @@ use crate::{
     platform::Platform,
 };
 
-mod builtin;
+//mod builtin;
 
-pub const MAX_VALUES_LEN: usize = 8;
-pub const MAX_FLAGS_LEN: usize = 8;
+pub const MAX_PARAMETERS_LEN: usize = 8;
 pub const HISTORY_CAPACITY: usize = 10;
 
 pub enum CommandParseError<'command> {
@@ -22,10 +21,8 @@ pub enum CommandParseError<'command> {
     CommandDoesNotAcceptBang(&'command str),
     UnterminatedArgument(&'command str),
     InvalidArgument(&'command str),
-    TooFewValues(&'command str, u8),
-    TooManyValues(&'command str, u8),
-    UnknownFlag(&'command str),
-    InvalidFlagValue(&'command str),
+    TooFewArguments(&'command str, u8),
+    TooManyArguments(&'command str, u8),
 }
 
 pub enum CommandError<'command> {
@@ -123,26 +120,17 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
                 CommandParseError::InvalidArgument(token) => {
                     write(self, f, token, format_args!("invalid argument '{}'", token))
                 }
-                CommandParseError::TooFewValues(token, min) => write(
+                CommandParseError::TooFewArguments(token, len) => write(
                     self,
                     f,
                     token,
-                    format_args!("command expects at least {} values", min),
+                    format_args!("command expects {} parameters", len),
                 ),
-                CommandParseError::TooManyValues(token, max) => write(
+                CommandParseError::TooManyArguments(token, len) => write(
                     self,
                     f,
                     token,
-                    format_args!("command expects at most {} values", max),
-                ),
-                CommandParseError::UnknownFlag(token) => {
-                    write(self, f, token, format_args!("unkown flag '{}'", token))
-                }
-                CommandParseError::InvalidFlagValue(token) => write(
-                    self,
-                    f,
-                    token,
-                    format_args!("invalid flag value '{}'", token),
+                    format_args!("command expects {} parameters", len),
                 ),
             },
             CommandError::CommandNotFound(command) => {
@@ -336,8 +324,6 @@ impl<'a> Iterator for CommandIter<'a> {
 #[derive(Clone, Copy)]
 pub enum CommandTokenKind {
     Text,
-    Flag,
-    Equals,
     Bang,
     Unterminated,
 }
@@ -348,24 +334,12 @@ impl<'a> Iterator for CommandTokenIter<'a> {
     type Item = (CommandTokenKind, &'a str);
     fn next(&mut self) -> Option<Self::Item> {
         fn next_token(mut rest: &str) -> Option<(CommandTokenKind, &str, &str)> {
-            fn is_separator(c: char) -> bool {
-                c.is_ascii_whitespace() || c == '=' || c == '!' || c == '"' || c == '\''
-            }
-
             rest = rest.trim_start_matches(|c: char| c.is_ascii_whitespace() || c == '\\');
             if rest.is_empty() {
                 return None;
             }
 
             match rest.as_bytes()[0] {
-                b'-' => {
-                    rest = &rest[1..];
-                    let (token, rest) = match rest.find(is_separator) {
-                        Some(i) => rest.split_at(i),
-                        None => (rest, ""),
-                    };
-                    Some((CommandTokenKind::Flag, token, rest))
-                }
                 delim @ b'"' | delim @ b'\'' => {
                     rest = &rest[1..];
                     match rest.find(delim as char) {
@@ -373,15 +347,13 @@ impl<'a> Iterator for CommandTokenIter<'a> {
                         None => Some((CommandTokenKind::Unterminated, rest, "")),
                     }
                 }
-                b'=' => {
-                    let (token, rest) = rest.split_at(1);
-                    Some((CommandTokenKind::Equals, token, rest))
-                }
                 b'!' => {
                     let (token, rest) = rest.split_at(1);
                     Some((CommandTokenKind::Bang, token, rest))
                 }
-                _ => match rest.find(is_separator) {
+                _ => match rest
+                    .find(|c: char| c.is_ascii_whitespace() || matches!(c, '!' | '"' | '\''))
+                {
                     Some(i) => {
                         let (token, rest) = rest.split_at(i);
                         Some((CommandTokenKind::Text, token, rest))
@@ -409,9 +381,7 @@ pub struct BuiltinCommand {
     pub names: &'static [&'static str],
     pub description: &'static str,
     pub bang_usage: Option<&'static str>,
-    pub required_values: &'static [(&'static str, Option<CompletionSource>)],
-    pub optional_values: &'static [(&'static str, Option<CompletionSource>)],
-    pub flags: &'static [(&'static str, Option<CompletionSource>)],
+    pub params: &'static [(&'static str, Option<CompletionSource>)],
     pub func: CommandFn,
 }
 
@@ -423,7 +393,8 @@ pub struct CommandManager {
 impl CommandManager {
     pub fn new() -> Self {
         Self {
-            builtin_commands: builtin::COMMANDS,
+            //builtin_commands: builtin::COMMANDS,
+            builtin_commands: &[],
             history: VecDeque::with_capacity(HISTORY_CAPACITY),
         }
     }
@@ -500,45 +471,7 @@ impl CommandManager {
         &self,
         text: &'a str,
     ) -> Result<(CommandSource, CommandArgs<'a>), CommandParseError<'a>> {
-        struct CommandParamsInfo<'a> {
-            min_values_len: usize,
-            max_values_len: usize,
-            flags: &'a [(&'a str, Option<CompletionSource>)],
-        }
-
-        fn add_value<'a>(
-            params: &CommandParamsInfo,
-            args: &mut CommandArgs<'a>,
-            values_count: &mut u8,
-            value: &'a str,
-        ) -> Result<(), CommandParseError<'a>> {
-            let index = *values_count as usize;
-            if index < params.max_values_len {
-                args.values[index] = value;
-                *values_count += 1;
-                Ok(())
-            } else {
-                let max = params.max_values_len as _;
-                Err(CommandParseError::TooManyValues(value, max))
-            }
-        }
-
-        fn add_flag<'a>(
-            params: &CommandParamsInfo,
-            args: &mut CommandArgs<'a>,
-            key: &'a str,
-            value: &'a str,
-        ) -> Result<(), CommandParseError<'a>> {
-            match params.flags.iter().position(|f| f.0 == key) {
-                Some(i) => {
-                    args.flags[i] = value;
-                    Ok(())
-                }
-                None => Err(CommandParseError::UnknownFlag(key)),
-            }
-        }
-
-        let mut values_count = 0;
+        let mut arg_count = 0;
         let mut args = CommandArgs::default();
         let mut tokens = CommandTokenIter { rest: text };
         let mut peeked_token = None;
@@ -561,17 +494,13 @@ impl CommandManager {
             Some(source) => source,
             None => return Err(CommandParseError::CommandNotFound(command_name)),
         };
-        let params = match source {
+        let param_count = match source {
             CommandSource::Builtin(i) => {
                 let command = &self.builtin_commands[i];
                 if args.bang && command.bang_usage.is_none() {
                     return Err(CommandParseError::CommandDoesNotAcceptBang(command_name));
                 }
-                CommandParamsInfo {
-                    min_values_len: command.required_values.len(),
-                    max_values_len: command.required_values.len() + command.optional_values.len(),
-                    flags: &command.flags,
-                }
+                command.params.len() as _
             }
         };
 
@@ -585,41 +514,27 @@ impl CommandManager {
             };
 
             match token {
-                (CommandTokenKind::Text, s) => add_value(&params, &mut args, &mut values_count, s)?,
-                (CommandTokenKind::Flag, flag_token) => match tokens.next() {
-                    Some((CommandTokenKind::Equals, equals_token)) => match tokens.next() {
-                        Some((CommandTokenKind::Text, s)) => {
-                            add_flag(&params, &mut args, flag_token, s)?
-                        }
-                        Some((CommandTokenKind::Unterminated, s)) => {
-                            return Err(CommandParseError::UnterminatedArgument(s))
-                        }
-                        Some((_, s)) => return Err(CommandParseError::InvalidFlagValue(s)),
-                        None => return Err(CommandParseError::InvalidFlagValue(equals_token)),
-                    },
-                    token => {
-                        add_flag(&params, &mut args, flag_token, "true")?;
-                        peeked_token = token;
+                (CommandTokenKind::Text, s) => {
+                    if arg_count == param_count {
+                        return Err(CommandParseError::TooManyArguments(s, param_count));
                     }
-                },
-                (CommandTokenKind::Equals, s) | (CommandTokenKind::Bang, s) => {
-                    return Err(CommandParseError::InvalidArgument(s))
+                    args.values[arg_count as usize] = s;
+                    arg_count += 1;
                 }
+                (CommandTokenKind::Bang, s) => return Err(CommandParseError::InvalidArgument(s)),
                 (CommandTokenKind::Unterminated, s) => {
                     return Err(CommandParseError::UnterminatedArgument(s))
                 }
             }
         }
 
-        let values_count = values_count as usize;
-        if values_count < params.min_values_len {
-            let token = if values_count > 0 {
-                args.values[values_count - 1]
+        if arg_count < param_count {
+            let token = if arg_count > 0 {
+                args.values[arg_count as usize - 1]
             } else {
                 command_name
             };
-            let min = params.min_values_len as _;
-            return Err(CommandParseError::TooFewValues(token, min));
+            return Err(CommandParseError::TooFewArguments(token, param_count));
         }
 
         Ok((source, args))
@@ -629,15 +544,14 @@ impl CommandManager {
 #[derive(Default)]
 pub struct CommandArgs<'a> {
     pub bang: bool,
-    pub values: [&'a str; MAX_VALUES_LEN],
-    pub flags: [&'a str; MAX_FLAGS_LEN],
+    pub values: [&'a str; MAX_PARAMETERS_LEN],
 }
 impl<'a> CommandArgs<'a> {
-    pub fn parse_flag<T>(&self, index: usize) -> Result<Option<T>, CommandError<'a>>
+    pub fn parse_at<T>(&self, index: usize) -> Result<Option<T>, CommandError<'a>>
     where
         T: 'static + FromStr,
     {
-        let value = self.flags[index];
+        let value = self.values[index];
         if value.is_empty() {
             Ok(None)
         } else {
@@ -661,9 +575,7 @@ mod tests {
             names: &["command-name", "c"],
             description: "",
             bang_usage: Some(""),
-            required_values: &[],
-            optional_values: &[("", None), ("", None), ("", None), ("", None)],
-            flags: &[("switch", None), ("option", None)],
+            params: &[("", None), ("", None), ("", None)],
             func: |_| Ok(None),
         }];
 
@@ -719,16 +631,8 @@ mod tests {
         assert_eq!(["aaa", "bbb", "ccc"], &values_vec(&args)[..]);
         let args = parse_args(&commands, "c  'aaa'  \"bbb\"  ccc  ");
         assert_eq!(["aaa", "bbb", "ccc"], &values_vec(&args)[..]);
-        let args = parse_args(&commands, "c  'aaa'\"bbb\"\"ccc\"ddd  ");
-        assert_eq!(["aaa", "bbb", "ccc", "ddd"], &values_vec(&args)[..]);
-
-        let args = parse_args(
-            &commands,
-            "c \\\n-switch'value'\\\n-option=\"option value!\"\\\n",
-        );
-        assert_eq!(["value"], &values_vec(&args)[..]);
-        assert_eq!("true", args.flags[0]);
-        assert_eq!("option value!", args.flags[1]);
+        let args = parse_args(&commands, "c  \"aaa\"\"bbb\"ccc  ");
+        assert_eq!(["aaa", "bbb", "ccc"], &values_vec(&args)[..]);
     }
 
     #[test]
@@ -749,21 +653,20 @@ mod tests {
         assert_fail!("   ", CommandParseError::InvalidCommandName(s) => s == "");
         assert_fail!(" !", CommandParseError::InvalidCommandName(s) => s == "!");
         assert_fail!("!  'aa'", CommandParseError::InvalidCommandName(s) => s == "!");
-        assert_fail!("c -option=", CommandParseError::InvalidFlagValue(s) => s == "=");
         assert_fail!("  a \"aa\"", CommandParseError::CommandNotFound(s) => s == "a");
 
-        assert_fail!("c! 'abc", CommandParseError::UnterminatedArgument(s) => s == "abc");
-        assert_fail!("c! '", CommandParseError::UnterminatedArgument(s) => s == "");
-        assert_fail!("c! \"'", CommandParseError::UnterminatedArgument(s) => s == "'");
+        assert_fail!("c 0 1 'abc", CommandParseError::UnterminatedArgument(s) => s == "abc");
+        assert_fail!("c 0 1 '", CommandParseError::UnterminatedArgument(s) => s == "");
+        assert_fail!("c 0 1 \"'", CommandParseError::UnterminatedArgument(s) => s == "'");
 
-        const MAX_VALUES_LEN: u8 = 4;
+        const MAX_VALUES_LEN: u8 = 3;
         let mut too_many_values_command = String::new();
         too_many_values_command.push('c');
         for _ in 0..MAX_VALUES_LEN {
             too_many_values_command.push_str(" a");
         }
         too_many_values_command.push_str(" b");
-        assert_fail!(&too_many_values_command, CommandParseError::TooManyValues(s, MAX_VALUES_LEN) => s == "b");
+        assert_fail!(&too_many_values_command, CommandParseError::TooManyArguments(s, MAX_VALUES_LEN) => s == "b");
     }
 
     #[test]

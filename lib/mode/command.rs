@@ -170,55 +170,18 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
         }
     };
 
-    enum CompletionTarget {
-        Value,
-        FlagName,
-        FlagValue,
-    }
-
-    let mut completion_target = None;
     let mut value_arg_count = 0;
-    let mut last_arg_token = None;
-    let mut last_flag_name = None;
-    let mut before_last_token_kind = CommandTokenKind::Text;
-
-    for (kind, token) in tokens {
-        completion_target = match kind {
-            CommandTokenKind::Text => match before_last_token_kind {
-                CommandTokenKind::Equals => Some(CompletionTarget::FlagValue),
-                _ => {
-                    value_arg_count += 1;
-                    Some(CompletionTarget::Value)
-                }
-            },
-            CommandTokenKind::Flag => {
-                last_flag_name = Some(token);
-                Some(CompletionTarget::FlagName)
-            }
-            CommandTokenKind::Equals => Some(CompletionTarget::FlagValue),
-            CommandTokenKind::Bang => Some(CompletionTarget::Value),
-            CommandTokenKind::Unterminated => None,
-        };
-        before_last_token_kind = kind;
-        last_arg_token = Some(token);
-    }
-
-    match last_arg_token {
-        Some(last_arg_token) => {
-            let completion_target = match completion_target {
-                Some(target) => target,
-                None => {
-                    return;
-                }
-            };
+    match tokens.last() {
+        Some((kind, token)) => {
+            // TODO: complete parameter
         }
         None => {
+            // TODO: complete command name
+
             state.completion_index = first_token.as_ptr() as usize - input.as_ptr() as usize;
             if !matches!(completion_state, CompletionState::CommandName) {
                 *completion_state = CompletionState::CommandName;
             }
-
-            // TODO: command name completion
         }
     }
 }
