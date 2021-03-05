@@ -567,6 +567,12 @@ mod tests {
 
     fn create_commands() -> CommandManager {
         let builtin_commands = &[BuiltinCommand {
+            names: &["cmd0"],
+            description: "",
+            bang_usage: Some(""),
+            params: &[],
+            func: |_| Ok(None),
+        }, BuiltinCommand {
             names: &["command-name", "c"],
             description: "",
             bang_usage: Some(""),
@@ -585,17 +591,17 @@ mod tests {
         fn assert_bang(commands: &CommandManager, command: &str, expect_bang: bool) {
             let (source, bang, _) = match commands.parse(command) {
                 Ok(result) => result,
-                Err(_) => panic!("command parse error"),
+                Err(_) => panic!("command parse error at '{}'", command),
             };
             assert!(matches!(source, CommandSource::Builtin(0)));
             assert_eq!(expect_bang, bang);
         }
 
         let commands = create_commands();
-        assert_bang(&commands, "command-name", false);
-        assert_bang(&commands, "  command-name  ", false);
-        assert_bang(&commands, "  command-name!  ", true);
-        assert_bang(&commands, "  command-name!", true);
+        assert_bang(&commands, "cmd0", false);
+        assert_bang(&commands, "  cmd0  ", false);
+        assert_bang(&commands, "  cmd0!  ", true);
+        assert_bang(&commands, "  cmd0!", true);
     }
 
     #[test]
