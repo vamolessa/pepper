@@ -240,7 +240,7 @@ fn filtered_to_picker_entry<'a>(
             let command = &commands.builtin_commands()[i];
             PickerEntry {
                 name: &command.names[0],
-                description: command.description,
+                description: command.help.lines().next().unwrap_or(""),
                 score: entry.score,
             }
         }
