@@ -366,12 +366,19 @@ impl<'a> Iterator for CommandTokenIter<'a> {
                         None => Some((CommandTokenKind::Unterminated, rest, "")),
                     }
                 }
+                b'[' => {
+                    rest = &rest[1..];
+                    match rest.find(']') {
+                        Some(i) => Some((CommandTokenKind::Text, &rest[..i], &rest[(i + 1)..])),
+                        None => Some((CommandTokenKind::Unterminated, rest, "")),
+                    }
+                }
                 b'!' => {
                     let (token, rest) = rest.split_at(1);
                     Some((CommandTokenKind::Bang, token, rest))
                 }
                 _ => match rest
-                    .find(|c: char| c.is_ascii_whitespace() || matches!(c, '!' | '"' | '\''))
+                    .find(|c: char| c.is_ascii_whitespace() || matches!(c, '!' | '"' | '\'' | '['))
                 {
                     Some(i) => {
                         let (token, rest) = rest.split_at(i);
@@ -636,6 +643,8 @@ mod tests {
         let args = parse_args(&commands, "c  'aaa'  \"bbb\"  ccc  ");
         assert_eq!(["aaa", "bbb", "ccc"], &collect(&args)[..]);
         let args = parse_args(&commands, "c  \"aaa\"\"bbb\"ccc  ");
+        assert_eq!(["aaa", "bbb", "ccc"], &collect(&args)[..]);
+        let args = parse_args(&commands, "c  [aaa][bbb]ccc  ");
         assert_eq!(["aaa", "bbb", "ccc"], &collect(&args)[..]);
     }
 

@@ -351,6 +351,7 @@ impl Editor {
                 };
 
                 let mut output = self.string_pool.acquire();
+                // TODO: change to command iter
                 let flow = match CommandManager::eval_command(
                     self,
                     platform,

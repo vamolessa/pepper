@@ -303,6 +303,7 @@ impl ClientApplication {
         };
 
         if !args.files.is_empty() {
+            // TODO: 'open' command no longer accepts multiple paths
             let mut open_buffers_command = String::new();
             open_buffers_command.push_str("open");
 
