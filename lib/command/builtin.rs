@@ -30,66 +30,36 @@ use crate::{
 pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["help", "h"],
-        description: "prints help about command",
-        bang_usage: None,
-        params: &[("command-name", Some(CompletionSource::Commands))],
+        help: "prints help about command\nhelp <command-name>",
+        completions: &[CompletionSource::Commands],
         func: |ctx| {
-            let command_name = ctx.args[0];
+            ctx.assert_no_bang()?;
+            let command_name = ctx.args.next()?;
+            ctx.args.assert_empty()?;
+            ctx.flags.assert_empty()?;
+
             let commands = &ctx.editor.commands;
             let source = match commands.find_command(command_name) {
                 Some(source) => source,
                 None => return Err(CommandError::CommandNotFound(command_name)),
             };
 
-            let name;
-            let aliases;
-            let description;
-            let bang_usage;
-            let params;
+            let help = match source {
+                CommandSource::Builtin(i) => commands.builtin_commands()[i].help,
+            };
 
-            match source {
-                CommandSource::Builtin(i) => {
-                    let command = &commands.builtin_commands()[i];
-                    name = command.names[0];
-                    aliases = &command.names[1..];
-                    description = command.description;
-                    bang_usage = command.bang_usage;
-                    params = command.params;
-                }
-            }
-
-            let mut write = ctx.editor.status_bar.write(MessageKind::Info);
-
-            write.fmt(format_args!("{}\nusage: {}", name, name));
-            if bang_usage.is_some() {
-                write.str("[!]");
-            }
-            for (param, _) in params {
-                write.fmt(format_args!(" {}", param));
-            }
-
-            write.fmt(format_args!("\ndescription: {}\n", description));
-            if let Some(usage) = bang_usage {
-                write.fmt(format_args!("with '!': {}\n", usage));
-            }
-
-            if !aliases.is_empty() {
-                write.str("aliases: ");
-                write.fmt(format_args!("{}", aliases[0]));
-                for alias in &aliases[1..] {
-                    write.fmt(format_args!(", {}", alias));
-                }
-            }
-
+            ctx.editor.status_bar.write(MessageKind::Info).str(help);
             Ok(None)
         },
     },
     BuiltinCommand {
         names: &["quit", "q"],
-        description: "quits this client",
-        bang_usage: Some("ignore unsaved changes"),
-        params: &[],
+        help: "quits this client\nquit[!]\nwith '!' will ignore unsaved changes",
+        completions: &[],
         func: |ctx| {
+            ctx.args.assert_empty()?;
+            ctx.flags.assert_empty()?;
+
             if ctx.clients.iter_mut().count() == 1 {
                 ctx.assert_can_discard_all_buffers()?;
             }
@@ -98,14 +68,17 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["quit-all", "qa"],
-        description: "quits all clients",
-        bang_usage: Some("ignore unsaved changes"),
-        params: &[],
+        help: "quits all clients\nquit-all[!]\nwith '!' will ignore unsaved changes",
+        completions: &[],
         func: |ctx| {
+            ctx.args.assert_empty()?;
+            ctx.flags.assert_empty()?;
+
             ctx.assert_can_discard_all_buffers()?;
             Ok(Some(CommandOperation::QuitAll))
         },
     },
+    /*
     BuiltinCommand {
         names: &["print", "p"],
         description: "prints values to the status bar",
@@ -647,6 +620,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             Ok(None)
         },
     },
+    */
 ];
 
 fn save_buffer<'state, 'command>(

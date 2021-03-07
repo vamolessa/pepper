@@ -10,7 +10,7 @@ use crate::{
     platform::Platform,
 };
 
-//mod builtin;
+mod builtin;
 
 pub const HISTORY_CAPACITY: usize = 10;
 
@@ -23,6 +23,7 @@ pub enum CommandError<'command> {
     InvalidToken(&'command str),
     TooFewArguments(&'command str, u8),
     TooManyArguments(&'command str, u8),
+    UnknownFlag(&'command str),
     UnsavedChanges,
     NoBufferOpened,
     InvalidBufferHandle(BufferHandle),
@@ -129,6 +130,9 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
                 token,
                 format_args!("command expects at most {} arguments", max),
             ),
+            CommandError::UnknownFlag(token) => {
+                write(self, f, token, format_args!("unknown flag '{}'", token))
+            }
             CommandError::UnsavedChanges => f.write_str(
                 "there are unsaved changes. try appending a '!' to command name to force execute",
             ),
@@ -457,7 +461,7 @@ impl<'a> CommandArgIter<'a> {
         }
     }
 
-    pub fn finish(&mut self) -> Result<(), CommandError<'a>> {
+    pub fn assert_empty(&mut self) -> Result<(), CommandError<'a>> {
         match self.tokens.next() {
             Some((_, token)) => Err(CommandError::TooManyArguments(token, self.len)),
             None => Ok(()),
@@ -474,6 +478,14 @@ impl<'a> CommandFlagIter<'a> {
         Self {
             tokens: CommandTokenIter { rest: args },
             len: 0,
+        }
+    }
+
+    pub fn assert_empty(&mut self) -> Result<(), CommandError<'a>> {
+        match self.next() {
+            Some(Ok((flag, _))) => Err(CommandError::UnknownFlag(flag)),
+            Some(Err(error)) => Err(error),
+            None => Ok(()),
         }
     }
 }
@@ -538,8 +550,7 @@ pub struct CommandManager {
 impl CommandManager {
     pub fn new() -> Self {
         Self {
-            //builtin_commands: builtin::COMMANDS,
-            builtin_commands: &[],
+            builtin_commands: builtin::COMMANDS,
             history: VecDeque::with_capacity(HISTORY_CAPACITY),
         }
     }
