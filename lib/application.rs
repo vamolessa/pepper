@@ -297,7 +297,6 @@ impl ClientApplication {
         } else if let Some(handle) = args.as_client {
             ClientEventSource::ClientHandle(handle)
         } else {
-            // TODO: it crashes if this is uncommented :(
             ClientEvent::Key(ClientEventSource::ConnectionClient, Key::None)
                 .serialize(&mut self.write_buf);
             ClientEventSource::ConnectionClient
@@ -326,8 +325,6 @@ impl ClientApplication {
         keys: &[Key],
         message: &[u8],
     ) -> &'a [u8] {
-        use io::Write;
-
         self.write_buf.clear();
 
         if let Some((width, height)) = resize {
@@ -340,22 +337,33 @@ impl ClientApplication {
         }
 
         if !message.is_empty() {
+            use io::Write;
+
             self.read_buf.extend_from_slice(message);
             let mut len_bytes = [0; 4];
+            let mut read_buf = &self.read_buf[..];
 
-            if self.read_buf.len() >= len_bytes.len() {
-                len_bytes.copy_from_slice(&self.read_buf[..4]);
+            while read_buf.len() >= len_bytes.len() {
+                let (len, message) = read_buf.split_at(len_bytes.len());
+                len_bytes.copy_from_slice(len);
                 let message_len = u32::from_le_bytes(len_bytes) as usize;
 
-                if self.read_buf.len() >= message_len + 4 {
-                    self.read_buf.extend_from_slice(ui::RESET_STYLE_CODE);
-                    self.stdout.write_all(&self.read_buf[4..]).unwrap();
-                    self.read_buf.clear();
+                if message.len() >= message_len {
+                    let (message, rest) = message.split_at(message_len);
+                    read_buf = rest;
+
+                    self.stdout.write_all(message).unwrap();
                 }
             }
+
+            let rest_len = read_buf.len();
+            let rest_index = self.read_buf.len() - rest_len;
+            self.read_buf.copy_within(rest_index.., 0);
+            self.read_buf.truncate(rest_len);
+
+            self.stdout.flush().unwrap();
         }
 
-        self.stdout.flush().unwrap();
         self.write_buf.as_slice()
     }
 }
