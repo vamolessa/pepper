@@ -1,7 +1,8 @@
 use std::{
-    fmt,
+    any, fmt,
     path::{Path, PathBuf},
     process::{Command, Stdio},
+    str::FromStr,
 };
 
 use crate::{
@@ -27,16 +28,29 @@ use crate::{
     theme::{Color, THEME_COLOR_NAMES},
 };
 
+pub fn parse_arg<T>(arg: &str) -> Result<T, CommandError>
+where
+    T: 'static + FromStr,
+{
+    match arg.parse() {
+        Ok(arg) => Ok(arg),
+        Err(_) => Err(CommandError::ParseArgError {
+            arg,
+            type_name: any::type_name::<T>(),
+        }),
+    }
+}
+
 pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["help", "h"],
         help: "prints help about command\nhelp <command-name>",
         completions: &[CompletionSource::Commands],
         func: |ctx| {
-            ctx.assert_no_bang()?;
+            ctx.args.assert_no_bang()?;
+            ctx.args.get_flags(&mut [])?;
             let command_name = ctx.args.next()?;
             ctx.args.assert_empty()?;
-            ctx.flags.assert_empty()?;
 
             let commands = &ctx.editor.commands;
             let source = match commands.find_command(command_name) {
@@ -57,8 +71,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         help: "quits this client\nquit[!]\nwith '!' will ignore unsaved changes",
         completions: &[],
         func: |ctx| {
+            ctx.args.get_flags(&mut [])?;
             ctx.args.assert_empty()?;
-            ctx.flags.assert_empty()?;
 
             if ctx.clients.iter_mut().count() == 1 {
                 ctx.assert_can_discard_all_buffers()?;
@@ -71,42 +85,59 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         help: "quits all clients\nquit-all[!]\nwith '!' will ignore unsaved changes",
         completions: &[],
         func: |ctx| {
+            ctx.args.get_flags(&mut [])?;
             ctx.args.assert_empty()?;
-            ctx.flags.assert_empty()?;
 
             ctx.assert_can_discard_all_buffers()?;
             Ok(Some(CommandOperation::QuitAll))
         },
     },
-    /*
     BuiltinCommand {
         names: &["print", "p"],
-        description: "prints values to the status bar",
-        bang_usage: None,
-        params: &[("message", None)],
+        help: "prints arguments to the status bar\nprint <value>...",
+        completions: &[],
         func: |ctx| {
-            let message = ctx.args[0];
-            ctx.editor.status_bar.write(MessageKind::Info).str(message);
+            ctx.args.assert_no_bang()?;
+            ctx.args.get_flags(&mut [])?;
+
+            let mut write = ctx.editor.status_bar.write(MessageKind::Info);
+            while let Some(arg) = ctx.args.try_next()? {
+                write.str(arg);
+            }
             Ok(None)
         },
     },
     BuiltinCommand {
         names: &["source"],
-        description: "load a source file and execute its commands",
-        bang_usage: None,
-        params: &[("path", Some(CompletionSource::Files))],
+        help: "loads a source file and execute its commands\nsource <path>",
+        completions: &[CompletionSource::Files],
         func: |ctx| {
-            let path = ctx.args[0];
+            ctx.args.assert_no_bang()?;
+            ctx.args.get_flags(&mut [])?;
+            let path = ctx.args.next()?;
+            ctx.args.assert_empty()?;
+
             let op = ctx.editor.load_config(ctx.platform, ctx.clients, path);
             Ok(op)
         },
     },
     BuiltinCommand {
         names: &["open", "o"],
-        description: "open a buffer for editting",
-        bang_usage: None,
-        params: &[("path", Some(CompletionSource::Files))],
+        help: concat!(
+            "opens a buffer for editting\nopen [<flags>] <path>\n",
+            " -line=<number> : set cursor at line",
+        ),
+        completions: &[CompletionSource::Files],
         func: |ctx| {
+            ctx.args.assert_no_bang()?;
+
+            let mut flags = [("line", None)];
+            ctx.args.get_flags(&mut flags)?;
+            let line = flags[0].1.map(parse_arg::<usize>).transpose()?.map(|l| l.saturating_sub(1));
+
+            let path = ctx.args.next()?;
+            ctx.args.assert_empty()?;
+
             let client_handle = ctx.client_handle.ok_or(CommandError::Aborted)?;
             NavigationHistory::save_client_snapshot(
                 ctx.clients,
@@ -114,23 +145,13 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 &ctx.editor.buffer_views,
             );
 
-            let mut path = ctx.args[0];
-            let mut line_index = None;
-            if let Some(separator_index) = path.rfind(':') {
-                if let Ok(n) = path[(separator_index + 1)..].parse() {
-                    let n: usize = n;
-                    line_index = Some(n.saturating_sub(1));
-                    path = &path[..separator_index];
-                }
-            }
-
             match ctx.editor.buffer_views.buffer_view_handle_from_path(
                 client_handle,
                 &mut ctx.editor.buffers,
                 &mut ctx.editor.word_database,
                 &ctx.editor.current_directory,
                 Path::new(path),
-                line_index,
+                line,
                 &mut ctx.editor.events,
             ) {
                 Ok(handle) => {
@@ -148,43 +169,53 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["save", "s"],
-        description: "save current buffer",
-        bang_usage: None,
-        params: &[],
+        help: concat!(
+            "save buffer\nsave [<flags>] [<path>]\n",
+            " -buffer=<buffer-id> : if not specified, the current buffer is used",
+        ),
+        completions: &[CompletionSource::Files],
         func: |ctx| {
-            save_buffer(ctx, None, None)?;
-            Ok(None)
-        },
-    },
-    BuiltinCommand {
-        names: &["save-to", "st"],
-        description: "save current buffer to new path",
-        bang_usage: None,
-        params: &[("path", Some(CompletionSource::Files))],
-        func: |ctx| {
-            let path = Path::new(ctx.args[0]);
-            save_buffer(ctx, None, Some(path))?;
-            Ok(None)
-        },
-    },
-    BuiltinCommand {
-        names: &["save-buffer-to"],
-        description: "save buffer to path",
-        bang_usage: None,
-        params: &[("buffer", None), ("path", Some(CompletionSource::Files))],
-        func: |ctx| {
-            let buffer_handle = ctx.parse_arg(0)?;
-            let path = Path::new(ctx.args[1]);
-            save_buffer(ctx, Some(buffer_handle), Some(path))?;
+            ctx.args.assert_no_bang()?;
+
+            let mut flags = [("buffer", None)];
+            ctx.args.get_flags(&mut flags)?;
+            let buffer_handle = flags[0].1.map(parse_arg).transpose()?;
+
+            let path = ctx.args.try_next()?.map(Path::new);
+            ctx.args.assert_empty()?;
+
+            let buffer_handle = match buffer_handle {
+                Some(handle) => handle,
+                None => ctx.current_buffer_handle()?,
+            };
+
+            let buffer = ctx
+                .editor
+                .buffers
+                .get_mut(buffer_handle)
+                .ok_or(CommandError::InvalidBufferHandle(buffer_handle))?;
+
+            buffer
+                .save_to_file(path, &mut ctx.editor.events)
+                .map_err(|e| CommandError::BufferError(buffer_handle, e))?;
+
+            let path = buffer.path().unwrap_or(Path::new(""));
+            ctx.editor
+                .status_bar
+                .write(MessageKind::Info)
+                .fmt(format_args!("buffer saved to '{:?}'", path));
             Ok(None)
         },
     },
     BuiltinCommand {
         names: &["save-all", "sa"],
-        description: "save all buffers",
-        bang_usage: None,
-        params: &[],
+        help: "save all buffers\nsave-all",
+        completions: &[],
         func: |ctx| {
+            ctx.args.assert_no_bang()?;
+            ctx.args.get_flags(&mut [])?;
+            ctx.args.assert_empty()?;
+
             let mut count = 0;
             for buffer in ctx.editor.buffers.iter_mut() {
                 buffer
@@ -201,17 +232,47 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["reload", "r"],
-        description: "reload current buffer from file",
-        bang_usage: Some("ignore unsaved changes"),
-        params: &[],
+        help: concat!(
+            "reload buffer from file\nreload [<flags>]\n",
+            " -buffer=<buffer-id> : if not specified, the current buffer is used",
+        ),
+        completions: &[],
         func: |ctx| {
-            reload_buffer(ctx, None)?;
+            ctx.args.assert_no_bang()?;
+
+            let mut flags = [("buffer", None)];
+            ctx.args.get_flags(&mut flags)?;
+            let buffer_handle = flags[0].1.map(parse_arg).transpose()?;
+
+            ctx.args.assert_empty()?;
+
+            let buffer_handle = match buffer_handle {
+                Some(handle) => handle,
+                None => ctx.current_buffer_handle()?,
+            };
+
+            ctx.assert_can_discard_buffer(buffer_handle)?;
+            let buffer = ctx
+                .editor
+                .buffers
+                .get_mut(buffer_handle)
+                .ok_or(CommandError::InvalidBufferHandle(buffer_handle))?;
+
+            buffer
+                .discard_and_reload_from_file(&mut ctx.editor.word_database, &mut ctx.editor.events)
+                .map_err(|e| CommandError::BufferError(buffer_handle, e))?;
+
+            ctx.editor
+                .status_bar
+                .write(MessageKind::Info)
+                .str("buffer reloaded");
             Ok(None)
         },
     },
+    /*
     BuiltinCommand {
         names: &["reload-buffer"],
-        description: "reload buffer from file",
+        help: "reload buffer from file",
         bang_usage: Some("ignore unsaved changes"),
         params: &[("buffer", None)],
         func: |ctx| {
@@ -222,7 +283,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["reload-all", "ra"],
-        description: "reload all buffers from file",
+        help: "reload all buffers from file",
         bang_usage: Some("ignore unsaved changes"),
         params: &[],
         func: |ctx| {
@@ -246,7 +307,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["close", "c"],
-        description: "close current buffer",
+        help: "close current buffer",
         bang_usage: Some("ignore unsaved changes"),
         params: &[],
         func: |ctx| {
@@ -256,7 +317,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["close-buffer"],
-        description: "close buffer",
+        help: "close buffer",
         bang_usage: Some("ignore unsaved changes"),
         params: &[],
         func: |ctx| {
@@ -267,7 +328,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["close-all", "ca"],
-        description: "close all buffers",
+        help: "close all buffers",
         bang_usage: Some("ignore unsaved changes"),
         params: &[],
         func: |ctx| {
@@ -292,7 +353,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["get-config"],
-        description: "get an editor config",
+        help: "get an editor config",
         bang_usage: None,
         params: &[("key", Some(CompletionSource::Custom(CONFIG_NAMES)))],
         func: |ctx| {
@@ -309,7 +370,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["set-config"],
-        description: "set an editor config",
+        help: "set an editor config",
         bang_usage: None,
         params: &[
             ("key", Some(CompletionSource::Custom(CONFIG_NAMES))),
@@ -329,7 +390,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["get-color"],
-        description: "get editor theme color",
+        help: "get editor theme color",
         bang_usage: None,
         params: &[("key", Some(CompletionSource::Custom(THEME_COLOR_NAMES)))],
         func: |ctx| {
@@ -347,7 +408,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["set-color"],
-        description: "set editor theme color",
+        help: "set editor theme color",
         bang_usage: None,
         params: &[
             ("key", Some(CompletionSource::Custom(THEME_COLOR_NAMES))),
@@ -369,7 +430,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["syntax"],
-        description: "create a syntax definition with patterns for files that match a glob",
+        help: "create a syntax definition with patterns for files that match a glob",
         bang_usage: None,
         params: &[
             ("glob", None),
@@ -416,7 +477,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["keymap"],
-        description: "create a keyboard mapping for an editor mode",
+        help: "create a keyboard mapping for an editor mode",
         bang_usage: None,
         params: &[
             (
@@ -461,7 +522,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["get-register"],
-        description: "get an editor register",
+        help: "get an editor register",
         bang_usage: None,
         params: &[("key", None)],
         func: |ctx| {
@@ -478,7 +539,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["set-register"],
-        description: "set an editor register",
+        help: "set an editor register",
         bang_usage: None,
         params: &[("key", None), ("value", None)],
         func: |ctx| {
@@ -498,7 +559,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     // TODO: remove this command
     BuiltinCommand {
         names: &["run"],
-        description: "",
+        help: "",
         bang_usage: None,
         params: &[("command", None)],
         func: |ctx| {
@@ -521,7 +582,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["lsp-start"],
-        description: "start a lsp server",
+        help: "start a lsp server",
         bang_usage: None,
         params: &[
             ("server-command", None),
@@ -542,7 +603,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["lsp-start-with-log"],
-        description: "starts a lsp server",
+        help: "starts a lsp server",
         bang_usage: None,
         params: &[
             ("server-command", None),
@@ -581,7 +642,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["lsp-stop"],
-        description: "stops the lsp server associated with the current buffer",
+        help: "stops the lsp server associated with the current buffer",
         bang_usage: None,
         params: &[],
         func: |ctx| {
@@ -595,7 +656,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["lsp-hover"],
-        description: "performs a lsp hover action at the current buffer's main cursor position",
+        help: "performs a lsp hover action at the current buffer's main cursor position",
         bang_usage: None,
         params: &[],
         func: |mut ctx| {
@@ -608,7 +669,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["lsp-signature-help"],
-        description:
+        help:
             "performs a lsp signature help action at the current buffer's main cursor position",
         bang_usage: None,
         params: &[],

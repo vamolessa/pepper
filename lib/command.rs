@@ -1,4 +1,4 @@
-use std::{any, collections::VecDeque, fmt, str::FromStr};
+use std::{collections::VecDeque, fmt};
 
 use crate::{
     buffer::{Buffer, BufferCollection, BufferError, BufferHandle},
@@ -208,38 +208,15 @@ pub enum CompletionSource {
     Custom(&'static [&'static str]),
 }
 
-pub fn parse_arg<T>(arg: &str) -> Result<T, CommandError>
-where
-    T: 'static + FromStr,
-{
-    match arg.parse() {
-        Ok(arg) => Ok(arg),
-        Err(_) => Err(CommandError::ParseArgError {
-            arg,
-            type_name: any::type_name::<T>(),
-        }),
-    }
-}
-
 pub struct CommandContext<'state, 'command> {
     pub editor: &'state mut Editor,
     pub platform: &'state mut Platform,
     pub clients: &'state mut ClientManager,
     pub client_handle: Option<ClientHandle>,
-    pub bang: bool,
-    pub args: CommandArgIter<'command>,
-    pub flags: CommandFlagIter<'command>,
+    pub args: CommandArgs<'command>,
     pub output: &'state mut String,
 }
 impl<'state, 'command> CommandContext<'state, 'command> {
-    pub fn assert_no_bang(&self) -> Result<(), CommandError<'command>> {
-        if self.bang {
-            Err(CommandError::CommandDoesNotAcceptBang)
-        } else {
-            Ok(())
-        }
-    }
-
     pub fn current_buffer_view_handle(&self) -> Result<BufferViewHandle, CommandError<'command>> {
         match self
             .client_handle
@@ -265,7 +242,7 @@ impl<'state, 'command> CommandContext<'state, 'command> {
     }
 
     pub fn assert_can_discard_all_buffers(&self) -> Result<(), CommandError<'command>> {
-        if self.bang || !self.editor.buffers.iter().any(Buffer::needs_save) {
+        if self.args.bang || !self.editor.buffers.iter().any(Buffer::needs_save) {
             Ok(())
         } else {
             Err(CommandError::UnsavedChanges)
@@ -281,7 +258,7 @@ impl<'state, 'command> CommandContext<'state, 'command> {
             .buffers
             .get(handle)
             .ok_or(CommandError::InvalidBufferHandle(handle))?;
-        if self.bang || !buffer.needs_save() {
+        if self.args.bang || !buffer.needs_save() {
             Ok(())
         } else {
             Err(CommandError::UnsavedChanges)
@@ -422,25 +399,90 @@ impl<'a> Iterator for CommandTokenIter<'a> {
     }
 }
 
-pub struct CommandArgIter<'a> {
+pub struct CommandArgs<'a> {
+    pub bang: bool,
     tokens: CommandTokenIter<'a>,
     len: u8,
 }
-impl<'a> CommandArgIter<'a> {
-    fn new(args: &'a str) -> Self {
+impl<'a> CommandArgs<'a> {
+    fn new(bang: bool, args: &'a str) -> Self {
         Self {
+            bang,
             tokens: CommandTokenIter { rest: args },
             len: 0,
         }
     }
 
-    pub fn next(&mut self) -> Result<&'a str, CommandError<'a>> {
+    pub fn assert_no_bang(&self) -> Result<(), CommandError<'a>> {
+        if self.bang {
+            Err(CommandError::CommandDoesNotAcceptBang)
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn get_flags(
+        &self,
+        flags: &mut [(&'static str, Option<&'a str>)],
+    ) -> Result<(), CommandError<'a>> {
+        let mut tokens = CommandTokenIter {
+            rest: self.tokens.rest,
+        };
+        loop {
+            let previous_state = self.tokens.rest;
+            let token = match tokens.next() {
+                Some(token) => token,
+                None => break Ok(()),
+            };
+            match token {
+                (CommandTokenKind::Text, _) => (),
+                (CommandTokenKind::Flag, key) => {
+                    let value = match flags.iter_mut().find(|(k, _)| *k == key) {
+                        Some((_, value)) => value,
+                        None => break Err(CommandError::UnknownFlag(key)),
+                    };
+
+                    match tokens.next() {
+                        Some((CommandTokenKind::Text, _)) => (),
+                        Some((CommandTokenKind::Flag, _)) => {
+                            *value = Some("");
+                            tokens.rest = previous_state;
+                        }
+                        Some((CommandTokenKind::Equals, token)) => match tokens.next() {
+                            Some((CommandTokenKind::Text, token)) => *value = Some(token),
+                            Some((CommandTokenKind::Flag, token))
+                            | Some((CommandTokenKind::Equals, token)) => {
+                                break Err(CommandError::InvalidToken(token))
+                            }
+                            Some((CommandTokenKind::Unterminated, token)) => {
+                                break Err(CommandError::UnterminatedToken(token))
+                            }
+                            None => break Err(CommandError::InvalidToken(token)),
+                        },
+                        Some((CommandTokenKind::Unterminated, token)) => {
+                            break Err(CommandError::UnterminatedToken(token))
+                        }
+                        None => {
+                            *value = Some("");
+                            break Ok(());
+                        }
+                    }
+                }
+                (CommandTokenKind::Equals, token) => return Err(CommandError::InvalidToken(token)),
+                (CommandTokenKind::Unterminated, token) => {
+                    return Err(CommandError::UnterminatedToken(token))
+                }
+            }
+        }
+    }
+
+    pub fn try_next(&mut self) -> Result<Option<&'a str>, CommandError<'a>> {
         self.len += 1;
         loop {
             match self.tokens.next() {
-                Some((CommandTokenKind::Text, value)) => break Ok(value),
+                Some((CommandTokenKind::Text, arg)) => break Ok(Some(arg)),
                 Some((CommandTokenKind::Flag, _)) => match self.tokens.next() {
-                    Some((CommandTokenKind::Text, value)) => break Ok(value),
+                    Some((CommandTokenKind::Text, arg)) => break Ok(Some(arg)),
                     Some((CommandTokenKind::Flag, _)) => (),
                     Some((CommandTokenKind::Equals, _)) => {
                         self.tokens.next();
@@ -448,7 +490,7 @@ impl<'a> CommandArgIter<'a> {
                     Some((CommandTokenKind::Unterminated, token)) => {
                         break Err(CommandError::UnterminatedToken(token))
                     }
-                    None => break Err(CommandError::TooFewArguments(self.tokens.rest, self.len)),
+                    None => break Ok(None),
                 },
                 Some((CommandTokenKind::Equals, token)) => {
                     break Err(CommandError::InvalidToken(token))
@@ -456,8 +498,15 @@ impl<'a> CommandArgIter<'a> {
                 Some((CommandTokenKind::Unterminated, token)) => {
                     break Err(CommandError::UnterminatedToken(token))
                 }
-                None => break Err(CommandError::TooFewArguments(self.tokens.rest, self.len)),
+                None => break Ok(None),
             }
+        }
+    }
+
+    pub fn next(&mut self) -> Result<&'a str, CommandError<'a>> {
+        match self.try_next()? {
+            Some(arg) => Ok(arg),
+            None => Err(CommandError::TooFewArguments(self.tokens.rest, self.len)),
         }
     }
 
@@ -465,68 +514,6 @@ impl<'a> CommandArgIter<'a> {
         match self.tokens.next() {
             Some((_, token)) => Err(CommandError::TooManyArguments(token, self.len)),
             None => Ok(()),
-        }
-    }
-}
-
-pub struct CommandFlagIter<'a> {
-    tokens: CommandTokenIter<'a>,
-    len: u8,
-}
-impl<'a> CommandFlagIter<'a> {
-    fn new(args: &'a str) -> Self {
-        Self {
-            tokens: CommandTokenIter { rest: args },
-            len: 0,
-        }
-    }
-
-    pub fn assert_empty(&mut self) -> Result<(), CommandError<'a>> {
-        match self.next() {
-            Some(Ok((flag, _))) => Err(CommandError::UnknownFlag(flag)),
-            Some(Err(error)) => Err(error),
-            None => Ok(()),
-        }
-    }
-}
-impl<'a> Iterator for CommandFlagIter<'a> {
-    type Item = Result<(&'a str, &'a str), CommandError<'a>>;
-    fn next(&mut self) -> Option<Self::Item> {
-        self.len += 1;
-        let prev = self.tokens.rest;
-        loop {
-            match self.tokens.next() {
-                Some((CommandTokenKind::Text, _)) => (),
-                Some((CommandTokenKind::Flag, key)) => match self.tokens.next() {
-                    Some((CommandTokenKind::Text, _)) => break Some(Ok((key, ""))),
-                    Some((CommandTokenKind::Flag, _)) => {
-                        self.tokens.rest = prev;
-                        break Some(Ok((key, "")));
-                    }
-                    Some((CommandTokenKind::Equals, token)) => match self.tokens.next() {
-                        Some((CommandTokenKind::Text, value)) => break Some(Ok((key, value))),
-                        Some((CommandTokenKind::Flag, token))
-                        | Some((CommandTokenKind::Equals, token)) => {
-                            break Some(Err(CommandError::InvalidToken(token)))
-                        }
-                        Some((CommandTokenKind::Unterminated, token)) => {
-                            break Some(Err(CommandError::UnterminatedToken(token)))
-                        }
-                        None => break Some(Err(CommandError::InvalidToken(token))),
-                    },
-                    Some((CommandTokenKind::Unterminated, token)) => {
-                        break Some(Err(CommandError::UnterminatedToken(token)))
-                    }
-                    None => break None,
-                },
-                Some((CommandTokenKind::Equals, token)) => {
-                    break Some(Err(CommandError::InvalidToken(token)))
-                }
-                Some((CommandTokenKind::Unterminated, token)) => {
-                    break Some(Err(CommandError::UnterminatedToken(token)))
-                }
-                None => break None,
-            }
         }
     }
 }
@@ -614,9 +601,7 @@ impl CommandManager {
             platform,
             clients,
             client_handle,
-            bang,
-            args: CommandArgIter::new(args),
-            flags: CommandFlagIter::new(args),
+            args: CommandArgs::new(bang, args),
             output,
         };
         command(&mut ctx)
