@@ -12,39 +12,6 @@ use crate::{
     theme::Color,
 };
 
-// TODO: remove?
-/*
-pub fn read_keys_from_stdin(event_sender: mpsc::Sender<LocalEvent>) {
-    use io::BufRead;
-
-    let stdin = io::stdin();
-    let mut stdin = stdin.lock();
-    let mut line = String::new();
-
-    'main_loop: loop {
-        match stdin.read_line(&mut line) {
-            Ok(0) | Err(_) => break,
-            Ok(_) => (),
-        }
-
-        for key in Key::parse_all(&line) {
-            match key {
-                Ok(key) => {
-                    if event_sender.send(LocalEvent::Key(key)).is_err() {
-                        break 'main_loop;
-                    }
-                }
-                Err(_) => break,
-            }
-        }
-
-        line.clear();
-    }
-
-    let _ = event_sender.send(LocalEvent::EndOfInput);
-}
-*/
-
 pub const ENTER_ALTERNATE_BUFFER_CODE: &[u8] = b"\x1B[?1049h";
 pub const EXIT_ALTERNATE_BUFFER_CODE: &[u8] = b"\x1B[?1049l";
 pub const HIDE_CURSOR_CODE: &[u8] = b"\x1B[?25l";
