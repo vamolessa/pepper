@@ -637,29 +637,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             Ok(None)
         },
     },
-    /*
-    BuiltinCommand {
-        names: &["lsp-start"],
-        help: "start a lsp server",
-        bang_usage: None,
-        params: &[
-            ("server-command", None),
-            ("root", Some(CompletionSource::Files)),
-        ],
-        func: |ctx| {
-            let server_command = ctx.args[0];
-            let root = PathBuf::from(ctx.args[1]);
-
-            // TODO: handle server command args
-            let command = Command::new(server_command);
-
-            let handle = ctx.editor.lsp.start(ctx.platform, command, root);
-            use fmt::Write;
-            let _ = write!(ctx.output, "{}", handle);
-            Ok(None)
-        },
-    },
-    */
     BuiltinCommand {
         names: &["lsp-start"],
         help: concat!(

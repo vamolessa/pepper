@@ -262,6 +262,30 @@ impl<'state, 'command> CommandContext<'state, 'command> {
     }
 }
 
+fn find_balanced_curly_bracket(bytes: &[u8]) -> Option<usize> {
+    let mut balance: usize = 1;
+    let mut i = 0;
+
+    loop {
+        if i == bytes.len() {
+            return None;
+        }
+
+        match bytes[i] {
+            b'{' => balance += 1,
+            b'}' => {
+                balance -= 1;
+                if balance == 0 {
+                    return Some(i);
+                }
+            }
+            _ => (),
+        }
+
+        i += 1;
+    }
+}
+
 pub struct CommandIter<'a>(&'a str);
 impl<'a> CommandIter<'a> {
     pub fn new(commands: &'a str) -> Self {
@@ -297,31 +321,16 @@ impl<'a> Iterator for CommandIter<'a> {
                             return Some(command);
                         }
                     }
-                    b'{' => {
-                        let mut balance: usize = 1;
-                        i += 1;
-
-                        loop {
-                            if i == bytes.len() {
-                                let command = self.0;
-                                self.0 = "";
-                                return Some(command);
-                            }
-
-                            match bytes[i] {
-                                b'{' => balance += 1,
-                                b'}' => {
-                                    balance = balance.saturating_sub(1);
-                                    if balance == 0 {
-                                        break;
-                                    }
-                                }
-                                _ => (),
-                            }
-
-                            i += 1;
+                    b'{' => match find_balanced_curly_bracket(&bytes[(i + 1)..]) {
+                        Some(len) => {
+                            i += len;
                         }
-                    }
+                        None => {
+                            let command = self.0;
+                            self.0 = "";
+                            return Some(command);
+                        }
+                    },
                     b'#' => {
                         let command = &self.0[..i];
                         while i < bytes.len() && bytes[i] != b'\n' {
@@ -386,10 +395,9 @@ impl<'a> Iterator for CommandTokenIter<'a> {
                     }
                 }
             }
-            // TODO: make it balanced
             b'{' => {
                 self.rest = &self.rest[1..];
-                match self.rest.find('}') {
+                match find_balanced_curly_bracket(self.rest.as_bytes()) {
                     Some(i) => {
                         let token = &self.rest[..i];
                         self.rest = &self.rest[(i + 1)..];
@@ -722,6 +730,8 @@ mod tests {
         assert_eq!(["aaa", "bbb", "ccc"], &collect(&args)[..]);
         let args = parse_args(&commands, "c  {aaa}{bbb}ccc  ");
         assert_eq!(["aaa", "bbb", "ccc"], &collect(&args)[..]);
+        let args = parse_args(&commands, "c  {aaa}{{bb}b}ccc  ");
+        assert_eq!(["aaa", "{bb}b", "ccc"], &collect(&args)[..]);
     }
 
     #[test]
@@ -762,6 +772,15 @@ mod tests {
     }
 
     #[test]
+    fn test_find_balanced_curly_bracket() {
+        assert_eq!(None, find_balanced_curly_bracket(b""));
+        assert_eq!(Some(0), find_balanced_curly_bracket(b"}"));
+        assert_eq!(Some(2), find_balanced_curly_bracket(b"  }}"));
+        assert_eq!(Some(2), find_balanced_curly_bracket(b"{}}"));
+        assert_eq!(Some(4), find_balanced_curly_bracket(b"{{}}}"));
+    }
+
+    #[test]
     fn multi_command_line_parsing() {
         let mut commands = CommandIter::new("command0\ncommand1");
         assert_eq!(Some("command0"), commands.next());
@@ -779,7 +798,10 @@ mod tests {
         assert_eq!(None, commands.next());
 
         let mut commands = CommandIter::new("command0 }}} {\n {\n still command0\n}\n}\ncommand1");
-        assert_eq!(Some("command0 }}} {\n {\n still command0\n}\n}"), commands.next());
+        assert_eq!(
+            Some("command0 }}} {\n {\n still command0\n}\n}"),
+            commands.next()
+        );
         assert_eq!(Some("command1"), commands.next());
         assert_eq!(None, commands.next());
 
