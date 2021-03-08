@@ -211,7 +211,11 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             let path = ctx.args.next()?;
             ctx.args.assert_empty()?;
 
-            let client_handle = ctx.client_handle.ok_or(CommandError::Aborted)?;
+            let client_handle = match ctx.client_handle {
+                Some(handle) => handle,
+                None => return Ok(None),
+            };
+
             NavigationHistory::save_client_snapshot(
                 ctx.clients,
                 client_handle,
@@ -228,10 +232,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 &mut ctx.editor.events,
             ) {
                 Ok(handle) => {
-                    ctx.clients
-                        .get_mut(client_handle)
-                        .ok_or(CommandError::Aborted)?
-                        .set_buffer_view_handle(Some(handle));
+                    if let Some(client) = ctx.clients.get_mut(client_handle) {
+                        client.set_buffer_view_handle(Some(handle));
+                    }
+
                     use fmt::Write;
                     let _ = write!(ctx.output, "{}", handle);
                     Ok(None)

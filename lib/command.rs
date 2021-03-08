@@ -15,7 +15,6 @@ mod builtin;
 pub const HISTORY_CAPACITY: usize = 10;
 
 pub enum CommandError<'command> {
-    Aborted,
     InvalidCommandName(&'command str),
     CommandNotFound(&'command str),
     CommandDoesNotAcceptBang,
@@ -92,7 +91,6 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
         }
 
         match self.error {
-            CommandError::Aborted => Ok(()),
             CommandError::InvalidCommandName(token) => write(
                 self,
                 f,
@@ -286,12 +284,7 @@ fn find_balanced_curly_bracket(bytes: &[u8]) -> Option<usize> {
     }
 }
 
-pub struct CommandIter<'a>(&'a str);
-impl<'a> CommandIter<'a> {
-    pub fn new(commands: &'a str) -> Self {
-        CommandIter(commands)
-    }
-}
+pub struct CommandIter<'a>(pub &'a str);
 impl<'a> Iterator for CommandIter<'a> {
     type Item = &'a str;
     fn next(&mut self) -> Option<Self::Item> {
@@ -435,14 +428,6 @@ pub struct CommandArgs<'a> {
     len: u8,
 }
 impl<'a> CommandArgs<'a> {
-    fn new(bang: bool, args: &'a str) -> Self {
-        Self {
-            bang,
-            tokens: CommandTokenIter { rest: args },
-            len: 0,
-        }
-    }
-
     pub fn assert_no_bang(&self) -> Result<(), CommandError<'a>> {
         if self.bang {
             Err(CommandError::CommandDoesNotAcceptBang)
@@ -650,28 +635,49 @@ impl CommandManager {
         command: &'command str,
         output: &mut String,
     ) -> Result<Option<CommandOperation>, CommandError<'command>> {
-        let (source, bang, args) = editor.commands.parse(command)?;
-        let mut ctx = CommandContext {
-            editor,
-            platform,
-            clients,
-            client_handle,
-            args: CommandArgs::new(bang, args),
-            output,
-        };
+        let (source, mut args) = editor.commands.parse(command)?;
         match source {
             CommandSource::Builtin(i) => {
-                let command = ctx.editor.commands.builtin_commands[i].func;
+                let command = editor.commands.builtin_commands[i].func;
+                let mut ctx = CommandContext {
+                    editor,
+                    platform,
+                    clients,
+                    client_handle,
+                    args,
+                    output,
+                };
                 command(&mut ctx)
             }
             CommandSource::Custom(i) => {
-                // TODO call custom command
+                args.assert_no_bang()?;
+                args.get_flags(&mut [])?;
+                args.assert_empty()?;
+
+                let mut body = editor.string_pool.acquire();
+                body.clear();
+                body.push_str(&editor.commands.custom_commands[i].body);
+                for command in CommandIter(&body) {
+                    // TODO: handle error
+                    let _ = Self::eval_command(
+                        editor,
+                        platform,
+                        clients,
+                        client_handle,
+                        command,
+                        output,
+                    );
+                }
+                editor.string_pool.release(body);
                 Ok(None)
             }
         }
     }
 
-    fn parse<'a>(&self, text: &'a str) -> Result<(CommandSource, bool, &'a str), CommandError<'a>> {
+    fn parse<'a>(
+        &self,
+        text: &'a str,
+    ) -> Result<(CommandSource, CommandArgs<'a>), CommandError<'a>> {
         let mut tokens = CommandTokenIter { rest: text };
 
         let command_name = match tokens.next() {
@@ -693,7 +699,13 @@ impl CommandManager {
             None => return Err(CommandError::CommandNotFound(command_name)),
         };
 
-        Ok((source, bang, tokens.rest))
+        let args = CommandArgs {
+            bang,
+            tokens,
+            len: 0,
+        };
+
+        Ok((source, args))
     }
 }
 
@@ -711,6 +723,7 @@ mod tests {
 
         CommandManager {
             builtin_commands,
+            custom_commands: Vec::new(),
             history: Default::default(),
         }
     }
@@ -718,12 +731,12 @@ mod tests {
     #[test]
     fn command_parsing() {
         fn assert_bang(commands: &CommandManager, command: &str, expect_bang: bool) {
-            let (source, bang, _) = match commands.parse(command) {
+            let (source, args) = match commands.parse(command) {
                 Ok(result) => result,
                 Err(_) => panic!("command parse error at '{}'", command),
             };
             assert!(matches!(source, CommandSource::Builtin(0)));
-            assert_eq!(expect_bang, bang);
+            assert_eq!(expect_bang, args.bang);
         }
 
         let commands = create_commands();
@@ -735,16 +748,15 @@ mod tests {
 
     #[test]
     fn arg_parsing() {
-        fn parse_args<'a>(commands: &CommandManager, command: &'a str) -> &'a str {
+        fn parse_args<'a>(commands: &CommandManager, command: &'a str) -> CommandArgs<'a> {
             match commands.parse(command) {
-                Ok((_, _, args)) => args,
+                Ok((_, args)) => args,
                 Err(_) => panic!("command '{}' parse error", command),
             }
         }
 
-        fn collect<'a>(args: &'a str) -> Vec<&'a str> {
+        fn collect<'a>(mut args: CommandArgs<'a>) -> Vec<&'a str> {
             let mut values = Vec::new();
-            let mut args = CommandArgs::new(false, args);
             loop {
                 match args.try_next() {
                     Ok(Some(arg)) => values.push(arg),
@@ -757,15 +769,15 @@ mod tests {
 
         let commands = create_commands();
         let args = parse_args(&commands, "c  aaa  bbb  ccc  ");
-        assert_eq!(["aaa", "bbb", "ccc"], &collect(&args)[..]);
+        assert_eq!(["aaa", "bbb", "ccc"], &collect(args)[..]);
         let args = parse_args(&commands, "c  'aaa'  \"bbb\"  ccc  ");
-        assert_eq!(["aaa", "bbb", "ccc"], &collect(&args)[..]);
+        assert_eq!(["aaa", "bbb", "ccc"], &collect(args)[..]);
         let args = parse_args(&commands, "c  \"aaa\"\"bbb\"ccc  ");
-        assert_eq!(["aaa", "bbb", "ccc"], &collect(&args)[..]);
+        assert_eq!(["aaa", "bbb", "ccc"], &collect(args)[..]);
         let args = parse_args(&commands, "c  {aaa}{bbb}ccc  ");
-        assert_eq!(["aaa", "bbb", "ccc"], &collect(&args)[..]);
+        assert_eq!(["aaa", "bbb", "ccc"], &collect(args)[..]);
         let args = parse_args(&commands, "c  {aaa}{{bb}b}ccc  ");
-        assert_eq!(["aaa", "{bb}b", "ccc"], &collect(&args)[..]);
+        assert_eq!(["aaa", "{bb}b", "ccc"], &collect(args)[..]);
     }
 
     #[test]
@@ -789,7 +801,11 @@ mod tests {
         assert_fail!("  a \"bb\"", CommandError::CommandNotFound(s) => s == "a");
 
         fn assert_unterminated(args: &str) {
-            let mut args = CommandArgs::new(false, args);
+            let mut args = CommandArgs {
+                bang: false,
+                tokens: CommandTokenIter { rest: args },
+                len: 0,
+            };
             loop {
                 match args.try_next() {
                     Ok(Some(_)) => (),
@@ -816,22 +832,22 @@ mod tests {
 
     #[test]
     fn multi_command_line_parsing() {
-        let mut commands = CommandIter::new("command0\ncommand1");
+        let mut commands = CommandIter("command0\ncommand1");
         assert_eq!(Some("command0"), commands.next());
         assert_eq!(Some("command1"), commands.next());
         assert_eq!(None, commands.next());
 
-        let mut commands = CommandIter::new("command0\n\n\ncommand1");
+        let mut commands = CommandIter("command0\n\n\ncommand1");
         assert_eq!(Some("command0"), commands.next());
         assert_eq!(Some("command1"), commands.next());
         assert_eq!(None, commands.next());
 
-        let mut commands = CommandIter::new("command0 {\n still command0\n}\ncommand1");
+        let mut commands = CommandIter("command0 {\n still command0\n}\ncommand1");
         assert_eq!(Some("command0 {\n still command0\n}"), commands.next());
         assert_eq!(Some("command1"), commands.next());
         assert_eq!(None, commands.next());
 
-        let mut commands = CommandIter::new("command0 }}} {\n {\n still command0\n}\n}\ncommand1");
+        let mut commands = CommandIter("command0 }}} {\n {\n still command0\n}\n}\ncommand1");
         assert_eq!(
             Some("command0 }}} {\n {\n still command0\n}\n}"),
             commands.next()
@@ -839,19 +855,19 @@ mod tests {
         assert_eq!(Some("command1"), commands.next());
         assert_eq!(None, commands.next());
 
-        let mut commands = CommandIter::new("   #command0");
+        let mut commands = CommandIter("   #command0");
         assert_eq!(None, commands.next());
 
-        let mut commands = CommandIter::new("command0 # command1");
+        let mut commands = CommandIter("command0 # command1");
         assert_eq!(Some("command0 "), commands.next());
         assert_eq!(None, commands.next());
 
-        let mut commands = CommandIter::new("    # command0\ncommand1");
+        let mut commands = CommandIter("    # command0\ncommand1");
         assert_eq!(Some("command1"), commands.next());
         assert_eq!(None, commands.next());
 
         let mut commands =
-            CommandIter::new("command0# comment\n\n# more comment\n\n# one more comment\ncommand1");
+            CommandIter("command0# comment\n\n# more comment\n\n# one more comment\ncommand1");
         assert_eq!(Some("command0"), commands.next());
         assert_eq!(Some("command1"), commands.next());
         assert_eq!(None, commands.next());

@@ -148,10 +148,10 @@ impl Editor {
         }
 
         let mut output = self.string_pool.acquire();
-        for command in CommandIter::new(&text) {
+        for command in CommandIter(&text) {
             match CommandManager::eval_command(self, platform, clients, None, command, &mut output)
             {
-                Ok(None) | Err(CommandError::Aborted) => (),
+                Ok(None) => (),
                 Ok(Some(op @ CommandOperation::Quit))
                 | Ok(Some(op @ CommandOperation::QuitAll)) => return Some(op),
                 Err(error) => {
@@ -360,7 +360,7 @@ impl Editor {
                     command,
                     &mut output,
                 ) {
-                    Ok(None) | Err(CommandError::Aborted) => EditorControlFlow::Continue,
+                    Ok(None) => EditorControlFlow::Continue,
                     Ok(Some(CommandOperation::Quit)) => EditorControlFlow::Quit,
                     Ok(Some(CommandOperation::QuitAll)) => EditorControlFlow::QuitAll,
                     Err(error) => {

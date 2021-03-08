@@ -111,7 +111,7 @@ impl ModeState for State {
                     &mut output,
                 );
                 let op = match op {
-                    Ok(None) | Err(CommandError::Aborted) => None,
+                    Ok(None) => None,
                     Ok(Some(CommandOperation::Quit)) => Some(ModeOperation::Quit),
                     Ok(Some(CommandOperation::QuitAll)) => Some(ModeOperation::QuitAll),
                     Err(error) => {
