@@ -244,5 +244,13 @@ fn filtered_to_picker_entry<'a>(
                 score: entry.score,
             }
         }
+        FilteredEntrySource::Command(CommandSource::Custom(i)) => {
+            let command = &commands.custom_commands()[i];
+            PickerEntry {
+                name: &command.name,
+                description: command.help.lines().next().unwrap_or(""),
+                score: entry.score,
+            }
+        }
     }
 }

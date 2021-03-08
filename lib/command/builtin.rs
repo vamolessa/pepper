@@ -12,7 +12,7 @@ use crate::{
     buffer_view::BufferViewError,
     command::{
         BuiltinCommand, CommandContext, CommandError, CommandOperation, CommandSource,
-        CompletionSource,
+        CompletionSource, CustomCommand,
     },
     config::{ParseConfigError, CONFIG_NAMES},
     editor::Editor,
@@ -62,6 +62,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
 
                     let help = match source {
                         CommandSource::Builtin(i) => commands.builtin_commands()[i].help,
+                        CommandSource::Custom(i) => &commands.custom_commands()[i].help,
                     };
 
                     ctx.editor.status_bar.write(MessageKind::Info).str(help);
@@ -89,6 +90,48 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                     }
                 }
             }
+            Ok(None)
+        },
+    },
+    BuiltinCommand {
+        names: &["command"],
+        help: concat!(
+            "define a new custom command\n",
+            "command [<flags>] <name> <body>\n",
+            " -help=<help-text> : the help text that shows when using `help` with this command\n",
+            " -alias=<name> : also add an alias to the command\n",
+            " -param-count=<number> : if defined, the number of parameters this command expects, 0 otherwise",
+        ),
+        completions: &[],
+        func: |ctx| {
+            ctx.args.assert_no_bang()?;
+
+            let mut flags = [("help", None), ("alias", None), ("param-count", None)];
+            ctx.args.get_flags(&mut flags)?;
+            let help = flags[0].1.unwrap_or("");
+            let alias = flags[1].1;
+            let param_count = flags[2].1.map(parse_arg).transpose()?.unwrap_or(0);
+
+            let name = ctx.args.next()?;
+            let body = ctx.args.next()?;
+            ctx.args.assert_empty()?;
+
+            if name.is_empty() {
+                return Err(CommandError::InvalidCommandName(name));
+            }
+            if !name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_')) {
+                return Err(CommandError::InvalidCommandName(name));
+            }
+
+            let command = CustomCommand {
+                name: name.into(),
+                alias: alias.map(Into::into),
+                help: help.into(),
+                param_count,
+                body: body.into(),
+            };
+            ctx.editor.commands.register_custom_command(command);
+
             Ok(None)
         },
     },

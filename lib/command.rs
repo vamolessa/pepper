@@ -550,6 +550,7 @@ impl<'a> CommandArgs<'a> {
 
 pub enum CommandSource {
     Builtin(usize),
+    Custom(usize),
 }
 
 pub struct BuiltinCommand {
@@ -559,8 +560,17 @@ pub struct BuiltinCommand {
     pub func: CommandFn,
 }
 
+pub struct CustomCommand {
+    pub name: String,
+    pub alias: Option<String>,
+    pub help: String,
+    pub param_count: usize,
+    pub body: String,
+}
+
 pub struct CommandManager {
     builtin_commands: &'static [BuiltinCommand],
+    custom_commands: Vec<CustomCommand>,
     history: VecDeque<String>,
 }
 
@@ -568,23 +578,41 @@ impl CommandManager {
     pub fn new() -> Self {
         Self {
             builtin_commands: builtin::COMMANDS,
+            custom_commands: Vec::new(),
             history: VecDeque::with_capacity(HISTORY_CAPACITY),
         }
     }
 
     pub fn find_command(&self, name: &str) -> Option<CommandSource> {
-        match self
+        if let Some(i) = self
+            .custom_commands
+            .iter()
+            .position(|c| c.name == name || c.alias.as_ref().map(|a| a == name).unwrap_or(false))
+        {
+            return Some(CommandSource::Custom(i));
+        }
+
+        if let Some(i) = self
             .builtin_commands
             .iter()
             .position(|c| c.names.contains(&name))
         {
-            Some(i) => Some(CommandSource::Builtin(i)),
-            None => None,
+            return Some(CommandSource::Builtin(i));
         }
+
+        None
     }
 
     pub fn builtin_commands(&self) -> &[BuiltinCommand] {
         &self.builtin_commands
+    }
+
+    pub fn custom_commands(&self) -> &[CustomCommand] {
+        &self.custom_commands
+    }
+
+    pub fn register_custom_command(&mut self, command: CustomCommand) {
+        self.custom_commands.push(command);
     }
 
     pub fn history_len(&self) -> usize {
@@ -623,9 +651,6 @@ impl CommandManager {
         output: &mut String,
     ) -> Result<Option<CommandOperation>, CommandError<'command>> {
         let (source, bang, args) = editor.commands.parse(command)?;
-        let command = match source {
-            CommandSource::Builtin(i) => editor.commands.builtin_commands[i].func,
-        };
         let mut ctx = CommandContext {
             editor,
             platform,
@@ -634,7 +659,16 @@ impl CommandManager {
             args: CommandArgs::new(bang, args),
             output,
         };
-        command(&mut ctx)
+        match source {
+            CommandSource::Builtin(i) => {
+                let command = ctx.editor.commands.builtin_commands[i].func;
+                command(&mut ctx)
+            }
+            CommandSource::Custom(i) => {
+                // TODO call custom command
+                Ok(None)
+            }
+        }
     }
 
     fn parse<'a>(&self, text: &'a str) -> Result<(CommandSource, bool, &'a str), CommandError<'a>> {
