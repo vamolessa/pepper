@@ -279,6 +279,7 @@ impl<'a> Iterator for CommandIter<'a> {
 
             let bytes = self.0.as_bytes();
             let mut i = 0;
+
             loop {
                 if i == bytes.len() {
                     let command = self.0;
@@ -296,6 +297,31 @@ impl<'a> Iterator for CommandIter<'a> {
                             return Some(command);
                         }
                     }
+                    b'{' => {
+                        let mut balance: usize = 1;
+                        i += 1;
+
+                        loop {
+                            if i == bytes.len() {
+                                let command = self.0;
+                                self.0 = "";
+                                return Some(command);
+                            }
+
+                            match bytes[i] {
+                                b'{' => balance += 1,
+                                b'}' => {
+                                    balance = balance.saturating_sub(1);
+                                    if balance == 0 {
+                                        break;
+                                    }
+                                }
+                                _ => (),
+                            }
+
+                            i += 1;
+                        }
+                    }
                     b'#' => {
                         let command = &self.0[..i];
                         while i < bytes.len() && bytes[i] != b'\n' {
@@ -310,6 +336,7 @@ impl<'a> Iterator for CommandIter<'a> {
                     }
                     _ => (),
                 }
+
                 i += 1;
             }
         }
@@ -743,6 +770,11 @@ mod tests {
 
         let mut commands = CommandIter::new("command0\n\n\ncommand1");
         assert_eq!(Some("command0"), commands.next());
+        assert_eq!(Some("command1"), commands.next());
+        assert_eq!(None, commands.next());
+
+        let mut commands = CommandIter::new("command0 {\n still command0\n}\ncommand1");
+        assert_eq!(Some("command0 {\n still command0\n}"), commands.next());
         assert_eq!(Some("command1"), commands.next());
         assert_eq!(None, commands.next());
 
