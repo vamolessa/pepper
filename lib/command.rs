@@ -616,6 +616,9 @@ impl CommandManager {
             Some(command) => (command, true),
             None => (command_name, false),
         };
+        if command_name.is_empty() {
+            return Err(CommandError::InvalidCommandName(command_name));
+        }
 
         let source = match self.find_command(command_name) {
             Some(source) => source,
@@ -631,22 +634,12 @@ mod tests {
     use super::*;
 
     fn create_commands() -> CommandManager {
-        let builtin_commands = &[
-            BuiltinCommand {
-                names: &["cmd0"],
-                description: "",
-                bang_usage: Some(""),
-                params: &[],
-                func: |_| Ok(None),
-            },
-            BuiltinCommand {
-                names: &["command-name", "c"],
-                description: "",
-                bang_usage: Some(""),
-                params: &[("", None), ("", None), ("", None)],
-                func: |_| Ok(None),
-            },
-        ];
+        let builtin_commands = &[BuiltinCommand {
+            names: &["command-name", "c"],
+            help: "",
+            completions: &[],
+            func: |_| Ok(None),
+        }];
 
         CommandManager {
             builtin_commands,
@@ -666,31 +659,30 @@ mod tests {
         }
 
         let commands = create_commands();
-        assert_bang(&commands, "cmd0", false);
-        assert_bang(&commands, "  cmd0  ", false);
-        assert_bang(&commands, "  cmd0!  ", true);
-        assert_bang(&commands, "  cmd0!", true);
+        assert_bang(&commands, "command-name", false);
+        assert_bang(&commands, "  command-name  ", false);
+        assert_bang(&commands, "  command-name!  ", true);
+        assert_bang(&commands, "  command-name!", true);
     }
 
     #[test]
     fn arg_parsing() {
-        fn parse_args<'a>(
-            commands: &CommandManager,
-            command: &'a str,
-        ) -> [&'a str; PARAMETERS_CAPACITY] {
+        fn parse_args<'a>(commands: &CommandManager, command: &'a str) -> &'a str {
             match commands.parse(command) {
                 Ok((_, _, args)) => args,
                 Err(_) => panic!("command '{}' parse error", command),
             }
         }
 
-        fn collect<'a>(args: &[&'a str]) -> Vec<&'a str> {
+        fn collect<'a>(args: &'a str) -> Vec<&'a str> {
             let mut values = Vec::new();
-            for value in args {
-                if value.is_empty() {
-                    break;
+            let mut args = CommandArgs::new(false, args);
+            loop {
+                match args.try_next() {
+                    Ok(Some(arg)) => values.push(arg),
+                    Ok(None) => break,
+                    Err(_) => panic!("error parsing args"),
                 }
-                values.push(*value);
             }
             values
         }
@@ -720,24 +712,27 @@ mod tests {
             };
         }
 
-        assert_fail!("", CommandParseError::InvalidCommandName(s) => s == "");
-        assert_fail!("   ", CommandParseError::InvalidCommandName(s) => s == "");
-        assert_fail!(" !", CommandParseError::InvalidCommandName(s) => s == "!");
-        assert_fail!("!  'aa'", CommandParseError::InvalidCommandName(s) => s == "!");
-        assert_fail!("  a \"aa\"", CommandParseError::CommandNotFound(s) => s == "a");
+        assert_fail!("", CommandError::InvalidCommandName(s) => s == "");
+        assert_fail!("   ", CommandError::InvalidCommandName(s) => s == "");
+        assert_fail!(" !", CommandError::InvalidCommandName(s) => s == "");
+        assert_fail!("!  'aa'", CommandError::InvalidCommandName(s) => s == "");
+        assert_fail!("  a \"bb\"", CommandError::CommandNotFound(s) => s == "a");
 
-        assert_fail!("c 0 1 'abc", CommandParseError::UnterminatedArgument(s) => s == "abc");
-        assert_fail!("c 0 1 '", CommandParseError::UnterminatedArgument(s) => s == "");
-        assert_fail!("c 0 1 \"'", CommandParseError::UnterminatedArgument(s) => s == "'");
-
-        const MAX_VALUES_LEN: u8 = 3;
-        let mut too_many_values_command = String::new();
-        too_many_values_command.push('c');
-        for _ in 0..MAX_VALUES_LEN {
-            too_many_values_command.push_str(" a");
+        fn assert_unterminated(args: &str) {
+            let mut args = CommandArgs::new(false, args);
+            loop {
+                match args.try_next() {
+                    Ok(Some(_)) => (),
+                    Ok(None) => panic!("no unterminated token"),
+                    Err(CommandError::UnterminatedToken(_)) => return,
+                    Err(_) => panic!("other error"),
+                }
+            }
         }
-        too_many_values_command.push_str(" b");
-        assert_fail!(&too_many_values_command, CommandParseError::TooManyArguments(s, MAX_VALUES_LEN) => s == "b");
+
+        assert_unterminated("0 1 'abc");
+        assert_unterminated("0 1 '");
+        assert_unterminated("0 1 \"'");
     }
 
     #[test]
