@@ -68,7 +68,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["quit", "q"],
-        help: "quits this client\nquit[!]\nwith '!' will ignore unsaved changes",
+        help: "quits this client\nquit[!]\nwith '!' will discard any unsaved changes",
         completions: &[],
         func: |ctx| {
             ctx.args.get_flags(&mut [])?;
@@ -82,7 +82,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["quit-all", "qa"],
-        help: "quits all clients\nquit-all[!]\nwith '!' will ignore unsaved changes",
+        help: "quits all clients\nquit-all[!]\nwith '!' will discard any unsaved changes",
         completions: &[],
         func: |ctx| {
             ctx.args.get_flags(&mut [])?;
@@ -133,7 +133,11 @@ pub const COMMANDS: &[BuiltinCommand] = &[
 
             let mut flags = [("line", None)];
             ctx.args.get_flags(&mut flags)?;
-            let line = flags[0].1.map(parse_arg::<usize>).transpose()?.map(|l| l.saturating_sub(1));
+            let line = flags[0]
+                .1
+                .map(parse_arg::<usize>)
+                .transpose()?
+                .map(|l| l.saturating_sub(1));
 
             let path = ctx.args.next()?;
             ctx.args.assert_empty()?;
@@ -233,13 +237,13 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["reload", "r"],
         help: concat!(
-            "reload buffer from file\nreload [<flags>]\n",
+            "reload buffer from file\n",
+            "reload[!] [<flags>]\n",
+            "with '!' will discard any unsaved changes",
             " -buffer=<buffer-id> : if not specified, the current buffer is used",
         ),
         completions: &[],
         func: |ctx| {
-            ctx.args.assert_no_bang()?;
-
             let mut flags = [("buffer", None)];
             ctx.args.get_flags(&mut flags)?;
             let buffer_handle = flags[0].1.map(parse_arg).transpose()?;
@@ -269,24 +273,15 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             Ok(None)
         },
     },
-    /*
-    BuiltinCommand {
-        names: &["reload-buffer"],
-        help: "reload buffer from file",
-        bang_usage: Some("ignore unsaved changes"),
-        params: &[("buffer", None)],
-        func: |ctx| {
-            let buffer_handle = ctx.parse_arg(0)?;
-            reload_buffer(ctx, Some(buffer_handle))?;
-            Ok(None)
-        },
-    },
     BuiltinCommand {
         names: &["reload-all", "ra"],
-        help: "reload all buffers from file",
-        bang_usage: Some("ignore unsaved changes"),
-        params: &[],
+        help:
+            "reload all buffers from file\nreload-all[!]\nwith '!' will discard any unsaved changes",
+        completions: &[],
         func: |ctx| {
+            ctx.args.get_flags(&mut [])?;
+            ctx.args.assert_empty()?;
+
             ctx.assert_can_discard_all_buffers()?;
             let mut count = 0;
             for buffer in ctx.editor.buffers.iter_mut() {
@@ -307,31 +302,60 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["close", "c"],
-        help: "close current buffer",
-        bang_usage: Some("ignore unsaved changes"),
-        params: &[],
+        help: concat!(
+            "close buffer\n",
+            "close[!] [<flags>]\n",
+            "with '!' will discard any unsaved changes",
+            " -buffer=<buffer-id> : if not specified, the current buffer is used"
+        ),
+        completions: &[],
         func: |ctx| {
-            close_buffer(ctx, None)?;
-            Ok(None)
-        },
-    },
-    BuiltinCommand {
-        names: &["close-buffer"],
-        help: "close buffer",
-        bang_usage: Some("ignore unsaved changes"),
-        params: &[],
-        func: |ctx| {
-            let buffer_handle = ctx.parse_arg(0)?;
-            close_buffer(ctx, Some(buffer_handle))?;
+            let mut flags = [("buffer", None)];
+            ctx.args.get_flags(&mut flags)?;
+            let buffer_handle = flags[0].1.map(parse_arg).transpose()?;
+
+            ctx.args.assert_empty()?;
+
+            let buffer_handle = match buffer_handle {
+                Some(handle) => handle,
+                None => ctx.current_buffer_handle()?,
+            };
+
+            ctx.assert_can_discard_buffer(buffer_handle)?;
+            ctx.editor.buffer_views.defer_remove_buffer_where(
+                &mut ctx.editor.buffers,
+                &mut ctx.editor.events,
+                |view| view.buffer_handle == buffer_handle,
+            );
+
+            let clients = &mut *ctx.clients;
+            let editor = &mut *ctx.editor;
+            for client in clients.iter_mut() {
+                let maybe_buffer_handle = client
+                    .buffer_view_handle()
+                    .and_then(|h| editor.buffer_views.get(h))
+                    .map(|v| v.buffer_handle);
+                if maybe_buffer_handle == Some(buffer_handle) {
+                    client.set_buffer_view_handle(None);
+                }
+            }
+
+            editor
+                .status_bar
+                .write(MessageKind::Info)
+                .str("buffer closed");
+
             Ok(None)
         },
     },
     BuiltinCommand {
         names: &["close-all", "ca"],
-        help: "close all buffers",
-        bang_usage: Some("ignore unsaved changes"),
-        params: &[],
+        help: "close all buffers\nclose-all[!]\nwith '!' will discard any unsaved changes",
+        completions: &[],
         func: |ctx| {
+            ctx.args.get_flags(&mut [])?;
+            ctx.args.assert_empty()?;
+
             ctx.assert_can_discard_all_buffers()?;
             let count = ctx.editor.buffers.iter().count();
             ctx.editor.buffer_views.defer_remove_buffer_where(
@@ -352,98 +376,99 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
-        names: &["get-config"],
-        help: "get an editor config",
-        bang_usage: None,
-        params: &[("key", Some(CompletionSource::Custom(CONFIG_NAMES)))],
+        names: &["config"],
+        help: "accesses an editor config\nconfig <key> [<value>]",
+        completions: &[(CompletionSource::Custom(CONFIG_NAMES))],
         func: |ctx| {
-            let key = ctx.args[0];
-            match ctx.editor.config.display_config(key) {
-                Some(display) => {
-                    use fmt::Write;
-                    let _ = write!(ctx.output, "{}", display);
-                    Ok(None)
-                }
-                None => Err(CommandError::ConfigNotFound(key)),
-            }
-        },
-    },
-    BuiltinCommand {
-        names: &["set-config"],
-        help: "set an editor config",
-        bang_usage: None,
-        params: &[
-            ("key", Some(CompletionSource::Custom(CONFIG_NAMES))),
-            ("value", None),
-        ],
-        func: |ctx| {
-            let key = ctx.args[0];
-            let value = ctx.args[1];
-            match ctx.editor.config.parse_config(key, value) {
-                Ok(()) => Ok(None),
-                Err(ParseConfigError::NotFound) => Err(CommandError::ConfigNotFound(key)),
-                Err(ParseConfigError::InvalidValue) => {
-                    Err(CommandError::InvalidConfigValue { key, value })
-                }
-            }
-        },
-    },
-    BuiltinCommand {
-        names: &["get-color"],
-        help: "get editor theme color",
-        bang_usage: None,
-        params: &[("key", Some(CompletionSource::Custom(THEME_COLOR_NAMES)))],
-        func: |ctx| {
-            let key = ctx.args[0];
-            let color = ctx
-                .editor
-                .theme
-                .color_from_name(key)
-                .ok_or(CommandError::ConfigNotFound(key))?;
+            ctx.args.assert_no_bang()?;
+            ctx.args.get_flags(&mut [])?;
 
-            use fmt::Write;
-            let _ = write!(ctx.output, "{:x}", color.into_u32());
-            Ok(None)
+            let key = ctx.args.next()?;
+            let value = ctx.args.try_next()?;
+            ctx.args.assert_empty()?;
+
+            match value {
+                Some(value) => match ctx.editor.config.parse_config(key, value) {
+                    Ok(()) => Ok(None),
+                    Err(ParseConfigError::NotFound) => Err(CommandError::ConfigNotFound(key)),
+                    Err(ParseConfigError::InvalidValue) => {
+                        Err(CommandError::InvalidConfigValue { key, value })
+                    }
+                },
+                None => match ctx.editor.config.display_config(key) {
+                    Some(display) => {
+                        use fmt::Write;
+                        let _ = write!(ctx.output, "{}", display);
+                        Ok(None)
+                    }
+                    None => Err(CommandError::ConfigNotFound(key)),
+                },
+            }
         },
     },
     BuiltinCommand {
-        names: &["set-color"],
-        help: "set editor theme color",
-        bang_usage: None,
-        params: &[
-            ("key", Some(CompletionSource::Custom(THEME_COLOR_NAMES))),
-            ("value", None),
-        ],
+        names: &["color"],
+        help: "accesses an editor theme color\ncolor <key> [<value>]",
+        completions: &[CompletionSource::Custom(THEME_COLOR_NAMES)],
         func: |ctx| {
-            let key = ctx.args[0];
-            let value = ctx.args[1];
+            ctx.args.assert_no_bang()?;
+            ctx.args.get_flags(&mut [])?;
+
+            let key = ctx.args.next()?;
+            let value = ctx.args.try_next()?;
+            ctx.args.assert_empty()?;
+
             let color = ctx
                 .editor
                 .theme
                 .color_from_name(key)
-                .ok_or(CommandError::ConfigNotFound(key))?;
-            let encoded = u32::from_str_radix(value, 16)
-                .map_err(|_| CommandError::InvalidColorValue { key, value })?;
-            *color = Color::from_u32(encoded);
+                .ok_or(CommandError::ColorNotFound(key))?;
+
+            match value {
+                Some(value) => {
+                    let encoded = u32::from_str_radix(value, 16)
+                        .map_err(|_| CommandError::InvalidColorValue { key, value })?;
+                    *color = Color::from_u32(encoded);
+                }
+                None => {
+                    use fmt::Write;
+                    let _ = write!(ctx.output, "{:x}", color.into_u32());
+                }
+            }
+
             Ok(None)
         },
     },
     BuiltinCommand {
         names: &["syntax"],
-        help: "create a syntax definition with patterns for files that match a glob",
-        bang_usage: None,
-        params: &[
-            ("glob", None),
-            ("keywords", None),
-            ("types", None),
-            ("symbols", None),
-            ("literals", None),
-            ("strings", None),
-            ("comments", None),
-            ("texts", None),
-        ],
+        help: concat!(
+            "creates a syntax definition with patterns for files that match a glob\n",
+            "syntax [<flags>] <glob>\n",
+            " -keywords=<pattern> : pattern for keyword highlight\n",
+            " -types=<pattern> : pattern for type highlight\n",
+            " -symbols=<pattern> : pattern for symbol highlight\n",
+            " -literals=<pattern> : pattern for literal highlight\n",
+            " -strings=<pattern> : pattern for string highlight\n",
+            " -comments=<pattern> : pattern for comment highlight\n",
+            " -texts=<pattern> : pattern for normal text highlight",
+        ),
+        completions: &[],
         func: |ctx| {
-            let glob = ctx.args[0];
+            ctx.args.assert_no_bang()?;
+
+            let mut flags = [
+                ("keywords", None),
+                ("types", None),
+                ("symbols", None),
+                ("literals", None),
+                ("strings", None),
+                ("comments", None),
+                ("texts", None),
+            ];
+            ctx.args.get_flags(&mut flags)?;
+
+            let glob = ctx.args.next()?;
+            ctx.args.assert_empty()?;
 
             let mut syntax = Syntax::new();
             syntax
@@ -459,11 +484,11 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 TokenKind::Comment,
                 TokenKind::Text,
             ];
-            for (&arg, &kind) in ctx.args[1..].iter().zip(kinds.iter()) {
-                if !arg.is_empty() {
+            for ((_, flag), &kind) in flags.iter().zip(kinds.iter()) {
+                if let Some(flag) = flag {
                     syntax
-                        .set_rule(kind, arg)
-                        .map_err(|e| CommandError::PatternError(arg, e))?;
+                        .set_rule(kind, flag)
+                        .map_err(|e| CommandError::PatternError(flag, e))?;
                 }
             }
 
@@ -476,100 +501,106 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
-        names: &["keymap"],
-        help: "create a keyboard mapping for an editor mode",
-        bang_usage: None,
-        params: &[
-            (
-                "mode",
-                Some(CompletionSource::Custom(&[
-                    "normal",
-                    "insert",
-                    "read-line",
-                    "picker",
-                    "command",
-                ])),
-            ),
-            ("from", None),
-            ("to", None),
-        ],
+        names: &["map"],
+        help: concat!(
+            "creates a keyboard mapping for an editor mode\n",
+            "map [<flags>] <from> <to>\n",
+            " -normal : set mapping for normal mode\n",
+            " -insert : set mapping for insert mode\n",
+            " -read-line : set mapping for read-line mode\n",
+            " -picker : set mapping for picker mode\n",
+            " -command : set mapping for command mode",
+        ),
+        completions: &[],
         func: |ctx| {
-            let mode = ctx.args[0];
-            let from = ctx.args[1];
-            let to = ctx.args[2];
+            ctx.args.assert_no_bang()?;
 
-            let mode = match mode {
-                "normal" => ModeKind::Normal,
-                "insert" => ModeKind::Insert,
-                "read-line" => ModeKind::ReadLine,
-                "picker" => ModeKind::Picker,
-                "command" => ModeKind::Command,
-                _ => return Err(CommandError::InvalidModeError(mode)),
-            };
+            let mut flags = [
+                ("normal", None),
+                ("insert", None),
+                ("read-line", None),
+                ("picker", None),
+                ("command", None),
+            ];
+            ctx.args.get_flags(&mut flags)?;
 
-            ctx.editor
-                .keymaps
-                .parse_and_map(mode, from, to)
-                .map_err(|e| match e {
-                    ParseKeyMapError::From(e) => {
-                        CommandError::KeyParseError(&from[e.index..], e.error)
-                    }
-                    ParseKeyMapError::To(e) => CommandError::KeyParseError(&to[e.index..], e.error),
-                })?;
+            let from = ctx.args.next()?;
+            let to = ctx.args.next()?;
+            ctx.args.assert_empty()?;
+
+            let modes = [
+                ModeKind::Normal,
+                ModeKind::Insert,
+                ModeKind::ReadLine,
+                ModeKind::Picker,
+                ModeKind::Command,
+            ];
+            for ((_, flag), &mode) in flags.iter().zip(modes.iter()) {
+                if flag.is_some() {
+                    ctx.editor
+                        .keymaps
+                        .parse_and_map(mode, from, to)
+                        .map_err(|e| match e {
+                            ParseKeyMapError::From(e) => {
+                                CommandError::KeyParseError(&from[e.index..], e.error)
+                            }
+                            ParseKeyMapError::To(e) => {
+                                CommandError::KeyParseError(&to[e.index..], e.error)
+                            }
+                        })?;
+                }
+            }
 
             Ok(None)
         },
     },
     BuiltinCommand {
-        names: &["get-register"],
-        help: "get an editor register",
-        bang_usage: None,
-        params: &[("key", None)],
+        names: &["register"],
+        help: "accesses an editor register\nregister <key> [<value>]",
+        completions: &[],
         func: |ctx| {
-            let key = ctx.args[0];
-            match RegisterKey::from_str(key) {
-                Some(key) => {
-                    let register = ctx.editor.registers.get_mut(key);
-                    ctx.output.push_str(register);
-                    Ok(None)
-                }
-                None => Err(CommandError::InvalidRegisterKey(key)),
-            }
-        },
-    },
-    BuiltinCommand {
-        names: &["set-register"],
-        help: "set an editor register",
-        bang_usage: None,
-        params: &[("key", None), ("value", None)],
-        func: |ctx| {
-            let key = ctx.args[0];
-            let value = ctx.args[1];
-            match RegisterKey::from_str(key) {
-                Some(key) => {
-                    let register = ctx.editor.registers.get_mut(key);
+            ctx.args.assert_no_bang()?;
+            ctx.args.get_flags(&mut [])?;
+
+            let key = ctx.args.next()?;
+            let value = ctx.args.try_next()?;
+            ctx.args.assert_empty()?;
+
+            let register = match RegisterKey::from_str(key) {
+                Some(key) => ctx.editor.registers.get_mut(key),
+                None => return Err(CommandError::InvalidRegisterKey(key)),
+            };
+            match value {
+                Some(value) => {
                     register.clear();
                     register.push_str(value);
-                    Ok(None)
                 }
-                None => Err(CommandError::InvalidRegisterKey(key)),
+                None => ctx.output.push_str(register),
             }
+
+            Ok(None)
         },
     },
     // TODO: remove this command
     BuiltinCommand {
         names: &["run"],
-        help: "",
-        bang_usage: None,
-        params: &[("command", None)],
+        help: "test command",
+        completions: &[],
         func: |ctx| {
-            let command = ctx.args[0];
+            ctx.args.assert_no_bang()?;
+            ctx.args.get_flags(&mut [])?;
+
+            let command = ctx.args.next()?;
             eprintln!("request spawn process '{}'", command);
 
             let mut command = Command::new(command);
             command.stdin(Stdio::null());
             command.stdout(Stdio::piped());
             command.stderr(Stdio::null());
+
+            while let Some(arg) = ctx.args.try_next()? {
+                command.arg(arg);
+            }
 
             ctx.platform.enqueue_request(PlatformRequest::SpawnProcess {
                 tag: ProcessTag::Command(0),
@@ -580,6 +611,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             Ok(None)
         },
     },
+    /*
     BuiltinCommand {
         names: &["lsp-start"],
         help: "start a lsp server",
@@ -601,51 +633,72 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             Ok(None)
         },
     },
+    */
     BuiltinCommand {
-        names: &["lsp-start-with-log"],
-        help: "starts a lsp server",
-        bang_usage: None,
-        params: &[
-            ("server-command", None),
-            ("root", Some(CompletionSource::Files)),
-        ],
+        names: &["lsp-start"],
+        help: concat!(
+            "starts a lsp server\n",
+            "lsp-start [<flags>] <command> [<command-arg>...]\n",
+            " -root=<path> : the root path from where the lsp server will execute",
+            " -log=<buffer-name> : redirect the lsp server stdout to this buffer"
+        ),
+        completions: &[],
         func: |ctx| {
-            let server_command = ctx.args[0];
-            let root = PathBuf::from(ctx.args[1]);
+            ctx.args.assert_no_bang()?;
 
-            // TODO: handle server command args
-            let command = Command::new(server_command);
+            let mut flags = [("root", None), ("log", None)];
+            ctx.args.get_flags(&mut flags)?;
+            let root = flags[0].1;
+            let log_buffer = flags[1].1;
+
+            let command = ctx.args.next()?;
+            let mut command = Command::new(command);
+            while let Some(arg) = ctx.args.try_next()? {
+                command.arg(arg);
+            }
+
+            let root = match root {
+                Some(root) => PathBuf::from(root),
+                None => ctx.editor.current_directory.clone(),
+            };
 
             let handle = ctx.editor.lsp.start(ctx.platform, command, root);
             let clients = &mut *ctx.clients;
             let client_handle = ctx.client_handle;
 
-            lsp::ClientManager::access(ctx.editor, handle, |editor, client, _| {
-                let buffer = editor.buffers.new(BufferCapabilities::log());
-                let buffer_handle = buffer.handle();
-                // TODO: better lsp log buffer path
-                buffer.set_path(Some(Path::new("lsp-server-log")));
-                client.set_log_buffer(Some(buffer_handle));
+            if let Some(log_buffer) = log_buffer {
+                lsp::ClientManager::access(ctx.editor, handle, |editor, client, _| {
+                    let buffer = editor.buffers.new(BufferCapabilities::log());
+                    let buffer_handle = buffer.handle();
+                    buffer.set_path(Some(Path::new(log_buffer)));
+                    client.set_log_buffer(Some(buffer_handle));
 
-                if let Some(client_handle) = client_handle {
-                    let buffer_view_handle = editor
-                        .buffer_views
-                        .buffer_view_handle_from_buffer_handle(client_handle, buffer_handle);
-                    if let Some(client) = clients.get_mut(client_handle) {
-                        client.set_buffer_view_handle(Some(buffer_view_handle));
+                    if let Some(client_handle) = client_handle {
+                        let buffer_view_handle = editor
+                            .buffer_views
+                            .buffer_view_handle_from_buffer_handle(client_handle, buffer_handle);
+                        if let Some(client) = clients.get_mut(client_handle) {
+                            client.set_buffer_view_handle(Some(buffer_view_handle));
+                        }
                     }
-                }
-            });
+                });
+            }
+
+            use fmt::Write;
+            let _ = write!(ctx.output, "{}", handle);
 
             Ok(None)
         },
     },
     BuiltinCommand {
         names: &["lsp-stop"],
-        help: "stops the lsp server associated with the current buffer",
-        bang_usage: None,
-        params: &[],
+        help: "stops the lsp server associated with the current buffer\nlsp-stop",
+        completions: &[],
         func: |ctx| {
+            ctx.args.assert_no_bang()?;
+            ctx.args.get_flags(&mut [])?;
+            ctx.args.assert_empty()?;
+
             let buffer_handle = ctx.current_buffer_handle()?;
             match find_lsp_client_for_buffer(ctx.editor, buffer_handle) {
                 Some(client) => ctx.editor.lsp.stop(ctx.platform, client),
@@ -656,10 +709,13 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["lsp-hover"],
-        help: "performs a lsp hover action at the current buffer's main cursor position",
-        bang_usage: None,
-        params: &[],
+        help: "performs a lsp hover action at the current buffer's main cursor position\nlsp-hover",
+        completions: &[],
         func: |mut ctx| {
+            ctx.args.assert_no_bang()?;
+            ctx.args.get_flags(&mut [])?;
+            ctx.args.assert_empty()?;
+
             let (buffer_handle, position) = current_buffer_and_main_position(&ctx)?;
             access_lsp(&mut ctx, buffer_handle, |editor, platform, client, json| {
                 client.hover(editor, platform, json, buffer_handle, position)
@@ -669,11 +725,16 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     BuiltinCommand {
         names: &["lsp-signature-help"],
-        help:
-            "performs a lsp signature help action at the current buffer's main cursor position",
-        bang_usage: None,
-        params: &[],
+        help: concat!(
+            "performs a lsp signature help action at the current buffer's main cursor position\n",
+            "lsp-signature_help\n",
+        ),
+        completions: &[],
         func: |mut ctx| {
+            ctx.args.assert_no_bang()?;
+            ctx.args.get_flags(&mut [])?;
+            ctx.args.assert_empty()?;
+
             let (buffer_handle, position) = current_buffer_and_main_position(&ctx)?;
             access_lsp(&mut ctx, buffer_handle, |editor, platform, client, json| {
                 client.signature_help(editor, platform, json, buffer_handle, position)
@@ -681,98 +742,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             Ok(None)
         },
     },
-    */
 ];
-
-fn save_buffer<'state, 'command>(
-    ctx: &mut CommandContext<'state, 'command>,
-    buffer_handle: Option<BufferHandle>,
-    path: Option<&Path>,
-) -> Result<(), CommandError<'command>> {
-    let buffer_handle = match buffer_handle {
-        Some(handle) => handle,
-        None => ctx.current_buffer_handle()?,
-    };
-
-    let buffer = ctx
-        .editor
-        .buffers
-        .get_mut(buffer_handle)
-        .ok_or(CommandError::InvalidBufferHandle(buffer_handle))?;
-
-    buffer
-        .save_to_file(path, &mut ctx.editor.events)
-        .map_err(|e| CommandError::BufferError(buffer_handle, e))?;
-
-    let path = buffer.path().unwrap_or(Path::new(""));
-    ctx.editor
-        .status_bar
-        .write(MessageKind::Info)
-        .fmt(format_args!("buffer saved to '{:?}'", path));
-    Ok(())
-}
-
-fn reload_buffer<'state, 'command>(
-    ctx: &mut CommandContext<'state, 'command>,
-    buffer_handle: Option<BufferHandle>,
-) -> Result<(), CommandError<'command>> {
-    let buffer_handle = match buffer_handle {
-        Some(handle) => handle,
-        None => ctx.current_buffer_handle()?,
-    };
-
-    ctx.assert_can_discard_buffer(buffer_handle)?;
-    let buffer = ctx
-        .editor
-        .buffers
-        .get_mut(buffer_handle)
-        .ok_or(CommandError::InvalidBufferHandle(buffer_handle))?;
-
-    buffer
-        .discard_and_reload_from_file(&mut ctx.editor.word_database, &mut ctx.editor.events)
-        .map_err(|e| CommandError::BufferError(buffer_handle, e))?;
-
-    ctx.editor
-        .status_bar
-        .write(MessageKind::Info)
-        .str("buffer reloaded");
-    Ok(())
-}
-
-fn close_buffer<'state, 'command>(
-    ctx: &mut CommandContext<'state, 'command>,
-    buffer_handle: Option<BufferHandle>,
-) -> Result<(), CommandError<'command>> {
-    let buffer_handle = match buffer_handle {
-        Some(handle) => handle,
-        None => ctx.current_buffer_handle()?,
-    };
-
-    ctx.assert_can_discard_buffer(buffer_handle)?;
-    ctx.editor.buffer_views.defer_remove_buffer_where(
-        &mut ctx.editor.buffers,
-        &mut ctx.editor.events,
-        |view| view.buffer_handle == buffer_handle,
-    );
-
-    let clients = &mut *ctx.clients;
-    let editor = &mut *ctx.editor;
-    for client in clients.iter_mut() {
-        let maybe_buffer_handle = client
-            .buffer_view_handle()
-            .and_then(|h| editor.buffer_views.get(h))
-            .map(|v| v.buffer_handle);
-        if maybe_buffer_handle == Some(buffer_handle) {
-            client.set_buffer_view_handle(None);
-        }
-    }
-
-    editor
-        .status_bar
-        .write(MessageKind::Info)
-        .str("buffer closed");
-    Ok(())
-}
 
 fn current_buffer_and_main_position<'state, 'command>(
     ctx: &CommandContext<'state, 'command>,

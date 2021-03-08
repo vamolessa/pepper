@@ -45,7 +45,6 @@ pub enum CommandError<'command> {
     },
     InvalidGlob(&'command str),
     PatternError(&'command str, PatternError),
-    InvalidModeError(&'command str),
     KeyParseError(&'command str, KeyParseError),
     InvalidRegisterKey(&'command str),
     LspServerNotRunning,
@@ -176,9 +175,6 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
             }
             CommandError::PatternError(pattern, error) => {
                 write(self, f, pattern, format_args!("{}", error))
-            }
-            CommandError::InvalidModeError(mode) => {
-                write(self, f, mode, format_args!("no such mode '{}'", mode))
             }
             CommandError::KeyParseError(keys, error) => {
                 write(self, f, keys, format_args!("{}", error))
