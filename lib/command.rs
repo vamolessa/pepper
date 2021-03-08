@@ -296,7 +296,6 @@ impl<'a> Iterator for CommandIter<'a> {
                             return Some(command);
                         }
                     }
-                    b'\\' => i += 1,
                     b'#' => {
                         let command = &self.0[..i];
                         while i < bytes.len() && bytes[i] != b'\n' {
@@ -339,7 +338,7 @@ impl<'a> Iterator for CommandTokenIter<'a> {
 
         self.rest = self
             .rest
-            .trim_start_matches(|c: char| c.is_ascii_whitespace() || c == '\\');
+            .trim_start_matches(|c: char| c.is_ascii_whitespace());
         if self.rest.is_empty() {
             return None;
         }
@@ -744,11 +743,6 @@ mod tests {
 
         let mut commands = CommandIter::new("command0\n\n\ncommand1");
         assert_eq!(Some("command0"), commands.next());
-        assert_eq!(Some("command1"), commands.next());
-        assert_eq!(None, commands.next());
-
-        let mut commands = CommandIter::new("command0\\\n still command0\ncommand1");
-        assert_eq!(Some("command0\\\n still command0"), commands.next());
         assert_eq!(Some("command1"), commands.next());
         assert_eq!(None, commands.next());
 
