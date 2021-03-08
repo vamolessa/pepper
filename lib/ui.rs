@@ -484,7 +484,9 @@ fn draw_picker(buf: &mut Vec<u8>, editor: &Editor, view: &View) {
             print_char(buf, &mut x, c);
         }
 
-        clear_until_new_line(buf);
+        if x < view.width {
+            clear_until_new_line(buf);
+        }
         move_cursor_to_next_line(buf);
     }
 }
@@ -547,14 +549,22 @@ fn draw_statusbar(
                 }
             }
         } else {
-            fn print_line(buf: &mut Vec<u8>, line: &str) {
+            fn print_line(buf: &mut Vec<u8>, line: &str) -> usize {
                 let mut char_buf = [0; std::mem::size_of::<char>()];
+                let mut len = 0;
                 for c in line.chars() {
                     match c {
-                        '\t' => buf.extend_from_slice(b"    "),
-                        c => buf.extend_from_slice(c.encode_utf8(&mut char_buf).as_bytes()),
+                        '\t' => {
+                            buf.extend_from_slice(b"  ");
+                            len += 2;
+                        }
+                        c => {
+                            buf.extend_from_slice(c.encode_utf8(&mut char_buf).as_bytes());
+                            len += 1;
+                        }
                     };
                 }
+                len
             }
 
             let prefix = match message_target {
@@ -578,9 +588,11 @@ fn draw_statusbar(
                 }
 
                 for (i, line) in message.lines().enumerate() {
-                    print_line(buf, line);
+                    let len = print_line(buf, line);
                     if i < line_count - 1 {
-                        clear_until_new_line(buf);
+                        if len < view.width {
+                            clear_until_new_line(buf);
+                        }
                         move_cursor_to_next_line(buf);
                     }
                 }

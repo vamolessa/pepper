@@ -44,25 +44,51 @@ where
 pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         names: &["help", "h"],
-        help: "prints help about command\nhelp <command-name>",
+        help: "prints help about command\nhelp [<command-name>]",
         completions: &[CompletionSource::Commands],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
             ctx.args.get_flags(&mut [])?;
-            let command_name = ctx.args.next()?;
+            let command_name = ctx.args.try_next()?;
             ctx.args.assert_empty()?;
 
             let commands = &ctx.editor.commands;
-            let source = match commands.find_command(command_name) {
-                Some(source) => source,
-                None => return Err(CommandError::CommandNotFound(command_name)),
-            };
+            match command_name {
+                Some(command_name) => {
+                    let source = match commands.find_command(command_name) {
+                        Some(source) => source,
+                        None => return Err(CommandError::CommandNotFound(command_name)),
+                    };
 
-            let help = match source {
-                CommandSource::Builtin(i) => commands.builtin_commands()[i].help,
-            };
+                    let help = match source {
+                        CommandSource::Builtin(i) => commands.builtin_commands()[i].help,
+                    };
 
-            ctx.editor.status_bar.write(MessageKind::Info).str(help);
+                    ctx.editor.status_bar.write(MessageKind::Info).str(help);
+                }
+                None => {
+                    if let Some(client) = ctx.client_handle.and_then(|h| ctx.clients.get(h)) {
+                        let width = client.viewport_size.0 as usize;
+
+                        let mut write = ctx.editor.status_bar.write(MessageKind::Info);
+                        write.str("all commands:\n");
+
+                        let mut x = 0;
+                        for command in commands.builtin_commands() {
+                            let name = command.names[0];
+                            if x + name.len() + 1 > width {
+                                x = 0;
+                                write.str("\n");
+                            } else if x > 0 {
+                                x += 1;
+                                write.str(" ");
+                            }
+                            write.str(name);
+                            x += name.len();
+                        }
+                    }
+                }
+            }
             Ok(None)
         },
     },
