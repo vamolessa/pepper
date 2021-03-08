@@ -4,7 +4,7 @@ use crate::{
     buffer::BufferCollection,
     buffer_view::BufferViewCollection,
     client::{ClientHandle, ClientManager},
-    command::{CommandError, CommandIter, CommandManager, CommandOperation},
+    command::{CommandIter, CommandManager, CommandOperation},
     config::Config,
     editor_utils::{MessageKind, ReadLine, StatusBar, StringPool},
     events::{parse_all_keys, ClientEvent, ClientEventSource, EditorEvent, EditorEventQueue},
@@ -16,7 +16,7 @@ use crate::{
     register::{RegisterCollection, RegisterKey, KEY_QUEUE_REGISTER},
     syntax::{HighlightResult, SyntaxCollection},
     theme::Theme,
-    word_database::{WordIndicesIter, WordDatabase},
+    word_database::{WordDatabase, WordIndicesIter},
 };
 
 #[derive(Clone, Copy)]
@@ -230,7 +230,7 @@ impl Editor {
         platform: &mut Platform,
         event: ClientEvent,
     ) -> EditorControlFlow {
-        let result = match event {
+        match event {
             ClientEvent::Key(source, key) => {
                 self.status_bar.clear();
 
@@ -340,7 +340,7 @@ impl Editor {
                 }
                 EditorControlFlow::Continue
             }
-            ClientEvent::Command(source, command) => {
+            ClientEvent::Command(source, commands) => {
                 let client_handle = match source {
                     ClientEventSource::ConnectionClient => client_handle,
                     ClientEventSource::FocusedClient => match clients.focused_handle() {
@@ -350,32 +350,38 @@ impl Editor {
                     ClientEventSource::ClientHandle(handle) => handle,
                 };
 
+                let mut flow = EditorControlFlow::Continue;
                 let mut output = self.string_pool.acquire();
-                // TODO: change to command iter
-                let flow = match CommandManager::eval_command(
-                    self,
-                    platform,
-                    clients,
-                    Some(client_handle),
-                    command,
-                    &mut output,
-                ) {
-                    Ok(None) => EditorControlFlow::Continue,
-                    Ok(Some(CommandOperation::Quit)) => EditorControlFlow::Quit,
-                    Ok(Some(CommandOperation::QuitAll)) => EditorControlFlow::QuitAll,
-                    Err(error) => {
-                        self.status_bar
-                            .write(MessageKind::Error)
-                            .fmt(format_args!("{}", error.display(command, &self.buffers)));
-                        EditorControlFlow::Continue
-                    }
-                };
+                for command in CommandIter(commands) {
+                    match CommandManager::eval_command(
+                        self,
+                        platform,
+                        clients,
+                        Some(client_handle),
+                        command,
+                        &mut output,
+                    ) {
+                        Ok(None) => (),
+                        Ok(Some(CommandOperation::Quit)) => {
+                            flow = EditorControlFlow::Quit;
+                            break;
+                        }
+                        Ok(Some(CommandOperation::QuitAll)) => {
+                            flow = EditorControlFlow::QuitAll;
+                            break;
+                        }
+                        Err(error) => {
+                            self.status_bar
+                                .write(MessageKind::Error)
+                                .fmt(format_args!("{}", error.display(command, &self.buffers)));
+                            break;
+                        }
+                    };
+                }
                 self.string_pool.release(output);
                 flow
             }
-        };
-
-        result
+        }
     }
 
     pub fn on_idle(&mut self, clients: &mut ClientManager, platform: &mut Platform) {

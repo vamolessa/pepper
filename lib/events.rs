@@ -418,6 +418,7 @@ where
     }
 }
 
+// TODO: maybe remove it and always use ClientHandle??
 #[derive(Clone, Copy)]
 pub enum ClientEventSource {
     ConnectionClient,
