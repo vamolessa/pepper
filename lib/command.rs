@@ -778,6 +778,11 @@ mod tests {
         assert_eq!(Some("command1"), commands.next());
         assert_eq!(None, commands.next());
 
+        let mut commands = CommandIter::new("command0 }}} {\n {\n still command0\n}\n}\ncommand1");
+        assert_eq!(Some("command0 }}} {\n {\n still command0\n}\n}"), commands.next());
+        assert_eq!(Some("command1"), commands.next());
+        assert_eq!(None, commands.next());
+
         let mut commands = CommandIter::new("   #command0");
         assert_eq!(None, commands.next());
 
