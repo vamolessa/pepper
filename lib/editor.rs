@@ -149,15 +149,15 @@ impl Editor {
 
         let mut output = self.string_pool.acquire();
         for command in CommandIter(&text) {
-            match CommandManager::eval(self, platform, clients, None, command, &mut output)
-            {
+            match CommandManager::eval(self, platform, clients, None, command, &mut output) {
                 Ok(None) => (),
                 Ok(Some(op @ CommandOperation::Quit))
                 | Ok(Some(op @ CommandOperation::QuitAll)) => return Some(op),
                 Err(error) => {
-                    self.status_bar
-                        .write(MessageKind::Error)
-                        .fmt(format_args!("{}", error.display(command, &self.buffers)));
+                    self.status_bar.write(MessageKind::Error).fmt(format_args!(
+                        "{}",
+                        error.display(command, &self.commands, &self.buffers)
+                    ));
                     break;
                 }
             }
@@ -371,9 +371,10 @@ impl Editor {
                             break;
                         }
                         Err(error) => {
-                            self.status_bar
-                                .write(MessageKind::Error)
-                                .fmt(format_args!("{}", error.display(command, &self.buffers)));
+                            self.status_bar.write(MessageKind::Error).fmt(format_args!(
+                                "{}",
+                                error.display(command, &self.commands, &self.buffers)
+                            ));
                             break;
                         }
                     };

@@ -115,11 +115,15 @@ impl ModeState for State {
                     Ok(Some(CommandOperation::Quit)) => Some(ModeOperation::Quit),
                     Ok(Some(CommandOperation::QuitAll)) => Some(ModeOperation::QuitAll),
                     Err(error) => {
+                        let commands = &ctx.editor.commands;
                         let buffers = &ctx.editor.buffers;
                         ctx.editor
                             .status_bar
                             .write(MessageKind::Error)
-                            .fmt(format_args!("{}", error.display(command, buffers)));
+                            .fmt(format_args!(
+                                "{}",
+                                error.display(command, commands, buffers)
+                            ));
                         None
                     }
                 };

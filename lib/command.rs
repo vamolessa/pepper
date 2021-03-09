@@ -20,7 +20,11 @@ pub struct CommandToken {
 }
 impl CommandToken {
     pub fn as_str<'command>(&self, command: &'command str) -> &'command str {
-        let start = self.location - command.as_ptr() as usize;
+        self.as_str_at(command, command.as_ptr() as _)
+    }
+
+    fn as_str_at<'command>(&self, command: &'command str, location: usize) -> &'command str {
+        let start = self.location - location;
         let end = start + self.len;
         &command[start..end]
     }
@@ -35,8 +39,9 @@ impl<'a> From<&'a str> for CommandToken {
 }
 
 pub enum CommandError {
-    CommandError {
-        command: String,
+    CustomCommandError {
+        index: usize,
+        body: String,
         location: usize,
         error: Box<CommandError>,
     },
@@ -77,11 +82,13 @@ impl CommandError {
     pub fn display<'command, 'error>(
         &'error self,
         command: &'command str,
+        commands: &'error CommandManager,
         buffers: &'error BufferCollection,
     ) -> CommandErrorDisplay<'command, 'error> {
         CommandErrorDisplay {
             command,
             location: command.as_ptr() as usize,
+            commands,
             buffers,
             error: self,
         }
@@ -91,6 +98,7 @@ impl CommandError {
 pub struct CommandErrorDisplay<'command, 'error> {
     command: &'command str,
     location: usize,
+    commands: &'error CommandManager,
     buffers: &'error BufferCollection,
     error: &'error CommandError,
 }
@@ -106,30 +114,34 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
             let error_len = error_token.len;
             write!(
                 f,
-                "{}\n{: >offset$}{:^<len$}\n",
+                "{}\n{: >offset$}{:^<len$}\n{}",
                 this.command,
                 "",
                 "",
+                message,
                 offset = error_offset,
                 len = error_len
-            )?;
-            f.write_fmt(message)?;
-            Ok(())
+            )
         }
 
         let c = self.command;
+        let l = self.location;
+
         match self.error {
-            CommandError::CommandError {
-                command,
+            CommandError::CustomCommandError {
+                index,
+                body,
                 location,
                 error,
             } => {
                 let error_display = CommandErrorDisplay {
-                    command,
+                    command: body,
                     location: *location,
+                    commands: self.commands,
                     buffers: self.buffers,
-                    error: &error,
+                    error,
                 };
+                let command_name = &self.commands.custom_commands()[*index].name;
                 write(
                     self,
                     f,
@@ -141,13 +153,13 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
                 self,
                 f,
                 token,
-                format_args!("invalid command name '{}'", token.as_str(c)),
+                format_args!("invalid command name '{}'", token.as_str_at(c, l)),
             ),
             CommandError::CommandNotFound(command) => write(
                 self,
                 f,
                 command,
-                format_args!("no such command '{}'", command.as_str(c)),
+                format_args!("no such command '{}'", command.as_str_at(c, l)),
             ),
             CommandError::CommandDoesNotAcceptBang => write(
                 self,
@@ -162,7 +174,7 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
                 self,
                 f,
                 token,
-                format_args!("invalid token '{}'", token.as_str(c)),
+                format_args!("invalid token '{}'", token.as_str_at(c, l)),
             ),
             CommandError::TooFewArguments(token, min) => write(
                 self,
@@ -180,7 +192,7 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
                 self,
                 f,
                 token,
-                format_args!("unknown flag '{}'", token.as_str(c)),
+                format_args!("unknown flag '{}'", token.as_str_at(c, l)),
             ),
             CommandError::UnsavedChanges => f.write_str(
                 "there are unsaved changes. try appending a '!' to command name to force execute",
@@ -193,13 +205,13 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
                 self,
                 f,
                 path,
-                format_args!("invalid path '{}'", path.as_str(c)),
+                format_args!("invalid path '{}'", path.as_str_at(c, l)),
             ),
             CommandError::ParseArgError { arg, type_name } => write(
                 self,
                 f,
                 arg,
-                format_args!("could not parse '{}' as {}", arg.as_str(c), type_name),
+                format_args!("could not parse '{}' as {}", arg.as_str_at(c, l), type_name),
             ),
             CommandError::BufferError(handle, error) => match self.buffers.get(*handle) {
                 Some(buffer) => f.write_fmt(format_args!("{}", error.display(buffer))),
@@ -209,7 +221,7 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
                 self,
                 f,
                 key,
-                format_args!("no such config '{}'", key.as_str(c)),
+                format_args!("no such config '{}'", key.as_str_at(c, l)),
             ),
             CommandError::InvalidConfigValue { key, value } => write(
                 self,
@@ -217,15 +229,15 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
                 value,
                 format_args!(
                     "invalid value '{}' for config '{}'",
-                    value.as_str(c),
-                    key.as_str(c)
+                    value.as_str_at(c, l),
+                    key.as_str_at(c, l)
                 ),
             ),
             CommandError::ColorNotFound(key) => write(
                 self,
                 f,
                 key,
-                format_args!("no such theme color '{}'", key.as_str(c)),
+                format_args!("no such theme color '{}'", key.as_str_at(c, l)),
             ),
             CommandError::InvalidColorValue { key, value } => write(
                 self,
@@ -233,15 +245,15 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
                 value,
                 format_args!(
                     "invalid value '{}' for theme color '{}'",
-                    value.as_str(c),
-                    key.as_str(c)
+                    value.as_str_at(c, l),
+                    key.as_str_at(c, l)
                 ),
             ),
             CommandError::InvalidGlob(glob) => write(
                 self,
                 f,
                 glob,
-                format_args!("invalid glob '{}'", glob.as_str(c)),
+                format_args!("invalid glob '{}'", glob.as_str_at(c, l)),
             ),
             CommandError::PatternError(pattern, error) => {
                 write(self, f, pattern, format_args!("{}", error))
@@ -253,7 +265,7 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
                 self,
                 f,
                 key,
-                format_args!("invalid register key '{}'", key.as_str(c)),
+                format_args!("invalid register key '{}'", key.as_str_at(c, l)),
             ),
             CommandError::LspServerNotRunning => f.write_str("lsp server not running"),
         }
@@ -683,7 +695,7 @@ impl CommandManager {
 
     pub fn history_entry(&self, index: usize) -> &str {
         match self.history.get(index) {
-            Some(e) => e.as_str(),
+            Some(e) => &e[..],
             None => "",
         }
     }
@@ -735,24 +747,18 @@ impl CommandManager {
                 let mut body = editor.string_pool.acquire();
                 body.clear();
                 body.push_str(&editor.commands.custom_commands[i].body);
-                for body_command in CommandIter(&body) {
-                    match Self::eval(
-                        editor,
-                        platform,
-                        clients,
-                        client_handle,
-                        body_command,
-                        output,
-                    ) {
+                for command in CommandIter(&body) {
+                    match Self::eval(editor, platform, clients, client_handle, command, output) {
                         Ok(None) => (),
                         Ok(Some(op)) => {
                             result = Ok(Some(op));
                             break;
                         }
                         Err(error) => {
-                            result = Err(CommandError::CommandError {
-                                command: body_command.into(),
-                                location: body_command.as_ptr() as _,
+                            result = Err(CommandError::CustomCommandError {
+                                index: i,
+                                body: command.into(),
+                                location: command.as_ptr() as _,
                                 error: Box::new(error),
                             });
                             break;
