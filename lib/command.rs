@@ -35,6 +35,7 @@ impl<'a> From<&'a str> for CommandToken {
 }
 
 pub enum CommandError {
+    CommandError(CommandToken, String, Box<CommandError>),
     InvalidCommandName(CommandToken),
     CommandNotFound(CommandToken),
     CommandDoesNotAcceptBang,
@@ -112,6 +113,12 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
 
         let c = self.command;
         match self.error {
+            CommandError::CommandError(token, command, error) => write(
+                self,
+                f,
+                token,
+                format_args!("\n{}", error.display(&command, self.buffers)),
+            ),
             CommandError::InvalidCommandName(token) => write(
                 self,
                 f,
@@ -707,22 +714,36 @@ impl CommandManager {
                 args.get_flags(&mut [])?;
                 args.assert_empty()?;
 
+                let mut result = Ok(None);
                 let mut body = editor.string_pool.acquire();
                 body.clear();
                 body.push_str(&editor.commands.custom_commands[i].body);
-                for command in CommandIter(&body) {
-                    // TODO: handle error
-                    let _ = Self::eval_command(
+                for body_command in CommandIter(&body) {
+                    match Self::eval_command(
                         editor,
                         platform,
                         clients,
                         client_handle,
-                        command,
+                        body_command,
                         output,
-                    );
+                    ) {
+                        Ok(None) => (),
+                        Ok(Some(op)) => {
+                            result = Ok(Some(op));
+                            break;
+                        }
+                        Err(error) => {
+                            result = Err(CommandError::CommandError(
+                                command.into(),
+                                body_command.into(),
+                                Box::new(error),
+                            ));
+                            break;
+                        }
+                    }
                 }
                 editor.string_pool.release(body);
-                Ok(None)
+                result
             }
         }
     }
@@ -777,6 +798,12 @@ mod tests {
             custom_commands: Vec::new(),
             history: Default::default(),
         }
+    }
+
+    #[test]
+    fn operation_size() {
+        assert_eq!(1, std::mem::size_of::<CommandOperation>());
+        assert_eq!(1, std::mem::size_of::<Option<CommandOperation>>());
     }
 
     #[test]
