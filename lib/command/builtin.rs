@@ -107,7 +107,11 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         name: "try",
         alias: "",
-        help: "",
+        help: concat!(
+            "try executing commands without propagating errors\n",
+            "and optionally execute commands if there was an error\n",
+            "try { <commands>... } [catch { <commands>... }]",
+        ),
         completions: &[],
         func: |ctx| {
             fn run_body(
