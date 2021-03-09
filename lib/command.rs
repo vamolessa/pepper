@@ -19,10 +19,6 @@ pub struct CommandToken {
     len: usize,
 }
 impl CommandToken {
-    pub fn as_str<'command>(&self, command: &'command str) -> &'command str {
-        self.as_str_at(command, command.as_ptr() as _)
-    }
-
     fn as_str_at<'command>(&self, command: &'command str, location: usize) -> &'command str {
         let start = self.location - location;
         let end = start + self.len;
@@ -146,7 +142,7 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
                     self,
                     f,
                     &c.trim().into(),
-                    format_args!("\n{}", error_display),
+                    format_args!("at custom command '{}':\n{}", command_name, error_display),
                 )
             }
             CommandError::InvalidCommandName(token) => write(
@@ -888,9 +884,10 @@ mod tests {
         macro_rules! assert_fail {
             ($command:expr, $error_pattern:pat => $value:ident == $expect:expr) => {
                 let command = $command;
+                let location = command.as_ptr() as _;
                 match commands.parse(command) {
                     Ok(_) => panic!("command parsed successfully"),
-                    Err($error_pattern) => assert_eq!($expect, $value.as_str(command)),
+                    Err($error_pattern) => assert_eq!($expect, $value.as_str_at(command, location)),
                     Err(_) => panic!("other error occurred"),
                 }
             };
