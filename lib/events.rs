@@ -305,13 +305,7 @@ fn parse_key(chars: &mut impl Iterator<Item = char>) -> Result<Key, KeyParseErro
             c => return Err(KeyParseError::InvalidCharacter(c)),
         },
         c @ '>' => return Err(KeyParseError::InvalidCharacter(c)),
-        c => {
-            if c.is_ascii() {
-                Key::Char(c)
-            } else {
-                return Err(KeyParseError::InvalidCharacter(c));
-            }
-        }
+        c => Key::Char(c),
     };
 
     Ok(key)
