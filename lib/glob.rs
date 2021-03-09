@@ -352,65 +352,63 @@ mod tests {
 
     #[test]
     fn matches() {
-        let mut glob = Glob::default();
-
-        macro_rules! assert_glob {
-            ($expected:expr, $pattern:expr, $path:expr) => {
-                assert!(
-                    glob.compile($pattern).is_ok(),
-                    "invalid glob pattern '{}'",
-                    std::str::from_utf8($pattern).unwrap()
-                );
-                assert_eq!(
-                    $expected,
-                    glob.matches($path),
-                    "'{}' did{} match pattern '{}'",
-                    std::str::from_utf8($path).unwrap(),
-                    if $expected { " not" } else { "" },
-                    std::str::from_utf8($pattern).unwrap(),
-                );
-            };
+        fn assert_glob(glob: &mut Glob, expected: bool, pattern: &[u8], path: &[u8]) {
+            assert!(
+                glob.compile(pattern).is_ok(),
+                "invalid glob pattern '{}'",
+                std::str::from_utf8(pattern).unwrap()
+            );
+            assert_eq!(
+                expected,
+                glob.matches(path),
+                "'{}' did{} match pattern '{}'",
+                std::str::from_utf8(path).unwrap(),
+                if expected { " not" } else { "" },
+                std::str::from_utf8(pattern).unwrap(),
+            );
         }
 
-        assert_glob!(true, b"", b"");
-        assert_glob!(true, b"abc", b"abc");
-        assert_glob!(false, b"ab", b"abc");
-        assert_glob!(true, b"a?c", b"abc");
-        assert_glob!(false, b"a??", b"a/c");
-        assert_glob!(true, b"a[A-Z]c", b"aBc");
-        assert_glob!(false, b"a[A-Z]c", b"abc");
-        assert_glob!(true, b"a[!0-9A-CD-FGH]c", b"abc");
+        let mut glob = Glob::default();
 
-        assert_glob!(true, b"*", b"");
-        assert_glob!(true, b"*", b"a");
-        assert_glob!(true, b"*", b"abc");
-        assert_glob!(true, b"a*c", b"ac");
-        assert_glob!(true, b"a*c", b"abc");
-        assert_glob!(true, b"a*c", b"abbbc");
-        assert_glob!(true, b"a*/", b"abc/");
-        assert_glob!(true, b"a*/c", b"a/c");
-        assert_glob!(true, b"a*/c", b"abbb/c");
-        assert_glob!(true, b"a*[0-9]/c", b"abbb5/c");
-        assert_glob!(false, b"a*c", b"a/c");
-        assert_glob!(true, b"a*bx*cy*d", b"a00bx000cy0000d");
+        assert_glob(&mut glob, true, b"", b"");
+        assert_glob(&mut glob, true, b"abc", b"abc");
+        assert_glob(&mut glob, false, b"ab", b"abc");
+        assert_glob(&mut glob, true, b"a?c", b"abc");
+        assert_glob(&mut glob, false, b"a??", b"a/c");
+        assert_glob(&mut glob, true, b"a[A-Z]c", b"aBc");
+        assert_glob(&mut glob, false, b"a[A-Z]c", b"abc");
+        assert_glob(&mut glob, true, b"a[!0-9A-CD-FGH]c", b"abc");
 
-        assert_glob!(true, b"a/**/c", b"a/c");
-        assert_glob!(true, b"a/**/c", b"a/b/c");
-        assert_glob!(true, b"a/**/c", b"a/bb/bbb/c");
-        assert_glob!(true, b"a/**/c", b"a/a/bb/bbb/c");
-        assert_glob!(true, b"**/c", b"c");
-        assert_glob!(true, b"**/c", b"a/c");
-        assert_glob!(false, b"**/c", b"ac");
-        assert_glob!(false, b"**/c", b"a/bc");
-        assert_glob!(true, b"**/c", b"ab/c");
-        assert_glob!(true, b"**/c", b"a/b/c");
+        assert_glob(&mut glob, true, b"*", b"");
+        assert_glob(&mut glob, true, b"*", b"a");
+        assert_glob(&mut glob, true, b"*", b"abc");
+        assert_glob(&mut glob, true, b"a*c", b"ac");
+        assert_glob(&mut glob, true, b"a*c", b"abc");
+        assert_glob(&mut glob, true, b"a*c", b"abbbc");
+        assert_glob(&mut glob, true, b"a*/", b"abc/");
+        assert_glob(&mut glob, true, b"a*/c", b"a/c");
+        assert_glob(&mut glob, true, b"a*/c", b"abbb/c");
+        assert_glob(&mut glob, true, b"a*[0-9]/c", b"abbb5/c");
+        assert_glob(&mut glob, false, b"a*c", b"a/c");
+        assert_glob(&mut glob, true, b"a*bx*cy*d", b"a00bx000cy0000d");
 
-        assert_glob!(true, b"a{b,c}d", b"abd");
-        assert_glob!(true, b"a{b,c}d", b"acd");
-        assert_glob!(true, b"a*{b,c}d", b"aaabd");
-        assert_glob!(true, b"a*{b,c}d", b"abbbd");
-        assert_glob!(true, b"a*{b*,c}d", b"acdbbczzcd");
-        assert_glob!(true, b"a{b,c*}d", b"aczd");
-        assert_glob!(true, b"a*{b,c*}d", b"acdbczzzd");
+        assert_glob(&mut glob, true, b"a/**/c", b"a/c");
+        assert_glob(&mut glob, true, b"a/**/c", b"a/b/c");
+        assert_glob(&mut glob, true, b"a/**/c", b"a/bb/bbb/c");
+        assert_glob(&mut glob, true, b"a/**/c", b"a/a/bb/bbb/c");
+        assert_glob(&mut glob, true, b"**/c", b"c");
+        assert_glob(&mut glob, true, b"**/c", b"a/c");
+        assert_glob(&mut glob, false, b"**/c", b"ac");
+        assert_glob(&mut glob, false, b"**/c", b"a/bc");
+        assert_glob(&mut glob, true, b"**/c", b"ab/c");
+        assert_glob(&mut glob, true, b"**/c", b"a/b/c");
+
+        assert_glob(&mut glob, true, b"a{b,c}d", b"abd");
+        assert_glob(&mut glob, true, b"a{b,c}d", b"acd");
+        assert_glob(&mut glob, true, b"a*{b,c}d", b"aaabd");
+        assert_glob(&mut glob, true, b"a*{b,c}d", b"abbbd");
+        assert_glob(&mut glob, true, b"a*{b*,c}d", b"acdbbczzcd");
+        assert_glob(&mut glob, true, b"a{b,c*}d", b"aczd");
+        assert_glob(&mut glob, true, b"a*{b,c*}d", b"acdbczzzd");
     }
 }

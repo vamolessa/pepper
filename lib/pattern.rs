@@ -1208,26 +1208,24 @@ mod tests {
 
     #[test]
     fn bad_pattern() {
-        macro_rules! assert_err {
-            ($expected:expr, $value:expr) => {
-                match $value {
-                    Ok(_) => assert!(false),
-                    Err(e) => assert_eq!($expected, e),
-                }
-            };
+        fn assert_err(expected: PatternError, value: Result<Pattern, PatternError>) {
+            match value {
+                Ok(_) => assert!(false),
+                Err(e) => assert_eq!(expected, e),
+            }
         }
 
-        assert_err!(PatternError::UnexpectedEndOfPattern, try_new_pattern("("));
-        assert_err!(PatternError::Unescaped(')'), try_new_pattern(")"));
-        assert_err!(PatternError::UnexpectedEndOfPattern, try_new_pattern("["));
-        assert_err!(PatternError::Unescaped(']'), try_new_pattern("]"));
-        assert_err!(PatternError::EmptyGroup, try_new_pattern("[]"));
-        assert_err!(PatternError::UnexpectedEndOfPattern, try_new_pattern("{"));
-        assert_err!(PatternError::Unescaped('}'), try_new_pattern("}"));
-        assert_err!(PatternError::UnexpectedEndOfPattern, try_new_pattern("%"));
-        assert_err!(PatternError::Unescaped('!'), try_new_pattern("!"));
-        assert_err!(PatternError::InvalidEscaping('@'), try_new_pattern("%@"));
-        assert_err!(PatternError::Unescaped('|'), try_new_pattern("|"));
-        assert_err!(PatternError::UnexpectedEndOfPattern, try_new_pattern("a|"));
+        assert_err(PatternError::UnexpectedEndOfPattern, try_new_pattern("("));
+        assert_err(PatternError::Unescaped(')'), try_new_pattern(")"));
+        assert_err(PatternError::UnexpectedEndOfPattern, try_new_pattern("["));
+        assert_err(PatternError::Unescaped(']'), try_new_pattern("]"));
+        assert_err(PatternError::EmptyGroup, try_new_pattern("[]"));
+        assert_err(PatternError::UnexpectedEndOfPattern, try_new_pattern("{"));
+        assert_err(PatternError::Unescaped('}'), try_new_pattern("}"));
+        assert_err(PatternError::UnexpectedEndOfPattern, try_new_pattern("%"));
+        assert_err(PatternError::Unescaped('!'), try_new_pattern("!"));
+        assert_err(PatternError::InvalidEscaping('@'), try_new_pattern("%@"));
+        assert_err(PatternError::Unescaped('|'), try_new_pattern("|"));
+        assert_err(PatternError::UnexpectedEndOfPattern, try_new_pattern("a|"));
     }
 }

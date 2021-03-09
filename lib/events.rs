@@ -617,58 +617,56 @@ mod tests {
     fn key_serialization() {
         use crate::serialization::{DeserializationSlice, SerializationBuf};
 
-        macro_rules! assert_key_serialization {
-            ($key:expr) => {
-                let mut buf = SerializationBuf::default();
-                let _ = serialize_key($key, &mut buf);
-                let slice = buf.as_slice();
-                let mut deserializer = DeserializationSlice::from_slice(slice);
-                assert!(!deserializer.as_slice().is_empty());
-                match deserialize_key(&mut deserializer) {
-                    Ok(key) => assert_eq!($key, key),
-                    Err(_) => assert!(false),
-                }
-            };
+        fn assert_key_serialization(key: Key) {
+            let mut buf = SerializationBuf::default();
+            let _ = serialize_key(key, &mut buf);
+            let slice = buf.as_slice();
+            let mut deserializer = DeserializationSlice::from_slice(slice);
+            assert!(!deserializer.as_slice().is_empty());
+            match deserialize_key(&mut deserializer) {
+                Ok(k) => assert_eq!(key, k),
+                Err(_) => assert!(false),
+            }
         }
 
-        assert_key_serialization!(Key::None);
-        assert_key_serialization!(Key::Backspace);
-        assert_key_serialization!(Key::Enter);
-        assert_key_serialization!(Key::Left);
-        assert_key_serialization!(Key::Right);
-        assert_key_serialization!(Key::Up);
-        assert_key_serialization!(Key::Down);
-        assert_key_serialization!(Key::Home);
-        assert_key_serialization!(Key::End);
-        assert_key_serialization!(Key::PageUp);
-        assert_key_serialization!(Key::PageDown);
-        assert_key_serialization!(Key::Tab);
-        assert_key_serialization!(Key::Delete);
-        assert_key_serialization!(Key::F(0));
-        assert_key_serialization!(Key::F(9));
-        assert_key_serialization!(Key::F(12));
-        assert_key_serialization!(Key::F(99));
-        assert_key_serialization!(Key::Char('a'));
-        assert_key_serialization!(Key::Char('z'));
-        assert_key_serialization!(Key::Char('A'));
-        assert_key_serialization!(Key::Char('Z'));
-        assert_key_serialization!(Key::Char('0'));
-        assert_key_serialization!(Key::Char('9'));
-        assert_key_serialization!(Key::Char('$'));
-        assert_key_serialization!(Key::Ctrl('a'));
-        assert_key_serialization!(Key::Ctrl('z'));
-        assert_key_serialization!(Key::Ctrl('A'));
-        assert_key_serialization!(Key::Ctrl('Z'));
-        assert_key_serialization!(Key::Ctrl('0'));
-        assert_key_serialization!(Key::Ctrl('9'));
-        assert_key_serialization!(Key::Ctrl('$'));
-        assert_key_serialization!(Key::Alt('a'));
-        assert_key_serialization!(Key::Alt('z'));
-        assert_key_serialization!(Key::Alt('A'));
-        assert_key_serialization!(Key::Alt('Z'));
-        assert_key_serialization!(Key::Alt('0'));
-        assert_key_serialization!(Key::Alt('9'));
-        assert_key_serialization!(Key::Alt('$'));
-        assert_key_serialization!(Key::Esc);
+        assert_key_serialization(Key::None);
+        assert_key_serialization(Key::Backspace);
+        assert_key_serialization(Key::Enter);
+        assert_key_serialization(Key::Left);
+        assert_key_serialization(Key::Right);
+        assert_key_serialization(Key::Up);
+        assert_key_serialization(Key::Down);
+        assert_key_serialization(Key::Home);
+        assert_key_serialization(Key::End);
+        assert_key_serialization(Key::PageUp);
+        assert_key_serialization(Key::PageDown);
+        assert_key_serialization(Key::Tab);
+        assert_key_serialization(Key::Delete);
+        assert_key_serialization(Key::F(0));
+        assert_key_serialization(Key::F(9));
+        assert_key_serialization(Key::F(12));
+        assert_key_serialization(Key::F(99));
+        assert_key_serialization(Key::Char('a'));
+        assert_key_serialization(Key::Char('z'));
+        assert_key_serialization(Key::Char('A'));
+        assert_key_serialization(Key::Char('Z'));
+        assert_key_serialization(Key::Char('0'));
+        assert_key_serialization(Key::Char('9'));
+        assert_key_serialization(Key::Char('$'));
+        assert_key_serialization(Key::Ctrl('a'));
+        assert_key_serialization(Key::Ctrl('z'));
+        assert_key_serialization(Key::Ctrl('A'));
+        assert_key_serialization(Key::Ctrl('Z'));
+        assert_key_serialization(Key::Ctrl('0'));
+        assert_key_serialization(Key::Ctrl('9'));
+        assert_key_serialization(Key::Ctrl('$'));
+        assert_key_serialization(Key::Alt('a'));
+        assert_key_serialization(Key::Alt('z'));
+        assert_key_serialization(Key::Alt('A'));
+        assert_key_serialization(Key::Alt('Z'));
+        assert_key_serialization(Key::Alt('0'));
+        assert_key_serialization(Key::Alt('9'));
+        assert_key_serialization(Key::Alt('$'));
+        assert_key_serialization(Key::Esc);
     }
 }
