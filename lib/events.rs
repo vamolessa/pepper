@@ -430,10 +430,9 @@ impl<'de> Serialize<'de> for ClientEventSource {
     where
         S: Serializer,
     {
-        // TODO: change to u8
         match self {
-            Self::ConnectionClient => u16::MAX.serialize(serializer),
-            Self::FocusedClient => (u16::MAX - 1).serialize(serializer),
+            Self::ConnectionClient => u8::MAX.serialize(serializer),
+            Self::FocusedClient => (u8::MAX - 1).serialize(serializer),
             Self::ClientHandle(handle) => handle.serialize(serializer),
         }
     }
@@ -444,9 +443,9 @@ impl<'de> Serialize<'de> for ClientEventSource {
     {
         let handle = ClientHandle::deserialize(deserializer)?;
         let index = handle.into_index();
-        if index == u16::MAX as _ {
+        if index == u8::MAX as _ {
             Ok(Self::ConnectionClient)
-        } else if index == (u16::MAX - 1) as _ {
+        } else if index == (u8::MAX - 1) as _ {
             Ok(Self::FocusedClient)
         } else {
             Ok(Self::ClientHandle(handle))

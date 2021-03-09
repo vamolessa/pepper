@@ -8,7 +8,7 @@ use crate::{
 };
 
 #[derive(Default, Clone, Copy, Eq, PartialEq)]
-pub struct ClientHandle(u16);
+pub struct ClientHandle(u8);
 
 impl ClientHandle {
     pub fn into_index(self) -> usize {
@@ -16,7 +16,7 @@ impl ClientHandle {
     }
 
     pub fn from_index(index: usize) -> Option<ClientHandle> {
-        if index <= u16::MAX as usize {
+        if index <= u8::MAX as usize {
             Some(ClientHandle(index as _))
         } else {
             None
@@ -36,16 +36,16 @@ impl<'de> Serialize<'de> for ClientHandle {
     where
         D: Deserializer<'de>,
     {
-        Ok(Self(u16::deserialize(deserializer)?))
+        Ok(Self(u8::deserialize(deserializer)?))
     }
 }
 
 impl FromArgValue for ClientHandle {
     fn from_arg_value(value: &str) -> Result<Self, String> {
-        let index = value
-            .parse::<u16>()
-            .map_err(|e| format!("could not parse client index: {}", e))?;
-        Ok(Self(index))
+        match value.parse() {
+            Ok(index) => Ok(Self(index)),
+            Err(e) => Err(format!("could not parse client index: {}", e)),
+        }
     }
 }
 

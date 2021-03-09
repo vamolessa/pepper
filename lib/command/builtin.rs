@@ -320,10 +320,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                     if let Some(client) = ctx.clients.get_mut(client_handle) {
                         client.set_buffer_view_handle(Some(handle));
                     }
-
-                    use fmt::Write;
-                    ctx.output.clear();
-                    let _ = write!(ctx.output, "{}", handle);
                     Ok(None)
                 }
                 Err(BufferViewError::InvalidPath) => Err(CommandError::InvalidPath(path.into())),
@@ -846,10 +842,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                     }
                 });
             }
-
-            use fmt::Write;
-            ctx.output.clear();
-            let _ = write!(ctx.output, "{}", handle);
 
             Ok(None)
         },
