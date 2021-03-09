@@ -101,20 +101,20 @@ impl ModeState for State {
                 command_buf[..input.len()].copy_from_slice(input.as_bytes());
                 let command = unsafe { std::str::from_utf8_unchecked(&command_buf[..input.len()]) };
 
-                let mut output = String::new();
-                let op = CommandManager::eval(
+                let mut output = ctx.editor.string_pool.acquire();
+                let operation = match CommandManager::eval(
                     ctx.editor,
                     ctx.platform,
                     ctx.clients,
                     Some(ctx.client_handle),
                     command,
                     &mut output,
-                );
-                let op = match op {
+                ) {
                     Ok(None) => None,
                     Ok(Some(CommandOperation::Quit)) => Some(ModeOperation::Quit),
                     Ok(Some(CommandOperation::QuitAll)) => Some(ModeOperation::QuitAll),
                     Err(error) => {
+                        output.clear();
                         let commands = &ctx.editor.commands;
                         let buffers = &ctx.editor.buffers;
                         ctx.editor
@@ -128,11 +128,16 @@ impl ModeState for State {
                     }
                 };
 
+                if !output.is_empty() {
+                    ctx.editor.status_bar.write(MessageKind::Info).str(&output);
+                }
+                ctx.editor.string_pool.release(output);
+
                 if ctx.editor.mode.kind() == ModeKind::Command {
                     Mode::change_to(ctx, ModeKind::default());
                 }
 
-                return op;
+                return operation;
             }
         }
 

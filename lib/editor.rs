@@ -139,8 +139,8 @@ impl Editor {
             }
         };
 
-        let mut text = String::new();
-        if let Err(_) = file.read_to_string(&mut text) {
+        let mut source = String::new();
+        if let Err(_) = file.read_to_string(&mut source) {
             self.status_bar
                 .write(MessageKind::Error)
                 .fmt(format_args!("could not read config file '{}'", path));
@@ -148,23 +148,26 @@ impl Editor {
         }
 
         let mut output = self.string_pool.acquire();
-        for command in CommandIter(&text) {
+        let mut operation = None;
+        for command in CommandIter(&source) {
             match CommandManager::eval(self, platform, clients, None, command, &mut output) {
                 Ok(None) => (),
-                Ok(Some(op @ CommandOperation::Quit))
-                | Ok(Some(op @ CommandOperation::QuitAll)) => return Some(op),
+                Ok(Some(op)) => {
+                    operation = Some(op);
+                    break;
+                }
                 Err(error) => {
                     self.status_bar.write(MessageKind::Error).fmt(format_args!(
                         "{}",
                         error.display(command, &self.commands, &self.buffers)
                     ));
+                    operation = None;
                     break;
                 }
             }
         }
         self.string_pool.release(output);
-
-        None
+        operation
     }
 
     pub fn on_pre_render(&mut self, clients: &mut ClientManager) -> bool {
@@ -350,8 +353,8 @@ impl Editor {
                     ClientEventSource::ClientHandle(handle) => handle,
                 };
 
-                let mut flow = EditorControlFlow::Continue;
                 let mut output = self.string_pool.acquire();
+                let mut flow = EditorControlFlow::Continue;
                 for command in CommandIter(commands) {
                     match CommandManager::eval(
                         self,
@@ -377,7 +380,7 @@ impl Editor {
                             ));
                             break;
                         }
-                    };
+                    }
                 }
                 self.string_pool.release(output);
                 flow

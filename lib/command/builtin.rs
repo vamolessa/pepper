@@ -322,6 +322,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                     }
 
                     use fmt::Write;
+                    ctx.output.clear();
                     let _ = write!(ctx.output, "{}", handle);
                     Ok(None)
                 }
@@ -563,6 +564,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 None => match ctx.editor.config.display_config(key) {
                     Some(display) => {
                         use fmt::Write;
+                        ctx.output.clear();
                         let _ = write!(ctx.output, "{}", display);
                         Ok(None)
                     }
@@ -598,6 +600,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 }
                 None => {
                     use fmt::Write;
+                    ctx.output.clear();
                     let _ = write!(ctx.output, "{:x}", color.into_u32());
                 }
             }
@@ -744,7 +747,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                     register.clear();
                     register.push_str(value);
                 }
-                None => ctx.output.push_str(register),
+                None => {
+                    ctx.output.clear();
+                    ctx.output.push_str(register);
+                }
             }
 
             Ok(None)
@@ -833,6 +839,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             }
 
             use fmt::Write;
+            ctx.output.clear();
             let _ = write!(ctx.output, "{}", handle);
 
             Ok(None)
