@@ -11,8 +11,8 @@ use crate::{
     buffer_position::BufferPosition,
     buffer_view::BufferViewError,
     command::{
-        BuiltinCommand, CommandContext, CommandError, CommandOperation, CommandSource,
-        CompletionSource, CustomCommand,
+        BuiltinCommand, CommandContext, CommandError, CommandIter, CommandManager,
+        CommandOperation, CommandSource, CompletionSource, CustomCommand,
     },
     config::{ParseConfigError, CONFIG_NAMES},
     editor::Editor,
@@ -102,6 +102,57 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 }
             }
             Ok(None)
+        },
+    },
+    BuiltinCommand {
+        name: "try",
+        alias: "",
+        help: "",
+        completions: &[],
+        func: |ctx| {
+            fn run_body<'a>(
+                ctx: &mut CommandContext,
+                body: &'a str
+            ) -> Result<Option<CommandOperation>, CommandError<'a>> {
+                for command in CommandIter(body) {
+                    match CommandManager::eval_command(
+                        ctx.editor,
+                        ctx.platform,
+                        ctx.clients,
+                        ctx.client_handle,
+                        command,
+                        ctx.output,
+                    ) {
+                        Ok(None) => (),
+                        Ok(Some(op)) => return Ok(Some(op)),
+                        Err(error) => return Err(error),
+                    }
+                }
+                Ok(None)
+            }
+
+            ctx.args.assert_no_bang()?;
+            ctx.args.get_flags(&mut [])?;
+
+            let try_body = ctx.args.next()?;
+            let catch_keyword = ctx.args.try_next()?;
+            let catch_body = if let Some(catch_keyword) = catch_keyword {
+                if catch_keyword != "catch" {
+                    return Err(CommandError::InvalidToken(catch_keyword));
+                }
+
+                Some(ctx.args.next()?)
+            } else {
+                None
+            };
+
+            match run_body(ctx, try_body) {
+                Ok(op) => Ok(op),
+                Err(_) => match catch_body {
+                    Some(body) => run_body(ctx, body),
+                    None => Ok(None),
+                }
+            }
         },
     },
     BuiltinCommand {

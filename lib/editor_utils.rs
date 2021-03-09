@@ -26,7 +26,7 @@ impl ReadLine {
         self.prompt.clear();
         self.prompt.push_str(prompt);
     }
-    
+
     pub fn input(&self) -> &str {
         &self.input
     }
