@@ -7,7 +7,7 @@ use crate::{
     command::{CommandIter, CommandManager, CommandOperation},
     config::Config,
     editor_utils::{MessageKind, ReadLine, StatusBar, StringPool},
-    events::{parse_all_keys, ClientEvent, ClientEventSource, EditorEvent, EditorEventQueue},
+    events::{KeyParser, ClientEvent, ClientEventSource, EditorEvent, EditorEventQueue},
     keymap::{KeyMapCollection, MatchResult},
     lsp,
     mode::{Mode, ModeContext, ModeKind, ModeOperation},
@@ -401,7 +401,7 @@ impl Editor {
             return;
         }
 
-        for key in parse_all_keys(keys) {
+        for key in KeyParser::new(keys) {
             match key {
                 Ok(key) => self.buffered_keys.0.push(key),
                 Err(error) => {

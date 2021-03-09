@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    events::{parse_all_keys, KeyParseAllError},
+    events::{KeyParser, KeyParseAllError},
     mode::ModeKind,
     platform::Key,
 };
@@ -36,7 +36,7 @@ impl KeyMapCollection {
     ) -> Result<(), ParseKeyMapError> {
         fn parse_keys(text: &str) -> Result<Vec<Key>, KeyParseAllError> {
             let mut keys = Vec::new();
-            for key in parse_all_keys(text) {
+            for key in KeyParser::new(text) {
                 match key {
                     Ok(key) => keys.push(key),
                     Err(error) => return Err(error),

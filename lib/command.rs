@@ -107,7 +107,16 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
             message: fmt::Arguments,
         ) -> fmt::Result {
             let error_offset = error_token.location - this.location;
-            let error_len = error_token.len;
+
+            let error_len = this.command[error_offset..(error_offset + error_token.len)]
+                .chars()
+                .count();
+            let error_offset = this
+                .command
+                .char_indices()
+                .take_while(|(i, _)| *i < error_offset)
+                .count();
+
             write!(
                 f,
                 "{}\n{: >offset$}{:^<len$}\n{}",

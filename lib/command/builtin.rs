@@ -717,10 +717,16 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 {
                     Ok(()) => (),
                     Err(ParseKeyMapError::From(e)) => {
-                        return Err(CommandError::KeyParseError(from[e.index..].into(), e.error))
+                        let token = &from[e.index..];
+                        let end = token.chars().next().map(char::len_utf8).unwrap_or(0);
+                        let token = token[..end].into();
+                        return Err(CommandError::KeyParseError(token, e.error))
                     }
                     Err(ParseKeyMapError::To(e)) => {
-                        return Err(CommandError::KeyParseError(to[e.index..].into(), e.error))
+                        let token = &to[e.index..];
+                        let end = token.chars().next().map(char::len_utf8).unwrap_or(0);
+                        let token = token[..end].into();
+                        return Err(CommandError::KeyParseError(token, e.error))
                     }
                 }
             }

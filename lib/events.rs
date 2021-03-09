@@ -103,16 +103,22 @@ pub struct KeyParseAllError {
 }
 impl fmt::Display for KeyParseAllError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.error.fmt(f)?;
-        f.write_fmt(format_args!(" at index: {}", self.index))?;
-        Ok(())
+        f.write_fmt(format_args!("{} at index: {}", self.error, self.index))
     }
 }
 impl Error for KeyParseAllError {}
 
 pub struct KeyParser<'a> {
-    len: usize,
+    raw: &'a str,
     chars: Chars<'a>,
+}
+impl<'a> KeyParser<'a> {
+    pub fn new(raw: &'a str) -> Self {
+        Self {
+            raw,
+            chars: raw.chars(),
+        }
+    }
 }
 impl<'a> Iterator for KeyParser<'a> {
     type Item = Result<Key, KeyParseAllError>;
@@ -123,22 +129,21 @@ impl<'a> Iterator for KeyParser<'a> {
         }
         match parse_key(&mut self.chars) {
             Ok(key) => Some(Ok(key)),
-            Err(error) => Some(Err(KeyParseAllError {
-                index: self.len - self.chars.as_str().len(),
-                error,
-            })),
+            Err(error) => {
+                let parsed_len = self.raw.len() - self.chars.as_str().len();
+                let index = self.raw[..parsed_len]
+                    .char_indices()
+                    .next_back()
+                    .unwrap_or((0, '\0'))
+                    .0;
+
+                Some(Err(KeyParseAllError { index, error }))
+            }
         }
     }
 }
 
-pub fn parse_all_keys<'a>(raw: &'a str) -> KeyParser<'a> {
-    KeyParser {
-        len: raw.len(),
-        chars: raw.chars(),
-    }
-}
-
-pub fn parse_key(chars: &mut impl Iterator<Item = char>) -> Result<Key, KeyParseError> {
+fn parse_key(chars: &mut impl Iterator<Item = char>) -> Result<Key, KeyParseError> {
     #[inline]
     fn next(chars: &mut impl Iterator<Item = char>) -> Result<char, KeyParseError> {
         match chars.next() {
