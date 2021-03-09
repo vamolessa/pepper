@@ -117,7 +117,8 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
                 self,
                 f,
                 token,
-                format_args!("\n{}", error.display(&command, self.buffers)),
+                // TODO: ops! can't use the ptr math here!
+                format_args!("\n{}", "ops"/*error.display(&command, self.buffers)*/),
             ),
             CommandError::InvalidCommandName(token) => write(
                 self,
