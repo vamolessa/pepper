@@ -537,7 +537,7 @@ impl<'a> CommandArgs<'a> {
                     };
 
                     match tokens.next() {
-                        Some((CommandTokenKind::Text, _)) => (),
+                        Some((CommandTokenKind::Text, _)) => *value = Some(""),
                         Some((CommandTokenKind::Flag, _)) => {
                             *value = Some("");
                             tokens.rest = previous_state;

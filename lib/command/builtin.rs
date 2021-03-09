@@ -243,7 +243,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
 
             let mut flags = [("error", None)];
             ctx.args.get_flags(&mut flags)?;
-            let error =flags[0].1.is_some();
+            let error = flags[0].1.is_some();
 
             let message_kind = if error {
                 MessageKind::Error
@@ -707,18 +707,21 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 ModeKind::Command,
             ];
             for ((_, flag), &mode) in flags.iter().zip(modes.iter()) {
-                if flag.is_some() {
-                    ctx.editor
-                        .keymaps
-                        .parse_and_map(mode, from, to)
-                        .map_err(|e| match e {
-                            ParseKeyMapError::From(e) => {
-                                CommandError::KeyParseError(from[e.index..].into(), e.error)
-                            }
-                            ParseKeyMapError::To(e) => {
-                                CommandError::KeyParseError(to[e.index..].into(), e.error)
-                            }
-                        })?;
+                if !flag.is_some() {
+                    continue;
+                }
+
+                match ctx.editor
+                    .keymaps
+                    .parse_and_map(mode, from, to)
+                {
+                    Ok(()) => (),
+                    Err(ParseKeyMapError::From(e)) => {
+                        return Err(CommandError::KeyParseError(from[e.index..].into(), e.error))
+                    }
+                    Err(ParseKeyMapError::To(e)) => {
+                        return Err(CommandError::KeyParseError(to[e.index..].into(), e.error))
+                    }
                 }
             }
 
