@@ -601,7 +601,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 None => {
                     use fmt::Write;
                     ctx.output.clear();
-                    let _ = write!(ctx.output, "{:x}", color.into_u32());
+                    let _ = write!(ctx.output, "0x{:0<6x}", color.into_u32());
                 }
             }
 
