@@ -280,6 +280,28 @@ impl AsyncReader {
     }
 }
 
+fn read_all_bytes(handle: &Handle, mut buf: &mut [u8]) -> bool {
+    while !buf.is_empty() {
+        let mut read_len = 0;
+        let result = unsafe {
+            ReadFile(
+                handle.0,
+                buf.as_ptr() as _,
+                buf.len() as _,
+                &mut read_len,
+                std::ptr::null_mut(),
+            )
+        };
+        if result == FALSE {
+            return false;
+        }
+
+        buf = &mut buf[(read_len as usize)..];
+    }
+
+    true
+}
+
 fn write_all_bytes(handle: &Handle, mut buf: &[u8]) -> bool {
     while !buf.is_empty() {
         let mut write_len = 0;
@@ -737,6 +759,10 @@ impl ConnectionToServer {
         write_all_bytes(self.reader.handle(), buf)
     }
 
+    pub fn read(&mut self, buf: &mut [u8]) -> bool {
+        read_all_bytes(self.reader.handle(), buf)
+    }
+
     pub fn read_async(&mut self) -> Result<&[u8], ()> {
         match self.reader.read_async(&mut self.buf) {
             ReadResult::Waiting => Ok(&[]),
@@ -1118,7 +1144,14 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: HANDLE, output_handle
 
     let mut connection =
         ConnectionToServer::connect(pipe_path, ClientApplication::connection_buffer_len());
-    let mut application = ClientApplication::new();
+
+    let mut client_index = 0;
+    if !connection.read(std::slice::from_mut(&mut client_index)) {
+        return;
+    }
+
+    let client_handle = ClientHandle::from_index(client_index as _).unwrap();
+    let mut application = ClientApplication::new(client_handle);
 
     let bytes = application.init(args);
     if !connection.write(bytes) {

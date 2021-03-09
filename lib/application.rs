@@ -136,6 +136,13 @@ impl ServerApplication {
                     ApplicationEvent::Redraw => (),
                     ApplicationEvent::ConnectionOpen { handle } => {
                         clients.on_client_joined(handle);
+                        let mut buf = platform.buf_pool.acquire();
+                        let write = buf.write();
+                        write.clear();
+                        write.push(handle.into_index() as _);
+                        let buf = buf.share();
+                        platform.buf_pool.release(buf.clone());
+                        platform.enqueue_request(PlatformRequest::WriteToClient { handle, buf });
                     }
                     ApplicationEvent::ConnectionClose { handle } => {
                         clients.on_client_left(handle);
@@ -226,9 +233,9 @@ impl ServerApplication {
                 let has_focus = focused_client_handle == Some(c.handle());
 
                 let mut buf = platform.buf_pool.acquire();
-                let render_buf = buf.write();
-                render_buf.clear();
-                render_buf.extend_from_slice(&[0; 4]);
+                let write = buf.write();
+                write.clear();
+                write.extend_from_slice(&[0; 4]);
                 ui::render(
                     &editor,
                     c.buffer_view_handle(),
@@ -236,13 +243,13 @@ impl ServerApplication {
                     c.viewport_size.1 as _,
                     c.scroll,
                     has_focus,
-                    render_buf,
+                    write,
                     &mut c.status_bar_buffer,
                 );
 
-                let len = render_buf.len() as u32 - 4;
+                let len = write.len() as u32 - 4;
                 let len_bytes = len.to_le_bytes();
-                render_buf[..4].copy_from_slice(&len_bytes);
+                write[..4].copy_from_slice(&len_bytes);
 
                 let handle = c.handle();
                 let buf = buf.share();
@@ -258,6 +265,7 @@ impl ServerApplication {
 }
 
 pub struct ClientApplication {
+    handle: ClientHandle,
     client_event_source: ClientEventSource,
     read_buf: Vec<u8>,
     write_buf: SerializationBuf,
@@ -268,7 +276,7 @@ impl ClientApplication {
         2 * 1024
     }
 
-    pub fn new() -> Self {
+    pub fn new(handle: ClientHandle) -> Self {
         static mut STDOUT: Option<io::Stdout> = None;
         let mut stdout = unsafe {
             STDOUT = Some(io::stdout());
@@ -282,6 +290,7 @@ impl ClientApplication {
         stdout.flush().unwrap();
 
         Self {
+            handle,
             client_event_source: ClientEventSource::ConnectionClient,
             read_buf: Vec::new(),
             write_buf: SerializationBuf::default(),
