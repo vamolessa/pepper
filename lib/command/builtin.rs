@@ -35,7 +35,7 @@ where
     match arg.parse() {
         Ok(arg) => Ok(arg),
         Err(_) => Err(CommandError::ParseArgError {
-            arg,
+            arg: arg.into(),
             type_name: any::type_name::<T>(),
         }),
     }
@@ -58,7 +58,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 Some(command_name) => {
                     let source = match commands.find_command(command_name) {
                         Some(source) => source,
-                        None => return Err(CommandError::CommandNotFound(command_name)),
+                        None => return Err(CommandError::CommandNotFound(command_name.into())),
                     };
 
                     let (alias, help) = match source {
@@ -110,10 +110,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         help: "",
         completions: &[],
         func: |ctx| {
-            fn run_body<'a>(
+            fn run_body(
                 ctx: &mut CommandContext,
-                body: &'a str
-            ) -> Result<Option<CommandOperation>, CommandError<'a>> {
+                body: &str
+            ) -> Result<Option<CommandOperation>, CommandError> {
                 for command in CommandIter(body) {
                     match CommandManager::eval_command(
                         ctx.editor,
@@ -138,7 +138,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             let catch_keyword = ctx.args.try_next()?;
             let catch_body = if let Some(catch_keyword) = catch_keyword {
                 if catch_keyword != "catch" {
-                    return Err(CommandError::InvalidToken(catch_keyword));
+                    return Err(CommandError::InvalidToken(catch_keyword.into()));
                 }
 
                 Some(ctx.args.next()?)
@@ -180,10 +180,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             ctx.args.assert_empty()?;
 
             if name.is_empty() {
-                return Err(CommandError::InvalidCommandName(name));
+                return Err(CommandError::InvalidCommandName(name.into()));
             }
             if !name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_')) {
-                return Err(CommandError::InvalidCommandName(name));
+                return Err(CommandError::InvalidCommandName(name.into()));
             }
 
             let command = CustomCommand {
@@ -321,7 +321,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                     let _ = write!(ctx.output, "{}", handle);
                     Ok(None)
                 }
-                Err(BufferViewError::InvalidPath) => Err(CommandError::InvalidPath(path)),
+                Err(BufferViewError::InvalidPath) => Err(CommandError::InvalidPath(path.into())),
             }
         },
     },
@@ -551,9 +551,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             match value {
                 Some(value) => match ctx.editor.config.parse_config(key, value) {
                     Ok(()) => Ok(None),
-                    Err(ParseConfigError::NotFound) => Err(CommandError::ConfigNotFound(key)),
+                    Err(ParseConfigError::NotFound) => Err(CommandError::ConfigNotFound(key.into())),
                     Err(ParseConfigError::InvalidValue) => {
-                        Err(CommandError::InvalidConfigValue { key, value })
+                        Err(CommandError::InvalidConfigValue { key: key.into(), value: value.into() })
                     }
                 },
                 None => match ctx.editor.config.display_config(key) {
@@ -562,7 +562,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                         let _ = write!(ctx.output, "{}", display);
                         Ok(None)
                     }
-                    None => Err(CommandError::ConfigNotFound(key)),
+                    None => Err(CommandError::ConfigNotFound(key.into())),
                 },
             }
         },
@@ -584,12 +584,12 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 .editor
                 .theme
                 .color_from_name(key)
-                .ok_or(CommandError::ColorNotFound(key))?;
+                .ok_or(CommandError::ColorNotFound(key.into()))?;
 
             match value {
                 Some(value) => {
                     let encoded = u32::from_str_radix(value, 16)
-                        .map_err(|_| CommandError::InvalidColorValue { key, value })?;
+                        .map_err(|_| CommandError::InvalidColorValue { key: key.into(), value: value.into() })?;
                     *color = Color::from_u32(encoded);
                 }
                 None => {
@@ -636,7 +636,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             let mut syntax = Syntax::new();
             syntax
                 .set_glob(glob.as_bytes())
-                .map_err(|_| CommandError::InvalidGlob(glob))?;
+                .map_err(|_| CommandError::InvalidGlob(glob.into()))?;
 
             let kinds = [
                 TokenKind::Keyword,
@@ -648,10 +648,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 TokenKind::Text,
             ];
             for ((_, flag), &kind) in flags.iter().zip(kinds.iter()) {
-                if let Some(flag) = flag {
+                if let Some(flag) = *flag {
                     syntax
                         .set_rule(kind, flag)
-                        .map_err(|e| CommandError::PatternError(flag, e))?;
+                        .map_err(|e| CommandError::PatternError(flag.into(), e))?;
                 }
             }
 
@@ -706,10 +706,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                         .parse_and_map(mode, from, to)
                         .map_err(|e| match e {
                             ParseKeyMapError::From(e) => {
-                                CommandError::KeyParseError(&from[e.index..], e.error)
+                                CommandError::KeyParseError(from[e.index..].into(), e.error)
                             }
                             ParseKeyMapError::To(e) => {
-                                CommandError::KeyParseError(&to[e.index..], e.error)
+                                CommandError::KeyParseError(to[e.index..].into(), e.error)
                             }
                         })?;
                 }
@@ -733,7 +733,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
 
             let register = match RegisterKey::from_str(key) {
                 Some(key) => ctx.editor.registers.get_mut(key),
-                None => return Err(CommandError::InvalidRegisterKey(key)),
+                None => return Err(CommandError::InvalidRegisterKey(key.into())),
             };
             match value {
                 Some(value) => {
@@ -893,7 +893,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
 
 fn current_buffer_and_main_position<'state, 'command>(
     ctx: &CommandContext<'state, 'command>,
-) -> Result<(BufferHandle, BufferPosition), CommandError<'command>> {
+) -> Result<(BufferHandle, BufferPosition), CommandError> {
     let view_handle = ctx.current_buffer_view_handle()?;
     let buffer_view = ctx
         .editor
@@ -927,7 +927,7 @@ fn access_lsp<'command, A>(
     ctx: &mut CommandContext,
     buffer_handle: BufferHandle,
     accessor: A,
-) -> Result<(), CommandError<'command>>
+) -> Result<(), CommandError>
 where
     A: FnOnce(&mut Editor, &mut Platform, &mut lsp::Client, &mut Json),
 {

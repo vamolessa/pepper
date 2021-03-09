@@ -10,7 +10,7 @@ use crate::{
     platform::Platform,
 };
 
-//mod builtin;
+mod builtin;
 
 pub const HISTORY_CAPACITY: usize = 10;
 
@@ -621,8 +621,7 @@ pub struct CommandManager {
 impl CommandManager {
     pub fn new() -> Self {
         Self {
-            //builtin_commands: builtin::COMMANDS,
-            builtin_commands: &[],
+            builtin_commands: builtin::COMMANDS,
             custom_commands: Vec::new(),
             history: VecDeque::with_capacity(HISTORY_CAPACITY),
         }
