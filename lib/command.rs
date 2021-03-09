@@ -539,7 +539,8 @@ pub enum CommandSource {
 }
 
 pub struct BuiltinCommand {
-    pub names: &'static [&'static str],
+    pub name: &'static str,
+    pub alias: &'static str,
     pub help: &'static str,
     pub completions: &'static [CompletionSource],
     pub func: CommandFn,
@@ -547,7 +548,7 @@ pub struct BuiltinCommand {
 
 pub struct CustomCommand {
     pub name: String,
-    pub alias: Option<String>,
+    pub alias: String,
     pub help: String,
     pub param_count: usize,
     pub body: String,
@@ -572,7 +573,7 @@ impl CommandManager {
         if let Some(i) = self
             .custom_commands
             .iter()
-            .position(|c| c.name == name || c.alias.as_ref().map(|a| a == name).unwrap_or(false))
+            .position(|c| c.alias == name || c.name == name)
         {
             return Some(CommandSource::Custom(i));
         }
@@ -580,7 +581,7 @@ impl CommandManager {
         if let Some(i) = self
             .builtin_commands
             .iter()
-            .position(|c| c.names.contains(&name))
+            .position(|c| c.alias == name || c.name == name)
         {
             return Some(CommandSource::Builtin(i));
         }
@@ -715,7 +716,8 @@ mod tests {
 
     fn create_commands() -> CommandManager {
         let builtin_commands = &[BuiltinCommand {
-            names: &["command-name", "c"],
+            name: "command-name",
+            alias: "c",
             help: "",
             completions: &[],
             func: |_| Ok(None),

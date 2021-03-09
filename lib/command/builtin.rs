@@ -43,7 +43,8 @@ where
 
 pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
-        names: &["help", "h"],
+        name: "help",
+        alias: "h",
         help: "prints help about command\nhelp [<command-name>]",
         completions: &[CompletionSource::Commands],
         func: |ctx| {
@@ -60,12 +61,23 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                         None => return Err(CommandError::CommandNotFound(command_name)),
                     };
 
-                    let help = match source {
-                        CommandSource::Builtin(i) => commands.builtin_commands()[i].help,
-                        CommandSource::Custom(i) => &commands.custom_commands()[i].help,
+                    let (alias, help) = match source {
+                        CommandSource::Builtin(i) => {
+                            let command = &commands.builtin_commands()[i];
+                            (command.alias, command.help)
+                        },
+                        CommandSource::Custom(i) => {
+                            let command = &commands.custom_commands()[i];
+                            (&command.alias[..], &command.help[..])
+                        }
                     };
 
-                    ctx.editor.status_bar.write(MessageKind::Info).str(help);
+                    let mut write = ctx.editor.status_bar.write(MessageKind::Info);
+                    write.str(help);
+                    if !alias.is_empty() {
+                        write.str("\nalias: ");
+                        write.str(alias);
+                    }
                 }
                 None => {
                     if let Some(client) = ctx.client_handle.and_then(|h| ctx.clients.get(h)) {
@@ -76,16 +88,15 @@ pub const COMMANDS: &[BuiltinCommand] = &[
 
                         let mut x = 0;
                         for command in commands.builtin_commands() {
-                            let name = command.names[0];
-                            if x + name.len() + 1 > width {
+                            if x + command.name.len() + 1 > width {
                                 x = 0;
                                 write.str("\n");
                             } else if x > 0 {
                                 x += 1;
                                 write.str(" ");
                             }
-                            write.str(name);
-                            x += name.len();
+                            write.str(command.name);
+                            x += command.name.len();
                         }
                     }
                 }
@@ -94,7 +105,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
-        names: &["command"],
+        name: "command",
+        alias: "",
         help: concat!(
             "define a new custom command\n",
             "command [<flags>] <name> <body>\n",
@@ -109,7 +121,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             let mut flags = [("help", None), ("alias", None), ("param-count", None)];
             ctx.args.get_flags(&mut flags)?;
             let help = flags[0].1.unwrap_or("");
-            let alias = flags[1].1;
+            let alias = flags[1].1.unwrap_or("");
             let param_count = flags[2].1.map(parse_arg).transpose()?.unwrap_or(0);
 
             let name = ctx.args.next()?;
@@ -125,7 +137,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
 
             let command = CustomCommand {
                 name: name.into(),
-                alias: alias.map(Into::into),
+                alias: alias.into(),
                 help: help.into(),
                 param_count,
                 body: body.into(),
@@ -136,7 +148,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
-        names: &["quit", "q"],
+        name: "quit",
+        alias: "q",
         help: "quits this client\nquit[!]\nwith '!' will discard any unsaved changes",
         completions: &[],
         func: |ctx| {
@@ -150,7 +163,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
-        names: &["quit-all", "qa"],
+        name: "quit-all",
+        alias: "qa",
         help: "quits all clients\nquit-all[!]\nwith '!' will discard any unsaved changes",
         completions: &[],
         func: |ctx| {
@@ -162,22 +176,37 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
-        names: &["print", "p"],
-        help: "prints arguments to the status bar\nprint <value>...",
+        name: "print",
+        alias: "",
+        help: concat!(
+            "prints arguments to the status bar\nprint <value>...\n",
+            " -error : will print the message as an error",
+        ),
         completions: &[],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
-            ctx.args.get_flags(&mut [])?;
 
-            let mut write = ctx.editor.status_bar.write(MessageKind::Info);
+            let mut flags = [("error", None)];
+            ctx.args.get_flags(&mut flags)?;
+            let error =flags[0].1.is_some();
+
+            let message_kind = if error {
+                MessageKind::Error
+            } else {
+                MessageKind::Info
+            };
+
+            let mut write = ctx.editor.status_bar.write(message_kind);
             while let Some(arg) = ctx.args.try_next()? {
                 write.str(arg);
             }
+
             Ok(None)
         },
     },
     BuiltinCommand {
-        names: &["source"],
+        name: "source",
+        alias: "",
         help: "loads a source file and execute its commands\nsource <path>",
         completions: &[CompletionSource::Files],
         func: |ctx| {
@@ -191,7 +220,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
-        names: &["open", "o"],
+        name: "open",
+        alias: "o",
         help: concat!(
             "opens a buffer for editting\nopen [<flags>] <path>\n",
             " -line=<number> : set cursor at line",
@@ -245,7 +275,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
-        names: &["save", "s"],
+        name: "save",
+        alias: "s",
         help: concat!(
             "save buffer\nsave [<flags>] [<path>]\n",
             " -buffer=<buffer-id> : if not specified, the current buffer is used",
@@ -285,7 +316,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
-        names: &["save-all", "sa"],
+        name: "save-all",
+        alias: "sa",
         help: "save all buffers\nsave-all",
         completions: &[],
         func: |ctx| {
@@ -308,7 +340,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
-        names: &["reload", "r"],
+        name: "reload",
+        alias: "r",
         help: concat!(
             "reload buffer from file\n",
             "reload[!] [<flags>]\n",
@@ -347,7 +380,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
-        names: &["reload-all", "ra"],
+        name: "reload-all",
+        alias: "ra",
         help:
             "reload all buffers from file\nreload-all[!]\nwith '!' will discard any unsaved changes",
         completions: &[],
@@ -374,7 +408,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
-        names: &["close", "c"],
+        name: "close",
+        alias: "c",
         help: concat!(
             "close buffer\n",
             "close[!] [<flags>]\n",
@@ -422,7 +457,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
-        names: &["close-all", "ca"],
+        name: "close-all",
+        alias: "ca",
         help: "close all buffers\nclose-all[!]\nwith '!' will discard any unsaved changes",
         completions: &[],
         func: |ctx| {
@@ -449,7 +485,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
-        names: &["config"],
+        name: "config",
+        alias: "",
         help: "accesses an editor config\nconfig <key> [<value>]",
         completions: &[(CompletionSource::Custom(CONFIG_NAMES))],
         func: |ctx| {
@@ -480,7 +517,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
-        names: &["color"],
+        name: "color",
+        alias: "",
         help: "accesses an editor theme color\ncolor <key> [<value>]",
         completions: &[CompletionSource::Custom(THEME_COLOR_NAMES)],
         func: |ctx| {
@@ -513,7 +551,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
-        names: &["syntax"],
+        name: "syntax",
+        alias: "",
         help: concat!(
             "creates a syntax definition with patterns for files that match a glob\n",
             "syntax [<flags>] <glob>\n",
@@ -574,7 +613,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
-        names: &["map"],
+        name: "map",
+        alias: "",
         help: concat!(
             "creates a keyboard mapping for an editor mode\n",
             "map [<flags>] <from> <to>\n",
@@ -628,7 +668,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
-        names: &["register"],
+        name: "register",
+        alias: "",
         help: "accesses an editor register\nregister <key> [<value>]",
         completions: &[],
         func: |ctx| {
@@ -656,7 +697,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
     // TODO: remove this command
     BuiltinCommand {
-        names: &["run"],
+        name: "run",
+        alias: "",
         help: "test command",
         completions: &[],
         func: |ctx| {
@@ -685,7 +727,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
-        names: &["lsp-start"],
+        name: "lsp-start",
+        alias: "",
         help: concat!(
             "starts a lsp server\n",
             "lsp-start [<flags>] <command> [<command-arg>...]\n",
@@ -741,7 +784,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
-        names: &["lsp-stop"],
+        name: "lsp-stop",
+        alias: "",
         help: "stops the lsp server associated with the current buffer\nlsp-stop",
         completions: &[],
         func: |ctx| {
@@ -758,7 +802,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
-        names: &["lsp-hover"],
+        name: "lsp-hover",
+        alias: "",
         help: "performs a lsp hover action at the current buffer's main cursor position\nlsp-hover",
         completions: &[],
         func: |mut ctx| {
@@ -774,7 +819,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
-        names: &["lsp-signature-help"],
+        name: "lsp-signature-help",
+        alias: "",
         help: concat!(
             "performs a lsp signature help action at the current buffer's main cursor position\n",
             "lsp-signature_help\n",

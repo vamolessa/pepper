@@ -239,7 +239,7 @@ fn filtered_to_picker_entry<'a>(
         FilteredEntrySource::Command(CommandSource::Builtin(i)) => {
             let command = &commands.builtin_commands()[i];
             PickerEntry {
-                name: &command.names[0],
+                name: command.name,
                 description: command.help.lines().next().unwrap_or(""),
                 score: entry.score,
             }
