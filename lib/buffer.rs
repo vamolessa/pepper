@@ -1525,68 +1525,65 @@ mod tests {
 
     #[test]
     fn buffer_content_word_at() {
-        macro_rules! assert_word {
-            ($word:expr, $pos:expr, $kind:expr, $text:expr) => {
-                assert_eq!($pos, $word.position);
-                assert_eq!($kind, $word.kind);
-                assert_eq!($text, $word.text);
-            };
-        };
         fn col(column: usize) -> BufferPosition {
             BufferPosition::line_col(0, column)
         }
 
+        fn assert_word(word: WordRefWithPosition, pos: BufferPosition, kind: WordKind, text: &str) {
+            assert_eq!(pos, word.position);
+            assert_eq!(kind, word.kind);
+            assert_eq!(text, word.text);
+        }
+
         let buffer = buffer_from_str("word");
-        assert_word!(buffer.word_at(col(0)), col(0), WordKind::Identifier, "word");
-        assert_word!(buffer.word_at(col(2)), col(0), WordKind::Identifier, "word");
-        assert_word!(buffer.word_at(col(4)), col(4), WordKind::Whitespace, "");
+        assert_word(buffer.word_at(col(0)), col(0), WordKind::Identifier, "word");
+        assert_word(buffer.word_at(col(2)), col(0), WordKind::Identifier, "word");
+        assert_word(buffer.word_at(col(4)), col(4), WordKind::Whitespace, "");
 
         let buffer = buffer_from_str("asd word+? asd");
-        assert_word!(buffer.word_at(col(3)), col(3), WordKind::Whitespace, " ");
-        assert_word!(buffer.word_at(col(4)), col(4), WordKind::Identifier, "word");
-        assert_word!(buffer.word_at(col(6)), col(4), WordKind::Identifier, "word");
-        assert_word!(buffer.word_at(col(8)), col(8), WordKind::Symbol, "+?");
-        assert_word!(buffer.word_at(col(9)), col(8), WordKind::Symbol, "+?");
-        assert_word!(buffer.word_at(col(10)), col(10), WordKind::Whitespace, " ");
+        assert_word(buffer.word_at(col(3)), col(3), WordKind::Whitespace, " ");
+        assert_word(buffer.word_at(col(4)), col(4), WordKind::Identifier, "word");
+        assert_word(buffer.word_at(col(6)), col(4), WordKind::Identifier, "word");
+        assert_word(buffer.word_at(col(8)), col(8), WordKind::Symbol, "+?");
+        assert_word(buffer.word_at(col(9)), col(8), WordKind::Symbol, "+?");
+        assert_word(buffer.word_at(col(10)), col(10), WordKind::Whitespace, " ");
     }
 
     #[test]
     fn buffer_content_words_from() {
-        macro_rules! assert_word {
-            ($word:expr, $pos:expr, $kind:expr, $text:expr) => {
-                let word = $word;
-                assert_eq!($pos, word.position);
-                assert_eq!($kind, word.kind);
-                assert_eq!($text, word.text);
-            };
-        };
         fn col(column: usize) -> BufferPosition {
             BufferPosition::line_col(0, column)
         }
 
+        fn assert_word(word: WordRefWithPosition, pos: BufferPosition, kind: WordKind, text: &str) {
+            assert_eq!(pos, word.position);
+            assert_eq!(kind, word.kind);
+            assert_eq!(text, word.text);
+        }
+
         let buffer = buffer_from_str("word");
         let (w, mut lw, mut rw) = buffer.words_from(col(0));
-        assert_word!(w, col(0), WordKind::Identifier, "word");
+        assert_word(w, col(0), WordKind::Identifier, "word");
         assert!(lw.next().is_none());
         assert!(rw.next().is_none());
         let (w, mut lw, mut rw) = buffer.words_from(col(2));
-        assert_word!(w, col(0), WordKind::Identifier, "word");
+        assert_word(w, col(0), WordKind::Identifier, "word");
         assert!(lw.next().is_none());
         assert!(rw.next().is_none());
         let (w, mut lw, mut rw) = buffer.words_from(col(4));
-        assert_word!(w, col(4), WordKind::Whitespace, "");
-        assert_word!(lw.next().unwrap(), col(0), WordKind::Identifier, "word");
+        assert_word(w, col(4), WordKind::Whitespace, "");
+        assert_word(lw.next().unwrap(), col(0), WordKind::Identifier, "word");
         assert!(lw.next().is_none());
         assert!(rw.next().is_none());
 
         let buffer = buffer_from_str("first second third");
         let (w, mut lw, mut rw) = buffer.words_from(col(8));
-        assert_word!(w, col(6), WordKind::Identifier, "second");
-        assert_word!(lw.next().unwrap(), col(5), WordKind::Whitespace, " ");
-        assert_word!(lw.next().unwrap(), col(0), WordKind::Identifier, "first");
+        assert_word(w, col(6), WordKind::Identifier, "second");
+        assert_word(lw.next().unwrap(), col(5), WordKind::Whitespace, " ");
+        assert_word(lw.next().unwrap(), col(0), WordKind::Identifier, "first");
         assert!(lw.next().is_none());
-        assert_word!(rw.next().unwrap(), col(12), WordKind::Whitespace, " ");
-        assert_word!(rw.next().unwrap(), col(13), WordKind::Identifier, "third");
+        assert_word(rw.next().unwrap(), col(12), WordKind::Whitespace, " ");
+        assert_word(rw.next().unwrap(), col(13), WordKind::Identifier, "third");
         assert!(rw.next().is_none());
     }
 

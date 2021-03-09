@@ -847,65 +847,67 @@ mod tests {
                 .position
         }
 
-        let mut ctx = TestContext::with_buffer("ab\nc e\nefgh\ni k\nlm");
-
-        macro_rules! assert_movement {
-            (($from_line:expr, $from_col:expr) => $movement:expr => ($to_line:expr, $to_col:expr)) => {
-                set_cursor(&mut ctx, BufferPosition::line_col($from_line, $from_col));
-                ctx.buffer_views
-                    .get_mut(ctx.buffer_view_handle)
-                    .unwrap()
-                    .move_cursors(
-                        &ctx.buffers,
-                        $movement,
-                        CursorMovementKind::PositionAndAnchor,
-                    );
-                assert_eq!(
-                    BufferPosition::line_col($to_line, $to_col),
-                    main_cursor_position(&ctx)
+        fn assert_movement(
+            ctx: &mut TestContext,
+            from: (usize, usize),
+            to: (usize, usize),
+            movement: CursorMovement,
+        ) {
+            set_cursor(ctx, BufferPosition::line_col(from.0, from.1));
+            ctx.buffer_views
+                .get_mut(ctx.buffer_view_handle)
+                .unwrap()
+                .move_cursors(
+                    &ctx.buffers,
+                    movement,
+                    CursorMovementKind::PositionAndAnchor,
                 );
-            };
+            assert_eq!(
+                BufferPosition::line_col(to.0, to.1),
+                main_cursor_position(ctx)
+            );
         }
 
-        assert_movement!((2, 2) => CursorMovement::ColumnsForward(0) => (2, 2));
-        assert_movement!((2, 2) => CursorMovement::ColumnsForward(1) => (2, 3));
-        assert_movement!((2, 2) => CursorMovement::ColumnsForward(2) => (2, 4));
-        assert_movement!((2, 2) => CursorMovement::ColumnsForward(3) => (3, 0));
-        assert_movement!((2, 2) => CursorMovement::ColumnsForward(6) => (3, 3));
-        assert_movement!((2, 2) => CursorMovement::ColumnsForward(7) => (4, 0));
-        assert_movement!((2, 2) => CursorMovement::ColumnsForward(999) => (4, 2));
+        let mut ctx = TestContext::with_buffer("ab\nc e\nefgh\ni k\nlm");
+        assert_movement(&mut ctx, (2, 2), (2, 2), CursorMovement::ColumnsForward(0));
+        assert_movement(&mut ctx, (2, 2), (2, 3), CursorMovement::ColumnsForward(1));
+        assert_movement(&mut ctx, (2, 2), (2, 4), CursorMovement::ColumnsForward(2));
+        assert_movement(&mut ctx, (2, 2), (3, 0), CursorMovement::ColumnsForward(3));
+        assert_movement(&mut ctx, (2, 2), (3, 3), CursorMovement::ColumnsForward(6));
+        assert_movement(&mut ctx, (2, 2), (4, 0), CursorMovement::ColumnsForward(7));
+        assert_movement(&mut ctx, (2, 2), (4, 2), CursorMovement::ColumnsForward(999));
 
-        assert_movement!((2, 2) => CursorMovement::ColumnsBackward(0) => (2, 2));
-        assert_movement!((2, 2) => CursorMovement::ColumnsBackward(1) => (2, 1));
-        assert_movement!((2, 0) => CursorMovement::ColumnsBackward(1) => (1, 3));
-        assert_movement!((2, 2) => CursorMovement::ColumnsBackward(3) => (1, 3));
-        assert_movement!((2, 2) => CursorMovement::ColumnsBackward(7) => (0, 2));
-        assert_movement!((2, 2) => CursorMovement::ColumnsBackward(999) => (0, 0));
+        assert_movement(&mut ctx, (2, 2), (2, 2), CursorMovement::ColumnsBackward(0));
+        assert_movement(&mut ctx, (2, 2), (2, 1), CursorMovement::ColumnsBackward(1));
+        assert_movement(&mut ctx, (2, 0), (1, 3), CursorMovement::ColumnsBackward(1));
+        assert_movement(&mut ctx, (2, 2), (1, 3), CursorMovement::ColumnsBackward(3));
+        assert_movement(&mut ctx, (2, 2), (0, 2), CursorMovement::ColumnsBackward(7));
+        assert_movement(&mut ctx, (2, 2), (0, 0), CursorMovement::ColumnsBackward(999));
 
-        assert_movement!((2, 2) => CursorMovement::WordsForward(0) => (2, 2));
-        assert_movement!((2, 0) => CursorMovement::WordsForward(1) => (2, 4));
-        assert_movement!((2, 0) => CursorMovement::WordsForward(2) => (3, 0));
-        assert_movement!((2, 2) => CursorMovement::WordsForward(3) => (3, 2));
-        assert_movement!((2, 2) => CursorMovement::WordsForward(4) => (3, 3));
-        assert_movement!((2, 2) => CursorMovement::WordsForward(5) => (4, 0));
-        assert_movement!((2, 2) => CursorMovement::WordsForward(6) => (4, 2));
-        assert_movement!((2, 2) => CursorMovement::WordsForward(999) => (4, 2));
+        assert_movement(&mut ctx, (2, 2), (2, 2), CursorMovement::WordsForward(0));
+        assert_movement(&mut ctx, (2, 0), (2, 4), CursorMovement::WordsForward(1));
+        assert_movement(&mut ctx, (2, 0), (3, 0), CursorMovement::WordsForward(2));
+        assert_movement(&mut ctx, (2, 2), (3, 2), CursorMovement::WordsForward(3));
+        assert_movement(&mut ctx, (2, 2), (3, 3), CursorMovement::WordsForward(4));
+        assert_movement(&mut ctx, (2, 2), (4, 0), CursorMovement::WordsForward(5));
+        assert_movement(&mut ctx, (2, 2), (4, 2), CursorMovement::WordsForward(6));
+        assert_movement(&mut ctx, (2, 2), (4, 2), CursorMovement::WordsForward(999));
 
-        assert_movement!((2, 2) => CursorMovement::WordsBackward(0) => (2, 2));
-        assert_movement!((2, 0) => CursorMovement::WordsBackward(1) => (1, 3));
-        assert_movement!((2, 0) => CursorMovement::WordsBackward(2) => (1, 2));
-        assert_movement!((2, 2) => CursorMovement::WordsBackward(1) => (2, 0));
-        assert_movement!((2, 2) => CursorMovement::WordsBackward(2) => (1, 3));
-        assert_movement!((2, 2) => CursorMovement::WordsBackward(3) => (1, 2));
-        assert_movement!((2, 2) => CursorMovement::WordsBackward(4) => (1, 0));
-        assert_movement!((2, 2) => CursorMovement::WordsBackward(5) => (0, 2));
-        assert_movement!((2, 2) => CursorMovement::WordsBackward(6) => (0, 0));
-        assert_movement!((2, 2) => CursorMovement::WordsBackward(999) => (0, 0));
+        assert_movement(&mut ctx, (2, 2), (2, 2), CursorMovement::WordsBackward(0));
+        assert_movement(&mut ctx, (2, 0), (1, 3), CursorMovement::WordsBackward(1));
+        assert_movement(&mut ctx, (2, 0), (1, 2), CursorMovement::WordsBackward(2));
+        assert_movement(&mut ctx, (2, 2), (2, 0), CursorMovement::WordsBackward(1));
+        assert_movement(&mut ctx, (2, 2), (1, 3), CursorMovement::WordsBackward(2));
+        assert_movement(&mut ctx, (2, 2), (1, 2), CursorMovement::WordsBackward(3));
+        assert_movement(&mut ctx, (2, 2), (1, 0), CursorMovement::WordsBackward(4));
+        assert_movement(&mut ctx, (2, 2), (0, 2), CursorMovement::WordsBackward(5));
+        assert_movement(&mut ctx, (2, 2), (0, 0), CursorMovement::WordsBackward(6));
+        assert_movement(&mut ctx, (2, 2), (0, 0), CursorMovement::WordsBackward(999));
 
-        ctx = TestContext::with_buffer("123\n  abc def\nghi");
-        assert_movement!((1, 0) => CursorMovement::WordsForward(1) => (1, 2));
-        assert_movement!((1, 9) => CursorMovement::WordsForward(1) => (2, 0));
-        assert_movement!((1, 2) => CursorMovement::WordsBackward(1) => (1, 0));
-        assert_movement!((2, 0) => CursorMovement::WordsBackward(1) => (1, 9));
+        let mut ctx = TestContext::with_buffer("123\n  abc def\nghi");
+        assert_movement(&mut ctx, (1, 0), (1, 2), CursorMovement::WordsForward(1));
+        assert_movement(&mut ctx, (1, 9), (2, 0), CursorMovement::WordsForward(1));
+        assert_movement(&mut ctx, (1, 2), (1, 0), CursorMovement::WordsBackward(1));
+        assert_movement(&mut ctx, (2, 0), (1, 9), CursorMovement::WordsBackward(1));
     }
 }
