@@ -303,17 +303,13 @@ impl ClientApplication {
         };
 
         if !args.files.is_empty() {
-            // TODO: 'open' command no longer accepts multiple paths
-            let mut open_buffers_command = String::new();
-            open_buffers_command.push_str("open");
-
+            let mut commands = String::new();
             for path in &args.files {
-                open_buffers_command.push_str(" '");
-                open_buffers_command.push_str(path);
-                open_buffers_command.push_str("'");
+                commands.push_str("open '");
+                commands.push_str(path);
+                commands.push_str("'\n");
             }
-
-            ClientEvent::Command(self.client_event_source, &open_buffers_command)
+            ClientEvent::Command(self.client_event_source, &commands)
                 .serialize(&mut self.write_buf);
         }
 
@@ -354,6 +350,8 @@ impl ClientApplication {
                     read_buf = rest;
 
                     self.stdout.write_all(message).unwrap();
+                } else {
+                    break;
                 }
             }
 
