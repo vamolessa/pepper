@@ -10,46 +10,66 @@ use crate::{
     platform::Platform,
 };
 
-mod builtin;
+//mod builtin;
 
 pub const HISTORY_CAPACITY: usize = 10;
 
-pub enum CommandError<'command> {
-    InvalidCommandName(&'command str),
-    CommandNotFound(&'command str),
+pub struct CommandToken {
+    location: usize,
+    len: usize,
+}
+impl CommandToken {
+    pub fn as_str<'command>(&self, command: &'command str) -> &'command str {
+        let start = self.location - command.as_ptr() as usize;
+        let end = start + self.len;
+        &command[start..end]
+    }
+}
+impl<'a> From<&'a str> for CommandToken {
+    fn from(s: &'a str) -> Self {
+        Self {
+            location: s.as_ptr() as _,
+            len: s.len(),
+        }
+    }
+}
+
+pub enum CommandError {
+    InvalidCommandName(CommandToken),
+    CommandNotFound(CommandToken),
     CommandDoesNotAcceptBang,
-    UnterminatedToken(&'command str),
-    InvalidToken(&'command str),
-    TooFewArguments(&'command str, u8),
-    TooManyArguments(&'command str, u8),
-    UnknownFlag(&'command str),
+    UnterminatedToken(CommandToken),
+    InvalidToken(CommandToken),
+    TooFewArguments(CommandToken, u8),
+    TooManyArguments(CommandToken, u8),
+    UnknownFlag(CommandToken),
     UnsavedChanges,
     NoBufferOpened,
     InvalidBufferHandle(BufferHandle),
-    InvalidPath(&'command str),
+    InvalidPath(CommandToken),
     ParseArgError {
-        arg: &'command str,
+        arg: CommandToken,
         type_name: &'static str,
     },
     BufferError(BufferHandle, BufferError),
-    ConfigNotFound(&'command str),
+    ConfigNotFound(CommandToken),
     InvalidConfigValue {
-        key: &'command str,
-        value: &'command str,
+        key: CommandToken,
+        value: CommandToken,
     },
-    ColorNotFound(&'command str),
+    ColorNotFound(CommandToken),
     InvalidColorValue {
-        key: &'command str,
-        value: &'command str,
+        key: CommandToken,
+        value: CommandToken,
     },
-    InvalidGlob(&'command str),
-    PatternError(&'command str, PatternError),
-    KeyParseError(&'command str, KeyParseError),
-    InvalidRegisterKey(&'command str),
+    InvalidGlob(CommandToken),
+    PatternError(CommandToken, PatternError),
+    KeyParseError(CommandToken, KeyParseError),
+    InvalidRegisterKey(CommandToken),
     LspServerNotRunning,
 }
-impl<'command> CommandError<'command> {
-    pub fn display<'error>(
+impl CommandError {
+    pub fn display<'command, 'error>(
         &'error self,
         command: &'command str,
         buffers: &'error BufferCollection,
@@ -65,18 +85,18 @@ impl<'command> CommandError<'command> {
 pub struct CommandErrorDisplay<'command, 'error> {
     command: &'command str,
     buffers: &'error BufferCollection,
-    error: &'error CommandError<'command>,
+    error: &'error CommandError,
 }
 impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fn write(
             this: &CommandErrorDisplay,
             f: &mut fmt::Formatter,
-            error_token: &str,
+            error_token: &CommandToken,
             message: fmt::Arguments,
         ) -> fmt::Result {
-            let error_offset = error_token.as_ptr() as usize - this.command.as_ptr() as usize;
-            let error_len = error_token.len();
+            let error_offset = error_token.location - this.command.as_ptr() as usize;
+            let error_len = error_token.len;
             write!(
                 f,
                 "{}\n{: >offset$}{:^<len$}\n",
@@ -90,31 +110,35 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
             Ok(())
         }
 
+        let c = self.command;
         match self.error {
             CommandError::InvalidCommandName(token) => write(
                 self,
                 f,
                 token,
-                format_args!("invalid command name '{}'", token),
+                format_args!("invalid command name '{}'", token.as_str(c)),
             ),
             CommandError::CommandNotFound(command) => write(
                 self,
                 f,
                 command,
-                format_args!("no such command '{}'", command),
+                format_args!("no such command '{}'", command.as_str(c)),
             ),
             CommandError::CommandDoesNotAcceptBang => write(
                 self,
                 f,
-                self.command.trim(),
+                &c.trim().into(),
                 format_args!("command does not accept bang"),
             ),
             CommandError::UnterminatedToken(token) => {
                 write(self, f, token, format_args!("unterminated token"))
             }
-            CommandError::InvalidToken(token) => {
-                write(self, f, token, format_args!("invalid token '{}'", token))
-            }
+            CommandError::InvalidToken(token) => write(
+                self,
+                f,
+                token,
+                format_args!("invalid token '{}'", token.as_str(c)),
+            ),
             CommandError::TooFewArguments(token, min) => write(
                 self,
                 f,
@@ -127,9 +151,12 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
                 token,
                 format_args!("command expects at most {} arguments", max),
             ),
-            CommandError::UnknownFlag(token) => {
-                write(self, f, token, format_args!("unknown flag '{}'", token))
-            }
+            CommandError::UnknownFlag(token) => write(
+                self,
+                f,
+                token,
+                format_args!("unknown flag '{}'", token.as_str(c)),
+            ),
             CommandError::UnsavedChanges => f.write_str(
                 "there are unsaved changes. try appending a '!' to command name to force execute",
             ),
@@ -137,58 +164,80 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
             CommandError::InvalidBufferHandle(handle) => {
                 f.write_fmt(format_args!("invalid buffer handle {}", handle))
             }
-            CommandError::InvalidPath(path) => {
-                write(self, f, path, format_args!("invalid path '{}'", path))
-            }
+            CommandError::InvalidPath(path) => write(
+                self,
+                f,
+                path,
+                format_args!("invalid path '{}'", path.as_str(c)),
+            ),
             CommandError::ParseArgError { arg, type_name } => write(
                 self,
                 f,
                 arg,
-                format_args!("could not parse '{}' as {}", arg, type_name),
+                format_args!("could not parse '{}' as {}", arg.as_str(c), type_name),
             ),
             CommandError::BufferError(handle, error) => match self.buffers.get(*handle) {
                 Some(buffer) => f.write_fmt(format_args!("{}", error.display(buffer))),
                 None => Ok(()),
             },
-            CommandError::ConfigNotFound(key) => {
-                write(self, f, key, format_args!("no such config '{}'", key))
-            }
+            CommandError::ConfigNotFound(key) => write(
+                self,
+                f,
+                key,
+                format_args!("no such config '{}'", key.as_str(c)),
+            ),
             CommandError::InvalidConfigValue { key, value } => write(
                 self,
                 f,
                 value,
-                format_args!("invalid value '{}' for config '{}'", value, key),
+                format_args!(
+                    "invalid value '{}' for config '{}'",
+                    value.as_str(c),
+                    key.as_str(c)
+                ),
             ),
-            CommandError::ColorNotFound(key) => {
-                write(self, f, key, format_args!("no such theme color '{}'", key))
-            }
+            CommandError::ColorNotFound(key) => write(
+                self,
+                f,
+                key,
+                format_args!("no such theme color '{}'", key.as_str(c)),
+            ),
             CommandError::InvalidColorValue { key, value } => write(
                 self,
                 f,
                 value,
-                format_args!("invalid value '{}' for theme color '{}'", value, key),
+                format_args!(
+                    "invalid value '{}' for theme color '{}'",
+                    value.as_str(c),
+                    key.as_str(c)
+                ),
             ),
-            CommandError::InvalidGlob(glob) => {
-                write(self, f, glob, format_args!("invalid glob '{}'", glob))
-            }
+            CommandError::InvalidGlob(glob) => write(
+                self,
+                f,
+                glob,
+                format_args!("invalid glob '{}'", glob.as_str(c)),
+            ),
             CommandError::PatternError(pattern, error) => {
                 write(self, f, pattern, format_args!("{}", error))
             }
             CommandError::KeyParseError(keys, error) => {
                 write(self, f, keys, format_args!("{}", error))
             }
-            CommandError::InvalidRegisterKey(key) => {
-                write(self, f, key, format_args!("invalid register key '{}'", key))
-            }
+            CommandError::InvalidRegisterKey(key) => write(
+                self,
+                f,
+                key,
+                format_args!("invalid register key '{}'", key.as_str(c)),
+            ),
             CommandError::LspServerNotRunning => f.write_str("lsp server not running"),
         }
     }
 }
 
-type CommandFn =
-    for<'state, 'command> fn(
-        &mut CommandContext<'state, 'command>,
-    ) -> Result<Option<CommandOperation>, CommandError<'command>>;
+type CommandFn = for<'state, 'command> fn(
+    &mut CommandContext<'state, 'command>,
+) -> Result<Option<CommandOperation>, CommandError>;
 
 pub enum CommandOperation {
     Quit,
@@ -211,7 +260,7 @@ pub struct CommandContext<'state, 'command> {
     pub output: &'state mut String,
 }
 impl<'state, 'command> CommandContext<'state, 'command> {
-    pub fn current_buffer_view_handle(&self) -> Result<BufferViewHandle, CommandError<'command>> {
+    pub fn current_buffer_view_handle(&self) -> Result<BufferViewHandle, CommandError> {
         match self
             .client_handle
             .and_then(|h| self.clients.get(h))
@@ -222,7 +271,7 @@ impl<'state, 'command> CommandContext<'state, 'command> {
         }
     }
 
-    pub fn current_buffer_handle(&self) -> Result<BufferHandle, CommandError<'command>> {
+    pub fn current_buffer_handle(&self) -> Result<BufferHandle, CommandError> {
         let buffer_view_handle = self.current_buffer_view_handle()?;
         match self
             .editor
@@ -235,7 +284,7 @@ impl<'state, 'command> CommandContext<'state, 'command> {
         }
     }
 
-    pub fn assert_can_discard_all_buffers(&self) -> Result<(), CommandError<'command>> {
+    pub fn assert_can_discard_all_buffers(&self) -> Result<(), CommandError> {
         if self.args.bang || !self.editor.buffers.iter().any(Buffer::needs_save) {
             Ok(())
         } else {
@@ -243,10 +292,7 @@ impl<'state, 'command> CommandContext<'state, 'command> {
         }
     }
 
-    pub fn assert_can_discard_buffer(
-        &self,
-        handle: BufferHandle,
-    ) -> Result<(), CommandError<'command>> {
+    pub fn assert_can_discard_buffer(&self, handle: BufferHandle) -> Result<(), CommandError> {
         let buffer = self
             .editor
             .buffers
@@ -428,7 +474,7 @@ pub struct CommandArgs<'a> {
     len: u8,
 }
 impl<'a> CommandArgs<'a> {
-    pub fn assert_no_bang(&self) -> Result<(), CommandError<'a>> {
+    pub fn assert_no_bang(&self) -> Result<(), CommandError> {
         if self.bang {
             Err(CommandError::CommandDoesNotAcceptBang)
         } else {
@@ -439,7 +485,7 @@ impl<'a> CommandArgs<'a> {
     pub fn get_flags(
         &self,
         flags: &mut [(&'static str, Option<&'a str>)],
-    ) -> Result<(), CommandError<'a>> {
+    ) -> Result<(), CommandError> {
         let mut tokens = CommandTokenIter {
             rest: self.tokens.rest,
         };
@@ -454,7 +500,7 @@ impl<'a> CommandArgs<'a> {
                 (CommandTokenKind::Flag, key) => {
                     let value = match flags.iter_mut().find(|(k, _)| *k == key) {
                         Some((_, value)) => value,
-                        None => break Err(CommandError::UnknownFlag(key)),
+                        None => break Err(CommandError::UnknownFlag(key.into())),
                     };
 
                     match tokens.next() {
@@ -467,15 +513,15 @@ impl<'a> CommandArgs<'a> {
                             Some((CommandTokenKind::Text, token)) => *value = Some(token),
                             Some((CommandTokenKind::Flag, token))
                             | Some((CommandTokenKind::Equals, token)) => {
-                                break Err(CommandError::InvalidToken(token))
+                                break Err(CommandError::InvalidToken(token.into()))
                             }
                             Some((CommandTokenKind::Unterminated, token)) => {
-                                break Err(CommandError::UnterminatedToken(token))
+                                break Err(CommandError::UnterminatedToken(token.into()))
                             }
-                            None => break Err(CommandError::InvalidToken(token)),
+                            None => break Err(CommandError::InvalidToken(token.into())),
                         },
                         Some((CommandTokenKind::Unterminated, token)) => {
-                            break Err(CommandError::UnterminatedToken(token))
+                            break Err(CommandError::UnterminatedToken(token.into()))
                         }
                         None => {
                             *value = Some("");
@@ -483,15 +529,17 @@ impl<'a> CommandArgs<'a> {
                         }
                     }
                 }
-                (CommandTokenKind::Equals, token) => return Err(CommandError::InvalidToken(token)),
+                (CommandTokenKind::Equals, token) => {
+                    return Err(CommandError::InvalidToken(token.into()))
+                }
                 (CommandTokenKind::Unterminated, token) => {
-                    return Err(CommandError::UnterminatedToken(token))
+                    return Err(CommandError::UnterminatedToken(token.into()))
                 }
             }
         }
     }
 
-    pub fn try_next(&mut self) -> Result<Option<&'a str>, CommandError<'a>> {
+    pub fn try_next(&mut self) -> Result<Option<&'a str>, CommandError> {
         self.len += 1;
         loop {
             match self.tokens.next() {
@@ -503,31 +551,34 @@ impl<'a> CommandArgs<'a> {
                         self.tokens.next();
                     }
                     Some((CommandTokenKind::Unterminated, token)) => {
-                        break Err(CommandError::UnterminatedToken(token))
+                        break Err(CommandError::UnterminatedToken(token.into()))
                     }
                     None => break Ok(None),
                 },
                 Some((CommandTokenKind::Equals, token)) => {
-                    break Err(CommandError::InvalidToken(token))
+                    break Err(CommandError::InvalidToken(token.into()))
                 }
                 Some((CommandTokenKind::Unterminated, token)) => {
-                    break Err(CommandError::UnterminatedToken(token))
+                    break Err(CommandError::UnterminatedToken(token.into()))
                 }
                 None => break Ok(None),
             }
         }
     }
 
-    pub fn next(&mut self) -> Result<&'a str, CommandError<'a>> {
+    pub fn next(&mut self) -> Result<&'a str, CommandError> {
         match self.try_next()? {
             Some(arg) => Ok(arg),
-            None => Err(CommandError::TooFewArguments(self.tokens.rest, self.len)),
+            None => Err(CommandError::TooFewArguments(
+                self.tokens.rest.into(),
+                self.len,
+            )),
         }
     }
 
-    pub fn assert_empty(&mut self) -> Result<(), CommandError<'a>> {
+    pub fn assert_empty(&mut self) -> Result<(), CommandError> {
         match self.tokens.next() {
-            Some((_, token)) => Err(CommandError::TooManyArguments(token, self.len)),
+            Some((_, token)) => Err(CommandError::TooManyArguments(token.into(), self.len)),
             None => Ok(()),
         }
     }
@@ -563,7 +614,8 @@ pub struct CommandManager {
 impl CommandManager {
     pub fn new() -> Self {
         Self {
-            builtin_commands: builtin::COMMANDS,
+            //builtin_commands: builtin::COMMANDS,
+            builtin_commands: &[],
             custom_commands: Vec::new(),
             history: VecDeque::with_capacity(HISTORY_CAPACITY),
         }
@@ -635,7 +687,7 @@ impl CommandManager {
         client_handle: Option<ClientHandle>,
         command: &'command str,
         output: &mut String,
-    ) -> Result<Option<CommandOperation>, CommandError<'command>> {
+    ) -> Result<Option<CommandOperation>, CommandError> {
         let (source, mut args) = editor.commands.parse(command)?;
         match source {
             CommandSource::Builtin(i) => {
@@ -675,16 +727,13 @@ impl CommandManager {
         }
     }
 
-    fn parse<'a>(
-        &self,
-        text: &'a str,
-    ) -> Result<(CommandSource, CommandArgs<'a>), CommandError<'a>> {
+    fn parse<'a>(&self, text: &'a str) -> Result<(CommandSource, CommandArgs<'a>), CommandError> {
         let mut tokens = CommandTokenIter { rest: text };
 
         let command_name = match tokens.next() {
             Some((CommandTokenKind::Text, s)) => s,
-            Some((_, s)) => return Err(CommandError::InvalidCommandName(s)),
-            None => return Err(CommandError::InvalidCommandName(text.trim_start())),
+            Some((_, s)) => return Err(CommandError::InvalidCommandName(s.into())),
+            None => return Err(CommandError::InvalidCommandName(text.trim_start().into())),
         };
 
         let (command_name, bang) = match command_name.strip_suffix('!') {
@@ -692,12 +741,12 @@ impl CommandManager {
             None => (command_name, false),
         };
         if command_name.is_empty() {
-            return Err(CommandError::InvalidCommandName(command_name));
+            return Err(CommandError::InvalidCommandName(command_name.into()));
         }
 
         let source = match self.find_command(command_name) {
             Some(source) => source,
-            None => return Err(CommandError::CommandNotFound(command_name)),
+            None => return Err(CommandError::CommandNotFound(command_name.into())),
         };
 
         let args = CommandArgs {
@@ -788,9 +837,10 @@ mod tests {
 
         macro_rules! assert_fail {
             ($command:expr, $error_pattern:pat => $value:ident == $expect:expr) => {
-                match commands.parse($command) {
+                let command = $command;
+                match commands.parse(command) {
                     Ok(_) => panic!("command parsed successfully"),
-                    Err($error_pattern) => assert_eq!($expect, $value),
+                    Err($error_pattern) => assert_eq!($expect, $value.as_str(command)),
                     Err(_) => panic!("other error occurred"),
                 }
             };
