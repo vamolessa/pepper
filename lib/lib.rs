@@ -50,10 +50,6 @@ pub struct Args {
     #[argh(switch)]
     pub print_session: bool,
 
-    /// displays no ui and send events on behalf of the currently focused client
-    #[argh(switch)]
-    pub as_focused_client: bool,
-
     /// displays no ui and send events on behalf of the client at index
     #[argh(option)]
     pub as_client: Option<client::ClientHandle>,

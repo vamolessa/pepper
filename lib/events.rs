@@ -417,46 +417,10 @@ where
     }
 }
 
-// TODO: maybe remove it and always use ClientHandle??
-#[derive(Clone, Copy)]
-pub enum ClientEventSource {
-    ConnectionClient,
-    FocusedClient,
-    ClientHandle(ClientHandle),
-}
-
-impl<'de> Serialize<'de> for ClientEventSource {
-    fn serialize<S>(&self, serializer: &mut S)
-    where
-        S: Serializer,
-    {
-        match self {
-            Self::ConnectionClient => u8::MAX.serialize(serializer),
-            Self::FocusedClient => (u8::MAX - 1).serialize(serializer),
-            Self::ClientHandle(handle) => handle.serialize(serializer),
-        }
-    }
-
-    fn deserialize<D>(deserializer: &mut D) -> Result<Self, DeserializeError>
-    where
-        D: Deserializer<'de>,
-    {
-        let handle = ClientHandle::deserialize(deserializer)?;
-        let index = handle.into_index();
-        if index == u8::MAX as _ {
-            Ok(Self::ConnectionClient)
-        } else if index == (u8::MAX - 1) as _ {
-            Ok(Self::FocusedClient)
-        } else {
-            Ok(Self::ClientHandle(handle))
-        }
-    }
-}
-
 pub enum ClientEvent<'a> {
-    Key(ClientEventSource, Key),
-    Resize(ClientEventSource, u16, u16),
-    Command(ClientEventSource, &'a str),
+    Key(ClientHandle, Key),
+    Resize(ClientHandle, u16, u16),
+    Command(ClientHandle, &'a str),
 }
 
 impl<'de> Serialize<'de> for ClientEvent<'de> {
@@ -465,20 +429,20 @@ impl<'de> Serialize<'de> for ClientEvent<'de> {
         S: Serializer,
     {
         match self {
-            ClientEvent::Key(source, key) => {
+            ClientEvent::Key(client_handle, key) => {
                 0u8.serialize(serializer);
-                source.serialize(serializer);
+                client_handle.serialize(serializer);
                 serialize_key(*key, serializer);
             }
-            ClientEvent::Resize(source, width, height) => {
+            ClientEvent::Resize(client_handle, width, height) => {
                 1u8.serialize(serializer);
-                source.serialize(serializer);
+                client_handle.serialize(serializer);
                 width.serialize(serializer);
                 height.serialize(serializer);
             }
-            ClientEvent::Command(source, command) => {
+            ClientEvent::Command(client_handle, command) => {
                 2u8.serialize(serializer);
-                source.serialize(serializer);
+                client_handle.serialize(serializer);
                 command.serialize(serializer);
             }
         }

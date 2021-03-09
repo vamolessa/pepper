@@ -7,7 +7,7 @@ use crate::{
     command::{CommandIter, CommandManager, CommandOperation},
     config::Config,
     editor_utils::{MessageKind, ReadLine, StatusBar, StringPool},
-    events::{KeyParser, ClientEvent, ClientEventSource, EditorEvent, EditorEventQueue},
+    events::{KeyParser, ClientEvent, EditorEvent, EditorEventQueue},
     keymap::{KeyMapCollection, MatchResult},
     lsp,
     mode::{Mode, ModeContext, ModeKind, ModeOperation},
@@ -234,17 +234,8 @@ impl Editor {
         event: ClientEvent,
     ) -> EditorControlFlow {
         match event {
-            ClientEvent::Key(source, key) => {
+            ClientEvent::Key(client_handle, key) => {
                 self.status_bar.clear();
-
-                let client_handle = match source {
-                    ClientEventSource::ConnectionClient => client_handle,
-                    ClientEventSource::FocusedClient => match clients.focused_handle() {
-                        Some(handle) => handle,
-                        None => return EditorControlFlow::Continue,
-                    },
-                    ClientEventSource::ClientHandle(handle) => handle,
-                };
 
                 if clients.focus_client(client_handle) {
                     self.recording_macro = None;
@@ -328,31 +319,13 @@ impl Editor {
                 self.trigger_event_handlers(clients, platform);
                 EditorControlFlow::Continue
             }
-            ClientEvent::Resize(source, width, height) => {
-                let client_handle = match source {
-                    ClientEventSource::ConnectionClient => client_handle,
-                    ClientEventSource::FocusedClient => match clients.focused_handle() {
-                        Some(handle) => handle,
-                        None => return EditorControlFlow::Continue,
-                    },
-                    ClientEventSource::ClientHandle(handle) => handle,
-                };
-
+            ClientEvent::Resize(client_handle, width, height) => {
                 if let Some(client) = clients.get_mut(client_handle) {
                     client.viewport_size = (width, height);
                 }
                 EditorControlFlow::Continue
             }
-            ClientEvent::Command(source, commands) => {
-                let client_handle = match source {
-                    ClientEventSource::ConnectionClient => client_handle,
-                    ClientEventSource::FocusedClient => match clients.focused_handle() {
-                        Some(handle) => handle,
-                        None => return EditorControlFlow::Continue,
-                    },
-                    ClientEventSource::ClientHandle(handle) => handle,
-                };
-
+            ClientEvent::Command(client_handle, commands) => {
                 let mut output = self.string_pool.acquire();
                 let mut flow = EditorControlFlow::Continue;
                 for command in CommandIter(commands) {

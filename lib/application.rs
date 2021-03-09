@@ -4,7 +4,7 @@ use crate::{
     client::{ClientHandle, ClientManager},
     command::CommandOperation,
     editor::{Editor, EditorControlFlow},
-    events::{ClientEvent, ClientEventReceiver, ClientEventSource},
+    events::{ClientEvent, ClientEventReceiver},
     lsp,
     platform::{Key, Platform, PlatformRequest, ProcessHandle, SharedBuf},
     serialization::{SerializationBuf, Serialize},
@@ -266,7 +266,6 @@ impl ServerApplication {
 
 pub struct ClientApplication {
     handle: ClientHandle,
-    client_event_source: ClientEventSource,
     read_buf: Vec<u8>,
     write_buf: SerializationBuf,
     stdout: io::StdoutLock<'static>,
@@ -291,7 +290,6 @@ impl ClientApplication {
 
         Self {
             handle,
-            client_event_source: ClientEventSource::ConnectionClient,
             read_buf: Vec::new(),
             write_buf: SerializationBuf::default(),
             stdout,
@@ -301,15 +299,11 @@ impl ClientApplication {
     pub fn init<'a>(&'a mut self, args: Args) -> &'a [u8] {
         self.write_buf.clear();
 
-        self.client_event_source = if args.as_focused_client {
-            ClientEventSource::FocusedClient
-        } else if let Some(handle) = args.as_client {
-            ClientEventSource::ClientHandle(handle)
+        if let Some(handle) = args.as_client {
+            self.handle = handle;
         } else {
-            ClientEvent::Key(ClientEventSource::ConnectionClient, Key::None)
-                .serialize(&mut self.write_buf);
-            ClientEventSource::ConnectionClient
-        };
+            ClientEvent::Key(self.handle, Key::None).serialize(&mut self.write_buf);
+        }
 
         if !args.files.is_empty() {
             let mut commands = String::new();
@@ -318,8 +312,7 @@ impl ClientApplication {
                 commands.push_str(path);
                 commands.push_str("'\n");
             }
-            ClientEvent::Command(self.client_event_source, &commands)
-                .serialize(&mut self.write_buf);
+            ClientEvent::Command(self.handle, &commands).serialize(&mut self.write_buf);
         }
 
         self.write_buf.as_slice()
@@ -334,12 +327,12 @@ impl ClientApplication {
         self.write_buf.clear();
 
         if let Some((width, height)) = resize {
-            ClientEvent::Resize(self.client_event_source, width as _, height as _)
+            ClientEvent::Resize(self.handle, width as _, height as _)
                 .serialize(&mut self.write_buf);
         }
 
         for key in keys {
-            ClientEvent::Key(self.client_event_source, *key).serialize(&mut self.write_buf);
+            ClientEvent::Key(self.handle, *key).serialize(&mut self.write_buf);
         }
 
         if !message.is_empty() {
