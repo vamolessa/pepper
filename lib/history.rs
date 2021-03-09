@@ -417,13 +417,11 @@ mod tests {
     use super::*;
     use crate::buffer_position::BufferPosition;
 
-    macro_rules! buffer_range {
-        ($from_line:expr, $from_column:expr => $to_line:expr, $to_column:expr) => {
-            BufferRange::between(
-                BufferPosition::line_col($from_line, $from_column),
-                BufferPosition::line_col($to_line, $to_column),
-            )
-        };
+    fn buffer_range(from: (usize, usize), to: (usize, usize)) -> BufferRange {
+        BufferRange::between(
+            BufferPosition::line_col(from.0, from.1),
+            BufferPosition::line_col(to.0, to.1),
+        )
     }
 
     #[test]
@@ -446,12 +444,12 @@ mod tests {
 
         history.add_edit(Edit {
             kind: EditKind::Insert,
-            range: buffer_range!(0, 0 => 0, 1),
+            range: buffer_range((0, 0), (0, 1)),
             text: "a",
         });
         history.add_edit(Edit {
             kind: EditKind::Delete,
-            range: buffer_range!(1, 0 => 1, 1),
+            range: buffer_range((1, 0), (1, 1)),
             text: "b",
         });
 
@@ -491,7 +489,7 @@ mod tests {
 
         history.add_edit(Edit {
             kind: EditKind::Insert,
-            range: buffer_range!(2, 0 => 2, 1),
+            range: buffer_range((2, 0), (2, 1)),
             text: "c",
         });
 
@@ -512,12 +510,12 @@ mod tests {
         let mut history = History::new();
         history.add_edit(Edit {
             kind: EditKind::Insert,
-            range: buffer_range!(0, 0 => 0, 3),
+            range: buffer_range((0, 0), (0, 3)),
             text: "abc",
         });
         history.add_edit(Edit {
             kind: EditKind::Insert,
-            range: buffer_range!(0, 3 => 0, 6),
+            range: buffer_range((0, 3), (0, 6)),
             text: "def",
         });
 
@@ -525,18 +523,18 @@ mod tests {
         let edit = edit_iter.next().unwrap();
         assert_eq!(EditKind::Delete, edit.kind);
         assert_eq!("abcdef", edit.text);
-        assert_eq!(buffer_range!(0, 0 => 0, 6), edit.range);
+        assert_eq!(buffer_range((0, 0), (0, 6)), edit.range);
         assert!(edit_iter.next().is_none());
 
         let mut history = History::new();
         history.add_edit(Edit {
             kind: EditKind::Insert,
-            range: buffer_range!(0, 0 => 0, 3),
+            range: buffer_range((0, 0), (0, 3)),
             text: "abc",
         });
         history.add_edit(Edit {
             kind: EditKind::Insert,
-            range: buffer_range!(0, 0 => 0, 3),
+            range: buffer_range((0, 0), (0, 3)),
             text: "def",
         });
 
@@ -544,7 +542,7 @@ mod tests {
         let edit = edit_iter.next().unwrap();
         assert_eq!(EditKind::Delete, edit.kind);
         assert_eq!("defabc", edit.text);
-        assert_eq!(buffer_range!(0, 0 => 0, 6), edit.range);
+        assert_eq!(buffer_range((0, 0), (0, 6)), edit.range);
         assert!(edit_iter.next().is_none());
     }
 
@@ -553,12 +551,12 @@ mod tests {
         let mut history = History::new();
         history.add_edit(Edit {
             kind: EditKind::Delete,
-            range: buffer_range!(0, 0 => 0, 3),
+            range: buffer_range((0, 0), (0, 3)),
             text: "abc",
         });
         history.add_edit(Edit {
             kind: EditKind::Delete,
-            range: buffer_range!(0, 0 => 0, 3),
+            range: buffer_range((0, 0), (0, 3)),
             text: "def",
         });
 
@@ -566,18 +564,18 @@ mod tests {
         let edit = edit_iter.next().unwrap();
         assert_eq!(EditKind::Insert, edit.kind);
         assert_eq!("abcdef", edit.text);
-        assert_eq!(buffer_range!(0, 0 => 0, 6), edit.range);
+        assert_eq!(buffer_range((0, 0), (0, 6)), edit.range);
         assert!(edit_iter.next().is_none());
 
         let mut history = History::new();
         history.add_edit(Edit {
             kind: EditKind::Delete,
-            range: buffer_range!(0, 3 => 0, 6),
+            range: buffer_range((0, 3), (0, 6)),
             text: "abc",
         });
         history.add_edit(Edit {
             kind: EditKind::Delete,
-            range: buffer_range!(0, 0 => 0, 3),
+            range: buffer_range((0, 0), (0, 3)),
             text: "def",
         });
 
@@ -585,7 +583,7 @@ mod tests {
         let edit = edit_iter.next().unwrap();
         assert_eq!(EditKind::Insert, edit.kind);
         assert_eq!("defabc", edit.text);
-        assert_eq!(buffer_range!(0, 0 => 0, 6), edit.range);
+        assert_eq!(buffer_range((0, 0), (0, 6)), edit.range);
         assert!(edit_iter.next().is_none());
     }
 
@@ -596,12 +594,12 @@ mod tests {
         let mut history = History::new();
         history.add_edit(Edit {
             kind: EditKind::Insert,
-            range: buffer_range!(0, 0 => 0, 6),
+            range: buffer_range((0, 0), (0, 6)),
             text: "abcdef",
         });
         history.add_edit(Edit {
             kind: EditKind::Delete,
-            range: buffer_range!(0, 0 => 0, 3),
+            range: buffer_range((0, 0), (0, 3)),
             text: "abc",
         });
 
@@ -609,7 +607,7 @@ mod tests {
         let edit = edit_iter.next().unwrap();
         assert_eq!(EditKind::Delete, edit.kind);
         assert_eq!("def", edit.text);
-        assert_eq!(buffer_range!(0, 0 => 0, 3), edit.range);
+        assert_eq!(buffer_range((0, 0), (0, 3)), edit.range);
         assert!(edit_iter.next().is_none());
 
         // ------ insert --
@@ -617,12 +615,12 @@ mod tests {
         let mut history = History::new();
         history.add_edit(Edit {
             kind: EditKind::Insert,
-            range: buffer_range!(0, 0 => 0, 6),
+            range: buffer_range((0, 0), (0, 6)),
             text: "abcdef",
         });
         history.add_edit(Edit {
             kind: EditKind::Delete,
-            range: buffer_range!(0, 3 => 0, 6),
+            range: buffer_range((0, 3), (0, 6)),
             text: "def",
         });
 
@@ -630,7 +628,7 @@ mod tests {
         let edit = edit_iter.next().unwrap();
         assert_eq!(EditKind::Delete, edit.kind);
         assert_eq!("abc", edit.text);
-        assert_eq!(buffer_range!(0, 0 => 0, 3), edit.range);
+        assert_eq!(buffer_range((0, 0), (0, 3)), edit.range);
         assert!(edit_iter.next().is_none());
 
         // -- insert --
@@ -638,12 +636,12 @@ mod tests {
         let mut history = History::new();
         history.add_edit(Edit {
             kind: EditKind::Insert,
-            range: buffer_range!(0, 0 => 0, 3),
+            range: buffer_range((0, 0), (0, 3)),
             text: "abc",
         });
         history.add_edit(Edit {
             kind: EditKind::Delete,
-            range: buffer_range!(0, 0 => 0, 6),
+            range: buffer_range((0, 0), (0, 6)),
             text: "abcdef",
         });
 
@@ -651,7 +649,7 @@ mod tests {
         let edit = edit_iter.next().unwrap();
         assert_eq!(EditKind::Insert, edit.kind);
         assert_eq!("def", edit.text);
-        assert_eq!(buffer_range!(0, 0 => 0, 3), edit.range);
+        assert_eq!(buffer_range((0, 0), (0, 3)), edit.range);
         assert!(edit_iter.next().is_none());
 
         //     -- insert --
@@ -659,12 +657,12 @@ mod tests {
         let mut history = History::new();
         history.add_edit(Edit {
             kind: EditKind::Insert,
-            range: buffer_range!(0, 3 => 0, 6),
+            range: buffer_range((0, 3), (0, 6)),
             text: "def",
         });
         history.add_edit(Edit {
             kind: EditKind::Delete,
-            range: buffer_range!(0, 0 => 0, 6),
+            range: buffer_range((0, 0), (0, 6)),
             text: "abcdef",
         });
 
@@ -672,7 +670,7 @@ mod tests {
         let edit = edit_iter.next().unwrap();
         assert_eq!(EditKind::Insert, edit.kind);
         assert_eq!("abc", edit.text);
-        assert_eq!(buffer_range!(0, 0 => 0, 3), edit.range);
+        assert_eq!(buffer_range((0, 0), (0, 3)), edit.range);
         assert!(edit_iter.next().is_none());
     }
 
@@ -681,22 +679,22 @@ mod tests {
         let mut history = History::new();
         history.add_edit(Edit {
             kind: EditKind::Insert,
-            range: buffer_range!(1, 0 => 1, 1),
+            range: buffer_range((1, 0), (1, 1)),
             text: "a",
         });
         history.add_edit(Edit {
             kind: EditKind::Insert,
-            range: buffer_range!(0, 0 => 0, 1),
+            range: buffer_range((0, 0), (0, 1)),
             text: "a",
         });
         history.add_edit(Edit {
             kind: EditKind::Insert,
-            range: buffer_range!(1, 1 => 1, 2),
+            range: buffer_range((1, 1), (1, 2)),
             text: "b",
         });
         history.add_edit(Edit {
             kind: EditKind::Insert,
-            range: buffer_range!(0, 1 => 0, 2),
+            range: buffer_range((0, 1), (0, 2)),
             text: "b",
         });
 
@@ -704,11 +702,11 @@ mod tests {
         let edit = edit_iter.next().unwrap();
         assert_eq!(EditKind::Delete, edit.kind);
         assert_eq!("ab", edit.text);
-        assert_eq!(buffer_range!(1, 0 => 1, 2), edit.range);
+        assert_eq!(buffer_range((1, 0), (1, 2)), edit.range);
         let edit = edit_iter.next().unwrap();
         assert_eq!(EditKind::Delete, edit.kind);
         assert_eq!("ab", edit.text);
-        assert_eq!(buffer_range!(0, 0 => 0, 2), edit.range);
+        assert_eq!(buffer_range((0, 0), (0, 2)), edit.range);
         assert!(edit_iter.next().is_none());
 
         //
@@ -716,22 +714,22 @@ mod tests {
         let mut history = History::new();
         history.add_edit(Edit {
             kind: EditKind::Insert,
-            range: buffer_range!(0, 1 => 0, 2),
+            range: buffer_range((0, 1), (0, 2)),
             text: "c",
         });
         history.add_edit(Edit {
             kind: EditKind::Insert,
-            range: buffer_range!(0, 0 => 0, 1),
+            range: buffer_range((0, 0), (0, 1)),
             text: "a",
         });
         history.add_edit(Edit {
             kind: EditKind::Insert,
-            range: buffer_range!(0, 3 => 0, 4),
+            range: buffer_range((0, 3), (0, 4)),
             text: "d",
         });
         history.add_edit(Edit {
             kind: EditKind::Insert,
-            range: buffer_range!(0, 1 => 0, 2),
+            range: buffer_range((0, 1), (0, 2)),
             text: "b",
         });
 
@@ -739,11 +737,11 @@ mod tests {
         let edit = edit_iter.next().unwrap();
         assert_eq!(EditKind::Delete, edit.kind);
         assert_eq!("cd", edit.text);
-        assert_eq!(buffer_range!(0, 3 => 0, 5), edit.range);
+        assert_eq!(buffer_range((0, 3), (0, 5)), edit.range);
         let edit = edit_iter.next().unwrap();
         assert_eq!(EditKind::Delete, edit.kind);
         assert_eq!("ab", edit.text);
-        assert_eq!(buffer_range!(0, 0 => 0, 2), edit.range);
+        assert_eq!(buffer_range((0, 0), (0, 2)), edit.range);
         assert!(edit_iter.next().is_none());
 
         //
@@ -751,22 +749,22 @@ mod tests {
         let mut history = History::new();
         history.add_edit(Edit {
             kind: EditKind::Insert,
-            range: buffer_range!(0, 4 => 0, 5),
+            range: buffer_range((0, 4), (0, 5)),
             text: "d",
         });
         history.add_edit(Edit {
             kind: EditKind::Insert,
-            range: buffer_range!(0, 0 => 0, 1),
+            range: buffer_range((0, 0), (0, 1)),
             text: "b",
         });
         history.add_edit(Edit {
             kind: EditKind::Insert,
-            range: buffer_range!(0, 5 => 0, 6),
+            range: buffer_range((0, 5), (0, 6)),
             text: "c",
         });
         history.add_edit(Edit {
             kind: EditKind::Insert,
-            range: buffer_range!(0, 0 => 0, 1),
+            range: buffer_range((0, 0), (0, 1)),
             text: "a",
         });
 
@@ -774,11 +772,11 @@ mod tests {
         let edit = edit_iter.next().unwrap();
         assert_eq!(EditKind::Delete, edit.kind);
         assert_eq!("cd", edit.text);
-        assert_eq!(buffer_range!(0, 6 => 0, 8), edit.range);
+        assert_eq!(buffer_range((0, 6), (0, 8)), edit.range);
         let edit = edit_iter.next().unwrap();
         assert_eq!(EditKind::Delete, edit.kind);
         assert_eq!("ab", edit.text);
-        assert_eq!(buffer_range!(0, 0 => 0, 2), edit.range);
+        assert_eq!(buffer_range((0, 0), (0, 2)), edit.range);
         assert!(edit_iter.next().is_none());
     }
 
@@ -787,22 +785,22 @@ mod tests {
         let mut history = History::new();
         history.add_edit(Edit {
             kind: EditKind::Delete,
-            range: buffer_range!(1, 0 => 1, 1),
+            range: buffer_range((1, 0), (1, 1)),
             text: "a",
         });
         history.add_edit(Edit {
             kind: EditKind::Delete,
-            range: buffer_range!(0, 0 => 0, 1),
+            range: buffer_range((0, 0), (0, 1)),
             text: "a",
         });
         history.add_edit(Edit {
             kind: EditKind::Delete,
-            range: buffer_range!(1, 0 => 1, 1),
+            range: buffer_range((1, 0), (1, 1)),
             text: "b",
         });
         history.add_edit(Edit {
             kind: EditKind::Delete,
-            range: buffer_range!(0, 0 => 0, 1),
+            range: buffer_range((0, 0), (0, 1)),
             text: "b",
         });
 
@@ -810,11 +808,11 @@ mod tests {
         let edit = edit_iter.next().unwrap();
         assert_eq!(EditKind::Insert, edit.kind);
         assert_eq!("ab", edit.text);
-        assert_eq!(buffer_range!(1, 0 => 1, 2), edit.range);
+        assert_eq!(buffer_range((1, 0), (1, 2)), edit.range);
         let edit = edit_iter.next().unwrap();
         assert_eq!(EditKind::Insert, edit.kind);
         assert_eq!("ab", edit.text);
-        assert_eq!(buffer_range!(0, 0 => 0, 2), edit.range);
+        assert_eq!(buffer_range((0, 0), (0, 2)), edit.range);
         assert!(edit_iter.next().is_none());
 
         //
@@ -822,22 +820,22 @@ mod tests {
         let mut history = History::new();
         history.add_edit(Edit {
             kind: EditKind::Delete,
-            range: buffer_range!(0, 2 => 0, 3),
+            range: buffer_range((0, 2), (0, 3)),
             text: "c",
         });
         history.add_edit(Edit {
             kind: EditKind::Delete,
-            range: buffer_range!(0, 0 => 0, 1),
+            range: buffer_range((0, 0), (0, 1)),
             text: "a",
         });
         history.add_edit(Edit {
             kind: EditKind::Delete,
-            range: buffer_range!(0, 1 => 0, 2),
+            range: buffer_range((0, 1), (0, 2)),
             text: "d",
         });
         history.add_edit(Edit {
             kind: EditKind::Delete,
-            range: buffer_range!(0, 0 => 0, 1),
+            range: buffer_range((0, 0), (0, 1)),
             text: "b",
         });
 
@@ -845,11 +843,11 @@ mod tests {
         let edit = edit_iter.next().unwrap();
         assert_eq!(EditKind::Insert, edit.kind);
         assert_eq!("cd", edit.text);
-        assert_eq!(buffer_range!(0, 0 => 0, 2), edit.range);
+        assert_eq!(buffer_range((0, 0), (0, 2)), edit.range);
         let edit = edit_iter.next().unwrap();
         assert_eq!(EditKind::Insert, edit.kind);
         assert_eq!("ab", edit.text);
-        assert_eq!(buffer_range!(0, 0 => 0, 2), edit.range);
+        assert_eq!(buffer_range((0, 0), (0, 2)), edit.range);
         assert!(edit_iter.next().is_none());
 
         //
@@ -857,22 +855,22 @@ mod tests {
         let mut history = History::new();
         history.add_edit(Edit {
             kind: EditKind::Delete,
-            range: buffer_range!(0, 4 => 0, 5),
+            range: buffer_range((0, 4), (0, 5)),
             text: "d",
         });
         history.add_edit(Edit {
             kind: EditKind::Delete,
-            range: buffer_range!(0, 1 => 0, 2),
+            range: buffer_range((0, 1), (0, 2)),
             text: "b",
         });
         history.add_edit(Edit {
             kind: EditKind::Delete,
-            range: buffer_range!(0, 2 => 0, 3),
+            range: buffer_range((0, 2), (0, 3)),
             text: "c",
         });
         history.add_edit(Edit {
             kind: EditKind::Delete,
-            range: buffer_range!(0, 0 => 0, 1),
+            range: buffer_range((0, 0), (0, 1)),
             text: "a",
         });
 
@@ -880,11 +878,11 @@ mod tests {
         let edit = edit_iter.next().unwrap();
         assert_eq!(EditKind::Insert, edit.kind);
         assert_eq!("cd", edit.text);
-        assert_eq!(buffer_range!(0, 1 => 0, 3), edit.range);
+        assert_eq!(buffer_range((0, 1), (0, 3)), edit.range);
         let edit = edit_iter.next().unwrap();
         assert_eq!(EditKind::Insert, edit.kind);
         assert_eq!("ab", edit.text);
-        assert_eq!(buffer_range!(0, 0 => 0, 2), edit.range);
+        assert_eq!(buffer_range((0, 0), (0, 2)), edit.range);
         assert!(edit_iter.next().is_none());
     }
 
@@ -895,22 +893,22 @@ mod tests {
         let mut history = History::new();
         history.add_edit(Edit {
             kind: EditKind::Insert,
-            range: buffer_range!(0, 1 => 0, 3),
+            range: buffer_range((0, 1), (0, 3)),
             text: "cd",
         });
         history.add_edit(Edit {
             kind: EditKind::Insert,
-            range: buffer_range!(0, 0 => 0, 2),
+            range: buffer_range((0, 0), (0, 2)),
             text: "ab",
         });
         history.add_edit(Edit {
             kind: EditKind::Delete,
-            range: buffer_range!(0, 3 => 0, 4),
+            range: buffer_range((0, 3), (0, 4)),
             text: "c",
         });
         history.add_edit(Edit {
             kind: EditKind::Delete,
-            range: buffer_range!(0, 0 => 0, 1),
+            range: buffer_range((0, 0), (0, 1)),
             text: "a",
         });
 
@@ -918,11 +916,11 @@ mod tests {
         let edit = edit_iter.next().unwrap();
         assert_eq!(EditKind::Delete, edit.kind);
         assert_eq!("d", edit.text);
-        assert_eq!(buffer_range!(0, 2 => 0, 3), edit.range);
+        assert_eq!(buffer_range((0, 2), (0, 3)), edit.range);
         let edit = edit_iter.next().unwrap();
         assert_eq!(EditKind::Delete, edit.kind);
         assert_eq!("b", edit.text);
-        assert_eq!(buffer_range!(0, 0 => 0, 1), edit.range);
+        assert_eq!(buffer_range((0, 0), (0, 1)), edit.range);
         assert!(edit_iter.next().is_none());
 
         // ------ insert --
@@ -930,22 +928,22 @@ mod tests {
         let mut history = History::new();
         history.add_edit(Edit {
             kind: EditKind::Insert,
-            range: buffer_range!(0, 1 => 0, 3),
+            range: buffer_range((0, 1), (0, 3)),
             text: "cd",
         });
         history.add_edit(Edit {
             kind: EditKind::Insert,
-            range: buffer_range!(0, 0 => 0, 2),
+            range: buffer_range((0, 0), (0, 2)),
             text: "ab",
         });
         history.add_edit(Edit {
             kind: EditKind::Delete,
-            range: buffer_range!(0, 4 => 0, 5),
+            range: buffer_range((0, 4), (0, 5)),
             text: "d",
         });
         history.add_edit(Edit {
             kind: EditKind::Delete,
-            range: buffer_range!(0, 1 => 0, 2),
+            range: buffer_range((0, 1), (0, 2)),
             text: "b",
         });
 
@@ -953,11 +951,11 @@ mod tests {
         let edit = edit_iter.next().unwrap();
         assert_eq!(EditKind::Delete, edit.kind);
         assert_eq!("c", edit.text);
-        assert_eq!(buffer_range!(0, 2 => 0, 3), edit.range);
+        assert_eq!(buffer_range((0, 2), (0, 3)), edit.range);
         let edit = edit_iter.next().unwrap();
         assert_eq!(EditKind::Delete, edit.kind);
         assert_eq!("a", edit.text);
-        assert_eq!(buffer_range!(0, 0 => 0, 1), edit.range);
+        assert_eq!(buffer_range((0, 0), (0, 1)), edit.range);
         assert!(edit_iter.next().is_none());
 
         // -- insert --
@@ -965,22 +963,22 @@ mod tests {
         let mut history = History::new();
         history.add_edit(Edit {
             kind: EditKind::Insert,
-            range: buffer_range!(0, 2 => 0, 3),
+            range: buffer_range((0, 2), (0, 3)),
             text: "c",
         });
         history.add_edit(Edit {
             kind: EditKind::Insert,
-            range: buffer_range!(0, 0 => 0, 1),
+            range: buffer_range((0, 0), (0, 1)),
             text: "a",
         });
         history.add_edit(Edit {
             kind: EditKind::Delete,
-            range: buffer_range!(0, 3 => 0, 5),
+            range: buffer_range((0, 3), (0, 5)),
             text: "cd",
         });
         history.add_edit(Edit {
             kind: EditKind::Delete,
-            range: buffer_range!(0, 0 => 0, 2),
+            range: buffer_range((0, 0), (0, 2)),
             text: "ab",
         });
 
@@ -988,11 +986,11 @@ mod tests {
         let edit = edit_iter.next().unwrap();
         assert_eq!(EditKind::Insert, edit.kind);
         assert_eq!("d", edit.text);
-        assert_eq!(buffer_range!(0, 1 => 0, 2), edit.range);
+        assert_eq!(buffer_range((0, 1), (0, 2)), edit.range);
         let edit = edit_iter.next().unwrap();
         assert_eq!(EditKind::Insert, edit.kind);
         assert_eq!("b", edit.text);
-        assert_eq!(buffer_range!(0, 0 => 0, 1), edit.range);
+        assert_eq!(buffer_range((0, 0), (0, 1)), edit.range);
         assert!(edit_iter.next().is_none());
 
         //     -- insert --
@@ -1000,22 +998,22 @@ mod tests {
         let mut history = History::new();
         history.add_edit(Edit {
             kind: EditKind::Insert,
-            range: buffer_range!(0, 3 => 0, 4),
+            range: buffer_range((0, 3), (0, 4)),
             text: "d",
         });
         history.add_edit(Edit {
             kind: EditKind::Insert,
-            range: buffer_range!(0, 1 => 0, 2),
+            range: buffer_range((0, 1), (0, 2)),
             text: "b",
         });
         history.add_edit(Edit {
             kind: EditKind::Delete,
-            range: buffer_range!(0, 3 => 0, 5),
+            range: buffer_range((0, 3), (0, 5)),
             text: "cd",
         });
         history.add_edit(Edit {
             kind: EditKind::Delete,
-            range: buffer_range!(0, 0 => 0, 2),
+            range: buffer_range((0, 0), (0, 2)),
             text: "ab",
         });
 
@@ -1023,11 +1021,11 @@ mod tests {
         let edit = edit_iter.next().unwrap();
         assert_eq!(EditKind::Insert, edit.kind);
         assert_eq!("c", edit.text);
-        assert_eq!(buffer_range!(0, 1 => 0, 2), edit.range);
+        assert_eq!(buffer_range((0, 1), (0, 2)), edit.range);
         let edit = edit_iter.next().unwrap();
         assert_eq!(EditKind::Insert, edit.kind);
         assert_eq!("a", edit.text);
-        assert_eq!(buffer_range!(0, 0 => 0, 1), edit.range);
+        assert_eq!(buffer_range((0, 0), (0, 1)), edit.range);
         assert!(edit_iter.next().is_none());
     }
 }

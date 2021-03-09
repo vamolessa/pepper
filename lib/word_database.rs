@@ -223,36 +223,33 @@ mod tests {
 
     #[test]
     fn word_iter() {
-        macro_rules! assert_word {
-            ($next:expr, $kind:expr, $text:expr) => {
-                let word = $next.map(|w| (w.kind, w.text));
-                assert_eq!(Some($kind), word.map(|w| w.0));
-                assert_eq!(Some($text), word.map(|w| w.1));
-            };
+        fn assert_word(next: Option<WordRef>, kind: WordKind, text: &str) {
+            assert_eq!(Some(kind), next.as_ref().map(|w| w.kind));
+            assert_eq!(Some(text), next.as_ref().map(|w| w.text));
         }
 
         let mut iter = WordIter::new("word");
-        assert_word!(iter.next(), WordKind::Identifier, "word");
+        assert_word(iter.next(), WordKind::Identifier, "word");
         assert!(iter.next().is_none());
 
         let mut iter = WordIter::new("first  $#second \tthird!?+");
-        assert_word!(iter.next(), WordKind::Identifier, "first");
-        assert_word!(iter.next(), WordKind::Whitespace, "  ");
-        assert_word!(iter.next(), WordKind::Symbol, "$#");
-        assert_word!(iter.next(), WordKind::Identifier, "second");
-        assert_word!(iter.next(), WordKind::Whitespace, " \t");
-        assert_word!(iter.next(), WordKind::Identifier, "third");
-        assert_word!(iter.next(), WordKind::Symbol, "!?+");
+        assert_word(iter.next(), WordKind::Identifier, "first");
+        assert_word(iter.next(), WordKind::Whitespace, "  ");
+        assert_word(iter.next(), WordKind::Symbol, "$#");
+        assert_word(iter.next(), WordKind::Identifier, "second");
+        assert_word(iter.next(), WordKind::Whitespace, " \t");
+        assert_word(iter.next(), WordKind::Identifier, "third");
+        assert_word(iter.next(), WordKind::Symbol, "!?+");
         assert!(iter.next().is_none());
 
         let mut iter = WordIter::new("first  $#second \tthird!?+");
-        assert_word!(iter.next_back(), WordKind::Symbol, "!?+");
-        assert_word!(iter.next_back(), WordKind::Identifier, "third");
-        assert_word!(iter.next_back(), WordKind::Whitespace, " \t");
-        assert_word!(iter.next_back(), WordKind::Identifier, "second");
-        assert_word!(iter.next_back(), WordKind::Symbol, "$#");
-        assert_word!(iter.next_back(), WordKind::Whitespace, "  ");
-        assert_word!(iter.next_back(), WordKind::Identifier, "first");
+        assert_word(iter.next_back(), WordKind::Symbol, "!?+");
+        assert_word(iter.next_back(), WordKind::Identifier, "third");
+        assert_word(iter.next_back(), WordKind::Whitespace, " \t");
+        assert_word(iter.next_back(), WordKind::Identifier, "second");
+        assert_word(iter.next_back(), WordKind::Symbol, "$#");
+        assert_word(iter.next_back(), WordKind::Whitespace, "  ");
+        assert_word(iter.next_back(), WordKind::Identifier, "first");
         assert!(iter.next_back().is_none());
     }
 

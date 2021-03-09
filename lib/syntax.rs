@@ -402,16 +402,11 @@ mod tests {
 
     use crate::buffer_position::BufferPosition;
 
-    macro_rules! assert_next_token {
-        ($iter:expr, $kind:expr, $range:expr) => {
-            assert_eq!(
-                Some(Token {
-                    kind: $kind,
-                    range: $range,
-                }),
-                $iter.next().cloned(),
-            );
-        };
+    fn assert_next_token<'a, I>(iter: &mut I, kind: TokenKind, range: Range<usize>)
+    where
+        I: Iterator<Item = &'a Token>,
+    {
+        assert_eq!(Some(Token { kind: kind, range }), iter.next().cloned(),);
     }
 
     fn highlighted_tokens<'a>(
@@ -534,8 +529,8 @@ mod tests {
 
         {
             let mut tokens = highlighted_tokens(&highlighted);
-            assert_next_token!(tokens, TokenKind::Comment, 0..2);
-            assert_next_token!(tokens, TokenKind::Comment, 0..2);
+            assert_next_token(&mut tokens, TokenKind::Comment, 0..2);
+            assert_next_token(&mut tokens, TokenKind::Comment, 0..2);
             assert_eq!(None, tokens.next());
         }
 
@@ -545,8 +540,8 @@ mod tests {
 
         {
             let mut tokens = highlighted_tokens(&highlighted);
-            assert_next_token!(tokens, TokenKind::Comment, 0..2);
-            assert_next_token!(tokens, TokenKind::Comment, 0..3);
+            assert_next_token(&mut tokens, TokenKind::Comment, 0..2);
+            assert_next_token(&mut tokens, TokenKind::Comment, 0..3);
             assert_eq!(None, tokens.next());
         }
     }
@@ -565,10 +560,10 @@ mod tests {
         assert_eq!(buffer.line_count(), highlighted.lines.len());
 
         let mut tokens = highlighted_tokens(&highlighted);
-        assert_next_token!(tokens, TokenKind::Comment, 0..2);
-        assert_next_token!(tokens, TokenKind::Comment, 0..0);
-        assert_next_token!(tokens, TokenKind::Comment, 0..0);
-        assert_next_token!(tokens, TokenKind::Comment, 0..2);
+        assert_next_token(&mut tokens, TokenKind::Comment, 0..2);
+        assert_next_token(&mut tokens, TokenKind::Comment, 0..0);
+        assert_next_token(&mut tokens, TokenKind::Comment, 0..0);
+        assert_next_token(&mut tokens, TokenKind::Comment, 0..2);
         assert_eq!(None, tokens.next());
     }
 
@@ -605,10 +600,10 @@ mod tests {
 
         {
             let mut tokens = highlighted_tokens(&highlighted);
-            assert_next_token!(tokens, TokenKind::Comment, 0..2);
-            assert_next_token!(tokens, TokenKind::Comment, 0..2);
-            assert_next_token!(tokens, TokenKind::Text, 0..1);
-            assert_next_token!(tokens, TokenKind::Text, 1..2);
+            assert_next_token(&mut tokens, TokenKind::Comment, 0..2);
+            assert_next_token(&mut tokens, TokenKind::Comment, 0..2);
+            assert_next_token(&mut tokens, TokenKind::Text, 0..1);
+            assert_next_token(&mut tokens, TokenKind::Text, 1..2);
             assert_eq!(None, tokens.next());
         }
     }
@@ -634,9 +629,9 @@ mod tests {
         highlighted.highlight_dirty_lines(&syntax, &buffer);
 
         let mut tokens = highlighted_tokens(&highlighted);
-        assert_next_token!(tokens, TokenKind::Comment, 0..2);
-        assert_next_token!(tokens, TokenKind::Comment, 0..1);
-        assert_next_token!(tokens, TokenKind::Comment, 0..2);
+        assert_next_token(&mut tokens, TokenKind::Comment, 0..2);
+        assert_next_token(&mut tokens, TokenKind::Comment, 0..1);
+        assert_next_token(&mut tokens, TokenKind::Comment, 0..2);
         assert_eq!(None, tokens.next());
     }
 
@@ -655,10 +650,10 @@ mod tests {
 
         {
             let mut tokens = highlighted_tokens(&highlighted);
-            assert_next_token!(tokens, TokenKind::Text, 0..1);
-            assert_next_token!(tokens, TokenKind::Comment, 0..2);
-            assert_next_token!(tokens, TokenKind::Comment, 0..1);
-            assert_next_token!(tokens, TokenKind::Comment, 0..3);
+            assert_next_token(&mut tokens, TokenKind::Text, 0..1);
+            assert_next_token(&mut tokens, TokenKind::Comment, 0..2);
+            assert_next_token(&mut tokens, TokenKind::Comment, 0..1);
+            assert_next_token(&mut tokens, TokenKind::Comment, 0..3);
             assert_eq!(None, tokens.next());
         }
 
@@ -673,11 +668,11 @@ mod tests {
 
         {
             let mut tokens = highlighted_tokens(&highlighted);
-            assert_next_token!(tokens, TokenKind::Text, 0..1);
-            assert_next_token!(tokens, TokenKind::Text, 0..1);
-            assert_next_token!(tokens, TokenKind::Text, 0..1);
-            assert_next_token!(tokens, TokenKind::Text, 1..2);
-            assert_next_token!(tokens, TokenKind::Text, 2..3);
+            assert_next_token(&mut tokens, TokenKind::Text, 0..1);
+            assert_next_token(&mut tokens, TokenKind::Text, 0..1);
+            assert_next_token(&mut tokens, TokenKind::Text, 0..1);
+            assert_next_token(&mut tokens, TokenKind::Text, 1..2);
+            assert_next_token(&mut tokens, TokenKind::Text, 2..3);
             assert_eq!(None, tokens.next());
         }
     }
