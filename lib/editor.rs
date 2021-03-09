@@ -149,7 +149,7 @@ impl Editor {
 
         let mut output = self.string_pool.acquire();
         for command in CommandIter(&text) {
-            match CommandManager::eval_command(self, platform, clients, None, command, &mut output)
+            match CommandManager::eval(self, platform, clients, None, command, &mut output)
             {
                 Ok(None) => (),
                 Ok(Some(op @ CommandOperation::Quit))
@@ -353,7 +353,7 @@ impl Editor {
                 let mut flow = EditorControlFlow::Continue;
                 let mut output = self.string_pool.acquire();
                 for command in CommandIter(commands) {
-                    match CommandManager::eval_command(
+                    match CommandManager::eval(
                         self,
                         platform,
                         clients,

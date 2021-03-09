@@ -35,7 +35,11 @@ impl<'a> From<&'a str> for CommandToken {
 }
 
 pub enum CommandError {
-    CommandError(CommandToken, String, Box<CommandError>),
+    CommandError {
+        command: String,
+        location: usize,
+        error: Box<CommandError>,
+    },
     InvalidCommandName(CommandToken),
     CommandNotFound(CommandToken),
     CommandDoesNotAcceptBang,
@@ -77,6 +81,7 @@ impl CommandError {
     ) -> CommandErrorDisplay<'command, 'error> {
         CommandErrorDisplay {
             command,
+            location: command.as_ptr() as usize,
             buffers,
             error: self,
         }
@@ -85,6 +90,7 @@ impl CommandError {
 
 pub struct CommandErrorDisplay<'command, 'error> {
     command: &'command str,
+    location: usize,
     buffers: &'error BufferCollection,
     error: &'error CommandError,
 }
@@ -96,7 +102,7 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
             error_token: &CommandToken,
             message: fmt::Arguments,
         ) -> fmt::Result {
-            let error_offset = error_token.location - this.command.as_ptr() as usize;
+            let error_offset = error_token.location - this.location;
             let error_len = error_token.len;
             write!(
                 f,
@@ -113,13 +119,24 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
 
         let c = self.command;
         match self.error {
-            CommandError::CommandError(token, command, error) => write(
-                self,
-                f,
-                token,
-                // TODO: ops! can't use the ptr math here!
-                format_args!("\n{}", "ops"/*error.display(&command, self.buffers)*/),
-            ),
+            CommandError::CommandError {
+                command,
+                location,
+                error,
+            } => {
+                let error_display = CommandErrorDisplay {
+                    command,
+                    location: *location,
+                    buffers: self.buffers,
+                    error: &error,
+                };
+                write(
+                    self,
+                    f,
+                    &c.trim().into(),
+                    format_args!("\n{}", error_display),
+                )
+            }
             CommandError::InvalidCommandName(token) => write(
                 self,
                 f,
@@ -687,7 +704,7 @@ impl CommandManager {
         self.history.push_back(s);
     }
 
-    pub fn eval_command<'command>(
+    pub fn eval<'command>(
         editor: &mut Editor,
         platform: &mut Platform,
         clients: &mut ClientManager,
@@ -719,7 +736,7 @@ impl CommandManager {
                 body.clear();
                 body.push_str(&editor.commands.custom_commands[i].body);
                 for body_command in CommandIter(&body) {
-                    match Self::eval_command(
+                    match Self::eval(
                         editor,
                         platform,
                         clients,
@@ -733,11 +750,11 @@ impl CommandManager {
                             break;
                         }
                         Err(error) => {
-                            result = Err(CommandError::CommandError(
-                                command.into(),
-                                body_command.into(),
-                                Box::new(error),
-                            ));
+                            result = Err(CommandError::CommandError {
+                                command: body_command.into(),
+                                location: body_command.as_ptr() as _,
+                                error: Box::new(error),
+                            });
                             break;
                         }
                     }

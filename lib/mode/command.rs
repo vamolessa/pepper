@@ -102,7 +102,7 @@ impl ModeState for State {
                 let command = unsafe { std::str::from_utf8_unchecked(&command_buf[..input.len()]) };
 
                 let mut output = String::new();
-                let op = CommandManager::eval_command(
+                let op = CommandManager::eval(
                     ctx.editor,
                     ctx.platform,
                     ctx.clients,

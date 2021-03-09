@@ -115,7 +115,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 body: &str
             ) -> Result<Option<CommandOperation>, CommandError> {
                 for command in CommandIter(body) {
-                    match CommandManager::eval_command(
+                    match CommandManager::eval(
                         ctx.editor,
                         ctx.platform,
                         ctx.clients,
