@@ -1015,17 +1015,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
 ];
 
-fn replace_all(text: &mut String, from: &str, to: &str) {
-    let from_len = from.len();
-    let to_len = to.len();
-    let mut offset = 0;
-    while let Some(i) = text[offset..].find(from) {
-        offset += i;
-        text.replace_range(offset..(offset + from_len), to);
-        offset += to_len;
-    }
-}
-
 fn current_buffer_and_main_position<'state, 'command>(
     ctx: &CommandContext<'state, 'command>,
 ) -> Result<(BufferHandle, BufferPosition), CommandError> {
@@ -1073,23 +1062,5 @@ where
     {
         Some(()) => Ok(()),
         None => Err(CommandError::LspServerNotRunning),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_replace_all() {
-        fn assert_replace_all(text_expected: (&str, &str), from_to: (&str, &str)) {
-            let mut text = text_expected.0.into();
-            replace_all(&mut text, from_to.0, from_to.1);
-            assert_eq!(text_expected.1, text);
-        }
-
-        assert_replace_all(("xxxx", "xxxx"), ("from", "to"));
-        assert_replace_all(("xxxx $A", "xxxx a"), ("$A", "a"));
-        assert_replace_all(("$A xxxx $A$A", "a xxxx aa"), ("$A", "a"));
     }
 }

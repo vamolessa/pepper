@@ -349,6 +349,17 @@ impl<'state, 'command> CommandContext<'state, 'command> {
     }
 }
 
+pub fn replace_all(text: &mut String, from: &str, to: &str) {
+    let from_len = from.len();
+    let to_len = to.len();
+    let mut offset = 0;
+    while let Some(i) = text[offset..].find(from) {
+        offset += i;
+        text.replace_range(offset..(offset + from_len), to);
+        offset += to_len;
+    }
+}
+
 fn find_balanced_curly_bracket(bytes: &[u8]) -> Option<usize> {
     let mut balance: usize = 1;
     let mut i = 0;
@@ -894,6 +905,19 @@ mod tests {
     fn operation_size() {
         assert_eq!(1, std::mem::size_of::<CommandOperation>());
         assert_eq!(1, std::mem::size_of::<Option<CommandOperation>>());
+    }
+
+    #[test]
+    fn test_replace_all() {
+        fn assert_replace_all(text_expected: (&str, &str), from_to: (&str, &str)) {
+            let mut text = text_expected.0.into();
+            replace_all(&mut text, from_to.0, from_to.1);
+            assert_eq!(text_expected.1, text);
+        }
+
+        assert_replace_all(("xxxx", "xxxx"), ("from", "to"));
+        assert_replace_all(("xxxx $A", "xxxx a"), ("$A", "a"));
+        assert_replace_all(("$A xxxx $A$A", "a xxxx aa"), ("$A", "a"));
     }
 
     #[test]
