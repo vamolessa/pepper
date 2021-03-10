@@ -4,7 +4,7 @@ use crate::{
     buffer::BufferCollection,
     buffer_view::BufferViewCollection,
     client::{ClientHandle, ClientManager},
-    command::{CommandIter, CommandManager, CommandOperation},
+    command::{CommandManager, CommandOperation},
     config::Config,
     editor_utils::{MessageKind, ReadLine, StatusBar, StringPool},
     events::{ClientEvent, EditorEvent, EditorEventQueue, KeyParser},
@@ -16,7 +16,7 @@ use crate::{
     register::{RegisterCollection, RegisterKey, KEY_QUEUE_REGISTER},
     syntax::{HighlightResult, SyntaxCollection},
     theme::Theme,
-    word_database::{WordDatabase, WordIndicesIter},
+    word_database::WordDatabase,
 };
 
 #[derive(Clone, Copy)]
@@ -152,11 +152,9 @@ impl Editor {
     }
 
     pub fn on_pre_render(&mut self, clients: &mut ClientManager) -> bool {
-        let picker_height = self.picker.update_scroll_and_unfiltered_entries(
-            self.config.picker_max_height.get() as _,
-            WordIndicesIter::empty(),
-            self.read_line.input(),
-        );
+        let picker_height = self
+            .picker
+            .update_scroll(self.config.picker_max_height as _);
 
         let mut needs_redraw = false;
         let focused_handle = clients.focused_handle();
@@ -210,7 +208,6 @@ impl Editor {
     pub fn on_client_event(
         &mut self,
         clients: &mut ClientManager,
-        client_handle: ClientHandle,
         platform: &mut Platform,
         event: ClientEvent,
     ) -> EditorControlFlow {

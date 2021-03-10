@@ -1,5 +1,6 @@
 use crate::{
     buffer_view::BufferViewError,
+    command::CommandManager,
     editor::KeysIterator,
     editor_utils::{MessageKind, ReadLinePoll},
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
@@ -8,13 +9,14 @@ use crate::{
 };
 
 pub struct State {
-    on_client_keys: fn(ctx: &mut ModeContext, &mut KeysIterator, ReadLinePoll),
+    on_client_keys:
+        fn(ctx: &mut ModeContext, &mut KeysIterator, ReadLinePoll) -> Option<ModeOperation>,
 }
 
 impl Default for State {
     fn default() -> Self {
         Self {
-            on_client_keys: |_, _, _| (),
+            on_client_keys: |_, _, _| None,
         }
     }
 }
@@ -22,7 +24,6 @@ impl Default for State {
 impl ModeState for State {
     fn on_enter(ctx: &mut ModeContext) {
         ctx.editor.read_line.input_mut().clear();
-        ctx.editor.picker.filter(WordIndicesIter::empty(), "");
     }
 
     fn on_exit(ctx: &mut ModeContext) {
@@ -45,7 +46,7 @@ impl ModeState for State {
                     let picker_height = ctx
                         .editor
                         .picker
-                        .height(ctx.editor.config.picker_max_height.get() as _)
+                        .height(ctx.editor.config.picker_max_height as _)
                         as isize;
                     ctx.editor.picker.move_cursor(picker_height / 2);
                 }
@@ -53,7 +54,7 @@ impl ModeState for State {
                     let picker_height = ctx
                         .editor
                         .picker
-                        .height(ctx.editor.config.picker_max_height.get() as _)
+                        .height(ctx.editor.config.picker_max_height as _)
                         as isize;
                     ctx.editor.picker.move_cursor(-picker_height / 2);
                 }
@@ -73,8 +74,7 @@ impl ModeState for State {
             }
         }
 
-        (this.on_client_keys)(ctx, keys, poll);
-        None
+        (this.on_client_keys)(ctx, keys, poll)
     }
 }
 
@@ -86,13 +86,17 @@ pub mod buffer {
     use crate::{buffer::Buffer, navigation_history::NavigationHistory, picker::Picker};
 
     pub fn enter_mode(ctx: &mut ModeContext) {
-        fn on_client_keys(ctx: &mut ModeContext, _: &mut KeysIterator, poll: ReadLinePoll) {
+        fn on_client_keys(
+            ctx: &mut ModeContext,
+            _: &mut KeysIterator,
+            poll: ReadLinePoll,
+        ) -> Option<ModeOperation> {
             match poll {
-                ReadLinePoll::Pending => return,
+                ReadLinePoll::Pending => return None,
                 ReadLinePoll::Submitted => (),
                 ReadLinePoll::Canceled => {
                     Mode::change_to(ctx, ModeKind::default());
-                    return;
+                    return None;
                 }
             }
 
@@ -104,7 +108,7 @@ pub mod buffer {
                 Some(entry) => entry.name,
                 None => {
                     Mode::change_to(ctx, ModeKind::default());
-                    return;
+                    return None;
                 }
             };
 
@@ -141,6 +145,7 @@ pub mod buffer {
 
             ctx.editor.string_pool.release(buf);
             Mode::change_to(ctx, ModeKind::default());
+            None
         }
 
         fn add_buffer_to_picker(picker: &mut Picker, buffer: &Buffer) {
@@ -175,7 +180,51 @@ pub mod buffer {
             }
         }
 
-        ctx.editor.mode.picker_state.on_client_keys = on_client_keys;
-        Mode::change_to(ctx, ModeKind::Picker);
+        ctx.editor.picker.filter(WordIndicesIter::empty(), "");
+        if ctx.editor.picker.len() > 0 {
+            ctx.editor.mode.picker_state.on_client_keys = on_client_keys;
+            Mode::change_to(ctx, ModeKind::Picker);
+        }
+    }
+}
+
+pub mod custom {
+    use super::*;
+
+    pub fn enter_mode(ctx: &mut ModeContext) {
+        fn on_client_keys(
+            ctx: &mut ModeContext,
+            _: &mut KeysIterator,
+            poll: ReadLinePoll,
+        ) -> Option<ModeOperation> {
+            match poll {
+                ReadLinePoll::Pending => None,
+                ReadLinePoll::Submitted => {
+                    let continuation = std::mem::take(&mut ctx.editor.commands.continuation);
+                    let operation = CommandManager::eval_body_and_print(
+                        ctx.editor,
+                        ctx.platform,
+                        ctx.clients,
+                        Some(ctx.client_handle),
+                        &continuation,
+                    )
+                    .map(Into::into);
+                    ctx.editor.string_pool.release(continuation);
+
+                    Mode::change_to(ctx, ModeKind::default());
+                    operation
+                }
+                ReadLinePoll::Canceled => {
+                    Mode::change_to(ctx, ModeKind::default());
+                    None
+                }
+            }
+        }
+
+        ctx.editor.picker.filter(WordIndicesIter::empty(), "");
+        if ctx.editor.picker.len() > 0 {
+            ctx.editor.mode.picker_state.on_client_keys = on_client_keys;
+            Mode::change_to(ctx, ModeKind::Picker);
+        }
     }
 }

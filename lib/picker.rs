@@ -38,8 +38,6 @@ pub struct Picker {
 
     cursor: usize,
     scroll: usize,
-
-    has_unfiltered_entries: bool,
 }
 
 impl Picker {
@@ -93,16 +91,7 @@ impl Picker {
         }
     }
 
-    pub fn update_scroll_and_unfiltered_entries(
-        &mut self,
-        max_height: usize,
-        word_indices: WordIndicesIter,
-        pattern: &str,
-    ) -> usize {
-        if self.has_unfiltered_entries {
-            self.filter(word_indices, pattern);
-        }
-
+    pub fn update_scroll(&mut self, max_height: usize) -> usize {
         let height = self.height(max_height);
         if self.cursor < self.scroll {
             self.scroll = self.cursor;
@@ -137,18 +126,15 @@ impl Picker {
         }
 
         self.custom_entries_len += 1;
-        self.has_unfiltered_entries = true;
     }
 
     pub fn clear_filtered(&mut self) {
-        self.has_unfiltered_entries = false;
         self.filtered_entries.clear();
         self.cursor = 0;
         self.scroll = 0;
     }
 
     pub fn filter(&mut self, word_indices: WordIndicesIter, pattern: &str) {
-        self.has_unfiltered_entries = false;
         self.filtered_entries.clear();
 
         for (i, word) in word_indices {

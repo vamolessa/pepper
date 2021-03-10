@@ -21,7 +21,7 @@ use crate::{
     keymap::ParseKeyMapError,
     lsp,
     mode::ModeKind,
-    mode::{read_line, ModeContext},
+    mode::{picker, read_line, ModeContext},
     navigation_history::NavigationHistory,
     platform::{Platform, PlatformRequest},
     register::RegisterKey,
@@ -239,6 +239,67 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 client_handle,
             };
             read_line::custom::enter_mode(&mut mode_ctx);
+
+            Ok(None)
+        },
+    },
+    BuiltinCommand {
+        name: "add-picker-entry",
+        alias: "",
+        help: concat!(
+            "adds a new picker entry that will then be shown in the next call to the `pick` command\n",
+            "picker-entry [<flags>] <name>\n",
+            " -description=<text> : an optional description that shows by the side of the entry's name",
+        ),
+        completions: &[],
+        func: |ctx| {
+            ctx.args.assert_no_bang()?;
+            let mut flags = [("description", None)];
+            let description = flags[0].1.unwrap_or("");
+            ctx.args.get_flags(&mut flags)?;
+            let name = ctx.args.next()?;
+            ctx.args.assert_empty()?;
+
+            ctx.editor.picker.add_custom_entry(name, description);
+            Ok(None)
+        },
+    },
+    BuiltinCommand {
+        name: "pick",
+        alias: "",
+        help: concat!(
+            "opens up a menu from where a line can be picked and then executes commands\n",
+            "the line picked can be accessed through LINE\n", // TODO: revisit LINE var name
+            "pick [<flags>] <body>\n",
+            " -prompt=<prompt-text> : the prompt text that shows just before user input (default: `pick:`)",
+        ),
+        completions: &[],
+        func: |ctx| {
+            ctx.args.assert_no_bang()?;
+            let mut flags = [("prompt", None)];
+            let prompt = flags[0].1.unwrap_or("pick:");
+            ctx.args.get_flags(&mut flags)?;
+            let body = ctx.args.next()?;
+            ctx.args.assert_empty()?;
+
+            let client_handle = match ctx.client_handle{
+                Some(handle) => handle,
+                None => return Ok(None),
+            };
+
+            ctx.editor.read_line.set_prompt(prompt);
+            let mut continuation = ctx.editor.string_pool.acquire();
+            continuation.clear();
+            continuation.push_str(body);
+            ctx.editor.commands.continuation = continuation;
+
+            let mut mode_ctx = ModeContext {
+                editor: ctx.editor,
+                platform: ctx.platform,
+                clients: ctx.clients,
+                client_handle,
+            };
+            picker::custom::enter_mode(&mut mode_ctx);
 
             Ok(None)
         },

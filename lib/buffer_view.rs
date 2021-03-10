@@ -875,14 +875,24 @@ mod tests {
         assert_movement(&mut ctx, (2, 2), (3, 0), CursorMovement::ColumnsForward(3));
         assert_movement(&mut ctx, (2, 2), (3, 3), CursorMovement::ColumnsForward(6));
         assert_movement(&mut ctx, (2, 2), (4, 0), CursorMovement::ColumnsForward(7));
-        assert_movement(&mut ctx, (2, 2), (4, 2), CursorMovement::ColumnsForward(999));
+        assert_movement(
+            &mut ctx,
+            (2, 2),
+            (4, 2),
+            CursorMovement::ColumnsForward(999),
+        );
 
         assert_movement(&mut ctx, (2, 2), (2, 2), CursorMovement::ColumnsBackward(0));
         assert_movement(&mut ctx, (2, 2), (2, 1), CursorMovement::ColumnsBackward(1));
         assert_movement(&mut ctx, (2, 0), (1, 3), CursorMovement::ColumnsBackward(1));
         assert_movement(&mut ctx, (2, 2), (1, 3), CursorMovement::ColumnsBackward(3));
         assert_movement(&mut ctx, (2, 2), (0, 2), CursorMovement::ColumnsBackward(7));
-        assert_movement(&mut ctx, (2, 2), (0, 0), CursorMovement::ColumnsBackward(999));
+        assert_movement(
+            &mut ctx,
+            (2, 2),
+            (0, 0),
+            CursorMovement::ColumnsBackward(999),
+        );
 
         assert_movement(&mut ctx, (2, 2), (2, 2), CursorMovement::WordsForward(0));
         assert_movement(&mut ctx, (2, 0), (2, 4), CursorMovement::WordsForward(1));

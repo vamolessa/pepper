@@ -1,6 +1,6 @@
 use crate::{
-    command::CommandOperation,
     client::{ClientHandle, ClientManager},
+    command::CommandOperation,
     editor::{Editor, KeysIterator},
     platform::Platform,
     register::RegisterKey,

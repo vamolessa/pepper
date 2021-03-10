@@ -1,7 +1,7 @@
 use crate::{
-    command::{CommandIter, CommandManager},
+    command::CommandManager,
     editor::KeysIterator,
-    editor_utils::{MessageKind, ReadLinePoll},
+    editor_utils::ReadLinePoll,
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     register::SEARCH_REGISTER,
 };
@@ -482,7 +482,8 @@ pub mod custom {
                         ctx.clients,
                         Some(ctx.client_handle),
                         &continuation,
-                    ).map(Into::into);
+                    )
+                    .map(Into::into);
                     ctx.editor.string_pool.release(continuation);
 
                     Mode::change_to(ctx, ModeKind::default());

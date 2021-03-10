@@ -66,5 +66,5 @@ config_values! {
     visual_tab_first: u8 = b'|',
     visual_tab_repeat: u8 = b' ',
 
-    picker_max_height: NonZeroU8 = NonZeroU8::new(8).unwrap(),
+    picker_max_height: u8 = 8,
 }
