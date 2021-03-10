@@ -289,8 +289,6 @@ impl ClientApplication {
 
         if let Some(handle) = args.as_client {
             self.handle = handle;
-        } else {
-            ClientEvent::Key(self.handle, Key::None).serialize(&mut self.write_buf);
         }
 
         let mut commands = String::new();
@@ -340,6 +338,10 @@ impl ClientApplication {
                 stdout.write_all(ui::MODE_256_COLORS_CODE).unwrap();
                 stdout.flush().unwrap();
                 self.stdout = Some(stdout);
+
+                if args.as_client.is_none() {
+                    ClientEvent::Key(self.handle, Key::None).serialize(&mut self.write_buf);
+                }
             }
         }
 
