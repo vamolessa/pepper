@@ -284,7 +284,7 @@ impl ClientApplication {
         }
     }
 
-    pub fn init<'a>(&'a mut self, args: Args, stdin: Option<&[u8]>) -> &'a [u8] {
+    pub fn init<'a>(&'a mut self, args: Args, is_pipped: bool) -> &'a [u8] {
         self.write_buf.clear();
 
         if let Some(handle) = args.as_client {
@@ -314,34 +314,38 @@ impl ClientApplication {
             }
         }
 
-        match stdin {
-            Some(bytes) => match std::str::from_utf8(bytes) {
-                Ok(text) => {
-                    commands.push('\n');
-                    commands.push_str(text);
-                }
-                Err(error) => {
-                    use fmt::Write;
-                    write!(commands, "\nprint -error {{{}}}", error).unwrap();
-                }
-            },
-            None => {
-                static mut STDOUT: Option<io::Stdout> = None;
-                let mut stdout = unsafe {
-                    STDOUT = Some(io::stdout());
-                    STDOUT.as_ref().unwrap().lock()
-                };
+        if is_pipped {
+            use fmt::Write;
+            use io::Read;
 
-                use io::Write;
-                stdout.write_all(ui::ENTER_ALTERNATE_BUFFER_CODE).unwrap();
-                stdout.write_all(ui::HIDE_CURSOR_CODE).unwrap();
-                stdout.write_all(ui::MODE_256_COLORS_CODE).unwrap();
-                stdout.flush().unwrap();
-                self.stdout = Some(stdout);
+            let mut buf = Vec::new();
+            match std::io::stdin().lock().read_to_end(&mut buf) {
+                Ok(_) => match std::str::from_utf8(&buf) {
+                    Ok(text) => {
+                        commands.push('\n');
+                        commands.push_str(text);
+                    }
+                    Err(error) => write!(commands, "\nprint -error {{{}}}", error).unwrap(),
+                },
 
-                if args.as_client.is_none() {
-                    ClientEvent::Key(self.handle, Key::None).serialize(&mut self.write_buf);
-                }
+                Err(error) => write!(commands, "\nprint -error {{{}}}", error).unwrap(),
+            }
+        } else {
+            static mut STDOUT: Option<io::Stdout> = None;
+            let mut stdout = unsafe {
+                STDOUT = Some(io::stdout());
+                STDOUT.as_ref().unwrap().lock()
+            };
+
+            use io::Write;
+            stdout.write_all(ui::ENTER_ALTERNATE_BUFFER_CODE).unwrap();
+            stdout.write_all(ui::HIDE_CURSOR_CODE).unwrap();
+            stdout.write_all(ui::MODE_256_COLORS_CODE).unwrap();
+            stdout.flush().unwrap();
+            self.stdout = Some(stdout);
+
+            if args.as_client.is_none() {
+                ClientEvent::Key(self.handle, Key::None).serialize(&mut self.write_buf);
             }
         }
 

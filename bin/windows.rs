@@ -282,17 +282,17 @@ impl AsyncReader {
     }
 }
 
-fn is_console(handle: HANDLE) -> bool {
-    unsafe { GetFileType(handle) == FILE_TYPE_CHAR }
+fn is_pipped(handle: HANDLE) -> bool {
+    unsafe { GetFileType(handle) != FILE_TYPE_CHAR }
 }
 
-fn read_all_bytes(handle: HANDLE, mut buf: &mut [u8]) -> usize {
+fn read_all_bytes(handle: &Handle, mut buf: &mut [u8]) -> usize {
     let mut total_read = 0;
     while !buf.is_empty() {
         let mut read_len = 0;
         let result = unsafe {
             ReadFile(
-                handle,
+                handle.0,
                 buf.as_ptr() as _,
                 buf.len() as _,
                 &mut read_len,
@@ -769,7 +769,7 @@ impl ConnectionToServer {
     }
 
     pub fn read(&mut self, buf: &mut [u8]) -> usize {
-        read_all_bytes(self.reader.handle().0, buf)
+        read_all_bytes(self.reader.handle(), buf)
     }
 
     pub fn read_async(&mut self) -> Result<&[u8], ()> {
@@ -1162,24 +1162,9 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: HANDLE, output_handle
     let client_handle = ClientHandle::from_index(client_index as _).unwrap();
     let mut application = ClientApplication::new(client_handle);
 
-    let mut stdin = Vec::new();
-    let stdin = if is_console(input_handle) {
-        None
-    } else {
-        let mut len = 0;
-        loop {
-            stdin.resize(len + 4 * 1024, 0);
-            let read_len = read_all_bytes(input_handle, &mut stdin[len..]);
-            len += read_len;
-            if read_len == 0 {
-                break;
-            }
-        }
-        Some(&stdin[..len])
-    };
-
-    let bytes = application.init(args, stdin);
-    if !connection.write(bytes) || stdin.is_some() {
+    let is_pipped = is_pipped(input_handle);
+    let bytes = application.init(args, is_pipped);
+    if !connection.write(bytes) || is_pipped {
         return;
     }
 
