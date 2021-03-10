@@ -662,7 +662,7 @@ pub struct CommandManager {
     custom_commands: Vec<CustomCommand>,
     history: VecDeque<String>,
 
-    pub continuations: Vec<String>,
+    pub continuation: Option<String>,
 }
 
 impl CommandManager {
@@ -672,7 +672,7 @@ impl CommandManager {
             custom_commands: Vec::new(),
             history: VecDeque::with_capacity(HISTORY_CAPACITY),
 
-            continuations: Vec::new(),
+            continuation: None,
         }
     }
 
@@ -886,7 +886,7 @@ mod tests {
             builtin_commands,
             custom_commands: Vec::new(),
             history: Default::default(),
-            continuations: Vec::new(),
+            continuation: None,
         }
     }
 

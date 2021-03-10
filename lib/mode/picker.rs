@@ -200,7 +200,7 @@ pub mod custom {
             match poll {
                 ReadLinePoll::Pending => None,
                 ReadLinePoll::Submitted => {
-                    let continuation = ctx.editor.commands.continuations.pop().unwrap();
+                    let continuation = ctx.editor.commands.continuation.take().unwrap();
                     let operation = CommandManager::eval_body_and_print(
                         ctx.editor,
                         ctx.platform,
@@ -211,7 +211,12 @@ pub mod custom {
                     .map(Into::into);
                     ctx.editor.string_pool.release(continuation);
 
-                    Mode::change_to(ctx, ModeKind::default());
+                    if ctx.editor.mode.kind() == ModeKind::Picker
+                        && ctx.editor.commands.continuation.is_none()
+                    {
+                        Mode::change_to(ctx, ModeKind::default());
+                    }
+
                     operation
                 }
                 ReadLinePoll::Canceled => {

@@ -230,9 +230,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             let mut continuation = ctx.editor.string_pool.acquire();
             continuation.clear();
             continuation.push_str(body);
-            ctx.editor.commands.continuations.push(continuation);
-
-            dbg!(ctx.editor.commands.continuations.len());
+            ctx.editor.commands.continuation = Some(continuation);
 
             let mut mode_ctx = ModeContext {
                 editor: ctx.editor,
@@ -293,7 +291,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             let mut continuation = ctx.editor.string_pool.acquire();
             continuation.clear();
             continuation.push_str(body);
-            ctx.editor.commands.continuations.push(continuation);
+            ctx.editor.commands.continuation = Some(continuation);
 
             let mut mode_ctx = ModeContext {
                 editor: ctx.editor,
