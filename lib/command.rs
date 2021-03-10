@@ -403,6 +403,15 @@ impl<'a> Iterator for CommandIter<'a> {
                             return Some(command);
                         }
                     }
+                    b';' => {
+                        let command = &self.0[..i];
+                        self.0 = &self.0[(i + 1)..];
+                        if command.is_empty() {
+                            break;
+                        } else {
+                            return Some(command);
+                        }
+                    }
                     b'{' => match find_balanced_curly_bracket(&bytes[(i + 1)..]) {
                         Some(len) => {
                             i += len;
@@ -653,7 +662,7 @@ pub struct CommandManager {
     custom_commands: Vec<CustomCommand>,
     history: VecDeque<String>,
 
-    pub continuation: String,
+    pub continuations: Vec<String>,
 }
 
 impl CommandManager {
@@ -663,7 +672,7 @@ impl CommandManager {
             custom_commands: Vec::new(),
             history: VecDeque::with_capacity(HISTORY_CAPACITY),
 
-            continuation: String::new(),
+            continuations: Vec::new(),
         }
     }
 
@@ -877,6 +886,7 @@ mod tests {
             builtin_commands,
             custom_commands: Vec::new(),
             history: Default::default(),
+            continuations: Vec::new(),
         }
     }
 
@@ -936,6 +946,22 @@ mod tests {
         assert_eq!(["aaa", "bbb", "ccc"], &collect(args)[..]);
         let args = parse_args(&commands, "c  {aaa}{{bb}b}ccc  ");
         assert_eq!(["aaa", "{bb}b", "ccc"], &collect(args)[..]);
+
+        let args = parse_args(&commands, "c -option=value aaa");
+        let mut flags = [("switch", None), ("option", None)];
+        if args.get_flags(&mut flags).is_err() {
+            panic!("error parsing args");
+        }
+        assert_eq!(None, flags[0].1);
+        assert_eq!(Some("value"), flags[1].1);
+
+        let args = parse_args(&commands, "c aaa -switch bbb -option=value ccc");
+        let mut flags = [("switch", None), ("option", None)];
+        if args.get_flags(&mut flags).is_err() {
+            panic!("error parsing args");
+        }
+        assert_eq!(Some(""), flags[0].1);
+        assert_eq!(Some("value"), flags[1].1);
     }
 
     #[test]
@@ -1030,6 +1056,16 @@ mod tests {
             CommandIter("command0# comment\n\n# more comment\n\n# one more comment\ncommand1");
         assert_eq!(Some("command0"), commands.next());
         assert_eq!(Some("command1"), commands.next());
+        assert_eq!(None, commands.next());
+
+        let mut commands = CommandIter("command0;command1");
+        assert_eq!(Some("command0"), commands.next());
+        assert_eq!(Some("command1"), commands.next());
+        assert_eq!(None, commands.next());
+
+        let mut commands = CommandIter(";;  command0;   ;;command1   ;");
+        assert_eq!(Some("command0"), commands.next());
+        assert_eq!(Some("command1   "), commands.next());
         assert_eq!(None, commands.next());
     }
 }

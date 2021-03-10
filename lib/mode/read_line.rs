@@ -475,7 +475,7 @@ pub mod custom {
             match poll {
                 ReadLinePoll::Pending => None,
                 ReadLinePoll::Submitted => {
-                    let continuation = std::mem::take(&mut ctx.editor.commands.continuation);
+                    let continuation = ctx.editor.commands.continuations.pop().unwrap();
                     let operation = CommandManager::eval_body_and_print(
                         ctx.editor,
                         ctx.platform,

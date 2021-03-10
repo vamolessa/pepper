@@ -216,8 +216,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         func: |ctx| {
             ctx.args.assert_no_bang()?;
             let mut flags = [("prompt", None)];
-            let prompt = flags[0].1.unwrap_or("read-line:");
             ctx.args.get_flags(&mut flags)?;
+            let prompt = flags[0].1.unwrap_or("read-line:");
             let body = ctx.args.next()?;
             ctx.args.assert_empty()?;
 
@@ -230,7 +230,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             let mut continuation = ctx.editor.string_pool.acquire();
             continuation.clear();
             continuation.push_str(body);
-            ctx.editor.commands.continuation = continuation;
+            ctx.editor.commands.continuations.push(continuation);
 
             let mut mode_ctx = ModeContext {
                 editor: ctx.editor,
@@ -291,7 +291,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             let mut continuation = ctx.editor.string_pool.acquire();
             continuation.clear();
             continuation.push_str(body);
-            ctx.editor.commands.continuation = continuation;
+            ctx.editor.commands.continuations.push(continuation);
 
             let mut mode_ctx = ModeContext {
                 editor: ctx.editor,
@@ -338,14 +338,16 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         help: concat!(
             "prints arguments to the status bar\nprint <value>...\n",
             " -error : will print the message as an error",
+            " -dbg : will also print the message to the stderr",
         ),
         completions: &[],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
 
-            let mut flags = [("error", None)];
+            let mut flags = [("error", None), ("dbg", None)];
             ctx.args.get_flags(&mut flags)?;
             let error = flags[0].1.is_some();
+            let dbg = flags[1].1.is_some();
 
             let message_kind = if error {
                 MessageKind::Error
@@ -356,6 +358,14 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             let mut write = ctx.editor.status_bar.write(message_kind);
             while let Some(arg) = ctx.args.try_next()? {
                 write.str(arg);
+
+                if dbg {
+                    eprint!("{}", arg);
+                }
+            }
+
+            if dbg {
+                eprintln!();
             }
 
             Ok(None)
@@ -1005,6 +1015,13 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
 ];
 
+fn replace_all(text: &mut String, from: &str, to: &str) {
+    let from_len = from.len();
+    while let Some(index) = text.find(from) {
+        text.replace_range(index..(index + from_len), to);
+    }
+}
+
 fn current_buffer_and_main_position<'state, 'command>(
     ctx: &CommandContext<'state, 'command>,
 ) -> Result<(BufferHandle, BufferPosition), CommandError> {
@@ -1052,5 +1069,20 @@ where
     {
         Some(()) => Ok(()),
         None => Err(CommandError::LspServerNotRunning),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_replace_all() {
+        fn assert_replace_all(text_expected: (&str, &str), from_to: (&str, &str)) {
+            let mut text = text_expected.0.into();
+            replace_all(&mut text, from_to.0, from_to.1);
+            assert_eq!(text_expected.1, text);
+        }
+
+        assert_replace_all(("aaaa", "aaaa"), ("from", "to"));
     }
 }
