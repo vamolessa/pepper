@@ -1153,8 +1153,9 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: HANDLE, output_handle
     let client_handle = ClientHandle::from_index(client_index as _).unwrap();
     let mut application = ClientApplication::new(client_handle);
 
-    let bytes = application.init(args);
-    if !connection.write(bytes) {
+    let stdin = None;
+    let bytes = application.init(args, stdin);
+    if !connection.write(bytes) || stdin.is_some() {
         return;
     }
 

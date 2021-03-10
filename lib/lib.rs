@@ -54,10 +54,6 @@ pub struct Args {
     #[argh(option)]
     pub as_client: Option<client::ClientHandle>,
 
-    #[argh(switch)]
-    /// will print to stderr frames latency
-    pub profile: bool,
-
     /// open files at paths
     /// you can append ':<line-number>' to a path to open it at that line
     #[argh(positional)]

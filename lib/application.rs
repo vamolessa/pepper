@@ -268,7 +268,7 @@ pub struct ClientApplication {
     handle: ClientHandle,
     read_buf: Vec<u8>,
     write_buf: SerializationBuf,
-    stdout: io::StdoutLock<'static>,
+    stdout: Option<io::StdoutLock<'static>>,
 }
 impl ClientApplication {
     pub const fn connection_buffer_len() -> usize {
@@ -276,27 +276,15 @@ impl ClientApplication {
     }
 
     pub fn new(handle: ClientHandle) -> Self {
-        static mut STDOUT: Option<io::Stdout> = None;
-        let mut stdout = unsafe {
-            STDOUT = Some(io::stdout());
-            STDOUT.as_ref().unwrap().lock()
-        };
-
-        use io::Write;
-        stdout.write_all(ui::ENTER_ALTERNATE_BUFFER_CODE).unwrap();
-        stdout.write_all(ui::HIDE_CURSOR_CODE).unwrap();
-        stdout.write_all(ui::MODE_256_COLORS_CODE).unwrap();
-        stdout.flush().unwrap();
-
         Self {
             handle,
             read_buf: Vec::new(),
             write_buf: SerializationBuf::default(),
-            stdout,
+            stdout: None,
         }
     }
 
-    pub fn init<'a>(&'a mut self, args: Args) -> &'a [u8] {
+    pub fn init<'a>(&'a mut self, args: Args, stdin: Option<&[u8]>) -> &'a [u8] {
         self.write_buf.clear();
 
         if let Some(handle) = args.as_client {
@@ -305,8 +293,8 @@ impl ClientApplication {
             ClientEvent::Key(self.handle, Key::None).serialize(&mut self.write_buf);
         }
 
+        let mut commands = String::new();
         if !args.files.is_empty() {
-            let mut commands = String::new();
             for path in &args.files {
                 let (path, line) = match path.rfind(':') {
                     Some(i) => {
@@ -326,9 +314,38 @@ impl ClientApplication {
                     None => writeln!(commands, "open '{}'", path).unwrap(),
                 }
             }
-            ClientEvent::Command(self.handle, &commands).serialize(&mut self.write_buf);
         }
 
+        match stdin {
+            Some(bytes) => match std::str::from_utf8(bytes) {
+                Ok(text) => {
+                    commands.push('\n');
+                    commands.push_str(text);
+                }
+                Err(error) => {
+                    use fmt::Write;
+                    write!(commands, "\nprint -error {{{}}}", error).unwrap();
+                }
+            },
+            None => {
+                static mut STDOUT: Option<io::Stdout> = None;
+                let mut stdout = unsafe {
+                    STDOUT = Some(io::stdout());
+                    STDOUT.as_ref().unwrap().lock()
+                };
+
+                use io::Write;
+                stdout.write_all(ui::ENTER_ALTERNATE_BUFFER_CODE).unwrap();
+                stdout.write_all(ui::HIDE_CURSOR_CODE).unwrap();
+                stdout.write_all(ui::MODE_256_COLORS_CODE).unwrap();
+                stdout.flush().unwrap();
+                self.stdout = Some(stdout);
+            }
+        }
+
+        if !commands.is_empty() {
+            ClientEvent::Command(self.handle, &commands).serialize(&mut self.write_buf);
+        }
         self.write_buf.as_slice()
     }
 
@@ -338,6 +355,11 @@ impl ClientApplication {
         keys: &[Key],
         message: &[u8],
     ) -> &'a [u8] {
+        let stdout = match self.stdout {
+            Some(ref mut stdout) => stdout,
+            None => return &[],
+        };
+
         self.write_buf.clear();
 
         if let Some((width, height)) = resize {
@@ -365,7 +387,7 @@ impl ClientApplication {
                     let (message, rest) = message.split_at(message_len);
                     read_buf = rest;
 
-                    self.stdout.write_all(message).unwrap();
+                    stdout.write_all(message).unwrap();
                 } else {
                     break;
                 }
@@ -376,7 +398,7 @@ impl ClientApplication {
             self.read_buf.copy_within(rest_index.., 0);
             self.read_buf.truncate(rest_len);
 
-            self.stdout.flush().unwrap();
+            stdout.flush().unwrap();
         }
 
         self.write_buf.as_slice()
@@ -384,11 +406,12 @@ impl ClientApplication {
 }
 impl Drop for ClientApplication {
     fn drop(&mut self) {
-        use io::Write;
-
-        let _ = self.stdout.write_all(ui::EXIT_ALTERNATE_BUFFER_CODE);
-        let _ = self.stdout.write_all(ui::SHOW_CURSOR_CODE);
-        let _ = self.stdout.write_all(ui::RESET_STYLE_CODE);
-        let _ = self.stdout.flush();
+        if let Some(ref mut stdout) = self.stdout {
+            use io::Write;
+            let _ = stdout.write_all(ui::EXIT_ALTERNATE_BUFFER_CODE);
+            let _ = stdout.write_all(ui::SHOW_CURSOR_CODE);
+            let _ = stdout.write_all(ui::RESET_STYLE_CODE);
+            let _ = stdout.flush();
+        }
     }
 }
