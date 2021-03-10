@@ -232,6 +232,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             continuation.push_str(body);
             ctx.editor.commands.continuations.push(continuation);
 
+            dbg!(ctx.editor.commands.continuations.len());
+
             let mut mode_ctx = ModeContext {
                 editor: ctx.editor,
                 platform: ctx.platform,

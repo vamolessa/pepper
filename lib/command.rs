@@ -111,7 +111,7 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
 
             let error_len = this.command[error_offset..(error_offset + error_token.len)]
                 .chars()
-                .count();
+                .count().max(1);
             let error_offset = this
                 .command
                 .char_indices()
@@ -459,7 +459,7 @@ impl<'a> Iterator for CommandTokenIter<'a> {
         fn split_at_boundary(s: &str) -> (&str, &str) {
             match s.find(|c: char| c.is_ascii_whitespace() || matches!(c, '"' | '\'' | '{' | '=')) {
                 Some(i) => s.split_at(i),
-                None => (s, ""),
+                None => (s, &s[s.len()..]),
             }
         }
 
@@ -481,7 +481,7 @@ impl<'a> Iterator for CommandTokenIter<'a> {
                     }
                     None => {
                         let token = self.rest;
-                        self.rest = "";
+                        self.rest = &self.rest[self.rest.len()..];
                         Some((CommandTokenKind::Unterminated, token))
                     }
                 }
@@ -496,7 +496,7 @@ impl<'a> Iterator for CommandTokenIter<'a> {
                     }
                     None => {
                         let token = self.rest;
-                        self.rest = "";
+                        self.rest = &self.rest[self.rest.len()..];
                         Some((CommandTokenKind::Unterminated, token))
                     }
                 }
@@ -558,7 +558,7 @@ impl<'a> CommandArgs<'a> {
                     match tokens.next() {
                         Some((CommandTokenKind::Text, _)) => *value = Some(""),
                         Some((CommandTokenKind::Flag, _)) => {
-                            *value = Some("");
+                            *value = Some(&key[key.len()..]);
                             tokens.rest = previous_state;
                         }
                         Some((CommandTokenKind::Equals, token)) => match tokens.next() {
@@ -576,7 +576,7 @@ impl<'a> CommandArgs<'a> {
                             break Err(CommandError::UnterminatedToken(token.into()))
                         }
                         None => {
-                            *value = Some("");
+                            *value = Some(&key[key.len()..]);
                             break Ok(());
                         }
                     }
