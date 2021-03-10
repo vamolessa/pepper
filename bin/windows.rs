@@ -21,7 +21,9 @@ use winapi::{
     um::{
         consoleapi::{GetConsoleMode, ReadConsoleInputW, SetConsoleCtrlHandler, SetConsoleMode},
         errhandlingapi::GetLastError,
-        fileapi::{CreateFileW, FindClose, FindFirstFileW, ReadFile, WriteFile, OPEN_EXISTING},
+        fileapi::{
+            CreateFileW, FindClose, FindFirstFileW, GetFileType, ReadFile, WriteFile, OPEN_EXISTING,
+        },
         handleapi::{CloseHandle, INVALID_HANDLE_VALUE},
         ioapiset::GetOverlappedResult,
         minwinbase::OVERLAPPED,
@@ -33,10 +35,10 @@ use winapi::{
         stringapiset::{MultiByteToWideChar, WideCharToMultiByte},
         synchapi::{CreateEventW, SetEvent, WaitForMultipleObjects},
         winbase::{
-            GlobalAlloc, GlobalFree, GlobalLock, GlobalUnlock, FILE_FLAG_OVERLAPPED, GMEM_MOVEABLE,
-            INFINITE, NORMAL_PRIORITY_CLASS, PIPE_ACCESS_DUPLEX, PIPE_READMODE_BYTE,
-            PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES, STARTF_USESTDHANDLES, STD_INPUT_HANDLE,
-            STD_OUTPUT_HANDLE, WAIT_OBJECT_0,
+            GlobalAlloc, GlobalFree, GlobalLock, GlobalUnlock, FILE_FLAG_OVERLAPPED,
+            FILE_TYPE_CHAR, GMEM_MOVEABLE, INFINITE, NORMAL_PRIORITY_CLASS, PIPE_ACCESS_DUPLEX,
+            PIPE_READMODE_BYTE, PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES, STARTF_USESTDHANDLES,
+            STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, WAIT_OBJECT_0,
         },
         wincon::{
             GetConsoleScreenBufferInfo, ENABLE_PROCESSED_OUTPUT,
@@ -280,7 +282,12 @@ impl AsyncReader {
     }
 }
 
-fn read_all_bytes(handle: &Handle, mut buf: &mut [u8]) -> bool {
+fn is_console(handle: HANDLE) -> bool {
+    unsafe { GetFileType(handle) == FILE_TYPE_CHAR }
+}
+
+fn read_all_bytes(handle: &Handle, mut buf: &mut [u8]) -> usize {
+    let mut total_read = 0;
     while !buf.is_empty() {
         let mut read_len = 0;
         let result = unsafe {
@@ -293,13 +300,18 @@ fn read_all_bytes(handle: &Handle, mut buf: &mut [u8]) -> bool {
             )
         };
         if result == FALSE {
-            return false;
+            return 0;
+        }
+        if read_len == 0 {
+            break;
         }
 
-        buf = &mut buf[(read_len as usize)..];
+        let read_len = read_len as usize;
+        buf = &mut buf[read_len..];
+        total_read += read_len;
     }
 
-    true
+    total_read
 }
 
 fn write_all_bytes(handle: &Handle, mut buf: &[u8]) -> bool {
@@ -759,7 +771,7 @@ impl ConnectionToServer {
         write_all_bytes(self.reader.handle(), buf)
     }
 
-    pub fn read(&mut self, buf: &mut [u8]) -> bool {
+    pub fn read(&mut self, buf: &mut [u8]) -> usize {
         read_all_bytes(self.reader.handle(), buf)
     }
 
@@ -1146,12 +1158,18 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: HANDLE, output_handle
         ConnectionToServer::connect(pipe_path, ClientApplication::connection_buffer_len());
 
     let mut client_index = 0;
-    if !connection.read(std::slice::from_mut(&mut client_index)) {
+    if connection.read(std::slice::from_mut(&mut client_index)) == 0 {
         return;
     }
 
     let client_handle = ClientHandle::from_index(client_index as _).unwrap();
     let mut application = ClientApplication::new(client_handle);
+
+    if is_console(input_handle) {
+        //
+    } else {
+        //
+    }
 
     let stdin = None;
     let bytes = application.init(args, stdin);
