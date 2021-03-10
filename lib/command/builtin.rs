@@ -1017,8 +1017,12 @@ pub const COMMANDS: &[BuiltinCommand] = &[
 
 fn replace_all(text: &mut String, from: &str, to: &str) {
     let from_len = from.len();
-    while let Some(index) = text.find(from) {
-        text.replace_range(index..(index + from_len), to);
+    let to_len = to.len();
+    let mut offset = 0;
+    while let Some(i) = text[offset..].find(from) {
+        offset += i;
+        text.replace_range(offset..(offset + from_len), to);
+        offset += to_len;
     }
 }
 
@@ -1076,6 +1080,7 @@ where
 mod tests {
     use super::*;
 
+    #[test]
     fn test_replace_all() {
         fn assert_replace_all(text_expected: (&str, &str), from_to: (&str, &str)) {
             let mut text = text_expected.0.into();
@@ -1083,6 +1088,8 @@ mod tests {
             assert_eq!(text_expected.1, text);
         }
 
-        assert_replace_all(("aaaa", "aaaa"), ("from", "to"));
+        assert_replace_all(("xxxx", "xxxx"), ("from", "to"));
+        assert_replace_all(("xxxx $A", "xxxx a"), ("$A", "a"));
+        assert_replace_all(("$A xxxx $A$A", "a xxxx aa"), ("$A", "a"));
     }
 }
