@@ -1,4 +1,5 @@
 use crate::{
+    command::CommandOperation,
     client::{ClientHandle, ClientManager},
     editor::{Editor, KeysIterator},
     platform::Platform,
@@ -16,6 +17,14 @@ pub enum ModeOperation {
     Quit,
     QuitAll,
     ExecuteMacro(RegisterKey),
+}
+impl From<CommandOperation> for ModeOperation {
+    fn from(op: CommandOperation) -> Self {
+        match op {
+            CommandOperation::Quit => ModeOperation::Quit,
+            CommandOperation::QuitAll => ModeOperation::QuitAll,
+        }
+    }
 }
 
 pub struct ModeContext<'a> {

@@ -21,6 +21,7 @@ use crate::{
     keymap::ParseKeyMapError,
     lsp,
     mode::ModeKind,
+    mode::{read_line, ModeContext},
     navigation_history::NavigationHistory,
     platform::{Platform, PlatformRequest},
     register::RegisterKey,
@@ -198,6 +199,46 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 body: body.into(),
             };
             ctx.editor.commands.register_custom_command(command);
+
+            Ok(None)
+        },
+    },
+    BuiltinCommand {
+        name: "read-line",
+        alias: "",
+        help: concat!(
+            "prompts a line read and then executes commands\n",
+            "the line read can be accessed through LINE\n", // TODO: revisit LINE var name
+            "read-line [<flags>] <body>\n",
+            " -prompt=<prompt-text> : the prompt text that shows just before user input (default: `read-line:`)",
+        ),
+        completions: &[],
+        func: |ctx| {
+            ctx.args.assert_no_bang()?;
+            let mut flags = [("prompt", None)];
+            let prompt = flags[0].1.unwrap_or("read-line:");
+            ctx.args.get_flags(&mut flags)?;
+            let body = ctx.args.next()?;
+            ctx.args.assert_empty()?;
+
+            let client_handle = match ctx.client_handle{
+                Some(handle) => handle,
+                None => return Ok(None),
+            };
+
+            ctx.editor.read_line.set_prompt(prompt);
+            let mut continuation = ctx.editor.string_pool.acquire();
+            continuation.clear();
+            continuation.push_str(body);
+            ctx.editor.commands.continuation = continuation;
+
+            let mut mode_ctx = ModeContext {
+                editor: ctx.editor,
+                platform: ctx.platform,
+                clients: ctx.clients,
+                client_handle,
+            };
+            read_line::custom::enter_mode(&mut mode_ctx);
 
             Ok(None)
         },

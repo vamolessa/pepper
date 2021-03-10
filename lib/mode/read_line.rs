@@ -1,12 +1,13 @@
 use crate::{
+    command::{CommandIter, CommandManager},
     editor::KeysIterator,
-    editor_utils::ReadLinePoll,
+    editor_utils::{MessageKind, ReadLinePoll},
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     register::SEARCH_REGISTER,
 };
 
 pub struct State {
-    on_client_keys: fn(&mut ModeContext, &mut KeysIterator, ReadLinePoll) -> Option<()>,
+    on_client_keys: fn(&mut ModeContext, &mut KeysIterator, ReadLinePoll) -> Option<ModeOperation>,
 }
 
 impl Default for State {
@@ -32,8 +33,7 @@ impl ModeState for State {
             .read_line
             .poll(ctx.platform, &ctx.editor.buffered_keys, keys);
         let func = ctx.editor.mode.read_line_state.on_client_keys;
-        func(ctx, keys, poll);
-        None
+        func(ctx, keys, poll)
     }
 }
 
@@ -47,7 +47,7 @@ pub mod search {
             ctx: &mut ModeContext,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
-        ) -> Option<()> {
+        ) -> Option<ModeOperation> {
             match poll {
                 ReadLinePoll::Pending => {
                     update_search(ctx);
@@ -410,7 +410,7 @@ pub mod goto {
             ctx: &mut ModeContext,
             _: &mut KeysIterator,
             poll: ReadLinePoll,
-        ) -> Option<()> {
+        ) -> Option<ModeOperation> {
             match poll {
                 ReadLinePoll::Pending => {
                     let line_number: usize = match ctx.editor.read_line.input().parse() {
@@ -458,6 +458,43 @@ pub mod goto {
             &mut ctx.editor.buffer_views,
         );
         ctx.editor.read_line.set_prompt("goto-line:");
+        ctx.editor.mode.read_line_state.on_client_keys = on_client_keys;
+        Mode::change_to(ctx, ModeKind::ReadLine);
+    }
+}
+
+pub mod custom {
+    use super::*;
+
+    pub fn enter_mode(ctx: &mut ModeContext) {
+        fn on_client_keys(
+            ctx: &mut ModeContext,
+            _: &mut KeysIterator,
+            poll: ReadLinePoll,
+        ) -> Option<ModeOperation> {
+            match poll {
+                ReadLinePoll::Pending => None,
+                ReadLinePoll::Submitted => {
+                    let continuation = std::mem::take(&mut ctx.editor.commands.continuation);
+                    let operation = CommandManager::eval_body_and_print(
+                        ctx.editor,
+                        ctx.platform,
+                        ctx.clients,
+                        Some(ctx.client_handle),
+                        &continuation,
+                    ).map(Into::into);
+                    ctx.editor.string_pool.release(continuation);
+
+                    Mode::change_to(ctx, ModeKind::default());
+                    operation
+                }
+                ReadLinePoll::Canceled => {
+                    Mode::change_to(ctx, ModeKind::default());
+                    None
+                }
+            }
+        }
+
         ctx.editor.mode.read_line_state.on_client_keys = on_client_keys;
         Mode::change_to(ctx, ModeKind::ReadLine);
     }

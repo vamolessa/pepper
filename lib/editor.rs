@@ -7,7 +7,7 @@ use crate::{
     command::{CommandIter, CommandManager, CommandOperation},
     config::Config,
     editor_utils::{MessageKind, ReadLine, StatusBar, StringPool},
-    events::{KeyParser, ClientEvent, EditorEvent, EditorEventQueue},
+    events::{ClientEvent, EditorEvent, EditorEventQueue, KeyParser},
     keymap::{KeyMapCollection, MatchResult},
     lsp,
     mode::{Mode, ModeContext, ModeKind, ModeOperation},
@@ -140,34 +140,15 @@ impl Editor {
         };
 
         let mut source = String::new();
-        if let Err(_) = file.read_to_string(&mut source) {
-            self.status_bar
-                .write(MessageKind::Error)
-                .fmt(format_args!("could not read config file '{}'", path));
-            return None;
-        }
-
-        let mut output = self.string_pool.acquire();
-        let mut operation = None;
-        for command in CommandIter(&source) {
-            match CommandManager::eval(self, platform, clients, None, command, &mut output) {
-                Ok(None) => (),
-                Ok(Some(op)) => {
-                    operation = Some(op);
-                    break;
-                }
-                Err(error) => {
-                    self.status_bar.write(MessageKind::Error).fmt(format_args!(
-                        "{}",
-                        error.display(command, &self.commands, &self.buffers)
-                    ));
-                    operation = None;
-                    break;
-                }
+        match file.read_to_string(&mut source) {
+            Ok(_) => CommandManager::eval_body_and_print(self, platform, clients, None, &source),
+            Err(_) => {
+                self.status_bar
+                    .write(MessageKind::Error)
+                    .fmt(format_args!("could not read config file '{}'", path));
+                None
             }
         }
-        self.string_pool.release(output);
-        operation
     }
 
     pub fn on_pre_render(&mut self, clients: &mut ClientManager) -> bool {
@@ -326,37 +307,17 @@ impl Editor {
                 EditorControlFlow::Continue
             }
             ClientEvent::Command(client_handle, commands) => {
-                let mut output = self.string_pool.acquire();
-                let mut flow = EditorControlFlow::Continue;
-                for command in CommandIter(commands) {
-                    match CommandManager::eval(
-                        self,
-                        platform,
-                        clients,
-                        Some(client_handle),
-                        command,
-                        &mut output,
-                    ) {
-                        Ok(None) => (),
-                        Ok(Some(CommandOperation::Quit)) => {
-                            flow = EditorControlFlow::Quit;
-                            break;
-                        }
-                        Ok(Some(CommandOperation::QuitAll)) => {
-                            flow = EditorControlFlow::QuitAll;
-                            break;
-                        }
-                        Err(error) => {
-                            self.status_bar.write(MessageKind::Error).fmt(format_args!(
-                                "{}",
-                                error.display(command, &self.commands, &self.buffers)
-                            ));
-                            break;
-                        }
-                    }
+                match CommandManager::eval_body_and_print(
+                    self,
+                    platform,
+                    clients,
+                    Some(client_handle),
+                    commands,
+                ) {
+                    None => EditorControlFlow::Continue,
+                    Some(CommandOperation::Quit) => EditorControlFlow::Quit,
+                    Some(CommandOperation::QuitAll) => EditorControlFlow::QuitAll,
                 }
-                self.string_pool.release(output);
-                flow
             }
         }
     }

@@ -5,6 +5,7 @@ use crate::{
     buffer_view::BufferViewHandle,
     client::{Client, ClientHandle, ClientManager},
     editor::Editor,
+    editor_utils::MessageKind,
     events::KeyParseError,
     pattern::PatternError,
     platform::Platform,
@@ -35,12 +36,6 @@ impl<'a> From<&'a str> for CommandToken {
 }
 
 pub enum CommandError {
-    CustomCommandError {
-        index: usize,
-        body: String,
-        location: usize,
-        error: Box<CommandError>,
-    },
     InvalidCommandName(CommandToken),
     CommandNotFound(CommandToken),
     CommandDoesNotAcceptBang,
@@ -73,6 +68,12 @@ pub enum CommandError {
     KeyParseError(CommandToken, KeyParseError),
     InvalidRegisterKey(CommandToken),
     LspServerNotRunning,
+    CustomCommandError {
+        index: usize,
+        body: String,
+        location: usize,
+        error: Box<CommandError>,
+    },
 }
 impl CommandError {
     pub fn display<'command, 'error>(
@@ -133,27 +134,6 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
         let l = self.location;
 
         match self.error {
-            CommandError::CustomCommandError {
-                index,
-                body,
-                location,
-                error,
-            } => {
-                let error_display = CommandErrorDisplay {
-                    command: body,
-                    location: *location,
-                    commands: self.commands,
-                    buffers: self.buffers,
-                    error,
-                };
-                let command_name = &self.commands.custom_commands()[*index].name;
-                write(
-                    self,
-                    f,
-                    &c.trim().into(),
-                    format_args!("at custom command '{}':\n{}", command_name, error_display),
-                )
-            }
             CommandError::InvalidCommandName(token) => write(
                 self,
                 f,
@@ -273,6 +253,27 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
                 format_args!("invalid register key '{}'", key.as_str_at(c, l)),
             ),
             CommandError::LspServerNotRunning => f.write_str("lsp server not running"),
+            CommandError::CustomCommandError {
+                index,
+                body,
+                location,
+                error,
+            } => {
+                let error_display = CommandErrorDisplay {
+                    command: body,
+                    location: *location,
+                    commands: self.commands,
+                    buffers: self.buffers,
+                    error,
+                };
+                let command_name = &self.commands.custom_commands()[*index].name;
+                write(
+                    self,
+                    f,
+                    &c.trim().into(),
+                    format_args!("at custom command '{}':\n{}", command_name, error_display),
+                )
+            }
         }
     }
 }
@@ -651,6 +652,8 @@ pub struct CommandManager {
     builtin_commands: &'static [BuiltinCommand],
     custom_commands: Vec<CustomCommand>,
     history: VecDeque<String>,
+
+    pub continuation: String,
 }
 
 impl CommandManager {
@@ -659,6 +662,8 @@ impl CommandManager {
             builtin_commands: builtin::COMMANDS,
             custom_commands: Vec::new(),
             history: VecDeque::with_capacity(HISTORY_CAPACITY),
+
+            continuation: String::new(),
         }
     }
 
@@ -721,6 +726,50 @@ impl CommandManager {
         self.history.push_back(s);
     }
 
+    pub fn eval_body_and_print<'command>(
+        editor: &mut Editor,
+        platform: &mut Platform,
+        clients: &mut ClientManager,
+        client_handle: Option<ClientHandle>,
+        body: &'command str,
+    ) -> Option<CommandOperation> {
+        let mut output = editor.string_pool.acquire();
+        let mut operation = None;
+
+        for command in CommandIter(&body) {
+            match Self::eval(
+                editor,
+                platform,
+                clients,
+                client_handle,
+                command,
+                &mut output,
+            ) {
+                Ok(None) => (),
+                Ok(Some(op)) => {
+                    operation = Some(op);
+                    break;
+                }
+                Err(error) => {
+                    output.clear();
+                    let error = error.display(command, &editor.commands, &editor.buffers);
+                    editor
+                        .status_bar
+                        .write(MessageKind::Error)
+                        .fmt(format_args!("{}", error));
+                    break;
+                }
+            }
+        }
+
+        if !output.is_empty() {
+            editor.status_bar.write(MessageKind::Info).str(&output);
+        }
+
+        editor.string_pool.release(output);
+        operation
+    }
+
     pub fn eval<'command>(
         editor: &mut Editor,
         platform: &mut Platform,
@@ -752,6 +801,9 @@ impl CommandManager {
                 let mut body = editor.string_pool.acquire();
                 body.clear();
                 body.push_str(&editor.commands.custom_commands[i].body);
+
+                // TODO: arg substitution
+
                 for command in CommandIter(&body) {
                     match Self::eval(editor, platform, clients, client_handle, command, output) {
                         Ok(None) => (),

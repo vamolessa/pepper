@@ -111,8 +111,7 @@ impl ModeState for State {
                     &mut output,
                 ) {
                     Ok(None) => None,
-                    Ok(Some(CommandOperation::Quit)) => Some(ModeOperation::Quit),
-                    Ok(Some(CommandOperation::QuitAll)) => Some(ModeOperation::QuitAll),
+                    Ok(Some(op)) => Some(op.into()),
                     Err(error) => {
                         output.clear();
                         let commands = &ctx.editor.commands;
