@@ -114,11 +114,13 @@ impl State {
             Key::Char(c) => {
                 if let Some(n) = c.to_digit(10) {
                     this.count = this.count.saturating_mul(10).saturating_add(n);
+                    return None;
                 }
             }
             _ => (),
         }
 
+        ctx.editor.mode.normal_state.count = 0;
         None
     }
 
@@ -966,7 +968,6 @@ impl State {
         }
 
         Self::on_movement_keys(ctx.editor, keys, keys_from_index);
-
         ctx.editor.mode.normal_state.count = 0;
         None
     }
