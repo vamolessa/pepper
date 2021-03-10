@@ -111,7 +111,8 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
 
             let error_len = this.command[error_offset..(error_offset + error_token.len)]
                 .chars()
-                .count().max(1);
+                .count()
+                .max(1);
             let error_offset = this
                 .command
                 .char_indices()
@@ -640,9 +641,32 @@ impl<'a> CommandArgs<'a> {
     }
 
     pub fn assert_empty(&mut self) -> Result<(), CommandError> {
-        match self.tokens.next() {
-            Some((_, token)) => Err(CommandError::TooManyArguments(token.into(), self.len)),
-            None => Ok(()),
+        loop {
+            match self.tokens.next() {
+                Some((CommandTokenKind::Text, token)) => {
+                    break Err(CommandError::TooManyArguments(token.into(), self.len))
+                }
+                Some((CommandTokenKind::Flag, _)) => match self.tokens.next() {
+                    Some((CommandTokenKind::Text, token)) => {
+                        break Err(CommandError::TooManyArguments(token.into(), self.len))
+                    }
+                    Some((CommandTokenKind::Flag, _)) => (),
+                    Some((CommandTokenKind::Equals, _)) => {
+                        self.tokens.next();
+                    }
+                    Some((CommandTokenKind::Unterminated, token)) => {
+                        break Err(CommandError::UnterminatedToken(token.into()))
+                    }
+                    None => (),
+                },
+                Some((CommandTokenKind::Equals, token)) => {
+                    break Err(CommandError::InvalidToken(token.into()))
+                }
+                Some((CommandTokenKind::Unterminated, token)) => {
+                    break Err(CommandError::UnterminatedToken(token.into()))
+                }
+                None => break Ok(()),
+            }
         }
     }
 }
@@ -978,6 +1002,16 @@ mod tests {
         }
         assert_eq!(None, flags[0].1);
         assert_eq!(Some("value"), flags[1].1);
+        assert_eq!(["aaa"], &collect(args)[..]);
+
+        let args = parse_args(&commands, "c 'aaa' -option=value");
+        let mut flags = [("switch", None), ("option", None)];
+        if args.get_flags(&mut flags).is_err() {
+            panic!("error parsing args");
+        }
+        assert_eq!(None, flags[0].1);
+        assert_eq!(Some("value"), flags[1].1);
+        assert_eq!(["aaa"], &collect(args)[..]);
 
         let args = parse_args(&commands, "c aaa -switch bbb -option=value ccc");
         let mut flags = [("switch", None), ("option", None)];
@@ -986,6 +1020,7 @@ mod tests {
         }
         assert_eq!(Some(""), flags[0].1);
         assert_eq!(Some("value"), flags[1].1);
+        assert_eq!(["aaa", "bbb", "ccc"], &collect(args)[..]);
     }
 
     #[test]

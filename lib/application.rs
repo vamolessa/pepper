@@ -1,4 +1,4 @@
-use std::{env, io, sync::mpsc};
+use std::{env, fmt, io, sync::mpsc};
 
 use crate::{
     client::{ClientHandle, ClientManager},
@@ -308,9 +308,23 @@ impl ClientApplication {
         if !args.files.is_empty() {
             let mut commands = String::new();
             for path in &args.files {
-                commands.push_str("open '");
-                commands.push_str(path);
-                commands.push_str("'\n");
+                let (path, line) = match path.rfind(':') {
+                    Some(i) => {
+                        let line = path[(i + 1)..]
+                            .parse::<usize>()
+                            .map(|l| l.saturating_sub(1))
+                            .ok();
+                        let path = &path[..i];
+                        (path, line)
+                    }
+                    None => (&path[..], None),
+                };
+
+                use fmt::Write;
+                match line {
+                    Some(line) => writeln!(commands, "open '{}' -line={}", path, line).unwrap(),
+                    None => writeln!(commands, "open '{}'", path).unwrap(),
+                }
             }
             ClientEvent::Command(self.handle, &commands).serialize(&mut self.write_buf);
         }
