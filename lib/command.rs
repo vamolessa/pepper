@@ -515,7 +515,7 @@ impl<'a> Iterator for CommandTokenIter<'a> {
                 }
             }
             b'-' => {
-                let (token, rest) = split_at_boundary(&self.0[1..]);
+                let (token, rest) = split_at_boundary(&self.0);
                 self.0 = rest;
                 Some((CommandTokenKind::Flag, token))
             }
@@ -561,6 +561,7 @@ impl<'a> CommandArgs<'a> {
             match token {
                 (CommandTokenKind::Text, _) => (),
                 (CommandTokenKind::Flag, key) => {
+                    let key = &key[1..];
                     let value = match flags.iter_mut().find(|(k, _)| *k == key) {
                         Some((_, value)) => value,
                         None => break Err(CommandError::UnknownFlag(key.into())),
@@ -990,7 +991,7 @@ impl CommandManager {
                 Ok(line) => {
                     commands.clear();
                     commands.push_str(&process.on_stdout);
-                    replace_all(&mut commands, "$STDOUT", line);
+                    replace_all(&mut commands, "$OUTPUT", line);
                     Self::eval_body_and_print(editor, platform, clients, None, &commands);
                 }
                 Err(error) => {
@@ -1033,7 +1034,7 @@ impl CommandManager {
         let mut commands = editor.string_pool.acquire();
         commands.clear();
         commands.push_str(&process.on_stdout);
-        replace_all(&mut commands, "$STDOUT", stdout);
+        replace_all(&mut commands, "$OUTPUT", stdout);
         Self::eval_body_and_print(editor, platform, clients, None, &commands);
 
         editor.string_pool.release(commands);
@@ -1111,6 +1112,19 @@ mod tests {
         assert_replace_all(("xxxx", "xxxx"), ("from", "to"));
         assert_replace_all(("xxxx $A", "xxxx a"), ("$A", "a"));
         assert_replace_all(("$A xxxx $A$A", "a xxxx aa"), ("$A", "a"));
+    }
+
+    #[test]
+    fn command_tokens() {
+        let mut tokens = CommandTokenIter("value -flag");
+        assert!(matches!(tokens.next(), Some((CommandTokenKind::Text, "value"))));
+        assert!(matches!(tokens.next(), Some((CommandTokenKind::Flag, "-flag"))));
+        assert!(tokens.next().is_none());
+
+        let mut tokens = CommandTokenIter("value --long-flag");
+        assert!(matches!(tokens.next(), Some((CommandTokenKind::Text, "value"))));
+        assert!(matches!(tokens.next(), Some((CommandTokenKind::Flag, "--long-flag"))));
+        assert!(tokens.next().is_none());
     }
 
     #[test]

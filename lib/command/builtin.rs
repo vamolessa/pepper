@@ -10,6 +10,7 @@ use crate::{
     buffer_position::BufferPosition,
     buffer_view::BufferViewError,
     command::{
+        CommandTokenIter, CommandTokenKind,
         BuiltinCommand, CommandContext, CommandError, CommandIter, CommandManager,
         CommandOperation, CommandSource, CompletionSource, CustomCommand,
     },
@@ -203,22 +204,21 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "spawn",
         alias: "",
         help: concat!(
-            // TODO: spawn doc
-            "spawns a new process\n",
-            "spawn [<flags>] <name> <args>...\n",
-            " -stdin=<text> : send <text> to the stdin\n",
-            " -on-stdout=<commands> : execute commands on stdout. access it through $STDOUT\n",
-            " -split-on=<number> : optionally split stdout at every <number> byte",
+            "spawns a new process and then optionally executes commands on its output\n",
+            "available variable:\n",
+            " $OUTPUT : the entire process output or a line if `-split-on` is used\n",
+            "spawn [<flags>] <spawn-command> [<commands-on-stdout>]\n",
+            " -stdin=<text> : sends <text> to the stdin\n",
+            " -split-on=<number> : splits process output at every <number> byte",
         ),
         completions: &[],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
             
-            let mut flags = [("stdin", None), ("on-stdout", None), ("split-on", None)];
+            let mut flags = [("stdin", None), ("split-on", None)];
             ctx.args.get_flags(&mut flags)?;
             let stdin = flags[0].1;
-            let on_stdout = flags[1].1;
-            let split_on = match flags[2].1 {
+            let split_on = match flags[1].1 {
                 Some(token) => match token.parse() {
                     Ok(b) => Some(b),
                     Err(_) => return Err(CommandError::InvalidToken(token.into())),
@@ -226,10 +226,28 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 None => None,
             };
 
-            let name = ctx.args.next()?;
-            let mut command = Command::new(name);
-            while let Some(arg) = ctx.args.try_next()? {
-                command.arg(arg);
+            let command = ctx.args.next()?;
+            let on_stdout = ctx.args.try_next()?;
+            ctx.args.assert_empty()?;
+
+            let mut command_tokens = CommandTokenIter(command);
+            let command = match command_tokens.next() {
+                Some((CommandTokenKind::Text, token)) |
+                Some((CommandTokenKind::Flag, token)) |
+                Some((CommandTokenKind::Equals, token)) => token,
+                Some((CommandTokenKind::Unterminated, token)) => {
+                    return Err(CommandError::UnterminatedToken(token.into()))
+                }
+                None => return Err(CommandError::InvalidToken(command.into())),
+            };
+
+            let mut command = Command::new(command);
+            while let Some((kind, token)) = command_tokens.next() {
+                if let CommandTokenKind::Unterminated = kind {
+                    return Err(CommandError::InvalidToken(token.into()));
+                } else {
+                    command.arg(token);
+                }
             }
 
             ctx.editor.commands.spawn_process(ctx.platform, command, stdin, on_stdout, split_on);
@@ -240,8 +258,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "read-line",
         alias: "",
         help: concat!(
-            "prompts a line read and then executes shell commands\n",
-            "available variables:\n",
+            "prompts for a line read and then executes commands\n",
+            "available variable:\n",
             " $LINE : the line entered\n",
             "read-line [<flags>] <commands>\n",
             " -prompt=<prompt-text> : the prompt text that shows just before user input (default: `read-line:`)",
@@ -304,8 +322,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "pick",
         alias: "",
         help: concat!(
-            "opens up a menu from where a line can be picked and then executes commands\n",
-            "available variables:\n",
+            "opens up a menu from where an entry can be picked and then executes commands\n",
+            "entries can be added with the `add-picker-entry` command\n",
+            "available variable:\n",
             " $ENTRY : picked entry\n",
             "pick [<flags>] <commands>\n",
             " -prompt=<prompt-text> : the prompt text that shows just before user input (default: `pick:`)",
