@@ -306,8 +306,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         help: concat!(
             "opens up a menu from where a line can be picked and then executes commands\n",
             "available variables:\n",
-            " $NAME : picked entry's name\n",
-            " $DESCRIPTION : picked entry's description\n",
+            " $ENTRY : picked entry\n",
             "pick [<flags>] <commands>\n",
             " -prompt=<prompt-text> : the prompt text that shows just before user input (default: `pick:`)",
         ),

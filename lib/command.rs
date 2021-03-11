@@ -962,10 +962,10 @@ impl CommandManager {
         bytes: &[u8],
     ) {
         let process = &mut editor.commands.spawned_processes[index];
-        process.stdout.extend_from_slice(bytes);
         if process.on_stdout.is_empty() {
             return;
         }
+        process.stdout.extend_from_slice(bytes);
         let split_on = match process.split_stdout_on {
             Some(b) => b,
             None => return,
@@ -985,12 +985,20 @@ impl CommandManager {
                 }
                 None => break,
             };
-            if let Ok(line) = std::str::from_utf8(line) {
-                eprintln!("line: {}", line);
-                commands.clear();
-                commands.push_str(&process.on_stdout);
-                replace_all(&mut commands, "$STDOUT", line);
-                Self::eval_body_and_print(editor, platform, clients, None, &commands);
+
+            match std::str::from_utf8(line) {
+                Ok(line) => {
+                    commands.clear();
+                    commands.push_str(&process.on_stdout);
+                    replace_all(&mut commands, "$STDOUT", line);
+                    Self::eval_body_and_print(editor, platform, clients, None, &commands);
+                }
+                Err(error) => {
+                    editor
+                        .status_bar
+                        .write(MessageKind::Error)
+                        .fmt(format_args!("{}", error));
+                }
             }
         }
 
@@ -1007,7 +1015,7 @@ impl CommandManager {
     ) {
         let process = &mut editor.commands.spawned_processes[index];
         process.alive = false;
-        if !success || process.on_stdout.is_empty() || process.split_stdout_on.is_none() {
+        if !success || process.on_stdout.is_empty() || process.split_stdout_on.is_some() {
             return;
         }
 
@@ -1025,7 +1033,6 @@ impl CommandManager {
         let mut commands = editor.string_pool.acquire();
         commands.clear();
         commands.push_str(&process.on_stdout);
-
         replace_all(&mut commands, "$STDOUT", stdout);
         Self::eval_body_and_print(editor, platform, clients, None, &commands);
 

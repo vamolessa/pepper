@@ -1,6 +1,6 @@
 use crate::{
     buffer_view::BufferViewError,
-    command::CommandManager,
+    command::{replace_all, CommandManager},
     editor::KeysIterator,
     editor_utils::{MessageKind, ReadLinePoll},
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
@@ -200,16 +200,25 @@ pub mod custom {
             match poll {
                 ReadLinePoll::Pending => None,
                 ReadLinePoll::Submitted => {
-                    let continuation = ctx.editor.commands.continuation.take().unwrap();
-                    let operation = CommandManager::eval_body_and_print(
-                        ctx.editor,
-                        ctx.platform,
-                        ctx.clients,
-                        Some(ctx.client_handle),
-                        &continuation,
-                    )
-                    .map(Into::into);
-                    ctx.editor.string_pool.release(continuation);
+                    let mut continuation = ctx.editor.commands.continuation.take().unwrap();
+                    let entry = ctx
+                        .editor
+                        .picker
+                        .current_entry(&ctx.editor.word_database, &ctx.editor.commands);
+
+                    let mut operation = None;
+                    if let Some(entry) = entry {
+                        replace_all(&mut continuation, "$ENTRY", entry.name);
+                        operation = CommandManager::eval_body_and_print(
+                            ctx.editor,
+                            ctx.platform,
+                            ctx.clients,
+                            Some(ctx.client_handle),
+                            &continuation,
+                        )
+                        .map(Into::into);
+                        ctx.editor.string_pool.release(continuation);
+                    }
 
                     if ctx.editor.mode.kind() == ModeKind::Picker
                         && ctx.editor.commands.continuation.is_none()
