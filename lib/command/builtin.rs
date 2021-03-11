@@ -207,17 +207,19 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "read-line",
         alias: "",
         help: concat!(
-            "prompts a line read and then executes commands\n",
-            "the line read can be accessed through LINE\n", // TODO: revisit LINE var name
+            "prompts a line read and then executes shell commands\n",
+            "the line entered can be accessed through `LINE` env var\n",
             "read-line [<flags>] <body>\n",
             " -prompt=<prompt-text> : the prompt text that shows just before user input (default: `read-line:`)",
         ),
         completions: &[],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
+
             let mut flags = [("prompt", None)];
             ctx.args.get_flags(&mut flags)?;
             let prompt = flags[0].1.unwrap_or("read-line:");
+
             let body = ctx.args.next()?;
             ctx.args.assert_empty()?;
 
@@ -268,8 +270,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "pick",
         alias: "",
         help: concat!(
-            "opens up a menu from where a line can be picked and then executes commands\n",
-            "the line picked can be accessed through LINE\n", // TODO: revisit LINE var name
+            "opens up a menu from where a line can be picked and then executes shell commands\n",
+            "the picked entry's name and description can be both accessed through\n",
+            "`ENTRY_NAME` and `ENTRY_DESCRIPTION` env vars\n",
             "pick [<flags>] <body>\n",
             " -prompt=<prompt-text> : the prompt text that shows just before user input (default: `pick:`)",
         ),
@@ -909,7 +912,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         alias: "",
         help: concat!(
             "starts a lsp server\n",
-            "lsp-start [<flags>] <command> [<command-arg>...]\n",
+            "lsp-start [<flags>] <command> <command-arg>...\n",
             " -root=<path> : the root path from where the lsp server will execute",
             " -log=<buffer-name> : redirect the lsp server stdout to this buffer"
         ),

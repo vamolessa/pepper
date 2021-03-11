@@ -165,7 +165,7 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
     };
 
     let input = ctx.editor.read_line.input();
-    let mut tokens = CommandTokenIter { rest: input };
+    let mut tokens = CommandTokenIter(input);
 
     let first_token = match tokens.next() {
         Some((_, token)) => token,
