@@ -67,9 +67,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                             let command = &commands.builtin_commands()[i];
                             (command.alias, command.help)
                         },
-                        CommandSource::Custom(i) => {
+                        CommandSource::Macro(i) => {
                             let command = &commands.custom_commands()[i];
-                            (&command.alias[..], &command.help[..])
+                            ("", &command.help[..])
                         }
                     };
 
@@ -161,24 +161,22 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
-        name: "command",
+        name: "macro",
         alias: "",
         help: concat!(
-            "define a new custom command\n",
-            "command [<flags>] <name> <body>\n",
+            "define a new command macro\n",
+            "macro [<flags>] <name> <body>\n",
             " -help=<help-text> : the help text that shows when using `help` with this command\n",
-            " -alias=<name> : also add an alias to the command\n",
             " -param-count=<number> : if defined, the number of parameters this command expects, 0 otherwise",
         ),
         completions: &[],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
 
-            let mut flags = [("help", None), ("alias", None), ("param-count", None)];
+            let mut flags = [("help", None), ("param-count", None)];
             ctx.args.get_flags(&mut flags)?;
             let help = flags[0].1.unwrap_or("");
-            let alias = flags[1].1.unwrap_or("");
-            let param_count = flags[2].1.map(parse_arg).transpose()?.unwrap_or(0);
+            let param_count = flags[1].1.map(parse_arg).transpose()?.unwrap_or(0);
 
             let name = ctx.args.next()?;
             let body = ctx.args.next()?;
@@ -193,13 +191,36 @@ pub const COMMANDS: &[BuiltinCommand] = &[
 
             let command = CustomCommand {
                 name: name.into(),
-                alias: alias.into(),
                 help: help.into(),
                 param_count,
                 body: body.into(),
             };
             ctx.editor.commands.register_custom_command(command);
 
+            Ok(None)
+        },
+    },
+    BuiltinCommand {
+        name: "spawn",
+        alias: "",
+        help: concat!(
+            // TODO: doc
+            "spawns a new process\n",
+            "spawn [<flags>] <name> <args>...\n",
+            " -",
+        ),
+        completions: &[],
+        func: |ctx| {
+            ctx.args.assert_no_bang()?;
+            ctx.args.get_flags(&mut [])?;
+
+            let name = ctx.args.next()?;
+            let mut command = Command::new(name);
+
+            while let Some(arg) = ctx.args.try_next()? {
+            }
+
+            //
             Ok(None)
         },
     },

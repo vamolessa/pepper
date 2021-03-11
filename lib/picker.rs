@@ -230,7 +230,7 @@ fn filtered_to_picker_entry<'a>(
                 score: entry.score,
             }
         }
-        FilteredEntrySource::Command(CommandSource::Custom(i)) => {
+        FilteredEntrySource::Command(CommandSource::Macro(i)) => {
             let command = &commands.custom_commands()[i];
             PickerEntry {
                 name: &command.name,

@@ -1,8 +1,4 @@
-use std::{
-    collections::VecDeque,
-    fmt,
-    process::{Command, Stdio},
-};
+use std::{collections::VecDeque, fmt};
 
 use crate::{
     application::ProcessTag,
@@ -13,7 +9,7 @@ use crate::{
     editor_utils::MessageKind,
     events::KeyParseError,
     pattern::PatternError,
-    platform::{Platform, PlatformRequest},
+    platform::Platform,
 };
 
 mod builtin;
@@ -73,7 +69,7 @@ pub enum CommandError {
     KeyParseError(CommandToken, KeyParseError),
     InvalidRegisterKey(CommandToken),
     LspServerNotRunning,
-    CustomCommandError {
+    CommandMacroError {
         index: usize,
         body: String,
         location: usize,
@@ -259,7 +255,7 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
                 format_args!("invalid register key '{}'", key.as_str_at(c, l)),
             ),
             CommandError::LspServerNotRunning => f.write_str("lsp server not running"),
-            CommandError::CustomCommandError {
+            CommandError::CommandMacroError {
                 index,
                 body,
                 location,
@@ -277,7 +273,7 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
                     self,
                     f,
                     &c.trim().into(),
-                    format_args!("at custom command '{}':\n{}", command_name, error_display),
+                    format_args!("at command macro '{}':\n{}", command_name, error_display),
                 )
             }
         }
@@ -352,6 +348,17 @@ impl<'state, 'command> CommandContext<'state, 'command> {
         } else {
             Err(CommandError::UnsavedChanges)
         }
+    }
+}
+
+pub fn replace_all(text: &mut String, from: &str, to: &str) {
+    let from_len = from.len();
+    let to_len = to.len();
+    let mut offset = 0;
+    while let Some(i) = text[offset..].find(from) {
+        offset += i;
+        text.replace_range(offset..(offset + from_len), to);
+        offset += to_len;
     }
 }
 
@@ -504,7 +511,7 @@ impl<'a> Iterator for CommandTokenIter<'a> {
                 }
             }
             b'-' => {
-                let (token, rest) = split_at_boundary(self.0);
+                let (token, rest) = split_at_boundary(&self.0[1..]);
                 self.0 = rest;
                 Some((CommandTokenKind::Flag, token))
             }
@@ -550,7 +557,6 @@ impl<'a> CommandArgs<'a> {
             match token {
                 (CommandTokenKind::Text, _) => (),
                 (CommandTokenKind::Flag, key) => {
-                    let key = &key[1..];
                     let value = match flags.iter_mut().find(|(k, _)| *k == key) {
                         Some((_, value)) => value,
                         None => break Err(CommandError::UnknownFlag(key.into())),
@@ -662,7 +668,7 @@ impl<'a> CommandArgs<'a> {
 
 pub enum CommandSource {
     Builtin(usize),
-    Custom(usize),
+    Macro(usize),
 }
 
 pub struct BuiltinCommand {
@@ -675,7 +681,6 @@ pub struct BuiltinCommand {
 
 pub struct CustomCommand {
     pub name: String,
-    pub alias: String,
     pub help: String,
     pub param_count: usize,
     pub body: String,
@@ -701,12 +706,8 @@ impl CommandManager {
     }
 
     pub fn find_command(&self, name: &str) -> Option<CommandSource> {
-        if let Some(i) = self
-            .custom_commands
-            .iter()
-            .position(|c| c.alias == name || c.name == name)
-        {
-            return Some(CommandSource::Custom(i));
+        if let Some(i) = self.custom_commands.iter().position(|c| c.name == name) {
+            return Some(CommandSource::Macro(i));
         }
 
         if let Some(i) = self
@@ -759,6 +760,7 @@ impl CommandManager {
         self.history.push_back(s);
     }
 
+    /*
     pub fn eval_shell_script(
         &mut self,
         platform: &mut Platform,
@@ -802,7 +804,7 @@ impl CommandManager {
         command.stderr(Stdio::null());
 
         platform.enqueue_request(PlatformRequest::SpawnProcess {
-            tag: ProcessTag::Command(0), // TODO: correct shell process tag
+            tag: ProcessTag::None,
             command,
             stdout_buf_len: 1024,
             stderr_buf_len: 0,
@@ -810,6 +812,7 @@ impl CommandManager {
 
         Ok(())
     }
+    */
 
     pub fn eval_body_and_print<'command>(
         editor: &mut Editor,
@@ -877,7 +880,7 @@ impl CommandManager {
                 };
                 command(&mut ctx)
             }
-            CommandSource::Custom(i) => {
+            CommandSource::Macro(i) => {
                 args.assert_no_bang()?;
                 args.get_flags(&mut [])?;
                 args.assert_empty()?;
@@ -897,7 +900,7 @@ impl CommandManager {
                             break;
                         }
                         Err(error) => {
-                            result = Err(CommandError::CustomCommandError {
+                            result = Err(CommandError::CommandMacroError {
                                 index: i,
                                 body: command.into(),
                                 location: command.as_ptr() as _,
@@ -970,6 +973,19 @@ mod tests {
     fn operation_size() {
         assert_eq!(1, std::mem::size_of::<CommandOperation>());
         assert_eq!(1, std::mem::size_of::<Option<CommandOperation>>());
+    }
+
+    #[test]
+    fn test_replace_all() {
+        fn assert_replace_all(text_expected: (&str, &str), from_to: (&str, &str)) {
+            let mut text = text_expected.0.into();
+            replace_all(&mut text, from_to.0, from_to.1);
+            assert_eq!(text_expected.1, text);
+        }
+
+        assert_replace_all(("xxxx", "xxxx"), ("from", "to"));
+        assert_replace_all(("xxxx $A", "xxxx a"), ("$A", "a"));
+        assert_replace_all(("$A xxxx $A$A", "a xxxx aa"), ("$A", "a"));
     }
 
     #[test]

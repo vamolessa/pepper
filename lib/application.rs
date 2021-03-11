@@ -46,6 +46,7 @@ impl Args {
 
 #[derive(Clone, Copy)]
 pub enum ProcessTag {
+    None,
     Command(usize),
     Lsp(lsp::ClientHandle),
 }
@@ -167,6 +168,7 @@ impl ServerApplication {
                         events.finish(&mut client_event_receiver);
                     }
                     ApplicationEvent::ProcessSpawned { tag, handle } => match tag {
+                        ProcessTag::None => (),
                         ProcessTag::Lsp(client_handle) => lsp::ClientManager::on_process_spawned(
                             &mut editor,
                             platform,
@@ -181,6 +183,7 @@ impl ServerApplication {
                     ApplicationEvent::ProcessStdout { tag, buf } => {
                         let bytes = buf.as_bytes();
                         match tag {
+                            ProcessTag::None => (),
                             ProcessTag::Lsp(client_handle) => {
                                 lsp::ClientManager::on_process_stdout(
                                     &mut editor,
@@ -202,6 +205,7 @@ impl ServerApplication {
                         }
                     }
                     ApplicationEvent::ProcessExit { tag, success } => match tag {
+                        ProcessTag::None => (),
                         ProcessTag::Lsp(client_handle) => {
                             lsp::ClientManager::on_process_exit(&mut editor, client_handle)
                         }
