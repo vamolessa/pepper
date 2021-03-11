@@ -204,23 +204,54 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "spawn",
         alias: "",
         help: concat!(
-            // TODO: doc
+            // TODO: spawn doc
             "spawns a new process\n",
             "spawn [<flags>] <name> <args>...\n",
-            " -",
+            " -stdin=<text> : send <text> to the stdin\n",
+            " -stdout=<commands> : execute commands on stdout",
         ),
         completions: &[],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
-            ctx.args.get_flags(&mut [])?;
+            
+            let mut flags = [("stdin", None), ("stdout", None)];
+            ctx.args.get_flags(&mut flags)?;
+            let stdin = flags[0].1;
+            let stdout = flags[1].1;
 
             let name = ctx.args.next()?;
             let mut command = Command::new(name);
-
             while let Some(arg) = ctx.args.try_next()? {
+                command.arg(arg);
             }
 
-            //
+            let _ = match stdin {
+                Some(_) => command.stdin(Stdio::piped()),
+                None => command.stdin(Stdio::null()),
+            };
+            command.stdout(Stdio::piped());
+            command.stderr(Stdio::null());
+
+            ctx.platform.enqueue_request(PlatformRequest::SpawnProcess {
+                tag: ProcessTag::None,
+                command,
+                stdout_buf_len: 1024,
+                stderr_buf_len: 0,
+            });
+
+            /*
+            if let Some(stdin) = stdin {
+                let buf = ctx.platform.buf_pool.acquire();
+                let writer = buf.write();
+                writer.extend_from_slice(stdin.as_bytes());
+                let buf = buf.share();
+                ctx.platform.buf_pool.release(buf.clone());
+                ctx.platform.enqueue_request(PlatformRequest::WriteToProcess{
+
+                });
+            }
+            */
+
             Ok(None)
         },
     },
@@ -229,8 +260,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         alias: "",
         help: concat!(
             "prompts a line read and then executes shell commands\n",
-            "the line entered can be accessed through `LINE` env var\n",
-            "read-line [<flags>] <body>\n",
+            "available variables:\n",
+            " $LINE : the line entered\n",
+            "read-line [<flags>] <commands>\n",
             " -prompt=<prompt-text> : the prompt text that shows just before user input (default: `read-line:`)",
         ),
         completions: &[],
@@ -241,7 +273,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             ctx.args.get_flags(&mut flags)?;
             let prompt = flags[0].1.unwrap_or("read-line:");
 
-            let body = ctx.args.next()?;
+            let commands = ctx.args.next()?;
             ctx.args.assert_empty()?;
 
             let client_handle = match ctx.client_handle{
@@ -252,7 +284,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             ctx.editor.read_line.set_prompt(prompt);
             let mut continuation = ctx.editor.string_pool.acquire();
             continuation.clear();
-            continuation.push_str(body);
+            continuation.push_str(commands);
             ctx.editor.commands.continuation = Some(continuation);
 
             let mut mode_ctx = ModeContext {
@@ -291,10 +323,11 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "pick",
         alias: "",
         help: concat!(
-            "opens up a menu from where a line can be picked and then executes shell commands\n",
-            "the picked entry's name and description can be both accessed through\n",
-            "`ENTRY_NAME` and `ENTRY_DESCRIPTION` env vars\n",
-            "pick [<flags>] <body>\n",
+            "opens up a menu from where a line can be picked and then executes commands\n",
+            "available variables:\n",
+            " $NAME : picked entry's name\n",
+            " $DESCRIPTION : picked entry's description\n",
+            "pick [<flags>] <commands>\n",
             " -prompt=<prompt-text> : the prompt text that shows just before user input (default: `pick:`)",
         ),
         completions: &[],
@@ -303,7 +336,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             let mut flags = [("prompt", None)];
             let prompt = flags[0].1.unwrap_or("pick:");
             ctx.args.get_flags(&mut flags)?;
-            let body = ctx.args.next()?;
+            let commands = ctx.args.next()?;
             ctx.args.assert_empty()?;
 
             let client_handle = match ctx.client_handle{
@@ -314,7 +347,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             ctx.editor.read_line.set_prompt(prompt);
             let mut continuation = ctx.editor.string_pool.acquire();
             continuation.clear();
-            continuation.push_str(body);
+            continuation.push_str(commands);
             ctx.editor.commands.continuation = Some(continuation);
 
             let mut mode_ctx = ModeContext {
@@ -894,37 +927,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 }
             }
 
-            Ok(None)
-        },
-    },
-    // TODO: remove this command
-    BuiltinCommand {
-        name: "run",
-        alias: "",
-        help: "test command",
-        completions: &[],
-        func: |ctx| {
-            ctx.args.assert_no_bang()?;
-            ctx.args.get_flags(&mut [])?;
-
-            let command = ctx.args.next()?;
-            eprintln!("request spawn process '{}'", command);
-
-            let mut command = Command::new(command);
-            command.stdin(Stdio::null());
-            command.stdout(Stdio::piped());
-            command.stderr(Stdio::null());
-
-            while let Some(arg) = ctx.args.try_next()? {
-                command.arg(arg);
-            }
-
-            ctx.platform.enqueue_request(PlatformRequest::SpawnProcess {
-                tag: ProcessTag::Command(0),
-                command,
-                stdout_buf_len: 4 * 1024,
-                stderr_buf_len: 0,
-            });
             Ok(None)
         },
     },
