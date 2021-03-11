@@ -207,7 +207,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             "spawns a new process\n",
             "spawn [<flags>] <name> <args>...\n",
             " -stdin=<text> : send <text> to the stdin\n",
-            " -on-stdout=<commands> : execute commands on stdout\n",
+            " -on-stdout=<commands> : execute commands on stdout. access it through $STDOUT\n",
             " -split-on=<number> : optionally split stdout at every <number> byte",
         ),
         completions: &[],

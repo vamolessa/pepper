@@ -989,7 +989,7 @@ impl CommandManager {
                 eprintln!("line: {}", line);
                 commands.clear();
                 commands.push_str(&process.on_stdout);
-                replace_all(&mut commands, "$LINE", line);
+                replace_all(&mut commands, "$STDOUT", line);
                 Self::eval_body_and_print(editor, platform, clients, None, &commands);
             }
         }
