@@ -1,4 +1,8 @@
-use std::{collections::VecDeque, fmt};
+use std::{
+    collections::VecDeque,
+    fmt,
+    process::{Command, Stdio},
+};
 
 use crate::{
     application::ProcessTag,
@@ -9,7 +13,7 @@ use crate::{
     editor_utils::MessageKind,
     events::KeyParseError,
     pattern::PatternError,
-    platform::Platform,
+    platform::{Platform, PlatformRequest, ProcessHandle, SharedBuf},
 };
 
 mod builtin;
@@ -686,12 +690,20 @@ pub struct CustomCommand {
     pub body: String,
 }
 
+#[derive(Default)]
+struct Process {
+    pub alive: bool,
+    pub stdin: Option<SharedBuf>,
+    pub on_stdout: String,
+}
+
 pub struct CommandManager {
     builtin_commands: &'static [BuiltinCommand],
     custom_commands: Vec<CustomCommand>,
     history: VecDeque<String>,
 
     pub continuation: Option<String>,
+    spawned_processes: Vec<Process>,
 }
 
 impl CommandManager {
@@ -702,6 +714,7 @@ impl CommandManager {
             history: VecDeque::with_capacity(HISTORY_CAPACITY),
 
             continuation: None,
+            spawned_processes: Vec::new(),
         }
     }
 
@@ -759,60 +772,6 @@ impl CommandManager {
         s.push_str(entry);
         self.history.push_back(s);
     }
-
-    /*
-    pub fn eval_shell_script(
-        &mut self,
-        platform: &mut Platform,
-        client_handle: Option<ClientHandle>,
-        script: &str,
-        env_vars: &[(&str, &str)],
-    ) -> Result<(), CommandError> {
-        let mut tokens = CommandTokenIter(script);
-        let command_name = match tokens.next() {
-            Some((CommandTokenKind::Unterminated, token)) => {
-                return Err(CommandError::UnterminatedToken(token.into()))
-            }
-            Some((_, name)) => name,
-            None => return Ok(()),
-        };
-
-        let mut command = Command::new(command_name);
-        for (kind, token) in tokens {
-            let _ = match kind {
-                CommandTokenKind::Text => command.arg(token),
-                CommandTokenKind::Flag => command.arg(token),
-                CommandTokenKind::Equals => command.arg("="),
-                CommandTokenKind::Unterminated => {
-                    return Err(CommandError::UnterminatedToken(token.into()))
-                }
-            };
-        }
-
-        if let Some(client_handle) = client_handle {
-            let mut buf = Default::default();
-            let value = client_handle.to_str(&mut buf);
-            command.env("CLIENT_ID", value);
-        }
-
-        for (key, value) in env_vars {
-            command.env(key, value);
-        }
-
-        command.stdin(Stdio::null());
-        command.stdout(Stdio::piped());
-        command.stderr(Stdio::null());
-
-        platform.enqueue_request(PlatformRequest::SpawnProcess {
-            tag: ProcessTag::None,
-            command,
-            stdout_buf_len: 1024,
-            stderr_buf_len: 0,
-        });
-
-        Ok(())
-    }
-    */
 
     pub fn eval_body_and_print<'command>(
         editor: &mut Editor,
@@ -916,6 +875,87 @@ impl CommandManager {
         }
     }
 
+    pub fn spawn_process(
+        &mut self,
+        platform: &mut Platform,
+        mut command: Command,
+        stdin: Option<&str>,
+        on_stdout: Option<&str>,
+    ) {
+        let mut index = None;
+        for (i, process) in self.spawned_processes.iter().enumerate() {
+            if !process.alive {
+                index = Some(i);
+                break;
+            }
+        }
+        let index = match index {
+            Some(index) => index,
+            None => {
+                let index = self.spawned_processes.len();
+                self.spawned_processes.push(Default::default());
+                index
+            }
+        };
+
+        let process = &mut self.spawned_processes[index];
+        process.alive = true;
+        process.on_stdout.clear();
+
+        match stdin {
+            Some(stdin) => {
+                let mut buf = platform.buf_pool.acquire();
+                let writer = buf.write();
+                writer.extend_from_slice(stdin.as_bytes());
+                let buf = buf.share();
+                platform.buf_pool.release(buf.clone());
+
+                command.stdin(Stdio::piped());
+                process.stdin = Some(buf);
+            }
+            None => {
+                command.stdin(Stdio::null());
+                process.stdin = None;
+            }
+        }
+        match on_stdout {
+            Some(on_stdout) => {
+                command.stdout(Stdio::piped());
+                process.on_stdout.push_str(on_stdout);
+            }
+            None => {
+                command.stdout(Stdio::null());
+            }
+        }
+        command.stderr(Stdio::null());
+
+        platform.enqueue_request(PlatformRequest::SpawnProcess {
+            tag: ProcessTag::Command(index),
+            command,
+            stdout_buf_len: if on_stdout.is_some() { 1024 } else { 0 },
+            stderr_buf_len: 0,
+        });
+    }
+
+    pub fn on_process_spawned(
+        &mut self,
+        platform: &mut Platform,
+        index: usize,
+        handle: ProcessHandle,
+    ) {
+        if let Some(buf) = self.spawned_processes[index].stdin.take() {
+            platform.enqueue_request(PlatformRequest::WriteToProcess { handle, buf });
+        }
+    }
+
+    pub fn on_process_stdout(&mut self, platform: &mut Platform, index: usize, bytes: &[u8]) {
+        // TODO: on command process stdout
+    }
+
+    pub fn on_process_exit(&mut self, index: usize) {
+        self.spawned_processes[index].alive = false;
+    }
+
     fn parse<'a>(&self, text: &'a str) -> Result<(CommandSource, CommandArgs<'a>), CommandError> {
         let mut tokens = CommandTokenIter(text);
 
@@ -965,7 +1005,9 @@ mod tests {
             builtin_commands,
             custom_commands: Vec::new(),
             history: Default::default(),
+
             continuation: None,
+            spawned_processes: Vec::new(),
         }
     }
 

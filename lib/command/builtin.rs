@@ -208,16 +208,16 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             "spawns a new process\n",
             "spawn [<flags>] <name> <args>...\n",
             " -stdin=<text> : send <text> to the stdin\n",
-            " -stdout=<commands> : execute commands on stdout",
+            " -on-stdout=<commands> : execute commands on stdout",
         ),
         completions: &[],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
             
-            let mut flags = [("stdin", None), ("stdout", None)];
+            let mut flags = [("stdin", None), ("on-stdout", None)];
             ctx.args.get_flags(&mut flags)?;
             let stdin = flags[0].1;
-            let stdout = flags[1].1;
+            let on_stdout = flags[1].1;
 
             let name = ctx.args.next()?;
             let mut command = Command::new(name);
@@ -225,32 +225,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 command.arg(arg);
             }
 
-            let _ = match stdin {
-                Some(_) => command.stdin(Stdio::piped()),
-                None => command.stdin(Stdio::null()),
-            };
-            command.stdout(Stdio::piped());
-            command.stderr(Stdio::null());
-
-            ctx.platform.enqueue_request(PlatformRequest::SpawnProcess {
-                tag: ProcessTag::None,
-                command,
-                stdout_buf_len: 1024,
-                stderr_buf_len: 0,
-            });
-
-            /*
-            if let Some(stdin) = stdin {
-                let buf = ctx.platform.buf_pool.acquire();
-                let writer = buf.write();
-                writer.extend_from_slice(stdin.as_bytes());
-                let buf = buf.share();
-                ctx.platform.buf_pool.release(buf.clone());
-                ctx.platform.enqueue_request(PlatformRequest::WriteToProcess{
-
-                });
-            }
-            */
+            ctx.editor.commands.spawn_process(ctx.platform, command, stdin, on_stdout);
 
             Ok(None)
         },

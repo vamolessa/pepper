@@ -46,7 +46,6 @@ impl Args {
 
 #[derive(Clone, Copy)]
 pub enum ProcessTag {
-    None,
     Command(usize),
     Lsp(lsp::ClientHandle),
 }
@@ -127,7 +126,6 @@ impl ServerApplication {
         event_receiver: mpsc::Receiver<ApplicationEvent>,
     ) -> Result<(), AnyError> {
         let mut client_event_receiver = ClientEventReceiver::default();
-        let mut process_output = Vec::new();
 
         'event_loop: loop {
             let mut event = event_receiver.recv()?;
@@ -168,22 +166,19 @@ impl ServerApplication {
                         events.finish(&mut client_event_receiver);
                     }
                     ApplicationEvent::ProcessSpawned { tag, handle } => match tag {
-                        ProcessTag::None => (),
                         ProcessTag::Lsp(client_handle) => lsp::ClientManager::on_process_spawned(
                             &mut editor,
                             platform,
                             client_handle,
                             handle,
                         ),
-                        ProcessTag::Command(_) => {
-                            eprintln!("spawned process");
-                            process_output.clear();
+                        ProcessTag::Command(index) => {
+                            editor.commands.on_process_spawned(platform, index, handle)
                         }
                     },
                     ApplicationEvent::ProcessStdout { tag, buf } => {
                         let bytes = buf.as_bytes();
                         match tag {
-                            ProcessTag::None => (),
                             ProcessTag::Lsp(client_handle) => {
                                 lsp::ClientManager::on_process_stdout(
                                     &mut editor,
@@ -192,9 +187,8 @@ impl ServerApplication {
                                     bytes,
                                 )
                             }
-                            ProcessTag::Command(_) => {
-                                eprintln!("received process bytes {}", bytes.len());
-                                process_output.extend_from_slice(bytes);
+                            ProcessTag::Command(index) => {
+                                editor.commands.on_process_stdout(platform, index, bytes)
                             }
                         }
                     }
@@ -205,18 +199,10 @@ impl ServerApplication {
                         }
                     }
                     ApplicationEvent::ProcessExit { tag, success } => match tag {
-                        ProcessTag::None => (),
                         ProcessTag::Lsp(client_handle) => {
                             lsp::ClientManager::on_process_exit(&mut editor, client_handle)
                         }
-                        ProcessTag::Command(_) => {
-                            eprintln!("process exit");
-                            let message = std::str::from_utf8(&process_output).unwrap();
-                            editor
-                                .status_bar
-                                .write(crate::editor_utils::MessageKind::Info)
-                                .fmt(format_args!("out: {}", message));
-                        }
+                        ProcessTag::Command(index) => editor.commands.on_process_exit(index),
                     },
                 }
 
