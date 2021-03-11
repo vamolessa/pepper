@@ -2,7 +2,7 @@ use std::{env, fmt, io, sync::mpsc};
 
 use crate::{
     client::{ClientHandle, ClientManager},
-    command::CommandOperation,
+    command::{CommandManager, CommandOperation},
     editor::{Editor, EditorControlFlow},
     events::{ClientEvent, ClientEventReceiver},
     lsp,
@@ -187,9 +187,13 @@ impl ServerApplication {
                                     bytes,
                                 )
                             }
-                            ProcessTag::Command(index) => {
-                                editor.commands.on_process_stdout(platform, index, bytes)
-                            }
+                            ProcessTag::Command(index) => CommandManager::on_process_stdout(
+                                &mut editor,
+                                platform,
+                                &mut clients,
+                                index,
+                                bytes,
+                            ),
                         }
                     }
                     ApplicationEvent::ProcessStderr { tag, buf } => {
@@ -202,7 +206,13 @@ impl ServerApplication {
                         ProcessTag::Lsp(client_handle) => {
                             lsp::ClientManager::on_process_exit(&mut editor, client_handle)
                         }
-                        ProcessTag::Command(index) => editor.commands.on_process_exit(index),
+                        ProcessTag::Command(index) => CommandManager::on_process_exit(
+                            &mut editor,
+                            platform,
+                            &mut clients,
+                            index,
+                            success,
+                        ),
                     },
                 }
 

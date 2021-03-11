@@ -1,12 +1,11 @@
 use std::{
     any, fmt,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
+    process::Command,
     str::FromStr,
 };
 
 use crate::{
-    application::ProcessTag,
     buffer::{BufferCapabilities, BufferHandle},
     buffer_position::BufferPosition,
     buffer_view::BufferViewError,
@@ -23,7 +22,7 @@ use crate::{
     mode::ModeKind,
     mode::{picker, read_line, ModeContext},
     navigation_history::NavigationHistory,
-    platform::{Platform, PlatformRequest},
+    platform::Platform,
     register::RegisterKey,
     syntax::{Syntax, TokenKind},
     theme::{Color, THEME_COLOR_NAMES},
@@ -208,16 +207,24 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             "spawns a new process\n",
             "spawn [<flags>] <name> <args>...\n",
             " -stdin=<text> : send <text> to the stdin\n",
-            " -on-stdout=<commands> : execute commands on stdout",
+            " -on-stdout=<commands> : execute commands on stdout\n",
+            " -split-on=<number> : optionally split stdout at every <number> byte",
         ),
         completions: &[],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
             
-            let mut flags = [("stdin", None), ("on-stdout", None)];
+            let mut flags = [("stdin", None), ("on-stdout", None), ("split-on", None)];
             ctx.args.get_flags(&mut flags)?;
             let stdin = flags[0].1;
             let on_stdout = flags[1].1;
+            let split_on = match flags[2].1 {
+                Some(token) => match token.parse() {
+                    Ok(b) => Some(b),
+                    Err(_) => return Err(CommandError::InvalidToken(token.into())),
+                }
+                None => None,
+            };
 
             let name = ctx.args.next()?;
             let mut command = Command::new(name);
@@ -225,8 +232,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 command.arg(arg);
             }
 
-            ctx.editor.commands.spawn_process(ctx.platform, command, stdin, on_stdout);
-
+            ctx.editor.commands.spawn_process(ctx.platform, command, stdin, on_stdout, split_on);
             Ok(None)
         },
     },
