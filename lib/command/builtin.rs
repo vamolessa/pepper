@@ -12,7 +12,7 @@ use crate::{
     command::{
         CommandTokenIter, CommandTokenKind,
         BuiltinCommand, CommandContext, CommandError, CommandIter, CommandManager,
-        CommandOperation, CommandSource, CompletionSource, CustomCommand,
+        CommandOperation, CommandSource, CompletionSource, MacroCommand,
     },
     config::{ParseConfigError, CONFIG_NAMES},
     editor::Editor,
@@ -189,7 +189,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 return Err(CommandError::InvalidCommandName(name.into()));
             }
 
-            let command = CustomCommand {
+            let command = MacroCommand {
                 name: name.into(),
                 help: help.into(),
                 param_count,

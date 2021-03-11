@@ -684,7 +684,7 @@ pub struct BuiltinCommand {
     pub func: CommandFn,
 }
 
-pub struct CustomCommand {
+pub struct MacroCommand {
     pub name: String,
     pub help: String,
     pub param_count: u8,
@@ -703,7 +703,7 @@ struct Process {
 
 pub struct CommandManager {
     builtin_commands: &'static [BuiltinCommand],
-    macro_commands: Vec<CustomCommand>,
+    macro_commands: Vec<MacroCommand>,
     history: VecDeque<String>,
 
     pub continuation: Option<String>,
@@ -742,11 +742,11 @@ impl CommandManager {
         &self.builtin_commands
     }
 
-    pub fn custom_commands(&self) -> &[CustomCommand] {
+    pub fn custom_commands(&self) -> &[MacroCommand] {
         &self.macro_commands
     }
 
-    pub fn register_custom_command(&mut self, command: CustomCommand) {
+    pub fn register_custom_command(&mut self, command: MacroCommand) {
         self.macro_commands.push(command);
     }
 
@@ -856,9 +856,9 @@ impl CommandManager {
 
                 for i in 0..macro_command.param_count {
                     use io::Write;
-                    let mut buf = [0u8; 7];
+                    let mut buf = [0u8; 4];
                     let mut writer = io::Cursor::new(&mut buf[..]);
-                    let _ = write!(writer, "$ARG{}", i);
+                    let _ = write!(writer, "${}", i);
                     let len = writer.position() as usize;
                     let key = unsafe { std::str::from_utf8_unchecked(&buf[..len]) };
                     let value = args.next()?;
