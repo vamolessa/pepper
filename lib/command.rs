@@ -1,6 +1,6 @@
 use std::{
     collections::VecDeque,
-    fmt,
+    fmt, io,
     process::{Command, Stdio},
 };
 
@@ -687,7 +687,7 @@ pub struct BuiltinCommand {
 pub struct CustomCommand {
     pub name: String,
     pub help: String,
-    pub param_count: usize,
+    pub param_count: u8,
     pub body: String,
 }
 
@@ -703,7 +703,7 @@ struct Process {
 
 pub struct CommandManager {
     builtin_commands: &'static [BuiltinCommand],
-    custom_commands: Vec<CustomCommand>,
+    macro_commands: Vec<CustomCommand>,
     history: VecDeque<String>,
 
     pub continuation: Option<String>,
@@ -714,7 +714,7 @@ impl CommandManager {
     pub fn new() -> Self {
         Self {
             builtin_commands: builtin::COMMANDS,
-            custom_commands: Vec::new(),
+            macro_commands: Vec::new(),
             history: VecDeque::with_capacity(HISTORY_CAPACITY),
 
             continuation: None,
@@ -723,7 +723,7 @@ impl CommandManager {
     }
 
     pub fn find_command(&self, name: &str) -> Option<CommandSource> {
-        if let Some(i) = self.custom_commands.iter().position(|c| c.name == name) {
+        if let Some(i) = self.macro_commands.iter().position(|c| c.name == name) {
             return Some(CommandSource::Macro(i));
         }
 
@@ -743,11 +743,11 @@ impl CommandManager {
     }
 
     pub fn custom_commands(&self) -> &[CustomCommand] {
-        &self.custom_commands
+        &self.macro_commands
     }
 
     pub fn register_custom_command(&mut self, command: CustomCommand) {
-        self.custom_commands.push(command);
+        self.macro_commands.push(command);
     }
 
     pub fn history_len(&self) -> usize {
@@ -844,16 +844,27 @@ impl CommandManager {
                 command(&mut ctx)
             }
             CommandSource::Macro(i) => {
+                let macro_command = &editor.commands.macro_commands[i];
+
                 args.assert_no_bang()?;
                 args.get_flags(&mut [])?;
-                args.assert_empty()?;
 
                 let mut result = Ok(None);
                 let mut body = editor.string_pool.acquire();
                 body.clear();
-                body.push_str(&editor.commands.custom_commands[i].body);
+                body.push_str(&macro_command.body);
 
-                // TODO: arg substitution
+                for i in 0..macro_command.param_count {
+                    use io::Write;
+                    let mut buf = [0u8; 7];
+                    let mut writer = io::Cursor::new(&mut buf[..]);
+                    let _ = write!(writer, "$ARG{}", i);
+                    let len = writer.position() as usize;
+                    let key = unsafe { std::str::from_utf8_unchecked(&buf[..len]) };
+                    let value = args.next()?;
+                    replace_all(&mut body, key, value);
+                }
+                args.assert_empty()?;
 
                 for command in CommandIter(&body) {
                     match Self::eval(editor, platform, clients, client_handle, command, output) {
@@ -1087,7 +1098,7 @@ mod tests {
 
         CommandManager {
             builtin_commands,
-            custom_commands: Vec::new(),
+            macro_commands: Vec::new(),
             history: Default::default(),
 
             continuation: None,
@@ -1117,13 +1128,25 @@ mod tests {
     #[test]
     fn command_tokens() {
         let mut tokens = CommandTokenIter("value -flag");
-        assert!(matches!(tokens.next(), Some((CommandTokenKind::Text, "value"))));
-        assert!(matches!(tokens.next(), Some((CommandTokenKind::Flag, "-flag"))));
+        assert!(matches!(
+            tokens.next(),
+            Some((CommandTokenKind::Text, "value"))
+        ));
+        assert!(matches!(
+            tokens.next(),
+            Some((CommandTokenKind::Flag, "-flag"))
+        ));
         assert!(tokens.next().is_none());
 
         let mut tokens = CommandTokenIter("value --long-flag");
-        assert!(matches!(tokens.next(), Some((CommandTokenKind::Text, "value"))));
-        assert!(matches!(tokens.next(), Some((CommandTokenKind::Flag, "--long-flag"))));
+        assert!(matches!(
+            tokens.next(),
+            Some((CommandTokenKind::Text, "value"))
+        ));
+        assert!(matches!(
+            tokens.next(),
+            Some((CommandTokenKind::Flag, "--long-flag"))
+        ));
         assert!(tokens.next().is_none());
     }
 

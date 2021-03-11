@@ -22,29 +22,6 @@ impl ClientHandle {
             None
         }
     }
-
-    pub fn to_str<'a>(&self, buf: &'a mut [u8; 3]) -> &'a str {
-        let c = self.0 / 100;
-        let d = self.0 / 10 - c * 10;
-        let n = self.0 - d * 10 - c * 100;
-
-        let len;
-        if c != 0 {
-            buf[0] = b'0' + c;
-            buf[1] = b'0' + d;
-            buf[2] = b'0' + n;
-            len = 3;
-        } else if d != 0 {
-            buf[0] = b'0' + d;
-            buf[1] = b'0' + n;
-            len = 2;
-        } else {
-            buf[0] = b'0' + n;
-            len = 1;
-        }
-
-        unsafe { std::str::from_utf8_unchecked(&buf[..len]) }
-    }
 }
 
 impl<'de> Serialize<'de> for ClientHandle {
@@ -229,27 +206,5 @@ impl ClientManager {
         self.clients
             .iter_mut()
             .filter_map(|c| if c.active { Some(c) } else { None })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn client_handle_to_str() {
-        let mut buf = Default::default();
-        assert_eq!("0", ClientHandle(0).to_str(&mut buf));
-        assert_eq!("1", ClientHandle(1).to_str(&mut buf));
-        assert_eq!("9", ClientHandle(9).to_str(&mut buf));
-        assert_eq!("10", ClientHandle(10).to_str(&mut buf));
-        assert_eq!("11", ClientHandle(11).to_str(&mut buf));
-        assert_eq!("99", ClientHandle(99).to_str(&mut buf));
-        assert_eq!("100", ClientHandle(100).to_str(&mut buf));
-        assert_eq!("101", ClientHandle(101).to_str(&mut buf));
-        assert_eq!("199", ClientHandle(199).to_str(&mut buf));
-        assert_eq!("200", ClientHandle(200).to_str(&mut buf));
-        assert_eq!("201", ClientHandle(201).to_str(&mut buf));
-        assert_eq!("255", ClientHandle(255).to_str(&mut buf));
     }
 }
