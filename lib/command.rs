@@ -504,7 +504,7 @@ impl<'a> Iterator for CommandTokenIter<'a> {
                 }
             }
             b'-' => {
-                let (token, rest) = split_at_boundary(&self.0[1..]);
+                let (token, rest) = split_at_boundary(self.0);
                 self.0 = rest;
                 Some((CommandTokenKind::Flag, token))
             }
@@ -550,6 +550,7 @@ impl<'a> CommandArgs<'a> {
             match token {
                 (CommandTokenKind::Text, _) => (),
                 (CommandTokenKind::Flag, key) => {
+                    let key = &key[1..];
                     let value = match flags.iter_mut().find(|(k, _)| *k == key) {
                         Some((_, value)) => value,
                         None => break Err(CommandError::UnknownFlag(key.into())),
