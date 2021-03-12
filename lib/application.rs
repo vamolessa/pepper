@@ -137,7 +137,6 @@ impl ServerApplication {
                         clients.on_client_joined(handle);
                         let mut buf = platform.buf_pool.acquire();
                         let write = buf.write();
-                        write.clear();
                         write.push(handle.into_index() as _);
                         let buf = buf.share();
                         platform.buf_pool.release(buf.clone());
@@ -238,7 +237,6 @@ impl ServerApplication {
 
                 let mut buf = platform.buf_pool.acquire();
                 let write = buf.write();
-                write.clear();
                 write.extend_from_slice(&[0; 4]);
                 ui::render(
                     &editor,
@@ -270,25 +268,33 @@ impl ServerApplication {
 
 pub struct ClientApplication {
     handle: ClientHandle,
+    is_pipped: bool,
     read_buf: Vec<u8>,
     write_buf: SerializationBuf,
-    stdout: Option<io::StdoutLock<'static>>,
+    stdout: io::StdoutLock<'static>,
 }
 impl ClientApplication {
     pub const fn connection_buffer_len() -> usize {
         2 * 1024
     }
 
-    pub fn new(handle: ClientHandle) -> Self {
+    pub fn new(handle: ClientHandle, is_pipped: bool) -> Self {
+        static mut STDOUT: Option<io::Stdout> = None;
+        let stdout = unsafe {
+            STDOUT = Some(io::stdout());
+            STDOUT.as_ref().unwrap().lock()
+        };
+
         Self {
             handle,
+            is_pipped,
             read_buf: Vec::new(),
             write_buf: SerializationBuf::default(),
-            stdout: None,
+            stdout,
         }
     }
 
-    pub fn init<'a>(&'a mut self, args: Args, is_pipped: bool) -> &'a [u8] {
+    pub fn init<'a>(&'a mut self, args: Args) -> &'a [u8] {
         self.write_buf.clear();
 
         if let Some(handle) = args.as_client {
@@ -318,35 +324,27 @@ impl ClientApplication {
             }
         }
 
-        if is_pipped {
+        if self.is_pipped {
             use fmt::Write;
             use io::Read;
 
+            commands.push('\n');
             let mut buf = Vec::new();
             match std::io::stdin().lock().read_to_end(&mut buf) {
                 Ok(_) => match std::str::from_utf8(&buf) {
-                    Ok(text) => {
-                        commands.push('\n');
-                        commands.push_str(text);
-                    }
-                    Err(error) => write!(commands, "\nprint -error {{{}}}", error).unwrap(),
+                    Ok(text) => commands.push_str(text),
+                    Err(error) => write!(commands, "print -error {{{}}}", error).unwrap(),
                 },
-
-                Err(error) => write!(commands, "\nprint -error {{{}}}", error).unwrap(),
+                Err(error) => write!(commands, "print -error {{{}}}", error).unwrap(),
             }
         } else {
-            static mut STDOUT: Option<io::Stdout> = None;
-            let mut stdout = unsafe {
-                STDOUT = Some(io::stdout());
-                STDOUT.as_ref().unwrap().lock()
-            };
-
             use io::Write;
-            stdout.write_all(ui::ENTER_ALTERNATE_BUFFER_CODE).unwrap();
-            stdout.write_all(ui::HIDE_CURSOR_CODE).unwrap();
-            stdout.write_all(ui::MODE_256_COLORS_CODE).unwrap();
-            stdout.flush().unwrap();
-            self.stdout = Some(stdout);
+            self.stdout
+                .write_all(ui::ENTER_ALTERNATE_BUFFER_CODE)
+                .unwrap();
+            self.stdout.write_all(ui::HIDE_CURSOR_CODE).unwrap();
+            self.stdout.write_all(ui::MODE_256_COLORS_CODE).unwrap();
+            self.stdout.flush().unwrap();
 
             if args.as_client.is_none() {
                 ClientEvent::Key(self.handle, Key::None).serialize(&mut self.write_buf);
@@ -359,17 +357,20 @@ impl ClientApplication {
         self.write_buf.as_slice()
     }
 
-    pub fn update<'a>(
+    pub fn update_piped(&mut self, message: &[u8]) -> bool {
+        eprintln!("received {} bytes", message.len());
+        eprintln!("{:?}", message);
+        eprintln!("------");
+        self.read_message_and_write_to_stdout(message);
+        !message.is_empty() && self.read_buf.is_empty()
+    }
+
+    pub fn update_with_ui<'a>(
         &'a mut self,
         resize: Option<(usize, usize)>,
         keys: &[Key],
         message: &[u8],
     ) -> &'a [u8] {
-        let stdout = match self.stdout {
-            Some(ref mut stdout) => stdout,
-            None => return &[],
-        };
-
         self.write_buf.clear();
 
         if let Some((width, height)) = resize {
@@ -381,47 +382,52 @@ impl ClientApplication {
             ClientEvent::Key(self.handle, *key).serialize(&mut self.write_buf);
         }
 
-        if !message.is_empty() {
-            use io::Write;
+        self.read_message_and_write_to_stdout(message);
+        self.write_buf.as_slice()
+    }
 
-            self.read_buf.extend_from_slice(message);
-            let mut len_bytes = [0; 4];
-            let mut read_buf = &self.read_buf[..];
+    fn read_message_and_write_to_stdout(&mut self, message: &[u8]) {
+        use io::Write;
 
-            while read_buf.len() >= len_bytes.len() {
-                let (len, message) = read_buf.split_at(len_bytes.len());
-                len_bytes.copy_from_slice(len);
-                let message_len = u32::from_le_bytes(len_bytes) as usize;
-
-                if message.len() >= message_len {
-                    let (message, rest) = message.split_at(message_len);
-                    read_buf = rest;
-
-                    stdout.write_all(message).unwrap();
-                } else {
-                    break;
-                }
-            }
-
-            let rest_len = read_buf.len();
-            let rest_index = self.read_buf.len() - rest_len;
-            self.read_buf.copy_within(rest_index.., 0);
-            self.read_buf.truncate(rest_len);
-
-            stdout.flush().unwrap();
+        if message.is_empty() {
+            return;
         }
 
-        self.write_buf.as_slice()
+        self.read_buf.extend_from_slice(message);
+        let mut len_bytes = [0; 4];
+        let mut read_buf = &self.read_buf[..];
+
+        while read_buf.len() >= len_bytes.len() {
+            let (len, message) = read_buf.split_at(len_bytes.len());
+            len_bytes.copy_from_slice(len);
+            let message_len = u32::from_le_bytes(len_bytes) as usize;
+
+            if message.len() >= message_len {
+                let (message, rest) = message.split_at(message_len);
+                read_buf = rest;
+
+                self.stdout.write_all(message).unwrap();
+            } else {
+                break;
+            }
+        }
+
+        let rest_len = read_buf.len();
+        let rest_index = self.read_buf.len() - rest_len;
+        self.read_buf.copy_within(rest_index.., 0);
+        self.read_buf.truncate(rest_len);
+
+        self.stdout.flush().unwrap();
     }
 }
 impl Drop for ClientApplication {
     fn drop(&mut self) {
-        if let Some(ref mut stdout) = self.stdout {
+        if !self.is_pipped {
             use io::Write;
-            let _ = stdout.write_all(ui::EXIT_ALTERNATE_BUFFER_CODE);
-            let _ = stdout.write_all(ui::SHOW_CURSOR_CODE);
-            let _ = stdout.write_all(ui::RESET_STYLE_CODE);
-            let _ = stdout.flush();
+            let _ = self.stdout.write_all(ui::EXIT_ALTERNATE_BUFFER_CODE);
+            let _ = self.stdout.write_all(ui::SHOW_CURSOR_CODE);
+            let _ = self.stdout.write_all(ui::RESET_STYLE_CODE);
+            let _ = self.stdout.flush();
         }
     }
 }

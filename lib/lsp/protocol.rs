@@ -430,13 +430,11 @@ impl Protocol {
         use io::Write;
 
         let mut buf = platform.buf_pool.acquire();
-        let write_buf = buf.write();
-        write_buf.clear();
+        let write = buf.write();
 
         json.write(&mut self.body_buf, &body);
-
-        let _ = write!(write_buf, "Content-Length: {}\r\n\r\n", self.body_buf.len());
-        write_buf.append(&mut self.body_buf);
+        let _ = write!(write, "Content-Length: {}\r\n\r\n", self.body_buf.len());
+        write.append(&mut self.body_buf);
 
         if let Some(handle) = self.process_handle {
             let buf = buf.share();

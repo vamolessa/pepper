@@ -141,7 +141,7 @@ impl Editor {
 
         let mut source = String::new();
         match file.read_to_string(&mut source) {
-            Ok(_) => CommandManager::eval_body_and_print(self, platform, clients, None, &source),
+            Ok(_) => CommandManager::eval_commands_then_output(self, platform, clients, None, &source),
             Err(_) => {
                 self.status_bar
                     .write(MessageKind::Error)
@@ -304,7 +304,7 @@ impl Editor {
                 EditorControlFlow::Continue
             }
             ClientEvent::Command(client_handle, commands) => {
-                match CommandManager::eval_body_and_print(
+                match CommandManager::eval_commands_then_output(
                     self,
                     platform,
                     clients,

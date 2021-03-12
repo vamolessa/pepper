@@ -209,7 +209,7 @@ pub mod custom {
                     let mut operation = None;
                     if let Some(entry) = entry {
                         replace_all(&mut continuation, "$ENTRY", entry.name);
-                        operation = CommandManager::eval_body_and_print(
+                        operation = CommandManager::eval_commands_then_output(
                             ctx.editor,
                             ctx.platform,
                             ctx.clients,

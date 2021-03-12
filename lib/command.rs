@@ -777,17 +777,19 @@ impl CommandManager {
         self.history.push_back(s);
     }
 
-    pub fn eval_body_and_print<'command>(
+    pub fn eval_commands_then_output<'command>(
         editor: &mut Editor,
         platform: &mut Platform,
         clients: &mut ClientManager,
         client_handle: Option<ClientHandle>,
-        body: &'command str,
+        commands: &'command str,
     ) -> Option<CommandOperation> {
+        eprintln!("eval commands: {}", commands);
+
         let mut output = editor.string_pool.acquire();
         let mut operation = None;
 
-        for command in CommandIter(&body) {
+        for command in CommandIter(&commands) {
             match Self::eval(
                 editor,
                 platform,
@@ -813,25 +815,30 @@ impl CommandManager {
             }
         }
 
-        if !output.is_empty() {
-            match client_handle
-                .and_then(|h| clients.get(h))
-                .filter(|c| !c.has_ui())
-                .map(Client::handle)
-            {
-                Some(handle) => {
-                    let mut buf = platform.buf_pool.acquire();
-                    let write = buf.write();
-                    write.extend_from_slice(&[0; 4]);
-                    write.extend_from_slice(output.as_bytes());
-                    let len = output.len() as u32;
-                    let len_bytes = len.to_le_bytes();
-                    write[..4].copy_from_slice(&len_bytes);
-                    let buf = buf.share();
-                    platform.buf_pool.release(buf.clone());
-                    platform.enqueue_request(PlatformRequest::WriteToClient { handle, buf });
+        match client_handle
+            .and_then(|h| clients.get(h))
+            .filter(|c| !c.has_ui())
+            .map(Client::handle)
+        {
+            Some(handle) => {
+                let mut buf = platform.buf_pool.acquire();
+                let write = buf.write();
+                write.extend_from_slice(&[0; 4]);
+                eprintln!("extend_from_slice {}", write.len());
+                write.extend_from_slice(output.as_bytes());
+                eprintln!("extend_from_slice {}", write.len());
+                let len = output.len() as u32;
+                let len_bytes = len.to_le_bytes();
+                write[..4].copy_from_slice(&len_bytes);
+                let buf = buf.share();
+
+                platform.buf_pool.release(buf.clone());
+                platform.enqueue_request(PlatformRequest::WriteToClient { handle, buf });
+            }
+            None => {
+                if !output.is_empty() {
+                    editor.status_bar.write(MessageKind::Info).str(&output)
                 }
-                None => editor.status_bar.write(MessageKind::Info).str(&output),
             }
         }
 
@@ -1021,7 +1028,7 @@ impl CommandManager {
                     commands.clear();
                     commands.push_str(&process.on_stdout);
                     replace_all(&mut commands, "$OUTPUT", line);
-                    Self::eval_body_and_print(editor, platform, clients, None, &commands);
+                    Self::eval_commands_then_output(editor, platform, clients, None, &commands);
                 }
                 Err(error) => {
                     editor
@@ -1064,7 +1071,7 @@ impl CommandManager {
         commands.clear();
         commands.push_str(&process.on_stdout);
         replace_all(&mut commands, "$OUTPUT", stdout);
-        Self::eval_body_and_print(editor, platform, clients, None, &commands);
+        Self::eval_commands_then_output(editor, platform, clients, None, &commands);
 
         editor.string_pool.release(commands);
     }

@@ -90,7 +90,7 @@ impl ModeState for State {
                 command.clear();
                 command.push_str(input);
 
-                let operation = CommandManager::eval_body_and_print(
+                let operation = CommandManager::eval_commands_then_output(
                     ctx.editor,
                     ctx.platform,
                     ctx.clients,

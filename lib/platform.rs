@@ -107,7 +107,15 @@ impl ExclusiveBuf {
     }
 
     pub fn write(&mut self) -> &mut Vec<u8> {
-        Arc::get_mut(&mut self.0).unwrap()
+        let buf = Arc::get_mut(&mut self.0).unwrap();
+        buf.clear();
+        buf
+    }
+
+    pub fn write_with_len(&mut self, len: usize) -> &mut Vec<u8> {
+        let buf = Arc::get_mut(&mut self.0).unwrap();
+        buf.resize(len, 0);
+        buf
     }
 }
 

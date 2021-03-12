@@ -286,29 +286,23 @@ fn is_pipped(handle: HANDLE) -> bool {
     unsafe { GetFileType(handle) != FILE_TYPE_CHAR }
 }
 
-fn read_all_bytes(handle: &Handle, mut buf: &mut [u8]) -> usize {
-    let mut total_read = 0;
-    while !buf.is_empty() {
-        let mut read_len = 0;
-        let result = unsafe {
-            ReadFile(
-                handle.0,
-                buf.as_ptr() as _,
-                buf.len() as _,
-                &mut read_len,
-                std::ptr::null_mut(),
-            )
-        };
-        if result == FALSE || read_len == 0 {
-            break;
-        }
-
-        let read_len = read_len as usize;
-        buf = &mut buf[read_len..];
-        total_read += read_len;
+fn read(handle: &Handle, buf: &mut [u8]) -> Result<usize, usize> {
+    let mut read_len = 0;
+    let result = unsafe {
+        ReadFile(
+            handle.0,
+            buf.as_ptr() as _,
+            buf.len() as _,
+            &mut read_len,
+            std::ptr::null_mut(),
+        )
+    };
+    let read_len = read_len as _;
+    if result == FALSE {
+        Err(read_len)
+    } else {
+        Ok(read_len)
     }
-
-    total_read
 }
 
 fn write_all_bytes(handle: &Handle, mut buf: &[u8]) -> bool {
@@ -622,8 +616,7 @@ impl ConnectionToClient {
             Some(buf) => buf,
             None => buf_pool.acquire(),
         };
-        let buf = read_buf.write();
-        buf.resize(buf_len, 0);
+        let buf = read_buf.write_with_len(buf_len);
 
         match self.reader.read_async(buf) {
             ReadResult::Waiting => {
@@ -768,8 +761,8 @@ impl ConnectionToServer {
         write_all_bytes(self.reader.handle(), buf)
     }
 
-    pub fn read(&mut self, buf: &mut [u8]) -> usize {
-        read_all_bytes(self.reader.handle(), buf)
+    pub fn read(&mut self, buf: &mut [u8]) -> Result<usize, usize> {
+        read(self.reader.handle(), buf)
     }
 
     pub fn read_async(&mut self) -> Result<&[u8], ()> {
@@ -806,8 +799,7 @@ impl ProcessPipe {
             Some(buf) => buf,
             None => buf_pool.acquire(),
         };
-        let buf = read_buf.write();
-        buf.resize(self.buf_len, 0);
+        let buf = read_buf.write_with_len(self.buf_len);
 
         match self.reader.read_async(buf) {
             ReadResult::Waiting => {
@@ -1155,16 +1147,36 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: HANDLE, output_handle
         ConnectionToServer::connect(pipe_path, ClientApplication::connection_buffer_len());
 
     let mut client_index = 0;
-    if connection.read(std::slice::from_mut(&mut client_index)) == 0 {
-        return;
+    match connection.read(std::slice::from_mut(&mut client_index)) {
+        Ok(1) => (),
+        _ => return,
     }
 
     let client_handle = ClientHandle::from_index(client_index as _).unwrap();
-    let mut application = ClientApplication::new(client_handle);
-
     let is_pipped = is_pipped(input_handle);
-    let bytes = application.init(args, is_pipped);
-    if !connection.write(bytes) || is_pipped {
+
+    let mut application = ClientApplication::new(client_handle, is_pipped);
+    let bytes = application.init(args);
+    if !connection.write(bytes) {
+        return;
+    }
+
+    if is_pipped {
+        let mut buf = [0; ClientApplication::connection_buffer_len()];
+        loop {
+            match connection.read(&mut buf) {
+                Ok(0) => break,
+                Ok(len) => {
+                    if !application.update_piped(&buf[..len]) {
+                        break;
+                    }
+                }
+                Err(len) => {
+                    application.update_piped(&buf[..len]);
+                    break;
+                }
+            }
+        }
         return;
     }
 
@@ -1178,7 +1190,7 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: HANDLE, output_handle
     let wait_handles = [connection.event().handle(), input_handle];
 
     let (width, height) = get_console_size(output_handle);
-    let bytes = application.update(Some((width, height)), &[], &[]);
+    let bytes = application.update_with_ui(Some((width, height)), &[], &[]);
     if !connection.write(bytes) {
         return;
     }
@@ -1284,7 +1296,7 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: HANDLE, output_handle
             _ => unreachable!(),
         }
 
-        let bytes = application.update(resize, &keys, message);
+        let bytes = application.update_with_ui(resize, &keys, message);
         if !connection.write(bytes) {
             break;
         }
