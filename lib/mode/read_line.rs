@@ -476,13 +476,18 @@ pub mod custom {
                 ReadLinePoll::Pending => None,
                 ReadLinePoll::Submitted => {
                     let mut continuation = ctx.editor.commands.continuation.take().unwrap();
-                    replace_all_inside_brackets(&mut continuation, "{LINE}", ctx.editor.read_line.input());
+                    replace_all_inside_brackets(
+                        &mut continuation,
+                        "{LINE}",
+                        ctx.editor.read_line.input(),
+                    );
                     let operation = CommandManager::eval_commands_then_output(
                         ctx.editor,
                         ctx.platform,
                         ctx.clients,
                         Some(ctx.client_handle),
                         &continuation,
+                        None,
                     )
                     .map(Into::into);
                     ctx.editor.string_pool.release(continuation);

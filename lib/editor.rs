@@ -141,9 +141,14 @@ impl Editor {
 
         let mut source = String::new();
         match file.read_to_string(&mut source) {
-            Ok(_) => {
-                CommandManager::eval_commands_then_output(self, platform, clients, None, &source)
-            }
+            Ok(_) => CommandManager::eval_commands_then_output(
+                self,
+                platform,
+                clients,
+                None,
+                &source,
+                Some(path),
+            ),
             Err(_) => {
                 self.status_bar
                     .write(MessageKind::Error)
@@ -314,6 +319,7 @@ impl Editor {
                     clients,
                     Some(client_handle),
                     commands,
+                    None,
                 ) {
                     None => EditorControlFlow::Continue,
                     Some(CommandOperation::Quit) => EditorControlFlow::Quit,

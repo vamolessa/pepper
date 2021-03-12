@@ -96,7 +96,9 @@ impl ModeState for State {
                     ctx.clients,
                     Some(ctx.client_handle),
                     &command,
-                ).map(From::from);
+                    None,
+                )
+                .map(From::from);
 
                 ctx.editor.string_pool.release(command);
 

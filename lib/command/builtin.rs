@@ -126,6 +126,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                         ctx.clients,
                         ctx.client_handle,
                         command,
+                        ctx.source_path,
                         ctx.output,
                     ) {
                         Ok(None) => (),
@@ -194,6 +195,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 help: help.into(),
                 param_count,
                 body: body.into(),
+                source_path: ctx.source_path.unwrap_or("untitled").into(),
             };
             ctx.editor.commands.register_custom_command(command);
 

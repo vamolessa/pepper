@@ -215,6 +215,7 @@ pub mod custom {
                             ctx.clients,
                             Some(ctx.client_handle),
                             &continuation,
+                            None,
                         )
                         .map(Into::into);
                         ctx.editor.string_pool.release(continuation);

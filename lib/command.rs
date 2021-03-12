@@ -73,7 +73,7 @@ pub enum CommandError {
     KeyParseError(CommandToken, KeyParseError),
     InvalidRegisterKey(CommandToken),
     LspServerNotRunning,
-    CommandMacroError {
+    MacroCommandError {
         index: usize,
         body: String,
         location: usize,
@@ -259,7 +259,7 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
                 format_args!("invalid register key '{}'", key.as_str_at(c, l)),
             ),
             CommandError::LspServerNotRunning => f.write_str("lsp server not running"),
-            CommandError::CommandMacroError {
+            CommandError::MacroCommandError {
                 index,
                 body,
                 location,
@@ -305,6 +305,7 @@ pub struct CommandContext<'state, 'command> {
     pub platform: &'state mut Platform,
     pub clients: &'state mut ClientManager,
     pub client_handle: Option<ClientHandle>,
+    pub source_path: Option<&'command str>,
     pub args: CommandArgs<'command>,
     pub output: &'state mut String,
 }
@@ -690,6 +691,7 @@ pub struct MacroCommand {
     pub help: String,
     pub param_count: u8,
     pub body: String,
+    pub source_path: String,
 }
 
 #[derive(Default)]
@@ -784,6 +786,7 @@ impl CommandManager {
         clients: &mut ClientManager,
         client_handle: Option<ClientHandle>,
         commands: &'command str,
+        source_path: Option<&'command str>,
     ) -> Option<CommandOperation> {
         let mut output = editor.string_pool.acquire();
         let mut operation = None;
@@ -795,6 +798,7 @@ impl CommandManager {
                 clients,
                 client_handle,
                 command,
+                source_path,
                 &mut output,
             ) {
                 Ok(None) => (),
@@ -848,6 +852,7 @@ impl CommandManager {
         clients: &mut ClientManager,
         client_handle: Option<ClientHandle>,
         command: &'command str,
+        source_path: Option<&'command str>,
         output: &mut String,
     ) -> Result<Option<CommandOperation>, CommandError> {
         let (source, mut args) = editor.commands.parse(command)?;
@@ -859,6 +864,7 @@ impl CommandManager {
                     platform,
                     clients,
                     client_handle,
+                    source_path,
                     args,
                     output,
                 };
@@ -888,14 +894,22 @@ impl CommandManager {
                 args.assert_empty()?;
 
                 for command in CommandIter(&body) {
-                    match Self::eval(editor, platform, clients, client_handle, command, output) {
+                    match Self::eval(
+                        editor,
+                        platform,
+                        clients,
+                        client_handle,
+                        command,
+                        source_path,
+                        output,
+                    ) {
                         Ok(None) => (),
                         Ok(Some(op)) => {
                             result = Ok(Some(op));
                             break;
                         }
                         Err(error) => {
-                            result = Err(CommandError::CommandMacroError {
+                            result = Err(CommandError::MacroCommandError {
                                 index: i,
                                 body: command.into(),
                                 location: command.as_ptr() as _,
@@ -1024,7 +1038,9 @@ impl CommandManager {
                     commands.clear();
                     commands.push_str(&process.on_stdout);
                     replace_all_inside_brackets(&mut commands, "{OUTPUT}", line);
-                    Self::eval_commands_then_output(editor, platform, clients, None, &commands);
+                    Self::eval_commands_then_output(
+                        editor, platform, clients, None, &commands, None,
+                    );
                 }
                 Err(error) => {
                     editor
@@ -1067,7 +1083,7 @@ impl CommandManager {
         commands.clear();
         commands.push_str(&process.on_stdout);
         replace_all_inside_brackets(&mut commands, "{OUTPUT}", stdout);
-        Self::eval_commands_then_output(editor, platform, clients, None, &commands);
+        Self::eval_commands_then_output(editor, platform, clients, None, &commands, None);
 
         editor.string_pool.release(commands);
     }
