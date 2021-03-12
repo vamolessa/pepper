@@ -1,4 +1,4 @@
-use std::{env, fmt, io, sync::mpsc};
+use std::{env, fmt, io, path::Path, sync::mpsc};
 
 use crate::{
     client::{ClientHandle, ClientManager},
@@ -93,8 +93,9 @@ impl ServerApplication {
         let mut clients = ClientManager::new();
 
         for config in &args.config {
+            let config_path = Path::new(config);
             if let Some(CommandOperation::Quit) | Some(CommandOperation::QuitAll) =
-                editor.load_config(&mut platform, &mut clients, config)
+                editor.load_config(&mut platform, &mut clients, config_path)
             {
                 return None;
             }

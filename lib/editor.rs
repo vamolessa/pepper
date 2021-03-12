@@ -1,4 +1,8 @@
-use std::{fmt, fs::File, path::PathBuf};
+use std::{
+    fmt,
+    fs::File,
+    path::{Path, PathBuf},
+};
 
 use crate::{
     buffer::BufferCollection,
@@ -125,7 +129,7 @@ impl Editor {
         &mut self,
         platform: &mut Platform,
         clients: &mut ClientManager,
-        path: &str,
+        path: &Path,
     ) -> Option<CommandOperation> {
         use std::io::Read;
 
@@ -134,7 +138,7 @@ impl Editor {
             Err(_) => {
                 self.status_bar
                     .write(MessageKind::Error)
-                    .fmt(format_args!("could not open config file '{}'", path));
+                    .fmt(format_args!("could not open config file '{:?}'", path));
                 return None;
             }
         };
@@ -152,7 +156,7 @@ impl Editor {
             Err(_) => {
                 self.status_bar
                     .write(MessageKind::Error)
-                    .fmt(format_args!("could not read config file '{}'", path));
+                    .fmt(format_args!("could not read config file '{:?}'", path));
                 None
             }
         }

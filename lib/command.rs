@@ -1,6 +1,7 @@
 use std::{
     collections::VecDeque,
     fmt, io,
+    path::{Path, PathBuf},
     process::{Command, Stdio},
 };
 
@@ -84,11 +85,13 @@ impl CommandError {
     pub fn display<'command, 'error>(
         &'error self,
         command: &'command str,
+        source_path: Option<&'command Path>,
         commands: &'error CommandManager,
         buffers: &'error BufferCollection,
     ) -> CommandErrorDisplay<'command, 'error> {
         CommandErrorDisplay {
             command,
+            source_path,
             location: command.as_ptr() as usize,
             commands,
             buffers,
@@ -99,6 +102,7 @@ impl CommandError {
 
 pub struct CommandErrorDisplay<'command, 'error> {
     command: &'command str,
+    source_path: Option<&'command Path>,
     location: usize,
     commands: &'error CommandManager,
     buffers: &'error BufferCollection,
@@ -123,6 +127,10 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
                 .char_indices()
                 .take_while(|(i, _)| *i < error_offset)
                 .count();
+
+            if let Some(path) = this.source_path {
+                writeln!(f, "@ {:?}", path)?;
+            }
 
             write!(
                 f,
@@ -190,7 +198,7 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
             ),
             CommandError::NoBufferOpened => f.write_str("no buffer opened"),
             CommandError::InvalidBufferHandle(handle) => {
-                f.write_fmt(format_args!("invalid buffer handle {}", handle))
+                write!(f, "invalid buffer handle {}", handle)
             }
             CommandError::InvalidPath(path) => write(
                 self,
@@ -205,7 +213,7 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
                 format_args!("could not parse '{}' as {}", arg.as_str_at(c, l), type_name),
             ),
             CommandError::BufferError(handle, error) => match self.buffers.get(*handle) {
-                Some(buffer) => f.write_fmt(format_args!("{}", error.display(buffer))),
+                Some(buffer) => write!(f, "{}", error.display(buffer)),
                 None => Ok(()),
             },
             CommandError::ConfigNotFound(key) => write(
@@ -265,19 +273,20 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
                 location,
                 error,
             } => {
+                let command = &self.commands.custom_commands()[*index];
                 let error_display = CommandErrorDisplay {
                     command: body,
+                    source_path: command.source_path.as_ref().map(PathBuf::as_path),
                     location: *location,
                     commands: self.commands,
                     buffers: self.buffers,
                     error,
                 };
-                let command_name = &self.commands.custom_commands()[*index].name;
                 write(
                     self,
                     f,
                     &c.trim().into(),
-                    format_args!("at command macro '{}':\n{}", command_name, error_display),
+                    format_args!("\n@ command macro '{}':\n{}", &command.name, error_display),
                 )
             }
         }
@@ -305,7 +314,7 @@ pub struct CommandContext<'state, 'command> {
     pub platform: &'state mut Platform,
     pub clients: &'state mut ClientManager,
     pub client_handle: Option<ClientHandle>,
-    pub source_path: Option<&'command str>,
+    pub source_path: Option<&'command Path>,
     pub args: CommandArgs<'command>,
     pub output: &'state mut String,
 }
@@ -480,7 +489,9 @@ impl<'a> Iterator for CommandTokenIter<'a> {
             }
         }
 
-        self.0 = self.0.trim_start_matches(|c: char| c.is_ascii_whitespace());
+        self.0 = self
+            .0
+            .trim_start_matches(|c: char| c.is_ascii_whitespace() || c == '\\');
         if self.0.is_empty() {
             return None;
         }
@@ -691,7 +702,7 @@ pub struct MacroCommand {
     pub help: String,
     pub param_count: u8,
     pub body: String,
-    pub source_path: String,
+    pub source_path: Option<PathBuf>,
 }
 
 #[derive(Default)]
@@ -786,7 +797,7 @@ impl CommandManager {
         clients: &mut ClientManager,
         client_handle: Option<ClientHandle>,
         commands: &'command str,
-        source_path: Option<&'command str>,
+        source_path: Option<&'command Path>,
     ) -> Option<CommandOperation> {
         let mut output = editor.string_pool.acquire();
         let mut operation = None;
@@ -808,7 +819,8 @@ impl CommandManager {
                 }
                 Err(error) => {
                     output.clear();
-                    let error = error.display(command, &editor.commands, &editor.buffers);
+                    let error =
+                        error.display(command, source_path, &editor.commands, &editor.buffers);
                     editor
                         .status_bar
                         .write(MessageKind::Error)
@@ -852,7 +864,7 @@ impl CommandManager {
         clients: &mut ClientManager,
         client_handle: Option<ClientHandle>,
         command: &'command str,
-        source_path: Option<&'command str>,
+        source_path: Option<&'command Path>,
         output: &mut String,
     ) -> Result<Option<CommandOperation>, CommandError> {
         let (source, mut args) = editor.commands.parse(command)?;

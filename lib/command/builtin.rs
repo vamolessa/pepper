@@ -195,7 +195,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 help: help.into(),
                 param_count,
                 body: body.into(),
-                source_path: ctx.source_path.unwrap_or("untitled").into(),
+                source_path: ctx.source_path.map(Into::into),
             };
             ctx.editor.commands.register_custom_command(command);
 
@@ -437,8 +437,20 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         func: |ctx| {
             ctx.args.assert_no_bang()?;
             ctx.args.get_flags(&mut [])?;
-            let path = ctx.args.next()?;
+            let path = Path::new(ctx.args.next()?);
             ctx.args.assert_empty()?;
+
+            let mut path_buf = PathBuf::new();
+            let path = match ctx.source_path {
+                Some(source_path) if path.is_relative() => {
+                    if let Some(parent) = source_path.parent() {
+                        path_buf.push(parent);
+                    }
+                    path_buf.push(path);
+                    path_buf.as_path()
+                },
+                _ => path,
+            };
 
             let op = ctx.editor.load_config(ctx.platform, ctx.clients, path);
             Ok(op)
