@@ -878,7 +878,7 @@ impl CommandManager {
                     use io::Write;
                     let mut buf = [0u8; 4];
                     let mut writer = io::Cursor::new(&mut buf[..]);
-                    let _ = write!(writer, "${}", i);
+                    let _ = write!(writer, "{{{}}}", i);
                     let len = writer.position() as usize;
                     let key = unsafe { std::str::from_utf8_unchecked(&buf[..len]) };
                     let value = args.next()?;
@@ -1022,7 +1022,7 @@ impl CommandManager {
                 Ok(line) => {
                     commands.clear();
                     commands.push_str(&process.on_stdout);
-                    replace_all_inside_brackets(&mut commands, "$OUTPUT", line);
+                    replace_all_inside_brackets(&mut commands, "{OUTPUT}", line);
                     Self::eval_commands_then_output(editor, platform, clients, None, &commands);
                 }
                 Err(error) => {
@@ -1065,7 +1065,7 @@ impl CommandManager {
         let mut commands = editor.string_pool.acquire();
         commands.clear();
         commands.push_str(&process.on_stdout);
-        replace_all_inside_brackets(&mut commands, "$OUTPUT", stdout);
+        replace_all_inside_brackets(&mut commands, "{OUTPUT}", stdout);
         Self::eval_commands_then_output(editor, platform, clients, None, &commands);
 
         editor.string_pool.release(commands);

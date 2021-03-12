@@ -208,7 +208,7 @@ pub mod custom {
 
                     let mut operation = None;
                     if let Some(entry) = entry {
-                        replace_all_inside_brackets(&mut continuation, "$ENTRY", entry.name);
+                        replace_all_inside_brackets(&mut continuation, "{ENTRY}", entry.name);
                         operation = CommandManager::eval_commands_then_output(
                             ctx.editor,
                             ctx.platform,
