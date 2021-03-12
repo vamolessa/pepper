@@ -230,6 +230,10 @@ impl ServerApplication {
 
             let focused_client_handle = clients.focused_handle();
             for c in clients.iter_mut() {
+                if !c.has_ui() {
+                    continue;
+                }
+
                 let has_focus = focused_client_handle == Some(c.handle());
 
                 let mut buf = platform.buf_pool.acquire();

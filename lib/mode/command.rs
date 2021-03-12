@@ -86,51 +86,19 @@ impl ModeState for State {
                     ctx.editor.commands.add_to_history(input);
                 }
 
-                let mut command_buf = [0; 256];
-                if input.len() > command_buf.len() {
-                    ctx.editor
-                        .status_bar
-                        .write(MessageKind::Error)
-                        .fmt(format_args!(
-                            "command is too long. max is {} bytes. got {}",
-                            command_buf.len(),
-                            input.len()
-                        ));
-                    return None;
-                }
-                command_buf[..input.len()].copy_from_slice(input.as_bytes());
-                let command = unsafe { std::str::from_utf8_unchecked(&command_buf[..input.len()]) };
+                let mut command = ctx.editor.string_pool.acquire();
+                command.clear();
+                command.push_str(input);
 
-                let mut output = ctx.editor.string_pool.acquire();
-                let operation = match CommandManager::eval(
+                let operation = CommandManager::eval_body_and_print(
                     ctx.editor,
                     ctx.platform,
                     ctx.clients,
                     Some(ctx.client_handle),
-                    command,
-                    &mut output,
-                ) {
-                    Ok(None) => None,
-                    Ok(Some(op)) => Some(op.into()),
-                    Err(error) => {
-                        output.clear();
-                        let commands = &ctx.editor.commands;
-                        let buffers = &ctx.editor.buffers;
-                        ctx.editor
-                            .status_bar
-                            .write(MessageKind::Error)
-                            .fmt(format_args!(
-                                "{}",
-                                error.display(command, commands, buffers)
-                            ));
-                        None
-                    }
-                };
+                    &command,
+                ).map(From::from);
 
-                if !output.is_empty() {
-                    ctx.editor.status_bar.write(MessageKind::Info).str(&output);
-                }
-                ctx.editor.string_pool.release(output);
+                ctx.editor.string_pool.release(command);
 
                 if ctx.editor.mode.kind() == ModeKind::Command {
                     Mode::change_to(ctx, ModeKind::default());

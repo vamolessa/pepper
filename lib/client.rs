@@ -98,6 +98,10 @@ impl Client {
             self.current_buffer_view_handle = handle;
         }
     }
+    
+    pub fn has_ui(&self) -> bool {
+        self.viewport_size.0 != 0 && self.viewport_size.0 != 0
+    }
 
     pub fn update_view(&mut self, editor: &Editor, picker_height: u16) {
         self.height = self.viewport_size.1.saturating_sub(1 + picker_height);

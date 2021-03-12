@@ -814,7 +814,25 @@ impl CommandManager {
         }
 
         if !output.is_empty() {
-            editor.status_bar.write(MessageKind::Info).str(&output);
+            match client_handle
+                .and_then(|h| clients.get(h))
+                .filter(|c| !c.has_ui())
+                .map(Client::handle)
+            {
+                Some(handle) => {
+                    let mut buf = platform.buf_pool.acquire();
+                    let write = buf.write();
+                    write.extend_from_slice(&[0; 4]);
+                    write.extend_from_slice(output.as_bytes());
+                    let len = output.len() as u32;
+                    let len_bytes = len.to_le_bytes();
+                    write[..4].copy_from_slice(&len_bytes);
+                    let buf = buf.share();
+                    platform.buf_pool.release(buf.clone());
+                    platform.enqueue_request(PlatformRequest::WriteToClient { handle, buf });
+                }
+                None => editor.status_bar.write(MessageKind::Info).str(&output),
+            }
         }
 
         editor.string_pool.release(output);
