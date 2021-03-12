@@ -141,7 +141,9 @@ impl Editor {
 
         let mut source = String::new();
         match file.read_to_string(&mut source) {
-            Ok(_) => CommandManager::eval_commands_then_output(self, platform, clients, None, &source),
+            Ok(_) => {
+                CommandManager::eval_commands_then_output(self, platform, clients, None, &source)
+            }
             Err(_) => {
                 self.status_bar
                     .write(MessageKind::Error)
@@ -213,7 +215,9 @@ impl Editor {
     ) -> EditorControlFlow {
         match event {
             ClientEvent::Key(client_handle, key) => {
-                self.status_bar.clear();
+                if key != Key::None {
+                    self.status_bar.clear();
+                }
 
                 if clients.focus_client(client_handle) {
                     self.recording_macro = None;

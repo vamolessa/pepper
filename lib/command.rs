@@ -411,6 +411,7 @@ impl<'a> Iterator for CommandIter<'a> {
                 }
 
                 match bytes[i] {
+                    b'\\' => i += 1,
                     b'\n' => {
                         let (command, rest) = self.0.split_at(i);
                         self.0 = rest;
@@ -1143,7 +1144,10 @@ mod tests {
         assert_replace_all(("xxxx", "xxxx"), ("{from}", "to"));
         assert_replace_all(("xxxx {A}", "xxxx {b}"), ("{A}", "b"));
         assert_replace_all(("{A} xxxx {A}{A}", "{b} xxxx {b}{b}"), ("{A}", "b"));
-        assert_replace_all(("} {{A} xxxx {{A}{A}}", "} {{b} xxxx {{b}{b}}"), ("{A}", "b"));
+        assert_replace_all(
+            ("} {{A} xxxx {{A}{A}}", "} {{b} xxxx {{b}{b}}"),
+            ("{A}", "b"),
+        );
     }
 
     #[test]
@@ -1311,6 +1315,11 @@ mod tests {
 
         let mut commands = CommandIter("command0\n\n\ncommand1");
         assert_eq!(Some("command0"), commands.next());
+        assert_eq!(Some("command1"), commands.next());
+        assert_eq!(None, commands.next());
+
+        let mut commands = CommandIter("command0\\\n still command0\ncommand1");
+        assert_eq!(Some("command0\\\n still command0"), commands.next());
         assert_eq!(Some("command1"), commands.next());
         assert_eq!(None, commands.next());
 

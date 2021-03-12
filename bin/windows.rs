@@ -71,6 +71,7 @@ const MAX_EVENT_COUNT: usize = 1 + 1 + MAX_CLIENT_COUNT + 2 * MAX_PROCESS_COUNT;
 const _ASSERT_MAX_EVENT_COUNT_IS_64: [(); 64] = [(); MAX_EVENT_COUNT];
 
 const CLIENT_CONSOLE_EVENT_BUFFER_LEN: usize = 32;
+const PIPE_PREFIX: &str = "\\\\.\\pipe\\";
 
 pub fn main() {
     let args = match Args::parse() {
@@ -95,15 +96,15 @@ pub fn main() {
         }
     };
 
-    if args.print_session {
-        println!("{}", session_name);
-        return;
-    }
-
     pipe_path.clear();
-    pipe_path.extend("\\\\.\\pipe\\".encode_utf16());
+    pipe_path.extend(PIPE_PREFIX.encode_utf16());
     pipe_path.extend(session_name.encode_utf16());
     pipe_path.push(0);
+
+    if args.print_session {
+        println!("{}{}", PIPE_PREFIX, session_name);
+        return;
+    }
 
     set_ctrlc_handler();
 
