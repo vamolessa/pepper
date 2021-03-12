@@ -15,6 +15,7 @@ use crate::{
         CommandOperation, CommandSource, CompletionSource, MacroCommand,
     },
     config::{ParseConfigError, CONFIG_NAMES},
+    word_database::WordIndicesIter,
     editor::Editor,
     editor_utils::MessageKind,
     json::Json,
@@ -300,27 +301,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
-        name: "add-picker-entry",
-        alias: "",
-        help: concat!(
-            "adds a new picker entry that will then be shown in the next call to the `pick` command\n",
-            "picker-entry [<flags>] <name>\n",
-            " -description=<text> : an optional description that shows by the side of the entry's name",
-        ),
-        completions: &[],
-        func: |ctx| {
-            ctx.args.assert_no_bang()?;
-            let mut flags = [("description", None)];
-            let description = flags[0].1.unwrap_or("");
-            ctx.args.get_flags(&mut flags)?;
-            let name = ctx.args.next()?;
-            ctx.args.assert_empty()?;
-
-            ctx.editor.picker.add_custom_entry(name, description);
-            Ok(None)
-        },
-    },
-    BuiltinCommand {
         name: "pick",
         alias: "",
         help: concat!(
@@ -359,6 +339,44 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             };
             picker::custom::enter_mode(&mut mode_ctx);
 
+            Ok(None)
+        },
+    },
+    BuiltinCommand {
+        name: "add-picker-entry",
+        alias: "",
+        help: concat!(
+            "adds a new picker entry that will then be shown in the next call to the `pick` command\n",
+            "picker-entry [<flags>] <name>\n",
+            " -description=<text> : an optional description that shows by the side of the entry's name",
+        ),
+        completions: &[],
+        func: |ctx| {
+            ctx.args.assert_no_bang()?;
+            let mut flags = [("description", None)];
+            ctx.args.get_flags(&mut flags)?;
+            let description = flags[0].1.unwrap_or("");
+            let name = ctx.args.next()?;
+            ctx.args.assert_empty()?;
+
+            ctx.editor.picker.add_custom_entry(name, description);
+            Ok(None)
+        },
+    },
+    BuiltinCommand {
+        name: "refresh-picker",
+        alias: "",
+        help: concat!(
+            "refresh picker's filtered entries\n",
+            "refresh-pciker",
+        ),
+        completions: &[],
+        func: |ctx| {
+            ctx.args.assert_no_bang()?;
+            ctx.args.get_flags(&mut [])?;
+            ctx.args.assert_empty()?;
+
+            ctx.editor.picker.filter(WordIndicesIter::empty(), ctx.editor.read_line.input());
             Ok(None)
         },
     },

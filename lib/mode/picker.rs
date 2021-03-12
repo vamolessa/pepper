@@ -237,9 +237,7 @@ pub mod custom {
         }
 
         ctx.editor.picker.filter(WordIndicesIter::empty(), "");
-        if ctx.editor.picker.len() > 0 {
-            ctx.editor.mode.picker_state.on_client_keys = on_client_keys;
-            Mode::change_to(ctx, ModeKind::Picker);
-        }
+        ctx.editor.mode.picker_state.on_client_keys = on_client_keys;
+        Mode::change_to(ctx, ModeKind::Picker);
     }
 }

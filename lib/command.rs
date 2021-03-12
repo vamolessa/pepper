@@ -965,6 +965,7 @@ impl CommandManager {
         process.alive = true;
         process.stdout.clear();
         process.split_stdout_on = split_stdout_on;
+        process.stdout_index = 0;
         process.on_stdout.clear();
 
         match stdin {
