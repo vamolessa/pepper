@@ -249,8 +249,8 @@ impl ServerApplication {
                 );
 
                 let len = write.len() as u32 - 4;
-                let len_bytes = len.to_le_bytes();
-                write[..4].copy_from_slice(&len_bytes);
+                let len_buf = len.to_le_bytes();
+                write[..4].copy_from_slice(&len_buf);
 
                 let handle = c.handle();
                 let buf = buf.share();
@@ -357,11 +357,8 @@ impl ClientApplication {
     }
 
     pub fn update_piped(&mut self, message: &[u8]) -> bool {
-        eprintln!("received {} bytes", message.len());
-        eprintln!("{:?}", message);
-        eprintln!("------");
         self.read_message_and_write_to_stdout(message);
-        !message.is_empty() && self.read_buf.is_empty()
+        message.is_empty() || !self.read_buf.is_empty()
     }
 
     pub fn update_with_ui<'a>(
@@ -393,16 +390,16 @@ impl ClientApplication {
         }
 
         self.read_buf.extend_from_slice(message);
-        let mut len_bytes = [0; 4];
+        let mut len_buf = [0; 4];
         let mut read_buf = &self.read_buf[..];
 
-        while read_buf.len() >= len_bytes.len() {
-            let (len, message) = read_buf.split_at(len_bytes.len());
-            len_bytes.copy_from_slice(len);
-            let message_len = u32::from_le_bytes(len_bytes) as usize;
+        while read_buf.len() >= len_buf.len() {
+            let (len, message) = read_buf.split_at(len_buf.len());
+            len_buf.copy_from_slice(len);
+            let len = u32::from_le_bytes(len_buf) as usize;
 
-            if message.len() >= message_len {
-                let (message, rest) = message.split_at(message_len);
+            if message.len() >= len {
+                let (message, rest) = message.split_at(len);
                 read_buf = rest;
 
                 self.stdout.write_all(message).unwrap();

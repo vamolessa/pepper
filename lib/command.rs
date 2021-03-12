@@ -784,8 +784,6 @@ impl CommandManager {
         client_handle: Option<ClientHandle>,
         commands: &'command str,
     ) -> Option<CommandOperation> {
-        eprintln!("eval commands:\n{}\n------\n", commands);
-
         let mut output = editor.string_pool.acquire();
         let mut operation = None;
 
@@ -825,8 +823,8 @@ impl CommandManager {
                 let write = buf.write_with_len(4);
                 write.extend_from_slice(output.as_bytes());
                 let len = output.len() as u32;
-                let len_bytes = len.to_le_bytes();
-                write[..4].copy_from_slice(&len_bytes);
+                let len_buf = len.to_le_bytes();
+                write[..4].copy_from_slice(&len_buf);
                 let buf = buf.share();
 
                 platform.buf_pool.release(buf.clone());
