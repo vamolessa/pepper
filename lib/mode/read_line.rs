@@ -1,5 +1,5 @@
 use crate::{
-    command::{replace_all, CommandManager},
+    command::{replace_all_inside_brackets, CommandManager},
     editor::KeysIterator,
     editor_utils::ReadLinePoll,
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
@@ -476,7 +476,7 @@ pub mod custom {
                 ReadLinePoll::Pending => None,
                 ReadLinePoll::Submitted => {
                     let mut continuation = ctx.editor.commands.continuation.take().unwrap();
-                    replace_all(&mut continuation, "$LINE", ctx.editor.read_line.input());
+                    replace_all_inside_brackets(&mut continuation, "$LINE", ctx.editor.read_line.input());
                     let operation = CommandManager::eval_commands_then_output(
                         ctx.editor,
                         ctx.platform,

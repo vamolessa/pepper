@@ -355,14 +355,14 @@ impl<'state, 'command> CommandContext<'state, 'command> {
     }
 }
 
-pub fn replace_all(text: &mut String, from: &str, to: &str) {
-    let from_len = from.len();
+pub fn replace_all_inside_brackets(text: &mut String, from: &str, to: &str) {
+    let from_inner_len = from.len() - 2;
     let to_len = to.len();
     let mut offset = 0;
     while let Some(i) = text[offset..].find(from) {
-        offset += i;
-        text.replace_range(offset..(offset + from_len), to);
-        offset += to_len;
+        offset += i + 1;
+        text.replace_range(offset..(offset + from_inner_len), to);
+        offset += to_len + 1;
     }
 }
 
@@ -882,7 +882,7 @@ impl CommandManager {
                     let len = writer.position() as usize;
                     let key = unsafe { std::str::from_utf8_unchecked(&buf[..len]) };
                     let value = args.next()?;
-                    replace_all(&mut body, key, value);
+                    replace_all_inside_brackets(&mut body, key, value);
                 }
                 args.assert_empty()?;
 
@@ -1022,7 +1022,7 @@ impl CommandManager {
                 Ok(line) => {
                     commands.clear();
                     commands.push_str(&process.on_stdout);
-                    replace_all(&mut commands, "$OUTPUT", line);
+                    replace_all_inside_brackets(&mut commands, "$OUTPUT", line);
                     Self::eval_commands_then_output(editor, platform, clients, None, &commands);
                 }
                 Err(error) => {
@@ -1065,7 +1065,7 @@ impl CommandManager {
         let mut commands = editor.string_pool.acquire();
         commands.clear();
         commands.push_str(&process.on_stdout);
-        replace_all(&mut commands, "$OUTPUT", stdout);
+        replace_all_inside_brackets(&mut commands, "$OUTPUT", stdout);
         Self::eval_commands_then_output(editor, platform, clients, None, &commands);
 
         editor.string_pool.release(commands);
@@ -1136,13 +1136,14 @@ mod tests {
     fn test_replace_all() {
         fn assert_replace_all(text_expected: (&str, &str), from_to: (&str, &str)) {
             let mut text = text_expected.0.into();
-            replace_all(&mut text, from_to.0, from_to.1);
+            replace_all_inside_brackets(&mut text, from_to.0, from_to.1);
             assert_eq!(text_expected.1, text);
         }
 
-        assert_replace_all(("xxxx", "xxxx"), ("from", "to"));
-        assert_replace_all(("xxxx $A", "xxxx a"), ("$A", "a"));
-        assert_replace_all(("$A xxxx $A$A", "a xxxx aa"), ("$A", "a"));
+        assert_replace_all(("xxxx", "xxxx"), ("{from}", "to"));
+        assert_replace_all(("xxxx {A}", "xxxx {b}"), ("{A}", "b"));
+        assert_replace_all(("{A} xxxx {A}{A}", "{b} xxxx {b}{b}"), ("{A}", "b"));
+        assert_replace_all(("} {{A} xxxx {{A}{A}}", "} {{b} xxxx {{b}{b}}"), ("{A}", "b"));
     }
 
     #[test]
