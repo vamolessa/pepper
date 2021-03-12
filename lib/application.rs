@@ -236,8 +236,7 @@ impl ServerApplication {
                 let has_focus = focused_client_handle == Some(c.handle());
 
                 let mut buf = platform.buf_pool.acquire();
-                let write = buf.write();
-                write.extend_from_slice(&[0; 4]);
+                let write = buf.write_with_len(4);
                 ui::render(
                     &editor,
                     c.buffer_view_handle(),
