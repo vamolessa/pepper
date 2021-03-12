@@ -418,9 +418,9 @@ where
 }
 
 pub enum ClientEvent<'a> {
+    Command(ClientHandle, &'a str),
     Key(ClientHandle, Key),
     Resize(ClientHandle, u16, u16),
-    Command(ClientHandle, &'a str),
 }
 
 impl<'de> Serialize<'de> for ClientEvent<'de> {
@@ -429,21 +429,21 @@ impl<'de> Serialize<'de> for ClientEvent<'de> {
         S: Serializer,
     {
         match self {
-            ClientEvent::Key(client_handle, key) => {
+            ClientEvent::Command(client_handle, command) => {
                 0u8.serialize(serializer);
+                client_handle.serialize(serializer);
+                command.serialize(serializer);
+            }
+            ClientEvent::Key(client_handle, key) => {
+                1u8.serialize(serializer);
                 client_handle.serialize(serializer);
                 serialize_key(*key, serializer);
             }
             ClientEvent::Resize(client_handle, width, height) => {
-                1u8.serialize(serializer);
+                2u8.serialize(serializer);
                 client_handle.serialize(serializer);
                 width.serialize(serializer);
                 height.serialize(serializer);
-            }
-            ClientEvent::Command(client_handle, command) => {
-                2u8.serialize(serializer);
-                client_handle.serialize(serializer);
-                command.serialize(serializer);
             }
         }
     }
@@ -456,19 +456,19 @@ impl<'de> Serialize<'de> for ClientEvent<'de> {
         match discriminant {
             0 => {
                 let handle = Serialize::deserialize(deserializer)?;
+                let command = <&str>::deserialize(deserializer)?;
+                Ok(ClientEvent::Command(handle, command))
+            }
+            1 => {
+                let handle = Serialize::deserialize(deserializer)?;
                 let key = deserialize_key(deserializer)?;
                 Ok(ClientEvent::Key(handle, key))
             }
-            1 => {
+            2 => {
                 let handle = Serialize::deserialize(deserializer)?;
                 let width = u16::deserialize(deserializer)?;
                 let height = u16::deserialize(deserializer)?;
                 Ok(ClientEvent::Resize(handle, width, height))
-            }
-            2 => {
-                let handle = Serialize::deserialize(deserializer)?;
-                let command = <&str>::deserialize(deserializer)?;
-                Ok(ClientEvent::Command(handle, command))
             }
             _ => Err(DeserializeError),
         }
