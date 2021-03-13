@@ -12,7 +12,7 @@ pub struct PickerEntry<'a> {
     pub score: i64,
 }
 
-struct CustomPickerEntry {
+struct CustomEntry {
     pub name: String,
     pub description: String,
 }
@@ -20,7 +20,7 @@ struct CustomPickerEntry {
 enum FilteredEntrySource {
     Custom(usize),
     WordDatabase(usize),
-    Command(CommandSource),
+    Command(CommandSource), // TODO: maybe this won't be needed
 }
 
 struct FilteredEntry {
@@ -33,7 +33,7 @@ pub struct Picker {
     matcher: SkimMatcherV2,
 
     custom_entries_len: usize,
-    custom_entries_buffer: Vec<CustomPickerEntry>,
+    custom_entries_buffer: Vec<CustomEntry>,
     filtered_entries: Vec<FilteredEntry>,
 
     cursor: usize,
@@ -118,7 +118,7 @@ impl Picker {
             entry.description.clear();
             entry.description.push_str(description);
         } else {
-            let entry = CustomPickerEntry {
+            let entry = CustomEntry {
                 name: name.into(),
                 description: description.into(),
             };
@@ -130,7 +130,9 @@ impl Picker {
 
     pub fn add_custom_entry_filtered(&mut self, name: &str, description: &str, pattern: &str) {
         self.add_custom_entry(name, description);
-        // TODO: filter new custom entry
+        self.filter_custom_entry(self.custom_entries_len - 1, pattern);
+        self.filtered_entries
+            .sort_unstable_by(|a, b| b.score.cmp(&a.score));
     }
 
     pub fn clear_filtered(&mut self) {
@@ -155,27 +157,8 @@ impl Picker {
             }
         }
 
-        for (i, entry) in self.custom_entries_buffer[..self.custom_entries_len]
-            .iter()
-            .enumerate()
-        {
-            let name_score = self.matcher.fuzzy_match(&entry.name, pattern);
-            let description_score = self.matcher.fuzzy_match(&entry.description, pattern);
-
-            let name_eq_bonus = (entry.name.len() == pattern.len()) as i64;
-            let description_eq_bonus = (entry.description.len() == pattern.len()) as i64;
-
-            let score = match (name_score, description_score) {
-                (None, None) => continue,
-                (None, Some(s)) => s + description_eq_bonus,
-                (Some(s), None) => s + name_eq_bonus,
-                (Some(a), Some(b)) => (a + name_eq_bonus).max(b + description_eq_bonus),
-            };
-
-            self.filtered_entries.push(FilteredEntry {
-                source: FilteredEntrySource::Custom(i),
-                score,
-            });
+        for i in 0..self.custom_entries_len {
+            self.filter_custom_entry(i, pattern);
         }
 
         self.filtered_entries
@@ -183,6 +166,27 @@ impl Picker {
         self.cursor = self
             .cursor
             .min(self.filtered_entries.len().saturating_sub(1));
+    }
+
+    fn filter_custom_entry(&mut self, index: usize, pattern: &str) {
+        let entry = &self.custom_entries_buffer[index];
+        let name_score = self.matcher.fuzzy_match(&entry.name, pattern);
+        let description_score = self.matcher.fuzzy_match(&entry.description, pattern);
+
+        let name_eq_bonus = (entry.name.len() == pattern.len()) as i64;
+        let description_eq_bonus = (entry.description.len() == pattern.len()) as i64;
+
+        let score = match (name_score, description_score) {
+            (None, None) => return,
+            (None, Some(s)) => s + description_eq_bonus,
+            (Some(s), None) => s + name_eq_bonus,
+            (Some(a), Some(b)) => (a + name_eq_bonus).max(b + description_eq_bonus),
+        };
+
+        self.filtered_entries.push(FilteredEntry {
+            source: FilteredEntrySource::Custom(index),
+            score,
+        });
     }
 
     pub fn current_entry<'a>(
@@ -209,7 +213,7 @@ impl Picker {
 
 fn filtered_to_picker_entry<'a>(
     entry: &FilteredEntry,
-    custom_entries: &'a [CustomPickerEntry],
+    custom_entries: &'a [CustomEntry],
     words: &'a WordDatabase,
     commands: &'a CommandManager,
 ) -> PickerEntry<'a> {

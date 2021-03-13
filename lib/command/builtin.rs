@@ -208,19 +208,19 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         help: concat!(
             "spawns a new process and then optionally executes commands on its output\n",
             "available variable:\n",
-            " $OUTPUT : the entire process output or a line if `-split-on` is used\n",
-            "spawn [<flags>] <spawn-command> [<commands-on-stdout>]\n",
-            " -stdin=<text> : sends <text> to the stdin\n",
-            " -split-on=<number> : splits process output at every <number> byte",
+            " $OUTPUT : the entire process output or a line if `-split-on-byte` is used\n",
+            "spawn [<flags>] <spawn-command> [<commands-on-output>]\n",
+            " -input=<text> : sends <text> to the stdin\n",
+            " -split-on-byte=<number> : splits process output at every <number> byte",
         ),
         completions: &[],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
             
-            let mut flags = [("stdin", None), ("split-on", None)];
+            let mut flags = [("input", None), ("split-on-byte", None)];
             ctx.args.get_flags(&mut flags)?;
-            let stdin = flags[0].1;
-            let split_on = match flags[1].1 {
+            let input = flags[0].1;
+            let split_on_byte = match flags[1].1 {
                 Some(token) => match token.parse() {
                     Ok(b) => Some(b),
                     Err(_) => return Err(CommandError::InvalidToken(token.into())),
@@ -229,7 +229,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             };
 
             let command = ctx.args.next()?;
-            let on_stdout = ctx.args.try_next()?;
+            let on_output = ctx.args.try_next()?;
             ctx.args.assert_empty()?;
 
             let mut command_tokens = CommandTokenIter(command);
@@ -252,7 +252,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 }
             }
 
-            ctx.editor.commands.spawn_process(ctx.platform, command, stdin, on_stdout, split_on);
+            ctx.editor.commands.spawn_process(ctx.platform, command, input, on_output, split_on_byte);
             Ok(None)
         },
     },

@@ -719,11 +719,11 @@ pub struct MacroCommand {
 #[derive(Default)]
 struct Process {
     pub alive: bool,
-    pub stdin: Option<SharedBuf>,
-    pub stdout: Vec<u8>,
-    pub split_stdout_on: Option<u8>,
+    pub input: Option<SharedBuf>,
+    pub output: Vec<u8>,
+    pub split_on_byte: Option<u8>,
     pub stdout_index: usize,
-    pub on_stdout: String,
+    pub on_output: String,
 }
 
 pub struct CommandManager {
@@ -953,8 +953,8 @@ impl CommandManager {
         platform: &mut Platform,
         mut command: Command,
         stdin: Option<&str>,
-        on_stdout: Option<&str>,
-        split_stdout_on: Option<u8>,
+        on_output: Option<&str>,
+        split_on_byte: Option<u8>,
     ) {
         let mut index = None;
         for (i, process) in self.spawned_processes.iter().enumerate() {
@@ -974,10 +974,10 @@ impl CommandManager {
 
         let process = &mut self.spawned_processes[index];
         process.alive = true;
-        process.stdout.clear();
-        process.split_stdout_on = split_stdout_on;
+        process.output.clear();
+        process.split_on_byte = split_on_byte;
         process.stdout_index = 0;
-        process.on_stdout.clear();
+        process.on_output.clear();
 
         match stdin {
             Some(stdin) => {
@@ -988,17 +988,17 @@ impl CommandManager {
                 platform.buf_pool.release(buf.clone());
 
                 command.stdin(Stdio::piped());
-                process.stdin = Some(buf);
+                process.input = Some(buf);
             }
             None => {
                 command.stdin(Stdio::null());
-                process.stdin = None;
+                process.input = None;
             }
         }
-        match on_stdout {
-            Some(on_stdout) => {
+        match on_output {
+            Some(on_output) => {
                 command.stdout(Stdio::piped());
-                process.on_stdout.push_str(on_stdout);
+                process.on_output.push_str(on_output);
             }
             None => {
                 command.stdout(Stdio::null());
@@ -1009,7 +1009,7 @@ impl CommandManager {
         platform.enqueue_request(PlatformRequest::SpawnProcess {
             tag: ProcessTag::Command(index),
             command,
-            stdout_buf_len: if on_stdout.is_some() { 1024 } else { 0 },
+            stdout_buf_len: if on_output.is_some() { 1024 } else { 0 },
             stderr_buf_len: 0,
         });
     }
@@ -1020,7 +1020,7 @@ impl CommandManager {
         index: usize,
         handle: ProcessHandle,
     ) {
-        if let Some(buf) = self.spawned_processes[index].stdin.take() {
+        if let Some(buf) = self.spawned_processes[index].input.take() {
             platform.enqueue_request(PlatformRequest::WriteToProcess { handle, buf });
         }
     }
@@ -1033,11 +1033,11 @@ impl CommandManager {
         bytes: &[u8],
     ) {
         let process = &mut editor.commands.spawned_processes[index];
-        if process.on_stdout.is_empty() {
+        if process.on_output.is_empty() {
             return;
         }
-        process.stdout.extend_from_slice(bytes);
-        let split_on = match process.split_stdout_on {
+        process.output.extend_from_slice(bytes);
+        let split_on_byte = match process.split_on_byte {
             Some(b) => b,
             None => return,
         };
@@ -1047,8 +1047,8 @@ impl CommandManager {
 
         loop {
             let process = &editor.commands.spawned_processes[index];
-            let stdout = &process.stdout[stdout_index..];
-            let line = match stdout.iter().position(|&b| b == split_on) {
+            let stdout = &process.output[stdout_index..];
+            let line = match stdout.iter().position(|&b| b == split_on_byte) {
                 Some(i) => {
                     let line = &stdout[..i];
                     stdout_index += i + 1;
@@ -1060,8 +1060,8 @@ impl CommandManager {
             match std::str::from_utf8(line) {
                 Ok(line) => {
                     commands.clear();
-                    commands.push_str(&process.on_stdout);
-                    replace_all(&mut commands, "{OUTPUT}", line);
+                    commands.push_str(&process.on_output);
+                    replace_all(&mut commands, "$OUTPUT", line);
                     Self::eval_commands_then_output(
                         editor, platform, clients, None, &commands, None,
                     );
@@ -1088,11 +1088,11 @@ impl CommandManager {
     ) {
         let process = &mut editor.commands.spawned_processes[index];
         process.alive = false;
-        if !success || process.on_stdout.is_empty() || process.split_stdout_on.is_some() {
+        if !success || process.on_output.is_empty() || process.split_on_byte.is_some() {
             return;
         }
 
-        let stdout = match std::str::from_utf8(&process.stdout) {
+        let stdout = match std::str::from_utf8(&process.output) {
             Ok(stdout) => stdout,
             Err(error) => {
                 editor
@@ -1105,8 +1105,8 @@ impl CommandManager {
 
         let mut commands = editor.string_pool.acquire();
         commands.clear();
-        commands.push_str(&process.on_stdout);
-        replace_all(&mut commands, "{OUTPUT}", stdout);
+        commands.push_str(&process.on_output);
+        replace_all(&mut commands, "$OUTPUT", stdout);
         Self::eval_commands_then_output(editor, platform, clients, None, &commands, None);
 
         editor.string_pool.release(commands);
