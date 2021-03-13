@@ -10,9 +10,9 @@ use crate::{
     buffer_position::BufferPosition,
     buffer_view::BufferViewError,
     command::{
-        CommandTokenIter, CommandTokenKind,
         BuiltinCommand, CommandContext, CommandError, CommandIter, CommandManager,
-        CommandOperation, CommandSource, CompletionSource, MacroCommand,
+        CommandOperation, CommandSource, CommandTokenIter, CommandTokenKind, CompletionSource,
+        MacroCommand,
     },
     config::{ParseConfigError, CONFIG_NAMES},
     editor::Editor,
@@ -216,7 +216,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         completions: &[],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
-            
+
             let mut flags = [("input", None), ("split-on-byte", None)];
             ctx.args.get_flags(&mut flags)?;
             let input = flags[0].1;

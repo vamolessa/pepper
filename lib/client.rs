@@ -98,7 +98,7 @@ impl Client {
             self.current_buffer_view_handle = handle;
         }
     }
-    
+
     pub fn has_ui(&self) -> bool {
         self.viewport_size.0 != 0 && self.viewport_size.0 != 0
     }
