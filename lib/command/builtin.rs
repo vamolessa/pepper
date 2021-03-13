@@ -844,7 +844,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                     "literals" => TokenKind::Literal,
                     "strings" => TokenKind::String,
                     "comments" => TokenKind::Comment,
-                    "text" => TokenKind::Text,
+                    "texts" => TokenKind::Text,
                     _ => return Err(CommandError::InvalidToken(token_kind.into())),
                 };
                 match definition_tokens.next() {
