@@ -359,24 +359,11 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             let name = ctx.args.next()?;
             ctx.args.assert_empty()?;
 
-            ctx.editor.picker.add_custom_entry(name, description);
-            Ok(None)
-        },
-    },
-    BuiltinCommand {
-        name: "refresh-picker",
-        alias: "",
-        help: concat!(
-            "refresh picker's filtered entries\n",
-            "refresh-pciker",
-        ),
-        completions: &[],
-        func: |ctx| {
-            ctx.args.assert_no_bang()?;
-            ctx.args.get_flags(&mut [])?;
-            ctx.args.assert_empty()?;
-
-            ctx.editor.picker.filter(WordIndicesIter::empty(), ctx.editor.read_line.input());
+            ctx.editor.picker.add_custom_entry_filtered(
+                name,
+                description,
+                ctx.editor.read_line.input()
+            );
             Ok(None)
         },
     },

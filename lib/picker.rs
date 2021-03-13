@@ -128,6 +128,11 @@ impl Picker {
         self.custom_entries_len += 1;
     }
 
+    pub fn add_custom_entry_filtered(&mut self, name: &str, description: &str, pattern: &str) {
+        self.add_custom_entry(name, description);
+        // TODO: filter new custom entry
+    }
+
     pub fn clear_filtered(&mut self) {
         self.filtered_entries.clear();
         self.cursor = 0;
