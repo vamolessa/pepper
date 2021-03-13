@@ -130,9 +130,10 @@ impl Picker {
 
     pub fn add_custom_entry_filtered(&mut self, name: &str, description: &str, pattern: &str) {
         self.add_custom_entry(name, description);
-        self.filter_custom_entry(self.custom_entries_len - 1, pattern);
-        self.filtered_entries
-            .sort_unstable_by(|a, b| b.score.cmp(&a.score));
+        if self.filter_custom_entry(self.custom_entries_len - 1, pattern) {
+            self.filtered_entries
+                .sort_unstable_by(|a, b| b.score.cmp(&a.score));
+        }
     }
 
     pub fn clear_filtered(&mut self) {
@@ -168,7 +169,7 @@ impl Picker {
             .min(self.filtered_entries.len().saturating_sub(1));
     }
 
-    fn filter_custom_entry(&mut self, index: usize, pattern: &str) {
+    fn filter_custom_entry(&mut self, index: usize, pattern: &str) -> bool {
         let entry = &self.custom_entries_buffer[index];
         let name_score = self.matcher.fuzzy_match(&entry.name, pattern);
         let description_score = self.matcher.fuzzy_match(&entry.description, pattern);
@@ -177,7 +178,7 @@ impl Picker {
         let description_eq_bonus = (entry.description.len() == pattern.len()) as i64;
 
         let score = match (name_score, description_score) {
-            (None, None) => return,
+            (None, None) => return false,
             (None, Some(s)) => s + description_eq_bonus,
             (Some(s), None) => s + name_eq_bonus,
             (Some(a), Some(b)) => (a + name_eq_bonus).max(b + description_eq_bonus),
@@ -187,6 +188,8 @@ impl Picker {
             source: FilteredEntrySource::Custom(index),
             score,
         });
+
+        true
     }
 
     pub fn current_entry<'a>(
