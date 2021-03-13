@@ -1182,8 +1182,8 @@ mod tests {
         }
 
         assert_replace_all(("xxxx", "xxxx"), ("$from", "to"));
-        assert_replace_all(("xxxx $A", "xxxx b"), ("$}", "b"));
-        assert_replace_all(("$A xxxx $A$A", "$b xxxx $b$b"), ("$A", "b"));
+        assert_replace_all(("xxxx $A", "xxxx b"), ("$A", "b"));
+        assert_replace_all(("$A xxxx $A$A", "b xxxx bb"), ("$A", "b"));
     }
 
     #[test]
