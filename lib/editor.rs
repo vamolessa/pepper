@@ -223,6 +223,20 @@ impl Editor {
         event: ClientEvent,
     ) -> EditorControlFlow {
         match event {
+            ClientEvent::Command(client_handle, commands) => {
+                match CommandManager::eval_commands_then_output(
+                    self,
+                    platform,
+                    clients,
+                    Some(client_handle),
+                    commands,
+                    None,
+                ) {
+                    None => EditorControlFlow::Continue,
+                    Some(CommandOperation::Quit) => EditorControlFlow::Quit,
+                    Some(CommandOperation::QuitAll) => EditorControlFlow::QuitAll,
+                }
+            }
             ClientEvent::Key(client_handle, key) => {
                 if key != Key::None {
                     self.status_bar.clear();
@@ -315,20 +329,6 @@ impl Editor {
                     client.viewport_size = (width, height);
                 }
                 EditorControlFlow::Continue
-            }
-            ClientEvent::Command(client_handle, commands) => {
-                match CommandManager::eval_commands_then_output(
-                    self,
-                    platform,
-                    clients,
-                    Some(client_handle),
-                    commands,
-                    None,
-                ) {
-                    None => EditorControlFlow::Continue,
-                    Some(CommandOperation::Quit) => EditorControlFlow::Quit,
-                    Some(CommandOperation::QuitAll) => EditorControlFlow::QuitAll,
-                }
             }
         }
     }

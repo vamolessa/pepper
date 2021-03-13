@@ -302,25 +302,19 @@ impl ClientApplication {
         }
 
         let mut commands = String::new();
-        if !args.files.is_empty() {
-            for path in &args.files {
-                let (path, line) = match path.rfind(':') {
-                    Some(i) => {
-                        let line = path[(i + 1)..]
-                            .parse::<usize>()
-                            .map(|l| l.saturating_sub(1))
-                            .ok();
-                        let path = &path[..i];
-                        (path, line)
-                    }
-                    None => (&path[..], None),
-                };
+        for path in &args.files {
+            let (path, line) = match path.rfind(':') {
+                Some(i) => match path[(i + 1)..].parse::<u32>() {
+                    Ok(line) => (&path[..i], Some(line.saturating_sub(1))),
+                    Err(_) => (&path[..], None),
+                },
+                None => (&path[..], None),
+            };
 
-                use fmt::Write;
-                match line {
-                    Some(line) => writeln!(commands, "open '{}' -line={}", path, line).unwrap(),
-                    None => writeln!(commands, "open '{}'", path).unwrap(),
-                }
+            use fmt::Write;
+            match line {
+                Some(line) => writeln!(commands, "open '{}' -line={}", path, line).unwrap(),
+                None => writeln!(commands, "open '{}'", path).unwrap(),
             }
         }
 
@@ -328,7 +322,6 @@ impl ClientApplication {
             use fmt::Write;
             use io::Read;
 
-            commands.push('\n');
             let mut buf = Vec::new();
             match std::io::stdin().lock().read_to_end(&mut buf) {
                 Ok(_) => match std::str::from_utf8(&buf) {
