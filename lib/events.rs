@@ -134,8 +134,8 @@ impl<'a> Iterator for KeyParser<'a> {
                 let index = self.raw[..parsed_len]
                     .char_indices()
                     .next_back()
-                    .unwrap_or((0, '\0'))
-                    .0;
+                    .map(|(i, _)| i)
+                    .unwrap_or(0);
 
                 Some(Err(KeyParseAllError { index, error }))
             }

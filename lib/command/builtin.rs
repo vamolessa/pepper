@@ -809,31 +809,31 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         alias: "",
         help: concat!(
             "creates a syntax definition with patterns for files that match a glob\n",
-            "syntax [<flags>] <glob>\n",
-            " -keywords=<pattern> : pattern for keyword highlight\n",
-            " -types=<pattern> : pattern for type highlight\n",
-            " -symbols=<pattern> : pattern for symbol highlight\n",
-            " -literals=<pattern> : pattern for literal highlight\n",
-            " -strings=<pattern> : pattern for string highlight\n",
-            " -comments=<pattern> : pattern for comment highlight\n",
-            " -texts=<pattern> : pattern for normal text highlight",
+            "syntax <glob> <definition>\n",
+            "every line in <definition> should be of the form:\n",
+            "<token-kind> = <pattern>\n",
+            "where <token-kind> is one of:\n",
+            " keywords\n",
+            " types\n",
+            " symbols\n",
+            " literals\n",
+            " strings\n",
+            " comments\n",
+            " texts\n",
+            "and <pattern> is the pattern that matches that kind of token",
         ),
         completions: &[],
         func: |ctx| {
-            ctx.args.assert_no_bang()?;
+            fn slice_from_last_char(s: &str) -> &str {
+                let end = s.char_indices().next_back().map(|(i, _)| i).unwrap_or(0);
+                &s[end..]
+            }
 
-            let mut flags = [
-                ("keywords", None),
-                ("types", None),
-                ("symbols", None),
-                ("literals", None),
-                ("strings", None),
-                ("comments", None),
-                ("texts", None),
-            ];
-            ctx.args.get_flags(&mut flags)?;
+            ctx.args.assert_no_bang()?;
+            ctx.args.get_flags(&mut [])?;
 
             let glob = ctx.args.next()?;
+            let definition = ctx.args.next()?;
             ctx.args.assert_empty()?;
 
             let mut syntax = Syntax::new();
@@ -841,20 +841,53 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 .set_glob(glob.as_bytes())
                 .map_err(|_| CommandError::InvalidGlob(glob.into()))?;
 
-            let kinds = [
-                TokenKind::Keyword,
-                TokenKind::Type,
-                TokenKind::Symbol,
-                TokenKind::Literal,
-                TokenKind::String,
-                TokenKind::Comment,
-                TokenKind::Text,
-            ];
-            for ((_, flag), &kind) in flags.iter().zip(kinds.iter()) {
-                if let Some(flag) = *flag {
-                    syntax
-                        .set_rule(kind, flag)
-                        .map_err(|e| CommandError::PatternError(flag.into(), e))?;
+            let mut definition_tokens = CommandTokenIter(definition);
+            loop {
+                let token_kind = match definition_tokens.next() {
+                    Some((CommandTokenKind::Text, token)) => token,
+                    Some((CommandTokenKind::Unterminated, token)) => {
+                        return Err(CommandError::UnterminatedToken(token.into()))
+                    }
+                    Some((_, token)) => return Err(CommandError::InvalidToken(token.into())),
+                    None => break,
+                };
+                let token_kind = match token_kind {
+                    "keywords" => TokenKind::Keyword,
+                    "types" => TokenKind::Type,
+                    "symbols" => TokenKind::Symbol,
+                    "literals" => TokenKind::Literal,
+                    "strings" => TokenKind::String,
+                    "comments" => TokenKind::Comment,
+                    "text" => TokenKind::Text,
+                    _ => return Err(CommandError::InvalidToken(token_kind.into())),
+                };
+                match definition_tokens.next() {
+                    Some((CommandTokenKind::Equals, _)) => (),
+                    Some((CommandTokenKind::Unterminated, token)) => {
+                        return Err(CommandError::UnterminatedToken(token.into()));
+                    }
+                    Some((_, token)) => {
+                        return Err(CommandError::InvalidToken(token.into()));
+                    }
+                    None => {
+                        let end = slice_from_last_char(definition);
+                        return Err(CommandError::SyntaxExpectedEquals(end.into()));
+                    }
+                }
+                let pattern = match definition_tokens.next() {
+                    Some((CommandTokenKind::Text, token)) => token,
+                    Some((CommandTokenKind::Unterminated, token)) => {
+                        return Err(CommandError::UnterminatedToken(token.into()));
+                    }
+                    Some((_, token)) => return Err(CommandError::InvalidToken(token.into())),
+                    None => {
+                        let end = slice_from_last_char(definition);
+                        return Err(CommandError::SyntaxExpectedPattern(end.into()));
+                    }
+                };
+
+                if let Err(error) = syntax.set_rule(token_kind, pattern) {
+                    return Err(CommandError::PatternError(pattern.into(), error));
                 }
             }
 

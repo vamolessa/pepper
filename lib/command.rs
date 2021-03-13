@@ -70,6 +70,8 @@ pub enum CommandError {
         value: CommandToken,
     },
     InvalidGlob(CommandToken),
+    SyntaxExpectedEquals(CommandToken),
+    SyntaxExpectedPattern(CommandToken),
     PatternError(CommandToken, PatternError),
     KeyParseError(CommandToken, KeyParseError),
     InvalidRegisterKey(CommandToken),
@@ -254,6 +256,18 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
                 glob,
                 format_args!("invalid glob '{}'", glob.as_str_at(c, l)),
             ),
+            CommandError::SyntaxExpectedEquals(end) => write(
+                self,
+                f,
+                end,
+                format_args!("syntax definition expected '=' token here"),
+            ),
+            CommandError::SyntaxExpectedPattern(end) => write(
+                self,
+                f,
+                end,
+                format_args!("syntax definition expected a pattern here"),
+            ),
             CommandError::PatternError(pattern, error) => {
                 write(self, f, pattern, format_args!("{}", error))
             }
@@ -421,7 +435,6 @@ impl<'a> Iterator for CommandIter<'a> {
                 }
 
                 match bytes[i] {
-                    b'\\' => i += 1,
                     b'\n' => {
                         let (command, rest) = self.0.split_at(i);
                         self.0 = rest;
@@ -489,9 +502,7 @@ impl<'a> Iterator for CommandTokenIter<'a> {
             }
         }
 
-        self.0 = self
-            .0
-            .trim_start_matches(|c: char| c.is_ascii_whitespace() || c == '\\');
+        self.0 = self.0.trim_start_matches(|c: char| c.is_ascii_whitespace());
         if self.0.is_empty() {
             return None;
         }
@@ -1344,11 +1355,6 @@ mod tests {
 
         let mut commands = CommandIter("command0\n\n\ncommand1");
         assert_eq!(Some("command0"), commands.next());
-        assert_eq!(Some("command1"), commands.next());
-        assert_eq!(None, commands.next());
-
-        let mut commands = CommandIter("command0\\\n still command0\ncommand1");
-        assert_eq!(Some("command0\\\n still command0"), commands.next());
         assert_eq!(Some("command1"), commands.next());
         assert_eq!(None, commands.next());
 
