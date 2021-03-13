@@ -1246,7 +1246,6 @@ impl BufferCollection {
     pub fn defer_remove(&mut self, handle: BufferHandle, events: &mut EditorEventQueue) {
         let buffer = &mut self.buffers[handle.0];
         if buffer.alive {
-            buffer.alive = false;
             events.enqueue(EditorEvent::BufferClose { handle });
         }
     }

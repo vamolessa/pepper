@@ -224,14 +224,16 @@ impl Editor {
     ) -> EditorControlFlow {
         match event {
             ClientEvent::Command(client_handle, commands) => {
-                match CommandManager::eval_commands_then_output(
+                let result = CommandManager::eval_commands_then_output(
                     self,
                     platform,
                     clients,
                     Some(client_handle),
                     commands,
                     None,
-                ) {
+                );
+                self.trigger_event_handlers(clients, platform);
+                match result {
                     None => EditorControlFlow::Continue,
                     Some(CommandOperation::Quit) => EditorControlFlow::Quit,
                     Some(CommandOperation::QuitAll) => EditorControlFlow::QuitAll,
