@@ -15,7 +15,6 @@ use crate::{
         CommandOperation, CommandSource, CompletionSource, MacroCommand,
     },
     config::{ParseConfigError, CONFIG_NAMES},
-    word_database::WordIndicesIter,
     editor::Editor,
     editor_utils::MessageKind,
     json::Json,
@@ -167,7 +166,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         alias: "",
         help: concat!(
             "define a new command macro\n",
-            "macro [<flags>] <name> <body>\n",
+            "macro [<flags>] <name> <body>\n", // TODO: define param names here
             " -help=<help-text> : the help text that shows when using `help` with this command\n",
             " -param-count=<number> : if defined, the number of parameters this command expects, 0 otherwise",
         ),
@@ -209,7 +208,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         help: concat!(
             "spawns a new process and then optionally executes commands on its output\n",
             "available variable:\n",
-            " {OUTPUT} : the entire process output or a line if `-split-on` is used\n",
+            " $OUTPUT : the entire process output or a line if `-split-on` is used\n",
             "spawn [<flags>] <spawn-command> [<commands-on-stdout>]\n",
             " -stdin=<text> : sends <text> to the stdin\n",
             " -split-on=<number> : splits process output at every <number> byte",
@@ -263,7 +262,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         help: concat!(
             "prompts for a line read and then executes commands\n",
             "available variable:\n",
-            " {LINE} : the line entered\n",
+            " $LINE : the line entered\n",
             "read-line [<flags>] <commands>\n",
             " -prompt=<prompt-text> : the prompt text that shows just before user input (default: `read-line:`)",
         ),
@@ -307,7 +306,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             "opens up a menu from where an entry can be picked and then executes commands\n",
             "entries can be added with the `add-picker-entry` command\n",
             "available variable:\n",
-            " {ENTRY} : picked entry\n",
+            " $ENTRY : picked entry\n",
             "pick [<flags>] <commands>\n",
             " -prompt=<prompt-text> : the prompt text that shows just before user input (default: `pick:`)",
         ),
