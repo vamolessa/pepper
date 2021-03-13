@@ -985,7 +985,14 @@ impl Default for State {
 }
 
 impl ModeState for State {
-    fn on_enter(_: &mut ModeContext) {}
+    fn on_enter(ctx: &mut ModeContext) {
+        let state = &mut ctx.editor.mode.normal_state;
+        state.movement_kind = CursorMovementKind::PositionAndAnchor;
+        state.last_char_jump = CharJump::None;
+        state.is_recording_auto_macro = false;
+        state.count = 0;
+    }
+
     fn on_exit(_: &mut ModeContext) {}
 
     fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> Option<ModeOperation> {
