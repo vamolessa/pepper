@@ -346,7 +346,31 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         alias: "",
         help: concat!(
             "adds a new picker entry that will then be shown in the next call to the `pick` command\n",
-            "picker-entry [<flags>] <name>\n",
+            "add-picker-entry [<flags>] <name> [<description>]",
+        ),
+        completions: &[],
+        func: |ctx| {
+            ctx.args.assert_no_bang()?;
+            ctx.args.get_flags(&mut [])?;
+            let name = ctx.args.next()?;
+            let description = ctx.args.try_next()?.unwrap_or("");
+            ctx.args.assert_empty()?;
+
+            ctx.editor.picker.add_custom_entry_filtered(
+                name,
+                description,
+                ctx.editor.read_line.input()
+            );
+            Ok(None)
+        },
+    },
+    // TODO: finish this
+    BuiltinCommand {
+        name: "picker-entries-from-output",
+        alias: "",
+        help: concat!(
+            "adds a picker entries for each line in a process output\n",
+            "picker-entries-from-output [<flags>] <command>\n",
             " -description=<text> : an optional description that shows by the side of the entry's name",
         ),
         completions: &[],
@@ -987,7 +1011,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             "starts a lsp server\n",
             "lsp-start [<flags>] <command> <command-arg>...\n",
             " -root=<path> : the root path from where the lsp server will execute",
-            " -log=<buffer-name> : redirect the lsp server stdout to this buffer"
+            " -log=<buffer-name> : redirect the lsp server output to this buffer"
         ),
         completions: &[],
         func: |ctx| {
