@@ -11,12 +11,16 @@ use crate::{
 pub struct State {
     on_client_keys:
         fn(ctx: &mut ModeContext, &mut KeysIterator, ReadLinePoll) -> Option<ModeOperation>,
+    continuation: Option<String>,
+    entry_var_name: String,
 }
 
 impl Default for State {
     fn default() -> Self {
         Self {
             on_client_keys: |_, _, _| None,
+            continuation: None,
+            entry_var_name: String::new(),
         }
     }
 }
@@ -118,8 +122,7 @@ pub mod buffer {
                 &ctx.editor.buffer_views,
             );
 
-            let mut buf = ctx.editor.string_pool.acquire();
-            buf.push_str(path);
+            let buf = ctx.editor.string_pool.acquire_with(path);
             let path = &buf[..];
 
             match ctx.editor.buffer_views.buffer_view_handle_from_path(
@@ -191,7 +194,7 @@ pub mod buffer {
 pub mod custom {
     use super::*;
 
-    pub fn enter_mode(ctx: &mut ModeContext) {
+    pub fn enter_mode(ctx: &mut ModeContext, continuation: &str, entry_var_name: &str) {
         fn on_client_keys(
             ctx: &mut ModeContext,
             _: &mut KeysIterator,
@@ -200,8 +203,9 @@ pub mod custom {
             match poll {
                 ReadLinePoll::Pending => None,
                 ReadLinePoll::Submitted => {
-                    let mut continuation = ctx.editor.commands.continuation.take().unwrap();
-                    let entry_name = &ctx.editor.commands.continuation_replace_var_name;
+                    let mut continuation =
+                        ctx.editor.mode.picker_state.continuation.take().unwrap();
+                    let entry_var_name = &ctx.editor.mode.picker_state.entry_var_name;
                     let entry = ctx
                         .editor
                         .picker
@@ -209,7 +213,11 @@ pub mod custom {
 
                     let mut operation = None;
                     if let Some(entry) = entry {
-                        replace_to_between_text_markers(&mut continuation, entry_name, entry.name);
+                        replace_to_between_text_markers(
+                            &mut continuation,
+                            entry_var_name,
+                            entry.name,
+                        );
                         operation = CommandManager::eval_commands_then_output(
                             ctx.editor,
                             ctx.platform,
@@ -223,7 +231,7 @@ pub mod custom {
                     }
 
                     if ctx.editor.mode.kind() == ModeKind::Picker
-                        && ctx.editor.commands.continuation.is_none()
+                        && ctx.editor.mode.picker_state.continuation.is_none()
                     {
                         Mode::change_to(ctx, ModeKind::default());
                     }
@@ -238,7 +246,13 @@ pub mod custom {
         }
 
         ctx.editor.picker.filter(WordIndicesIter::empty(), "");
-        ctx.editor.mode.picker_state.on_client_keys = on_client_keys;
+
+        let state = &mut ctx.editor.mode.picker_state;
+        state.on_client_keys = on_client_keys;
+        state.continuation = Some(ctx.editor.string_pool.acquire_with(continuation));
+        state.entry_var_name.clear();
+        state.entry_var_name.push_str(entry_var_name);
+
         Mode::change_to(ctx, ModeKind::Picker);
     }
 }

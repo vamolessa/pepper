@@ -8,12 +8,16 @@ use crate::{
 
 pub struct State {
     on_client_keys: fn(&mut ModeContext, &mut KeysIterator, ReadLinePoll) -> Option<ModeOperation>,
+    continuation: Option<String>,
+    line_var_name: String,
 }
 
 impl Default for State {
     fn default() -> Self {
         Self {
             on_client_keys: |_, _, _| None,
+            continuation: None,
+            line_var_name: String::new(),
         }
     }
 }
@@ -466,7 +470,7 @@ pub mod goto {
 pub mod custom {
     use super::*;
 
-    pub fn enter_mode(ctx: &mut ModeContext) {
+    pub fn enter_mode(ctx: &mut ModeContext, continuation: &str, line_var_name: &str) {
         fn on_client_keys(
             ctx: &mut ModeContext,
             _: &mut KeysIterator,
@@ -475,11 +479,11 @@ pub mod custom {
             match poll {
                 ReadLinePoll::Pending => None,
                 ReadLinePoll::Submitted => {
-                    let mut continuation = ctx.editor.commands.continuation.take().unwrap();
-                    let line_name = &ctx.editor.commands.continuation_replace_var_name;
+                    let mut continuation =
+                        ctx.editor.mode.read_line_state.continuation.take().unwrap();
                     replace_to_between_text_markers(
                         &mut continuation,
-                        line_name,
+                        &ctx.editor.mode.read_line_state.line_var_name,
                         ctx.editor.read_line.input(),
                     );
                     let operation = CommandManager::eval_commands_then_output(
@@ -494,7 +498,7 @@ pub mod custom {
                     ctx.editor.string_pool.release(continuation);
 
                     if ctx.editor.mode.kind() == ModeKind::ReadLine
-                        && ctx.editor.commands.continuation.is_none()
+                        && ctx.editor.mode.read_line_state.continuation.is_none()
                     {
                         Mode::change_to(ctx, ModeKind::default());
                     }
@@ -508,7 +512,12 @@ pub mod custom {
             }
         }
 
-        ctx.editor.mode.read_line_state.on_client_keys = on_client_keys;
+        let state = &mut ctx.editor.mode.read_line_state;
+        state.on_client_keys = on_client_keys;
+        state.continuation = Some(ctx.editor.string_pool.acquire_with(continuation));
+        state.line_var_name.clear();
+        state.line_var_name.push_str(line_var_name);
+
         Mode::change_to(ctx, ModeKind::ReadLine);
     }
 }

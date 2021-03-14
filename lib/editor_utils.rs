@@ -142,6 +142,16 @@ impl StringPool {
         }
     }
 
+    pub fn acquire_with(&mut self, value: &str) -> String {
+        match self.pool.pop() {
+            Some(mut s) => {
+                s.push_str(value);
+                s
+            }
+            None => String::from(value),
+        }
+    }
+
     pub fn release(&mut self, mut s: String) {
         s.clear();
         self.pool.push(s);

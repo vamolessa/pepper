@@ -209,8 +209,7 @@ fn apply_completion(editor: &mut Editor, handle: BufferViewHandle, cursor_moveme
         .picker
         .current_entry(&editor.word_database, &editor.commands)
     {
-        let mut buf = editor.string_pool.acquire();
-        buf.push_str(entry.name);
+        let buf = editor.string_pool.acquire_with(entry.name);
         editor.buffer_views.apply_completion(
             &mut editor.buffers,
             &mut editor.word_database,

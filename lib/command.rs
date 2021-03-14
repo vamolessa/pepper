@@ -1,6 +1,6 @@
 use std::{
     collections::VecDeque,
-    fmt, io,
+    fmt,
     path::{Path, PathBuf},
     process::{Command, Stdio},
 };
@@ -81,7 +81,7 @@ pub enum CommandError {
     LspServerNotRunning,
     MacroCommandError {
         index: usize,
-        body: String,
+        commands: String,
         location: usize,
         error: Box<CommandError>,
     },
@@ -286,7 +286,7 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
             CommandError::LspServerNotRunning => f.write_str("lsp server not running"),
             CommandError::MacroCommandError {
                 index,
-                body,
+                commands: body,
                 location,
                 error,
             } => {
@@ -753,7 +753,7 @@ struct Process {
     pub output: Vec<u8>,
     pub split_on_byte: Option<u8>,
     pub stdout_index: usize,
-    pub output_name: String,
+    pub output_var_name: String,
     pub on_output: String,
 }
 
@@ -761,9 +761,6 @@ pub struct CommandManager {
     builtin_commands: &'static [BuiltinCommand],
     macro_commands: Vec<MacroCommand>,
     history: VecDeque<String>,
-
-    pub continuation: Option<String>,
-    pub continuation_replace_var_name: String,
     spawned_processes: Vec<Process>,
 }
 
@@ -773,9 +770,6 @@ impl CommandManager {
             builtin_commands: builtin::COMMANDS,
             macro_commands: Vec::new(),
             history: VecDeque::with_capacity(HISTORY_CAPACITY),
-
-            continuation: None,
-            continuation_replace_var_name: String::new(),
             spawned_processes: Vec::new(),
         }
     }
@@ -933,17 +927,15 @@ impl CommandManager {
                 args.get_flags(&mut [])?;
 
                 let mut result = Ok(None);
-                let mut body = editor.string_pool.acquire();
-                body.clear();
-                body.push_str(&macro_command.commands);
+                let mut commands = editor.string_pool.acquire_with(&macro_command.commands);
 
                 for param in &macro_command.params {
                     let value = args.next()?;
-                    replace_to_between_text_markers(&mut body, param, value);
+                    replace_to_between_text_markers(&mut commands, param, value);
                 }
                 args.assert_empty()?;
 
-                for command in CommandIter(&body) {
+                for command in CommandIter(&commands) {
                     match Self::eval(
                         editor,
                         platform,
@@ -961,7 +953,7 @@ impl CommandManager {
                         Err(error) => {
                             result = Err(CommandError::MacroCommandError {
                                 index: i,
-                                body: command.into(),
+                                commands: command.into(),
                                 location: command.as_ptr() as _,
                                 error: Box::new(error),
                             });
@@ -969,7 +961,7 @@ impl CommandManager {
                         }
                     }
                 }
-                editor.string_pool.release(body);
+                editor.string_pool.release(commands);
                 result
             }
         }
@@ -1005,11 +997,11 @@ impl CommandManager {
         process.output.clear();
         process.split_on_byte = split_on_byte;
         process.stdout_index = 0;
-        process.output_name.clear();
+        process.output_var_name.clear();
         process.on_output.clear();
 
         if let Some(output_name) = output_name {
-            process.output_name.push_str(output_name);
+            process.output_var_name.push_str(output_name);
         }
 
         match stdin {
@@ -1094,7 +1086,7 @@ impl CommandManager {
                 Ok(line) => {
                     commands.clear();
                     commands.push_str(&process.on_output);
-                    replace_to_between_text_markers(&mut commands, &process.output_name, line);
+                    replace_to_between_text_markers(&mut commands, &process.output_var_name, line);
                     Self::eval_commands_then_output(
                         editor, platform, clients, None, &commands, None,
                     );
@@ -1136,10 +1128,8 @@ impl CommandManager {
             }
         };
 
-        let mut commands = editor.string_pool.acquire();
-        commands.clear();
-        commands.push_str(&process.on_output);
-        replace_to_between_text_markers(&mut commands, &process.output_name, stdout);
+        let mut commands = editor.string_pool.acquire_with(&process.on_output);
+        replace_to_between_text_markers(&mut commands, &process.output_var_name, stdout);
         Self::eval_commands_then_output(editor, platform, clients, None, &commands, None);
 
         editor.string_pool.release(commands);
@@ -1194,9 +1184,6 @@ mod tests {
             builtin_commands,
             macro_commands: Vec::new(),
             history: Default::default(),
-
-            continuation: None,
-            continuation_replace_var_name: String::new(),
             spawned_processes: Vec::new(),
         }
     }
@@ -1216,7 +1203,7 @@ mod tests {
         }
 
         assert_eq!(b'\x02', START_OF_TEXT_BYTE);
-        assert_eq!(b'\x03', START_OF_TEXT_BYTE);
+        assert_eq!(b'\x03', END_OF_TEXT_BYTE);
 
         assert_replace_all(("xxxx", "xxxx"), ("FROM", "to"));
         assert_replace_all(("xxxx A", "xxxx \x02b\x03"), ("A", "b"));

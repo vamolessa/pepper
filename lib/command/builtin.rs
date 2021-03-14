@@ -273,7 +273,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             ctx.args.get_flags(&mut flags)?;
             let prompt = flags[0].1.unwrap_or("read-line:");
 
-            let line_name = ctx.args.next()?;
+            let line_var_name = ctx.args.next()?;
             let commands = ctx.args.next()?;
             ctx.args.assert_empty()?;
 
@@ -283,12 +283,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             };
 
             ctx.editor.read_line.set_prompt(prompt);
-            let mut continuation = ctx.editor.string_pool.acquire();
-            continuation.clear();
-            continuation.push_str(commands);
-            ctx.editor.commands.continuation = Some(continuation);
-            ctx.editor.commands.continuation_replace_var_name.clear();
-            ctx.editor.commands.continuation_replace_var_name.push_str(line_name);
 
             let mut mode_ctx = ModeContext {
                 editor: ctx.editor,
@@ -296,7 +290,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 clients: ctx.clients,
                 client_handle,
             };
-            read_line::custom::enter_mode(&mut mode_ctx);
+            read_line::custom::enter_mode(&mut mode_ctx, commands, line_var_name);
 
             Ok(None)
         },
@@ -319,7 +313,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             let prompt = flags[0].1.unwrap_or("pick:");
             ctx.args.get_flags(&mut flags)?;
             
-            let entry_name = ctx.args.next()?;
+            let entry_var_name = ctx.args.next()?;
             let commands = ctx.args.next()?;
             ctx.args.assert_empty()?;
 
@@ -329,12 +323,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             };
 
             ctx.editor.read_line.set_prompt(prompt);
-            let mut continuation = ctx.editor.string_pool.acquire();
-            continuation.clear();
-            continuation.push_str(commands);
-            ctx.editor.commands.continuation = Some(continuation);
-            ctx.editor.commands.continuation_replace_var_name.clear();
-            ctx.editor.commands.continuation_replace_var_name.push_str(entry_name);
 
             let mut mode_ctx = ModeContext {
                 editor: ctx.editor,
@@ -342,7 +330,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 clients: ctx.clients,
                 client_handle,
             };
-            picker::custom::enter_mode(&mut mode_ctx);
+            picker::custom::enter_mode(&mut mode_ctx, commands, entry_var_name);
 
             Ok(None)
         },

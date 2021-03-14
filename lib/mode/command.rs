@@ -86,10 +86,7 @@ impl ModeState for State {
                     ctx.editor.commands.add_to_history(input);
                 }
 
-                let mut command = ctx.editor.string_pool.acquire();
-                command.clear();
-                command.push_str(input);
-
+                let command = ctx.editor.string_pool.acquire_with(input);
                 let operation = CommandManager::eval_commands_then_output(
                     ctx.editor,
                     ctx.platform,
@@ -99,7 +96,6 @@ impl ModeState for State {
                     None,
                 )
                 .map(From::from);
-
                 ctx.editor.string_pool.release(command);
 
                 if ctx.editor.mode.kind() == ModeKind::Command {
