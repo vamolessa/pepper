@@ -111,15 +111,15 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         help: concat!(
             "try executing commands without propagating errors\n",
             "and optionally execute commands if there was an error\n",
-            "try { <commands>... } [catch { <commands>... }]",
+            "try { <commands...> } [catch { <commands...> }]",
         ),
         completions: &[],
         func: |ctx| {
-            fn run_body(
+            fn run_commands(
                 ctx: &mut CommandContext,
-                body: &str
+                commands: &str
             ) -> Result<Option<CommandOperation>, CommandError> {
-                for command in CommandIter(body) {
+                for command in CommandIter(commands) {
                     match CommandManager::eval(
                         ctx.editor,
                         ctx.platform,
@@ -140,9 +140,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             ctx.args.assert_no_bang()?;
             ctx.args.get_flags(&mut [])?;
 
-            let try_body = ctx.args.next()?;
+            let try_commands = ctx.args.next()?;
             let catch_keyword = ctx.args.try_next()?;
-            let catch_body = if let Some(catch_keyword) = catch_keyword {
+            let catch_commands = if let Some(catch_keyword) = catch_keyword {
                 if catch_keyword != "catch" {
                     return Err(CommandError::InvalidToken(catch_keyword.into()));
                 }
@@ -152,10 +152,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 None
             };
 
-            match run_body(ctx, try_body) {
+            match run_commands(ctx, try_commands) {
                 Ok(op) => Ok(op),
-                Err(_) => match catch_body {
-                    Some(body) => run_body(ctx, body),
+                Err(_) => match catch_commands {
+                    Some(commands) => run_commands(ctx, commands),
                     None => Ok(None),
                 }
             }
@@ -166,7 +166,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         alias: "",
         help: concat!(
             "define a new command macro\n",
-            "macro [<flags>] <name> <body>\n", // TODO: define param names here
+            "macro [<flags>] <name> <param-names...> <commands>\n",
             " -help=<help-text> : the help text that shows when using `help` with this command\n",
             " -param-count=<number> : if defined, the number of parameters this command expects, 0 otherwise",
         ),
@@ -174,14 +174,20 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         func: |ctx| {
             ctx.args.assert_no_bang()?;
 
-            let mut flags = [("help", None), ("param-count", None)];
+            let mut flags = [("help", None)];
             ctx.args.get_flags(&mut flags)?;
             let help = flags[0].1.unwrap_or("");
-            let param_count = flags[1].1.map(parse_arg).transpose()?.unwrap_or(0);
 
             let name = ctx.args.next()?;
-            let body = ctx.args.next()?;
+
+            let mut params = Vec::new();
+            params.push(ctx.args.next()?.into());
+            while let Some(param) = ctx.args.try_next()? {
+                params.push(param.into());
+            }
             ctx.args.assert_empty()?;
+
+            let commands = params.pop().unwrap();
 
             if name.is_empty() {
                 return Err(CommandError::InvalidCommandName(name.into()));
@@ -193,8 +199,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             let command = MacroCommand {
                 name: name.into(),
                 help: help.into(),
-                param_count,
-                body: body.into(),
+                params,
+                commands,
                 source_path: ctx.source_path.map(Into::into),
             };
             ctx.editor.commands.register_custom_command(command);
@@ -207,9 +213,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         alias: "",
         help: concat!(
             "spawns a new process and then optionally executes commands on its output\n",
-            "available variable:\n",
-            " $OUTPUT : the entire process output or a line if `-split-on-byte` is used\n",
-            "spawn [<flags>] <spawn-command> [<commands-on-output>]\n",
+            "those commands will be executed on every splitted output if `-split-on-byte` is given\n",
+            "or on its etirety when the process exits otherwise\n",
+            "`<output-var-name>` will be replaced in `<commands-on-output>` with the process' output\n",
+            "spawn [<flags>] <spawn-command> [<output-var-name> <commands-on-output>]\n",
             " -input=<text> : sends <text> to the stdin\n",
             " -split-on-byte=<number> : splits process output at every <number> byte",
         ),
@@ -229,30 +236,23 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             };
 
             let command = ctx.args.next()?;
-            let on_output = ctx.args.try_next()?;
+            let output_name = ctx.args.try_next()?;
+            let on_output = match output_name {
+                Some(_) => Some(ctx.args.next()?),
+                None => None,
+            };
             ctx.args.assert_empty()?;
 
-            let mut command_tokens = CommandTokenIter(command);
-            let command = match command_tokens.next() {
-                Some((CommandTokenKind::Text, token)) |
-                Some((CommandTokenKind::Flag, token)) |
-                Some((CommandTokenKind::Equals, token)) => token,
-                Some((CommandTokenKind::Unterminated, token)) => {
-                    return Err(CommandError::UnterminatedToken(token.into()))
-                }
-                None => return Err(CommandError::InvalidToken(command.into())),
-            };
+            let command = parse_command(command)?;
+            ctx.editor.commands.spawn_process(
+                ctx.platform,
+                command,
+                input,
+                output_name,
+                on_output,
+                split_on_byte
+            );
 
-            let mut command = Command::new(command);
-            while let Some((kind, token)) = command_tokens.next() {
-                if let CommandTokenKind::Unterminated = kind {
-                    return Err(CommandError::InvalidToken(token.into()));
-                } else {
-                    command.arg(token);
-                }
-            }
-
-            ctx.editor.commands.spawn_process(ctx.platform, command, input, on_output, split_on_byte);
             Ok(None)
         },
     },
@@ -261,9 +261,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         alias: "",
         help: concat!(
             "prompts for a line read and then executes commands\n",
-            "available variable:\n",
-            " $LINE : the line entered\n",
-            "read-line [<flags>] <commands>\n",
+            "`<line-var-name>` will be replaced in `<commands>` with the line read value\n",
+            "read-line [<flags>] <line-var-name> <commands>\n",
             " -prompt=<prompt-text> : the prompt text that shows just before user input (default: `read-line:`)",
         ),
         completions: &[],
@@ -274,6 +273,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             ctx.args.get_flags(&mut flags)?;
             let prompt = flags[0].1.unwrap_or("read-line:");
 
+            let line_name = ctx.args.next()?;
             let commands = ctx.args.next()?;
             ctx.args.assert_empty()?;
 
@@ -287,6 +287,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             continuation.clear();
             continuation.push_str(commands);
             ctx.editor.commands.continuation = Some(continuation);
+            ctx.editor.commands.continuation_replace_var_name.clear();
+            ctx.editor.commands.continuation_replace_var_name.push_str(line_name);
 
             let mut mode_ctx = ModeContext {
                 editor: ctx.editor,
@@ -305,17 +307,19 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         help: concat!(
             "opens up a menu from where an entry can be picked and then executes commands\n",
             "entries can be added with the `add-picker-entry` command\n",
-            "available variable:\n",
-            " $ENTRY : picked entry\n",
-            "pick [<flags>] <commands>\n",
+            "`<entry-var-name>` will be replaced in `<commands>` with the picked entry value\n",
+            "pick [<flags>] <entry-var-name> <commands>\n",
             " -prompt=<prompt-text> : the prompt text that shows just before user input (default: `pick:`)",
         ),
         completions: &[],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
+
             let mut flags = [("prompt", None)];
             let prompt = flags[0].1.unwrap_or("pick:");
             ctx.args.get_flags(&mut flags)?;
+            
+            let entry_name = ctx.args.next()?;
             let commands = ctx.args.next()?;
             ctx.args.assert_empty()?;
 
@@ -329,6 +333,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             continuation.clear();
             continuation.push_str(commands);
             ctx.editor.commands.continuation = Some(continuation);
+            ctx.editor.commands.continuation_replace_var_name.clear();
+            ctx.editor.commands.continuation_replace_var_name.push_str(entry_name);
 
             let mut mode_ctx = ModeContext {
                 editor: ctx.editor,
@@ -354,32 +360,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             ctx.args.get_flags(&mut [])?;
             let name = ctx.args.next()?;
             let description = ctx.args.try_next()?.unwrap_or("");
-            ctx.args.assert_empty()?;
-
-            ctx.editor.picker.add_custom_entry_filtered(
-                name,
-                description,
-                ctx.editor.read_line.input()
-            );
-            Ok(None)
-        },
-    },
-    // TODO: finish this
-    BuiltinCommand {
-        name: "picker-entries-from-output",
-        alias: "",
-        help: concat!(
-            "adds a picker entries for each line in a process output\n",
-            "picker-entries-from-output [<flags>] <command>\n",
-            " -description=<text> : an optional description that shows by the side of the entry's name",
-        ),
-        completions: &[],
-        func: |ctx| {
-            ctx.args.assert_no_bang()?;
-            let mut flags = [("description", None)];
-            ctx.args.get_flags(&mut flags)?;
-            let description = flags[0].1.unwrap_or("");
-            let name = ctx.args.next()?;
             ctx.args.assert_empty()?;
 
             ctx.editor.picker.add_custom_entry_filtered(
@@ -422,7 +402,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "print",
         alias: "",
         help: concat!(
-            "prints arguments to the status bar\nprint <value>...\n",
+            "prints arguments to the status bar\nprint <values...>\n",
             " -error : will print the message as an error",
             " -dbg : will also print the message to the stderr",
         ),
@@ -1009,7 +989,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         alias: "",
         help: concat!(
             "starts a lsp server\n",
-            "lsp-start [<flags>] <command> <command-arg>...\n",
+            "lsp-start [<flags>] <lsp-command>\n",
             " -root=<path> : the root path from where the lsp server will execute",
             " -log=<buffer-name> : redirect the lsp server output to this buffer"
         ),
@@ -1022,11 +1002,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             let root = flags[0].1;
             let log_buffer = flags[1].1;
 
-            let command = ctx.args.next()?;
-            let mut command = Command::new(command);
-            while let Some(arg) = ctx.args.try_next()? {
-                command.arg(arg);
-            }
+            let command = parse_command(ctx.args.next()?)?;
 
             let root = match root {
                 Some(root) => PathBuf::from(root),
@@ -1114,6 +1090,30 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
 ];
+
+fn parse_command(command: &str) -> Result<Command, CommandError> {
+    let mut command_tokens = CommandTokenIter(command);
+    let command = match command_tokens.next() {
+        Some((CommandTokenKind::Text, token))
+        | Some((CommandTokenKind::Flag, token))
+        | Some((CommandTokenKind::Equals, token)) => token,
+        Some((CommandTokenKind::Unterminated, token)) => {
+            return Err(CommandError::UnterminatedToken(token.into()))
+        }
+        None => return Err(CommandError::InvalidToken(command.into())),
+    };
+
+    let mut command = Command::new(command);
+    while let Some((kind, token)) = command_tokens.next() {
+        if let CommandTokenKind::Unterminated = kind {
+            return Err(CommandError::InvalidToken(token.into()));
+        } else {
+            command.arg(token);
+        }
+    }
+
+    Ok(command)
+}
 
 fn current_buffer_and_main_position<'state, 'command>(
     ctx: &CommandContext<'state, 'command>,

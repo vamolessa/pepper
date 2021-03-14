@@ -741,8 +741,8 @@ pub struct BuiltinCommand {
 pub struct MacroCommand {
     pub name: String,
     pub help: String,
-    pub param_count: u8,
-    pub body: String,
+    pub params: Vec<String>,
+    pub commands: String,
     pub source_path: Option<PathBuf>,
 }
 
@@ -753,6 +753,7 @@ struct Process {
     pub output: Vec<u8>,
     pub split_on_byte: Option<u8>,
     pub stdout_index: usize,
+    pub output_name: String,
     pub on_output: String,
 }
 
@@ -762,6 +763,7 @@ pub struct CommandManager {
     history: VecDeque<String>,
 
     pub continuation: Option<String>,
+    pub continuation_replace_var_name: String,
     spawned_processes: Vec<Process>,
 }
 
@@ -773,6 +775,7 @@ impl CommandManager {
             history: VecDeque::with_capacity(HISTORY_CAPACITY),
 
             continuation: None,
+            continuation_replace_var_name: String::new(),
             spawned_processes: Vec::new(),
         }
     }
@@ -932,17 +935,11 @@ impl CommandManager {
                 let mut result = Ok(None);
                 let mut body = editor.string_pool.acquire();
                 body.clear();
-                body.push_str(&macro_command.body);
+                body.push_str(&macro_command.commands);
 
-                for i in 0..macro_command.param_count {
-                    use io::Write;
-                    let mut buf = [0u8; 4];
-                    let mut writer = io::Cursor::new(&mut buf[..]);
-                    let _ = write!(writer, "${}", i);
-                    let len = writer.position() as usize;
-                    let key = unsafe { std::str::from_utf8_unchecked(&buf[..len]) };
+                for param in &macro_command.params {
                     let value = args.next()?;
-                    replace_to_between_text_markers(&mut body, key, value);
+                    replace_to_between_text_markers(&mut body, param, value);
                 }
                 args.assert_empty()?;
 
@@ -983,6 +980,7 @@ impl CommandManager {
         platform: &mut Platform,
         mut command: Command,
         stdin: Option<&str>,
+        output_name: Option<&str>,
         on_output: Option<&str>,
         split_on_byte: Option<u8>,
     ) {
@@ -1007,7 +1005,12 @@ impl CommandManager {
         process.output.clear();
         process.split_on_byte = split_on_byte;
         process.stdout_index = 0;
+        process.output_name.clear();
         process.on_output.clear();
+
+        if let Some(output_name) = output_name {
+            process.output_name.push_str(output_name);
+        }
 
         match stdin {
             Some(stdin) => {
@@ -1091,7 +1094,7 @@ impl CommandManager {
                 Ok(line) => {
                     commands.clear();
                     commands.push_str(&process.on_output);
-                    replace_to_between_text_markers(&mut commands, "$OUTPUT", line);
+                    replace_to_between_text_markers(&mut commands, &process.output_name, line);
                     Self::eval_commands_then_output(
                         editor, platform, clients, None, &commands, None,
                     );
@@ -1136,7 +1139,7 @@ impl CommandManager {
         let mut commands = editor.string_pool.acquire();
         commands.clear();
         commands.push_str(&process.on_output);
-        replace_to_between_text_markers(&mut commands, "$OUTPUT", stdout);
+        replace_to_between_text_markers(&mut commands, &process.output_name, stdout);
         Self::eval_commands_then_output(editor, platform, clients, None, &commands, None);
 
         editor.string_pool.release(commands);
@@ -1193,6 +1196,7 @@ mod tests {
             history: Default::default(),
 
             continuation: None,
+            continuation_replace_var_name: String::new(),
             spawned_processes: Vec::new(),
         }
     }
@@ -1214,11 +1218,11 @@ mod tests {
         assert_eq!(b'\x02', START_OF_TEXT_BYTE);
         assert_eq!(b'\x03', START_OF_TEXT_BYTE);
 
-        assert_replace_all(("xxxx", "xxxx"), ("$FROM", "to"));
-        assert_replace_all(("xxxx $A", "xxxx \x02b\x03"), ("$A", "b"));
+        assert_replace_all(("xxxx", "xxxx"), ("FROM", "to"));
+        assert_replace_all(("xxxx A", "xxxx \x02b\x03"), ("A", "b"));
         assert_replace_all(
-            ("$A xxxx $A$A", "\x02b\x03 xxxx \x02b\x03\x02b\x03"),
-            ("$A", "b"),
+            ("A xxxx AA", "\x02b\x03 xxxx \x02b\x03\x02b\x03"),
+            ("A", "b"),
         );
     }
 

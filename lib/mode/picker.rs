@@ -201,6 +201,7 @@ pub mod custom {
                 ReadLinePoll::Pending => None,
                 ReadLinePoll::Submitted => {
                     let mut continuation = ctx.editor.commands.continuation.take().unwrap();
+                    let entry_name = &ctx.editor.commands.continuation_replace_var_name;
                     let entry = ctx
                         .editor
                         .picker
@@ -208,7 +209,7 @@ pub mod custom {
 
                     let mut operation = None;
                     if let Some(entry) = entry {
-                        replace_to_between_text_markers(&mut continuation, "$ENTRY", entry.name);
+                        replace_to_between_text_markers(&mut continuation, entry_name, entry.name);
                         operation = CommandManager::eval_commands_then_output(
                             ctx.editor,
                             ctx.platform,

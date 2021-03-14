@@ -476,7 +476,12 @@ pub mod custom {
                 ReadLinePoll::Pending => None,
                 ReadLinePoll::Submitted => {
                     let mut continuation = ctx.editor.commands.continuation.take().unwrap();
-                    replace_to_between_text_markers(&mut continuation, "$LINE", ctx.editor.read_line.input());
+                    let line_name = &ctx.editor.commands.continuation_replace_var_name;
+                    replace_to_between_text_markers(
+                        &mut continuation,
+                        line_name,
+                        ctx.editor.read_line.input(),
+                    );
                     let operation = CommandManager::eval_commands_then_output(
                         ctx.editor,
                         ctx.platform,
