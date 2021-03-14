@@ -455,7 +455,7 @@ impl<'a> Iterator for CommandIter<'a> {
                     }
                     b'{' => match find_balanced_curly_bracket(&bytes[(i + 1)..]) {
                         Some(len) => {
-                            i += len;
+                            i += len + 1;
                         }
                         None => {
                             let command = self.0;
