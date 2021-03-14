@@ -21,6 +21,9 @@ mod builtin;
 
 pub const HISTORY_CAPACITY: usize = 10;
 
+const START_OF_TEXT_BYTE: u8 = b'\x02';
+const END_OF_TEXT_BYTE: u8 = b'\x03';
+
 pub struct CommandToken {
     location: usize,
     len: usize,
@@ -379,14 +382,18 @@ impl<'state, 'command> CommandContext<'state, 'command> {
     }
 }
 
-pub fn replace_all(text: &mut String, from: &str, to: &str) {
+pub fn replace_to_between_text_markers(text: &mut String, from: &str, to: &str) {
     let from_len = from.len();
     let to_len = to.len();
     let mut offset = 0;
     while let Some(i) = text[offset..].find(from) {
         offset += i;
+        text.insert(offset, START_OF_TEXT_BYTE as char);
+        offset += 1;
         text.replace_range(offset..(offset + from_len), to);
         offset += to_len;
+        text.insert(offset, END_OF_TEXT_BYTE as char);
+        offset += 1;
     }
 }
 
@@ -454,9 +461,7 @@ impl<'a> Iterator for CommandIter<'a> {
                         }
                     }
                     b'{' => match find_balanced_curly_bracket(&bytes[(i + 1)..]) {
-                        Some(len) => {
-                            i += len + 1;
-                        }
+                        Some(len) => i += len + 1,
                         None => {
                             let command = self.0;
                             self.0 = "";
@@ -473,6 +478,16 @@ impl<'a> Iterator for CommandIter<'a> {
                             break;
                         } else {
                             return Some(command);
+                        }
+                    }
+                    START_OF_TEXT_BYTE => {
+                        match bytes[(i + 1)..].iter().position(|&b| b == END_OF_TEXT_BYTE) {
+                            Some(len) => i += len + 1,
+                            None => {
+                                let command = self.0;
+                                self.0 = "";
+                                return Some(command);
+                            }
                         }
                     }
                     _ => (),
@@ -526,6 +541,21 @@ impl<'a> Iterator for CommandTokenIter<'a> {
             b'{' => {
                 self.0 = &self.0[1..];
                 match find_balanced_curly_bracket(self.0.as_bytes()) {
+                    Some(i) => {
+                        let token = &self.0[..i];
+                        self.0 = &self.0[(i + 1)..];
+                        Some((CommandTokenKind::Text, token))
+                    }
+                    None => {
+                        let token = self.0;
+                        self.0 = &self.0[self.0.len()..];
+                        Some((CommandTokenKind::Unterminated, token))
+                    }
+                }
+            }
+            START_OF_TEXT_BYTE => {
+                self.0 = &self.0[1..];
+                match self.0.find(END_OF_TEXT_BYTE as char) {
                     Some(i) => {
                         let token = &self.0[..i];
                         self.0 = &self.0[(i + 1)..];
@@ -912,7 +942,7 @@ impl CommandManager {
                     let len = writer.position() as usize;
                     let key = unsafe { std::str::from_utf8_unchecked(&buf[..len]) };
                     let value = args.next()?;
-                    replace_all(&mut body, key, value);
+                    replace_to_between_text_markers(&mut body, key, value);
                 }
                 args.assert_empty()?;
 
@@ -1061,7 +1091,7 @@ impl CommandManager {
                 Ok(line) => {
                     commands.clear();
                     commands.push_str(&process.on_output);
-                    replace_all(&mut commands, "$OUTPUT", line);
+                    replace_to_between_text_markers(&mut commands, "$OUTPUT", line);
                     Self::eval_commands_then_output(
                         editor, platform, clients, None, &commands, None,
                     );
@@ -1106,7 +1136,7 @@ impl CommandManager {
         let mut commands = editor.string_pool.acquire();
         commands.clear();
         commands.push_str(&process.on_output);
-        replace_all(&mut commands, "$OUTPUT", stdout);
+        replace_to_between_text_markers(&mut commands, "$OUTPUT", stdout);
         Self::eval_commands_then_output(editor, platform, clients, None, &commands, None);
 
         editor.string_pool.release(commands);
@@ -1177,13 +1207,16 @@ mod tests {
     fn test_replace_all() {
         fn assert_replace_all(text_expected: (&str, &str), from_to: (&str, &str)) {
             let mut text = text_expected.0.into();
-            replace_all(&mut text, from_to.0, from_to.1);
+            replace_to_between_text_markers(&mut text, from_to.0, from_to.1);
             assert_eq!(text_expected.1, text);
         }
 
-        assert_replace_all(("xxxx", "xxxx"), ("$from", "to"));
-        assert_replace_all(("xxxx $A", "xxxx b"), ("$A", "b"));
-        assert_replace_all(("$A xxxx $A$A", "b xxxx bb"), ("$A", "b"));
+        assert_replace_all(("xxxx", "xxxx"), ("$FROM", "to"));
+        assert_replace_all(("xxxx $A", "xxxx \x02b\x03"), ("$A", "b"));
+        assert_replace_all(
+            ("$A xxxx $A$A", "\x02b\x03 xxxx \x02b\x03\x02b\x03"),
+            ("$A", "b"),
+        );
     }
 
     #[test]

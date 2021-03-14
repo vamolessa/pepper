@@ -1,6 +1,6 @@
 use crate::{
     buffer_view::BufferViewError,
-    command::{replace_all, CommandManager},
+    command::{replace_to_between_text_markers, CommandManager},
     editor::KeysIterator,
     editor_utils::{MessageKind, ReadLinePoll},
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
@@ -208,7 +208,7 @@ pub mod custom {
 
                     let mut operation = None;
                     if let Some(entry) = entry {
-                        replace_all(&mut continuation, "$ENTRY", entry.name);
+                        replace_to_between_text_markers(&mut continuation, "$ENTRY", entry.name);
                         operation = CommandManager::eval_commands_then_output(
                             ctx.editor,
                             ctx.platform,
