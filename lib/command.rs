@@ -397,7 +397,7 @@ pub fn replace_to_between_text_markers(text: &mut String, from: &str, to: &str) 
     }
 }
 
-fn find_balanced_curly_bracket(bytes: &[u8]) -> Option<usize> {
+fn find_balanced(bytes: &[u8], start: u8, end: u8) -> Option<usize> {
     let mut balance: usize = 1;
     let mut i = 0;
 
@@ -406,15 +406,14 @@ fn find_balanced_curly_bracket(bytes: &[u8]) -> Option<usize> {
             return None;
         }
 
-        match bytes[i] {
-            b'{' => balance += 1,
-            b'}' => {
-                balance -= 1;
-                if balance == 0 {
-                    return Some(i);
-                }
+        let b = bytes[i];
+        if b == start {
+            balance += 1;
+        } else if b == end {
+            balance -= 1;
+            if balance == 0 {
+                return Some(i);
             }
-            _ => (),
         }
 
         i += 1;
@@ -460,7 +459,7 @@ impl<'a> Iterator for CommandIter<'a> {
                             return Some(command);
                         }
                     }
-                    b'{' => match find_balanced_curly_bracket(&bytes[(i + 1)..]) {
+                    b'{' => match find_balanced(&bytes[(i + 1)..], b'{', b'}') {
                         Some(len) => i += len + 1,
                         None => {
                             let command = self.0;
@@ -468,6 +467,17 @@ impl<'a> Iterator for CommandIter<'a> {
                             return Some(command);
                         }
                     },
+                    START_OF_TEXT_BYTE => {
+                        match find_balanced(&bytes[(i + 1)..], START_OF_TEXT_BYTE, END_OF_TEXT_BYTE)
+                        {
+                            Some(len) => i += len + 1,
+                            None => {
+                                let command = self.0;
+                                self.0 = "";
+                                return Some(command);
+                            }
+                        }
+                    }
                     b'#' => {
                         let command = &self.0[..i];
                         while i < bytes.len() && bytes[i] != b'\n' {
@@ -478,16 +488,6 @@ impl<'a> Iterator for CommandIter<'a> {
                             break;
                         } else {
                             return Some(command);
-                        }
-                    }
-                    START_OF_TEXT_BYTE => {
-                        match bytes[(i + 1)..].iter().position(|&b| b == END_OF_TEXT_BYTE) {
-                            Some(len) => i += len + 1,
-                            None => {
-                                let command = self.0;
-                                self.0 = "";
-                                return Some(command);
-                            }
                         }
                     }
                     _ => (),
@@ -540,7 +540,7 @@ impl<'a> Iterator for CommandTokenIter<'a> {
             }
             b'{' => {
                 self.0 = &self.0[1..];
-                match find_balanced_curly_bracket(self.0.as_bytes()) {
+                match find_balanced(self.0.as_bytes(), b'{', b'}') {
                     Some(i) => {
                         let token = &self.0[..i];
                         self.0 = &self.0[(i + 1)..];
@@ -555,7 +555,7 @@ impl<'a> Iterator for CommandTokenIter<'a> {
             }
             START_OF_TEXT_BYTE => {
                 self.0 = &self.0[1..];
-                match self.0.find(END_OF_TEXT_BYTE as char) {
+                match find_balanced(self.0.as_bytes(), START_OF_TEXT_BYTE, END_OF_TEXT_BYTE) {
                     Some(i) => {
                         let token = &self.0[..i];
                         self.0 = &self.0[(i + 1)..];
@@ -1211,6 +1211,9 @@ mod tests {
             assert_eq!(text_expected.1, text);
         }
 
+        assert_eq!(b'\x02', START_OF_TEXT_BYTE);
+        assert_eq!(b'\x03', START_OF_TEXT_BYTE);
+
         assert_replace_all(("xxxx", "xxxx"), ("$FROM", "to"));
         assert_replace_all(("xxxx $A", "xxxx \x02b\x03"), ("$A", "b"));
         assert_replace_all(
@@ -1367,12 +1370,12 @@ mod tests {
     }
 
     #[test]
-    fn test_find_balanced_curly_bracket() {
-        assert_eq!(None, find_balanced_curly_bracket(b""));
-        assert_eq!(Some(0), find_balanced_curly_bracket(b"}"));
-        assert_eq!(Some(2), find_balanced_curly_bracket(b"  }}"));
-        assert_eq!(Some(2), find_balanced_curly_bracket(b"{}}"));
-        assert_eq!(Some(4), find_balanced_curly_bracket(b"{{}}}"));
+    fn test_find_balanced() {
+        assert_eq!(None, find_balanced(b"", b'{', b'}'));
+        assert_eq!(Some(0), find_balanced(b"}", b'{', b'}'));
+        assert_eq!(Some(2), find_balanced(b"  }}", b'{', b'}'));
+        assert_eq!(Some(2), find_balanced(b"{}}", b'{', b'}'));
+        assert_eq!(Some(4), find_balanced(b"{{}}}", b'{', b'}'));
     }
 
     #[test]
