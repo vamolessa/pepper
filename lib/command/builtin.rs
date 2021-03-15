@@ -542,7 +542,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             ctx.editor
                 .status_bar
                 .write(MessageKind::Info)
-                .fmt(format_args!("buffer saved to '{:?}'", path));
+                .fmt(format_args!("buffer saved to {:?}", path));
             Ok(None)
         },
     },
