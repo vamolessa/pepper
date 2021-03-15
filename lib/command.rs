@@ -801,7 +801,6 @@ impl CommandManager {
     pub fn register_macro(&mut self, command: MacroCommand) {
         for m in &mut self.macro_commands {
             if m.name == command.name {
-                eprintln!("EPAA!! MAS JA TINHA {}", &command.name);
                 *m = command;
                 return;
             }
