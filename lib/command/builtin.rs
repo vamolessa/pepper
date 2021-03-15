@@ -203,7 +203,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 commands,
                 source_path: ctx.source_path.map(Into::into),
             };
-            ctx.editor.commands.register_custom_command(command);
+            ctx.editor.commands.register_macro(command);
 
             Ok(None)
         },
@@ -246,6 +246,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             let command = parse_command(command)?;
             ctx.editor.commands.spawn_process(
                 ctx.platform,
+                ctx.client_handle,
                 command,
                 input,
                 output_name,
