@@ -417,29 +417,77 @@ where
     }
 }
 
+pub enum ServerEvent<'a> {
+    Display(&'a str),
+    CommandOutput(&'a str),
+    Request(&'a str),
+}
+impl<'de> Serialize<'de> for ServerEvent<'de> {
+    fn serialize<S>(&self, serializer: &mut S)
+    where
+        S: Serializer,
+    {
+        match self {
+            Self::Display(display) => {
+                0u8.serialize(serializer);
+                display.serialize(serializer);
+            }
+            Self::CommandOutput(output) => {
+                2u8.serialize(serializer);
+                output.serialize(serializer);
+            }
+            Self::Request(name) => {
+                1u8.serialize(serializer);
+                name.serialize(serializer);
+            }
+        }
+    }
+
+    fn deserialize<D>(deserializer: &mut D) -> Result<Self, DeserializeError>
+    where
+        D: Deserializer<'de>,
+    {
+        let discriminant = u8::deserialize(deserializer)?;
+        match discriminant {
+            0 => {
+                let display = Serialize::deserialize(deserializer)?;
+                Ok(Self::Display(display))
+            }
+            1 => {
+                let name = Serialize::deserialize(deserializer)?;
+                Ok(Self::Request(name))
+            }
+            2 => {
+                let output = Serialize::deserialize(deserializer)?;
+                Ok(Self::CommandOutput(output))
+            }
+            _ => Err(DeserializeError),
+        }
+    }
+}
+
 pub enum ClientEvent<'a> {
     Command(ClientHandle, &'a str),
     Key(ClientHandle, Key),
     Resize(ClientHandle, u16, u16),
 }
-
 impl<'de> Serialize<'de> for ClientEvent<'de> {
     fn serialize<S>(&self, serializer: &mut S)
     where
         S: Serializer,
     {
         match self {
-            ClientEvent::Command(client_handle, command) => {
+            Self::Command(client_handle, command) => {
                 0u8.serialize(serializer);
                 client_handle.serialize(serializer);
                 command.serialize(serializer);
             }
-            ClientEvent::Key(client_handle, key) => {
+            Self::Key(client_handle, key) => {
                 1u8.serialize(serializer);
                 client_handle.serialize(serializer);
                 serialize_key(*key, serializer);
             }
-            ClientEvent::Resize(client_handle, width, height) => {
+            Self::Resize(client_handle, width, height) => {
                 2u8.serialize(serializer);
                 client_handle.serialize(serializer);
                 width.serialize(serializer);
@@ -456,19 +504,19 @@ impl<'de> Serialize<'de> for ClientEvent<'de> {
         match discriminant {
             0 => {
                 let handle = Serialize::deserialize(deserializer)?;
-                let command = <&str>::deserialize(deserializer)?;
-                Ok(ClientEvent::Command(handle, command))
+                let command = Serialize::deserialize(deserializer)?;
+                Ok(Self::Command(handle, command))
             }
             1 => {
                 let handle = Serialize::deserialize(deserializer)?;
                 let key = deserialize_key(deserializer)?;
-                Ok(ClientEvent::Key(handle, key))
+                Ok(Self::Key(handle, key))
             }
             2 => {
                 let handle = Serialize::deserialize(deserializer)?;
-                let width = u16::deserialize(deserializer)?;
-                let height = u16::deserialize(deserializer)?;
-                Ok(ClientEvent::Resize(handle, width, height))
+                let width = Serialize::deserialize(deserializer)?;
+                let height = Serialize::deserialize(deserializer)?;
+                Ok(Self::Resize(handle, width, height))
             }
             _ => Err(DeserializeError),
         }
