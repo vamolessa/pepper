@@ -1,4 +1,4 @@
-use std::{env, fmt, io, path::Path, sync::mpsc};
+use std::{env, fmt, io, path::Path, process::Child, sync::mpsc};
 
 use crate::{
     client::{ClientHandle, ClientManager},
@@ -270,6 +270,7 @@ pub struct ClientApplication {
     server_read_buf: Vec<u8>,
     write_buf: SerializationBuf,
     stdout: io::StdoutLock<'static>,
+    plugin: Option<Child>,
 }
 impl ClientApplication {
     pub const fn stdin_buffer_len() -> usize {
@@ -294,6 +295,7 @@ impl ClientApplication {
             server_read_buf: Vec::new(),
             write_buf: SerializationBuf::default(),
             stdout,
+            plugin: None,
         }
     }
 
@@ -363,7 +365,18 @@ impl ClientApplication {
 
         if !stdin_bytes.is_empty() {
             self.stdin_read_buf.extend_from_slice(stdin_bytes);
-            todo!();
+            for command in self.stdin_read_buf.split(|&b| b == b'\0') {
+                match std::str::from_utf8(command) {
+                    Ok(command) => {
+                        ClientEvent::Command(self.handle, command).serialize(&mut self.write_buf)
+                    }
+                    Err(_) => ClientEvent::Command(
+                        self.handle,
+                        "print -error 'error parsing utf8 from stdin'",
+                    )
+                    .serialize(&mut self.write_buf),
+                }
+            }
         }
 
         if !server_bytes.is_empty() {
@@ -376,7 +389,12 @@ impl ClientApplication {
                         self.stdout.write_all(display).unwrap();
                     }
                     Ok(ServerEvent::CommandOutput(output)) => {
-                        todo!("command output {}", output);
+                        match self.plugin {
+                            Some(ref mut plugin) => {
+                                //
+                            }
+                            None => self.stdout.write_all(output.as_bytes()).unwrap(),
+                        }
                     }
                     Ok(ServerEvent::Request(request)) => {
                         todo!("request {}", request);
