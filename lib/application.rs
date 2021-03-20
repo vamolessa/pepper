@@ -273,7 +273,7 @@ pub struct ClientApplication {
 }
 impl ClientApplication {
     pub const fn stdin_buffer_len() -> usize {
-        2 * 1024
+        4 * 1024
     }
 
     pub const fn connection_buffer_len() -> usize {
@@ -321,19 +321,7 @@ impl ClientApplication {
             }
         }
 
-        if self.is_pipped {
-            use fmt::Write;
-            use io::Read;
-
-            let mut buf = Vec::new();
-            match std::io::stdin().lock().read_to_end(&mut buf) {
-                Ok(_) => match std::str::from_utf8(&buf) {
-                    Ok(text) => commands.push_str(text),
-                    Err(error) => write!(commands, "print -error {{{}}}", error).unwrap(),
-                },
-                Err(error) => write!(commands, "print -error {{{}}}", error).unwrap(),
-            }
-        } else {
+        if !self.is_pipped {
             use io::Write;
             self.stdout
                 .write_all(ui::ENTER_ALTERNATE_BUFFER_CODE)
@@ -375,6 +363,7 @@ impl ClientApplication {
 
         if !stdin_bytes.is_empty() {
             self.stdin_read_buf.extend_from_slice(stdin_bytes);
+            todo!();
         }
 
         if !server_bytes.is_empty() {
@@ -387,10 +376,10 @@ impl ClientApplication {
                         self.stdout.write_all(display).unwrap();
                     }
                     Ok(ServerEvent::CommandOutput(output)) => {
-                        // TODO: server command output
+                        todo!("command output {}", output);
                     }
                     Ok(ServerEvent::Request(request)) => {
-                        // TODO: server request
+                        todo!("request {}", request);
                     }
                     Err(DeserializeError::InsufficientData) => {
                         let rest_len = deserializer.0.len();
