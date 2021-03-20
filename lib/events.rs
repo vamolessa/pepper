@@ -433,11 +433,11 @@ impl<'de> Serialize<'de> for ServerEvent<'de> {
                 display.serialize(serializer);
             }
             Self::CommandOutput(output) => {
-                2u8.serialize(serializer);
+                1u8.serialize(serializer);
                 output.serialize(serializer);
             }
             Self::Request(name) => {
-                1u8.serialize(serializer);
+                2u8.serialize(serializer);
                 name.serialize(serializer);
             }
         }
@@ -454,12 +454,12 @@ impl<'de> Serialize<'de> for ServerEvent<'de> {
                 Ok(Self::Display(display))
             }
             1 => {
-                let name = Serialize::deserialize(deserializer)?;
-                Ok(Self::Request(name))
-            }
-            2 => {
                 let output = Serialize::deserialize(deserializer)?;
                 Ok(Self::CommandOutput(output))
+            }
+            2 => {
+                let name = Serialize::deserialize(deserializer)?;
+                Ok(Self::Request(name))
             }
             _ => Err(DeserializeError),
         }

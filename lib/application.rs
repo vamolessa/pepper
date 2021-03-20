@@ -4,7 +4,7 @@ use crate::{
     client::{ClientHandle, ClientManager},
     command::{CommandManager, CommandOperation},
     editor::{Editor, EditorControlFlow},
-    events::{ClientEvent, ClientEventReceiver},
+    events::{ClientEvent, ServerEvent, ClientEventReceiver},
     lsp,
     platform::{Key, Platform, PlatformRequest, ProcessHandle, SharedBuf},
     serialization::{SerializationBuf, Serialize},
@@ -237,7 +237,12 @@ impl ServerApplication {
                 let has_focus = focused_client_handle == Some(c.handle());
 
                 let mut buf = platform.buf_pool.acquire();
-                let write = buf.write_with_len(4);
+                let write = buf.write_with_len(5);
+                // TODO: here we're manually serializing a ServerEvent::Display
+                // just so we don't do unecessary copies
+                // in the future maybe we can just create a raw ServerEvent::Display directly
+                // and `ui::render` is code that is called by each client
+                write[0] = 0;
                 ui::render(
                     &editor,
                     c.buffer_view_handle(),
