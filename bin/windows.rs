@@ -1163,6 +1163,7 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: HANDLE, output_handle
     }
 
     if is_pipped {
+    /*
         let mut buf = [0; ClientApplication::connection_buffer_len()];
         loop {
             match connection.read(&mut buf) {
@@ -1178,6 +1179,7 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: HANDLE, output_handle
                 }
             }
         }
+    */
         return;
     }
 

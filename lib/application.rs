@@ -4,10 +4,10 @@ use crate::{
     client::{ClientHandle, ClientManager},
     command::{CommandManager, CommandOperation},
     editor::{Editor, EditorControlFlow},
-    events::{ClientEvent, ServerEvent, ClientEventReceiver},
+    events::{ClientEvent, ClientEventReceiver, ServerEvent},
     lsp,
     platform::{Key, Platform, PlatformRequest, ProcessHandle, SharedBuf},
-    serialization::{SerializationBuf, Serialize},
+    serialization::{DeserializationSlice, DeserializeError, SerializationBuf, Serialize},
     ui, Args,
 };
 
@@ -238,11 +238,6 @@ impl ServerApplication {
 
                 let mut buf = platform.buf_pool.acquire();
                 let write = buf.write_with_len(5);
-                // TODO: here we're manually serializing a ServerEvent::Display
-                // just so we don't do unecessary copies
-                // in the future maybe we can just create a raw ServerEvent::Display directly
-                // and `ui::render` is code that is called by each client
-                write[0] = 0;
                 ui::render(
                     &editor,
                     c.buffer_view_handle(),
@@ -253,10 +248,7 @@ impl ServerApplication {
                     write,
                     &mut c.status_bar_buffer,
                 );
-
-                let len = write.len() as u32 - 4;
-                let len_buf = len.to_le_bytes();
-                write[..4].copy_from_slice(&len_buf);
+                ServerEvent::serialize_display_header(write);
 
                 let handle = c.handle();
                 let buf = buf.share();
@@ -355,17 +347,14 @@ impl ClientApplication {
         self.write_buf.as_slice()
     }
 
-    pub fn update_piped(&mut self, message: &[u8]) -> bool {
-        self.read_message_and_write_to_stdout(message);
-        message.is_empty() || !self.read_buf.is_empty()
-    }
-
     pub fn update_with_ui<'a>(
         &'a mut self,
         resize: Option<(usize, usize)>,
         keys: &[Key],
         message: &[u8],
     ) -> &'a [u8] {
+        use io::Write;
+
         self.write_buf.clear();
 
         if let Some((width, height)) = resize {
@@ -377,42 +366,36 @@ impl ClientApplication {
             ClientEvent::Key(self.handle, *key).serialize(&mut self.write_buf);
         }
 
-        self.read_message_and_write_to_stdout(message);
-        self.write_buf.as_slice()
-    }
+        if !message.is_empty() {
+            self.read_buf.extend_from_slice(message);
+            let mut deserializer = DeserializationSlice(&self.read_buf);
 
-    fn read_message_and_write_to_stdout(&mut self, message: &[u8]) {
-        use io::Write;
-
-        if message.is_empty() {
-            return;
-        }
-
-        self.read_buf.extend_from_slice(message);
-        let mut len_buf = [0; 4];
-        let mut read_buf = &self.read_buf[..];
-
-        while read_buf.len() >= len_buf.len() {
-            let (len, message) = read_buf.split_at(len_buf.len());
-            len_buf.copy_from_slice(len);
-            let len = u32::from_le_bytes(len_buf) as usize;
-
-            if message.len() >= len {
-                let (message, rest) = message.split_at(len);
-                read_buf = rest;
-
-                self.stdout.write_all(message).unwrap();
-            } else {
-                break;
+            loop {
+                match ServerEvent::deserialize(&mut deserializer) {
+                    Ok(ServerEvent::Display(display)) => {
+                        self.stdout.write_all(display).unwrap();
+                    }
+                    Ok(ServerEvent::CommandOutput(output)) => {
+                        // TODO: server command output
+                    }
+                    Ok(ServerEvent::Request(request)) => {
+                        // TODO: server request
+                    }
+                    Err(DeserializeError::InsufficientData) => {
+                        let rest_len = deserializer.0.len();
+                        let rest_index = self.read_buf.len() - rest_len;
+                        self.read_buf.copy_within(rest_index.., 0);
+                        self.read_buf.truncate(rest_len);
+                        break;
+                    }
+                    Err(DeserializeError::InvalidData) => panic!("invalid data received"),
+                }
             }
+
+            self.stdout.flush().unwrap();
         }
 
-        let rest_len = read_buf.len();
-        let rest_index = self.read_buf.len() - rest_len;
-        self.read_buf.copy_within(rest_index.., 0);
-        self.read_buf.truncate(rest_len);
-
-        self.stdout.flush().unwrap();
+        self.write_buf.as_slice()
     }
 }
 impl Drop for ClientApplication {

@@ -413,14 +413,22 @@ where
             Ok(Key::Alt(c))
         }
         17 => Ok(Key::Esc),
-        _ => Err(DeserializeError),
+        _ => Err(DeserializeError::InvalidData),
     }
 }
 
 pub enum ServerEvent<'a> {
-    Display(&'a str),
+    Display(&'a [u8]),
     CommandOutput(&'a str),
     Request(&'a str),
+}
+impl<'a> ServerEvent<'a> {
+    pub fn serialize_display_header(buf: &mut [u8]) {
+        buf[0] = 0;
+        let len = buf.len() as u32 - 5;
+        let len_buf = len.to_le_bytes();
+        buf[1..5].copy_from_slice(&len_buf);
+    }
 }
 impl<'de> Serialize<'de> for ServerEvent<'de> {
     fn serialize<S>(&self, serializer: &mut S)
@@ -436,9 +444,9 @@ impl<'de> Serialize<'de> for ServerEvent<'de> {
                 1u8.serialize(serializer);
                 output.serialize(serializer);
             }
-            Self::Request(name) => {
+            Self::Request(request) => {
                 2u8.serialize(serializer);
-                name.serialize(serializer);
+                request.serialize(serializer);
             }
         }
     }
@@ -458,10 +466,10 @@ impl<'de> Serialize<'de> for ServerEvent<'de> {
                 Ok(Self::CommandOutput(output))
             }
             2 => {
-                let name = Serialize::deserialize(deserializer)?;
-                Ok(Self::Request(name))
+                let request = Serialize::deserialize(deserializer)?;
+                Ok(Self::Request(request))
             }
-            _ => Err(DeserializeError),
+            _ => Err(DeserializeError::InvalidData),
         }
     }
 }
@@ -518,7 +526,7 @@ impl<'de> Serialize<'de> for ClientEvent<'de> {
                 let height = Serialize::deserialize(deserializer)?;
                 Ok(Self::Resize(handle, width, height))
             }
-            _ => Err(DeserializeError),
+            _ => Err(DeserializeError::InvalidData),
         }
     }
 }
@@ -535,10 +543,10 @@ impl ClientEventIter {
             return None;
         }
 
-        let mut deserializer = DeserializationSlice::from_slice(slice);
+        let mut deserializer = DeserializationSlice(slice);
         match ClientEvent::deserialize(&mut deserializer) {
             Ok(event) => {
-                self.read_len = buf.len() - deserializer.as_slice().len();
+                self.read_len = buf.len() - deserializer.0.len();
                 Some(event)
             }
             Err(_) => {
@@ -632,8 +640,8 @@ mod tests {
             let mut buf = SerializationBuf::default();
             let _ = serialize_key(key, &mut buf);
             let slice = buf.as_slice();
-            let mut deserializer = DeserializationSlice::from_slice(slice);
-            assert!(!deserializer.as_slice().is_empty());
+            let mut deserializer = DeserializationSlice(slice);
+            assert!(!deserializer.0.is_empty());
             match deserialize_key(&mut deserializer) {
                 Ok(k) => assert_eq!(key, k),
                 Err(_) => assert!(false),

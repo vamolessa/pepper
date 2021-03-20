@@ -4,7 +4,10 @@ pub trait Serializer {
     fn write(&mut self, bytes: &[u8]);
 }
 
-pub struct DeserializeError;
+pub enum DeserializeError {
+    InsufficientData,
+    InvalidData,
+}
 
 pub trait Deserializer<'de> {
     fn read(&mut self, len: usize) -> Result<&'de [u8], DeserializeError>;
@@ -61,7 +64,26 @@ impl<'de> Serialize<'de> for char {
         D: Deserializer<'de>,
     {
         let value = u32::deserialize(deserializer)?;
-        char::try_from(value).map_err(|_| DeserializeError)
+        char::try_from(value).map_err(|_| DeserializeError::InvalidData)
+    }
+}
+
+impl<'de> Serialize<'de> for &'de [u8] {
+    fn serialize<S>(&self, serializer: &mut S)
+    where
+        S: Serializer,
+    {
+        let len = self.len() as u32;
+        len.serialize(serializer);
+        serializer.write(self);
+    }
+
+    fn deserialize<D>(deserializer: &mut D) -> Result<Self, DeserializeError>
+    where
+        D: Deserializer<'de>,
+    {
+        let len = u32::deserialize(deserializer)?;
+        deserializer.read(len as _)
     }
 }
 
@@ -70,24 +92,20 @@ impl<'de> Serialize<'de> for &'de str {
     where
         S: Serializer,
     {
-        let len = self.len() as u32;
-        len.serialize(serializer);
-        serializer.write(self.as_bytes());
+        self.as_bytes().serialize(serializer)
     }
 
     fn deserialize<D>(deserializer: &mut D) -> Result<Self, DeserializeError>
     where
         D: Deserializer<'de>,
     {
-        let len = u32::deserialize(deserializer)?;
-        let bytes = deserializer.read(len as _)?;
-        std::str::from_utf8(bytes).map_err(|_| DeserializeError)
+        let bytes = <&[u8]>::deserialize(deserializer)?;
+        std::str::from_utf8(bytes).map_err(|_| DeserializeError::InvalidData)
     }
 }
 
 #[derive(Default)]
 pub struct SerializationBuf(Vec<u8>);
-
 impl SerializationBuf {
     pub fn as_slice(&self) -> &[u8] {
         &self.0
@@ -97,25 +115,13 @@ impl SerializationBuf {
         self.0.clear();
     }
 }
-
 impl Serializer for SerializationBuf {
     fn write(&mut self, buf: &[u8]) {
         self.0.extend_from_slice(buf);
     }
 }
 
-pub struct DeserializationSlice<'de>(&'de [u8]);
-
-impl<'de> DeserializationSlice<'de> {
-    pub fn from_slice(slice: &'de [u8]) -> Self {
-        Self(slice)
-    }
-
-    pub fn as_slice(&self) -> &[u8] {
-        &self.0
-    }
-}
-
+pub struct DeserializationSlice<'de>(pub &'de [u8]);
 impl<'de> Deserializer<'de> for DeserializationSlice<'de> {
     fn read(&mut self, len: usize) -> Result<&'de [u8], DeserializeError> {
         if len <= self.0.len() {
@@ -123,7 +129,7 @@ impl<'de> Deserializer<'de> for DeserializationSlice<'de> {
             self.0 = after;
             Ok(before)
         } else {
-            Err(DeserializeError)
+            Err(DeserializeError::InsufficientData)
         }
     }
 }
