@@ -71,7 +71,7 @@ const MAX_EVENT_COUNT: usize = 1 + 1 + MAX_CLIENT_COUNT + 2 * MAX_PROCESS_COUNT;
 const _ASSERT_MAX_EVENT_COUNT_IS_64: [(); 64] = [(); MAX_EVENT_COUNT];
 
 const CLIENT_CONSOLE_EVENT_BUFFER_LEN: usize = 32;
-const PIPE_PREFIX: &str = "\\\\.\\pipe\\";
+const PIPE_PREFIX: &str = r#"\\.\pipe\"#;
 
 pub fn main() {
     let args = match Args::parse() {
@@ -102,7 +102,7 @@ pub fn main() {
     pipe_path.push(0);
 
     if args.print_session {
-        println!("{}{}", PIPE_PREFIX, session_name);
+        print!("{}{}", PIPE_PREFIX, session_name);
         return;
     }
 
@@ -158,29 +158,29 @@ fn pipe_exists(path: &[u16]) -> bool {
     }
 }
 
-fn get_std_handle(which: DWORD) -> Option<HANDLE> {
+fn get_std_handle(which: DWORD) -> Option<Handle> {
     let handle = unsafe { GetStdHandle(which) };
     if handle != NULL && handle != INVALID_HANDLE_VALUE {
-        Some(handle)
+        Some(Handle(handle))
     } else {
         None
     }
 }
 
-fn get_console_size(output_handle: HANDLE) -> (usize, usize) {
+fn get_console_size(output_handle: &Handle) -> (usize, usize) {
     let mut console_info = unsafe { std::mem::zeroed() };
-    let result = unsafe { GetConsoleScreenBufferInfo(output_handle, &mut console_info) };
+    let result = unsafe { GetConsoleScreenBufferInfo(output_handle.0, &mut console_info) };
     if result == FALSE {
         panic!("could not get console info");
     }
     (console_info.dwSize.X as _, console_info.dwSize.Y as _)
 }
 
-fn read_console_input(input_handle: HANDLE, events: &mut [INPUT_RECORD]) -> &[INPUT_RECORD] {
+fn read_console_input<'a>(input_handle: &Handle, events: &'a mut [INPUT_RECORD]) -> &'a [INPUT_RECORD] {
     let mut event_count: DWORD = 0;
     let result = unsafe {
         ReadConsoleInputW(
-            input_handle,
+            input_handle.0,
             events.as_mut_ptr(),
             events.len() as _,
             &mut event_count,
@@ -283,8 +283,8 @@ impl AsyncReader {
     }
 }
 
-fn is_pipped(handle: HANDLE) -> bool {
-    unsafe { GetFileType(handle) != FILE_TYPE_CHAR }
+fn is_pipped(handle: &Handle) -> bool {
+    unsafe { GetFileType(handle.0) != FILE_TYPE_CHAR }
 }
 
 fn read(handle: &Handle, buf: &mut [u8]) -> Result<usize, usize> {
@@ -567,7 +567,8 @@ struct ConsoleMode {
     original_mode: DWORD,
 }
 impl ConsoleMode {
-    pub fn new(console_handle: HANDLE) -> Self {
+    pub fn new(console_handle: &Handle) -> Self {
+        let console_handle = console_handle.0;
         let mut original_mode = DWORD::default();
         let result = unsafe { GetConsoleMode(console_handle, &mut original_mode) };
         if result == FALSE {
@@ -920,9 +921,9 @@ impl Events {
     }
 }
 
-static NEW_REQUEST_EVENT_HANDLE: AtomicPtr<()> = AtomicPtr::new(std::ptr::null_mut());
-
 fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
+    static NEW_REQUEST_EVENT_HANDLE: AtomicPtr<()> = AtomicPtr::new(std::ptr::null_mut());
+
     if pipe_exists(pipe_path) {
         return Ok(());
     }
@@ -1136,7 +1137,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
     }
 }
 
-fn run_client(args: Args, pipe_path: &[u16], input_handle: HANDLE, output_handle: HANDLE) {
+fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle: Handle) {
     if !pipe_exists(pipe_path) {
         fork();
         while !pipe_exists(pipe_path) {
@@ -1154,7 +1155,7 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: HANDLE, output_handle
     }
 
     let client_handle = ClientHandle::from_index(client_index as _).unwrap();
-    let is_pipped = is_pipped(input_handle);
+    let is_pipped = is_pipped(&input_handle);
 
     let mut application = ClientApplication::new(client_handle, is_pipped);
     let bytes = application.init(args);
@@ -1162,41 +1163,23 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: HANDLE, output_handle
         return;
     }
 
-    if is_pipped {
-    /*
-        let mut buf = [0; ClientApplication::connection_buffer_len()];
-        loop {
-            match connection.read(&mut buf) {
-                Ok(0) => break,
-                Ok(len) => {
-                    if !application.update_piped(&buf[..len]) {
-                        break;
-                    }
-                }
-                Err(len) => {
-                    application.update_piped(&buf[..len]);
-                    break;
-                }
-            }
-        }
-    */
-        return;
-    }
+    let console_input_mode = ConsoleMode::new(&input_handle);
+    let console_output_mode = ConsoleMode::new(&output_handle);
 
-    let console_input_mode = ConsoleMode::new(input_handle);
-    console_input_mode.set(ENABLE_WINDOW_INPUT);
-    let console_output_mode = ConsoleMode::new(output_handle);
-    console_output_mode.set(ENABLE_PROCESSED_OUTPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+    if !is_pipped {
+        console_input_mode.set(ENABLE_WINDOW_INPUT);
+        console_output_mode.set(ENABLE_PROCESSED_OUTPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+
+        let (width, height) = get_console_size(&output_handle);
+        let bytes = application.update(Some((width, height)), &[], &[], &[]);
+        if !connection.write(bytes) {
+            return;
+        }
+    }
 
     let mut console_event_buf = [unsafe { std::mem::zeroed() }; CLIENT_CONSOLE_EVENT_BUFFER_LEN];
     let mut keys = Vec::with_capacity(CLIENT_CONSOLE_EVENT_BUFFER_LEN);
-    let wait_handles = [connection.event().handle(), input_handle];
-
-    let (width, height) = get_console_size(output_handle);
-    let bytes = application.update_with_ui(Some((width, height)), &[], &[]);
-    if !connection.write(bytes) {
-        return;
-    }
+    let wait_handles = [connection.event().handle(), input_handle.0];
 
     loop {
         let wait_handle_index = match wait_for_multiple_objects(&wait_handles, None) {
@@ -1206,102 +1189,105 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: HANDLE, output_handle
 
         let mut resize = None;
         keys.clear();
-        let mut message = &[][..];
+        let mut stdint_bytes = &[][..];
+        let mut server_bytes = &[][..];
 
         match wait_handle_index {
             0 => match connection.read_async() {
-                Ok(bytes) => message = bytes,
+                Ok(bytes) => server_bytes = bytes,
                 Err(()) => break,
             },
             1 => {
-                let events = read_console_input(input_handle, &mut console_event_buf);
-                for event in events {
-                    match event.EventType {
-                        KEY_EVENT => {
-                            let event = unsafe { event.Event.KeyEvent() };
-                            if event.bKeyDown == FALSE {
-                                continue;
-                            }
-
-                            let control_key_state = event.dwControlKeyState;
-                            let keycode = event.wVirtualKeyCode as i32;
-                            let unicode_char = unsafe { *event.uChar.UnicodeChar() };
-                            let repeat_count = event.wRepeatCount as usize;
-
-                            const CHAR_A: i32 = b'A' as _;
-                            const CHAR_Z: i32 = b'Z' as _;
-                            let key = match keycode {
-                                VK_BACK => Key::Backspace,
-                                VK_RETURN => Key::Enter,
-                                VK_LEFT => Key::Left,
-                                VK_RIGHT => Key::Right,
-                                VK_UP => Key::Up,
-                                VK_DOWN => Key::Down,
-                                VK_HOME => Key::Home,
-                                VK_END => Key::End,
-                                VK_PRIOR => Key::PageUp,
-                                VK_NEXT => Key::PageDown,
-                                VK_TAB => Key::Tab,
-                                VK_DELETE => Key::Delete,
-                                VK_F1..=VK_F24 => Key::F((keycode - VK_F1 + 1) as _),
-                                VK_ESCAPE => Key::Esc,
-                                VK_SPACE => {
-                                    match std::char::decode_utf16(std::iter::once(unicode_char))
-                                        .next()
-                                    {
-                                        Some(Ok(c)) => Key::Char(c),
-                                        _ => continue,
-                                    }
-                                }
-                                CHAR_A..=CHAR_Z => {
-                                    const ALT_PRESSED_MASK: DWORD =
-                                        LEFT_ALT_PRESSED | RIGHT_ALT_PRESSED;
-                                    const CTRL_PRESSED_MASK: DWORD =
-                                        LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED;
-
-                                    if control_key_state & ALT_PRESSED_MASK != 0 {
-                                        let c = (keycode - CHAR_A) as u8 + b'a';
-                                        Key::Alt(c.to_ascii_lowercase() as _)
-                                    } else if control_key_state & CTRL_PRESSED_MASK != 0 {
-                                        let c = (keycode - CHAR_A) as u8 + b'a';
-                                        Key::Ctrl(c.to_ascii_lowercase() as _)
-                                    } else {
-                                        match std::char::decode_utf16(std::iter::once(unicode_char))
-                                            .next()
-                                        {
-                                            Some(Ok(c)) => Key::Char(c),
-                                            _ => continue,
-                                        }
-                                    }
-                                }
-                                _ => {
-                                    match std::char::decode_utf16(std::iter::once(unicode_char))
-                                        .next()
-                                    {
-                                        Some(Ok(c)) if c.is_ascii_graphic() => Key::Char(c),
-                                        _ => continue,
-                                    }
-                                }
-                            };
-
-                            for _ in 0..repeat_count {
-                                keys.push(key);
-                            }
-                        }
-                        WINDOW_BUFFER_SIZE_EVENT => {
-                            let size = unsafe { event.Event.WindowBufferSizeEvent().dwSize };
-                            resize = Some((size.X as _, size.Y as _));
-                        }
-                        _ => (),
-                    }
+                if is_pipped {
+                    //
+                } else {
+                    let console_events = read_console_input(&input_handle, &mut console_event_buf);
+                    parse_console_events(console_events, &mut keys, &mut resize);
                 }
             }
             _ => unreachable!(),
         }
 
-        let bytes = application.update_with_ui(resize, &keys, message);
+        let bytes = application.update(resize, &keys, stdint_bytes, server_bytes);
         if !connection.write(bytes) {
             break;
+        }
+    }
+}
+
+fn parse_console_events(
+    console_events: &[INPUT_RECORD],
+    keys: &mut Vec<Key>,
+    resize: &mut Option<(usize, usize)>,
+) {
+    for event in console_events {
+        match event.EventType {
+            KEY_EVENT => {
+                let event = unsafe { event.Event.KeyEvent() };
+                if event.bKeyDown == FALSE {
+                    continue;
+                }
+
+                let control_key_state = event.dwControlKeyState;
+                let keycode = event.wVirtualKeyCode as i32;
+                let unicode_char = unsafe { *event.uChar.UnicodeChar() };
+                let repeat_count = event.wRepeatCount as usize;
+
+                const CHAR_A: i32 = b'A' as _;
+                const CHAR_Z: i32 = b'Z' as _;
+                let key = match keycode {
+                    VK_BACK => Key::Backspace,
+                    VK_RETURN => Key::Enter,
+                    VK_LEFT => Key::Left,
+                    VK_RIGHT => Key::Right,
+                    VK_UP => Key::Up,
+                    VK_DOWN => Key::Down,
+                    VK_HOME => Key::Home,
+                    VK_END => Key::End,
+                    VK_PRIOR => Key::PageUp,
+                    VK_NEXT => Key::PageDown,
+                    VK_TAB => Key::Tab,
+                    VK_DELETE => Key::Delete,
+                    VK_F1..=VK_F24 => Key::F((keycode - VK_F1 + 1) as _),
+                    VK_ESCAPE => Key::Esc,
+                    VK_SPACE => {
+                        match std::char::decode_utf16(std::iter::once(unicode_char)).next() {
+                            Some(Ok(c)) => Key::Char(c),
+                            _ => continue,
+                        }
+                    }
+                    CHAR_A..=CHAR_Z => {
+                        const ALT_PRESSED_MASK: DWORD = LEFT_ALT_PRESSED | RIGHT_ALT_PRESSED;
+                        const CTRL_PRESSED_MASK: DWORD = LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED;
+
+                        if control_key_state & ALT_PRESSED_MASK != 0 {
+                            let c = (keycode - CHAR_A) as u8 + b'a';
+                            Key::Alt(c.to_ascii_lowercase() as _)
+                        } else if control_key_state & CTRL_PRESSED_MASK != 0 {
+                            let c = (keycode - CHAR_A) as u8 + b'a';
+                            Key::Ctrl(c.to_ascii_lowercase() as _)
+                        } else {
+                            match std::char::decode_utf16(std::iter::once(unicode_char)).next() {
+                                Some(Ok(c)) => Key::Char(c),
+                                _ => continue,
+                            }
+                        }
+                    }
+                    _ => match std::char::decode_utf16(std::iter::once(unicode_char)).next() {
+                        Some(Ok(c)) if c.is_ascii_graphic() => Key::Char(c),
+                        _ => continue,
+                    },
+                };
+
+                for _ in 0..repeat_count {
+                    keys.push(key);
+                }
+            }
+            WINDOW_BUFFER_SIZE_EVENT => {
+                let size = unsafe { event.Event.WindowBufferSizeEvent().dwSize };
+                *resize = Some((size.X as _, size.Y as _));
+            }
+            _ => (),
         }
     }
 }

@@ -266,7 +266,8 @@ impl ServerApplication {
 pub struct ClientApplication {
     handle: ClientHandle,
     is_pipped: bool,
-    read_buf: Vec<u8>,
+    stdin_read_buf: Vec<u8>,
+    server_read_buf: Vec<u8>,
     write_buf: SerializationBuf,
     stdout: io::StdoutLock<'static>,
 }
@@ -285,7 +286,8 @@ impl ClientApplication {
         Self {
             handle,
             is_pipped,
-            read_buf: Vec::new(),
+            stdin_read_buf: Vec::new(),
+            server_read_buf: Vec::new(),
             write_buf: SerializationBuf::default(),
             stdout,
         }
@@ -347,11 +349,12 @@ impl ClientApplication {
         self.write_buf.as_slice()
     }
 
-    pub fn update_with_ui<'a>(
+    pub fn update<'a>(
         &'a mut self,
         resize: Option<(usize, usize)>,
         keys: &[Key],
-        message: &[u8],
+        stdin_bytes: &[u8],
+        server_bytes: &[u8],
     ) -> &'a [u8] {
         use io::Write;
 
@@ -366,9 +369,13 @@ impl ClientApplication {
             ClientEvent::Key(self.handle, *key).serialize(&mut self.write_buf);
         }
 
-        if !message.is_empty() {
-            self.read_buf.extend_from_slice(message);
-            let mut deserializer = DeserializationSlice(&self.read_buf);
+        if !stdin_bytes.is_empty() {
+            self.stdin_read_buf.extend_from_slice(stdin_bytes);
+        }
+
+        if !server_bytes.is_empty() {
+            self.server_read_buf.extend_from_slice(server_bytes);
+            let mut deserializer = DeserializationSlice(&self.server_read_buf);
 
             loop {
                 match ServerEvent::deserialize(&mut deserializer) {
@@ -383,9 +390,9 @@ impl ClientApplication {
                     }
                     Err(DeserializeError::InsufficientData) => {
                         let rest_len = deserializer.0.len();
-                        let rest_index = self.read_buf.len() - rest_len;
-                        self.read_buf.copy_within(rest_index.., 0);
-                        self.read_buf.truncate(rest_len);
+                        let rest_index = self.server_read_buf.len() - rest_len;
+                        self.server_read_buf.copy_within(rest_index.., 0);
+                        self.server_read_buf.truncate(rest_len);
                         break;
                     }
                     Err(DeserializeError::InvalidData) => panic!("invalid data received"),
