@@ -272,6 +272,10 @@ pub struct ClientApplication {
     stdout: io::StdoutLock<'static>,
 }
 impl ClientApplication {
+    pub const fn stdin_buffer_len() -> usize {
+        2 * 1024
+    }
+
     pub const fn connection_buffer_len() -> usize {
         2 * 1024
     }
