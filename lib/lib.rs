@@ -54,10 +54,6 @@ pub struct Args {
     #[argh(option)]
     pub as_client: Option<client::ClientHandle>,
 
-    /// plugin command
-    #[argh(option)]
-    pub plugin_command: Option<String>,
-
     /// open files at paths
     /// you can append ':<line-number>' to a path to open it at that line
     #[argh(positional)]
