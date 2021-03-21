@@ -104,29 +104,17 @@ impl<'de> Serialize<'de> for &'de str {
     }
 }
 
-#[derive(Default)]
-pub struct SerializationBuf(Vec<u8>);
-impl SerializationBuf {
-    pub fn as_slice(&self) -> &[u8] {
-        &self.0
-    }
-
-    pub fn clear(&mut self) {
-        self.0.clear();
-    }
-}
-impl Serializer for SerializationBuf {
+impl Serializer for Vec<u8> {
     fn write(&mut self, buf: &[u8]) {
-        self.0.extend_from_slice(buf);
+        self.extend_from_slice(buf);
     }
 }
 
-pub struct DeserializationSlice<'de>(pub &'de [u8]);
-impl<'de> Deserializer<'de> for DeserializationSlice<'de> {
+impl<'de> Deserializer<'de> for &'de [u8] {
     fn read(&mut self, len: usize) -> Result<&'de [u8], DeserializeError> {
-        if len <= self.0.len() {
-            let (before, after) = self.0.split_at(len);
-            self.0 = after;
+        if len <= self.len() {
+            let (before, after) = self.split_at(len);
+            *self = after;
             Ok(before)
         } else {
             Err(DeserializeError::InsufficientData)

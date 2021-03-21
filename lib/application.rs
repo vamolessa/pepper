@@ -7,7 +7,7 @@ use crate::{
     events::{ClientEvent, ClientEventReceiver, ServerEvent},
     lsp,
     platform::{Key, Platform, PlatformRequest, ProcessHandle, SharedBuf},
-    serialization::{DeserializationSlice, DeserializeError, SerializationBuf, Serialize},
+    serialization::{DeserializeError, Serialize},
     ui, Args,
 };
 
@@ -197,7 +197,7 @@ impl ServerApplication {
                         }
                     }
                     ApplicationEvent::ProcessStderr { tag, buf } => {
-                        let bytes = buf.as_bytes();
+                        let _bytes = buf.as_bytes();
                         match tag {
                             _ => (),
                         }
@@ -237,7 +237,7 @@ impl ServerApplication {
                 let has_focus = focused_client_handle == Some(c.handle());
 
                 let mut buf = platform.buf_pool.acquire();
-                let write = buf.write_with_len(5);
+                let write = buf.write_with_len(ServerEvent::header_len());
                 ui::render(
                     &editor,
                     c.buffer_view_handle(),
@@ -268,7 +268,7 @@ pub struct ClientApplication {
     is_pipped: bool,
     stdin_read_buf: Vec<u8>,
     server_read_buf: Vec<u8>,
-    server_write_buf: SerializationBuf,
+    server_write_buf: Vec<u8>,
     stdout: io::StdoutLock<'static>,
 }
 impl ClientApplication {
@@ -292,7 +292,7 @@ impl ClientApplication {
             is_pipped,
             stdin_read_buf: Vec::new(),
             server_read_buf: Vec::new(),
-            server_write_buf: SerializationBuf::default(),
+            server_write_buf: Vec::new(),
             stdout,
         }
     }
@@ -379,25 +379,24 @@ impl ClientApplication {
 
         if !server_bytes.is_empty() {
             self.server_read_buf.extend_from_slice(server_bytes);
-            let mut deserializer = DeserializationSlice(&self.server_read_buf);
+            let mut deserializer = &self.server_read_buf[..];
 
             loop {
                 match ServerEvent::deserialize(&mut deserializer) {
                     Ok(ServerEvent::Display(display)) => self.stdout.write_all(display).unwrap(),
                     Ok(ServerEvent::CommandOutput(output)) => {
-                        self.stdout.write_all(output.as_bytes()).unwrap()
+                        self.stdout.write_all(output.as_bytes()).unwrap();
+                        self.stdout.write_all(b"\0").unwrap();
                     }
-                    Ok(ServerEvent::Request(_)) => {
-                        panic!("this client should not receive a server request")
-                    }
+                    Ok(ServerEvent::Request(_)) => (),
                     Err(DeserializeError::InsufficientData) => {
-                        let rest_len = deserializer.0.len();
+                        let rest_len = deserializer.len();
                         let rest_index = self.server_read_buf.len() - rest_len;
                         self.server_read_buf.copy_within(rest_index.., 0);
                         self.server_read_buf.truncate(rest_len);
                         break;
                     }
-                    Err(DeserializeError::InvalidData) => panic!("invalid data received"),
+                    Err(DeserializeError::InvalidData) => panic!("received invalid data"),
                 }
             }
 

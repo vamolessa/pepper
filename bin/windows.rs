@@ -1105,12 +1105,14 @@ enum Input {
     Console(Handle),
 }
 struct Stdin {
+    is_open: bool,
     reader: AsyncReader,
     buf: Box<[u8]>,
 }
 impl Stdin {
     pub fn new(reader: AsyncReader) -> Self {
         Self {
+            is_open: true,
             reader,
             buf: make_buf(ClientApplication::stdin_buffer_len()),
         }
@@ -1120,11 +1122,18 @@ impl Stdin {
         self.reader.event()
     }
 
-    pub fn read_async(&mut self) -> Result<&[u8], ()> {
+    pub fn read_async(&mut self) -> &[u8] {
+        if !self.is_open {
+            return &[];
+        }
+
         match self.reader.read_async(&mut self.buf) {
-            ReadResult::Waiting => Ok(&[]),
-            ReadResult::Ok(len) => Ok(&self.buf[..len]),
-            ReadResult::Err => Err(()),
+            ReadResult::Waiting => &[],
+            ReadResult::Ok(0) | ReadResult::Err => {
+                self.is_open = false;
+                &[]
+            }
+            ReadResult::Ok(len) => &self.buf[..len],
         }
     }
 }
@@ -1270,10 +1279,7 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle
                 Err(()) => break,
             },
             1 => match input {
-                Input::Stdin(ref mut stdin) => match stdin.read_async() {
-                    Ok(bytes) => stdin_bytes = bytes,
-                    Err(()) => break,
-                },
+                Input::Stdin(ref mut stdin) => stdin_bytes = stdin.read_async(),
                 Input::Console(ref handle) => {
                     let console_events = read_console_input(handle, &mut console_event_buf);
                     parse_console_events(console_events, &mut keys, &mut resize);

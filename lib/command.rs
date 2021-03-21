@@ -12,9 +12,10 @@ use crate::{
     client::{Client, ClientHandle, ClientManager},
     editor::Editor,
     editor_utils::MessageKind,
-    events::KeyParseError,
+    events::{KeyParseError, ServerEvent},
     pattern::PatternError,
     platform::{Platform, PlatformRequest, ProcessHandle, SharedBuf},
+    serialization::Serialize,
 };
 
 mod builtin;
@@ -881,11 +882,7 @@ impl CommandManager {
         {
             Some(handle) => {
                 let mut buf = platform.buf_pool.acquire();
-                let write = buf.write_with_len(4);
-                write.extend_from_slice(output.as_bytes());
-                let len = output.len() as u32;
-                let len_buf = len.to_le_bytes();
-                write[..4].copy_from_slice(&len_buf);
+                ServerEvent::CommandOutput(&output).serialize(buf.write());
                 let buf = buf.share();
 
                 platform.buf_pool.release(buf.clone());

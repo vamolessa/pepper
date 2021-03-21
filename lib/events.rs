@@ -5,7 +5,7 @@ use crate::{
     buffer_position::BufferRange,
     client::ClientHandle,
     platform::Key,
-    serialization::{DeserializationSlice, DeserializeError, Deserializer, Serialize, Serializer},
+    serialization::{DeserializeError, Deserializer, Serialize, Serializer},
 };
 
 pub struct EditorEventText {
@@ -423,6 +423,10 @@ pub enum ServerEvent<'a> {
     Request(&'a str),
 }
 impl<'a> ServerEvent<'a> {
+    pub const fn header_len() -> usize {
+        5
+    }
+
     pub fn serialize_display_header(buf: &mut [u8]) {
         buf[0] = 0;
         let len = buf.len() as u32 - 5;
@@ -538,15 +542,14 @@ pub struct ClientEventIter {
 impl ClientEventIter {
     pub fn next<'a>(&mut self, receiver: &'a ClientEventReceiver) -> Option<ClientEvent<'a>> {
         let buf = &receiver.bufs[self.buf_index];
-        let slice = &buf[self.read_len..];
+        let mut slice = &buf[self.read_len..];
         if slice.is_empty() {
             return None;
         }
 
-        let mut deserializer = DeserializationSlice(slice);
-        match ClientEvent::deserialize(&mut deserializer) {
+        match ClientEvent::deserialize(&mut slice) {
             Ok(event) => {
-                self.read_len = buf.len() - deserializer.0.len();
+                self.read_len = buf.len() - slice.len();
                 Some(event)
             }
             Err(_) => {
@@ -634,15 +637,12 @@ mod tests {
 
     #[test]
     fn key_serialization() {
-        use crate::serialization::{DeserializationSlice, SerializationBuf};
-
         fn assert_key_serialization(key: Key) {
-            let mut buf = SerializationBuf::default();
+            let mut buf = Vec::new();
             let _ = serialize_key(key, &mut buf);
-            let slice = buf.as_slice();
-            let mut deserializer = DeserializationSlice(slice);
-            assert!(!deserializer.0.is_empty());
-            match deserialize_key(&mut deserializer) {
+            let mut slice = buf.as_slice();
+            assert!(!slice.is_empty());
+            match deserialize_key(&mut slice) {
                 Ok(k) => assert_eq!(key, k),
                 Err(_) => assert!(false),
             }
