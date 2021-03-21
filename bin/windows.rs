@@ -1191,54 +1191,6 @@ impl ConnectionToServer {
     }
 }
 
-struct PluginProcess {
-    child: Child,
-    reader: AsyncReader,
-    reader_buf: Box<[u8]>,
-}
-impl PluginProcess {
-    pub fn new(mut child: Child) -> Self {
-        let handle = child
-            .stdout
-            .take()
-            .expect("could not access plugin stdout")
-            .into_raw_handle();
-        let reader = AsyncReader::new(Handle(handle as _));
-        let reader_buf = make_buf(ClientApplication::plugin_stdout_buffer_len());
-
-        Self {
-            child,
-            reader,
-            reader_buf,
-        }
-    }
-
-    pub fn read_event(&self) -> &Event {
-        self.reader.event()
-    }
-
-    pub fn write_to_stdin(&mut self, buf: &[u8]) -> bool {
-        use io::Write;
-        match self.child.stdin {
-            Some(ref mut pipe) => pipe.write_all(buf).is_ok(),
-            None => true,
-        }
-    }
-
-    pub fn read_async_from_stdout(&mut self) -> Result<&[u8], ()> {
-        match self.reader.read_async(&mut self.reader_buf) {
-            ReadResult::Waiting => Ok(&[]),
-            ReadResult::Ok(len) => Ok(&self.reader_buf[..len]),
-            ReadResult::Err => Err(()),
-        }
-    }
-}
-impl Drop for PluginProcess {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-    }
-}
-
 fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle: Handle) {
     if !pipe_exists(pipe_path) {
         fork();
@@ -1258,18 +1210,9 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle
     let client_handle = ClientHandle::from_index(client_index as _).unwrap();
     let is_pipped = is_pipped(&input_handle);
 
-    let mut plugin = args.spawn_plugin().map(PluginProcess::new);
-
     let mut application = ClientApplication::new(client_handle, is_pipped);
-    let (server_bytes, plugin_bytes) = application.init(args);
-    if !connection.write(server_bytes) {
-        return;
-    }
-    if !plugin
-        .as_mut()
-        .map(|p| p.write_to_stdin(plugin_bytes))
-        .unwrap_or(true)
-    {
+    let bytes = application.init(args);
+    if !connection.write(bytes) {
         return;
     }
 
@@ -1289,16 +1232,8 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle
         console_output_mode = Some(output_mode);
 
         let (width, height) = get_console_size(&output_handle);
-        let (server_bytes, plugin_bytes) =
-            application.update(Some((width, height)), &[], &[], &[], &[]);
-        if !connection.write(server_bytes) {
-            return;
-        }
-        if !plugin
-            .as_mut()
-            .map(|p| p.write_to_stdin(plugin_bytes))
-            .unwrap_or(true)
-        {
+        let bytes = application.update(Some((width, height)), &[], &[], &[]);
+        if !connection.write(bytes) {
             return;
         }
     }
@@ -1316,30 +1251,18 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle
         Input::Console(ref handle) => handle.0,
     };
 
-    let mut wait_handles = [
-        connection.event().handle(),
-        input_wait_handle,
-        std::ptr::null_mut(),
-    ];
-    let wait_handles = match plugin {
-        Some(ref plugin) => {
-            wait_handles[2] = plugin.read_event().handle();
-            &wait_handles[..]
-        }
-        None => &wait_handles[..2],
-    };
+    let wait_handles = [connection.event().handle(), input_wait_handle];
 
     loop {
-        let wait_handle_index = match wait_for_multiple_objects(wait_handles, None) {
+        let wait_handle_index = match wait_for_multiple_objects(&wait_handles, None) {
             Some(i) => i,
             _ => continue,
         };
 
         let mut resize = None;
         keys.clear();
-        let mut stdint_bytes = &[][..];
+        let mut stdin_bytes = &[][..];
         let mut server_bytes = &[][..];
-        let mut plugin_bytes = &[][..];
 
         match wait_handle_index {
             0 => match connection.read_async() {
@@ -1348,7 +1271,7 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle
             },
             1 => match input {
                 Input::Stdin(ref mut stdin) => match stdin.read_async() {
-                    Ok(bytes) => stdint_bytes = bytes,
+                    Ok(bytes) => stdin_bytes = bytes,
                     Err(()) => break,
                 },
                 Input::Console(ref handle) => {
@@ -1356,27 +1279,11 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle
                     parse_console_events(console_events, &mut keys, &mut resize);
                 }
             },
-            2 => {
-                if let Some(ref mut plugin) = plugin {
-                    match plugin.read_async_from_stdout() {
-                        Ok(buf) => plugin_bytes = buf,
-                        Err(()) => break,
-                    }
-                }
-            }
             _ => unreachable!(),
         }
 
-        let (server_bytes, plugin_bytes) =
-            application.update(resize, &keys, stdint_bytes, server_bytes, plugin_bytes);
-        if !connection.write(server_bytes) {
-            break;
-        }
-        if !plugin
-            .as_mut()
-            .map(|p| p.write_to_stdin(plugin_bytes))
-            .unwrap_or(true)
-        {
+        let bytes = application.update(resize, &keys, stdin_bytes, server_bytes);
+        if !connection.write(bytes) {
             break;
         }
     }
