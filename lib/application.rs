@@ -1,4 +1,4 @@
-use std::{env, fmt, io, path::Path, process::Child, sync::mpsc};
+use std::{env, fmt, io, path::Path, process::{Command, Child, Stdio}, sync::mpsc};
 
 use crate::{
     client::{ClientHandle, ClientManager},
@@ -41,6 +41,16 @@ impl Args {
         }
 
         Some(args)
+    }
+
+    pub fn spawn_plugin(&self) -> Option<Child> {
+        let command = self.plugin_command.as_ref()?;
+        let mut command = Command::new(command);
+        command.stdin(Stdio::piped());
+        command.stdout(Stdio::piped());
+        command.stderr(Stdio::null());
+        let child = command.spawn().ok()?;
+        Some(child)
     }
 }
 
@@ -268,9 +278,9 @@ pub struct ClientApplication {
     is_pipped: bool,
     stdin_read_buf: Vec<u8>,
     server_read_buf: Vec<u8>,
-    write_buf: SerializationBuf,
+    server_write_buf: SerializationBuf,
     stdout: io::StdoutLock<'static>,
-    plugin: Option<Child>,
+    plugin_write_buf: SerializationBuf,
 }
 impl ClientApplication {
     pub const fn stdin_buffer_len() -> usize {
@@ -278,6 +288,10 @@ impl ClientApplication {
     }
 
     pub const fn connection_buffer_len() -> usize {
+        2 * 1024
+    }
+
+    pub const fn plugin_stdout_buffer_len() -> usize {
         2 * 1024
     }
 
@@ -293,14 +307,15 @@ impl ClientApplication {
             is_pipped,
             stdin_read_buf: Vec::new(),
             server_read_buf: Vec::new(),
-            write_buf: SerializationBuf::default(),
+            server_write_buf: SerializationBuf::default(),
             stdout,
-            plugin: None,
+            plugin_write_buf: SerializationBuf::default(),
         }
     }
 
-    pub fn init<'a>(&'a mut self, args: Args) -> &'a [u8] {
-        self.write_buf.clear();
+    pub fn init<'a>(&'a mut self, args: Args) -> (&'a [u8], &'a [u8]) {
+        self.server_write_buf.clear();
+        self.plugin_write_buf.clear();
 
         if let Some(handle) = args.as_client {
             self.handle = handle;
@@ -333,14 +348,15 @@ impl ClientApplication {
             self.stdout.flush().unwrap();
 
             if args.as_client.is_none() {
-                ClientEvent::Key(self.handle, Key::None).serialize(&mut self.write_buf);
+                ClientEvent::Key(self.handle, Key::None).serialize(&mut self.server_write_buf);
             }
         }
 
         if !commands.is_empty() {
-            ClientEvent::Command(self.handle, &commands).serialize(&mut self.write_buf);
+            ClientEvent::Command(self.handle, &commands).serialize(&mut self.server_write_buf);
         }
-        self.write_buf.as_slice()
+
+        (self.server_write_buf.as_slice(), self.plugin_write_buf.as_slice())
     }
 
     pub fn update<'a>(
@@ -349,18 +365,20 @@ impl ClientApplication {
         keys: &[Key],
         stdin_bytes: &[u8],
         server_bytes: &[u8],
-    ) -> &'a [u8] {
+        plugin_bytes: &[u8],
+    ) -> (&'a [u8], &'a [u8]) {
         use io::Write;
 
-        self.write_buf.clear();
+        self.server_write_buf.clear();
+        self.plugin_write_buf.clear();
 
         if let Some((width, height)) = resize {
             ClientEvent::Resize(self.handle, width as _, height as _)
-                .serialize(&mut self.write_buf);
+                .serialize(&mut self.server_write_buf);
         }
 
         for key in keys {
-            ClientEvent::Key(self.handle, *key).serialize(&mut self.write_buf);
+            ClientEvent::Key(self.handle, *key).serialize(&mut self.server_write_buf);
         }
 
         if !stdin_bytes.is_empty() {
@@ -368,13 +386,13 @@ impl ClientApplication {
             for command in self.stdin_read_buf.split(|&b| b == b'\0') {
                 match std::str::from_utf8(command) {
                     Ok(command) => {
-                        ClientEvent::Command(self.handle, command).serialize(&mut self.write_buf)
+                        ClientEvent::Command(self.handle, command).serialize(&mut self.server_write_buf)
                     }
                     Err(_) => ClientEvent::Command(
                         self.handle,
                         "print -error 'error parsing utf8 from stdin'",
                     )
-                    .serialize(&mut self.write_buf),
+                    .serialize(&mut self.server_write_buf),
                 }
             }
         }
@@ -389,12 +407,7 @@ impl ClientApplication {
                         self.stdout.write_all(display).unwrap();
                     }
                     Ok(ServerEvent::CommandOutput(output)) => {
-                        match self.plugin {
-                            Some(ref mut plugin) => {
-                                //
-                            }
-                            None => self.stdout.write_all(output.as_bytes()).unwrap(),
-                        }
+                        //
                     }
                     Ok(ServerEvent::Request(request)) => {
                         todo!("request {}", request);
@@ -413,7 +426,7 @@ impl ClientApplication {
             self.stdout.flush().unwrap();
         }
 
-        self.write_buf.as_slice()
+        (self.server_write_buf.as_slice(), self.plugin_write_buf.as_slice())
     }
 }
 impl Drop for ClientApplication {

@@ -757,6 +757,7 @@ impl ProcessPipe {
 }
 
 struct AsyncProcess {
+    alive: bool,
     child: Child,
     tag: ProcessTag,
     pub stdout: Option<ProcessPipe>,
@@ -787,6 +788,7 @@ impl AsyncProcess {
             .map(|h| raw_handle_to_pipe(h as _, stderr_buf_len));
 
         Self {
+            alive: true,
             child,
             tag,
             stdout,
@@ -799,6 +801,11 @@ impl AsyncProcess {
     }
 
     pub fn wait(&mut self) -> bool {
+        if !self.alive {
+            return false;
+        }
+
+        self.alive = false;
         self.stdout = None;
         self.stderr = None;
         match self.child.wait() {
@@ -808,10 +815,21 @@ impl AsyncProcess {
     }
 
     pub fn kill(&mut self) {
+        if !self.alive {
+            return;
+        }
+
+        self.alive = false;
         self.stdout = None;
         self.stderr = None;
         let _ = self.child.kill();
         let _ = self.child.wait();
+    }
+}
+impl Drop for AsyncProcess {
+    fn drop(&mut self) {
+        self.kill();
+        self.alive = false;
     }
 }
 
@@ -1076,19 +1094,25 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
     }
 }
 
+fn make_buf(len: usize) -> Box<[u8]> {
+    let mut buf = Vec::with_capacity(len);
+    buf.resize(len, 0);
+    buf.into_boxed_slice()
+}
+
 enum Input {
     Stdin(Stdin),
     Console(Handle),
 }
 struct Stdin {
     reader: AsyncReader,
-    buf: [u8; ClientApplication::stdin_buffer_len()],
+    buf: Box<[u8]>,
 }
 impl Stdin {
     pub fn new(reader: AsyncReader) -> Self {
         Self {
             reader,
-            buf: [0; ClientApplication::stdin_buffer_len()],
+            buf: make_buf(ClientApplication::stdin_buffer_len()),
         }
     }
 
@@ -1107,7 +1131,7 @@ impl Stdin {
 
 struct ConnectionToServer {
     reader: AsyncReader,
-    buf: [u8; ClientApplication::connection_buffer_len()],
+    buf: Box<[u8]>,
 }
 impl ConnectionToServer {
     pub fn connect(path: &[u16]) -> Self {
@@ -1141,7 +1165,7 @@ impl ConnectionToServer {
         }
 
         let reader = AsyncReader::new(Handle(handle));
-        let buf = [0; ClientApplication::connection_buffer_len()];
+        let buf = make_buf(ClientApplication::connection_buffer_len());
 
         Self { reader, buf }
     }
@@ -1167,6 +1191,54 @@ impl ConnectionToServer {
     }
 }
 
+struct PluginProcess {
+    child: Child,
+    reader: AsyncReader,
+    reader_buf: Box<[u8]>,
+}
+impl PluginProcess {
+    pub fn new(mut child: Child) -> Self {
+        let handle = child
+            .stdout
+            .take()
+            .expect("could not access plugin stdout")
+            .into_raw_handle();
+        let reader = AsyncReader::new(Handle(handle as _));
+        let reader_buf = make_buf(ClientApplication::plugin_stdout_buffer_len());
+
+        Self {
+            child,
+            reader,
+            reader_buf,
+        }
+    }
+
+    pub fn read_event(&self) -> &Event {
+        self.reader.event()
+    }
+
+    pub fn write_to_stdin(&mut self, buf: &[u8]) -> bool {
+        use io::Write;
+        match self.child.stdin {
+            Some(ref mut pipe) => pipe.write_all(buf).is_ok(),
+            None => true,
+        }
+    }
+
+    pub fn read_async_from_stdout(&mut self) -> Result<&[u8], ()> {
+        match self.reader.read_async(&mut self.reader_buf) {
+            ReadResult::Waiting => Ok(&[]),
+            ReadResult::Ok(len) => Ok(&self.reader_buf[..len]),
+            ReadResult::Err => Err(()),
+        }
+    }
+}
+impl Drop for PluginProcess {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+    }
+}
+
 fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle: Handle) {
     if !pipe_exists(pipe_path) {
         fork();
@@ -1186,9 +1258,18 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle
     let client_handle = ClientHandle::from_index(client_index as _).unwrap();
     let is_pipped = is_pipped(&input_handle);
 
+    let mut plugin = args.spawn_plugin().map(PluginProcess::new);
+
     let mut application = ClientApplication::new(client_handle, is_pipped);
-    let bytes = application.init(args);
-    if !connection.write(bytes) {
+    let (server_bytes, plugin_bytes) = application.init(args);
+    if !connection.write(server_bytes) {
+        return;
+    }
+    if !plugin
+        .as_mut()
+        .map(|p| p.write_to_stdin(plugin_bytes))
+        .unwrap_or(true)
+    {
         return;
     }
 
@@ -1208,8 +1289,16 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle
         console_output_mode = Some(output_mode);
 
         let (width, height) = get_console_size(&output_handle);
-        let bytes = application.update(Some((width, height)), &[], &[], &[]);
-        if !connection.write(bytes) {
+        let (server_bytes, plugin_bytes) =
+            application.update(Some((width, height)), &[], &[], &[], &[]);
+        if !connection.write(server_bytes) {
+            return;
+        }
+        if !plugin
+            .as_mut()
+            .map(|p| p.write_to_stdin(plugin_bytes))
+            .unwrap_or(true)
+        {
             return;
         }
     }
@@ -1227,10 +1316,21 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle
         Input::Console(ref handle) => handle.0,
     };
 
-    let wait_handles = [connection.event().handle(), input_wait_handle];
+    let mut wait_handles = [
+        connection.event().handle(),
+        input_wait_handle,
+        std::ptr::null_mut(),
+    ];
+    let wait_handles = match plugin {
+        Some(ref plugin) => {
+            wait_handles[2] = plugin.read_event().handle();
+            &wait_handles[..]
+        }
+        None => &wait_handles[..2],
+    };
 
     loop {
-        let wait_handle_index = match wait_for_multiple_objects(&wait_handles, None) {
+        let wait_handle_index = match wait_for_multiple_objects(wait_handles, None) {
             Some(i) => i,
             _ => continue,
         };
@@ -1239,6 +1339,7 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle
         keys.clear();
         let mut stdint_bytes = &[][..];
         let mut server_bytes = &[][..];
+        let mut plugin_bytes = &[][..];
 
         match wait_handle_index {
             0 => match connection.read_async() {
@@ -1255,11 +1356,27 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle
                     parse_console_events(console_events, &mut keys, &mut resize);
                 }
             },
+            2 => {
+                if let Some(ref mut plugin) = plugin {
+                    match plugin.read_async_from_stdout() {
+                        Ok(buf) => plugin_bytes = buf,
+                        Err(()) => break,
+                    }
+                }
+            }
             _ => unreachable!(),
         }
 
-        let bytes = application.update(resize, &keys, stdint_bytes, server_bytes);
-        if !connection.write(bytes) {
+        let (server_bytes, plugin_bytes) =
+            application.update(resize, &keys, stdint_bytes, server_bytes, plugin_bytes);
+        if !connection.write(server_bytes) {
+            break;
+        }
+        if !plugin
+            .as_mut()
+            .map(|p| p.write_to_stdin(plugin_bytes))
+            .unwrap_or(true)
+        {
             break;
         }
     }
