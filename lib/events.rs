@@ -424,14 +424,14 @@ pub enum ServerEvent<'a> {
 }
 impl<'a> ServerEvent<'a> {
     pub const fn header_len() -> usize {
-        5
+        1 + std::mem::size_of::<u32>()
     }
 
     pub fn serialize_display_header(buf: &mut [u8]) {
         buf[0] = 0;
-        let len = buf.len() as u32 - 5;
+        let len = buf.len() as u32 - Self::header_len() as u32;
         let len_buf = len.to_le_bytes();
-        buf[1..5].copy_from_slice(&len_buf);
+        buf[1..Self::header_len()].copy_from_slice(&len_buf);
     }
 }
 impl<'de> Serialize<'de> for ServerEvent<'de> {

@@ -379,10 +379,11 @@ impl ClientApplication {
 
         if !server_bytes.is_empty() {
             self.server_read_buf.extend_from_slice(server_bytes);
-            let mut deserializer = &self.server_read_buf[..];
+            let mut read_slice = &self.server_read_buf[..];
 
             loop {
-                match ServerEvent::deserialize(&mut deserializer) {
+                let previous_slice = read_slice;
+                match ServerEvent::deserialize(&mut read_slice) {
                     Ok(ServerEvent::Display(display)) => self.stdout.write_all(display).unwrap(),
                     Ok(ServerEvent::CommandOutput(output)) => {
                         self.stdout.write_all(output.as_bytes()).unwrap();
@@ -390,7 +391,7 @@ impl ClientApplication {
                     }
                     Ok(ServerEvent::Request(_)) => (),
                     Err(DeserializeError::InsufficientData) => {
-                        let rest_len = deserializer.len();
+                        let rest_len = previous_slice.len();
                         let rest_index = self.server_read_buf.len() - rest_len;
                         self.server_read_buf.copy_within(rest_index.., 0);
                         self.server_read_buf.truncate(rest_len);
