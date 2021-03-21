@@ -426,6 +426,10 @@ impl ClientApplication {
             self.stdout.flush().unwrap();
         }
 
+        if !plugin_bytes.is_empty() {
+            // TODO: what to do with plugin stdout bytes?
+        }
+
         (self.server_write_buf.as_slice(), self.plugin_write_buf.as_slice())
     }
 }
