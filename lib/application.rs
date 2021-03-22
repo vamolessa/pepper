@@ -80,6 +80,14 @@ pub enum ApplicationEvent {
     },
 }
 
+fn restore_screen(stdout: &mut io::StdoutLock) {
+    use io::Write;
+    let _ = stdout.write_all(ui::EXIT_ALTERNATE_BUFFER_CODE);
+    let _ = stdout.write_all(ui::SHOW_CURSOR_CODE);
+    let _ = stdout.write_all(ui::RESET_STYLE_CODE);
+    let _ = stdout.flush();
+}
+
 pub struct ServerApplication;
 impl ServerApplication {
     pub const fn connection_buffer_len() -> usize {
@@ -246,6 +254,14 @@ impl ClientApplication {
             STDOUT.as_ref().unwrap().lock()
         };
 
+        if !is_pipped {
+            let hook = std::panic::take_hook();
+            std::panic::set_hook(Box::new(move |info| {
+                restore_screen(&mut io::stdout().lock());
+                hook(info);
+            }));
+        }
+
         Self {
             handle,
             is_pipped,
@@ -365,11 +381,7 @@ impl ClientApplication {
 impl Drop for ClientApplication {
     fn drop(&mut self) {
         if !self.is_pipped {
-            use io::Write;
-            let _ = self.stdout.write_all(ui::EXIT_ALTERNATE_BUFFER_CODE);
-            let _ = self.stdout.write_all(ui::SHOW_CURSOR_CODE);
-            let _ = self.stdout.write_all(ui::RESET_STYLE_CODE);
-            let _ = self.stdout.flush();
+            restore_screen(&mut self.stdout);
         }
     }
 }
