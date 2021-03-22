@@ -248,14 +248,6 @@ impl<'stdout> ClientApplication<'stdout> {
     }
 
     pub fn new(handle: ClientHandle, stdout: io::StdoutLock<'stdout>, is_pipped: bool) -> Self {
-        if !is_pipped {
-            let hook = std::panic::take_hook();
-            std::panic::set_hook(Box::new(move |info| {
-                restore_screen(&mut io::stdout().lock());
-                hook(info);
-            }));
-        }
-
         Self {
             handle,
             is_pipped,
