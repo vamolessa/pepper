@@ -1,7 +1,7 @@
 use std::{
     any, fmt,
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, Stdio},
     str::FromStr,
 };
 
@@ -504,10 +504,12 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                         client.set_buffer_view_handle(Some(handle));
                     }
 
-                    if let Some((command, buffer_view)) = command.zip(ctx.editor.buffer_views.get(handle)) {
-                        let buffer_handle = buffer_view.buffer_handle;
+                    if let Some((mut command, buffer_view)) = command.zip(ctx.editor.buffer_views.get(handle)) {
+                        command.stdin(Stdio::null());
+                        command.stdout(Stdio::piped());
+                        command.stderr(Stdio::null());
                         ctx.platform.enqueue_request(PlatformRequest::SpawnProcess {
-                            tag: ProcessTag::Buffer(buffer_handle),
+                            tag: ProcessTag::Buffer(buffer_view.buffer_handle),
                             command,
                             buf_len: 4 * 1024,
                         });

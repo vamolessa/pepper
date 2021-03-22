@@ -65,9 +65,9 @@ use pepper::{
     Args,
 };
 
-const MAX_CLIENT_COUNT: usize = 12;
-const MAX_PROCESS_COUNT: usize = 25;
-const MAX_EVENT_COUNT: usize = 1 + 1 + MAX_CLIENT_COUNT + 2 * MAX_PROCESS_COUNT;
+const MAX_CLIENT_COUNT: usize = 20;
+const MAX_PROCESS_COUNT: usize = 42;
+const MAX_EVENT_COUNT: usize = 1 + 1 + MAX_CLIENT_COUNT + MAX_PROCESS_COUNT;
 const _ASSERT_MAX_EVENT_COUNT_IS_64: [(); 64] = [(); MAX_EVENT_COUNT];
 
 const CLIENT_CONSOLE_EVENT_BUFFER_LEN: usize = 32;
@@ -861,6 +861,7 @@ impl Events {
 }
 
 fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
+    const NONE_ASYNC_PROCESS : Option<AsyncProcess> = None;
     static NEW_REQUEST_EVENT_HANDLE: AtomicPtr<()> = AtomicPtr::new(std::ptr::null_mut());
 
     if pipe_exists(pipe_path) {
@@ -872,7 +873,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
         ConnectionToClientListener::new(pipe_path, ServerApplication::connection_buffer_len());
 
     let mut client_connections: [Option<ConnectionToClient>; MAX_CLIENT_COUNT] = Default::default();
-    let mut processes: [Option<AsyncProcess>; MAX_PROCESS_COUNT] = Default::default();
+    let mut processes = [NONE_ASYNC_PROCESS; MAX_PROCESS_COUNT];
     let mut buf_pool = BufPool::default();
 
     let new_request_event = Event::automatic();
