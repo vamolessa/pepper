@@ -5,7 +5,7 @@ use crate::{
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{BufferViewError, BufferViewHandle, CursorMovement, CursorMovementKind},
     client::Client,
-    cursor::Cursor,
+    cursor::{CursorCollection, Cursor},
     editor::{Editor, KeysIterator},
     editor_utils::MessageKind,
     lsp,
@@ -263,7 +263,7 @@ impl State {
 
                         cursors.clear();
                         cursors.add(Cursor {
-                            anchor: BufferPosition::line_col(0, 0),
+                            anchor: BufferPosition::zero(),
                             position: BufferPosition::line_col(last_line_index, last_line_len),
                         });
                     }
@@ -353,7 +353,7 @@ impl State {
 
                         cursors.clear();
                         cursors.add(Cursor {
-                            anchor: BufferPosition::line_col(0, 0),
+                            anchor: BufferPosition::zero(),
                             position: BufferPosition::line_col(last_line_index, last_line_len),
                         });
                     }
@@ -460,14 +460,16 @@ impl State {
                     }
                     Key::Char('f') => {
                         let buffer_handle = buffer_view.buffer_handle;
-                        // TODO: change to array once we implement max cursor count
-                        let ranges: Vec<_> = buffer_view.cursors[..]
-                            .iter()
-                            .map(|c| c.to_range())
-                            .collect();
-                        let mut path_buf = ctx.editor.string_pool.acquire();
 
-                        for range in ranges {
+                        let mut len = 0;
+                        let mut ranges = [BufferRange::zero(); CursorCollection::capacity()];
+                        for cursor in &buffer_view.cursors[..] {
+                            ranges[len] = cursor.to_range();
+                            len += 1;
+                        }
+
+                        let mut path_buf = ctx.editor.string_pool.acquire();
+                        for range in &ranges[..len] {
                             let line_index = range.from.line_index;
                             if range.to.line_index != line_index {
                                 continue;

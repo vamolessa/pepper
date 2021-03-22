@@ -837,7 +837,7 @@ impl Buffer {
             self.syntax_handle = syntax_handle;
             self.highlighted.clear();
             self.highlighted.on_insert(BufferRange::between(
-                BufferPosition::line_col(0, 0),
+                BufferPosition::zero(),
                 BufferPosition::line_col(self.content.line_count() - 1, 0),
             ));
         }
@@ -1176,7 +1176,7 @@ impl Buffer {
             .map_err(|_| BufferError::CouldNotReadFile)?;
         self.highlighted.clear();
         self.highlighted.on_insert(BufferRange::between(
-            BufferPosition::line_col(0, 0),
+            BufferPosition::zero(),
             BufferPosition::line_col(self.content.line_count() - 1, 0),
         ));
 
@@ -1341,33 +1341,75 @@ mod tests {
     #[test]
     fn test_find_path_at() {
         let text = "/path/file:45";
-        assert_eq!(("/path/file", Some(45)), find_path_and_line_number_at(text, 0));
-        assert_eq!(("/path/file", Some(45)), find_path_and_line_number_at(text, 1));
-        assert_eq!(("/path/file", Some(45)), find_path_and_line_number_at(text, text.len()));
-        assert_eq!(("/path/file", Some(45)), find_path_and_line_number_at(text, 3));
-        assert_eq!(("/path/file", Some(45)), find_path_and_line_number_at(text, 8));
+        assert_eq!(
+            ("/path/file", Some(45)),
+            find_path_and_line_number_at(text, 0)
+        );
+        assert_eq!(
+            ("/path/file", Some(45)),
+            find_path_and_line_number_at(text, 1)
+        );
+        assert_eq!(
+            ("/path/file", Some(45)),
+            find_path_and_line_number_at(text, text.len())
+        );
+        assert_eq!(
+            ("/path/file", Some(45)),
+            find_path_and_line_number_at(text, 3)
+        );
+        assert_eq!(
+            ("/path/file", Some(45)),
+            find_path_and_line_number_at(text, 8)
+        );
 
         let text = "xx /path/file:";
         assert_eq!(("xx", None), find_path_and_line_number_at(text, 0));
         assert_eq!(("xx", None), find_path_and_line_number_at(text, 1));
         assert_eq!(("xx", None), find_path_and_line_number_at(text, 2));
         assert_eq!(("/path/file", None), find_path_and_line_number_at(text, 3));
-        assert_eq!(("/path/file", None), find_path_and_line_number_at(text, text.len() - 1));
-        assert_eq!(("/path/file", None), find_path_and_line_number_at(text, text.len()));
+        assert_eq!(
+            ("/path/file", None),
+            find_path_and_line_number_at(text, text.len() - 1)
+        );
+        assert_eq!(
+            ("/path/file", None),
+            find_path_and_line_number_at(text, text.len())
+        );
 
         let text = "xx /path/file:3xx";
-        assert_eq!(("/path/file", Some(3)), find_path_and_line_number_at(text, 3));
-        assert_eq!(("/path/file", Some(3)), find_path_and_line_number_at(text, text.len() - 5));
-        assert_eq!(("/path/file", Some(3)), find_path_and_line_number_at(text, text.len() - 4));
-        assert_eq!(("/path/file", Some(3)), find_path_and_line_number_at(text, text.len() - 3));
-        assert_eq!(("/path/file", Some(3)), find_path_and_line_number_at(text, text.len() - 2));
-        assert_eq!(("/path/file", Some(3)), find_path_and_line_number_at(text, text.len() - 1));
-        assert_eq!(("/path/file", Some(3)), find_path_and_line_number_at(text, text.len()));
+        assert_eq!(
+            ("/path/file", Some(3)),
+            find_path_and_line_number_at(text, 3)
+        );
+        assert_eq!(
+            ("/path/file", Some(3)),
+            find_path_and_line_number_at(text, text.len() - 5)
+        );
+        assert_eq!(
+            ("/path/file", Some(3)),
+            find_path_and_line_number_at(text, text.len() - 4)
+        );
+        assert_eq!(
+            ("/path/file", Some(3)),
+            find_path_and_line_number_at(text, text.len() - 3)
+        );
+        assert_eq!(
+            ("/path/file", Some(3)),
+            find_path_and_line_number_at(text, text.len() - 2)
+        );
+        assert_eq!(
+            ("/path/file", Some(3)),
+            find_path_and_line_number_at(text, text.len() - 1)
+        );
+        assert_eq!(
+            ("/path/file", Some(3)),
+            find_path_and_line_number_at(text, text.len())
+        );
     }
 
     fn buffer_from_str(text: &str) -> BufferContent {
         let mut buffer = BufferContent::new();
-        buffer.insert_text(BufferPosition::line_col(0, 0), text);
+        buffer.insert_text(BufferPosition::zero(), text);
         buffer
     }
 
@@ -1472,8 +1514,8 @@ mod tests {
         );
 
         buffer.delete_range(BufferRange::between(
-            BufferPosition::line_col(0, 0),
-            BufferPosition::line_col(0, 0),
+            BufferPosition::zero(),
+            BufferPosition::zero(),
         ));
         assert_eq!(2, buffer.line_count());
         assert_eq!(
@@ -1532,7 +1574,7 @@ mod tests {
         buffer.capabilities = BufferCapabilities::text();
         buffer.insert_text(
             &mut word_database,
-            BufferPosition::line_col(0, 0),
+            BufferPosition::zero(),
             "single line content",
             &mut events,
         );
@@ -1567,7 +1609,7 @@ mod tests {
         buffer.capabilities = BufferCapabilities::text();
         let insert_range = buffer.insert_text(
             &mut word_database,
-            BufferPosition::line_col(0, 0),
+            BufferPosition::zero(),
             "multi\nline\ncontent",
             &mut events,
         );

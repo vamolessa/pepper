@@ -514,9 +514,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                                 buffer.capabilities = BufferCapabilities::log();
                                 buffer.content().end()
                             }
-                            None => BufferPosition::line_col(0, 0),
+                            None => BufferPosition::zero(),
                         };
-                        let range = BufferRange::between(BufferPosition::line_col(0, 0), end);
+                        let range = BufferRange::between(BufferPosition::zero(), end);
 
                         ctx.editor.buffer_views.delete_text_in_range(
                             &mut ctx.editor.buffers,

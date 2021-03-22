@@ -522,7 +522,7 @@ mod tests {
         let mut buffer = BufferContent::new();
         let mut highlighted = HighlightedBuffer::new();
 
-        let range = buffer.insert_text(BufferPosition::line_col(0, 0), "/*\n*/");
+        let range = buffer.insert_text(BufferPosition::zero(), "/*\n*/");
         highlighted.on_insert(range);
         highlighted.highlight_dirty_lines(&syntax, &buffer);
         assert_eq!(buffer.line_count(), highlighted.lines.len());
@@ -554,7 +554,7 @@ mod tests {
         let mut buffer = BufferContent::new();
         let mut highlighted = HighlightedBuffer::new();
 
-        let range = buffer.insert_text(BufferPosition::line_col(0, 0), "/*\n\n\n*/");
+        let range = buffer.insert_text(BufferPosition::zero(), "/*\n\n\n*/");
         highlighted.on_insert(range);
         highlighted.highlight_dirty_lines(&syntax, &buffer);
         assert_eq!(buffer.line_count(), highlighted.lines.len());
@@ -575,7 +575,7 @@ mod tests {
         let mut buffer = BufferContent::new();
         let mut highlighted = HighlightedBuffer::new();
 
-        let range = buffer.insert_text(BufferPosition::line_col(0, 0), "/*\n* /\n*/");
+        let range = buffer.insert_text(BufferPosition::zero(), "/*\n* /\n*/");
         highlighted.on_insert(range);
         highlighted.highlight_dirty_lines(&syntax, &buffer);
 
@@ -616,7 +616,7 @@ mod tests {
         let mut buffer = BufferContent::new();
         let mut highlighted = HighlightedBuffer::new();
 
-        let range = buffer.insert_text(BufferPosition::line_col(0, 0), "/ *\na\n*/");
+        let range = buffer.insert_text(BufferPosition::zero(), "/ *\na\n*/");
         highlighted.on_insert(range);
         highlighted.highlight_dirty_lines(&syntax, &buffer);
 
@@ -643,7 +643,7 @@ mod tests {
         let mut buffer = BufferContent::new();
         let mut highlighted = HighlightedBuffer::new();
 
-        let range = buffer.insert_text(BufferPosition::line_col(0, 0), "a\n/*\nb\nc*/");
+        let range = buffer.insert_text(BufferPosition::zero(), "a\n/*\nb\nc*/");
         highlighted.on_insert(range);
         highlighted.highlight_dirty_lines(&syntax, &buffer);
         assert_eq!(buffer.line_count(), highlighted.highlighted_len);
@@ -657,10 +657,7 @@ mod tests {
             assert_eq!(None, tokens.next());
         }
 
-        let range = BufferRange::between(
-            BufferPosition::line_col(0, 0),
-            BufferPosition::line_col(1, 1),
-        );
+        let range = BufferRange::between(BufferPosition::zero(), BufferPosition::line_col(1, 1));
         buffer.delete_range(range);
         highlighted.on_delete(range);
         highlighted.highlight_dirty_lines(&syntax, &buffer);

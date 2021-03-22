@@ -360,7 +360,6 @@ impl FromStr for BufferViewHandle {
 #[derive(Default)]
 pub struct BufferViewCollection {
     buffer_views: Vec<Option<BufferView>>,
-    fix_cursor_ranges: Vec<BufferRange>,
 }
 
 impl BufferViewCollection {
@@ -428,12 +427,11 @@ impl BufferViewCollection {
             None => return,
         };
 
-        self.fix_cursor_ranges.clear();
         let range = buffer.insert_text(word_database, position, text, events);
-        self.fix_cursor_ranges.push(range);
-
         let current_buffer_handle = current_view.buffer_handle;
-        self.fix_buffer_cursors(current_buffer_handle, |cursor, range| cursor.insert(range));
+        self.fix_buffer_cursors(&[range], current_buffer_handle, |cursor, range| {
+            cursor.insert(range)
+        });
     }
 
     pub fn insert_text_at_cursor_positions(
@@ -453,14 +451,17 @@ impl BufferViewCollection {
             None => return,
         };
 
-        self.fix_cursor_ranges.clear();
+        let mut len = 0;
+        let mut ranges = [BufferRange::zero(); CursorCollection::capacity()];
         for cursor in current_view.cursors[..].iter().rev() {
-            let range = buffer.insert_text(word_database, cursor.position, text, events);
-            self.fix_cursor_ranges.push(range);
+            ranges[len] = buffer.insert_text(word_database, cursor.position, text, events);
+            len += 1;
         }
 
         let current_buffer_handle = current_view.buffer_handle;
-        self.fix_buffer_cursors(current_buffer_handle, |cursor, range| cursor.insert(range));
+        self.fix_buffer_cursors(&ranges[..len], current_buffer_handle, |cursor, range| {
+            cursor.insert(range)
+        });
     }
 
     pub fn delete_text_in_range(
@@ -480,12 +481,12 @@ impl BufferViewCollection {
             None => return,
         };
 
-        self.fix_cursor_ranges.clear();
-        self.fix_cursor_ranges.push(range);
         buffer.delete_range(word_database, range, events);
 
         let current_buffer_handle = current_view.buffer_handle;
-        self.fix_buffer_cursors(current_buffer_handle, |cursor, range| cursor.delete(range));
+        self.fix_buffer_cursors(&[range], current_buffer_handle, |cursor, range| {
+            cursor.delete(range)
+        });
     }
 
     pub fn delete_text_in_cursor_ranges(
@@ -504,15 +505,19 @@ impl BufferViewCollection {
             None => return,
         };
 
-        self.fix_cursor_ranges.clear();
+        let mut len = 0;
+        let mut ranges = [BufferRange::zero(); CursorCollection::capacity()];
         for cursor in current_view.cursors[..].iter().rev() {
             let range = cursor.to_range();
             buffer.delete_range(word_database, range, events);
-            self.fix_cursor_ranges.push(range);
+            ranges[len] = range;
+            len += 1;
         }
 
         let current_buffer_handle = current_view.buffer_handle;
-        self.fix_buffer_cursors(current_buffer_handle, |cursor, range| cursor.delete(range));
+        self.fix_buffer_cursors(&ranges[..len], current_buffer_handle, |cursor, range| {
+            cursor.delete(range)
+        });
     }
 
     pub fn apply_completion(
@@ -532,7 +537,9 @@ impl BufferViewCollection {
             None => return,
         };
 
-        self.fix_cursor_ranges.clear();
+        let mut len = 0;
+        let mut ranges = [BufferRange::zero(); CursorCollection::capacity()];
+
         for cursor in current_view.cursors[..].iter().rev() {
             let mut word_position = cursor.position;
             word_position.column_byte_index = word_position.column_byte_index.saturating_sub(1);
@@ -550,22 +557,29 @@ impl BufferViewCollection {
             if cursor.position > insert_range.to {
                 std::mem::swap(&mut range.from, &mut range.to);
             }
-            self.fix_cursor_ranges.push(range);
+
+            ranges[len] = range;
+            len += 1;
         }
 
         let current_buffer_handle = current_view.buffer_handle;
-        self.fix_buffer_cursors(current_buffer_handle, |cursor, mut range| {
-            if range.from <= range.to {
-                cursor.insert(range);
-            } else {
-                std::mem::swap(&mut range.from, &mut range.to);
-                cursor.delete(range);
-            }
-        });
+        self.fix_buffer_cursors(
+            &ranges[..len],
+            current_buffer_handle,
+            |cursor, mut range| {
+                if range.from <= range.to {
+                    cursor.insert(range);
+                } else {
+                    std::mem::swap(&mut range.from, &mut range.to);
+                    cursor.delete(range);
+                }
+            },
+        );
     }
 
     fn fix_buffer_cursors(
         &mut self,
+        cursor_ranges: &[BufferRange],
         buffer_handle: BufferHandle,
         op: fn(&mut Cursor, BufferRange),
     ) {
@@ -574,9 +588,8 @@ impl BufferViewCollection {
                 continue;
             }
 
-            let ranges = &self.fix_cursor_ranges;
             for c in &mut view.cursors.mut_guard()[..] {
-                for range in ranges.iter() {
+                for range in cursor_ranges {
                     op(c, *range);
                 }
             }
@@ -624,17 +637,19 @@ impl BufferViewCollection {
             None => return,
         };
 
-        self.fix_cursor_ranges.clear();
+        // TODO: investigate if we can remove this allocation
+        let mut ranges: Vec<BufferRange> = Vec::new();
+
         for edit in edits {
             match edit.kind {
                 EditKind::Insert => {
                     if fix_edit_ranges {
-                        for fix_range in &mut self.fix_cursor_ranges {
-                            fix_range.from = fix_range.from.insert(edit.range);
-                            fix_range.to = fix_range.to.insert(edit.range);
+                        for range in &mut ranges {
+                            range.from = range.from.insert(edit.range);
+                            range.to = range.to.insert(edit.range);
                         }
                     }
-                    self.fix_cursor_ranges.push(edit.range);
+                    ranges.push(edit.range);
                     for (i, view) in self.buffer_views.iter_mut().flatten().enumerate() {
                         if i != handle.0 && view.buffer_handle == buffer_handle {
                             for c in &mut view.cursors.mut_guard()[..] {
@@ -645,13 +660,13 @@ impl BufferViewCollection {
                 }
                 EditKind::Delete => {
                     if fix_edit_ranges {
-                        for fix_range in &mut self.fix_cursor_ranges {
-                            fix_range.from = fix_range.from.delete(edit.range);
-                            fix_range.to = fix_range.to.delete(edit.range);
+                        for range in &mut ranges {
+                            range.from = range.from.delete(edit.range);
+                            range.to = range.to.delete(edit.range);
                         }
                     }
-                    let fix_range = BufferRange::between(edit.range.from, edit.range.from);
-                    self.fix_cursor_ranges.push(fix_range);
+                    let range = BufferRange::between(edit.range.from, edit.range.from);
+                    ranges.push(range);
                     for (i, view) in self.buffer_views.iter_mut().flatten().enumerate() {
                         if i != handle.0 && view.buffer_handle == buffer_handle {
                             for c in &mut view.cursors.mut_guard()[..] {
@@ -663,21 +678,20 @@ impl BufferViewCollection {
             }
         }
 
-        if self.fix_cursor_ranges.is_empty() {
+        if ranges.is_empty() {
             return;
         }
 
         if let Some(view) = self.buffer_views[handle.0].as_mut() {
             let mut cursors = view.cursors.mut_guard();
             cursors.clear();
-            for range in &self.fix_cursor_ranges {
+            for range in &ranges {
                 cursors.add(Cursor {
                     anchor: range.from,
                     position: range.to,
                 });
             }
         }
-        self.fix_cursor_ranges.clear();
     }
 
     pub fn buffer_view_handle_from_buffer_handle(
@@ -784,7 +798,7 @@ mod tests {
             buffer.capabilities = BufferCapabilities::text();
             buffer.insert_text(
                 &mut word_database,
-                BufferPosition::line_col(0, 0),
+                BufferPosition::zero(),
                 text,
                 &mut events,
             );
@@ -811,8 +825,8 @@ mod tests {
 
         let buffer_view = ctx.buffer_views.get(ctx.buffer_view_handle).unwrap();
         let main_cursor = buffer_view.cursors.main_cursor();
-        assert_eq!(BufferPosition::line_col(0, 0), main_cursor.anchor);
-        assert_eq!(BufferPosition::line_col(0, 0), main_cursor.position);
+        assert_eq!(BufferPosition::zero(), main_cursor.anchor);
+        assert_eq!(BufferPosition::zero(), main_cursor.position);
 
         ctx.buffer_views.insert_text_at_cursor_positions(
             &mut ctx.buffers,

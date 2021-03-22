@@ -9,6 +9,13 @@ pub struct Cursor {
 }
 
 impl Cursor {
+    pub const fn zero() -> Self {
+        Self {
+            anchor: BufferPosition::zero(),
+            position: BufferPosition::zero(),
+        }
+    }
+
     pub fn to_range(&self) -> BufferRange {
         BufferRange::between(self.anchor, self.position)
     }
@@ -26,26 +33,20 @@ impl Cursor {
 
 #[derive(Clone)]
 pub struct CursorCollection {
-    cursors: Box<[Cursor; Self::max_len()]>,
+    cursors: Box<[Cursor; Self::capacity()]>,
     len: u8,
     saved_column_byte_indices: Vec<usize>,
     main_cursor_index: u8,
 }
 
 impl CursorCollection {
-    pub const fn max_len() -> usize {
+    pub const fn capacity() -> usize {
         u8::MAX as _
     }
 
     pub fn new() -> Self {
-        const DEFAULT_CURSOR: Cursor = Cursor {
-            anchor: BufferPosition::line_col(0, 0),
-            position: BufferPosition::line_col(0, 0),
-        };
-
         Self {
-            // TODO: replace with Default when min const generic
-            cursors: Box::new([DEFAULT_CURSOR; Self::max_len()]),
+            cursors: Box::new([Cursor::zero(); Self::capacity()]),
             len: 1,
             saved_column_byte_indices: Vec::new(),
             main_cursor_index: 0,
@@ -191,7 +192,7 @@ impl<'a> CursorCollectionMutGuard<'a> {
     }
 
     pub fn set_main_cursor_index(&mut self, index: usize) {
-        self.inner.main_cursor_index = index.min(CursorCollection::max_len()) as u8;
+        self.inner.main_cursor_index = index.min(CursorCollection::capacity()) as u8;
     }
 
     pub fn main_cursor(&mut self) -> &mut Cursor {
@@ -262,8 +263,8 @@ mod tests {
         cursors.mut_guard().add(main_cursor);
         let mut cursors = cursors[..].iter();
         let cursor = cursors.next().unwrap();
-        assert_eq!(BufferPosition::line_col(0, 0), cursor.position);
-        assert_eq!(BufferPosition::line_col(0, 0), cursor.anchor);
+        assert_eq!(BufferPosition::zero(), cursor.position);
+        assert_eq!(BufferPosition::zero(), cursor.anchor);
         assert!(cursors.next().is_none());
 
         let mut cursors = CursorCollection::new();
@@ -390,9 +391,7 @@ mod tests {
             }
             c.anchor = c.position;
         }
-        dbg!(cursors_mut.inner.main_cursor_index);
         drop(cursors_mut);
-        dbg!(cursors.main_cursor_index);
         let cursor = cursors.main_cursor();
         assert_eq!(BufferPosition::line_col(1, 0), cursor.anchor);
         assert_eq!(BufferPosition::line_col(1, 0), cursor.position);

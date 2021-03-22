@@ -12,6 +12,13 @@ pub struct BufferPosition {
 }
 
 impl BufferPosition {
+    pub const fn zero() -> Self {
+        Self {
+            line_index: 0,
+            column_byte_index: 0,
+        }
+    }
+
     pub const fn line_col(line_index: usize, column_byte_index: usize) -> Self {
         Self {
             line_index,
@@ -129,6 +136,14 @@ pub struct BufferRange {
 }
 
 impl BufferRange {
+    pub const fn zero() -> Self {
+        Self {
+            from: BufferPosition::zero(),
+            to: BufferPosition::zero(),
+            __: (),
+        }
+    }
+
     pub fn between(from: BufferPosition, to: BufferPosition) -> Self {
         let (from, to) = if from <= to { (from, to) } else { (to, from) };
         Self { from, to, __: () }
