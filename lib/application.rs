@@ -230,15 +230,15 @@ impl ServerApplication {
     }
 }
 
-pub struct ClientApplication {
+pub struct ClientApplication<'stdout> {
     handle: ClientHandle,
     is_pipped: bool,
     stdin_read_buf: Vec<u8>,
     server_read_buf: Vec<u8>,
     server_write_buf: Vec<u8>,
-    stdout: io::StdoutLock<'static>,
+    stdout: io::StdoutLock<'stdout>,
 }
-impl ClientApplication {
+impl<'stdout> ClientApplication<'stdout> {
     pub const fn stdin_buffer_len() -> usize {
         4 * 1024
     }
@@ -247,13 +247,7 @@ impl ClientApplication {
         2 * 1024
     }
 
-    pub fn new(handle: ClientHandle, is_pipped: bool) -> Self {
-        static mut STDOUT: Option<io::Stdout> = None;
-        let stdout = unsafe {
-            STDOUT = Some(io::stdout());
-            STDOUT.as_ref().unwrap().lock()
-        };
-
+    pub fn new(handle: ClientHandle, stdout: io::StdoutLock<'stdout>, is_pipped: bool) -> Self {
         if !is_pipped {
             let hook = std::panic::take_hook();
             std::panic::set_hook(Box::new(move |info| {
@@ -378,7 +372,7 @@ impl ClientApplication {
         self.server_write_buf.as_slice()
     }
 }
-impl Drop for ClientApplication {
+impl<'stdout> Drop for ClientApplication<'stdout> {
     fn drop(&mut self) {
         if !self.is_pipped {
             restore_screen(&mut self.stdout);

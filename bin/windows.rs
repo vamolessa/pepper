@@ -1161,7 +1161,8 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle
     let client_handle = ClientHandle::from_index(client_index as _).unwrap();
     let is_pipped = is_pipped(&input_handle);
 
-    let mut application = ClientApplication::new(client_handle, is_pipped);
+    let stdout = io::stdout();
+    let mut application = ClientApplication::new(client_handle, stdout.lock(), is_pipped);
     let bytes = application.init(args);
     if !connection.write(bytes) {
         return;
