@@ -384,16 +384,6 @@ impl Editor {
                         &mut self.word_database,
                         buffer_view_handle,
                         position,
-                        "\n",
-                        &mut self.events,
-                    );
-
-                    let position = BufferPosition::line_col(position.line_index + 1, 0);
-                    self.buffer_views.insert_text_at_position(
-                        &mut self.buffers,
-                        &mut self.word_database,
-                        buffer_view_handle,
-                        position,
                         text,
                         &mut self.events,
                     );
