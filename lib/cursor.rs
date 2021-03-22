@@ -1,7 +1,4 @@
-use std::{
-    ops::{Bound, Drop, Index, IndexMut, RangeBounds},
-    slice::SliceIndex,
-};
+use std::ops::{Bound, Drop, Index, IndexMut, RangeBounds, RangeFrom, RangeFull};
 
 use crate::buffer_position::{BufferPosition, BufferRange};
 
@@ -12,7 +9,7 @@ pub struct Cursor {
 }
 
 impl Cursor {
-    pub fn as_range(&self) -> BufferRange {
+    pub fn to_range(&self) -> BufferRange {
         BufferRange::between(self.anchor, self.position)
     }
 
@@ -29,26 +26,38 @@ impl Cursor {
 
 #[derive(Clone)]
 pub struct CursorCollection {
-    cursors: Vec<Cursor>,
+    cursors: Box<[Cursor; Self::max_len()]>,
+    len: u8,
     saved_column_byte_indices: Vec<usize>,
-    main_cursor_index: usize,
+    main_cursor_index: u8,
 }
 
 impl CursorCollection {
+    pub const fn max_len() -> usize {
+        u8::MAX as _
+    }
+
     pub fn new() -> Self {
+        const DEFAULT_CURSOR: Cursor = Cursor {
+            anchor: BufferPosition::line_col(0, 0),
+            position: BufferPosition::line_col(0, 0),
+        };
+
         Self {
-            cursors: vec![Cursor::default()],
+            // TODO: replace with Default when min const generic
+            cursors: Box::new([DEFAULT_CURSOR; Self::max_len()]),
+            len: 1,
             saved_column_byte_indices: Vec::new(),
             main_cursor_index: 0,
         }
     }
 
     pub fn main_cursor_index(&self) -> usize {
-        self.main_cursor_index
+        self.main_cursor_index as _
     }
 
     pub fn main_cursor(&self) -> &Cursor {
-        &self.cursors[self.main_cursor_index]
+        &self.cursors[self.main_cursor_index as usize]
     }
 
     pub fn mut_guard(&mut self) -> CursorCollectionMutGuard {
@@ -59,28 +68,32 @@ impl CursorCollection {
     }
 
     fn sort_and_merge(&mut self) {
-        let main_cursor = self.cursors[self.main_cursor_index];
-        self.cursors.sort_by_key(|c| c.as_range().from);
-        self.main_cursor_index = self
-            .cursors
+        let main_cursor = self.cursors[self.main_cursor_index as usize];
+        self.cursors[..self.len as usize].sort_by_key(|c| c.to_range().from);
+        self.main_cursor_index = self.cursors[..self.len as usize]
             .binary_search_by_key(&main_cursor.position, |c| c.position)
-            .unwrap_or(0);
+            .unwrap_or(0) as _;
 
         let mut i = 0;
-        while i < self.cursors.len() {
-            let mut range = self.cursors[i].as_range();
-            for j in ((i + 1)..self.cursors.len()).rev() {
-                let other_range = self.cursors[j].as_range();
+        while i < self.len {
+            let mut range = self.cursors[i as usize].to_range();
+            for j in ((i + 1)..self.len).rev() {
+                let other_range = self.cursors[j as usize].to_range();
                 if range.from <= other_range.from && other_range.from <= range.to {
                     range.to = range.to.max(other_range.to);
-                    self.cursors.remove(j);
+
+                    self.cursors
+                        .copy_within((j + 1) as usize..self.len as usize, j as _);
+                    self.len -= 1;
+
                     if j <= self.main_cursor_index {
                         self.main_cursor_index -= 1;
                     }
                 }
             }
 
-            self.cursors[i] = if self.cursors[i].anchor <= self.cursors[i].position {
+            let cursor = &mut self.cursors[i as usize];
+            *cursor = if cursor.anchor <= cursor.position {
                 Cursor {
                     anchor: range.from,
                     position: range.to,
@@ -97,14 +110,22 @@ impl CursorCollection {
     }
 }
 
-impl<Idx> Index<Idx> for CursorCollection
-where
-    Idx: SliceIndex<[Cursor]>,
-{
-    type Output = Idx::Output;
-
-    fn index(&self, index: Idx) -> &Self::Output {
-        &self.cursors[index]
+impl Index<usize> for CursorCollection {
+    type Output = Cursor;
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.cursors[index as usize]
+    }
+}
+impl Index<RangeFull> for CursorCollection {
+    type Output = [Cursor];
+    fn index(&self, _: RangeFull) -> &Self::Output {
+        &self.cursors[..self.len as usize]
+    }
+}
+impl Index<RangeFrom<usize>> for CursorCollection {
+    type Output = [Cursor];
+    fn index(&self, index: RangeFrom<usize>) -> &Self::Output {
+        &self.cursors[index.start..self.len as _]
     }
 }
 
@@ -115,12 +136,15 @@ pub struct CursorCollectionMutGuard<'a> {
 
 impl<'a> CursorCollectionMutGuard<'a> {
     pub fn clear(&mut self) {
-        self.inner.cursors.clear();
+        self.inner.len = 0;
     }
 
     pub fn add(&mut self, cursor: Cursor) {
-        self.inner.main_cursor_index = self.inner.cursors.len();
-        self.inner.cursors.push(cursor);
+        if let Some(len) = self.inner.len.checked_add(1) {
+            self.inner.cursors[self.inner.len as usize] = cursor;
+            self.inner.main_cursor_index = self.inner.len;
+            self.inner.len = len;
+        }
     }
 
     pub fn remove_range<R>(&mut self, range: R)
@@ -131,20 +155,22 @@ impl<'a> CursorCollectionMutGuard<'a> {
             Bound::Included(&n) => n,
             Bound::Excluded(&n) => n + 1,
             Bound::Unbounded => 0,
-        };
+        } as u8;
         let end = match range.end_bound() {
             Bound::Included(&n) => n + 1,
             Bound::Excluded(&n) => n,
-            Bound::Unbounded => self.inner.cursors.len(),
-        };
+            Bound::Unbounded => self.inner.len as _,
+        } as u8;
+        let len = end - start;
 
         if self.inner.main_cursor_index >= end {
-            self.inner.main_cursor_index -= end - start;
+            self.inner.main_cursor_index -= len;
         } else if self.inner.main_cursor_index > start {
             self.inner.main_cursor_index = start;
         }
 
-        self.inner.cursors.drain(range);
+        self.inner.cursors.copy_within(end as usize.., start as _);
+        self.inner.len -= len;
     }
 
     pub fn save_column_byte_indices(&mut self) {
@@ -152,7 +178,7 @@ impl<'a> CursorCollectionMutGuard<'a> {
 
         if self.inner.saved_column_byte_indices.is_empty() {
             self.inner.saved_column_byte_indices.clear();
-            for c in &self.inner.cursors {
+            for c in &self.inner.cursors[..self.inner.len as usize] {
                 self.inner
                     .saved_column_byte_indices
                     .push(c.position.column_byte_index);
@@ -165,38 +191,55 @@ impl<'a> CursorCollectionMutGuard<'a> {
     }
 
     pub fn set_main_cursor_index(&mut self, index: usize) {
-        self.inner.main_cursor_index = index;
+        self.inner.main_cursor_index = index.min(CursorCollection::max_len()) as u8;
     }
 
     pub fn main_cursor(&mut self) -> &mut Cursor {
-        &mut self.inner.cursors[self.inner.main_cursor_index]
+        &mut self.inner.cursors[self.inner.main_cursor_index as usize]
     }
 }
 
-impl<'a, Idx> Index<Idx> for CursorCollectionMutGuard<'a>
-where
-    Idx: SliceIndex<[Cursor]>,
-{
-    type Output = Idx::Output;
-
-    fn index(&self, index: Idx) -> &Self::Output {
-        &self.inner.cursors[index]
+impl<'a> Index<usize> for CursorCollectionMutGuard<'a> {
+    type Output = Cursor;
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.inner.cursors[index as usize]
+    }
+}
+impl<'a> Index<RangeFull> for CursorCollectionMutGuard<'a> {
+    type Output = [Cursor];
+    fn index(&self, _: RangeFull) -> &Self::Output {
+        &self.inner.cursors[..self.inner.len as usize]
+    }
+}
+impl<'a> Index<RangeFrom<usize>> for CursorCollectionMutGuard<'a> {
+    type Output = [Cursor];
+    fn index(&self, index: RangeFrom<usize>) -> &Self::Output {
+        &self.inner.cursors[index.start..self.inner.len as _]
     }
 }
 
-impl<'a, Idx> IndexMut<Idx> for CursorCollectionMutGuard<'a>
-where
-    Idx: SliceIndex<[Cursor]>,
-{
-    fn index_mut(&mut self, index: Idx) -> &mut Self::Output {
-        &mut self.inner.cursors[index]
+impl<'a> IndexMut<usize> for CursorCollectionMutGuard<'a> {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.inner.cursors[index as usize]
+    }
+}
+impl<'a> IndexMut<RangeFull> for CursorCollectionMutGuard<'a> {
+    fn index_mut(&mut self, _: RangeFull) -> &mut Self::Output {
+        &mut self.inner.cursors[..self.inner.len as usize]
+    }
+}
+impl<'a> IndexMut<RangeFrom<usize>> for CursorCollectionMutGuard<'a> {
+    fn index_mut(&mut self, index: RangeFrom<usize>) -> &mut Self::Output {
+        &mut self.inner.cursors[index.start..self.inner.len as _]
     }
 }
 
 impl<'a> Drop for CursorCollectionMutGuard<'a> {
     fn drop(&mut self) {
-        if self.inner.cursors.len() == 0 {
-            self.inner.cursors.push(Cursor::default());
+        if self.inner.len == 0 {
+            self.inner.cursors[0] = Cursor::default();
+            self.inner.len = 1;
+            self.inner.main_cursor_index = 0;
         }
 
         self.inner.sort_and_merge();
@@ -347,7 +390,9 @@ mod tests {
             }
             c.anchor = c.position;
         }
+        dbg!(cursors_mut.inner.main_cursor_index);
         drop(cursors_mut);
+        dbg!(cursors.main_cursor_index);
         let cursor = cursors.main_cursor();
         assert_eq!(BufferPosition::line_col(1, 0), cursor.anchor);
         assert_eq!(BufferPosition::line_col(1, 0), cursor.position);

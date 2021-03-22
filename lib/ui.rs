@@ -211,7 +211,7 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
     let mut current_cursor_range = BufferRange::default();
     if let Some(cursor) = cursors.get(current_cursor_index) {
         current_cursor_position = cursor.position;
-        current_cursor_range = cursor.as_range();
+        current_cursor_range = cursor.to_range();
     }
 
     let mut current_search_range_index = 0;
@@ -269,7 +269,7 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
                 current_cursor_index += 1;
                 let cursor = cursors[current_cursor_index];
                 current_cursor_position = cursor.position;
-                current_cursor_range = cursor.as_range();
+                current_cursor_range = cursor.to_range();
             }
             let inside_cursor_range = current_cursor_range.from <= char_position
                 && char_position < current_cursor_range.to;

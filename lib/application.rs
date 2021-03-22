@@ -1,6 +1,7 @@
 use std::{env, fmt, io, path::Path, sync::mpsc};
 
 use crate::{
+    buffer::parse_path_and_line_number,
     buffer_view::BufferViewHandle,
     client::{ClientHandle, ClientManager},
     command::CommandOperation,
@@ -264,17 +265,13 @@ impl ClientApplication {
 
         let mut commands = String::new();
         for path in &args.files {
-            let (path, line) = match path.rfind(':') {
-                Some(i) => match path[(i + 1)..].parse::<u32>() {
-                    Ok(line) => (&path[..i], Some(line.saturating_sub(1))),
-                    Err(_) => (&path[..], None),
-                },
-                None => (&path[..], None),
-            };
-
             use fmt::Write;
+            let (path, line) = parse_path_and_line_number(path);
             match line {
-                Some(line) => writeln!(commands, "open '{}' -line={}", path, line).unwrap(),
+                Some(line) => {
+                    let line = line.saturating_sub(1);
+                    writeln!(commands, "open '{}' -line={}", path, line).unwrap();
+                }
                 None => writeln!(commands, "open '{}'", path).unwrap(),
             }
         }

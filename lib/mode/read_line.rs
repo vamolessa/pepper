@@ -228,7 +228,7 @@ pub mod filter_cursors {
 
         for i in 0..cursor_count {
             let cursor = cursors[i];
-            if range_contains_pattern(buffer, cursor.as_range(), pattern)
+            if range_contains_pattern(buffer, cursor.to_range(), pattern)
                 == keep_if_contains_pattern
             {
                 cursors.add(cursor);
@@ -349,7 +349,7 @@ pub mod split_cursors {
 
         for i in 0..cursor_count {
             let cursor = cursors[i];
-            let range = cursor.as_range();
+            let range = cursor.to_range();
 
             if range.from.line_index == range.to.line_index {
                 let line = &buffer.line_at(range.from.line_index).as_str()

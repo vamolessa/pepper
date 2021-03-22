@@ -1,7 +1,7 @@
-use std::{cmp::Ordering, fmt::Write};
+use std::{cmp::Ordering, fmt::Write, path::Path};
 
 use crate::{
-    buffer::BufferContent,
+    buffer::{find_path_and_line_number_at, parse_path_and_line_number, BufferContent},
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{BufferViewError, BufferViewHandle, CursorMovement, CursorMovementKind},
     client::Client,
@@ -459,10 +459,62 @@ impl State {
                         }
                     }
                     Key::Char('f') => {
-                        let position = buffer_view.cursors.main_cursor().position;
-                        let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle)?.content();
-                        let line = buffer.line_at(position.line_index).as_str();
-                        // TODO: go to file under cursor
+                        let buffer_handle = buffer_view.buffer_handle;
+                        // TODO: change to array once we implement max cursor count
+                        let ranges: Vec<_> = buffer_view.cursors[..]
+                            .iter()
+                            .map(|c| c.to_range())
+                            .collect();
+                        let mut path_buf = ctx.editor.string_pool.acquire();
+
+                        for range in ranges {
+                            let line_index = range.from.line_index;
+                            if range.to.line_index != line_index {
+                                continue;
+                            }
+
+                            let line = ctx
+                                .editor
+                                .buffers
+                                .get(buffer_handle)?
+                                .content()
+                                .line_at(line_index)
+                                .as_str();
+
+                            let from = range.from.column_byte_index;
+                            let to = range.to.column_byte_index;
+
+                            let (path, line) = if from < to {
+                                parse_path_and_line_number(&line[from..to])
+                            } else {
+                                find_path_and_line_number_at(line, from)
+                            };
+                            let line = match line {
+                                Some(line) => line as _,
+                                None => this.count,
+                            }
+                            .saturating_sub(1);
+
+                            path_buf.clear();
+                            path_buf.push_str(path);
+
+                            if let Ok(handle) =
+                                ctx.editor.buffer_views.buffer_view_handle_from_path(
+                                    ctx.client_handle,
+                                    &mut ctx.editor.buffers,
+                                    &mut ctx.editor.word_database,
+                                    &ctx.editor.current_directory,
+                                    Path::new(&path_buf),
+                                    Some(line as _),
+                                    &mut ctx.editor.events,
+                                )
+                            {
+                                if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
+                                    client.set_buffer_view_handle(Some(handle));
+                                }
+                            }
+                        }
+                        ctx.editor.string_pool.release(path_buf);
                     }
                     _ => {
                         keys.put_back();
@@ -633,7 +685,7 @@ impl State {
                 let count = this.count.max(1);
 
                 for i in 0..cursor_count {
-                    let range = ctx.editor.buffer_views.get(handle)?.cursors[i].as_range();
+                    let range = ctx.editor.buffer_views.get(handle)?.cursors[i].to_range();
                     for line_index in range.from.line_index..=range.to.line_index {
                         let buffer = ctx.editor.buffers.get(buffer_handle)?;
                         let line = buffer.content().line_at(line_index).as_str();
@@ -693,7 +745,7 @@ impl State {
                 let mut buf = ctx.editor.string_pool.acquire();
                 buf.extend(extender);
                 for i in 0..cursor_count {
-                    let range = ctx.editor.buffer_views.get(handle)?.cursors[i].as_range();
+                    let range = ctx.editor.buffer_views.get(handle)?.cursors[i].to_range();
                     for line_index in range.from.line_index..=range.to.line_index {
                         ctx.editor.buffer_views.insert_text_at_position(
                             &mut ctx.editor.buffers,
@@ -806,7 +858,7 @@ impl State {
                     let mut cursors = buffer_view.cursors.mut_guard();
 
                     if let Some(cursor) = cursors[..].last() {
-                        let mut position = cursor.as_range().to;
+                        let mut position = cursor.to_range().to;
 
                         for _ in 0..this.count.max(1) {
                             position.line_index += 1;
@@ -825,7 +877,7 @@ impl State {
                     let mut cursors = buffer_view.cursors.mut_guard();
 
                     if let Some(cursor) = cursors[..].first() {
-                        let mut position = cursor.as_range().from;
+                        let mut position = cursor.to_range().from;
 
                         for _ in 0..this.count.max(1) {
                             position.line_index = position.line_index.saturating_sub(1);

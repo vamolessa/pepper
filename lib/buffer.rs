@@ -41,8 +41,18 @@ pub fn find_delimiter_pair_at(text: &str, index: usize, delimiter: char) -> Opti
     None
 }
 
-pub fn find_path_at(text: &str, index: usize) -> (&str, Option<usize>) {
-    fn parse_line_number(text: &str) -> Option<usize> {
+pub fn parse_path_and_line_number(text: &str) -> (&str, Option<u32>) {
+    match text.rfind(':') {
+        Some(i) => match text[(i + 1)..].parse::<u32>() {
+            Ok(line) => (&text[..i], Some(line.saturating_sub(1))),
+            Err(_) => (text, None),
+        },
+        None => (text, None),
+    }
+}
+
+pub fn find_path_and_line_number_at(text: &str, index: usize) -> (&str, Option<u32>) {
+    fn parse_line_number(text: &str) -> Option<u32> {
         let text = match text.find(|c: char| !c.is_ascii_digit()) {
             Some(i) => &text[..i],
             None => text,
@@ -54,23 +64,23 @@ pub fn find_path_at(text: &str, index: usize) -> (&str, Option<usize>) {
     }
 
     let (left, right) = text.split_at(index);
-    let start = match left.rfind(|c: char| c.is_ascii_whitespace()) {
+    let from = match left.rfind(|c: char| c.is_ascii_whitespace()) {
         Some(i) => i + 1,
         None => 0,
     };
-    let end = match right.find(|c: char| c.is_ascii_whitespace() || c == ':') {
+    let to = match right.find(|c: char| c.is_ascii_whitespace() || c == ':') {
         Some(i) => index + i,
         None => text.len(),
     };
-    let path = &text[start..end];
+    let path = &text[from..to];
     match path.rfind(':') {
         Some(i) => {
             let line = parse_line_number(&path[(i + 1)..]);
             (&path[..i], line)
         }
         None => {
-            let line = if text[end..].starts_with(':') {
-                parse_line_number(&text[(end + 1)..])
+            let line = if text[to..].starts_with(':') {
+                parse_line_number(&text[(to + 1)..])
             } else {
                 None
             };
@@ -1331,28 +1341,28 @@ mod tests {
     #[test]
     fn test_find_path_at() {
         let text = "/path/file:45";
-        assert_eq!(("/path/file", Some(45)), find_path_at(text, 0));
-        assert_eq!(("/path/file", Some(45)), find_path_at(text, 1));
-        assert_eq!(("/path/file", Some(45)), find_path_at(text, text.len()));
-        assert_eq!(("/path/file", Some(45)), find_path_at(text, 3));
-        assert_eq!(("/path/file", Some(45)), find_path_at(text, 8));
+        assert_eq!(("/path/file", Some(45)), find_path_and_line_number_at(text, 0));
+        assert_eq!(("/path/file", Some(45)), find_path_and_line_number_at(text, 1));
+        assert_eq!(("/path/file", Some(45)), find_path_and_line_number_at(text, text.len()));
+        assert_eq!(("/path/file", Some(45)), find_path_and_line_number_at(text, 3));
+        assert_eq!(("/path/file", Some(45)), find_path_and_line_number_at(text, 8));
 
         let text = "xx /path/file:";
-        assert_eq!(("xx", None), find_path_at(text, 0));
-        assert_eq!(("xx", None), find_path_at(text, 1));
-        assert_eq!(("xx", None), find_path_at(text, 2));
-        assert_eq!(("/path/file", None), find_path_at(text, 3));
-        assert_eq!(("/path/file", None), find_path_at(text, text.len() - 1));
-        assert_eq!(("/path/file", None), find_path_at(text, text.len()));
+        assert_eq!(("xx", None), find_path_and_line_number_at(text, 0));
+        assert_eq!(("xx", None), find_path_and_line_number_at(text, 1));
+        assert_eq!(("xx", None), find_path_and_line_number_at(text, 2));
+        assert_eq!(("/path/file", None), find_path_and_line_number_at(text, 3));
+        assert_eq!(("/path/file", None), find_path_and_line_number_at(text, text.len() - 1));
+        assert_eq!(("/path/file", None), find_path_and_line_number_at(text, text.len()));
 
         let text = "xx /path/file:3xx";
-        assert_eq!(("/path/file", Some(3)), find_path_at(text, 3));
-        assert_eq!(("/path/file", Some(3)), find_path_at(text, text.len() - 5));
-        assert_eq!(("/path/file", Some(3)), find_path_at(text, text.len() - 4));
-        assert_eq!(("/path/file", Some(3)), find_path_at(text, text.len() - 3));
-        assert_eq!(("/path/file", Some(3)), find_path_at(text, text.len() - 2));
-        assert_eq!(("/path/file", Some(3)), find_path_at(text, text.len() - 1));
-        assert_eq!(("/path/file", Some(3)), find_path_at(text, text.len()));
+        assert_eq!(("/path/file", Some(3)), find_path_and_line_number_at(text, 3));
+        assert_eq!(("/path/file", Some(3)), find_path_and_line_number_at(text, text.len() - 5));
+        assert_eq!(("/path/file", Some(3)), find_path_and_line_number_at(text, text.len() - 4));
+        assert_eq!(("/path/file", Some(3)), find_path_and_line_number_at(text, text.len() - 3));
+        assert_eq!(("/path/file", Some(3)), find_path_and_line_number_at(text, text.len() - 2));
+        assert_eq!(("/path/file", Some(3)), find_path_and_line_number_at(text, text.len() - 1));
+        assert_eq!(("/path/file", Some(3)), find_path_and_line_number_at(text, text.len()));
     }
 
     fn buffer_from_str(text: &str) -> BufferContent {

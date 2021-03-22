@@ -1042,12 +1042,6 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
     }
 }
 
-fn make_buf(len: usize) -> Box<[u8]> {
-    let mut buf = Vec::with_capacity(len);
-    buf.resize(len, 0);
-    buf.into_boxed_slice()
-}
-
 enum Input {
     Stdin(Stdin),
     Console(Handle),
@@ -1055,14 +1049,14 @@ enum Input {
 struct Stdin {
     is_open: bool,
     reader: AsyncReader,
-    buf: Box<[u8]>,
+    buf: Box<[u8; ClientApplication::stdin_buffer_len()]>,
 }
 impl Stdin {
     pub fn new(reader: AsyncReader) -> Self {
         Self {
             is_open: true,
             reader,
-            buf: make_buf(ClientApplication::stdin_buffer_len()),
+            buf: Box::new([0; ClientApplication::stdin_buffer_len()]),
         }
     }
 
@@ -1075,7 +1069,7 @@ impl Stdin {
             return &[];
         }
 
-        match self.reader.read_async(&mut self.buf) {
+        match self.reader.read_async(&mut self.buf[..]) {
             ReadResult::Waiting => &[],
             ReadResult::Ok(0) | ReadResult::Err => {
                 self.is_open = false;
@@ -1088,7 +1082,7 @@ impl Stdin {
 
 struct ConnectionToServer {
     reader: AsyncReader,
-    buf: Box<[u8]>,
+    buf: Box<[u8; ClientApplication::connection_buffer_len()]>,
 }
 impl ConnectionToServer {
     pub fn connect(path: &[u16]) -> Self {
@@ -1122,7 +1116,7 @@ impl ConnectionToServer {
         }
 
         let reader = AsyncReader::new(Handle(handle));
-        let buf = make_buf(ClientApplication::connection_buffer_len());
+        let buf = Box::new([0; ClientApplication::connection_buffer_len()]);
 
         Self { reader, buf }
     }
@@ -1140,7 +1134,7 @@ impl ConnectionToServer {
     }
 
     pub fn read_async(&mut self) -> Result<&[u8], ()> {
-        match self.reader.read_async(&mut self.buf) {
+        match self.reader.read_async(&mut self.buf[..]) {
             ReadResult::Waiting => Ok(&[]),
             ReadResult::Ok(0) | ReadResult::Err => Err(()),
             ReadResult::Ok(len) => Ok(&self.buf[..len]),
