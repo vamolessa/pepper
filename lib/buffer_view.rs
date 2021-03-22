@@ -463,7 +463,7 @@ impl BufferViewCollection {
         self.fix_buffer_cursors(current_buffer_handle, |cursor, range| cursor.insert(range));
     }
 
-    pub fn delete_in_range(
+    pub fn delete_text_in_range(
         &mut self,
         buffers: &mut BufferCollection,
         word_database: &mut WordDatabase,
@@ -488,7 +488,7 @@ impl BufferViewCollection {
         self.fix_buffer_cursors(current_buffer_handle, |cursor, range| cursor.delete(range));
     }
 
-    pub fn delete_in_cursor_ranges(
+    pub fn delete_text_in_cursor_ranges(
         &mut self,
         buffers: &mut BufferCollection,
         word_database: &mut WordDatabase,
@@ -746,7 +746,8 @@ impl BufferViewCollection {
         } else if path.to_str().map(|s| !s.is_empty()).unwrap_or(false) {
             let path = path.strip_prefix(root).unwrap_or(path);
 
-            let buffer = buffers.new(BufferCapabilities::text());
+            let buffer = buffers.new();
+            buffer.capabilities = BufferCapabilities::text();
             buffer.set_path(Some(path));
             let _ = buffer.discard_and_reload_from_file(word_database, events);
 
@@ -779,7 +780,8 @@ mod tests {
             let mut word_database = WordDatabase::new();
 
             let mut buffers = BufferCollection::default();
-            let buffer = buffers.new(BufferCapabilities::text());
+            let buffer = buffers.new();
+            buffer.capabilities = BufferCapabilities::text();
             buffer.insert_text(
                 &mut word_database,
                 BufferPosition::line_col(0, 0),

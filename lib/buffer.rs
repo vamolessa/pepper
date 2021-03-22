@@ -238,6 +238,11 @@ impl BufferContent {
         &self.lines[index]
     }
 
+    pub fn end(&self) -> BufferPosition {
+        let last_line_index = self.lines.len() - 1;
+        BufferPosition::line_col(last_line_index, self.lines[last_line_index].as_str().len())
+    }
+
     pub fn read<R>(&mut self, read: &mut R) -> io::Result<()>
     where
         R: io::BufRead,
@@ -698,7 +703,7 @@ pub struct Buffer {
     history: History,
     search_ranges: Vec<BufferRange>,
     needs_save: bool,
-    capabilities: BufferCapabilities,
+    pub capabilities: BufferCapabilities,
 }
 
 impl Buffer {
@@ -795,10 +800,6 @@ impl Buffer {
 
     pub fn needs_save(&self) -> bool {
         self.capabilities.can_save && self.needs_save
-    }
-
-    pub fn capabilities(&self) -> &BufferCapabilities {
-        &self.capabilities
     }
 
     pub fn insert_text(
@@ -1076,7 +1077,7 @@ impl Buffer {
             None => false,
         };
 
-        if !self.capabilities.can_save {
+        if !self.capabilities.can_save && !new_path {
             return Ok(());
         }
 
@@ -1088,6 +1089,8 @@ impl Buffer {
                 self.content
                     .write(&mut writer)
                     .map_err(|_| BufferError::CouldNotWriteFile)?;
+
+                self.capabilities.can_save = true;
                 self.needs_save = false;
 
                 events.enqueue(EditorEvent::BufferSave {
@@ -1171,7 +1174,7 @@ pub struct BufferCollection {
 }
 
 impl BufferCollection {
-    pub fn new(&mut self, capabilities: BufferCapabilities) -> &mut Buffer {
+    pub fn new(&mut self) -> &mut Buffer {
         let mut handle = None;
         for (i, buffer) in self.buffers.iter_mut().enumerate() {
             if !buffer.alive {
@@ -1190,7 +1193,6 @@ impl BufferCollection {
 
         let buffer = &mut self.buffers[handle.0];
         buffer.alive = true;
-        buffer.capabilities = capabilities;
         buffer
     }
 

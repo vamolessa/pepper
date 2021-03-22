@@ -592,7 +592,7 @@ impl State {
                 );
             }
             Key::Char('d') => {
-                ctx.editor.buffer_views.delete_in_cursor_ranges(
+                ctx.editor.buffer_views.delete_text_in_cursor_ranges(
                     &mut ctx.editor.buffers,
                     &mut ctx.editor.word_database,
                     handle,
@@ -608,7 +608,7 @@ impl State {
                 return None;
             }
             Key::Char('i') => {
-                ctx.editor.buffer_views.delete_in_cursor_ranges(
+                ctx.editor.buffer_views.delete_text_in_cursor_ranges(
                     &mut ctx.editor.buffers,
                     &mut ctx.editor.word_database,
                     handle,
@@ -654,7 +654,7 @@ impl State {
                             BufferPosition::line_col(line_index, 0),
                             BufferPosition::line_col(line_index, indentation_column_index),
                         );
-                        ctx.editor.buffer_views.delete_in_range(
+                        ctx.editor.buffer_views.delete_text_in_range(
                             &mut ctx.editor.buffers,
                             &mut ctx.editor.word_database,
                             handle,
@@ -881,7 +881,7 @@ impl State {
                 this.movement_kind = CursorMovementKind::PositionAndAnchor;
             }
             Key::Char('Y') => {
-                ctx.editor.buffer_views.delete_in_cursor_ranges(
+                ctx.editor.buffer_views.delete_text_in_cursor_ranges(
                     &mut ctx.editor.buffers,
                     &mut ctx.editor.word_database,
                     handle,
@@ -913,7 +913,7 @@ impl State {
             Key::Ctrl('y') => match keys.next(&ctx.editor.buffered_keys) {
                 Key::None => return Some(ModeOperation::Pending),
                 Key::Char(c) => {
-                    ctx.editor.buffer_views.delete_in_cursor_ranges(
+                    ctx.editor.buffer_views.delete_text_in_cursor_ranges(
                         &mut ctx.editor.buffers,
                         &mut ctx.editor.word_database,
                         handle,

@@ -6,9 +6,9 @@ use std::{
 };
 
 use crate::{
-    buffer::{BufferCapabilities, BufferHandle},
     application::ProcessTag,
-    buffer_position::BufferPosition,
+    buffer::{BufferCapabilities, BufferHandle},
+    buffer_position::{BufferPosition, BufferRange},
     buffer_view::BufferViewError,
     command::{
         BuiltinCommand, CommandContext, CommandError, CommandIter, CommandManager,
@@ -314,7 +314,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             let mut flags = [("prompt", None)];
             let prompt = flags[0].1.unwrap_or("pick:");
             ctx.args.get_flags(&mut flags)?;
-            
+
             let entry_var_name = ctx.args.next()?;
             let commands = ctx.args.next()?;
             ctx.args.assert_empty()?;
@@ -490,7 +490,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 &ctx.editor.buffer_views,
             );
 
-            // TODO: fix new buffer capabilities!
             match ctx.editor.buffer_views.buffer_view_handle_from_path(
                 client_handle,
                 &mut ctx.editor.buffers,
@@ -506,11 +505,32 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                     }
 
                     if let Some((mut command, buffer_view)) = command.zip(ctx.editor.buffer_views.get(handle)) {
+                        let end = match ctx
+                            .editor
+                            .buffers
+                            .get_mut(buffer_view.buffer_handle)
+                        {
+                            Some(buffer) => {
+                                buffer.capabilities = BufferCapabilities::log();
+                                buffer.content().end()
+                            }
+                            None => BufferPosition::line_col(0, 0),
+                        };
+                        let range = BufferRange::between(BufferPosition::line_col(0, 0), end);
+
+                        ctx.editor.buffer_views.delete_text_in_range(
+                            &mut ctx.editor.buffers,
+                            &mut ctx.editor.word_database,
+                            handle,
+                            range,
+                            &mut ctx.editor.events
+                        );
+
                         command.stdin(Stdio::null());
                         command.stdout(Stdio::piped());
                         command.stderr(Stdio::null());
                         ctx.platform.enqueue_request(PlatformRequest::SpawnProcess {
-                            tag: ProcessTag::Buffer(buffer_view.buffer_handle),
+                            tag: ProcessTag::BufferView(handle),
                             command,
                             buf_len: 4 * 1024,
                         });
@@ -575,10 +595,12 @@ pub const COMMANDS: &[BuiltinCommand] = &[
 
             let mut count = 0;
             for buffer in ctx.editor.buffers.iter_mut() {
-                buffer
-                    .save_to_file(None, &mut ctx.editor.events)
-                    .map_err(|e| CommandError::BufferError(buffer.handle(), e))?;
-                count += 1;
+                if buffer.capabilities.can_save {
+                    buffer
+                        .save_to_file(None, &mut ctx.editor.events)
+                        .map_err(|e| CommandError::BufferError(buffer.handle(), e))?;
+                    count += 1;
+                }
             }
             ctx.editor
                 .status_bar
@@ -1021,7 +1043,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
 
             if let Some(log_buffer) = log_buffer {
                 lsp::ClientManager::access(ctx.editor, handle, |editor, client, _| {
-                    let buffer = editor.buffers.new(BufferCapabilities::log());
+                    let mut buffer = editor.buffers.new();
+                    buffer.capabilities = BufferCapabilities::log();
                     let buffer_handle = buffer.handle();
                     buffer.set_path(Some(Path::new(log_buffer)));
                     client.set_log_buffer(Some(buffer_handle));

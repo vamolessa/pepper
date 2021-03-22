@@ -129,7 +129,7 @@ impl ModeState for State {
                     CursorMovement::ColumnsBackward(1),
                     CursorMovementKind::PositionOnly,
                 );
-                ctx.editor.buffer_views.delete_in_cursor_ranges(
+                ctx.editor.buffer_views.delete_text_in_cursor_ranges(
                     &mut ctx.editor.buffers,
                     &mut ctx.editor.word_database,
                     handle,
@@ -142,7 +142,7 @@ impl ModeState for State {
                     CursorMovement::ColumnsForward(1),
                     CursorMovementKind::PositionOnly,
                 );
-                ctx.editor.buffer_views.delete_in_cursor_ranges(
+                ctx.editor.buffer_views.delete_text_in_cursor_ranges(
                     &mut ctx.editor.buffers,
                     &mut ctx.editor.word_database,
                     handle,
@@ -155,7 +155,7 @@ impl ModeState for State {
                     CursorMovement::WordsBackward(1),
                     CursorMovementKind::PositionOnly,
                 );
-                ctx.editor.buffer_views.delete_in_cursor_ranges(
+                ctx.editor.buffer_views.delete_text_in_cursor_ranges(
                     &mut ctx.editor.buffers,
                     &mut ctx.editor.word_database,
                     handle,

@@ -1,10 +1,9 @@
 use std::{env, fmt, io, path::Path, sync::mpsc};
 
 use crate::{
-    buffer::BufferHandle,
-    buffer_position::BufferPosition,
+    buffer_view::BufferViewHandle,
     client::{ClientHandle, ClientManager},
-    command::{CommandManager, CommandOperation},
+    command::CommandOperation,
     editor::{Editor, EditorControlFlow},
     events::{ClientEvent, ClientEventReceiver, ServerEvent},
     lsp,
@@ -48,7 +47,7 @@ impl Args {
 
 #[derive(Clone, Copy)]
 pub enum ProcessTag {
-    Buffer(BufferHandle),
+    BufferView(BufferViewHandle),
     Command(usize),
     Lsp(lsp::ClientHandle),
 }

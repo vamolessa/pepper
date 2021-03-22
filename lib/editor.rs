@@ -349,7 +349,7 @@ impl Editor {
         handle: ProcessHandle,
     ) {
         match tag {
-            ProcessTag::Buffer(_) => (),
+            ProcessTag::BufferView(_) => (),
             ProcessTag::Lsp(client_handle) => {
                 lsp::ClientManager::on_process_spawned(self, platform, client_handle, handle)
             }
@@ -365,25 +365,38 @@ impl Editor {
         bytes: &[u8],
     ) {
         match tag {
-            ProcessTag::Buffer(buffer_handle) => {
-                if let Some((buffer, text)) = self
-                    .buffers
-                    .get_mut(buffer_handle)
-                    .zip(std::str::from_utf8(bytes).ok())
-                {
-                    let content = buffer.content();
-                    let line_index = content.line_count() - 1;
-                    let column_index = content.line_at(line_index).as_str().len();
-                    let position = BufferPosition::line_col(line_index, column_index);
+            ProcessTag::BufferView(buffer_view_handle) => {
+                if let Ok(text) = std::str::from_utf8(bytes) {
+                    let position = self
+                        .buffer_views
+                        .get(buffer_view_handle)
+                        .and_then(|v| self.buffers.get(v.buffer_handle))
+                        .map(|b| {
+                            let content = b.content();
+                            let line = content.line_count() - 1;
+                            let column = content.line_at(line).as_str().len();
+                            BufferPosition::line_col(line, column)
+                        })
+                        .unwrap_or_else(Default::default);
 
-                    let range = buffer.insert_text(
+                    self.buffer_views.insert_text_at_position(
+                        &mut self.buffers,
                         &mut self.word_database,
+                        buffer_view_handle,
                         position,
                         "\n",
                         &mut self.events,
                     );
-                    let position = range.to;
-                    buffer.insert_text(&mut self.word_database, position, text, &mut self.events);
+
+                    let position = BufferPosition::line_col(position.line_index + 1, 0);
+                    self.buffer_views.insert_text_at_position(
+                        &mut self.buffers,
+                        &mut self.word_database,
+                        buffer_view_handle,
+                        position,
+                        text,
+                        &mut self.events,
+                    );
                 }
             }
             ProcessTag::Lsp(client_handle) => {
@@ -403,7 +416,7 @@ impl Editor {
         success: bool,
     ) {
         match tag {
-            ProcessTag::Buffer(_) => (),
+            ProcessTag::BufferView(_) => (),
             ProcessTag::Lsp(client_handle) => {
                 lsp::ClientManager::on_process_exit(self, client_handle)
             }

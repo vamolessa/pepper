@@ -861,7 +861,7 @@ impl Events {
 }
 
 fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
-    const NONE_ASYNC_PROCESS : Option<AsyncProcess> = None;
+    const NONE_ASYNC_PROCESS: Option<AsyncProcess> = None;
     static NEW_REQUEST_EVENT_HANDLE: AtomicPtr<()> = AtomicPtr::new(std::ptr::null_mut());
 
     if pipe_exists(pipe_path) {
@@ -873,7 +873,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
         ConnectionToClientListener::new(pipe_path, ServerApplication::connection_buffer_len());
 
     let mut client_connections: [Option<ConnectionToClient>; MAX_CLIENT_COUNT] = Default::default();
-    let mut processes = [NONE_ASYNC_PROCESS; MAX_PROCESS_COUNT];
+    let mut processes = [NONE_ASYNC_PROCESS; MAX_PROCESS_COUNT]; // TODO: change to Default when min-const-generics
     let mut buf_pool = BufPool::default();
 
     let new_request_event = Event::automatic();

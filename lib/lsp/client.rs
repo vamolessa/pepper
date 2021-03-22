@@ -1088,7 +1088,7 @@ mod helper {
             Some(buffer) => buffer,
             None => return,
         };
-        if !buffer.capabilities().can_save {
+        if !buffer.capabilities.can_save {
             return;
         }
         let buffer_path = match buffer.path() {
@@ -1125,7 +1125,7 @@ mod helper {
                 Some(buffer) => buffer,
                 None => continue,
             };
-            if !buffer.capabilities().can_save {
+            if !buffer.capabilities.can_save {
                 continue;
             }
             let buffer_path = match buffer.path() {
@@ -1192,7 +1192,7 @@ mod helper {
             Some(buffer) => buffer,
             None => return,
         };
-        if !buffer.capabilities().can_save {
+        if !buffer.capabilities.can_save {
             return;
         }
         let buffer_path = match buffer.path() {
@@ -1227,7 +1227,7 @@ mod helper {
             Some(buffer) => buffer,
             None => return,
         };
-        if !buffer.capabilities().can_save {
+        if !buffer.capabilities.can_save {
             return;
         }
         let buffer_path = match buffer.path() {
