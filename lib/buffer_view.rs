@@ -632,24 +632,56 @@ impl BufferViewCollection {
         fix_edit_ranges: bool,
         edits: impl 'a + Iterator<Item = Edit<'a>>,
     ) {
+        enum BufferRanges {
+            Stack([BufferRange; 128], usize),
+            Heap(Vec<BufferRange>),
+        }
+        impl BufferRanges {
+            pub fn new() -> Self {
+                Self::Stack([BufferRange::zero(); 128], 0)
+            }
+
+            pub fn as_slice(&mut self) -> &mut [BufferRange] {
+                match self {
+                    Self::Stack(buf, len) => &mut buf[..*len],
+                    Self::Heap(buf) => buf,
+                }
+            }
+
+            pub fn add(&mut self, range: BufferRange) {
+                match self {
+                    Self::Stack(buf, len) => {
+                        let index = *len;
+                        if index < buf.len() {
+                            buf[index] = range;
+                            *len += 1;
+                        } else {
+                            let mut buf = buf.to_vec();
+                            buf.push(range);
+                            *self = Self::Heap(buf);
+                        }
+                    }
+                    Self::Heap(buf) => buf.push(range),
+                }
+            }
+        }
+
         let buffer_handle = match self.get(handle) {
             Some(view) => view.buffer_handle,
             None => return,
         };
 
-        // TODO: investigate if we can remove this allocation
-        let mut ranges: Vec<BufferRange> = Vec::new();
-
+        let mut ranges = BufferRanges::new();
         for edit in edits {
             match edit.kind {
                 EditKind::Insert => {
                     if fix_edit_ranges {
-                        for range in &mut ranges {
+                        for range in ranges.as_slice() {
                             range.from = range.from.insert(edit.range);
                             range.to = range.to.insert(edit.range);
                         }
                     }
-                    ranges.push(edit.range);
+                    ranges.add(edit.range);
                     for (i, view) in self.buffer_views.iter_mut().flatten().enumerate() {
                         if i != handle.0 && view.buffer_handle == buffer_handle {
                             for c in &mut view.cursors.mut_guard()[..] {
@@ -660,13 +692,13 @@ impl BufferViewCollection {
                 }
                 EditKind::Delete => {
                     if fix_edit_ranges {
-                        for range in &mut ranges {
+                        for range in ranges.as_slice() {
                             range.from = range.from.delete(edit.range);
                             range.to = range.to.delete(edit.range);
                         }
                     }
                     let range = BufferRange::between(edit.range.from, edit.range.from);
-                    ranges.push(range);
+                    ranges.add(range);
                     for (i, view) in self.buffer_views.iter_mut().flatten().enumerate() {
                         if i != handle.0 && view.buffer_handle == buffer_handle {
                             for c in &mut view.cursors.mut_guard()[..] {
@@ -678,14 +710,14 @@ impl BufferViewCollection {
             }
         }
 
-        if ranges.is_empty() {
+        if ranges.as_slice().is_empty() {
             return;
         }
 
         if let Some(view) = self.buffer_views[handle.0].as_mut() {
             let mut cursors = view.cursors.mut_guard();
             cursors.clear();
-            for range in &ranges {
+            for range in ranges.as_slice() {
                 cursors.add(Cursor {
                     anchor: range.from,
                     position: range.to,
