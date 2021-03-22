@@ -5,7 +5,9 @@ use std::{
 };
 
 use crate::{
+    application::ProcessTag,
     buffer::BufferCollection,
+    buffer_position::BufferPosition,
     buffer_view::BufferViewCollection,
     client::{ClientHandle, ClientManager},
     command::{CommandManager, CommandOperation},
@@ -16,7 +18,7 @@ use crate::{
     lsp,
     mode::{Mode, ModeContext, ModeKind, ModeOperation},
     picker::Picker,
-    platform::{Key, Platform},
+    platform::{Key, Platform, ProcessHandle},
     register::{RegisterCollection, RegisterKey, KEY_QUEUE_REGISTER},
     syntax::{HighlightResult, SyntaxCollection},
     theme::Theme,
@@ -338,6 +340,77 @@ impl Editor {
     pub fn on_idle(&mut self, clients: &mut ClientManager, platform: &mut Platform) {
         self.events.enqueue(EditorEvent::Idle);
         self.trigger_event_handlers(clients, platform);
+    }
+
+    pub fn on_process_spawned(
+        &mut self,
+        platform: &mut Platform,
+        tag: ProcessTag,
+        handle: ProcessHandle,
+    ) {
+        match tag {
+            ProcessTag::Buffer(_) => (),
+            ProcessTag::Lsp(client_handle) => {
+                lsp::ClientManager::on_process_spawned(self, platform, client_handle, handle)
+            }
+            ProcessTag::Command(index) => self.commands.on_process_spawned(platform, index, handle),
+        }
+    }
+
+    pub fn on_process_output(
+        &mut self,
+        platform: &mut Platform,
+        clients: &mut ClientManager,
+        tag: ProcessTag,
+        bytes: &[u8],
+    ) {
+        match tag {
+            ProcessTag::Buffer(buffer_handle) => {
+                if let Some((buffer, text)) = self
+                    .buffers
+                    .get_mut(buffer_handle)
+                    .zip(std::str::from_utf8(bytes).ok())
+                {
+                    let content = buffer.content();
+                    let line_index = content.line_count() - 1;
+                    let column_index = content.line_at(line_index).as_str().len();
+                    let position = BufferPosition::line_col(line_index, column_index);
+
+                    let range = buffer.insert_text(
+                        &mut self.word_database,
+                        position,
+                        "\n",
+                        &mut self.events,
+                    );
+                    let position = range.to;
+                    buffer.insert_text(&mut self.word_database, position, text, &mut self.events);
+                }
+            }
+            ProcessTag::Lsp(client_handle) => {
+                lsp::ClientManager::on_process_stdout(self, platform, client_handle, bytes)
+            }
+            ProcessTag::Command(index) => {
+                CommandManager::on_process_stdout(self, platform, clients, index, bytes)
+            }
+        }
+    }
+
+    pub fn on_process_exit(
+        &mut self,
+        platform: &mut Platform,
+        clients: &mut ClientManager,
+        tag: ProcessTag,
+        success: bool,
+    ) {
+        match tag {
+            ProcessTag::Buffer(_) => (),
+            ProcessTag::Lsp(client_handle) => {
+                lsp::ClientManager::on_process_exit(self, client_handle)
+            }
+            ProcessTag::Command(index) => {
+                CommandManager::on_process_exit(self, platform, clients, index, success)
+            }
+        }
     }
 
     fn parse_and_set_keys_from_register(&mut self, register_key: RegisterKey) {

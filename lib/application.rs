@@ -1,6 +1,8 @@
 use std::{env, fmt, io, path::Path, sync::mpsc};
 
 use crate::{
+    buffer::BufferHandle,
+    buffer_position::BufferPosition,
     client::{ClientHandle, ClientManager},
     command::{CommandManager, CommandOperation},
     editor::{Editor, EditorControlFlow},
@@ -46,6 +48,7 @@ impl Args {
 
 #[derive(Clone, Copy)]
 pub enum ProcessTag {
+    Buffer(BufferHandle),
     Command(usize),
     Lsp(lsp::ClientHandle),
 }
@@ -59,7 +62,7 @@ pub enum ApplicationEvent {
     ConnectionClose {
         handle: ClientHandle,
     },
-    ConnectionMessage {
+    ConnectionOutput {
         handle: ClientHandle,
         buf: SharedBuf,
     },
@@ -67,11 +70,7 @@ pub enum ApplicationEvent {
         tag: ProcessTag,
         handle: ProcessHandle,
     },
-    ProcessStdout {
-        tag: ProcessTag,
-        buf: SharedBuf,
-    },
-    ProcessStderr {
+    ProcessOutput {
         tag: ProcessTag,
         buf: SharedBuf,
     },
@@ -149,7 +148,7 @@ impl ServerApplication {
                             break 'event_loop;
                         }
                     }
-                    ApplicationEvent::ConnectionMessage { handle, buf } => {
+                    ApplicationEvent::ConnectionOutput { handle, buf } => {
                         let mut events =
                             client_event_receiver.receive_events(handle, buf.as_bytes());
                         while let Some(event) = events.next(&client_event_receiver) {
@@ -165,55 +164,15 @@ impl ServerApplication {
                         }
                         events.finish(&mut client_event_receiver);
                     }
-                    ApplicationEvent::ProcessSpawned { tag, handle } => match tag {
-                        ProcessTag::Lsp(client_handle) => lsp::ClientManager::on_process_spawned(
-                            &mut editor,
-                            platform,
-                            client_handle,
-                            handle,
-                        ),
-                        ProcessTag::Command(index) => {
-                            editor.commands.on_process_spawned(platform, index, handle)
-                        }
-                    },
-                    ApplicationEvent::ProcessStdout { tag, buf } => {
-                        let bytes = buf.as_bytes();
-                        match tag {
-                            ProcessTag::Lsp(client_handle) => {
-                                lsp::ClientManager::on_process_stdout(
-                                    &mut editor,
-                                    platform,
-                                    client_handle,
-                                    bytes,
-                                )
-                            }
-                            ProcessTag::Command(index) => CommandManager::on_process_stdout(
-                                &mut editor,
-                                platform,
-                                &mut clients,
-                                index,
-                                bytes,
-                            ),
-                        }
+                    ApplicationEvent::ProcessSpawned { tag, handle } => {
+                        editor.on_process_spawned(platform, tag, handle)
                     }
-                    ApplicationEvent::ProcessStderr { tag, buf } => {
-                        let _bytes = buf.as_bytes();
-                        match tag {
-                            _ => (),
-                        }
+                    ApplicationEvent::ProcessOutput { tag, buf } => {
+                        editor.on_process_output(platform, &mut clients, tag, buf.as_bytes())
                     }
-                    ApplicationEvent::ProcessExit { tag, success } => match tag {
-                        ProcessTag::Lsp(client_handle) => {
-                            lsp::ClientManager::on_process_exit(&mut editor, client_handle)
-                        }
-                        ProcessTag::Command(index) => CommandManager::on_process_exit(
-                            &mut editor,
-                            platform,
-                            &mut clients,
-                            index,
-                            success,
-                        ),
-                    },
+                    ApplicationEvent::ProcessExit { tag, success } => {
+                        editor.on_process_exit(platform, &mut clients, tag, success)
+                    }
                 }
 
                 event = match event_receiver.try_recv() {

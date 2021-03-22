@@ -838,7 +838,7 @@ impl Buffer {
         range
     }
 
-    pub fn insert_text_no_history(
+    fn insert_text_no_history(
         content: &mut BufferContent,
         highlighted: &mut HighlightedBuffer,
         uses_word_database: bool,

@@ -42,8 +42,7 @@ pub enum PlatformRequest {
     SpawnProcess {
         tag: ProcessTag,
         command: Command,
-        stdout_buf_len: usize,
-        stderr_buf_len: usize,
+        buf_len: usize,
     },
     WriteToProcess {
         handle: ProcessHandle,

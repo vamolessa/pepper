@@ -1290,8 +1290,7 @@ impl ClientManager {
         platform.enqueue_request(PlatformRequest::SpawnProcess {
             tag: ProcessTag::Lsp(handle),
             command,
-            stdout_buf_len: protocol::BUFFER_LEN,
-            stderr_buf_len: 0,
+            buf_len: protocol::BUFFER_LEN,
         });
         self.entries[handle.0] = Some(ClientManagerEntry {
             client: Client::new(root),

@@ -7,6 +7,7 @@ use std::{
 
 use crate::{
     buffer::{BufferCapabilities, BufferHandle},
+    application::ProcessTag,
     buffer_position::BufferPosition,
     buffer_view::BufferViewError,
     command::{
@@ -23,7 +24,7 @@ use crate::{
     mode::ModeKind,
     mode::{picker, read_line, ModeContext},
     navigation_history::NavigationHistory,
-    platform::Platform,
+    platform::{Platform, PlatformRequest},
     register::RegisterKey,
     syntax::{Syntax, TokenKind},
     theme::{Color, THEME_COLOR_NAMES},
@@ -457,20 +458,23 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "open",
         alias: "o",
         help: concat!(
-            "opens a buffer for editting\nopen [<flags>] <path>\n",
-            " -line=<number> : set cursor at line",
+            "opens a buffer for editting\n",
+            "open [<flags>] <path>\n",
+            " -line=<number> : set cursor at line\n",
+            " -command=<content-command> : appends command output to buffer",
         ),
         completions: &[CompletionSource::Files],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
 
-            let mut flags = [("line", None)];
+            let mut flags = [("line", None), ("command", None)];
             ctx.args.get_flags(&mut flags)?;
             let line = flags[0]
                 .1
                 .map(parse_arg::<usize>)
                 .transpose()?
                 .map(|l| l.saturating_sub(1));
+            let command = flags[1].1.map(parse_command).transpose()?;
 
             let path = ctx.args.next()?;
             ctx.args.assert_empty()?;
@@ -499,6 +503,16 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                     if let Some(client) = ctx.clients.get_mut(client_handle) {
                         client.set_buffer_view_handle(Some(handle));
                     }
+
+                    if let Some((command, buffer_view)) = command.zip(ctx.editor.buffer_views.get(handle)) {
+                        let buffer_handle = buffer_view.buffer_handle;
+                        ctx.platform.enqueue_request(PlatformRequest::SpawnProcess {
+                            tag: ProcessTag::Buffer(buffer_handle),
+                            command,
+                            buf_len: 4 * 1024,
+                        });
+                    }
+
                     Ok(None)
                 }
                 Err(BufferViewError::InvalidPath) => Err(CommandError::InvalidPath(path.into())),

@@ -1042,8 +1042,7 @@ impl CommandManager {
         platform.enqueue_request(PlatformRequest::SpawnProcess {
             tag: ProcessTag::Command(index),
             command,
-            stdout_buf_len: if on_output.is_some() { 1024 } else { 0 },
-            stderr_buf_len: 0,
+            buf_len: if on_output.is_some() { 1024 } else { 0 },
         });
     }
 
