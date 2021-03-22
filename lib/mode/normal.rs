@@ -5,7 +5,7 @@ use crate::{
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{BufferViewError, BufferViewHandle, CursorMovement, CursorMovementKind},
     client::Client,
-    cursor::{CursorCollection, Cursor},
+    cursor::{Cursor, CursorCollection},
     editor::{Editor, KeysIterator},
     editor_utils::MessageKind,
     lsp,
@@ -468,6 +468,7 @@ impl State {
                             len += 1;
                         }
 
+                        let mut jumped = false;
                         let mut path_buf = ctx.editor.string_pool.acquire();
                         for range in &ranges[..len] {
                             let line_index = range.from.line_index;
@@ -511,8 +512,16 @@ impl State {
                                     &mut ctx.editor.events,
                                 )
                             {
-                                if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
-                                    client.set_buffer_view_handle(Some(handle));
+                                if !jumped {
+                                    jumped = true;
+                                    NavigationHistory::save_client_snapshot(
+                                        ctx.clients,
+                                        ctx.client_handle,
+                                        &ctx.editor.buffer_views,
+                                    );
+                                    if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
+                                        client.set_buffer_view_handle(Some(handle));
+                                    }
                                 }
                             }
                         }
