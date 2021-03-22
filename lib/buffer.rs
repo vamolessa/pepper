@@ -16,6 +16,69 @@ use crate::{
     word_database::{WordDatabase, WordIter, WordKind},
 };
 
+pub fn find_delimiter_pair_at(text: &str, index: usize, delimiter: char) -> Option<(usize, usize)> {
+    let mut is_right_delim = false;
+    let mut last_i = 0;
+    for (i, c) in text.char_indices() {
+        if c != delimiter {
+            continue;
+        }
+
+        if i >= index {
+            if is_right_delim {
+                return Some((last_i + delimiter.len_utf8(), i));
+            }
+
+            if i != index {
+                break;
+            }
+        }
+
+        is_right_delim = !is_right_delim;
+        last_i = i;
+    }
+
+    None
+}
+
+pub fn find_path_at(text: &str, index: usize) -> (&str, Option<usize>) {
+    fn parse_line_number(text: &str) -> Option<usize> {
+        let text = match text.find(|c: char| !c.is_ascii_digit()) {
+            Some(i) => &text[..i],
+            None => text,
+        };
+        match text.parse() {
+            Ok(line) => Some(line),
+            Err(_) => None,
+        }
+    }
+
+    let (left, right) = text.split_at(index);
+    let start = match left.rfind(|c: char| c.is_ascii_whitespace()) {
+        Some(i) => i + 1,
+        None => 0,
+    };
+    let end = match right.find(|c: char| c.is_ascii_whitespace() || c == ':') {
+        Some(i) => index + i,
+        None => text.len(),
+    };
+    let path = &text[start..end];
+    match path.rfind(':') {
+        Some(i) => {
+            let line = parse_line_number(&path[(i + 1)..]);
+            (&path[..i], line)
+        }
+        None => {
+            let line = if text[end..].starts_with(':') {
+                parse_line_number(&text[(end + 1)..])
+            } else {
+                None
+            };
+            (path, line)
+        }
+    }
+}
+
 pub struct WordRefWithIndex<'a> {
     pub kind: WordKind,
     pub text: &'a str,
@@ -489,35 +552,11 @@ impl BufferContent {
     ) -> Option<BufferRange> {
         let position = self.clamp_position(position);
         let line = self.line_at(position.line_index).as_str();
-
-        let mut is_right_delim = false;
-        let mut last_i = 0;
-        for (i, c) in line.char_indices() {
-            if c != delimiter {
-                continue;
-            }
-
-            if i >= position.column_byte_index {
-                if is_right_delim {
-                    return Some(BufferRange::between(
-                        BufferPosition::line_col(
-                            position.line_index,
-                            last_i + delimiter.len_utf8(),
-                        ),
-                        BufferPosition::line_col(position.line_index, i),
-                    ));
-                }
-
-                if i != position.column_byte_index {
-                    break;
-                }
-            }
-
-            is_right_delim = !is_right_delim;
-            last_i = i;
-        }
-
-        None
+        let range = find_delimiter_pair_at(line, position.column_byte_index, delimiter)?;
+        Some(BufferRange::between(
+            BufferPosition::line_col(position.line_index, range.0),
+            BufferPosition::line_col(position.line_index, range.1),
+        ))
     }
 
     pub fn find_balanced_chars_at(
@@ -1278,6 +1317,44 @@ mod tests {
     use super::*;
     use crate::buffer_position::BufferPosition;
 
+    #[test]
+    fn test_find_delimiter_pair_at() {
+        let text = "|a|bcd|efg|";
+        assert_eq!(Some((1, 2)), find_delimiter_pair_at(text, 0, '|'));
+        assert_eq!(Some((1, 2)), find_delimiter_pair_at(text, 2, '|'));
+        assert_eq!(None, find_delimiter_pair_at(text, 4, '|'));
+        assert_eq!(Some((7, 10)), find_delimiter_pair_at(text, 6, '|'));
+        assert_eq!(Some((7, 10)), find_delimiter_pair_at(text, 10, '|'));
+        assert_eq!(None, find_delimiter_pair_at(text, 11, '|'));
+    }
+
+    #[test]
+    fn test_find_path_at() {
+        let text = "/path/file:45";
+        assert_eq!(("/path/file", Some(45)), find_path_at(text, 0));
+        assert_eq!(("/path/file", Some(45)), find_path_at(text, 1));
+        assert_eq!(("/path/file", Some(45)), find_path_at(text, text.len()));
+        assert_eq!(("/path/file", Some(45)), find_path_at(text, 3));
+        assert_eq!(("/path/file", Some(45)), find_path_at(text, 8));
+
+        let text = "xx /path/file:";
+        assert_eq!(("xx", None), find_path_at(text, 0));
+        assert_eq!(("xx", None), find_path_at(text, 1));
+        assert_eq!(("xx", None), find_path_at(text, 2));
+        assert_eq!(("/path/file", None), find_path_at(text, 3));
+        assert_eq!(("/path/file", None), find_path_at(text, text.len() - 1));
+        assert_eq!(("/path/file", None), find_path_at(text, text.len()));
+
+        let text = "xx /path/file:3xx";
+        assert_eq!(("/path/file", Some(3)), find_path_at(text, 3));
+        assert_eq!(("/path/file", Some(3)), find_path_at(text, text.len() - 5));
+        assert_eq!(("/path/file", Some(3)), find_path_at(text, text.len() - 4));
+        assert_eq!(("/path/file", Some(3)), find_path_at(text, text.len() - 3));
+        assert_eq!(("/path/file", Some(3)), find_path_at(text, text.len() - 2));
+        assert_eq!(("/path/file", Some(3)), find_path_at(text, text.len() - 1));
+        assert_eq!(("/path/file", Some(3)), find_path_at(text, text.len()));
+    }
+
     fn buffer_from_str(text: &str) -> BufferContent {
         let mut buffer = BufferContent::new();
         buffer.insert_text(BufferPosition::line_col(0, 0), text);
@@ -1633,48 +1710,6 @@ mod tests {
                 BufferPosition::line_col(4, 2)
             )),
             buffer.find_balanced_chars_at(BufferPosition::line_col(4, 2), '(', ')')
-        );
-    }
-
-    #[test]
-    fn buffer_find_delimiter_pairs() {
-        let buffer = buffer_from_str("|a|bcd|efg|");
-
-        assert_eq!(
-            Some(BufferRange::between(
-                BufferPosition::line_col(0, 1),
-                BufferPosition::line_col(0, 2)
-            )),
-            buffer.find_delimiter_pair_at(BufferPosition::line_col(0, 0), '|')
-        );
-        assert_eq!(
-            Some(BufferRange::between(
-                BufferPosition::line_col(0, 1),
-                BufferPosition::line_col(0, 2)
-            )),
-            buffer.find_delimiter_pair_at(BufferPosition::line_col(0, 2), '|')
-        );
-        assert_eq!(
-            None,
-            buffer.find_delimiter_pair_at(BufferPosition::line_col(0, 4), '|')
-        );
-        assert_eq!(
-            Some(BufferRange::between(
-                BufferPosition::line_col(0, 7),
-                BufferPosition::line_col(0, 10)
-            )),
-            buffer.find_delimiter_pair_at(BufferPosition::line_col(0, 6), '|')
-        );
-        assert_eq!(
-            Some(BufferRange::between(
-                BufferPosition::line_col(0, 7),
-                BufferPosition::line_col(0, 10)
-            )),
-            buffer.find_delimiter_pair_at(BufferPosition::line_col(0, 10), '|')
-        );
-        assert_eq!(
-            None,
-            buffer.find_delimiter_pair_at(BufferPosition::line_col(0, 11), '|')
         );
     }
 }

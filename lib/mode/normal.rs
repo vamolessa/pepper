@@ -458,6 +458,12 @@ impl State {
                             }
                         }
                     }
+                    Key::Char('f') => {
+                        let position = buffer_view.cursors.main_cursor().position;
+                        let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle)?.content();
+                        let line = buffer.line_at(position.line_index).as_str();
+                        // TODO: go to file under cursor
+                    }
                     _ => {
                         keys.put_back();
                         keys.put_back();
