@@ -490,6 +490,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 &ctx.editor.buffer_views,
             );
 
+            // TODO: fix new buffer capabilities!
             match ctx.editor.buffer_views.buffer_view_handle_from_path(
                 client_handle,
                 &mut ctx.editor.buffers,
