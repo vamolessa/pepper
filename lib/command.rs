@@ -726,6 +726,46 @@ impl<'a> CommandArgs<'a> {
     }
 }
 
+pub struct CommandSourceIter<'a> {
+    builtins: &'a [BuiltinCommand],
+    macros: &'a [MacroCommand],
+    next_source: CommandSource,
+}
+impl<'a> CommandSourceIter<'a> {
+    pub fn empty() -> Self {
+        Self {
+            builtins: &[],
+            macros: &[],
+            next_source: CommandSource::Macro(0),
+        }
+    }
+}
+impl<'a> Iterator for CommandSourceIter<'a> {
+    type Item = (CommandSource, &'a str);
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            let source = self.next_source;
+            match source {
+                CommandSource::Builtin(i) => {
+                    if i >= self.builtins.len() {
+                        continue;
+                    }
+                    let name = self.builtins[i].name;
+                    break Some((source, name));
+                }
+                CommandSource::Macro(i) => {
+                    if i >= self.macros.len() {
+                        break None;
+                    }
+                    let name = &self.macros[i].name;
+                    break Some((source, name));
+                }
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
 pub enum CommandSource {
     Builtin(usize),
     Macro(usize),

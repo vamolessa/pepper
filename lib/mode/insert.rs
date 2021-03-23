@@ -3,6 +3,7 @@ use std::fmt::Write;
 use crate::{
     buffer_position::BufferPosition,
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
+    command::CommandSourceIter,
     editor::{Editor, KeysIterator},
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     platform::Key,
@@ -189,9 +190,11 @@ impl ModeState for State {
             && word_position.column_byte_index
                 >= word.end_position().column_byte_index.saturating_sub(1)
         {
-            ctx.editor
-                .picker
-                .filter(ctx.editor.word_database.word_indices(), word.text);
+            ctx.editor.picker.filter(
+                ctx.editor.word_database.word_indices(),
+                CommandSourceIter::empty(),
+                word.text,
+            );
             if ctx.editor.picker.len() == 1 {
                 ctx.editor.picker.clear_filtered();
             }

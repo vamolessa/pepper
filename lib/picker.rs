@@ -1,7 +1,7 @@
 use fuzzy_matcher::{skim::SkimMatcherV2, FuzzyMatcher};
 
 use crate::{
-    command::{CommandManager, CommandSource},
+    command::{CommandManager, CommandSource, CommandSourceIter},
     word_database::{WordDatabase, WordIndicesIter},
 };
 
@@ -20,7 +20,7 @@ struct CustomEntry {
 enum FilteredEntrySource {
     Custom(usize),
     WordDatabase(usize),
-    Command(CommandSource), // TODO: maybe this won't be needed
+    Command(CommandSource),
 }
 
 struct FilteredEntry {
@@ -142,7 +142,12 @@ impl Picker {
         self.scroll = 0;
     }
 
-    pub fn filter(&mut self, word_indices: WordIndicesIter, pattern: &str) {
+    pub fn filter(
+        &mut self,
+        word_indices: WordIndicesIter,
+        command_sources: CommandSourceIter,
+        pattern: &str,
+    ) {
         self.filtered_entries.clear();
 
         for (i, word) in word_indices {
@@ -157,6 +162,7 @@ impl Picker {
                 });
             }
         }
+        // TODO: the same for command_sources
 
         for i in 0..self.custom_entries_len {
             self.filter_custom_entry(i, pattern);

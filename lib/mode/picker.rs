@@ -1,6 +1,6 @@
 use crate::{
     buffer_view::BufferViewError,
-    command::{replace_to_between_text_markers, CommandManager},
+    command::{replace_to_between_text_markers, CommandManager, CommandSourceIter},
     editor::KeysIterator,
     editor_utils::{MessageKind, ReadLinePoll},
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
@@ -71,10 +71,11 @@ impl ModeState for State {
                     let entry_count = ctx.editor.picker.len() as isize;
                     ctx.editor.picker.move_cursor(entry_count - cursor - 1);
                 }
-                _ => ctx
-                    .editor
-                    .picker
-                    .filter(WordIndicesIter::empty(), ctx.editor.read_line.input()),
+                _ => ctx.editor.picker.filter(
+                    WordIndicesIter::empty(),
+                    CommandSourceIter::empty(),
+                    ctx.editor.read_line.input(),
+                ),
             }
         }
 
@@ -183,7 +184,9 @@ pub mod buffer {
             }
         }
 
-        ctx.editor.picker.filter(WordIndicesIter::empty(), "");
+        ctx.editor
+            .picker
+            .filter(WordIndicesIter::empty(), CommandSourceIter::empty(), "");
         if ctx.editor.picker.len() > 0 {
             ctx.editor.mode.picker_state.on_client_keys = on_client_keys;
             Mode::change_to(ctx, ModeKind::Picker);
@@ -245,7 +248,9 @@ pub mod custom {
             }
         }
 
-        ctx.editor.picker.filter(WordIndicesIter::empty(), "");
+        ctx.editor
+            .picker
+            .filter(WordIndicesIter::empty(), CommandSourceIter::empty(), "");
 
         let state = &mut ctx.editor.mode.picker_state;
         state.on_client_keys = on_client_keys;

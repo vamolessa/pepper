@@ -135,7 +135,6 @@ impl<'a> WordIndicesIter<'a> {
 }
 impl<'a> Iterator for WordIndicesIter<'a> {
     type Item = (usize, &'a str);
-
     fn next(&mut self) -> Option<Self::Item> {
         while self.next_index < self.words.len() {
             let index = self.next_index;
