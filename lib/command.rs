@@ -748,8 +748,11 @@ impl<'a> Iterator for CommandSourceIter<'a> {
             match source {
                 CommandSource::Builtin(i) => {
                     if i >= self.builtins.len() {
+                        self.next_source = CommandSource::Macro(0);
                         continue;
                     }
+                    self.next_source = CommandSource::Builtin(i + 1);
+
                     let name = self.builtins[i].name;
                     break Some((source, name));
                 }
@@ -757,6 +760,8 @@ impl<'a> Iterator for CommandSourceIter<'a> {
                     if i >= self.macros.len() {
                         break None;
                     }
+                    self.next_source = CommandSource::Macro(i + 1);
+
                     let name = &self.macros[i].name;
                     break Some((source, name));
                 }
@@ -837,6 +842,14 @@ impl CommandManager {
 
     pub fn custom_commands(&self) -> &[MacroCommand] {
         &self.macro_commands
+    }
+
+    pub fn command_sources(&self) -> CommandSourceIter {
+        CommandSourceIter {
+            builtins: &self.builtin_commands,
+            macros: &self.macro_commands,
+            next_source: CommandSource::Builtin(0),
+        }
     }
 
     pub fn register_macro(&mut self, command: MacroCommand) {

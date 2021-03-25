@@ -1,29 +1,33 @@
 use crate::{
-    command::{CommandError, CommandManager, CommandOperation, CommandTokenIter, CommandTokenKind},
+    command::{
+        CommandError, CommandManager, CommandOperation, CommandSourceIter, CommandTokenIter,
+        CommandTokenKind,
+    },
     editor::KeysIterator,
     editor_utils::{MessageKind, ReadLinePoll},
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     platform::Key,
+    word_database::WordIndicesIter,
 };
 
 enum CompletionState {
-    Dirty,
+    None,
     CommandName,
 }
 
-enum PickerState {
+enum ReadCommandState {
     NavigatingHistory(usize),
     TypingCommand(CompletionState),
 }
 
 pub struct State {
-    picker_state: PickerState,
+    picker_state: ReadCommandState,
     completion_index: usize,
 }
 impl Default for State {
     fn default() -> Self {
         Self {
-            picker_state: PickerState::TypingCommand(CompletionState::Dirty),
+            picker_state: ReadCommandState::TypingCommand(CompletionState::None),
             completion_index: 0,
         }
     }
@@ -32,13 +36,15 @@ impl Default for State {
 impl ModeState for State {
     fn on_enter(ctx: &mut ModeContext) {
         ctx.editor.mode.command_state.picker_state =
-            PickerState::NavigatingHistory(ctx.editor.commands.history_len());
+            ReadCommandState::NavigatingHistory(ctx.editor.commands.history_len());
         ctx.editor.read_line.set_prompt(":");
         ctx.editor.read_line.input_mut().clear();
+        ctx.editor.picker.clear();
     }
 
     fn on_exit(ctx: &mut ModeContext) {
         ctx.editor.read_line.input_mut().clear();
+        ctx.editor.picker.clear();
     }
 
     fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> Option<ModeOperation> {
@@ -52,7 +58,7 @@ impl ModeState for State {
                 keys.put_back();
                 match keys.next(&ctx.editor.buffered_keys) {
                     Key::Ctrl('n') | Key::Ctrl('j') => match state.picker_state {
-                        PickerState::NavigatingHistory(ref mut i) => {
+                        ReadCommandState::NavigatingHistory(ref mut i) => {
                             *i = ctx
                                 .editor
                                 .commands
@@ -64,17 +70,17 @@ impl ModeState for State {
                             input.clear();
                             input.push_str(entry);
                         }
-                        PickerState::TypingCommand(_) => apply_completion(ctx, 1),
+                        ReadCommandState::TypingCommand(_) => apply_completion(ctx, 1),
                     },
                     Key::Ctrl('p') | Key::Ctrl('k') => match state.picker_state {
-                        PickerState::NavigatingHistory(ref mut i) => {
+                        ReadCommandState::NavigatingHistory(ref mut i) => {
                             *i = i.saturating_sub(1);
                             let entry = ctx.editor.commands.history_entry(*i);
                             let input = ctx.editor.read_line.input_mut();
                             input.clear();
                             input.push_str(entry);
                         }
-                        PickerState::TypingCommand(_) => apply_completion(ctx, -1),
+                        ReadCommandState::TypingCommand(_) => apply_completion(ctx, -1),
                     },
                     _ => update_autocomplete_entries(ctx),
                 }
@@ -125,36 +131,80 @@ fn apply_completion(ctx: &mut ModeContext, cursor_movement: isize) {
 
 fn update_autocomplete_entries(ctx: &mut ModeContext) {
     let state = &mut ctx.editor.mode.command_state;
-    let completion_state = match &mut state.picker_state {
-        PickerState::NavigatingHistory(_) => return,
-        PickerState::TypingCommand(state) => state,
-    };
 
     let input = ctx.editor.read_line.input();
-    let mut tokens = CommandTokenIter(input);
+    let trimmed_input = input.trim_start();
+    let mut tokens = CommandTokenIter(trimmed_input);
 
-    let first_token = match tokens.next() {
-        Some((_, token)) => token,
-        None => {
-            ctx.editor.picker.clear();
-            state.picker_state = PickerState::NavigatingHistory(ctx.editor.commands.history_len());
-            state.completion_index = 0;
-            return;
+    if tokens.next().is_none() {
+        ctx.editor.picker.clear();
+        state.picker_state = ReadCommandState::NavigatingHistory(ctx.editor.commands.history_len());
+        state.completion_index = input.len();
+        return;
+    }
+
+    let completion_state = match &mut state.picker_state {
+        ReadCommandState::NavigatingHistory(_) => {
+            state.picker_state = ReadCommandState::TypingCommand(CompletionState::None);
+            match &mut state.picker_state {
+                ReadCommandState::NavigatingHistory(_) => unreachable!(),
+                ReadCommandState::TypingCommand(state) => state,
+            }
         }
+        ReadCommandState::TypingCommand(state) => state,
     };
 
+    let mut is_flag_value = false;
     let mut value_arg_count = 0;
-    match tokens.last() {
-        Some((kind, token)) => {
-            // TODO: complete parameter
+    let mut last_token = None;
+    for token in tokens {
+        match token.0 {
+            CommandTokenKind::Text => value_arg_count += is_flag_value as usize,
+            CommandTokenKind::Flag => is_flag_value = false,
+            CommandTokenKind::Equals => is_flag_value = true,
+            CommandTokenKind::Unterminated => (),
+        }
+        last_token = Some(token);
+    }
+
+    if trimmed_input.ends_with(|c: char| c.is_ascii_whitespace()) {
+        match last_token {
+            Some((CommandTokenKind::Unterminated, _)) => (),
+            None => {
+                value_arg_count += 1;
+                last_token = Some((CommandTokenKind::Text, ""));
+            }
+            _ => value_arg_count += 1,
+        }
+    }
+
+    match last_token {
+        Some((CommandTokenKind::Text, token)) | Some((CommandTokenKind::Unterminated, token))
+            if !is_flag_value =>
+        {
+            // TODO: complete value
+        }
+        Some((CommandTokenKind::Flag, token)) => {
+            // TODO: complete flag
         }
         None => {
-            // TODO: complete command name
-
-            state.completion_index = first_token.as_ptr() as usize - input.as_ptr() as usize;
             if !matches!(completion_state, CompletionState::CommandName) {
                 *completion_state = CompletionState::CommandName;
+                ctx.editor.picker.clear();
+                state.completion_index = input.len() - trimmed_input.len();
             }
+
+            let command_name = trimmed_input.trim_end_matches('!');
+            ctx.editor.picker.filter(
+                WordIndicesIter::empty(),
+                ctx.editor.commands.command_sources(),
+                command_name,
+            );
+        }
+        _ => {
+            *completion_state = CompletionState::None;
+            ctx.editor.picker.clear();
+            state.completion_index = input.len();
         }
     }
 }

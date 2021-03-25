@@ -57,6 +57,12 @@ impl Picker {
         self.filtered_entries.len()
     }
 
+    pub fn fuzzy_match(&self, text: &str, pattern: &str) -> Option<i64> {
+        let score = self.matcher.fuzzy_match(text, pattern)?;
+        let score = score + (text.len() == pattern.len()) as i64;
+        Some(score)
+    }
+
     pub fn move_cursor(&mut self, offset: isize) {
         if self.filtered_entries.is_empty() {
             return;
@@ -151,18 +157,22 @@ impl Picker {
         self.filtered_entries.clear();
 
         for (i, word) in word_indices {
-            if let Some(mut score) = self.matcher.fuzzy_match(word, pattern) {
-                if word.len() == pattern.len() {
-                    score += 1;
-                }
-
+            if let Some(score) = self.fuzzy_match(word, pattern) {
                 self.filtered_entries.push(FilteredEntry {
                     source: FilteredEntrySource::WordDatabase(i),
                     score,
                 });
             }
         }
-        // TODO: the same for command_sources
+
+        for (source, command) in command_sources {
+            if let Some(score) = self.fuzzy_match(command, pattern) {
+                self.filtered_entries.push(FilteredEntry {
+                    source: FilteredEntrySource::Command(source),
+                    score,
+                });
+            }
+        }
 
         for i in 0..self.custom_entries_len {
             self.filter_custom_entry(i, pattern);
@@ -177,17 +187,14 @@ impl Picker {
 
     fn filter_custom_entry(&mut self, index: usize, pattern: &str) -> bool {
         let entry = &self.custom_entries_buffer[index];
-        let name_score = self.matcher.fuzzy_match(&entry.name, pattern);
-        let description_score = self.matcher.fuzzy_match(&entry.description, pattern);
-
-        let name_eq_bonus = (entry.name.len() == pattern.len()) as i64;
-        let description_eq_bonus = (entry.description.len() == pattern.len()) as i64;
+        let name_score = self.fuzzy_match(&entry.name, pattern);
+        let description_score = self.fuzzy_match(&entry.description, pattern);
 
         let score = match (name_score, description_score) {
             (None, None) => return false,
-            (None, Some(s)) => s + description_eq_bonus,
-            (Some(s), None) => s + name_eq_bonus,
-            (Some(a), Some(b)) => (a + name_eq_bonus).max(b + description_eq_bonus),
+            (None, Some(s)) => s,
+            (Some(s), None) => s,
+            (Some(a), Some(b)) => a.max(b),
         };
 
         self.filtered_entries.push(FilteredEntry {
