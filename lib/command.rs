@@ -291,7 +291,7 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
                 location,
                 error,
             } => {
-                let command = &self.commands.custom_commands()[*index];
+                let command = &self.commands.macro_commands()[*index];
                 let error_display = CommandErrorDisplay {
                     command: body,
                     source_path: command.source_path.as_ref().map(PathBuf::as_path),
@@ -320,6 +320,7 @@ pub enum CommandOperation {
     QuitAll,
 }
 
+#[derive(Clone, Copy)]
 pub enum CompletionSource {
     Commands,
     Buffers,
@@ -840,7 +841,7 @@ impl CommandManager {
         &self.builtin_commands
     }
 
-    pub fn custom_commands(&self) -> &[MacroCommand] {
+    pub fn macro_commands(&self) -> &[MacroCommand] {
         &self.macro_commands
     }
 

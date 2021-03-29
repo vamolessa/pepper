@@ -69,7 +69,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                             (command.alias, command.help)
                         },
                         CommandSource::Macro(i) => {
-                            let command = &commands.custom_commands()[i];
+                            let command = &commands.macro_commands()[i];
                             ("", &command.help[..])
                         }
                     };

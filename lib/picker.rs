@@ -256,7 +256,7 @@ fn filtered_to_picker_entry<'a>(
             }
         }
         FilteredEntrySource::Command(CommandSource::Macro(i)) => {
-            let command = &commands.custom_commands()[i];
+            let command = &commands.macro_commands()[i];
             PickerEntry {
                 name: &command.name,
                 description: command.help.lines().next().unwrap_or(""),
