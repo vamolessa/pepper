@@ -3,7 +3,7 @@ use std::{fs, path::Path};
 use crate::{
     command::{CommandManager, CommandTokenIter, CommandTokenKind, CompletionSource},
     editor::KeysIterator,
-    editor_utils::ReadLinePoll,
+    editor_utils::{hash, ReadLinePoll},
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     picker::Picker,
     platform::Key,
@@ -19,6 +19,7 @@ pub struct State {
     read_state: ReadCommandState,
     completion_index: usize,
     completion_source: CompletionSource,
+    completion_path_hash: Option<u64>,
 }
 
 impl Default for State {
@@ -27,6 +28,7 @@ impl Default for State {
             read_state: ReadCommandState::TypingCommand,
             completion_index: 0,
             completion_source: CompletionSource::Custom(&[]),
+            completion_path_hash: None,
         }
     }
 }
@@ -37,6 +39,7 @@ impl ModeState for State {
         state.read_state = ReadCommandState::NavigatingHistory(ctx.editor.commands.history_len());
         state.completion_index = 0;
         state.completion_source = CompletionSource::Custom(&[]);
+        state.completion_path_hash = None;
 
         ctx.editor.read_line.set_prompt(":");
         ctx.editor.read_line.input_mut().clear();
@@ -198,55 +201,64 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
         }
     };
 
-    if completion_source == CompletionSource::Files || completion_source != state.completion_source
-    {
-        ctx.editor.picker.clear();
+    if state.completion_source != completion_source {
         match completion_source {
-            CompletionSource::Commands => {
-                for command in ctx.editor.commands.builtin_commands() {
-                    ctx.editor.picker.add_custom_entry(command.name);
-                }
-                for command in ctx.editor.commands.macro_commands() {
-                    ctx.editor.picker.add_custom_entry(&command.name);
+            CompletionSource::Files => state.completion_path_hash = None,
+            _ => ctx.editor.picker.clear(),
+        }
+    }
+
+    match completion_source {
+        CompletionSource::Commands => {
+            for command in ctx.editor.commands.builtin_commands() {
+                ctx.editor.picker.add_custom_entry(command.name);
+            }
+            for command in ctx.editor.commands.macro_commands() {
+                ctx.editor.picker.add_custom_entry(&command.name);
+            }
+        }
+        CompletionSource::Buffers => {
+            for buffer in ctx.editor.buffers.iter() {
+                if let Some(path) = buffer.path().and_then(Path::to_str) {
+                    ctx.editor.picker.add_custom_entry(path);
                 }
             }
-            CompletionSource::Buffers => {
-                for buffer in ctx.editor.buffers.iter() {
-                    if let Some(path) = buffer.path().and_then(Path::to_str) {
-                        ctx.editor.picker.add_custom_entry(path);
-                    }
-                }
-            }
-            CompletionSource::Files => {
-                fn add_files_in_path(picker: &mut Picker, path: &str) {
-                    let read_dir = match fs::read_dir(path) {
-                        Ok(iter) => iter,
+        }
+        CompletionSource::Files => {
+            fn set_files_in_path_as_entries(picker: &mut Picker, path: &str) {
+                picker.clear();
+                let read_dir = match fs::read_dir(path) {
+                    Ok(iter) => iter,
+                    Err(_) => return,
+                };
+                for entry in read_dir {
+                    let entry = match entry {
+                        Ok(entry) => entry.file_name(),
                         Err(_) => return,
                     };
-                    for entry in read_dir {
-                        let entry = match entry {
-                            Ok(entry) => entry.file_name(),
-                            Err(_) => return,
-                        };
-                        if let Some(entry) = entry.to_str() {
-                            picker.add_custom_entry(entry);
-                        }
+                    if let Some(entry) = entry.to_str() {
+                        picker.add_custom_entry(entry);
                     }
                 }
-
-                let (parent, file) = match pattern.rfind('/') {
-                    Some(i) => pattern.split_at(i + 1),
-                    None => ("", pattern),
-                };
-
-                state.completion_index = file.as_ptr() as usize - input.as_ptr() as usize;
-                add_files_in_path(&mut ctx.editor.picker, parent);
-                pattern = file;
             }
-            CompletionSource::Custom(completions) => {
-                for completion in completions {
-                    ctx.editor.picker.add_custom_entry(completion);
-                }
+
+            let (parent, file) = match pattern.rfind('/') {
+                Some(i) => pattern.split_at(i + 1),
+                None => ("", pattern),
+            };
+
+            let parent_hash = hash(parent);
+            if state.completion_path_hash != Some(parent_hash) {
+                set_files_in_path_as_entries(&mut ctx.editor.picker, parent);
+                state.completion_path_hash = Some(parent_hash);
+            }
+
+            state.completion_index = file.as_ptr() as usize - input.as_ptr() as usize;
+            pattern = file;
+        }
+        CompletionSource::Custom(completions) => {
+            for completion in completions {
+                ctx.editor.picker.add_custom_entry(completion);
             }
         }
     }

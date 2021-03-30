@@ -1,6 +1,4 @@
 use std::{
-    collections::hash_map::DefaultHasher,
-    hash::{Hash, Hasher},
     io,
     os::windows::io::IntoRawHandle,
     process::{Child, ChildStdin},
@@ -62,6 +60,7 @@ use pepper::{
     application::{AnyError, ApplicationEvent, ClientApplication, ProcessTag, ServerApplication},
     client::ClientHandle,
     platform::{BufPool, ExclusiveBuf, Key, Platform, PlatformRequest, ProcessHandle, SharedBuf},
+    editor_utils::hash,
     Args,
 };
 
@@ -86,9 +85,7 @@ pub fn main() {
         None => {
             use io::Write;
             get_current_directory(&mut pipe_path);
-            let mut hasher = DefaultHasher::new();
-            pipe_path.hash(&mut hasher);
-            let current_directory_hash = hasher.finish();
+            let current_directory_hash = hash(&pipe_path);
             let mut cursor = io::Cursor::new(&mut hash_buf[..]);
             write!(&mut cursor, "{:x}", current_directory_hash).unwrap();
             let len = cursor.position() as usize;

@@ -1,4 +1,8 @@
-use std::fmt;
+use std::{
+    collections::hash_map::DefaultHasher,
+    fmt,
+    hash::{Hash, Hasher},
+};
 
 use crate::{
     editor::{BufferedKeys, KeysIterator},
@@ -156,4 +160,13 @@ impl StringPool {
         s.clear();
         self.pool.push(s);
     }
+}
+
+pub fn hash<T>(value: T) -> u64
+where
+    T: Hash,
+{
+    let mut hasher = DefaultHasher::new();
+    value.hash(&mut hasher);
+    hasher.finish()
 }
