@@ -12,40 +12,34 @@ use crate::{
     word_database::WordIndicesIter,
 };
 
-#[derive(PartialEq, Eq)]
-enum CompletionState {
-    None,
-    CommandName,
-    Argument(usize),
-}
-
 enum ReadCommandState {
     NavigatingHistory(usize),
-    TypingCommand(CompletionState),
+    TypingCommand,
 }
 
 pub struct State {
-    picker_state: ReadCommandState,
+    read_state: ReadCommandState,
     completion_index: usize,
     completion_source: CompletionSource,
-    completion_path: String,
 }
 
 impl Default for State {
     fn default() -> Self {
         Self {
-            picker_state: ReadCommandState::TypingCommand(CompletionState::None),
+            read_state: ReadCommandState::TypingCommand,
             completion_index: 0,
             completion_source: CompletionSource::Custom(&[]),
-            completion_path: String::new(),
         }
     }
 }
 
 impl ModeState for State {
     fn on_enter(ctx: &mut ModeContext) {
-        ctx.editor.mode.command_state.picker_state =
-            ReadCommandState::NavigatingHistory(ctx.editor.commands.history_len());
+        let state = &mut ctx.editor.mode.command_state;
+        state.read_state = ReadCommandState::NavigatingHistory(ctx.editor.commands.history_len());
+        state.completion_index = 0;
+        state.completion_source = CompletionSource::Custom(&[]);
+
         ctx.editor.read_line.set_prompt(":");
         ctx.editor.read_line.input_mut().clear();
         ctx.editor.picker.clear();
@@ -66,7 +60,7 @@ impl ModeState for State {
             ReadLinePoll::Pending => {
                 keys.put_back();
                 match keys.next(&ctx.editor.buffered_keys) {
-                    Key::Ctrl('n') | Key::Ctrl('j') => match state.picker_state {
+                    Key::Ctrl('n') | Key::Ctrl('j') => match state.read_state {
                         ReadCommandState::NavigatingHistory(ref mut i) => {
                             *i = ctx
                                 .editor
@@ -79,9 +73,9 @@ impl ModeState for State {
                             input.clear();
                             input.push_str(entry);
                         }
-                        ReadCommandState::TypingCommand(_) => apply_completion(ctx, 1),
+                        ReadCommandState::TypingCommand => apply_completion(ctx, 1),
                     },
-                    Key::Ctrl('p') | Key::Ctrl('k') => match state.picker_state {
+                    Key::Ctrl('p') | Key::Ctrl('k') => match state.read_state {
                         ReadCommandState::NavigatingHistory(ref mut i) => {
                             *i = i.saturating_sub(1);
                             let entry = ctx.editor.commands.history_entry(*i);
@@ -89,7 +83,7 @@ impl ModeState for State {
                             input.clear();
                             input.push_str(entry);
                         }
-                        ReadCommandState::TypingCommand(_) => apply_completion(ctx, -1),
+                        ReadCommandState::TypingCommand => apply_completion(ctx, -1),
                     },
                     _ => update_autocomplete_entries(ctx),
                 }
@@ -142,30 +136,22 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
     let state = &mut ctx.editor.mode.command_state;
 
     let input = ctx.editor.read_line.input();
-    let trimmed_input = input.trim_start();
-    let mut tokens = CommandTokenIter(trimmed_input);
+    let mut tokens = CommandTokenIter(input);
 
     let command_name = match tokens.next() {
         Some((_, token)) => token.trim_end_matches('!'),
         None => {
             ctx.editor.picker.clear();
-            state.picker_state =
+            state.read_state =
                 ReadCommandState::NavigatingHistory(ctx.editor.commands.history_len());
             state.completion_index = input.len();
             return;
         }
     };
 
-    let completion_state = match &mut state.picker_state {
-        ReadCommandState::NavigatingHistory(_) => {
-            state.picker_state = ReadCommandState::TypingCommand(CompletionState::None);
-            match &mut state.picker_state {
-                ReadCommandState::NavigatingHistory(_) => unreachable!(),
-                ReadCommandState::TypingCommand(state) => state,
-            }
-        }
-        ReadCommandState::TypingCommand(state) => state,
-    };
+    if let ReadCommandState::NavigatingHistory(_) = state.read_state {
+        state.read_state = ReadCommandState::TypingCommand;
+    }
 
     let mut is_flag_value = false;
     let mut arg_count = 0;
@@ -181,140 +167,100 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
     }
     drop(is_flag_value);
 
-    if trimmed_input.ends_with(|c: char| c.is_ascii_whitespace()) {
+    if input.ends_with(|c: char| c.is_ascii_whitespace()) {
         match last_token {
             Some((CommandTokenKind::Unterminated, _)) => (),
             None => {
                 arg_count += 1;
-                last_token = Some((CommandTokenKind::Text, ""));
+                last_token = Some((CommandTokenKind::Text, &input[..input.len()]));
             }
             _ => arg_count += 1,
         }
     }
 
-    match last_token {
+    let (completion_source, mut pattern) = match last_token {
         Some((CommandTokenKind::Text, token)) | Some((CommandTokenKind::Unterminated, token))
             if !is_flag_value =>
         {
-            fn add_files_in_path(
-                picker: &mut Picker,
-                completion_path: &mut String,
-                current_path: &str,
-            ) {
-                picker.clear();
-                completion_path.clear();
-                completion_path.push_str(current_path);
-
-                let read_dir = match fs::read_dir(completion_path) {
-                    Ok(iter) => iter,
-                    Err(_) => return,
-                };
-                for entry in read_dir {
-                    let entry = match entry {
-                        Ok(entry) => entry.file_name(),
-                        Err(_) => return,
-                    };
-                    if let Some(entry) = entry.to_str() {
-                        picker.add_custom_entry(entry, "");
-                    }
-                }
-            }
-
-            let arg_index = arg_count - 1;
-            if *completion_state != CompletionState::Argument(arg_index) {
-                *completion_state = CompletionState::Argument(arg_index);
-                ctx.editor.picker.clear();
-
-                let path_len = token.rfind('/').unwrap_or(0);
-                state.completion_index = match last_token {
-                    Some((CommandTokenKind::Text, _)) => input.trim_end().len() - path_len,
-                    Some((CommandTokenKind::Unterminated, _)) => input.len() - path_len,
-                    _ => unreachable!(),
-                };
-                state.completion_source = CompletionSource::Custom(&[]);
-                state.completion_path.clear();
-                if token.is_empty() {
-                    state.completion_path.push('.');
-                }
-
+            let mut completion_source = CompletionSource::Custom(&[]);
+            if arg_count > 0 {
                 for command in ctx.editor.commands.builtin_commands() {
-                    if (command.name == command_name || command.alias == command_name)
-                        && arg_index < command.completions.len()
-                    {
-                        state.completion_source = command.completions[arg_index];
+                    if command.name == command_name || command.alias == command_name {
+                        if let Some(&completion) = command.completions.get(arg_count - 1) {
+                            completion_source = completion;
+                        }
                         break;
                     }
                 }
-
-                match state.completion_source {
-                    CompletionSource::Commands => (),
-                    CompletionSource::Buffers => {
-                        for buffer in ctx.editor.buffers.iter() {
-                            if let Some(path) = buffer.path().and_then(Path::to_str) {
-                                let changed = if buffer.needs_save() { "changed" } else { "" };
-                                ctx.editor.picker.add_custom_entry(path, changed);
-                            }
-                        }
-                    }
-                    CompletionSource::Files => (),
-                    CompletionSource::Custom(completions) => {
-                        for completion in completions {
-                            ctx.editor.picker.add_custom_entry(completion, "");
-                        }
-                    }
-                }
             }
-
-            let (command_sources, pattern) = match state.completion_source {
-                CompletionSource::Commands => (ctx.editor.commands.command_sources(), token),
-                CompletionSource::Files => {
-                    let (parent, file) = match token.rfind('/') {
-                        Some(i) => token.split_at(i + 1),
-                        None => ("", token),
-                    };
-
-                    if parent != state.completion_path {
-                        state.completion_index += parent.len();
-                        state.completion_index -= state.completion_path.len();
-
-                        add_files_in_path(
-                            &mut ctx.editor.picker,
-                            &mut state.completion_path,
-                            parent,
-                        );
-                    }
-
-                    (CommandSourceIter::empty(), file)
-                }
-                _ => (CommandSourceIter::empty(), token),
-            };
-
-            ctx.editor
-                .picker
-                .filter(WordIndicesIter::empty(), command_sources, pattern);
+            (completion_source, token)
         }
-        Some((CommandTokenKind::Flag, _)) => {
-            *completion_state = CompletionState::None;
-            ctx.editor.picker.clear();
-            state.completion_index = input.len();
-        }
-        None => {
-            if *completion_state != CompletionState::CommandName {
-                *completion_state = CompletionState::CommandName;
-                ctx.editor.picker.clear();
-                state.completion_index = input.len() - trimmed_input.len();
-            }
-
-            ctx.editor.picker.filter(
-                WordIndicesIter::empty(),
-                ctx.editor.commands.command_sources(),
-                command_name,
-            );
-        }
+        None => (CompletionSource::Commands, command_name),
         _ => {
-            *completion_state = CompletionState::None;
             ctx.editor.picker.clear();
             state.completion_index = input.len();
+            state.completion_source = CompletionSource::Custom(&[]);
+            return;
+        }
+    };
+
+    if completion_source == CompletionSource::Files || completion_source != state.completion_source
+    {
+        ctx.editor.picker.clear();
+        match completion_source {
+            CompletionSource::Commands => {
+                for command in ctx.editor.commands.builtin_commands() {
+                    ctx.editor.picker.add_custom_entry(command.name, "");
+                }
+                for command in ctx.editor.commands.macro_commands() {
+                    ctx.editor.picker.add_custom_entry(&command.name, "");
+                }
+            }
+            CompletionSource::Buffers => {
+                for buffer in ctx.editor.buffers.iter() {
+                    if let Some(path) = buffer.path().and_then(Path::to_str) {
+                        ctx.editor.picker.add_custom_entry(path, "");
+                    }
+                }
+            }
+            CompletionSource::Files => {
+                fn add_files_in_path(picker: &mut Picker, current_path: &str) {
+                    let read_dir = match fs::read_dir(current_path) {
+                        Ok(iter) => iter,
+                        Err(_) => return,
+                    };
+                    for entry in read_dir {
+                        let entry = match entry {
+                            Ok(entry) => entry.file_name(),
+                            Err(_) => return,
+                        };
+                        if let Some(entry) = entry.to_str() {
+                            picker.add_custom_entry(entry, "");
+                        }
+                    }
+                }
+
+                let (parent, file) = match pattern.rfind('/') {
+                    Some(i) => pattern.split_at(i + 1),
+                    None => ("", pattern),
+                };
+                pattern = file;
+
+                state.completion_index = file.as_ptr() as usize - input.as_ptr() as usize;
+                add_files_in_path(&mut ctx.editor.picker, parent);
+            }
+            CompletionSource::Custom(completions) => {
+                for completion in completions {
+                    ctx.editor.picker.add_custom_entry(completion, "");
+                }
+            }
         }
     }
+
+    state.completion_source = completion_source;
+    ctx.editor.picker.filter(
+        WordIndicesIter::empty(),
+        CommandSourceIter::empty(),
+        pattern,
+    );
 }

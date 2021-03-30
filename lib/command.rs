@@ -320,7 +320,7 @@ pub enum CommandOperation {
     QuitAll,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum CompletionSource {
     Commands,
     Buffers,
