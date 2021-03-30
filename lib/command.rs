@@ -727,50 +727,6 @@ impl<'a> CommandArgs<'a> {
     }
 }
 
-pub struct CommandSourceIter<'a> {
-    builtins: &'a [BuiltinCommand],
-    macros: &'a [MacroCommand],
-    next_source: CommandSource,
-}
-impl<'a> CommandSourceIter<'a> {
-    pub fn empty() -> Self {
-        Self {
-            builtins: &[],
-            macros: &[],
-            next_source: CommandSource::Macro(0),
-        }
-    }
-}
-impl<'a> Iterator for CommandSourceIter<'a> {
-    type Item = (CommandSource, &'a str);
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            let source = self.next_source;
-            match source {
-                CommandSource::Builtin(i) => {
-                    if i >= self.builtins.len() {
-                        self.next_source = CommandSource::Macro(0);
-                        continue;
-                    }
-                    self.next_source = CommandSource::Builtin(i + 1);
-
-                    let name = self.builtins[i].name;
-                    break Some((source, name));
-                }
-                CommandSource::Macro(i) => {
-                    if i >= self.macros.len() {
-                        break None;
-                    }
-                    self.next_source = CommandSource::Macro(i + 1);
-
-                    let name = &self.macros[i].name;
-                    break Some((source, name));
-                }
-            }
-        }
-    }
-}
-
 #[derive(Clone, Copy)]
 pub enum CommandSource {
     Builtin(usize),
@@ -843,14 +799,6 @@ impl CommandManager {
 
     pub fn macro_commands(&self) -> &[MacroCommand] {
         &self.macro_commands
-    }
-
-    pub fn command_sources(&self) -> CommandSourceIter {
-        CommandSourceIter {
-            builtins: &self.builtin_commands,
-            macros: &self.macro_commands,
-            next_source: CommandSource::Builtin(0),
-        }
     }
 
     pub fn register_macro(&mut self, command: MacroCommand) {

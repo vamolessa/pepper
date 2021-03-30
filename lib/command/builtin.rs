@@ -342,19 +342,17 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         alias: "",
         help: concat!(
             "adds a new picker entry that will then be shown in the next call to the `pick` command\n",
-            "add-picker-entry [<flags>] <name> [<description>]",
+            "add-picker-entry [<flags>] <name>",
         ),
         completions: &[],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
             ctx.args.get_flags(&mut [])?;
             let name = ctx.args.next()?;
-            let description = ctx.args.try_next()?.unwrap_or("");
             ctx.args.assert_empty()?;
 
             ctx.editor.picker.add_custom_entry_filtered(
                 name,
-                description,
                 ctx.editor.read_line.input()
             );
             Ok(None)

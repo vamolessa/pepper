@@ -1,26 +1,10 @@
 use fuzzy_matcher::{skim::SkimMatcherV2, FuzzyMatcher};
 
-use crate::{
-    command::{CommandManager, CommandSource, CommandSourceIter},
-    word_database::{WordDatabase, WordIndicesIter},
-};
-
-#[derive(Default, Clone, Copy)]
-pub struct PickerEntry<'a> {
-    pub name: &'a str,
-    pub description: &'a str,
-    pub score: i64,
-}
-
-struct CustomEntry {
-    pub name: String,
-    pub description: String,
-}
+use crate::word_database::{WordDatabase, WordIndicesIter};
 
 enum FilteredEntrySource {
     Custom(usize),
     WordDatabase(usize),
-    Command(CommandSource),
 }
 
 struct FilteredEntry {
@@ -33,7 +17,7 @@ pub struct Picker {
     matcher: SkimMatcherV2,
 
     custom_entries_len: usize,
-    custom_entries_buffer: Vec<CustomEntry>,
+    custom_entries_buffer: Vec<String>,
     filtered_entries: Vec<FilteredEntry>,
 
     cursor: usize,
@@ -116,26 +100,20 @@ impl Picker {
         self.custom_entries_len = 0;
     }
 
-    pub fn add_custom_entry(&mut self, name: &str, description: &str) {
+    pub fn add_custom_entry(&mut self, name: &str) {
         if self.custom_entries_len < self.custom_entries_buffer.len() {
             let entry = &mut self.custom_entries_buffer[self.custom_entries_len];
-            entry.name.clear();
-            entry.name.push_str(name);
-            entry.description.clear();
-            entry.description.push_str(description);
+            entry.clear();
+            entry.push_str(name);
         } else {
-            let entry = CustomEntry {
-                name: name.into(),
-                description: description.into(),
-            };
-            self.custom_entries_buffer.push(entry);
+            self.custom_entries_buffer.push(name.into());
         }
 
         self.custom_entries_len += 1;
     }
 
-    pub fn add_custom_entry_filtered(&mut self, name: &str, description: &str, pattern: &str) {
-        self.add_custom_entry(name, description);
+    pub fn add_custom_entry_filtered(&mut self, name: &str, pattern: &str) {
+        self.add_custom_entry(name);
         if self.filter_custom_entry(self.custom_entries_len - 1, pattern) {
             self.filtered_entries
                 .sort_unstable_by(|a, b| b.score.cmp(&a.score));
@@ -148,27 +126,13 @@ impl Picker {
         self.scroll = 0;
     }
 
-    pub fn filter(
-        &mut self,
-        word_indices: WordIndicesIter,
-        command_sources: CommandSourceIter,
-        pattern: &str,
-    ) {
+    pub fn filter(&mut self, word_indices: WordIndicesIter, pattern: &str) {
         self.filtered_entries.clear();
 
         for (i, word) in word_indices {
             if let Some(score) = self.fuzzy_match(word, pattern) {
                 self.filtered_entries.push(FilteredEntry {
                     source: FilteredEntrySource::WordDatabase(i),
-                    score,
-                });
-            }
-        }
-
-        for (source, command) in command_sources {
-            if let Some(score) = self.fuzzy_match(command, pattern) {
-                self.filtered_entries.push(FilteredEntry {
-                    source: FilteredEntrySource::Command(source),
                     score,
                 });
             }
@@ -187,81 +151,42 @@ impl Picker {
 
     fn filter_custom_entry(&mut self, index: usize, pattern: &str) -> bool {
         let entry = &self.custom_entries_buffer[index];
-        let name_score = self.fuzzy_match(&entry.name, pattern);
-        let description_score = self.fuzzy_match(&entry.description, pattern);
-
-        let score = match (name_score, description_score) {
-            (None, None) => return false,
-            (None, Some(s)) => s,
-            (Some(s), None) => s,
-            (Some(a), Some(b)) => a.max(b),
+        let score = match self.fuzzy_match(entry, pattern) {
+            Some(score) => score,
+            None => return false,
         };
 
         self.filtered_entries.push(FilteredEntry {
             source: FilteredEntrySource::Custom(index),
             score,
         });
-
         true
     }
 
-    pub fn current_entry<'a>(
-        &'a self,
-        words: &'a WordDatabase,
-        commands: &'a CommandManager,
-    ) -> Option<PickerEntry<'a>> {
+    pub fn current_entry<'a>(&'a self, words: &'a WordDatabase) -> Option<&'a str> {
         let entry = self.filtered_entries.get(self.cursor)?;
-        let entry = filtered_to_picker_entry(entry, &self.custom_entries_buffer, words, commands);
+        let entry = filtered_to_picker_entry(entry, &self.custom_entries_buffer, words);
         Some(entry)
     }
 
     pub fn entries<'a>(
         &'a self,
         words: &'a WordDatabase,
-        commands: &'a CommandManager,
-    ) -> impl 'a + ExactSizeIterator<Item = PickerEntry<'a>> {
+    ) -> impl 'a + ExactSizeIterator<Item = &'a str> {
         let custom_entries = &self.custom_entries_buffer[..];
         self.filtered_entries
             .iter()
-            .map(move |e| filtered_to_picker_entry(e, custom_entries, words, commands))
+            .map(move |e| filtered_to_picker_entry(e, custom_entries, words))
     }
 }
 
 fn filtered_to_picker_entry<'a>(
     entry: &FilteredEntry,
-    custom_entries: &'a [CustomEntry],
+    custom_entries: &'a [String],
     words: &'a WordDatabase,
-    commands: &'a CommandManager,
-) -> PickerEntry<'a> {
+) -> &'a str {
     match entry.source {
-        FilteredEntrySource::Custom(i) => {
-            let e = &custom_entries[i];
-            PickerEntry {
-                name: &e.name,
-                description: &e.description,
-                score: entry.score,
-            }
-        }
-        FilteredEntrySource::WordDatabase(i) => PickerEntry {
-            name: words.word_at(i),
-            description: "",
-            score: entry.score,
-        },
-        FilteredEntrySource::Command(CommandSource::Builtin(i)) => {
-            let command = &commands.builtin_commands()[i];
-            PickerEntry {
-                name: command.name,
-                description: command.help.lines().next().unwrap_or(""),
-                score: entry.score,
-            }
-        }
-        FilteredEntrySource::Command(CommandSource::Macro(i)) => {
-            let command = &commands.macro_commands()[i];
-            PickerEntry {
-                name: &command.name,
-                description: command.help.lines().next().unwrap_or(""),
-                score: entry.score,
-            }
-        }
+        FilteredEntrySource::Custom(i) => &custom_entries[i],
+        FilteredEntrySource::WordDatabase(i) => words.word_at(i),
     }
 }

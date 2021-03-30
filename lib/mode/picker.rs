@@ -1,6 +1,6 @@
 use crate::{
     buffer_view::BufferViewError,
-    command::{replace_to_between_text_markers, CommandManager, CommandSourceIter},
+    command::{replace_to_between_text_markers, CommandManager},
     editor::KeysIterator,
     editor_utils::{MessageKind, ReadLinePoll},
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
@@ -71,11 +71,10 @@ impl ModeState for State {
                     let entry_count = ctx.editor.picker.len() as isize;
                     ctx.editor.picker.move_cursor(entry_count - cursor - 1);
                 }
-                _ => ctx.editor.picker.filter(
-                    WordIndicesIter::empty(),
-                    CommandSourceIter::empty(),
-                    ctx.editor.read_line.input(),
-                ),
+                _ => ctx
+                    .editor
+                    .picker
+                    .filter(WordIndicesIter::empty(), ctx.editor.read_line.input()),
             }
         }
 
@@ -105,12 +104,8 @@ pub mod buffer {
                 }
             }
 
-            let path = match ctx
-                .editor
-                .picker
-                .current_entry(&ctx.editor.word_database, &ctx.editor.commands)
-            {
-                Some(entry) => entry.name,
+            let path = match ctx.editor.picker.current_entry(&ctx.editor.word_database) {
+                Some(entry) => entry,
                 None => {
                     Mode::change_to(ctx, ModeKind::default());
                     return None;
@@ -153,8 +148,8 @@ pub mod buffer {
         }
 
         fn add_buffer_to_picker(picker: &mut Picker, buffer: &Buffer) {
-            if let Some(path) = buffer.path().and_then(|p| p.to_str()) {
-                picker.add_custom_entry(path, if buffer.needs_save() { "changed" } else { "" });
+            if let Some(path) = buffer.path().and_then(Path::to_str) {
+                picker.add_custom_entry(path);
             }
         }
 
@@ -184,9 +179,7 @@ pub mod buffer {
             }
         }
 
-        ctx.editor
-            .picker
-            .filter(WordIndicesIter::empty(), CommandSourceIter::empty(), "");
+        ctx.editor.picker.filter(WordIndicesIter::empty(), "");
         if ctx.editor.picker.len() > 0 {
             ctx.editor.mode.picker_state.on_client_keys = on_client_keys;
             Mode::change_to(ctx, ModeKind::Picker);
@@ -209,18 +202,11 @@ pub mod custom {
                     let mut continuation =
                         ctx.editor.mode.picker_state.continuation.take().unwrap();
                     let entry_var_name = &ctx.editor.mode.picker_state.entry_var_name;
-                    let entry = ctx
-                        .editor
-                        .picker
-                        .current_entry(&ctx.editor.word_database, &ctx.editor.commands);
+                    let entry = ctx.editor.picker.current_entry(&ctx.editor.word_database);
 
                     let mut operation = None;
                     if let Some(entry) = entry {
-                        replace_to_between_text_markers(
-                            &mut continuation,
-                            entry_var_name,
-                            entry.name,
-                        );
+                        replace_to_between_text_markers(&mut continuation, entry_var_name, entry);
                         operation = CommandManager::eval_commands_then_output(
                             ctx.editor,
                             ctx.platform,
@@ -248,9 +234,7 @@ pub mod custom {
             }
         }
 
-        ctx.editor
-            .picker
-            .filter(WordIndicesIter::empty(), CommandSourceIter::empty(), "");
+        ctx.editor.picker.filter(WordIndicesIter::empty(), "");
 
         let state = &mut ctx.editor.mode.picker_state;
         state.on_client_keys = on_client_keys;

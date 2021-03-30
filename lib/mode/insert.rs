@@ -3,7 +3,6 @@ use std::fmt::Write;
 use crate::{
     buffer_position::BufferPosition,
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
-    command::CommandSourceIter,
     editor::{Editor, KeysIterator},
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     platform::Key,
@@ -190,11 +189,9 @@ impl ModeState for State {
             && word_position.column_byte_index
                 >= word.end_position().column_byte_index.saturating_sub(1)
         {
-            ctx.editor.picker.filter(
-                ctx.editor.word_database.word_indices(),
-                CommandSourceIter::empty(),
-                word.text,
-            );
+            ctx.editor
+                .picker
+                .filter(ctx.editor.word_database.word_indices(), word.text);
             if ctx.editor.picker.len() == 1 {
                 ctx.editor.picker.clear_filtered();
             }
@@ -208,11 +205,8 @@ impl ModeState for State {
 
 fn apply_completion(editor: &mut Editor, handle: BufferViewHandle, cursor_movement: isize) {
     editor.picker.move_cursor(cursor_movement);
-    if let Some(entry) = editor
-        .picker
-        .current_entry(&editor.word_database, &editor.commands)
-    {
-        let buf = editor.string_pool.acquire_with(entry.name);
+    if let Some(entry) = editor.picker.current_entry(&editor.word_database) {
+        let buf = editor.string_pool.acquire_with(entry);
         editor.buffer_views.apply_completion(
             &mut editor.buffers,
             &mut editor.word_database,

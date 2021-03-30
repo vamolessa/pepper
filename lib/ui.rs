@@ -380,9 +380,7 @@ fn draw_picker(buf: &mut Vec<u8>, editor: &Editor, view: &View) {
     let cursor = editor.picker.cursor();
     let scroll = editor.picker.scroll();
 
-    let half_width = view.width / 2;
-    let half_width = half_width.saturating_sub(1) as usize;
-
+    let width = view.width;
     let height = editor.picker.height(editor.config.picker_max_height as _);
 
     let background_color = editor.theme.token_text;
@@ -397,7 +395,7 @@ fn draw_picker(buf: &mut Vec<u8>, editor: &Editor, view: &View) {
 
     for (i, entry) in editor
         .picker
-        .entries(&editor.word_database, &editor.commands)
+        .entries(&editor.word_database)
         .enumerate()
         .skip(scroll)
         .take(height)
@@ -423,35 +421,24 @@ fn draw_picker(buf: &mut Vec<u8>, editor: &Editor, view: &View) {
             }
         }
 
-        let name_char_count = entry.name.chars().count();
-        if name_char_count < half_width {
-            for c in entry.name.chars() {
+        let name_char_count = entry.chars().count();
+        if name_char_count < width {
+            for c in entry.chars() {
                 print_char(buf, &mut x, c);
             }
         } else {
             buf.extend_from_slice(b"...");
             x += 3;
             let name_char_count = name_char_count + 3;
-            for c in entry
-                .name
-                .chars()
-                .skip(name_char_count.saturating_sub(half_width))
-            {
+            for c in entry.chars().skip(name_char_count.saturating_sub(width)) {
                 print_char(buf, &mut x, c);
             }
         }
-        for _ in x..half_width {
+        for _ in x..width {
             buf.push(b' ');
         }
         buf.push(b'|');
         x = 0;
-        for c in entry.description.chars() {
-            if x + 3 > half_width {
-                buf.extend_from_slice(b"...");
-                break;
-            }
-            print_char(buf, &mut x, c);
-        }
 
         if x < view.width {
             clear_until_new_line(buf);

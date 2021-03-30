@@ -1,9 +1,7 @@
 use std::{fs, path::Path};
 
 use crate::{
-    command::{
-        CommandManager, CommandSourceIter, CommandTokenIter, CommandTokenKind, CompletionSource,
-    },
+    command::{CommandManager, CommandTokenIter, CommandTokenKind, CompletionSource},
     editor::KeysIterator,
     editor_utils::ReadLinePoll,
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
@@ -121,14 +119,10 @@ impl ModeState for State {
 
 fn apply_completion(ctx: &mut ModeContext, cursor_movement: isize) {
     ctx.editor.picker.move_cursor(cursor_movement);
-    if let Some(entry) = ctx
-        .editor
-        .picker
-        .current_entry(&ctx.editor.word_database, &ctx.editor.commands)
-    {
+    if let Some(entry) = ctx.editor.picker.current_entry(&ctx.editor.word_database) {
         let input = ctx.editor.read_line.input_mut();
         input.truncate(ctx.editor.mode.command_state.completion_index);
-        input.push_str(entry.name);
+        input.push_str(entry);
     }
 }
 
@@ -210,16 +204,16 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
         match completion_source {
             CompletionSource::Commands => {
                 for command in ctx.editor.commands.builtin_commands() {
-                    ctx.editor.picker.add_custom_entry(command.name, "");
+                    ctx.editor.picker.add_custom_entry(command.name);
                 }
                 for command in ctx.editor.commands.macro_commands() {
-                    ctx.editor.picker.add_custom_entry(&command.name, "");
+                    ctx.editor.picker.add_custom_entry(&command.name);
                 }
             }
             CompletionSource::Buffers => {
                 for buffer in ctx.editor.buffers.iter() {
                     if let Some(path) = buffer.path().and_then(Path::to_str) {
-                        ctx.editor.picker.add_custom_entry(path, "");
+                        ctx.editor.picker.add_custom_entry(path);
                     }
                 }
             }
@@ -235,7 +229,7 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
                             Err(_) => return,
                         };
                         if let Some(entry) = entry.to_str() {
-                            picker.add_custom_entry(entry, "");
+                            picker.add_custom_entry(entry);
                         }
                     }
                 }
@@ -251,16 +245,12 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
             }
             CompletionSource::Custom(completions) => {
                 for completion in completions {
-                    ctx.editor.picker.add_custom_entry(completion, "");
+                    ctx.editor.picker.add_custom_entry(completion);
                 }
             }
         }
     }
 
     state.completion_source = completion_source;
-    ctx.editor.picker.filter(
-        WordIndicesIter::empty(),
-        CommandSourceIter::empty(),
-        pattern,
-    );
+    ctx.editor.picker.filter(WordIndicesIter::empty(), pattern);
 }
