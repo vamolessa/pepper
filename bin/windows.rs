@@ -59,8 +59,8 @@ use winapi::{
 use pepper::{
     application::{AnyError, ApplicationEvent, ClientApplication, ProcessTag, ServerApplication},
     client::ClientHandle,
+    editor_utils::hash_bytes,
     platform::{BufPool, ExclusiveBuf, Key, Platform, PlatformRequest, ProcessHandle, SharedBuf},
-    editor_utils::hash,
     Args,
 };
 
@@ -85,7 +85,14 @@ pub fn main() {
         None => {
             use io::Write;
             get_current_directory(&mut pipe_path);
-            let current_directory_hash = hash(&pipe_path);
+            let bytes = pipe_path
+                .iter()
+                .map(|s| {
+                    let bytes = s.to_le_bytes();
+                    std::iter::once(bytes[0]).chain(std::iter::once(bytes[1]))
+                })
+                .flatten();
+            let current_directory_hash = hash_bytes(bytes);
             let mut cursor = io::Cursor::new(&mut hash_buf[..]);
             write!(&mut cursor, "{:x}", current_directory_hash).unwrap();
             let len = cursor.position() as usize;

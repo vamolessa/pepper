@@ -1,8 +1,4 @@
-use std::{
-    collections::hash_map::DefaultHasher,
-    fmt,
-    hash::{Hash, Hasher},
-};
+use std::fmt;
 
 use crate::{
     editor::{BufferedKeys, KeysIterator},
@@ -162,11 +158,15 @@ impl StringPool {
     }
 }
 
-pub fn hash<T>(value: T) -> u64
+// FNV-1a : https://en.wikipedia.org/wiki/Fowler–Noll–Vo_hash_function
+pub fn hash_bytes<I>(bytes: I) -> u64
 where
-    T: Hash,
+    I: Iterator<Item = u8>,
 {
-    let mut hasher = DefaultHasher::new();
-    value.hash(&mut hasher);
-    hasher.finish()
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for b in bytes {
+        hash ^= b as u64;
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    return hash;
 }

@@ -3,7 +3,7 @@ use std::{fs, path::Path};
 use crate::{
     command::{CommandManager, CommandTokenIter, CommandTokenKind, CompletionSource},
     editor::KeysIterator,
-    editor_utils::{hash, ReadLinePoll},
+    editor_utils::{hash_bytes, ReadLinePoll},
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     picker::Picker,
     platform::Key,
@@ -247,7 +247,7 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
                 None => ("", pattern),
             };
 
-            let parent_hash = hash(parent);
+            let parent_hash = hash_bytes(parent.bytes());
             if state.completion_path_hash != Some(parent_hash) {
                 set_files_in_path_as_entries(&mut ctx.editor.picker, parent);
                 state.completion_path_hash = Some(parent_hash);

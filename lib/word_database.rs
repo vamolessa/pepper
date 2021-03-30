@@ -1,7 +1,9 @@
 use std::{
-    collections::hash_map::{DefaultHasher, Entry, HashMap},
+    collections::hash_map::{Entry, HashMap},
     hash::{BuildHasher, Hash, Hasher},
 };
+
+use crate::editor_utils::hash_bytes;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WordKind {
@@ -88,9 +90,7 @@ struct Word {
 struct WordHash(u64);
 impl WordHash {
     pub fn new(word: &str) -> Self {
-        let mut hasher = DefaultHasher::new();
-        word.hash(&mut hasher);
-        Self(hasher.finish())
+        Self(hash_bytes(word.bytes()))
     }
 }
 impl Hash for WordHash {
