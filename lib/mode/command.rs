@@ -202,28 +202,35 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
     };
 
     if state.completion_source != completion_source {
+        state.completion_path_hash = None;
+        ctx.editor.picker.clear();
+
         match completion_source {
-            CompletionSource::Files => state.completion_path_hash = None,
-            _ => ctx.editor.picker.clear(),
+            CompletionSource::Commands => {
+                for command in ctx.editor.commands.builtin_commands() {
+                    ctx.editor.picker.add_custom_entry(command.name);
+                }
+                for command in ctx.editor.commands.macro_commands() {
+                    ctx.editor.picker.add_custom_entry(&command.name);
+                }
+            }
+            CompletionSource::Buffers => {
+                for buffer in ctx.editor.buffers.iter() {
+                    if let Some(path) = buffer.path().and_then(Path::to_str) {
+                        ctx.editor.picker.add_custom_entry(path);
+                    }
+                }
+            }
+            CompletionSource::Custom(completions) => {
+                for completion in completions {
+                    ctx.editor.picker.add_custom_entry(completion);
+                }
+            }
+            _ => (),
         }
     }
 
     match completion_source {
-        CompletionSource::Commands => {
-            for command in ctx.editor.commands.builtin_commands() {
-                ctx.editor.picker.add_custom_entry(command.name);
-            }
-            for command in ctx.editor.commands.macro_commands() {
-                ctx.editor.picker.add_custom_entry(&command.name);
-            }
-        }
-        CompletionSource::Buffers => {
-            for buffer in ctx.editor.buffers.iter() {
-                if let Some(path) = buffer.path().and_then(Path::to_str) {
-                    ctx.editor.picker.add_custom_entry(path);
-                }
-            }
-        }
         CompletionSource::Files => {
             fn set_files_in_path_as_entries(picker: &mut Picker, path: &str) {
                 picker.clear();
@@ -256,11 +263,7 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
             state.completion_index = file.as_ptr() as usize - input.as_ptr() as usize;
             pattern = file;
         }
-        CompletionSource::Custom(completions) => {
-            for completion in completions {
-                ctx.editor.picker.add_custom_entry(completion);
-            }
-        }
+        _ => (),
     }
 
     state.completion_source = completion_source;

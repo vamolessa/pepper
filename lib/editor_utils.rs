@@ -51,7 +51,7 @@ impl ReadLine {
             }
             Key::Ctrl('w') => {
                 let mut words = WordIter(&self.input);
-                (&mut words).filter(|w| w.kind != WordKind::Whitespace).next_back();
+                (&mut words).filter(|w| w.kind == WordKind::Identifier).next_back();
                 let len = words.0.len();
                 self.input.truncate(len);
                 ReadLinePoll::Pending
