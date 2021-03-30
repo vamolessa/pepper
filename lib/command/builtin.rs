@@ -547,7 +547,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             "save buffer\nsave [<flags>] [<path>]\n",
             " -buffer=<buffer-id> : if not specified, the current buffer is used",
         ),
-        completions: &[CompletionSource::Files],
+        completions: &[],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
 
