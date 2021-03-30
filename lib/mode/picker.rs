@@ -50,7 +50,8 @@ impl ModeState for State {
                     let picker_height = ctx
                         .editor
                         .picker
-                        .height(ctx.editor.config.picker_max_height as _)
+                        .len()
+                        .min(ctx.editor.config.picker_max_height as _)
                         as isize;
                     ctx.editor.picker.move_cursor(picker_height / 2);
                 }
@@ -58,7 +59,8 @@ impl ModeState for State {
                     let picker_height = ctx
                         .editor
                         .picker
-                        .height(ctx.editor.config.picker_max_height as _)
+                        .len()
+                        .min(ctx.editor.config.picker_max_height as _)
                         as isize;
                     ctx.editor.picker.move_cursor(-picker_height / 2);
                 }

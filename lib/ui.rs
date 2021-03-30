@@ -381,7 +381,7 @@ fn draw_picker(buf: &mut Vec<u8>, editor: &Editor, view: &View) {
     let scroll = editor.picker.scroll();
 
     let width = view.width;
-    let height = editor.picker.height(editor.config.picker_max_height as _);
+    let height = editor.picker.len().min(editor.config.picker_max_height as _);
 
     let background_color = editor.theme.token_text;
     let foreground_color = editor.theme.token_whitespace;

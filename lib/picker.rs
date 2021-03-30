@@ -33,10 +33,6 @@ impl Picker {
         self.scroll
     }
 
-    pub fn height(&self, max_height: usize) -> usize {
-        self.filtered_entries.len().min(max_height)
-    }
-
     pub fn len(&self) -> usize {
         self.filtered_entries.len()
     }
@@ -82,7 +78,7 @@ impl Picker {
     }
 
     pub fn update_scroll(&mut self, max_height: usize) -> usize {
-        let height = self.height(max_height);
+        let height = self.len().min(max_height);
         if self.cursor < self.scroll {
             self.scroll = self.cursor;
         } else if self.cursor >= self.scroll + height as usize {

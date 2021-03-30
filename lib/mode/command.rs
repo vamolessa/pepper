@@ -139,6 +139,7 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
             state.read_state =
                 ReadCommandState::NavigatingHistory(ctx.editor.commands.history_len());
             state.completion_index = input.len();
+            state.completion_source = CompletionSource::Custom(&[]);
             return;
         }
     };
@@ -159,14 +160,13 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
         }
         last_token = Some(token);
     }
-    drop(is_flag_value);
 
     if input.ends_with(|c: char| c.is_ascii_whitespace()) {
         match last_token {
             Some((CommandTokenKind::Unterminated, _)) => (),
             None => {
                 arg_count += 1;
-                last_token = Some((CommandTokenKind::Text, &input[..input.len()]));
+                last_token = Some((CommandTokenKind::Text, &input[input.len()..]));
             }
             _ => arg_count += 1,
         }
@@ -218,8 +218,8 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
                 }
             }
             CompletionSource::Files => {
-                fn add_files_in_path(picker: &mut Picker, current_path: &str) {
-                    let read_dir = match fs::read_dir(current_path) {
+                fn add_files_in_path(picker: &mut Picker, path: &str) {
+                    let read_dir = match fs::read_dir(path) {
                         Ok(iter) => iter,
                         Err(_) => return,
                     };
@@ -238,10 +238,10 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
                     Some(i) => pattern.split_at(i + 1),
                     None => ("", pattern),
                 };
-                pattern = file;
 
                 state.completion_index = file.as_ptr() as usize - input.as_ptr() as usize;
                 add_files_in_path(&mut ctx.editor.picker, parent);
+                pattern = file;
             }
             CompletionSource::Custom(completions) => {
                 for completion in completions {
