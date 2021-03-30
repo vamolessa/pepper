@@ -377,7 +377,7 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
 }
 
 fn draw_picker(buf: &mut Vec<u8>, editor: &Editor, view: &View) {
-    let cursor = editor.picker.cursor();
+    let cursor = editor.picker.cursor().unwrap_or(usize::MAX - 1);
     let scroll = editor.picker.scroll();
 
     let width = view.width;

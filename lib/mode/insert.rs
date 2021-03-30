@@ -194,6 +194,8 @@ impl ModeState for State {
                 .filter(ctx.editor.word_database.word_indices(), word.text);
             if ctx.editor.picker.len() == 1 {
                 ctx.editor.picker.clear_filtered();
+            } else if ctx.editor.picker.cursor().is_none() {
+                ctx.editor.picker.move_cursor(0);
             }
         } else {
             ctx.editor.picker.clear_filtered();

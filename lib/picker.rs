@@ -20,12 +20,12 @@ pub struct Picker {
     custom_entries_buffer: Vec<String>,
     filtered_entries: Vec<FilteredEntry>,
 
-    cursor: usize,
+    cursor: Option<usize>,
     scroll: usize,
 }
 
 impl Picker {
-    pub fn cursor(&self) -> usize {
+    pub fn cursor(&self) -> Option<usize> {
         self.cursor
     }
 
@@ -49,40 +49,50 @@ impl Picker {
         }
 
         let end_index = self.filtered_entries.len() - 1;
+        let cursor = match self.cursor {
+            Some(ref mut cursor) => cursor,
+            None => {
+                if self.len() > 0 {
+                    self.cursor = Some(0);
+                }
+                return;
+            }
+        };
 
         if offset > 0 {
             let mut offset = offset as usize;
-            if self.cursor == end_index {
+            if *cursor == end_index {
                 offset -= 1;
-                self.cursor = 0;
+                *cursor = 0;
             }
 
-            if offset < end_index - self.cursor {
-                self.cursor += offset;
+            if offset < end_index - *cursor {
+                *cursor += offset;
             } else {
-                self.cursor = end_index;
+                *cursor = end_index;
             }
         } else if offset < 0 {
             let mut offset = (-offset) as usize;
-            if self.cursor == 0 {
+            if *cursor == 0 {
                 offset -= 1;
-                self.cursor = end_index;
+                *cursor = end_index;
             }
 
-            if offset < self.cursor {
-                self.cursor -= offset;
+            if offset < *cursor {
+                *cursor -= offset;
             } else {
-                self.cursor = 0;
+                *cursor = 0;
             }
         }
     }
 
     pub fn update_scroll(&mut self, max_height: usize) -> usize {
         let height = self.len().min(max_height);
-        if self.cursor < self.scroll {
-            self.scroll = self.cursor;
-        } else if self.cursor >= self.scroll + height as usize {
-            self.scroll = self.cursor + 1 - height as usize;
+        let cursor = self.cursor.unwrap_or(0);
+        if cursor < self.scroll {
+            self.scroll = cursor;
+        } else if cursor >= self.scroll + height {
+            self.scroll = cursor + 1 - height;
         }
         self.scroll = self
             .scroll
@@ -118,7 +128,7 @@ impl Picker {
 
     pub fn clear_filtered(&mut self) {
         self.filtered_entries.clear();
-        self.cursor = 0;
+        self.cursor = None;
         self.scroll = 0;
     }
 
@@ -140,9 +150,13 @@ impl Picker {
 
         self.filtered_entries
             .sort_unstable_by(|a, b| b.score.cmp(&a.score));
-        self.cursor = self
-            .cursor
-            .min(self.filtered_entries.len().saturating_sub(1));
+
+        let len = self.filtered_entries.len();
+        if len > 0 {
+            self.cursor = self.cursor.map(|c| c.min(len - 1));
+        } else {
+            self.cursor = None;
+        }
     }
 
     fn filter_custom_entry(&mut self, index: usize, pattern: &str) -> bool {
@@ -160,7 +174,7 @@ impl Picker {
     }
 
     pub fn current_entry<'a>(&'a self, words: &'a WordDatabase) -> Option<&'a str> {
-        let entry = self.filtered_entries.get(self.cursor)?;
+        let entry = &self.filtered_entries[self.cursor?];
         let entry = filtered_to_picker_entry(entry, &self.custom_entries_buffer, words);
         Some(entry)
     }

@@ -65,11 +65,11 @@ impl ModeState for State {
                     ctx.editor.picker.move_cursor(-picker_height / 2);
                 }
                 Key::Ctrl('b') | Key::Home => {
-                    let cursor = ctx.editor.picker.cursor() as isize;
+                    let cursor = ctx.editor.picker.cursor().unwrap_or(0) as isize;
                     ctx.editor.picker.move_cursor(-cursor);
                 }
                 Key::Ctrl('e') | Key::End => {
-                    let cursor = ctx.editor.picker.cursor() as isize;
+                    let cursor = ctx.editor.picker.cursor().unwrap_or(0) as isize;
                     let entry_count = ctx.editor.picker.len() as isize;
                     ctx.editor.picker.move_cursor(entry_count - cursor - 1);
                 }
