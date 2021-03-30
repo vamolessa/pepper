@@ -355,6 +355,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 name,
                 ctx.editor.read_line.input()
             );
+            ctx.editor.picker.move_cursor(0);
+
             Ok(None)
         },
     },
