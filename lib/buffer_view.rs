@@ -212,7 +212,7 @@ impl BufferView {
                             continue;
                         }
 
-                        let words = WordIter::new(&line[c.position.column_byte_index..])
+                        let words = WordIter(&line[c.position.column_byte_index..])
                             .inspect(|w| c.position.column_byte_index += w.text.len())
                             .skip(1)
                             .filter(|w| w.kind != WordKind::Whitespace);
@@ -238,7 +238,7 @@ impl BufferView {
 
                     while n > 0 {
                         let mut last_kind = WordKind::Identifier;
-                        let words = WordIter::new(line)
+                        let words = WordIter(line)
                             .rev()
                             .inspect(|w| {
                                 c.position.column_byte_index -= w.text.len();

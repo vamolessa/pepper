@@ -193,7 +193,7 @@ impl BufferLine {
         let right = &self.text[mid_end_index..];
 
         let mut left_column_index = mid_start_index;
-        let left_words = WordIter::new(left).rev().map(move |w| {
+        let left_words = WordIter(left).rev().map(move |w| {
             left_column_index -= w.text.len();
             WordRefWithIndex {
                 kind: w.kind,
@@ -203,7 +203,7 @@ impl BufferLine {
         });
 
         let mut right_column_index = mid_end_index;
-        let right_words = WordIter::new(right).map(move |w| {
+        let right_words = WordIter(right).map(move |w| {
             let index = right_column_index;
             right_column_index += w.text.len();
             WordRefWithIndex {
@@ -218,8 +218,8 @@ impl BufferLine {
 
     pub fn word_at(&self, index: usize) -> WordRefWithIndex {
         let (before, after) = self.text.split_at(index);
-        match WordIter::new(after).next() {
-            Some(right) => match WordIter::new(before).next_back() {
+        match WordIter(after).next() {
+            Some(right) => match WordIter(before).next_back() {
                 Some(left) => {
                     if left.kind == right.kind {
                         let end_index = index + right.text.len();
@@ -788,7 +788,7 @@ impl Buffer {
     fn remove_all_words_from_database(&mut self, word_database: &mut WordDatabase) {
         if self.capabilities.uses_word_database {
             for line in &self.content.lines {
-                for word in WordIter::new(line.as_str()).of_kind(WordKind::Identifier) {
+                for word in WordIter(line.as_str()).of_kind(WordKind::Identifier) {
                     word_database.remove(word);
                 }
             }
@@ -897,7 +897,7 @@ impl Buffer {
         text: &str,
     ) -> BufferRange {
         if uses_word_database {
-            for word in WordIter::new(content.line_at(position.line_index).as_str())
+            for word in WordIter(content.line_at(position.line_index).as_str())
                 .of_kind(WordKind::Identifier)
             {
                 word_database.remove(word);
@@ -910,7 +910,7 @@ impl Buffer {
         if uses_word_database {
             let line_count = range.to.line_index - range.from.line_index + 1;
             for line in content.lines().skip(range.from.line_index).take(line_count) {
-                for word in WordIter::new(line.as_str()).of_kind(WordKind::Identifier) {
+                for word in WordIter(line.as_str()).of_kind(WordKind::Identifier) {
                     word_database.add(word);
                 }
             }
@@ -1003,14 +1003,14 @@ impl Buffer {
         if uses_word_database {
             let line_count = range.to.line_index - range.from.line_index + 1;
             for line in content.lines().skip(range.from.line_index).take(line_count) {
-                for word in WordIter::new(line.as_str()).of_kind(WordKind::Identifier) {
+                for word in WordIter(line.as_str()).of_kind(WordKind::Identifier) {
                     word_database.remove(word);
                 }
             }
 
             content.delete_range(range);
 
-            for word in WordIter::new(content.line_at(range.from.line_index).as_str())
+            for word in WordIter(content.line_at(range.from.line_index).as_str())
                 .of_kind(WordKind::Identifier)
             {
                 word_database.add(word);
@@ -1186,7 +1186,7 @@ impl Buffer {
 
         if self.capabilities.uses_word_database {
             for line in &self.content.lines {
-                for word in WordIter::new(line.as_str()).of_kind(WordKind::Identifier) {
+                for word in WordIter(line.as_str()).of_kind(WordKind::Identifier) {
                     word_database.add(word);
                 }
             }

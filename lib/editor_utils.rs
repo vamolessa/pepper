@@ -3,6 +3,7 @@ use std::fmt;
 use crate::{
     editor::{BufferedKeys, KeysIterator},
     platform::{Key, Platform},
+    word_database::{WordIter, WordKind},
 };
 
 #[derive(Clone, Copy)]
@@ -49,20 +50,10 @@ impl ReadLine {
                 ReadLinePoll::Pending
             }
             Key::Ctrl('w') => {
-                let mut found_space = false;
-                let mut end_index = 0;
-                for (i, c) in self.input.char_indices().rev() {
-                    if found_space {
-                        if c != ' ' {
-                            break;
-                        }
-                    } else if c == ' ' {
-                        found_space = true;
-                    }
-                    end_index = i;
-                }
-
-                self.input.truncate(end_index);
+                let mut words = WordIter(&self.input);
+                (&mut words).filter(|w| w.kind != WordKind::Whitespace).next_back();
+                let len = words.0.len();
+                self.input.truncate(len);
                 ReadLinePoll::Pending
             }
             Key::Backspace | Key::Ctrl('h') => {
