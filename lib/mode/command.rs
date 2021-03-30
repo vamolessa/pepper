@@ -201,10 +201,6 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
                 completion_path: &mut String,
                 current_path: &str,
             ) {
-                if current_path == completion_path {
-                    return;
-                }
-
                 picker.clear();
                 completion_path.clear();
                 completion_path.push_str(current_path);
@@ -228,9 +224,11 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
             if *completion_state != CompletionState::Argument(arg_index) {
                 *completion_state = CompletionState::Argument(arg_index);
                 ctx.editor.picker.clear();
+
+                let path_len = token.rfind('/').unwrap_or(0);
                 state.completion_index = match last_token {
-                    Some((CommandTokenKind::Text, _)) => input.trim_end().len() - token.len(),
-                    Some((CommandTokenKind::Unterminated, _)) => input.len() - token.len(),
+                    Some((CommandTokenKind::Text, _)) => input.trim_end().len() - path_len,
+                    Some((CommandTokenKind::Unterminated, _)) => input.len() - path_len,
                     _ => unreachable!(),
                 };
                 state.completion_source = CompletionSource::Custom(&[]);
@@ -271,11 +269,21 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
                 CompletionSource::Commands => (ctx.editor.commands.command_sources(), token),
                 CompletionSource::Files => {
                     let (parent, file) = match token.rfind('/') {
-                        Some(i) => (&token[..i], &token[(i + 1)..]),
+                        Some(i) => token.split_at(i + 1),
                         None => ("", token),
                     };
 
-                    add_files_in_path(&mut ctx.editor.picker, &mut state.completion_path, parent);
+                    if parent != state.completion_path {
+                        state.completion_index += parent.len();
+                        state.completion_index -= state.completion_path.len();
+
+                        add_files_in_path(
+                            &mut ctx.editor.picker,
+                            &mut state.completion_path,
+                            parent,
+                        );
+                    }
+
                     (CommandSourceIter::empty(), file)
                 }
                 _ => (CommandSourceIter::empty(), token),
