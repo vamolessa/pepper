@@ -104,46 +104,54 @@ impl Client {
     }
 
     pub fn update_view(&mut self, editor: &Editor, picker_height: u16) {
+        fn calculate_scroll(this: &Client, editor: &Editor) -> Option<usize> {
+            if this.viewport_size.0 == 0 {
+                return None;
+            }
+
+            let buffer_view = editor.buffer_views.get(this.current_buffer_view_handle?)?;
+            let buffer = editor.buffers.get(buffer_view.buffer_handle)?;
+            let focused_line_index = buffer_view.cursors.main_cursor().position.line_index;
+
+            let height = this.height as usize;
+            let half_height = height / 2;
+
+            let mut scroll = this.scroll;
+
+            if focused_line_index < this.scroll.saturating_sub(half_height) {
+                scroll = focused_line_index.saturating_sub(half_height);
+            } else if focused_line_index < this.scroll {
+                scroll = focused_line_index;
+            } else if focused_line_index >= this.scroll + height + half_height {
+                scroll = focused_line_index + 1 - half_height;
+            } else if focused_line_index >= this.scroll + height {
+                scroll = focused_line_index + 1 - height;
+            }
+
+            let mut extra_line_count = 0;
+            for line in buffer
+                .content()
+                .lines()
+                .skip(scroll)
+                .take(focused_line_index - scroll)
+            {
+                extra_line_count += line.char_count() / this.viewport_size.0 as usize;
+            }
+
+            let focused_line_index = focused_line_index + extra_line_count;
+            if focused_line_index >= scroll + height + half_height {
+                scroll = focused_line_index + 1 - half_height;
+            } else if focused_line_index >= scroll + height {
+                scroll = focused_line_index + 1 - height;
+            }
+
+            Some(scroll)
+        }
+
         self.height = self.viewport_size.1.saturating_sub(1 + picker_height);
-        if let Some(scroll) = self.calculate_scroll(editor) {
+        if let Some(scroll) = calculate_scroll(self, editor) {
             self.scroll = scroll;
         }
-    }
-
-    fn calculate_scroll(&self, editor: &Editor) -> Option<usize> {
-        if self.viewport_size.0 == 0 {
-            return None;
-        }
-
-        let buffer_view = editor.buffer_views.get(self.current_buffer_view_handle?)?;
-        let buffer = editor.buffers.get(buffer_view.buffer_handle)?;
-        let focused_line_index = buffer_view.cursors.main_cursor().position.line_index;
-
-        let height = self.height as usize;
-
-        let mut scroll = self.scroll;
-
-        if focused_line_index < self.scroll {
-            scroll = focused_line_index;
-        } else if focused_line_index >= self.scroll + height {
-            scroll = focused_line_index + 1 - height;
-        }
-
-        let mut extra_line_count = 0;
-        for line in buffer
-            .content()
-            .lines()
-            .skip(scroll)
-            .take(focused_line_index - scroll)
-        {
-            extra_line_count += line.char_count() / self.viewport_size.0 as usize;
-        }
-
-        if focused_line_index + extra_line_count >= scroll + height {
-            scroll = focused_line_index + extra_line_count + 1 - height;
-        }
-
-        Some(scroll)
     }
 }
 
