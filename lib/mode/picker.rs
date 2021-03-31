@@ -73,10 +73,12 @@ impl ModeState for State {
                     let entry_count = ctx.editor.picker.len() as isize;
                     ctx.editor.picker.move_cursor(entry_count - cursor - 1);
                 }
-                _ => ctx
-                    .editor
-                    .picker
-                    .filter(WordIndicesIter::empty(), ctx.editor.read_line.input()),
+                _ => {
+                    ctx.editor
+                        .picker
+                        .filter(WordIndicesIter::empty(), ctx.editor.read_line.input());
+                    ctx.editor.picker.move_cursor(0);
+                }
             }
         }
 
