@@ -37,16 +37,14 @@ macro_rules! theme_colors {
     }
 }
 
-impl Default for Theme {
-    fn default() -> Self {
-        pico8_theme()
-    }
-}
-
 theme_colors! {
     background,
     highlight,
-    cursor,
+    statusbar_background,
+    prompt_background,
+    normal_cursor,
+    insert_cursor,
+    select_cursor,
 
     token_whitespace,
     token_text,
@@ -58,38 +56,29 @@ theme_colors! {
     token_literal,
 }
 
-pub fn pico8_theme() -> Theme {
-    const COLORS: &[Color] = &[
-        Color::from_u32(0x000000), //  0 black
-        Color::from_u32(0x1d2b53), //  1 storm
-        Color::from_u32(0x7e2553), //  2 wine
-        Color::from_u32(0x008751), //  3 moss
-        Color::from_u32(0xab5236), //  4 tan
-        Color::from_u32(0x5f574f), //  5 slate
-        Color::from_u32(0xc2c3c7), //  6 silver
-        Color::from_u32(0xfff1e8), //  7 white
-        Color::from_u32(0xff004d), //  8 ember
-        Color::from_u32(0xffa300), //  9 orange
-        Color::from_u32(0xffec27), // 10 lemon
-        Color::from_u32(0x00e436), // 11 lime
-        Color::from_u32(0x29adff), // 12 sky
-        Color::from_u32(0x83769c), // 13 dusk
-        Color::from_u32(0xff77a8), // 14 pink
-        Color::from_u32(0xffccaa), // 15 peach
-    ];
+impl Default for Theme {
+    fn default() -> Self {
+        gruvbox_theme()
+    }
+}
 
+pub fn gruvbox_theme() -> Theme {
     Theme {
-        background: COLORS[0],
-        highlight: COLORS[10],
-        cursor: COLORS[8],
+        background: Color::from_u32(0x1d2021),
+        highlight: Color::from_u32(0xfabd2f),
+        statusbar_background: Color::from_u32(0x504945),
+        prompt_background: Color::from_u32(0x7c6f64),
+        normal_cursor: Color::from_u32(0xcc241d),
+        insert_cursor: Color::from_u32(0xfabd2f),
+        select_cursor: Color::from_u32(0x458588),
 
-        token_whitespace: COLORS[2],
-        token_text: COLORS[15],
-        token_comment: COLORS[13],
-        token_keyword: COLORS[9],
-        token_type: COLORS[7],
-        token_symbol: COLORS[6],
-        token_string: COLORS[11],
-        token_literal: COLORS[14],
+        token_whitespace: Color::from_u32(0x504945),
+        token_text: Color::from_u32(0xebdbb2),
+        token_comment: Color::from_u32(0x665c54),
+        token_keyword: Color::from_u32(0xfe8019),
+        token_type: Color::from_u32(0x8ec07c),
+        token_symbol: Color::from_u32(0xa89984),
+        token_string: Color::from_u32(0x98971a),
+        token_literal: Color::from_u32(0xd3869b),
     }
 }

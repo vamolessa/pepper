@@ -23,7 +23,7 @@ enum CharJump {
 }
 
 pub struct State {
-    movement_kind: CursorMovementKind,
+    pub movement_kind: CursorMovementKind,
     last_char_jump: CharJump,
     is_recording_auto_macro: bool,
     pub count: u32,

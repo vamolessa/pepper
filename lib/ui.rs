@@ -3,7 +3,7 @@ use std::{io, iter, path::Path};
 use crate::{
     buffer::{Buffer, BufferContent, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
-    buffer_view::BufferViewHandle,
+    buffer_view::{BufferViewHandle, CursorMovementKind},
     cursor::Cursor,
     editor::Editor,
     editor_utils::MessageKind,
@@ -150,10 +150,16 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
 
     let mut char_buf = [0; std::mem::size_of::<char>()];
 
-    let cursor_color = if has_focus && editor.mode.kind() == ModeKind::Insert {
-        editor.theme.highlight
+    let cursor_color = if has_focus {
+        match editor.mode.kind() {
+            ModeKind::Insert => editor.theme.insert_cursor,
+            _ => match editor.mode.normal_state.movement_kind {
+                CursorMovementKind::PositionAndAnchor => editor.theme.normal_cursor,
+                CursorMovementKind::PositionOnly => editor.theme.select_cursor,
+            },
+        }
     } else {
-        editor.theme.cursor
+        editor.theme.normal_cursor
     };
 
     let mut text_color = editor.theme.token_text;
@@ -382,14 +388,15 @@ fn draw_picker(buf: &mut Vec<u8>, editor: &Editor, view: &View) {
         .len()
         .min(editor.config.picker_max_height as _);
 
-    let background_color = editor.theme.token_text;
-    let foreground_color = editor.theme.token_whitespace;
+    let background_normal_color = editor.theme.statusbar_background;
+    let background_selected_color = editor.theme.prompt_background;
+    let foreground_color = editor.theme.token_text;
 
     if height > 0 {
         move_cursor_up(buf, height);
     }
 
-    set_background_color(buf, background_color);
+    set_background_color(buf, background_normal_color);
     set_foreground_color(buf, foreground_color);
 
     for (i, entry) in editor
@@ -400,11 +407,9 @@ fn draw_picker(buf: &mut Vec<u8>, editor: &Editor, view: &View) {
         .take(height)
     {
         if i == cursor {
-            set_background_color(buf, foreground_color);
-            set_foreground_color(buf, background_color);
+            set_background_color(buf, background_selected_color);
         } else if i == cursor + 1 {
-            set_background_color(buf, background_color);
-            set_foreground_color(buf, foreground_color);
+            set_background_color(buf, background_normal_color);
         }
 
         let mut x = 0;
@@ -447,11 +452,11 @@ fn draw_picker(buf: &mut Vec<u8>, editor: &Editor, view: &View) {
 }
 
 fn draw_statusbar(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool) {
-    let background_color = editor.theme.token_text;
-    let foreground_color = editor.theme.background;
-    let prompt_background_color = editor.theme.token_whitespace;
-    let prompt_foreground_color = background_color;
-    let cursor_color = editor.theme.cursor;
+    let background_color = editor.theme.statusbar_background;
+    let foreground_color = editor.theme.token_text;
+    let prompt_background_color = editor.theme.prompt_background;
+    let prompt_foreground_color = foreground_color;
+    let cursor_color = editor.theme.normal_cursor;
 
     if has_focus {
         set_background_color(buf, background_color);
