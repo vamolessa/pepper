@@ -1,4 +1,4 @@
-use std::{io, iter};
+use std::{io, iter, path::Path};
 
 use crate::{
     buffer::{Buffer, BufferContent, BufferHandle},
@@ -18,13 +18,10 @@ pub const HIDE_CURSOR_CODE: &[u8] = b"\x1B[?25l";
 pub const SHOW_CURSOR_CODE: &[u8] = b"\x1B[?25h";
 pub const RESET_STYLE_CODE: &[u8] = b"\x1B[0;49m";
 pub const MODE_256_COLORS_CODE: &[u8] = b"\x1B[=19h";
+pub const BEGIN_TITLE_CODE: &[u8] = b"\x1B]0;";
+pub const END_TITLE_CODE: &[u8] = b"\x07";
 
-#[inline]
-pub fn set_title(buf: &mut Vec<u8>, title: &str) {
-    buf.extend_from_slice(b"\x1B]0;");
-    buf.extend_from_slice(title.as_bytes());
-    buf.extend_from_slice(b"\x07");
-}
+const TOO_LONG_PREFIX: &[u8] = b"...";
 
 #[inline]
 pub fn clear_line(buf: &mut Vec<u8>) {
@@ -83,7 +80,6 @@ pub fn render(
     scroll: usize,
     has_focus: bool,
     buffer: &mut Vec<u8>,
-    status_bar_buf: &mut String, // TODO: try to remove this
 ) {
     let view = View::new(editor, buffer_view_handle, width, height, scroll);
 
@@ -91,7 +87,7 @@ pub fn render(
     if has_focus {
         draw_picker(buffer, editor, &view);
     }
-    draw_statusbar(buffer, editor, &view, has_focus, status_bar_buf);
+    draw_statusbar(buffer, editor, &view, has_focus);
 }
 
 struct View<'a> {
@@ -381,7 +377,10 @@ fn draw_picker(buf: &mut Vec<u8>, editor: &Editor, view: &View) {
     let scroll = editor.picker.scroll();
 
     let width = view.width;
-    let height = editor.picker.len().min(editor.config.picker_max_height as _);
+    let height = editor
+        .picker
+        .len()
+        .min(editor.config.picker_max_height as _);
 
     let background_color = editor.theme.token_text;
     let foreground_color = editor.theme.token_whitespace;
@@ -447,13 +446,7 @@ fn draw_picker(buf: &mut Vec<u8>, editor: &Editor, view: &View) {
     }
 }
 
-fn draw_statusbar(
-    buf: &mut Vec<u8>,
-    editor: &Editor,
-    view: &View,
-    has_focus: bool,
-    status_bar_buf: &mut String,
-) {
+fn draw_statusbar(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool) {
     let background_color = editor.theme.token_text;
     let foreground_color = editor.theme.background;
     let prompt_background_color = editor.theme.token_whitespace;
@@ -573,7 +566,7 @@ fn draw_statusbar(
     match view.buffer {
         Some(buffer) => {
             buffer_needs_save = buffer.needs_save();
-            buffer_path = buffer.path().and_then(|p| p.to_str()).unwrap_or("");
+            buffer_path = buffer.path().and_then(Path::to_str).unwrap_or("");
         }
         None => {
             buffer_needs_save = false;
@@ -581,64 +574,90 @@ fn draw_statusbar(
         }
     };
 
-    status_bar_buf.clear();
-    match x {
-        Some(x) => {
-            use std::fmt::Write;
-
-            let param_count = match editor.mode.kind() {
-                ModeKind::Normal if has_focus => editor.mode.normal_state.count,
-                _ => 0,
-            };
-
-            if has_focus {
-                if param_count > 0 {
-                    let _ = write!(status_bar_buf, "{}", param_count);
-                };
-                for key in editor.buffered_keys.as_slice() {
-                    let _ = write!(status_bar_buf, "{}", key);
+    if let Some(x) = x {
+        fn take_chars(s: &str, char_count: usize) -> (usize, &str) {
+            match s.char_indices().enumerate().take(char_count).last() {
+                Some((char_index, (byte_index, c))) => {
+                    let count = char_index + 1;
+                    if count < char_count {
+                        (count, s)
+                    } else {
+                        let len = byte_index + c.len_utf8();
+                        (count, &s[..len])
+                    }
                 }
-                status_bar_buf.push(' ');
+                None => (0, s),
             }
-
-            let title_start = status_bar_buf.len();
-            if buffer_needs_save {
-                status_bar_buf.push('*');
-            }
-            status_bar_buf.push_str(buffer_path);
-            set_title(buf, &status_bar_buf[title_start..]);
-
-            if view.buffer.is_some() {
-                let line_number = view.main_cursor_position.line_index + 1;
-                let column_number = view.main_cursor_position.column_byte_index + 1;
-                let _ = write!(status_bar_buf, ":{},{}", line_number, column_number);
-            }
-            status_bar_buf.push(' ');
-
-            let available_width = view.width as usize - x;
-
-            let min_index = status_bar_buf.len() - status_bar_buf.len().min(available_width);
-            let min_index = status_bar_buf
-                .char_indices()
-                .map(|(i, _)| i)
-                .filter(|i| *i >= min_index)
-                .next()
-                .unwrap_or(status_bar_buf.len());
-            let status_bar_buf = &status_bar_buf[min_index..];
-
-            for _ in 0..(available_width - status_bar_buf.len()) {
-                buf.push(b' ');
-            }
-            buf.extend_from_slice(status_bar_buf.as_bytes());
         }
-        None => {
-            if buffer_needs_save {
-                status_bar_buf.push('*');
+
+        use io::Write;
+
+        let available_width = view.width as usize - x;
+        let half_available_width = available_width / 2;
+
+        let status_start_index = buf.len();
+
+        if has_focus {
+            let param_count = editor.mode.normal_state.count;
+            if param_count > 0 && matches!(editor.mode.kind(), ModeKind::Normal) {
+                let _ = write!(buf, "{}", param_count);
             }
-            status_bar_buf.push_str(buffer_path);
-            set_title(buf, &status_bar_buf);
+            for key in editor.buffered_keys.as_slice() {
+                let _ = write!(buf, "{}", key);
+            }
+            buf.push(b' ');
+        }
+
+        if buffer_needs_save {
+            buf.push(b'*');
+        }
+
+        let (char_count, buffer_path) = take_chars(buffer_path, half_available_width);
+        if char_count == half_available_width {
+            buf.extend_from_slice(TOO_LONG_PREFIX);
+        }
+        buf.extend_from_slice(buffer_path.as_bytes());
+
+        if view.buffer.is_some() {
+            let line_number = view.main_cursor_position.line_index + 1;
+            let column_number = view.main_cursor_position.column_byte_index + 1;
+            let _ = write!(buf, ":{},{}", line_number, column_number);
+        }
+        buf.push(b' ');
+
+        let status = match std::str::from_utf8(&buf[status_start_index..]) {
+            Ok(status) => status,
+            Err(_) => {
+                buf.truncate(status_start_index);
+                return;
+            }
+        };
+
+        let available_width_minus_prefix = available_width.saturating_sub(TOO_LONG_PREFIX.len());
+        let (char_count, status) = take_chars(status, available_width_minus_prefix);
+
+        let status_len = status.len();
+        let buf_len = status_start_index + status_len + available_width - char_count;
+        buf.resize(buf_len, 0);
+        buf.copy_within(
+            status_start_index..status_start_index + status_len,
+            buf_len - status_len,
+        );
+        for b in &mut buf[status_start_index..buf_len - status_len] {
+            *b = b' ';
+        }
+        if char_count == available_width_minus_prefix {
+            let start_index = buf_len - status_len - TOO_LONG_PREFIX.len();
+            buf[start_index..start_index + TOO_LONG_PREFIX.len()].copy_from_slice(TOO_LONG_PREFIX);
         }
     }
+
+    buf.extend_from_slice(BEGIN_TITLE_CODE);
+    if buffer_needs_save {
+        buf.push(b'*');
+    }
+    buf.extend_from_slice(buffer_path.as_bytes());
+    buf.extend_from_slice(END_TITLE_CODE);
 
     clear_until_new_line(buf);
 }

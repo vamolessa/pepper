@@ -213,7 +213,6 @@ impl ServerApplication {
                     c.scroll,
                     has_focus,
                     write,
-                    &mut c.status_bar_buffer,
                 );
                 ServerEvent::serialize_display_header(write);
 

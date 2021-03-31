@@ -59,8 +59,6 @@ pub struct Client {
     pub height: u16,
     pub navigation_history: NavigationHistory,
 
-    pub status_bar_buffer: String, // TODO: try to remove this
-
     current_buffer_view_handle: Option<BufferViewHandle>,
     previous_buffer_view_handle: Option<BufferViewHandle>,
 }
@@ -73,8 +71,6 @@ impl Client {
         self.scroll = 0;
         self.height = 0;
         self.navigation_history.clear();
-
-        self.status_bar_buffer.clear();
 
         self.current_buffer_view_handle = None;
         self.previous_buffer_view_handle = None;
