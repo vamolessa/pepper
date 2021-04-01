@@ -219,16 +219,18 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             "`<output-var-name>` will be replaced in `<commands-on-output>` with the process' output\n",
             "spawn [<flags>] <spawn-command> [<output-var-name> <commands-on-output>]\n",
             " -input=<text> : sends <text> to the stdin\n",
+            " -env=<vars> : sets environment variables in the form VAR=<value> VAR=<value>...\n",
             " -split-on-byte=<number> : splits process output at every <number> byte",
         ),
         completions: &[],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
 
-            let mut flags = [("input", None), ("split-on-byte", None)];
+            let mut flags = [("input", None), ("env", None), ("split-on-byte", None)];
             ctx.args.get_flags(&mut flags)?;
             let input = flags[0].1;
-            let split_on_byte = match flags[1].1 {
+            let env = flags[1].1.unwrap_or("");
+            let split_on_byte = match flags[2].1 {
                 Some(token) => match token.parse() {
                     Ok(b) => Some(b),
                     Err(_) => return Err(CommandError::InvalidToken(token.into())),
@@ -244,7 +246,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             };
             ctx.args.assert_empty()?;
 
-            let command = parse_command(command)?;
+            let command = parse_command(command, env)?;
             ctx.editor.commands.spawn_process(
                 ctx.platform,
                 ctx.client_handle,
@@ -461,20 +463,23 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             "opens a buffer for editting\n",
             "open [<flags>] <path>\n",
             " -line=<number> : set cursor at line\n",
-            " -command=<content-command> : appends command output to buffer",
+            " -command=<content-command> : appends command output to buffer\n",
+            " -env=<vars> : sets environment variables for `-command` in the form VAR=<value> VAR=<value>...",
         ),
         completions: &[CompletionSource::Files],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
 
-            let mut flags = [("line", None), ("command", None)];
+            let mut flags = [("line", None), ("command", None), ("env", None)];
             ctx.args.get_flags(&mut flags)?;
             let line = flags[0]
                 .1
                 .map(parse_arg::<usize>)
                 .transpose()?
                 .map(|l| l.saturating_sub(1));
-            let command = flags[1].1.map(parse_command).transpose()?;
+            let command = flags[1].1;
+            let env = flags[2].1.unwrap_or("");
+            let command = command.map(|c| parse_command(c, env)).transpose()?;
 
             let path = ctx.args.next()?;
             ctx.args.assert_empty()?;
@@ -1018,19 +1023,22 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         help: concat!(
             "starts a lsp server\n",
             "lsp-start [<flags>] <lsp-command>\n",
-            " -root=<path> : the root path from where the lsp server will execute",
-            " -log=<buffer-name> : redirect the lsp server output to this buffer"
+            " -root=<path> : the root path from where the lsp server will execute\n",
+            " -log=<buffer-name> : redirect the lsp server output to this buffer\n",
+            " -env=<vars> : sets environment variables in the form VAR=<value> VAR=<value>...",
         ),
         completions: &[],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
 
-            let mut flags = [("root", None), ("log", None)];
+            let mut flags = [("root", None), ("log", None), ("env", None)];
             ctx.args.get_flags(&mut flags)?;
             let root = flags[0].1;
             let log_buffer = flags[1].1;
+            let env = flags[2].1.unwrap_or("");
 
-            let command = parse_command(ctx.args.next()?)?;
+            let command = ctx.args.next()?;
+            let command = parse_command(command, env)?;
 
             let root = match root {
                 Some(root) => PathBuf::from(root),
@@ -1120,7 +1128,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
 ];
 
-fn parse_command(command: &str) -> Result<Command, CommandError> {
+fn parse_command(command: &str, environment: &str) -> Result<Command, CommandError> {
     let mut command_tokens = CommandTokenIter(command);
     let command = match command_tokens.next() {
         Some((CommandTokenKind::Text, token))
@@ -1139,6 +1147,37 @@ fn parse_command(command: &str) -> Result<Command, CommandError> {
         } else {
             command.arg(token);
         }
+    }
+
+    let mut environment_tokens = CommandTokenIter(environment);
+    loop {
+        let key = match environment_tokens.next() {
+            Some((CommandTokenKind::Text, token)) => token,
+            Some((CommandTokenKind::Flag, token)) | Some((CommandTokenKind::Equals, token)) => {
+                return Err(CommandError::InvalidToken(token.into()))
+            }
+            Some((CommandTokenKind::Unterminated, token)) => {
+                return Err(CommandError::UnterminatedToken(token.into()))
+            }
+            None => break,
+        };
+        let equals_token = match environment_tokens.next() {
+            Some((CommandTokenKind::Equals, token)) => token,
+            Some((_, token)) => return Err(CommandError::InvalidToken(token.into())),
+            None => return Err(CommandError::UnterminatedToken(key.into())),
+        };
+        let value = match environment_tokens.next() {
+            Some((CommandTokenKind::Text, token)) => token,
+            Some((CommandTokenKind::Flag, token)) | Some((CommandTokenKind::Equals, token)) => {
+                return Err(CommandError::InvalidToken(token.into()))
+            }
+            Some((CommandTokenKind::Unterminated, token)) => {
+                return Err(CommandError::UnterminatedToken(token.into()))
+            }
+            None => return Err(CommandError::UnterminatedToken(equals_token.into())),
+        };
+
+        command.env(key, value);
     }
 
     Ok(command)
