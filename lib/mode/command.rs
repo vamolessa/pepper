@@ -201,6 +201,8 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
         }
     };
 
+    state.completion_index = pattern.as_ptr() as usize - input.as_ptr() as usize;
+
     if state.completion_source != completion_source {
         state.completion_path_hash = None;
         ctx.editor.picker.clear();
