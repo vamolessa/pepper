@@ -975,7 +975,6 @@ impl CommandManager {
     pub fn spawn_process(
         &mut self,
         platform: &mut Platform,
-        client_handle: Option<ClientHandle>,
         mut command: Command,
         stdin: Option<&str>,
         output_name: Option<&str>,
@@ -1036,10 +1035,6 @@ impl CommandManager {
             }
         }
         command.stderr(Stdio::null());
-
-        if let Some(handle) = client_handle {
-            command.env("CLIENT_ID", format!("{}", handle.into_index()));
-        }
 
         platform.enqueue_request(PlatformRequest::SpawnProcess {
             tag: ProcessTag::Command(index),
