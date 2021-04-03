@@ -365,6 +365,8 @@ impl Editor {
         bytes: &[u8],
     ) {
         match tag {
+            // TODO: !! make if only Buffer and somehow update all relative BufferViews
+            // maybe through EditorEvent::BufferInsertText/BufferDeleteText?
             ProcessTag::BufferView(buffer_view_handle) => {
                 if let Ok(text) = std::str::from_utf8(bytes) {
                     let position = self

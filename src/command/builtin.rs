@@ -1121,29 +1121,25 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 None => ctx.editor.current_directory.clone(),
             };
 
-            let handle = ctx.editor.lsp.start(ctx.platform, command, root);
-            let clients = &mut *ctx.clients;
-            let client_handle = ctx.client_handle;
+            let log_buffer_handle = log_buffer.map(|path| {
+                let mut buffer = ctx.editor.buffers.new();
+                buffer.capabilities = BufferCapabilities::log();
+                let buffer_handle = buffer.handle();
+                buffer.set_path(Some(Path::new(path)));
 
-            if let Some(log_buffer) = log_buffer {
-                lsp::ClientManager::access(ctx.editor, handle, |editor, client, _| {
-                    let mut buffer = editor.buffers.new();
-                    buffer.capabilities = BufferCapabilities::log();
-                    let buffer_handle = buffer.handle();
-                    buffer.set_path(Some(Path::new(log_buffer)));
-                    client.set_log_buffer(Some(buffer_handle));
-
-                    if let Some(client_handle) = client_handle {
-                        let buffer_view_handle = editor
-                            .buffer_views
-                            .buffer_view_handle_from_buffer_handle(client_handle, buffer_handle);
-                        if let Some(client) = clients.get_mut(client_handle) {
-                            client.set_buffer_view_handle(Some(buffer_view_handle));
-                        }
+                if let Some(client_handle) = ctx.client_handle {
+                    let buffer_view_handle = ctx.editor
+                        .buffer_views
+                        .buffer_view_handle_from_buffer_handle(client_handle, buffer_handle);
+                    if let Some(client) = ctx.clients.get_mut(client_handle) {
+                        client.set_buffer_view_handle(Some(buffer_view_handle));
                     }
-                });
-            }
+                }
 
+                buffer_handle
+            });
+
+            ctx.editor.lsp.start(ctx.platform, command, root, log_buffer_handle);
             Ok(None)
         },
     },

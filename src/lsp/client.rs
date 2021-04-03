@@ -428,7 +428,7 @@ pub struct Client {
 }
 
 impl Client {
-    fn new(root: PathBuf) -> Self {
+    fn new(root: PathBuf, log_buffer_handle: Option<BufferHandle>) -> Self {
         Self {
             protocol: Protocol::new(),
             root,
@@ -438,16 +438,12 @@ impl Client {
             server_capabilities: ServerCapabilities::default(),
 
             log_write_buf: Vec::new(),
-            log_buffer_handle: None,
+            log_buffer_handle,
 
             document_selectors: Vec::new(),
             versioned_buffers: VersionedBufferCollection::default(),
             diagnostics: DiagnosticCollection::default(),
         }
-    }
-
-    pub fn set_log_buffer(&mut self, log_buffer_handle: Option<BufferHandle>) {
-        self.log_buffer_handle = log_buffer_handle;
     }
 
     pub fn handles_path(&self, path: &[u8]) -> bool {
@@ -1281,6 +1277,7 @@ impl ClientManager {
         platform: &mut Platform,
         mut command: Command,
         root: PathBuf,
+        log_buffer_handle: Option<BufferHandle>,
     ) -> ClientHandle {
         let handle = self.find_free_slot();
         command
@@ -1293,7 +1290,7 @@ impl ClientManager {
             buf_len: protocol::BUFFER_LEN,
         });
         self.entries[handle.0] = Some(ClientManagerEntry {
-            client: Client::new(root),
+            client: Client::new(root, log_buffer_handle),
             json: Json::new(),
         });
         handle
