@@ -704,7 +704,6 @@ impl BufferCapabilities {
 
 pub enum BufferError {
     BufferDoesNotHavePath,
-    CouldNotOpenFile,
     CouldNotReadFile,
     CouldNotCreateFile,
     CouldNotWriteFile,
@@ -726,9 +725,6 @@ impl<'a> fmt::Display for BufferErrorDisplay<'a> {
         let path = self.buffer.path.as_path();
         match self.error {
             BufferError::BufferDoesNotHavePath => f.write_str("buffer does not have a path"),
-            BufferError::CouldNotOpenFile => {
-                f.write_fmt(format_args!("could not open file '{:?}'", path))
-            }
             BufferError::CouldNotReadFile => {
                 f.write_fmt(format_args!("could not read from file '{:?}'", path))
             }

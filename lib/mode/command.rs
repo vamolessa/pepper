@@ -210,10 +210,19 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
         match completion_source {
             CompletionSource::Commands => {
                 for command in ctx.editor.commands.builtin_commands() {
-                    ctx.editor.picker.add_custom_entry(command.name);
+                    if !command.hidden {
+                        ctx.editor.picker.add_custom_entry(command.name);
+                    }
                 }
                 for command in ctx.editor.commands.macro_commands() {
-                    ctx.editor.picker.add_custom_entry(&command.name);
+                    if !command.hidden {
+                        ctx.editor.picker.add_custom_entry(&command.name);
+                    }
+                }
+                for command in ctx.editor.commands.request_commands() {
+                    if !command.hidden {
+                        ctx.editor.picker.add_custom_entry(&command.name);
+                    }
                 }
             }
             CompletionSource::Buffers => {

@@ -119,7 +119,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             "and optionally execute commands if there was an error\n",
             "try { <commands...> } [catch { <commands...> }]",
         ),
-        hidden: true,
+        hidden: false,
         completions: &[],
         func: |ctx| {
             fn run_commands(
@@ -178,7 +178,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             " -hidden : whether this command is shown in completions or not\n",
             " -param-count=<number> : if defined, the number of parameters this command expects, 0 otherwise",
         ),
-        hidden: true,
+        hidden: false,
         completions: &[],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
@@ -917,7 +917,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             " texts\n",
             "and <pattern> is the pattern that matches that kind of token",
         ),
-        hidden: false,
+        hidden: true,
         completions: &[],
         func: |ctx| {
             fn slice_from_last_char(s: &str) -> &str {
