@@ -429,9 +429,7 @@ impl BufferViewCollection {
 
         let range = buffer.insert_text(word_database, position, text, events);
         let current_buffer_handle = current_view.buffer_handle;
-        self.fix_buffer_cursors(&[range], current_buffer_handle, |cursor, range| {
-            cursor.insert(range)
-        });
+        self.fix_buffer_cursors(&[range], current_buffer_handle, Cursor::insert);
     }
 
     pub fn insert_text_at_cursor_positions(
@@ -459,9 +457,7 @@ impl BufferViewCollection {
         }
 
         let current_buffer_handle = current_view.buffer_handle;
-        self.fix_buffer_cursors(&ranges[..len], current_buffer_handle, |cursor, range| {
-            cursor.insert(range)
-        });
+        self.fix_buffer_cursors(&ranges[..len], current_buffer_handle, Cursor::insert);
     }
 
     pub fn delete_text_in_range(
@@ -484,9 +480,7 @@ impl BufferViewCollection {
         buffer.delete_range(word_database, range, events);
 
         let current_buffer_handle = current_view.buffer_handle;
-        self.fix_buffer_cursors(&[range], current_buffer_handle, |cursor, range| {
-            cursor.delete(range)
-        });
+        self.fix_buffer_cursors(&[range], current_buffer_handle, Cursor::delete);
     }
 
     pub fn delete_text_in_cursor_ranges(
@@ -515,9 +509,7 @@ impl BufferViewCollection {
         }
 
         let current_buffer_handle = current_view.buffer_handle;
-        self.fix_buffer_cursors(&ranges[..len], current_buffer_handle, |cursor, range| {
-            cursor.delete(range)
-        });
+        self.fix_buffer_cursors(&ranges[..len], current_buffer_handle, Cursor::delete);
     }
 
     pub fn apply_completion(
@@ -575,6 +567,28 @@ impl BufferViewCollection {
                 }
             },
         );
+    }
+
+    pub fn on_buffer_insert_text(&mut self, buffer_handle: BufferHandle, range: BufferRange) {
+        for view in self.buffer_views.iter_mut().flatten() {
+            if view.buffer_handle != buffer_handle {
+                continue;
+            }
+            for c in &mut view.cursors.mut_guard()[..] {
+                c.insert(range);
+            }
+        }
+    }
+
+    pub fn on_buffer_delete_text(&mut self, buffer_handle: BufferHandle, range: BufferRange) {
+        for view in self.buffer_views.iter_mut().flatten() {
+            if view.buffer_handle != buffer_handle {
+                continue;
+            }
+            for c in &mut view.cursors.mut_guard()[..] {
+                c.delete(range);
+            }
+        }
     }
 
     fn fix_buffer_cursors(

@@ -461,6 +461,12 @@ impl Editor {
                         buffer.refresh_syntax(&self.syntaxes);
                     }
                 }
+                EditorEvent::BufferInsertText { handle, range, .. } => {
+                    // TODO: fix cursors in buffer views?
+                }
+                EditorEvent::BufferDeleteText { handle, range } => {
+                    // TODO: fix cursors in buffer views?
+                }
                 EditorEvent::BufferSave { handle, new_path } => {
                     if *new_path {
                         if let Some(buffer) = self.buffers.get_mut(*handle) {
