@@ -584,6 +584,7 @@ impl BufferViewCollection {
         }
     }
 
+    // TODO: how to even do this anymore?
     fn apply_edits<'a>(
         &mut self,
         handle: BufferViewHandle,
@@ -629,6 +630,7 @@ impl BufferViewCollection {
             None => return,
         };
 
+        /*
         let mut ranges = BufferRanges::new();
         for edit in edits {
             match edit.kind {
@@ -667,11 +669,15 @@ impl BufferViewCollection {
                 }
             }
         }
+        */
 
+        /*
         if ranges.as_slice().is_empty() {
             return;
         }
+        */
 
+        /*
         if let Some(view) = self.buffer_views[handle.0 as usize].as_mut() {
             let mut cursors = view.cursors.mut_guard();
             cursors.clear();
@@ -682,6 +688,7 @@ impl BufferViewCollection {
                 });
             }
         }
+        */
     }
 
     pub fn buffer_view_handle_from_buffer_handle(
