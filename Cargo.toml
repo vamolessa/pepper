@@ -15,11 +15,11 @@ categories = ["command-line-utilities", "text-editors"]
 
 [lib]
 name = "pepper"
-path = "lib/lib.rs"
+path = "src/lib.rs"
 
 [[bin]]
 name = "pepper"
-path = "bin/main.rs"
+path = "src/bin/main.rs"
 
 [dependencies]
 argh = "0.1"
