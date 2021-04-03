@@ -1,7 +1,7 @@
 #[cfg(windows)]
 mod windows;
 
-fn main() {
+pub fn main() {
     #[cfg(windows)]
     windows::main();
 }
