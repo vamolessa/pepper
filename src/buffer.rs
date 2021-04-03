@@ -1199,7 +1199,7 @@ impl Buffer {
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub struct BufferHandle(pub usize);
+pub struct BufferHandle(pub u32);
 impl fmt::Display for BufferHandle {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.0.fmt(f)
@@ -1225,26 +1225,26 @@ impl BufferCollection {
         let mut handle = None;
         for (i, buffer) in self.buffers.iter_mut().enumerate() {
             if !buffer.alive {
-                handle = Some(BufferHandle(i));
+                handle = Some(BufferHandle(i as _));
                 break;
             }
         }
         let handle = match handle {
             Some(handle) => handle,
             None => {
-                let handle = BufferHandle(self.buffers.len());
+                let handle = BufferHandle(self.buffers.len() as _);
                 self.buffers.push(Buffer::new(handle));
                 handle
             }
         };
 
-        let buffer = &mut self.buffers[handle.0];
+        let buffer = &mut self.buffers[handle.0 as usize];
         buffer.alive = true;
         buffer
     }
 
     pub fn get(&self, handle: BufferHandle) -> Option<&Buffer> {
-        let buffer = &self.buffers[handle.0];
+        let buffer = &self.buffers[handle.0 as usize];
         if buffer.alive {
             Some(buffer)
         } else {
@@ -1253,7 +1253,7 @@ impl BufferCollection {
     }
 
     pub fn get_mut(&mut self, handle: BufferHandle) -> Option<&mut Buffer> {
-        let buffer = &mut self.buffers[handle.0];
+        let buffer = &mut self.buffers[handle.0 as usize];
         if buffer.alive {
             Some(buffer)
         } else {
@@ -1293,7 +1293,7 @@ impl BufferCollection {
     }
 
     pub fn defer_remove(&mut self, handle: BufferHandle, events: &mut EditorEventQueue) {
-        let buffer = &mut self.buffers[handle.0];
+        let buffer = &mut self.buffers[handle.0 as usize];
         if buffer.alive {
             events.enqueue(EditorEvent::BufferClose { handle });
         }
@@ -1305,7 +1305,7 @@ impl BufferCollection {
         clients: &mut ClientManager,
         word_database: &mut WordDatabase,
     ) {
-        let buffer = &mut self.buffers[handle.0];
+        let buffer = &mut self.buffers[handle.0 as usize];
         if !buffer.alive {
             return;
         }

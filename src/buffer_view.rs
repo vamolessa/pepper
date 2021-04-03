@@ -341,7 +341,7 @@ pub enum BufferViewError {
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
-pub struct BufferViewHandle(usize);
+pub struct BufferViewHandle(u32);
 impl fmt::Display for BufferViewHandle {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.0.fmt(f)
@@ -367,11 +367,11 @@ impl BufferViewCollection {
         for (i, slot) in self.buffer_views.iter_mut().enumerate() {
             if slot.is_none() {
                 *slot = Some(buffer_view);
-                return BufferViewHandle(i);
+                return BufferViewHandle(i as _);
             }
         }
 
-        let handle = BufferViewHandle(self.buffer_views.len());
+        let handle = BufferViewHandle(self.buffer_views.len() as _);
         self.buffer_views.push(Some(buffer_view));
         handle
     }
@@ -395,18 +395,18 @@ impl BufferViewCollection {
     }
 
     pub fn get(&self, handle: BufferViewHandle) -> Option<&BufferView> {
-        self.buffer_views[handle.0].as_ref()
+        self.buffer_views[handle.0 as usize].as_ref()
     }
 
     pub fn get_mut(&mut self, handle: BufferViewHandle) -> Option<&mut BufferView> {
-        self.buffer_views[handle.0].as_mut()
+        self.buffer_views[handle.0 as usize].as_mut()
     }
 
     pub fn iter_with_handles(&self) -> impl Iterator<Item = (BufferViewHandle, &BufferView)> {
         self.buffer_views
             .iter()
             .enumerate()
-            .filter_map(|(i, v)| Some(BufferViewHandle(i)).zip(v.as_ref()))
+            .filter_map(|(i, v)| Some(BufferViewHandle(i as _)).zip(v.as_ref()))
     }
 
     pub fn insert_text_at_position(
@@ -418,7 +418,7 @@ impl BufferViewCollection {
         text: &str,
         events: &mut EditorEventQueue,
     ) {
-        let current_view = match &mut self.buffer_views[handle.0] {
+        let current_view = match &mut self.buffer_views[handle.0 as usize] {
             Some(view) => view,
             None => return,
         };
@@ -442,7 +442,7 @@ impl BufferViewCollection {
         text: &str,
         events: &mut EditorEventQueue,
     ) {
-        let current_view = match &mut self.buffer_views[handle.0] {
+        let current_view = match &mut self.buffer_views[handle.0 as usize] {
             Some(view) => view,
             None => return,
         };
@@ -472,7 +472,7 @@ impl BufferViewCollection {
         range: BufferRange,
         events: &mut EditorEventQueue,
     ) {
-        let current_view = match &mut self.buffer_views[handle.0] {
+        let current_view = match &mut self.buffer_views[handle.0 as usize] {
             Some(view) => view,
             None => return,
         };
@@ -496,7 +496,7 @@ impl BufferViewCollection {
         handle: BufferViewHandle,
         events: &mut EditorEventQueue,
     ) {
-        let current_view = match &mut self.buffer_views[handle.0] {
+        let current_view = match &mut self.buffer_views[handle.0 as usize] {
             Some(view) => view,
             None => return,
         };
@@ -528,7 +528,7 @@ impl BufferViewCollection {
         completion: &str,
         events: &mut EditorEventQueue,
     ) {
-        let current_view = match &mut self.buffer_views[handle.0] {
+        let current_view = match &mut self.buffer_views[handle.0 as usize] {
             Some(view) => view,
             None => return,
         };
@@ -603,7 +603,7 @@ impl BufferViewCollection {
         events: &mut EditorEventQueue,
         handle: BufferViewHandle,
     ) {
-        if let Some(buffer) = self.buffer_views[handle.0]
+        if let Some(buffer) = self.buffer_views[handle.0 as usize]
             .as_mut()
             .and_then(|view| buffers.get_mut(view.buffer_handle))
         {
@@ -618,7 +618,7 @@ impl BufferViewCollection {
         events: &mut EditorEventQueue,
         handle: BufferViewHandle,
     ) {
-        if let Some(buffer) = self.buffer_views[handle.0]
+        if let Some(buffer) = self.buffer_views[handle.0 as usize]
             .as_mut()
             .and_then(|view| buffers.get_mut(view.buffer_handle))
         {
@@ -683,7 +683,7 @@ impl BufferViewCollection {
                     }
                     ranges.add(edit.range);
                     for (i, view) in self.buffer_views.iter_mut().flatten().enumerate() {
-                        if i != handle.0 && view.buffer_handle == buffer_handle {
+                        if i != handle.0 as usize && view.buffer_handle == buffer_handle {
                             for c in &mut view.cursors.mut_guard()[..] {
                                 c.insert(edit.range);
                             }
@@ -700,7 +700,7 @@ impl BufferViewCollection {
                     let range = BufferRange::between(edit.range.from, edit.range.from);
                     ranges.add(range);
                     for (i, view) in self.buffer_views.iter_mut().flatten().enumerate() {
-                        if i != handle.0 && view.buffer_handle == buffer_handle {
+                        if i != handle.0 as usize && view.buffer_handle == buffer_handle {
                             for c in &mut view.cursors.mut_guard()[..] {
                                 c.delete(edit.range);
                             }
@@ -714,7 +714,7 @@ impl BufferViewCollection {
             return;
         }
 
-        if let Some(view) = self.buffer_views[handle.0].as_mut() {
+        if let Some(view) = self.buffer_views[handle.0 as usize].as_mut() {
             let mut cursors = view.cursors.mut_guard();
             cursors.clear();
             for range in ranges.as_slice() {

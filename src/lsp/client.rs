@@ -266,7 +266,7 @@ struct VersionedBufferCollection {
 }
 impl VersionedBufferCollection {
     pub fn add_edit(&mut self, buffer_handle: BufferHandle, range: BufferRange, text: &str) {
-        let index = buffer_handle.0;
+        let index = buffer_handle.0 as usize;
         if index >= self.buffers.len() {
             self.buffers
                 .resize_with(index + 1, VersionedBuffer::default);
@@ -281,7 +281,7 @@ impl VersionedBufferCollection {
     }
 
     pub fn dispose(&mut self, buffer_handle: BufferHandle) {
-        if let Some(buffer) = self.buffers.get_mut(buffer_handle.0) {
+        if let Some(buffer) = self.buffers.get_mut(buffer_handle.0 as usize) {
             buffer.dispose();
         }
     }
@@ -293,7 +293,7 @@ impl VersionedBufferCollection {
             .iter_mut()
             .enumerate()
             .filter(|(_, e)| !e.pending_edits.is_empty())
-            .map(|(i, e)| (BufferHandle(i), e))
+            .map(|(i, e)| (BufferHandle(i as _), e))
     }
 }
 

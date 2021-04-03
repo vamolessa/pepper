@@ -1,4 +1,4 @@
-use std::{error::Error, fmt, ops::Range, str::Chars};
+use std::{error::Error, fmt, str::Chars};
 
 use crate::{
     buffer::BufferHandle,
@@ -9,11 +9,12 @@ use crate::{
 };
 
 pub struct EditorEventText {
-    texts_range: Range<usize>,
+    from: u32,
+    to: u32,
 }
 impl EditorEventText {
     pub fn as_str<'a>(&self, events: &'a EditorEventQueue) -> &'a str {
-        &events.read.texts[self.texts_range.clone()]
+        &events.read.texts[self.from as usize..self.to as _]
     }
 }
 
@@ -64,10 +65,11 @@ impl EditorEventQueue {
     }
 
     pub fn enqueue_buffer_insert(&mut self, handle: BufferHandle, range: BufferRange, text: &str) {
-        let start = self.write.texts.len();
+        let from = self.write.texts.len();
         self.write.texts.push_str(text);
         let text = EditorEventText {
-            texts_range: start..self.write.texts.len(),
+            from: from as _,
+            to: self.write.texts.len() as _,
         };
         self.write.events.push(EditorEvent::BufferInsertText {
             handle,
