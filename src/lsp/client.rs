@@ -1344,7 +1344,7 @@ impl ClientManager {
         handle: ClientHandle,
         process_handle: ProcessHandle,
     ) {
-        if let Some(mut entry) = editor.lsp.entries[handle.0].take() {
+        if let Some(ref mut entry) = editor.lsp.entries[handle.0] {
             entry.client.protocol.set_process_handle(process_handle);
             entry.client.initialize(platform, &mut entry.json);
         }
