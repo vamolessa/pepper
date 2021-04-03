@@ -84,12 +84,11 @@ impl ModeState for State {
                 let buffer_handle = buffer_view.buffer_handle;
 
                 let mut buf = ctx.editor.string_pool.acquire();
-                for i in 0..cursor_count {
+                for i in (0..cursor_count).rev() {
                     let position = ctx.editor.buffer_views.get(handle)?.cursors[i].position;
                     let buffer = ctx.editor.buffers.get(buffer_handle)?;
 
                     buf.push('\n');
-
                     let indentation_word = buffer
                         .content()
                         .word_at(BufferPosition::line_col(position.line_index, 0));
@@ -107,7 +106,6 @@ impl ModeState for State {
                         &buf,
                         &mut ctx.editor.events,
                     );
-
                     buf.clear();
                 }
                 ctx.editor.string_pool.release(buf);
@@ -115,21 +113,6 @@ impl ModeState for State {
             Key::Char(c) => {
                 let mut buf = [0; std::mem::size_of::<char>()];
                 let s = c.encode_utf8(&mut buf);
-                /*
-                if let Some(buffer_view) = ctx.editor.buffer_views.get(handle) {
-                    if let Some(buffer) = ctx.editor.buffers.get_mut(buffer_view.buffer_handle) {
-                        for cursor in buffer_view.cursors[..].iter() {
-                            buffer.insert_text(
-                                &mut ctx.editor.word_database,
-                                cursor.position,
-                                s,
-                                &mut ctx.editor.events,
-                            );
-                        }
-                    }
-                }
-                // */
-                //*
                 ctx.editor.buffer_views.insert_text_at_cursor_positions(
                     &mut ctx.editor.buffers,
                     &mut ctx.editor.word_database,
@@ -137,7 +120,6 @@ impl ModeState for State {
                     s,
                     &mut ctx.editor.events,
                 );
-                // */
             }
             Key::Backspace => {
                 ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
@@ -189,6 +171,10 @@ impl ModeState for State {
             _ => (),
         }
 
+        // TODO: the main cursor position may have drifted since cursors
+        // no longer update instantaneously
+
+        /*
         let buffer_view = ctx.editor.buffer_views.get(handle)?;
         let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle)?;
         let mut word_position = buffer_view.cursors.main_cursor().position;
@@ -216,6 +202,7 @@ impl ModeState for State {
         } else {
             ctx.editor.picker.clear_filtered();
         }
+        */
 
         None
     }

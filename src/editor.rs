@@ -462,10 +462,10 @@ impl Editor {
                     }
                 }
                 EditorEvent::BufferInsertText { handle, range, .. } => {
-                    // TODO: fix cursors in buffer views?
+                    self.buffer_views.on_buffer_insert_text(*handle, *range);
                 }
                 EditorEvent::BufferDeleteText { handle, range } => {
-                    // TODO: fix cursors in buffer views?
+                    self.buffer_views.on_buffer_delete_text(*handle, *range);
                 }
                 EditorEvent::BufferSave { handle, new_path } => {
                     if *new_path {

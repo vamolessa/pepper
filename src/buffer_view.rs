@@ -409,6 +409,7 @@ impl BufferViewCollection {
             .filter_map(|(i, v)| Some(BufferViewHandle(i as _)).zip(v.as_ref()))
     }
 
+    // TODO: remove
     pub fn insert_text_at_position(
         &mut self,
         buffers: &mut BufferCollection,
@@ -426,10 +427,7 @@ impl BufferViewCollection {
             Some(buffer) => buffer,
             None => return,
         };
-
-        let range = buffer.insert_text(word_database, position, text, events);
-        let current_buffer_handle = current_view.buffer_handle;
-        self.fix_buffer_cursors(&[range], current_buffer_handle, Cursor::insert);
+        buffer.insert_text(word_database, position, text, events);
     }
 
     pub fn insert_text_at_cursor_positions(
@@ -448,18 +446,12 @@ impl BufferViewCollection {
             Some(buffer) => buffer,
             None => return,
         };
-
-        let mut len = 0;
-        let mut ranges = [BufferRange::zero(); CursorCollection::capacity()];
         for cursor in current_view.cursors[..].iter().rev() {
-            ranges[len] = buffer.insert_text(word_database, cursor.position, text, events);
-            len += 1;
+            buffer.insert_text(word_database, cursor.position, text, events);
         }
-
-        let current_buffer_handle = current_view.buffer_handle;
-        self.fix_buffer_cursors(&ranges[..len], current_buffer_handle, Cursor::insert);
     }
 
+    // TODO: remove
     pub fn delete_text_in_range(
         &mut self,
         buffers: &mut BufferCollection,
@@ -476,11 +468,7 @@ impl BufferViewCollection {
             Some(buffer) => buffer,
             None => return,
         };
-
         buffer.delete_range(word_database, range, events);
-
-        let current_buffer_handle = current_view.buffer_handle;
-        self.fix_buffer_cursors(&[range], current_buffer_handle, Cursor::delete);
     }
 
     pub fn delete_text_in_cursor_ranges(
@@ -498,18 +486,9 @@ impl BufferViewCollection {
             Some(buffer) => buffer,
             None => return,
         };
-
-        let mut len = 0;
-        let mut ranges = [BufferRange::zero(); CursorCollection::capacity()];
         for cursor in current_view.cursors[..].iter().rev() {
-            let range = cursor.to_range();
-            buffer.delete_range(word_database, range, events);
-            ranges[len] = range;
-            len += 1;
+            buffer.delete_range(word_database, cursor.to_range(), events);
         }
-
-        let current_buffer_handle = current_view.buffer_handle;
-        self.fix_buffer_cursors(&ranges[..len], current_buffer_handle, Cursor::delete);
     }
 
     pub fn apply_completion(
@@ -529,13 +508,18 @@ impl BufferViewCollection {
             None => return,
         };
 
-        let mut len = 0;
-        let mut ranges = [BufferRange::zero(); CursorCollection::capacity()];
-
         for cursor in current_view.cursors[..].iter().rev() {
+            let content = buffer.content();
+
             let mut word_position = cursor.position;
-            word_position.column_byte_index = word_position.column_byte_index.saturating_sub(1);
-            let word = buffer.content().word_at(word_position);
+            word_position.column_byte_index = content.line_at(word_position.line_index).as_str()
+                [..word_position.column_byte_index]
+                .char_indices()
+                .next_back()
+                .map(|(i, _)| i)
+                .unwrap_or(0);
+
+            let word = content.word_at(word_position);
             let word_kind = word.kind;
             let word_position = word.position;
 
@@ -544,29 +528,8 @@ impl BufferViewCollection {
                 buffer.delete_range(word_database, range, events);
             }
 
-            let insert_range = buffer.insert_text(word_database, word_position, completion, events);
-            let mut range = BufferRange::between(cursor.position, insert_range.to);
-            if cursor.position > insert_range.to {
-                std::mem::swap(&mut range.from, &mut range.to);
-            }
-
-            ranges[len] = range;
-            len += 1;
+            buffer.insert_text(word_database, word_position, completion, events);
         }
-
-        let current_buffer_handle = current_view.buffer_handle;
-        self.fix_buffer_cursors(
-            &ranges[..len],
-            current_buffer_handle,
-            |cursor, mut range| {
-                if range.from <= range.to {
-                    cursor.insert(range);
-                } else {
-                    std::mem::swap(&mut range.from, &mut range.to);
-                    cursor.delete(range);
-                }
-            },
-        );
     }
 
     pub fn on_buffer_insert_text(&mut self, buffer_handle: BufferHandle, range: BufferRange) {
@@ -587,25 +550,6 @@ impl BufferViewCollection {
             }
             for c in &mut view.cursors.mut_guard()[..] {
                 c.delete(range);
-            }
-        }
-    }
-
-    fn fix_buffer_cursors(
-        &mut self,
-        cursor_ranges: &[BufferRange],
-        buffer_handle: BufferHandle,
-        op: fn(&mut Cursor, BufferRange),
-    ) {
-        for view in self.buffer_views.iter_mut().flatten() {
-            if view.buffer_handle != buffer_handle {
-                continue;
-            }
-
-            for c in &mut view.cursors.mut_guard()[..] {
-                for range in cursor_ranges {
-                    op(c, *range);
-                }
             }
         }
     }
