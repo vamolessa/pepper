@@ -367,6 +367,9 @@ impl Editor {
         match tag {
             // TODO: !! make if only Buffer and somehow update all relative BufferViews
             // maybe through EditorEvent::BufferInsertText/BufferDeleteText?
+            // places where we do this:
+            // - lsp client log buffer
+            // - buffer with command output attached
             ProcessTag::BufferView(buffer_view_handle) => {
                 if let Ok(text) = std::str::from_utf8(bytes) {
                     let position = self
