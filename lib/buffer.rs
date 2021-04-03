@@ -1161,41 +1161,43 @@ impl Buffer {
             return Ok(());
         }
 
-        let path = self.path.as_path();
-        if path.as_os_str().is_empty() {
-            return Err(BufferError::BufferDoesNotHavePath);
-        }
-
-        let file = File::open(path).map_err(|_| BufferError::CouldNotOpenFile)?;
-        let mut reader = io::BufReader::new(file);
+        self.history.clear();
+        self.search_ranges.clear();
+        self.needs_save = false;
 
         self.remove_all_words_from_database(word_database);
-
-        self.content
-            .read(&mut reader)
-            .map_err(|_| BufferError::CouldNotReadFile)?;
+        self.content.clear();
         self.highlighted.clear();
-        self.highlighted.on_insert(BufferRange::between(
-            BufferPosition::zero(),
-            BufferPosition::line_col(self.content.line_count() - 1, 0),
-        ));
 
         events.enqueue(EditorEvent::BufferOpen {
             handle: self.handle,
         });
 
-        if self.capabilities.uses_word_database {
-            for line in &self.content.lines {
-                for word in WordIter(line.as_str()).of_kind(WordKind::Identifier) {
-                    word_database.add(word);
+        let path = self.path.as_path();
+        if path.as_os_str().is_empty() {
+            return Err(BufferError::BufferDoesNotHavePath);
+        }
+
+        if let Ok(file) = File::open(path) {
+            let mut reader = io::BufReader::new(file);
+            self.content
+                .read(&mut reader)
+                .map_err(|_| BufferError::CouldNotReadFile)?;
+
+            self.highlighted.on_insert(BufferRange::between(
+                BufferPosition::zero(),
+                BufferPosition::line_col(self.content.line_count() - 1, 0),
+            ));
+
+            if self.capabilities.uses_word_database {
+                for line in &self.content.lines {
+                    for word in WordIter(line.as_str()).of_kind(WordKind::Identifier) {
+                        word_database.add(word);
+                    }
                 }
             }
         }
 
-        self.history.clear();
-        self.search_ranges.clear();
-
-        self.needs_save = false;
         Ok(())
     }
 }
