@@ -13,7 +13,7 @@ use crate::{
     command::{
         BuiltinCommand, CommandContext, CommandError, CommandIter, CommandManager,
         CommandOperation, CommandSource, CommandTokenIter, CommandTokenKind, CompletionSource,
-        MacroCommand,
+        MacroCommand, RequestCommand,
     },
     config::{ParseConfigError, CONFIG_NAMES},
     editor::Editor,
@@ -48,6 +48,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "help",
         alias: "h",
         help: "prints help about command\nhelp [<command-name>]",
+        hidden: false,
         completions: &[CompletionSource::Commands],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
@@ -70,6 +71,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                         },
                         CommandSource::Macro(i) => {
                             let command = &commands.macro_commands()[i];
+                            ("", &command.help[..])
+                        }
+                        CommandSource::Request(i) => {
+                            let command = &commands.request_commands()[i];
                             ("", &command.help[..])
                         }
                     };
@@ -114,6 +119,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             "and optionally execute commands if there was an error\n",
             "try { <commands...> } [catch { <commands...> }]",
         ),
+        hidden: true,
         completions: &[],
         func: |ctx| {
             fn run_commands(
@@ -166,18 +172,21 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "macro",
         alias: "",
         help: concat!(
-            "define a new command macro\n",
+            "define a new macro command\n",
             "macro [<flags>] <name> <param-names...> <commands>\n",
             " -help=<help-text> : the help text that shows when using `help` with this command\n",
+            " -hidden : whether this command is shown in completions or not\n",
             " -param-count=<number> : if defined, the number of parameters this command expects, 0 otherwise",
         ),
+        hidden: true,
         completions: &[],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
 
-            let mut flags = [("help", None)];
+            let mut flags = [("help", None), ("hidden", None)];
             ctx.args.get_flags(&mut flags)?;
             let help = flags[0].1.unwrap_or("");
+            let hidden = flags[1].1.is_some();
 
             let name = ctx.args.next()?;
 
@@ -200,11 +209,58 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             let command = MacroCommand {
                 name: name.into(),
                 help: help.into(),
+                hidden,
                 params,
                 commands,
                 source_path: ctx.source_path.map(Into::into),
             };
             ctx.editor.commands.register_macro(command);
+
+            Ok(None)
+        },
+    },
+    BuiltinCommand {
+        name: "request",
+        alias: "",
+        help: concat!(
+            "define a new request command\n",
+            "request [<flags>] <name>\n",
+            " -help=<help-text> : the help text that shows when using `help` with this command\n",
+            " -hidden : whether this command is shown in completions or not\n",
+            " -param-count=<number> : if defined, the number of parameters this command expects, 0 otherwise",
+        ),
+        hidden: true,
+        completions: &[],
+        func: |ctx| {
+            ctx.args.assert_no_bang()?;
+
+            let mut flags = [("help", None), ("hidden", None)];
+            ctx.args.get_flags(&mut flags)?;
+            let help = flags[0].1.unwrap_or("");
+            let hidden = flags[1].1.is_some();
+
+            let name = ctx.args.next()?;
+            ctx.args.assert_empty()?;
+
+            if name.is_empty() {
+                return Err(CommandError::InvalidCommandName(name.into()));
+            }
+            if !name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_')) {
+                return Err(CommandError::InvalidCommandName(name.into()));
+            }
+
+            let client_handle = match ctx.client_handle {
+                Some(handle) => handle,
+                None => return Ok(None),
+            };
+
+            let command = RequestCommand {
+                name: name.into(),
+                help: help.into(),
+                hidden,
+                client_handle,
+            };
+            ctx.editor.commands.register_request(command);
 
             Ok(None)
         },
@@ -222,6 +278,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             " -env=<vars> : sets environment variables in the form VAR=<value> VAR=<value>...\n",
             " -split-on-byte=<number> : splits process output at every <number> byte",
         ),
+        hidden: false,
         completions: &[],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
@@ -268,6 +325,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             "read-line [<flags>] <line-var-name> <commands>\n",
             " -prompt=<prompt-text> : the prompt text that shows just before user input (default: `read-line:`)",
         ),
+        hidden: false,
         completions: &[],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
@@ -308,6 +366,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             "pick [<flags>] <entry-var-name> <commands>\n",
             " -prompt=<prompt-text> : the prompt text that shows just before user input (default: `pick:`)",
         ),
+        hidden: false,
         completions: &[],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
@@ -345,6 +404,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             "adds a new picker entry that will then be shown in the next call to the `pick` command\n",
             "add-picker-entry [<flags>] <name>",
         ),
+        hidden: false,
         completions: &[],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
@@ -365,6 +425,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "quit",
         alias: "q",
         help: "quits this client\nquit[!]\nwith '!' will discard any unsaved changes",
+        hidden: false,
         completions: &[],
         func: |ctx| {
             ctx.args.get_flags(&mut [])?;
@@ -380,6 +441,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "quit-all",
         alias: "qa",
         help: "quits all clients\nquit-all[!]\nwith '!' will discard any unsaved changes",
+        hidden: false,
         completions: &[],
         func: |ctx| {
             ctx.args.get_flags(&mut [])?;
@@ -397,6 +459,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             " -error : will print the message as an error",
             " -dbg : will also print the message to the stderr",
         ),
+        hidden: false,
         completions: &[],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
@@ -432,6 +495,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "source",
         alias: "",
         help: "loads a source file and execute its commands\nsource <path>",
+        hidden: false,
         completions: &[CompletionSource::Files],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
@@ -465,6 +529,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             " -command=<content-command> : appends command output to buffer\n",
             " -env=<vars> : sets environment variables for `-command` in the form VAR=<value> VAR=<value>...",
         ),
+        hidden: false,
         completions: &[CompletionSource::Files],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
@@ -553,6 +618,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             "save buffer\nsave [<flags>] [<path>]\n",
             " -buffer=<buffer-id> : if not specified, the current buffer is used",
         ),
+        hidden: false,
         completions: &[],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
@@ -591,6 +657,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "save-all",
         alias: "sa",
         help: "save all buffers\nsave-all",
+        hidden: false,
         completions: &[],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
@@ -622,6 +689,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             "with '!' will discard any unsaved changes",
             " -buffer=<buffer-id> : if not specified, the current buffer is used",
         ),
+        hidden: false,
         completions: &[],
         func: |ctx| {
             let mut flags = [("buffer", None)];
@@ -658,6 +726,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         alias: "ra",
         help:
             "reload all buffers from file\nreload-all[!]\nwith '!' will discard any unsaved changes",
+        hidden: false,
         completions: &[],
         func: |ctx| {
             ctx.args.get_flags(&mut [])?;
@@ -690,6 +759,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             "with '!' will discard any unsaved changes",
             " -buffer=<buffer-id> : if not specified, the current buffer is used"
         ),
+        hidden: false,
         completions: &[],
         func: |ctx| {
             let mut flags = [("buffer", None)];
@@ -734,6 +804,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "close-all",
         alias: "ca",
         help: "close all buffers\nclose-all[!]\nwith '!' will discard any unsaved changes",
+        hidden: false,
         completions: &[],
         func: |ctx| {
             ctx.args.get_flags(&mut [])?;
@@ -762,6 +833,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "config",
         alias: "",
         help: "accesses an editor config\nconfig <key> [<value>]",
+        hidden: false,
         completions: &[(CompletionSource::Custom(CONFIG_NAMES))],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
@@ -795,6 +867,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "color",
         alias: "",
         help: "accesses an editor theme color\ncolor <key> [<value>]",
+        hidden: false,
         completions: &[CompletionSource::Custom(THEME_COLOR_NAMES)],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
@@ -844,6 +917,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             " texts\n",
             "and <pattern> is the pattern that matches that kind of token",
         ),
+        hidden: false,
         completions: &[],
         func: |ctx| {
             fn slice_from_last_char(s: &str) -> &str {
@@ -933,6 +1007,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             " -picker : set mapping for picker mode\n",
             " -command : set mapping for command mode",
         ),
+        hidden: false,
         completions: &[],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
@@ -989,6 +1064,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "register",
         alias: "",
         help: "accesses an editor register\nregister <key> [<value>]",
+        hidden: false,
         completions: &[],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
@@ -1026,6 +1102,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             " -log=<buffer-name> : redirect the lsp server output to this buffer\n",
             " -env=<vars> : sets environment variables in the form VAR=<value> VAR=<value>...",
         ),
+        hidden: false,
         completions: &[],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
@@ -1074,6 +1151,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "lsp-stop",
         alias: "",
         help: "stops the lsp server associated with the current buffer\nlsp-stop",
+        hidden: false,
         completions: &[],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
@@ -1092,6 +1170,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "lsp-hover",
         alias: "",
         help: "performs a lsp hover action at the current buffer's main cursor position\nlsp-hover",
+        hidden: false,
         completions: &[],
         func: |mut ctx| {
             ctx.args.assert_no_bang()?;
@@ -1112,6 +1191,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             "performs a lsp signature help action at the current buffer's main cursor position\n",
             "lsp-signature_help\n",
         ),
+        hidden: false,
         completions: &[],
         func: |mut ctx| {
             ctx.args.assert_no_bang()?;

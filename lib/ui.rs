@@ -388,8 +388,8 @@ fn draw_picker(buf: &mut Vec<u8>, editor: &Editor, view: &View) {
         .len()
         .min(editor.config.picker_max_height as _);
 
-    let background_normal_color = editor.theme.statusbar_background;
-    let background_selected_color = editor.theme.prompt_background;
+    let background_normal_color = editor.theme.statusbar_inactive_background;
+    let background_selected_color = editor.theme.statusbar_active_background;
     let foreground_color = editor.theme.token_text;
 
     if height > 0 {
@@ -452,19 +452,17 @@ fn draw_picker(buf: &mut Vec<u8>, editor: &Editor, view: &View) {
 }
 
 fn draw_statusbar(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool) {
-    let background_color = editor.theme.statusbar_background;
+    let background_active_color = editor.theme.statusbar_active_background;
+    let background_innactive_color = editor.theme.statusbar_inactive_background;
     let foreground_color = editor.theme.token_text;
-    let prompt_background_color = editor.theme.prompt_background;
-    let prompt_foreground_color = foreground_color;
     let cursor_color = editor.theme.normal_cursor;
 
     if has_focus {
-        set_background_color(buf, background_color);
-        set_foreground_color(buf, foreground_color);
+        set_background_color(buf, background_active_color);
     } else {
-        set_background_color(buf, foreground_color);
-        set_foreground_color(buf, background_color);
+        set_background_color(buf, background_innactive_color);
     }
+    set_foreground_color(buf, foreground_color);
 
     let x = if has_focus {
         let (message_target, message) = editor.status_bar.message();
@@ -490,15 +488,15 @@ fn draw_statusbar(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bo
                 ModeKind::Command | ModeKind::Picker | ModeKind::ReadLine => {
                     let read_line = &editor.read_line;
 
-                    set_background_color(buf, prompt_background_color);
-                    set_foreground_color(buf, prompt_foreground_color);
+                    set_background_color(buf, background_innactive_color);
+                    set_foreground_color(buf, foreground_color);
                     buf.extend_from_slice(read_line.prompt().as_bytes());
-                    set_background_color(buf, background_color);
+                    set_background_color(buf, background_active_color);
                     set_foreground_color(buf, foreground_color);
                     buf.extend_from_slice(read_line.input().as_bytes());
                     set_background_color(buf, cursor_color);
                     buf.push(b' ');
-                    set_background_color(buf, background_color);
+                    set_background_color(buf, background_active_color);
                     None
                 }
             }
@@ -532,12 +530,12 @@ fn draw_statusbar(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bo
                     move_cursor_up(buf, line_count - 1);
                 } else {
                     move_cursor_up(buf, line_count);
-                    set_background_color(buf, prompt_background_color);
-                    set_foreground_color(buf, prompt_foreground_color);
+                    set_background_color(buf, background_innactive_color);
+                    set_foreground_color(buf, foreground_color);
                     buf.extend_from_slice(prefix);
                     clear_until_new_line(buf);
                     move_cursor_to_next_line(buf);
-                    set_background_color(buf, background_color);
+                    set_background_color(buf, background_active_color);
                     set_foreground_color(buf, foreground_color);
                 }
 
@@ -552,10 +550,10 @@ fn draw_statusbar(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bo
                 }
             } else {
                 clear_line(buf);
-                set_background_color(buf, prompt_background_color);
-                set_foreground_color(buf, prompt_foreground_color);
+                set_background_color(buf, background_innactive_color);
+                set_foreground_color(buf, foreground_color);
                 buf.extend_from_slice(prefix);
-                set_background_color(buf, background_color);
+                set_background_color(buf, background_active_color);
                 set_foreground_color(buf, foreground_color);
                 print_line(buf, message);
             }

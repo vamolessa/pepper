@@ -40,8 +40,8 @@ macro_rules! theme_colors {
 theme_colors! {
     background,
     highlight,
-    statusbar_background,
-    prompt_background,
+    statusbar_active_background,
+    statusbar_inactive_background,
     normal_cursor,
     insert_cursor,
     select_cursor,
@@ -66,8 +66,8 @@ pub fn gruvbox_theme() -> Theme {
     Theme {
         background: Color::from_u32(0x1d2021),
         highlight: Color::from_u32(0xfabd2f),
-        statusbar_background: Color::from_u32(0x504945),
-        prompt_background: Color::from_u32(0x7c6f64),
+        statusbar_active_background: Color::from_u32(0x504945),
+        statusbar_inactive_background: Color::from_u32(0x282828),
         normal_cursor: Color::from_u32(0xcc241d),
         insert_cursor: Color::from_u32(0xfabd2f),
         select_cursor: Color::from_u32(0x458588),

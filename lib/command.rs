@@ -731,12 +731,14 @@ impl<'a> CommandArgs<'a> {
 pub enum CommandSource {
     Builtin(usize),
     Macro(usize),
+    Request(usize),
 }
 
 pub struct BuiltinCommand {
     pub name: &'static str,
     pub alias: &'static str,
     pub help: &'static str,
+    pub hidden: bool,
     pub completions: &'static [CompletionSource],
     pub func: CommandFn,
 }
@@ -744,9 +746,17 @@ pub struct BuiltinCommand {
 pub struct MacroCommand {
     pub name: String,
     pub help: String,
+    pub hidden: bool,
     pub params: Vec<String>,
     pub commands: String,
     pub source_path: Option<PathBuf>,
+}
+
+pub struct RequestCommand {
+    pub name: String,
+    pub help: String,
+    pub hidden: bool,
+    pub client_handle: ClientHandle,
 }
 
 #[derive(Default)]
@@ -763,6 +773,7 @@ struct Process {
 pub struct CommandManager {
     builtin_commands: &'static [BuiltinCommand],
     macro_commands: Vec<MacroCommand>,
+    request_commands: Vec<RequestCommand>,
     history: VecDeque<String>,
     spawned_processes: Vec<Process>,
 }
@@ -772,6 +783,7 @@ impl CommandManager {
         Self {
             builtin_commands: builtin::COMMANDS,
             macro_commands: Vec::new(),
+            request_commands: Vec::new(),
             history: VecDeque::with_capacity(HISTORY_CAPACITY),
             spawned_processes: Vec::new(),
         }
@@ -780,6 +792,10 @@ impl CommandManager {
     pub fn find_command(&self, name: &str) -> Option<CommandSource> {
         if let Some(i) = self.macro_commands.iter().position(|c| c.name == name) {
             return Some(CommandSource::Macro(i));
+        }
+
+        if let Some(i) = self.request_commands.iter().position(|c| c.name == name) {
+            return Some(CommandSource::Request(i));
         }
 
         if let Some(i) = self
@@ -801,6 +817,10 @@ impl CommandManager {
         &self.macro_commands
     }
 
+    pub fn request_commands(&self) -> &[RequestCommand] {
+        &self.request_commands
+    }
+
     pub fn register_macro(&mut self, command: MacroCommand) {
         for m in &mut self.macro_commands {
             if m.name == command.name {
@@ -809,6 +829,16 @@ impl CommandManager {
             }
         }
         self.macro_commands.push(command);
+    }
+
+    pub fn register_request(&mut self, command: RequestCommand) {
+        for m in &mut self.request_commands {
+            if m.name == command.name {
+                *m = command;
+                return;
+            }
+        }
+        self.request_commands.push(command);
     }
 
     pub fn history_len(&self) -> usize {
@@ -926,15 +956,14 @@ impl CommandManager {
                 command(&mut ctx)
             }
             CommandSource::Macro(i) => {
-                let macro_command = &editor.commands.macro_commands[i];
-
                 args.assert_no_bang()?;
                 args.get_flags(&mut [])?;
 
+                let command = &editor.commands.macro_commands[i];
                 let mut result = Ok(None);
-                let mut commands = editor.string_pool.acquire_with(&macro_command.commands);
+                let mut commands = editor.string_pool.acquire_with(&command.commands);
 
-                for param in &macro_command.params {
+                for param in &command.params {
                     let value = args.next()?;
                     replace_to_between_text_markers(&mut commands, param, value);
                 }
@@ -968,6 +997,19 @@ impl CommandManager {
                 }
                 editor.string_pool.release(commands);
                 result
+            }
+            CommandSource::Request(i) => {
+                args.assert_no_bang()?;
+
+                let handle = editor.commands.request_commands[i].client_handle;
+
+                let mut buf = platform.buf_pool.acquire();
+                let write = buf.write();
+                ServerEvent::Request(command).serialize(write);
+                let buf = buf.share();
+                platform.enqueue_request(PlatformRequest::WriteToClient { handle, buf });
+
+                Ok(None)
             }
         }
     }
@@ -1180,6 +1222,7 @@ mod tests {
             name: "command-name",
             alias: "c",
             help: "",
+            hidden: false,
             completions: &[],
             func: |_| Ok(None),
         }];
@@ -1187,6 +1230,7 @@ mod tests {
         CommandManager {
             builtin_commands,
             macro_commands: Vec::new(),
+            request_commands: Vec::new(),
             history: Default::default(),
             spawned_processes: Vec::new(),
         }
