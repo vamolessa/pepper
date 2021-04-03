@@ -416,6 +416,7 @@ fn read_from_clipboard(text: &mut String) -> bool {
             std::ptr::null_mut(),
         )
     };
+
     if len != 0 {
         let len = len - 1;
         let mut temp = String::new();
@@ -540,11 +541,12 @@ impl Drop for Event {
 
 struct Clipboard;
 impl Clipboard {
-    pub fn open() {
+    pub fn open() -> Self {
         let result = unsafe { OpenClipboard(std::ptr::null_mut()) };
         if result == FALSE {
             panic!("could not open clipboard");
         }
+        Self
     }
 }
 impl Drop for Clipboard {
