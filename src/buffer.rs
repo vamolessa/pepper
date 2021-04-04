@@ -1026,7 +1026,7 @@ impl Buffer {
         &'a mut self,
         word_database: &mut WordDatabase,
         events: &mut EditorEventQueue,
-    ) -> impl 'a + Iterator<Item = Edit<'a>> {
+    ) -> impl 'a + ExactSizeIterator<Item = Edit<'a>> {
         self.history_edits(word_database, events, |h| h.undo_edits())
     }
 
@@ -1034,7 +1034,7 @@ impl Buffer {
         &'a mut self,
         word_database: &mut WordDatabase,
         events: &mut EditorEventQueue,
-    ) -> impl 'a + Iterator<Item = Edit<'a>> {
+    ) -> impl 'a + ExactSizeIterator<Item = Edit<'a>> {
         self.history_edits(word_database, events, |h| h.redo_edits())
     }
 
@@ -1046,7 +1046,7 @@ impl Buffer {
     ) -> I
     where
         F: FnOnce(&'a mut History) -> I,
-        I: 'a + Clone + Iterator<Item = Edit<'a>>,
+        I: 'a + Clone + ExactSizeIterator<Item = Edit<'a>>,
     {
         self.search_ranges.clear();
         self.needs_save = true;

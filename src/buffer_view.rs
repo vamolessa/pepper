@@ -1,12 +1,12 @@
 use std::{fmt, path::Path, str::FromStr};
 
 use crate::{
-    buffer::{Buffer, BufferCapabilities, BufferCollection, BufferHandle},
+    buffer::{BufferCapabilities, BufferCollection, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
     client::ClientHandle,
     cursor::{Cursor, CursorCollection},
     events::EditorEventQueue,
-    history::{Edit, EditKind},
+    history::EditKind,
     word_database::{WordDatabase, WordIter, WordKind},
 };
 
@@ -561,29 +561,6 @@ impl BufferViewCollection {
         events: &mut EditorEventQueue,
         handle: BufferViewHandle,
     ) {
-        self.apply_undo_edits(buffers, word_database, events, handle, Buffer::undo);
-    }
-
-    pub fn redo(
-        &mut self,
-        buffers: &mut BufferCollection,
-        word_database: &mut WordDatabase,
-        events: &mut EditorEventQueue,
-        handle: BufferViewHandle,
-    ) {
-        self.apply_undo_edits(buffers, word_database, events, handle, Buffer::redo);
-    }
-
-    fn apply_undo_edits<'a, I>(
-        &mut self,
-        buffers: &'a mut BufferCollection,
-        word_database: &mut WordDatabase,
-        events: &mut EditorEventQueue,
-        handle: BufferViewHandle,
-        selector: fn(&'a mut Buffer, &mut WordDatabase, &mut EditorEventQueue) -> I,
-    ) where
-        I: 'a + Iterator<Item = Edit<'a>>,
-    {
         let buffer_view = match self.get_mut(handle) {
             Some(view) => view,
             None => return,
@@ -593,40 +570,62 @@ impl BufferViewCollection {
             None => return,
         };
 
-        let edits = selector(buffer, word_database, events);
-
-        // TODO: yet not right
-        let mut edit_cursors: Vec<Cursor> = Vec::new();
-        for edit in edits {
-            match edit.kind {
-                EditKind::Insert => {
-                    for c in &mut edit_cursors {
-                        c.insert(edit.range);
-                    }
-                }
-                EditKind::Delete => {
-                    for c in &mut edit_cursors {
-                        c.delete(edit.range);
-                    }
-                }
-            }
-            edit_cursors.push(Cursor {
-                anchor: edit.range.from,
-                position: edit.range.from,
-            });
-        }
-
-        if edit_cursors.is_empty() {
+        let edits = buffer.undo(word_database, events);
+        if edits.len() == 0 {
             return;
         }
 
         let mut cursors = buffer_view.cursors.mut_guard();
         cursors.clear();
 
-        for c in edit_cursors {
+        for edit in edits {
             cursors.add(Cursor {
-                anchor: c.position,
-                position: c.position,
+                anchor: edit.range.from,
+                position: edit.range.from,
+            })
+        }
+    }
+
+    pub fn redo(
+        &mut self,
+        buffers: &mut BufferCollection,
+        word_database: &mut WordDatabase,
+        events: &mut EditorEventQueue,
+        handle: BufferViewHandle,
+    ) {
+        let buffer_view = match self.get_mut(handle) {
+            Some(view) => view,
+            None => return,
+        };
+        let buffer = match buffers.get_mut(buffer_view.buffer_handle) {
+            Some(buffer) => buffer,
+            None => return,
+        };
+
+        let edits = buffer.redo(word_database, events);
+        if edits.len() == 0 {
+            return;
+        }
+
+        let mut cursors = buffer_view.cursors.mut_guard();
+        cursors.clear();
+
+        for edit in edits {
+            match edit.kind {
+                EditKind::Insert => {
+                    for cursor in cursors[..].iter_mut() {
+                        cursor.insert(edit.range);
+                    }
+                }
+                EditKind::Delete => {
+                    for cursor in cursors[..].iter_mut() {
+                        cursor.delete(edit.range);
+                    }
+                }
+            }
+            cursors.add(Cursor {
+                anchor: edit.range.from,
+                position: edit.range.from,
             });
         }
     }
