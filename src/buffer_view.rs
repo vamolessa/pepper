@@ -1,7 +1,7 @@
 use std::{fmt, path::Path, str::FromStr};
 
 use crate::{
-    buffer::{BufferCapabilities, BufferCollection, BufferHandle},
+    buffer::{Buffer, BufferCapabilities, BufferCollection, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
     client::ClientHandle,
     cursor::{Cursor, CursorCollection},
@@ -561,12 +561,7 @@ impl BufferViewCollection {
         events: &mut EditorEventQueue,
         handle: BufferViewHandle,
     ) {
-        if let Some(buffer) = self.buffer_views[handle.0 as usize]
-            .as_mut()
-            .and_then(|view| buffers.get_mut(view.buffer_handle))
-        {
-            self.apply_edits(handle, true, buffer.undo(word_database, events));
-        }
+        self.apply_undo_edits(buffers, word_database, events, handle, Buffer::undo);
     }
 
     pub fn redo(
@@ -576,119 +571,64 @@ impl BufferViewCollection {
         events: &mut EditorEventQueue,
         handle: BufferViewHandle,
     ) {
-        if let Some(buffer) = self.buffer_views[handle.0 as usize]
-            .as_mut()
-            .and_then(|view| buffers.get_mut(view.buffer_handle))
-        {
-            self.apply_edits(handle, false, buffer.redo(word_database, events));
-        }
+        self.apply_undo_edits(buffers, word_database, events, handle, Buffer::redo);
     }
 
-    // TODO: how to even do this anymore?
-    fn apply_edits<'a>(
+    fn apply_undo_edits<'a, I>(
         &mut self,
+        buffers: &'a mut BufferCollection,
+        word_database: &mut WordDatabase,
+        events: &mut EditorEventQueue,
         handle: BufferViewHandle,
-        fix_edit_ranges: bool,
-        edits: impl 'a + Iterator<Item = Edit<'a>>,
-    ) {
-        enum BufferRanges {
-            Stack([BufferRange; 128], usize),
-            Heap(Vec<BufferRange>),
-        }
-        impl BufferRanges {
-            pub fn new() -> Self {
-                Self::Stack([BufferRange::zero(); 128], 0)
-            }
-
-            pub fn as_slice(&mut self) -> &mut [BufferRange] {
-                match self {
-                    Self::Stack(buf, len) => &mut buf[..*len],
-                    Self::Heap(buf) => buf,
-                }
-            }
-
-            pub fn add(&mut self, range: BufferRange) {
-                match self {
-                    Self::Stack(buf, len) => {
-                        let index = *len;
-                        if index < buf.len() {
-                            buf[index] = range;
-                            *len += 1;
-                        } else {
-                            let mut buf = buf.to_vec();
-                            buf.push(range);
-                            *self = Self::Heap(buf);
-                        }
-                    }
-                    Self::Heap(buf) => buf.push(range),
-                }
-            }
-        }
-
-        let buffer_handle = match self.get(handle) {
-            Some(view) => view.buffer_handle,
+        selector: fn(&'a mut Buffer, &mut WordDatabase, &mut EditorEventQueue) -> I,
+    ) where
+        I: 'a + Iterator<Item = Edit<'a>>,
+    {
+        let buffer_view = match self.get_mut(handle) {
+            Some(view) => view,
+            None => return,
+        };
+        let buffer = match buffers.get_mut(buffer_view.buffer_handle) {
+            Some(buffer) => buffer,
             None => return,
         };
 
-        /*
-        let mut ranges = BufferRanges::new();
+        let edits = selector(buffer, word_database, events);
+
+        // TODO: yet not right
+        let mut edit_cursors: Vec<Cursor> = Vec::new();
         for edit in edits {
             match edit.kind {
                 EditKind::Insert => {
-                    if fix_edit_ranges {
-                        for range in ranges.as_slice() {
-                            range.from = range.from.insert(edit.range);
-                            range.to = range.to.insert(edit.range);
-                        }
-                    }
-                    ranges.add(edit.range);
-                    for (i, view) in self.buffer_views.iter_mut().flatten().enumerate() {
-                        if i != handle.0 as usize && view.buffer_handle == buffer_handle {
-                            for c in &mut view.cursors.mut_guard()[..] {
-                                c.insert(edit.range);
-                            }
-                        }
+                    for c in &mut edit_cursors {
+                        c.insert(edit.range);
                     }
                 }
                 EditKind::Delete => {
-                    if fix_edit_ranges {
-                        for range in ranges.as_slice() {
-                            range.from = range.from.delete(edit.range);
-                            range.to = range.to.delete(edit.range);
-                        }
-                    }
-                    let range = BufferRange::between(edit.range.from, edit.range.from);
-                    ranges.add(range);
-                    for (i, view) in self.buffer_views.iter_mut().flatten().enumerate() {
-                        if i != handle.0 as usize && view.buffer_handle == buffer_handle {
-                            for c in &mut view.cursors.mut_guard()[..] {
-                                c.delete(edit.range);
-                            }
-                        }
+                    for c in &mut edit_cursors {
+                        c.delete(edit.range);
                     }
                 }
             }
+            edit_cursors.push(Cursor {
+                anchor: edit.range.from,
+                position: edit.range.from,
+            });
         }
-        */
 
-        /*
-        if ranges.as_slice().is_empty() {
+        if edit_cursors.is_empty() {
             return;
         }
-        */
 
-        /*
-        if let Some(view) = self.buffer_views[handle.0 as usize].as_mut() {
-            let mut cursors = view.cursors.mut_guard();
-            cursors.clear();
-            for range in ranges.as_slice() {
-                cursors.add(Cursor {
-                    anchor: range.from,
-                    position: range.to,
-                });
-            }
+        let mut cursors = buffer_view.cursors.mut_guard();
+        cursors.clear();
+
+        for c in edit_cursors {
+            cursors.add(Cursor {
+                anchor: c.position,
+                position: c.position,
+            });
         }
-        */
     }
 
     pub fn buffer_view_handle_from_buffer_handle(
