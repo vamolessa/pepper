@@ -3,6 +3,7 @@ use std::fmt::Write;
 use crate::{
     buffer_position::BufferPosition,
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
+    client::{ClientHandle, ClientManager},
     editor::{Editor, KeysIterator},
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     platform::Key,
@@ -160,23 +161,29 @@ impl ModeState for State {
                     &mut ctx.editor.events,
                 );
             }
-            Key::Ctrl('n') => {
-                apply_completion(ctx.editor, handle, 1);
-                return None;
-            }
-            Key::Ctrl('p') => {
-                apply_completion(ctx.editor, handle, -1);
-                return None;
-            }
+            Key::Ctrl('n') => apply_completion(ctx.editor, handle, 1),
+            Key::Ctrl('p') => apply_completion(ctx.editor, handle, -1),
             _ => (),
         }
 
-        // TODO: the main cursor position may have drifted since cursors
-        // no longer update instantaneously
+        None
+    }
 
-        /*
-        let buffer_view = ctx.editor.buffer_views.get(handle)?;
-        let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle)?;
+    fn on_buffer_changed(ctx: &mut ModeContext) {
+        let buffer_view = match ctx
+            .clients
+            .get(ctx.client_handle)
+            .and_then(|c| c.buffer_view_handle())
+            .and_then(|h| ctx.editor.buffer_views.get(h))
+        {
+            Some(view) => view,
+            None => return,
+        };
+        let buffer = match ctx.editor.buffers.get(buffer_view.buffer_handle) {
+            Some(buffer) => buffer,
+            None => return,
+        };
+
         let mut word_position = buffer_view.cursors.main_cursor().position;
         word_position.column_byte_index =
             buffer.content().line_at(word_position.line_index).as_str()
@@ -202,9 +209,6 @@ impl ModeState for State {
         } else {
             ctx.editor.picker.clear_filtered();
         }
-        */
-
-        None
     }
 }
 

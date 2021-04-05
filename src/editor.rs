@@ -234,7 +234,7 @@ impl Editor {
                     commands,
                     None,
                 );
-                self.trigger_event_handlers(clients, platform);
+                self.trigger_event_handlers(platform, clients, Some(client_handle));
                 match result {
                     None => EditorControlFlow::Continue,
                     Some(CommandOperation::Quit) => EditorControlFlow::Quit,
@@ -325,7 +325,7 @@ impl Editor {
                 }
 
                 self.buffered_keys.0.clear();
-                self.trigger_event_handlers(clients, platform);
+                self.trigger_event_handlers(platform, clients, Some(client_handle));
                 EditorControlFlow::Continue
             }
             ClientEvent::Resize(client_handle, width, height) => {
@@ -339,7 +339,7 @@ impl Editor {
 
     pub fn on_idle(&mut self, clients: &mut ClientManager, platform: &mut Platform) {
         self.events.enqueue(EditorEvent::Idle);
-        self.trigger_event_handlers(clients, platform);
+        self.trigger_event_handlers(platform, clients, None);
     }
 
     pub fn on_process_spawned(
@@ -443,17 +443,20 @@ impl Editor {
         }
     }
 
-    fn trigger_event_handlers(&mut self, clients: &mut ClientManager, platform: &mut Platform) {
+    fn trigger_event_handlers(
+        &mut self,
+        platform: &mut Platform,
+        clients: &mut ClientManager,
+        client_handle: Option<ClientHandle>,
+    ) {
         self.events.flip();
         if let None = self.events.iter().next() {
             return;
         }
 
         lsp::ClientManager::on_editor_events(self, platform);
-        self.handle_editor_events(clients);
-    }
 
-    fn handle_editor_events(&mut self, clients: &mut ClientManager) {
+        let mut buffer_changed = false;
         for event in self.events.iter() {
             match event {
                 EditorEvent::BufferOpen { handle } => {
@@ -463,9 +466,11 @@ impl Editor {
                 }
                 EditorEvent::BufferInsertText { handle, range, .. } => {
                     self.buffer_views.on_buffer_insert_text(*handle, *range);
+                    buffer_changed = true;
                 }
                 EditorEvent::BufferDeleteText { handle, range } => {
                     self.buffer_views.on_buffer_delete_text(*handle, *range);
+                    buffer_changed = true;
                 }
                 EditorEvent::BufferSave { handle, new_path } => {
                     if *new_path {
@@ -480,6 +485,16 @@ impl Editor {
                 }
                 _ => (),
             }
+        }
+
+        if let (true, Some(client_handle)) = (buffer_changed, client_handle) {
+            let mut ctx = ModeContext {
+                editor: self,
+                platform,
+                clients,
+                client_handle,
+            };
+            Mode::on_buffer_changed(&mut ctx);
         }
     }
 }

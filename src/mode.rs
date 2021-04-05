@@ -38,6 +38,7 @@ pub trait ModeState {
     fn on_enter(ctx: &mut ModeContext);
     fn on_exit(ctx: &mut ModeContext);
     fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> Option<ModeOperation>;
+    fn on_buffer_changed(_: &mut ModeContext) {}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -98,6 +99,16 @@ impl Mode {
             ModeKind::Command => command::State::on_client_keys(ctx, keys),
             ModeKind::ReadLine => read_line::State::on_client_keys(ctx, keys),
             ModeKind::Picker => picker::State::on_client_keys(ctx, keys),
+        }
+    }
+
+    pub fn on_buffer_changed(ctx: &mut ModeContext) {
+        match ctx.editor.mode.kind {
+            ModeKind::Normal => normal::State::on_buffer_changed(ctx),
+            ModeKind::Insert => insert::State::on_buffer_changed(ctx),
+            ModeKind::Command => command::State::on_buffer_changed(ctx),
+            ModeKind::ReadLine => read_line::State::on_buffer_changed(ctx),
+            ModeKind::Picker => picker::State::on_buffer_changed(ctx),
         }
     }
 }
