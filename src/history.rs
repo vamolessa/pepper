@@ -60,6 +60,26 @@ impl History {
         self.state = HistoryState::IterIndex(0);
     }
 
+    // TODO: there must be a bug in the merge edit code since in a very specific case,
+    // it generates wrong undo edit
+    //
+    // first:
+    // aaaa|
+    // aaaa|
+    //
+    // then:
+    // aaaa1|
+    // aaaa1|
+    //
+    // then:
+    // aa|
+    // aa|
+    //
+    // finally:
+    // aa2|
+    // aa2|
+    //
+    // then it will not return to original state when undoing
     pub fn add_edit(&mut self, edit: Edit) {
         let current_group_start = match self.state {
             HistoryState::IterIndex(index) => {
