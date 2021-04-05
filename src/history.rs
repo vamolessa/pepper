@@ -79,7 +79,9 @@ impl History {
     // aa2|
     // aa2|
     //
-    // then it will not return to original state when undoing
+    // then it will not return to original state when undoing:
+    // aaaa
+    // aaa22a
     pub fn add_edit(&mut self, edit: Edit) {
         let current_group_start = match self.state {
             HistoryState::IterIndex(index) => {
