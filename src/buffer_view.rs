@@ -334,6 +334,132 @@ impl BufferView {
             }
         }
     }
+
+    pub fn insert_text_at_cursor_positions(
+        &mut self,
+        buffers: &mut BufferCollection,
+        word_database: &mut WordDatabase,
+        text: &str,
+        events: &mut EditorEventQueue,
+    ) {
+        if let Some(buffer) = buffers.get_mut(self.buffer_handle) {
+            for cursor in self.cursors[..].iter().rev() {
+                buffer.insert_text(word_database, cursor.position, text, events);
+            }
+        }
+    }
+
+    pub fn delete_text_in_cursor_ranges(
+        &mut self,
+        buffers: &mut BufferCollection,
+        word_database: &mut WordDatabase,
+        events: &mut EditorEventQueue,
+    ) {
+        if let Some(buffer) = buffers.get_mut(self.buffer_handle) {
+            for cursor in self.cursors[..].iter().rev() {
+                buffer.delete_range(word_database, cursor.to_range(), events);
+            }
+        }
+    }
+
+    pub fn apply_completion(
+        &mut self,
+        buffers: &mut BufferCollection,
+        word_database: &mut WordDatabase,
+        completion: &str,
+        events: &mut EditorEventQueue,
+    ) {
+        let buffer = match buffers.get_mut(self.buffer_handle) {
+            Some(buffer) => buffer,
+            None => return,
+        };
+
+        for cursor in self.cursors[..].iter().rev() {
+            let content = buffer.content();
+
+            let mut word_position = cursor.position;
+            word_position.column_byte_index = content.line_at(word_position.line_index).as_str()
+                [..word_position.column_byte_index]
+                .char_indices()
+                .next_back()
+                .map(|(i, _)| i)
+                .unwrap_or(0);
+
+            let word = content.word_at(word_position);
+            let word_kind = word.kind;
+            let word_position = word.position;
+
+            if let WordKind::Identifier = word_kind {
+                let range = BufferRange::between(word_position, cursor.position);
+                buffer.delete_range(word_database, range, events);
+            }
+
+            buffer.insert_text(word_database, word_position, completion, events);
+        }
+    }
+
+    pub fn undo(
+        &mut self,
+        buffers: &mut BufferCollection,
+        word_database: &mut WordDatabase,
+        events: &mut EditorEventQueue,
+    ) {
+        let edits = match buffers.get_mut(self.buffer_handle) {
+            Some(buffer) => buffer.undo(word_database, events),
+            None => return,
+        };
+        if edits.len() == 0 {
+            return;
+        }
+
+        let mut cursors = self.cursors.mut_guard();
+        cursors.clear();
+
+        for edit in edits {
+            cursors.add(Cursor {
+                anchor: edit.range.from,
+                position: edit.range.from,
+            })
+        }
+    }
+
+    pub fn redo(
+        &mut self,
+        buffers: &mut BufferCollection,
+        word_database: &mut WordDatabase,
+        events: &mut EditorEventQueue,
+    ) {
+        let edits = match buffers.get_mut(self.buffer_handle) {
+            Some(buffer) => buffer.redo(word_database, events),
+            None => return,
+        };
+        if edits.len() == 0 {
+            return;
+        }
+
+        let mut cursors = self.cursors.mut_guard();
+        cursors.clear();
+
+        for edit in edits.rev() {
+            match edit.kind {
+                EditKind::Insert => {
+                    for cursor in cursors[..].iter_mut() {
+                        cursor.delete(edit.range);
+                    }
+                }
+                EditKind::Delete => {
+                    for cursor in cursors[..].iter_mut() {
+                        cursor.insert(edit.range);
+                    }
+                }
+            }
+
+            cursors.add(Cursor {
+                anchor: edit.range.from,
+                position: edit.range.from,
+            });
+        }
+    }
 }
 
 pub enum BufferViewError {
@@ -409,129 +535,6 @@ impl BufferViewCollection {
             .filter_map(|(i, v)| Some(BufferViewHandle(i as _)).zip(v.as_ref()))
     }
 
-    // TODO: remove
-    pub fn insert_text_at_position(
-        &mut self,
-        buffers: &mut BufferCollection,
-        word_database: &mut WordDatabase,
-        handle: BufferViewHandle,
-        position: BufferPosition,
-        text: &str,
-        events: &mut EditorEventQueue,
-    ) {
-        let current_view = match &mut self.buffer_views[handle.0 as usize] {
-            Some(view) => view,
-            None => return,
-        };
-        let buffer = match buffers.get_mut(current_view.buffer_handle) {
-            Some(buffer) => buffer,
-            None => return,
-        };
-        buffer.insert_text(word_database, position, text, events);
-    }
-
-    pub fn insert_text_at_cursor_positions(
-        &mut self,
-        buffers: &mut BufferCollection,
-        word_database: &mut WordDatabase,
-        handle: BufferViewHandle,
-        text: &str,
-        events: &mut EditorEventQueue,
-    ) {
-        let current_view = match &mut self.buffer_views[handle.0 as usize] {
-            Some(view) => view,
-            None => return,
-        };
-        let buffer = match buffers.get_mut(current_view.buffer_handle) {
-            Some(buffer) => buffer,
-            None => return,
-        };
-        for cursor in current_view.cursors[..].iter().rev() {
-            buffer.insert_text(word_database, cursor.position, text, events);
-        }
-    }
-
-    // TODO: remove
-    pub fn delete_text_in_range(
-        &mut self,
-        buffers: &mut BufferCollection,
-        word_database: &mut WordDatabase,
-        handle: BufferViewHandle,
-        range: BufferRange,
-        events: &mut EditorEventQueue,
-    ) {
-        let current_view = match &mut self.buffer_views[handle.0 as usize] {
-            Some(view) => view,
-            None => return,
-        };
-        let buffer = match buffers.get_mut(current_view.buffer_handle) {
-            Some(buffer) => buffer,
-            None => return,
-        };
-        buffer.delete_range(word_database, range, events);
-    }
-
-    pub fn delete_text_in_cursor_ranges(
-        &mut self,
-        buffers: &mut BufferCollection,
-        word_database: &mut WordDatabase,
-        handle: BufferViewHandle,
-        events: &mut EditorEventQueue,
-    ) {
-        let current_view = match &mut self.buffer_views[handle.0 as usize] {
-            Some(view) => view,
-            None => return,
-        };
-        let buffer = match buffers.get_mut(current_view.buffer_handle) {
-            Some(buffer) => buffer,
-            None => return,
-        };
-        for cursor in current_view.cursors[..].iter().rev() {
-            buffer.delete_range(word_database, cursor.to_range(), events);
-        }
-    }
-
-    pub fn apply_completion(
-        &mut self,
-        buffers: &mut BufferCollection,
-        word_database: &mut WordDatabase,
-        handle: BufferViewHandle,
-        completion: &str,
-        events: &mut EditorEventQueue,
-    ) {
-        let current_view = match &mut self.buffer_views[handle.0 as usize] {
-            Some(view) => view,
-            None => return,
-        };
-        let buffer = match buffers.get_mut(current_view.buffer_handle) {
-            Some(buffer) => buffer,
-            None => return,
-        };
-
-        for cursor in current_view.cursors[..].iter().rev() {
-            let content = buffer.content();
-
-            let mut word_position = cursor.position;
-            word_position.column_byte_index = content.line_at(word_position.line_index).as_str()
-                [..word_position.column_byte_index]
-                .char_indices()
-                .next_back()
-                .map(|(i, _)| i)
-                .unwrap_or(0);
-
-            let word = content.word_at(word_position);
-            let word_kind = word.kind;
-            let word_position = word.position;
-
-            if let WordKind::Identifier = word_kind {
-                let range = BufferRange::between(word_position, cursor.position);
-                buffer.delete_range(word_database, range, events);
-            }
-
-            buffer.insert_text(word_database, word_position, completion, events);
-        }
-    }
-
     pub fn on_buffer_insert_text(&mut self, buffer_handle: BufferHandle, range: BufferRange) {
         for view in self.buffer_views.iter_mut().flatten() {
             if view.buffer_handle != buffer_handle {
@@ -551,83 +554,6 @@ impl BufferViewCollection {
             for c in &mut view.cursors.mut_guard()[..] {
                 c.delete(range);
             }
-        }
-    }
-
-    pub fn undo(
-        &mut self,
-        buffers: &mut BufferCollection,
-        word_database: &mut WordDatabase,
-        events: &mut EditorEventQueue,
-        handle: BufferViewHandle,
-    ) {
-        let buffer_view = match self.get_mut(handle) {
-            Some(view) => view,
-            None => return,
-        };
-        let buffer = match buffers.get_mut(buffer_view.buffer_handle) {
-            Some(buffer) => buffer,
-            None => return,
-        };
-
-        let edits = buffer.undo(word_database, events);
-        if edits.len() == 0 {
-            return;
-        }
-
-        let mut cursors = buffer_view.cursors.mut_guard();
-        cursors.clear();
-
-        for edit in edits {
-            cursors.add(Cursor {
-                anchor: edit.range.from,
-                position: edit.range.from,
-            })
-        }
-    }
-
-    pub fn redo(
-        &mut self,
-        buffers: &mut BufferCollection,
-        word_database: &mut WordDatabase,
-        events: &mut EditorEventQueue,
-        handle: BufferViewHandle,
-    ) {
-        let buffer_view = match self.get_mut(handle) {
-            Some(view) => view,
-            None => return,
-        };
-        let buffer = match buffers.get_mut(buffer_view.buffer_handle) {
-            Some(buffer) => buffer,
-            None => return,
-        };
-
-        let edits = buffer.redo(word_database, events);
-        if edits.len() == 0 {
-            return;
-        }
-
-        let mut cursors = buffer_view.cursors.mut_guard();
-        cursors.clear();
-
-        for edit in edits.rev() {
-            match edit.kind {
-                EditKind::Insert => {
-                    for cursor in cursors[..].iter_mut() {
-                        cursor.delete(edit.range);
-                    }
-                }
-                EditKind::Delete => {
-                    for cursor in cursors[..].iter_mut() {
-                        cursor.insert(edit.range);
-                    }
-                }
-            }
-
-            cursors.add(Cursor {
-                anchor: edit.range.from,
-                position: edit.range.from,
-            });
         }
     }
 
@@ -760,20 +686,18 @@ mod tests {
     fn buffer_view_utf8_support() {
         let mut ctx = TestContext::with_buffer("");
 
-        let buffer_view = ctx.buffer_views.get(ctx.buffer_view_handle).unwrap();
+        let buffer_view = ctx.buffer_views.get_mut(ctx.buffer_view_handle).unwrap();
         let main_cursor = buffer_view.cursors.main_cursor();
         assert_eq!(BufferPosition::zero(), main_cursor.anchor);
         assert_eq!(BufferPosition::zero(), main_cursor.position);
 
-        ctx.buffer_views.insert_text_at_cursor_positions(
+        buffer_view.insert_text_at_cursor_positions(
             &mut ctx.buffers,
             &mut ctx.word_database,
-            ctx.buffer_view_handle,
             "ç",
             &mut ctx.events,
         );
 
-        let buffer_view = ctx.buffer_views.get(ctx.buffer_view_handle).unwrap();
         let main_cursor = buffer_view.cursors.main_cursor();
         assert_eq!(BufferPosition::line_col(0, 2), main_cursor.anchor);
         assert_eq!(BufferPosition::line_col(0, 2), main_cursor.position);

@@ -661,13 +661,12 @@ impl State {
                 );
             }
             Key::Char('d') => {
-                ctx.editor.buffer_views.delete_text_in_cursor_ranges(
+                let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                buffer_view.delete_text_in_cursor_ranges(
                     &mut ctx.editor.buffers,
                     &mut ctx.editor.word_database,
-                    handle,
                     &mut ctx.editor.events,
                 );
-                let buffer_view = ctx.editor.buffer_views.get(handle)?;
                 ctx.editor
                     .buffers
                     .get_mut(buffer_view.buffer_handle)?
@@ -677,28 +676,26 @@ impl State {
                 return None;
             }
             Key::Char('i') => {
-                ctx.editor.buffer_views.delete_text_in_cursor_ranges(
+                let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                buffer_view.delete_text_in_cursor_ranges(
                     &mut ctx.editor.buffers,
                     &mut ctx.editor.word_database,
-                    handle,
                     &mut ctx.editor.events,
                 );
 
                 Self::on_edit_keys(ctx.editor, keys, keys_from_index);
-
                 Mode::change_to(ctx, ModeKind::Insert);
                 return None;
             }
             Key::Char('<') => {
                 let buffer_view = ctx.editor.buffer_views.get(handle)?;
                 let cursor_count = buffer_view.cursors[..].len();
-                let buffer_handle = buffer_view.buffer_handle;
+                let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle)?;
                 let count = this.count.max(1);
 
                 for i in 0..cursor_count {
                     let range = ctx.editor.buffer_views.get(handle)?.cursors[i].to_range();
                     for line_index in range.from.line_index..=range.to.line_index {
-                        let buffer = ctx.editor.buffers.get(buffer_handle)?;
                         let line = buffer.content().line_at(line_index).as_str();
                         let mut indentation_column_index = 0;
 
@@ -723,21 +720,15 @@ impl State {
                             BufferPosition::line_col(line_index, 0),
                             BufferPosition::line_col(line_index, indentation_column_index),
                         );
-                        ctx.editor.buffer_views.delete_text_in_range(
-                            &mut ctx.editor.buffers,
+                        buffer.delete_range(
                             &mut ctx.editor.word_database,
-                            handle,
                             range,
                             &mut ctx.editor.events,
                         );
                     }
                 }
-                let buffer_view = ctx.editor.buffer_views.get(handle)?;
-                ctx.editor
-                    .buffers
-                    .get_mut(buffer_view.buffer_handle)?
-                    .commit_edits();
 
+                buffer.commit_edits();
                 Self::on_edit_keys(ctx.editor, keys, keys_from_index);
                 return None;
             }
@@ -753,15 +744,16 @@ impl State {
                     std::iter::repeat(' ').take(count)
                 };
 
+                let buffer_view = ctx.editor.buffer_views.get(handle)?;
+                let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle)?;
+
                 let mut buf = ctx.editor.string_pool.acquire();
                 buf.extend(extender);
                 for i in 0..cursor_count {
                     let range = ctx.editor.buffer_views.get(handle)?.cursors[i].to_range();
                     for line_index in range.from.line_index..=range.to.line_index {
-                        ctx.editor.buffer_views.insert_text_at_position(
-                            &mut ctx.editor.buffers,
+                        buffer.insert_text(
                             &mut ctx.editor.word_database,
-                            handle,
                             BufferPosition::line_col(line_index, 0),
                             &buf,
                             &mut ctx.editor.events,
@@ -770,12 +762,7 @@ impl State {
                 }
                 ctx.editor.string_pool.release(buf);
 
-                let buffer_view = ctx.editor.buffer_views.get(handle)?;
-                ctx.editor
-                    .buffers
-                    .get_mut(buffer_view.buffer_handle)?
-                    .commit_edits();
-
+                buffer.commit_edits();
                 Self::on_edit_keys(ctx.editor, keys, keys_from_index);
                 return None;
             }
@@ -950,19 +937,18 @@ impl State {
                 this.movement_kind = CursorMovementKind::PositionAndAnchor;
             }
             Key::Char('Y') => {
-                ctx.editor.buffer_views.delete_text_in_cursor_ranges(
+                let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                buffer_view.delete_text_in_cursor_ranges(
                     &mut ctx.editor.buffers,
                     &mut ctx.editor.word_database,
-                    handle,
                     &mut ctx.editor.events,
                 );
 
                 let mut buf = ctx.editor.string_pool.acquire();
                 if ctx.platform.read_from_clipboard(&mut buf) {
-                    ctx.editor.buffer_views.insert_text_at_cursor_positions(
+                    buffer_view.insert_text_at_cursor_positions(
                         &mut ctx.editor.buffers,
                         &mut ctx.editor.word_database,
-                        handle,
                         &buf,
                         &mut ctx.editor.events,
                     );
@@ -982,18 +968,17 @@ impl State {
             Key::Ctrl('y') => match keys.next(&ctx.editor.buffered_keys) {
                 Key::None => return Some(ModeOperation::Pending),
                 Key::Char(c) => {
-                    ctx.editor.buffer_views.delete_text_in_cursor_ranges(
+                    let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                    buffer_view.delete_text_in_cursor_ranges(
                         &mut ctx.editor.buffers,
                         &mut ctx.editor.word_database,
-                        handle,
                         &mut ctx.editor.events,
                     );
                     if let Some(key) = RegisterKey::from_char(c) {
                         let register = ctx.editor.registers.get(key);
-                        ctx.editor.buffer_views.insert_text_at_cursor_positions(
+                        buffer_view.insert_text_at_cursor_positions(
                             &mut ctx.editor.buffers,
                             &mut ctx.editor.word_database,
-                            handle,
                             register,
                             &mut ctx.editor.events,
                         );
@@ -1011,21 +996,21 @@ impl State {
                 _ => (),
             },
             Key::Char('u') => {
-                ctx.editor.buffer_views.undo(
+                let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                buffer_view.undo(
                     &mut ctx.editor.buffers,
                     &mut ctx.editor.word_database,
                     &mut ctx.editor.events,
-                    handle,
                 );
                 this.movement_kind = CursorMovementKind::PositionAndAnchor;
                 return None;
             }
             Key::Char('U') => {
-                ctx.editor.buffer_views.redo(
+                let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                buffer_view.redo(
                     &mut ctx.editor.buffers,
                     &mut ctx.editor.word_database,
                     &mut ctx.editor.events,
-                    handle,
                 );
                 this.movement_kind = CursorMovementKind::PositionAndAnchor;
                 return None;

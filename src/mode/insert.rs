@@ -71,22 +71,24 @@ impl ModeState for State {
                 CursorMovement::ColumnsForward(1),
                 CursorMovementKind::PositionAndAnchor,
             ),
-            Key::Tab => ctx.editor.buffer_views.insert_text_at_cursor_positions(
-                &mut ctx.editor.buffers,
-                &mut ctx.editor.word_database,
-                handle,
-                "\t",
-                &mut ctx.editor.events,
-            ),
+            Key::Tab => ctx
+                .editor
+                .buffer_views
+                .get_mut(handle)?
+                .insert_text_at_cursor_positions(
+                    &mut ctx.editor.buffers,
+                    &mut ctx.editor.word_database,
+                    "\t",
+                    &mut ctx.editor.events,
+                ),
             Key::Enter => {
                 let buffer_view = ctx.editor.buffer_views.get(handle)?;
                 let cursor_count = buffer_view.cursors[..].len();
-                let buffer_handle = buffer_view.buffer_handle;
+                let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle)?;
 
                 let mut buf = ctx.editor.string_pool.acquire();
                 for i in (0..cursor_count).rev() {
-                    let position = ctx.editor.buffer_views.get(handle)?.cursors[i].position;
-                    let buffer = ctx.editor.buffers.get(buffer_handle)?;
+                    let position = buffer_view.cursors[i].position;
 
                     buf.push('\n');
                     let indentation_word = buffer
@@ -98,10 +100,8 @@ impl ModeState for State {
                         buf.push_str(&indentation_word.text[..indentation_len]);
                     }
 
-                    ctx.editor.buffer_views.insert_text_at_position(
-                        &mut ctx.editor.buffers,
+                    buffer.insert_text(
                         &mut ctx.editor.word_database,
-                        handle,
                         position,
                         &buf,
                         &mut ctx.editor.events,
@@ -113,50 +113,50 @@ impl ModeState for State {
             Key::Char(c) => {
                 let mut buf = [0; std::mem::size_of::<char>()];
                 let s = c.encode_utf8(&mut buf);
-                ctx.editor.buffer_views.insert_text_at_cursor_positions(
+                let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                buffer_view.insert_text_at_cursor_positions(
                     &mut ctx.editor.buffers,
                     &mut ctx.editor.word_database,
-                    handle,
                     s,
                     &mut ctx.editor.events,
                 );
             }
             Key::Backspace => {
-                ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
+                let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                buffer_view.move_cursors(
                     &ctx.editor.buffers,
                     CursorMovement::ColumnsBackward(1),
                     CursorMovementKind::PositionOnly,
                 );
-                ctx.editor.buffer_views.delete_text_in_cursor_ranges(
+                buffer_view.delete_text_in_cursor_ranges(
                     &mut ctx.editor.buffers,
                     &mut ctx.editor.word_database,
-                    handle,
                     &mut ctx.editor.events,
                 );
             }
             Key::Delete => {
-                ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
+                let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                buffer_view.move_cursors(
                     &ctx.editor.buffers,
                     CursorMovement::ColumnsForward(1),
                     CursorMovementKind::PositionOnly,
                 );
-                ctx.editor.buffer_views.delete_text_in_cursor_ranges(
+                buffer_view.delete_text_in_cursor_ranges(
                     &mut ctx.editor.buffers,
                     &mut ctx.editor.word_database,
-                    handle,
                     &mut ctx.editor.events,
                 );
             }
             Key::Ctrl('w') => {
-                ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
+                let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                buffer_view.move_cursors(
                     &ctx.editor.buffers,
                     CursorMovement::WordsBackward(1),
                     CursorMovementKind::PositionOnly,
                 );
-                ctx.editor.buffer_views.delete_text_in_cursor_ranges(
+                buffer_view.delete_text_in_cursor_ranges(
                     &mut ctx.editor.buffers,
                     &mut ctx.editor.word_database,
-                    handle,
                     &mut ctx.editor.events,
                 );
             }
@@ -213,15 +213,20 @@ impl ModeState for State {
 
 fn apply_completion(editor: &mut Editor, handle: BufferViewHandle, cursor_movement: isize) {
     editor.picker.move_cursor(cursor_movement);
-    if let Some(entry) = editor.picker.current_entry(&editor.word_database) {
-        let buf = editor.string_pool.acquire_with(entry);
-        editor.buffer_views.apply_completion(
-            &mut editor.buffers,
-            &mut editor.word_database,
-            handle,
-            &buf,
-            &mut editor.events,
-        );
-        editor.string_pool.release(buf);
-    }
+    let entry = match editor.picker.current_entry(&editor.word_database) {
+        Some(entry) => entry,
+        None => return,
+    };
+    let buffer_view = match editor.buffer_views.get_mut(handle) {
+        Some(view) => view,
+        None => return,
+    };
+    let buf = editor.string_pool.acquire_with(entry);
+    buffer_view.apply_completion(
+        &mut editor.buffers,
+        &mut editor.word_database,
+        &buf,
+        &mut editor.events,
+    );
+    editor.string_pool.release(buf);
 }
