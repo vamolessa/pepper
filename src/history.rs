@@ -362,6 +362,8 @@ impl History {
             }
         }
 
+        // TODO: remove empty!
+
         false
     }
 
@@ -899,6 +901,38 @@ mod tests {
 
     #[test]
     fn compress_multiple_insert_delete_edits() {
+        // -- insert --
+        // -- delete --
+        let mut history = History::new();
+        history.add_edit(Edit {
+            kind: EditKind::Insert,
+            range: buffer_range((0, 1), (0, 3)),
+            text: "cd",
+        });
+        history.add_edit(Edit {
+            kind: EditKind::Insert,
+            range: buffer_range((0, 0), (0, 2)),
+            text: "ab",
+        });
+        history.add_edit(Edit {
+            kind: EditKind::Delete,
+            range: buffer_range((0, 3), (0, 5)),
+            text: "cd",
+        });
+        history.add_edit(Edit {
+            kind: EditKind::Delete,
+            range: buffer_range((0, 0), (0, 2)),
+            text: "ab",
+        });
+
+        let mut edits = history.undo_edits();
+        let edits : Vec<_> = edits.collect();
+        for edit in &edits {
+            eprintln!("{:?}", edit);
+        }
+        let mut edits = edits.iter();
+        assert!(edits.next().is_none());
+
         // -- insert ------
         // -- delete --
         let mut history = History::new();
