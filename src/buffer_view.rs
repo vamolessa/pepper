@@ -610,19 +610,20 @@ impl BufferViewCollection {
         let mut cursors = buffer_view.cursors.mut_guard();
         cursors.clear();
 
-        for edit in edits {
+        for edit in edits.rev() {
             match edit.kind {
                 EditKind::Insert => {
-                    for cursor in cursors[..].iter_mut() {
-                        cursor.insert(edit.range);
-                    }
-                }
-                EditKind::Delete => {
                     for cursor in cursors[..].iter_mut() {
                         cursor.delete(edit.range);
                     }
                 }
+                EditKind::Delete => {
+                    for cursor in cursors[..].iter_mut() {
+                        cursor.insert(edit.range);
+                    }
+                }
             }
+
             cursors.add(Cursor {
                 anchor: edit.range.from,
                 position: edit.range.from,

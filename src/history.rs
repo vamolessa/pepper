@@ -365,7 +365,9 @@ impl History {
         }
     }
 
-    pub fn undo_edits(&mut self) -> impl Clone + ExactSizeIterator<Item = Edit> {
+    pub fn undo_edits(
+        &mut self,
+    ) -> impl Clone + ExactSizeIterator<Item = Edit> + DoubleEndedIterator<Item = Edit> {
         self.commit_edits();
 
         let range = match self.state {
@@ -391,7 +393,9 @@ impl History {
         })
     }
 
-    pub fn redo_edits(&mut self) -> impl Clone + ExactSizeIterator<Item = Edit> {
+    pub fn redo_edits(
+        &mut self,
+    ) -> impl Clone + ExactSizeIterator<Item = Edit> + DoubleEndedIterator<Item = Edit> {
         self.commit_edits();
 
         let range = match self.state {
