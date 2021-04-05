@@ -415,7 +415,24 @@ impl BufferView {
         let mut cursors = self.cursors.mut_guard();
         cursors.clear();
 
+        let mut ignore_kind = None;
+        let mut previous_kind = None;
         for edit in edits {
+            match ignore_kind {
+                Some(ignore_kind) => {
+                    if ignore_kind == edit.kind {
+                        continue;
+                    }
+                }
+                None => {
+                    if previous_kind != Some(edit.kind) {
+                        ignore_kind = previous_kind;
+                        cursors.clear();
+                    }
+                    previous_kind = Some(edit.kind);
+                }
+            }
+
             cursors.add(Cursor {
                 anchor: edit.range.from,
                 position: edit.range.from,
