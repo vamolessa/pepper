@@ -378,6 +378,8 @@ impl Editor {
                 CommandManager::on_process_stdout(self, platform, clients, index, bytes)
             }
         }
+
+        self.trigger_event_handlers(platform, clients, None);
     }
 
     pub fn on_process_exit(
