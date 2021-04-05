@@ -60,6 +60,20 @@ impl History {
         self.state = HistoryState::IterIndex(0);
     }
 
+    fn debug(&self) {
+        eprintln!("==============================");
+        eprintln!("all edits:");
+        for edit in &self.edits {
+            let edit = edit.as_edit_ref(&self.texts);
+            let kind = match edit.kind {
+                EditKind::Insert => "ins",
+                EditKind::Delete => "del",
+            };
+            eprintln!("({} {:?} '{}')", kind, edit.range, edit.text);
+        }
+        eprintln!();
+    }
+
     // TODO: there must be a bug in the merge edit code since in a very specific case,
     // it generates wrong undo edit
     //
@@ -102,8 +116,16 @@ impl History {
             HistoryState::InsertGroup(ref range) => range.start,
         };
 
+        let kind = match edit.kind {
+            EditKind::Insert => "ins",
+            EditKind::Delete => "del",
+        };
+        eprint!("new edit: {} {:?} '{}'", kind, edit.range, edit.text);
+
         let merged = self.try_merge_edit(current_group_start, &edit);
         if merged {
+            eprintln!(" merged");
+            self.debug();
             return;
         }
 
@@ -144,6 +166,9 @@ impl History {
         if let HistoryState::InsertGroup(range) = &mut self.state {
             range.end = self.edits.len();
         }
+
+        eprintln!(" new");
+        self.debug();
     }
 
     fn try_merge_edit(&mut self, current_group_start: usize, edit: &Edit) -> bool {
@@ -483,37 +508,37 @@ mod tests {
 
         assert_eq!(0, history.redo_edits().count());
 
-        let mut edit_iter = history.undo_edits();
-        let edit = edit_iter.next().unwrap();
+        let mut edits = history.undo_edits();
+        let edit = edits.next().unwrap();
         assert_eq!(EditKind::Insert, edit.kind);
         assert_eq!("b", edit.text);
-        let edit = edit_iter.next().unwrap();
+        let edit = edits.next().unwrap();
         assert_eq!(EditKind::Delete, edit.kind);
         assert_eq!("a", edit.text);
-        assert!(edit_iter.next().is_none());
-        drop(edit_iter);
+        assert!(edits.next().is_none());
+        drop(edits);
 
-        let mut edit_iter = history.redo_edits();
-        let edit = edit_iter.next().unwrap();
+        let mut edits = history.redo_edits();
+        let edit = edits.next().unwrap();
         assert_eq!(EditKind::Insert, edit.kind);
         assert_eq!("a", edit.text);
-        let edit = edit_iter.next().unwrap();
+        let edit = edits.next().unwrap();
         assert_eq!(EditKind::Delete, edit.kind);
         assert_eq!("b", edit.text);
-        assert!(edit_iter.next().is_none());
-        drop(edit_iter);
+        assert!(edits.next().is_none());
+        drop(edits);
 
         assert_eq!(0, history.redo_edits().count());
 
-        let mut edit_iter = history.undo_edits();
-        let edit = edit_iter.next().unwrap();
+        let mut edits = history.undo_edits();
+        let edit = edits.next().unwrap();
         assert_eq!(EditKind::Insert, edit.kind);
         assert_eq!("b", edit.text);
-        let edit = edit_iter.next().unwrap();
+        let edit = edits.next().unwrap();
         assert_eq!(EditKind::Delete, edit.kind);
         assert_eq!("a", edit.text);
-        assert!(edit_iter.next().is_none());
-        drop(edit_iter);
+        assert!(edits.next().is_none());
+        drop(edits);
 
         history.add_edit(Edit {
             kind: EditKind::Insert,
@@ -523,12 +548,12 @@ mod tests {
 
         assert_eq!(0, history.redo_edits().count());
 
-        let mut edit_iter = history.undo_edits();
-        let edit = edit_iter.next().unwrap();
+        let mut edits = history.undo_edits();
+        let edit = edits.next().unwrap();
         assert_eq!(EditKind::Delete, edit.kind);
         assert_eq!("c", edit.text);
-        assert!(edit_iter.next().is_none());
-        drop(edit_iter);
+        assert!(edits.next().is_none());
+        drop(edits);
 
         assert_eq!(0, history.undo_edits().count());
     }
@@ -547,12 +572,12 @@ mod tests {
             text: "def",
         });
 
-        let mut edit_iter = history.undo_edits();
-        let edit = edit_iter.next().unwrap();
+        let mut edits = history.undo_edits();
+        let edit = edits.next().unwrap();
         assert_eq!(EditKind::Delete, edit.kind);
         assert_eq!("abcdef", edit.text);
         assert_eq!(buffer_range((0, 0), (0, 6)), edit.range);
-        assert!(edit_iter.next().is_none());
+        assert!(edits.next().is_none());
 
         let mut history = History::new();
         history.add_edit(Edit {
@@ -566,12 +591,12 @@ mod tests {
             text: "def",
         });
 
-        let mut edit_iter = history.undo_edits();
-        let edit = edit_iter.next().unwrap();
+        let mut edits = history.undo_edits();
+        let edit = edits.next().unwrap();
         assert_eq!(EditKind::Delete, edit.kind);
         assert_eq!("defabc", edit.text);
         assert_eq!(buffer_range((0, 0), (0, 6)), edit.range);
-        assert!(edit_iter.next().is_none());
+        assert!(edits.next().is_none());
     }
 
     #[test]
@@ -588,12 +613,12 @@ mod tests {
             text: "def",
         });
 
-        let mut edit_iter = history.undo_edits();
-        let edit = edit_iter.next().unwrap();
+        let mut edits = history.undo_edits();
+        let edit = edits.next().unwrap();
         assert_eq!(EditKind::Insert, edit.kind);
         assert_eq!("abcdef", edit.text);
         assert_eq!(buffer_range((0, 0), (0, 6)), edit.range);
-        assert!(edit_iter.next().is_none());
+        assert!(edits.next().is_none());
 
         let mut history = History::new();
         history.add_edit(Edit {
@@ -607,12 +632,12 @@ mod tests {
             text: "def",
         });
 
-        let mut edit_iter = history.undo_edits();
-        let edit = edit_iter.next().unwrap();
+        let mut edits = history.undo_edits();
+        let edit = edits.next().unwrap();
         assert_eq!(EditKind::Insert, edit.kind);
         assert_eq!("defabc", edit.text);
         assert_eq!(buffer_range((0, 0), (0, 6)), edit.range);
-        assert!(edit_iter.next().is_none());
+        assert!(edits.next().is_none());
     }
 
     #[test]
@@ -631,12 +656,12 @@ mod tests {
             text: "abc",
         });
 
-        let mut edit_iter = history.undo_edits();
-        let edit = edit_iter.next().unwrap();
+        let mut edits = history.undo_edits();
+        let edit = edits.next().unwrap();
         assert_eq!(EditKind::Delete, edit.kind);
         assert_eq!("def", edit.text);
         assert_eq!(buffer_range((0, 0), (0, 3)), edit.range);
-        assert!(edit_iter.next().is_none());
+        assert!(edits.next().is_none());
 
         // ------ insert --
         //     -- delete --
@@ -652,12 +677,12 @@ mod tests {
             text: "def",
         });
 
-        let mut edit_iter = history.undo_edits();
-        let edit = edit_iter.next().unwrap();
+        let mut edits = history.undo_edits();
+        let edit = edits.next().unwrap();
         assert_eq!(EditKind::Delete, edit.kind);
         assert_eq!("abc", edit.text);
         assert_eq!(buffer_range((0, 0), (0, 3)), edit.range);
-        assert!(edit_iter.next().is_none());
+        assert!(edits.next().is_none());
 
         // -- insert --
         // -- delete ------
@@ -673,12 +698,12 @@ mod tests {
             text: "abcdef",
         });
 
-        let mut edit_iter = history.undo_edits();
-        let edit = edit_iter.next().unwrap();
+        let mut edits = history.undo_edits();
+        let edit = edits.next().unwrap();
         assert_eq!(EditKind::Insert, edit.kind);
         assert_eq!("def", edit.text);
         assert_eq!(buffer_range((0, 0), (0, 3)), edit.range);
-        assert!(edit_iter.next().is_none());
+        assert!(edits.next().is_none());
 
         //     -- insert --
         // ------ delete --
@@ -694,12 +719,12 @@ mod tests {
             text: "abcdef",
         });
 
-        let mut edit_iter = history.undo_edits();
-        let edit = edit_iter.next().unwrap();
+        let mut edits = history.undo_edits();
+        let edit = edits.next().unwrap();
         assert_eq!(EditKind::Insert, edit.kind);
         assert_eq!("abc", edit.text);
         assert_eq!(buffer_range((0, 0), (0, 3)), edit.range);
-        assert!(edit_iter.next().is_none());
+        assert!(edits.next().is_none());
     }
 
     #[test]
@@ -726,16 +751,16 @@ mod tests {
             text: "b",
         });
 
-        let mut edit_iter = history.undo_edits();
-        let edit = edit_iter.next().unwrap();
+        let mut edits = history.undo_edits();
+        let edit = edits.next().unwrap();
         assert_eq!(EditKind::Delete, edit.kind);
         assert_eq!("ab", edit.text);
         assert_eq!(buffer_range((1, 0), (1, 2)), edit.range);
-        let edit = edit_iter.next().unwrap();
+        let edit = edits.next().unwrap();
         assert_eq!(EditKind::Delete, edit.kind);
         assert_eq!("ab", edit.text);
         assert_eq!(buffer_range((0, 0), (0, 2)), edit.range);
-        assert!(edit_iter.next().is_none());
+        assert!(edits.next().is_none());
 
         //
 
@@ -761,16 +786,16 @@ mod tests {
             text: "b",
         });
 
-        let mut edit_iter = history.undo_edits();
-        let edit = edit_iter.next().unwrap();
+        let mut edits = history.undo_edits();
+        let edit = edits.next().unwrap();
         assert_eq!(EditKind::Delete, edit.kind);
         assert_eq!("cd", edit.text);
         assert_eq!(buffer_range((0, 3), (0, 5)), edit.range);
-        let edit = edit_iter.next().unwrap();
+        let edit = edits.next().unwrap();
         assert_eq!(EditKind::Delete, edit.kind);
         assert_eq!("ab", edit.text);
         assert_eq!(buffer_range((0, 0), (0, 2)), edit.range);
-        assert!(edit_iter.next().is_none());
+        assert!(edits.next().is_none());
 
         //
 
@@ -796,16 +821,16 @@ mod tests {
             text: "a",
         });
 
-        let mut edit_iter = history.undo_edits();
-        let edit = edit_iter.next().unwrap();
+        let mut edits = history.undo_edits();
+        let edit = edits.next().unwrap();
         assert_eq!(EditKind::Delete, edit.kind);
         assert_eq!("cd", edit.text);
         assert_eq!(buffer_range((0, 6), (0, 8)), edit.range);
-        let edit = edit_iter.next().unwrap();
+        let edit = edits.next().unwrap();
         assert_eq!(EditKind::Delete, edit.kind);
         assert_eq!("ab", edit.text);
         assert_eq!(buffer_range((0, 0), (0, 2)), edit.range);
-        assert!(edit_iter.next().is_none());
+        assert!(edits.next().is_none());
     }
 
     #[test]
@@ -832,16 +857,16 @@ mod tests {
             text: "b",
         });
 
-        let mut edit_iter = history.undo_edits();
-        let edit = edit_iter.next().unwrap();
+        let mut edits = history.undo_edits();
+        let edit = edits.next().unwrap();
         assert_eq!(EditKind::Insert, edit.kind);
         assert_eq!("ab", edit.text);
         assert_eq!(buffer_range((1, 0), (1, 2)), edit.range);
-        let edit = edit_iter.next().unwrap();
+        let edit = edits.next().unwrap();
         assert_eq!(EditKind::Insert, edit.kind);
         assert_eq!("ab", edit.text);
         assert_eq!(buffer_range((0, 0), (0, 2)), edit.range);
-        assert!(edit_iter.next().is_none());
+        assert!(edits.next().is_none());
 
         //
 
@@ -867,16 +892,16 @@ mod tests {
             text: "b",
         });
 
-        let mut edit_iter = history.undo_edits();
-        let edit = edit_iter.next().unwrap();
+        let mut edits = history.undo_edits();
+        let edit = edits.next().unwrap();
         assert_eq!(EditKind::Insert, edit.kind);
         assert_eq!("cd", edit.text);
         assert_eq!(buffer_range((0, 0), (0, 2)), edit.range);
-        let edit = edit_iter.next().unwrap();
+        let edit = edits.next().unwrap();
         assert_eq!(EditKind::Insert, edit.kind);
         assert_eq!("ab", edit.text);
         assert_eq!(buffer_range((0, 0), (0, 2)), edit.range);
-        assert!(edit_iter.next().is_none());
+        assert!(edits.next().is_none());
 
         //
 
@@ -902,16 +927,16 @@ mod tests {
             text: "a",
         });
 
-        let mut edit_iter = history.undo_edits();
-        let edit = edit_iter.next().unwrap();
+        let mut edits = history.undo_edits();
+        let edit = edits.next().unwrap();
         assert_eq!(EditKind::Insert, edit.kind);
         assert_eq!("cd", edit.text);
         assert_eq!(buffer_range((0, 1), (0, 3)), edit.range);
-        let edit = edit_iter.next().unwrap();
+        let edit = edits.next().unwrap();
         assert_eq!(EditKind::Insert, edit.kind);
         assert_eq!("ab", edit.text);
         assert_eq!(buffer_range((0, 0), (0, 2)), edit.range);
-        assert!(edit_iter.next().is_none());
+        assert!(edits.next().is_none());
     }
 
     #[test]
@@ -940,16 +965,16 @@ mod tests {
             text: "a",
         });
 
-        let mut edit_iter = history.undo_edits();
-        let edit = edit_iter.next().unwrap();
+        let mut edits = history.undo_edits();
+        let edit = edits.next().unwrap();
         assert_eq!(EditKind::Delete, edit.kind);
         assert_eq!("d", edit.text);
         assert_eq!(buffer_range((0, 2), (0, 3)), edit.range);
-        let edit = edit_iter.next().unwrap();
+        let edit = edits.next().unwrap();
         assert_eq!(EditKind::Delete, edit.kind);
         assert_eq!("b", edit.text);
         assert_eq!(buffer_range((0, 0), (0, 1)), edit.range);
-        assert!(edit_iter.next().is_none());
+        assert!(edits.next().is_none());
 
         // ------ insert --
         //     -- delete --
@@ -975,16 +1000,16 @@ mod tests {
             text: "b",
         });
 
-        let mut edit_iter = history.undo_edits();
-        let edit = edit_iter.next().unwrap();
+        let mut edits = history.undo_edits();
+        let edit = edits.next().unwrap();
         assert_eq!(EditKind::Delete, edit.kind);
         assert_eq!("c", edit.text);
         assert_eq!(buffer_range((0, 2), (0, 3)), edit.range);
-        let edit = edit_iter.next().unwrap();
+        let edit = edits.next().unwrap();
         assert_eq!(EditKind::Delete, edit.kind);
         assert_eq!("a", edit.text);
         assert_eq!(buffer_range((0, 0), (0, 1)), edit.range);
-        assert!(edit_iter.next().is_none());
+        assert!(edits.next().is_none());
 
         // -- insert --
         // -- delete ------
@@ -1010,16 +1035,16 @@ mod tests {
             text: "ab",
         });
 
-        let mut edit_iter = history.undo_edits();
-        let edit = edit_iter.next().unwrap();
+        let mut edits = history.undo_edits();
+        let edit = edits.next().unwrap();
         assert_eq!(EditKind::Insert, edit.kind);
         assert_eq!("d", edit.text);
         assert_eq!(buffer_range((0, 1), (0, 2)), edit.range);
-        let edit = edit_iter.next().unwrap();
+        let edit = edits.next().unwrap();
         assert_eq!(EditKind::Insert, edit.kind);
         assert_eq!("b", edit.text);
         assert_eq!(buffer_range((0, 0), (0, 1)), edit.range);
-        assert!(edit_iter.next().is_none());
+        assert!(edits.next().is_none());
 
         //     -- insert --
         // ------ delete --
@@ -1045,15 +1070,100 @@ mod tests {
             text: "ab",
         });
 
-        let mut edit_iter = history.undo_edits();
-        let edit = edit_iter.next().unwrap();
+        let mut edits = history.undo_edits();
+        let edit = edits.next().unwrap();
         assert_eq!(EditKind::Insert, edit.kind);
         assert_eq!("c", edit.text);
         assert_eq!(buffer_range((0, 1), (0, 2)), edit.range);
-        let edit = edit_iter.next().unwrap();
+        let edit = edits.next().unwrap();
         assert_eq!(EditKind::Insert, edit.kind);
         assert_eq!("a", edit.text);
         assert_eq!(buffer_range((0, 0), (0, 1)), edit.range);
-        assert!(edit_iter.next().is_none());
+        assert!(edits.next().is_none());
+    }
+
+    #[test]
+    fn insert_delete_insert() {
+        let mut history = History::new();
+        history.add_edit(Edit {
+            kind: EditKind::Insert,
+            range: buffer_range((1, 4), (1, 5)),
+            text: "a",
+        });
+        history.add_edit(Edit {
+            kind: EditKind::Insert,
+            range: buffer_range((0, 4), (0, 5)),
+            text: "a",
+        });
+
+        history.add_edit(Edit {
+            kind: EditKind::Delete,
+            range: buffer_range((1, 4), (1, 5)),
+            text: "a",
+        });
+        history.add_edit(Edit {
+            kind: EditKind::Delete,
+            range: buffer_range((0, 4), (0, 5)),
+            text: "a",
+        });
+        history.add_edit(Edit {
+            kind: EditKind::Delete,
+            range: buffer_range((1, 3), (1, 4)),
+            text: "x",
+        });
+        history.add_edit(Edit {
+            kind: EditKind::Delete,
+            range: buffer_range((0, 3), (0, 4)),
+            text: "x",
+        });
+        history.add_edit(Edit {
+            kind: EditKind::Delete,
+            range: buffer_range((1, 2), (1, 3)),
+            text: "x",
+        });
+        history.add_edit(Edit {
+            kind: EditKind::Delete,
+            range: buffer_range((0, 2), (0, 3)),
+            text: "x",
+        });
+
+        history.add_edit(Edit {
+            kind: EditKind::Insert,
+            range: buffer_range((1, 2), (1, 3)),
+            text: "b",
+        });
+        history.add_edit(Edit {
+            kind: EditKind::Insert,
+            range: buffer_range((0, 2), (0, 3)),
+            text: "b",
+        });
+
+        /*
+                 *(del BufferRange(line: 0, col: 2 => line: 0, col: 4) 'aa')
+        (ins BufferRange(line: 0, col: 2 => line: 0, col: 3) '2')
+        (del BufferRange(line: 1, col: 2 => line: 1, col: 4) 'a22a')
+        (ins BufferRange(line: 1, col: 2 => line: 1, col: 3) '2')
+                 */
+        let mut edits = history.undo_edits();
+        let edits : Vec<_> = edits.collect();
+        dbg!(&edits);
+        let mut edits = edits.iter();
+
+        let edit = edits.next().unwrap();
+        assert_eq!(EditKind::Delete, edit.kind);
+        assert_eq!("b", edit.text);
+        assert_eq!(buffer_range((1, 2), (1, 3)), edit.range);
+        let edit = edits.next().unwrap();
+        assert_eq!(EditKind::Insert, edit.kind);
+        assert_eq!("xx", edit.text);
+        assert_eq!(buffer_range((1, 2), (1, 4)), edit.range);
+        let edit = edits.next().unwrap();
+        assert_eq!(EditKind::Delete, edit.kind);
+        assert_eq!("b", edit.text);
+        assert_eq!(buffer_range((0, 2), (0, 3)), edit.range);
+        let edit = edits.next().unwrap();
+        assert_eq!(EditKind::Insert, edit.kind);
+        assert_eq!("xx", edit.text);
+        assert_eq!(buffer_range((0, 2), (0, 4)), edit.range);
     }
 }
