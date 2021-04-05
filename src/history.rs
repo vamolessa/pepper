@@ -1096,17 +1096,7 @@ mod tests {
             text: "b",
         });
 
-        /*
-                 *(del BufferRange(line: 0, col: 2 => line: 0, col: 4) 'aa')
-        (ins BufferRange(line: 0, col: 2 => line: 0, col: 3) '2')
-        (del BufferRange(line: 1, col: 2 => line: 1, col: 4) 'a22a')
-        (ins BufferRange(line: 1, col: 2 => line: 1, col: 3) '2')
-                 */
         let mut edits = history.undo_edits();
-        let edits : Vec<_> = edits.collect();
-        dbg!(&edits);
-        let mut edits = edits.iter();
-
         let edit = edits.next().unwrap();
         assert_eq!(EditKind::Delete, edit.kind);
         assert_eq!("b", edit.text);
