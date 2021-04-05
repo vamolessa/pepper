@@ -700,27 +700,6 @@ mod tests {
     }
 
     #[test]
-    fn buffer_view_utf8_support() {
-        let mut ctx = TestContext::with_buffer("");
-
-        let buffer_view = ctx.buffer_views.get_mut(ctx.buffer_view_handle).unwrap();
-        let main_cursor = buffer_view.cursors.main_cursor();
-        assert_eq!(BufferPosition::zero(), main_cursor.anchor);
-        assert_eq!(BufferPosition::zero(), main_cursor.position);
-
-        buffer_view.insert_text_at_cursor_positions(
-            &mut ctx.buffers,
-            &mut ctx.word_database,
-            "ç",
-            &mut ctx.events,
-        );
-
-        let main_cursor = buffer_view.cursors.main_cursor();
-        assert_eq!(BufferPosition::line_col(0, 2), main_cursor.anchor);
-        assert_eq!(BufferPosition::line_col(0, 2), main_cursor.position);
-    }
-
-    #[test]
     fn buffer_view_cursor_movement() {
         fn set_cursor(ctx: &mut TestContext, position: BufferPosition) {
             let buffer_view = ctx.buffer_views.get_mut(ctx.buffer_view_handle).unwrap();
