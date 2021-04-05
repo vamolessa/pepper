@@ -3,7 +3,6 @@ use std::fmt::Write;
 use crate::{
     buffer_position::BufferPosition,
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
-    client::{ClientHandle, ClientManager},
     editor::{Editor, KeysIterator},
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     platform::Key,

@@ -521,10 +521,7 @@ impl Client {
     fn flush_log_buffer(&mut self, editor: &mut Editor) {
         let buffers = &mut editor.buffers;
         if let Some(buffer) = self.log_buffer_handle.and_then(|h| buffers.get_mut(h)) {
-            let content = buffer.content();
-            let line_index = content.line_count() - 1;
-            let position =
-                BufferPosition::line_col(line_index, content.line_at(line_index).as_str().len());
+            let position = buffer.content().end();
             let text = String::from_utf8_lossy(&self.log_write_buf);
             buffer.insert_text(
                 &mut editor.word_database,

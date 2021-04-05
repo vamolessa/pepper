@@ -260,8 +260,7 @@ mod tests {
         assert_eq!(Some("third"), iter.next());
         assert_eq!(None, iter.next());
 
-        let mut iter =
-            WordIter("  1first:second00+?$%third  ^@").of_kind(WordKind::Identifier);
+        let mut iter = WordIter("  1first:second00+?$%third  ^@").of_kind(WordKind::Identifier);
         assert_eq!(Some("1first"), iter.next());
         assert_eq!(Some("second00"), iter.next());
         assert_eq!(Some("third"), iter.next());

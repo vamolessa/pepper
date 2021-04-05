@@ -1,8 +1,7 @@
 use std::{env, fmt, io, path::Path, sync::mpsc};
 
 use crate::{
-    buffer::parse_path_and_line_number,
-    buffer_view::BufferViewHandle,
+    buffer::{parse_path_and_line_number, BufferHandle},
     client::{ClientHandle, ClientManager},
     command::CommandOperation,
     editor::{Editor, EditorControlFlow},
@@ -48,7 +47,7 @@ impl Args {
 
 #[derive(Clone, Copy)]
 pub enum ProcessTag {
-    BufferView(BufferViewHandle),
+    Buffer(BufferHandle),
     Command(usize),
     Lsp(lsp::ClientHandle),
 }

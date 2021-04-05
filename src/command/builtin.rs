@@ -573,33 +573,26 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                         client.set_buffer_view_handle(Some(handle));
                     }
 
-                    if let Some((mut command, buffer_view)) = command.zip(ctx.editor.buffer_views.get(handle)) {
-                        let end = match ctx
-                            .editor
-                            .buffers
-                            .get_mut(buffer_view.buffer_handle)
-                        {
-                            Some(buffer) => {
-                                buffer.capabilities = BufferCapabilities::log();
-                                buffer.content().end()
-                            }
-                            None => BufferPosition::zero(),
-                        };
-                        let range = BufferRange::between(BufferPosition::zero(), end);
-
-                        ctx.editor.buffer_views.delete_text_in_range(
-                            &mut ctx.editor.buffers,
-                            &mut ctx.editor.word_database,
-                            handle,
-                            range,
-                            &mut ctx.editor.events
+                    let buffers = &mut ctx.editor.buffers;
+                    let buffer = ctx
+                        .editor
+                        .buffer_views
+                        .get(handle)
+                        .and_then(|v| buffers.get_mut(v.buffer_handle));
+                    if let Some((mut command, buffer)) = command.zip(buffer) {
+                        buffer.capabilities = BufferCapabilities::log();
+                        let range = BufferRange::between(
+                            BufferPosition::zero(),
+                            buffer.content().end()
                         );
+                        buffer.delete_range(&mut ctx.editor.word_database, range, &mut ctx.editor.events);
 
                         command.stdin(Stdio::null());
                         command.stdout(Stdio::piped());
                         command.stderr(Stdio::null());
+
                         ctx.platform.enqueue_request(PlatformRequest::SpawnProcess {
-                            tag: ProcessTag::BufferView(handle),
+                            tag: ProcessTag::Buffer(buffer.handle()),
                             command,
                             buf_len: 4 * 1024,
                         });
