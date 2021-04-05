@@ -33,7 +33,7 @@ impl EditInternal {
 
 enum HistoryState {
     IterIndex(usize),
-    InsertGroup(Range<usize>),
+    InsertGroup(usize),
 }
 
 pub struct History {
@@ -73,20 +73,26 @@ impl History {
                     Some(edit) => self.texts.truncate(edit.text_range.end),
                     None => self.texts.clear(),
                 }
-                self.state = HistoryState::InsertGroup(edit_index..edit_index);
+                self.state = HistoryState::InsertGroup(edit_index);
                 self.group_ranges.truncate(index);
                 edit_index
             }
-            HistoryState::InsertGroup(ref range) => range.start,
+            HistoryState::InsertGroup(index) => index,
         };
 
-        let kind = match edit.kind {
-            EditKind::Insert => "ins",
-            EditKind::Delete => "del",
-        };
+        if edit.range.from == edit.range.to {
+            return;
+        }
 
         let merged = self.try_merge_edit(current_group_start, &edit);
         if merged {
+            for i in (current_group_start..self.edits.len()).rev() {
+                let range = self.edits[i].buffer_range;
+                if range.from == range.to {
+                    eprintln!("remove {} {:?}", i, self.edits[i].as_edit_ref(&self.texts));
+                    self.edits.remove(i);
+                }
+            }
             return;
         }
 
@@ -123,10 +129,6 @@ impl History {
             text_range: texts_range_start..self.texts.len(),
         };
         self.edits.insert(index, edit);
-
-        if let HistoryState::InsertGroup(range) = &mut self.state {
-            range.end = self.edits.len();
-        }
     }
 
     fn try_merge_edit(&mut self, current_group_start: usize, edit: &Edit) -> bool {
@@ -362,14 +364,12 @@ impl History {
             }
         }
 
-        // TODO: remove empty!
-
         false
     }
 
     pub fn commit_edits(&mut self) {
-        if let HistoryState::InsertGroup(range) = &self.state {
-            self.group_ranges.push(range.clone());
+        if let HistoryState::InsertGroup(index) = self.state {
+            self.group_ranges.push(index..self.edits.len());
             self.state = HistoryState::IterIndex(self.group_ranges.len());
         }
     }
@@ -926,11 +926,6 @@ mod tests {
         });
 
         let mut edits = history.undo_edits();
-        let edits : Vec<_> = edits.collect();
-        for edit in &edits {
-            eprintln!("{:?}", edit);
-        }
-        let mut edits = edits.iter();
         assert!(edits.next().is_none());
 
         // -- insert ------
