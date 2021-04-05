@@ -60,42 +60,6 @@ impl History {
         self.state = HistoryState::IterIndex(0);
     }
 
-    fn debug(&self) {
-        eprintln!("==============================");
-        eprintln!("all edits:");
-        for edit in &self.edits {
-            let edit = edit.as_edit_ref(&self.texts);
-            let kind = match edit.kind {
-                EditKind::Insert => "ins",
-                EditKind::Delete => "del",
-            };
-            eprintln!("({} {:?} '{}')", kind, edit.range, edit.text);
-        }
-        eprintln!();
-    }
-
-    // TODO: there must be a bug in the merge edit code since in a very specific case,
-    // it generates wrong undo edit
-    //
-    // first:
-    // aaaa|
-    // aaaa|
-    //
-    // then:
-    // aaaa1|
-    // aaaa1|
-    //
-    // then:
-    // aa|
-    // aa|
-    //
-    // finally:
-    // aa2|
-    // aa2|
-    //
-    // then it will not return to original state when undoing:
-    // aaaa
-    // aaa22a
     pub fn add_edit(&mut self, edit: Edit) {
         let current_group_start = match self.state {
             HistoryState::IterIndex(index) => {
@@ -120,12 +84,9 @@ impl History {
             EditKind::Insert => "ins",
             EditKind::Delete => "del",
         };
-        eprint!("new edit: {} {:?} '{}'", kind, edit.range, edit.text);
 
         let merged = self.try_merge_edit(current_group_start, &edit);
         if merged {
-            eprintln!(" merged");
-            self.debug();
             return;
         }
 
@@ -166,9 +127,6 @@ impl History {
         if let HistoryState::InsertGroup(range) = &mut self.state {
             range.end = self.edits.len();
         }
-
-        eprintln!(" new");
-        self.debug();
     }
 
     fn try_merge_edit(&mut self, current_group_start: usize, edit: &Edit) -> bool {
