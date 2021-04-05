@@ -86,12 +86,6 @@ impl History {
 
         let merged = self.try_merge_edit(current_group_start, &edit);
         if merged {
-            for i in (current_group_start..self.edits.len()).rev() {
-                let range = self.edits[i].buffer_range;
-                if range.from == range.to {
-                    self.edits.remove(i);
-                }
-            }
             return;
         }
 
@@ -131,16 +125,6 @@ impl History {
     }
 
     fn try_merge_edit(&mut self, current_group_start: usize, edit: &Edit) -> bool {
-        fn insert_buffer_range(edit: &mut EditInternal, range: BufferRange) {
-            edit.buffer_range.from = edit.buffer_range.from.insert(range);
-            edit.buffer_range.to = edit.buffer_range.to.insert(range);
-        }
-
-        fn delete_buffer_range(edit: &mut EditInternal, range: BufferRange) {
-            edit.buffer_range.from = edit.buffer_range.from.delete(range);
-            edit.buffer_range.to = edit.buffer_range.to.delete(range);
-        }
-
         fn insert_text_range(edit: &mut EditInternal, start: usize, len: usize) {
             if start <= edit.text_range.start {
                 edit.text_range.start += len;
@@ -165,7 +149,7 @@ impl History {
             if len > 0 {
                 insert_text_range(edit, start, len as _);
             } else {
-                delete_text_range(edit, start, -len as _);
+                delete_text_range(edit, start, (-len) as _);
             }
 
             /*
@@ -213,13 +197,9 @@ impl History {
                         other_edit.buffer_range.to = edit.range.to;
                         other_edit.text_range.end += edit_text_len;
 
-                        fix_other_edits(
-                            group_edits,
-                            i,
-                            edit.range,
-                            BufferPosition::insert,
-                            |e| insert_text_range(e, fix_text_start, edit_text_len),
-                        );
+                        fix_other_edits(group_edits, i, edit.range, BufferPosition::insert, |e| {
+                            insert_text_range(e, fix_text_start, edit_text_len)
+                        });
                         return true;
 
                     // -- insert --
@@ -230,13 +210,9 @@ impl History {
                         other_edit.buffer_range.to = other_edit.buffer_range.to.insert(edit.range);
                         other_edit.text_range.end += edit_text_len;
 
-                        fix_other_edits(
-                            group_edits,
-                            i,
-                            edit.range,
-                            BufferPosition::insert,
-                            |e| insert_text_range(e, fix_text_start, edit_text_len),
-                        );
+                        fix_other_edits(group_edits, i, edit.range, BufferPosition::insert, |e| {
+                            insert_text_range(e, fix_text_start, edit_text_len)
+                        });
                         return true;
                     }
                 }
@@ -249,13 +225,9 @@ impl History {
                         other_edit.buffer_range.to = other_edit.buffer_range.to.insert(edit.range);
                         other_edit.text_range.end += edit_text_len;
 
-                        fix_other_edits(
-                            group_edits,
-                            i,
-                            edit.range,
-                            BufferPosition::delete,
-                            |e| insert_text_range(e, fix_text_start, edit_text_len),
-                        );
+                        fix_other_edits(group_edits, i, edit.range, BufferPosition::delete, |e| {
+                            insert_text_range(e, fix_text_start, edit_text_len)
+                        });
                         return true;
 
                     //             -- delete --
@@ -266,13 +238,9 @@ impl History {
                         other_edit.buffer_range.from = edit.range.from;
                         other_edit.text_range.end += edit_text_len;
 
-                        fix_other_edits(
-                            group_edits,
-                            i,
-                            edit.range,
-                            BufferPosition::delete,
-                            |e| insert_text_range(e, fix_text_start, edit_text_len),
-                        );
+                        fix_other_edits(group_edits, i, edit.range, BufferPosition::delete, |e| {
+                            insert_text_range(e, fix_text_start, edit_text_len)
+                        });
                         return true;
                     }
                 }
@@ -280,7 +248,17 @@ impl History {
                     // -- insert ------
                     // -- delete -- (new)
                     if other_edit.buffer_range.from == edit.range.from
-                        && edit.range.to <= other_edit.buffer_range.to
+                        && other_edit.buffer_range.to == edit.range.to
+                    {
+                        if edit.text == &self.texts[other_edit.text_range.clone()] {
+                            self.edits.remove(current_group_start + i);
+                            return true;
+                        }
+
+                    // -- insert ------
+                    // -- delete -- (new)
+                    } else if other_edit.buffer_range.from == edit.range.from
+                        && edit.range.to < other_edit.buffer_range.to
                     {
                         let fix_text_start = other_edit.text_range.start;
                         let deleted_text_range = fix_text_start..(fix_text_start + edit_text_len);
@@ -303,7 +281,7 @@ impl History {
                     // ------ insert --
                     //     -- delete -- (new)
                     } else if edit.range.to == other_edit.buffer_range.to
-                        && other_edit.buffer_range.from <= edit.range.from
+                        && other_edit.buffer_range.from < edit.range.from
                     {
                         let fix_text_start = other_edit.text_range.end - edit_text_len;
                         let deleted_text_range = fix_text_start..other_edit.text_range.end;
@@ -325,7 +303,7 @@ impl History {
                     // -- insert --
                     // -- delete ------ (new)
                     } else if edit.range.from == other_edit.buffer_range.from
-                        && other_edit.buffer_range.to <= edit.range.to
+                        && other_edit.buffer_range.to < edit.range.to
                     {
                         let fix_text_start = other_edit.text_range.start;
                         let previous_other_text_end = other_edit.text_range.end;
@@ -358,7 +336,7 @@ impl History {
                     //     -- insert --
                     // ------ delete -- (new)
                     } else if other_edit.buffer_range.to == edit.range.to
-                        && edit.range.from <= other_edit.buffer_range.from
+                        && edit.range.from < other_edit.buffer_range.from
                     {
                         let fix_text_start = other_edit.text_range.start;
                         let previous_other_text_end = other_edit.text_range.end;
@@ -376,6 +354,10 @@ impl History {
                             other_edit.text_range.end = fix_text_start + text_len_diff;
                             let other_text_end_diff = previous_other_text_end as isize
                                 - other_edit.text_range.end as isize;
+
+                            if other_text_end_diff < 0 {
+                                //for e in &self.edits[current_group_start..]
+                            }
 
                             fix_other_edits(
                                 group_edits,
