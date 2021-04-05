@@ -246,11 +246,22 @@ impl History {
                 }
                 (EditKind::Insert, EditKind::Delete) => {
                     // -- insert ------
-                    // -- delete -- (new)
+                    // -- delete ------ (new)
                     if other_edit.buffer_range.from == edit.range.from
                         && other_edit.buffer_range.to == edit.range.to
                     {
                         if edit.text == &self.texts[other_edit.text_range.clone()] {
+                            let fix_text_start = other_edit.text_range.start;
+                            self.texts.drain(other_edit.text_range.clone());
+
+                            fix_other_edits(
+                                group_edits,
+                                i,
+                                edit.range,
+                                BufferPosition::delete,
+                                |e| delete_text_range(e, fix_text_start, edit_text_len),
+                            );
+
                             self.edits.remove(current_group_start + i);
                             return true;
                         }
