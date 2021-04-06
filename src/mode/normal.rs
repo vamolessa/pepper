@@ -635,10 +635,47 @@ impl State {
                 }
             }
             Key::Ctrl('j') => {
-                // TODO: move to next blank line
+                let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle)?.content();
+                let mut cursors = buffer_view.cursors.mut_guard();
+
+                for cursor in &mut cursors[..] {
+                    if let Some((i, _)) = buffer
+                        .lines()
+                        .enumerate()
+                        .skip(cursor.position.line_index + 1)
+                        .filter(|(_, l)| l.as_str().is_empty())
+                        .nth(this.count.max(1).saturating_sub(1) as _)
+                    {
+                        cursor.position.line_index = i;
+                        cursor.position.column_byte_index = 0;
+                        if let CursorMovementKind::PositionAndAnchor = this.movement_kind {
+                            cursor.anchor = cursor.position;
+                        }
+                    }
+                }
             }
             Key::Ctrl('k') => {
-                // TODO: move to previous blank line
+                let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle)?.content();
+                let mut cursors = buffer_view.cursors.mut_guard();
+
+                for cursor in &mut cursors[..] {
+                    if let Some((i, _)) = buffer
+                        .lines()
+                        .enumerate()
+                        .rev()
+                        .skip(buffer.line_count() - cursor.position.line_index)
+                        .filter(|(_, l)| l.as_str().is_empty())
+                        .nth(this.count.max(1).saturating_sub(1) as _)
+                    {
+                        cursor.position.line_index = i;
+                        cursor.position.column_byte_index = 0;
+                        if let CursorMovementKind::PositionAndAnchor = this.movement_kind {
+                            cursor.anchor = cursor.position;
+                        }
+                    }
+                }
             }
             Key::Ctrl('d') => {
                 let half_height = ctx
@@ -649,7 +686,7 @@ impl State {
                     / 2;
                 ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
                     &ctx.editor.buffers,
-                    CursorMovement::LinesForward(half_height as _),
+                    CursorMovement::LinesForward(half_height as usize * this.count.max(1) as usize),
                     this.movement_kind,
                 );
             }
@@ -662,7 +699,9 @@ impl State {
                     / 2;
                 ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
                     &ctx.editor.buffers,
-                    CursorMovement::LinesBackward(half_height as _),
+                    CursorMovement::LinesBackward(
+                        half_height as usize * this.count.max(1) as usize,
+                    ),
                     this.movement_kind,
                 );
             }

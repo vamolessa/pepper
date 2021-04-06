@@ -303,7 +303,9 @@ impl BufferContent {
         self.lines.len()
     }
 
-    pub fn lines(&self) -> impl Iterator<Item = &BufferLine> {
+    pub fn lines(
+        &self,
+    ) -> impl ExactSizeIterator<Item = &BufferLine> + DoubleEndedIterator<Item = &BufferLine> {
         self.lines.iter()
     }
 

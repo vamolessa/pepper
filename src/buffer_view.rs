@@ -460,12 +460,12 @@ impl BufferView {
         for edit in edits.rev() {
             match edit.kind {
                 EditKind::Insert => {
-                    for cursor in cursors[..].iter_mut() {
+                    for cursor in &mut cursors[..] {
                         cursor.delete(edit.range);
                     }
                 }
                 EditKind::Delete => {
-                    for cursor in cursors[..].iter_mut() {
+                    for cursor in &mut cursors[..] {
                         cursor.insert(edit.range);
                     }
                 }
