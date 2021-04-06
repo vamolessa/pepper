@@ -634,6 +634,12 @@ impl State {
                     _ => (),
                 }
             }
+            Key::Ctrl('j') => {
+                // TODO: move to next blank line
+            }
+            Key::Ctrl('k') => {
+                // TODO: move to previous blank line
+            }
             Key::Ctrl('d') => {
                 let half_height = ctx
                     .clients
