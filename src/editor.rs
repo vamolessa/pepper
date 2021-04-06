@@ -307,6 +307,8 @@ impl Editor {
                                 let _ = write!(register, "{}", key);
                             }
                         }
+
+                        self.trigger_event_handlers(platform, clients, Some(client_handle));
                     }
 
                     match self.recording_macro {
@@ -324,7 +326,6 @@ impl Editor {
                 }
 
                 self.buffered_keys.0.clear();
-                self.trigger_event_handlers(platform, clients, Some(client_handle));
                 EditorControlFlow::Continue
             }
             ClientEvent::Resize(client_handle, width, height) => {
