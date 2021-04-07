@@ -1,4 +1,4 @@
-use std::{env, fmt, io, path::Path, sync::mpsc};
+use std::{env, fmt, io, path::Path, sync::mpsc, time::Duration};
 
 use crate::{
     buffer::{parse_path_and_line_number, BufferHandle},
@@ -91,6 +91,10 @@ pub struct ServerApplication;
 impl ServerApplication {
     pub const fn connection_buffer_len() -> usize {
         512
+    }
+
+    pub const fn idle_duration() -> Duration {
+        Duration::from_secs(1)
     }
 
     pub fn run(args: Args, mut platform: Platform) -> Option<mpsc::Sender<ApplicationEvent>> {

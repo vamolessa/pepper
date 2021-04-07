@@ -855,14 +855,10 @@ impl Events {
     pub fn wait_next(&mut self, timeout: Option<Duration>) -> Option<EventSource> {
         let len = self.len;
         self.len = 0;
-        match wait_for_multiple_objects(&self.wait_handles[..len], timeout) {
-            Some(index) => {
-                let mut source = EventSource::ConnectionListener;
-                std::mem::swap(&mut source, &mut self.sources[index]);
-                Some(source)
-            }
-            None => None,
-        }
+        let index = wait_for_multiple_objects(&self.wait_handles[..len], timeout)?;
+        let mut source = EventSource::ConnectionListener;
+        std::mem::swap(&mut source, &mut self.sources[index]);
+        Some(source)
     }
 }
 
@@ -898,6 +894,8 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
         None => return Ok(()),
     };
 
+    let mut timeout = Some(ServerApplication::idle_duration());
+
     loop {
         events.track(&new_request_event, EventSource::NewRequest);
         events.track(listener.event(), EventSource::ConnectionListener);
@@ -914,7 +912,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
             }
         }
 
-        match events.wait_next(None) {
+        match events.wait_next(timeout) {
             Some(EventSource::NewRequest) => {
                 for request in request_receiver.try_iter() {
                     match request {
@@ -1019,6 +1017,8 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                         }
                     }
                 }
+
+                timeout = Some(ServerApplication::idle_duration());
             }
             Some(EventSource::Process(i)) => {
                 if let Some(ref mut process) = processes[i] {
@@ -1043,7 +1043,10 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                     }
                 }
             }
-            _ => unreachable!(),
+            None => {
+                timeout = None;
+                event_sender.send(ApplicationEvent::Idle)?;
+            }
         }
     }
 }
