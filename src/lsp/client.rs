@@ -895,7 +895,9 @@ impl Client {
             }
             "textDocument/definition" => {
                 let location = match result {
+                    JsonValue::Null => return,
                     JsonValue::Object(_) => result,
+                    // TODO: use picker in this case?
                     JsonValue::Array(locations) => match locations.elements(json).next() {
                         Some(location) => location,
                         None => return,

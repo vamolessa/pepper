@@ -1,3 +1,5 @@
+use std::fmt;
+
 use fuzzy_matcher::{skim::SkimMatcherV2, FuzzyMatcher};
 
 use crate::word_database::{WordDatabase, WordIndicesIter};
@@ -106,16 +108,24 @@ impl Picker {
         self.custom_entries_len = 0;
     }
 
-    pub fn add_custom_entry(&mut self, name: &str) {
-        if self.custom_entries_len < self.custom_entries_buffer.len() {
-            let entry = &mut self.custom_entries_buffer[self.custom_entries_len];
-            entry.clear();
-            entry.push_str(name);
-        } else {
-            self.custom_entries_buffer.push(name.into());
+    fn new_custom_entry(&mut self) -> &mut String {
+        if self.custom_entries_len == self.custom_entries_buffer.len() {
+            self.custom_entries_buffer.push(String::new());
         }
-
+        let entry = &mut self.custom_entries_buffer[self.custom_entries_len];
         self.custom_entries_len += 1;
+        entry.clear();
+        entry
+    }
+
+    pub fn add_custom_entry(&mut self, name: &str) {
+        let entry = self.new_custom_entry();
+        entry.push_str(name);
+    }
+
+    pub fn add_custom_entry_fmt(&mut self, args: fmt::Arguments) {
+        let entry = self.new_custom_entry();
+        let _ = fmt::write(entry, args);
     }
 
     pub fn add_custom_entry_filtered(&mut self, name: &str, pattern: &str) {
