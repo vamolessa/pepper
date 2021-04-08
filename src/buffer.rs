@@ -685,12 +685,14 @@ pub struct BufferCapabilities {
     pub has_history: bool,
     pub can_save: bool,
     pub uses_word_database: bool,
+    pub auto_close: bool,
 }
 impl BufferCapabilities {
     pub fn text() -> Self {
         Self {
             has_history: true,
             can_save: true,
+            auto_close: false,
             uses_word_database: true,
         }
     }
@@ -699,6 +701,7 @@ impl BufferCapabilities {
         Self {
             has_history: false,
             can_save: false,
+            auto_close: false,
             uses_word_database: false,
         }
     }
@@ -1167,7 +1170,7 @@ impl Buffer {
         self.content.clear();
         self.highlighted.clear();
 
-        events.enqueue(EditorEvent::BufferOpen {
+        events.enqueue(EditorEvent::BufferLoad {
             handle: self.handle,
         });
 
@@ -1283,15 +1286,11 @@ impl BufferCollection {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &Buffer> {
-        self.buffers
-            .iter()
-            .filter_map(|b| if b.alive { Some(b) } else { None })
+        self.buffers.iter().filter(|b| b.alive)
     }
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Buffer> {
-        self.buffers
-            .iter_mut()
-            .filter_map(|b| if b.alive { Some(b) } else { None })
+        self.buffers.iter_mut().filter(|b| b.alive)
     }
 
     pub fn defer_remove(&mut self, handle: BufferHandle, events: &mut EditorEventQueue) {

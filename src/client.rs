@@ -3,6 +3,7 @@ use argh::FromArgValue;
 use crate::{
     buffer_view::BufferViewHandle,
     editor::Editor,
+    events::{EditorEvent, EditorEventQueue},
     navigation_history::NavigationHistory,
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
 };
@@ -88,10 +89,18 @@ impl Client {
         self.previous_buffer_view_handle
     }
 
-    pub fn set_buffer_view_handle(&mut self, handle: Option<BufferViewHandle>) {
+    pub fn set_buffer_view_handle(
+        &mut self,
+        handle: Option<BufferViewHandle>,
+        events: &mut EditorEventQueue,
+    ) {
         if self.current_buffer_view_handle != handle {
             self.previous_buffer_view_handle = self.current_buffer_view_handle;
             self.current_buffer_view_handle = handle;
+
+            events.enqueue(EditorEvent::ClientChangeBufferView {
+                handle: self.handle,
+            })
         }
     }
 
@@ -210,9 +219,11 @@ impl ClientManager {
         }
     }
 
+    pub fn iter(&self) -> impl Iterator<Item = &Client> {
+        self.clients.iter().filter(|c| c.active)
+    }
+
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Client> {
-        self.clients
-            .iter_mut()
-            .filter_map(|c| if c.active { Some(c) } else { None })
+        self.clients.iter_mut().filter(|c| c.active)
     }
 }

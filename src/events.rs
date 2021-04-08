@@ -8,6 +8,7 @@ use crate::{
     serialization::{DeserializeError, Deserializer, Serialize, Serializer},
 };
 
+#[derive(Clone, Copy)]
 pub struct EditorEventText {
     from: u32,
     to: u32,
@@ -20,7 +21,7 @@ impl EditorEventText {
 
 pub enum EditorEvent {
     Idle,
-    BufferOpen {
+    BufferLoad {
         handle: BufferHandle,
     },
     BufferInsertText {
@@ -38,6 +39,9 @@ pub enum EditorEvent {
     },
     BufferClose {
         handle: BufferHandle,
+    },
+    ClientChangeBufferView {
+        handle: ClientHandle,
     },
 }
 

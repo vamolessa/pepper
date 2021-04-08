@@ -136,7 +136,7 @@ pub mod buffer {
             ) {
                 Ok(handle) => {
                     if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
-                        client.set_buffer_view_handle(Some(handle));
+                        client.set_buffer_view_handle(Some(handle), &mut ctx.editor.events);
                     }
                 }
                 Err(BufferViewError::InvalidPath) => ctx

@@ -8,6 +8,7 @@ use crate::{
     application::ProcessTag,
     buffer::BufferCollection,
     buffer_view::BufferViewCollection,
+    client::Client,
     client::{ClientHandle, ClientManager},
     command::{CommandManager, CommandOperation},
     config::Config,
@@ -209,7 +210,7 @@ impl Editor {
             .map(|b| self.buffer_views.add(b));
 
         if let Some(client) = clients.get_mut(handle) {
-            client.set_buffer_view_handle(buffer_view_handle);
+            client.set_buffer_view_handle(buffer_view_handle, &mut self.events);
         }
     }
 
@@ -439,31 +440,54 @@ impl Editor {
         let mut buffer_changed = false;
         for event in self.events.iter() {
             match event {
-                EditorEvent::BufferOpen { handle } => {
-                    if let Some(buffer) = self.buffers.get_mut(*handle) {
+                &EditorEvent::Idle => (),
+                &EditorEvent::BufferLoad { handle } => {
+                    if let Some(buffer) = self.buffers.get_mut(handle) {
                         buffer.refresh_syntax(&self.syntaxes);
                     }
                 }
-                EditorEvent::BufferInsertText { handle, range, .. } => {
-                    self.buffer_views.on_buffer_insert_text(*handle, *range);
+                &EditorEvent::BufferInsertText { handle, range, .. } => {
+                    self.buffer_views.on_buffer_insert_text(handle, range);
                     buffer_changed = true;
                 }
-                EditorEvent::BufferDeleteText { handle, range } => {
-                    self.buffer_views.on_buffer_delete_text(*handle, *range);
+                &EditorEvent::BufferDeleteText { handle, range } => {
+                    self.buffer_views.on_buffer_delete_text(handle, range);
                     buffer_changed = true;
                 }
-                EditorEvent::BufferSave { handle, new_path } => {
-                    if *new_path {
-                        if let Some(buffer) = self.buffers.get_mut(*handle) {
+                &EditorEvent::BufferSave { handle, new_path } => {
+                    if new_path {
+                        if let Some(buffer) = self.buffers.get_mut(handle) {
                             buffer.refresh_syntax(&self.syntaxes);
                         }
                     }
                 }
-                EditorEvent::BufferClose { handle } => {
+                &EditorEvent::BufferClose { handle } => {
                     self.buffers
-                        .remove(*handle, clients, &mut self.word_database);
+                        .remove(handle, clients, &mut self.word_database);
                 }
-                _ => (),
+                &EditorEvent::ClientChangeBufferView { handle } => {
+                    if let Some(buffer_handle) = clients
+                        .get(handle)
+                        .and_then(|c| c.previous_buffer_view_handle())
+                        .and_then(|h| self.buffer_views.get(h))
+                        .map(|v| v.buffer_handle)
+                    {
+                        if self
+                            .buffers
+                            .get(buffer_handle)
+                            .map(|b| b.capabilities.auto_close && !b.needs_save())
+                            .unwrap_or(false)
+                            && !clients
+                                .iter()
+                                .filter_map(Client::buffer_view_handle)
+                                .filter_map(|h| self.buffer_views.get(h))
+                                .any(|v| v.buffer_handle == buffer_handle)
+                        {
+                            self.buffers
+                                .remove(buffer_handle, clients, &mut self.word_database);
+                        }
+                    }
+                }
             }
         }
 

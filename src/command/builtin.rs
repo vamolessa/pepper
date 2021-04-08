@@ -431,7 +431,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             ctx.args.get_flags(&mut [])?;
             ctx.args.assert_empty()?;
 
-            if ctx.clients.iter_mut().count() == 1 {
+            if ctx.clients.iter().count() == 1 {
                 ctx.assert_can_discard_all_buffers()?;
             }
             Ok(Some(CommandOperation::Quit))
@@ -526,6 +526,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             "opens a buffer for editting\n",
             "open [<flags>] <path>\n",
             " -line=<number> : set cursor at line\n",
+            " -auto-close : automatically closes buffer when no other client has it in focus\n",
             " -command=<content-command> : appends command output to buffer\n",
             " -env=<vars> : sets environment variables for `-command` in the form VAR=<value> VAR=<value>...",
         ),
@@ -534,15 +535,16 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         func: |ctx| {
             ctx.args.assert_no_bang()?;
 
-            let mut flags = [("line", None), ("command", None), ("env", None)];
+            let mut flags = [("line", None), ("auto-close", None), ("command", None), ("env", None)];
             ctx.args.get_flags(&mut flags)?;
             let line = flags[0]
                 .1
                 .map(parse_arg::<usize>)
                 .transpose()?
                 .map(|l| l.saturating_sub(1));
-            let command = flags[1].1;
-            let env = flags[2].1.unwrap_or("");
+            let auto_close = flags[1].1.is_some();
+            let command = flags[2].1;
+            let env = flags[3].1.unwrap_or("");
             let command = command.map(|c| parse_command(c, env)).transpose()?;
 
             let path = ctx.args.next()?;
@@ -570,32 +572,38 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             ) {
                 Ok(handle) => {
                     if let Some(client) = ctx.clients.get_mut(client_handle) {
-                        client.set_buffer_view_handle(Some(handle));
+                        client.set_buffer_view_handle(Some(handle), &mut ctx.editor.events);
                     }
 
                     let buffers = &mut ctx.editor.buffers;
-                    let buffer = ctx
+                    if let Some(buffer) = ctx
                         .editor
                         .buffer_views
                         .get(handle)
-                        .and_then(|v| buffers.get_mut(v.buffer_handle));
-                    if let Some((mut command, buffer)) = command.zip(buffer) {
-                        buffer.capabilities = BufferCapabilities::log();
-                        let range = BufferRange::between(
-                            BufferPosition::zero(),
-                            buffer.content().end()
-                        );
-                        buffer.delete_range(&mut ctx.editor.word_database, range, &mut ctx.editor.events);
+                        .and_then(|v| buffers.get_mut(v.buffer_handle))
+                    {
+                        buffer.capabilities.auto_close = auto_close;
 
-                        command.stdin(Stdio::null());
-                        command.stdout(Stdio::piped());
-                        command.stderr(Stdio::null());
+                        if let Some(mut command) = command {
+                            buffer.capabilities = BufferCapabilities::log();
+                            buffer.capabilities.auto_close = auto_close;
 
-                        ctx.platform.enqueue_request(PlatformRequest::SpawnProcess {
-                            tag: ProcessTag::Buffer(buffer.handle()),
-                            command,
-                            buf_len: 4 * 1024,
-                        });
+                            let range = BufferRange::between(
+                                BufferPosition::zero(),
+                                buffer.content().end()
+                            );
+                            buffer.delete_range(&mut ctx.editor.word_database, range, &mut ctx.editor.events);
+
+                            command.stdin(Stdio::null());
+                            command.stdout(Stdio::piped());
+                            command.stderr(Stdio::null());
+
+                            ctx.platform.enqueue_request(PlatformRequest::SpawnProcess {
+                                tag: ProcessTag::Buffer(buffer.handle()),
+                                command,
+                                buf_len: 4 * 1024,
+                            });
+                        }
                     }
 
                     Ok(None)
@@ -781,7 +789,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                     .and_then(|h| editor.buffer_views.get(h))
                     .map(|v| v.buffer_handle);
                 if maybe_buffer_handle == Some(buffer_handle) {
-                    client.set_buffer_view_handle(None);
+                    client.set_buffer_view_handle(None, &mut editor.events);
                 }
             }
 
@@ -812,7 +820,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             );
 
             for client in ctx.clients.iter_mut() {
-                client.set_buffer_view_handle(None);
+                client.set_buffer_view_handle(None, &mut ctx.editor.events);
             }
 
             ctx.editor
@@ -1125,7 +1133,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                         .buffer_views
                         .buffer_view_handle_from_buffer_handle(client_handle, buffer_handle);
                     if let Some(client) = ctx.clients.get_mut(client_handle) {
-                        client.set_buffer_view_handle(Some(buffer_view_handle));
+                        client.set_buffer_view_handle(Some(buffer_view_handle), &mut ctx.editor.events);
                     }
                 }
 

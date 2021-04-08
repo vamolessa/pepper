@@ -155,7 +155,7 @@ impl ServerApplication {
                     }
                     ApplicationEvent::ConnectionClose { handle } => {
                         clients.on_client_left(handle);
-                        if clients.iter_mut().next().is_none() {
+                        if clients.iter().next().is_none() {
                             break 'event_loop;
                         }
                     }
@@ -199,7 +199,7 @@ impl ServerApplication {
             }
 
             let focused_client_handle = clients.focused_handle();
-            for c in clients.iter_mut() {
+            for c in clients.iter() {
                 if !c.has_ui() {
                     continue;
                 }

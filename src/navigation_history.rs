@@ -151,7 +151,7 @@ impl NavigationHistory {
         drop(cursors);
 
         if let Some(client) = clients.get_mut(client_handle) {
-            client.set_buffer_view_handle(Some(view_handle));
+            client.set_buffer_view_handle(Some(view_handle), &mut editor.events);
         }
     }
 

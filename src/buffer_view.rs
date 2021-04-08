@@ -545,13 +545,6 @@ impl BufferViewCollection {
         self.buffer_views[handle.0 as usize].as_mut()
     }
 
-    pub fn iter_with_handles(&self) -> impl Iterator<Item = (BufferViewHandle, &BufferView)> {
-        self.buffer_views
-            .iter()
-            .enumerate()
-            .filter_map(|(i, v)| Some(BufferViewHandle(i as _)).zip(v.as_ref()))
-    }
-
     pub fn on_buffer_insert_text(&mut self, buffer_handle: BufferHandle, range: BufferRange) {
         for view in self.buffer_views.iter_mut().flatten() {
             if view.buffer_handle != buffer_handle {
@@ -580,12 +573,14 @@ impl BufferViewCollection {
         buffer_handle: BufferHandle,
     ) -> BufferViewHandle {
         let current_buffer_view_handle = self
-            .iter_with_handles()
-            .filter(|(_, view)| {
-                view.buffer_handle == buffer_handle && view.client_handle == client_handle
+            .buffer_views
+            .iter()
+            .position(|v| {
+                v.as_ref()
+                    .map(|v| v.buffer_handle == buffer_handle && v.client_handle == client_handle)
+                    .unwrap_or(false)
             })
-            .map(|(h, _)| h)
-            .next();
+            .map(|i| BufferViewHandle(i as _));
 
         match current_buffer_view_handle {
             Some(handle) => handle,

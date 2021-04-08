@@ -873,35 +873,33 @@ impl Client {
 
         for event in editor.events.iter() {
             match event {
-                EditorEvent::Idle => {
+                &EditorEvent::Idle => {
                     helper::send_pending_did_change(self, platform, editor, json);
                 }
-                EditorEvent::BufferOpen { handle } => {
-                    let handle = *handle;
+                &EditorEvent::BufferLoad { handle } => {
+                    let handle = handle;
                     self.versioned_buffers.dispose(handle);
                     self.diagnostics.on_load_buffer(editor, handle);
                     helper::send_did_open(self, platform, editor, json, handle);
                 }
-                EditorEvent::BufferInsertText {
+                &EditorEvent::BufferInsertText {
                     handle,
                     range,
                     text,
                 } => {
                     let text = text.as_str(&editor.events);
                     let range = BufferRange::between(range.from, range.from);
-                    self.versioned_buffers.add_edit(*handle, range, text);
+                    self.versioned_buffers.add_edit(handle, range, text);
                 }
-                EditorEvent::BufferDeleteText { handle, range } => {
-                    self.versioned_buffers.add_edit(*handle, *range, "");
+                &EditorEvent::BufferDeleteText { handle, range } => {
+                    self.versioned_buffers.add_edit(handle, range, "");
                 }
-                EditorEvent::BufferSave { handle, .. } => {
-                    let handle = *handle;
+                &EditorEvent::BufferSave { handle, .. } => {
                     self.diagnostics.on_save_buffer(editor, handle);
                     helper::send_pending_did_change(self, platform, editor, json);
                     helper::send_did_save(self, platform, editor, json, handle);
                 }
-                EditorEvent::BufferClose { handle } => {
-                    let handle = *handle;
+                &EditorEvent::BufferClose { handle } => {
                     if self.log_buffer_handle == Some(handle) {
                         self.log_buffer_handle = None;
                     }
@@ -909,6 +907,7 @@ impl Client {
                     self.diagnostics.on_close_buffer(handle);
                     helper::send_did_close(self, platform, editor, json, handle);
                 }
+                EditorEvent::ClientChangeBufferView { .. } => (),
             }
         }
     }

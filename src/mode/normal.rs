@@ -107,7 +107,10 @@ impl State {
                 Key::Char('a') => {
                     let client = ctx.clients.get_mut(ctx.client_handle)?;
                     let previous_buffer_view_handle = client.previous_buffer_view_handle();
-                    client.set_buffer_view_handle(previous_buffer_view_handle);
+                    client.set_buffer_view_handle(
+                        previous_buffer_view_handle,
+                        &mut ctx.editor.events,
+                    );
                 }
                 _ => (),
             },
@@ -520,7 +523,10 @@ impl State {
                                         &ctx.editor.buffer_views,
                                     );
                                     if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
-                                        client.set_buffer_view_handle(Some(handle));
+                                        client.set_buffer_view_handle(
+                                            Some(handle),
+                                            &mut ctx.editor.events,
+                                        );
                                     }
                                 }
                             }
@@ -1460,7 +1466,7 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) -> Option<()> {
     ctx.editor.mode.normal_state.movement_kind = CursorMovementKind::PositionAndAnchor;
     ctx.clients
         .get_mut(ctx.client_handle)?
-        .set_buffer_view_handle(Some(buffer_view_handle));
+        .set_buffer_view_handle(Some(buffer_view_handle), &mut ctx.editor.events);
 
     None
 }
