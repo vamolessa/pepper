@@ -17,17 +17,17 @@ use crate::{
 pub const BUFFER_LEN: usize = 4 * 1024;
 
 pub enum Uri<'a> {
-    None,
     AbsolutePath(&'a Path),
     RelativePath(&'a Path, &'a Path),
 }
 impl<'a> Uri<'a> {
-    pub fn parse(uri: &'a str) -> Self {
+    pub fn parse(uri: &'a str) -> Option<Self> {
         const FILE_SCHEME_PREFIX: &str = "file:///";
         if uri.starts_with(FILE_SCHEME_PREFIX) {
-            Uri::AbsolutePath(Path::new(&uri[FILE_SCHEME_PREFIX.len()..]))
+            let path = Path::new(&uri[FILE_SCHEME_PREFIX.len()..]);
+            Some(Uri::AbsolutePath(path))
         } else {
-            Uri::None
+            None
         }
     }
 }
@@ -73,7 +73,6 @@ impl<'a> fmt::Display for Uri<'a> {
         }
 
         match *self {
-            Self::None => Ok(()),
             Self::AbsolutePath(path) => {
                 f.write_str("file:///")?;
                 fmt_path(f, path)

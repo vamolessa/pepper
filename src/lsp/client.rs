@@ -739,7 +739,7 @@ impl Client {
                 let params: Params = deserialize!(notification.params);
                 let uri = params.uri.as_str(json);
                 let path = match Uri::parse(uri) {
-                    Uri::AbsolutePath(path) => path,
+                    Some(Uri::AbsolutePath(path)) => path,
                     _ => return,
                 };
 
@@ -926,9 +926,9 @@ impl Client {
                 if let Some(requesting_client) = requesting_client.and_then(|h| clients.get_mut(h))
                 {
                     let path = match Uri::parse(location.uri.as_str(json)) {
-                        Uri::None => return,
-                        Uri::AbsolutePath(path) => path,
-                        Uri::RelativePath(_, path) => path,
+                        Some(Uri::AbsolutePath(path)) => path,
+                        Some(Uri::RelativePath(_, path)) => path,
+                        None => return,
                     };
                     let line_index = Some(location.range.start.line as _);
                     if let Ok(buffer_view_handle) =
