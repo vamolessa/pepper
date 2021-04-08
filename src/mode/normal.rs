@@ -718,6 +718,7 @@ impl State {
                     &mut ctx.editor.word_database,
                     &mut ctx.editor.events,
                 );
+
                 ctx.editor
                     .buffers
                     .get_mut(buffer_view.buffer_handle)?
@@ -995,7 +996,17 @@ impl State {
                     &mut ctx.editor.events,
                 );
 
+                this.movement_kind = CursorMovementKind::PositionAndAnchor;
+                this.is_recording_auto_macro = false;
+
+                ctx.editor.trigger_event_handlers(
+                    ctx.platform,
+                    ctx.clients,
+                    Some(ctx.client_handle),
+                );
+
                 let mut buf = ctx.editor.string_pool.acquire();
+                let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
                 if ctx.platform.read_from_clipboard(&mut buf) {
                     buffer_view.insert_text_at_cursor_positions(
                         &mut ctx.editor.buffers,
@@ -1011,9 +1022,6 @@ impl State {
                     .buffers
                     .get_mut(buffer_view.buffer_handle)?
                     .commit_edits();
-                this.movement_kind = CursorMovementKind::PositionAndAnchor;
-
-                this.is_recording_auto_macro = false;
                 return None;
             }
             Key::Ctrl('y') => match keys.next(&ctx.editor.buffered_keys) {
@@ -1025,6 +1033,17 @@ impl State {
                         &mut ctx.editor.word_database,
                         &mut ctx.editor.events,
                     );
+
+                    this.movement_kind = CursorMovementKind::PositionAndAnchor;
+                    this.is_recording_auto_macro = false;
+
+                    ctx.editor.trigger_event_handlers(
+                        ctx.platform,
+                        ctx.clients,
+                        Some(ctx.client_handle),
+                    );
+
+                    let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
                     if let Some(key) = RegisterKey::from_char(c) {
                         let register = ctx.editor.registers.get(key);
                         buffer_view.insert_text_at_cursor_positions(
@@ -1039,9 +1058,6 @@ impl State {
                         .buffers
                         .get_mut(buffer_view.buffer_handle)?
                         .commit_edits();
-                    this.movement_kind = CursorMovementKind::PositionAndAnchor;
-
-                    this.is_recording_auto_macro = false;
                     return None;
                 }
                 _ => (),

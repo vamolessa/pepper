@@ -242,6 +242,32 @@ impl Editor {
                 }
             }
             ClientEvent::Key(client_handle, key) => {
+                fn parse_and_set_keys_from_register(
+                    editor: &mut Editor,
+                    register_key: RegisterKey,
+                ) {
+                    editor.buffered_keys.0.clear();
+
+                    let keys = editor.registers.get(register_key);
+                    if keys.is_empty() {
+                        return;
+                    }
+
+                    for key in KeyParser::new(keys) {
+                        match key {
+                            Ok(key) => editor.buffered_keys.0.push(key),
+                            Err(error) => {
+                                editor
+                                    .status_bar
+                                    .write(MessageKind::Error)
+                                    .fmt(format_args!("error parsing keys '{}'\n{}", keys, &error));
+                                editor.buffered_keys.0.clear();
+                                return;
+                            }
+                        }
+                    }
+                }
+
                 if key != Key::None {
                     self.status_bar.clear();
                 }
@@ -294,7 +320,7 @@ impl Editor {
                                 return EditorControlFlow::QuitAll;
                             }
                             Some(ModeOperation::ExecuteMacro(key)) => {
-                                self.parse_and_set_keys_from_register(key);
+                                parse_and_set_keys_from_register(self, key);
                                 continue 'key_queue_loop;
                             }
                         }
@@ -317,7 +343,7 @@ impl Editor {
                             self.buffered_keys.0.clear();
                         }
                         _ => {
-                            self.parse_and_set_keys_from_register(KEY_QUEUE_REGISTER);
+                            parse_and_set_keys_from_register(self, KEY_QUEUE_REGISTER);
                             self.registers.get_mut(KEY_QUEUE_REGISTER).clear();
                         }
                     }
@@ -402,29 +428,7 @@ impl Editor {
         }
     }
 
-    fn parse_and_set_keys_from_register(&mut self, register_key: RegisterKey) {
-        self.buffered_keys.0.clear();
-
-        let keys = self.registers.get(register_key);
-        if keys.is_empty() {
-            return;
-        }
-
-        for key in KeyParser::new(keys) {
-            match key {
-                Ok(key) => self.buffered_keys.0.push(key),
-                Err(error) => {
-                    self.status_bar
-                        .write(MessageKind::Error)
-                        .fmt(format_args!("error parsing keys '{}'\n{}", keys, &error));
-                    self.buffered_keys.0.clear();
-                    return;
-                }
-            }
-        }
-    }
-
-    fn trigger_event_handlers(
+    pub fn trigger_event_handlers(
         &mut self,
         platform: &mut Platform,
         clients: &mut ClientManager,
