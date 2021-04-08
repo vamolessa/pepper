@@ -925,7 +925,11 @@ impl Client {
 
                 if let Some(requesting_client) = requesting_client.and_then(|h| clients.get_mut(h))
                 {
-                    let path = Path::new(location.uri.as_str(json));
+                    let path = match Uri::parse(location.uri.as_str(json)) {
+                        Uri::None => return,
+                        Uri::AbsolutePath(path) => path,
+                        Uri::RelativePath(_, path) => path,
+                    };
                     let line_index = Some(location.range.start.line as _);
                     if let Ok(buffer_view_handle) =
                         editor.buffer_views.buffer_view_handle_from_path(
@@ -938,7 +942,8 @@ impl Client {
                             &mut editor.events,
                         )
                     {
-                        //
+                        requesting_client
+                            .set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
                     }
                 }
             }
