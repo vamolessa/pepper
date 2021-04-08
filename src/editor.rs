@@ -374,7 +374,7 @@ impl Editor {
                 }
             }
             ProcessTag::Lsp(client_handle) => {
-                lsp::ClientManager::on_process_stdout(self, platform, client_handle, bytes)
+                lsp::ClientManager::on_process_stdout(self, platform, clients, client_handle, bytes)
             }
             ProcessTag::Command(index) => {
                 CommandManager::on_process_stdout(self, platform, clients, index, bytes)

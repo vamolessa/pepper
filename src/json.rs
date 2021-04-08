@@ -20,6 +20,7 @@ macro_rules! impl_try_from_json_value {
 impl_try_from_json_value!(bool, JsonValue::Boolean(b) => b);
 impl_try_from_json_value!(JsonInteger, JsonValue::Integer(i) => i);
 impl_try_from_json_value!(usize, JsonValue::Integer(i) => { if i < 0 { return Err(JsonConvertError); } i as _ });
+impl_try_from_json_value!(u32, JsonValue::Integer(i) => { if i < 0 { return Err(JsonConvertError); } i as _ });
 impl_try_from_json_value!(JsonNumber, JsonValue::Number(n) => n);
 impl_try_from_json_value!(JsonString, JsonValue::String(s) => s);
 impl_try_from_json_value!(JsonArray, JsonValue::Array(a) => a);

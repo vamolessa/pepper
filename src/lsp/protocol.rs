@@ -1,10 +1,13 @@
 use std::{
+    convert::From,
     fmt, io,
     ops::Range,
     path::{Component, Path, Prefix},
 };
 
 use crate::{
+    buffer_position::{BufferPosition, BufferRange},
+    client,
     json::{
         FromJson, Json, JsonConvertError, JsonInteger, JsonKey, JsonObject, JsonString, JsonValue,
     },
@@ -182,7 +185,13 @@ pub struct ServerResponse {
 
 #[derive(Default, Clone, Copy, PartialEq, Eq)]
 pub struct RequestId(pub usize);
+impl From<RequestId> for JsonValue {
+    fn from(id: RequestId) -> JsonValue {
+        JsonValue::Integer(id.0 as _)
+    }
+}
 
+#[derive(Default)]
 pub struct ResponseError {
     pub code: JsonInteger,
     pub message: JsonKey,
@@ -211,17 +220,118 @@ impl<'json> FromJson<'json> for ResponseError {
             JsonValue::Object(object) => object,
             _ => return Err(JsonConvertError),
         };
-        let mut this = Self {
-            code: JsonInteger::default(),
-            message: JsonKey::default(),
-            data: JsonValue::Null,
-        };
+        let mut this = Self::default();
         for (key, value) in value.members(json) {
             match key {
                 "code" => this.code = FromJson::from_json(value, json)?,
                 "message" => this.message = FromJson::from_json(value, json)?,
                 "data" => this.data = FromJson::from_json(value, json)?,
-                _ => (),
+                _ => return Err(JsonConvertError),
+            }
+        }
+        Ok(this)
+    }
+}
+
+#[derive(Default)]
+pub struct DocumentPosition {
+    pub line: u32,
+    pub character: u32,
+}
+impl DocumentPosition {
+    pub fn to_json_value(&self, json: &mut Json) -> JsonValue {
+        let mut value = JsonObject::default();
+        value.set("line".into(), JsonValue::Integer(self.line as _), json);
+        value.set(
+            "character".into(),
+            JsonValue::Integer(self.character as _),
+            json,
+        );
+        value.into()
+    }
+}
+impl From<BufferPosition> for DocumentPosition {
+    fn from(position: BufferPosition) -> Self {
+        Self {
+            line: position.line_index as _,
+            character: position.column_byte_index as _,
+        }
+    }
+}
+impl<'json> FromJson<'json> for DocumentPosition {
+    fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
+        let value = match value {
+            JsonValue::Object(object) => object,
+            _ => return Err(JsonConvertError),
+        };
+        let mut this = Self::default();
+        for (key, value) in value.members(json) {
+            match key {
+                "line" => this.line = FromJson::from_json(value, json)?,
+                "character" => this.character = FromJson::from_json(value, json)?,
+                _ => return Err(JsonConvertError),
+            }
+        }
+        Ok(this)
+    }
+}
+
+#[derive(Default)]
+pub struct DocumentRange {
+    pub start: DocumentPosition,
+    pub end: DocumentPosition,
+}
+impl DocumentRange {
+    pub fn to_json_value(&self, json: &mut Json) -> JsonValue {
+        let mut value = JsonObject::default();
+        value.set("start".into(), self.start.to_json_value(json), json);
+        value.set("end".into(), self.end.to_json_value(json), json);
+        value.into()
+    }
+}
+impl From<BufferRange> for DocumentRange {
+    fn from(range: BufferRange) -> Self {
+        Self {
+            start: range.from.into(),
+            end: range.to.into(),
+        }
+    }
+}
+impl<'json> FromJson<'json> for DocumentRange {
+    fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
+        let value = match value {
+            JsonValue::Object(object) => object,
+            _ => return Err(JsonConvertError),
+        };
+        let mut this = Self::default();
+        for (key, value) in value.members(json) {
+            match key {
+                "start" => this.start = FromJson::from_json(value, json)?,
+                "end" => this.end = FromJson::from_json(value, json)?,
+                _ => return Err(JsonConvertError),
+            }
+        }
+        Ok(this)
+    }
+}
+
+#[derive(Default)]
+pub struct DocumentLocation {
+    pub uri: JsonString,
+    pub range: DocumentRange,
+}
+impl<'json> FromJson<'json> for DocumentLocation {
+    fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
+        let value = match value {
+            JsonValue::Object(object) => object,
+            _ => return Err(JsonConvertError),
+        };
+        let mut this = Self::default();
+        for (key, value) in value.members(json) {
+            match key {
+                "uri" => this.uri = FromJson::from_json(value, json)?,
+                "range" => this.range = FromJson::from_json(value, json)?,
+                _ => return Err(JsonConvertError),
             }
         }
         Ok(this)
@@ -443,9 +553,10 @@ impl Protocol {
     }
 }
 
-struct PendingRequest {
-    id: RequestId,
-    method: &'static str,
+pub struct PendingRequest {
+    pub id: RequestId,
+    pub method: &'static str,
+    pub requesting_client: Option<client::ClientHandle>,
 }
 
 #[derive(Default)]
@@ -454,7 +565,12 @@ pub struct PendingRequestColection {
 }
 
 impl PendingRequestColection {
-    pub fn add(&mut self, id: RequestId, method: &'static str) {
+    pub fn add(
+        &mut self,
+        id: RequestId,
+        method: &'static str,
+        requesting_client: Option<client::ClientHandle>,
+    ) {
         for request in &mut self.pending_requests {
             if request.id.0 == 0 {
                 request.id = id;
@@ -463,16 +579,19 @@ impl PendingRequestColection {
             }
         }
 
-        self.pending_requests.push(PendingRequest { id, method })
+        self.pending_requests.push(PendingRequest {
+            id,
+            method,
+            requesting_client,
+        })
     }
 
-    pub fn take(&mut self, id: RequestId) -> Option<&'static str> {
+    pub fn take(&mut self, id: RequestId) -> Option<PendingRequest> {
         for i in 0..self.pending_requests.len() {
             let request = &self.pending_requests[i];
             if request.id == id {
-                let method = request.method;
-                self.pending_requests.swap_remove(i);
-                return Some(method);
+                let request = self.pending_requests.swap_remove(i);
+                return Some(request);
             }
         }
         None

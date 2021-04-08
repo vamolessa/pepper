@@ -79,11 +79,8 @@ pub fn client_capabilities(json: &mut Json) -> JsonValue {
                 json,
             );
 
-            //let mut change_annotation_support = JsonObject::default();
-            //change_annotation_support.set("groupsOnLabel".into(), false.into(), json);
             workspace_edit_capabilities.set(
                 "changeAnnotationSupport".into(),
-                //change_annotation_support.into(),
                 JsonValue::Null,
                 json,
             );

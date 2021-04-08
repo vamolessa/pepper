@@ -1174,9 +1174,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             ctx.args.get_flags(&mut [])?;
             ctx.args.assert_empty()?;
 
+            let client_handle = ctx.client_handle;
             let (buffer_handle, position) = current_buffer_and_main_position(&ctx)?;
             access_lsp(&mut ctx, buffer_handle, |editor, platform, client, json| {
-                client.hover(editor, platform, json, buffer_handle, position)
+                client.hover(editor, platform, json, buffer_handle, position, client_handle)
             })?;
             Ok(None)
         },
@@ -1186,7 +1187,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         alias: "",
         help: concat!(
             "performs a lsp signature help action at the current buffer's main cursor position\n",
-            "lsp-signature_help\n",
+            "lsp-signature-help",
         ),
         hidden: false,
         completions: &[],
@@ -1195,9 +1196,32 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             ctx.args.get_flags(&mut [])?;
             ctx.args.assert_empty()?;
 
+            let client_handle = ctx.client_handle;
             let (buffer_handle, position) = current_buffer_and_main_position(&ctx)?;
             access_lsp(&mut ctx, buffer_handle, |editor, platform, client, json| {
-                client.signature_help(editor, platform, json, buffer_handle, position)
+                client.signature_help(editor, platform, json, buffer_handle, position, client_handle)
+            })?;
+            Ok(None)
+        },
+    },
+    BuiltinCommand {
+        name: "lsp-goto-definition",
+        alias: "",
+        help: concat!(
+            "asks the lsp server for the location of definition of the symbol under the main cursor and jumps there\n",
+            "lsp-goto-definition",
+        ),
+        hidden: false,
+        completions: &[],
+        func: |mut ctx| {
+            ctx.args.assert_no_bang()?;
+            ctx.args.get_flags(&mut [])?;
+            ctx.args.assert_empty()?;
+
+            let client_handle = ctx.client_handle;
+            let (buffer_handle, position) = current_buffer_and_main_position(&ctx)?;
+            access_lsp(&mut ctx, buffer_handle, |editor, platform, client, json| {
+                client.definition(editor, platform, json, buffer_handle, position, client_handle)
             })?;
             Ok(None)
         },

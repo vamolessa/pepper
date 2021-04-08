@@ -8,8 +8,9 @@ use std::{
 
 use crate::{
     application::ProcessTag,
-    buffer::BufferHandle,
+    buffer::{Buffer, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
+    client,
     editor::Editor,
     editor_utils::{MessageKind, StatusBar},
     events::EditorEvent,
@@ -20,8 +21,9 @@ use crate::{
     lsp::{
         capabilities,
         protocol::{
-            self, PendingRequestColection, Protocol, ResponseError, ServerEvent,
-            ServerNotification, ServerRequest, ServerResponse, Uri,
+            self, DocumentLocation, DocumentPosition, DocumentRange, PendingRequestColection,
+            Protocol, ResponseError, ServerEvent, ServerNotification, ServerRequest,
+            ServerResponse, Uri,
         },
     },
     platform::{Platform, PlatformRequest, ProcessHandle},
@@ -465,6 +467,7 @@ impl Client {
         json: &mut Json,
         buffer_handle: BufferHandle,
         position: BufferPosition,
+        requesting_client: Option<client::ClientHandle>,
     ) {
         if !self.server_capabilities.hoverProvider.0 {
             return;
@@ -473,13 +476,19 @@ impl Client {
         if let Some(buffer_path) = editor.buffers.get(buffer_handle).and_then(|b| b.path()) {
             let text_document =
                 helper::text_document_with_id(&editor.current_directory, buffer_path, json);
-            let position = helper::position(position, json);
+            let position = DocumentPosition::from(position);
 
             let mut params = JsonObject::default();
             params.set("textDocument".into(), text_document.into(), json);
-            params.set("position".into(), position.into(), json);
+            params.set("position".into(), position.to_json_value(json), json);
 
-            self.request(platform, json, "textDocument/hover", params);
+            self.request(
+                platform,
+                json,
+                "textDocument/hover",
+                params,
+                requesting_client,
+            );
         }
     }
 
@@ -490,21 +499,60 @@ impl Client {
         json: &mut Json,
         buffer_handle: BufferHandle,
         position: BufferPosition,
+        requesting_client: Option<client::ClientHandle>,
     ) {
         if !self.server_capabilities.signatureHelpProvider.on {
             return;
         }
 
-        if let Some(buffer_path) = editor.buffers.get(buffer_handle).and_then(|b| b.path()) {
+        if let Some(buffer_path) = editor.buffers.get(buffer_handle).and_then(Buffer::path) {
             let text_document =
                 helper::text_document_with_id(&editor.current_directory, buffer_path, json);
-            let position = helper::position(position, json);
+            let position = DocumentPosition::from(position);
 
             let mut params = JsonObject::default();
             params.set("textDocument".into(), text_document.into(), json);
-            params.set("position".into(), position.into(), json);
+            params.set("position".into(), position.to_json_value(json), json);
 
-            self.request(platform, json, "textDocument/signatureHelp", params);
+            self.request(
+                platform,
+                json,
+                "textDocument/signatureHelp",
+                params,
+                requesting_client,
+            );
+        }
+    }
+
+    pub fn definition(
+        &mut self,
+        editor: &Editor,
+        platform: &mut Platform,
+        json: &mut Json,
+        buffer_handle: BufferHandle,
+        position: BufferPosition,
+        requesting_client: Option<client::ClientHandle>,
+    ) {
+        if !self.server_capabilities.definitionProvider.0 {
+            return;
+        }
+
+        if let Some(buffer_path) = editor.buffers.get(buffer_handle).and_then(Buffer::path) {
+            let text_document =
+                helper::text_document_with_id(&editor.current_directory, buffer_path, json);
+            let position = DocumentPosition::from(position);
+
+            let mut params = JsonObject::default();
+            params.set("textDocument".into(), text_document.into(), json);
+            params.set("position".into(), position.to_json_value(json), json);
+
+            self.request(
+                platform,
+                json,
+                "textDocument/definition",
+                params,
+                requesting_client,
+            );
         }
     }
 
@@ -533,13 +581,7 @@ impl Client {
         }
     }
 
-    fn on_request(
-        &mut self,
-        editor: &mut Editor,
-        platform: &mut Platform,
-        json: &mut Json,
-        request: ServerRequest,
-    ) {
+    fn on_request(&mut self, platform: &mut Platform, json: &mut Json, request: ServerRequest) {
         macro_rules! deserialize {
             ($value:expr) => {
                 match FromJson::from_json($value, &json) {
@@ -743,9 +785,17 @@ impl Client {
         &mut self,
         editor: &mut Editor,
         platform: &mut Platform,
+        clients: &mut client::ClientManager,
         json: &mut Json,
         response: ServerResponse,
     ) {
+        let request = match self.pending_requests.take(response.id) {
+            Some(request) => request,
+            None => return,
+        };
+        let method = request.method;
+        let requesting_client = request.requesting_client;
+
         macro_rules! deserialize {
             ($value:expr) => {
                 match FromJson::from_json($value, json) {
@@ -754,7 +804,7 @@ impl Client {
                         self.respond(
                             platform,
                             json,
-                            JsonValue::Null,
+                            request.id.into(),
                             Err(ResponseError::parse_error()),
                         );
                         return;
@@ -762,11 +812,6 @@ impl Client {
                 }
             };
         }
-
-        let method = match self.pending_requests.take(response.id) {
-            Some(method) => method,
-            None => return,
-        };
 
         self.write_to_log_buffer(|buf| {
             use io::Write;
@@ -848,6 +893,55 @@ impl Client {
                     }
                 }
             }
+            "textDocument/definition" => {
+                let location = match result {
+                    JsonValue::Object(_) => result,
+                    JsonValue::Array(locations) => match locations.elements(json).next() {
+                        Some(location) => location,
+                        None => return,
+                    },
+                    _ => {
+                        self.respond(
+                            platform,
+                            json,
+                            request.id.into(),
+                            Err(ResponseError::parse_error()),
+                        );
+                        return;
+                    }
+                };
+                let location = match DocumentLocation::from_json(location, json) {
+                    Ok(location) => location,
+                    Err(_) => {
+                        self.respond(
+                            platform,
+                            json,
+                            request.id.into(),
+                            Err(ResponseError::parse_error()),
+                        );
+                        return;
+                    }
+                };
+
+                if let Some(requesting_client) = requesting_client.and_then(|h| clients.get_mut(h))
+                {
+                    let path = Path::new(location.uri.as_str(json));
+                    let line_index = Some(location.range.start.line as _);
+                    if let Ok(buffer_view_handle) =
+                        editor.buffer_views.buffer_view_handle_from_path(
+                            requesting_client.handle(),
+                            &mut editor.buffers,
+                            &mut editor.word_database,
+                            &self.root,
+                            path,
+                            line_index,
+                            &mut editor.events,
+                        )
+                    {
+                        //
+                    }
+                }
+            }
             _ => (),
         }
     }
@@ -918,6 +1012,7 @@ impl Client {
         json: &mut Json,
         method: &'static str,
         params: JsonObject,
+        requesting_client: Option<client::ClientHandle>,
     ) {
         let params = params.into();
         self.write_to_log_buffer(|buf| {
@@ -926,7 +1021,7 @@ impl Client {
             json.write(buf, &params);
         });
         let id = self.protocol.request(platform, json, method, params);
-        self.pending_requests.add(id, method);
+        self.pending_requests.add(id, method, requesting_client);
     }
 
     fn respond(
@@ -997,7 +1092,7 @@ impl Client {
             json,
         );
 
-        self.request(platform, json, "initialize", params)
+        self.request(platform, json, "initialize", params, None)
     }
 }
 
@@ -1034,24 +1129,6 @@ mod helper {
         let uri = json.fmt_string(format_args!("{}", get_path_uri(current_directory, path)));
         id.set("uri".into(), uri.into(), json);
         id
-    }
-
-    pub fn position(position: BufferPosition, json: &mut Json) -> JsonObject {
-        let line = JsonValue::Integer(position.line_index as _);
-        let character = JsonValue::Integer(position.column_byte_index as _);
-        let mut p = JsonObject::default();
-        p.set("line".into(), line, json);
-        p.set("character".into(), character, json);
-        p
-    }
-
-    pub fn range(range: BufferRange, json: &mut Json) -> JsonObject {
-        let start = position(range.from, json);
-        let end = position(range.to, json);
-        let mut r = JsonObject::default();
-        r.set("start".into(), start.into(), json);
-        r.set("end".into(), end.into(), json);
-        r
     }
 
     pub fn extract_markup_content<'json>(content: JsonValue, json: &'json Json) -> &'json str {
@@ -1149,7 +1226,7 @@ mod helper {
                     for edit in &versioned_buffer.pending_edits {
                         let mut change_event = JsonObject::default();
 
-                        let edit_range = range(edit.buffer_range, json).into();
+                        let edit_range = DocumentRange::from(edit.buffer_range).to_json_value(json);
                         change_event.set("range".into(), edit_range, json);
 
                         let text = &versioned_buffer.texts[edit.text_range.clone()];
@@ -1236,7 +1313,7 @@ mod helper {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub struct ClientHandle(usize);
+pub struct ClientHandle(u8);
 impl fmt::Display for ClientHandle {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.0.fmt(f)
@@ -1285,7 +1362,7 @@ impl ClientManager {
             command,
             buf_len: protocol::BUFFER_LEN,
         });
-        self.entries[handle.0] = Some(ClientManagerEntry {
+        self.entries[handle.0 as usize] = Some(ClientManagerEntry {
             client: Client::new(root, log_buffer_handle),
             json: Json::new(),
         });
@@ -1293,17 +1370,17 @@ impl ClientManager {
     }
 
     pub fn stop(&mut self, platform: &mut Platform, handle: ClientHandle) {
-        if let Some(entry) = &mut self.entries[handle.0] {
+        if let Some(entry) = &mut self.entries[handle.0 as usize] {
             let _ = entry
                 .client
                 .notify(platform, &mut entry.json, "exit", JsonObject::default());
-            self.entries[handle.0] = None;
+            self.entries[handle.0 as usize] = None;
         }
     }
 
     pub fn stop_all(&mut self, platform: &mut Platform) {
         for i in 0..self.entries.len() {
-            self.stop(platform, ClientHandle(i));
+            self.stop(platform, ClientHandle(i as _));
         }
     }
 
@@ -1311,9 +1388,9 @@ impl ClientManager {
     where
         A: FnOnce(&mut Editor, &mut Client, &mut Json) -> R,
     {
-        let mut entry = editor.lsp.entries[handle.0].take()?;
+        let mut entry = editor.lsp.entries[handle.0 as usize].take()?;
         let result = accessor(editor, &mut entry.client, &mut entry.json);
-        editor.lsp.entries[handle.0] = Some(entry);
+        editor.lsp.entries[handle.0 as usize] = Some(entry);
         Some(result)
     }
 
@@ -1326,7 +1403,7 @@ impl ClientManager {
 
     pub fn client_with_handles(&self) -> impl Iterator<Item = (ClientHandle, &Client)> {
         self.entries.iter().enumerate().flat_map(|(i, e)| match e {
-            Some(e) => Some((ClientHandle(i), &e.client)),
+            Some(e) => Some((ClientHandle(i as _), &e.client)),
             None => None,
         })
     }
@@ -1337,7 +1414,7 @@ impl ClientManager {
         handle: ClientHandle,
         process_handle: ProcessHandle,
     ) {
-        if let Some(ref mut entry) = editor.lsp.entries[handle.0] {
+        if let Some(ref mut entry) = editor.lsp.entries[handle.0 as usize] {
             entry.client.protocol.set_process_handle(process_handle);
             entry.client.initialize(platform, &mut entry.json);
         }
@@ -1346,10 +1423,11 @@ impl ClientManager {
     pub fn on_process_stdout(
         editor: &mut Editor,
         platform: &mut Platform,
+        clients: &mut client::ClientManager,
         handle: ClientHandle,
         bytes: &[u8],
     ) {
-        let (mut client, mut json) = match editor.lsp.entries[handle.0].take() {
+        let (mut client, mut json) = match editor.lsp.entries[handle.0 as usize].take() {
             Some(entry) => (entry.client, entry.json),
             None => return,
         };
@@ -1361,25 +1439,23 @@ impl ClientManager {
                 ServerEvent::ParseError => {
                     client.on_parse_error(platform, &mut json, JsonValue::Null)
                 }
-                ServerEvent::Request(request) => {
-                    client.on_request(editor, platform, &mut json, request)
-                }
+                ServerEvent::Request(request) => client.on_request(platform, &mut json, request),
                 ServerEvent::Notification(notification) => {
                     client.on_notification(editor, platform, &mut json, notification)
                 }
                 ServerEvent::Response(response) => {
-                    client.on_response(editor, platform, &mut json, response)
+                    client.on_response(editor, platform, clients, &mut json, response)
                 }
             }
             client.flush_log_buffer(editor);
         }
         events.finish(&mut client.protocol);
 
-        editor.lsp.entries[handle.0] = Some(ClientManagerEntry { client, json });
+        editor.lsp.entries[handle.0 as usize] = Some(ClientManagerEntry { client, json });
     }
 
     pub fn on_process_exit(editor: &mut Editor, handle: ClientHandle) {
-        editor.lsp.entries[handle.0] = None;
+        editor.lsp.entries[handle.0 as usize] = None;
     }
 
     pub fn on_editor_events(editor: &mut Editor, platform: &mut Platform) {
@@ -1396,10 +1472,10 @@ impl ClientManager {
     fn find_free_slot(&mut self) -> ClientHandle {
         for (i, slot) in self.entries.iter_mut().enumerate() {
             if let None = slot {
-                return ClientHandle(i);
+                return ClientHandle(i as _);
             }
         }
-        let handle = ClientHandle(self.entries.len());
+        let handle = ClientHandle(self.entries.len() as _);
         self.entries.push(None);
         handle
     }
