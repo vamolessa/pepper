@@ -3,7 +3,7 @@ use std::{
     sync::{mpsc, Arc},
 };
 
-use crate::{application::ProcessTag, client::ClientHandle};
+use crate::{buffer::BufferHandle, client::ClientHandle, lsp};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
@@ -27,9 +27,6 @@ pub enum Key {
     Esc,
 }
 
-#[derive(Clone, Copy)]
-pub struct ProcessHandle(pub usize);
-
 pub enum PlatformRequest {
     Exit,
     WriteToClient {
@@ -52,6 +49,17 @@ pub enum PlatformRequest {
         handle: ProcessHandle,
     },
 }
+
+#[derive(Clone, Copy)]
+pub enum ProcessTag {
+    Buffer(BufferHandle), // TODO: maybe remove this?
+    BufferInsert(usize),
+    Command(usize),
+    Lsp(lsp::ClientHandle),
+}
+
+#[derive(Clone, Copy)]
+pub struct ProcessHandle(pub usize);
 
 pub struct Platform {
     read_from_clipboard: fn(&mut String) -> bool,

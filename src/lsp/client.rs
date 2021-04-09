@@ -7,7 +7,6 @@ use std::{
 };
 
 use crate::{
-    application::ProcessTag,
     buffer::{Buffer, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
     client,
@@ -26,7 +25,7 @@ use crate::{
             ServerResponse, Uri,
         },
     },
-    platform::{Platform, PlatformRequest, ProcessHandle},
+    platform::{Platform, PlatformRequest, ProcessHandle, ProcessTag},
 };
 
 #[derive(Default)]
@@ -1427,7 +1426,7 @@ impl ClientManager {
         }
     }
 
-    pub fn on_process_stdout(
+    pub fn on_process_output(
         editor: &mut Editor,
         platform: &mut Platform,
         clients: &mut client::ClientManager,

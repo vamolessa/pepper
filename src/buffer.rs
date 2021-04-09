@@ -4,6 +4,7 @@ use std::{
     io,
     ops::RangeBounds,
     path::{Path, PathBuf},
+    process::{Command, Stdio},
     str::FromStr,
 };
 
@@ -12,6 +13,7 @@ use crate::{
     client::ClientManager,
     events::{EditorEvent, EditorEventQueue},
     history::{Edit, EditKind, History},
+    platform::{Platform, PlatformRequest, ProcessHandle, ProcessTag, SharedBuf},
     syntax::{HighlightResult, HighlightedBuffer, SyntaxCollection, SyntaxHandle},
     word_database::{WordDatabase, WordIter, WordKind},
 };
@@ -1220,9 +1222,19 @@ impl FromStr for BufferHandle {
     }
 }
 
+pub struct InsertProcess {
+    pub alive: bool,
+    pub buffer_handle: BufferHandle,
+    pub position: BufferPosition,
+    pub input: Option<SharedBuf>,
+    pub output: Vec<u8>,
+    pub split_on_byte: Option<u8>,
+}
+
 #[derive(Default)]
 pub struct BufferCollection {
     buffers: Vec<Buffer>,
+    insert_processes: Vec<InsertProcess>,
 }
 
 impl BufferCollection {
@@ -1318,6 +1330,117 @@ impl BufferCollection {
         }
 
         buffer.dispose(word_database);
+    }
+
+    pub fn spawn_insert_process(
+        &mut self,
+        platform: &mut Platform,
+        mut command: Command,
+        buffer_handle: BufferHandle,
+        position: BufferPosition,
+        stdin: Option<SharedBuf>,
+        split_on_byte: Option<u8>,
+    ) {
+        let mut index = None;
+        for (i, process) in self.insert_processes.iter().enumerate() {
+            if !process.alive {
+                index = Some(i);
+                break;
+            }
+        }
+        let index = match index {
+            Some(index) => index,
+            None => {
+                let index = self.insert_processes.len();
+                self.insert_processes.push(InsertProcess {
+                    alive: false,
+                    buffer_handle,
+                    position,
+                    input: None,
+                    output: Vec::new(),
+                    split_on_byte: None,
+                });
+                index
+            }
+        };
+
+        let process = &mut self.insert_processes[index];
+        process.alive = true;
+        process.output.clear();
+        process.buffer_handle = buffer_handle;
+        process.position = position;
+        process.split_on_byte = split_on_byte;
+
+        process.input = stdin;
+        let stdin = match process.input {
+            Some(_) => Stdio::piped(),
+            None => Stdio::null(),
+        };
+        command.stdin(stdin);
+        command.stderr(Stdio::null());
+
+        platform.enqueue_request(PlatformRequest::SpawnProcess {
+            tag: ProcessTag::BufferInsert(index),
+            command,
+            buf_len: 4 * 1024,
+        });
+    }
+
+    pub fn on_process_spawned(
+        &mut self,
+        platform: &mut Platform,
+        index: usize,
+        handle: ProcessHandle,
+    ) {
+        if let Some(buf) = self.insert_processes[index].input.take() {
+            platform.enqueue_request(PlatformRequest::WriteToProcess { handle, buf });
+        }
+    }
+
+    pub fn on_process_output(
+        &mut self,
+        word_database: &mut WordDatabase,
+        index: usize,
+        bytes: &[u8],
+        events: &mut EditorEventQueue,
+    ) {
+        let process = &mut self.insert_processes[index];
+        process.output.extend_from_slice(bytes);
+        let split_on_byte = match process.split_on_byte {
+            Some(byte) => byte,
+            None => return,
+        };
+        let len = match process.output.iter().rposition(|&b| b == split_on_byte) {
+            Some(i) => i,
+            None => return,
+        };
+
+        let buffer = &mut self.buffers[process.buffer_handle.0 as usize];
+        if buffer.alive {
+            let text = &process.output[..len];
+            if let Ok(text) = std::str::from_utf8(text) {
+                let range = buffer.insert_text(word_database, process.position, text, events);
+                process.position = process.position.insert(range);
+            }
+            process.output.drain(..len);
+        }
+    }
+
+    pub fn on_process_exit(
+        &mut self,
+        word_database: &mut WordDatabase,
+        index: usize,
+        events: &mut EditorEventQueue,
+    ) {
+        let process = &mut self.insert_processes[index];
+        process.alive = false;
+
+        let buffer = &mut self.buffers[process.buffer_handle.0 as usize];
+        if buffer.alive {
+            if let Ok(text) = std::str::from_utf8(&process.output) {
+                buffer.insert_text(word_database, process.position, text, events);
+            }
+        }
     }
 }
 

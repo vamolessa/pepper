@@ -1,13 +1,12 @@
 use std::{env, fmt, io, path::Path, sync::mpsc, time::Duration};
 
 use crate::{
-    buffer::{parse_path_and_line_number, BufferHandle},
+    buffer::{parse_path_and_line_number},
     client::{ClientHandle, ClientManager},
     command::CommandOperation,
     editor::{Editor, EditorControlFlow},
     events::{ClientEvent, ClientEventReceiver, ServerEvent},
-    lsp,
-    platform::{Key, Platform, PlatformRequest, ProcessHandle, SharedBuf},
+    platform::{Key, Platform, PlatformRequest, ProcessHandle, SharedBuf, ProcessTag},
     serialization::{DeserializeError, Serialize},
     ui, Args,
 };
@@ -43,13 +42,6 @@ impl Args {
 
         Some(args)
     }
-}
-
-#[derive(Clone, Copy)]
-pub enum ProcessTag {
-    Buffer(BufferHandle),
-    Command(usize),
-    Lsp(lsp::ClientHandle),
 }
 
 pub enum ApplicationEvent {

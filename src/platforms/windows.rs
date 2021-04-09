@@ -57,10 +57,12 @@ use winapi::{
 };
 
 use pepper::{
-    application::{AnyError, ApplicationEvent, ClientApplication, ProcessTag, ServerApplication},
+    application::{AnyError, ApplicationEvent, ClientApplication, ServerApplication},
     client::ClientHandle,
     editor_utils::hash_bytes,
-    platform::{BufPool, ExclusiveBuf, Key, Platform, PlatformRequest, ProcessHandle, SharedBuf},
+    platform::{
+        BufPool, ExclusiveBuf, Key, Platform, PlatformRequest, ProcessHandle, ProcessTag, SharedBuf,
+    },
     Args,
 };
 

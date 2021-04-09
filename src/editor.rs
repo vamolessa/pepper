@@ -5,7 +5,6 @@ use std::{
 };
 
 use crate::{
-    application::ProcessTag,
     buffer::BufferCollection,
     buffer_view::BufferViewCollection,
     client::Client,
@@ -18,7 +17,7 @@ use crate::{
     lsp,
     mode::{Mode, ModeContext, ModeKind, ModeOperation},
     picker::Picker,
-    platform::{Key, Platform, ProcessHandle},
+    platform::{Key, Platform, ProcessHandle, ProcessTag},
     register::{RegisterCollection, RegisterKey, KEY_QUEUE_REGISTER},
     syntax::{HighlightResult, SyntaxCollection},
     theme::Theme,
@@ -377,6 +376,9 @@ impl Editor {
     ) {
         match tag {
             ProcessTag::Buffer(_) => (),
+            ProcessTag::BufferInsert(index) => {
+                self.buffers.on_process_spawned(platform, index, handle)
+            }
             ProcessTag::Lsp(client_handle) => {
                 lsp::ClientManager::on_process_spawned(self, platform, client_handle, handle)
             }
@@ -399,11 +401,17 @@ impl Editor {
                     buffer.insert_text(&mut self.word_database, position, &text, &mut self.events);
                 }
             }
+            ProcessTag::BufferInsert(index) => self.buffers.on_process_output(
+                &mut self.word_database,
+                index,
+                bytes,
+                &mut self.events,
+            ),
             ProcessTag::Lsp(client_handle) => {
-                lsp::ClientManager::on_process_stdout(self, platform, clients, client_handle, bytes)
+                lsp::ClientManager::on_process_output(self, platform, clients, client_handle, bytes)
             }
             ProcessTag::Command(index) => {
-                CommandManager::on_process_stdout(self, platform, clients, index, bytes)
+                CommandManager::on_process_output(self, platform, clients, index, bytes)
             }
         }
 
@@ -419,6 +427,10 @@ impl Editor {
     ) {
         match tag {
             ProcessTag::Buffer(_) => (),
+            ProcessTag::BufferInsert(index) => {
+                self.buffers
+                    .on_process_exit(&mut self.word_database, index, &mut self.events)
+            }
             ProcessTag::Lsp(client_handle) => {
                 lsp::ClientManager::on_process_exit(self, client_handle)
             }

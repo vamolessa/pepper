@@ -6,7 +6,6 @@ use std::{
 };
 
 use crate::{
-    application::ProcessTag,
     buffer::{Buffer, BufferCollection, BufferError, BufferHandle},
     buffer_view::BufferViewHandle,
     client::{Client, ClientHandle, ClientManager},
@@ -14,7 +13,7 @@ use crate::{
     editor_utils::MessageKind,
     events::{KeyParseError, ServerEvent},
     pattern::PatternError,
-    platform::{Platform, PlatformRequest, ProcessHandle, SharedBuf},
+    platform::{Platform, PlatformRequest, ProcessHandle, SharedBuf, ProcessTag},
     serialization::Serialize,
 };
 
@@ -765,7 +764,7 @@ struct Process {
     pub input: Option<SharedBuf>,
     pub output: Vec<u8>,
     pub split_on_byte: Option<u8>,
-    pub stdout_index: usize,
+    pub stdout_index: usize, // TODO: remove and fix `on_output`
     pub output_var_name: String,
     pub on_output: String,
 }
@@ -905,6 +904,8 @@ impl CommandManager {
                     break;
                 }
             }
+
+            editor.trigger_event_handlers(platform, clients, client_handle);
         }
 
         match client_handle
@@ -1096,7 +1097,7 @@ impl CommandManager {
         }
     }
 
-    pub fn on_process_stdout(
+    pub fn on_process_output(
         editor: &mut Editor,
         platform: &mut Platform,
         clients: &mut ClientManager,
