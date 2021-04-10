@@ -1,12 +1,12 @@
 use std::{env, fmt, io, path::Path, sync::mpsc, time::Duration};
 
 use crate::{
-    buffer::{parse_path_and_line_number},
+    buffer::parse_path_and_position,
     client::{ClientHandle, ClientManager},
     command::CommandOperation,
     editor::{Editor, EditorControlFlow},
     events::{ClientEvent, ClientEventReceiver, ServerEvent},
-    platform::{Key, Platform, PlatformRequest, ProcessHandle, SharedBuf, ProcessTag},
+    platform::{Key, Platform, PlatformRequest, ProcessHandle, ProcessTag, SharedBuf},
     serialization::{DeserializeError, Serialize},
     ui, Args,
 };
@@ -262,11 +262,16 @@ impl<'stdout> ClientApplication<'stdout> {
         let mut commands = String::new();
         for path in &args.files {
             use fmt::Write;
-            let (path, line) = parse_path_and_line_number(path);
-            match line {
-                Some(line) => {
-                    let line = line.saturating_sub(1);
-                    writeln!(commands, "open '{}' -line={}", path, line).unwrap();
+            let (path, position) = parse_path_and_position(path);
+            match position {
+                Some(position) => {
+                    writeln!(
+                        commands,
+                        "open '{}' -line={}",
+                        path,
+                        position.line_index + 1
+                    )
+                    .unwrap();
                 }
                 None => writeln!(commands, "open '{}'", path).unwrap(),
             }

@@ -1,7 +1,7 @@
 use std::{cmp::Ordering, fmt::Write, path::Path};
 
 use crate::{
-    buffer::{find_path_and_line_number_at, parse_path_and_line_number, BufferContent},
+    buffer::{find_path_and_position_at, parse_path_and_position, BufferContent},
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{BufferViewError, BufferViewHandle, CursorMovement, CursorMovementKind},
     client::Client,
@@ -508,16 +508,15 @@ impl State {
                             let from = range.from.column_byte_index;
                             let to = range.to.column_byte_index;
 
-                            let (path, line) = if from < to {
-                                parse_path_and_line_number(&line[from..to])
+                            let (path, position) = if from < to {
+                                parse_path_and_position(&line[from..to])
                             } else {
-                                find_path_and_line_number_at(line, from)
+                                find_path_and_position_at(line, from)
                             };
-                            let line = match line {
-                                Some(line) => line as _,
+                            let line = match position {
+                                Some(position) => position.line_index as _,
                                 None => this.count,
-                            }
-                            .saturating_sub(1);
+                            };
 
                             path_buf.clear();
                             path_buf.push_str(path);

@@ -43,24 +43,27 @@ pub fn find_delimiter_pair_at(text: &str, index: usize, delimiter: char) -> Opti
     None
 }
 
-pub fn parse_path_and_line_number(text: &str) -> (&str, Option<u32>) {
+pub fn parse_path_and_position(text: &str) -> (&str, Option<BufferPosition>) {
     match text.rfind(':') {
         Some(i) => match text[(i + 1)..].parse::<u32>() {
-            Ok(line) => (&text[..i], Some(line.saturating_sub(1))),
+            Ok(line) => (
+                &text[..i],
+                Some(BufferPosition::line_col(line.saturating_sub(1) as _, 0)),
+            ),
             Err(_) => (text, None),
         },
         None => (text, None),
     }
 }
 
-pub fn find_path_and_line_number_at(text: &str, index: usize) -> (&str, Option<u32>) {
-    fn parse_line_number(text: &str) -> Option<u32> {
+pub fn find_path_and_position_at(text: &str, index: usize) -> (&str, Option<BufferPosition>) {
+    fn parse_number(text: &str) -> Option<u32> {
         let text = match text.find(|c: char| !c.is_ascii_digit()) {
             Some(i) => &text[..i],
             None => text,
         };
-        match text.parse() {
-            Ok(line) => Some(line),
+        match text.parse::<u32>() {
+            Ok(line) => Some(line.saturating_sub(1)),
             Err(_) => None,
         }
     }
@@ -77,16 +80,18 @@ pub fn find_path_and_line_number_at(text: &str, index: usize) -> (&str, Option<u
     let path = &text[from..to];
     match path.rfind(':') {
         Some(i) => {
-            let line = parse_line_number(&path[(i + 1)..]);
-            (&path[..i], line)
+            let line = parse_number(&path[(i + 1)..]);
+            let position = line.map(|l| BufferPosition::line_col(l as _, 0));
+            (&path[..i], position)
         }
         None => {
             let line = if text[to..].starts_with(':') {
-                parse_line_number(&text[(to + 1)..])
+                parse_number(&text[(to + 1)..])
             } else {
                 None
             };
-            (path, line)
+            let position = line.map(|l| BufferPosition::line_col(l as _, 0));
+            (path, position)
         }
     }
 }
@@ -1466,68 +1471,68 @@ mod tests {
     fn test_find_path_at() {
         let text = "/path/file:45";
         assert_eq!(
-            ("/path/file", Some(45)),
-            find_path_and_line_number_at(text, 0)
+            ("/path/file", Some(BufferPosition::line_col(44, 0))),
+            find_path_and_position_at(text, 0)
         );
         assert_eq!(
-            ("/path/file", Some(45)),
-            find_path_and_line_number_at(text, 1)
+            ("/path/file", Some(BufferPosition::line_col(44, 0))),
+            find_path_and_position_at(text, 1)
         );
         assert_eq!(
-            ("/path/file", Some(45)),
-            find_path_and_line_number_at(text, text.len())
+            ("/path/file", Some(BufferPosition::line_col(44, 0))),
+            find_path_and_position_at(text, text.len())
         );
         assert_eq!(
-            ("/path/file", Some(45)),
-            find_path_and_line_number_at(text, 3)
+            ("/path/file", Some(BufferPosition::line_col(44, 0))),
+            find_path_and_position_at(text, 3)
         );
         assert_eq!(
-            ("/path/file", Some(45)),
-            find_path_and_line_number_at(text, 8)
+            ("/path/file", Some(BufferPosition::line_col(44, 0))),
+            find_path_and_position_at(text, 8)
         );
 
         let text = "xx /path/file:";
-        assert_eq!(("xx", None), find_path_and_line_number_at(text, 0));
-        assert_eq!(("xx", None), find_path_and_line_number_at(text, 1));
-        assert_eq!(("xx", None), find_path_and_line_number_at(text, 2));
-        assert_eq!(("/path/file", None), find_path_and_line_number_at(text, 3));
+        assert_eq!(("xx", None), find_path_and_position_at(text, 0));
+        assert_eq!(("xx", None), find_path_and_position_at(text, 1));
+        assert_eq!(("xx", None), find_path_and_position_at(text, 2));
+        assert_eq!(("/path/file", None), find_path_and_position_at(text, 3));
         assert_eq!(
             ("/path/file", None),
-            find_path_and_line_number_at(text, text.len() - 1)
+            find_path_and_position_at(text, text.len() - 1)
         );
         assert_eq!(
             ("/path/file", None),
-            find_path_and_line_number_at(text, text.len())
+            find_path_and_position_at(text, text.len())
         );
 
         let text = "xx /path/file:3xx";
         assert_eq!(
-            ("/path/file", Some(3)),
-            find_path_and_line_number_at(text, 3)
+            ("/path/file", Some(BufferPosition::line_col(2, 0))),
+            find_path_and_position_at(text, 3)
         );
         assert_eq!(
-            ("/path/file", Some(3)),
-            find_path_and_line_number_at(text, text.len() - 5)
+            ("/path/file", Some(BufferPosition::line_col(2, 0))),
+            find_path_and_position_at(text, text.len() - 5)
         );
         assert_eq!(
-            ("/path/file", Some(3)),
-            find_path_and_line_number_at(text, text.len() - 4)
+            ("/path/file", Some(BufferPosition::line_col(2, 0))),
+            find_path_and_position_at(text, text.len() - 4)
         );
         assert_eq!(
-            ("/path/file", Some(3)),
-            find_path_and_line_number_at(text, text.len() - 3)
+            ("/path/file", Some(BufferPosition::line_col(2, 0))),
+            find_path_and_position_at(text, text.len() - 3)
         );
         assert_eq!(
-            ("/path/file", Some(3)),
-            find_path_and_line_number_at(text, text.len() - 2)
+            ("/path/file", Some(BufferPosition::line_col(2, 0))),
+            find_path_and_position_at(text, text.len() - 2)
         );
         assert_eq!(
-            ("/path/file", Some(3)),
-            find_path_and_line_number_at(text, text.len() - 1)
+            ("/path/file", Some(BufferPosition::line_col(2, 0))),
+            find_path_and_position_at(text, text.len() - 1)
         );
         assert_eq!(
-            ("/path/file", Some(3)),
-            find_path_and_line_number_at(text, text.len())
+            ("/path/file", Some(BufferPosition::line_col(2, 0))),
+            find_path_and_position_at(text, text.len())
         );
     }
 

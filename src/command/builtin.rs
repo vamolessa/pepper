@@ -728,6 +728,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             "opens a buffer for editting\n",
             "open [<flags>] <path>\n",
             " -line=<number> : set cursor at line\n",
+            " -column=<number> : set cursor at column\n",
             " -no-history : disables undo/redo\n",
             " -no-save : disables saving\n",
             " -no-word-database : words in this buffer will not contribute to the word database\n",
@@ -740,6 +741,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
 
             let mut flags = [
                 ("line", None),
+                ("column", None),
                 ("no-history", None),
                 ("no-save", None),
                 ("no-word-database", None),
@@ -748,13 +750,18 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             ctx.args.get_flags(&mut flags)?;
             let line = flags[0]
                 .1
-                .map(parse_arg::<usize>)
+                .map(parse_arg::<u32>)
                 .transpose()?
                 .map(|l| l.saturating_sub(1));
-            let no_history = flags[1].1.is_some();
-            let no_save = flags[2].1.is_some();
-            let no_word_database = flags[3].1.is_some();
-            let auto_close = flags[4].1.is_some();
+            let column = flags[1]
+                .1
+                .map(parse_arg::<u32>)
+                .transpose()?
+                .map(|l| l.saturating_sub(1));
+            let no_history = flags[2].1.is_some();
+            let no_save = flags[3].1.is_some();
+            let no_word_database = flags[4].1.is_some();
+            let auto_close = flags[5].1.is_some();
 
             let path = ctx.args.next()?;
             ctx.args.assert_empty()?;
@@ -776,7 +783,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 &mut ctx.editor.word_database,
                 &ctx.editor.current_directory,
                 Path::new(path),
-                line,
+                line.map(|l| l as _),
                 &mut ctx.editor.events,
             ) {
                 Ok(handle) => {
