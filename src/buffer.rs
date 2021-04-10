@@ -1412,7 +1412,7 @@ impl BufferCollection {
             None => return,
         };
         let len = match process.output.iter().rposition(|&b| b == split_on_byte) {
-            Some(i) => i,
+            Some(i) => i + 1,
             None => return,
         };
 
@@ -1420,6 +1420,7 @@ impl BufferCollection {
         if buffer.alive {
             let text = &process.output[..len];
             if let Ok(text) = std::str::from_utf8(text) {
+                process.position = buffer.content().saturate_position(process.position);
                 let range = buffer.insert_text(word_database, process.position, text, events);
                 process.position = process.position.insert(range);
             }
