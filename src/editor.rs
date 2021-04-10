@@ -363,8 +363,7 @@ impl Editor {
         handle: ProcessHandle,
     ) {
         match tag {
-            ProcessTag::Buffer(_) => (),
-            ProcessTag::BufferInsert(index) => {
+            ProcessTag::Buffer(index) => {
                 self.buffers.on_process_spawned(platform, index, handle)
             }
             ProcessTag::Lsp(client_handle) => {
@@ -382,14 +381,7 @@ impl Editor {
         bytes: &[u8],
     ) {
         match tag {
-            ProcessTag::Buffer(buffer_handle) => {
-                if let Some(buffer) = self.buffers.get_mut(buffer_handle) {
-                    let text = String::from_utf8_lossy(bytes);
-                    let position = buffer.content().end();
-                    buffer.insert_text(&mut self.word_database, position, &text, &mut self.events);
-                }
-            }
-            ProcessTag::BufferInsert(index) => self.buffers.on_process_output(
+            ProcessTag::Buffer(index) => self.buffers.on_process_output(
                 &mut self.word_database,
                 index,
                 bytes,
@@ -414,8 +406,7 @@ impl Editor {
         success: bool,
     ) {
         match tag {
-            ProcessTag::Buffer(_) => (),
-            ProcessTag::BufferInsert(index) => {
+            ProcessTag::Buffer(index) => {
                 self.buffers
                     .on_process_exit(&mut self.word_database, index, &mut self.events)
             }

@@ -1381,7 +1381,7 @@ impl BufferCollection {
         command.stderr(Stdio::null());
 
         platform.enqueue_request(PlatformRequest::SpawnProcess {
-            tag: ProcessTag::BufferInsert(index),
+            tag: ProcessTag::Buffer(index),
             command,
             buf_len: 4 * 1024,
         });

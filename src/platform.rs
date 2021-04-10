@@ -3,7 +3,7 @@ use std::{
     sync::{mpsc, Arc},
 };
 
-use crate::{buffer::BufferHandle, client::ClientHandle, lsp};
+use crate::{client::ClientHandle, lsp};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
@@ -52,8 +52,7 @@ pub enum PlatformRequest {
 
 #[derive(Clone, Copy)]
 pub enum ProcessTag {
-    Buffer(BufferHandle), // TODO: maybe remove this?
-    BufferInsert(usize),
+    Buffer(usize),
     Command(usize),
     Lsp(lsp::ClientHandle),
 }
