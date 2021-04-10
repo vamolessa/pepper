@@ -69,6 +69,32 @@ impl BufferPosition {
             range.from
         }
     }
+
+    pub fn parse(s: &str) -> Option<(BufferPosition, &str)> {
+        #[inline]
+        fn is_non_ascii_digit(c: char) -> bool {
+            !c.is_ascii_digit()
+        }
+
+        let i = s.find(is_non_ascii_digit).unwrap_or(s.len());
+        let (line, s) = s.split_at(i);
+        let line = line.parse::<usize>().ok()?.saturating_sub(1);
+
+        let mut chars = s.chars();
+        if !matches!(chars.next(), Some(',')) {
+            return Some((BufferPosition::line_col(line, 0), s));
+        }
+        let from_comma = s;
+        let s = chars.as_str();
+
+        let i = s.find(is_non_ascii_digit).unwrap_or(s.len());
+        let (column, s) = s.split_at(i);
+        let column = match column.parse::<usize>() {
+            Ok(n) => n.saturating_sub(1),
+            Err(_) => return Some((BufferPosition::line_col(line, 0), from_comma)),
+        };
+        Some((BufferPosition::line_col(line, column), s))
+    }
 }
 
 impl fmt::Debug for BufferPosition {
@@ -108,23 +134,6 @@ impl fmt::Display for BufferPosition {
         f.write_str(",")?;
         self.column_byte_index.fmt(f)?;
         Ok(())
-    }
-}
-
-impl FromStr for BufferPosition {
-    type Err = ();
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut parts = s.split(',');
-        let line_index = parts.next().ok_or(())?.parse().map_err(|_| ())?;
-        let column_byte_index = parts.next().ok_or(())?.parse().map_err(|_| ())?;
-        if parts.next().is_some() {
-            Err(())
-        } else {
-            Ok(BufferPosition {
-                line_index,
-                column_byte_index,
-            })
-        }
     }
 }
 
@@ -223,5 +232,29 @@ mod tests {
         assert_eq!(pos(3, 3), pos42.delete(range33_51));
         assert_eq!(pos(3, 5), pos53.delete(range33_51));
         assert_eq!(pos(4, 6), pos66.delete(range33_51));
+    }
+
+    #[test]
+    fn buffer_position_parsing() {
+        assert_eq!(None, BufferPosition::parse(""));
+        assert_eq!(None, BufferPosition::parse(","));
+        assert_eq!(None, BufferPosition::parse("a,"));
+        assert_eq!(None, BufferPosition::parse(",b"));
+        assert_eq!(None, BufferPosition::parse("a,b"));
+
+        assert_eq!(Some((pos(0, 0), "")), BufferPosition::parse("0"));
+        assert_eq!(Some((pos(0, 0), "")), BufferPosition::parse("1"));
+        assert_eq!(Some((pos(1, 0), "")), BufferPosition::parse("2"));
+        assert_eq!(Some((pos(98, 0), "")), BufferPosition::parse("99"));
+
+        assert_eq!(Some((pos(0, 0), "")), BufferPosition::parse("0,0"));
+        assert_eq!(Some((pos(0, 0), "")), BufferPosition::parse("1,1"));
+        assert_eq!(Some((pos(3, 1), "")), BufferPosition::parse("4,2"));
+        assert_eq!(Some((pos(98, 98), "")), BufferPosition::parse("99,99"));
+
+        assert_eq!(Some((pos(3, 0), ",")), BufferPosition::parse("4,"));
+        assert_eq!(Some((pos(3, 0), ",x")), BufferPosition::parse("4,x"));
+        assert_eq!(Some((pos(3, 8), "xx")), BufferPosition::parse("4,9xx"));
+        assert_eq!(Some((pos(3, 8), ",xx")), BufferPosition::parse("4,9,xx"));
     }
 }

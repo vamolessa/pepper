@@ -44,14 +44,32 @@ pub fn find_delimiter_pair_at(text: &str, index: usize, delimiter: char) -> Opti
 }
 
 pub fn parse_path_and_position(text: &str) -> (&str, Option<BufferPosition>) {
+    let text = text.trim();
     match text.rfind(':') {
-        Some(i) => match text[(i + 1)..].parse::<u32>() {
-            Ok(line) => (
-                &text[..i],
-                Some(BufferPosition::line_col(line.saturating_sub(1) as _, 0)),
-            ),
-            Err(_) => (text, None),
-        },
+        Some(i) => {
+            let position = &text[(i + 1)..];
+            let text = &text[..i];
+            match position.find(',') {
+                Some(i) => {
+                    let line = &position[..i];
+                    let column = &position[(i + 1)..];
+                    (text, None)
+                }
+                None => {
+                    /*
+                    match position.parse::<u32>() {
+                        Ok(line) => (
+                            &text[..i],
+                            Some(BufferPosition::line_col(line.saturating_sub(1) as _, 0)),
+                        ),
+                        Err(_) => (text, None),
+                    }
+                    */
+
+                    (text, None)
+                }
+            }
+        }
         None => (text, None),
     }
 }
