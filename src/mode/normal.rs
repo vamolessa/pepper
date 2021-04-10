@@ -987,11 +987,6 @@ impl State {
                 Key::Char('p') => {
                     move_to_diagnostic(ctx, false);
                 }
-                Key::Char('r') => ctx
-                    .editor
-                    .status_bar
-                    .write(MessageKind::Info)
-                    .str("rename not yet implemented"),
                 _ => (),
             },
             Key::Char('s') => read_line::search::enter_mode(ctx),

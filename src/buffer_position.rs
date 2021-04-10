@@ -1,7 +1,6 @@
 use std::{
     cmp::{Ord, Ordering, PartialOrd},
     fmt,
-    str::FromStr,
 };
 
 // TODO: change to u32
