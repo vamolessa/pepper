@@ -325,17 +325,26 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             " -command : interprets <text-or-command> as a command and inserts its output\n",
             " -input : when `-command` is set, also sends selected text as input to <text-or-command> command\n",
             " -env=<vars> : when `-command` is set, sets environment variables in the form VAR=<value> VAR=<value>...\n",
+            " -split-on-byte=<number> : when `-command` is set, splits output at every <number> byte",
         ),
         hidden: false,
         completions: &[],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
 
-            let mut flags = [("command", None), ("input", None), ("env", None)];
+            let mut flags = [("command", None), ("input", None), ("env", None), ("split-on-byte", None)];
             ctx.args.get_flags(&mut flags)?;
+            eprintln!("after get_flags");
             let command = flags[0].1.is_some();
             let input = flags[1].1.is_some();
             let env = flags[2].1.unwrap_or("");
+            let split_on_byte = match flags[3].1 {
+                Some(token) => match token.parse() {
+                    Ok(b) => Some(b),
+                    Err(_) => return Err(CommandError::InvalidToken(token.into())),
+                }
+                None => None,
+            };
 
             let text_or_command = ctx.args.next()?;
             ctx.args.assert_empty()?;
@@ -405,7 +414,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                         buffer_handle,
                         range.from,
                         stdins[i].take(),
-                        None,
+                        split_on_byte,
                     );
                 }
             } else {

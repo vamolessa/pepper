@@ -13,7 +13,7 @@ use crate::{
     editor_utils::MessageKind,
     events::{KeyParseError, ServerEvent},
     pattern::PatternError,
-    platform::{Platform, PlatformRequest, ProcessHandle, SharedBuf, ProcessTag},
+    platform::{Platform, PlatformRequest, ProcessHandle, ProcessTag, SharedBuf},
     serialization::Serialize,
 };
 
@@ -587,7 +587,6 @@ impl<'a> Iterator for CommandTokenIter<'a> {
         }
     }
 }
-
 pub struct CommandArgs<'a> {
     pub bang: bool,
     tokens: CommandTokenIter<'a>,
@@ -608,7 +607,6 @@ impl<'a> CommandArgs<'a> {
     ) -> Result<(), CommandError> {
         let mut tokens = CommandTokenIter(self.tokens.0);
         loop {
-            let previous_state = self.tokens.0;
             let token = match tokens.next() {
                 Some(token) => token,
                 None => break Ok(()),
@@ -622,8 +620,9 @@ impl<'a> CommandArgs<'a> {
                         None => break Err(CommandError::UnknownFlag(key.into())),
                     };
 
+                    let previous_state = tokens.0;
                     match tokens.next() {
-                        Some((CommandTokenKind::Text, _)) => *value = Some(""),
+                        Some((CommandTokenKind::Text, _)) => *value = Some(&key[key.len()..]),
                         Some((CommandTokenKind::Flag, _)) => {
                             *value = Some(&key[key.len()..]);
                             tokens.0 = previous_state;
@@ -663,17 +662,20 @@ impl<'a> CommandArgs<'a> {
         loop {
             match self.tokens.next() {
                 Some((CommandTokenKind::Text, arg)) => break Ok(Some(arg)),
-                Some((CommandTokenKind::Flag, _)) => match self.tokens.next() {
-                    Some((CommandTokenKind::Text, arg)) => break Ok(Some(arg)),
-                    Some((CommandTokenKind::Flag, _)) => (),
-                    Some((CommandTokenKind::Equals, _)) => {
-                        self.tokens.next();
+                Some((CommandTokenKind::Flag, _)) => {
+                    let previous_state = self.tokens.0;
+                    match self.tokens.next() {
+                        Some((CommandTokenKind::Text, arg)) => break Ok(Some(arg)),
+                        Some((CommandTokenKind::Flag, _)) => self.tokens.0 = previous_state,
+                        Some((CommandTokenKind::Equals, _)) => {
+                            self.tokens.next();
+                        }
+                        Some((CommandTokenKind::Unterminated, token)) => {
+                            break Err(CommandError::UnterminatedToken(token.into()))
+                        }
+                        None => break Ok(None),
                     }
-                    Some((CommandTokenKind::Unterminated, token)) => {
-                        break Err(CommandError::UnterminatedToken(token.into()))
-                    }
-                    None => break Ok(None),
-                },
+                }
                 Some((CommandTokenKind::Equals, token)) => {
                     break Err(CommandError::InvalidToken(token.into()))
                 }
@@ -1320,7 +1322,10 @@ mod tests {
                 match args.try_next() {
                     Ok(Some(arg)) => values.push(arg),
                     Ok(None) => break,
-                    Err(_) => panic!("error parsing args"),
+                    Err(error) => {
+                        let discriminant = std::mem::discriminant(&error);
+                        panic!("error parsing args {:?}", discriminant);
+                    }
                 }
             }
             values
@@ -1364,6 +1369,15 @@ mod tests {
         assert_eq!(Some(""), flags[0].1);
         assert_eq!(Some("value"), flags[1].1);
         assert_eq!(["aaa", "bbb", "ccc"], &collect(args)[..]);
+
+        let args = parse_args(&commands, "c -switch -option=value aaa");
+        let mut flags = [("switch", None), ("option", None)];
+        if args.get_flags(&mut flags).is_err() {
+            panic!("error parsing args");
+        }
+        assert_eq!(Some(""), flags[0].1);
+        assert_eq!(Some("value"), flags[1].1);
+        assert_eq!(["aaa"], &collect(args)[..]);
     }
 
     #[test]

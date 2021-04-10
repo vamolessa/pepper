@@ -1366,12 +1366,12 @@ impl BufferCollection {
 
         let process = &mut self.insert_processes[index];
         process.alive = true;
-        process.output.clear();
         process.buffer_handle = buffer_handle;
         process.position = position;
+        process.input = stdin;
+        process.output.clear();
         process.split_on_byte = split_on_byte;
 
-        process.input = stdin;
         let stdin = match process.input {
             Some(_) => Stdio::piped(),
             None => Stdio::null(),
