@@ -9,6 +9,7 @@ use std::{
 use crate::{
     buffer::{Buffer, BufferCapabilities, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
+    buffer_view::{CursorMovement, CursorMovementKind},
     client,
     editor::Editor,
     editor_utils::{MessageKind, StatusBar},
@@ -972,7 +973,7 @@ impl Client {
                         Some(Uri::RelativePath(_, path)) => path,
                         None => return,
                     };
-                    let line_index = Some(location.range.start.line as _);
+                    let position = location.range.start.into();
                     if let Ok(buffer_view_handle) =
                         editor.buffer_views.buffer_view_handle_from_path(
                             client.handle(),
@@ -980,7 +981,7 @@ impl Client {
                             &mut editor.word_database,
                             &self.root,
                             path,
-                            line_index,
+                            Some(position),
                             &mut editor.events,
                         )
                     {
@@ -1011,7 +1012,7 @@ impl Client {
                             &mut editor.word_database,
                             &self.root,
                             Path::new("lsp-references"),
-                            Some(0),
+                            Some(BufferPosition::zero()),
                             &mut editor.events,
                         )
                     {
@@ -1072,6 +1073,14 @@ impl Client {
                                 text.clear();
                             }
                             editor.string_pool.release(text);
+                        }
+
+                        if let Some(buffer_view) = editor.buffer_views.get_mut(buffer_view_handle) {
+                            buffer_view.move_cursors(
+                                buffers,
+                                CursorMovement::Home,
+                                CursorMovementKind::PositionAndAnchor,
+                            );
                         }
 
                         client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);

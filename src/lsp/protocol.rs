@@ -256,6 +256,14 @@ impl From<BufferPosition> for DocumentPosition {
         }
     }
 }
+impl From<DocumentPosition> for BufferPosition {
+    fn from(position: DocumentPosition) -> Self {
+        Self {
+            line_index: position.line as _,
+            column_byte_index: position.character as _,
+        }
+    }
+}
 impl<'json> FromJson<'json> for DocumentPosition {
     fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
         let value = match value {

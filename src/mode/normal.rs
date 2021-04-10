@@ -513,9 +513,9 @@ impl State {
                             } else {
                                 find_path_and_position_at(line, from)
                             };
-                            let line = match position {
-                                Some(position) => position.line_index as _,
-                                None => this.count,
+                            let position = match position {
+                                Some(position) => position,
+                                None => BufferPosition::line_col(this.count as _, 0),
                             };
 
                             path_buf.clear();
@@ -528,7 +528,7 @@ impl State {
                                     &mut ctx.editor.word_database,
                                     &ctx.editor.current_directory,
                                     Path::new(&path_buf),
-                                    Some(line as _),
+                                    Some(position),
                                     &mut ctx.editor.events,
                                 )
                             {

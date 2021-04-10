@@ -751,13 +751,11 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             let line = flags[0]
                 .1
                 .map(parse_arg::<u32>)
-                .transpose()?
-                .map(|l| l.saturating_sub(1));
+                .transpose()?;
             let column = flags[1]
                 .1
                 .map(parse_arg::<u32>)
-                .transpose()?
-                .map(|l| l.saturating_sub(1));
+                .transpose()?;
             let no_history = flags[2].1.is_some();
             let no_save = flags[3].1.is_some();
             let no_word_database = flags[4].1.is_some();
@@ -769,6 +767,23 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             let client_handle = match ctx.client_handle {
                 Some(handle) => handle,
                 None => return Ok(None),
+            };
+
+            let position = match (line, column) {
+                (Some(line), Some(column)) => {
+                    let line = line.saturating_sub(1) as _;
+                    let column = column.saturating_sub(1) as _;
+                    Some(BufferPosition::line_col(line, column))
+                }
+                (Some(line), None) => {
+                    let line = line.saturating_sub(1) as _;
+                    Some(BufferPosition::line_col(line, 0))
+                }
+                (None, Some(column)) => {
+                    let column = column.saturating_sub(1) as _;
+                    Some(BufferPosition::line_col(0, column))
+                }
+                (None, None) => None,
             };
 
             NavigationHistory::save_client_snapshot(
@@ -783,7 +798,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 &mut ctx.editor.word_database,
                 &ctx.editor.current_directory,
                 Path::new(path),
-                line.map(|l| l as _),
+                position,
                 &mut ctx.editor.events,
             ) {
                 Ok(handle) => {

@@ -595,17 +595,17 @@ impl BufferViewCollection {
         word_database: &mut WordDatabase,
         root: &Path,
         path: &Path,
-        line_index: Option<usize>,
+        position: Option<BufferPosition>,
         events: &mut EditorEventQueue,
     ) -> Result<BufferViewHandle, BufferViewError> {
-        pub fn try_set_line_index(
+        pub fn try_set_position(
             buffer_views: &mut BufferViewCollection,
             buffers: &mut BufferCollection,
             handle: BufferViewHandle,
-            line_index: Option<usize>,
+            position: Option<BufferPosition>,
         ) {
-            let line_index = match line_index {
-                Some(line_index) => line_index,
+            let mut position = match position {
+                Some(position) => position,
                 None => return,
             };
             let view = match buffer_views.get_mut(handle) {
@@ -614,7 +614,6 @@ impl BufferViewCollection {
             };
 
             let mut cursors = view.cursors.mut_guard();
-            let mut position = BufferPosition::line_col(line_index, 0);
 
             if let Some(buffer) = buffers.get(view.buffer_handle) {
                 position = buffer.content().saturate_position(position);
@@ -630,7 +629,7 @@ impl BufferViewCollection {
         if let Some(buffer) = buffers.find_with_path(root, path) {
             let buffer_handle = buffer.handle();
             let handle = self.buffer_view_handle_from_buffer_handle(client_handle, buffer_handle);
-            try_set_line_index(self, buffers, handle, line_index);
+            try_set_position(self, buffers, handle, position);
             Ok(handle)
         } else if path.to_str().map(|s| !s.is_empty()).unwrap_or(false) {
             let path = path.strip_prefix(root).unwrap_or(path);
@@ -643,7 +642,7 @@ impl BufferViewCollection {
             let buffer_view = BufferView::new(client_handle, buffer.handle());
             let handle = self.add(buffer_view);
 
-            try_set_line_index(self, buffers, handle, line_index);
+            try_set_position(self, buffers, handle, position);
             Ok(handle)
         } else {
             Err(BufferViewError::InvalidPath)
