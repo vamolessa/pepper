@@ -71,6 +71,10 @@ impl Mode {
     }
 
     pub fn change_to(ctx: &mut ModeContext, next: ModeKind) {
+        if ctx.editor.mode.kind == next {
+            return;
+        }
+
         match ctx.editor.mode.kind {
             ModeKind::Normal => normal::State::on_exit(ctx),
             ModeKind::Insert => insert::State::on_exit(ctx),

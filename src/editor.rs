@@ -64,8 +64,8 @@ impl KeysIterator {
 }
 
 pub struct BufferedKeysParseError<'a> {
-    keys: &'a str,
-    error: KeyParseAllError,
+    pub keys: &'a str,
+    pub error: KeyParseAllError,
 }
 impl<'a> fmt::Display for BufferedKeysParseError<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

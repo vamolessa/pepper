@@ -21,8 +21,7 @@ use crate::{
     json::Json,
     keymap::ParseKeyMapError,
     lsp,
-    mode::ModeKind,
-    mode::{picker, read_line, ModeContext},
+    mode::{picker, read_line, Mode, ModeContext, ModeKind},
     navigation_history::NavigationHistory,
     platform::{Platform, PlatformRequest, ProcessTag, SharedBuf},
     register::RegisterKey,
@@ -490,15 +489,29 @@ pub const COMMANDS: &[BuiltinCommand] = &[
 
             match client {
                 Some(client_handle) => match ctx.editor.buffered_keys.parse(keys) {
-                    Ok(keys) => match ctx.editor.execute_keys(ctx.platform, ctx.clients, client_handle, keys) {
-                        EditorControlFlow::Continue => Ok(None),
-                        EditorControlFlow::Quit => Ok(Some(CommandOperation::Quit)),
-                        EditorControlFlow::QuitAll => Ok(Some(CommandOperation::QuitAll)),
-                    },
-                    Err(error) => {
-                        ctx.editor.status_bar.write(MessageKind::Error).fmt(format_args!("{}", error));
-                        Ok(None)
-                    },
+                    Ok(keys) => {
+                        let mut ctx = ModeContext {
+                            editor: ctx.editor,
+                            platform: ctx.platform,
+                            clients: ctx.clients,
+                            client_handle,
+                        };
+                        let mode = ctx.editor.mode.kind();
+                        Mode::change_to(&mut ctx, ModeKind::default());
+                        let op = match ctx.editor.execute_keys(
+                            ctx.platform,
+                            ctx.clients,
+                            client_handle,
+                            keys
+                        ) {
+                            EditorControlFlow::Continue => Ok(None),
+                            EditorControlFlow::Quit => Ok(Some(CommandOperation::Quit)),
+                            EditorControlFlow::QuitAll => Ok(Some(CommandOperation::QuitAll)),
+                        };
+                        Mode::change_to(&mut ctx, mode);
+                        op
+                    }
+                    Err(_) => Err(CommandError::BufferedKeysParseError(keys.into())),
                 }
                 None => Ok(None)
             }

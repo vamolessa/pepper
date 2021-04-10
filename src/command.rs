@@ -62,6 +62,7 @@ pub enum CommandError {
         type_name: &'static str,
     },
     BufferError(BufferHandle, BufferError),
+    BufferedKeysParseError(CommandToken),
     ConfigNotFound(CommandToken),
     InvalidConfigValue {
         key: CommandToken,
@@ -221,6 +222,12 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
                 Some(buffer) => write!(f, "{}", error.display(buffer)),
                 None => Ok(()),
             },
+            CommandError::BufferedKeysParseError(token) => write(
+                self,
+                f,
+                token,
+                format_args!("could not parse keys '{}'", token.as_str_at(c, l)),
+            ),
             CommandError::ConfigNotFound(key) => write(
                 self,
                 f,
