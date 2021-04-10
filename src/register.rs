@@ -1,5 +1,4 @@
 pub const SEARCH_REGISTER: RegisterKey = RegisterKey::from_char_unchecked('s');
-pub const KEY_QUEUE_REGISTER: RegisterKey = RegisterKey::from_char_unchecked('k');
 pub const AUTO_MACRO_REGISTER: RegisterKey = RegisterKey::from_char_unchecked('a');
 
 #[derive(Clone, Copy, PartialEq, Eq)]

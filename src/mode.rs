@@ -3,7 +3,6 @@ use crate::{
     command::CommandOperation,
     editor::{Editor, KeysIterator},
     platform::Platform,
-    register::RegisterKey,
 };
 
 mod command;
@@ -16,7 +15,6 @@ pub enum ModeOperation {
     Pending,
     Quit,
     QuitAll,
-    ExecuteMacro(RegisterKey),
 }
 impl From<CommandOperation> for ModeOperation {
     fn from(op: CommandOperation) -> Self {

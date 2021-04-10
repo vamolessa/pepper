@@ -6,8 +6,9 @@ use crate::{
     buffer_view::{BufferViewError, BufferViewHandle, CursorMovement, CursorMovementKind},
     client::Client,
     cursor::{Cursor, CursorCollection},
-    editor::{Editor, KeysIterator},
+    editor::{Editor, EditorControlFlow, KeysIterator},
     editor_utils::MessageKind,
+    events::KeyParser,
     lsp,
     mode::{picker, read_line, Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     navigation_history::{NavigationDirection, NavigationHistory},
@@ -92,9 +93,35 @@ impl State {
                 match keys.next(&ctx.editor.buffered_keys) {
                     Key::None => return Some(ModeOperation::Pending),
                     Key::Char(c) => {
-                        // TODO: try just moving the recorded keys to the key queue register
                         if let Some(key) = RegisterKey::from_char(c.to_ascii_lowercase()) {
-                            return Some(ModeOperation::ExecuteMacro(key));
+                            let keys_index = ctx.editor.buffered_keys.as_slice().len();
+                            let macro_keys = ctx.editor.registers.get(key);
+                            for key in KeyParser::new(macro_keys) {
+                                match key {
+                                    Ok(key) => ctx.editor.buffered_keys.add(key),
+                                    Err(error) => {
+                                        ctx.editor.status_bar.write(MessageKind::Error).fmt(
+                                            format_args!(
+                                                "error parsing keys '{}'\n{}",
+                                                macro_keys, &error
+                                            ),
+                                        );
+                                        ctx.editor.buffered_keys.truncate(keys_index);
+                                        return None;
+                                    }
+                                }
+                            }
+
+                            return match ctx.editor.execute_keys(
+                                ctx.platform,
+                                ctx.clients,
+                                ctx.client_handle,
+                                KeysIterator::from(keys_index),
+                            ) {
+                                EditorControlFlow::Continue => None,
+                                EditorControlFlow::Quit => Some(ModeOperation::Quit),
+                                EditorControlFlow::QuitAll => Some(ModeOperation::QuitAll),
+                            };
                         }
                     }
                     _ => (),

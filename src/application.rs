@@ -155,7 +155,7 @@ impl ServerApplication {
                         let mut events =
                             client_event_receiver.receive_events(handle, buf.as_bytes());
                         while let Some(event) = events.next(&client_event_receiver) {
-                            match editor.on_client_event(&mut clients, platform, event) {
+                            match editor.on_client_event(platform, &mut clients, event) {
                                 EditorControlFlow::Continue => (),
                                 EditorControlFlow::Quit => {
                                     platform

@@ -12,13 +12,13 @@ use crate::{
     command::{CommandManager, CommandOperation},
     config::Config,
     editor_utils::{MessageKind, ReadLine, StatusBar, StringPool},
-    events::{ClientEvent, EditorEvent, EditorEventQueue, KeyParser},
+    events::{ClientEvent, EditorEvent, EditorEventQueue},
     keymap::{KeyMapCollection, MatchResult},
     lsp,
     mode::{Mode, ModeContext, ModeKind, ModeOperation},
     picker::Picker,
     platform::{Key, Platform, ProcessHandle, ProcessTag},
-    register::{RegisterCollection, RegisterKey, KEY_QUEUE_REGISTER},
+    register::{RegisterCollection, RegisterKey},
     syntax::{HighlightResult, SyntaxCollection},
     theme::Theme,
     word_database::WordDatabase,
@@ -42,14 +42,22 @@ impl BufferedKeys {
     pub fn as_slice(&self) -> &[Key] {
         &self.0
     }
+
+    pub fn add(&mut self, key: Key) {
+        self.0.push(key);
+    }
+
+    pub fn truncate(&mut self, len: usize) {
+        self.0.truncate(len);
+    }
 }
 
 pub struct KeysIterator {
     index: usize,
 }
 impl KeysIterator {
-    fn new() -> Self {
-        Self { index: 0 }
+    pub fn from(index: usize) -> Self {
+        Self { index }
     }
 
     pub fn index(&self) -> usize {
@@ -163,6 +171,72 @@ impl Editor {
         }
     }
 
+    pub fn execute_keys(
+        &mut self,
+        platform: &mut Platform,
+        clients: &mut ClientManager,
+        client_handle: ClientHandle,
+        mut keys: KeysIterator,
+    ) -> EditorControlFlow {
+        let start_index = keys.index;
+
+        match self
+            .keymaps
+            .matches(self.mode.kind(), &self.buffered_keys.0[start_index..])
+        {
+            MatchResult::None => (),
+            MatchResult::Prefix => return EditorControlFlow::Continue,
+            MatchResult::ReplaceWith(replaced_keys) => {
+                self.buffered_keys.truncate(start_index);
+                self.buffered_keys.0.extend_from_slice(replaced_keys);
+            }
+        }
+
+        loop {
+            if keys.index == self.buffered_keys.0.len() {
+                break;
+            }
+            let from_index = self.recording_macro.map(|_| keys.index);
+
+            let mut ctx = ModeContext {
+                editor: self,
+                platform,
+                clients,
+                client_handle,
+            };
+            match Mode::on_client_keys(&mut ctx, &mut keys) {
+                None => (),
+                Some(ModeOperation::Pending) => {
+                    return EditorControlFlow::Continue;
+                }
+                Some(ModeOperation::Quit) => {
+                    Mode::change_to(&mut ctx, ModeKind::default());
+                    self.buffered_keys.truncate(start_index);
+                    return EditorControlFlow::Quit;
+                }
+                Some(ModeOperation::QuitAll) => {
+                    self.buffered_keys.truncate(start_index);
+                    return EditorControlFlow::QuitAll;
+                }
+            }
+
+            if let (Some(from_index), Some(register_key)) =
+                (from_index, self.recording_macro.clone())
+            {
+                for key in &self.buffered_keys.0[from_index..keys.index] {
+                    use fmt::Write;
+                    let register = self.registers.get_mut(register_key);
+                    let _ = write!(register, "{}", key);
+                }
+            }
+
+            self.trigger_event_handlers(platform, clients, Some(client_handle));
+        }
+
+        self.buffered_keys.truncate(start_index);
+        EditorControlFlow::Continue
+    }
+
     pub fn on_pre_render(&mut self, clients: &mut ClientManager) -> bool {
         let picker_height = self
             .picker
@@ -219,8 +293,8 @@ impl Editor {
 
     pub fn on_client_event(
         &mut self,
-        clients: &mut ClientManager,
         platform: &mut Platform,
+        clients: &mut ClientManager,
         event: ClientEvent,
     ) -> EditorControlFlow {
         match event {
@@ -241,118 +315,15 @@ impl Editor {
                 }
             }
             ClientEvent::Key(client_handle, key) => {
-                fn parse_and_set_keys_from_register(
-                    editor: &mut Editor,
-                    register_key: RegisterKey,
-                ) {
-                    editor.buffered_keys.0.clear();
-
-                    let keys = editor.registers.get(register_key);
-                    if keys.is_empty() {
-                        return;
-                    }
-
-                    for key in KeyParser::new(keys) {
-                        match key {
-                            Ok(key) => editor.buffered_keys.0.push(key),
-                            Err(error) => {
-                                editor
-                                    .status_bar
-                                    .write(MessageKind::Error)
-                                    .fmt(format_args!("error parsing keys '{}'\n{}", keys, &error));
-                                editor.buffered_keys.0.clear();
-                                return;
-                            }
-                        }
-                    }
-                }
-
                 if key != Key::None {
                     self.status_bar.clear();
                 }
-
                 if clients.focus_client(client_handle) {
                     self.recording_macro = None;
                     self.buffered_keys.0.clear();
                 }
-
-                self.buffered_keys.0.push(key);
-
-                match self
-                    .keymaps
-                    .matches(self.mode.kind(), self.buffered_keys.as_slice())
-                {
-                    MatchResult::None => (),
-                    MatchResult::Prefix => return EditorControlFlow::Continue,
-                    MatchResult::ReplaceWith(replaced_keys) => {
-                        self.buffered_keys.0.clear();
-                        self.buffered_keys.0.extend_from_slice(replaced_keys);
-                    }
-                }
-
-                'key_queue_loop: loop {
-                    let mut keys = KeysIterator::new();
-                    loop {
-                        if keys.index == self.buffered_keys.0.len() {
-                            break;
-                        }
-                        let keys_from_index = self.recording_macro.map(|_| keys.index);
-
-                        let mut ctx = ModeContext {
-                            editor: self,
-                            platform,
-                            clients,
-                            client_handle,
-                        };
-                        match Mode::on_client_keys(&mut ctx, &mut keys) {
-                            None => (),
-                            Some(ModeOperation::Pending) => {
-                                return EditorControlFlow::Continue;
-                            }
-                            Some(ModeOperation::Quit) => {
-                                Mode::change_to(&mut ctx, ModeKind::default());
-                                self.buffered_keys.0.clear();
-                                return EditorControlFlow::Quit;
-                            }
-                            Some(ModeOperation::QuitAll) => {
-                                self.buffered_keys.0.clear();
-                                return EditorControlFlow::QuitAll;
-                            }
-                            Some(ModeOperation::ExecuteMacro(key)) => {
-                                parse_and_set_keys_from_register(self, key);
-                                continue 'key_queue_loop;
-                            }
-                        }
-
-                        if let (Some(from_index), Some(register_key)) =
-                            (keys_from_index, self.recording_macro.clone())
-                        {
-                            for key in &self.buffered_keys.0[from_index..keys.index] {
-                                use fmt::Write;
-                                let register = self.registers.get_mut(register_key);
-                                let _ = write!(register, "{}", key);
-                            }
-                        }
-
-                        self.trigger_event_handlers(platform, clients, Some(client_handle));
-                    }
-
-                    match self.recording_macro {
-                        Some(KEY_QUEUE_REGISTER) => {
-                            self.buffered_keys.0.clear();
-                        }
-                        _ => {
-                            parse_and_set_keys_from_register(self, KEY_QUEUE_REGISTER);
-                            self.registers.get_mut(KEY_QUEUE_REGISTER).clear();
-                        }
-                    }
-                    if self.buffered_keys.0.is_empty() {
-                        break;
-                    }
-                }
-
-                self.buffered_keys.0.clear();
-                EditorControlFlow::Continue
+                self.buffered_keys.add(key);
+                self.execute_keys(platform, clients, client_handle, KeysIterator::from(0))
             }
             ClientEvent::Resize(client_handle, width, height) => {
                 if let Some(client) = clients.get_mut(client_handle) {
