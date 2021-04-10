@@ -317,28 +317,70 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
-        name: "replace",
+        name: "replace-with-text",
         alias: "",
         help: concat!(
-            "replace each cursor selection with given text\n",
-            "replace [<flags>] <text-or-command>\n",
-            " -command : interprets <text-or-command> as a command and inserts its output\n",
-            " -input : when `-command` is set, also sends selected text as input to <text-or-command> command\n",
-            " -env=<vars> : when `-command` is set, sets environment variables in the form VAR=<value> VAR=<value>...\n",
-            " -split-on-byte=<number> : when `-command` is set, splits output at every <number> byte",
+            "replace each cursor selection with text\n",
+            "replace-with-text [<flags>] <text>",
+        ),
+        hidden: false,
+        completions: &[],
+        func: |ctx| {
+            ctx.args.assert_no_bang()?;
+            ctx.args.get_flags(&mut [])?;
+            let text = ctx.args.next()?;
+            ctx.args.assert_empty()?;
+
+            let buffer_view_handle = ctx.current_buffer_view_handle()?;
+            let buffer_view = match ctx.editor.buffer_views.get_mut(buffer_view_handle) {
+                Some(buffer_view) => buffer_view,
+                None => return Err(CommandError::NoBufferOpened),
+            };
+            buffer_view.delete_text_in_cursor_ranges(
+                &mut ctx.editor.buffers,
+                &mut ctx.editor.word_database,
+                &mut ctx.editor.events,
+            );
+            ctx.editor.trigger_event_handlers(
+                ctx.platform,
+                ctx.clients,
+                ctx.client_handle,
+            );
+
+            let buffer_view = match ctx.editor.buffer_views.get_mut(buffer_view_handle) {
+                Some(buffer_view) => buffer_view,
+                None => return Ok(None),
+            };
+            buffer_view.insert_text_at_cursor_positions(
+                &mut ctx.editor.buffers,
+                &mut ctx.editor.word_database,
+                text,
+                &mut ctx.editor.events,
+            );
+
+            Ok(None)
+        },
+    },
+    BuiltinCommand {
+        name: "replace-with-output",
+        alias: "",
+        help: concat!(
+            "replace each cursor selection with command output\n",
+            "replace-with-output [<flags>] <command>\n",
+            " -input : also sends selected text as input to command\n",
+            " -env=<vars> : sets environment variables in the form VAR=<value> VAR=<value>...\n",
+            " -split-on-byte=<number> : splits output at every <number> byte",
         ),
         hidden: false,
         completions: &[],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
 
-            let mut flags = [("command", None), ("input", None), ("env", None), ("split-on-byte", None)];
+            let mut flags = [("input", None), ("env", None), ("split-on-byte", None)];
             ctx.args.get_flags(&mut flags)?;
-            eprintln!("after get_flags");
-            let command = flags[0].1.is_some();
-            let input = flags[1].1.is_some();
-            let env = flags[2].1.unwrap_or("");
-            let split_on_byte = match flags[3].1 {
+            let input = flags[0].1.is_some();
+            let env = flags[1].1.unwrap_or("");
+            let split_on_byte = match flags[2].1 {
                 Some(token) => match token.parse() {
                     Ok(b) => Some(b),
                     Err(_) => return Err(CommandError::InvalidToken(token.into())),
@@ -358,7 +400,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             const NONE_BUF : Option<SharedBuf> = None;
             let mut stdins = [NONE_BUF; CursorCollection::capacity()];
 
-            if command && input {
+            if input {
                 let mut text = ctx.editor.string_pool.acquire();
                 for (i, cursor) in buffer_view.cursors[..].iter().enumerate() {
                     let content = match ctx.editor.buffers.get(buffer_view.buffer_handle) {
@@ -397,32 +439,23 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 None => return Ok(None),
             };
 
-            if command {
-                for (i, cursor) in buffer_view.cursors[..].iter().enumerate() {
-                    let range = cursor.to_range();
-                    let command = parse_command(text_or_command, env)?;
+            for (i, cursor) in buffer_view.cursors[..].iter().enumerate() {
+                let range = cursor.to_range();
+                let command = parse_command(text_or_command, env)?;
 
-                    let buffer = match ctx.editor.buffers.get(buffer_view.buffer_handle) {
-                        Some(buffer) => buffer,
-                        None => return Ok(None),
-                    };
+                let buffer = match ctx.editor.buffers.get(buffer_view.buffer_handle) {
+                    Some(buffer) => buffer,
+                    None => return Ok(None),
+                };
 
-                    let buffer_handle = buffer.handle();
-                    ctx.editor.buffers.spawn_insert_process(
-                        ctx.platform,
-                        command,
-                        buffer_handle,
-                        range.from,
-                        stdins[i].take(),
-                        split_on_byte,
-                    );
-                }
-            } else {
-                buffer_view.insert_text_at_cursor_positions(
-                    &mut ctx.editor.buffers,
-                    &mut ctx.editor.word_database,
-                    text_or_command,
-                    &mut ctx.editor.events,
+                let buffer_handle = buffer.handle();
+                ctx.editor.buffers.spawn_insert_process(
+                    ctx.platform,
+                    command,
+                    buffer_handle,
+                    range.from,
+                    stdins[i].take(),
+                    split_on_byte,
                 );
             }
 
