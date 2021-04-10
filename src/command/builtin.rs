@@ -1396,11 +1396,11 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
-        name: "lsp-goto-definition",
+        name: "lsp-definition",
         alias: "",
         help: concat!(
-            "asks the lsp server for the location of definition of the symbol under the main cursor and jumps there\n",
-            "lsp-goto-definition",
+            "jumps to the location of the definition of the symbol under the main cursor found by the lsp server\n",
+            "lsp-definition",
         ),
         hidden: false,
         completions: &[],
@@ -1413,6 +1413,41 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             let (buffer_handle, position) = current_buffer_and_main_position(&ctx)?;
             access_lsp(&mut ctx, buffer_handle, |editor, platform, client, json| {
                 client.definition(editor, platform, json, buffer_handle, position, client_handle)
+            })?;
+            Ok(None)
+        },
+    },
+    BuiltinCommand {
+        name: "lsp-references",
+        alias: "",
+        help: concat!(
+            "opens up a buffer with all references of the symbol under the main cursor found by the lsp server\n",
+            "lsp-references [<flags>]\n",
+            " -exclude-declaration : do not include symbol declaration in results",
+        ),
+        hidden: false,
+        completions: &[],
+        func: |mut ctx| {
+            ctx.args.assert_no_bang()?;
+
+            let mut flags = [("exclude-declaration", None)];
+            ctx.args.get_flags(&mut flags)?;
+            let exclude_declaration = flags[0].1.is_some();
+
+            ctx.args.assert_empty()?;
+
+            let client_handle = ctx.client_handle;
+            let (buffer_handle, position) = current_buffer_and_main_position(&ctx)?;
+            access_lsp(&mut ctx, buffer_handle, |editor, platform, client, json| {
+                client.references(
+                    editor,
+                    platform,
+                    json,
+                    buffer_handle,
+                    position,
+                    exclude_declaration,
+                    client_handle
+                )
             })?;
             Ok(None)
         },

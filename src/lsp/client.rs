@@ -7,7 +7,7 @@ use std::{
 };
 
 use crate::{
-    buffer::{Buffer, BufferHandle},
+    buffer::{Buffer, BufferCapabilities, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
     client,
     editor::Editor,
@@ -555,6 +555,48 @@ impl Client {
         }
     }
 
+    pub fn references(
+        &mut self,
+        editor: &Editor,
+        platform: &mut Platform,
+        json: &mut Json,
+        buffer_handle: BufferHandle,
+        position: BufferPosition,
+        exclude_declaration: bool,
+        requesting_client: Option<client::ClientHandle>,
+    ) {
+        if !self.server_capabilities.referencesProvider.0 {
+            return;
+        }
+
+        if let Some(buffer_path) = editor.buffers.get(buffer_handle).and_then(Buffer::path) {
+            let text_document =
+                helper::text_document_with_id(&editor.current_directory, buffer_path, json);
+            let position = DocumentPosition::from(position);
+
+            let mut context = JsonObject::default();
+            let include_declaration = !exclude_declaration;
+            context.set(
+                "includeDeclaration".into(),
+                include_declaration.into(),
+                json,
+            );
+
+            let mut params = JsonObject::default();
+            params.set("textDocument".into(), text_document.into(), json);
+            params.set("position".into(), position.to_json_value(json), json);
+            params.set("context".into(), context.into(), json);
+
+            self.request(
+                platform,
+                json,
+                "textDocument/references",
+                params,
+                requesting_client,
+            );
+        }
+    }
+
     fn write_to_log_buffer<F>(&mut self, writer: F)
     where
         F: FnOnce(&mut Vec<u8>),
@@ -737,7 +779,7 @@ impl Client {
 
                 let params: Params = deserialize!(notification.params);
                 let uri = params.uri.as_str(json);
-                let path = match Uri::parse(uri) {
+                let path = match Uri::parse(&self.root, uri) {
                     Some(Uri::AbsolutePath(path)) => path,
                     _ => return,
                 };
@@ -924,9 +966,8 @@ impl Client {
                     }
                 };
 
-                if let Some(requesting_client) = requesting_client.and_then(|h| clients.get_mut(h))
-                {
-                    let path = match Uri::parse(location.uri.as_str(json)) {
+                if let Some(client) = requesting_client.and_then(|h| clients.get_mut(h)) {
+                    let path = match Uri::parse(&self.root, location.uri.as_str(json)) {
                         Some(Uri::AbsolutePath(path)) => path,
                         Some(Uri::RelativePath(_, path)) => path,
                         None => return,
@@ -934,7 +975,7 @@ impl Client {
                     let line_index = Some(location.range.start.line as _);
                     if let Ok(buffer_view_handle) =
                         editor.buffer_views.buffer_view_handle_from_path(
-                            requesting_client.handle(),
+                            client.handle(),
                             &mut editor.buffers,
                             &mut editor.word_database,
                             &self.root,
@@ -943,8 +984,97 @@ impl Client {
                             &mut editor.events,
                         )
                     {
-                        requesting_client
-                            .set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
+                        client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
+                    }
+                }
+            }
+            "textDocument/references" => {
+                let locations = match result {
+                    JsonValue::Null => return,
+                    JsonValue::Array(locations) => locations,
+                    _ => {
+                        self.respond(
+                            platform,
+                            json,
+                            request.id.into(),
+                            Err(ResponseError::parse_error()),
+                        );
+                        return;
+                    }
+                };
+
+                if let Some(client) = requesting_client.and_then(|h| clients.get_mut(h)) {
+                    if let Ok(buffer_view_handle) =
+                        editor.buffer_views.buffer_view_handle_from_path(
+                            client.handle(),
+                            &mut editor.buffers,
+                            &mut editor.word_database,
+                            &self.root,
+                            Path::new("lsp-references"),
+                            Some(0),
+                            &mut editor.events,
+                        )
+                    {
+                        let buffers = &mut editor.buffers;
+                        if let Some(buffer) = editor
+                            .buffer_views
+                            .get(buffer_view_handle)
+                            .and_then(|v| buffers.get_mut(v.buffer_handle))
+                        {
+                            buffer.capabilities = BufferCapabilities::log();
+
+                            let mut position = BufferPosition::zero();
+                            let range = BufferRange::between(position, buffer.content().end());
+                            buffer.delete_range(
+                                &mut editor.word_database,
+                                range,
+                                &mut editor.events,
+                            );
+
+                            let mut text = editor.string_pool.acquire();
+                            for location in locations.elements(json) {
+                                let location = match DocumentLocation::from_json(location, json) {
+                                    Ok(location) => location,
+                                    Err(_) => {
+                                        self.respond(
+                                            platform,
+                                            json,
+                                            request.id.into(),
+                                            Err(ResponseError::parse_error()),
+                                        );
+                                        return;
+                                    }
+                                };
+
+                                let path = match Uri::parse(&self.root, location.uri.as_str(json)) {
+                                    Some(Uri::AbsolutePath(path)) => path,
+                                    Some(Uri::RelativePath(_, path)) => path,
+                                    _ => continue,
+                                };
+                                let path = match path.to_str() {
+                                    Some(path) => path,
+                                    None => continue,
+                                };
+
+                                use fmt::Write;
+                                let _ = write!(
+                                    text,
+                                    "{}:{},{}\n",
+                                    path, location.range.start.line, location.range.start.character
+                                );
+                                let range = buffer.insert_text(
+                                    &mut editor.word_database,
+                                    position,
+                                    &text,
+                                    &mut editor.events,
+                                );
+                                position = position.insert(range);
+                                text.clear();
+                            }
+                            editor.string_pool.release(text);
+                        }
+
+                        client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
                     }
                 }
             }

@@ -369,8 +369,10 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
         }
     }
 
+    set_not_underlined(buf);
     set_background_color(buf, editor.theme.background);
     set_foreground_color(buf, editor.theme.token_whitespace);
+
     for _ in drawn_line_count..view.height {
         buf.push(editor.config.visual_empty);
         clear_until_new_line(buf);

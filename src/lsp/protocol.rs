@@ -21,13 +21,12 @@ pub enum Uri<'a> {
     RelativePath(&'a Path, &'a Path),
 }
 impl<'a> Uri<'a> {
-    pub fn parse(uri: &'a str) -> Option<Self> {
-        const FILE_SCHEME_PREFIX: &str = "file:///";
-        if uri.starts_with(FILE_SCHEME_PREFIX) {
-            let path = Path::new(&uri[FILE_SCHEME_PREFIX.len()..]);
-            Some(Uri::AbsolutePath(path))
-        } else {
-            None
+    pub fn parse(base: &'a Path, uri: &'a str) -> Option<Self> {
+        let uri = uri.strip_prefix("file:///")?;
+        let path = Path::new(uri);
+        match path.strip_prefix(base) {
+            Ok(path) => Some(Uri::RelativePath(base, path)),
+            Err(_) => Some(Uri::AbsolutePath(path)),
         }
     }
 }
