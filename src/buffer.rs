@@ -46,46 +46,15 @@ pub fn find_delimiter_pair_at(text: &str, index: usize, delimiter: char) -> Opti
 pub fn parse_path_and_position(text: &str) -> (&str, Option<BufferPosition>) {
     let text = text.trim();
     match text.rfind(':') {
-        Some(i) => {
-            let position = &text[(i + 1)..];
-            let text = &text[..i];
-            match position.find(',') {
-                Some(i) => {
-                    let line = &position[..i];
-                    let column = &position[(i + 1)..];
-                    (text, None)
-                }
-                None => {
-                    /*
-                    match position.parse::<u32>() {
-                        Ok(line) => (
-                            &text[..i],
-                            Some(BufferPosition::line_col(line.saturating_sub(1) as _, 0)),
-                        ),
-                        Err(_) => (text, None),
-                    }
-                    */
-
-                    (text, None)
-                }
-            }
-        }
+        Some(i) => match BufferPosition::parse(&text[i + 1..]) {
+            Some(position) => (&text[..i], Some(position)),
+            None => (text, None),
+        },
         None => (text, None),
     }
 }
 
 pub fn find_path_and_position_at(text: &str, index: usize) -> (&str, Option<BufferPosition>) {
-    fn parse_number(text: &str) -> Option<u32> {
-        let text = match text.find(|c: char| !c.is_ascii_digit()) {
-            Some(i) => &text[..i],
-            None => text,
-        };
-        match text.parse::<u32>() {
-            Ok(line) => Some(line.saturating_sub(1)),
-            Err(_) => None,
-        }
-    }
-
     let (left, right) = text.split_at(index);
     let from = match left.rfind(|c: char| c.is_ascii_whitespace()) {
         Some(i) => i + 1,
@@ -98,17 +67,11 @@ pub fn find_path_and_position_at(text: &str, index: usize) -> (&str, Option<Buff
     let path = &text[from..to];
     match path.rfind(':') {
         Some(i) => {
-            let line = parse_number(&path[(i + 1)..]);
-            let position = line.map(|l| BufferPosition::line_col(l as _, 0));
+            let position = BufferPosition::parse(&path[i + 1..]);
             (&path[..i], position)
         }
         None => {
-            let line = if text[to..].starts_with(':') {
-                parse_number(&text[(to + 1)..])
-            } else {
-                None
-            };
-            let position = line.map(|l| BufferPosition::line_col(l as _, 0));
+            let position = text[to..].strip_prefix(':').and_then(BufferPosition::parse);
             (path, position)
         }
     }
