@@ -12,7 +12,7 @@ use crate::{
     command::{CommandManager, CommandOperation},
     config::Config,
     editor_utils::{MessageKind, ReadLine, StatusBar, StringPool},
-    events::{ClientEvent, EditorEvent, EditorEventQueue},
+    events::{ClientEvent, EditorEvent, EditorEventQueue, KeyParseAllError, KeyParser},
     keymap::{KeyMapCollection, MatchResult},
     lsp,
     mode::{Mode, ModeContext, ModeKind, ModeOperation},
@@ -26,9 +26,9 @@ use crate::{
 
 #[derive(Clone, Copy)]
 pub enum EditorControlFlow {
+    Continue,
     Quit,
     QuitAll,
-    Continue,
 }
 impl EditorControlFlow {
     pub fn is_quit(self) -> bool {
@@ -36,27 +36,11 @@ impl EditorControlFlow {
     }
 }
 
-#[derive(Default)]
-pub struct BufferedKeys(Vec<Key>);
-impl BufferedKeys {
-    pub fn as_slice(&self) -> &[Key] {
-        &self.0
-    }
-
-    pub fn add(&mut self, key: Key) {
-        self.0.push(key);
-    }
-
-    pub fn truncate(&mut self, len: usize) {
-        self.0.truncate(len);
-    }
-}
-
 pub struct KeysIterator {
     index: usize,
 }
 impl KeysIterator {
-    pub fn from(index: usize) -> Self {
+    fn from(index: usize) -> Self {
         Self { index }
     }
 
@@ -76,6 +60,39 @@ impl KeysIterator {
 
     pub fn put_back(&mut self) {
         self.index = self.index.saturating_sub(1);
+    }
+}
+
+pub struct BufferedKeysParseError<'a> {
+    keys: &'a str,
+    error: KeyParseAllError,
+}
+impl<'a> fmt::Display for BufferedKeysParseError<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "error parsing keys '{}'\n{}", self.keys, self.error)
+    }
+}
+
+#[derive(Default)]
+pub struct BufferedKeys(Vec<Key>);
+impl BufferedKeys {
+    pub fn as_slice(&self) -> &[Key] {
+        &self.0
+    }
+
+    pub fn parse<'a>(&mut self, keys: &'a str) -> Result<KeysIterator, BufferedKeysParseError<'a>> {
+        let start_index = self.as_slice().len();
+        for key in KeyParser::new(keys) {
+            match key {
+                Ok(key) => self.0.push(key),
+                Err(error) => {
+                    self.0.truncate(start_index);
+                    return Err(BufferedKeysParseError { keys, error });
+                }
+            }
+        }
+
+        Ok(KeysIterator::from(start_index))
     }
 }
 
@@ -187,7 +204,7 @@ impl Editor {
             MatchResult::None => (),
             MatchResult::Prefix => return EditorControlFlow::Continue,
             MatchResult::ReplaceWith(replaced_keys) => {
-                self.buffered_keys.truncate(start_index);
+                self.buffered_keys.0.truncate(start_index);
                 self.buffered_keys.0.extend_from_slice(replaced_keys);
             }
         }
@@ -211,11 +228,11 @@ impl Editor {
                 }
                 Some(ModeOperation::Quit) => {
                     Mode::change_to(&mut ctx, ModeKind::default());
-                    self.buffered_keys.truncate(start_index);
+                    self.buffered_keys.0.truncate(start_index);
                     return EditorControlFlow::Quit;
                 }
                 Some(ModeOperation::QuitAll) => {
-                    self.buffered_keys.truncate(start_index);
+                    self.buffered_keys.0.truncate(start_index);
                     return EditorControlFlow::QuitAll;
                 }
             }
@@ -233,7 +250,7 @@ impl Editor {
             self.trigger_event_handlers(platform, clients, Some(client_handle));
         }
 
-        self.buffered_keys.truncate(start_index);
+        self.buffered_keys.0.truncate(start_index);
         EditorControlFlow::Continue
     }
 
@@ -322,7 +339,7 @@ impl Editor {
                     self.recording_macro = None;
                     self.buffered_keys.0.clear();
                 }
-                self.buffered_keys.add(key);
+                self.buffered_keys.0.push(key);
                 self.execute_keys(platform, clients, client_handle, KeysIterator::from(0))
             }
             ClientEvent::Resize(client_handle, width, height) => {

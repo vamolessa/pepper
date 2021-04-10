@@ -1,4 +1,4 @@
-use argh::FromArgValue;
+use std::{fmt, str::FromStr};
 
 use crate::{
     buffer_view::BufferViewHandle,
@@ -41,11 +41,19 @@ impl<'de> Serialize<'de> for ClientHandle {
     }
 }
 
-impl FromArgValue for ClientHandle {
-    fn from_arg_value(value: &str) -> Result<Self, String> {
-        match value.parse() {
-            Ok(index) => Ok(Self(index)),
-            Err(e) => Err(format!("could not parse client index: {}", e)),
+pub struct ClientHandleFromStrError;
+impl fmt::Display for ClientHandleFromStrError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("could not parse client index")
+    }
+}
+
+impl FromStr for ClientHandle {
+    type Err = ClientHandleFromStrError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.parse() {
+            Ok(i) => Ok(Self(i)),
+            Err(_) => Err(ClientHandleFromStrError),
         }
     }
 }

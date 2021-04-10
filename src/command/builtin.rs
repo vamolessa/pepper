@@ -16,7 +16,7 @@ use crate::{
     },
     config::{ParseConfigError, CONFIG_NAMES},
     cursor::CursorCollection,
-    editor::Editor,
+    editor::{Editor, EditorControlFlow},
     editor_utils::MessageKind,
     json::Json,
     keymap::ParseKeyMapError,
@@ -461,6 +461,48 @@ pub const COMMANDS: &[BuiltinCommand] = &[
 
             Ok(None)
         },
+    },
+    BuiltinCommand {
+        name: "execute-keys",
+        alias: "",
+        help: concat!(
+            "executes keys as if they were inputted manually\n",
+            "execute-keys <keys>\n",
+            " -client=<client-id> : if specified, send keys on behalf of client <client-id>",
+        ),
+        hidden: false,
+        completions: &[],
+        func: |ctx| {
+            ctx.args.assert_no_bang()?;
+
+            let mut flags = [("client", None)];
+            ctx.args.get_flags(&mut flags)?;
+            let client = match flags[0].1 {
+                Some(token) => match token.parse() {
+                    Ok(handle) => Some(handle),
+                    Err(_) => return Err(CommandError::InvalidToken(token.into())),
+                }
+                None => ctx.client_handle,
+            };
+
+            let keys = ctx.args.next()?;
+            ctx.args.assert_empty()?;
+
+            match client {
+                Some(client_handle) => match ctx.editor.buffered_keys.parse(keys) {
+                    Ok(keys) => match ctx.editor.execute_keys(ctx.platform, ctx.clients, client_handle, keys) {
+                        EditorControlFlow::Continue => Ok(None),
+                        EditorControlFlow::Quit => Ok(Some(CommandOperation::Quit)),
+                        EditorControlFlow::QuitAll => Ok(Some(CommandOperation::QuitAll)),
+                    },
+                    Err(error) => {
+                        ctx.editor.status_bar.write(MessageKind::Error).fmt(format_args!("{}", error));
+                        Ok(None)
+                    },
+                }
+                None => Ok(None)
+            }
+        }
     },
     BuiltinCommand {
         name: "read-line",
