@@ -773,7 +773,6 @@ struct Process {
     pub input: Option<SharedBuf>,
     pub output: Vec<u8>,
     pub split_on_byte: Option<u8>,
-    pub stdout_index: usize, // TODO: remove and fix `on_output`
     pub output_var_name: String,
     pub on_output: String,
 }
@@ -1053,7 +1052,6 @@ impl CommandManager {
         process.alive = true;
         process.output.clear();
         process.split_on_byte = split_on_byte;
-        process.stdout_index = 0;
         process.output_var_name.clear();
         process.on_output.clear();
 
@@ -1124,25 +1122,28 @@ impl CommandManager {
         };
 
         let mut commands = editor.string_pool.acquire();
-        let mut stdout_index = process.stdout_index;
+        let mut output_index = 0;
 
         loop {
             let process = &editor.commands.spawned_processes[index];
-            let stdout = &process.output[stdout_index..];
-            let line = match stdout.iter().position(|&b| b == split_on_byte) {
+            let stdout = &process.output[output_index..];
+            let slice = match stdout.iter().position(|&b| b == split_on_byte) {
                 Some(i) => {
-                    let line = &stdout[..i];
-                    stdout_index += i + 1;
-                    line
+                    output_index += i + 1;
+                    &stdout[..i]
                 }
                 None => break,
             };
 
-            match std::str::from_utf8(line) {
-                Ok(line) => {
+            if slice.is_empty() {
+                continue;
+            }
+
+            match std::str::from_utf8(slice) {
+                Ok(slice) => {
                     commands.clear();
                     commands.push_str(&process.on_output);
-                    replace_to_between_text_markers(&mut commands, &process.output_var_name, line);
+                    replace_to_between_text_markers(&mut commands, &process.output_var_name, slice);
                     Self::eval_commands_then_output(
                         editor, platform, clients, None, &commands, None,
                     );
@@ -1157,7 +1158,7 @@ impl CommandManager {
         }
 
         editor.string_pool.release(commands);
-        editor.commands.spawned_processes[index].stdout_index = stdout_index;
+        editor.commands.spawned_processes[index].output.drain(..output_index);
     }
 
     pub fn on_process_exit(
@@ -1169,7 +1170,7 @@ impl CommandManager {
     ) {
         let process = &mut editor.commands.spawned_processes[index];
         process.alive = false;
-        if !success || process.on_output.is_empty() || process.split_on_byte.is_some() {
+        if !success || process.on_output.is_empty() {
             return;
         }
 
