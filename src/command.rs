@@ -1181,7 +1181,7 @@ impl CommandManager {
     ) {
         let process = &mut editor.commands.spawned_processes[index];
         process.alive = false;
-        if !success || process.on_output.is_empty() {
+        if !success || process.on_output.is_empty() || process.output.is_empty() {
             return;
         }
 
@@ -1200,7 +1200,6 @@ impl CommandManager {
         replace_to_between_text_markers(&mut commands, &process.output_var_name, stdout);
         let client_handle = process.client_handle;
         Self::eval_commands_then_output(editor, platform, clients, client_handle, &commands, None);
-
         editor.string_pool.release(commands);
     }
 
