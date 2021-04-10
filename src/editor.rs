@@ -438,6 +438,8 @@ impl Editor {
                 CommandManager::on_process_exit(self, platform, clients, index, success)
             }
         }
+
+        self.trigger_event_handlers(platform, clients, None);
     }
 
     pub fn trigger_event_handlers(

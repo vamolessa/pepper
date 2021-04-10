@@ -1377,6 +1377,7 @@ impl BufferCollection {
             None => Stdio::null(),
         };
         command.stdin(stdin);
+        command.stdout(Stdio::piped());
         command.stderr(Stdio::null());
 
         platform.enqueue_request(PlatformRequest::SpawnProcess {
