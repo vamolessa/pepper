@@ -442,9 +442,7 @@ impl ServerEventIter {
     }
 
     pub fn finish(&self, protocol: &mut Protocol) {
-        let rest_len = protocol.read_buf.len() - self.read_len;
-        protocol.read_buf.copy_within(self.read_len.., 0);
-        protocol.read_buf.truncate(rest_len);
+        protocol.read_buf.drain(..self.read_len);
     }
 }
 

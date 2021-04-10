@@ -566,10 +566,7 @@ impl ClientEventIter {
     }
 
     pub fn finish(&self, receiver: &mut ClientEventReceiver) {
-        let buf = &mut receiver.bufs[self.buf_index];
-        let rest_len = buf.len() - self.read_len;
-        buf.copy_within(self.read_len.., 0);
-        buf.truncate(rest_len);
+        receiver.bufs[self.buf_index].drain(..self.read_len);
     }
 }
 

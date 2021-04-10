@@ -305,6 +305,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             let command = parse_command(command, env)?;
             ctx.editor.commands.spawn_process(
                 ctx.platform,
+                ctx.client_handle,
                 command,
                 input,
                 output_name,

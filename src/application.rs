@@ -342,10 +342,8 @@ impl<'stdout> ClientApplication<'stdout> {
                     }
                     Ok(ServerEvent::Request(_)) => (),
                     Err(DeserializeError::InsufficientData) => {
-                        let rest_len = previous_slice.len();
-                        let rest_index = self.server_read_buf.len() - rest_len;
-                        self.server_read_buf.copy_within(rest_index.., 0);
-                        self.server_read_buf.truncate(rest_len);
+                        let read_len = self.server_read_buf.len() - previous_slice.len();
+                        self.server_read_buf.drain(..read_len);
                         break;
                     }
                     Err(DeserializeError::InvalidData) => panic!("received invalid data"),

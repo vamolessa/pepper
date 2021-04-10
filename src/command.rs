@@ -770,6 +770,7 @@ pub struct RequestCommand {
 #[derive(Default)]
 struct Process {
     pub alive: bool,
+    pub client_handle: Option<ClientHandle>,
     pub input: Option<SharedBuf>,
     pub output: Vec<u8>,
     pub split_on_byte: Option<u8>,
@@ -1026,6 +1027,7 @@ impl CommandManager {
     pub fn spawn_process(
         &mut self,
         platform: &mut Platform,
+        client_handle: Option<ClientHandle>,
         mut command: Command,
         stdin: Option<&str>,
         output_name: Option<&str>,
@@ -1050,6 +1052,7 @@ impl CommandManager {
 
         let process = &mut self.spawned_processes[index];
         process.alive = true;
+        process.client_handle = client_handle;
         process.output.clear();
         process.split_on_byte = split_on_byte;
         process.output_var_name.clear();
@@ -1144,8 +1147,14 @@ impl CommandManager {
                     commands.clear();
                     commands.push_str(&process.on_output);
                     replace_to_between_text_markers(&mut commands, &process.output_var_name, slice);
+                    let client_handle = process.client_handle;
                     Self::eval_commands_then_output(
-                        editor, platform, clients, None, &commands, None,
+                        editor,
+                        platform,
+                        clients,
+                        client_handle,
+                        &commands,
+                        None,
                     );
                 }
                 Err(error) => {
@@ -1158,7 +1167,9 @@ impl CommandManager {
         }
 
         editor.string_pool.release(commands);
-        editor.commands.spawned_processes[index].output.drain(..output_index);
+        editor.commands.spawned_processes[index]
+            .output
+            .drain(..output_index);
     }
 
     pub fn on_process_exit(
@@ -1187,7 +1198,8 @@ impl CommandManager {
 
         let mut commands = editor.string_pool.acquire_with(&process.on_output);
         replace_to_between_text_markers(&mut commands, &process.output_var_name, stdout);
-        Self::eval_commands_then_output(editor, platform, clients, None, &commands, None);
+        let client_handle = process.client_handle;
+        Self::eval_commands_then_output(editor, platform, clients, client_handle, &commands, None);
 
         editor.string_pool.release(commands);
     }
