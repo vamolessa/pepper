@@ -94,7 +94,7 @@ impl State {
                     Key::None => return Some(ModeOperation::Pending),
                     Key::Char(c) => {
                         if let Some(key) = RegisterKey::from_char(c.to_ascii_lowercase()) {
-                            let keys_index = ctx.editor.buffered_keys.as_slice().len();
+                            let start_index = ctx.editor.buffered_keys.as_slice().len();
                             let macro_keys = ctx.editor.registers.get(key);
                             for key in KeyParser::new(macro_keys) {
                                 match key {
@@ -106,7 +106,7 @@ impl State {
                                                 macro_keys, &error
                                             ),
                                         );
-                                        ctx.editor.buffered_keys.truncate(keys_index);
+                                        ctx.editor.buffered_keys.truncate(start_index);
                                         return None;
                                     }
                                 }
@@ -116,7 +116,7 @@ impl State {
                                 ctx.platform,
                                 ctx.clients,
                                 ctx.client_handle,
-                                KeysIterator::from(keys_index),
+                                KeysIterator::from(start_index),
                             ) {
                                 EditorControlFlow::Continue => None,
                                 EditorControlFlow::Quit => Some(ModeOperation::Quit),
