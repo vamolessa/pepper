@@ -599,9 +599,15 @@ impl Client {
     }
 
     // TODO: these requests
-    pub fn rename() {}
-    pub fn code_actions() {}
-    pub fn format() {}
+    pub fn rename() {
+        // https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocument_rename
+    }
+    pub fn code_action() {
+        // https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocument_codeAction
+    }
+    pub fn formatting() {
+        // https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocument_formatting
+    }
 
     fn write_to_log_buffer<F>(&mut self, writer: F)
     where
