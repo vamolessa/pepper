@@ -598,6 +598,11 @@ impl Client {
         }
     }
 
+    // TODO: these requests
+    pub fn rename() {}
+    pub fn code_actions() {}
+    pub fn format() {}
+
     fn write_to_log_buffer<F>(&mut self, writer: F)
     where
         F: FnOnce(&mut Vec<u8>),
