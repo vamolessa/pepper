@@ -473,23 +473,26 @@ impl Client {
             return;
         }
 
-        if let Some(buffer_path) = editor.buffers.get(buffer_handle).and_then(|b| b.path()) {
-            let text_document =
-                helper::text_document_with_id(&editor.current_directory, buffer_path, json);
-            let position = DocumentPosition::from(position);
+        let buffer_path = match editor.buffers.get(buffer_handle).and_then(Buffer::path) {
+            Some(path) => path,
+            None => return,
+        };
 
-            let mut params = JsonObject::default();
-            params.set("textDocument".into(), text_document.into(), json);
-            params.set("position".into(), position.to_json_value(json), json);
+        let text_document =
+            helper::text_document_with_id(&editor.current_directory, buffer_path, json);
+        let position = DocumentPosition::from(position);
 
-            self.request(
-                platform,
-                json,
-                "textDocument/hover",
-                params,
-                requesting_client,
-            );
-        }
+        let mut params = JsonObject::default();
+        params.set("textDocument".into(), text_document.into(), json);
+        params.set("position".into(), position.to_json_value(json), json);
+
+        self.request(
+            platform,
+            json,
+            "textDocument/hover",
+            params,
+            requesting_client,
+        );
     }
 
     pub fn signature_help(
@@ -505,23 +508,26 @@ impl Client {
             return;
         }
 
-        if let Some(buffer_path) = editor.buffers.get(buffer_handle).and_then(Buffer::path) {
-            let text_document =
-                helper::text_document_with_id(&editor.current_directory, buffer_path, json);
-            let position = DocumentPosition::from(position);
+        let buffer_path = match editor.buffers.get(buffer_handle).and_then(Buffer::path) {
+            Some(path) => path,
+            None => return,
+        };
 
-            let mut params = JsonObject::default();
-            params.set("textDocument".into(), text_document.into(), json);
-            params.set("position".into(), position.to_json_value(json), json);
+        let text_document =
+            helper::text_document_with_id(&editor.current_directory, buffer_path, json);
+        let position = DocumentPosition::from(position);
 
-            self.request(
-                platform,
-                json,
-                "textDocument/signatureHelp",
-                params,
-                requesting_client,
-            );
-        }
+        let mut params = JsonObject::default();
+        params.set("textDocument".into(), text_document.into(), json);
+        params.set("position".into(), position.to_json_value(json), json);
+
+        self.request(
+            platform,
+            json,
+            "textDocument/signatureHelp",
+            params,
+            requesting_client,
+        );
     }
 
     pub fn definition(
@@ -537,23 +543,26 @@ impl Client {
             return;
         }
 
-        if let Some(buffer_path) = editor.buffers.get(buffer_handle).and_then(Buffer::path) {
-            let text_document =
-                helper::text_document_with_id(&editor.current_directory, buffer_path, json);
-            let position = DocumentPosition::from(position);
+        let buffer_path = match editor.buffers.get(buffer_handle).and_then(Buffer::path) {
+            Some(path) => path,
+            None => return,
+        };
 
-            let mut params = JsonObject::default();
-            params.set("textDocument".into(), text_document.into(), json);
-            params.set("position".into(), position.to_json_value(json), json);
+        let text_document =
+            helper::text_document_with_id(&editor.current_directory, buffer_path, json);
+        let position = DocumentPosition::from(position);
 
-            self.request(
-                platform,
-                json,
-                "textDocument/definition",
-                params,
-                requesting_client,
-            );
-        }
+        let mut params = JsonObject::default();
+        params.set("textDocument".into(), text_document.into(), json);
+        params.set("position".into(), position.to_json_value(json), json);
+
+        self.request(
+            platform,
+            json,
+            "textDocument/definition",
+            params,
+            requesting_client,
+        );
     }
 
     pub fn references(
@@ -563,39 +572,36 @@ impl Client {
         json: &mut Json,
         buffer_handle: BufferHandle,
         position: BufferPosition,
-        exclude_declaration: bool,
         requesting_client: Option<client::ClientHandle>,
     ) {
         if !self.server_capabilities.referencesProvider.0 {
             return;
         }
 
-        if let Some(buffer_path) = editor.buffers.get(buffer_handle).and_then(Buffer::path) {
-            let text_document =
-                helper::text_document_with_id(&editor.current_directory, buffer_path, json);
-            let position = DocumentPosition::from(position);
+        let buffer_path = match editor.buffers.get(buffer_handle).and_then(Buffer::path) {
+            Some(path) => path,
+            None => return,
+        };
 
-            let mut context = JsonObject::default();
-            let include_declaration = !exclude_declaration;
-            context.set(
-                "includeDeclaration".into(),
-                include_declaration.into(),
-                json,
-            );
+        let text_document =
+            helper::text_document_with_id(&editor.current_directory, buffer_path, json);
+        let position = DocumentPosition::from(position);
 
-            let mut params = JsonObject::default();
-            params.set("textDocument".into(), text_document.into(), json);
-            params.set("position".into(), position.to_json_value(json), json);
-            params.set("context".into(), context.into(), json);
+        let mut context = JsonObject::default();
+        context.set("includeDeclaration".into(), true.into(), json);
 
-            self.request(
-                platform,
-                json,
-                "textDocument/references",
-                params,
-                requesting_client,
-            );
-        }
+        let mut params = JsonObject::default();
+        params.set("textDocument".into(), text_document.into(), json);
+        params.set("position".into(), position.to_json_value(json), json);
+        params.set("context".into(), context.into(), json);
+
+        self.request(
+            platform,
+            json,
+            "textDocument/references",
+            params,
+            requesting_client,
+        );
     }
 
     // TODO: these requests
@@ -928,22 +934,23 @@ impl Client {
                 }
 
                 let signature_help: Option<SignatureHelp> = deserialize!(result);
-                if let Some(signature) = signature_help
+                let signature = match signature_help
                     .and_then(|sh| sh.signatures.elements(json).nth(sh.activeSignature))
                 {
-                    let signature: SignatureInformation = deserialize!(signature);
-                    let label = signature.label.as_str(json);
-                    let documentation =
-                        helper::extract_markup_content(signature.documentation, json);
+                    Some(signature) => signature,
+                    None => return,
+                };
+                let signature: SignatureInformation = deserialize!(signature);
+                let label = signature.label.as_str(json);
+                let documentation = helper::extract_markup_content(signature.documentation, json);
 
-                    if documentation.is_empty() {
-                        editor.status_bar.write(MessageKind::Info).str(label);
-                    } else {
-                        editor
-                            .status_bar
-                            .write(MessageKind::Info)
-                            .fmt(format_args!("{}\n{}", documentation, label));
-                    }
+                if documentation.is_empty() {
+                    editor.status_bar.write(MessageKind::Info).str(label);
+                } else {
+                    editor
+                        .status_bar
+                        .write(MessageKind::Info)
+                        .fmt(format_args!("{}\n{}", documentation, label));
                 }
             }
             "textDocument/definition" => {
@@ -978,26 +985,26 @@ impl Client {
                     }
                 };
 
-                if let Some(client) = requesting_client.and_then(|h| clients.get_mut(h)) {
-                    let path = match Uri::parse(&self.root, location.uri.as_str(json)) {
-                        Some(Uri::AbsolutePath(path)) => path,
-                        Some(Uri::RelativePath(_, path)) => path,
-                        None => return,
-                    };
-                    let position = location.range.start.into();
-                    if let Ok(buffer_view_handle) =
-                        editor.buffer_views.buffer_view_handle_from_path(
-                            client.handle(),
-                            &mut editor.buffers,
-                            &mut editor.word_database,
-                            &self.root,
-                            path,
-                            Some(position),
-                            &mut editor.events,
-                        )
-                    {
-                        client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
-                    }
+                let client = match requesting_client.and_then(|h| clients.get_mut(h)) {
+                    Some(client) => client,
+                    None => return,
+                };
+                let path = match Uri::parse(&self.root, location.uri.as_str(json)) {
+                    Some(Uri::AbsolutePath(path)) => path,
+                    Some(Uri::RelativePath(_, path)) => path,
+                    None => return,
+                };
+                let position = location.range.start.into();
+                if let Ok(buffer_view_handle) = editor.buffer_views.buffer_view_handle_from_path(
+                    client.handle(),
+                    &mut editor.buffers,
+                    &mut editor.word_database,
+                    &self.root,
+                    path,
+                    Some(position),
+                    &mut editor.events,
+                ) {
+                    client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
                 }
             }
             "textDocument/references" => {
@@ -1015,88 +1022,113 @@ impl Client {
                     }
                 };
 
-                if let Some(client) = requesting_client.and_then(|h| clients.get_mut(h)) {
-                    if let Ok(buffer_view_handle) =
-                        editor.buffer_views.buffer_view_handle_from_path(
-                            client.handle(),
-                            &mut editor.buffers,
-                            &mut editor.word_database,
-                            &self.root,
-                            Path::new("lsp-references"),
-                            Some(BufferPosition::zero()),
-                            &mut editor.events,
-                        )
-                    {
-                        let buffers = &mut editor.buffers;
-                        if let Some(buffer) = editor
-                            .buffer_views
-                            .get(buffer_view_handle)
-                            .and_then(|v| buffers.get_mut(v.buffer_handle))
-                        {
-                            buffer.capabilities = BufferCapabilities::log();
+                let client = match requesting_client.and_then(|h| clients.get_mut(h)) {
+                    Some(client) => client,
+                    None => return,
+                };
 
-                            let mut position = BufferPosition::zero();
-                            let range = BufferRange::between(position, buffer.content().end());
-                            buffer.delete_range(
-                                &mut editor.word_database,
-                                range,
-                                &mut editor.events,
-                            );
-
-                            let mut text = editor.string_pool.acquire();
-                            for location in locations.elements(json) {
-                                let location = match DocumentLocation::from_json(location, json) {
-                                    Ok(location) => location,
-                                    Err(_) => {
-                                        self.respond(
-                                            platform,
-                                            json,
-                                            request.id.into(),
-                                            Err(ResponseError::parse_error()),
-                                        );
-                                        return;
-                                    }
-                                };
-
-                                let path = match Uri::parse(&self.root, location.uri.as_str(json)) {
-                                    Some(Uri::AbsolutePath(path)) => path,
-                                    Some(Uri::RelativePath(_, path)) => path,
-                                    _ => continue,
-                                };
-                                let path = match path.to_str() {
-                                    Some(path) => path,
-                                    None => continue,
-                                };
-
-                                use fmt::Write;
-                                let _ = write!(
-                                    text,
-                                    "{}:{},{}\n",
-                                    path, location.range.start.line, location.range.start.character
-                                );
-                                let range = buffer.insert_text(
-                                    &mut editor.word_database,
-                                    position,
-                                    &text,
-                                    &mut editor.events,
-                                );
-                                position = position.insert(range);
-                                text.clear();
-                            }
-                            editor.string_pool.release(text);
-                        }
-
-                        if let Some(buffer_view) = editor.buffer_views.get_mut(buffer_view_handle) {
-                            buffer_view.move_cursors(
-                                buffers,
-                                CursorMovement::Home,
-                                CursorMovementKind::PositionAndAnchor,
-                            );
-                        }
-
-                        client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
+                let mut buffer_name = editor.string_pool.acquire();
+                for location in locations.clone().elements(json) {
+                    let location = match DocumentLocation::from_json(location, json) {
+                        Ok(location) => location,
+                        Err(_) => continue,
+                    };
+                    let path = match Uri::parse(&self.root, location.uri.as_str(json)) {
+                        Some(Uri::AbsolutePath(path)) => path,
+                        Some(Uri::RelativePath(_, path)) => path,
+                        _ => continue,
+                    };
+                    if let Some(buffer) = editor.buffers.find_with_path(&self.root, path) {
+                        buffer
+                            .content()
+                            .append_range_text_to_string(location.range.into(), &mut buffer_name);
+                        break;
                     }
                 }
+                if buffer_name.is_empty() {
+                    buffer_name.push_str("lsp");
+                }
+                buffer_name.push_str("-references");
+
+                let buffer_view_handle = editor.buffer_views.buffer_view_handle_from_path(
+                    client.handle(),
+                    &mut editor.buffers,
+                    &mut editor.word_database,
+                    &self.root,
+                    Path::new(&buffer_name),
+                    Some(BufferPosition::zero()),
+                    &mut editor.events,
+                );
+                editor.string_pool.release(buffer_name);
+                let buffer_view_handle = match buffer_view_handle {
+                    Ok(handle) => handle,
+                    Err(_) => return,
+                };
+
+                let buffers = &mut editor.buffers;
+                if let Some(buffer) = editor
+                    .buffer_views
+                    .get(buffer_view_handle)
+                    .and_then(|v| buffers.get_mut(v.buffer_handle))
+                {
+                    buffer.capabilities = BufferCapabilities::log();
+
+                    let mut position = BufferPosition::zero();
+                    let range = BufferRange::between(position, buffer.content().end());
+                    buffer.delete_range(&mut editor.word_database, range, &mut editor.events);
+
+                    let mut text = editor.string_pool.acquire();
+                    for location in locations.elements(json) {
+                        let location = match DocumentLocation::from_json(location, json) {
+                            Ok(location) => location,
+                            Err(_) => {
+                                self.respond(
+                                    platform,
+                                    json,
+                                    request.id.into(),
+                                    Err(ResponseError::parse_error()),
+                                );
+                                return;
+                            }
+                        };
+
+                        let path = match Uri::parse(&self.root, location.uri.as_str(json)) {
+                            Some(Uri::AbsolutePath(path)) => path,
+                            Some(Uri::RelativePath(_, path)) => path,
+                            _ => continue,
+                        };
+                        let path = match path.to_str() {
+                            Some(path) => path,
+                            None => continue,
+                        };
+
+                        use fmt::Write;
+                        let _ = write!(
+                            text,
+                            "{}:{},{}\n",
+                            path, location.range.start.line, location.range.start.character
+                        );
+                        let range = buffer.insert_text(
+                            &mut editor.word_database,
+                            position,
+                            &text,
+                            &mut editor.events,
+                        );
+                        position = position.insert(range);
+                        text.clear();
+                    }
+                    editor.string_pool.release(text);
+                }
+
+                if let Some(buffer_view) = editor.buffer_views.get_mut(buffer_view_handle) {
+                    buffer_view.move_cursors(
+                        buffers,
+                        CursorMovement::FirstLine,
+                        CursorMovementKind::PositionAndAnchor,
+                    );
+                }
+
+                client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
             }
             _ => (),
         }

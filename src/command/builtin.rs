@@ -1444,18 +1444,13 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         alias: "",
         help: concat!(
             "opens up a buffer with all references of the symbol under the main cursor found by the lsp server\n",
-            "lsp-references [<flags>]\n",
-            " -exclude-declaration : do not include symbol declaration in results",
+            "lsp-references",
         ),
         hidden: false,
         completions: &[],
         func: |mut ctx| {
             ctx.args.assert_no_bang()?;
-
-            let mut flags = [("exclude-declaration", None)];
-            ctx.args.get_flags(&mut flags)?;
-            let exclude_declaration = flags[0].1.is_some();
-
+            ctx.args.get_flags(&mut [])?;
             ctx.args.assert_empty()?;
 
             let client_handle = ctx.client_handle;
@@ -1467,7 +1462,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                     json,
                     buffer_handle,
                     position,
-                    exclude_declaration,
                     client_handle
                 )
             })?;

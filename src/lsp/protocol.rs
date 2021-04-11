@@ -303,6 +303,11 @@ impl From<BufferRange> for DocumentRange {
         }
     }
 }
+impl From<DocumentRange> for BufferRange {
+    fn from(range: DocumentRange) -> Self {
+        BufferRange::between(range.start.into(), range.end.into())
+    }
+}
 impl<'json> FromJson<'json> for DocumentRange {
     fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
         let value = match value {
