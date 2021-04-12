@@ -3,15 +3,14 @@
 macro_rules! declare_json_object {
     (
         $(#[$attribute:meta])*
-        $struct_vis:vis
         struct $struct_name:ident {
-            $($member_vis:vis $member_name:ident : $member_type:ty,)*
+            $($member_name:ident : $member_type:ty,)*
         }
     ) => {
         #[allow(non_snake_case)]
         $(#[$attribute])*
-        $struct_vis struct $struct_name {
-            $($member_vis $member_name : $member_type,)*
+        struct $struct_name {
+            $($member_name : $member_type,)*
         }
         impl<'json> $crate::json::FromJson<'json> for $struct_name {
             fn from_json(

@@ -727,7 +727,53 @@ impl Client {
                 self.respond(platform, json, request.id, Ok(JsonValue::Null));
             }
             "window/showMessage" => {
-                //
+                fn parse_params(
+                    params: JsonValue,
+                    json: &Json,
+                ) -> Result<(MessageKind, &str), JsonConvertError> {
+                    let params = match params {
+                        JsonValue::Object(object) => object,
+                        _ => return Err(JsonConvertError),
+                    };
+                    let mut kind = MessageKind::Info;
+                    let mut message = "";
+                    for (key, value) in params.members(json) {
+                        match key {
+                            "type" => {
+                                kind = match value {
+                                    JsonValue::Integer(1) => MessageKind::Error,
+                                    JsonValue::Integer(2..=4) => MessageKind::Info,
+                                    _ => return Err(JsonConvertError),
+                                }
+                            }
+                            "message" => {
+                                message = match value {
+                                    JsonValue::String(string) => string.as_str(json),
+                                    _ => return Err(JsonConvertError),
+                                }
+                            }
+                            _ => (),
+                        }
+                    }
+
+                    Ok((kind, message))
+                }
+
+                let (kind, message) = match parse_params(request.params, json) {
+                    Ok(params) => params,
+                    Err(_) => {
+                        self.respond(
+                            platform,
+                            json,
+                            request.id,
+                            Err(ResponseError::parse_error()),
+                        );
+                        return;
+                    }
+                };
+
+                editor.status_bar.write(kind).str(message);
+                self.respond(platform, json, request.id, Ok(JsonValue::Null));
             }
             "window/showDocument" => {
                 declare_json_object! {
