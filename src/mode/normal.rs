@@ -119,18 +119,33 @@ impl State {
                 }
             }
             Key::Char(':') => Mode::change_to(ctx, ModeKind::Command),
-            Key::Char('g') => {
+            Key::Char('g') | Key::Char('G') => {
                 if this.count == 0 {
                     match keys.next(&ctx.editor.buffered_keys) {
                         Key::None => return Some(ModeOperation::Pending),
-                        Key::Char('b') => picker::buffer::enter_mode(ctx),
-                        Key::Char('a') => {
+                        Key::Char('o') => picker::buffer::enter_mode(ctx),
+                        Key::Char('b') => {
                             let client = ctx.clients.get_mut(ctx.client_handle)?;
                             let previous_buffer_view_handle = client.previous_buffer_view_handle();
                             client.set_buffer_view_handle(
                                 previous_buffer_view_handle,
                                 &mut ctx.editor.events,
                             );
+                        }
+                        Key::Char('B') => {
+                            let previous_client_handle = ctx.clients.previous_focused_client()?;
+                            let previous_client = ctx.clients.get_mut(previous_client_handle)?;
+                            let buffer_view_handle = previous_client.buffer_view_handle();
+                            let previous_buffer_view_handle =
+                                previous_client.previous_buffer_view_handle();
+                            previous_client.set_buffer_view_handle(
+                                previous_buffer_view_handle,
+                                &mut ctx.editor.events,
+                            );
+
+                            let client = ctx.clients.get_mut(ctx.client_handle)?;
+                            client
+                                .set_buffer_view_handle(buffer_view_handle, &mut ctx.editor.events);
                         }
                         _ => (),
                     }
@@ -402,7 +417,7 @@ impl State {
 
                 this.movement_kind = CursorMovementKind::PositionOnly;
             }
-            Key::Char('g') => {
+            Key::Char('g') | Key::Char('G') => {
                 if this.count > 0 {
                     NavigationHistory::save_client_snapshot(
                         ctx.clients,

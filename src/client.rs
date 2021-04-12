@@ -169,25 +169,34 @@ impl Client {
 }
 
 pub struct ClientManager {
-    focused_handle: Option<ClientHandle>,
+    focused_client: Option<ClientHandle>,
+    previous_focused_client: Option<ClientHandle>,
     clients: Vec<Client>,
 }
 
 impl ClientManager {
     pub fn new() -> Self {
         Self {
-            focused_handle: None,
+            focused_client: None,
+            previous_focused_client: None,
             clients: Vec::new(),
         }
     }
 
-    pub fn focused_handle(&self) -> Option<ClientHandle> {
-        self.focused_handle
+    pub fn focused_client(&self) -> Option<ClientHandle> {
+        self.focused_client
+    }
+
+    pub fn previous_focused_client(&self) -> Option<ClientHandle> {
+        self.previous_focused_client
     }
 
     pub fn focus_client(&mut self, handle: ClientHandle) -> bool {
-        let changed = Some(handle) != self.focused_handle;
-        self.focused_handle = Some(handle);
+        let changed = Some(handle) != self.focused_client;
+        if changed {
+            self.previous_focused_client = self.focused_client;
+        }
+        self.focused_client = Some(handle);
         changed
     }
 
@@ -204,8 +213,8 @@ impl ClientManager {
 
     pub fn on_client_left(&mut self, handle: ClientHandle) {
         self.clients[handle.into_index()].dispose();
-        if self.focused_handle == Some(handle) {
-            self.focused_handle = None;
+        if self.focused_client == Some(handle) {
+            self.focused_client = None;
         }
     }
 

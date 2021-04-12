@@ -260,7 +260,7 @@ impl Editor {
             .update_scroll(self.config.picker_max_height as _);
 
         let mut needs_redraw = false;
-        let focused_handle = clients.focused_handle();
+        let focused_handle = clients.focused_client();
 
         for c in clients.iter_mut() {
             let picker_height = if focused_handle == Some(c.handle()) {
@@ -292,7 +292,7 @@ impl Editor {
         clients.on_client_joined(handle);
 
         let buffer_view_handle = clients
-            .focused_handle()
+            .focused_client()
             .and_then(|h| clients.get(h))
             .and_then(|c| c.buffer_view_handle())
             .and_then(|h| self.buffer_views.get(h))

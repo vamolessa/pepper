@@ -190,7 +190,7 @@ impl ServerApplication {
                 event_sender.send(ApplicationEvent::Redraw)?;
             }
 
-            let focused_client_handle = clients.focused_handle();
+            let focused_client_handle = clients.focused_client();
             for c in clients.iter() {
                 if !c.has_ui() {
                     continue;
