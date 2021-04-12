@@ -1402,7 +1402,9 @@ impl Client {
             json,
         );
 
-        self.request(platform, json, "initialize", params, None)
+        self.initialized = true;
+        self.request(platform, json, "initialize", params, None);
+        self.initialized = false;
     }
 }
 
