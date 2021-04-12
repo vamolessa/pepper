@@ -1235,6 +1235,61 @@ impl CommandManager {
     }
 }
 
+pub fn parse_process_command(command: &str, environment: &str) -> Result<Command, CommandError> {
+    let mut command_tokens = CommandTokenIter(command);
+    let command = match command_tokens.next() {
+        Some((CommandTokenKind::Text, token))
+        | Some((CommandTokenKind::Flag, token))
+        | Some((CommandTokenKind::Equals, token)) => token,
+        Some((CommandTokenKind::Unterminated, token)) => {
+            return Err(CommandError::UnterminatedToken(token.into()))
+        }
+        None => return Err(CommandError::InvalidToken(command.into())),
+    };
+
+    let mut command = Command::new(command);
+    while let Some((kind, token)) = command_tokens.next() {
+        if let CommandTokenKind::Unterminated = kind {
+            return Err(CommandError::InvalidToken(token.into()));
+        } else {
+            command.arg(token);
+        }
+    }
+
+    let mut environment_tokens = CommandTokenIter(environment);
+    loop {
+        let key = match environment_tokens.next() {
+            Some((CommandTokenKind::Text, token)) => token,
+            Some((CommandTokenKind::Flag, token)) | Some((CommandTokenKind::Equals, token)) => {
+                return Err(CommandError::InvalidToken(token.into()))
+            }
+            Some((CommandTokenKind::Unterminated, token)) => {
+                return Err(CommandError::UnterminatedToken(token.into()))
+            }
+            None => break,
+        };
+        let equals_token = match environment_tokens.next() {
+            Some((CommandTokenKind::Equals, token)) => token,
+            Some((_, token)) => return Err(CommandError::InvalidToken(token.into())),
+            None => return Err(CommandError::UnterminatedToken(key.into())),
+        };
+        let value = match environment_tokens.next() {
+            Some((CommandTokenKind::Text, token)) => token,
+            Some((CommandTokenKind::Flag, token)) | Some((CommandTokenKind::Equals, token)) => {
+                return Err(CommandError::InvalidToken(token.into()))
+            }
+            Some((CommandTokenKind::Unterminated, token)) => {
+                return Err(CommandError::UnterminatedToken(token.into()))
+            }
+            None => return Err(CommandError::UnterminatedToken(equals_token.into())),
+        };
+
+        command.env(key, value);
+    }
+
+    Ok(command)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

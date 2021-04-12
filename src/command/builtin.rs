@@ -1,7 +1,6 @@
 use std::{
     any, fmt,
     path::{Path, PathBuf},
-    process::Command,
     str::FromStr,
 };
 
@@ -12,7 +11,7 @@ use crate::{
     command::{
         BuiltinCommand, CommandContext, CommandError, CommandIter, CommandManager,
         CommandOperation, CommandSource, CommandTokenIter, CommandTokenKind, CompletionSource,
-        MacroCommand, RequestCommand,
+        MacroCommand, RequestCommand, parse_process_command,
     },
     config::{ParseConfigError, CONFIG_NAMES},
     cursor::CursorCollection,
@@ -302,7 +301,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             };
             ctx.args.assert_empty()?;
 
-            let command = parse_command(command, env)?;
+            let command = parse_process_command(command, env)?;
             ctx.editor.commands.spawn_process(
                 ctx.platform,
                 ctx.client_handle,
@@ -441,7 +440,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
 
             for (i, cursor) in buffer_view.cursors[..].iter().enumerate() {
                 let range = cursor.to_range();
-                let command = parse_command(text_or_command, env)?;
+                let command = parse_process_command(text_or_command, env)?;
 
                 let buffer = match ctx.editor.buffers.get(buffer_view.buffer_handle) {
                     Some(buffer) => buffer,
@@ -1307,13 +1306,45 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
+        name: "lsp",
+        alias: "",
+        help: concat!(
+            "automatically starts a lsp server when a buffer matching a glob is opened\n",
+            "the lsp command only runs if the server is not already running\n",
+            "lsp [<flags>] <glob> <lsp-command>\n",
+            " -log=<buffer-name> : redirects the lsp server output to this buffer\n",
+            " -env=<vars> : sets environment variables in the form VAR=<value> VAR=<value>...",
+        ),
+        hidden: true,
+        completions: &[],
+        func: |ctx| {
+            ctx.args.assert_no_bang()?;
+
+            let mut flags = [("root", None), ("log", None), ("env", None)];
+            ctx.args.get_flags(&mut flags)?;
+            let root = flags[0].1;
+            let log_buffer = flags[1].1;
+            let env = flags[2].1.unwrap_or("");
+
+            let glob = ctx.args.next()?;
+            let command = ctx.args.next()?;
+
+            ctx
+                .editor
+                .lsp
+                .add_recipe(glob.as_bytes(), command, env, root.map(Path::new), log_buffer)
+                .map_err(|_| CommandError::InvalidGlob(glob.into()))?;
+            Ok(None)
+        }
+    },
+    BuiltinCommand {
         name: "lsp-start",
         alias: "",
         help: concat!(
             "starts a lsp server\n",
             "lsp-start [<flags>] <lsp-command>\n",
             " -root=<path> : the root path from where the lsp server will execute\n",
-            " -log=<buffer-name> : redirect the lsp server output to this buffer\n",
+            " -log=<buffer-name> : redirects the lsp server output to this buffer\n",
             " -env=<vars> : sets environment variables in the form VAR=<value> VAR=<value>...",
         ),
         hidden: false,
@@ -1328,7 +1359,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             let env = flags[2].1.unwrap_or("");
 
             let command = ctx.args.next()?;
-            let command = parse_command(command, env)?;
+            let command = parse_process_command(command, env)?;
 
             let root = match root {
                 Some(root) => PathBuf::from(root),
@@ -1469,61 +1500,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
 ];
-
-fn parse_command(command: &str, environment: &str) -> Result<Command, CommandError> {
-    let mut command_tokens = CommandTokenIter(command);
-    let command = match command_tokens.next() {
-        Some((CommandTokenKind::Text, token))
-        | Some((CommandTokenKind::Flag, token))
-        | Some((CommandTokenKind::Equals, token)) => token,
-        Some((CommandTokenKind::Unterminated, token)) => {
-            return Err(CommandError::UnterminatedToken(token.into()))
-        }
-        None => return Err(CommandError::InvalidToken(command.into())),
-    };
-
-    let mut command = Command::new(command);
-    while let Some((kind, token)) = command_tokens.next() {
-        if let CommandTokenKind::Unterminated = kind {
-            return Err(CommandError::InvalidToken(token.into()));
-        } else {
-            command.arg(token);
-        }
-    }
-
-    let mut environment_tokens = CommandTokenIter(environment);
-    loop {
-        let key = match environment_tokens.next() {
-            Some((CommandTokenKind::Text, token)) => token,
-            Some((CommandTokenKind::Flag, token)) | Some((CommandTokenKind::Equals, token)) => {
-                return Err(CommandError::InvalidToken(token.into()))
-            }
-            Some((CommandTokenKind::Unterminated, token)) => {
-                return Err(CommandError::UnterminatedToken(token.into()))
-            }
-            None => break,
-        };
-        let equals_token = match environment_tokens.next() {
-            Some((CommandTokenKind::Equals, token)) => token,
-            Some((_, token)) => return Err(CommandError::InvalidToken(token.into())),
-            None => return Err(CommandError::UnterminatedToken(key.into())),
-        };
-        let value = match environment_tokens.next() {
-            Some((CommandTokenKind::Text, token)) => token,
-            Some((CommandTokenKind::Flag, token)) | Some((CommandTokenKind::Equals, token)) => {
-                return Err(CommandError::InvalidToken(token.into()))
-            }
-            Some((CommandTokenKind::Unterminated, token)) => {
-                return Err(CommandError::UnterminatedToken(token.into()))
-            }
-            None => return Err(CommandError::UnterminatedToken(equals_token.into())),
-        };
-
-        command.env(key, value);
-    }
-
-    Ok(command)
-}
 
 fn current_buffer_and_main_position<'state, 'command>(
     ctx: &CommandContext<'state, 'command>,

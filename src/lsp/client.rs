@@ -11,11 +11,12 @@ use crate::{
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{CursorMovement, CursorMovementKind},
     client,
+    command::parse_process_command,
     cursor::Cursor,
     editor::Editor,
     editor_utils::{MessageKind, StatusBar},
     events::EditorEvent,
-    glob::Glob,
+    glob::{Glob, InvalidGlobError},
     json::{
         FromJson, Json, JsonArray, JsonConvertError, JsonInteger, JsonObject, JsonString, JsonValue,
     },
@@ -1638,15 +1639,65 @@ struct ClientManagerEntry {
     json: Json,
 }
 
+struct ClientRecipe {
+    glob: Glob,
+    command: String,
+    environment: String,
+    root: PathBuf,
+    log_buffer_name: String,
+    running_client: Option<ClientHandle>,
+}
+
 pub struct ClientManager {
     entries: Vec<Option<ClientManagerEntry>>,
+    recipes: Vec<ClientRecipe>,
 }
 
 impl ClientManager {
     pub fn new() -> Self {
         Self {
             entries: Vec::new(),
+            recipes: Vec::new(),
         }
+    }
+
+    pub fn add_recipe(
+        &mut self,
+        glob: &[u8],
+        command: &str,
+        environment: &str,
+        root: Option<&Path>,
+        log_buffer_name: Option<&str>,
+    ) -> Result<(), InvalidGlobError> {
+        for recipe in &mut self.recipes {
+            if recipe.command == command {
+                recipe.glob.compile(glob)?;
+                recipe.environment.clear();
+                recipe.environment.push_str(environment);
+                recipe.root.clear();
+                if let Some(path) = root {
+                    recipe.root.push(path);
+                }
+                recipe.log_buffer_name.clear();
+                if let Some(name) = log_buffer_name {
+                    recipe.log_buffer_name.push_str(name);
+                }
+                recipe.running_client = None;
+                return Ok(());
+            }
+        }
+
+        let mut recipe_glob = Glob::default();
+        recipe_glob.compile(glob)?;
+        self.recipes.push(ClientRecipe {
+            glob: recipe_glob,
+            command: command.into(),
+            environment: environment.into(),
+            root: root.unwrap_or(Path::new("")).into(),
+            log_buffer_name: log_buffer_name.unwrap_or("").into(),
+            running_client: None,
+        });
+        Ok(())
     }
 
     pub fn start(
@@ -1762,9 +1813,71 @@ impl ClientManager {
 
     pub fn on_process_exit(editor: &mut Editor, handle: ClientHandle) {
         editor.lsp.entries[handle.0 as usize] = None;
+
+        for recipe in &mut editor.lsp.recipes {
+            if recipe.running_client == Some(handle) {
+                recipe.running_client = None;
+            }
+        }
     }
 
     pub fn on_editor_events(editor: &mut Editor, platform: &mut Platform) {
+        for event in editor.events.iter() {
+            if let &EditorEvent::BufferLoad { handle } = event {
+                let buffer_path = match editor
+                    .buffers
+                    .get(handle)
+                    .and_then(Buffer::path)
+                    .and_then(Path::to_str)
+                {
+                    Some(path) => path,
+                    None => continue,
+                };
+                let (index, recipe) = match editor
+                    .lsp
+                    .recipes
+                    .iter_mut()
+                    .enumerate()
+                    .find(|(_, r)| r.glob.matches(buffer_path.as_bytes()))
+                {
+                    Some(recipe) => recipe,
+                    None => continue,
+                };
+                if recipe.running_client.is_some() {
+                    continue;
+                }
+                let command = match parse_process_command(&recipe.command, &recipe.environment) {
+                    Ok(command) => command,
+                    Err(error) => {
+                        let error =
+                            error.display(&recipe.command, None, &editor.commands, &editor.buffers);
+                        editor
+                            .status_bar
+                            .write(MessageKind::Error)
+                            .fmt(format_args!("{}", error));
+                        continue;
+                    }
+                };
+                let root = if recipe.root.as_os_str().is_empty() {
+                    editor.current_directory.clone()
+                } else {
+                    recipe.root.clone()
+                };
+
+                let log_buffer_handle = if !recipe.log_buffer_name.is_empty() {
+                    let mut buffer = editor.buffers.new();
+                    buffer.capabilities = BufferCapabilities::log();
+                    buffer.set_path(Some(Path::new(&recipe.log_buffer_name)));
+                    Some(buffer.handle())
+                } else {
+                    None
+                };
+
+                let client_handle = editor.lsp.start(platform, command, root, log_buffer_handle);
+                editor.lsp.recipes[index].running_client = Some(client_handle);
+            }
+        }
+
         for i in 0..editor.lsp.entries.len() {
             if let Some(mut entry) = editor.lsp.entries[i].take() {
                 entry
