@@ -163,10 +163,6 @@ impl State {
                     return None;
                 }
             }
-            Key::Count(n) => {
-                this.count = n;
-                return None;
-            }
             _ => (),
         }
 
