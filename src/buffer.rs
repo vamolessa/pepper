@@ -1387,6 +1387,7 @@ impl BufferCollection {
     ) {
         if let Some(buf) = self.insert_processes[index].input.take() {
             platform.enqueue_request(PlatformRequest::WriteToProcess { handle, buf });
+            platform.enqueue_request(PlatformRequest::CloseProcessInput { handle });
         }
     }
 
@@ -1399,6 +1400,7 @@ impl BufferCollection {
     ) {
         let process = &mut self.insert_processes[index];
         process.output.extend_from_slice(bytes);
+
         let split_on_byte = match process.split_on_byte {
             Some(byte) => byte,
             None => return,

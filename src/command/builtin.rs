@@ -367,7 +367,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         help: concat!(
             "replace each cursor selection with command output\n",
             "replace-with-output [<flags>] <command>\n",
-            " -input : also sends selected text as input to command\n",
+            " -pipe : also pipes selected text to command's input\n",
             " -env=<vars> : sets environment variables in the form VAR=<value> VAR=<value>...\n",
             " -split-on-byte=<number> : splits output at every <number> byte",
         ),
@@ -376,9 +376,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         func: |ctx| {
             ctx.args.assert_no_bang()?;
 
-            let mut flags = [("input", None), ("env", None), ("split-on-byte", None)];
+            let mut flags = [("pipe", None), ("env", None), ("split-on-byte", None)];
             ctx.args.get_flags(&mut flags)?;
-            let input = flags[0].1.is_some();
+            let pipe = flags[0].1.is_some();
             let env = flags[1].1.unwrap_or("");
             let split_on_byte = match flags[2].1 {
                 Some(token) => match token.parse() {
@@ -400,7 +400,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             const NONE_BUF : Option<SharedBuf> = None;
             let mut stdins = [NONE_BUF; CursorCollection::capacity()];
 
-            if input {
+            if pipe {
                 let mut text = ctx.editor.string_pool.acquire();
                 for (i, cursor) in buffer_view.cursors[..].iter().enumerate() {
                     let content = match ctx.editor.buffers.get(buffer_view.buffer_handle) {

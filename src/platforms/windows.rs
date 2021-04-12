@@ -793,6 +793,10 @@ impl AsyncProcess {
         self.child.stdin.as_mut()
     }
 
+    pub fn take_stdin(&mut self) -> Option<ChildStdin> {
+        self.child.stdin.take()
+    }
+
     pub fn wait(&mut self) -> bool {
         if !self.alive {
             return false;
@@ -975,6 +979,11 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
                                         })?;
                                     }
                                 }
+                            }
+                        }
+                        PlatformRequest::CloseProcessInput { handle } => {
+                            if let Some(ref mut process) = processes[handle.0] {
+                                process.take_stdin().take();
                             }
                         }
                         PlatformRequest::KillProcess { handle } => {

@@ -45,6 +45,9 @@ pub enum PlatformRequest {
         handle: ProcessHandle,
         buf: SharedBuf,
     },
+    CloseProcessInput {
+        handle: ProcessHandle,
+    },
     KillProcess {
         handle: ProcessHandle,
     },
