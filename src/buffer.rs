@@ -1413,12 +1413,20 @@ impl BufferCollection {
         let buffer = &mut self.buffers[process.buffer_handle.0 as usize];
         if buffer.alive {
             let text = &process.output[..len];
-            if let Ok(text) = std::str::from_utf8(text) {
-                process.position = buffer.content().saturate_position(process.position);
-                let range = buffer.insert_text(word_database, process.position, text, events);
-                process.position = process.position.insert(range);
-            }
+            let insert_range = match std::str::from_utf8(text) {
+                Ok(text) => {
+                    process.position = buffer.content().saturate_position(process.position);
+                    buffer.insert_text(word_database, process.position, text, events)
+                }
+                Err(_) => BufferRange::zero(),
+            };
             process.output.drain(..len);
+
+            for process in &mut self.insert_processes {
+                if process.buffer_handle == buffer.handle() {
+                    process.position = process.position.insert(insert_range);
+                }
+            }
         }
     }
 
