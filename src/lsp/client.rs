@@ -15,7 +15,7 @@ use crate::{
     cursor::Cursor,
     editor::Editor,
     editor_utils::{MessageKind, StatusBar},
-    events::EditorEvent,
+    events::{EditorEvent, EditorEventIter},
     glob::{Glob, InvalidGlobError},
     json::{
         FromJson, Json, JsonArray, JsonConvertError, JsonInteger, JsonObject, JsonString, JsonValue,
@@ -1270,7 +1270,8 @@ impl Client {
             return;
         }
 
-        for event in editor.events.iter() {
+        let mut events = EditorEventIter::new();
+        while let Some(event) = events.next(&editor.events) {
             match event {
                 &EditorEvent::Idle => {
                     helper::send_pending_did_change(self, platform, editor, json);
@@ -1826,7 +1827,8 @@ impl ClientManager {
     }
 
     pub fn on_editor_events(editor: &mut Editor, platform: &mut Platform) {
-        for event in editor.events.iter() {
+        let mut events = EditorEventIter::new();
+        while let Some(event) = events.next(&editor.events) {
             if let &EditorEvent::BufferLoad { handle } = event {
                 let buffer_path = match editor
                     .buffers

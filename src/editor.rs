@@ -12,7 +12,9 @@ use crate::{
     command::{CommandManager, CommandOperation},
     config::Config,
     editor_utils::{MessageKind, ReadLine, StatusBar, StringPool},
-    events::{ClientEvent, EditorEvent, EditorEventQueue, KeyParseAllError, KeyParser},
+    events::{
+        ClientEvent, EditorEvent, EditorEventIter, EditorEventQueue, KeyParseAllError, KeyParser,
+    },
     keymap::{KeyMapCollection, MatchResult},
     lsp,
     mode::{Mode, ModeContext, ModeKind, ModeOperation},
@@ -288,26 +290,6 @@ impl Editor {
         needs_redraw
     }
 
-    pub fn on_client_joined(&mut self, clients: &mut ClientManager, handle: ClientHandle) {
-        clients.on_client_joined(handle);
-
-        let buffer_view_handle = clients
-            .focused_client()
-            .and_then(|h| clients.get(h))
-            .and_then(|c| c.buffer_view_handle())
-            .and_then(|h| self.buffer_views.get(h))
-            .map(|v| v.clone_with_client_handle(handle))
-            .map(|b| self.buffer_views.add(b));
-
-        if let Some(client) = clients.get_mut(handle) {
-            client.set_buffer_view_handle(buffer_view_handle, &mut self.events);
-        }
-    }
-
-    pub fn on_client_left(&mut self, clients: &mut ClientManager, handle: ClientHandle) {
-        clients.on_client_left(handle);
-    }
-
     pub fn on_client_event(
         &mut self,
         platform: &mut Platform,
@@ -425,75 +407,81 @@ impl Editor {
         clients: &mut ClientManager,
         client_handle: Option<ClientHandle>,
     ) {
-        self.events.flip();
-        if let None = self.events.iter().next() {
-            return;
-        }
+        loop {
+            self.events.flip();
+            let mut events = EditorEventIter::new();
+            if let None = events.next(&self.events) {
+                return;
+            }
 
-        lsp::ClientManager::on_editor_events(self, platform);
+            lsp::ClientManager::on_editor_events(self, platform);
 
-        let mut buffer_changed = false;
-        for event in self.events.iter() {
-            match event {
-                &EditorEvent::Idle => (),
-                &EditorEvent::BufferLoad { handle } => {
-                    if let Some(buffer) = self.buffers.get_mut(handle) {
-                        buffer.refresh_syntax(&self.syntaxes);
-                    }
-                }
-                &EditorEvent::BufferInsertText { handle, range, .. } => {
-                    self.buffer_views.on_buffer_insert_text(handle, range);
-                    buffer_changed = true;
-                }
-                &EditorEvent::BufferDeleteText { handle, range } => {
-                    self.buffer_views.on_buffer_delete_text(handle, range);
-                    buffer_changed = true;
-                }
-                &EditorEvent::BufferSave { handle, new_path } => {
-                    if new_path {
+            let mut buffer_changed = false;
+            let mut events = EditorEventIter::new();
+            while let Some(event) = events.next(&self.events) {
+                match event {
+                    &EditorEvent::Idle => (),
+                    &EditorEvent::BufferLoad { handle } => {
                         if let Some(buffer) = self.buffers.get_mut(handle) {
                             buffer.refresh_syntax(&self.syntaxes);
                         }
                     }
-                }
-                &EditorEvent::BufferClose { handle } => {
-                    self.buffers
-                        .remove(handle, clients, &mut self.word_database);
-                }
-                &EditorEvent::ClientChangeBufferView { handle } => {
-                    if let Some(buffer_handle) = clients
-                        .get(handle)
-                        .and_then(|c| c.previous_buffer_view_handle())
-                        .and_then(|h| self.buffer_views.get(h))
-                        .map(|v| v.buffer_handle)
-                    {
-                        if self
-                            .buffers
-                            .get(buffer_handle)
-                            .map(|b| b.capabilities.auto_close && !b.needs_save())
-                            .unwrap_or(false)
-                            && !clients
-                                .iter()
-                                .filter_map(Client::buffer_view_handle)
-                                .filter_map(|h| self.buffer_views.get(h))
-                                .any(|v| v.buffer_handle == buffer_handle)
+                    &EditorEvent::BufferInsertText { handle, range, .. } => {
+                        self.buffer_views.on_buffer_insert_text(handle, range);
+                        buffer_changed = true;
+                    }
+                    &EditorEvent::BufferDeleteText { handle, range } => {
+                        self.buffer_views.on_buffer_delete_text(handle, range);
+                        buffer_changed = true;
+                    }
+                    &EditorEvent::BufferSave { handle, new_path } => {
+                        if new_path {
+                            if let Some(buffer) = self.buffers.get_mut(handle) {
+                                buffer.refresh_syntax(&self.syntaxes);
+                            }
+                        }
+                    }
+                    &EditorEvent::BufferClose { handle } => {
+                        self.buffers.remove(handle, &mut self.word_database);
+                        for client in clients.iter_mut() {
+                            client.on_buffer_close(&self.buffer_views, handle, &mut self.events);
+                        }
+                        self.buffer_views.remove_buffer_views(handle);
+                    }
+                    &EditorEvent::ClientChangeBufferView { handle } => {
+                        if let Some(buffer_handle) = clients
+                            .get(handle)
+                            .and_then(|c| c.previous_buffer_view_handle())
+                            .and_then(|h| self.buffer_views.get(h))
+                            .map(|v| v.buffer_handle)
                         {
-                            self.buffers
-                                .remove(buffer_handle, clients, &mut self.word_database);
+                            if self
+                                .buffers
+                                .get(buffer_handle)
+                                .map(|b| b.capabilities.auto_close && !b.needs_save())
+                                .unwrap_or(false)
+                                && !clients
+                                    .iter()
+                                    .filter_map(Client::buffer_view_handle)
+                                    .filter_map(|h| self.buffer_views.get(h))
+                                    .any(|v| v.buffer_handle == buffer_handle)
+                            {
+                                self.buffers.defer_remove(buffer_handle, &mut self.events);
+                            }
                         }
                     }
                 }
             }
-        }
 
-        if let (true, Some(client_handle)) = (buffer_changed, client_handle) {
-            let mut ctx = ModeContext {
-                editor: self,
-                platform,
-                clients,
-                client_handle,
-            };
-            Mode::on_buffer_changed(&mut ctx);
+            if let (true, Some(client_handle)) = (buffer_changed, client_handle) {
+                let mut ctx = ModeContext {
+                    editor: self,
+                    platform,
+                    clients,
+                    client_handle,
+                };
+                Mode::on_buffer_changed(&mut ctx);
+            }
         }
     }
 }

@@ -10,7 +10,6 @@ use std::{
 
 use crate::{
     buffer_position::{BufferPosition, BufferRange},
-    client::ClientManager,
     events::{EditorEvent, EditorEventQueue},
     history::{Edit, EditKind, History},
     platform::{Platform, PlatformRequest, ProcessHandle, ProcessTag, SharedBuf},
@@ -1297,31 +1296,18 @@ impl BufferCollection {
         self.buffers.iter_mut().filter(|b| b.alive)
     }
 
-    pub fn defer_remove(&mut self, handle: BufferHandle, events: &mut EditorEventQueue) {
-        let buffer = &mut self.buffers[handle.0 as usize];
+    pub fn defer_remove(&self, handle: BufferHandle, events: &mut EditorEventQueue) {
+        let buffer = &self.buffers[handle.0 as usize];
         if buffer.alive {
             events.enqueue(EditorEvent::BufferClose { handle });
         }
     }
 
-    pub fn remove(
-        &mut self,
-        handle: BufferHandle,
-        clients: &mut ClientManager,
-        word_database: &mut WordDatabase,
-    ) {
+    pub fn remove(&mut self, handle: BufferHandle, word_database: &mut WordDatabase) {
         let buffer = &mut self.buffers[handle.0 as usize];
-        if !buffer.alive {
-            return;
+        if buffer.alive {
+            buffer.dispose(word_database);
         }
-
-        for client in clients.iter_mut() {
-            client
-                .navigation_history
-                .remove_snapshots_with_buffer_handle(handle);
-        }
-
-        buffer.dispose(word_database);
     }
 
     pub fn spawn_insert_process(

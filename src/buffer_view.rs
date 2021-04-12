@@ -45,14 +45,6 @@ impl BufferView {
         }
     }
 
-    pub fn clone_with_client_handle(&self, client_handle: ClientHandle) -> Self {
-        Self {
-            client_handle,
-            buffer_handle: self.buffer_handle,
-            cursors: self.cursors.clone(),
-        }
-    }
-
     pub fn move_cursors(
         &mut self,
         buffers: &BufferCollection,
@@ -519,19 +511,11 @@ impl BufferViewCollection {
         handle
     }
 
-    pub fn defer_remove_buffer_where<F>(
-        &mut self,
-        buffers: &mut BufferCollection,
-        events: &mut EditorEventQueue,
-        predicate: F,
-    ) where
-        F: Fn(&BufferView) -> bool,
-    {
-        for i in 0..self.buffer_views.len() {
-            if let Some(view) = &self.buffer_views[i] {
-                if predicate(&view) {
-                    buffers.defer_remove(view.buffer_handle, events);
-                    self.buffer_views[i] = None;
+    pub fn remove_buffer_views(&mut self, buffer_handle: BufferHandle) {
+        for maybe_view in &mut self.buffer_views {
+            if let Some(view) = maybe_view {
+                if view.buffer_handle == buffer_handle {
+                    *maybe_view = None;
                 }
             }
         }

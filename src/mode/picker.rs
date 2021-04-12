@@ -91,7 +91,7 @@ pub mod buffer {
 
     use std::path::Path;
 
-    use crate::{buffer::Buffer, navigation_history::NavigationHistory, picker::Picker};
+    use crate::{buffer::Buffer, navigation_history::NavigationHistory};
 
     pub fn enter_mode(ctx: &mut ModeContext) {
         fn on_client_keys(
@@ -151,36 +151,17 @@ pub mod buffer {
             None
         }
 
-        fn add_buffer_to_picker(picker: &mut Picker, buffer: &Buffer) {
-            if let Some(path) = buffer.path().and_then(Path::to_str) {
-                picker.add_custom_entry(path);
-            }
-        }
-
         ctx.editor.read_line.set_prompt("buffer:");
         ctx.editor.picker.clear();
 
-        let buffers = &ctx.editor.buffers;
-        let buffer_views = &ctx.editor.buffer_views;
-        let prevous_buffer_handle = ctx
-            .clients
-            .get(ctx.client_handle)
-            .and_then(|c| c.previous_buffer_view_handle())
-            .and_then(|h| buffer_views.get(h))
-            .map(|v| v.buffer_handle);
-
-        if let Some(buffer) = prevous_buffer_handle.and_then(|h| buffers.get(h)) {
-            add_buffer_to_picker(&mut ctx.editor.picker, buffer);
-        }
-
-        for buffer in ctx.editor.buffers.iter() {
-            let buffer_handle = buffer.handle();
-            if prevous_buffer_handle
-                .map(|h| h != buffer_handle)
-                .unwrap_or(true)
-            {
-                add_buffer_to_picker(&mut ctx.editor.picker, buffer);
-            }
+        for path in ctx
+            .editor
+            .buffers
+            .iter()
+            .filter_map(Buffer::path)
+            .filter_map(Path::to_str)
+        {
+            ctx.editor.picker.add_custom_entry(path);
         }
 
         ctx.editor.picker.filter(WordIndicesIter::empty(), "");

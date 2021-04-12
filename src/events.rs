@@ -56,7 +56,6 @@ pub struct EditorEventQueue {
     read: EventQueue,
     write: EventQueue,
 }
-
 impl EditorEventQueue {
     pub fn flip(&mut self) {
         self.read.events.clear();
@@ -81,9 +80,22 @@ impl EditorEventQueue {
             text,
         });
     }
+}
 
-    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a EditorEvent> {
-        self.read.events.iter()
+pub struct EditorEventIter(usize);
+impl EditorEventIter {
+    pub fn new() -> Self {
+        Self(0)
+    }
+
+    pub fn next<'a>(&mut self, queue: &'a EditorEventQueue) -> Option<&'a EditorEvent> {
+        if self.0 < queue.read.events.len() {
+            let event = &queue.read.events[self.0];
+            self.0 += 1;
+            Some(event)
+        } else {
+            None
+        }
     }
 }
 

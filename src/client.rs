@@ -1,7 +1,8 @@
 use std::{fmt, str::FromStr};
 
 use crate::{
-    buffer_view::BufferViewHandle,
+    buffer::BufferHandle,
+    buffer_view::{BufferViewCollection, BufferViewHandle},
     editor::Editor,
     events::{EditorEvent, EditorEventQueue},
     navigation_history::NavigationHistory,
@@ -68,7 +69,7 @@ pub struct Client {
     pub height: u16,
     pub navigation_history: NavigationHistory,
 
-    current_buffer_view_handle: Option<BufferViewHandle>,
+    buffer_view_handle: Option<BufferViewHandle>,
     previous_buffer_view_handle: Option<BufferViewHandle>,
 }
 
@@ -81,7 +82,7 @@ impl Client {
         self.height = 0;
         self.navigation_history.clear();
 
-        self.current_buffer_view_handle = None;
+        self.buffer_view_handle = None;
         self.previous_buffer_view_handle = None;
     }
 
@@ -90,11 +91,42 @@ impl Client {
     }
 
     pub fn buffer_view_handle(&self) -> Option<BufferViewHandle> {
-        self.current_buffer_view_handle
+        self.buffer_view_handle
     }
 
     pub fn previous_buffer_view_handle(&self) -> Option<BufferViewHandle> {
         self.previous_buffer_view_handle
+    }
+
+    pub fn on_buffer_close(
+        &mut self,
+        buffer_views: &BufferViewCollection,
+        buffer_handle: BufferHandle,
+        events: &mut EditorEventQueue,
+    ) {
+        self.navigation_history
+            .remove_snapshots_with_buffer_handle(buffer_handle);
+
+        if self
+            .previous_buffer_view_handle
+            .and_then(|h| buffer_views.get(h))
+            .map(|v| v.buffer_handle == buffer_handle)
+            .unwrap_or(false)
+        {
+            self.previous_buffer_view_handle = None;
+        }
+
+        if self
+            .buffer_view_handle
+            .and_then(|h| buffer_views.get(h))
+            .map(|v| v.buffer_handle == buffer_handle)
+            .unwrap_or(false)
+        {
+            self.buffer_view_handle = None;
+            events.enqueue(EditorEvent::ClientChangeBufferView {
+                handle: self.handle,
+            });
+        }
     }
 
     pub fn set_buffer_view_handle(
@@ -102,9 +134,9 @@ impl Client {
         handle: Option<BufferViewHandle>,
         events: &mut EditorEventQueue,
     ) {
-        if self.current_buffer_view_handle != handle {
-            self.previous_buffer_view_handle = self.current_buffer_view_handle;
-            self.current_buffer_view_handle = handle;
+        if self.buffer_view_handle != handle {
+            self.previous_buffer_view_handle = self.buffer_view_handle;
+            self.buffer_view_handle = handle;
 
             events.enqueue(EditorEvent::ClientChangeBufferView {
                 handle: self.handle,
@@ -122,7 +154,7 @@ impl Client {
                 return None;
             }
 
-            let buffer_view = editor.buffer_views.get(this.current_buffer_view_handle?)?;
+            let buffer_view = editor.buffer_views.get(this.buffer_view_handle?)?;
             let buffer = editor.buffers.get(buffer_view.buffer_handle)?;
             let focused_line_index = buffer_view.cursors.main_cursor().position.line_index;
 

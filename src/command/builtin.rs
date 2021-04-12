@@ -9,9 +9,9 @@ use crate::{
     buffer_position::BufferPosition,
     buffer_view::BufferViewError,
     command::{
-        BuiltinCommand, CommandContext, CommandError, CommandIter, CommandManager,
-        CommandOperation, CommandSource, CommandTokenIter, CommandTokenKind, CompletionSource,
-        MacroCommand, RequestCommand, parse_process_command,
+        parse_process_command, BuiltinCommand, CommandContext, CommandError, CommandIter,
+        CommandManager, CommandOperation, CommandSource, CommandTokenIter, CommandTokenKind,
+        CompletionSource, MacroCommand, RequestCommand,
     },
     config::{ParseConfigError, CONFIG_NAMES},
     cursor::CursorCollection,
@@ -987,25 +987,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             };
 
             ctx.assert_can_discard_buffer(buffer_handle)?;
-            ctx.editor.buffer_views.defer_remove_buffer_where(
-                &mut ctx.editor.buffers,
-                &mut ctx.editor.events,
-                |view| view.buffer_handle == buffer_handle,
-            );
+            ctx.editor.buffers.defer_remove(buffer_handle, &mut ctx.editor.events);
 
-            let clients = &mut *ctx.clients;
-            let editor = &mut *ctx.editor;
-            for client in clients.iter_mut() {
-                let maybe_buffer_handle = client
-                    .buffer_view_handle()
-                    .and_then(|h| editor.buffer_views.get(h))
-                    .map(|v| v.buffer_handle);
-                if maybe_buffer_handle == Some(buffer_handle) {
-                    client.set_buffer_view_handle(None, &mut editor.events);
-                }
-            }
-
-            editor
+            ctx.editor
                 .status_bar
                 .write(MessageKind::Info)
                 .str("buffer closed");
@@ -1024,15 +1008,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             ctx.args.assert_empty()?;
 
             ctx.assert_can_discard_all_buffers()?;
-            let count = ctx.editor.buffers.iter().count();
-            ctx.editor.buffer_views.defer_remove_buffer_where(
-                &mut ctx.editor.buffers,
-                &mut ctx.editor.events,
-                |_| true,
-            );
-
-            for client in ctx.clients.iter_mut() {
-                client.set_buffer_view_handle(None, &mut ctx.editor.events);
+            let mut count = 0;
+            for buffer in ctx.editor.buffers.iter() {
+                ctx.editor.buffers.defer_remove(buffer.handle(), &mut ctx.editor.events);
+                count += 1;
             }
 
             ctx.editor
