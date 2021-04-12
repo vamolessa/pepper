@@ -25,6 +25,7 @@ pub enum Key {
     Ctrl(char),
     Alt(char),
     Esc,
+    Count,
 }
 
 pub enum PlatformRequest {
