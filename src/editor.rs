@@ -363,9 +363,7 @@ impl Editor {
         handle: ProcessHandle,
     ) {
         match tag {
-            ProcessTag::Buffer(index) => {
-                self.buffers.on_process_spawned(platform, index, handle)
-            }
+            ProcessTag::Buffer(index) => self.buffers.on_process_spawned(platform, index, handle),
             ProcessTag::Lsp(client_handle) => {
                 lsp::ClientManager::on_process_spawned(self, platform, client_handle, handle)
             }
