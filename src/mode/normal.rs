@@ -715,18 +715,19 @@ impl State {
                 let mut cursors = buffer_view.cursors.mut_guard();
 
                 for cursor in &mut cursors[..] {
-                    if let Some((i, _)) = buffer
+                    cursor.position.line_index = match buffer
                         .lines()
                         .enumerate()
                         .skip(cursor.position.line_index + 1)
                         .filter(|(_, l)| l.as_str().is_empty())
                         .nth(this.count.max(1).saturating_sub(1) as _)
                     {
-                        cursor.position.line_index = i;
-                        cursor.position.column_byte_index = 0;
-                        if let CursorMovementKind::PositionAndAnchor = this.movement_kind {
-                            cursor.anchor = cursor.position;
-                        }
+                        Some((i, _)) => i,
+                        None => buffer.line_count() - 1,
+                    };
+                    cursor.position.column_byte_index = 0;
+                    if let CursorMovementKind::PositionAndAnchor = this.movement_kind {
+                        cursor.anchor = cursor.position;
                     }
                 }
             }
@@ -736,7 +737,7 @@ impl State {
                 let mut cursors = buffer_view.cursors.mut_guard();
 
                 for cursor in &mut cursors[..] {
-                    if let Some((i, _)) = buffer
+                    cursor.position.line_index = match buffer
                         .lines()
                         .enumerate()
                         .rev()
@@ -744,11 +745,12 @@ impl State {
                         .filter(|(_, l)| l.as_str().is_empty())
                         .nth(this.count.max(1).saturating_sub(1) as _)
                     {
-                        cursor.position.line_index = i;
-                        cursor.position.column_byte_index = 0;
-                        if let CursorMovementKind::PositionAndAnchor = this.movement_kind {
-                            cursor.anchor = cursor.position;
-                        }
+                        Some((i, _)) => i,
+                        None => 0,
+                    };
+                    cursor.position.column_byte_index = 0;
+                    if let CursorMovementKind::PositionAndAnchor = this.movement_kind {
+                        cursor.anchor = cursor.position;
                     }
                 }
             }
