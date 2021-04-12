@@ -1319,6 +1319,10 @@ impl Client {
         params: JsonObject,
         requesting_client: Option<client::ClientHandle>,
     ) {
+        if !self.initialized {
+            return;
+        }
+
         let params = params.into();
         self.write_to_log_buffer(|buf| {
             use io::Write;
