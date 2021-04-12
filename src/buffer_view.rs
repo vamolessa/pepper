@@ -588,6 +588,7 @@ impl BufferViewCollection {
         }
     }
 
+    // TODO: remove position param
     pub fn buffer_view_handle_from_path(
         &mut self,
         client_handle: ClientHandle,

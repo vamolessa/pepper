@@ -292,5 +292,24 @@ pub fn client_capabilities(json: &mut Json) -> JsonValue {
         );
     }
 
+    {
+        let mut window_capabilities = JsonObject::default();
+
+        window_capabilities.set("workDoneProgress".into(), false.into(), json);
+        window_capabilities.set("showMessage".into(), JsonObject::default().into(), json);
+
+        {
+            let mut show_document_capabilities = JsonObject::default();
+            show_document_capabilities.set("support".into(), true.into(), json);
+            window_capabilities.set(
+                "showDocument".into(),
+                show_document_capabilities.into(),
+                json,
+            );
+        }
+
+        capabilities.set("window".into(), window_capabilities.into(), json);
+    }
+
     capabilities.into()
 }

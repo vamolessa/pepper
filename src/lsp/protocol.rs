@@ -231,7 +231,7 @@ impl<'json> FromJson<'json> for ResponseError {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
 pub struct DocumentPosition {
     pub line: u32,
     pub character: u32,
@@ -282,7 +282,7 @@ impl<'json> FromJson<'json> for DocumentPosition {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
 pub struct DocumentRange {
     pub start: DocumentPosition,
     pub end: DocumentPosition,

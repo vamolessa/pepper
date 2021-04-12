@@ -11,6 +11,7 @@ use crate::{
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{CursorMovement, CursorMovementKind},
     client,
+    cursor::Cursor,
     editor::Editor,
     editor_utils::{MessageKind, StatusBar},
     events::EditorEvent,
@@ -640,7 +641,14 @@ impl Client {
         }
     }
 
-    fn on_request(&mut self, platform: &mut Platform, json: &mut Json, request: ServerRequest) {
+    fn on_request(
+        &mut self,
+        editor: &mut Editor,
+        platform: &mut Platform,
+        clients: &mut client::ClientManager,
+        json: &mut Json,
+        request: ServerRequest,
+    ) {
         macro_rules! deserialize {
             ($value:expr) => {
                 match FromJson::from_json($value, &json) {
@@ -717,6 +725,68 @@ impl Client {
                     }
                 }
                 self.respond(platform, json, request.id, Ok(JsonValue::Null));
+            }
+            "window/showMessage" => {
+                //
+            }
+            "window/showDocument" => {
+                declare_json_object! {
+                    struct ShowDocumentParams {
+                        uri: JsonString,
+                        external: Option<bool>,
+                        takeFocus: Option<bool>,
+                        selection: Option<DocumentRange>,
+                    }
+                }
+
+                let params: ShowDocumentParams = deserialize!(request.params);
+                let path = match Uri::parse(&self.root, params.uri.as_str(json)) {
+                    Some(Uri::AbsolutePath(path)) => path,
+                    Some(Uri::RelativePath(_, path)) => path,
+                    None => return,
+                };
+
+                let success = if let Some(true) = params.external {
+                    false
+                } else {
+                    let mut closure = || {
+                        let client_handle = clients.focused_client()?;
+                        let client = clients.get_mut(client_handle)?;
+                        let buffer_view_handle = editor
+                            .buffer_views
+                            .buffer_view_handle_from_path(
+                                client_handle,
+                                &mut editor.buffers,
+                                &mut editor.word_database,
+                                &self.root,
+                                path,
+                                None,
+                                &mut editor.events,
+                            )
+                            .ok()?;
+                        if let Some(range) = params.selection {
+                            let buffer_view = editor.buffer_views.get_mut(buffer_view_handle)?;
+                            let mut cursors = buffer_view.cursors.mut_guard();
+                            cursors.clear();
+                            cursors.add(Cursor {
+                                anchor: range.start.into(),
+                                position: range.end.into(),
+                            });
+                        }
+                        if let Some(true) = params.takeFocus {
+                            client.set_buffer_view_handle(
+                                Some(buffer_view_handle),
+                                &mut editor.events,
+                            );
+                        }
+                        Some(())
+                    };
+                    closure().is_some()
+                };
+
+                let mut result = JsonObject::default();
+                result.set("success".into(), success.into(), json);
+                self.respond(platform, json, request.id, Ok(result.into()));
             }
             _ => self.respond(
                 platform,
@@ -1627,7 +1697,9 @@ impl ClientManager {
                 ServerEvent::ParseError => {
                     client.on_parse_error(platform, &mut json, JsonValue::Null)
                 }
-                ServerEvent::Request(request) => client.on_request(platform, &mut json, request),
+                ServerEvent::Request(request) => {
+                    client.on_request(editor, platform, clients, &mut json, request)
+                }
                 ServerEvent::Notification(notification) => {
                     client.on_notification(editor, platform, &mut json, notification)
                 }
