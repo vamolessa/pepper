@@ -111,7 +111,7 @@ impl Default for KeyMapCollection {
             .unwrap();
         this.parse_and_map(ModeKind::Normal, "<c-c>", "<esc>cdcVs<esc>")
             .unwrap();
-        this.parse_and_map(ModeKind::Normal, ".", "<count>Qa").unwrap();
+        this.parse_and_map(ModeKind::Normal, ".", "Qa").unwrap();
 
         this.parse_and_map(ModeKind::Normal, "I", "dgii").unwrap();
         this.parse_and_map(ModeKind::Normal, "<c-i>", "dgli")
