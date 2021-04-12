@@ -93,25 +93,31 @@ impl State {
                     Key::None => return Some(ModeOperation::Pending),
                     Key::Char(c) => {
                         if let Some(key) = RegisterKey::from_char(c.to_ascii_lowercase()) {
-                            let keys = ctx.editor.registers.get(key);
-                            match ctx.editor.buffered_keys.parse(keys) {
-                                Ok(keys) => {
-                                    return match ctx.editor.execute_keys(
-                                        ctx.platform,
-                                        ctx.clients,
-                                        ctx.client_handle,
-                                        keys,
-                                    ) {
-                                        EditorControlFlow::Continue => None,
-                                        EditorControlFlow::Quit => Some(ModeOperation::Quit),
-                                        EditorControlFlow::QuitAll => Some(ModeOperation::QuitAll),
+                            for _ in 0..this.count.max(1) {
+                                let keys = ctx.editor.registers.get(key);
+                                match ctx.editor.buffered_keys.parse(keys) {
+                                    Ok(keys) => {
+                                        match ctx.editor.execute_keys(
+                                            ctx.platform,
+                                            ctx.clients,
+                                            ctx.client_handle,
+                                            keys,
+                                        ) {
+                                            EditorControlFlow::Continue => (),
+                                            EditorControlFlow::Quit => {
+                                                return Some(ModeOperation::Quit);
+                                            }
+                                            EditorControlFlow::QuitAll => {
+                                                return Some(ModeOperation::QuitAll);
+                                            }
+                                        };
                                     }
+                                    Err(error) => ctx
+                                        .editor
+                                        .status_bar
+                                        .write(MessageKind::Error)
+                                        .fmt(format_args!("{}", error)),
                                 }
-                                Err(error) => ctx
-                                    .editor
-                                    .status_bar
-                                    .write(MessageKind::Error)
-                                    .fmt(format_args!("{}", error)),
                             }
                         }
                     }
@@ -156,6 +162,10 @@ impl State {
                     this.count = this.count.saturating_mul(10).saturating_add(n);
                     return None;
                 }
+            }
+            Key::Count(n) => {
+                this.count = n;
+                return None;
             }
             _ => (),
         }

@@ -204,8 +204,19 @@ impl Editor {
             MatchResult::None => (),
             MatchResult::Prefix => return EditorControlFlow::Continue,
             MatchResult::ReplaceWith(replaced_keys) => {
+                let count = match self.mode.kind() {
+                    ModeKind::Normal => self.mode.normal_state.count,
+                    _ => 0,
+                };
+                self.mode.normal_state.count = 0;
+
                 self.buffered_keys.0.truncate(start_index);
-                self.buffered_keys.0.extend_from_slice(replaced_keys);
+                self.buffered_keys
+                    .0
+                    .extend(replaced_keys.iter().map(|&k| match k {
+                        Key::Count(_) => Key::Count(count),
+                        _ => k,
+                    }));
             }
         }
 

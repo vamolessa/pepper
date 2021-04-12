@@ -289,7 +289,7 @@ fn parse_key(chars: &mut impl Iterator<Item = char>) -> Result<Key, KeyParseErro
             'c' => match next(chars)? {
                 'o' => {
                     consume_str(chars, "unt>")?;
-                    Key::Count
+                    Key::Count(0)
                 }
                 '-' => {
                     let c = next(chars)?;
@@ -347,7 +347,7 @@ impl fmt::Display for Key {
             Key::Ctrl(c) => f.write_fmt(format_args!("<c-{}>", c)),
             Key::Alt(c) => f.write_fmt(format_args!("<a-{}>", c)),
             Key::Esc => f.write_str("<esc>"),
-            Key::Count => f.write_str("<count>"),
+            Key::Count(_) => f.write_str("<count>"),
         }
     }
 }
@@ -387,7 +387,7 @@ where
             c.serialize(serializer);
         }
         Key::Esc => 17u8.serialize(serializer),
-        Key::Count => 18u8.serialize(serializer),
+        Key::Count(_) => 18u8.serialize(serializer),
     }
 }
 
@@ -427,7 +427,7 @@ where
             Ok(Key::Alt(c))
         }
         17 => Ok(Key::Esc),
-        18 => Ok(Key::Count),
+        18 => Ok(Key::Count(0)),
         _ => Err(DeserializeError::InvalidData),
     }
 }
@@ -622,7 +622,7 @@ mod tests {
         assert_eq!(Key::Tab, parse_key(&mut "<tab>".chars()).unwrap());
         assert_eq!(Key::Delete, parse_key(&mut "<delete>".chars()).unwrap());
         assert_eq!(Key::Esc, parse_key(&mut "<esc>".chars()).unwrap());
-        assert_eq!(Key::Count, parse_key(&mut "<count>".chars()).unwrap());
+        assert_eq!(Key::Count(0), parse_key(&mut "<count>".chars()).unwrap());
 
         for n in 1..=99 {
             let s = format!("<f{}>", n);
@@ -700,6 +700,6 @@ mod tests {
         assert_key_serialization(Key::Alt('9'));
         assert_key_serialization(Key::Alt('$'));
         assert_key_serialization(Key::Esc);
-        assert_key_serialization(Key::Count);
+        assert_key_serialization(Key::Count(0));
     }
 }
