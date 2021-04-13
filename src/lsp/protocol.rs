@@ -355,14 +355,6 @@ pub struct DocumentEdit {
     pub range: DocumentRange,
     pub new_text: JsonString,
 }
-impl DocumentEdit {
-    pub fn to_json_value(&self, json: &mut Json) -> JsonValue {
-        let mut value = JsonObject::default();
-        value.set("range".into(), self.range.to_json_value(json), json);
-        value.set("newText".into(), self.new_text.clone().into(), json);
-        value.into()
-    }
-}
 impl<'json> FromJson<'json> for DocumentEdit {
     fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
         let value = match value {

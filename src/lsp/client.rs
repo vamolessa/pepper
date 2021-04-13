@@ -25,7 +25,7 @@ use crate::{
     lsp::{
         capabilities,
         protocol::{
-            self, DocumentLocation, DocumentPosition, DocumentRange, PendingRequest,
+            self, DocumentEdit, DocumentLocation, DocumentPosition, DocumentRange, PendingRequest,
             PendingRequestColection, Protocol, ResponseError, ServerEvent, ServerNotification,
             ServerRequest, ServerResponse, Uri,
         },
@@ -1347,7 +1347,36 @@ impl Client {
                         return;
                     }
                 };
-                //
+
+                let buffers = &mut editor.buffers;
+                let buffer = match request.buffer_handle.and_then(|h| buffers.get_mut(h)) {
+                    Some(buffer) => buffer,
+                    None => return,
+                };
+
+                for edit in edits.elements(json) {
+                    let edit = match DocumentEdit::from_json(edit, json) {
+                        Ok(edit) => edit,
+                        Err(_) => {
+                            self.respond(
+                                platform,
+                                json,
+                                request.id.into(),
+                                Err(ResponseError::parse_error()),
+                            );
+                            return;
+                        }
+                    };
+                    let range = edit.range.into();
+                    let text = edit.new_text.as_str(json);
+                    buffer.delete_range(&mut editor.word_database, range, &mut editor.events);
+                    buffer.insert_text(
+                        &mut editor.word_database,
+                        range.from,
+                        text,
+                        &mut editor.events,
+                    );
+                }
             }
             _ => (),
         }
