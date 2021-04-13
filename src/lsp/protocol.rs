@@ -6,6 +6,7 @@ use std::{
 };
 
 use crate::{
+    buffer::BufferHandle,
     buffer_position::{BufferPosition, BufferRange},
     client,
     json::{
@@ -349,6 +350,37 @@ impl<'json> FromJson<'json> for DocumentLocation {
     }
 }
 
+#[derive(Default)]
+pub struct DocumentEdit {
+    pub range: DocumentRange,
+    pub new_text: JsonString,
+}
+impl DocumentEdit {
+    pub fn to_json_value(&self, json: &mut Json) -> JsonValue {
+        let mut value = JsonObject::default();
+        value.set("range".into(), self.range.to_json_value(json), json);
+        value.set("newText".into(), self.new_text.clone().into(), json);
+        value.into()
+    }
+}
+impl<'json> FromJson<'json> for DocumentEdit {
+    fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
+        let value = match value {
+            JsonValue::Object(object) => object,
+            _ => return Err(JsonConvertError),
+        };
+        let mut this = Self::default();
+        for (key, value) in value.members(json) {
+            match key {
+                "range" => this.range = FromJson::from_json(value, json)?,
+                "newText" => this.new_text = FromJson::from_json(value, json)?,
+                _ => return Err(JsonConvertError),
+            }
+        }
+        Ok(this)
+    }
+}
+
 fn try_get_content_range(buf: &[u8]) -> Option<Range<usize>> {
     fn find_pattern_end(buf: &[u8], pattern: &[u8]) -> Option<usize> {
         let len = pattern.len();
@@ -565,7 +597,8 @@ impl Protocol {
 pub struct PendingRequest {
     pub id: RequestId,
     pub method: &'static str,
-    pub requesting_client: Option<client::ClientHandle>,
+    pub client_handle: Option<client::ClientHandle>,
+    pub buffer_handle: Option<BufferHandle>,
 }
 
 #[derive(Default)]
@@ -576,23 +609,16 @@ pub struct PendingRequestColection {
 impl PendingRequestColection {
     pub fn add(
         &mut self,
-        id: RequestId,
-        method: &'static str,
-        requesting_client: Option<client::ClientHandle>,
+        new_request: PendingRequest,
     ) {
         for request in &mut self.pending_requests {
             if request.id.0 == 0 {
-                request.id = id;
-                request.method = method;
+                *request = new_request;
                 return;
             }
         }
 
-        self.pending_requests.push(PendingRequest {
-            id,
-            method,
-            requesting_client,
-        })
+        self.pending_requests.push(new_request)
     }
 
     pub fn take(&mut self, id: RequestId) -> Option<PendingRequest> {

@@ -1397,10 +1397,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             ctx.args.get_flags(&mut [])?;
             ctx.args.assert_empty()?;
 
-            let client_handle = ctx.client_handle;
             let (buffer_handle, position) = current_buffer_and_main_position(&ctx)?;
             access_lsp(&mut ctx, buffer_handle, |editor, platform, client, json| {
-                client.hover(editor, platform, json, buffer_handle, position, client_handle)
+                client.hover(editor, platform, json, buffer_handle, position)
             })?;
             Ok(None)
         },
@@ -1419,10 +1418,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             ctx.args.get_flags(&mut [])?;
             ctx.args.assert_empty()?;
 
-            let client_handle = ctx.client_handle;
             let (buffer_handle, position) = current_buffer_and_main_position(&ctx)?;
             access_lsp(&mut ctx, buffer_handle, |editor, platform, client, json| {
-                client.signature_help(editor, platform, json, buffer_handle, position, client_handle)
+                client.signature_help(editor, platform, json, buffer_handle, position)
             })?;
             Ok(None)
         },
@@ -1486,6 +1484,32 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                     position,
                     options,
                     client_handle
+                )
+            })?;
+            Ok(None)
+        },
+    },
+    BuiltinCommand {
+        name: "lsp-format",
+        alias: "",
+        help: concat!(
+            "format a buffer using the lsp server\n",
+            "lsp-format",
+        ),
+        hidden: false,
+        completions: &[],
+        func: |mut ctx| {
+            ctx.args.assert_no_bang()?;
+            ctx.args.get_flags(&mut [])?;
+            ctx.args.assert_empty()?;
+
+            let (buffer_handle, _) = current_buffer_and_main_position(&ctx)?;
+            access_lsp(&mut ctx, buffer_handle, |editor, platform, client, json| {
+                client.formatting(
+                    editor,
+                    platform,
+                    json,
+                    buffer_handle,
                 )
             })?;
             Ok(None)

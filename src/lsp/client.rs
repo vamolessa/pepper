@@ -25,9 +25,9 @@ use crate::{
     lsp::{
         capabilities,
         protocol::{
-            self, DocumentLocation, DocumentPosition, DocumentRange, PendingRequestColection,
-            Protocol, ResponseError, ServerEvent, ServerNotification, ServerRequest,
-            ServerResponse, Uri,
+            self, DocumentLocation, DocumentPosition, DocumentRange, PendingRequest,
+            PendingRequestColection, Protocol, ResponseError, ServerEvent, ServerNotification,
+            ServerRequest, ServerResponse, Uri,
         },
     },
     platform::{Platform, PlatformRequest, ProcessHandle, ProcessTag},
@@ -481,7 +481,6 @@ impl Client {
         json: &mut Json,
         buffer_handle: BufferHandle,
         position: BufferPosition,
-        requesting_client: Option<client::ClientHandle>,
     ) {
         if !self.server_capabilities.hoverProvider.0 {
             return;
@@ -492,21 +491,14 @@ impl Client {
             None => return,
         };
 
-        let text_document =
-            helper::text_document_with_id(&editor.current_directory, buffer_path, json);
+        let text_document = helper::text_document_with_id(&self.root, buffer_path, json);
         let position = DocumentPosition::from(position);
 
         let mut params = JsonObject::default();
         params.set("textDocument".into(), text_document.into(), json);
         params.set("position".into(), position.to_json_value(json), json);
 
-        self.request(
-            platform,
-            json,
-            "textDocument/hover",
-            params,
-            requesting_client,
-        );
+        self.request(platform, json, "textDocument/hover", params, None, None);
     }
 
     pub fn signature_help(
@@ -516,7 +508,6 @@ impl Client {
         json: &mut Json,
         buffer_handle: BufferHandle,
         position: BufferPosition,
-        requesting_client: Option<client::ClientHandle>,
     ) {
         if !self.server_capabilities.signatureHelpProvider.on {
             return;
@@ -527,8 +518,7 @@ impl Client {
             None => return,
         };
 
-        let text_document =
-            helper::text_document_with_id(&editor.current_directory, buffer_path, json);
+        let text_document = helper::text_document_with_id(&self.root, buffer_path, json);
         let position = DocumentPosition::from(position);
 
         let mut params = JsonObject::default();
@@ -540,7 +530,8 @@ impl Client {
             json,
             "textDocument/signatureHelp",
             params,
-            requesting_client,
+            None,
+            None,
         );
     }
 
@@ -551,7 +542,7 @@ impl Client {
         json: &mut Json,
         buffer_handle: BufferHandle,
         position: BufferPosition,
-        requesting_client: Option<client::ClientHandle>,
+        client_handle: Option<client::ClientHandle>,
     ) {
         if !self.server_capabilities.definitionProvider.0 {
             return;
@@ -562,8 +553,7 @@ impl Client {
             None => return,
         };
 
-        let text_document =
-            helper::text_document_with_id(&editor.current_directory, buffer_path, json);
+        let text_document = helper::text_document_with_id(&self.root, buffer_path, json);
         let position = DocumentPosition::from(position);
 
         let mut params = JsonObject::default();
@@ -575,7 +565,8 @@ impl Client {
             json,
             "textDocument/definition",
             params,
-            requesting_client,
+            client_handle,
+            None,
         );
     }
 
@@ -587,7 +578,7 @@ impl Client {
         buffer_handle: BufferHandle,
         position: BufferPosition,
         options: ReferencesOptions,
-        requesting_client: Option<client::ClientHandle>,
+        client_handle: Option<client::ClientHandle>,
     ) {
         if !self.server_capabilities.referencesProvider.0 {
             return;
@@ -598,8 +589,7 @@ impl Client {
             None => return,
         };
 
-        let text_document =
-            helper::text_document_with_id(&editor.current_directory, buffer_path, json);
+        let text_document = helper::text_document_with_id(&self.root, buffer_path, json);
         let position = DocumentPosition::from(position);
 
         let mut context = JsonObject::default();
@@ -617,7 +607,8 @@ impl Client {
             json,
             "textDocument/references",
             params,
-            requesting_client,
+            client_handle,
+            None,
         );
     }
 
@@ -628,8 +619,52 @@ impl Client {
     pub fn code_action() {
         // https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocument_codeAction
     }
-    pub fn formatting() {
+
+    pub fn formatting(
+        &mut self,
+        editor: &Editor,
+        platform: &mut Platform,
+        json: &mut Json,
+        buffer_handle: BufferHandle,
+    ) {
         // https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocument_formatting
+
+        if !self.server_capabilities.documentFormattingProvider.0 {
+            return;
+        }
+
+        let buffer_path = match editor.buffers.get(buffer_handle).and_then(Buffer::path) {
+            Some(path) => path,
+            None => return,
+        };
+
+        let text_document = helper::text_document_with_id(&self.root, buffer_path, json);
+        let mut options = JsonObject::default();
+        options.set(
+            "tabSize".into(),
+            JsonValue::Integer(editor.config.tab_size.get() as _),
+            json,
+        );
+        options.set(
+            "insertSpaces".into(),
+            (!editor.config.indent_with_tabs).into(),
+            json,
+        );
+        options.set("trimTrailingWhitespace".into(), true.into(), json);
+        options.set("trimFinalNewlines".into(), true.into(), json);
+
+        let mut params = JsonObject::default();
+        params.set("textDocument".into(), text_document.into(), json);
+        params.set("options".into(), options.into(), json);
+
+        self.request(
+            platform,
+            json,
+            "textDocument/formatting",
+            params,
+            None,
+            Some(buffer_handle),
+        );
     }
 
     fn write_to_log_buffer<F>(&mut self, writer: F)
@@ -985,7 +1020,6 @@ impl Client {
             None => return,
         };
         let method = request.method;
-        let requesting_client = request.requesting_client;
 
         macro_rules! deserialize {
             ($value:expr) => {
@@ -1117,7 +1151,7 @@ impl Client {
                     }
                 };
 
-                let client = match requesting_client.and_then(|h| clients.get_mut(h)) {
+                let client = match request.client_handle.and_then(|h| clients.get_mut(h)) {
                     Some(client) => client,
                     None => return,
                 };
@@ -1154,7 +1188,7 @@ impl Client {
                     }
                 };
 
-                let client = match requesting_client.and_then(|h| clients.get_mut(h)) {
+                let client = match request.client_handle.and_then(|h| clients.get_mut(h)) {
                     Some(client) => client,
                     None => return,
                 };
@@ -1286,7 +1320,6 @@ impl Client {
                         last_path = path;
                     }
                     editor.string_pool.release(text);
-
                 }
 
                 client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
@@ -1299,6 +1332,22 @@ impl Client {
                         CursorMovementKind::PositionAndAnchor,
                     );
                 }
+            }
+            "textDocument/formatting" => {
+                let edits = match result {
+                    JsonValue::Null => return,
+                    JsonValue::Array(edits) => edits,
+                    _ => {
+                        self.respond(
+                            platform,
+                            json,
+                            request.id.into(),
+                            Err(ResponseError::parse_error()),
+                        );
+                        return;
+                    }
+                };
+                //
             }
             _ => (),
         }
@@ -1371,7 +1420,8 @@ impl Client {
         json: &mut Json,
         method: &'static str,
         params: JsonObject,
-        requesting_client: Option<client::ClientHandle>,
+        client_handle: Option<client::ClientHandle>,
+        buffer_handle: Option<BufferHandle>,
     ) {
         if !self.initialized {
             return;
@@ -1384,7 +1434,12 @@ impl Client {
             json.write(buf, &params);
         });
         let id = self.protocol.request(platform, json, method, params);
-        self.pending_requests.add(id, method, requesting_client);
+        self.pending_requests.add(PendingRequest {
+            id,
+            method,
+            client_handle,
+            buffer_handle,
+        });
     }
 
     fn respond(
@@ -1456,7 +1511,7 @@ impl Client {
         );
 
         self.initialized = true;
-        self.request(platform, json, "initialize", params, None);
+        self.request(platform, json, "initialize", params, None, None);
         self.initialized = false;
     }
 }
@@ -1530,7 +1585,7 @@ mod helper {
             None => return,
         };
 
-        let mut text_document = text_document_with_id(&editor.current_directory, buffer_path, json);
+        let mut text_document = text_document_with_id(&client.root, buffer_path, json);
         let language_id = json.create_string(protocol::path_to_language_id(buffer_path));
         text_document.set("languageId".into(), language_id.into(), json);
         text_document.set("version".into(), JsonValue::Integer(0), json);
@@ -1567,8 +1622,7 @@ mod helper {
                 None => continue,
             };
 
-            let mut text_document =
-                text_document_with_id(&editor.current_directory, buffer_path, json);
+            let mut text_document = text_document_with_id(&client.root, buffer_path, json);
             text_document.set(
                 "version".into(),
                 JsonValue::Integer(versioned_buffer.version as _),
@@ -1634,7 +1688,7 @@ mod helper {
             None => return,
         };
 
-        let text_document = text_document_with_id(&editor.current_directory, buffer_path, json);
+        let text_document = text_document_with_id(&client.root, buffer_path, json);
         let mut params = JsonObject::default();
         params.set("textDocument".into(), text_document.into(), json);
 
@@ -1669,7 +1723,7 @@ mod helper {
             None => return,
         };
 
-        let text_document = text_document_with_id(&editor.current_directory, buffer_path, json);
+        let text_document = text_document_with_id(&client.root, buffer_path, json);
         let mut params = JsonObject::default();
         params.set("textDocument".into(), text_document.into(), json);
 
