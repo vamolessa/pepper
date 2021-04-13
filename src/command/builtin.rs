@@ -1454,14 +1454,26 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         alias: "",
         help: concat!(
             "opens up a buffer with all references of the symbol under the main cursor found by the lsp server\n",
-            "lsp-references",
+            "lsp-references [<flags>]\n",
+            " -context=<number> : how many lines of context to show. 0 means no context is shown\n",
+            " -auto-close : automatically closes buffer when no other client has it in focus",
         ),
         hidden: false,
         completions: &[],
         func: |mut ctx| {
             ctx.args.assert_no_bang()?;
-            ctx.args.get_flags(&mut [])?;
+
+            let mut flags = [("context", None), ("auto-close", None)];
+            ctx.args.get_flags(&mut flags)?;
+            let context_len = flags[0].1.map(parse_arg).transpose()?.unwrap_or(0);
+            let auto_close_buffer = flags[1].1.is_some();
+
             ctx.args.assert_empty()?;
+
+            let options = lsp::ReferencesOptions {
+                context_len,
+                auto_close_buffer,
+            };
 
             let client_handle = ctx.client_handle;
             let (buffer_handle, position) = current_buffer_and_main_position(&ctx)?;
@@ -1472,6 +1484,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                     json,
                     buffer_handle,
                     position,
+                    options,
                     client_handle
                 )
             })?;

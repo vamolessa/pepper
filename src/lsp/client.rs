@@ -1,5 +1,7 @@
 use std::{
-    fmt, io,
+    fmt,
+    fs::File,
+    io,
     ops::Range,
     path::{Path, PathBuf},
     process::{self, Command, Stdio},
@@ -7,7 +9,7 @@ use std::{
 };
 
 use crate::{
-    buffer::{Buffer, BufferCapabilities, BufferHandle},
+    buffer::{Buffer, BufferCapabilities, BufferContent, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{CursorMovement, CursorMovementKind},
     client,
@@ -417,6 +419,12 @@ impl DiagnosticCollection {
     }
 }
 
+#[derive(Default)]
+pub struct ReferencesOptions {
+    pub auto_close_buffer: bool,
+    pub context_len: usize,
+}
+
 pub struct Client {
     protocol: Protocol,
     root: PathBuf,
@@ -429,6 +437,8 @@ pub struct Client {
     document_selectors: Vec<Glob>,
     versioned_buffers: VersionedBufferCollection,
     diagnostics: DiagnosticCollection,
+
+    references_options: ReferencesOptions,
 }
 
 impl Client {
@@ -447,6 +457,8 @@ impl Client {
             document_selectors: Vec::new(),
             versioned_buffers: VersionedBufferCollection::default(),
             diagnostics: DiagnosticCollection::default(),
+
+            references_options: ReferencesOptions::default(),
         }
     }
 
@@ -574,6 +586,7 @@ impl Client {
         json: &mut Json,
         buffer_handle: BufferHandle,
         position: BufferPosition,
+        options: ReferencesOptions,
         requesting_client: Option<client::ClientHandle>,
     ) {
         if !self.server_capabilities.referencesProvider.0 {
@@ -596,6 +609,8 @@ impl Client {
         params.set("textDocument".into(), text_document.into(), json);
         params.set("position".into(), position.to_json_value(json), json);
         params.set("context".into(), context.into(), json);
+
+        self.references_options = options;
 
         self.request(
             platform,
@@ -1182,6 +1197,8 @@ impl Client {
                     Err(_) => return,
                 };
 
+                let mut context_buffer = BufferContent::new();
+
                 let buffers = &mut editor.buffers;
                 if let Some(buffer) = editor
                     .buffer_views
@@ -1189,12 +1206,14 @@ impl Client {
                     .and_then(|v| buffers.get_mut(v.buffer_handle))
                 {
                     buffer.capabilities = BufferCapabilities::log();
+                    buffer.capabilities.auto_close = self.references_options.auto_close_buffer;
 
                     let mut position = BufferPosition::zero();
                     let range = BufferRange::between(position, buffer.content().end());
                     buffer.delete_range(&mut editor.word_database, range, &mut editor.events);
 
                     let mut text = editor.string_pool.acquire();
+                    let mut last_path = "";
                     for location in locations.elements(json) {
                         let location = match DocumentLocation::from_json(location, json) {
                             Ok(location) => location,
@@ -1227,6 +1246,34 @@ impl Client {
                             location.range.start.line + 1,
                             location.range.start.character + 1
                         );
+
+                        if self.references_options.context_len > 0 {
+                            if last_path != path {
+                                context_buffer.clear();
+                                if let Ok(file) = File::open(path) {
+                                    let mut reader = io::BufReader::new(file);
+                                    let _ = context_buffer.read(&mut reader);
+                                }
+                            }
+
+                            let surrounding_len = self.references_options.context_len - 1;
+                            let start = (location.range.start.line as usize)
+                                .saturating_sub(surrounding_len);
+                            let end = location.range.end.line as usize + surrounding_len;
+                            let len = end - start + 1;
+
+                            for line in context_buffer
+                                .lines()
+                                .skip(start)
+                                .take(len)
+                                .skip_while(|l| l.as_str().is_empty())
+                            {
+                                text.push_str(line.as_str());
+                                text.push('\n');
+                            }
+                            text.push('\n');
+                        }
+
                         let range = buffer.insert_text(
                             &mut editor.word_database,
                             position,
@@ -1235,6 +1282,8 @@ impl Client {
                         );
                         position = position.insert(range);
                         text.clear();
+
+                        last_path = path;
                     }
                     editor.string_pool.release(text);
                 }
