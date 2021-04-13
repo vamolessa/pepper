@@ -1286,17 +1286,19 @@ impl Client {
                         last_path = path;
                     }
                     editor.string_pool.release(text);
+
                 }
+
+                client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
+                editor.trigger_event_handlers(platform, clients, None);
 
                 if let Some(buffer_view) = editor.buffer_views.get_mut(buffer_view_handle) {
                     buffer_view.move_cursors(
-                        buffers,
+                        &editor.buffers,
                         CursorMovement::FirstLine,
                         CursorMovementKind::PositionAndAnchor,
                     );
                 }
-
-                client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
             }
             _ => (),
         }
