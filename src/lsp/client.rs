@@ -491,6 +491,8 @@ impl Client {
             None => return,
         };
 
+        helper::send_pending_did_change(self, platform, editor, json);
+
         let text_document = helper::text_document_with_id(&self.root, buffer_path, json);
         let position = DocumentPosition::from(position);
 
@@ -517,6 +519,8 @@ impl Client {
             Some(path) => path,
             None => return,
         };
+
+        helper::send_pending_did_change(self, platform, editor, json);
 
         let text_document = helper::text_document_with_id(&self.root, buffer_path, json);
         let position = DocumentPosition::from(position);
@@ -553,6 +557,8 @@ impl Client {
             None => return,
         };
 
+        helper::send_pending_did_change(self, platform, editor, json);
+
         let text_document = helper::text_document_with_id(&self.root, buffer_path, json);
         let position = DocumentPosition::from(position);
 
@@ -588,6 +594,8 @@ impl Client {
             Some(path) => path,
             None => return,
         };
+
+        helper::send_pending_did_change(self, platform, editor, json);
 
         let text_document = helper::text_document_with_id(&self.root, buffer_path, json);
         let position = DocumentPosition::from(position);
@@ -637,6 +645,8 @@ impl Client {
             Some(path) => path,
             None => return,
         };
+
+        helper::send_pending_did_change(self, platform, editor, json);
 
         let text_document = helper::text_document_with_id(&self.root, buffer_path, json);
         let mut options = JsonObject::default();
