@@ -1165,7 +1165,7 @@ impl Client {
                 if buffer_name.is_empty() {
                     buffer_name.push_str("lsp");
                 }
-                buffer_name.push_str("-references");
+                buffer_name.push_str(".refs");
 
                 let buffer_view_handle = editor.buffer_views.buffer_view_handle_from_path(
                     client.handle(),
@@ -1223,7 +1223,9 @@ impl Client {
                         let _ = write!(
                             text,
                             "{}:{},{}\n",
-                            path, location.range.start.line, location.range.start.character
+                            path,
+                            location.range.start.line + 1,
+                            location.range.start.character + 1
                         );
                         let range = buffer.insert_text(
                             &mut editor.word_database,

@@ -571,33 +571,40 @@ impl State {
 
                                 path_buf.clear();
                                 path_buf.push_str(path);
+                                let path = Path::new(&path_buf);
+                                if !path.exists() {
+                                    continue;
+                                }
 
-                                if let Ok(handle) =
-                                    ctx.editor.buffer_views.buffer_view_handle_from_path(
+                                let handle =
+                                    match ctx.editor.buffer_views.buffer_view_handle_from_path(
                                         ctx.client_handle,
                                         &mut ctx.editor.buffers,
                                         &mut ctx.editor.word_database,
                                         &ctx.editor.current_directory,
-                                        Path::new(&path_buf),
+                                        path,
                                         Some(position),
                                         &mut ctx.editor.events,
-                                    )
-                                {
-                                    if !jumped {
-                                        jumped = true;
-                                        NavigationHistory::save_client_snapshot(
-                                            ctx.clients,
-                                            ctx.client_handle,
-                                            &ctx.editor.buffer_views,
-                                        );
-                                        if let Some(client) = ctx.clients.get_mut(ctx.client_handle)
-                                        {
-                                            client.set_buffer_view_handle(
-                                                Some(handle),
-                                                &mut ctx.editor.events,
-                                            );
-                                        }
-                                    }
+                                    ) {
+                                        Ok(handle) => handle,
+                                        Err(_) => continue,
+                                    };
+
+                                if jumped {
+                                    continue;
+                                }
+                                jumped = true;
+
+                                NavigationHistory::save_client_snapshot(
+                                    ctx.clients,
+                                    ctx.client_handle,
+                                    &ctx.editor.buffer_views,
+                                );
+                                if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
+                                    client.set_buffer_view_handle(
+                                        Some(handle),
+                                        &mut ctx.editor.events,
+                                    );
                                 }
                             }
                             ctx.editor.string_pool.release(path_buf);
