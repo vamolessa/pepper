@@ -1364,7 +1364,8 @@ impl Client {
                     None => return,
                 };
 
-                for edit in edits.elements(json) {
+                let mut edit_ranges = Vec::new();
+                for edit in edits.clone().elements(json) {
                     let edit = match DocumentEdit::from_json(edit, json) {
                         Ok(edit) => edit,
                         Err(_) => {
@@ -1377,15 +1378,31 @@ impl Client {
                             return;
                         }
                     };
-                    let range = edit.range.into();
+
+                    let mut delete_range: BufferRange = edit.range.into();
                     let text = edit.new_text.as_str(json);
-                    buffer.delete_range(&mut editor.word_database, range, &mut editor.events);
-                    buffer.insert_text(
+
+                    for (d, i) in &edit_ranges {
+                        delete_range.from = delete_range.from.delete(*d);
+                        delete_range.to = delete_range.to.delete(*d);
+
+                        delete_range.from = delete_range.from.insert(*i);
+                        delete_range.to = delete_range.to.insert(*i);
+                    }
+
+                    buffer.delete_range(
                         &mut editor.word_database,
-                        range.from,
+                        delete_range,
+                        &mut editor.events,
+                    );
+                    let insert_range = buffer.insert_text(
+                        &mut editor.word_database,
+                        delete_range.from,
                         text,
                         &mut editor.events,
                     );
+
+                    edit_ranges.push((delete_range, insert_range));
                 }
             }
             _ => (),
