@@ -439,6 +439,7 @@ pub struct Client {
     diagnostics: DiagnosticCollection,
 
     references_options: ReferencesOptions,
+    formatting_edits: Vec<(BufferRange, BufferRange)>,
 }
 
 impl Client {
@@ -459,6 +460,7 @@ impl Client {
             diagnostics: DiagnosticCollection::default(),
 
             references_options: ReferencesOptions::default(),
+            formatting_edits: Vec::new(),
         }
     }
 
@@ -1364,7 +1366,7 @@ impl Client {
                     None => return,
                 };
 
-                let mut edit_ranges = Vec::new();
+                self.formatting_edits.clear();
                 for edit in edits.clone().elements(json) {
                     let edit = match DocumentEdit::from_json(edit, json) {
                         Ok(edit) => edit,
@@ -1382,7 +1384,7 @@ impl Client {
                     let mut delete_range: BufferRange = edit.range.into();
                     let text = edit.new_text.as_str(json);
 
-                    for (d, i) in &edit_ranges {
+                    for (d, i) in &self.formatting_edits {
                         delete_range.from = delete_range.from.delete(*d);
                         delete_range.to = delete_range.to.delete(*d);
 
@@ -1402,7 +1404,7 @@ impl Client {
                         &mut editor.events,
                     );
 
-                    edit_ranges.push((delete_range, insert_range));
+                    self.formatting_edits.push((delete_range, insert_range));
                 }
             }
             _ => (),
