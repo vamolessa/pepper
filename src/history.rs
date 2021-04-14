@@ -150,8 +150,10 @@ impl History {
                 fix_text_range(edit, fix_text_start, fix_text_len);
             }
             for edit in &mut group_edits[current_index + 1..] {
-                edit.buffer_range.from = fix_position_func(edit.buffer_range.from, edit_range);
-                edit.buffer_range.to = fix_position_func(edit.buffer_range.to, edit_range);
+                if edit_range.from < edit.buffer_range.from {
+                    edit.buffer_range.from = fix_position_func(edit.buffer_range.from, edit_range);
+                    edit.buffer_range.to = fix_position_func(edit.buffer_range.to, edit_range);
+                }
                 fix_text_range(edit, fix_text_start, fix_text_len);
             }
         }
@@ -943,40 +945,19 @@ mod tests {
             range: buffer_range((0, 0), (0, 2)),
             text: "ab",
         });
-
-        eprintln!("edits");
-        for e in &history.edits {
-            eprintln!("{:?}", e.as_edit_ref(&history.texts));
-        }
-        eprintln!("----");
-
         history.add_edit(Edit {
             kind: EditKind::Delete,
             range: buffer_range((0, 3), (0, 5)),
             text: "cd",
         });
-
-        eprintln!("edits");
-        for e in &history.edits {
-            eprintln!("{:?}", e.as_edit_ref(&history.texts));
-        }
-        eprintln!("----");
-
         history.add_edit(Edit {
             kind: EditKind::Delete,
             range: buffer_range((0, 0), (0, 2)),
             text: "ab",
         });
 
-        eprintln!("edits");
-        for e in &history.edits {
-            eprintln!("{:?}", e.as_edit_ref(&history.texts));
-        }
-        eprintln!("----");
-
         let mut edits = history.undo_edits();
         assert!(edits.next().is_none());
-        return;
 
         // -- insert ------
         // -- delete --
@@ -1002,6 +983,12 @@ mod tests {
             text: "a",
         });
 
+        eprintln!("edits");
+        for e in &history.edits {
+            eprintln!("{:?}", e.as_edit_ref(&history.texts));
+        }
+        eprintln!("----");
+
         let mut edits = history.undo_edits();
         let edit = edits.next().unwrap();
         assert_eq!(EditKind::Delete, edit.kind);
@@ -1012,6 +999,8 @@ mod tests {
         assert_eq!("b", edit.text);
         assert_eq!(buffer_range((0, 0), (0, 1)), edit.range);
         assert!(edits.next().is_none());
+
+        return;
 
         // ------ insert --
         //     -- delete --
