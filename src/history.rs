@@ -63,10 +63,9 @@ impl History {
     pub fn add_edit(&mut self, edit: Edit) {
         let current_group_start = match self.state {
             HistoryState::IterIndex(index) => {
-                let edit_index = if index < self.group_ranges.len() {
-                    self.group_ranges[index].start
-                } else {
-                    self.edits.len()
+                let edit_index = match self.group_ranges.get(index) {
+                    Some(range) => range.start,
+                    None => self.group_ranges.len(),
                 };
                 self.edits.truncate(edit_index);
                 match self.edits.last() {
