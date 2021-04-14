@@ -246,13 +246,12 @@ impl History {
                 (EditKind::Insert, EditKind::Delete) => {
                     // -- insert ------
                     // -- delete ------ (new)
-                    if other_edit.buffer_range.from == edit_range.from
-                        && other_edit.buffer_range.to == edit_range.to
-                    {
+                    if other_edit.buffer_range == edit_range {
                         if edit.text == &self.texts[other_edit.text_range.clone()] {
                             let fix_text_start = other_edit.text_range.start;
                             self.texts.drain(other_edit.text_range.clone());
 
+                            eprintln!("remove edit entirely [{}] range: {:?}", i, edit_range);
                             fix_other_edits(
                                 group_edits,
                                 i,
@@ -929,7 +928,7 @@ mod tests {
         assert!(edits.next().is_none());
     }
 
-    //#[test]
+    #[test]
     fn compress_multiple_insert_delete_edits() {
         // -- insert --
         // -- delete --
@@ -944,19 +943,40 @@ mod tests {
             range: buffer_range((0, 0), (0, 2)),
             text: "ab",
         });
+
+        eprintln!("edits");
+        for e in &history.edits {
+            eprintln!("{:?}", e.as_edit_ref(&history.texts));
+        }
+        eprintln!("----");
+
         history.add_edit(Edit {
             kind: EditKind::Delete,
             range: buffer_range((0, 3), (0, 5)),
             text: "cd",
         });
+
+        eprintln!("edits");
+        for e in &history.edits {
+            eprintln!("{:?}", e.as_edit_ref(&history.texts));
+        }
+        eprintln!("----");
+
         history.add_edit(Edit {
             kind: EditKind::Delete,
             range: buffer_range((0, 0), (0, 2)),
             text: "ab",
         });
 
+        eprintln!("edits");
+        for e in &history.edits {
+            eprintln!("{:?}", e.as_edit_ref(&history.texts));
+        }
+        eprintln!("----");
+
         let mut edits = history.undo_edits();
         assert!(edits.next().is_none());
+        return;
 
         // -- insert ------
         // -- delete --
