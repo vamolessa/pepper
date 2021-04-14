@@ -1,9 +1,8 @@
-use std::{env, fmt, io, path::Path, sync::mpsc, time::Duration};
+use std::{env, fmt, io, sync::mpsc, time::Duration};
 
 use crate::{
     buffer::parse_path_and_position,
     client::{ClientHandle, ClientManager},
-    command::CommandOperation,
     editor::{Editor, EditorControlFlow},
     events::{ClientEvent, ClientEventReceiver, ServerEvent},
     platform::{Key, Platform, PlatformRequest, ProcessHandle, ProcessTag, SharedBuf},
@@ -89,22 +88,12 @@ impl ServerApplication {
         Duration::from_secs(1)
     }
 
-    pub fn run(args: Args, mut platform: Platform) -> Option<mpsc::Sender<ApplicationEvent>> {
+    pub fn run(mut platform: Platform) -> Option<mpsc::Sender<ApplicationEvent>> {
         let current_dir = env::current_dir().expect("could not retrieve the current directory");
-        let mut editor = Editor::new(current_dir);
-        let mut clients = ClientManager::new();
-
-        for config in &args.config {
-            let config_path = Path::new(config);
-            if let Some(CommandOperation::Quit) | Some(CommandOperation::QuitAll) =
-                editor.load_config(&mut platform, &mut clients, config_path)
-            {
-                return None;
-            }
-        }
+        let editor = Editor::new(current_dir);
+        let clients = ClientManager::new();
 
         let (event_sender, event_receiver) = mpsc::channel();
-
         let event_sender_clone = event_sender.clone();
         std::thread::spawn(move || {
             let _ = Self::run_application(
@@ -260,6 +249,10 @@ impl<'stdout> ClientApplication<'stdout> {
         }
 
         let mut commands = String::new();
+        for config in &args.config {
+            use fmt::Write;
+            writeln!(commands, "source '{}'", config).unwrap();
+        }
         for path in &args.files {
             use fmt::Write;
             let (path, position) = parse_path_and_position(path);

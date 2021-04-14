@@ -122,7 +122,7 @@ pub fn main() {
             run_client(args, &pipe_path, input_handle, output_handle);
         }
         _ => {
-            let _ = run_server(args, &pipe_path);
+            let _ = run_server(&pipe_path);
         }
     }
 }
@@ -868,7 +868,7 @@ impl Events {
     }
 }
 
-fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
+fn run_server(pipe_path: &[u16]) -> Result<(), AnyError> {
     const NONE_ASYNC_PROCESS: Option<AsyncProcess> = None;
     static NEW_REQUEST_EVENT_HANDLE: AtomicPtr<()> = AtomicPtr::new(std::ptr::null_mut());
 
@@ -895,7 +895,7 @@ fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
         request_sender,
     );
 
-    let event_sender = match ServerApplication::run(args, platform) {
+    let event_sender = match ServerApplication::run(platform) {
         Some(sender) => sender,
         None => return Ok(()),
     };
