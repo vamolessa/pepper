@@ -948,10 +948,9 @@ impl Buffer {
                     range,
                     text: "\n",
                 });
-                let range = BufferRange::between(from, range.from);
                 buffer.history.add_edit(Edit {
                     kind: EditKind::Delete,
-                    range,
+                    range: BufferRange::between(from, range.from),
                     text: &line[from.column_byte_index..],
                 });
             }
@@ -1025,7 +1024,7 @@ impl Buffer {
         word_database: &mut WordDatabase,
         events: &mut EditorEventQueue,
     ) -> impl 'a + ExactSizeIterator<Item = Edit<'a>> + DoubleEndedIterator<Item = Edit<'a>> {
-        self.history_edits(word_database, events, |h| h.undo_edits())
+        self.history_edits(word_database, events, History::undo_edits)
     }
 
     pub fn redo<'a>(
@@ -1033,7 +1032,7 @@ impl Buffer {
         word_database: &mut WordDatabase,
         events: &mut EditorEventQueue,
     ) -> impl 'a + ExactSizeIterator<Item = Edit<'a>> + DoubleEndedIterator<Item = Edit<'a>> {
-        self.history_edits(word_database, events, |h| h.redo_edits())
+        self.history_edits(word_database, events, History::redo_edits)
     }
 
     fn history_edits<'a, F, I>(

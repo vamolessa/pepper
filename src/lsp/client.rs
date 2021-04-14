@@ -1366,6 +1366,8 @@ impl Client {
                     None => return,
                 };
 
+                buffer.commit_edits();
+
                 self.formatting_edits.clear();
                 for edit in edits.clone().elements(json) {
                     let edit = match DocumentEdit::from_json(edit, json) {
@@ -1406,6 +1408,8 @@ impl Client {
 
                     self.formatting_edits.push((delete_range, insert_range));
                 }
+
+                buffer.commit_edits();
             }
             _ => (),
         }
