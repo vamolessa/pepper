@@ -3,7 +3,7 @@ use std::{cmp::Ordering, fmt::Write, path::Path};
 use crate::{
     buffer::{find_path_and_position_at, parse_path_and_position, BufferContent},
     buffer_position::{BufferPosition, BufferRange},
-    buffer_view::{BufferViewError, BufferViewHandle, CursorMovement, CursorMovementKind},
+    buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     client::Client,
     cursor::{Cursor, CursorCollection},
     editor::{Editor, EditorControlFlow, KeysIterator},
@@ -579,18 +579,14 @@ impl State {
                                     continue;
                                 }
 
-                                let handle =
-                                    match ctx.editor.buffer_views.buffer_view_handle_from_path(
-                                        ctx.client_handle,
-                                        &mut ctx.editor.buffers,
-                                        &mut ctx.editor.word_database,
-                                        &ctx.editor.current_directory,
-                                        path,
-                                        &mut ctx.editor.events,
-                                    ) {
-                                        Ok(handle) => handle,
-                                        Err(_) => continue,
-                                    };
+                                let handle = ctx.editor.buffer_views.buffer_view_handle_from_path(
+                                    ctx.client_handle,
+                                    &mut ctx.editor.buffers,
+                                    &mut ctx.editor.word_database,
+                                    &ctx.editor.current_directory,
+                                    path,
+                                    &mut ctx.editor.events,
+                                );
                                 if let Some(buffer_view) = ctx.editor.buffer_views.get_mut(handle) {
                                     let mut cursors = buffer_view.cursors.mut_guard();
                                     cursors.clear();
@@ -1523,23 +1519,14 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) -> Option<()> {
             .editor
             .buffer_views
             .buffer_view_handle_from_buffer_handle(ctx.client_handle, buffer_handle),
-        None => match ctx.editor.buffer_views.buffer_view_handle_from_path(
+        None => ctx.editor.buffer_views.buffer_view_handle_from_path(
             ctx.client_handle,
             &mut ctx.editor.buffers,
             &mut ctx.editor.word_database,
             &ctx.editor.current_directory,
             path,
             &mut ctx.editor.events,
-        ) {
-            Ok(handle) => handle,
-            Err(BufferViewError::InvalidPath) => {
-                ctx.editor
-                    .status_bar
-                    .write(MessageKind::Error)
-                    .fmt(format_args!("invalid path '{:?}'", path));
-                return None;
-            }
-        },
+        ),
     };
 
     NavigationHistory::save_client_snapshot(

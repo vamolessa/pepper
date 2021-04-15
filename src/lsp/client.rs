@@ -860,17 +860,14 @@ impl Client {
                     let mut closure = || {
                         let client_handle = clients.focused_client()?;
                         let client = clients.get_mut(client_handle)?;
-                        let buffer_view_handle = editor
-                            .buffer_views
-                            .buffer_view_handle_from_path(
-                                client_handle,
-                                &mut editor.buffers,
-                                &mut editor.word_database,
-                                &self.root,
-                                path,
-                                &mut editor.events,
-                            )
-                            .ok()?;
+                        let buffer_view_handle = editor.buffer_views.buffer_view_handle_from_path(
+                            client_handle,
+                            &mut editor.buffers,
+                            &mut editor.word_database,
+                            &self.root,
+                            path,
+                            &mut editor.events,
+                        );
                         if let Some(range) = params.selection {
                             let buffer_view = editor.buffer_views.get_mut(buffer_view_handle)?;
                             let mut cursors = buffer_view.cursors.mut_guard();
@@ -1170,25 +1167,24 @@ impl Client {
                     Some(Uri::RelativePath(_, path)) => path,
                     None => return,
                 };
-                if let Ok(buffer_view_handle) = editor.buffer_views.buffer_view_handle_from_path(
+                let buffer_view_handle = editor.buffer_views.buffer_view_handle_from_path(
                     client.handle(),
                     &mut editor.buffers,
                     &mut editor.word_database,
                     &self.root,
                     path,
                     &mut editor.events,
-                ) {
-                    if let Some(buffer_view) = editor.buffer_views.get_mut(buffer_view_handle) {
-                        let position = location.range.start.into();
-                        let mut cursors = buffer_view.cursors.mut_guard();
-                        cursors.clear();
-                        cursors.add(Cursor {
-                            anchor: position,
-                            position,
-                        });
-                    }
-                    client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
+                );
+                if let Some(buffer_view) = editor.buffer_views.get_mut(buffer_view_handle) {
+                    let position = location.range.start.into();
+                    let mut cursors = buffer_view.cursors.mut_guard();
+                    cursors.clear();
+                    cursors.add(Cursor {
+                        anchor: position,
+                        position,
+                    });
                 }
+                client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
             }
             "textDocument/references" => {
                 let locations = match result {
@@ -1242,13 +1238,8 @@ impl Client {
                     &mut editor.events,
                 );
                 editor.string_pool.release(buffer_name);
-                let buffer_view_handle = match buffer_view_handle {
-                    Ok(handle) => handle,
-                    Err(_) => return,
-                };
 
                 let mut context_buffer = BufferContent::new();
-
                 let buffers = &mut editor.buffers;
                 if let Some(buffer) = editor
                     .buffer_views

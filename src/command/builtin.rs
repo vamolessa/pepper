@@ -7,7 +7,6 @@ use std::{
 use crate::{
     buffer::{BufferCapabilities, BufferHandle},
     buffer_position::BufferPosition,
-    buffer_view::BufferViewError,
     command::{
         parse_process_command, BuiltinCommand, CommandContext, CommandError, CommandIter,
         CommandManager, CommandOperation, CommandSource, CommandTokenIter, CommandTokenKind,
@@ -791,41 +790,38 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 &ctx.editor.buffer_views,
             );
 
-            match ctx.editor.buffer_views.buffer_view_handle_from_path(
+            let handle = ctx.editor.buffer_views.buffer_view_handle_from_path(
                 client_handle,
                 &mut ctx.editor.buffers,
                 &mut ctx.editor.word_database,
                 &ctx.editor.current_directory,
                 Path::new(path),
                 &mut ctx.editor.events,
-            ) {
-                Ok(handle) => {
-                    if let Some(buffer_view) = ctx.editor.buffer_views.get_mut(handle) {
-                        if let Some(position) = position {
-                            let mut cursors = buffer_view.cursors.mut_guard();
-                            cursors.clear();
-                            cursors.add(Cursor {
-                                anchor: position,
-                                position,
-                            });
-                        }
+            );
 
-                        if let Some(buffer) = ctx.editor.buffers.get_mut(buffer_view.buffer_handle) {
-                            buffer.capabilities.has_history = !no_history;
-                            buffer.capabilities.can_save = !no_save;
-                            buffer.capabilities.uses_word_database = !no_word_database;
-                            buffer.capabilities.auto_close = auto_close;
-                        }
-                    }
-
-                    if let Some(client) = ctx.clients.get_mut(client_handle) {
-                        client.set_buffer_view_handle(Some(handle), &mut ctx.editor.events);
-                    }
-
-                    Ok(None)
+            if let Some(buffer_view) = ctx.editor.buffer_views.get_mut(handle) {
+                if let Some(position) = position {
+                    let mut cursors = buffer_view.cursors.mut_guard();
+                    cursors.clear();
+                    cursors.add(Cursor {
+                        anchor: position,
+                        position,
+                    });
                 }
-                Err(BufferViewError::InvalidPath) => Err(CommandError::InvalidPath(path.into())),
+
+                if let Some(buffer) = ctx.editor.buffers.get_mut(buffer_view.buffer_handle) {
+                    buffer.capabilities.has_history = !no_history;
+                    buffer.capabilities.can_save = !no_save;
+                    buffer.capabilities.uses_word_database = !no_word_database;
+                    buffer.capabilities.auto_close = auto_close;
+                }
             }
+
+            if let Some(client) = ctx.clients.get_mut(client_handle) {
+                client.set_buffer_view_handle(Some(handle), &mut ctx.editor.events);
+            }
+
+            Ok(None)
         },
     },
     BuiltinCommand {

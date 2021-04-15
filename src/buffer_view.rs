@@ -471,10 +471,6 @@ impl BufferView {
     }
 }
 
-pub enum BufferViewError {
-    InvalidPath,
-}
-
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub struct BufferViewHandle(u32);
 impl fmt::Display for BufferViewHandle {
@@ -580,12 +576,11 @@ impl BufferViewCollection {
         root: &Path,
         path: &Path,
         events: &mut EditorEventQueue,
-    ) -> Result<BufferViewHandle, BufferViewError> {
+    ) -> BufferViewHandle {
         if let Some(buffer) = buffers.find_with_path(root, path) {
             let buffer_handle = buffer.handle();
-            let handle = self.buffer_view_handle_from_buffer_handle(client_handle, buffer_handle);
-            Ok(handle)
-        } else if !path.as_os_str().is_empty() {
+            self.buffer_view_handle_from_buffer_handle(client_handle, buffer_handle)
+        } else {
             let path = path.strip_prefix(root).unwrap_or(path);
 
             let buffer = buffers.new();
@@ -594,10 +589,7 @@ impl BufferViewCollection {
             let _ = buffer.discard_and_reload_from_file(word_database, events);
 
             let buffer_view = BufferView::new(client_handle, buffer.handle());
-            let handle = self.add(buffer_view);
-            Ok(handle)
-        } else {
-            Err(BufferViewError::InvalidPath)
+            self.add(buffer_view)
         }
     }
 }
@@ -605,6 +597,8 @@ impl BufferViewCollection {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use crate::buffer_position::BufferPosition;
 
     struct TestContext {
         pub word_database: WordDatabase,

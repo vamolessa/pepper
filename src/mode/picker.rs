@@ -1,8 +1,7 @@
 use crate::{
-    buffer_view::BufferViewError,
     command::{replace_to_between_text_markers, CommandManager},
     editor::KeysIterator,
-    editor_utils::{MessageKind, ReadLinePoll},
+    editor_utils::ReadLinePoll,
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     platform::Key,
     word_database::WordIndicesIter,
@@ -125,24 +124,16 @@ pub mod buffer {
             let buf = ctx.editor.string_pool.acquire_with(path);
             let path = &buf[..];
 
-            match ctx.editor.buffer_views.buffer_view_handle_from_path(
+            let handle = ctx.editor.buffer_views.buffer_view_handle_from_path(
                 ctx.client_handle,
                 &mut ctx.editor.buffers,
                 &mut ctx.editor.word_database,
                 &ctx.editor.current_directory,
                 Path::new(path),
                 &mut ctx.editor.events,
-            ) {
-                Ok(handle) => {
-                    if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
-                        client.set_buffer_view_handle(Some(handle), &mut ctx.editor.events);
-                    }
-                }
-                Err(BufferViewError::InvalidPath) => ctx
-                    .editor
-                    .status_bar
-                    .write(MessageKind::Error)
-                    .fmt(format_args!("invalid path '{}'", path)),
+            );
+            if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
+                client.set_buffer_view_handle(Some(handle), &mut ctx.editor.events);
             }
 
             ctx.editor.string_pool.release(buf);
