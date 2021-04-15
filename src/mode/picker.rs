@@ -193,6 +193,11 @@ pub mod lsp_code_action {
                     None
                 }
                 ReadLinePoll::Canceled => {
+                    if let Some(handle) = ctx.editor.mode.picker_state.lsp_client_handle {
+                        lsp::ClientManager::access(ctx.editor, handle, |_, c| {
+                            c.cancel_code_action();
+                        });
+                    }
                     Mode::change_to(ctx, ModeKind::default());
                     None
                 }

@@ -492,6 +492,11 @@ pub mod lsp_rename {
                     None
                 }
                 ReadLinePoll::Canceled => {
+                    if let Some(handle) = ctx.editor.mode.read_line_state.lsp_client_handle {
+                        lsp::ClientManager::access(ctx.editor, handle, |_, c| {
+                            c.cancel_rename();
+                        });
+                    }
                     Mode::change_to(ctx, ModeKind::default());
                     None
                 }
