@@ -661,8 +661,9 @@ impl Client {
 
     pub fn rename(
         &mut self,
-        editor: &Editor,
+        editor: &mut Editor,
         platform: &mut Platform,
+        clients: &mut client::ClientManager,
         client_handle: client::ClientHandle,
         buffer_handle: BufferHandle,
         buffer_position: BufferPosition,
@@ -701,13 +702,50 @@ impl Client {
             });
             self.request(platform, "textDocument/prepareRename", params);
         } else {
-            // TODO: handle no prepareRename
-            todo!();
+            self.finish_rename_state = Some(FinishRenameState {
+                buffer_handle,
+                buffer_position,
+            });
+            let mut ctx = ModeContext {
+                editor,
+                platform,
+                clients,
+                client_handle,
+            };
+            read_line::lsp_rename::enter_mode(&mut ctx, self.handle(), "");
         }
     }
 
     pub fn finish_rename(&mut self, editor: &Editor, platform: &mut Platform) {
-        // TODO
+        if !self.server_capabilities.renameProvider.on {
+            return;
+        }
+        let state = match self.finish_rename_state.take() {
+            Some(state) => state,
+            None => return,
+        };
+        let buffer_path = match editor.buffers.get(state.buffer_handle).map(Buffer::path) {
+            Some(path) => path,
+            None => return,
+        };
+
+        helper::send_pending_did_change(self, platform, editor);
+
+        let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
+        let position = DocumentPosition::from(state.buffer_position);
+        let new_name = self.json.create_string(editor.read_line.input());
+
+        let mut params = JsonObject::default();
+        params.set("textDocument".into(), text_document.into(), &mut self.json);
+        params.set(
+            "position".into(),
+            position.to_json_value(&mut self.json),
+            &mut self.json,
+        );
+        params.set("newName".into(), new_name.into(), &mut self.json);
+
+        self.finish_rename_state = Some(state);
+        self.request(platform, "textDocument/rename", params);
     }
 
     // TODO: this request
