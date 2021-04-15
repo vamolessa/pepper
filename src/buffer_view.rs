@@ -584,8 +584,8 @@ impl BufferViewCollection {
             let path = path.strip_prefix(root).unwrap_or(path);
 
             let buffer = buffers.new();
+            buffer.set_path(path);
             buffer.capabilities = BufferCapabilities::text();
-            buffer.set_path(Some(path));
             let _ = buffer.discard_and_reload_from_file(word_database, events);
 
             let buffer_view = BufferView::new(client_handle, buffer.handle());

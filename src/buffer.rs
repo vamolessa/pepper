@@ -701,7 +701,6 @@ impl BufferCapabilities {
 }
 
 pub enum BufferError {
-    BufferDoesNotHavePath,
     CouldNotReadFile,
     CouldNotCreateFile,
     CouldNotWriteFile,
@@ -722,7 +721,6 @@ impl<'a> fmt::Display for BufferErrorDisplay<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let path = self.buffer.path.as_path();
         match self.error {
-            BufferError::BufferDoesNotHavePath => f.write_str("buffer does not have a path"),
             BufferError::CouldNotReadFile => {
                 f.write_fmt(format_args!("could not read from file '{:?}'", path))
             }
@@ -793,20 +791,13 @@ impl Buffer {
         self.handle
     }
 
-    // TODO: I think we can remove the `is_empty()` check
-    pub fn path(&self) -> Option<&Path> {
-        if self.path.as_os_str().is_empty() {
-            None
-        } else {
-            Some(&self.path)
-        }
+    pub fn path(&self) -> &Path {
+        &self.path
     }
 
-    pub fn set_path(&mut self, path: Option<&Path>) {
+    pub fn set_path(&mut self, path: &Path) {
         self.path.clear();
-        if let Some(path) = path {
-            self.path.push(path);
-        }
+        self.path.push(path);
     }
 
     pub fn highlighted(&self) -> &HighlightedBuffer {
@@ -1109,12 +1100,12 @@ impl Buffer {
 
     pub fn save_to_file(
         &mut self,
-        path: Option<&Path>,
+        new_path: Option<&Path>,
         events: &mut EditorEventQueue,
     ) -> Result<(), BufferError> {
-        let new_path = match path {
+        let new_path = match new_path {
             Some(path) => {
-                self.set_path(Some(path));
+                self.set_path(path);
                 true
             }
             None => false,
@@ -1124,26 +1115,21 @@ impl Buffer {
             return Ok(());
         }
 
-        match self.path() {
-            Some(path) => {
-                let file = File::create(path).map_err(|_| BufferError::CouldNotCreateFile)?;
-                let mut writer = io::BufWriter::new(file);
+        let file = File::create(self.path()).map_err(|_| BufferError::CouldNotCreateFile)?;
+        let mut writer = io::BufWriter::new(file);
 
-                self.content
-                    .write(&mut writer)
-                    .map_err(|_| BufferError::CouldNotWriteFile)?;
+        self.content
+            .write(&mut writer)
+            .map_err(|_| BufferError::CouldNotWriteFile)?;
 
-                self.capabilities.can_save = true;
-                self.needs_save = false;
+        self.capabilities.can_save = true;
+        self.needs_save = false;
 
-                events.enqueue(EditorEvent::BufferSave {
-                    handle: self.handle,
-                    new_path,
-                });
-                Ok(())
-            }
-            None => Err(BufferError::BufferDoesNotHavePath),
-        }
+        events.enqueue(EditorEvent::BufferSave {
+            handle: self.handle,
+            new_path,
+        });
+        Ok(())
     }
 
     pub fn discard_and_reload_from_file(
@@ -1167,12 +1153,7 @@ impl Buffer {
             handle: self.handle,
         });
 
-        let path = self.path.as_path();
-        if path.as_os_str().is_empty() {
-            return Err(BufferError::BufferDoesNotHavePath);
-        }
-
-        if let Ok(file) = File::open(path) {
+        if let Ok(file) = File::open(self.path()) {
             let mut reader = io::BufReader::new(file);
             self.content
                 .read(&mut reader)

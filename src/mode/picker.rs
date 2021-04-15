@@ -148,7 +148,7 @@ pub mod buffer {
             .editor
             .buffers
             .iter()
-            .filter_map(Buffer::path)
+            .map(Buffer::path)
             .filter_map(Path::to_str)
         {
             ctx.editor.picker.add_custom_entry(path);

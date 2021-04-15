@@ -1,4 +1,4 @@
-use std::{io, iter, path::Path};
+use std::{io, iter};
 
 use crate::{
     buffer::{Buffer, BufferContent, BufferHandle},
@@ -571,7 +571,7 @@ fn draw_statusbar(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bo
     match view.buffer {
         Some(buffer) => {
             buffer_needs_save = buffer.needs_save();
-            buffer_path = buffer.path().and_then(Path::to_str).unwrap_or("");
+            buffer_path = buffer.path().to_str().unwrap_or("");
         }
         None => {
             buffer_needs_save = false;

@@ -332,11 +332,9 @@ impl DiagnosticCollection {
 
         let mut buffer_handle = None;
         for buffer in editor.buffers.iter() {
-            if let Some(buffer_path) = buffer.path() {
-                if are_same_path_with_root(&editor.current_directory, buffer_path, path) {
-                    buffer_handle = Some(buffer.handle());
-                    break;
-                }
+            if are_same_path_with_root(&editor.current_directory, buffer.path(), path) {
+                buffer_handle = Some(buffer.handle());
+                break;
             }
         }
 
@@ -368,7 +366,7 @@ impl DiagnosticCollection {
     }
 
     pub fn on_load_buffer(&mut self, editor: &Editor, buffer_handle: BufferHandle) {
-        let buffer_path = match editor.buffers.get(buffer_handle).and_then(|b| b.path()) {
+        let buffer_path = match editor.buffers.get(buffer_handle).map(Buffer::path) {
             Some(path) => path,
             None => return,
         };
@@ -388,7 +386,7 @@ impl DiagnosticCollection {
     }
 
     pub fn on_save_buffer(&mut self, editor: &Editor, buffer_handle: BufferHandle) {
-        let buffer_path = match editor.buffers.get(buffer_handle).and_then(|b| b.path()) {
+        let buffer_path = match editor.buffers.get(buffer_handle).map(Buffer::path) {
             Some(path) => path,
             None => return,
         };
@@ -487,7 +485,7 @@ impl Client {
             return;
         }
 
-        let buffer_path = match editor.buffers.get(buffer_handle).and_then(Buffer::path) {
+        let buffer_path = match editor.buffers.get(buffer_handle).map(Buffer::path) {
             Some(path) => path,
             None => return,
         };
@@ -516,7 +514,7 @@ impl Client {
             return;
         }
 
-        let buffer_path = match editor.buffers.get(buffer_handle).and_then(Buffer::path) {
+        let buffer_path = match editor.buffers.get(buffer_handle).map(Buffer::path) {
             Some(path) => path,
             None => return,
         };
@@ -553,7 +551,7 @@ impl Client {
             return;
         }
 
-        let buffer_path = match editor.buffers.get(buffer_handle).and_then(Buffer::path) {
+        let buffer_path = match editor.buffers.get(buffer_handle).map(Buffer::path) {
             Some(path) => path,
             None => return,
         };
@@ -591,7 +589,7 @@ impl Client {
             return;
         }
 
-        let buffer_path = match editor.buffers.get(buffer_handle).and_then(Buffer::path) {
+        let buffer_path = match editor.buffers.get(buffer_handle).map(Buffer::path) {
             Some(path) => path,
             None => return,
         };
@@ -642,7 +640,7 @@ impl Client {
             return;
         }
 
-        let buffer_path = match editor.buffers.get(buffer_handle).and_then(Buffer::path) {
+        let buffer_path = match editor.buffers.get(buffer_handle).map(Buffer::path) {
             Some(path) => path,
             None => return,
         };
@@ -1639,11 +1637,8 @@ mod helper {
         if !buffer.capabilities.can_save {
             return;
         }
-        let buffer_path = match buffer.path() {
-            Some(path) => path,
-            None => return,
-        };
 
+        let buffer_path = buffer.path();
         let mut text_document = text_document_with_id(&client.root, buffer_path, json);
         let language_id = json.create_string(protocol::path_to_language_id(buffer_path));
         text_document.set("languageId".into(), language_id.into(), json);
@@ -1676,12 +1671,8 @@ mod helper {
             if !buffer.capabilities.can_save {
                 continue;
             }
-            let buffer_path = match buffer.path() {
-                Some(path) => path,
-                None => continue,
-            };
 
-            let mut text_document = text_document_with_id(&client.root, buffer_path, json);
+            let mut text_document = text_document_with_id(&client.root, buffer.path(), json);
             text_document.set(
                 "version".into(),
                 JsonValue::Integer(versioned_buffer.version as _),
@@ -1742,12 +1733,8 @@ mod helper {
         if !buffer.capabilities.can_save {
             return;
         }
-        let buffer_path = match buffer.path() {
-            Some(path) => path,
-            None => return,
-        };
 
-        let text_document = text_document_with_id(&client.root, buffer_path, json);
+        let text_document = text_document_with_id(&client.root, buffer.path(), json);
         let mut params = JsonObject::default();
         params.set("textDocument".into(), text_document.into(), json);
 
@@ -1777,12 +1764,8 @@ mod helper {
         if !buffer.capabilities.can_save {
             return;
         }
-        let buffer_path = match buffer.path() {
-            Some(path) => path,
-            None => return,
-        };
 
-        let text_document = text_document_with_id(&client.root, buffer_path, json);
+        let text_document = text_document_with_id(&client.root, buffer.path(), json);
         let mut params = JsonObject::default();
         params.set("textDocument".into(), text_document.into(), json);
 
@@ -2001,7 +1984,7 @@ impl ClientManager {
                 let buffer_path = match editor
                     .buffers
                     .get(handle)
-                    .and_then(Buffer::path)
+                    .map(Buffer::path)
                     .and_then(Path::to_str)
                 {
                     Some(path) => path,
@@ -2041,7 +2024,7 @@ impl ClientManager {
                 let log_buffer_handle = if !recipe.log_buffer_name.is_empty() {
                     let mut buffer = editor.buffers.new();
                     buffer.capabilities = BufferCapabilities::log();
-                    buffer.set_path(Some(Path::new(&recipe.log_buffer_name)));
+                    buffer.set_path(Path::new(&recipe.log_buffer_name));
                     Some(buffer.handle())
                 } else {
                     None

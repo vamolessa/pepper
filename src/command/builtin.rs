@@ -858,11 +858,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 .save_to_file(path, &mut ctx.editor.events)
                 .map_err(|e| CommandError::BufferError(buffer_handle, e))?;
 
-            let path = buffer.path().unwrap_or(Path::new(""));
             ctx.editor
                 .status_bar
                 .write(MessageKind::Info)
-                .fmt(format_args!("buffer saved to {:?}", path));
+                .fmt(format_args!("buffer saved to {:?}", buffer.path()));
             Ok(None)
         },
     },
@@ -1349,7 +1348,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 let mut buffer = ctx.editor.buffers.new();
                 buffer.capabilities = BufferCapabilities::log();
                 let buffer_handle = buffer.handle();
-                buffer.set_path(Some(Path::new(path)));
+                buffer.set_path(Path::new(path));
 
                 if let Some(client_handle) = ctx.client_handle {
                     let buffer_view_handle = ctx.editor
@@ -1539,7 +1538,7 @@ fn find_lsp_client_for_buffer(
     let buffer_path_bytes = editor
         .buffers
         .get(buffer_handle)?
-        .path()?
+        .path()
         .to_str()?
         .as_bytes();
     let (client_handle, _) = editor

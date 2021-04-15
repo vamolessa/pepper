@@ -1,4 +1,4 @@
-use std::{fs, path::Path};
+use std::fs;
 
 use crate::{
     command::{CommandManager, CommandTokenIter, CommandTokenKind, CompletionSource},
@@ -227,7 +227,7 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
             }
             CompletionSource::Buffers => {
                 for buffer in ctx.editor.buffers.iter() {
-                    if let Some(path) = buffer.path().and_then(Path::to_str) {
+                    if let Some(path) = buffer.path().to_str() {
                         ctx.editor.picker.add_custom_entry(path);
                     }
                 }
