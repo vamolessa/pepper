@@ -11,7 +11,6 @@ use std::{
 use crate::{
     buffer::{Buffer, BufferCapabilities, BufferContent, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
-    buffer_view::{CursorMovement, CursorMovementKind},
     client,
     command::parse_process_command,
     cursor::Cursor,
@@ -869,7 +868,6 @@ impl Client {
                                 &mut editor.word_database,
                                 &self.root,
                                 path,
-                                None,
                                 &mut editor.events,
                             )
                             .ok()?;
@@ -1172,16 +1170,23 @@ impl Client {
                     Some(Uri::RelativePath(_, path)) => path,
                     None => return,
                 };
-                let position = location.range.start.into();
                 if let Ok(buffer_view_handle) = editor.buffer_views.buffer_view_handle_from_path(
                     client.handle(),
                     &mut editor.buffers,
                     &mut editor.word_database,
                     &self.root,
                     path,
-                    Some(position),
                     &mut editor.events,
                 ) {
+                    if let Some(buffer_view) = editor.buffer_views.get_mut(buffer_view_handle) {
+                        let position = location.range.start.into();
+                        let mut cursors = buffer_view.cursors.mut_guard();
+                        cursors.clear();
+                        cursors.add(Cursor {
+                            anchor: position,
+                            position,
+                        });
+                    }
                     client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
                 }
             }
@@ -1234,7 +1239,6 @@ impl Client {
                     &mut editor.word_database,
                     &self.root,
                     Path::new(&buffer_name),
-                    Some(BufferPosition::zero()),
                     &mut editor.events,
                 );
                 editor.string_pool.release(buffer_name);
@@ -1270,6 +1274,7 @@ impl Client {
                                     request.id.into(),
                                     Err(ResponseError::parse_error()),
                                 );
+                                editor.string_pool.release(text);
                                 return;
                             }
                         };
@@ -1338,11 +1343,12 @@ impl Client {
                 editor.trigger_event_handlers(platform, clients, None);
 
                 if let Some(buffer_view) = editor.buffer_views.get_mut(buffer_view_handle) {
-                    buffer_view.move_cursors(
-                        &editor.buffers,
-                        CursorMovement::FirstLine,
-                        CursorMovementKind::PositionAndAnchor,
-                    );
+                    let mut cursors = buffer_view.cursors.mut_guard();
+                    cursors.clear();
+                    cursors.add(Cursor {
+                        anchor: BufferPosition::zero(),
+                        position: BufferPosition::zero(),
+                    });
                 }
             }
             "textDocument/formatting" => {

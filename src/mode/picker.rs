@@ -131,7 +131,6 @@ pub mod buffer {
                 &mut ctx.editor.word_database,
                 &ctx.editor.current_directory,
                 Path::new(path),
-                None,
                 &mut ctx.editor.events,
             ) {
                 Ok(handle) => {

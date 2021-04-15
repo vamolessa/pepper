@@ -2,7 +2,7 @@ use std::{fmt, path::Path, str::FromStr};
 
 use crate::{
     buffer::{BufferCapabilities, BufferCollection, BufferHandle},
-    buffer_position::{BufferPosition, BufferRange},
+    buffer_position::BufferRange,
     client::ClientHandle,
     cursor::{Cursor, CursorCollection},
     events::EditorEventQueue,
@@ -572,7 +572,6 @@ impl BufferViewCollection {
         }
     }
 
-    // TODO: remove position param
     pub fn buffer_view_handle_from_path(
         &mut self,
         client_handle: ClientHandle,
@@ -580,41 +579,11 @@ impl BufferViewCollection {
         word_database: &mut WordDatabase,
         root: &Path,
         path: &Path,
-        position: Option<BufferPosition>,
         events: &mut EditorEventQueue,
     ) -> Result<BufferViewHandle, BufferViewError> {
-        pub fn try_set_position(
-            buffer_views: &mut BufferViewCollection,
-            buffers: &mut BufferCollection,
-            handle: BufferViewHandle,
-            position: Option<BufferPosition>,
-        ) {
-            let mut position = match position {
-                Some(position) => position,
-                None => return,
-            };
-            let view = match buffer_views.get_mut(handle) {
-                Some(view) => view,
-                None => return,
-            };
-
-            let mut cursors = view.cursors.mut_guard();
-
-            if let Some(buffer) = buffers.get(view.buffer_handle) {
-                position = buffer.content().saturate_position(position);
-            }
-
-            cursors.clear();
-            cursors.add(Cursor {
-                anchor: position,
-                position,
-            });
-        }
-
         if let Some(buffer) = buffers.find_with_path(root, path) {
             let buffer_handle = buffer.handle();
             let handle = self.buffer_view_handle_from_buffer_handle(client_handle, buffer_handle);
-            try_set_position(self, buffers, handle, position);
             Ok(handle)
         } else if !path.as_os_str().is_empty() {
             let path = path.strip_prefix(root).unwrap_or(path);
@@ -626,8 +595,6 @@ impl BufferViewCollection {
 
             let buffer_view = BufferView::new(client_handle, buffer.handle());
             let handle = self.add(buffer_view);
-
-            try_set_position(self, buffers, handle, position);
             Ok(handle)
         } else {
             Err(BufferViewError::InvalidPath)

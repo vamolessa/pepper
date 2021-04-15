@@ -566,7 +566,10 @@ impl State {
                                 };
                                 let position = match position {
                                     Some(position) => position,
-                                    None => BufferPosition::line_col(this.count as _, 0),
+                                    None => BufferPosition::line_col(
+                                        this.count.saturating_sub(1) as _,
+                                        0,
+                                    ),
                                 };
 
                                 path_buf.clear();
@@ -583,12 +586,19 @@ impl State {
                                         &mut ctx.editor.word_database,
                                         &ctx.editor.current_directory,
                                         path,
-                                        Some(position),
                                         &mut ctx.editor.events,
                                     ) {
                                         Ok(handle) => handle,
                                         Err(_) => continue,
                                     };
+                                if let Some(buffer_view) = ctx.editor.buffer_views.get_mut(handle) {
+                                    let mut cursors = buffer_view.cursors.mut_guard();
+                                    cursors.clear();
+                                    cursors.add(Cursor {
+                                        anchor: position,
+                                        position,
+                                    });
+                                }
 
                                 if jumped {
                                     continue;
@@ -1519,7 +1529,6 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) -> Option<()> {
             &mut ctx.editor.word_database,
             &ctx.editor.current_directory,
             path,
-            None,
             &mut ctx.editor.events,
         ) {
             Ok(handle) => handle,
