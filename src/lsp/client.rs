@@ -26,7 +26,7 @@ use crate::{
         protocol::{
             self, DocumentLocation, DocumentPosition, DocumentRange, PendingRequestColection,
             Protocol, ResponseError, ServerEvent, ServerNotification, ServerRequest,
-            ServerResponse, TextEdit, Uri, WorkspaceEdit, WorkspaceEditChange,
+            ServerResponse, TextEdit, Uri, WorkspaceEdit,
         },
     },
     mode::{read_line, ModeContext},
@@ -457,7 +457,7 @@ pub struct Client {
     versioned_buffers: VersionedBufferCollection,
     diagnostics: DiagnosticCollection,
 
-    formatting_edits: Vec<(BufferRange, BufferRange)>,
+    temp_edits: Vec<(BufferRange, BufferRange)>,
 
     definition_state: Option<DefinitionState>,
     references_state: Option<ReferencesState>,
@@ -485,7 +485,7 @@ impl Client {
             versioned_buffers: VersionedBufferCollection::default(),
             diagnostics: DiagnosticCollection::default(),
 
-            formatting_edits: Vec::new(),
+            temp_edits: Vec::new(),
 
             definition_state: None,
             references_state: None,
@@ -1455,44 +1455,7 @@ impl Client {
             }
             "textDocument/rename" => {
                 let edit: WorkspaceEdit = deserialize!(result);
-                for change in edit.changes(&self.json) {
-                    let change = match change {
-                        Ok(change) => change,
-                        Err(_) => continue,
-                    };
-                    match change {
-                        WorkspaceEditChange::DocumentEdit(edit) => {
-                            let path = match Uri::parse(&self.root, edit.uri.as_str(&self.json)) {
-                                Some(Uri::AbsolutePath(path)) => path,
-                                Some(Uri::RelativePath(_, path)) => path,
-                                _ => continue,
-                            };
-                            let buffer_handle = editor.buffers.find_with_path(&self.root, path);
-                            let is_temp = buffer_handle.is_none();
-                            let buffer = match buffer_handle {
-                                Some(handle) => editor.buffers.get_mut(handle).unwrap(),
-                                None => editor.buffers.add_new(),
-                            };
-
-                            for edit in edit.edits(&self.json) {
-                                let edit = match edit {
-                                    Ok(edit) => edit,
-                                    Err(_) => continue,
-                                };
-                            }
-                            //
-                        }
-                        WorkspaceEditChange::CreateFile(op) => {
-                            //
-                        }
-                        WorkspaceEditChange::RenameFile(op) => {
-                            //
-                        }
-                        WorkspaceEditChange::DeleteFile(op) => {
-                            //
-                        }
-                    }
-                }
+                edit.apply(editor, &mut self.temp_edits, &self.root, &self.json);
             }
             "textDocument/formatting" => {
                 let state = match self.formatting_state.take() {
@@ -1504,49 +1467,13 @@ impl Client {
                     JsonValue::Array(edits) => edits,
                     _ => return,
                 };
-
-                let buffers = &mut editor.buffers;
-                let buffer = match buffers.get_mut(state.buffer_handle) {
-                    Some(buffer) => buffer,
-                    None => return,
-                };
-
-                buffer.commit_edits();
-
-                self.formatting_edits.clear();
-                for edit in edits.clone().elements(&self.json) {
-                    let edit = match TextEdit::from_json(edit, &self.json) {
-                        Ok(edit) => edit,
-                        Err(_) => return,
-                    };
-
-                    let mut delete_range: BufferRange = edit.range.into();
-                    let text = edit.new_text.as_str(&self.json);
-
-                    for (d, i) in &self.formatting_edits {
-                        delete_range.from = delete_range.from.delete(*d);
-                        delete_range.to = delete_range.to.delete(*d);
-
-                        delete_range.from = delete_range.from.insert(*i);
-                        delete_range.to = delete_range.to.insert(*i);
-                    }
-
-                    buffer.delete_range(
-                        &mut editor.word_database,
-                        delete_range,
-                        &mut editor.events,
-                    );
-                    let insert_range = buffer.insert_text(
-                        &mut editor.word_database,
-                        delete_range.from,
-                        text,
-                        &mut editor.events,
-                    );
-
-                    self.formatting_edits.push((delete_range, insert_range));
-                }
-
-                buffer.commit_edits();
+                TextEdit::apply_edits(
+                    editor,
+                    state.buffer_handle,
+                    &mut self.temp_edits,
+                    edits,
+                    &self.json,
+                );
             }
             _ => (),
         }

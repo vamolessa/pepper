@@ -6,7 +6,9 @@ use std::{
 };
 
 use crate::{
+    buffer::{BufferCapabilities, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
+    editor::Editor,
     json::{
         FromJson, Json, JsonArray, JsonConvertError, JsonInteger, JsonKey, JsonObject, JsonString,
         JsonValue,
@@ -354,6 +356,51 @@ pub struct TextEdit {
     pub range: DocumentRange,
     pub new_text: JsonString,
 }
+impl TextEdit {
+    pub fn apply_edits(
+        editor: &mut Editor,
+        buffer_handle: BufferHandle,
+        temp_edits: &mut Vec<(BufferRange, BufferRange)>,
+        edits: JsonArray,
+        json: &Json,
+    ) {
+        let buffer = match editor.buffers.get_mut(buffer_handle) {
+            Some(buffer) => buffer,
+            None => return,
+        };
+
+        buffer.commit_edits();
+        temp_edits.clear();
+        for edit in edits.elements(json) {
+            let edit = match TextEdit::from_json(edit, json) {
+                Ok(edit) => edit,
+                Err(_) => continue,
+            };
+
+            let mut delete_range: BufferRange = edit.range.into();
+            let text = edit.new_text.as_str(&json);
+
+            for (d, i) in temp_edits.iter() {
+                delete_range.from = delete_range.from.delete(*d);
+                delete_range.to = delete_range.to.delete(*d);
+
+                delete_range.from = delete_range.from.insert(*i);
+                delete_range.to = delete_range.to.insert(*i);
+            }
+
+            buffer.delete_range(&mut editor.word_database, delete_range, &mut editor.events);
+            let insert_range = buffer.insert_text(
+                &mut editor.word_database,
+                delete_range.from,
+                text,
+                &mut editor.events,
+            );
+
+            temp_edits.push((delete_range, insert_range));
+        }
+        buffer.commit_edits();
+    }
+}
 impl<'json> FromJson<'json> for TextEdit {
     fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
         let value = match value {
@@ -376,17 +423,6 @@ impl<'json> FromJson<'json> for TextEdit {
 pub struct DocumentEdit {
     pub uri: JsonString,
     pub edits: JsonArray,
-}
-impl DocumentEdit {
-    pub fn edits<'a>(
-        &'a self,
-        json: &'a Json,
-    ) -> impl 'a + Iterator<Item = Result<TextEdit, JsonConvertError>> {
-        self.edits
-            .clone()
-            .elements(json)
-            .map(move |e| TextEdit::from_json(e, json))
-    }
 }
 impl<'json> FromJson<'json> for DocumentEdit {
     fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
@@ -503,7 +539,8 @@ impl<'json> FromJson<'json> for DeleteFileOperation {
                                 this.recursive = matches!(value, JsonValue::Boolean(true))
                             }
                             "ignoreIfNotExists" => {
-                                this.ignore_if_not_exists = matches!(value, JsonValue::Boolean(true))
+                                this.ignore_if_not_exists =
+                                    matches!(value, JsonValue::Boolean(true))
                             }
                             _ => (),
                         }
@@ -542,14 +579,56 @@ pub struct WorkspaceEdit {
     document_changes: JsonArray,
 }
 impl WorkspaceEdit {
-    pub fn changes<'a>(
-        &'a self,
-        json: &'a Json,
-    ) -> impl 'a + Iterator<Item = Result<WorkspaceEditChange, JsonConvertError>> {
-        self.document_changes
-            .clone()
-            .elements(json)
-            .map(move |e| WorkspaceEditChange::from_json(e, json))
+    pub fn apply(
+        &self,
+        editor: &mut Editor,
+        temp_edits: &mut Vec<(BufferRange, BufferRange)>,
+        root: &Path,
+        json: &Json,
+    ) {
+        for change in self.document_changes.clone().elements(json) {
+            let change = match WorkspaceEditChange::from_json(change, json) {
+                Ok(change) => change,
+                Err(_) => return,
+            };
+            match change {
+                WorkspaceEditChange::DocumentEdit(edit) => {
+                    let path = match Uri::parse(&root, edit.uri.as_str(json)) {
+                        Some(Uri::AbsolutePath(path)) => path,
+                        Some(Uri::RelativePath(_, path)) => path,
+                        _ => return,
+                    };
+                    let buffer_handle = editor.buffers.find_with_path(&root, path);
+                    let is_temp = buffer_handle.is_none();
+                    let buffer_handle = match buffer_handle {
+                        Some(handle) => handle,
+                        None => {
+                            let buffer = editor.buffers.add_new();
+                            buffer.set_path(path);
+                            buffer.capabilities = BufferCapabilities::log();
+                            buffer.handle()
+                        }
+                    };
+
+                    TextEdit::apply_edits(editor, buffer_handle, temp_edits, edit.edits, json);
+
+                    if is_temp {
+                        editor
+                            .buffers
+                            .defer_remove(buffer_handle, &mut editor.events);
+                    }
+                }
+                WorkspaceEditChange::CreateFile(op) => {
+                    //
+                }
+                WorkspaceEditChange::RenameFile(op) => {
+                    //
+                }
+                WorkspaceEditChange::DeleteFile(op) => {
+                    //
+                }
+            }
+        }
     }
 }
 impl<'json> FromJson<'json> for WorkspaceEdit {
