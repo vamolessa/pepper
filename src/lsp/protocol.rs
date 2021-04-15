@@ -6,9 +6,7 @@ use std::{
 };
 
 use crate::{
-    buffer::BufferHandle,
     buffer_position::{BufferPosition, BufferRange},
-    client,
     json::{
         FromJson, Json, JsonConvertError, JsonInteger, JsonKey, JsonObject, JsonString, JsonValue,
     },
@@ -586,11 +584,9 @@ impl Protocol {
     }
 }
 
-pub struct PendingRequest {
-    pub id: RequestId,
-    pub method: &'static str,
-    pub client_handle: Option<client::ClientHandle>,
-    pub buffer_handle: Option<BufferHandle>,
+struct PendingRequest {
+    id: RequestId,
+    method: &'static str,
 }
 
 #[derive(Default)]
@@ -599,26 +595,24 @@ pub struct PendingRequestColection {
 }
 
 impl PendingRequestColection {
-    pub fn add(
-        &mut self,
-        new_request: PendingRequest,
-    ) {
+    pub fn add(&mut self, id: RequestId, method: &'static str) {
         for request in &mut self.pending_requests {
             if request.id.0 == 0 {
-                *request = new_request;
+                request.id = id;
+                request.method = method;
                 return;
             }
         }
 
-        self.pending_requests.push(new_request)
+        self.pending_requests.push(PendingRequest { id, method });
     }
 
-    pub fn take(&mut self, id: RequestId) -> Option<PendingRequest> {
+    pub fn take(&mut self, id: RequestId) -> Option<&'static str> {
         for i in 0..self.pending_requests.len() {
             let request = &self.pending_requests[i];
             if request.id == id {
                 let request = self.pending_requests.swap_remove(i);
-                return Some(request);
+                return Some(request.method);
             }
         }
         None

@@ -2,6 +2,7 @@ use crate::{
     command::{replace_to_between_text_markers, CommandManager},
     editor::KeysIterator,
     editor_utils::ReadLinePoll,
+    lsp,
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     register::SEARCH_REGISTER,
 };
@@ -10,6 +11,7 @@ pub struct State {
     on_client_keys: fn(&mut ModeContext, &mut KeysIterator, ReadLinePoll) -> Option<ModeOperation>,
     continuation: Option<String>,
     line_var_name: String,
+    lsp_client_handle: Option<lsp::ClientHandle>,
 }
 
 impl Default for State {
@@ -18,6 +20,7 @@ impl Default for State {
             on_client_keys: |_, _, _| None,
             continuation: None,
             line_var_name: String::new(),
+            lsp_client_handle: None,
         }
     }
 }
@@ -464,6 +467,41 @@ pub mod goto {
         ctx.editor.read_line.set_prompt("goto-line:");
         ctx.editor.mode.read_line_state.on_client_keys = on_client_keys;
         Mode::change_to(ctx, ModeKind::ReadLine);
+    }
+}
+
+pub mod lsp_rename {
+    use super::*;
+
+    pub fn enter_mode(ctx: &mut ModeContext, client_handle: lsp::ClientHandle, placeholder: &str) {
+        fn on_client_keys(
+            ctx: &mut ModeContext,
+            _: &mut KeysIterator,
+            poll: ReadLinePoll,
+        ) -> Option<ModeOperation> {
+            match poll {
+                ReadLinePoll::Pending => None,
+                ReadLinePoll::Submitted => {
+                    if let Some(handle) = ctx.editor.mode.read_line_state.lsp_client_handle {
+                        let platform = &mut *ctx.platform;
+                        lsp::ClientManager::access(ctx.editor, handle, |e, c, j| {
+                            c.finish_rename(e, platform, j);
+                        });
+                    }
+                    None
+                }
+                ReadLinePoll::Canceled => {
+                    Mode::change_to(ctx, ModeKind::default());
+                    None
+                }
+            }
+        }
+
+        let state = &mut ctx.editor.mode.read_line_state;
+        state.on_client_keys = on_client_keys;
+        state.lsp_client_handle = Some(client_handle);
+        Mode::change_to(ctx, ModeKind::ReadLine);
+        ctx.editor.read_line.input_mut().push_str(placeholder);
     }
 }
 

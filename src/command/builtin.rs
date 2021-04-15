@@ -1428,7 +1428,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "lsp-definition",
         alias: "",
         help: concat!(
-            "jumps to the location of the definition of the symbol under the main cursor found by the lsp server\n",
+            "jumps to the location of the definition of the item under the main cursor found by the lsp server\n",
             "lsp-definition",
         ),
         hidden: false,
@@ -1438,7 +1438,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             ctx.args.get_flags(&mut [])?;
             ctx.args.assert_empty()?;
 
-            let client_handle = ctx.client_handle;
+            let client_handle = match ctx.client_handle {
+                Some(handle) => handle,
+                None => return Ok(None),
+            };
             let (buffer_handle, position) = current_buffer_and_main_position(&ctx)?;
             access_lsp(&mut ctx, buffer_handle, |editor, platform, client, json| {
                 client.definition(editor, platform, json, buffer_handle, position, client_handle)
@@ -1450,7 +1453,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "lsp-references",
         alias: "",
         help: concat!(
-            "opens up a buffer with all references of the symbol under the main cursor found by the lsp server\n",
+            "opens up a buffer with all references of the item under the main cursor found by the lsp server\n",
             "lsp-references [<flags>]\n",
             " -context=<number> : how many lines of context to show. 0 means no context is shown\n",
             " -auto-close : automatically closes buffer when no other client has it in focus",
@@ -1467,12 +1470,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
 
             ctx.args.assert_empty()?;
 
-            let options = lsp::ReferencesOptions {
-                context_len,
-                auto_close_buffer,
+            let client_handle = match ctx.client_handle {
+                Some(handle) => handle,
+                None => return Ok(None),
             };
-
-            let client_handle = ctx.client_handle;
             let (buffer_handle, position) = current_buffer_and_main_position(&ctx)?;
             access_lsp(&mut ctx, buffer_handle, |editor, platform, client, json| {
                 client.references(
@@ -1481,7 +1482,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                     json,
                     buffer_handle,
                     position,
-                    options,
+                    auto_close_buffer,
+                    context_len,
                     client_handle
                 )
             })?;
