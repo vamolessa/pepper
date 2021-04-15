@@ -804,7 +804,7 @@ impl Client {
 
     pub fn code_action(
         &mut self,
-        editor: &Editor,
+        editor: &mut Editor,
         platform: &mut Platform,
         client_handle: client::ClientHandle,
         buffer_handle: BufferHandle,
@@ -817,6 +817,11 @@ impl Client {
         if self.code_action_state.is_some()
             || !self.finish_code_action_state.code_actions_raw.is_empty()
         {
+            editor.status_bar.write(MessageKind::Info).fmt(format_args!(
+                "pera um pouco aee {} {}",
+                self.code_action_state.is_some(),
+                self.finish_code_action_state.code_actions_raw.len()
+            ));
             return;
         }
 

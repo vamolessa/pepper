@@ -1396,9 +1396,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             ctx.args.get_flags(&mut [])?;
             ctx.args.assert_empty()?;
 
-            let (buffer_handle, position) = current_buffer_and_main_position(&ctx)?;
+            let (buffer_handle, cursor) = current_buffer_and_main_cursor(&ctx)?;
             access_lsp(&mut ctx, buffer_handle, |editor, platform, _, client| {
-                client.hover(editor, platform, buffer_handle, position)
+                client.hover(editor, platform, buffer_handle, cursor.position)
             })?;
             Ok(None)
         },
@@ -1417,9 +1417,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             ctx.args.get_flags(&mut [])?;
             ctx.args.assert_empty()?;
 
-            let (buffer_handle, position) = current_buffer_and_main_position(&ctx)?;
+            let (buffer_handle, cursor) = current_buffer_and_main_cursor(&ctx)?;
             access_lsp(&mut ctx, buffer_handle, |editor, platform, _, client| {
-                client.signature_help(editor, platform, buffer_handle, position)
+                client.signature_help(editor, platform, buffer_handle, cursor.position)
             })?;
             Ok(None)
         },
@@ -1442,9 +1442,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 Some(handle) => handle,
                 None => return Ok(None),
             };
-            let (buffer_handle, position) = current_buffer_and_main_position(&ctx)?;
+            let (buffer_handle, cursor) = current_buffer_and_main_cursor(&ctx)?;
             access_lsp(&mut ctx, buffer_handle, |editor, platform, _, client| {
-                client.definition(editor, platform, buffer_handle, position, client_handle)
+                client.definition(editor, platform, buffer_handle, cursor.position, client_handle)
             })?;
             Ok(None)
         },
@@ -1474,13 +1474,13 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 Some(handle) => handle,
                 None => return Ok(None),
             };
-            let (buffer_handle, position) = current_buffer_and_main_position(&ctx)?;
+            let (buffer_handle, cursor) = current_buffer_and_main_cursor(&ctx)?;
             access_lsp(&mut ctx, buffer_handle, |editor, platform, _, client| {
                 client.references(
                     editor,
                     platform,
                     buffer_handle,
-                    position,
+                    cursor.position,
                     auto_close_buffer,
                     context_len,
                     client_handle
@@ -1507,9 +1507,47 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 Some(handle) => handle,
                 None => return Ok(None),
             };
-            let (buffer_handle, position) = current_buffer_and_main_position(&ctx)?;
+            let (buffer_handle, cursor) = current_buffer_and_main_cursor(&ctx)?;
             access_lsp(&mut ctx, buffer_handle, |editor, platform, clients, client| {
-                client.rename(editor, platform, clients, client_handle, buffer_handle, position)
+                client.rename(
+                    editor,
+                    platform,
+                    clients,
+                    client_handle,
+                    buffer_handle,
+                    cursor.position,
+                )
+            })?;
+            Ok(None)
+        },
+    },
+    BuiltinCommand {
+        name: "lsp-code-action",
+        alias: "",
+        help: concat!(
+            "lists and then performs a code action based on the main cursor context\n",
+            "lsp-code-action",
+        ),
+        hidden: false,
+        completions: &[],
+        func: |mut ctx| {
+            ctx.args.assert_no_bang()?;
+            ctx.args.get_flags(&mut [])?;
+            ctx.args.assert_empty()?;
+
+            let client_handle = match ctx.client_handle {
+                Some(handle) => handle,
+                None => return Ok(None),
+            };
+            let (buffer_handle, cursor) = current_buffer_and_main_cursor(&ctx)?;
+            access_lsp(&mut ctx, buffer_handle, |editor, platform, _, client| {
+                client.code_action(
+                    editor,
+                    platform,
+                    client_handle,
+                    buffer_handle,
+                    cursor.to_range(),
+                )
             })?;
             Ok(None)
         },
@@ -1528,7 +1566,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             ctx.args.get_flags(&mut [])?;
             ctx.args.assert_empty()?;
 
-            let (buffer_handle, _) = current_buffer_and_main_position(&ctx)?;
+            let (buffer_handle, _) = current_buffer_and_main_cursor(&ctx)?;
             access_lsp(&mut ctx, buffer_handle, |editor, platform, _, client| {
                 client.formatting(editor, platform, buffer_handle)
             })?;
@@ -1537,9 +1575,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     },
 ];
 
-fn current_buffer_and_main_position<'state, 'command>(
+fn current_buffer_and_main_cursor<'state, 'command>(
     ctx: &CommandContext<'state, 'command>,
-) -> Result<(BufferHandle, BufferPosition), CommandError> {
+) -> Result<(BufferHandle, Cursor), CommandError> {
     let view_handle = ctx.current_buffer_view_handle()?;
     let buffer_view = ctx
         .editor
@@ -1548,8 +1586,8 @@ fn current_buffer_and_main_position<'state, 'command>(
         .ok_or(CommandError::NoBufferOpened)?;
 
     let buffer_handle = buffer_view.buffer_handle;
-    let position = buffer_view.cursors.main_cursor().position;
-    Ok((buffer_handle, position))
+    let cursor = buffer_view.cursors.main_cursor().clone();
+    Ok((buffer_handle, cursor))
 }
 
 fn find_lsp_client_for_buffer(
