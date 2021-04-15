@@ -488,6 +488,7 @@ pub mod lsp_rename {
                             c.finish_rename(e, platform);
                         });
                     }
+                    Mode::change_to(ctx, ModeKind::default());
                     None
                 }
                 ReadLinePoll::Canceled => {
