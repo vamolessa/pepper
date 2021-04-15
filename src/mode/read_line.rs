@@ -484,8 +484,8 @@ pub mod lsp_rename {
                 ReadLinePoll::Submitted => {
                     if let Some(handle) = ctx.editor.mode.read_line_state.lsp_client_handle {
                         let platform = &mut *ctx.platform;
-                        lsp::ClientManager::access(ctx.editor, handle, |e, c, j| {
-                            c.finish_rename(e, platform, j);
+                        lsp::ClientManager::access(ctx.editor, handle, |e, c| {
+                            c.finish_rename(e, platform);
                         });
                     }
                     None

@@ -445,6 +445,7 @@ struct FormattingState {
 pub struct Client {
     handle: ClientHandle,
     protocol: Protocol,
+    json: Json,
     root: PathBuf,
     pending_requests: PendingRequestColection,
 
@@ -470,6 +471,7 @@ impl Client {
         Self {
             handle,
             protocol: Protocol::new(),
+            json: Json::new(),
             root,
             pending_requests: PendingRequestColection::default(),
 
@@ -493,6 +495,10 @@ impl Client {
         }
     }
 
+    pub fn handle(&self) -> ClientHandle {
+        self.handle
+    }
+
     pub fn handles_path(&self, path: &[u8]) -> bool {
         if self.document_selectors.is_empty() {
             true
@@ -509,7 +515,6 @@ impl Client {
         &mut self,
         editor: &Editor,
         platform: &mut Platform,
-        json: &mut Json,
         buffer_handle: BufferHandle,
         position: BufferPosition,
     ) {
@@ -522,23 +527,26 @@ impl Client {
             None => return,
         };
 
-        helper::send_pending_did_change(self, platform, editor, json);
+        helper::send_pending_did_change(self, platform, editor);
 
-        let text_document = helper::text_document_with_id(&self.root, buffer_path, json);
+        let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
         let position = DocumentPosition::from(position);
 
         let mut params = JsonObject::default();
-        params.set("textDocument".into(), text_document.into(), json);
-        params.set("position".into(), position.to_json_value(json), json);
+        params.set("textDocument".into(), text_document.into(), &mut self.json);
+        params.set(
+            "position".into(),
+            position.to_json_value(&mut self.json),
+            &mut self.json,
+        );
 
-        self.request(platform, json, "textDocument/hover", params);
+        self.request(platform, "textDocument/hover", params);
     }
 
     pub fn signature_help(
         &mut self,
         editor: &Editor,
         platform: &mut Platform,
-        json: &mut Json,
         buffer_handle: BufferHandle,
         position: BufferPosition,
     ) {
@@ -551,23 +559,26 @@ impl Client {
             None => return,
         };
 
-        helper::send_pending_did_change(self, platform, editor, json);
+        helper::send_pending_did_change(self, platform, editor);
 
-        let text_document = helper::text_document_with_id(&self.root, buffer_path, json);
+        let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
         let position = DocumentPosition::from(position);
 
         let mut params = JsonObject::default();
-        params.set("textDocument".into(), text_document.into(), json);
-        params.set("position".into(), position.to_json_value(json), json);
+        params.set("textDocument".into(), text_document.into(), &mut self.json);
+        params.set(
+            "position".into(),
+            position.to_json_value(&mut self.json),
+            &mut self.json,
+        );
 
-        self.request(platform, json, "textDocument/signatureHelp", params);
+        self.request(platform, "textDocument/signatureHelp", params);
     }
 
     pub fn definition(
         &mut self,
         editor: &Editor,
         platform: &mut Platform,
-        json: &mut Json,
         buffer_handle: BufferHandle,
         position: BufferPosition,
         client_handle: client::ClientHandle,
@@ -584,24 +595,27 @@ impl Client {
             None => return,
         };
 
-        helper::send_pending_did_change(self, platform, editor, json);
+        helper::send_pending_did_change(self, platform, editor);
 
-        let text_document = helper::text_document_with_id(&self.root, buffer_path, json);
+        let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
         let position = DocumentPosition::from(position);
 
         let mut params = JsonObject::default();
-        params.set("textDocument".into(), text_document.into(), json);
-        params.set("position".into(), position.to_json_value(json), json);
+        params.set("textDocument".into(), text_document.into(), &mut self.json);
+        params.set(
+            "position".into(),
+            position.to_json_value(&mut self.json),
+            &mut self.json,
+        );
 
         self.definition_state = Some(DefinitionState { client_handle });
-        self.request(platform, json, "textDocument/definition", params);
+        self.request(platform, "textDocument/definition", params);
     }
 
     pub fn references(
         &mut self,
         editor: &Editor,
         platform: &mut Platform,
-        json: &mut Json,
         buffer_handle: BufferHandle,
         position: BufferPosition,
         auto_close_buffer: bool,
@@ -620,32 +634,35 @@ impl Client {
             None => return,
         };
 
-        helper::send_pending_did_change(self, platform, editor, json);
+        helper::send_pending_did_change(self, platform, editor);
 
-        let text_document = helper::text_document_with_id(&self.root, buffer_path, json);
+        let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
         let position = DocumentPosition::from(position);
 
         let mut context = JsonObject::default();
-        context.set("includeDeclaration".into(), true.into(), json);
+        context.set("includeDeclaration".into(), true.into(), &mut self.json);
 
         let mut params = JsonObject::default();
-        params.set("textDocument".into(), text_document.into(), json);
-        params.set("position".into(), position.to_json_value(json), json);
-        params.set("context".into(), context.into(), json);
+        params.set("textDocument".into(), text_document.into(), &mut self.json);
+        params.set(
+            "position".into(),
+            position.to_json_value(&mut self.json),
+            &mut self.json,
+        );
+        params.set("context".into(), context.into(), &mut self.json);
 
         self.references_state = Some(ReferencesState {
             client_handle,
             auto_close_buffer,
             context_len,
         });
-        self.request(platform, json, "textDocument/references", params);
+        self.request(platform, "textDocument/references", params);
     }
 
     pub fn rename(
         &mut self,
         editor: &Editor,
         platform: &mut Platform,
-        json: &mut Json,
         client_handle: client::ClientHandle,
         buffer_handle: BufferHandle,
         buffer_position: BufferPosition,
@@ -663,14 +680,18 @@ impl Client {
             None => return,
         };
 
-        helper::send_pending_did_change(self, platform, editor, json);
+        helper::send_pending_did_change(self, platform, editor);
 
-        let text_document = helper::text_document_with_id(&self.root, buffer_path, json);
+        let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
         let position = DocumentPosition::from(buffer_position);
 
         let mut params = JsonObject::default();
-        params.set("textDocument".into(), text_document.into(), json);
-        params.set("position".into(), position.to_json_value(json), json);
+        params.set("textDocument".into(), text_document.into(), &mut self.json);
+        params.set(
+            "position".into(),
+            position.to_json_value(&mut self.json),
+            &mut self.json,
+        );
 
         if self.server_capabilities.renameProvider.prepare_provider {
             self.rename_state = Some(RenameState {
@@ -678,14 +699,14 @@ impl Client {
                 buffer_handle,
                 buffer_position,
             });
-            self.request(platform, json, "textDocument/prepareRename", params);
+            self.request(platform, "textDocument/prepareRename", params);
         } else {
             // TODO: handle no prepareRename
             todo!();
         }
     }
 
-    pub fn finish_rename(&mut self, editor: &Editor, platform: &mut Platform, json: &mut Json) {
+    pub fn finish_rename(&mut self, editor: &Editor, platform: &mut Platform) {
         // TODO
     }
 
@@ -698,7 +719,6 @@ impl Client {
         &mut self,
         editor: &Editor,
         platform: &mut Platform,
-        json: &mut Json,
         buffer_handle: BufferHandle,
     ) {
         if !self.server_capabilities.documentFormattingProvider.0 {
@@ -713,37 +733,37 @@ impl Client {
             None => return,
         };
 
-        helper::send_pending_did_change(self, platform, editor, json);
+        helper::send_pending_did_change(self, platform, editor);
 
-        let text_document = helper::text_document_with_id(&self.root, buffer_path, json);
+        let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
         let mut options = JsonObject::default();
         options.set(
             "tabSize".into(),
             JsonValue::Integer(editor.config.tab_size.get() as _),
-            json,
+            &mut self.json,
         );
         options.set(
             "insertSpaces".into(),
             (!editor.config.indent_with_tabs).into(),
-            json,
+            &mut self.json,
         );
-        options.set("trimTrailingWhitespace".into(), true.into(), json);
-        options.set("trimFinalNewlines".into(), true.into(), json);
+        options.set("trimTrailingWhitespace".into(), true.into(), &mut self.json);
+        options.set("trimFinalNewlines".into(), true.into(), &mut self.json);
 
         let mut params = JsonObject::default();
-        params.set("textDocument".into(), text_document.into(), json);
-        params.set("options".into(), options.into(), json);
+        params.set("textDocument".into(), text_document.into(), &mut self.json);
+        params.set("options".into(), options.into(), &mut self.json);
 
         self.formatting_state = Some(FormattingState { buffer_handle });
-        self.request(platform, json, "textDocument/formatting", params);
+        self.request(platform, "textDocument/formatting", params);
     }
 
     fn write_to_log_buffer<F>(&mut self, writer: F)
     where
-        F: FnOnce(&mut Vec<u8>),
+        F: FnOnce(&mut Vec<u8>, &mut Json),
     {
         if let Some(_) = self.log_buffer_handle {
-            writer(&mut self.log_write_buf);
+            writer(&mut self.log_write_buf, &mut self.json);
             self.log_write_buf.extend_from_slice(b"\n----\n\n");
         }
     }
@@ -768,27 +788,21 @@ impl Client {
         editor: &mut Editor,
         platform: &mut Platform,
         clients: &mut client::ClientManager,
-        json: &mut Json,
         request: ServerRequest,
     ) {
         macro_rules! deserialize {
             ($value:expr) => {
-                match FromJson::from_json($value, &json) {
+                match FromJson::from_json($value, &self.json) {
                     Ok(value) => value,
                     Err(_) => {
-                        self.respond(
-                            platform,
-                            json,
-                            JsonValue::Null,
-                            Err(ResponseError::parse_error()),
-                        );
+                        self.respond(platform, JsonValue::Null, Err(ResponseError::parse_error()));
                         return;
                     }
                 }
             };
         }
 
-        self.write_to_log_buffer(|buf| {
+        self.write_to_log_buffer(|buf, json| {
             use io::Write;
             let _ = write!(buf, "receive request\nid: ");
             json.write(buf, &request.id);
@@ -800,9 +814,13 @@ impl Client {
             json.write(buf, &request.params);
         });
 
-        match request.method.as_str(&json) {
+        match request.method.as_str(&self.json) {
             "client/registerCapability" => {
-                for registration in request.params.get("registrations", &json).elements(&json) {
+                for registration in request
+                    .params
+                    .get("registrations", &self.json)
+                    .elements(&self.json)
+                {
                     declare_json_object! {
                         struct Registration {
                             method: JsonString,
@@ -811,13 +829,13 @@ impl Client {
                     }
 
                     let registration: Registration = deserialize!(registration);
-                    match registration.method.as_str(&json) {
+                    match registration.method.as_str(&self.json) {
                         "textDocument/didSave" => {
                             self.document_selectors.clear();
                             for filter in registration
                                 .registerOptions
-                                .get("documentSelector", &json)
-                                .elements(&json)
+                                .get("documentSelector", &self.json)
+                                .elements(&self.json)
                             {
                                 declare_json_object! {
                                     struct Filter {
@@ -826,7 +844,7 @@ impl Client {
                                 }
                                 let filter: Filter = deserialize!(filter);
                                 let pattern = match filter.pattern {
-                                    Some(pattern) => pattern.as_str(&json),
+                                    Some(pattern) => pattern.as_str(&self.json),
                                     None => continue,
                                 };
                                 let mut glob = Glob::default();
@@ -834,7 +852,6 @@ impl Client {
                                     self.document_selectors.clear();
                                     self.respond(
                                         platform,
-                                        json,
                                         request.id,
                                         Err(ResponseError::parse_error()),
                                     );
@@ -846,7 +863,7 @@ impl Client {
                         _ => (),
                     }
                 }
-                self.respond(platform, json, request.id, Ok(JsonValue::Null));
+                self.respond(platform, request.id, Ok(JsonValue::Null));
             }
             "window/showMessage" => {
                 fn parse_params(
@@ -881,21 +898,16 @@ impl Client {
                     Ok((kind, message))
                 }
 
-                let (kind, message) = match parse_params(request.params, json) {
+                let (kind, message) = match parse_params(request.params, &self.json) {
                     Ok(params) => params,
                     Err(_) => {
-                        self.respond(
-                            platform,
-                            json,
-                            request.id,
-                            Err(ResponseError::parse_error()),
-                        );
+                        self.respond(platform, request.id, Err(ResponseError::parse_error()));
                         return;
                     }
                 };
 
                 editor.status_bar.write(kind).str(message);
-                self.respond(platform, json, request.id, Ok(JsonValue::Null));
+                self.respond(platform, request.id, Ok(JsonValue::Null));
             }
             "window/showDocument" => {
                 declare_json_object! {
@@ -908,7 +920,7 @@ impl Client {
                 }
 
                 let params: ShowDocumentParams = deserialize!(request.params);
-                let path = match Uri::parse(&self.root, params.uri.as_str(json)) {
+                let path = match Uri::parse(&self.root, params.uri.as_str(&self.json)) {
                     Some(Uri::AbsolutePath(path)) => path,
                     Some(Uri::RelativePath(_, path)) => path,
                     None => return,
@@ -949,34 +961,24 @@ impl Client {
                 };
 
                 let mut result = JsonObject::default();
-                result.set("success".into(), success.into(), json);
-                self.respond(platform, json, request.id, Ok(result.into()));
+                result.set("success".into(), success.into(), &mut self.json);
+                self.respond(platform, request.id, Ok(result.into()));
             }
-            _ => self.respond(
-                platform,
-                json,
-                request.id,
-                Err(ResponseError::method_not_found()),
-            ),
+            _ => self.respond(platform, request.id, Err(ResponseError::method_not_found())),
         }
     }
 
-    fn on_notification(
-        &mut self,
-        editor: &mut Editor,
-        json: &mut Json,
-        notification: ServerNotification,
-    ) {
+    fn on_notification(&mut self, editor: &mut Editor, notification: ServerNotification) {
         macro_rules! deserialize {
             ($value:expr) => {
-                match FromJson::from_json($value, &json) {
+                match FromJson::from_json($value, &self.json) {
                     Ok(value) => value,
                     Err(_) => return,
                 }
             };
         }
 
-        self.write_to_log_buffer(|buf| {
+        self.write_to_log_buffer(|buf, json| {
             use io::Write;
             let _ = write!(
                 buf,
@@ -986,18 +988,18 @@ impl Client {
             json.write(buf, &notification.params);
         });
 
-        match notification.method.as_str(json) {
+        match notification.method.as_str(&self.json) {
             "window/showMessage" => {
                 let mut message_type: JsonInteger = 0;
                 let mut message = JsonString::default();
-                for (key, value) in notification.params.members(json) {
+                for (key, value) in notification.params.members(&self.json) {
                     match key {
                         "type" => message_type = deserialize!(value),
                         "value" => message = deserialize!(value),
                         _ => (),
                     }
                 }
-                let message = message.as_str(json);
+                let message = message.as_str(&self.json);
                 match message_type {
                     1 => editor.status_bar.write(MessageKind::Error).str(message),
                     2 => editor
@@ -1021,14 +1023,14 @@ impl Client {
                 }
 
                 let params: Params = deserialize!(notification.params);
-                let uri = params.uri.as_str(json);
+                let uri = params.uri.as_str(&self.json);
                 let path = match Uri::parse(&self.root, uri) {
                     Some(Uri::AbsolutePath(path)) => path,
                     _ => return,
                 };
 
                 let diagnostics = self.diagnostics.path_diagnostics_mut(editor, path);
-                for diagnostic in params.diagnostics.elements(json) {
+                for diagnostic in params.diagnostics.elements(&self.json) {
                     declare_json_object! {
                         struct Diagnostic {
                             message: JsonString,
@@ -1037,7 +1039,10 @@ impl Client {
                     }
 
                     let diagnostic: Diagnostic = deserialize!(diagnostic);
-                    diagnostics.add(diagnostic.message.as_str(json), diagnostic.range.into());
+                    diagnostics.add(
+                        diagnostic.message.as_str(&self.json),
+                        diagnostic.range.into(),
+                    );
                 }
                 diagnostics.sort();
                 self.diagnostics.clear_empty();
@@ -1051,7 +1056,6 @@ impl Client {
         editor: &mut Editor,
         platform: &mut Platform,
         clients: &mut client::ClientManager,
-        json: &mut Json,
         response: ServerResponse,
     ) {
         let method = match self.pending_requests.take(response.id) {
@@ -1061,14 +1065,14 @@ impl Client {
 
         macro_rules! deserialize {
             ($value:expr) => {
-                match FromJson::from_json($value, json) {
+                match FromJson::from_json($value, &self.json) {
                     Ok(value) => value,
                     Err(_) => return,
                 }
             };
         }
 
-        self.write_to_log_buffer(|buf| {
+        self.write_to_log_buffer(|buf, json| {
             use io::Write;
             let _ = write!(
                 buf,
@@ -1095,24 +1099,24 @@ impl Client {
         let result = match response.result {
             Ok(result) => result,
             Err(error) => {
-                helper::write_response_error(&mut editor.status_bar, error, json);
+                helper::write_response_error(&mut editor.status_bar, error, &self.json);
                 return;
             }
         };
 
         match method {
             "initialize" => {
-                self.server_capabilities = deserialize!(result.get("capabilities", json));
+                self.server_capabilities = deserialize!(result.get("capabilities", &self.json));
                 self.initialized = true;
-                self.notify(platform, json, "initialized", JsonObject::default());
+                self.notify(platform, "initialized", JsonObject::default());
 
                 for buffer in editor.buffers.iter() {
-                    helper::send_did_open(self, platform, editor, json, buffer.handle());
+                    helper::send_did_open(self, platform, editor, buffer.handle());
                 }
             }
             "textDocument/hover" => {
-                let contents = result.get("contents".into(), json);
-                let info = helper::extract_markup_content(contents, json);
+                let contents = result.get("contents".into(), &self.json);
+                let info = helper::extract_markup_content(contents, &self.json);
                 editor.status_bar.write(MessageKind::Info).str(info);
             }
             "textDocument/signatureHelp" => {
@@ -1131,14 +1135,15 @@ impl Client {
 
                 let signature_help: Option<SignatureHelp> = deserialize!(result);
                 let signature = match signature_help
-                    .and_then(|sh| sh.signatures.elements(json).nth(sh.activeSignature))
+                    .and_then(|sh| sh.signatures.elements(&self.json).nth(sh.activeSignature))
                 {
                     Some(signature) => signature,
                     None => return,
                 };
                 let signature: SignatureInformation = deserialize!(signature);
-                let label = signature.label.as_str(json);
-                let documentation = helper::extract_markup_content(signature.documentation, json);
+                let label = signature.label.as_str(&self.json);
+                let documentation =
+                    helper::extract_markup_content(signature.documentation, &self.json);
 
                 if documentation.is_empty() {
                     editor.status_bar.write(MessageKind::Info).str(label);
@@ -1158,13 +1163,13 @@ impl Client {
                     JsonValue::Null => return,
                     JsonValue::Object(_) => result,
                     // TODO: use picker in this case?
-                    JsonValue::Array(locations) => match locations.elements(json).next() {
+                    JsonValue::Array(locations) => match locations.elements(&self.json).next() {
                         Some(location) => location,
                         None => return,
                     },
                     _ => return,
                 };
-                let location = match DocumentLocation::from_json(location, json) {
+                let location = match DocumentLocation::from_json(location, &self.json) {
                     Ok(location) => location,
                     Err(_) => return,
                 };
@@ -1173,7 +1178,7 @@ impl Client {
                     Some(client) => client,
                     None => return,
                 };
-                let path = match Uri::parse(&self.root, location.uri.as_str(json)) {
+                let path = match Uri::parse(&self.root, location.uri.as_str(&self.json)) {
                     Some(Uri::AbsolutePath(path)) => path,
                     Some(Uri::RelativePath(_, path)) => path,
                     None => return,
@@ -1214,12 +1219,12 @@ impl Client {
                 };
 
                 let mut buffer_name = editor.string_pool.acquire();
-                for location in locations.clone().elements(json) {
-                    let location = match DocumentLocation::from_json(location, json) {
+                for location in locations.clone().elements(&self.json) {
+                    let location = match DocumentLocation::from_json(location, &self.json) {
                         Ok(location) => location,
                         Err(_) => continue,
                     };
-                    let path = match Uri::parse(&self.root, location.uri.as_str(json)) {
+                    let path = match Uri::parse(&self.root, location.uri.as_str(&self.json)) {
                         Some(Uri::AbsolutePath(path)) => path,
                         Some(Uri::RelativePath(_, path)) => path,
                         _ => continue,
@@ -1262,8 +1267,8 @@ impl Client {
 
                     let mut text = editor.string_pool.acquire();
                     let mut last_path = "";
-                    for location in locations.elements(json) {
-                        let location = match DocumentLocation::from_json(location, json) {
+                    for location in locations.elements(&self.json) {
+                        let location = match DocumentLocation::from_json(location, &self.json) {
                             Ok(location) => location,
                             Err(_) => {
                                 editor.string_pool.release(text);
@@ -1271,7 +1276,7 @@ impl Client {
                             }
                         };
 
-                        let path = match Uri::parse(&self.root, location.uri.as_str(json)) {
+                        let path = match Uri::parse(&self.root, location.uri.as_str(&self.json)) {
                             Some(Uri::AbsolutePath(path)) => path,
                             Some(Uri::RelativePath(_, path)) => path,
                             _ => continue,
@@ -1362,7 +1367,7 @@ impl Client {
                 let mut range = DocumentRange::default();
                 let mut placeholder: Option<JsonString> = None;
                 let mut default_behaviour: Option<bool> = None;
-                for (key, value) in result.members(json) {
+                for (key, value) in result.members(&self.json) {
                     match key {
                         "start" => range.start = deserialize!(value),
                         "end" => range.end = deserialize!(value),
@@ -1386,7 +1391,7 @@ impl Client {
 
                 let mut input = editor.string_pool.acquire();
                 match placeholder {
-                    Some(text) => input.push_str(text.as_str(json)),
+                    Some(text) => input.push_str(text.as_str(&self.json)),
                     None => buffer
                         .content()
                         .append_range_text_to_string(range, &mut input),
@@ -1433,14 +1438,14 @@ impl Client {
                 buffer.commit_edits();
 
                 self.formatting_edits.clear();
-                for edit in edits.clone().elements(json) {
-                    let edit = match DocumentEdit::from_json(edit, json) {
+                for edit in edits.clone().elements(&self.json) {
+                    let edit = match DocumentEdit::from_json(edit, &self.json) {
                         Ok(edit) => edit,
                         Err(_) => return,
                     };
 
                     let mut delete_range: BufferRange = edit.range.into();
-                    let text = edit.new_text.as_str(json);
+                    let text = edit.new_text.as_str(&self.json);
 
                     for (d, i) in &self.formatting_edits {
                         delete_range.from = delete_range.from.delete(*d);
@@ -1471,21 +1476,16 @@ impl Client {
         }
     }
 
-    fn on_parse_error(&mut self, platform: &mut Platform, json: &mut Json, request_id: JsonValue) {
-        self.write_to_log_buffer(|buf| {
+    fn on_parse_error(&mut self, platform: &mut Platform, request_id: JsonValue) {
+        self.write_to_log_buffer(|buf, json| {
             use io::Write;
             let _ = write!(buf, "send parse error\nrequest_id: ");
             json.write(buf, &request_id);
         });
-        self.respond(
-            platform,
-            json,
-            request_id,
-            Err(ResponseError::parse_error()),
-        )
+        self.respond(platform, request_id, Err(ResponseError::parse_error()))
     }
 
-    fn on_editor_events(&mut self, editor: &Editor, platform: &mut Platform, json: &mut Json) {
+    fn on_editor_events(&mut self, editor: &Editor, platform: &mut Platform) {
         if !self.initialized {
             return;
         }
@@ -1494,13 +1494,13 @@ impl Client {
         while let Some(event) = events.next(&editor.events) {
             match event {
                 &EditorEvent::Idle => {
-                    helper::send_pending_did_change(self, platform, editor, json);
+                    helper::send_pending_did_change(self, platform, editor);
                 }
                 &EditorEvent::BufferLoad { handle } => {
                     let handle = handle;
                     self.versioned_buffers.dispose(handle);
                     self.diagnostics.on_load_buffer(editor, handle);
-                    helper::send_did_open(self, platform, editor, json, handle);
+                    helper::send_did_open(self, platform, editor, handle);
                 }
                 &EditorEvent::BufferInsertText {
                     handle,
@@ -1516,8 +1516,8 @@ impl Client {
                 }
                 &EditorEvent::BufferSave { handle, .. } => {
                     self.diagnostics.on_save_buffer(editor, handle);
-                    helper::send_pending_did_change(self, platform, editor, json);
-                    helper::send_did_save(self, platform, editor, json, handle);
+                    helper::send_pending_did_change(self, platform, editor);
+                    helper::send_did_save(self, platform, editor, handle);
                 }
                 &EditorEvent::BufferClose { handle } => {
                     if self.log_buffer_handle == Some(handle) {
@@ -1525,42 +1525,38 @@ impl Client {
                     }
                     self.versioned_buffers.dispose(handle);
                     self.diagnostics.on_close_buffer(handle);
-                    helper::send_did_close(self, platform, editor, json, handle);
+                    helper::send_pending_did_change(self, platform, editor);
+                    helper::send_did_close(self, platform, editor, handle);
                 }
                 EditorEvent::ClientChangeBufferView { .. } => (),
             }
         }
     }
 
-    fn request(
-        &mut self,
-        platform: &mut Platform,
-        json: &mut Json,
-        method: &'static str,
-        params: JsonObject,
-    ) {
+    fn request(&mut self, platform: &mut Platform, method: &'static str, params: JsonObject) {
         if !self.initialized {
             return;
         }
 
         let params = params.into();
-        self.write_to_log_buffer(|buf| {
+        self.write_to_log_buffer(|buf, json| {
             use io::Write;
             let _ = write!(buf, "send request\nmethod: '{}'\nparams:\n", method);
             json.write(buf, &params);
         });
-        let id = self.protocol.request(platform, json, method, params);
+        let id = self
+            .protocol
+            .request(platform, &mut self.json, method, params);
         self.pending_requests.add(id, method);
     }
 
     fn respond(
         &mut self,
         platform: &mut Platform,
-        json: &mut Json,
         request_id: JsonValue,
         result: Result<JsonValue, ResponseError>,
     ) {
-        self.write_to_log_buffer(|buf| {
+        self.write_to_log_buffer(|buf, json| {
             use io::Write;
             let _ = write!(buf, "send response\nid: ");
             json.write(buf, &request_id);
@@ -1580,49 +1576,51 @@ impl Client {
                 }
             }
         });
-        self.protocol.respond(platform, json, request_id, result);
+        self.protocol
+            .respond(platform, &mut self.json, request_id, result);
     }
 
-    fn notify(
-        &mut self,
-        platform: &mut Platform,
-        json: &mut Json,
-        method: &'static str,
-        params: JsonObject,
-    ) {
+    fn notify(&mut self, platform: &mut Platform, method: &'static str, params: JsonObject) {
         let params = params.into();
-        self.write_to_log_buffer(|buf| {
+        self.write_to_log_buffer(|buf, json| {
             use io::Write;
             let _ = write!(buf, "send notification\nmethod: '{}'\nparams:\n", method);
             json.write(buf, &params);
         });
-        self.protocol.notify(platform, json, method, params);
+        self.protocol
+            .notify(platform, &mut self.json, method, params);
     }
 
-    fn initialize(&mut self, platform: &mut Platform, json: &mut Json) {
+    fn initialize(&mut self, platform: &mut Platform) {
         let mut params = JsonObject::default();
         params.set(
             "processId".into(),
             JsonValue::Integer(process::id() as _),
-            json,
+            &mut self.json,
         );
 
         let mut client_info = JsonObject::default();
-        client_info.set("name".into(), env!("CARGO_PKG_NAME").into(), json);
-        client_info.set("name".into(), env!("CARGO_PKG_VERSION").into(), json);
-        params.set("clientInfo".into(), client_info.into(), json);
+        client_info.set("name".into(), env!("CARGO_PKG_NAME").into(), &mut self.json);
+        client_info.set(
+            "name".into(),
+            env!("CARGO_PKG_VERSION").into(),
+            &mut self.json,
+        );
+        params.set("clientInfo".into(), client_info.into(), &mut self.json);
 
-        let root = json.fmt_string(format_args!("{}", Uri::AbsolutePath(&self.root)));
-        params.set("rootUri".into(), root.into(), json);
+        let root = self
+            .json
+            .fmt_string(format_args!("{}", Uri::AbsolutePath(&self.root)));
+        params.set("rootUri".into(), root.into(), &mut self.json);
 
         params.set(
             "capabilities".into(),
-            capabilities::client_capabilities(json),
-            json,
+            capabilities::client_capabilities(&mut self.json),
+            &mut self.json,
         );
 
         self.initialized = true;
-        self.request(platform, json, "initialize", params);
+        self.request(platform, "initialize", params);
         self.initialized = false;
     }
 }
@@ -1670,7 +1668,6 @@ mod helper {
         client: &mut Client,
         platform: &mut Platform,
         editor: &Editor,
-        json: &mut Json,
         buffer_handle: BufferHandle,
     ) {
         if !client.server_capabilities.textDocumentSync.open_close {
@@ -1686,25 +1683,26 @@ mod helper {
         }
 
         let buffer_path = buffer.path();
-        let mut text_document = text_document_with_id(&client.root, buffer_path, json);
-        let language_id = json.create_string(protocol::path_to_language_id(buffer_path));
-        text_document.set("languageId".into(), language_id.into(), json);
-        text_document.set("version".into(), JsonValue::Integer(0), json);
-        let text = json.fmt_string(format_args!("{}", buffer.content()));
-        text_document.set("text".into(), text.into(), json);
+        let mut text_document = text_document_with_id(&client.root, buffer_path, &mut client.json);
+        let language_id = client
+            .json
+            .create_string(protocol::path_to_language_id(buffer_path));
+        text_document.set("languageId".into(), language_id.into(), &mut client.json);
+        text_document.set("version".into(), JsonValue::Integer(0), &mut client.json);
+        let text = client.json.fmt_string(format_args!("{}", buffer.content()));
+        text_document.set("text".into(), text.into(), &mut client.json);
 
         let mut params = JsonObject::default();
-        params.set("textDocument".into(), text_document.into(), json);
+        params.set(
+            "textDocument".into(),
+            text_document.into(),
+            &mut client.json,
+        );
 
-        client.notify(platform, json, "textDocument/didOpen", params.into());
+        client.notify(platform, "textDocument/didOpen", params.into());
     }
 
-    pub fn send_pending_did_change(
-        client: &mut Client,
-        platform: &mut Platform,
-        editor: &Editor,
-        json: &mut Json,
-    ) {
+    pub fn send_pending_did_change(client: &mut Client, platform: &mut Platform, editor: &Editor) {
         if let TextDocumentSyncKind::None = client.server_capabilities.textDocumentSync.change {
             return;
         }
@@ -1719,45 +1717,55 @@ mod helper {
                 continue;
             }
 
-            let mut text_document = text_document_with_id(&client.root, buffer.path(), json);
+            let mut text_document =
+                text_document_with_id(&client.root, buffer.path(), &mut client.json);
             text_document.set(
                 "version".into(),
                 JsonValue::Integer(versioned_buffer.version as _),
-                json,
+                &mut client.json,
             );
 
             let mut params = JsonObject::default();
-            params.set("textDocument".into(), text_document.into(), json);
+            params.set(
+                "textDocument".into(),
+                text_document.into(),
+                &mut client.json,
+            );
 
             let mut content_changes = JsonArray::default();
             match client.server_capabilities.textDocumentSync.save {
                 TextDocumentSyncKind::None => (),
                 TextDocumentSyncKind::Full => {
-                    let text = json.fmt_string(format_args!("{}", buffer.content()));
+                    let text = client.json.fmt_string(format_args!("{}", buffer.content()));
                     let mut change_event = JsonObject::default();
-                    change_event.set("text".into(), text.into(), json);
-                    content_changes.push(change_event.into(), json);
+                    change_event.set("text".into(), text.into(), &mut client.json);
+                    content_changes.push(change_event.into(), &mut client.json);
                 }
                 TextDocumentSyncKind::Incremental => {
                     for edit in &versioned_buffer.pending_edits {
                         let mut change_event = JsonObject::default();
 
-                        let edit_range = DocumentRange::from(edit.buffer_range).to_json_value(json);
-                        change_event.set("range".into(), edit_range, json);
+                        let edit_range =
+                            DocumentRange::from(edit.buffer_range).to_json_value(&mut client.json);
+                        change_event.set("range".into(), edit_range, &mut client.json);
 
                         let text = &versioned_buffer.texts[edit.text_range.clone()];
-                        let text = json.create_string(text);
-                        change_event.set("text".into(), text.into(), json);
+                        let text = client.json.create_string(text);
+                        change_event.set("text".into(), text.into(), &mut client.json);
 
-                        content_changes.push(change_event.into(), json);
+                        content_changes.push(change_event.into(), &mut client.json);
                     }
                 }
             }
 
-            params.set("contentChanges".into(), content_changes.into(), json);
+            params.set(
+                "contentChanges".into(),
+                content_changes.into(),
+                &mut client.json,
+            );
 
             versioned_buffer.flush();
-            client.notify(platform, json, "textDocument/didChange", params.into());
+            client.notify(platform, "textDocument/didChange", params.into());
         }
         std::mem::swap(&mut client.versioned_buffers, &mut versioned_buffers);
     }
@@ -1766,7 +1774,6 @@ mod helper {
         client: &mut Client,
         platform: &mut Platform,
         editor: &Editor,
-        json: &mut Json,
         buffer_handle: BufferHandle,
     ) {
         if let TextDocumentSyncKind::None = client.server_capabilities.textDocumentSync.save {
@@ -1781,23 +1788,26 @@ mod helper {
             return;
         }
 
-        let text_document = text_document_with_id(&client.root, buffer.path(), json);
+        let text_document = text_document_with_id(&client.root, buffer.path(), &mut client.json);
         let mut params = JsonObject::default();
-        params.set("textDocument".into(), text_document.into(), json);
+        params.set(
+            "textDocument".into(),
+            text_document.into(),
+            &mut client.json,
+        );
 
         if let TextDocumentSyncKind::Full = client.server_capabilities.textDocumentSync.save {
-            let text = json.fmt_string(format_args!("{}", buffer.content()));
-            params.set("text".into(), text.into(), json);
+            let text = client.json.fmt_string(format_args!("{}", buffer.content()));
+            params.set("text".into(), text.into(), &mut client.json);
         }
 
-        client.notify(platform, json, "textDocument/didSave", params.into())
+        client.notify(platform, "textDocument/didSave", params.into())
     }
 
     pub fn send_did_close(
         client: &mut Client,
         platform: &mut Platform,
         editor: &Editor,
-        json: &mut Json,
         buffer_handle: BufferHandle,
     ) {
         if !client.server_capabilities.textDocumentSync.open_close {
@@ -1812,11 +1822,15 @@ mod helper {
             return;
         }
 
-        let text_document = text_document_with_id(&client.root, buffer.path(), json);
+        let text_document = text_document_with_id(&client.root, buffer.path(), &mut client.json);
         let mut params = JsonObject::default();
-        params.set("textDocument".into(), text_document.into(), json);
+        params.set(
+            "textDocument".into(),
+            text_document.into(),
+            &mut client.json,
+        );
 
-        client.notify(platform, json, "textDocument/didClose", params.into());
+        client.notify(platform, "textDocument/didClose", params.into());
     }
 }
 
@@ -1837,11 +1851,6 @@ impl FromStr for ClientHandle {
     }
 }
 
-struct ClientManagerEntry {
-    client: Client,
-    json: Json,
-}
-
 struct ClientRecipe {
     glob: Glob,
     command: String,
@@ -1852,14 +1861,14 @@ struct ClientRecipe {
 }
 
 pub struct ClientManager {
-    entries: Vec<Option<ClientManagerEntry>>,
+    clients: Vec<Option<Client>>, // TODO: make it so we mark clients temporarily taken
     recipes: Vec<ClientRecipe>,
 }
 
 impl ClientManager {
     pub fn new() -> Self {
         Self {
-            entries: Vec::new(),
+            clients: Vec::new(),
             recipes: Vec::new(),
         }
     }
@@ -1910,7 +1919,18 @@ impl ClientManager {
         root: PathBuf,
         log_buffer_handle: Option<BufferHandle>,
     ) -> ClientHandle {
-        let handle = self.find_free_slot();
+        fn find_free_slot(this: &mut ClientManager) -> ClientHandle {
+            for (i, slot) in this.clients.iter_mut().enumerate() {
+                if let None = slot {
+                    return ClientHandle(i as _);
+                }
+            }
+            let handle = ClientHandle(this.clients.len() as _);
+            this.clients.push(None);
+            handle
+        }
+
+        let handle = find_free_slot(self);
         command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -1920,50 +1940,35 @@ impl ClientManager {
             command,
             buf_len: protocol::BUFFER_LEN,
         });
-        self.entries[handle.0 as usize] = Some(ClientManagerEntry {
-            client: Client::new(handle, root, log_buffer_handle),
-            json: Json::new(),
-        });
+        self.clients[handle.0 as usize] = Some(Client::new(handle, root, log_buffer_handle));
         handle
     }
 
     pub fn stop(&mut self, platform: &mut Platform, handle: ClientHandle) {
-        if let Some(entry) = &mut self.entries[handle.0 as usize] {
-            let _ = entry
-                .client
-                .notify(platform, &mut entry.json, "exit", JsonObject::default());
-            self.entries[handle.0 as usize] = None;
+        if let Some(client) = &mut self.clients[handle.0 as usize] {
+            let _ = client.notify(platform, "exit", JsonObject::default());
+            self.clients[handle.0 as usize] = None;
         }
     }
 
     pub fn stop_all(&mut self, platform: &mut Platform) {
-        for i in 0..self.entries.len() {
+        for i in 0..self.clients.len() {
             self.stop(platform, ClientHandle(i as _));
         }
     }
 
     pub fn access<A, R>(editor: &mut Editor, handle: ClientHandle, accessor: A) -> Option<R>
     where
-        A: FnOnce(&mut Editor, &mut Client, &mut Json) -> R,
+        A: FnOnce(&mut Editor, &mut Client) -> R,
     {
-        let mut entry = editor.lsp.entries[handle.0 as usize].take()?;
-        let result = accessor(editor, &mut entry.client, &mut entry.json);
-        editor.lsp.entries[handle.0 as usize] = Some(entry);
+        let mut client = editor.lsp.clients[handle.0 as usize].take()?;
+        let result = accessor(editor, &mut client);
+        editor.lsp.clients[handle.0 as usize] = Some(client);
         Some(result)
     }
 
     pub fn clients(&self) -> impl DoubleEndedIterator<Item = &Client> {
-        self.entries.iter().flat_map(|e| match e {
-            Some(e) => Some(&e.client),
-            None => None,
-        })
-    }
-
-    pub fn client_with_handles(&self) -> impl Iterator<Item = (ClientHandle, &Client)> {
-        self.entries.iter().enumerate().flat_map(|(i, e)| match e {
-            Some(e) => Some((ClientHandle(i as _), &e.client)),
-            None => None,
-        })
+        self.clients.iter().flatten()
     }
 
     pub fn on_process_spawned(
@@ -1972,9 +1977,9 @@ impl ClientManager {
         handle: ClientHandle,
         process_handle: ProcessHandle,
     ) {
-        if let Some(ref mut entry) = editor.lsp.entries[handle.0 as usize] {
-            entry.client.protocol.set_process_handle(process_handle);
-            entry.client.initialize(platform, &mut entry.json);
+        if let Some(ref mut client) = editor.lsp.clients[handle.0 as usize] {
+            client.protocol.set_process_handle(process_handle);
+            client.initialize(platform);
         }
     }
 
@@ -1985,37 +1990,35 @@ impl ClientManager {
         handle: ClientHandle,
         bytes: &[u8],
     ) {
-        let (mut client, mut json) = match editor.lsp.entries[handle.0 as usize].take() {
-            Some(entry) => (entry.client, entry.json),
+        let mut client = match editor.lsp.clients[handle.0 as usize].take() {
+            Some(client) => client,
             None => return,
         };
 
         let mut events = client.protocol.parse_events(bytes);
-        while let Some(event) = events.next(&mut client.protocol, &mut json) {
+        while let Some(event) = events.next(&mut client.protocol, &mut client.json) {
             match event {
                 ServerEvent::Closed => editor.lsp.stop(platform, handle),
-                ServerEvent::ParseError => {
-                    client.on_parse_error(platform, &mut json, JsonValue::Null)
-                }
+                ServerEvent::ParseError => client.on_parse_error(platform, JsonValue::Null),
                 ServerEvent::Request(request) => {
-                    client.on_request(editor, platform, clients, &mut json, request)
+                    client.on_request(editor, platform, clients, request)
                 }
                 ServerEvent::Notification(notification) => {
-                    client.on_notification(editor, &mut json, notification)
+                    client.on_notification(editor, notification)
                 }
                 ServerEvent::Response(response) => {
-                    client.on_response(editor, platform, clients, &mut json, response)
+                    client.on_response(editor, platform, clients, response)
                 }
             }
             client.flush_log_buffer(editor);
         }
         events.finish(&mut client.protocol);
 
-        editor.lsp.entries[handle.0 as usize] = Some(ClientManagerEntry { client, json });
+        editor.lsp.clients[handle.0 as usize] = Some(client);
     }
 
     pub fn on_process_exit(editor: &mut Editor, handle: ClientHandle) {
-        editor.lsp.entries[handle.0 as usize] = None;
+        editor.lsp.clients[handle.0 as usize] = None;
 
         for recipe in &mut editor.lsp.recipes {
             if recipe.running_client == Some(handle) {
@@ -2082,24 +2085,11 @@ impl ClientManager {
             }
         }
 
-        for i in 0..editor.lsp.entries.len() {
-            if let Some(mut entry) = editor.lsp.entries[i].take() {
-                entry
-                    .client
-                    .on_editor_events(editor, platform, &mut entry.json);
-                editor.lsp.entries[i] = Some(entry);
+        for i in 0..editor.lsp.clients.len() {
+            if let Some(mut client) = editor.lsp.clients[i].take() {
+                client.on_editor_events(editor, platform);
+                editor.lsp.clients[i] = Some(client);
             }
         }
-    }
-
-    fn find_free_slot(&mut self) -> ClientHandle {
-        for (i, slot) in self.entries.iter_mut().enumerate() {
-            if let None = slot {
-                return ClientHandle(i as _);
-            }
-        }
-        let handle = ClientHandle(self.entries.len() as _);
-        self.entries.push(None);
-        handle
     }
 }

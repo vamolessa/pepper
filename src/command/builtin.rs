@@ -16,7 +16,6 @@ use crate::{
     cursor::{Cursor, CursorCollection},
     editor::{Editor, EditorControlFlow},
     editor_utils::MessageKind,
-    json::Json,
     keymap::ParseKeyMapError,
     lsp,
     mode::{picker, read_line, Mode, ModeContext, ModeKind},
@@ -1397,8 +1396,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             ctx.args.assert_empty()?;
 
             let (buffer_handle, position) = current_buffer_and_main_position(&ctx)?;
-            access_lsp(&mut ctx, buffer_handle, |editor, platform, client, json| {
-                client.hover(editor, platform, json, buffer_handle, position)
+            access_lsp(&mut ctx, buffer_handle, |editor, platform, client| {
+                client.hover(editor, platform, buffer_handle, position)
             })?;
             Ok(None)
         },
@@ -1418,8 +1417,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             ctx.args.assert_empty()?;
 
             let (buffer_handle, position) = current_buffer_and_main_position(&ctx)?;
-            access_lsp(&mut ctx, buffer_handle, |editor, platform, client, json| {
-                client.signature_help(editor, platform, json, buffer_handle, position)
+            access_lsp(&mut ctx, buffer_handle, |editor, platform, client| {
+                client.signature_help(editor, platform, buffer_handle, position)
             })?;
             Ok(None)
         },
@@ -1443,8 +1442,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 None => return Ok(None),
             };
             let (buffer_handle, position) = current_buffer_and_main_position(&ctx)?;
-            access_lsp(&mut ctx, buffer_handle, |editor, platform, client, json| {
-                client.definition(editor, platform, json, buffer_handle, position, client_handle)
+            access_lsp(&mut ctx, buffer_handle, |editor, platform, client| {
+                client.definition(editor, platform, buffer_handle, position, client_handle)
             })?;
             Ok(None)
         },
@@ -1475,11 +1474,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 None => return Ok(None),
             };
             let (buffer_handle, position) = current_buffer_and_main_position(&ctx)?;
-            access_lsp(&mut ctx, buffer_handle, |editor, platform, client, json| {
+            access_lsp(&mut ctx, buffer_handle, |editor, platform, client| {
                 client.references(
                     editor,
                     platform,
-                    json,
                     buffer_handle,
                     position,
                     auto_close_buffer,
@@ -1505,13 +1503,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             ctx.args.assert_empty()?;
 
             let (buffer_handle, _) = current_buffer_and_main_position(&ctx)?;
-            access_lsp(&mut ctx, buffer_handle, |editor, platform, client, json| {
-                client.formatting(
-                    editor,
-                    platform,
-                    json,
-                    buffer_handle,
-                )
+            access_lsp(&mut ctx, buffer_handle, |editor, platform, client| {
+                client.formatting(editor, platform, buffer_handle)
             })?;
             Ok(None)
         },
@@ -1543,11 +1536,11 @@ fn find_lsp_client_for_buffer(
         .path()
         .to_str()?
         .as_bytes();
-    let (client_handle, _) = editor
+    let client = editor
         .lsp
-        .client_with_handles()
-        .find(|(_, c)| c.handles_path(buffer_path_bytes))?;
-    Some(client_handle)
+        .clients()
+        .find(|c| c.handles_path(buffer_path_bytes))?;
+    Some(client.handle())
 }
 
 fn access_lsp<'command, A>(
@@ -1556,12 +1549,12 @@ fn access_lsp<'command, A>(
     accessor: A,
 ) -> Result<(), CommandError>
 where
-    A: FnOnce(&mut Editor, &mut Platform, &mut lsp::Client, &mut Json),
+    A: FnOnce(&mut Editor, &mut Platform, &mut lsp::Client),
 {
     let editor = &mut *ctx.editor;
     let platform = &mut *ctx.platform;
     match find_lsp_client_for_buffer(editor, buffer_handle)
-        .and_then(|h| lsp::ClientManager::access(editor, h, |e, c, j| accessor(e, platform, c, j)))
+        .and_then(|h| lsp::ClientManager::access(editor, h, |e, c| accessor(e, platform, c)))
     {
         Some(()) => Ok(()),
         None => Err(CommandError::LspServerNotRunning),
