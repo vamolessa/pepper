@@ -2,6 +2,7 @@ use crate::{
     command::{replace_to_between_text_markers, CommandManager},
     editor::KeysIterator,
     editor_utils::ReadLinePoll,
+    lsp,
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     platform::Key,
     word_database::WordIndicesIter,
@@ -12,6 +13,7 @@ pub struct State {
         fn(ctx: &mut ModeContext, &mut KeysIterator, ReadLinePoll) -> Option<ModeOperation>,
     continuation: Option<String>,
     entry_var_name: String,
+    lsp_client_handle: Option<lsp::ClientHandle>,
 }
 
 impl Default for State {
@@ -20,6 +22,7 @@ impl Default for State {
             on_client_keys: |_, _, _| None,
             continuation: None,
             entry_var_name: String::new(),
+            lsp_client_handle: None,
         }
     }
 }
@@ -161,6 +164,59 @@ pub mod buffer {
             ctx.editor.mode.picker_state.on_client_keys = on_client_keys;
             Mode::change_to(ctx, ModeKind::Picker);
         }
+    }
+}
+
+pub mod lsp_code_action {
+    use super::*;
+
+    pub fn enter_mode<'a, I>(ctx: &mut ModeContext, client_handle: lsp::ClientHandle, entries: I)
+    where
+        I: 'a + Iterator<Item = &'a str>,
+    {
+        fn on_client_keys(
+            ctx: &mut ModeContext,
+            _: &mut KeysIterator,
+            poll: ReadLinePoll,
+        ) -> Option<ModeOperation> {
+            match poll {
+                ReadLinePoll::Pending => None,
+                ReadLinePoll::Submitted => {
+                    if let Some(handle) = ctx.editor.mode.picker_state.lsp_client_handle {
+                        let index = ctx.editor.picker.cursor().unwrap_or(0);
+                        let platform = &mut *ctx.platform;
+                        lsp::ClientManager::access(ctx.editor, handle, |e, c| {
+                            c.finish_code_action(e, platform, index);
+                        });
+                    }
+                    Mode::change_to(ctx, ModeKind::default());
+                    None
+                }
+                ReadLinePoll::Canceled => {
+                    Mode::change_to(ctx, ModeKind::default());
+                    None
+                }
+            }
+        }
+
+        ctx.editor.read_line.set_prompt("code action:");
+        ctx.editor.picker.clear();
+
+        for entry in entries {
+            ctx.editor.picker.add_custom_entry(entry);
+        }
+
+        ctx.editor.picker.filter(WordIndicesIter::empty(), "");
+        ctx.editor.picker.move_cursor(0);
+
+        if ctx.editor.picker.len() == 0 {
+            return;
+        }
+
+        let state = &mut ctx.editor.mode.picker_state;
+        state.on_client_keys = on_client_keys;
+        state.lsp_client_handle = Some(client_handle);
+        Mode::change_to(ctx, ModeKind::Picker);
     }
 }
 

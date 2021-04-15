@@ -732,6 +732,31 @@ impl<'json> FromJson<'json> for DocumentDiagnostic {
     }
 }
 
+#[derive(Default)]
+pub struct DocumentCodeAction {
+    pub title: JsonString,
+    pub edit: WorkspaceEdit,
+    pub disabled: bool,
+}
+impl<'json> FromJson<'json> for DocumentCodeAction {
+    fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
+        let value = match value {
+            JsonValue::Object(value) => value,
+            _ => return Err(JsonConvertError),
+        };
+        let mut this = Self::default();
+        for (key, value) in value.members(json) {
+            match key {
+                "title" => this.title = JsonString::from_json(value, json)?,
+                "edit" => this.edit = WorkspaceEdit::from_json(value, json)?,
+                "disabled" => this.disabled = true,
+                _ => (),
+            }
+        }
+        Ok(this)
+    }
+}
+
 fn try_get_content_range(buf: &[u8]) -> Option<Range<usize>> {
     fn find_pattern_end(buf: &[u8], pattern: &[u8]) -> Option<usize> {
         let len = pattern.len();
@@ -979,99 +1004,3 @@ impl PendingRequestColection {
         None
     }
 }
-
-/*
-struct ReadBuf {
-    buf: Vec<u8>,
-    read_index: usize,
-    write_index: usize,
-}
-
-impl ReadBuf {
-    pub fn new() -> Self {
-        let mut buf = Vec::with_capacity(BUFFER_LEN);
-        buf.resize(buf.capacity(), 0);
-        Self {
-            buf,
-            read_index: 0,
-            write_index: 0,
-        }
-    }
-
-    pub fn read_content_from<R>(&mut self, mut reader: R) -> &[u8]
-    where
-        R: Read,
-    {
-        fn find_pattern_end<'a>(buf: &'a [u8], pattern: &[u8]) -> Option<usize> {
-            let len = pattern.len();
-            buf.windows(len).position(|w| w == pattern).map(|p| p + len)
-        }
-
-        fn parse_number(buf: &[u8]) -> usize {
-            let mut n = 0;
-            for b in buf {
-                if b.is_ascii_digit() {
-                    n *= 10;
-                    n += (b - b'0') as usize;
-                } else {
-                    break;
-                }
-            }
-            n
-        }
-
-        let mut content_start_index = 0;
-        let mut content_end_index = 0;
-
-        loop {
-            if content_end_index == 0 {
-                let bytes = &self.buf[self.read_index..self.write_index];
-                if let Some(cl_index) = find_pattern_end(bytes, b"Content-Length: ") {
-                    let bytes = &bytes[cl_index..];
-                    if let Some(c_index) = find_pattern_end(bytes, b"\r\n\r\n") {
-                        let content_len = parse_number(bytes);
-                        content_start_index = self.read_index + cl_index + c_index;
-                        content_end_index = content_start_index + content_len;
-                    }
-                }
-            }
-
-            if content_end_index > 0 && self.write_index >= content_end_index {
-                break;
-            }
-
-            if self.read_index > self.buf.len() / 2 {
-                self.buf.copy_within(self.read_index..self.write_index, 0);
-                if content_end_index > 0 {
-                    content_start_index -= self.read_index;
-                    content_end_index -= self.read_index;
-                }
-                self.write_index -= self.read_index;
-                self.read_index = 0;
-            } else {
-                while self.write_index == self.buf.len() || content_end_index > self.buf.len() {
-                    self.buf.resize(self.buf.len() * 2, 0);
-                }
-
-                match reader.read(&mut self.buf[self.write_index..]) {
-                    Ok(0) | Err(_) => {
-                        self.read_index = 0;
-                        self.write_index = 0;
-                        return &[];
-                    }
-                    Ok(len) => self.write_index += len,
-                }
-            }
-        }
-
-        self.read_index = content_end_index;
-
-        if self.write_index == self.read_index {
-            self.read_index = 0;
-            self.write_index = 0;
-        }
-
-        &self.buf[content_start_index..content_end_index]
-    }
-}
-*/

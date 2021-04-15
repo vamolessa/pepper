@@ -24,12 +24,12 @@ use crate::{
     lsp::{
         capabilities,
         protocol::{
-            self, DocumentDiagnostic, DocumentLocation, DocumentPosition, DocumentRange,
-            PendingRequestColection, Protocol, ResponseError, ServerEvent, ServerNotification,
-            ServerRequest, ServerResponse, TextEdit, Uri, WorkspaceEdit,
+            self, DocumentCodeAction, DocumentDiagnostic, DocumentLocation, DocumentPosition,
+            DocumentRange, PendingRequestColection, Protocol, ResponseError, ServerEvent,
+            ServerNotification, ServerRequest, ServerResponse, TextEdit, Uri, WorkspaceEdit,
         },
     },
-    mode::{read_line, ModeContext},
+    mode::{picker, read_line, ModeContext},
     platform::{Platform, PlatformRequest, ProcessHandle, ProcessTag},
 };
 
@@ -107,26 +107,13 @@ impl<'json> FromJson<'json> for RenameCapability {
 #[derive(Default)]
 struct CodeActionCapability {
     pub on: bool,
-    pub resolve_provider: bool,
 }
 impl<'json> FromJson<'json> for CodeActionCapability {
-    fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
+    fn from_json(value: JsonValue, _: &'json Json) -> Result<Self, JsonConvertError> {
         match value {
-            JsonValue::Null => Ok(Self {
-                on: false,
-                resolve_provider: false,
-            }),
-            JsonValue::Boolean(b) => Ok(Self {
-                on: b,
-                resolve_provider: false,
-            }),
-            JsonValue::Object(options) => Ok(Self {
-                on: true,
-                resolve_provider: matches!(
-                    options.get("resolveProvider", &json),
-                    JsonValue::Boolean(true)
-                ),
-            }),
+            JsonValue::Null => Ok(Self { on: false }),
+            JsonValue::Boolean(b) => Ok(Self { on: b }),
+            JsonValue::Object(_) => Ok(Self { on: true }),
             _ => Err(JsonConvertError),
         }
     }
@@ -243,8 +230,8 @@ pub struct Diagnostic {
 }
 impl Diagnostic {
     pub fn as_document_diagnostic(&self, json: &mut Json) -> DocumentDiagnostic {
-        let mut cursor = io::Cursor::new(&self.data);
-        let data = match json.read(&mut cursor) {
+        let mut reader = io::Cursor::new(&self.data);
+        let data = match json.read(&mut reader) {
             Ok(value) => value,
             Err(_) => JsonValue::Null,
         };
@@ -493,7 +480,12 @@ struct FinishRenameState {
 }
 
 struct CodeActionState {
-    //
+    pub client_handle: client::ClientHandle,
+}
+
+#[derive(Default)]
+struct FinishCodeActionState {
+    pub code_actions_raw: Vec<u8>,
 }
 
 struct FormattingState {
@@ -521,6 +513,8 @@ pub struct Client {
     references_state: Option<ReferencesState>,
     rename_state: Option<RenameState>,
     finish_rename_state: Option<FinishRenameState>,
+    code_action_state: Option<CodeActionState>,
+    finish_code_action_state: FinishCodeActionState,
     formatting_state: Option<FormattingState>,
 }
 
@@ -549,6 +543,8 @@ impl Client {
             references_state: None,
             rename_state: None,
             finish_rename_state: None,
+            code_action_state: None,
+            finish_code_action_state: FinishCodeActionState::default(),
             formatting_state: None,
         }
     }
@@ -730,7 +726,7 @@ impl Client {
         if !self.server_capabilities.renameProvider.on {
             return;
         }
-        if self.rename_state.is_some() {
+        if self.rename_state.is_some() || self.finish_rename_state.is_some() {
             return;
         }
 
@@ -810,11 +806,17 @@ impl Client {
         &mut self,
         editor: &Editor,
         platform: &mut Platform,
+        client_handle: client::ClientHandle,
         buffer_handle: BufferHandle,
         range: BufferRange,
     ) {
         // https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocument_codeAction
         if !self.server_capabilities.codeActionProvider.on {
+            return;
+        }
+        if self.code_action_state.is_some()
+            || !self.finish_code_action_state.code_actions_raw.is_empty()
+        {
             return;
         }
 
@@ -847,8 +849,41 @@ impl Client {
             DocumentRange::from(range).to_json_value(&mut self.json),
             &mut self.json,
         );
+        params.set("context".into(), context.into(), &mut self.json);
 
+        self.code_action_state = Some(CodeActionState { client_handle });
         self.request(platform, "textDocument/codeAction", params);
+    }
+
+    pub fn finish_code_action(
+        &mut self,
+        editor: &mut Editor,
+        platform: &mut Platform,
+        index: usize,
+    ) {
+        if !self.server_capabilities.codeActionProvider.on {
+            return;
+        }
+        if self.finish_code_action_state.code_actions_raw.is_empty() {
+            return;
+        }
+
+        helper::send_pending_did_change(self, editor, platform);
+
+        let mut reader = io::Cursor::new(&self.finish_code_action_state.code_actions_raw);
+        if let Ok(code_actions) = self.json.read(&mut reader) {
+            if let Some(edit) = code_actions
+                .elements(&self.json)
+                .filter_map(|a| DocumentCodeAction::from_json(a, &self.json).ok())
+                .filter(|a| !a.disabled)
+                .map(|a| a.edit)
+                .nth(index)
+            {
+                edit.apply(editor, &mut self.temp_edits, &self.root, &self.json);
+            }
+        }
+
+        self.finish_code_action_state.code_actions_raw.clear();
     }
 
     pub fn formatting(
@@ -1286,7 +1321,6 @@ impl Client {
                     None => return,
                 };
                 let location = match result {
-                    JsonValue::Null => return,
                     JsonValue::Object(_) => result,
                     // TODO: use picker in this case?
                     JsonValue::Array(locations) => match locations.elements(&self.json).next() {
@@ -1334,7 +1368,6 @@ impl Client {
                     None => return,
                 };
                 let locations = match result {
-                    JsonValue::Null => return,
                     JsonValue::Array(locations) => locations,
                     _ => return,
                 };
@@ -1545,13 +1578,43 @@ impl Client {
                 let edit: WorkspaceEdit = deserialize!(result);
                 edit.apply(editor, &mut self.temp_edits, &self.root, &self.json);
             }
+            "textDocument/codeAction" => {
+                let state = match self.code_action_state.take() {
+                    Some(state) => state,
+                    None => return,
+                };
+                let actions = match result {
+                    JsonValue::Array(actions) => actions,
+                    _ => return,
+                };
+
+                let entries = actions
+                    .clone()
+                    .elements(&self.json)
+                    .filter_map(|a| DocumentCodeAction::from_json(a, &self.json).ok())
+                    .filter(|a| !a.disabled)
+                    .map(|a| a.title.as_str(&self.json));
+
+                let mut ctx = ModeContext {
+                    editor,
+                    platform,
+                    clients,
+                    client_handle: state.client_handle,
+                };
+                picker::lsp_code_action::enter_mode(&mut ctx, self.handle, entries);
+
+                self.finish_code_action_state.code_actions_raw.clear();
+                self.json.write(
+                    &mut self.finish_code_action_state.code_actions_raw,
+                    &actions.into(),
+                );
+            }
             "textDocument/formatting" => {
                 let state = match self.formatting_state.take() {
                     Some(state) => state,
                     None => return,
                 };
                 let edits = match result {
-                    JsonValue::Null => return,
                     JsonValue::Array(edits) => edits,
                     _ => return,
                 };
