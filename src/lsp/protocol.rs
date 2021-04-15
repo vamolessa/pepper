@@ -1,6 +1,6 @@
 use std::{
     convert::From,
-    fmt, io,
+    fmt, fs, io,
     ops::Range,
     path::{Component, Path, Prefix},
 };
@@ -9,6 +9,7 @@ use crate::{
     buffer::{BufferCapabilities, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
     editor::Editor,
+    editor_utils::MessageKind,
     json::{
         FromJson, Json, JsonArray, JsonConvertError, JsonInteger, JsonKey, JsonObject, JsonString,
         JsonValue,
@@ -619,13 +620,65 @@ impl WorkspaceEdit {
                     }
                 }
                 WorkspaceEditChange::CreateFile(op) => {
-                    //
+                    let path = match Uri::parse(&root, op.uri.as_str(json)) {
+                        Some(Uri::AbsolutePath(path)) => path,
+                        Some(Uri::RelativePath(_, path)) => path,
+                        _ => return,
+                    };
+
+                    let mut open_options = fs::OpenOptions::new();
+                    open_options.write(true);
+                    if op.overwrite {
+                        open_options.truncate(true).create(true);
+                    } else {
+                        open_options.create_new(true);
+                    }
+                    if open_options.open(path).is_err() && !op.ignore_if_exists {
+                        editor
+                            .status_bar
+                            .write(MessageKind::Error)
+                            .fmt(format_args!("could not create file {:?}", path));
+                    }
                 }
                 WorkspaceEditChange::RenameFile(op) => {
-                    //
+                    let old_path = match Uri::parse(&root, op.old_uri.as_str(json)) {
+                        Some(Uri::AbsolutePath(path)) => path,
+                        Some(Uri::RelativePath(_, path)) => path,
+                        _ => return,
+                    };
+                    let new_path = match Uri::parse(&root, op.new_uri.as_str(json)) {
+                        Some(Uri::AbsolutePath(path)) => path,
+                        Some(Uri::RelativePath(_, path)) => path,
+                        _ => return,
+                    };
+
+                    if op.overwrite || !new_path.exists() || !op.ignore_if_exists {
+                        if fs::rename(old_path, new_path).is_err() && !op.ignore_if_exists {
+                        }
+                    }
                 }
                 WorkspaceEditChange::DeleteFile(op) => {
-                    //
+                    let path = match Uri::parse(&root, op.uri.as_str(json)) {
+                        Some(Uri::AbsolutePath(path)) => path,
+                        Some(Uri::RelativePath(_, path)) => path,
+                        _ => return,
+                    };
+
+                    if op.recursive {
+                        if fs::remove_dir_all(path).is_err() && !op.ignore_if_not_exists {
+                            editor
+                                .status_bar
+                                .write(MessageKind::Error)
+                                .fmt(format_args!("could not delete directory {:?}", path));
+                        }
+                    } else {
+                        if fs::remove_file(path).is_err() && !op.ignore_if_not_exists {
+                            editor
+                                .status_bar
+                                .write(MessageKind::Error)
+                                .fmt(format_args!("could not delete file {:?}", path));
+                        }
+                    }
                 }
             }
         }
