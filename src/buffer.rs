@@ -793,6 +793,7 @@ impl Buffer {
         self.handle
     }
 
+    // TODO: I think we can remove the `is_empty()` check
     pub fn path(&self) -> Option<&Path> {
         if self.path.as_os_str().is_empty() {
             None
