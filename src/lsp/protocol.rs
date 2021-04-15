@@ -8,7 +8,8 @@ use std::{
 use crate::{
     buffer_position::{BufferPosition, BufferRange},
     json::{
-        FromJson, Json, JsonConvertError, JsonInteger, JsonKey, JsonObject, JsonString, JsonValue,
+        FromJson, Json, JsonArray, JsonConvertError, JsonInteger, JsonKey, JsonObject, JsonString,
+        JsonValue,
     },
     platform::{Platform, PlatformRequest, ProcessHandle},
 };
@@ -214,7 +215,7 @@ impl ResponseError {
 impl<'json> FromJson<'json> for ResponseError {
     fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
         let value = match value {
-            JsonValue::Object(object) => object,
+            JsonValue::Object(value) => value,
             _ => return Err(JsonConvertError),
         };
         let mut this = Self::default();
@@ -266,7 +267,7 @@ impl From<DocumentPosition> for BufferPosition {
 impl<'json> FromJson<'json> for DocumentPosition {
     fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
         let value = match value {
-            JsonValue::Object(object) => object,
+            JsonValue::Object(value) => value,
             _ => return Err(JsonConvertError),
         };
         let mut this = Self::default();
@@ -310,7 +311,7 @@ impl From<DocumentRange> for BufferRange {
 impl<'json> FromJson<'json> for DocumentRange {
     fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
         let value = match value {
-            JsonValue::Object(object) => object,
+            JsonValue::Object(value) => value,
             _ => return Err(JsonConvertError),
         };
         let mut this = Self::default();
@@ -333,7 +334,7 @@ pub struct DocumentLocation {
 impl<'json> FromJson<'json> for DocumentLocation {
     fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
         let value = match value {
-            JsonValue::Object(object) => object,
+            JsonValue::Object(value) => value,
             _ => return Err(JsonConvertError),
         };
         let mut this = Self::default();
@@ -349,14 +350,14 @@ impl<'json> FromJson<'json> for DocumentLocation {
 }
 
 #[derive(Default)]
-pub struct DocumentEdit {
+pub struct TextEdit {
     pub range: DocumentRange,
     pub new_text: JsonString,
 }
-impl<'json> FromJson<'json> for DocumentEdit {
+impl<'json> FromJson<'json> for TextEdit {
     fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
         let value = match value {
-            JsonValue::Object(object) => object,
+            JsonValue::Object(value) => value,
             _ => return Err(JsonConvertError),
         };
         let mut this = Self::default();
@@ -367,6 +368,199 @@ impl<'json> FromJson<'json> for DocumentEdit {
                 _ => return Err(JsonConvertError),
             }
         }
+        Ok(this)
+    }
+}
+
+#[derive(Default)]
+pub struct DocumentEdit {
+    pub uri: JsonString,
+    pub edits: JsonArray,
+}
+impl DocumentEdit {
+    pub fn edits<'a>(
+        &'a self,
+        json: &'a Json,
+    ) -> impl 'a + Iterator<Item = Result<TextEdit, JsonConvertError>> {
+        self.edits
+            .clone()
+            .elements(json)
+            .map(move |e| TextEdit::from_json(e, json))
+    }
+}
+impl<'json> FromJson<'json> for DocumentEdit {
+    fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
+        let value = match value {
+            JsonValue::Object(value) => value,
+            _ => return Err(JsonConvertError),
+        };
+        let mut this = Self::default();
+        for (key, value) in value.members(json) {
+            match key {
+                "textDocument" => this.uri = JsonString::from_json(value.get("uri", json), json)?,
+                "edits" => this.edits = JsonArray::from_json(value, json)?,
+                _ => (),
+            }
+        }
+        Ok(this)
+    }
+}
+
+#[derive(Default)]
+pub struct CreateFileOperation {
+    pub uri: JsonString,
+    pub overwrite: bool,
+    pub ignore_if_exists: bool,
+}
+impl<'json> FromJson<'json> for CreateFileOperation {
+    fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
+        let value = match value {
+            JsonValue::Object(value) => value,
+            _ => return Err(JsonConvertError),
+        };
+        let mut this = Self::default();
+        for (key, value) in value.members(json) {
+            match key {
+                "uri" => this.uri = JsonString::from_json(value, json)?,
+                "options" => {
+                    for (key, value) in value.members(json) {
+                        match key {
+                            "overwrite" => {
+                                this.overwrite = matches!(value, JsonValue::Boolean(true))
+                            }
+                            "ignoreIfExists" => {
+                                this.ignore_if_exists = matches!(value, JsonValue::Boolean(true))
+                            }
+                            _ => (),
+                        }
+                    }
+                }
+                _ => (),
+            }
+        }
+        Ok(this)
+    }
+}
+
+#[derive(Default)]
+pub struct RenameFileOperation {
+    pub old_uri: JsonString,
+    pub new_uri: JsonString,
+    pub overwrite: bool,
+    pub ignore_if_exists: bool,
+}
+impl<'json> FromJson<'json> for RenameFileOperation {
+    fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
+        let value = match value {
+            JsonValue::Object(value) => value,
+            _ => return Err(JsonConvertError),
+        };
+        let mut this = Self::default();
+        for (key, value) in value.members(json) {
+            match key {
+                "oldUri" => this.old_uri = JsonString::from_json(value, json)?,
+                "newUri" => this.new_uri = JsonString::from_json(value, json)?,
+                "options" => {
+                    for (key, value) in value.members(json) {
+                        match key {
+                            "overwrite" => {
+                                this.overwrite = matches!(value, JsonValue::Boolean(true))
+                            }
+                            "ignoreIfExists" => {
+                                this.ignore_if_exists = matches!(value, JsonValue::Boolean(true))
+                            }
+                            _ => (),
+                        }
+                    }
+                }
+                _ => (),
+            }
+        }
+        Ok(this)
+    }
+}
+
+#[derive(Default)]
+pub struct DeleteFileOperation {
+    pub uri: JsonString,
+    pub recursive: bool,
+    pub ignore_if_not_exists: bool,
+}
+impl<'json> FromJson<'json> for DeleteFileOperation {
+    fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
+        let value = match value {
+            JsonValue::Object(value) => value,
+            _ => return Err(JsonConvertError),
+        };
+        let mut this = Self::default();
+        for (key, value) in value.members(json) {
+            match key {
+                "uri" => this.uri = JsonString::from_json(value, json)?,
+                "options" => {
+                    for (key, value) in value.members(json) {
+                        match key {
+                            "recursive" => {
+                                this.recursive = matches!(value, JsonValue::Boolean(true))
+                            }
+                            "ignoreIfNotExists" => {
+                                this.ignore_if_not_exists = matches!(value, JsonValue::Boolean(true))
+                            }
+                            _ => (),
+                        }
+                    }
+                }
+                _ => (),
+            }
+        }
+        Ok(this)
+    }
+}
+
+pub enum WorkspaceEditChange {
+    DocumentEdit(DocumentEdit),
+    CreateFile(CreateFileOperation),
+    RenameFile(RenameFileOperation),
+    DeleteFile(DeleteFileOperation),
+}
+impl<'json> FromJson<'json> for WorkspaceEditChange {
+    fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
+        let this = match value.clone().get("kind", json) {
+            JsonValue::String(s) => match s.as_str(json) {
+                "create" => Self::CreateFile(FromJson::from_json(value, json)?),
+                "rename" => Self::RenameFile(FromJson::from_json(value, json)?),
+                "delete" => Self::DeleteFile(FromJson::from_json(value, json)?),
+                _ => return Err(JsonConvertError),
+            },
+            _ => Self::DocumentEdit(FromJson::from_json(value, json)?),
+        };
+        Ok(this)
+    }
+}
+
+#[derive(Default)]
+pub struct WorkspaceEdit {
+    document_changes: JsonArray,
+}
+impl WorkspaceEdit {
+    pub fn changes<'a>(
+        &'a self,
+        json: &'a Json,
+    ) -> impl 'a + Iterator<Item = Result<WorkspaceEditChange, JsonConvertError>> {
+        self.document_changes
+            .clone()
+            .elements(json)
+            .map(move |e| WorkspaceEditChange::from_json(e, json))
+    }
+}
+impl<'json> FromJson<'json> for WorkspaceEdit {
+    fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
+        let value = match value {
+            JsonValue::Object(value) => value,
+            _ => return Err(JsonConvertError),
+        };
+        let mut this = Self::default();
+        let changes = value.get("documentChanges", json);
+        this.document_changes = FromJson::from_json(changes, json)?;
         Ok(this)
     }
 }

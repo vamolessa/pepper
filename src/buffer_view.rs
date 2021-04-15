@@ -577,13 +577,12 @@ impl BufferViewCollection {
         path: &Path,
         events: &mut EditorEventQueue,
     ) -> BufferViewHandle {
-        if let Some(buffer) = buffers.find_with_path(root, path) {
-            let buffer_handle = buffer.handle();
+        if let Some(buffer_handle) = buffers.find_with_path(root, path) {
             self.buffer_view_handle_from_buffer_handle(client_handle, buffer_handle)
         } else {
             let path = path.strip_prefix(root).unwrap_or(path);
 
-            let buffer = buffers.new();
+            let buffer = buffers.add_new();
             buffer.set_path(path);
             buffer.capabilities = BufferCapabilities::text();
             let _ = buffer.discard_and_reload_from_file(word_database, events);
@@ -614,7 +613,7 @@ mod tests {
             let mut word_database = WordDatabase::new();
 
             let mut buffers = BufferCollection::default();
-            let buffer = buffers.new();
+            let buffer = buffers.add_new();
             buffer.capabilities = BufferCapabilities::text();
             buffer.insert_text(
                 &mut word_database,

@@ -1210,7 +1210,7 @@ pub struct BufferCollection {
 }
 
 impl BufferCollection {
-    pub fn new(&mut self) -> &mut Buffer {
+    pub fn add_new(&mut self) -> &mut Buffer {
         let mut handle = None;
         for (i, buffer) in self.buffers.iter_mut().enumerate() {
             if !buffer.alive {
@@ -1250,7 +1250,7 @@ impl BufferCollection {
         }
     }
 
-    pub fn find_with_path(&self, root: &Path, path: &Path) -> Option<&Buffer> {
+    pub fn find_with_path(&self, root: &Path, path: &Path) -> Option<BufferHandle> {
         if path.as_os_str().len() == 0 {
             return None;
         }
@@ -1262,7 +1262,7 @@ impl BufferCollection {
             let buffer_path = buffer_path.strip_prefix(root).unwrap_or(buffer_path);
 
             if buffer_path == path {
-                return Some(buffer);
+                return Some(buffer.handle());
             }
         }
 

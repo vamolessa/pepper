@@ -1344,7 +1344,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             };
 
             let log_buffer_handle = log_buffer.map(|path| {
-                let mut buffer = ctx.editor.buffers.new();
+                let mut buffer = ctx.editor.buffers.add_new();
                 buffer.capabilities = BufferCapabilities::log();
                 let buffer_handle = buffer.handle();
                 buffer.set_path(Path::new(path));

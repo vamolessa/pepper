@@ -24,9 +24,9 @@ use crate::{
     lsp::{
         capabilities,
         protocol::{
-            self, DocumentEdit, DocumentLocation, DocumentPosition, DocumentRange,
-            PendingRequestColection, Protocol, ResponseError, ServerEvent, ServerNotification,
-            ServerRequest, ServerResponse, Uri,
+            self, DocumentLocation, DocumentPosition, DocumentRange, PendingRequestColection,
+            Protocol, ResponseError, ServerEvent, ServerNotification, ServerRequest,
+            ServerResponse, TextEdit, Uri, WorkspaceEdit, WorkspaceEditChange,
         },
     },
     mode::{read_line, ModeContext},
@@ -1267,7 +1267,11 @@ impl Client {
                         Some(Uri::RelativePath(_, path)) => path,
                         _ => continue,
                     };
-                    if let Some(buffer) = editor.buffers.find_with_path(&self.root, path) {
+                    if let Some(buffer) = editor
+                        .buffers
+                        .find_with_path(&self.root, path)
+                        .and_then(|h| editor.buffers.get(h))
+                    {
                         buffer
                             .content()
                             .append_range_text_to_string(location.range.into(), &mut buffer_name);
@@ -1450,11 +1454,45 @@ impl Client {
                 });
             }
             "textDocument/rename" => {
-                let edit = match result {
-                    JsonValue::Object(edit) => edit,
-                    _ => return,
-                };
-                // TODO
+                let edit: WorkspaceEdit = deserialize!(result);
+                for change in edit.changes(&self.json) {
+                    let change = match change {
+                        Ok(change) => change,
+                        Err(_) => continue,
+                    };
+                    match change {
+                        WorkspaceEditChange::DocumentEdit(edit) => {
+                            let path = match Uri::parse(&self.root, edit.uri.as_str(&self.json)) {
+                                Some(Uri::AbsolutePath(path)) => path,
+                                Some(Uri::RelativePath(_, path)) => path,
+                                _ => continue,
+                            };
+                            let buffer_handle = editor.buffers.find_with_path(&self.root, path);
+                            let is_temp = buffer_handle.is_none();
+                            let buffer = match buffer_handle {
+                                Some(handle) => editor.buffers.get_mut(handle).unwrap(),
+                                None => editor.buffers.add_new(),
+                            };
+
+                            for edit in edit.edits(&self.json) {
+                                let edit = match edit {
+                                    Ok(edit) => edit,
+                                    Err(_) => continue,
+                                };
+                            }
+                            //
+                        }
+                        WorkspaceEditChange::CreateFile(op) => {
+                            //
+                        }
+                        WorkspaceEditChange::RenameFile(op) => {
+                            //
+                        }
+                        WorkspaceEditChange::DeleteFile(op) => {
+                            //
+                        }
+                    }
+                }
             }
             "textDocument/formatting" => {
                 let state = match self.formatting_state.take() {
@@ -1477,7 +1515,7 @@ impl Client {
 
                 self.formatting_edits.clear();
                 for edit in edits.clone().elements(&self.json) {
-                    let edit = match DocumentEdit::from_json(edit, &self.json) {
+                    let edit = match TextEdit::from_json(edit, &self.json) {
                         Ok(edit) => edit,
                         Err(_) => return,
                     };
@@ -2110,7 +2148,7 @@ impl ClientManager {
                 };
 
                 let log_buffer_handle = if !recipe.log_buffer_name.is_empty() {
-                    let mut buffer = editor.buffers.new();
+                    let mut buffer = editor.buffers.add_new();
                     buffer.capabilities = BufferCapabilities::log();
                     buffer.set_path(Path::new(&recipe.log_buffer_name));
                     Some(buffer.handle())
