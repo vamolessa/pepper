@@ -10,7 +10,7 @@ macro_rules! declare_json_object {
         #[allow(non_snake_case)]
         $(#[$attribute])*
         struct $struct_name {
-            $($member_name : $member_type,)*
+            pub $($member_name : $member_type,)*
         }
         impl<'json> $crate::json::FromJson<'json> for $struct_name {
             fn from_json(

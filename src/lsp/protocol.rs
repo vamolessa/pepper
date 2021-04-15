@@ -240,7 +240,7 @@ pub struct DocumentPosition {
     pub character: u32,
 }
 impl DocumentPosition {
-    pub fn to_json_value(&self, json: &mut Json) -> JsonValue {
+    pub fn to_json_value(self, json: &mut Json) -> JsonValue {
         let mut value = JsonObject::default();
         value.set("line".into(), JsonValue::Integer(self.line as _), json);
         value.set(
@@ -291,7 +291,7 @@ pub struct DocumentRange {
     pub end: DocumentPosition,
 }
 impl DocumentRange {
-    pub fn to_json_value(&self, json: &mut Json) -> JsonValue {
+    pub fn to_json_value(self, json: &mut Json) -> JsonValue {
         let mut value = JsonObject::default();
         value.set("start".into(), self.start.to_json_value(json), json);
         value.set("end".into(), self.end.to_json_value(json), json);
@@ -300,6 +300,7 @@ impl DocumentRange {
 }
 impl From<BufferRange> for DocumentRange {
     fn from(range: BufferRange) -> Self {
+        // TODO: handle utf8 to utf16
         Self {
             start: range.from.into(),
             end: range.to.into(),
@@ -308,6 +309,7 @@ impl From<BufferRange> for DocumentRange {
 }
 impl From<DocumentRange> for BufferRange {
     fn from(range: DocumentRange) -> Self {
+        // TODO: handle utf16 to utf8
         BufferRange::between(range.start.into(), range.end.into())
     }
 }
@@ -653,8 +655,7 @@ impl WorkspaceEdit {
                     };
 
                     if op.overwrite || !new_path.exists() || !op.ignore_if_exists {
-                        if fs::rename(old_path, new_path).is_err() && !op.ignore_if_exists {
-                        }
+                        if fs::rename(old_path, new_path).is_err() && !op.ignore_if_exists {}
                     }
                 }
                 WorkspaceEditChange::DeleteFile(op) => {
@@ -693,6 +694,40 @@ impl<'json> FromJson<'json> for WorkspaceEdit {
         let mut this = Self::default();
         let changes = value.get("documentChanges", json);
         this.document_changes = FromJson::from_json(changes, json)?;
+        Ok(this)
+    }
+}
+
+#[derive(Default)]
+pub struct DocumentDiagnostic {
+    pub message: JsonString,
+    pub range: DocumentRange,
+    pub data: JsonValue,
+}
+impl DocumentDiagnostic {
+    pub fn to_json_value(self, json: &mut Json) -> JsonValue {
+        let mut value = JsonObject::default();
+        value.set("message".into(), self.message.into(), json);
+        value.set("range".into(), self.range.to_json_value(json), json);
+        value.set("data".into(), self.data, json);
+        value.into()
+    }
+}
+impl<'json> FromJson<'json> for DocumentDiagnostic {
+    fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
+        let value = match value {
+            JsonValue::Object(value) => value,
+            _ => return Err(JsonConvertError),
+        };
+        let mut this = Self::default();
+        for (key, value) in value.members(json) {
+            match key {
+                "message" => this.message = JsonString::from_json(value, json)?,
+                "range" => this.range = DocumentRange::from_json(value, json)?,
+                "data" => this.data = value,
+                _ => (),
+            }
+        }
         Ok(this)
     }
 }

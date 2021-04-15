@@ -1212,7 +1212,7 @@ impl ModeState for State {
                     .buffer_diagnostics(buffer_view.buffer_handle);
 
                 if let Ok(index) = diagnostics.binary_search_by(|d| {
-                    let range = d.utf16_range;
+                    let range = d.range;
                     if range.to < main_position {
                         Ordering::Less
                     } else if range.from > main_position {
@@ -1463,17 +1463,15 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) -> Option<()> {
 
         if forward {
             for d in diagnostics.iter() {
-                let range = d.utf16_range;
-                if range.from > main_position {
-                    next_diagnostic = Some((path, buffer_handle, range.from));
+                if d.range.from > main_position {
+                    next_diagnostic = Some((path, buffer_handle, d.range.from));
                     break;
                 }
             }
         } else {
             for d in diagnostics.iter().rev() {
-                let range = d.utf16_range;
-                if range.from < main_position {
-                    next_diagnostic = Some((path, buffer_handle, range.from));
+                if d.range.from < main_position {
+                    next_diagnostic = Some((path, buffer_handle, d.range.from));
                     break;
                 }
             }
@@ -1486,9 +1484,9 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) -> Option<()> {
         forward: bool,
     ) -> BufferPosition {
         if forward {
-            diagnostics[0].utf16_range.from
+            diagnostics[0].range.from
         } else {
-            diagnostics[diagnostics.len() - 1].utf16_range.from
+            diagnostics[diagnostics.len() - 1].range.from
         }
     }
 

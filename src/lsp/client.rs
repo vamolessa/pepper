@@ -24,9 +24,9 @@ use crate::{
     lsp::{
         capabilities,
         protocol::{
-            self, DocumentLocation, DocumentPosition, DocumentRange, PendingRequestColection,
-            Protocol, ResponseError, ServerEvent, ServerNotification, ServerRequest,
-            ServerResponse, TextEdit, Uri, WorkspaceEdit,
+            self, DocumentDiagnostic, DocumentLocation, DocumentPosition, DocumentRange,
+            PendingRequestColection, Protocol, ResponseError, ServerEvent, ServerNotification,
+            ServerRequest, ServerResponse, TextEdit, Uri, WorkspaceEdit,
         },
     },
     mode::{read_line, ModeContext},
@@ -34,7 +34,7 @@ use crate::{
 };
 
 #[derive(Default)]
-struct GenericCapability(bool);
+struct GenericCapability(pub bool);
 impl<'json> FromJson<'json> for GenericCapability {
     fn from_json(value: JsonValue, _: &'json Json) -> Result<Self, JsonConvertError> {
         match value {
@@ -45,10 +45,11 @@ impl<'json> FromJson<'json> for GenericCapability {
         }
     }
 }
+
 #[derive(Default)]
 struct TriggerCharactersCapability {
-    on: bool,
-    trigger_characters: String,
+    pub on: bool,
+    pub trigger_characters: String,
 }
 impl<'json> FromJson<'json> for TriggerCharactersCapability {
     fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
@@ -74,10 +75,11 @@ impl<'json> FromJson<'json> for TriggerCharactersCapability {
         }
     }
 }
+
 #[derive(Default)]
 struct RenameCapability {
-    on: bool,
-    prepare_provider: bool,
+    pub on: bool,
+    pub prepare_provider: bool,
 }
 impl<'json> FromJson<'json> for RenameCapability {
     fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
@@ -101,15 +103,44 @@ impl<'json> FromJson<'json> for RenameCapability {
         }
     }
 }
+
+#[derive(Default)]
+struct CodeActionCapability {
+    pub on: bool,
+    pub resolve_provider: bool,
+}
+impl<'json> FromJson<'json> for CodeActionCapability {
+    fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
+        match value {
+            JsonValue::Null => Ok(Self {
+                on: false,
+                resolve_provider: false,
+            }),
+            JsonValue::Boolean(b) => Ok(Self {
+                on: b,
+                resolve_provider: false,
+            }),
+            JsonValue::Object(options) => Ok(Self {
+                on: true,
+                resolve_provider: matches!(
+                    options.get("resolveProvider", &json),
+                    JsonValue::Boolean(true)
+                ),
+            }),
+            _ => Err(JsonConvertError),
+        }
+    }
+}
+
 enum TextDocumentSyncKind {
     None,
     Full,
     Incremental,
 }
 struct TextDocumentSyncCapability {
-    open_close: bool,
-    change: TextDocumentSyncKind,
-    save: TextDocumentSyncKind,
+    pub open_close: bool,
+    pub change: TextDocumentSyncKind,
+    pub save: TextDocumentSyncKind,
 }
 impl Default for TextDocumentSyncCapability {
     fn default() -> Self {
@@ -197,6 +228,7 @@ declare_json_object! {
         implementationProvider: GenericCapability,
         referencesProvider: GenericCapability,
         documentSymbolProvider: GenericCapability,
+        codeActionProvider: CodeActionCapability,
         documentFormattingProvider: GenericCapability,
         renameProvider: RenameCapability,
         workspaceSymbolProvider: GenericCapability,
@@ -206,7 +238,22 @@ declare_json_object! {
 // TODO: move to buffer.rs
 pub struct Diagnostic {
     pub message: String,
-    pub utf16_range: BufferRange,
+    pub range: BufferRange,
+    pub data: Vec<u8>,
+}
+impl Diagnostic {
+    pub fn as_document_diagnostic(&self, json: &mut Json) -> DocumentDiagnostic {
+        let mut cursor = io::Cursor::new(&self.data);
+        let data = match json.read(&mut cursor) {
+            Ok(value) => value,
+            Err(_) => JsonValue::Null,
+        };
+        DocumentDiagnostic {
+            message: json.create_string(&self.message),
+            range: self.range.into(),
+            data,
+        }
+    }
 }
 
 struct BufferDiagnosticCollection {
@@ -216,23 +263,30 @@ struct BufferDiagnosticCollection {
     len: usize,
 }
 impl BufferDiagnosticCollection {
-    pub fn add(&mut self, message: &str, range: BufferRange) {
+    pub fn add(&mut self, diagnostic: DocumentDiagnostic, json: &Json) {
+        let message = diagnostic.message.as_str(json);
+        let range = diagnostic.range.into();
+
         if self.len < self.diagnostics.len() {
             let diagnostic = &mut self.diagnostics[self.len];
             diagnostic.message.clear();
             diagnostic.message.push_str(message);
-            diagnostic.utf16_range = range;
+            diagnostic.range = range;
+            diagnostic.data.clear();
         } else {
             self.diagnostics.push(Diagnostic {
                 message: message.into(),
-                utf16_range: range,
+                range: range.into(),
+                data: Vec::new(),
             });
         }
+
+        json.write(&mut self.diagnostics[self.len].data, &diagnostic.data);
         self.len += 1;
     }
 
     pub fn sort(&mut self) {
-        self.diagnostics.sort_by_key(|d| d.utf16_range.from);
+        self.diagnostics.sort_by_key(|d| d.range.from);
     }
 }
 
@@ -438,6 +492,10 @@ struct FinishRenameState {
     pub buffer_position: BufferPosition,
 }
 
+struct CodeActionState {
+    //
+}
+
 struct FormattingState {
     pub buffer_handle: BufferHandle,
 }
@@ -527,7 +585,7 @@ impl Client {
             None => return,
         };
 
-        helper::send_pending_did_change(self, platform, editor);
+        helper::send_pending_did_change(self, editor, platform);
 
         let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
         let position = DocumentPosition::from(position);
@@ -559,7 +617,7 @@ impl Client {
             None => return,
         };
 
-        helper::send_pending_did_change(self, platform, editor);
+        helper::send_pending_did_change(self, editor, platform);
 
         let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
         let position = DocumentPosition::from(position);
@@ -595,7 +653,7 @@ impl Client {
             None => return,
         };
 
-        helper::send_pending_did_change(self, platform, editor);
+        helper::send_pending_did_change(self, editor, platform);
 
         let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
         let position = DocumentPosition::from(position);
@@ -634,7 +692,7 @@ impl Client {
             None => return,
         };
 
-        helper::send_pending_did_change(self, platform, editor);
+        helper::send_pending_did_change(self, editor, platform);
 
         let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
         let position = DocumentPosition::from(position);
@@ -681,7 +739,7 @@ impl Client {
             None => return,
         };
 
-        helper::send_pending_did_change(self, platform, editor);
+        helper::send_pending_did_change(self, editor, platform);
 
         let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
         let position = DocumentPosition::from(buffer_position);
@@ -729,7 +787,7 @@ impl Client {
             None => return,
         };
 
-        helper::send_pending_did_change(self, platform, editor);
+        helper::send_pending_did_change(self, editor, platform);
 
         let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
         let position = DocumentPosition::from(state.buffer_position);
@@ -748,9 +806,49 @@ impl Client {
         self.request(platform, "textDocument/rename", params);
     }
 
-    // TODO: this request
-    pub fn code_action() {
+    pub fn code_action(
+        &mut self,
+        editor: &Editor,
+        platform: &mut Platform,
+        buffer_handle: BufferHandle,
+        range: BufferRange,
+    ) {
         // https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocument_codeAction
+        if !self.server_capabilities.codeActionProvider.on {
+            return;
+        }
+
+        let buffer_path = match editor.buffers.get(buffer_handle).map(Buffer::path) {
+            Some(path) => path,
+            None => return,
+        };
+
+        helper::send_pending_did_change(self, editor, platform);
+
+        let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
+
+        let mut diagnostics = JsonArray::default();
+        for diagnostic in self.diagnostics.buffer_diagnostics(buffer_handle) {
+            if diagnostic.range.from <= range.from && range.from < diagnostic.range.to
+                || diagnostic.range.from <= range.to && range.to < diagnostic.range.to
+            {
+                let diagnostic = diagnostic.as_document_diagnostic(&mut self.json);
+                diagnostics.push(diagnostic.to_json_value(&mut self.json), &mut self.json);
+            }
+        }
+
+        let mut context = JsonObject::default();
+        context.set("diagnostics".into(), diagnostics.into(), &mut self.json);
+
+        let mut params = JsonObject::default();
+        params.set("textDocument".into(), text_document.into(), &mut self.json);
+        params.set(
+            "range".into(),
+            DocumentRange::from(range).to_json_value(&mut self.json),
+            &mut self.json,
+        );
+
+        self.request(platform, "textDocument/codeAction", params);
     }
 
     pub fn formatting(
@@ -771,7 +869,7 @@ impl Client {
             None => return,
         };
 
-        helper::send_pending_did_change(self, platform, editor);
+        helper::send_pending_did_change(self, editor, platform);
 
         let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
         let mut options = JsonObject::default();
@@ -1069,18 +1167,8 @@ impl Client {
 
                 let diagnostics = self.diagnostics.path_diagnostics_mut(editor, path);
                 for diagnostic in params.diagnostics.elements(&self.json) {
-                    declare_json_object! {
-                        struct Diagnostic {
-                            message: JsonString,
-                            range: DocumentRange,
-                        }
-                    }
-
-                    let diagnostic: Diagnostic = deserialize!(diagnostic);
-                    diagnostics.add(
-                        diagnostic.message.as_str(&self.json),
-                        diagnostic.range.into(),
-                    );
+                    let diagnostic = deserialize!(diagnostic);
+                    diagnostics.add(diagnostic, &self.json);
                 }
                 diagnostics.sort();
                 self.diagnostics.clear_empty();
@@ -1149,7 +1237,7 @@ impl Client {
                 self.notify(platform, "initialized", JsonObject::default());
 
                 for buffer in editor.buffers.iter() {
-                    helper::send_did_open(self, platform, editor, buffer.handle());
+                    helper::send_did_open(self, editor, platform, buffer.handle());
                 }
             }
             "textDocument/hover" => {
@@ -1497,13 +1585,13 @@ impl Client {
         while let Some(event) = events.next(&editor.events) {
             match event {
                 &EditorEvent::Idle => {
-                    helper::send_pending_did_change(self, platform, editor);
+                    helper::send_pending_did_change(self, editor, platform);
                 }
                 &EditorEvent::BufferLoad { handle } => {
                     let handle = handle;
                     self.versioned_buffers.dispose(handle);
                     self.diagnostics.on_load_buffer(editor, handle);
-                    helper::send_did_open(self, platform, editor, handle);
+                    helper::send_did_open(self, editor, platform, handle);
                 }
                 &EditorEvent::BufferInsertText {
                     handle,
@@ -1519,8 +1607,8 @@ impl Client {
                 }
                 &EditorEvent::BufferSave { handle, .. } => {
                     self.diagnostics.on_save_buffer(editor, handle);
-                    helper::send_pending_did_change(self, platform, editor);
-                    helper::send_did_save(self, platform, editor, handle);
+                    helper::send_pending_did_change(self, editor, platform);
+                    helper::send_did_save(self, editor, platform, handle);
                 }
                 &EditorEvent::BufferClose { handle } => {
                     if self.log_buffer_handle == Some(handle) {
@@ -1528,8 +1616,8 @@ impl Client {
                     }
                     self.versioned_buffers.dispose(handle);
                     self.diagnostics.on_close_buffer(handle);
-                    helper::send_pending_did_change(self, platform, editor);
-                    helper::send_did_close(self, platform, editor, handle);
+                    helper::send_pending_did_change(self, editor, platform);
+                    helper::send_did_close(self, editor, platform, handle);
                 }
                 EditorEvent::ClientChangeBufferView { .. } => (),
             }
@@ -1669,8 +1757,8 @@ mod helper {
 
     pub fn send_did_open(
         client: &mut Client,
-        platform: &mut Platform,
         editor: &Editor,
+        platform: &mut Platform,
         buffer_handle: BufferHandle,
     ) {
         if !client.server_capabilities.textDocumentSync.open_close {
@@ -1705,7 +1793,7 @@ mod helper {
         client.notify(platform, "textDocument/didOpen", params.into());
     }
 
-    pub fn send_pending_did_change(client: &mut Client, platform: &mut Platform, editor: &Editor) {
+    pub fn send_pending_did_change(client: &mut Client, editor: &Editor, platform: &mut Platform) {
         if let TextDocumentSyncKind::None = client.server_capabilities.textDocumentSync.change {
             return;
         }
@@ -1775,8 +1863,8 @@ mod helper {
 
     pub fn send_did_save(
         client: &mut Client,
-        platform: &mut Platform,
         editor: &Editor,
+        platform: &mut Platform,
         buffer_handle: BufferHandle,
     ) {
         if let TextDocumentSyncKind::None = client.server_capabilities.textDocumentSync.save {
@@ -1809,8 +1897,8 @@ mod helper {
 
     pub fn send_did_close(
         client: &mut Client,
-        platform: &mut Platform,
         editor: &Editor,
+        platform: &mut Platform,
         buffer_handle: BufferHandle,
     ) {
         if !client.server_capabilities.textDocumentSync.open_close {

@@ -225,7 +225,7 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
     let mut current_diagnostic_index = 0;
     let mut current_diagnostic_range = BufferRange::default();
     if let Some(diagnostic) = diagnostics.get(current_diagnostic_index) {
-        current_diagnostic_range = diagnostic.utf16_range;
+        current_diagnostic_range = diagnostic.range;
     }
 
     'lines_loop: for line in buffer_content.lines().skip(line_index) {
@@ -289,7 +289,7 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
                 && current_diagnostic_index < diagnostics_end_index
             {
                 current_diagnostic_index += 1;
-                current_diagnostic_range = diagnostics[current_diagnostic_index].utf16_range;
+                current_diagnostic_range = diagnostics[current_diagnostic_index].range;
             }
             let inside_diagnostic_range = current_diagnostic_range.from <= char_position
                 && char_position < current_diagnostic_range.to;
