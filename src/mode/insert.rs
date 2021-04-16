@@ -196,7 +196,8 @@ impl ModeState for State {
         match find_lsp_client(ctx.editor, buffer.handle()) {
             Some(lsp_client) => {
                 if lsp_client.signature_help_triggers().contains(character) {
-                    // TODO
+                    // TODO signature help
+                    return None;
                 }
 
                 if lsp_client.completion_triggers().contains(character) {
