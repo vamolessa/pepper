@@ -575,6 +575,14 @@ impl Client {
         &self.diagnostics
     }
 
+    pub fn completion_triggers(&self) -> &str {
+        &self.server_capabilities.completionProvider.trigger_characters
+    }
+    
+    pub fn signature_help_triggers(&self) -> &str {
+        &self.server_capabilities.signatureHelpProvider.trigger_characters
+    }
+
     pub fn cancel_current_request(&mut self) {
         self.request_state = RequestState::Idle;
     }
@@ -2365,6 +2373,13 @@ impl ClientManager {
     pub fn stop_all(&mut self, platform: &mut Platform) {
         for i in 0..self.entries.len() {
             self.stop(platform, ClientHandle(i as _));
+        }
+    }
+
+    pub fn get(&self, handle: ClientHandle) -> Option<&Client> {
+        match self.entries[handle.0 as usize] {
+            ClientEntry::Occupied(ref client) => Some(client),
+            _ => None,
         }
     }
 

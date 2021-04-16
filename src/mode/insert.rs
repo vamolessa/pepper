@@ -4,6 +4,7 @@ use crate::{
     buffer_position::BufferPosition,
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     editor::{Editor, KeysIterator},
+    lsp,
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     platform::Key,
     register::AUTO_MACRO_REGISTER,
@@ -11,7 +12,10 @@ use crate::{
 };
 
 #[derive(Default)]
-pub struct State;
+pub struct State {
+    lsp_client_handle: Option<lsp::ClientHandle>,
+    //lsp_completion_position: Option<BufferPosition>,
+}
 
 impl ModeState for State {
     fn on_enter(ctx: &mut ModeContext) {
@@ -120,6 +124,32 @@ impl ModeState for State {
                     s,
                     &mut ctx.editor.events,
                 );
+
+                let buffer_path = ctx
+                    .editor
+                    .buffers
+                    .get(buffer_view.buffer_handle)?
+                    .path()
+                    .to_str()?
+                    .as_bytes();
+
+                let lsp_client_handle = ctx.editor.mode.insert_state.lsp_client_handle;
+                let lsp_client = lsp_client_handle
+                    .and_then(|h| ctx.editor.lsp.get(h))
+                    .or_else(|| {
+                        ctx.editor
+                            .lsp
+                            .clients()
+                            .find(|c| c.handles_path(buffer_path))
+                    })?;
+
+                if lsp_client.completion_triggers().contains(c) {
+                    // TODO
+                }
+
+                if lsp_client.signature_help_triggers().contains(c) {
+                    // TODO
+                }
             }
             Key::Backspace => {
                 let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;

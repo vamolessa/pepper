@@ -1400,27 +1400,6 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
-        name: "lsp-signature-help",
-        alias: "",
-        help: concat!(
-            "performs a lsp signature help action at the current buffer's main cursor position\n",
-            "lsp-signature-help",
-        ),
-        hidden: false,
-        completions: &[],
-        func: |mut ctx| {
-            ctx.args.assert_no_bang()?;
-            ctx.args.get_flags(&mut [])?;
-            ctx.args.assert_empty()?;
-
-            let (buffer_handle, cursor) = current_buffer_and_main_cursor(&ctx)?;
-            access_lsp(&mut ctx, buffer_handle, |editor, platform, _, client| {
-                client.signature_help(editor, platform, buffer_handle, cursor.position)
-            })?;
-            Ok(None)
-        },
-    },
-    BuiltinCommand {
         name: "lsp-definition",
         alias: "",
         help: concat!(
