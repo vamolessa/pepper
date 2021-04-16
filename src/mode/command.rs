@@ -122,7 +122,7 @@ impl ModeState for State {
 
 fn apply_completion(ctx: &mut ModeContext, cursor_movement: isize) {
     ctx.editor.picker.move_cursor(cursor_movement);
-    if let Some(entry) = ctx.editor.picker.current_entry(&ctx.editor.word_database) {
+    if let Some((_, entry)) = ctx.editor.picker.current_entry(&ctx.editor.word_database) {
         let input = ctx.editor.read_line.input_mut();
         input.truncate(ctx.editor.mode.command_state.completion_index);
         input.push_str(entry);

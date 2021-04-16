@@ -4,6 +4,7 @@ use crate::{
     editor_utils::ReadLinePoll,
     lsp,
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
+    picker::EntrySource,
     platform::Key,
     word_database::WordIndicesIter,
 };
@@ -111,7 +112,7 @@ pub mod buffer {
             }
 
             let path = match ctx.editor.picker.current_entry(&ctx.editor.word_database) {
-                Some(entry) => entry,
+                Some((_, entry)) => entry,
                 None => {
                     Mode::change_to(ctx, ModeKind::default());
                     return None;
@@ -180,7 +181,11 @@ pub mod lsp_code_action {
                 ReadLinePoll::Pending => None,
                 ReadLinePoll::Submitted => {
                     if let Some(handle) = ctx.editor.mode.picker_state.lsp_client_handle {
-                        let index = ctx.editor.picker.cursor().unwrap_or(0);
+                        let index = match ctx.editor.picker.current_entry(&ctx.editor.word_database)
+                        {
+                            Some((EntrySource::Custom(i), _)) => i,
+                            _ => 0,
+                        };
                         lsp::ClientManager::access(ctx.editor, handle, |e, c| {
                             c.finish_code_action(e, index);
                         });
@@ -221,8 +226,7 @@ pub mod lsp_code_action {
 pub mod lsp_document_symbol {
     use super::*;
 
-    pub fn enter_mode(ctx: &mut ModeContext, client_handle: lsp::ClientHandle)
-    {
+    pub fn enter_mode(ctx: &mut ModeContext, client_handle: lsp::ClientHandle) {
         fn on_client_keys(
             ctx: &mut ModeContext,
             _: &mut KeysIterator,
@@ -232,7 +236,11 @@ pub mod lsp_document_symbol {
                 ReadLinePoll::Pending => None,
                 ReadLinePoll::Submitted => {
                     if let Some(handle) = ctx.editor.mode.picker_state.lsp_client_handle {
-                        let index = ctx.editor.picker.cursor().unwrap_or(0);
+                        let index = match ctx.editor.picker.current_entry(&ctx.editor.word_database)
+                        {
+                            Some((EntrySource::Custom(i), _)) => i,
+                            _ => 0,
+                        };
                         lsp::ClientManager::access(ctx.editor, handle, |e, c| {
                             c.finish_document_symbols(e, index);
                         });
@@ -288,7 +296,7 @@ pub mod custom {
                     let entry = ctx.editor.picker.current_entry(&ctx.editor.word_database);
 
                     let mut operation = None;
-                    if let Some(entry) = entry {
+                    if let Some((_, entry)) = entry {
                         replace_to_between_text_markers(&mut continuation, entry_var_name, entry);
                         operation = CommandManager::eval_commands_then_output(
                             ctx.editor,

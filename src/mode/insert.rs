@@ -214,7 +214,7 @@ impl ModeState for State {
 fn apply_completion(editor: &mut Editor, handle: BufferViewHandle, cursor_movement: isize) {
     editor.picker.move_cursor(cursor_movement);
     let entry = match editor.picker.current_entry(&editor.word_database) {
-        Some(entry) => entry,
+        Some((_, entry)) => entry,
         None => return,
     };
     let buffer_view = match editor.buffer_views.get_mut(handle) {

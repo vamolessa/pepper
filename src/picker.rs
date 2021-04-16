@@ -4,13 +4,14 @@ use fuzzy_matcher::{skim::SkimMatcherV2, FuzzyMatcher};
 
 use crate::word_database::{WordDatabase, WordIndicesIter};
 
-enum FilteredEntrySource {
+#[derive(Clone, Copy)]
+pub enum EntrySource {
     Custom(usize),
     WordDatabase(usize),
 }
 
 struct FilteredEntry {
-    pub source: FilteredEntrySource,
+    pub source: EntrySource,
     pub score: i64,
 }
 
@@ -148,7 +149,7 @@ impl Picker {
         for (i, word) in word_indices {
             if let Some(score) = self.fuzzy_match(word, pattern) {
                 self.filtered_entries.push(FilteredEntry {
-                    source: FilteredEntrySource::WordDatabase(i),
+                    source: EntrySource::WordDatabase(i),
                     score,
                 });
             }
@@ -177,16 +178,17 @@ impl Picker {
         };
 
         self.filtered_entries.push(FilteredEntry {
-            source: FilteredEntrySource::Custom(index),
+            source: EntrySource::Custom(index),
             score,
         });
         true
     }
 
-    pub fn current_entry<'a>(&'a self, words: &'a WordDatabase) -> Option<&'a str> {
+    pub fn current_entry<'a>(&'a self, words: &'a WordDatabase) -> Option<(EntrySource, &'a str)> {
         let entry = &self.filtered_entries[self.cursor?];
+        let source = entry.source;
         let entry = filtered_to_picker_entry(entry, &self.custom_entries_buffer, words);
-        Some(entry)
+        Some((source, entry))
     }
 
     pub fn entries<'a>(
@@ -206,7 +208,7 @@ fn filtered_to_picker_entry<'a>(
     words: &'a WordDatabase,
 ) -> &'a str {
     match entry.source {
-        FilteredEntrySource::Custom(i) => &custom_entries[i],
-        FilteredEntrySource::WordDatabase(i) => words.word_at(i),
+        EntrySource::Custom(i) => &custom_entries[i],
+        EntrySource::WordDatabase(i) => words.word_at(i),
     }
 }
