@@ -127,13 +127,14 @@ impl ModeState for State {
                 );
 
                 let buffer_handle = buffer_view.buffer_handle;
-                let lsp_client = find_lsp_client(ctx.editor, buffer_handle)?;
-                if lsp_client.completion_triggers().contains(c) {
-                    // TODO
-                }
+                if let Some(lsp_client) = find_lsp_client(ctx.editor, buffer_handle) {
+                    if lsp_client.completion_triggers().contains(c) {
+                        // TODO
+                    }
 
-                if lsp_client.signature_help_triggers().contains(c) {
-                    // TODO
+                    if lsp_client.signature_help_triggers().contains(c) {
+                        // TODO
+                    }
                 }
             }
             Key::Backspace => {
@@ -197,8 +198,8 @@ impl ModeState for State {
                 [..word_position.column_byte_index]
                 .char_indices()
                 .next_back()
-                .map(|(i, _)| i)
-                .unwrap_or(0);
+                .unwrap_or((0, char::default()))
+                .0;
         let word = buffer.content().word_at(word_position);
 
         if matches!(word.kind, WordKind::Identifier)
