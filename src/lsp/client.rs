@@ -26,8 +26,9 @@ use crate::{
         capabilities,
         protocol::{
             self, DocumentCodeAction, DocumentDiagnostic, DocumentLocation, DocumentPosition,
-            DocumentRange, PendingRequestColection, Protocol, ResponseError, ServerEvent,
-            ServerNotification, ServerRequest, ServerResponse, TextEdit, Uri, WorkspaceEdit,
+            DocumentRange, DocumentSymbolInformation, PendingRequestColection, Protocol,
+            ResponseError, ServerEvent, ServerNotification, ServerRequest, ServerResponse,
+            TextEdit, Uri, WorkspaceEdit,
         },
     },
     mode::{picker, read_line, ModeContext},
@@ -468,6 +469,7 @@ enum RequestState {
     },
     FinishCodeAction,
     DocumentSymbol {
+        client_handle: client::ClientHandle,
         buffer_view_handle: BufferViewHandle,
     },
     FinishDocumentSymbol {
@@ -862,6 +864,7 @@ impl Client {
         &mut self,
         editor: &Editor,
         platform: &mut Platform,
+        client_handle: client::ClientHandle,
         buffer_view_handle: BufferViewHandle,
     ) {
         if !self.server_capabilities.documentSymbolProvider.0 || !self.request_state.is_idle() {
@@ -886,7 +889,10 @@ impl Client {
         let mut params = JsonObject::default();
         params.set("textDocument".into(), text_document.into(), &mut self.json);
 
-        self.request_state = RequestState::DocumentSymbol { buffer_view_handle };
+        self.request_state = RequestState::DocumentSymbol {
+            client_handle,
+            buffer_view_handle,
+        };
         self.request(platform, "textDocument/documentSymbol", params);
     }
 
@@ -900,18 +906,28 @@ impl Client {
         };
         self.request_state = RequestState::Idle;
 
-        // TODO: finish this
-        if let Some(buffer_view) = editor.buffer_views.get_mut(buffer_view_handle) {
-            //let mut reader = io::Cursor::new(&self.finish_document_symbol_state.document_symbols_raw);
+        let buffer_view = match editor.buffer_views.get_mut(buffer_view_handle) {
+            Some(buffer_view) => buffer_view,
+            None => return,
+        };
 
+        let mut reader = io::Cursor::new(&self.request_raw_json);
+        let symbols = match self.json.read(&mut reader) {
+            Ok(symbols) => symbols,
+            Err(_) => return,
+        };
+        if let Some(position) = symbols
+            .elements(&self.json)
+            .filter_map(|s| DocumentSymbolInformation::from_json(s, &self.json).ok())
+            .map(|s| s.location.range.start.into())
+            .nth(index)
+        {
             let mut cursors = buffer_view.cursors.mut_guard();
             cursors.clear();
-            /*
             cursors.add(Cursor {
                 anchor: position,
                 position,
             });
-            */
         }
     }
 
@@ -1603,7 +1619,7 @@ impl Client {
                     clients,
                     client_handle,
                 };
-                read_line::lsp_rename::enter_mode(&mut ctx, self.handle, &input);
+                read_line::lsp_rename::enter_mode(&mut ctx, self.handle(), &input);
                 editor.string_pool.release(input);
 
                 self.request_state = RequestState::FinishRename {
@@ -1626,12 +1642,17 @@ impl Client {
                     _ => return,
                 };
 
-                let entries = actions
+                editor.picker.clear();
+                for action in actions
                     .clone()
                     .elements(&self.json)
                     .filter_map(|a| DocumentCodeAction::from_json(a, &self.json).ok())
                     .filter(|a| !a.disabled)
-                    .map(|a| a.title.as_str(&self.json));
+                {
+                    editor
+                        .picker
+                        .add_custom_entry(action.title.as_str(&self.json));
+                }
 
                 let mut ctx = ModeContext {
                     editor,
@@ -1639,20 +1660,61 @@ impl Client {
                     clients,
                     client_handle,
                 };
-                picker::lsp_code_action::enter_mode(&mut ctx, self.handle, entries);
+                picker::lsp_code_action::enter_mode(&mut ctx, self.handle());
 
                 self.request_state = RequestState::FinishCodeAction;
                 self.request_raw_json.clear();
                 self.json.write(&mut self.request_raw_json, &actions.into());
             }
             "textDocument/documentSymbol" => {
-                let buffer_view_handle = match self.request_state {
-                    RequestState::DocumentSymbol { buffer_view_handle } => buffer_view_handle,
+                let (client_handle, buffer_view_handle) = match self.request_state {
+                    RequestState::DocumentSymbol {
+                        client_handle,
+                        buffer_view_handle,
+                    } => (client_handle, buffer_view_handle),
                     _ => return,
                 };
                 self.request_state = RequestState::Idle;
 
+                let symbols = match result {
+                    JsonValue::Array(symbols) => symbols,
+                    _ => return,
+                };
+
+                editor.picker.clear();
+                for symbol in symbols
+                    .clone()
+                    .elements(&self.json)
+                    .filter_map(|s| DocumentSymbolInformation::from_json(s, &self.json).ok())
+                {
+                    match symbol.container_name {
+                        Some(container_name) => {
+                            let name = symbol.name.as_str(&self.json);
+                            let container_name = container_name.as_str(&self.json);
+                            editor.picker.add_custom_entry_fmt(format_args!(
+                                "{} ({})",
+                                name, container_name
+                            ));
+                        }
+                        None => {
+                            editor
+                                .picker
+                                .add_custom_entry(symbol.name.as_str(&self.json));
+                        }
+                    }
+                }
+
+                let mut ctx = ModeContext {
+                    editor,
+                    platform,
+                    clients,
+                    client_handle,
+                };
+                picker::lsp_document_symbol::enter_mode(&mut ctx, self.handle());
+
                 self.request_state = RequestState::FinishDocumentSymbol { buffer_view_handle };
+                self.request_raw_json.clear();
+                self.json.write(&mut self.request_raw_json, &symbols.into());
             }
             "textDocument/formatting" => {
                 let buffer_handle = match self.request_state {

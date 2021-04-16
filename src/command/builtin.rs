@@ -1566,11 +1566,15 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             ctx.args.get_flags(&mut [])?;
             ctx.args.assert_empty()?;
 
+            let client_handle = match ctx.client_handle {
+                Some(handle) => handle,
+                None => return Ok(None),
+            };
             let view_handle = ctx.current_buffer_view_handle()?;
             let buffer_view = ctx.editor.buffer_views.get(view_handle).ok_or(CommandError::NoBufferOpened)?;
             let buffer_handle = buffer_view.buffer_handle;
             access_lsp(&mut ctx, buffer_handle, |editor, platform, _, client| {
-                client.document_symbols(editor, platform, view_handle)
+                client.document_symbols(editor, platform, client_handle, view_handle)
             })?;
             Ok(None)
         },

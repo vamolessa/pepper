@@ -170,10 +170,7 @@ pub mod buffer {
 pub mod lsp_code_action {
     use super::*;
 
-    pub fn enter_mode<'a, I>(ctx: &mut ModeContext, client_handle: lsp::ClientHandle, entries: I)
-    where
-        I: 'a + Iterator<Item = &'a str>,
-    {
+    pub fn enter_mode(ctx: &mut ModeContext, client_handle: lsp::ClientHandle) {
         fn on_client_keys(
             ctx: &mut ModeContext,
             _: &mut KeysIterator,
@@ -204,12 +201,6 @@ pub mod lsp_code_action {
         }
 
         ctx.editor.read_line.set_prompt("code action:");
-        ctx.editor.picker.clear();
-
-        for entry in entries {
-            ctx.editor.picker.add_custom_entry(entry);
-        }
-
         ctx.editor.picker.filter(WordIndicesIter::empty(), "");
         ctx.editor.picker.move_cursor(0);
 
@@ -230,9 +221,7 @@ pub mod lsp_code_action {
 pub mod lsp_document_symbol {
     use super::*;
 
-    pub fn enter_mode<'a, I>(ctx: &mut ModeContext, client_handle: lsp::ClientHandle, entries: I)
-    where
-        I: 'a + Iterator<Item = &'a str>,
+    pub fn enter_mode(ctx: &mut ModeContext, client_handle: lsp::ClientHandle)
     {
         fn on_client_keys(
             ctx: &mut ModeContext,
@@ -264,12 +253,6 @@ pub mod lsp_document_symbol {
         }
 
         ctx.editor.read_line.set_prompt("document symbol:");
-        ctx.editor.picker.clear();
-
-        for entry in entries {
-            ctx.editor.picker.add_custom_entry(entry);
-        }
-
         ctx.editor.picker.filter(WordIndicesIter::empty(), "");
         ctx.editor.picker.move_cursor(0);
 

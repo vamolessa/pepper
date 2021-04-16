@@ -251,6 +251,7 @@ impl DocumentPosition {
         value.into()
     }
 }
+// TODO: handle utf8 to utf16
 impl From<BufferPosition> for DocumentPosition {
     fn from(position: BufferPosition) -> Self {
         Self {
@@ -259,6 +260,7 @@ impl From<BufferPosition> for DocumentPosition {
         }
     }
 }
+// TODO: handle utf16 to utf8
 impl From<DocumentPosition> for BufferPosition {
     fn from(position: DocumentPosition) -> Self {
         Self {
@@ -300,7 +302,6 @@ impl DocumentRange {
 }
 impl From<BufferRange> for DocumentRange {
     fn from(range: BufferRange) -> Self {
-        // TODO: handle utf8 to utf16
         Self {
             start: range.from.into(),
             end: range.to.into(),
@@ -309,7 +310,6 @@ impl From<BufferRange> for DocumentRange {
 }
 impl From<DocumentRange> for BufferRange {
     fn from(range: DocumentRange) -> Self {
-        // TODO: handle utf16 to utf8
         BufferRange::between(range.start.into(), range.end.into())
     }
 }
@@ -750,6 +750,31 @@ impl<'json> FromJson<'json> for DocumentCodeAction {
                 "title" => this.title = JsonString::from_json(value, json)?,
                 "edit" => this.edit = WorkspaceEdit::from_json(value, json)?,
                 "disabled" => this.disabled = true,
+                _ => (),
+            }
+        }
+        Ok(this)
+    }
+}
+
+#[derive(Default)]
+pub struct DocumentSymbolInformation {
+    pub name: JsonString,
+    pub location: DocumentLocation,
+    pub container_name: Option<JsonString>,
+}
+impl<'json> FromJson<'json> for DocumentSymbolInformation {
+    fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
+        let value = match value {
+            JsonValue::Object(value) => value,
+            _ => return Err(JsonConvertError),
+        };
+        let mut this = Self::default();
+        for (key, value) in value.members(json) {
+            match key {
+                "name" => this.name = JsonString::from_json(value, json)?,
+                "location" => this.location = DocumentLocation::from_json(value, json)?,
+                "containerName" => this.container_name = FromJson::from_json(value, json)?,
                 _ => (),
             }
         }
