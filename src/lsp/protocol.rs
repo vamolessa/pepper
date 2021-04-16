@@ -599,7 +599,7 @@ impl WorkspaceEdit {
                     let path = match Uri::parse(&root, edit.uri.as_str(json)) {
                         Some(Uri::AbsolutePath(path)) => path,
                         Some(Uri::RelativePath(_, path)) => path,
-                        _ => return,
+                        None => return,
                     };
                     let buffer_handle = editor.buffers.find_with_path(&root, path);
                     let is_temp = buffer_handle.is_none();
@@ -625,7 +625,7 @@ impl WorkspaceEdit {
                     let path = match Uri::parse(&root, op.uri.as_str(json)) {
                         Some(Uri::AbsolutePath(path)) => path,
                         Some(Uri::RelativePath(_, path)) => path,
-                        _ => return,
+                        None => return,
                     };
 
                     let mut open_options = fs::OpenOptions::new();
@@ -646,12 +646,12 @@ impl WorkspaceEdit {
                     let old_path = match Uri::parse(&root, op.old_uri.as_str(json)) {
                         Some(Uri::AbsolutePath(path)) => path,
                         Some(Uri::RelativePath(_, path)) => path,
-                        _ => return,
+                        None => return,
                     };
                     let new_path = match Uri::parse(&root, op.new_uri.as_str(json)) {
                         Some(Uri::AbsolutePath(path)) => path,
                         Some(Uri::RelativePath(_, path)) => path,
-                        _ => return,
+                        None => return,
                     };
 
                     if op.overwrite || !new_path.exists() || !op.ignore_if_exists {
@@ -662,7 +662,7 @@ impl WorkspaceEdit {
                     let path = match Uri::parse(&root, op.uri.as_str(json)) {
                         Some(Uri::AbsolutePath(path)) => path,
                         Some(Uri::RelativePath(_, path)) => path,
-                        _ => return,
+                        None => return,
                     };
 
                     if op.recursive {

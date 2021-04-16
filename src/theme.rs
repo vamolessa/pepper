@@ -74,11 +74,11 @@ pub fn gruvbox_theme() -> Theme {
 
         token_whitespace: Color::from_u32(0x504945),
         token_text: Color::from_u32(0xebdbb2),
-        token_comment: Color::from_u32(0x665c54),
+        token_comment: Color::from_u32(0x7c6f64),
         token_keyword: Color::from_u32(0xfe8019),
         token_type: Color::from_u32(0x8ec07c),
         token_symbol: Color::from_u32(0xa89984),
-        token_string: Color::from_u32(0x98971a),
+        token_string: Color::from_u32(0xb8bb26),
         token_literal: Color::from_u32(0xd3869b),
     }
 }

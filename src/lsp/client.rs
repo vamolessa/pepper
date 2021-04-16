@@ -452,8 +452,8 @@ enum RequestState {
     },
     References {
         client_handle: client::ClientHandle,
-        auto_close_buffer: bool,
         context_len: usize,
+        auto_close_buffer: bool,
     },
     Rename {
         client_handle: client::ClientHandle,
@@ -468,12 +468,16 @@ enum RequestState {
         client_handle: client::ClientHandle,
     },
     FinishCodeAction,
-    DocumentSymbol {
+    DocumentSymbols {
         client_handle: client::ClientHandle,
         buffer_view_handle: BufferViewHandle,
     },
-    FinishDocumentSymbol {
+    FinishDocumentSymbols {
         buffer_view_handle: BufferViewHandle,
+    },
+    WorkspaceSymbols {
+        client_handle: client::ClientHandle,
+        auto_close_buffer: bool,
     },
     Formatting {
         buffer_handle: BufferHandle,
@@ -656,8 +660,8 @@ impl Client {
         platform: &mut Platform,
         buffer_handle: BufferHandle,
         position: BufferPosition,
-        auto_close_buffer: bool,
         context_len: usize,
+        auto_close_buffer: bool,
         client_handle: client::ClientHandle,
     ) {
         if !self.server_capabilities.referencesProvider.0 || !self.request_state.is_idle() {
@@ -688,8 +692,8 @@ impl Client {
 
         self.request_state = RequestState::References {
             client_handle,
-            auto_close_buffer,
             context_len,
+            auto_close_buffer,
         };
         self.request(platform, "textDocument/references", params);
     }
@@ -889,7 +893,7 @@ impl Client {
         let mut params = JsonObject::default();
         params.set("textDocument".into(), text_document.into(), &mut self.json);
 
-        self.request_state = RequestState::DocumentSymbol {
+        self.request_state = RequestState::DocumentSymbols {
             client_handle,
             buffer_view_handle,
         };
@@ -901,7 +905,7 @@ impl Client {
             return;
         }
         let buffer_view_handle = match self.request_state {
-            RequestState::FinishDocumentSymbol { buffer_view_handle } => buffer_view_handle,
+            RequestState::FinishDocumentSymbols { buffer_view_handle } => buffer_view_handle,
             _ => return,
         };
         self.request_state = RequestState::Idle;
@@ -929,6 +933,31 @@ impl Client {
                 position,
             });
         }
+    }
+
+    pub fn workspace_symbols(
+        &mut self,
+        editor: &Editor,
+        platform: &mut Platform,
+        client_handle: client::ClientHandle,
+        query: &str,
+        auto_close_buffer: bool,
+    ) {
+        if !self.server_capabilities.workspaceSymbolProvider.0 || !self.request_state.is_idle() {
+            return;
+        }
+
+        helper::send_pending_did_change(self, editor, platform);
+
+        let query = self.json.create_string(query);
+        let mut params = JsonObject::default();
+        params.set("query".into(), query.into(), &mut self.json);
+
+        self.request_state = RequestState::WorkspaceSymbols {
+            client_handle,
+            auto_close_buffer,
+        };
+        self.request(platform, "workspace/symbol", params);
     }
 
     pub fn formatting(
@@ -1239,6 +1268,7 @@ impl Client {
                 let uri = params.uri.as_str(&self.json);
                 let path = match Uri::parse(&self.root, uri) {
                     Some(Uri::AbsolutePath(path)) => path,
+                    // TODO: handle RelativePath ??
                     _ => return,
                 };
 
@@ -1434,7 +1464,7 @@ impl Client {
                     let path = match Uri::parse(&self.root, location.uri.as_str(&self.json)) {
                         Some(Uri::AbsolutePath(path)) => path,
                         Some(Uri::RelativePath(_, path)) => path,
-                        _ => continue,
+                        None => continue,
                     };
                     if let Some(buffer) = editor
                         .buffers
@@ -1472,8 +1502,8 @@ impl Client {
                     buffer.capabilities = BufferCapabilities::log();
                     buffer.capabilities.auto_close = auto_close_buffer;
 
-                    let mut position = BufferPosition::zero();
-                    let range = BufferRange::between(position, buffer.content().end());
+                    let range =
+                        BufferRange::between(BufferPosition::zero(), buffer.content().end());
                     buffer.delete_range(&mut editor.word_database, range, &mut editor.events);
 
                     let mut text = editor.string_pool.acquire();
@@ -1481,29 +1511,26 @@ impl Client {
                     for location in locations.elements(&self.json) {
                         let location = match DocumentLocation::from_json(location, &self.json) {
                             Ok(location) => location,
-                            Err(_) => {
-                                editor.string_pool.release(text);
-                                return;
-                            }
+                            Err(_) => continue,
                         };
-
                         let path = match Uri::parse(&self.root, location.uri.as_str(&self.json)) {
                             Some(Uri::AbsolutePath(path)) => path,
                             Some(Uri::RelativePath(_, path)) => path,
-                            _ => continue,
+                            None => continue,
                         };
                         let path = match path.to_str() {
                             Some(path) => path,
                             None => continue,
                         };
 
+                        let position: BufferPosition = location.range.start.into();
                         use fmt::Write;
-                        let _ = write!(
+                        let _ = writeln!(
                             text,
-                            "{}:{},{}\n",
+                            "{}:{},{}",
                             path,
-                            location.range.start.line + 1,
-                            location.range.start.character + 1
+                            position.line_index + 1,
+                            position.column_byte_index + 1,
                         );
 
                         if context_len > 0 {
@@ -1533,13 +1560,13 @@ impl Client {
                             text.push('\n');
                         }
 
-                        let range = buffer.insert_text(
+                        let position = buffer.content().end();
+                        buffer.insert_text(
                             &mut editor.word_database,
                             position,
                             &text,
                             &mut editor.events,
                         );
-                        position = position.insert(range);
                         text.clear();
 
                         last_path = path;
@@ -1668,7 +1695,7 @@ impl Client {
             }
             "textDocument/documentSymbol" => {
                 let (client_handle, buffer_view_handle) = match self.request_state {
-                    RequestState::DocumentSymbol {
+                    RequestState::DocumentSymbols {
                         client_handle,
                         buffer_view_handle,
                     } => (client_handle, buffer_view_handle),
@@ -1712,9 +1739,116 @@ impl Client {
                 };
                 picker::lsp_document_symbol::enter_mode(&mut ctx, self.handle());
 
-                self.request_state = RequestState::FinishDocumentSymbol { buffer_view_handle };
+                self.request_state = RequestState::FinishDocumentSymbols { buffer_view_handle };
                 self.request_raw_json.clear();
                 self.json.write(&mut self.request_raw_json, &symbols.into());
+            }
+            "workspace/symbol" => {
+                let (client_handle, auto_close_buffer) = match self.request_state {
+                    RequestState::WorkspaceSymbols {
+                        client_handle,
+                        auto_close_buffer,
+                    } => (client_handle, auto_close_buffer),
+                    _ => return,
+                };
+                self.request_state = RequestState::Idle;
+                let symbols = match result {
+                    JsonValue::Array(symbols) => symbols,
+                    _ => return,
+                };
+
+                let client = match clients.get_mut(client_handle) {
+                    Some(client) => client,
+                    None => return,
+                };
+
+                let buffer_view_handle = editor.buffer_views.buffer_view_handle_from_path(
+                    client.handle(),
+                    &mut editor.buffers,
+                    &mut editor.word_database,
+                    &self.root,
+                    Path::new("workspace-symbols.refs"),
+                    &mut editor.events,
+                );
+
+                let buffers = &mut editor.buffers;
+                if let Some(buffer) = editor
+                    .buffer_views
+                    .get(buffer_view_handle)
+                    .and_then(|v| buffers.get_mut(v.buffer_handle))
+                {
+                    buffer.capabilities = BufferCapabilities::log();
+                    buffer.capabilities.auto_close = auto_close_buffer;
+
+                    let range =
+                        BufferRange::between(BufferPosition::zero(), buffer.content().end());
+                    buffer.delete_range(&mut editor.word_database, range, &mut editor.events);
+
+                    let mut count = 0;
+                    let mut text = editor.string_pool.acquire();
+                    for symbol in symbols.elements(&self.json) {
+                        count += 1;
+                        let symbol = match DocumentSymbolInformation::from_json(symbol, &self.json)
+                        {
+                            Ok(symbol) => symbol,
+                            Err(_) => continue,
+                        };
+                        let path =
+                            match Uri::parse(&self.root, symbol.location.uri.as_str(&self.json)) {
+                                Some(Uri::AbsolutePath(path)) => path,
+                                Some(Uri::RelativePath(_, path)) => path,
+                                None => continue,
+                            };
+                        let path = match path.to_str() {
+                            Some(path) => path,
+                            None => continue,
+                        };
+
+                        let position: BufferPosition = symbol.location.range.start.into();
+                        use fmt::Write;
+                        let _ = write!(
+                            text,
+                            "{}:{},{}:",
+                            path,
+                            position.line_index + 1,
+                            position.column_byte_index + 1,
+                        );
+                        text.push_str(symbol.name.as_str(&self.json));
+                        if let Some(container_name) = symbol.container_name {
+                            text.push_str(" (");
+                            text.push_str(container_name.as_str(&self.json));
+                            text.push(')');
+                        }
+                        text.push('\n');
+
+                        let position = buffer.content().end();
+                        buffer.insert_text(
+                            &mut editor.word_database,
+                            position,
+                            &text,
+                            &mut editor.events,
+                        );
+                        text.clear();
+                    }
+                    editor.string_pool.release(text);
+
+                    editor
+                        .status_bar
+                        .write(MessageKind::Info)
+                        .fmt(format_args!("symbol count: {}", count));
+                }
+
+                client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
+                editor.trigger_event_handlers(platform, clients, None);
+
+                if let Some(buffer_view) = editor.buffer_views.get_mut(buffer_view_handle) {
+                    let mut cursors = buffer_view.cursors.mut_guard();
+                    cursors.clear();
+                    cursors.add(Cursor {
+                        anchor: BufferPosition::zero(),
+                        position: BufferPosition::zero(),
+                    });
+                }
             }
             "textDocument/formatting" => {
                 let buffer_handle = match self.request_state {

@@ -1481,8 +1481,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                     platform,
                     buffer_handle,
                     cursor.position,
-                    auto_close_buffer,
                     context_len,
+                    auto_close_buffer,
                     client_handle
                 )
             })?;
@@ -1580,6 +1580,38 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
+        name: "lsp-workspace-symbols",
+        alias: "",
+        help: concat!(
+            "opens up a buffer with all symbols in the workspace found by the lsp server\n",
+            "optionally filtered by a query\n",
+            "lsp-workspace-symbols [<flags>] [<query>]\n",
+            " -auto-close : automatically closes buffer when no other client has it in focus",
+        ),
+        hidden: false,
+        completions: &[],
+        func: |mut ctx| {
+            ctx.args.assert_no_bang()?;
+
+            let mut flags = [("auto-close", None)];
+            ctx.args.get_flags(&mut flags)?;
+            let auto_close_buffer = flags[0].1.is_some();
+
+            let query = ctx.args.try_next()?.unwrap_or("");
+            ctx.args.assert_empty()?;
+
+            let client_handle = match ctx.client_handle {
+                Some(handle) => handle,
+                None => return Ok(None),
+            };
+            let buffer_handle = ctx.current_buffer_handle()?;
+            access_lsp(&mut ctx, buffer_handle, |editor, platform, _, client| {
+                client.workspace_symbols(editor, platform, client_handle, query, auto_close_buffer)
+            })?;
+            Ok(None)
+        },
+    },
+    BuiltinCommand {
         name: "lsp-format",
         alias: "",
         help: concat!(
@@ -1593,7 +1625,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             ctx.args.get_flags(&mut [])?;
             ctx.args.assert_empty()?;
 
-            let (buffer_handle, _) = current_buffer_and_main_cursor(&ctx)?;
+            let buffer_handle = ctx.current_buffer_handle()?;
             access_lsp(&mut ctx, buffer_handle, |editor, platform, _, client| {
                 client.formatting(editor, platform, buffer_handle)
             })?;
