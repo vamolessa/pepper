@@ -1,2 +1,1 @@
-https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocument_documentSymbol
 https://microsoft.github.io/language-server-protocol/specifications/specification-current/#workspace_symbol
