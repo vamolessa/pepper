@@ -1553,6 +1553,29 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
+        name: "lsp-document-symbols",
+        alias: "",
+        help: concat!(
+            "pick and jump to a symbol in the current buffer listed by the lsp server\n",
+            "lsp-document-symbols",
+        ),
+        hidden: false,
+        completions: &[],
+        func: |mut ctx| {
+            ctx.args.assert_no_bang()?;
+            ctx.args.get_flags(&mut [])?;
+            ctx.args.assert_empty()?;
+
+            let view_handle = ctx.current_buffer_view_handle()?;
+            let buffer_view = ctx.editor.buffer_views.get(view_handle).ok_or(CommandError::NoBufferOpened)?;
+            let buffer_handle = buffer_view.buffer_handle;
+            access_lsp(&mut ctx, buffer_handle, |editor, platform, _, client| {
+                client.document_symbols(editor, platform, view_handle)
+            })?;
+            Ok(None)
+        },
+    },
+    BuiltinCommand {
         name: "lsp-format",
         alias: "",
         help: concat!(

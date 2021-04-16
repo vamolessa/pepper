@@ -222,6 +222,12 @@ pub fn client_capabilities(json: &mut Json) -> JsonValue {
         {
             let mut document_symbol = JsonObject::default();
             document_symbol.set("symbolKind".into(), symbol_kind(json).into(), json);
+            document_symbol.set(
+                "hierarchicalDocumentSymbolSupport".into(),
+                false.into(),
+                json,
+            );
+            document_symbol.set("labelSupport".into(), false.into(), json);
 
             text_document_capabilities.set("documentSymbol".into(), document_symbol.into(), json);
         }

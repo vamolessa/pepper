@@ -184,9 +184,8 @@ pub mod lsp_code_action {
                 ReadLinePoll::Submitted => {
                     if let Some(handle) = ctx.editor.mode.picker_state.lsp_client_handle {
                         let index = ctx.editor.picker.cursor().unwrap_or(0);
-                        let platform = &mut *ctx.platform;
                         lsp::ClientManager::access(ctx.editor, handle, |e, c| {
-                            c.finish_code_action(e, platform, index);
+                            c.finish_code_action(e, index);
                         });
                     }
                     Mode::change_to(ctx, ModeKind::default());
@@ -195,7 +194,7 @@ pub mod lsp_code_action {
                 ReadLinePoll::Canceled => {
                     if let Some(handle) = ctx.editor.mode.picker_state.lsp_client_handle {
                         lsp::ClientManager::access(ctx.editor, handle, |_, c| {
-                            c.cancel_code_action();
+                            c.cancel_current_request();
                         });
                     }
                     Mode::change_to(ctx, ModeKind::default());
@@ -215,6 +214,69 @@ pub mod lsp_code_action {
         ctx.editor.picker.move_cursor(0);
 
         if ctx.editor.picker.len() == 0 {
+            lsp::ClientManager::access(ctx.editor, client_handle, |_, c| {
+                c.cancel_current_request();
+            });
+            return;
+        }
+
+        let state = &mut ctx.editor.mode.picker_state;
+        state.on_client_keys = on_client_keys;
+        state.lsp_client_handle = Some(client_handle);
+        Mode::change_to(ctx, ModeKind::Picker);
+    }
+}
+
+pub mod lsp_document_symbol {
+    use super::*;
+
+    pub fn enter_mode<'a, I>(ctx: &mut ModeContext, client_handle: lsp::ClientHandle, entries: I)
+    where
+        I: 'a + Iterator<Item = &'a str>,
+    {
+        fn on_client_keys(
+            ctx: &mut ModeContext,
+            _: &mut KeysIterator,
+            poll: ReadLinePoll,
+        ) -> Option<ModeOperation> {
+            match poll {
+                ReadLinePoll::Pending => None,
+                ReadLinePoll::Submitted => {
+                    if let Some(handle) = ctx.editor.mode.picker_state.lsp_client_handle {
+                        let index = ctx.editor.picker.cursor().unwrap_or(0);
+                        lsp::ClientManager::access(ctx.editor, handle, |e, c| {
+                            c.finish_document_symbols(e, index);
+                        });
+                    }
+                    Mode::change_to(ctx, ModeKind::default());
+                    None
+                }
+                ReadLinePoll::Canceled => {
+                    if let Some(handle) = ctx.editor.mode.picker_state.lsp_client_handle {
+                        lsp::ClientManager::access(ctx.editor, handle, |_, c| {
+                            c.cancel_current_request();
+                        });
+                    }
+                    Mode::change_to(ctx, ModeKind::default());
+                    None
+                }
+            }
+        }
+
+        ctx.editor.read_line.set_prompt("document symbol:");
+        ctx.editor.picker.clear();
+
+        for entry in entries {
+            ctx.editor.picker.add_custom_entry(entry);
+        }
+
+        ctx.editor.picker.filter(WordIndicesIter::empty(), "");
+        ctx.editor.picker.move_cursor(0);
+
+        if ctx.editor.picker.len() == 0 {
+            lsp::ClientManager::access(ctx.editor, client_handle, |_, c| {
+                c.cancel_current_request();
+            });
             return;
         }
 

@@ -11,6 +11,7 @@ use std::{
 use crate::{
     buffer::{Buffer, BufferCapabilities, BufferContent, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
+    buffer_view::BufferViewHandle,
     client,
     command::parse_process_command,
     cursor::Cursor,
@@ -99,21 +100,6 @@ impl<'json> FromJson<'json> for RenameCapability {
                     JsonValue::Boolean(true)
                 ),
             }),
-            _ => Err(JsonConvertError),
-        }
-    }
-}
-
-#[derive(Default)]
-struct CodeActionCapability {
-    pub on: bool,
-}
-impl<'json> FromJson<'json> for CodeActionCapability {
-    fn from_json(value: JsonValue, _: &'json Json) -> Result<Self, JsonConvertError> {
-        match value {
-            JsonValue::Null => Ok(Self { on: false }),
-            JsonValue::Boolean(b) => Ok(Self { on: b }),
-            JsonValue::Object(_) => Ok(Self { on: true }),
             _ => Err(JsonConvertError),
         }
     }
@@ -215,7 +201,7 @@ declare_json_object! {
         implementationProvider: GenericCapability,
         referencesProvider: GenericCapability,
         documentSymbolProvider: GenericCapability,
-        codeActionProvider: CodeActionCapability,
+        codeActionProvider: GenericCapability,
         documentFormattingProvider: GenericCapability,
         renameProvider: RenameCapability,
         workspaceSymbolProvider: GenericCapability,
@@ -458,38 +444,44 @@ impl DiagnosticCollection {
     }
 }
 
-struct DefinitionState {
-    pub client_handle: client::ClientHandle,
+enum RequestState {
+    Idle,
+    Definition {
+        client_handle: client::ClientHandle,
+    },
+    References {
+        client_handle: client::ClientHandle,
+        auto_close_buffer: bool,
+        context_len: usize,
+    },
+    Rename {
+        client_handle: client::ClientHandle,
+        buffer_handle: BufferHandle,
+        buffer_position: BufferPosition,
+    },
+    FinishRename {
+        buffer_handle: BufferHandle,
+        buffer_position: BufferPosition,
+    },
+    CodeAction {
+        client_handle: client::ClientHandle,
+    },
+    FinishCodeAction,
+    DocumentSymbol {
+        buffer_view_handle: BufferViewHandle,
+    },
+    FinishDocumentSymbol {
+        buffer_view_handle: BufferViewHandle,
+    },
+    Formatting {
+        buffer_handle: BufferHandle,
+    },
 }
-
-struct ReferencesState {
-    pub client_handle: client::ClientHandle,
-    pub auto_close_buffer: bool,
-    pub context_len: usize,
-}
-
-struct RenameState {
-    pub client_handle: client::ClientHandle,
-    pub buffer_handle: BufferHandle,
-    pub buffer_position: BufferPosition,
-}
-
-struct FinishRenameState {
-    pub buffer_handle: BufferHandle,
-    pub buffer_position: BufferPosition,
-}
-
-struct CodeActionState {
-    pub client_handle: client::ClientHandle,
-}
-
-#[derive(Default)]
-struct FinishCodeActionState {
-    pub code_actions_raw: Vec<u8>,
-}
-
-struct FormattingState {
-    pub buffer_handle: BufferHandle,
+impl RequestState {
+    #[inline]
+    pub fn is_idle(&self) -> bool {
+        matches!(self, RequestState::Idle)
+    }
 }
 
 pub struct Client {
@@ -509,13 +501,8 @@ pub struct Client {
 
     temp_edits: Vec<(BufferRange, BufferRange)>,
 
-    definition_state: Option<DefinitionState>,
-    references_state: Option<ReferencesState>,
-    rename_state: Option<RenameState>,
-    finish_rename_state: Option<FinishRenameState>,
-    code_action_state: Option<CodeActionState>,
-    finish_code_action_state: FinishCodeActionState,
-    formatting_state: Option<FormattingState>,
+    request_state: RequestState,
+    request_raw_json: Vec<u8>,
 }
 
 impl Client {
@@ -537,15 +524,9 @@ impl Client {
             versioned_buffers: VersionedBufferCollection::default(),
             diagnostics: DiagnosticCollection::default(),
 
+            request_state: RequestState::Idle,
+            request_raw_json: Vec::new(),
             temp_edits: Vec::new(),
-
-            definition_state: None,
-            references_state: None,
-            rename_state: None,
-            finish_rename_state: None,
-            code_action_state: None,
-            finish_code_action_state: FinishCodeActionState::default(),
-            formatting_state: None,
         }
     }
 
@@ -563,6 +544,10 @@ impl Client {
 
     pub fn diagnostics(&self) -> &DiagnosticCollection {
         &self.diagnostics
+    }
+
+    pub fn cancel_current_request(&mut self) {
+        self.request_state = RequestState::Idle;
     }
 
     pub fn hover(
@@ -637,10 +622,7 @@ impl Client {
         position: BufferPosition,
         client_handle: client::ClientHandle,
     ) {
-        if !self.server_capabilities.definitionProvider.0 {
-            return;
-        }
-        if self.definition_state.is_some() {
+        if !self.server_capabilities.definitionProvider.0 || !self.request_state.is_idle() {
             return;
         }
 
@@ -662,7 +644,7 @@ impl Client {
             &mut self.json,
         );
 
-        self.definition_state = Some(DefinitionState { client_handle });
+        self.request_state = RequestState::Definition { client_handle };
         self.request(platform, "textDocument/definition", params);
     }
 
@@ -676,10 +658,7 @@ impl Client {
         context_len: usize,
         client_handle: client::ClientHandle,
     ) {
-        if !self.server_capabilities.referencesProvider.0 {
-            return;
-        }
-        if self.references_state.is_some() {
+        if !self.server_capabilities.referencesProvider.0 || !self.request_state.is_idle() {
             return;
         }
 
@@ -705,11 +684,11 @@ impl Client {
         );
         params.set("context".into(), context.into(), &mut self.json);
 
-        self.references_state = Some(ReferencesState {
+        self.request_state = RequestState::References {
             client_handle,
             auto_close_buffer,
             context_len,
-        });
+        };
         self.request(platform, "textDocument/references", params);
     }
 
@@ -722,10 +701,7 @@ impl Client {
         buffer_handle: BufferHandle,
         buffer_position: BufferPosition,
     ) {
-        if !self.server_capabilities.renameProvider.on {
-            return;
-        }
-        if self.rename_state.is_some() || self.finish_rename_state.is_some() {
+        if !self.server_capabilities.renameProvider.on || !self.request_state.is_idle() {
             return;
         }
 
@@ -748,17 +724,17 @@ impl Client {
         );
 
         if self.server_capabilities.renameProvider.prepare_provider {
-            self.rename_state = Some(RenameState {
+            self.request_state = RequestState::Rename {
                 client_handle,
                 buffer_handle,
                 buffer_position,
-            });
+            };
             self.request(platform, "textDocument/prepareRename", params);
         } else {
-            self.finish_rename_state = Some(FinishRenameState {
+            self.request_state = RequestState::FinishRename {
                 buffer_handle,
                 buffer_position,
-            });
+            };
             let mut ctx = ModeContext {
                 editor,
                 platform,
@@ -769,19 +745,20 @@ impl Client {
         }
     }
 
-    pub fn cancel_rename(&mut self) {
-        self.finish_rename_state = None;
-    }
-
     pub fn finish_rename(&mut self, editor: &Editor, platform: &mut Platform) {
         if !self.server_capabilities.renameProvider.on {
             return;
         }
-        let state = match self.finish_rename_state.take() {
-            Some(state) => state,
-            None => return,
+        let (buffer_handle, buffer_position) = match self.request_state {
+            RequestState::FinishRename {
+                buffer_handle,
+                buffer_position,
+            } => (buffer_handle, buffer_position),
+            _ => return,
         };
-        let buffer_path = match editor.buffers.get(state.buffer_handle).map(Buffer::path) {
+        self.request_state = RequestState::Idle;
+
+        let buffer_path = match editor.buffers.get(buffer_handle).map(Buffer::path) {
             Some(path) => path,
             None => return,
         };
@@ -789,7 +766,7 @@ impl Client {
         helper::send_pending_did_change(self, editor, platform);
 
         let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
-        let position = DocumentPosition::from(state.buffer_position);
+        let position = DocumentPosition::from(buffer_position);
         let new_name = self.json.create_string(editor.read_line.input());
 
         let mut params = JsonObject::default();
@@ -801,7 +778,10 @@ impl Client {
         );
         params.set("newName".into(), new_name.into(), &mut self.json);
 
-        self.finish_rename_state = Some(state);
+        self.request_state = RequestState::FinishRename {
+            buffer_handle,
+            buffer_position,
+        };
         self.request(platform, "textDocument/rename", params);
     }
 
@@ -813,13 +793,7 @@ impl Client {
         buffer_handle: BufferHandle,
         range: BufferRange,
     ) {
-        // https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocument_codeAction
-        if !self.server_capabilities.codeActionProvider.on {
-            return;
-        }
-        if self.code_action_state.is_some()
-            || !self.finish_code_action_state.code_actions_raw.is_empty()
-        {
+        if !self.server_capabilities.codeActionProvider.0 || !self.request_state.is_idle() {
             return;
         }
 
@@ -854,43 +828,91 @@ impl Client {
         );
         params.set("context".into(), context.into(), &mut self.json);
 
-        self.code_action_state = Some(CodeActionState { client_handle });
+        self.request_state = RequestState::CodeAction { client_handle };
         self.request(platform, "textDocument/codeAction", params);
     }
 
-    pub fn cancel_code_action(&mut self) {
-        self.finish_code_action_state.code_actions_raw.clear();
+    pub fn finish_code_action(&mut self, editor: &mut Editor, index: usize) {
+        if !self.server_capabilities.codeActionProvider.0 {
+            return;
+        }
+        match self.request_state {
+            RequestState::FinishCodeAction => (),
+            _ => return,
+        }
+        self.request_state = RequestState::Idle;
+
+        let mut reader = io::Cursor::new(&self.request_raw_json);
+        let code_actions = match self.json.read(&mut reader) {
+            Ok(actions) => actions,
+            Err(_) => return,
+        };
+        if let Some(edit) = code_actions
+            .elements(&self.json)
+            .filter_map(|a| DocumentCodeAction::from_json(a, &self.json).ok())
+            .filter(|a| !a.disabled)
+            .map(|a| a.edit)
+            .nth(index)
+        {
+            edit.apply(editor, &mut self.temp_edits, &self.root, &self.json);
+        }
     }
 
-    pub fn finish_code_action(
+    pub fn document_symbols(
         &mut self,
-        editor: &mut Editor,
+        editor: &Editor,
         platform: &mut Platform,
-        index: usize,
+        buffer_view_handle: BufferViewHandle,
     ) {
-        if !self.server_capabilities.codeActionProvider.on {
+        if !self.server_capabilities.documentSymbolProvider.0 || !self.request_state.is_idle() {
             return;
         }
-        if self.finish_code_action_state.code_actions_raw.is_empty() {
-            return;
-        }
+
+        let buffer_path = match editor
+            .buffer_views
+            .get(buffer_view_handle)
+            .map(|v| v.buffer_handle)
+            .and_then(|h| editor.buffers.get(h))
+            .map(Buffer::path)
+        {
+            Some(path) => path,
+            None => return,
+        };
 
         helper::send_pending_did_change(self, editor, platform);
 
-        let mut reader = io::Cursor::new(&self.finish_code_action_state.code_actions_raw);
-        if let Ok(code_actions) = self.json.read(&mut reader) {
-            if let Some(edit) = code_actions
-                .elements(&self.json)
-                .filter_map(|a| DocumentCodeAction::from_json(a, &self.json).ok())
-                .filter(|a| !a.disabled)
-                .map(|a| a.edit)
-                .nth(index)
-            {
-                edit.apply(editor, &mut self.temp_edits, &self.root, &self.json);
-            }
-        }
+        let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
 
-        self.finish_code_action_state.code_actions_raw.clear();
+        let mut params = JsonObject::default();
+        params.set("textDocument".into(), text_document.into(), &mut self.json);
+
+        self.request_state = RequestState::DocumentSymbol { buffer_view_handle };
+        self.request(platform, "textDocument/documentSymbol", params);
+    }
+
+    pub fn finish_document_symbols(&mut self, editor: &mut Editor, index: usize) {
+        if !self.server_capabilities.documentSymbolProvider.0 {
+            return;
+        }
+        let buffer_view_handle = match self.request_state {
+            RequestState::FinishDocumentSymbol { buffer_view_handle } => buffer_view_handle,
+            _ => return,
+        };
+        self.request_state = RequestState::Idle;
+
+        // TODO: finish this
+        if let Some(buffer_view) = editor.buffer_views.get_mut(buffer_view_handle) {
+            //let mut reader = io::Cursor::new(&self.finish_document_symbol_state.document_symbols_raw);
+
+            let mut cursors = buffer_view.cursors.mut_guard();
+            cursors.clear();
+            /*
+            cursors.add(Cursor {
+                anchor: position,
+                position,
+            });
+            */
+        }
     }
 
     pub fn formatting(
@@ -899,10 +921,7 @@ impl Client {
         platform: &mut Platform,
         buffer_handle: BufferHandle,
     ) {
-        if !self.server_capabilities.documentFormattingProvider.0 {
-            return;
-        }
-        if self.formatting_state.is_some() {
+        if !self.server_capabilities.documentFormattingProvider.0 || !self.request_state.is_idle() {
             return;
         }
 
@@ -932,7 +951,7 @@ impl Client {
         params.set("textDocument".into(), text_document.into(), &mut self.json);
         params.set("options".into(), options.into(), &mut self.json);
 
-        self.formatting_state = Some(FormattingState { buffer_handle });
+        self.request_state = RequestState::Formatting { buffer_handle };
         self.request(platform, "textDocument/formatting", params);
     }
 
@@ -1323,10 +1342,11 @@ impl Client {
                 }
             }
             "textDocument/definition" => {
-                let state = match self.definition_state.take() {
-                    Some(state) => state,
-                    None => return,
+                let client_handle = match self.request_state {
+                    RequestState::Definition { client_handle } => client_handle,
+                    _ => return,
                 };
+                self.request_state = RequestState::Idle;
                 let location = match result {
                     JsonValue::Object(_) => result,
                     // TODO: use picker in this case?
@@ -1341,7 +1361,7 @@ impl Client {
                     Err(_) => return,
                 };
 
-                let client = match clients.get_mut(state.client_handle) {
+                let client = match clients.get_mut(client_handle) {
                     Some(client) => client,
                     None => return,
                 };
@@ -1370,16 +1390,21 @@ impl Client {
                 client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
             }
             "textDocument/references" => {
-                let state = match self.references_state.take() {
-                    Some(state) => state,
-                    None => return,
+                let (client_handle, auto_close_buffer, context_len) = match self.request_state {
+                    RequestState::References {
+                        client_handle,
+                        auto_close_buffer,
+                        context_len,
+                    } => (client_handle, auto_close_buffer, context_len),
+                    _ => return,
                 };
+                self.request_state = RequestState::Idle;
                 let locations = match result {
                     JsonValue::Array(locations) => locations,
                     _ => return,
                 };
 
-                let client = match clients.get_mut(state.client_handle) {
+                let client = match clients.get_mut(client_handle) {
                     Some(client) => client,
                     None => return,
                 };
@@ -1429,7 +1454,7 @@ impl Client {
                     .and_then(|v| buffers.get_mut(v.buffer_handle))
                 {
                     buffer.capabilities = BufferCapabilities::log();
-                    buffer.capabilities.auto_close = state.auto_close_buffer;
+                    buffer.capabilities.auto_close = auto_close_buffer;
 
                     let mut position = BufferPosition::zero();
                     let range = BufferRange::between(position, buffer.content().end());
@@ -1465,7 +1490,7 @@ impl Client {
                             location.range.start.character + 1
                         );
 
-                        if state.context_len > 0 {
+                        if context_len > 0 {
                             if last_path != path {
                                 context_buffer.clear();
                                 if let Ok(file) = File::open(path) {
@@ -1474,7 +1499,7 @@ impl Client {
                                 }
                             }
 
-                            let surrounding_len = state.context_len - 1;
+                            let surrounding_len = context_len - 1;
                             let start = (location.range.start.line as usize)
                                 .saturating_sub(surrounding_len);
                             let end = location.range.end.line as usize + surrounding_len;
@@ -1519,10 +1544,15 @@ impl Client {
                 }
             }
             "textDocument/prepareRename" => {
-                let state = match self.rename_state.take() {
-                    Some(state) => state,
-                    None => return,
+                let (client_handle, buffer_handle, buffer_position) = match self.request_state {
+                    RequestState::Rename {
+                        client_handle,
+                        buffer_handle,
+                        buffer_position,
+                    } => (client_handle, buffer_handle, buffer_position),
+                    _ => return,
                 };
+                self.request_state = RequestState::Idle;
                 let result = match result {
                     JsonValue::Null => {
                         editor
@@ -1548,14 +1578,14 @@ impl Client {
                     }
                 }
 
-                let buffer = match editor.buffers.get(state.buffer_handle) {
+                let buffer = match editor.buffers.get(buffer_handle) {
                     Some(buffer) => buffer,
                     None => return,
                 };
 
                 let mut range = range.into();
                 if let Some(true) = default_behaviour {
-                    let word = buffer.content().word_at(state.buffer_position);
+                    let word = buffer.content().word_at(buffer_position);
                     range = BufferRange::between(word.position, word.end_position());
                 }
 
@@ -1571,25 +1601,26 @@ impl Client {
                     editor,
                     platform,
                     clients,
-                    client_handle: state.client_handle,
+                    client_handle,
                 };
                 read_line::lsp_rename::enter_mode(&mut ctx, self.handle, &input);
                 editor.string_pool.release(input);
 
-                self.finish_rename_state = Some(FinishRenameState {
-                    buffer_handle: state.buffer_handle,
-                    buffer_position: state.buffer_position,
-                });
+                self.request_state = RequestState::FinishRename {
+                    buffer_handle,
+                    buffer_position,
+                };
             }
             "textDocument/rename" => {
                 let edit: WorkspaceEdit = deserialize!(result);
                 edit.apply(editor, &mut self.temp_edits, &self.root, &self.json);
             }
             "textDocument/codeAction" => {
-                let state = match self.code_action_state.take() {
-                    Some(state) => state,
-                    None => return,
+                let client_handle = match self.request_state {
+                    RequestState::CodeAction { client_handle } => client_handle,
+                    _ => return,
                 };
+                self.request_state = RequestState::Idle;
                 let actions = match result {
                     JsonValue::Array(actions) => actions,
                     _ => return,
@@ -1606,28 +1637,36 @@ impl Client {
                     editor,
                     platform,
                     clients,
-                    client_handle: state.client_handle,
+                    client_handle,
                 };
                 picker::lsp_code_action::enter_mode(&mut ctx, self.handle, entries);
 
-                self.finish_code_action_state.code_actions_raw.clear();
-                self.json.write(
-                    &mut self.finish_code_action_state.code_actions_raw,
-                    &actions.into(),
-                );
+                self.request_state = RequestState::FinishCodeAction;
+                self.request_raw_json.clear();
+                self.json.write(&mut self.request_raw_json, &actions.into());
+            }
+            "textDocument/documentSymbol" => {
+                let buffer_view_handle = match self.request_state {
+                    RequestState::DocumentSymbol { buffer_view_handle } => buffer_view_handle,
+                    _ => return,
+                };
+                self.request_state = RequestState::Idle;
+
+                self.request_state = RequestState::FinishDocumentSymbol { buffer_view_handle };
             }
             "textDocument/formatting" => {
-                let state = match self.formatting_state.take() {
-                    Some(state) => state,
-                    None => return,
+                let buffer_handle = match self.request_state {
+                    RequestState::Formatting { buffer_handle } => buffer_handle,
+                    _ => return,
                 };
+                self.request_state = RequestState::Idle;
                 let edits = match result {
                     JsonValue::Array(edits) => edits,
                     _ => return,
                 };
                 TextEdit::apply_edits(
                     editor,
-                    state.buffer_handle,
+                    buffer_handle,
                     &mut self.temp_edits,
                     edits,
                     &self.json,
