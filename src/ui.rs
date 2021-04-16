@@ -167,6 +167,7 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
     move_cursor_to(buf, 0, 0);
     set_background_color(buf, editor.theme.background);
     set_foreground_color(buf, text_color);
+    set_not_underlined(buf);
 
     let mut line_index = view.scroll;
     let mut drawn_line_count = 0;
@@ -290,7 +291,7 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
                 current_diagnostic_range = diagnostics[current_diagnostic_index].range;
             }
             let inside_diagnostic_range = current_diagnostic_range.from <= char_position
-                && char_position <= current_diagnostic_range.to;
+                && char_position < current_diagnostic_range.to;
 
             if inside_diagnostic_range != was_inside_diagnostic_range {
                 was_inside_diagnostic_range = inside_diagnostic_range;
