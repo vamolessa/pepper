@@ -191,8 +191,6 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
     }
     let search_ranges_end_index = search_ranges.len().saturating_sub(1);
 
-    // TODO: change to list of buffer linters (make lsp more like a plugin)
-    // TODO: buffer_handle will not be needed, only a slice of 'Lints'
     let diagnostics = match view.buffer_handle {
         Some(handle) => {
             let mut diagnostics: &[_] = &[];
@@ -292,7 +290,7 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
                 current_diagnostic_range = diagnostics[current_diagnostic_index].range;
             }
             let inside_diagnostic_range = current_diagnostic_range.from <= char_position
-                && char_position < current_diagnostic_range.to;
+                && char_position <= current_diagnostic_range.to;
 
             if inside_diagnostic_range != was_inside_diagnostic_range {
                 was_inside_diagnostic_range = inside_diagnostic_range;

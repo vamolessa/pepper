@@ -209,7 +209,6 @@ declare_json_object! {
     }
 }
 
-// TODO: move to buffer.rs
 pub struct Diagnostic {
     pub message: String,
     pub range: BufferRange,
@@ -259,20 +258,25 @@ impl BufferDiagnosticCollection {
         self.len += 1;
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &Diagnostic> {
-        self.diagnostics.iter()
-    }
-
     pub fn sort(&mut self) {
         self.diagnostics.sort_by_key(|d| d.range.from);
     }
 }
 
-fn are_same_path_with_root(root_a: &Path, a: &Path, b: &Path) -> bool {
-    if a.is_absolute() {
-        a.components().eq(b.components())
+fn is_editor_path_equals_to_lsp_path(
+    editor_root: &Path,
+    editor_path: &Path,
+    lsp_root: &Path,
+    lsp_path: &Path,
+) -> bool {
+    let lsp_components = lsp_root.components().chain(lsp_path.components());
+    if editor_path.is_absolute() {
+        editor_path.components().eq(lsp_components)
     } else {
-        root_a.components().chain(a.components()).eq(b.components())
+        editor_root
+            .components()
+            .chain(editor_path.components())
+            .eq(lsp_components)
     }
 }
 
@@ -349,43 +353,56 @@ impl DiagnosticCollection {
         &[]
     }
 
-    fn diagnostics_at_path_mut(
+    fn diagnostics_at_path(
         &mut self,
         editor: &Editor,
+        root: &Path,
         path: &Path,
     ) -> &mut BufferDiagnosticCollection {
-        let buffer_diagnostics = &mut self.buffer_diagnostics;
-        for i in 0..buffer_diagnostics.len() {
-            if buffer_diagnostics[i].path == path {
-                let diagnostics = &mut buffer_diagnostics[i];
+        fn find_buffer_with_path(
+            editor: &Editor,
+            root: &Path,
+            path: &Path,
+        ) -> Option<BufferHandle> {
+            for buffer in editor.buffers.iter() {
+                if is_editor_path_equals_to_lsp_path(
+                    &editor.current_directory,
+                    buffer.path(),
+                    root,
+                    path,
+                ) {
+                    return Some(buffer.handle());
+                }
+            }
+            None
+        }
+
+        for i in 0..self.buffer_diagnostics.len() {
+            if self.buffer_diagnostics[i].path == path {
+                let diagnostics = &mut self.buffer_diagnostics[i];
                 diagnostics.len = 0;
+
+                if diagnostics.buffer_handle.is_none() {
+                    diagnostics.buffer_handle = find_buffer_with_path(editor, root, path);
+                }
                 return diagnostics;
             }
         }
 
-        let mut buffer_handle = None;
-        for buffer in editor.buffers.iter() {
-            if are_same_path_with_root(&editor.current_directory, buffer.path(), path) {
-                buffer_handle = Some(buffer.handle());
-                break;
-            }
-        }
-
-        let end_index = buffer_diagnostics.len();
-        buffer_diagnostics.push(BufferDiagnosticCollection {
+        let end_index = self.buffer_diagnostics.len();
+        self.buffer_diagnostics.push(BufferDiagnosticCollection {
             path: path.into(),
-            buffer_handle,
+            buffer_handle: find_buffer_with_path(editor, root, path),
             diagnostics: Vec::new(),
             len: 0,
         });
-        &mut buffer_diagnostics[end_index]
+        &mut self.buffer_diagnostics[end_index]
     }
 
-    pub fn clear_empty(&mut self) {
-        let buffer_diagnostics = &mut self.buffer_diagnostics;
-        for i in (0..buffer_diagnostics.len()).rev() {
-            if buffer_diagnostics[i].len == 0 {
-                buffer_diagnostics.swap_remove(i);
+    fn clear_empty(&mut self) {
+        for i in (0..self.buffer_diagnostics.len()).rev() {
+            if self.buffer_diagnostics[i].len == 0 {
+                self.buffer_diagnostics.swap_remove(i);
             }
         }
     }
@@ -398,17 +415,18 @@ impl DiagnosticCollection {
             .map(|d| (d.path.as_path(), d.buffer_handle, &d.diagnostics[..d.len]))
     }
 
-    pub fn on_load_buffer(&mut self, editor: &Editor, buffer_handle: BufferHandle) {
+    pub fn on_load_buffer(&mut self, editor: &Editor, buffer_handle: BufferHandle, root: &Path) {
         let buffer_path = match editor.buffers.get(buffer_handle).map(Buffer::path) {
             Some(path) => path,
             None => return,
         };
 
         for diagnostics in &mut self.buffer_diagnostics {
-            if let None = diagnostics.buffer_handle {
-                if are_same_path_with_root(
+            if diagnostics.buffer_handle.is_none() {
+                if is_editor_path_equals_to_lsp_path(
                     &editor.current_directory,
                     buffer_path,
+                    root,
                     &diagnostics.path,
                 ) {
                     diagnostics.buffer_handle = Some(buffer_handle);
@@ -418,7 +436,7 @@ impl DiagnosticCollection {
         }
     }
 
-    pub fn on_save_buffer(&mut self, editor: &Editor, buffer_handle: BufferHandle) {
+    pub fn on_save_buffer(&mut self, editor: &Editor, buffer_handle: BufferHandle, root: &Path) {
         let buffer_path = match editor.buffers.get(buffer_handle).map(Buffer::path) {
             Some(path) => path,
             None => return,
@@ -427,9 +445,10 @@ impl DiagnosticCollection {
         for diagnostics in &mut self.buffer_diagnostics {
             if diagnostics.buffer_handle == Some(buffer_handle) {
                 diagnostics.buffer_handle = None;
-                if are_same_path_with_root(
+                if is_editor_path_equals_to_lsp_path(
                     &editor.current_directory,
                     buffer_path,
+                    root,
                     &diagnostics.path,
                 ) {
                     diagnostics.buffer_handle = Some(buffer_handle);
@@ -1268,37 +1287,15 @@ impl Client {
                     None => return,
                 };
 
-                use fmt::Write;
-                let mut text = String::new();
-                let _ = writeln!(text, "diags for path {:?}", path);
-
-                let diagnostics = self.diagnostics.diagnostics_at_path_mut(editor, path);
+                let diagnostics = self
+                    .diagnostics
+                    .diagnostics_at_path(editor, &self.root, path);
                 for diagnostic in params.diagnostics.elements(&self.json) {
                     let diagnostic = deserialize!(diagnostic);
                     diagnostics.add(diagnostic, &self.json);
                 }
                 diagnostics.sort();
                 self.diagnostics.clear_empty();
-
-                for d in self
-                    .diagnostics
-                    .diagnostics_at_path_mut(editor, path)
-                    .iter()
-                {
-                    let _ = writeln!(text, "{} @ {:?}", d.message, d.range);
-                }
-
-                let _ = writeln!(text, "\n-------\n");
-                if let Some(buffer_handle) = editor
-                    .buffers
-                    .find_with_path(&editor.current_directory, path)
-                {
-                    for d in self.diagnostics.buffer_diagnostics(buffer_handle) {
-                        let _ = writeln!(text, "{} @ {:?}", d.message, d.range);
-                    }
-                }
-
-                editor.status_bar.write(MessageKind::Info).str(&text);
             }
             _ => (),
         }
@@ -1894,7 +1891,7 @@ impl Client {
                 &EditorEvent::BufferLoad { handle } => {
                     let handle = handle;
                     self.versioned_buffers.dispose(handle);
-                    self.diagnostics.on_load_buffer(editor, handle);
+                    self.diagnostics.on_load_buffer(editor, handle, &self.root);
                     helper::send_did_open(self, editor, platform, handle);
                 }
                 &EditorEvent::BufferInsertText {
@@ -1910,7 +1907,7 @@ impl Client {
                     self.versioned_buffers.add_edit(handle, range, "");
                 }
                 &EditorEvent::BufferSave { handle, .. } => {
-                    self.diagnostics.on_save_buffer(editor, handle);
+                    self.diagnostics.on_save_buffer(editor, handle, &self.root);
                     helper::send_pending_did_change(self, editor, platform);
                     helper::send_did_save(self, editor, platform, handle);
                 }
