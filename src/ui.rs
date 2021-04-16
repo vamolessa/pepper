@@ -12,64 +12,64 @@ use crate::{
     theme::Color,
 };
 
-pub const ENTER_ALTERNATE_BUFFER_CODE: &[u8] = b"\x1B[?1049h";
-pub const EXIT_ALTERNATE_BUFFER_CODE: &[u8] = b"\x1B[?1049l";
-pub const HIDE_CURSOR_CODE: &[u8] = b"\x1B[?25l";
-pub const SHOW_CURSOR_CODE: &[u8] = b"\x1B[?25h";
-pub const RESET_STYLE_CODE: &[u8] = b"\x1B[0;49m";
-pub const MODE_256_COLORS_CODE: &[u8] = b"\x1B[=19h";
-pub const BEGIN_TITLE_CODE: &[u8] = b"\x1B]0;";
+pub const ENTER_ALTERNATE_BUFFER_CODE: &[u8] = b"\x1b[?1049h";
+pub const EXIT_ALTERNATE_BUFFER_CODE: &[u8] = b"\x1b[?1049l";
+pub const HIDE_CURSOR_CODE: &[u8] = b"\x1b[?25l";
+pub const SHOW_CURSOR_CODE: &[u8] = b"\x1b[?25h";
+pub const RESET_STYLE_CODE: &[u8] = b"\x1b[0;49m";
+pub const MODE_256_COLORS_CODE: &[u8] = b"\x1b[=19h";
+pub const BEGIN_TITLE_CODE: &[u8] = b"\x1b]0;";
 pub const END_TITLE_CODE: &[u8] = b"\x07";
 
 const TOO_LONG_PREFIX: &[u8] = b"...";
 
 #[inline]
 pub fn clear_line(buf: &mut Vec<u8>) {
-    buf.extend_from_slice(b"\x1B[2K");
+    buf.extend_from_slice(b"\x1b[2K");
 }
 
 #[inline]
 pub fn clear_until_new_line(buf: &mut Vec<u8>) {
-    buf.extend_from_slice(b"\x1B[0K");
+    buf.extend_from_slice(b"\x1b[0K");
 }
 
 #[inline]
 pub fn move_cursor_to(buf: &mut Vec<u8>, x: usize, y: usize) {
     use io::Write;
-    let _ = write!(buf, "\x1B[{};{}H", x, y);
+    let _ = write!(buf, "\x1b[{};{}H", x, y);
 }
 
 #[inline]
 pub fn move_cursor_to_next_line(buf: &mut Vec<u8>) {
-    buf.extend_from_slice(b"\x1B[1E");
+    buf.extend_from_slice(b"\x1b[1E");
 }
 
 #[inline]
 pub fn move_cursor_up(buf: &mut Vec<u8>, count: usize) {
     use io::Write;
-    let _ = write!(buf, "\x1B[{}A", count);
+    let _ = write!(buf, "\x1b[{}A", count);
 }
 
 #[inline]
 pub fn set_background_color(buf: &mut Vec<u8>, color: Color) {
     use io::Write;
-    let _ = write!(buf, "\x1B[48;2;{};{};{}m", color.0, color.1, color.2);
+    let _ = write!(buf, "\x1b[48;2;{};{};{}m", color.0, color.1, color.2);
 }
 
 #[inline]
 pub fn set_foreground_color(buf: &mut Vec<u8>, color: Color) {
     use io::Write;
-    let _ = write!(buf, "\x1B[38;2;{};{};{}m", color.0, color.1, color.2);
+    let _ = write!(buf, "\x1b[38;2;{};{};{}m", color.0, color.1, color.2);
 }
 
 #[inline]
 pub fn set_underlined(buf: &mut Vec<u8>) {
-    buf.extend_from_slice(b"\x1B[4m");
+    buf.extend_from_slice(b"\x1b[4m");
 }
 
 #[inline]
 pub fn set_not_underlined(buf: &mut Vec<u8>) {
-    buf.extend_from_slice(b"\x1B[24m");
+    buf.extend_from_slice(b"\x1b[24m");
 }
 
 pub fn render(
