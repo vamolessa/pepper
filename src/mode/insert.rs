@@ -175,8 +175,14 @@ impl ModeState for State {
                     &mut ctx.editor.events,
                 );
             }
-            Key::Ctrl('n') => apply_completion(ctx.editor, handle, 1),
-            Key::Ctrl('p') => apply_completion(ctx.editor, handle, -1),
+            Key::Ctrl('n') => {
+                apply_completion(ctx.editor, handle, 1);
+                return None;
+            }
+            Key::Ctrl('p') => {
+                apply_completion(ctx.editor, handle, -1);
+                return None;
+            }
             _ => (),
         }
 
@@ -191,8 +197,8 @@ impl ModeState for State {
                 [..word_position.column_byte_index]
                 .char_indices()
                 .next_back()
-                .unwrap_or((0, char::default()))
-                .0;
+                .map(|(i, _)| i)
+                .unwrap_or(0);
         let word = buffer.content().word_at(word_position);
 
         if matches!(word.kind, WordKind::Identifier)
