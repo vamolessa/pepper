@@ -576,11 +576,17 @@ impl Client {
     }
 
     pub fn completion_triggers(&self) -> &str {
-        &self.server_capabilities.completionProvider.trigger_characters
+        &self
+            .server_capabilities
+            .completionProvider
+            .trigger_characters
     }
-    
+
     pub fn signature_help_triggers(&self) -> &str {
-        &self.server_capabilities.signatureHelpProvider.trigger_characters
+        &self
+            .server_capabilities
+            .signatureHelpProvider
+            .trigger_characters
     }
 
     pub fn cancel_current_request(&mut self) {
@@ -1584,7 +1590,7 @@ impl Client {
                 }
 
                 client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
-                editor.trigger_event_handlers(platform, clients, None);
+                editor.trigger_event_handlers(platform, clients);
 
                 if let Some(buffer_view) = editor.buffer_views.get_mut(buffer_view_handle) {
                     let mut cursors = buffer_view.cursors.mut_guard();
@@ -1843,7 +1849,7 @@ impl Client {
                 }
 
                 client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
-                editor.trigger_event_handlers(platform, clients, None);
+                editor.trigger_event_handlers(platform, clients);
 
                 if let Some(buffer_view) = editor.buffer_views.get_mut(buffer_view_handle) {
                     let mut cursors = buffer_view.cursors.mut_guard();

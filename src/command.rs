@@ -914,7 +914,7 @@ impl CommandManager {
                 }
             }
 
-            editor.trigger_event_handlers(platform, clients, client_handle);
+            editor.trigger_event_handlers(platform, clients);
         }
 
         match client_handle

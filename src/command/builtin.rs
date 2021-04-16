@@ -339,11 +339,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 &mut ctx.editor.word_database,
                 &mut ctx.editor.events,
             );
-            ctx.editor.trigger_event_handlers(
-                ctx.platform,
-                ctx.clients,
-                ctx.client_handle,
-            );
+            ctx.editor.trigger_event_handlers(ctx.platform, ctx.clients);
 
             let buffer_view = match ctx.editor.buffer_views.get_mut(buffer_view_handle) {
                 Some(buffer_view) => buffer_view,
@@ -426,11 +422,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 &mut ctx.editor.word_database,
                 &mut ctx.editor.events,
             );
-            ctx.editor.trigger_event_handlers(
-                ctx.platform,
-                ctx.clients,
-                ctx.client_handle,
-            );
+            ctx.editor.trigger_event_handlers(ctx.platform, ctx.clients);
 
             let buffer_view = match ctx.editor.buffer_views.get_mut(buffer_view_handle) {
                 Some(buffer_view) => buffer_view,

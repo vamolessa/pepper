@@ -1072,11 +1072,7 @@ impl State {
                 this.movement_kind = CursorMovementKind::PositionAndAnchor;
                 this.is_recording_auto_macro = false;
 
-                ctx.editor.trigger_event_handlers(
-                    ctx.platform,
-                    ctx.clients,
-                    Some(ctx.client_handle),
-                );
+                ctx.editor.trigger_event_handlers(ctx.platform, ctx.clients);
 
                 let mut buf = ctx.editor.string_pool.acquire();
                 let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
@@ -1110,11 +1106,7 @@ impl State {
                     this.movement_kind = CursorMovementKind::PositionAndAnchor;
                     this.is_recording_auto_macro = false;
 
-                    ctx.editor.trigger_event_handlers(
-                        ctx.platform,
-                        ctx.clients,
-                        Some(ctx.client_handle),
-                    );
+                    ctx.editor.trigger_event_handlers(ctx.platform, ctx.clients);
 
                     let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
                     if let Some(key) = RegisterKey::from_char(c) {

@@ -1,6 +1,7 @@
 use std::fmt::Write;
 
 use crate::{
+    buffer::BufferHandle,
     buffer_position::BufferPosition,
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     editor::{Editor, KeysIterator},
@@ -125,24 +126,8 @@ impl ModeState for State {
                     &mut ctx.editor.events,
                 );
 
-                let buffer_path = ctx
-                    .editor
-                    .buffers
-                    .get(buffer_view.buffer_handle)?
-                    .path()
-                    .to_str()?
-                    .as_bytes();
-
-                let lsp_client_handle = ctx.editor.mode.insert_state.lsp_client_handle;
-                let lsp_client = lsp_client_handle
-                    .and_then(|h| ctx.editor.lsp.get(h))
-                    .or_else(|| {
-                        ctx.editor
-                            .lsp
-                            .clients()
-                            .find(|c| c.handles_path(buffer_path))
-                    })?;
-
+                let buffer_handle = buffer_view.buffer_handle;
+                let lsp_client = find_lsp_client(ctx.editor, buffer_handle)?;
                 if lsp_client.completion_triggers().contains(c) {
                     // TODO
                 }
@@ -195,23 +180,10 @@ impl ModeState for State {
             _ => (),
         }
 
-        None
-    }
+        ctx.editor.trigger_event_handlers(ctx.platform, ctx.clients);
 
-    fn on_buffer_changed(ctx: &mut ModeContext) {
-        let buffer_view = match ctx
-            .clients
-            .get(ctx.client_handle)
-            .and_then(|c| c.buffer_view_handle())
-            .and_then(|h| ctx.editor.buffer_views.get(h))
-        {
-            Some(view) => view,
-            None => return,
-        };
-        let buffer = match ctx.editor.buffers.get(buffer_view.buffer_handle) {
-            Some(buffer) => buffer,
-            None => return,
-        };
+        let buffer_view = ctx.editor.buffer_views.get(handle)?;
+        let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle)?;
 
         let mut word_position = buffer_view.cursors.main_cursor().position;
         word_position.column_byte_index =
@@ -238,7 +210,23 @@ impl ModeState for State {
         } else {
             ctx.editor.picker.clear_filtered();
         }
+
+        None
     }
+}
+
+fn find_lsp_client(editor: &Editor, buffer_handle: BufferHandle) -> Option<&lsp::Client> {
+    let buffer_path = editor
+        .buffers
+        .get(buffer_handle)?
+        .path()
+        .to_str()?
+        .as_bytes();
+
+    let lsp_client_handle = editor.mode.insert_state.lsp_client_handle;
+    lsp_client_handle
+        .and_then(|h| editor.lsp.get(h))
+        .or_else(|| editor.lsp.clients().find(|c| c.handles_path(buffer_path)))
 }
 
 fn apply_completion(editor: &mut Editor, handle: BufferViewHandle, cursor_movement: isize) {
