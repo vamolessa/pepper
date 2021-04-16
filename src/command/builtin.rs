@@ -790,13 +790,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 &ctx.editor.buffer_views,
             );
 
-            let handle = ctx.editor.buffer_views.buffer_view_handle_from_path(
+            let handle = ctx.editor.buffer_view_handle_from_path(
                 client_handle,
-                &mut ctx.editor.buffers,
-                &mut ctx.editor.word_database,
-                &ctx.editor.current_directory,
                 Path::new(path),
-                &mut ctx.editor.events,
             );
 
             if let Some(buffer_view) = ctx.editor.buffer_views.get_mut(handle) {

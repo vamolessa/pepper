@@ -5,8 +5,8 @@ use std::{
 };
 
 use crate::{
-    buffer::BufferCollection,
-    buffer_view::BufferViewCollection,
+    buffer::{BufferCapabilities, BufferCollection},
+    buffer_view::{BufferView, BufferViewCollection, BufferViewHandle},
     client::Client,
     client::{ClientHandle, ClientManager},
     command::{CommandManager, CommandOperation},
@@ -187,6 +187,26 @@ impl Editor {
                     .fmt(format_args!("could not read config file '{:?}'", path));
                 None
             }
+        }
+    }
+
+    pub fn buffer_view_handle_from_path(
+        &mut self,
+        client_handle: ClientHandle,
+        path: &Path,
+    ) -> BufferViewHandle {
+        if let Some(buffer_handle) = self.buffers.find_with_path(&self.current_directory, path) {
+            self.buffer_views
+                .buffer_view_handle_from_buffer_handle(client_handle, buffer_handle)
+        } else {
+            let path = path.strip_prefix(&self.current_directory).unwrap_or(path);
+            let buffer = self.buffers.add_new();
+            buffer.set_path(path);
+            buffer.capabilities = BufferCapabilities::text();
+            let _ = buffer.discard_and_reload_from_file(&mut self.word_database, &mut self.events);
+
+            let buffer_view = BufferView::new(client_handle, buffer.handle());
+            self.buffer_views.add(buffer_view)
         }
     }
 

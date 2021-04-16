@@ -542,6 +542,7 @@ impl State {
 
                             let mut jumped = false;
                             let mut path_buf = ctx.editor.string_pool.acquire();
+                            let fallback_line_index = this.count.saturating_sub(1) as _;
                             for range in &ranges[..len] {
                                 let line_index = range.from.line_index;
                                 if range.to.line_index != line_index {
@@ -566,10 +567,7 @@ impl State {
                                 };
                                 let position = match position {
                                     Some(position) => position,
-                                    None => BufferPosition::line_col(
-                                        this.count.saturating_sub(1) as _,
-                                        0,
-                                    ),
+                                    None => BufferPosition::line_col(fallback_line_index, 0),
                                 };
 
                                 path_buf.clear();
@@ -579,14 +577,9 @@ impl State {
                                     continue;
                                 }
 
-                                let handle = ctx.editor.buffer_views.buffer_view_handle_from_path(
-                                    ctx.client_handle,
-                                    &mut ctx.editor.buffers,
-                                    &mut ctx.editor.word_database,
-                                    &ctx.editor.current_directory,
-                                    path,
-                                    &mut ctx.editor.events,
-                                );
+                                let handle = ctx
+                                    .editor
+                                    .buffer_view_handle_from_path(ctx.client_handle, path);
                                 if let Some(buffer_view) = ctx.editor.buffer_views.get_mut(handle) {
                                     let mut cursors = buffer_view.cursors.mut_guard();
                                     cursors.clear();
@@ -1517,14 +1510,15 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) -> Option<()> {
             .editor
             .buffer_views
             .buffer_view_handle_from_buffer_handle(ctx.client_handle, buffer_handle),
-        None => ctx.editor.buffer_views.buffer_view_handle_from_path(
-            ctx.client_handle,
-            &mut ctx.editor.buffers,
-            &mut ctx.editor.word_database,
-            &ctx.editor.current_directory,
-            path,
-            &mut ctx.editor.events,
-        ),
+        None => {
+            let path = path.to_str().unwrap_or("");
+            let path = ctx.editor.string_pool.acquire_with(path);
+            let handle = ctx
+                .editor
+                .buffer_view_handle_from_path(ctx.client_handle, Path::new(&path));
+            ctx.editor.string_pool.release(path);
+            handle
+        }
     };
 
     NavigationHistory::save_client_snapshot(

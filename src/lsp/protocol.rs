@@ -20,17 +20,14 @@ use crate::{
 pub const BUFFER_LEN: usize = 4 * 1024;
 
 pub enum Uri<'a> {
-    AbsolutePath(&'a Path),
-    RelativePath(&'a Path, &'a Path),
+    Path(&'a Path),
 }
 impl<'a> Uri<'a> {
-    pub fn parse(base: &'a Path, uri: &'a str) -> Option<Self> {
+    pub fn parse(root: &'a Path, uri: &'a str) -> Option<Self> {
         let uri = uri.strip_prefix("file:///")?;
         let path = Path::new(uri);
-        match path.strip_prefix(base) {
-            Ok(path) => Some(Uri::RelativePath(base, path)),
-            Err(_) => Some(Uri::AbsolutePath(path)),
-        }
+        let path = path.strip_prefix(root).unwrap_or(path);
+        Some(Self::Path(path))
     }
 }
 impl<'a> fmt::Display for Uri<'a> {
@@ -75,14 +72,8 @@ impl<'a> fmt::Display for Uri<'a> {
         }
 
         match *self {
-            Self::AbsolutePath(path) => {
+            Self::Path(path) => {
                 f.write_str("file:///")?;
-                fmt_path(f, path)
-            }
-            Self::RelativePath(base, path) => {
-                f.write_str("file:///")?;
-                fmt_path(f, base)?;
-                f.write_str("/")?;
                 fmt_path(f, path)
             }
         }
@@ -597,11 +588,12 @@ impl WorkspaceEdit {
             match change {
                 WorkspaceEditChange::DocumentEdit(edit) => {
                     let path = match Uri::parse(&root, edit.uri.as_str(json)) {
-                        Some(Uri::AbsolutePath(path)) => path,
-                        Some(Uri::RelativePath(_, path)) => path,
+                        Some(Uri::Path(path)) => path,
                         None => return,
                     };
-                    let buffer_handle = editor.buffers.find_with_path(&root, path);
+                    let buffer_handle = editor
+                        .buffers
+                        .find_with_path(&editor.current_directory, path);
                     let is_temp = buffer_handle.is_none();
                     let buffer_handle = match buffer_handle {
                         Some(handle) => handle,
@@ -623,8 +615,7 @@ impl WorkspaceEdit {
                 }
                 WorkspaceEditChange::CreateFile(op) => {
                     let path = match Uri::parse(&root, op.uri.as_str(json)) {
-                        Some(Uri::AbsolutePath(path)) => path,
-                        Some(Uri::RelativePath(_, path)) => path,
+                        Some(Uri::Path(path)) => path,
                         None => return,
                     };
 
@@ -644,13 +635,11 @@ impl WorkspaceEdit {
                 }
                 WorkspaceEditChange::RenameFile(op) => {
                     let old_path = match Uri::parse(&root, op.old_uri.as_str(json)) {
-                        Some(Uri::AbsolutePath(path)) => path,
-                        Some(Uri::RelativePath(_, path)) => path,
+                        Some(Uri::Path(path)) => path,
                         None => return,
                     };
                     let new_path = match Uri::parse(&root, op.new_uri.as_str(json)) {
-                        Some(Uri::AbsolutePath(path)) => path,
-                        Some(Uri::RelativePath(_, path)) => path,
+                        Some(Uri::Path(path)) => path,
                         None => return,
                     };
 
@@ -660,8 +649,7 @@ impl WorkspaceEdit {
                 }
                 WorkspaceEditChange::DeleteFile(op) => {
                     let path = match Uri::parse(&root, op.uri.as_str(json)) {
-                        Some(Uri::AbsolutePath(path)) => path,
-                        Some(Uri::RelativePath(_, path)) => path,
+                        Some(Uri::Path(path)) => path,
                         None => return,
                     };
 

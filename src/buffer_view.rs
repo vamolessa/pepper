@@ -1,7 +1,7 @@
-use std::{fmt, path::Path, str::FromStr};
+use std::{fmt, str::FromStr};
 
 use crate::{
-    buffer::{BufferCapabilities, BufferCollection, BufferHandle},
+    buffer::{BufferCollection, BufferHandle},
     buffer_position::BufferRange,
     client::ClientHandle,
     cursor::{Cursor, CursorCollection},
@@ -567,37 +567,13 @@ impl BufferViewCollection {
             None => self.add(BufferView::new(client_handle, buffer_handle)),
         }
     }
-
-    pub fn buffer_view_handle_from_path(
-        &mut self,
-        client_handle: ClientHandle,
-        buffers: &mut BufferCollection,
-        word_database: &mut WordDatabase,
-        root: &Path,
-        path: &Path,
-        events: &mut EditorEventQueue,
-    ) -> BufferViewHandle {
-        if let Some(buffer_handle) = buffers.find_with_path(root, path) {
-            self.buffer_view_handle_from_buffer_handle(client_handle, buffer_handle)
-        } else {
-            let path = path.strip_prefix(root).unwrap_or(path);
-
-            let buffer = buffers.add_new();
-            buffer.set_path(path);
-            buffer.capabilities = BufferCapabilities::text();
-            let _ = buffer.discard_and_reload_from_file(word_database, events);
-
-            let buffer_view = BufferView::new(client_handle, buffer.handle());
-            self.add(buffer_view)
-        }
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    use crate::buffer_position::BufferPosition;
+    use crate::{buffer::BufferCapabilities, buffer_position::BufferPosition};
 
     struct TestContext {
         pub word_database: WordDatabase,

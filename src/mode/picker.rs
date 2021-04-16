@@ -128,14 +128,9 @@ pub mod buffer {
             let buf = ctx.editor.string_pool.acquire_with(path);
             let path = &buf[..];
 
-            let handle = ctx.editor.buffer_views.buffer_view_handle_from_path(
-                ctx.client_handle,
-                &mut ctx.editor.buffers,
-                &mut ctx.editor.word_database,
-                &ctx.editor.current_directory,
-                Path::new(path),
-                &mut ctx.editor.events,
-            );
+            let handle = ctx
+                .editor
+                .buffer_view_handle_from_path(ctx.client_handle, Path::new(path));
             if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
                 client.set_buffer_view_handle(Some(handle), &mut ctx.editor.events);
             }

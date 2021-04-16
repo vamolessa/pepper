@@ -1250,16 +1250,16 @@ impl BufferCollection {
         }
     }
 
-    pub fn find_with_path(&self, root: &Path, path: &Path) -> Option<BufferHandle> {
+    pub fn find_with_path(&self, buffers_root: &Path, path: &Path) -> Option<BufferHandle> {
         if path.as_os_str().len() == 0 {
             return None;
         }
 
-        let path = path.strip_prefix(root).unwrap_or(path);
-
         for buffer in self.iter() {
             let buffer_path = buffer.path.as_path();
-            let buffer_path = buffer_path.strip_prefix(root).unwrap_or(buffer_path);
+            let buffer_path = buffer_path
+                .strip_prefix(buffers_root)
+                .unwrap_or(buffer_path);
 
             if buffer_path == path {
                 return Some(buffer.handle());

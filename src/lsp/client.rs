@@ -259,6 +259,10 @@ impl BufferDiagnosticCollection {
         self.len += 1;
     }
 
+    pub fn iter(&self) -> impl Iterator<Item = &Diagnostic> {
+        self.diagnostics.iter()
+    }
+
     pub fn sort(&mut self) {
         self.diagnostics.sort_by_key(|d| d.range.from);
     }
@@ -345,7 +349,7 @@ impl DiagnosticCollection {
         &[]
     }
 
-    fn path_diagnostics_mut(
+    fn diagnostics_at_path_mut(
         &mut self,
         editor: &Editor,
         path: &Path,
@@ -1163,8 +1167,7 @@ impl Client {
 
                 let params: ShowDocumentParams = deserialize!(request.params);
                 let path = match Uri::parse(&self.root, params.uri.as_str(&self.json)) {
-                    Some(Uri::AbsolutePath(path)) => path,
-                    Some(Uri::RelativePath(_, path)) => path,
+                    Some(Uri::Path(path)) => path,
                     None => return,
                 };
 
@@ -1174,14 +1177,8 @@ impl Client {
                     let mut closure = || {
                         let client_handle = clients.focused_client()?;
                         let client = clients.get_mut(client_handle)?;
-                        let buffer_view_handle = editor.buffer_views.buffer_view_handle_from_path(
-                            client_handle,
-                            &mut editor.buffers,
-                            &mut editor.word_database,
-                            &self.root,
-                            path,
-                            &mut editor.events,
-                        );
+                        let buffer_view_handle =
+                            editor.buffer_view_handle_from_path(client_handle, path);
                         if let Some(range) = params.selection {
                             let buffer_view = editor.buffer_views.get_mut(buffer_view_handle)?;
                             let mut cursors = buffer_view.cursors.mut_guard();
@@ -1267,18 +1264,41 @@ impl Client {
                 let params: Params = deserialize!(notification.params);
                 let uri = params.uri.as_str(&self.json);
                 let path = match Uri::parse(&self.root, uri) {
-                    Some(Uri::AbsolutePath(path)) => path,
-                    // TODO: handle RelativePath ??
-                    _ => return,
+                    Some(Uri::Path(path)) => path,
+                    None => return,
                 };
 
-                let diagnostics = self.diagnostics.path_diagnostics_mut(editor, path);
+                use fmt::Write;
+                let mut text = String::new();
+                let _ = writeln!(text, "diags for path {:?}", path);
+
+                let diagnostics = self.diagnostics.diagnostics_at_path_mut(editor, path);
                 for diagnostic in params.diagnostics.elements(&self.json) {
                     let diagnostic = deserialize!(diagnostic);
                     diagnostics.add(diagnostic, &self.json);
                 }
                 diagnostics.sort();
                 self.diagnostics.clear_empty();
+
+                for d in self
+                    .diagnostics
+                    .diagnostics_at_path_mut(editor, path)
+                    .iter()
+                {
+                    let _ = writeln!(text, "{} @ {:?}", d.message, d.range);
+                }
+
+                let _ = writeln!(text, "\n-------\n");
+                if let Some(buffer_handle) = editor
+                    .buffers
+                    .find_with_path(&editor.current_directory, path)
+                {
+                    for d in self.diagnostics.buffer_diagnostics(buffer_handle) {
+                        let _ = writeln!(text, "{} @ {:?}", d.message, d.range);
+                    }
+                }
+
+                editor.status_bar.write(MessageKind::Info).str(&text);
             }
             _ => (),
         }
@@ -1412,18 +1432,10 @@ impl Client {
                     None => return,
                 };
                 let path = match Uri::parse(&self.root, location.uri.as_str(&self.json)) {
-                    Some(Uri::AbsolutePath(path)) => path,
-                    Some(Uri::RelativePath(_, path)) => path,
+                    Some(Uri::Path(path)) => path,
                     None => return,
                 };
-                let buffer_view_handle = editor.buffer_views.buffer_view_handle_from_path(
-                    client.handle(),
-                    &mut editor.buffers,
-                    &mut editor.word_database,
-                    &self.root,
-                    path,
-                    &mut editor.events,
-                );
+                let buffer_view_handle = editor.buffer_view_handle_from_path(client.handle(), path);
                 if let Some(buffer_view) = editor.buffer_views.get_mut(buffer_view_handle) {
                     let position = location.range.start.into();
                     let mut cursors = buffer_view.cursors.mut_guard();
@@ -1462,13 +1474,12 @@ impl Client {
                         Err(_) => continue,
                     };
                     let path = match Uri::parse(&self.root, location.uri.as_str(&self.json)) {
-                        Some(Uri::AbsolutePath(path)) => path,
-                        Some(Uri::RelativePath(_, path)) => path,
+                        Some(Uri::Path(path)) => path,
                         None => continue,
                     };
                     if let Some(buffer) = editor
                         .buffers
-                        .find_with_path(&self.root, path)
+                        .find_with_path(&editor.current_directory, path)
                         .and_then(|h| editor.buffers.get(h))
                     {
                         buffer
@@ -1482,14 +1493,8 @@ impl Client {
                 }
                 buffer_name.push_str(".refs");
 
-                let buffer_view_handle = editor.buffer_views.buffer_view_handle_from_path(
-                    client.handle(),
-                    &mut editor.buffers,
-                    &mut editor.word_database,
-                    &self.root,
-                    Path::new(&buffer_name),
-                    &mut editor.events,
-                );
+                let buffer_view_handle =
+                    editor.buffer_view_handle_from_path(client.handle(), Path::new(&buffer_name));
                 editor.string_pool.release(buffer_name);
 
                 let mut context_buffer = BufferContent::new();
@@ -1514,8 +1519,7 @@ impl Client {
                             Err(_) => continue,
                         };
                         let path = match Uri::parse(&self.root, location.uri.as_str(&self.json)) {
-                            Some(Uri::AbsolutePath(path)) => path,
-                            Some(Uri::RelativePath(_, path)) => path,
+                            Some(Uri::Path(path)) => path,
                             None => continue,
                         };
                         let path = match path.to_str() {
@@ -1762,13 +1766,9 @@ impl Client {
                     None => return,
                 };
 
-                let buffer_view_handle = editor.buffer_views.buffer_view_handle_from_path(
+                let buffer_view_handle = editor.buffer_view_handle_from_path(
                     client.handle(),
-                    &mut editor.buffers,
-                    &mut editor.word_database,
-                    &self.root,
                     Path::new("workspace-symbols.refs"),
-                    &mut editor.events,
                 );
 
                 let buffers = &mut editor.buffers;
@@ -1795,8 +1795,7 @@ impl Client {
                         };
                         let path =
                             match Uri::parse(&self.root, symbol.location.uri.as_str(&self.json)) {
-                                Some(Uri::AbsolutePath(path)) => path,
-                                Some(Uri::RelativePath(_, path)) => path,
+                                Some(Uri::Path(path)) => path,
                                 None => continue,
                             };
                         let path = match path.to_str() {
@@ -2006,7 +2005,7 @@ impl Client {
 
         let root = self
             .json
-            .fmt_string(format_args!("{}", Uri::AbsolutePath(&self.root)));
+            .fmt_string(format_args!("{}", Uri::Path(&self.root)));
         params.set("rootUri".into(), root.into(), &mut self.json);
 
         params.set(
@@ -2030,21 +2029,25 @@ mod helper {
             .str(error.message.as_str(json));
     }
 
+    /*
     pub fn get_path_uri<'a>(current_directory: &'a Path, path: &'a Path) -> Uri<'a> {
         if path.is_absolute() {
-            Uri::AbsolutePath(path)
+            Uri::Path(path)
         } else {
             Uri::RelativePath(current_directory, path)
         }
     }
+    */
 
     pub fn text_document_with_id(
         current_directory: &Path,
         path: &Path,
         json: &mut Json,
     ) -> JsonObject {
+        // TODO: if this does not work, write the absolute path
         let mut id = JsonObject::default();
-        let uri = json.fmt_string(format_args!("{}", get_path_uri(current_directory, path)));
+        //let uri = json.fmt_string(format_args!("{}", get_path_uri(current_directory, path)));
+        let uri = json.fmt_string(format_args!("{}", Uri::Path(path)));
         id.set("uri".into(), uri.into(), json);
         id
     }
