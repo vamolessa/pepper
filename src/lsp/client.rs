@@ -722,7 +722,6 @@ impl Client {
         buffer_handle: BufferHandle,
         buffer_position: BufferPosition,
     ) {
-        // https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocument_rename
         if !self.server_capabilities.renameProvider.on {
             return;
         }
@@ -2022,15 +2021,31 @@ struct ClientRecipe {
     running_client: Option<ClientHandle>,
 }
 
+enum ClientEntry {
+    Vacant,
+    Reserved,
+    Occupied(Client),
+}
+impl ClientEntry {
+    pub fn reserve_and_take(&mut self) -> Option<Client> {
+        let mut entry = ClientEntry::Reserved;
+        std::mem::swap(self, &mut entry);
+        match entry {
+            ClientEntry::Occupied(client) => Some(client),
+            _ => None,
+        }
+    }
+}
+
 pub struct ClientManager {
-    clients: Vec<Option<Client>>, // TODO: make it so we mark clients temporarily taken
+    entries: Vec<ClientEntry>,
     recipes: Vec<ClientRecipe>,
 }
 
 impl ClientManager {
     pub fn new() -> Self {
         Self {
-            clients: Vec::new(),
+            entries: Vec::new(),
             recipes: Vec::new(),
         }
     }
@@ -2082,13 +2097,14 @@ impl ClientManager {
         log_buffer_handle: Option<BufferHandle>,
     ) -> ClientHandle {
         fn find_free_slot(this: &mut ClientManager) -> ClientHandle {
-            for (i, slot) in this.clients.iter_mut().enumerate() {
-                if let None = slot {
+            for (i, slot) in this.entries.iter_mut().enumerate() {
+                if let ClientEntry::Vacant = slot {
+                    *slot = ClientEntry::Reserved;
                     return ClientHandle(i as _);
                 }
             }
-            let handle = ClientHandle(this.clients.len() as _);
-            this.clients.push(None);
+            let handle = ClientHandle(this.entries.len() as _);
+            this.entries.push(ClientEntry::Reserved);
             handle
         }
 
@@ -2102,19 +2118,26 @@ impl ClientManager {
             command,
             buf_len: protocol::BUFFER_LEN,
         });
-        self.clients[handle.0 as usize] = Some(Client::new(handle, root, log_buffer_handle));
+        self.entries[handle.0 as usize] =
+            ClientEntry::Occupied(Client::new(handle, root, log_buffer_handle));
         handle
     }
 
     pub fn stop(&mut self, platform: &mut Platform, handle: ClientHandle) {
-        if let Some(client) = &mut self.clients[handle.0 as usize] {
+        if let ClientEntry::Occupied(client) = &mut self.entries[handle.0 as usize] {
             let _ = client.notify(platform, "exit", JsonObject::default());
-            self.clients[handle.0 as usize] = None;
+            self.entries[handle.0 as usize] = ClientEntry::Vacant;
+
+            for recipe in &mut self.recipes {
+                if recipe.running_client == Some(handle) {
+                    recipe.running_client = None;
+                }
+            }
         }
     }
 
     pub fn stop_all(&mut self, platform: &mut Platform) {
-        for i in 0..self.clients.len() {
+        for i in 0..self.entries.len() {
             self.stop(platform, ClientHandle(i as _));
         }
     }
@@ -2123,14 +2146,17 @@ impl ClientManager {
     where
         A: FnOnce(&mut Editor, &mut Client) -> R,
     {
-        let mut client = editor.lsp.clients[handle.0 as usize].take()?;
+        let mut client = editor.lsp.entries[handle.0 as usize].reserve_and_take()?;
         let result = accessor(editor, &mut client);
-        editor.lsp.clients[handle.0 as usize] = Some(client);
+        editor.lsp.entries[handle.0 as usize] = ClientEntry::Occupied(client);
         Some(result)
     }
 
     pub fn clients(&self) -> impl DoubleEndedIterator<Item = &Client> {
-        self.clients.iter().flatten()
+        self.entries.iter().flat_map(|e| match e {
+            ClientEntry::Occupied(client) => Some(client),
+            _ => None,
+        })
     }
 
     pub fn on_process_spawned(
@@ -2139,7 +2165,7 @@ impl ClientManager {
         handle: ClientHandle,
         process_handle: ProcessHandle,
     ) {
-        if let Some(ref mut client) = editor.lsp.clients[handle.0 as usize] {
+        if let ClientEntry::Occupied(ref mut client) = editor.lsp.entries[handle.0 as usize] {
             client.protocol.set_process_handle(process_handle);
             client.initialize(platform);
         }
@@ -2152,7 +2178,7 @@ impl ClientManager {
         handle: ClientHandle,
         bytes: &[u8],
     ) {
-        let mut client = match editor.lsp.clients[handle.0 as usize].take() {
+        let mut client = match editor.lsp.entries[handle.0 as usize].reserve_and_take() {
             Some(client) => client,
             None => return,
         };
@@ -2176,12 +2202,11 @@ impl ClientManager {
         }
         events.finish(&mut client.protocol);
 
-        editor.lsp.clients[handle.0 as usize] = Some(client);
+        editor.lsp.entries[handle.0 as usize] = ClientEntry::Occupied(client);
     }
 
     pub fn on_process_exit(editor: &mut Editor, handle: ClientHandle) {
-        editor.lsp.clients[handle.0 as usize] = None;
-
+        editor.lsp.entries[handle.0 as usize] = ClientEntry::Vacant;
         for recipe in &mut editor.lsp.recipes {
             if recipe.running_client == Some(handle) {
                 recipe.running_client = None;
@@ -2247,10 +2272,10 @@ impl ClientManager {
             }
         }
 
-        for i in 0..editor.lsp.clients.len() {
-            if let Some(mut client) = editor.lsp.clients[i].take() {
+        for i in 0..editor.lsp.entries.len() {
+            if let Some(mut client) = editor.lsp.entries[i].reserve_and_take() {
                 client.on_editor_events(editor, platform);
-                editor.lsp.clients[i] = Some(client);
+                editor.lsp.entries[i] = ClientEntry::Occupied(client);
             }
         }
     }
