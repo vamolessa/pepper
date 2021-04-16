@@ -2029,25 +2029,16 @@ mod helper {
             .str(error.message.as_str(json));
     }
 
-    /*
-    pub fn get_path_uri<'a>(current_directory: &'a Path, path: &'a Path) -> Uri<'a> {
-        if path.is_absolute() {
-            Uri::Path(path)
+    pub fn text_document_with_id(root: &Path, path: &Path, json: &mut Json) -> JsonObject {
+        let uri = if path.is_absolute() {
+            json.fmt_string(format_args!("{}", Uri::Path(path)))
         } else {
-            Uri::RelativePath(current_directory, path)
-        }
-    }
-    */
-
-    pub fn text_document_with_id(
-        current_directory: &Path,
-        path: &Path,
-        json: &mut Json,
-    ) -> JsonObject {
-        // TODO: if this does not work, write the absolute path
+            match path.to_str() {
+                Some(path) => json.fmt_string(format_args!("{}/{}", Uri::Path(root), path)),
+                None => return JsonObject::default(),
+            }
+        };
         let mut id = JsonObject::default();
-        //let uri = json.fmt_string(format_args!("{}", get_path_uri(current_directory, path)));
-        let uri = json.fmt_string(format_args!("{}", Uri::Path(path)));
         id.set("uri".into(), uri.into(), json);
         id
     }
