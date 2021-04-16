@@ -345,11 +345,7 @@ impl BufferContent {
             self.lines.push(self.line_pool.acquire());
         }
 
-        if self.lines[0]
-            .text
-            .as_bytes()
-            .starts_with(&[0xef, 0xbb, 0xbf])
-        {
+        if self.lines[0].text.as_bytes().starts_with(b"\xef\xbb\xbf") {
             self.lines[0].text.drain(..3);
         }
 
