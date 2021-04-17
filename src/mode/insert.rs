@@ -9,13 +9,12 @@ use crate::{
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     platform::Key,
     register::AUTO_MACRO_REGISTER,
-    word_database::WordKind,
+    word_database::{WordIndicesIter, WordKind},
 };
 
 #[derive(Default)]
 pub struct State {
     lsp_client_handle: Option<lsp::ClientHandle>,
-    //lsp_completion_position: Option<BufferPosition>,
 }
 
 impl ModeState for State {
@@ -196,50 +195,25 @@ impl ModeState for State {
         match find_lsp_client(ctx.editor, buffer.handle()) {
             Some(lsp_client) => {
                 let lsp_client_handle = lsp_client.handle();
+                let position = buffer_view.cursors.main_cursor().position;
+                let buffer_handle = buffer.handle();
 
                 if lsp_client.signature_help_triggers().contains(character) {
-                    let position = buffer_view.cursors.main_cursor().position;
-                    let buffer_handle = buffer.handle();
-                    ctx.editor.mode.insert_state.lsp_client_handle = Some(lsp_client_handle);
                     let platform = &mut *ctx.platform;
-
                     lsp::ClientManager::access(ctx.editor, lsp_client_handle, |e, c| {
                         c.signature_help(e, platform, buffer_handle, position)
                     });
-                    return None;
-                }
-
-                if lsp_client.completion_triggers().contains(character) {
-                    // TODO
-                }
-            }
-            None => {
-                let mut word_position = buffer_view.cursors.main_cursor().position;
-                word_position.column_byte_index =
-                    buffer.content().line_at(word_position.line_index).as_str()
-                        [..word_position.column_byte_index]
-                        .char_indices()
-                        .next_back()
-                        .unwrap_or((0, char::default()))
-                        .0;
-                let word = buffer.content().word_at(word_position);
-
-                if matches!(word.kind, WordKind::Identifier)
-                    && word_position.column_byte_index
-                        >= word.end_position().column_byte_index.saturating_sub(1)
-                {
-                    ctx.editor
-                        .picker
-                        .filter(ctx.editor.word_database.word_indices(), word.text);
-                    if ctx.editor.picker.len() == 1 {
-                        ctx.editor.picker.clear_filtered();
-                    } else if ctx.editor.picker.cursor().is_none() {
-                        ctx.editor.picker.move_cursor(0);
-                    }
                 } else {
-                    ctx.editor.picker.clear_filtered();
+                    let platform = &mut *ctx.platform;
+                    lsp::ClientManager::access(ctx.editor, lsp_client_handle, |e, c| {
+                        c.completion(e, platform, buffer_handle, position)
+                    });
                 }
+
+                filter_completions(ctx.editor, handle, false);
+                ctx.editor.mode.insert_state.lsp_client_handle = Some(lsp_client_handle);
             }
+            None => filter_completions(ctx.editor, handle, true),
         }
 
         None
@@ -258,6 +232,56 @@ fn find_lsp_client(editor: &Editor, buffer_handle: BufferHandle) -> Option<&lsp:
     lsp_client_handle
         .and_then(|h| editor.lsp.get(h))
         .or_else(|| editor.lsp.clients().find(|c| c.handles_path(buffer_path)))
+}
+
+pub fn filter_completions(
+    editor: &mut Editor,
+    buffer_view_handle: BufferViewHandle,
+    use_word_database: bool,
+) {
+    let buffer_view = match editor.buffer_views.get_mut(buffer_view_handle) {
+        Some(buffer_view) => buffer_view,
+        None => {
+            editor.picker.clear();
+            return;
+        }
+    };
+    let buffer = match editor.buffers.get(buffer_view.buffer_handle) {
+        Some(buffer) => buffer,
+        None => {
+            editor.picker.clear();
+            return;
+        }
+    };
+
+    let mut word_position = buffer_view.cursors.main_cursor().position;
+    word_position.column_byte_index = buffer.content().line_at(word_position.line_index).as_str()
+        [..word_position.column_byte_index]
+        .char_indices()
+        .next_back()
+        .unwrap_or((0, char::default()))
+        .0;
+    let word = buffer.content().word_at(word_position);
+
+    if word.kind == WordKind::Identifier
+        && word_position.column_byte_index
+            >= word.end_position().column_byte_index.saturating_sub(1)
+    {
+        if use_word_database {
+            editor
+                .picker
+                .filter(editor.word_database.word_indices(), word.text);
+        } else {
+            editor.picker.filter(WordIndicesIter::empty(), word.text);
+        }
+        if editor.picker.len() == 1 {
+            editor.picker.clear();
+        } else if editor.picker.cursor().is_none() {
+            editor.picker.move_cursor(0);
+        }
+    } else {
+        editor.picker.clear();
+    }
 }
 
 fn apply_completion(editor: &mut Editor, handle: BufferViewHandle, cursor_movement: isize) {

@@ -6,7 +6,7 @@ use crate::{
 };
 
 mod command;
-mod insert;
+pub mod insert;
 mod normal;
 pub mod picker;
 pub mod read_line;

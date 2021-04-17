@@ -25,13 +25,13 @@ use crate::{
     lsp::{
         capabilities,
         protocol::{
-            self, DocumentCodeAction, DocumentDiagnostic, DocumentLocation, DocumentPosition,
-            DocumentRange, DocumentSymbolInformation, PendingRequestColection, Protocol,
-            ResponseError, ServerEvent, ServerNotification, ServerRequest, ServerResponse,
-            TextEdit, Uri, WorkspaceEdit,
+            self, DocumentCodeAction, DocumentCompletionItem, DocumentDiagnostic, DocumentLocation,
+            DocumentPosition, DocumentRange, DocumentSymbolInformation, PendingRequestColection,
+            Protocol, ResponseError, ServerEvent, ServerNotification, ServerRequest,
+            ServerResponse, TextEdit, Uri, WorkspaceEdit,
         },
     },
-    mode::{picker, read_line, ModeContext},
+    mode::{picker, read_line, ModeContext, ModeKind, insert},
     platform::{Platform, PlatformRequest, ProcessHandle, ProcessTag},
 };
 
@@ -505,6 +505,10 @@ enum RequestState {
     Formatting {
         buffer_handle: BufferHandle,
     },
+    Completion {
+        client_handle: client::ClientHandle,
+        buffer_view_handle: BufferViewHandle,
+    },
 }
 impl RequestState {
     #[inline]
@@ -573,13 +577,6 @@ impl Client {
 
     pub fn diagnostics(&self) -> &DiagnosticCollection {
         &self.diagnostics
-    }
-
-    pub fn completion_triggers(&self) -> &str {
-        &self
-            .server_capabilities
-            .completionProvider
-            .trigger_characters
     }
 
     pub fn signature_help_triggers(&self) -> &str {
@@ -1035,6 +1032,36 @@ impl Client {
 
         self.request_state = RequestState::Formatting { buffer_handle };
         self.request(platform, "textDocument/formatting", params);
+    }
+
+    pub fn completion(
+        &mut self,
+        editor: &mut Editor,
+        platform: &mut Platform,
+        buffer_handle: BufferHandle,
+        position: BufferPosition,
+    ) {
+        if !self.server_capabilities.completionProvider.on || !self.request_state.is_idle() {
+            return;
+        }
+
+        let buffer_path = match editor.buffers.get(buffer_handle).map(Buffer::path) {
+            Some(path) => path,
+            None => return,
+        };
+
+        helper::send_pending_did_change(self, editor, platform);
+
+        let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
+        let position = DocumentPosition::from(position);
+
+        let mut params = JsonObject::default();
+        params.set("textDocument".into(), text_document.into(), &mut self.json);
+        params.set(
+            "position".into(),
+            position.to_json_value(&mut self.json),
+            &mut self.json,
+        );
     }
 
     fn write_to_log_buffer<F>(&mut self, writer: F)
@@ -1877,6 +1904,48 @@ impl Client {
                     edits,
                     &self.json,
                 );
+            }
+            "textDocument/completion" => {
+                let (client_handle, buffer_view_handle) = match self.request_state {
+                    RequestState::Completion {
+                        client_handle,
+                        buffer_view_handle,
+                    } => (client_handle, buffer_view_handle),
+                    _ => return,
+                };
+                self.request_state = RequestState::Idle;
+
+                if editor.mode.kind() != ModeKind::Insert {
+                    return;
+                }
+                if clients
+                    .get(client_handle)
+                    .and_then(|c| c.buffer_view_handle())
+                    != Some(buffer_view_handle)
+                {
+                    return;
+                }
+
+                let completions = match result {
+                    JsonValue::Array(completions) => completions,
+                    JsonValue::Object(completions) => match completions.get("items", &self.json) {
+                        JsonValue::Array(completions) => completions,
+                        _ => return,
+                    },
+                    _ => return,
+                };
+
+                editor.picker.clear();
+                for completion in completions.elements(&self.json) {
+                    if let Ok(completion) =
+                        DocumentCompletionItem::from_json(completion, &self.json)
+                    {
+                        let text = completion.text.as_str(&self.json);
+                        editor.picker.add_custom_entry(text);
+                    }
+                }
+
+                insert::filter_completions(editor, buffer_view_handle, false);
             }
             _ => (),
         }

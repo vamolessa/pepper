@@ -770,6 +770,28 @@ impl<'json> FromJson<'json> for DocumentSymbolInformation {
     }
 }
 
+#[derive(Default)]
+pub struct DocumentCompletionItem {
+    pub text: JsonString,
+}
+impl<'json> FromJson<'json> for DocumentCompletionItem {
+    fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
+        let value = match value {
+            JsonValue::Object(value) => value,
+            _ => return Err(JsonConvertError),
+        };
+        let mut this = Self::default();
+        for (key, value) in value.members(json) {
+            match key {
+                "label" => this.text = JsonString::from_json(value, json)?,
+                "insertText" => this.text = JsonString::from_json(value, json)?,
+                _ => (),
+            }
+        }
+        Ok(this)
+    }
+}
+
 fn try_get_content_range(buf: &[u8]) -> Option<Range<usize>> {
     fn find_pattern_end(buf: &[u8], pattern: &[u8]) -> Option<usize> {
         let len = pattern.len();

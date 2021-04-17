@@ -105,8 +105,10 @@ impl Picker {
     }
 
     pub fn clear(&mut self) {
-        self.clear_filtered();
         self.custom_entries_len = 0;
+        self.filtered_entries.clear();
+        self.cursor = None;
+        self.scroll = 0;
     }
 
     fn new_custom_entry(&mut self) -> &mut String {
@@ -135,12 +137,6 @@ impl Picker {
             self.filtered_entries
                 .sort_unstable_by(|a, b| b.score.cmp(&a.score));
         }
-    }
-
-    pub fn clear_filtered(&mut self) {
-        self.filtered_entries.clear();
-        self.cursor = None;
-        self.scroll = 0;
     }
 
     pub fn filter(&mut self, word_indices: WordIndicesIter, pattern: &str) {

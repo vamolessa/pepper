@@ -116,7 +116,7 @@ pub fn client_capabilities(json: &mut Json) -> JsonValue {
 
         {
             let mut completion = JsonObject::default();
-            completion.set("contextSupport".into(), true.into(), json);
+            completion.set("contextSupport".into(), false.into(), json);
 
             {
                 let mut completion_item = JsonObject::default();
