@@ -191,14 +191,13 @@ impl ModeState for State {
         ctx.editor.trigger_event_handlers(ctx.platform, ctx.clients);
 
         let buffer_view = ctx.editor.buffer_views.get(handle)?;
-        let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle)?;
-        match find_lsp_client(ctx.editor, buffer.handle()) {
+        match find_lsp_client(ctx.editor, buffer_view.buffer_handle) {
             Some(lsp_client) => {
                 let lsp_client_handle = lsp_client.handle();
+                let buffer_handle = buffer_view.buffer_handle;
+                let position = buffer_view.cursors.main_cursor().position;
 
                 if lsp_client.signature_help_triggers().contains(character) {
-                    let position = buffer_view.cursors.main_cursor().position;
-                    let buffer_handle = buffer.handle();
                     let platform = &mut *ctx.platform;
                     lsp::ClientManager::access(ctx.editor, lsp_client_handle, |e, c| {
                         c.signature_help(e, platform, buffer_handle, position)
@@ -207,14 +206,19 @@ impl ModeState for State {
                     let client_handle = ctx.client_handle;
                     let platform = &mut *ctx.platform;
                     lsp::ClientManager::access(ctx.editor, lsp_client_handle, |e, c| {
-                        c.completion(e, platform, client_handle, handle)
+                        c.completion(e, platform, client_handle, buffer_handle, position)
                     });
+
+                    filter_completions(ctx.editor, buffer_handle, position, false);
                 }
 
-                filter_completions(ctx.editor, handle, false);
                 ctx.editor.mode.insert_state.lsp_client_handle = Some(lsp_client_handle);
             }
-            None => filter_completions(ctx.editor, handle, true),
+            None => {
+                let buffer_handle = buffer_view.buffer_handle;
+                let position = buffer_view.cursors.main_cursor().position;
+                filter_completions(ctx.editor, buffer_handle, position, true);
+            }
         }
 
         None
@@ -237,17 +241,11 @@ fn find_lsp_client(editor: &Editor, buffer_handle: BufferHandle) -> Option<&lsp:
 
 pub fn filter_completions(
     editor: &mut Editor,
-    buffer_view_handle: BufferViewHandle,
+    buffer_handle: BufferHandle,
+    position: BufferPosition,
     use_word_database: bool,
 ) {
-    let buffer_view = match editor.buffer_views.get_mut(buffer_view_handle) {
-        Some(buffer_view) => buffer_view,
-        None => {
-            editor.picker.clear();
-            return;
-        }
-    };
-    let buffer = match editor.buffers.get(buffer_view.buffer_handle) {
+    let buffer = match editor.buffers.get(buffer_handle) {
         Some(buffer) => buffer,
         None => {
             editor.picker.clear();
@@ -255,7 +253,7 @@ pub fn filter_completions(
         }
     };
 
-    let mut word_position = buffer_view.cursors.main_cursor().position;
+    let mut word_position = position;
     word_position.column_byte_index = buffer.content().line_at(word_position.line_index).as_str()
         [..word_position.column_byte_index]
         .char_indices()

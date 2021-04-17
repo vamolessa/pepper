@@ -507,7 +507,8 @@ enum RequestState {
     },
     Completion {
         client_handle: client::ClientHandle,
-        buffer_view_handle: BufferViewHandle,
+        buffer_handle: BufferHandle,
+        buffer_position: BufferPosition,
     },
 }
 impl RequestState {
@@ -1039,21 +1040,14 @@ impl Client {
         editor: &Editor,
         platform: &mut Platform,
         client_handle: client::ClientHandle,
-        buffer_view_handle: BufferViewHandle,
+        buffer_handle: BufferHandle,
+        buffer_position: BufferPosition,
     ) {
         if !self.server_capabilities.completionProvider.on || !self.request_state.is_idle() {
             return;
         }
 
-        let buffer_view = match editor.buffer_views.get(buffer_view_handle) {
-            Some(buffer_view) => buffer_view,
-            None => return,
-        };
-        let buffer_path = match editor
-            .buffers
-            .get(buffer_view.buffer_handle)
-            .map(Buffer::path)
-        {
+        let buffer_path = match editor.buffers.get(buffer_handle).map(Buffer::path) {
             Some(path) => path,
             None => return,
         };
@@ -1061,7 +1055,7 @@ impl Client {
         helper::send_pending_did_change(self, editor, platform);
 
         let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
-        let position = DocumentPosition::from(buffer_view.cursors.main_cursor().position);
+        let position = DocumentPosition::from(buffer_position);
 
         let mut params = JsonObject::default();
         params.set("textDocument".into(), text_document.into(), &mut self.json);
@@ -1073,7 +1067,8 @@ impl Client {
 
         self.request_state = RequestState::Completion {
             client_handle,
-            buffer_view_handle,
+            buffer_handle,
+            buffer_position,
         };
         self.request(platform, "textDocument/completion", params);
     }
@@ -1920,11 +1915,12 @@ impl Client {
                 );
             }
             "textDocument/completion" => {
-                let (client_handle, buffer_view_handle) = match self.request_state {
+                let (client_handle, buffer_handle, buffer_position) = match self.request_state {
                     RequestState::Completion {
                         client_handle,
-                        buffer_view_handle,
-                    } => (client_handle, buffer_view_handle),
+                        buffer_handle,
+                        buffer_position,
+                    } => (client_handle, buffer_handle, buffer_position),
                     _ => return,
                 };
                 self.request_state = RequestState::Idle;
@@ -1935,7 +1931,9 @@ impl Client {
                 if clients
                     .get(client_handle)
                     .and_then(|c| c.buffer_view_handle())
-                    != Some(buffer_view_handle)
+                    .and_then(|h| editor.buffer_views.get(h))
+                    .map(|v| v.buffer_handle)
+                    != Some(buffer_handle)
                 {
                     return;
                 }
@@ -1959,7 +1957,7 @@ impl Client {
                     }
                 }
 
-                insert::filter_completions(editor, buffer_view_handle, false);
+                insert::filter_completions(editor, buffer_handle, buffer_position, false);
             }
             _ => (),
         }
