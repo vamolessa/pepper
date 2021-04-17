@@ -1957,7 +1957,7 @@ impl Client {
                     }
                 }
 
-                insert::filter_completions(editor, buffer_handle, buffer_position, false);
+                //insert::update_completions(editor, buffer_handle, buffer_position, false);
             }
             _ => (),
         }

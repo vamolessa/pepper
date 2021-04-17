@@ -2,7 +2,7 @@ use std::{fmt, str::FromStr};
 
 use crate::{
     buffer::{BufferCollection, BufferHandle},
-    buffer_position::BufferRange,
+    buffer_position::{BufferPosition, BufferRange},
     client::ClientHandle,
     cursor::{Cursor, CursorCollection},
     events::EditorEventQueue,
@@ -354,11 +354,33 @@ impl BufferView {
         }
     }
 
+    pub fn find_completion_positions(
+        &self,
+        buffers: &mut BufferCollection,
+        positions: &mut Vec<BufferPosition>,
+    ) {
+        positions.clear();
+        let buffer = match buffers.get_mut(self.buffer_handle) {
+            Some(buffer) => buffer.content(),
+            None => return,
+        };
+
+        for cursor in self.cursors[..].iter() {
+            let position = buffer.position_before(cursor.position);
+            let word = buffer.word_at(position);
+            match word.kind {
+                WordKind::Identifier => positions.push(word.position),
+                _ => positions.push(cursor.position),
+            }
+        }
+    }
+
     pub fn apply_completion(
         &mut self,
         buffers: &mut BufferCollection,
         word_database: &mut WordDatabase,
         completion: &str,
+        positions: &[BufferPosition],
         events: &mut EditorEventQueue,
     ) {
         let buffer = match buffers.get_mut(self.buffer_handle) {
@@ -366,27 +388,10 @@ impl BufferView {
             None => return,
         };
 
-        for cursor in self.cursors[..].iter().rev() {
-            let content = buffer.content();
-
-            let mut word_position = cursor.position;
-            word_position.column_byte_index = content.line_at(word_position.line_index).as_str()
-                [..word_position.column_byte_index]
-                .char_indices()
-                .next_back()
-                .map(|(i, _)| i)
-                .unwrap_or(0);
-
-            let word = content.word_at(word_position);
-            let word_kind = word.kind;
-            let word_position = word.position;
-
-            if let WordKind::Identifier = word_kind {
-                let range = BufferRange::between(word_position, cursor.position);
-                buffer.delete_range(word_database, range, events);
-            }
-
-            buffer.insert_text(word_database, word_position, completion, events);
+        for (cursor, &position) in self.cursors[..].iter().zip(positions.iter()).rev() {
+            let range = BufferRange::between(position, cursor.position);
+            buffer.delete_range(word_database, range, events);
+            buffer.insert_text(word_database, position, completion, events);
         }
     }
 

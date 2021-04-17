@@ -555,6 +555,16 @@ impl BufferContent {
             .to_word_ref_with_position(position.line_index)
     }
 
+    pub fn position_before(&self, mut position: BufferPosition) -> BufferPosition {
+        position.column_byte_index = self.line_at(position.line_index).as_str()
+            [..position.column_byte_index]
+            .char_indices()
+            .next_back()
+            .map(|(i, _)| i)
+            .unwrap_or(0);
+        position
+    }
+
     pub fn find_delimiter_pair_at(
         &self,
         position: BufferPosition,

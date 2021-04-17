@@ -35,7 +35,8 @@ impl Cursor {
 pub struct CursorCollection {
     cursors: Box<[Cursor; Self::capacity()]>,
     len: u8,
-    saved_column_byte_indices: Vec<usize>,
+    saved_column_byte_indices: Box<[usize; Self::capacity()]>,
+    saved_column_byte_indices_len: u8,
     main_cursor_index: u8,
 }
 
@@ -48,7 +49,8 @@ impl CursorCollection {
         Self {
             cursors: Box::new([Cursor::zero(); Self::capacity()]),
             len: 1,
-            saved_column_byte_indices: Vec::new(),
+            saved_column_byte_indices: Box::new([0; Self::capacity()]),
+            saved_column_byte_indices_len: 0,
             main_cursor_index: 0,
         }
     }
@@ -176,19 +178,22 @@ impl<'a> CursorCollectionMutGuard<'a> {
 
     pub fn save_column_byte_indices(&mut self) {
         self.clear_column_byte_indices = false;
-
-        if self.inner.saved_column_byte_indices.is_empty() {
-            self.inner.saved_column_byte_indices.clear();
+        if self.inner.saved_column_byte_indices_len == 0 {
             for c in &self.inner.cursors[..self.inner.len as usize] {
-                self.inner
-                    .saved_column_byte_indices
-                    .push(c.position.column_byte_index);
+                self.inner.saved_column_byte_indices
+                    [self.inner.saved_column_byte_indices_len as usize] =
+                    c.position.column_byte_index;
+                self.inner.saved_column_byte_indices_len += 1;
             }
         }
     }
 
     pub fn get_saved_column_byte_index(&self, index: usize) -> Option<usize> {
-        self.inner.saved_column_byte_indices.get(index).cloned()
+        if index < self.inner.saved_column_byte_indices_len as usize {
+            Some(self.inner.saved_column_byte_indices[index])
+        } else {
+            None
+        }
     }
 
     pub fn set_main_cursor_index(&mut self, index: usize) {
@@ -246,7 +251,7 @@ impl<'a> Drop for CursorCollectionMutGuard<'a> {
         self.inner.sort_and_merge();
 
         if self.clear_column_byte_indices {
-            self.inner.saved_column_byte_indices.clear();
+            self.inner.saved_column_byte_indices_len = 0;
         }
     }
 }

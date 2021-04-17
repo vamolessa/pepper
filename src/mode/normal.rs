@@ -424,7 +424,7 @@ impl State {
 
                 state.movement_kind = CursorMovementKind::PositionOnly;
             }
-            Key::Char('g') | Key::Char('G') => {
+            Key::Char('g') => {
                 if state.count > 0 {
                     NavigationHistory::save_client_snapshot(
                         ctx.clients,

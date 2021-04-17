@@ -329,6 +329,7 @@ fn parse_key(chars: &mut impl Iterator<Item = char>) -> Result<Key, KeyParseErro
     Ok(key)
 }
 
+// TODO: try just writing to string directly
 impl fmt::Display for Key {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {

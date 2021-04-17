@@ -15,15 +15,18 @@ use crate::{
 #[derive(Default)]
 pub struct State {
     lsp_client_handle: Option<lsp::ClientHandle>,
+    completion_positions: Vec<BufferPosition>,
 }
 
 impl ModeState for State {
     fn on_enter(ctx: &mut ModeContext) {
         ctx.editor.picker.clear();
+        ctx.editor.mode.insert_state.completion_positions.clear();
     }
 
     fn on_exit(ctx: &mut ModeContext) {
         ctx.editor.picker.clear();
+        ctx.editor.mode.insert_state.completion_positions.clear();
     }
 
     fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> Option<ModeOperation> {
@@ -45,8 +48,7 @@ impl ModeState for State {
         let register = ctx.editor.registers.get_mut(AUTO_MACRO_REGISTER);
         let _ = write!(register, "{}", key);
 
-        let mut character = None;
-        match key {
+        let character = match key {
             Key::Esc => {
                 let buffer_view = ctx.editor.buffer_views.get(handle)?;
                 ctx.editor
@@ -56,26 +58,42 @@ impl ModeState for State {
                 Mode::change_to(ctx, ModeKind::default());
                 return None;
             }
-            Key::Left => ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
-                &ctx.editor.buffers,
-                CursorMovement::ColumnsBackward(1),
-                CursorMovementKind::PositionAndAnchor,
-            ),
-            Key::Down => ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
-                &ctx.editor.buffers,
-                CursorMovement::LinesForward(1),
-                CursorMovementKind::PositionAndAnchor,
-            ),
-            Key::Up => ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
-                &ctx.editor.buffers,
-                CursorMovement::LinesBackward(1),
-                CursorMovementKind::PositionAndAnchor,
-            ),
-            Key::Right => ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
-                &ctx.editor.buffers,
-                CursorMovement::ColumnsForward(1),
-                CursorMovementKind::PositionAndAnchor,
-            ),
+            Key::Left => {
+                ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
+                    &ctx.editor.buffers,
+                    CursorMovement::ColumnsBackward(1),
+                    CursorMovementKind::PositionAndAnchor,
+                );
+                ctx.editor.picker.clear();
+                return None;
+            }
+            Key::Down => {
+                ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
+                    &ctx.editor.buffers,
+                    CursorMovement::LinesForward(1),
+                    CursorMovementKind::PositionAndAnchor,
+                );
+                ctx.editor.picker.clear();
+                return None;
+            }
+            Key::Up => {
+                ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
+                    &ctx.editor.buffers,
+                    CursorMovement::LinesBackward(1),
+                    CursorMovementKind::PositionAndAnchor,
+                );
+                ctx.editor.picker.clear();
+                return None;
+            }
+            Key::Right => {
+                ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
+                    &ctx.editor.buffers,
+                    CursorMovement::ColumnsForward(1),
+                    CursorMovementKind::PositionAndAnchor,
+                );
+                ctx.editor.picker.clear();
+                return None;
+            }
             Key::Tab => {
                 ctx.editor
                     .buffer_views
@@ -86,7 +104,8 @@ impl ModeState for State {
                         "\t",
                         &mut ctx.editor.events,
                     );
-                character = Some('\t');
+
+                '\t'
             }
             Key::Enter => {
                 let buffer_view = ctx.editor.buffer_views.get(handle)?;
@@ -116,7 +135,8 @@ impl ModeState for State {
                     buf.clear();
                 }
                 ctx.editor.string_pool.release(buf);
-                character = Some('\n');
+
+                '\n'
             }
             Key::Char(c) => {
                 let mut buf = [0; std::mem::size_of::<char>()];
@@ -128,7 +148,8 @@ impl ModeState for State {
                     s,
                     &mut ctx.editor.events,
                 );
-                character = Some(c);
+
+                c
             }
             Key::Backspace => {
                 let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
@@ -142,6 +163,8 @@ impl ModeState for State {
                     &mut ctx.editor.word_database,
                     &mut ctx.editor.events,
                 );
+
+                '\0'
             }
             Key::Delete => {
                 let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
@@ -155,6 +178,8 @@ impl ModeState for State {
                     &mut ctx.editor.word_database,
                     &mut ctx.editor.events,
                 );
+
+                '\0'
             }
             Key::Ctrl('w') => {
                 let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
@@ -168,6 +193,8 @@ impl ModeState for State {
                     &mut ctx.editor.word_database,
                     &mut ctx.editor.events,
                 );
+
+                '\0'
             }
             Key::Ctrl('n') => {
                 apply_completion(ctx.editor, handle, 1);
@@ -177,22 +204,14 @@ impl ModeState for State {
                 apply_completion(ctx.editor, handle, -1);
                 return None;
             }
-            _ => (),
-        }
-
-        let character = match character {
-            Some(c) => c,
-            None => {
-                ctx.editor.picker.clear();
-                return None;
-            }
+            _ => return None,
         };
 
         ctx.editor.trigger_event_handlers(ctx.platform, ctx.clients);
 
-        let buffer_view = ctx.editor.buffer_views.get(handle)?;
-        match find_lsp_client(ctx.editor, buffer_view.buffer_handle) {
+        match find_lsp_client(ctx.editor, handle) {
             Some(lsp_client) => {
+                /*
                 let lsp_client_handle = lsp_client.handle();
                 let buffer_handle = buffer_view.buffer_handle;
                 let position = buffer_view.cursors.main_cursor().position;
@@ -209,15 +228,14 @@ impl ModeState for State {
                         c.completion(e, platform, client_handle, buffer_handle, position)
                     });
 
-                    filter_completions(ctx.editor, buffer_handle, position, false);
+                    update_completions(ctx.editor, buffer_handle, position, false);
                 }
 
                 ctx.editor.mode.insert_state.lsp_client_handle = Some(lsp_client_handle);
+                */
             }
             None => {
-                let buffer_handle = buffer_view.buffer_handle;
-                let position = buffer_view.cursors.main_cursor().position;
-                filter_completions(ctx.editor, buffer_handle, position, true);
+                update_completions(ctx.editor, handle, true);
                 if ctx.editor.picker.cursor().is_none() {
                     ctx.editor.picker.move_cursor(0);
                 }
@@ -228,10 +246,11 @@ impl ModeState for State {
     }
 }
 
-fn find_lsp_client(editor: &Editor, buffer_handle: BufferHandle) -> Option<&lsp::Client> {
+fn find_lsp_client(editor: &Editor, buffer_view_handle: BufferViewHandle) -> Option<&lsp::Client> {
+    let buffer_view = editor.buffer_views.get(buffer_view_handle)?;
     let buffer_path = editor
         .buffers
-        .get(buffer_handle)?
+        .get(buffer_view.buffer_handle)?
         .path()
         .to_str()?
         .as_bytes();
@@ -242,33 +261,50 @@ fn find_lsp_client(editor: &Editor, buffer_handle: BufferHandle) -> Option<&lsp:
         .or_else(|| editor.lsp.clients().find(|c| c.handles_path(buffer_path)))
 }
 
-pub fn filter_completions(
+pub fn update_completions(
     editor: &mut Editor,
-    buffer_handle: BufferHandle,
-    position: BufferPosition,
+    buffer_view_handle: BufferViewHandle,
     use_word_database: bool,
 ) {
-    let buffer = match editor.buffers.get(buffer_handle) {
-        Some(buffer) => buffer,
-        None => {
-            editor.picker.clear();
-            return;
+    fn try_update_completions(
+        editor: &mut Editor,
+        buffer_view_handle: BufferViewHandle,
+        use_word_database: bool,
+    ) -> bool {
+        let buffer_view = match editor.buffer_views.get(buffer_view_handle) {
+            Some(buffer_view) => buffer_view,
+            None => return false,
+        };
+        let buffer = match editor.buffers.get(buffer_view.buffer_handle) {
+            Some(buffer) => buffer,
+            None => return false,
+        };
+
+        let main_cursor_index = buffer_view.cursors.main_cursor_index();
+        let main_completion_position = match editor
+            .mode
+            .insert_state
+            .completion_positions
+            .get(main_cursor_index)
+        {
+            Some(&position) => position,
+            None => return false,
+        };
+
+        let word_position = buffer_view.cursors.main_cursor().position;
+        if word_position < main_completion_position {
+            return false;
         }
-    };
 
-    let mut word_position = position;
-    word_position.column_byte_index = buffer.content().line_at(word_position.line_index).as_str()
-        [..word_position.column_byte_index]
-        .char_indices()
-        .next_back()
-        .unwrap_or((0, char::default()))
-        .0;
-    let word = buffer.content().word_at(word_position);
+        let word = buffer.content().word_at(word_position);
 
-    if word.kind == WordKind::Identifier
-        && word_position.column_byte_index
-            >= word.end_position().column_byte_index.saturating_sub(1)
-    {
+        if word.kind != WordKind::Identifier
+        //&& word_position.column_byte_index
+        //    >= word.end_position().column_byte_index.saturating_sub(1)
+        {
+            return false;
+        }
+
         if use_word_database {
             editor
                 .picker
@@ -280,8 +316,13 @@ pub fn filter_completions(
         if editor.picker.len() == 1 {
             editor.picker.clear();
         }
-    } else {
+
+        true
+    }
+
+    if !try_update_completions(editor, buffer_view_handle, use_word_database) {
         editor.picker.clear();
+        editor.mode.insert_state.completion_positions.clear();
     }
 }
 
@@ -295,12 +336,13 @@ fn apply_completion(editor: &mut Editor, handle: BufferViewHandle, cursor_moveme
         Some(view) => view,
         None => return,
     };
-    let buf = editor.string_pool.acquire_with(entry);
+    let completion = editor.string_pool.acquire_with(entry);
     buffer_view.apply_completion(
         &mut editor.buffers,
         &mut editor.word_database,
-        &buf,
+        &completion,
+        &editor.mode.insert_state.completion_positions,
         &mut editor.events,
     );
-    editor.string_pool.release(buf);
+    editor.string_pool.release(completion);
 }

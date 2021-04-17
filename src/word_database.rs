@@ -14,7 +14,7 @@ pub enum WordKind {
 
 impl WordKind {
     pub fn from_char(c: char) -> Self {
-        if c == '_' || c.is_alphanumeric() {
+        if c.is_alphanumeric() || c == '_' {
             Self::Identifier
         } else if c.is_whitespace() {
             Self::Whitespace
