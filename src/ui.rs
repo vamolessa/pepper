@@ -159,7 +159,7 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
             },
         }
     } else {
-        editor.theme.normal_cursor
+        editor.theme.inactive_cursor
     };
 
     let mut text_color = editor.theme.token_text;

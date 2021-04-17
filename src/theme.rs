@@ -45,6 +45,7 @@ theme_colors! {
     normal_cursor,
     insert_cursor,
     select_cursor,
+    inactive_cursor,
 
     token_whitespace,
     token_text,
@@ -71,6 +72,7 @@ pub fn gruvbox_theme() -> Theme {
         normal_cursor: Color::from_u32(0xcc241d),
         insert_cursor: Color::from_u32(0xfabd2f),
         select_cursor: Color::from_u32(0x458588),
+        inactive_cursor: Color::from_u32(0x504945),
 
         token_whitespace: Color::from_u32(0x504945),
         token_text: Color::from_u32(0xebdbb2),

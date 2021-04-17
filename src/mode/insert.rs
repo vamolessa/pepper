@@ -195,18 +195,19 @@ impl ModeState for State {
         match find_lsp_client(ctx.editor, buffer.handle()) {
             Some(lsp_client) => {
                 let lsp_client_handle = lsp_client.handle();
-                let position = buffer_view.cursors.main_cursor().position;
-                let buffer_handle = buffer.handle();
 
                 if lsp_client.signature_help_triggers().contains(character) {
+                    let position = buffer_view.cursors.main_cursor().position;
+                    let buffer_handle = buffer.handle();
                     let platform = &mut *ctx.platform;
                     lsp::ClientManager::access(ctx.editor, lsp_client_handle, |e, c| {
                         c.signature_help(e, platform, buffer_handle, position)
                     });
                 } else {
+                    let client_handle = ctx.client_handle;
                     let platform = &mut *ctx.platform;
                     lsp::ClientManager::access(ctx.editor, lsp_client_handle, |e, c| {
-                        c.completion(e, platform, buffer_handle, position)
+                        c.completion(e, platform, client_handle, handle)
                     });
                 }
 

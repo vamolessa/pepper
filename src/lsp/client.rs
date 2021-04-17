@@ -31,7 +31,7 @@ use crate::{
             ServerResponse, TextEdit, Uri, WorkspaceEdit,
         },
     },
-    mode::{picker, read_line, ModeContext, ModeKind, insert},
+    mode::{insert, picker, read_line, ModeContext, ModeKind},
     platform::{Platform, PlatformRequest, ProcessHandle, ProcessTag},
 };
 
@@ -1036,16 +1036,24 @@ impl Client {
 
     pub fn completion(
         &mut self,
-        editor: &mut Editor,
+        editor: &Editor,
         platform: &mut Platform,
-        buffer_handle: BufferHandle,
-        position: BufferPosition,
+        client_handle: client::ClientHandle,
+        buffer_view_handle: BufferViewHandle,
     ) {
         if !self.server_capabilities.completionProvider.on || !self.request_state.is_idle() {
             return;
         }
 
-        let buffer_path = match editor.buffers.get(buffer_handle).map(Buffer::path) {
+        let buffer_view = match editor.buffer_views.get(buffer_view_handle) {
+            Some(buffer_view) => buffer_view,
+            None => return,
+        };
+        let buffer_path = match editor
+            .buffers
+            .get(buffer_view.buffer_handle)
+            .map(Buffer::path)
+        {
             Some(path) => path,
             None => return,
         };
@@ -1053,7 +1061,7 @@ impl Client {
         helper::send_pending_did_change(self, editor, platform);
 
         let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
-        let position = DocumentPosition::from(position);
+        let position = DocumentPosition::from(buffer_view.cursors.main_cursor().position);
 
         let mut params = JsonObject::default();
         params.set("textDocument".into(), text_document.into(), &mut self.json);
@@ -1062,6 +1070,12 @@ impl Client {
             position.to_json_value(&mut self.json),
             &mut self.json,
         );
+
+        self.request_state = RequestState::Completion {
+            client_handle,
+            buffer_view_handle,
+        };
+        self.request(platform, "textDocument/completion", params);
     }
 
     fn write_to_log_buffer<F>(&mut self, writer: F)

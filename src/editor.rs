@@ -340,6 +340,16 @@ impl Editor {
                 if clients.focus_client(client_handle) {
                     self.recording_macro = None;
                     self.buffered_keys.0.clear();
+
+                    if self.mode.kind() == ModeKind::Insert {
+                        let mut ctx = ModeContext {
+                            editor: self,
+                            platform,
+                            clients,
+                            client_handle,
+                        };
+                        Mode::change_to(&mut ctx, ModeKind::default());
+                    }
                 }
                 self.buffered_keys.0.push(key);
                 self.execute_keys(platform, clients, client_handle, KeysIterator::from(0))
