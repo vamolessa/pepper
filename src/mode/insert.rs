@@ -218,6 +218,9 @@ impl ModeState for State {
                 let buffer_handle = buffer_view.buffer_handle;
                 let position = buffer_view.cursors.main_cursor().position;
                 filter_completions(ctx.editor, buffer_handle, position, true);
+                if ctx.editor.picker.cursor().is_none() {
+                    ctx.editor.picker.move_cursor(0);
+                }
             }
         }
 
@@ -273,10 +276,9 @@ pub fn filter_completions(
         } else {
             editor.picker.filter(WordIndicesIter::empty(), word.text);
         }
+
         if editor.picker.len() == 1 {
             editor.picker.clear();
-        } else if editor.picker.cursor().is_none() {
-            editor.picker.move_cursor(0);
         }
     } else {
         editor.picker.clear();
