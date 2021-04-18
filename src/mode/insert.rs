@@ -197,11 +197,11 @@ impl ModeState for State {
                 '\0'
             }
             Key::Ctrl('n') => {
-                apply_completion(ctx.editor, handle, 1);
+                apply_completion(ctx, handle, 1);
                 return None;
             }
             Key::Ctrl('p') => {
-                apply_completion(ctx.editor, handle, -1);
+                apply_completion(ctx, handle, -1);
                 return None;
             }
             _ => return None,
@@ -231,8 +231,6 @@ impl ModeState for State {
 
                     update_completions(ctx.editor, buffer_handle, position, false);
                 }
-
-                ctx.editor.mode.insert_state.lsp_client_handle = Some(lsp_client_handle);
                 */
             }
             None => {
@@ -247,7 +245,11 @@ impl ModeState for State {
     }
 }
 
-fn find_lsp_client(editor: &Editor, buffer_handle: BufferHandle) -> Option<&lsp::Client> {
+fn find_lsp_client(editor: &mut Editor, buffer_handle: BufferHandle) -> Option<lsp::ClientHandle> {
+    if let Some(handle) = editor.mode.insert_state.lsp_client_handle {
+        return Some(handle);
+    }
+
     let buffer_path = editor
         .buffers
         .get(buffer_handle)?
@@ -255,10 +257,14 @@ fn find_lsp_client(editor: &Editor, buffer_handle: BufferHandle) -> Option<&lsp:
         .to_str()?
         .as_bytes();
 
-    let lsp_client_handle = editor.mode.insert_state.lsp_client_handle;
-    lsp_client_handle
-        .and_then(|h| editor.lsp.get(h))
-        .or_else(|| editor.lsp.clients().find(|c| c.handles_path(buffer_path)))
+    let client_handle = editor
+        .lsp
+        .clients()
+        .find(|c| c.handles_path(buffer_path))?
+        .handle();
+
+    editor.mode.insert_state.lsp_client_handle = Some(client_handle);
+    Some(client_handle)
 }
 
 pub fn update_completions(
@@ -326,29 +332,61 @@ pub fn update_completions(
     }
 }
 
-fn apply_completion(editor: &mut Editor, buffer_view_handle: BufferViewHandle, cursor_movement: isize) {
-    let buffer_view = match editor.buffer_views.get_mut(buffer_view_handle) {
+fn apply_completion(
+    ctx: &mut ModeContext,
+    buffer_view_handle: BufferViewHandle,
+    cursor_movement: isize,
+) {
+    if ctx.editor.mode.insert_state.completion_positions.is_empty() {
+        let buffer_view = match ctx.editor.buffer_views.get_mut(buffer_view_handle) {
+            Some(view) => view,
+            None => return,
+        };
+        let buffer = match ctx.editor.buffers.get(buffer_view.buffer_handle) {
+            Some(buffer) => buffer.content(),
+            None => return,
+        };
+
+        for cursor in &buffer_view.cursors[..] {
+            let position = buffer.position_before(cursor.position);
+            ctx.editor
+                .mode
+                .insert_state
+                .completion_positions
+                .push(position);
+        }
+
+        let buffer_handle = buffer_view.buffer_handle;
+        let client_handle = ctx.client_handle;
+        let platform = &mut *ctx.platform;
+        let position = buffer_view.cursors.main_cursor().position;
+
+        if let Some(lsp_client_handle) = find_lsp_client(ctx.editor, buffer_handle) {
+            lsp::ClientManager::access(ctx.editor, lsp_client_handle, |e, c| {
+                c.completion(e, platform, client_handle, buffer_handle, position)
+            });
+            return;
+        }
+    }
+
+    let buffer_view = match ctx.editor.buffer_views.get_mut(buffer_view_handle) {
         Some(view) => view,
         None => return,
     };
 
-    if editor.mode.insert_state.completion_positions.is_empty() {
-        // fill in completion positions
-    }
-
-    editor.picker.move_cursor(cursor_movement);
-    let entry = match editor.picker.current_entry(&editor.word_database) {
+    ctx.editor.picker.move_cursor(cursor_movement);
+    let entry = match ctx.editor.picker.current_entry(&ctx.editor.word_database) {
         Some((_, entry)) => entry,
         None => return,
     };
 
-    let completion = editor.string_pool.acquire_with(entry);
+    let completion = ctx.editor.string_pool.acquire_with(entry);
     buffer_view.apply_completion(
-        &mut editor.buffers,
-        &mut editor.word_database,
+        &mut ctx.editor.buffers,
+        &mut ctx.editor.word_database,
         &completion,
-        &editor.mode.insert_state.completion_positions,
-        &mut editor.events,
+        &ctx.editor.mode.insert_state.completion_positions,
+        &mut ctx.editor.events,
     );
-    editor.string_pool.release(completion);
+    ctx.editor.string_pool.release(completion);
 }
