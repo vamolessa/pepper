@@ -31,7 +31,7 @@ use crate::{
             ServerResponse, TextEdit, Uri, WorkspaceEdit,
         },
     },
-    mode::{insert, picker, read_line, ModeContext, ModeKind},
+    mode::{picker, read_line, ModeContext, ModeKind},
     platform::{Platform, PlatformRequest, ProcessHandle, ProcessTag},
 };
 

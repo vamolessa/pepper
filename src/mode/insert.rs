@@ -1,7 +1,6 @@
-use std::fmt::Write;
+use std::{fmt::Write, path::Path};
 
 use crate::{
-    buffer::BufferHandle,
     buffer_position::BufferPosition,
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     editor::{Editor, KeysIterator},
@@ -16,6 +15,27 @@ use crate::{
 pub struct State {
     lsp_client_handle: Option<lsp::ClientHandle>,
     completion_positions: Vec<BufferPosition>,
+}
+
+impl State {
+    fn get_lsp_client<'a>(
+        &mut self,
+        lsp_clients: &'a lsp::ClientManager,
+        buffer_path: &Path,
+    ) -> Option<&'a lsp::Client> {
+        if let Some(handle) = self.lsp_client_handle {
+            return lsp_clients.get(handle);
+        }
+
+        let buffer_path = buffer_path.to_str()?.as_bytes();
+        match lsp_clients.clients().find(|c| c.handles_path(buffer_path)) {
+            Some(client) => {
+                self.lsp_client_handle = Some(client.handle());
+                Some(client)
+            }
+            None => None,
+        }
+    }
 }
 
 impl ModeState for State {
@@ -193,7 +213,7 @@ impl ModeState for State {
         };
 
         ctx.editor.trigger_event_handlers(ctx.platform, ctx.clients);
-        update_completions(ctx.editor, handle);
+        update_completions(ctx, handle);
         None
     }
 }
@@ -203,37 +223,15 @@ fn cancel_completion(editor: &mut Editor) {
     editor.mode.insert_state.completion_positions.clear();
 }
 
-fn find_lsp_client(editor: &mut Editor, buffer_handle: BufferHandle) -> Option<lsp::ClientHandle> {
-    if let Some(handle) = editor.mode.insert_state.lsp_client_handle {
-        return Some(handle);
-    }
-
-    let buffer_path = editor
-        .buffers
-        .get(buffer_handle)?
-        .path()
-        .to_str()?
-        .as_bytes();
-
-    let client_handle = editor
-        .lsp
-        .clients()
-        .find(|c| c.handles_path(buffer_path))?
-        .handle();
-
-    editor.mode.insert_state.lsp_client_handle = Some(client_handle);
-    Some(client_handle)
-}
-
-pub fn update_completions(editor: &mut Editor, buffer_view_handle: BufferViewHandle) {
-    let state = &mut editor.mode.insert_state;
-    let buffer_view = match editor.buffer_views.get(buffer_view_handle) {
+fn update_completions(ctx: &mut ModeContext, buffer_view_handle: BufferViewHandle) {
+    let state = &mut ctx.editor.mode.insert_state;
+    let buffer_view = match ctx.editor.buffer_views.get(buffer_view_handle) {
         Some(buffer_view) => buffer_view,
-        None => return cancel_completion(editor),
+        None => return cancel_completion(ctx.editor),
     };
-    let buffer = match editor.buffers.get(buffer_view.buffer_handle) {
+    let buffer = match ctx.editor.buffers.get(buffer_view.buffer_handle) {
         Some(buffer) => buffer,
-        None => return cancel_completion(editor),
+        None => return cancel_completion(ctx.editor),
     };
     let content = buffer.content();
 
@@ -244,15 +242,14 @@ pub fn update_completions(editor: &mut Editor, buffer_view_handle: BufferViewHan
     let main_completion_position = match state.completion_positions.get(main_cursor_index) {
         Some(&position) => {
             if main_cursor_position < position {
-                return cancel_completion(editor);
+                return cancel_completion(ctx.editor);
             }
 
             position
         }
         None => {
-            // TODO: create a config for the min word len that triggers auto complete
-            if word.kind != WordKind::Identifier || word.text.len() < 3 {
-                return cancel_completion(editor);
+            if word.kind != WordKind::Identifier {
+                return cancel_completion(ctx.editor);
             }
 
             state.completion_positions.clear();
@@ -265,27 +262,47 @@ pub fn update_completions(editor: &mut Editor, buffer_view_handle: BufferViewHan
                 state.completion_positions.push(position);
             }
 
-            // TODO: if there's lsp server, send it a 'completion' request
+            if let Some(lsp_client) = state.get_lsp_client(&ctx.editor.lsp, buffer.path()) {
+                ctx.editor.picker.clear();
+
+                let lsp_client_handle = lsp_client.handle();
+                let platform = &mut *ctx.platform;
+                let client_handle = ctx.client_handle;
+                let buffer_handle = buffer.handle();
+                lsp::ClientManager::access(ctx.editor, lsp_client_handle, |e, c| {
+                    c.completion(
+                        e,
+                        platform,
+                        client_handle,
+                        buffer_handle,
+                        main_cursor_position,
+                    )
+                });
+                return;
+            }
 
             state.completion_positions[main_cursor_index]
         }
     };
 
     if word.position > main_completion_position {
-        return cancel_completion(editor);
+        return cancel_completion(ctx.editor);
     }
 
-    match editor.mode.insert_state.lsp_client_handle {
-        Some(_) => editor.picker.filter(WordIndicesIter::empty(), word.text),
+    match ctx.editor.mode.insert_state.lsp_client_handle {
+        Some(_) => ctx
+            .editor
+            .picker
+            .filter(WordIndicesIter::empty(), word.text),
         None => {
-            editor
+            ctx.editor
                 .picker
-                .filter(editor.word_database.word_indices(), word.text);
-            if editor.picker.cursor().is_none() {
-                editor.picker.move_cursor(0);
+                .filter(ctx.editor.word_database.word_indices(), word.text);
+            if ctx.editor.picker.cursor().is_none() {
+                ctx.editor.picker.move_cursor(0);
             }
-            if editor.picker.len() == 1 {
-                editor.picker.clear();
+            if ctx.editor.picker.len() == 1 {
+                ctx.editor.picker.clear();
             }
         }
     }
