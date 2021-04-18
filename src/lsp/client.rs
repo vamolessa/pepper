@@ -586,6 +586,13 @@ impl Client {
             .trigger_characters
     }
 
+    pub fn completion_triggers(&self) -> &str {
+        &self
+            .server_capabilities
+            .completionProvider
+            .trigger_characters
+    }
+
     pub fn cancel_current_request(&mut self) {
         self.request_state = RequestState::Idle;
     }
