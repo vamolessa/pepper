@@ -33,6 +33,7 @@ use crate::{
     },
     mode::{picker, read_line, ModeContext, ModeKind},
     platform::{Platform, PlatformRequest, ProcessHandle, ProcessTag},
+    word_database::WordIndicesIter,
 };
 
 #[derive(Default)]
@@ -1932,15 +1933,23 @@ impl Client {
                 if editor.mode.kind() != ModeKind::Insert {
                     return;
                 }
-                if clients
+
+                let buffer_views = &editor.buffer_views;
+                let buffer_view = match clients
                     .get(client_handle)
                     .and_then(|c| c.buffer_view_handle())
-                    .and_then(|h| editor.buffer_views.get(h))
-                    .map(|v| v.buffer_handle)
-                    != Some(buffer_handle)
+                    .and_then(|h| buffer_views.get(h))
                 {
+                    Some(buffer_view) => buffer_view,
+                    None => return,
+                };
+                if buffer_view.buffer_handle != buffer_handle {
                     return;
                 }
+                let buffer = match editor.buffers.get(buffer_handle) {
+                    Some(buffer) => buffer.content(),
+                    None => return,
+                };
 
                 let completions = match result {
                     JsonValue::Array(completions) => completions,
@@ -1960,6 +1969,11 @@ impl Client {
                         editor.picker.add_custom_entry(text);
                     }
                 }
+
+                let position = buffer_view.cursors.main_cursor().position;
+                let position = buffer.position_before(position);
+                let word = buffer.word_at(position).text;
+                editor.picker.filter(WordIndicesIter::empty(), word);
             }
             _ => (),
         }

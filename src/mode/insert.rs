@@ -248,7 +248,9 @@ fn update_completions(ctx: &mut ModeContext, buffer_view_handle: BufferViewHandl
             position
         }
         None => {
-            if word.kind != WordKind::Identifier {
+            if word.kind != WordKind::Identifier
+                || word.text.len() < ctx.editor.config.completion_min_len as _
+            {
                 return cancel_completion(ctx.editor);
             }
 

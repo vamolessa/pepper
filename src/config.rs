@@ -66,5 +66,6 @@ config_values! {
     visual_tab_first: u8 = b'|',
     visual_tab_repeat: u8 = b' ',
 
+    completion_min_len: u8 = 3,
     picker_max_height: u8 = 8,
 }
