@@ -508,7 +508,6 @@ enum RequestState {
     Completion {
         client_handle: client::ClientHandle,
         buffer_handle: BufferHandle,
-        buffer_position: BufferPosition,
     },
 }
 impl RequestState {
@@ -596,7 +595,7 @@ impl Client {
         editor: &Editor,
         platform: &mut Platform,
         buffer_handle: BufferHandle,
-        position: BufferPosition,
+        buffer_position: BufferPosition,
     ) {
         if !self.server_capabilities.hoverProvider.0 {
             return;
@@ -610,7 +609,7 @@ impl Client {
         helper::send_pending_did_change(self, editor, platform);
 
         let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
-        let position = DocumentPosition::from(position);
+        let position = DocumentPosition::from(buffer_position);
 
         let mut params = JsonObject::default();
         params.set("textDocument".into(), text_document.into(), &mut self.json);
@@ -628,7 +627,7 @@ impl Client {
         editor: &Editor,
         platform: &mut Platform,
         buffer_handle: BufferHandle,
-        position: BufferPosition,
+        buffer_position: BufferPosition,
     ) {
         if !self.server_capabilities.signatureHelpProvider.on {
             return;
@@ -642,7 +641,7 @@ impl Client {
         helper::send_pending_did_change(self, editor, platform);
 
         let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
-        let position = DocumentPosition::from(position);
+        let position = DocumentPosition::from(buffer_position);
 
         let mut params = JsonObject::default();
         params.set("textDocument".into(), text_document.into(), &mut self.json);
@@ -660,7 +659,7 @@ impl Client {
         editor: &Editor,
         platform: &mut Platform,
         buffer_handle: BufferHandle,
-        position: BufferPosition,
+        buffer_position: BufferPosition,
         client_handle: client::ClientHandle,
     ) {
         if !self.server_capabilities.definitionProvider.0 || !self.request_state.is_idle() {
@@ -675,7 +674,7 @@ impl Client {
         helper::send_pending_did_change(self, editor, platform);
 
         let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
-        let position = DocumentPosition::from(position);
+        let position = DocumentPosition::from(buffer_position);
 
         let mut params = JsonObject::default();
         params.set("textDocument".into(), text_document.into(), &mut self.json);
@@ -694,7 +693,7 @@ impl Client {
         editor: &Editor,
         platform: &mut Platform,
         buffer_handle: BufferHandle,
-        position: BufferPosition,
+        buffer_position: BufferPosition,
         context_len: usize,
         auto_close_buffer: bool,
         client_handle: client::ClientHandle,
@@ -711,7 +710,7 @@ impl Client {
         helper::send_pending_did_change(self, editor, platform);
 
         let text_document = helper::text_document_with_id(&self.root, buffer_path, &mut self.json);
-        let position = DocumentPosition::from(position);
+        let position = DocumentPosition::from(buffer_position);
 
         let mut context = JsonObject::default();
         context.set("includeDeclaration".into(), true.into(), &mut self.json);
@@ -1068,7 +1067,6 @@ impl Client {
         self.request_state = RequestState::Completion {
             client_handle,
             buffer_handle,
-            buffer_position,
         };
         self.request(platform, "textDocument/completion", params);
     }
@@ -1915,12 +1913,11 @@ impl Client {
                 );
             }
             "textDocument/completion" => {
-                let (client_handle, buffer_handle, buffer_position) = match self.request_state {
+                let (client_handle, buffer_handle) = match self.request_state {
                     RequestState::Completion {
                         client_handle,
                         buffer_handle,
-                        buffer_position,
-                    } => (client_handle, buffer_handle, buffer_position),
+                    } => (client_handle, buffer_handle),
                     _ => return,
                 };
                 self.request_state = RequestState::Idle;
@@ -1956,8 +1953,6 @@ impl Client {
                         editor.picker.add_custom_entry(text);
                     }
                 }
-
-                //insert::update_completions(editor, buffer_handle, buffer_position, false);
             }
             _ => (),
         }
