@@ -33,7 +33,7 @@ use crate::{
     },
     mode::{picker, read_line, ModeContext, ModeKind},
     platform::{Platform, PlatformRequest, ProcessHandle, ProcessTag},
-    word_database::WordIndicesIter,
+    word_database::{WordIndicesIter, WordKind},
 };
 
 #[derive(Default)]
@@ -1076,6 +1076,7 @@ impl Client {
             client_handle,
             buffer_handle,
         };
+
         self.request(platform, "textDocument/completion", params);
     }
 
@@ -1405,6 +1406,7 @@ impl Client {
         let result = match response.result {
             Ok(result) => result,
             Err(error) => {
+                self.request_state = RequestState::Idle;
                 helper::write_response_error(&mut editor.status_bar, error, &self.json);
                 return;
             }
@@ -1972,8 +1974,12 @@ impl Client {
 
                 let position = buffer_view.cursors.main_cursor().position;
                 let position = buffer.position_before(position);
-                let word = buffer.word_at(position).text;
-                editor.picker.filter(WordIndicesIter::empty(), word);
+                let word = buffer.word_at(position);
+                let filter = match word.kind {
+                    WordKind::Identifier => word.text,
+                    _ => "",
+                };
+                editor.picker.filter(WordIndicesIter::empty(), filter);
             }
             _ => (),
         }
