@@ -321,7 +321,10 @@ fn apply_completion(
     ctx.editor.picker.move_cursor(cursor_movement);
     let entry = match ctx.editor.picker.current_entry(&ctx.editor.word_database) {
         Some((_, entry)) => entry,
-        None => return,
+        None => {
+            // TODO: if there's an lsp server running, ask it for completion!
+            return;
+        }
     };
 
     let completion = ctx.editor.string_pool.acquire_with(entry);
