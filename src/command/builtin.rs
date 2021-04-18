@@ -954,17 +954,19 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "close",
         alias: "c",
         help: concat!(
-            "close buffer\n",
+            "close buffer and opens previous buffer in view if any\n",
             "close[!] [<flags>]\n",
             "with '!' will discard any unsaved changes",
-            " -buffer=<buffer-id> : if not specified, the current buffer is used"
+            " -buffer=<buffer-id> : if not specified, the current buffer is used\n",
+            " -no-previous-buffer : does not try to open previous buffer",
         ),
         hidden: false,
         completions: &[],
         func: |ctx| {
-            let mut flags = [("buffer", None)];
+            let mut flags = [("buffer", None), ("no-previous-buffer", None)];
             ctx.args.get_flags(&mut flags)?;
             let buffer_handle = flags[0].1.map(parse_arg).transpose()?;
+            let no_previous_buffer = flags[1].1.is_some();
 
             ctx.args.assert_empty()?;
 
@@ -975,6 +977,13 @@ pub const COMMANDS: &[BuiltinCommand] = &[
 
             ctx.assert_can_discard_buffer(buffer_handle)?;
             ctx.editor.buffers.defer_remove(buffer_handle, &mut ctx.editor.events);
+
+            if !no_previous_buffer {
+                let clients = &mut *ctx.clients;
+                if let Some(client) = ctx.client_handle.and_then(|h| clients.get_mut(h)) {
+                    client.set_buffer_view_handle(client.previous_buffer_view_handle(), &mut ctx.editor.events);
+                }
+            }
 
             ctx.editor
                 .status_bar

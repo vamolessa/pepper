@@ -170,7 +170,7 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
     set_not_underlined(buf);
 
     let mut line_index = view.scroll;
-    let mut drawn_line_count = 0;
+    let mut lines_drawn_count = 0;
 
     let cursors = &view.cursors[..];
     let cursors_end_index = cursors.len().saturating_sub(1);
@@ -239,10 +239,10 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
             if x >= view.width {
                 move_cursor_to_next_line(buf);
 
-                drawn_line_count += 1;
+                lines_drawn_count += 1;
                 x -= view.width;
 
-                if drawn_line_count >= view.height {
+                if lines_drawn_count >= view.height {
                     break 'lines_loop;
                 }
             }
@@ -361,9 +361,9 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
         move_cursor_to_next_line(buf);
 
         line_index += 1;
-        drawn_line_count += 1;
+        lines_drawn_count += 1;
 
-        if drawn_line_count >= view.height {
+        if lines_drawn_count >= view.height {
             break;
         }
     }
@@ -372,7 +372,7 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
     set_background_color(buf, editor.theme.background);
     set_foreground_color(buf, editor.theme.token_whitespace);
 
-    for _ in drawn_line_count..view.height {
+    for _ in lines_drawn_count..view.height {
         buf.push(editor.config.visual_empty);
         clear_until_new_line(buf);
         move_cursor_to_next_line(buf);
