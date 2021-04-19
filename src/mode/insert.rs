@@ -115,16 +115,25 @@ impl ModeState for State {
                 cancel_completion(ctx.editor);
                 return None;
             }
-            Key::Tab => ctx
-                .editor
-                .buffer_views
-                .get_mut(handle)?
-                .insert_text_at_cursor_positions(
-                    &mut ctx.editor.buffers,
-                    &mut ctx.editor.word_database,
-                    "\t",
-                    &mut ctx.editor.events,
-                ),
+            Key::Tab => {
+                const SPACES_BUF: [u8; u8::MAX as usize] = [b' '; u8::MAX as usize];
+                let text = if ctx.editor.config.indent_with_tabs {
+                    "\t"
+                } else {
+                    let len = ctx.editor.config.tab_size.get() as usize;
+                    unsafe { std::str::from_utf8_unchecked(&SPACES_BUF[..len]) }
+                };
+
+                ctx.editor
+                    .buffer_views
+                    .get_mut(handle)?
+                    .insert_text_at_cursor_positions(
+                        &mut ctx.editor.buffers,
+                        &mut ctx.editor.word_database,
+                        text,
+                        &mut ctx.editor.events,
+                    );
+            }
             Key::Enter => {
                 let buffer_view = ctx.editor.buffer_views.get(handle)?;
                 let cursor_count = buffer_view.cursors[..].len();
