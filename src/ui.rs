@@ -199,24 +199,39 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
     };
     let diagnostics_end_index = diagnostics.len().saturating_sub(1);
 
-    let mut current_cursor_index = 0;
+    let display_position_offset = BufferPosition::line_col(view.scroll.1 as _, view.scroll.0 as _);
+
+    let mut current_cursor_index = cursors.len();
     let mut current_cursor_position = BufferPosition::default();
     let mut current_cursor_range = BufferRange::default();
-    if let Some(cursor) = cursors.get(current_cursor_index) {
-        current_cursor_position = cursor.position;
-        current_cursor_range = cursor.to_range();
+    for (i, cursor) in cursors.iter().enumerate() {
+        let range = cursor.to_range();
+        if display_position_offset <= range.from {
+            current_cursor_index = i;
+            current_cursor_position = cursor.position;
+            current_cursor_range = range;
+            break;
+        }
     }
 
-    let mut current_search_range_index = 0;
+    let mut current_search_range_index = search_ranges.len();
     let mut current_search_range = BufferRange::default();
-    if let Some(&range) = search_ranges.get(current_search_range_index) {
-        current_search_range = range;
+    for (i, &range) in search_ranges.iter().enumerate() {
+        if display_position_offset <= range.from {
+            current_search_range_index = i;
+            current_search_range = range;
+            break;
+        }
     }
 
-    let mut current_diagnostic_index = 0;
+    let mut current_diagnostic_index = diagnostics.len();
     let mut current_diagnostic_range = BufferRange::default();
-    if let Some(diagnostic) = diagnostics.get(current_diagnostic_index) {
-        current_diagnostic_range = diagnostic.range;
+    for (i, diagnostic) in diagnostics.iter().enumerate() {
+        if display_position_offset <= diagnostic.range.from {
+            current_diagnostic_index = i;
+            current_diagnostic_range = diagnostic.range;
+            break;
+        }
     }
 
     let mut lines_drawn_count = 0;
@@ -260,7 +275,9 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
                 TokenKind::Whitespace => editor.theme.token_whitespace,
             };
 
-            if current_cursor_range.to < char_position && current_cursor_index < cursors_end_index {
+            while current_cursor_index < cursors_end_index
+                && current_cursor_range.to < char_position
+            {
                 current_cursor_index += 1;
                 let cursor = cursors[current_cursor_index];
                 current_cursor_position = cursor.position;
@@ -269,7 +286,7 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
             let inside_cursor_range = current_cursor_range.from <= char_position
                 && char_position < current_cursor_range.to;
 
-            if current_search_range.to <= char_position
+            while current_search_range.to <= char_position
                 && current_search_range_index < search_ranges_end_index
             {
                 current_search_range_index += 1;
@@ -278,7 +295,7 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
             let inside_search_range = current_search_range.from <= char_position
                 && char_position < current_search_range.to;
 
-            if current_diagnostic_range.to < char_position
+            while current_diagnostic_range.to < char_position
                 && current_diagnostic_index < diagnostics_end_index
             {
                 current_diagnostic_index += 1;

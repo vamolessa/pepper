@@ -177,6 +177,12 @@ mod tests {
     }
 
     #[test]
+    fn buffer_position_comparison() {
+        assert!(pos(0, 0) < pos(0, 9));
+        assert!(pos(0, 0) < pos(0, 14));
+    }
+
+    #[test]
     fn buffer_position_insert() {
         let pos12 = pos(1, 2);
         let pos31 = pos(3, 1);
