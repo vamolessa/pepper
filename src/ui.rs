@@ -219,17 +219,23 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
         current_diagnostic_range = diagnostic.range;
     }
 
-    let mut line_index = view.scroll.1 as _;
     let mut lines_drawn_count = 0;
+    for (line_index, line) in buffer_content
+        .lines()
+        .enumerate()
+        .skip(view.scroll.1 as _)
+        .take(view.size.1 as _)
+    {
+        lines_drawn_count += 1;
 
-    for line in buffer_content.lines().skip(line_index) {
         let mut draw_state = DrawState::Token(TokenKind::Text);
         let mut was_inside_diagnostic_range = false;
         let mut x = 0;
 
         set_foreground_color(buf, editor.theme.token_text);
 
-        for (char_index, c) in line.as_str().char_indices().chain(iter::once((0, '\n'))) {
+        let line = line.as_str();
+        for (char_index, c) in line.char_indices().chain(iter::once((line.len(), '\n'))) {
             if char_index < view.scroll.0 as _ {
                 continue;
             }
@@ -353,13 +359,6 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
         }
 
         move_cursor_to_next_line(buf);
-
-        line_index += 1;
-        lines_drawn_count += 1;
-
-        if lines_drawn_count >= view.size.0 {
-            break;
-        }
     }
 
     set_not_underlined(buf);
