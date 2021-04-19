@@ -75,13 +75,12 @@ pub fn set_not_underlined(buf: &mut Vec<u8>) {
 pub fn render(
     editor: &Editor,
     buffer_view_handle: Option<BufferViewHandle>,
-    width: usize,
-    height: usize,
-    scroll: usize,
+    size: (u16, u16),
+    scroll: (u32, u32),
     has_focus: bool,
     buffer: &mut Vec<u8>,
 ) {
-    let view = View::new(editor, buffer_view_handle, width, height, scroll);
+    let view = View::new(editor, buffer_view_handle, size, scroll);
 
     draw_buffer(buffer, editor, &view, has_focus);
     if has_focus {
@@ -96,18 +95,16 @@ struct View<'a> {
     main_cursor_position: BufferPosition,
     cursors: &'a [Cursor],
 
-    width: usize,
-    height: usize,
-    scroll: usize,
+    size: (u16, u16),
+    scroll: (u32, u32),
 }
 
 impl<'a> View<'a> {
     pub fn new(
         editor: &'a Editor,
         buffer_view_handle: Option<BufferViewHandle>,
-        width: usize,
-        height: usize,
-        scroll: usize,
+        size: (u16, u16),
+        scroll: (u32, u32),
     ) -> View<'a> {
         let buffer_view = buffer_view_handle.and_then(|h| editor.buffer_views.get(h));
         let buffer_handle = buffer_view.map(|v| v.buffer_handle);
@@ -131,9 +128,7 @@ impl<'a> View<'a> {
             buffer,
             main_cursor_position,
             cursors,
-
-            width,
-            height,
+            size,
             scroll,
         }
     }
@@ -168,9 +163,6 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
     set_background_color(buf, editor.theme.background);
     set_foreground_color(buf, text_color);
     set_not_underlined(buf);
-
-    let mut line_index = view.scroll;
-    let mut lines_drawn_count = 0;
 
     let cursors = &view.cursors[..];
     let cursors_end_index = cursors.len().saturating_sub(1);
@@ -227,27 +219,23 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
         current_diagnostic_range = diagnostic.range;
     }
 
-    'lines_loop: for line in buffer_content.lines().skip(line_index) {
+    let mut line_index = view.scroll.1 as _;
+    let mut lines_drawn_count = 0;
+
+    for line in buffer_content.lines().skip(line_index) {
         let mut draw_state = DrawState::Token(TokenKind::Text);
         let mut was_inside_diagnostic_range = false;
-        let mut column_byte_index = 0;
         let mut x = 0;
 
         set_foreground_color(buf, editor.theme.token_text);
 
-        for (char_index, c) in line.as_str().char_indices().chain(iter::once((0, '\0'))) {
-            if x >= view.width {
-                move_cursor_to_next_line(buf);
-
-                lines_drawn_count += 1;
-                x -= view.width;
-
-                if lines_drawn_count >= view.height {
-                    break 'lines_loop;
-                }
+        for (char_index, c) in line.as_str().char_indices().chain(iter::once((0, '\n'))) {
+            if char_index < view.scroll.0 as _ {
+                continue;
             }
 
-            let char_position = BufferPosition::line_col(line_index, column_byte_index);
+            let buf_len = buf.len();
+            let char_position = BufferPosition::line_col(line_index, char_index);
 
             let token_kind = if c.is_ascii_whitespace() {
                 TokenKind::Whitespace
@@ -326,34 +314,40 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
                 set_foreground_color(buf, text_color);
             }
 
+            let previous_x = x;
             match c {
-                '\0' => {
-                    buf.push(b' ');
+                '\n' => {
                     x += 1;
+                    buf.push(b' ');
                 }
                 ' ' => {
-                    buf.push(editor.config.visual_space);
                     x += 1;
+                    buf.push(editor.config.visual_space);
                 }
                 '\t' => {
                     buf.push(editor.config.visual_tab_first);
                     let tab_size = editor.config.tab_size.get() as usize;
                     let next_tab_stop = (tab_size - 1) - x % tab_size;
+                    x += next_tab_stop + 1;
+
                     for _ in 0..next_tab_stop {
                         buf.push(editor.config.visual_tab_repeat);
                     }
-                    x += next_tab_stop + 1;
                 }
                 _ => {
-                    buf.extend_from_slice(c.encode_utf8(&mut char_buf).as_bytes());
                     x += 1;
+                    buf.extend_from_slice(c.encode_utf8(&mut char_buf).as_bytes());
                 }
             }
 
-            column_byte_index += c.len_utf8();
+            if x > view.size.0 as _ {
+                x = previous_x;
+                buf.truncate(buf_len);
+                break;
+            }
         }
 
-        if x < view.width {
+        if x < view.size.0 as _ {
             set_background_color(buf, editor.theme.background);
             clear_until_new_line(buf);
         }
@@ -363,7 +357,7 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
         line_index += 1;
         lines_drawn_count += 1;
 
-        if lines_drawn_count >= view.height {
+        if lines_drawn_count >= view.size.0 {
             break;
         }
     }
@@ -372,7 +366,7 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
     set_background_color(buf, editor.theme.background);
     set_foreground_color(buf, editor.theme.token_whitespace);
 
-    for _ in lines_drawn_count..view.height {
+    for _ in lines_drawn_count..view.size.1 {
         buf.push(editor.config.visual_empty);
         clear_until_new_line(buf);
         move_cursor_to_next_line(buf);
@@ -383,7 +377,7 @@ fn draw_picker(buf: &mut Vec<u8>, editor: &Editor, view: &View) {
     let cursor = editor.picker.cursor().unwrap_or(usize::MAX - 1);
     let scroll = editor.picker.scroll();
 
-    let width = view.width;
+    let width = view.size.0 as _;
     let height = editor
         .picker
         .len()
@@ -445,7 +439,7 @@ fn draw_picker(buf: &mut Vec<u8>, editor: &Editor, view: &View) {
         buf.push(b'|');
         x = 0;
 
-        if x < view.width {
+        if x < width {
             clear_until_new_line(buf);
         }
         move_cursor_to_next_line(buf);
@@ -543,7 +537,7 @@ fn draw_statusbar(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bo
                 for (i, line) in message.lines().enumerate() {
                     let len = print_line(buf, line);
                     if i < line_count - 1 {
-                        if len < view.width {
+                        if len < view.size.0 as _ {
                             clear_until_new_line(buf);
                         }
                         move_cursor_to_next_line(buf);
@@ -596,7 +590,7 @@ fn draw_statusbar(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bo
 
         use io::Write;
 
-        let available_width = view.width as usize - x;
+        let available_width = view.size.0 as usize - x;
         let half_available_width = available_width / 2;
 
         let status_start_index = buf.len();

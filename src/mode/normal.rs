@@ -735,15 +735,15 @@ impl State {
             }
             Key::Char('z') => {
                 let buffer_view = ctx.editor.buffer_views.get(handle)?;
-                let focused_line_index = buffer_view.cursors.main_cursor().position.line_index;
+                let focused_line_index = buffer_view.cursors.main_cursor().position.line_index as u32;
                 let client = ctx.clients.get_mut(ctx.client_handle)?;
-                let height = client.height as usize;
+                let height = client.height as u32;
 
                 match keys.next(&ctx.editor.buffered_keys) {
                     Key::None => return Some(ModeOperation::Pending),
-                    Key::Char('z') => client.scroll = focused_line_index.saturating_sub(height / 2),
-                    Key::Char('j') => client.scroll = focused_line_index.saturating_sub(height),
-                    Key::Char('k') => client.scroll = focused_line_index,
+                    Key::Char('z') => client.scroll.1 = focused_line_index.saturating_sub(height / 2),
+                    Key::Char('j') => client.scroll.1 = focused_line_index.saturating_sub(height),
+                    Key::Char('k') => client.scroll.1 = focused_line_index,
                     _ => (),
                 }
             }
@@ -1382,12 +1382,6 @@ where
     let mut cursors = cursors.mut_guard();
     let main_cursor = cursors.main_cursor();
     main_cursor.position = search_ranges[next_index].from;
-
-    let line_index = main_cursor.position.line_index;
-    let height = client.height as usize;
-    if line_index < client.scroll || line_index >= client.scroll + height {
-        client.scroll = line_index.saturating_sub(height / 2);
-    }
 
     if let CursorMovementKind::PositionAndAnchor = ctx.editor.mode.normal_state.movement_kind {
         main_cursor.anchor = main_cursor.position;

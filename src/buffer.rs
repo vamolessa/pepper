@@ -140,7 +140,6 @@ impl BufferLinePool {
         match self.pool.pop() {
             Some(mut line) => {
                 line.text.clear();
-                line.char_count = 0;
                 line
             }
             None => BufferLine::new(),
@@ -154,19 +153,13 @@ impl BufferLinePool {
 
 pub struct BufferLine {
     text: String,
-    char_count: usize,
 }
 
 impl BufferLine {
     fn new() -> Self {
         Self {
             text: String::new(),
-            char_count: 0,
         }
-    }
-
-    pub fn char_count(&self) -> usize {
-        self.char_count
     }
 
     pub fn as_str(&self) -> &str {
@@ -262,28 +255,24 @@ impl BufferLine {
 
     pub fn split_off(&mut self, other: &mut BufferLine, index: usize) {
         other.text.clear();
-        other.char_count = 0;
         other.push_text(&self.text[index..]);
 
         self.text.truncate(index);
-        self.char_count -= other.char_count();
     }
 
     pub fn insert_text(&mut self, index: usize, text: &str) {
         self.text.insert_str(index, text);
-        self.char_count += text.chars().count();
     }
 
     pub fn push_text(&mut self, text: &str) {
         self.text.push_str(text);
-        self.char_count += text.chars().count();
     }
 
     pub fn delete_range<R>(&mut self, range: R)
     where
         R: RangeBounds<usize>,
     {
-        self.char_count -= self.text.drain(range).count();
+        self.text.drain(range);
     }
 }
 
@@ -350,7 +339,6 @@ impl BufferContent {
                         line.text.truncate(line.text.len() - 1);
                     }
 
-                    line.char_count = line.text.chars().count();
                     self.lines.push(line);
                 }
                 Err(e) => return Err(e),
@@ -1615,20 +1603,6 @@ mod tests {
         let mut buffer = BufferContent::new();
         buffer.insert_text(BufferPosition::zero(), text);
         buffer
-    }
-
-    #[test]
-    fn buffer_line_char_count() {
-        let mut line_pool = BufferLinePool::new();
-        let mut line = line_pool.acquire();
-        line.push_text("abc");
-        assert_eq!(3, line.char_count());
-        line.insert_text(1, "def");
-        assert_eq!(6, line.char_count());
-        line.delete_range(1..3);
-        assert_eq!(4, line.char_count());
-        line.push_text("ghi");
-        assert_eq!(7, line.char_count());
     }
 
     #[test]

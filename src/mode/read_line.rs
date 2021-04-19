@@ -130,13 +130,6 @@ pub mod search {
         }
 
         main_cursor.anchor = main_cursor.position;
-
-        let main_line_index = main_cursor.position.line_index;
-        let height = client.height as usize;
-        if main_line_index < client.scroll || main_line_index >= client.scroll + height {
-            client.scroll = main_line_index.saturating_sub(height / 2);
-        }
-
         None
     }
 }

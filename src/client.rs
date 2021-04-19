@@ -65,7 +65,7 @@ pub struct Client {
     handle: ClientHandle,
 
     pub viewport_size: (u16, u16),
-    pub scroll: usize,
+    pub scroll: (u32, u32),
     pub height: u16,
     pub navigation_history: NavigationHistory,
 
@@ -78,7 +78,7 @@ impl Client {
         self.active = false;
 
         self.viewport_size = (0, 0);
-        self.scroll = 0;
+        self.scroll = (0, 0);
         self.height = 0;
         self.navigation_history.clear();
 
@@ -149,48 +149,35 @@ impl Client {
     }
 
     pub fn update_view(&mut self, editor: &Editor, picker_height: u16) {
-        fn calculate_scroll(this: &Client, editor: &Editor) -> Option<usize> {
-            if this.viewport_size.0 == 0 {
-                return None;
-            }
-
+        fn calculate_scroll(this: &Client, editor: &Editor) -> Option<(u32, u32)> {
             let buffer_view = editor.buffer_views.get(this.buffer_view_handle?)?;
-            let buffer = editor.buffers.get(buffer_view.buffer_handle)?;
-            let focused_line_index = buffer_view.cursors.main_cursor().position.line_index;
+            let focused_position = buffer_view.cursors.main_cursor().position;
+            let focused_line_index = focused_position.line_index as u32;
+            let focused_column_byte_index = focused_position.column_byte_index as u32;
 
-            let height = this.height as usize;
+            let width = this.viewport_size.0 as u32;
+            let height = this.height as u32;
             let half_height = height / 2;
 
-            let mut scroll = this.scroll;
+            let (mut scroll_x, mut scroll_y) = this.scroll;
 
-            if focused_line_index < this.scroll.saturating_sub(half_height) {
-                scroll = focused_line_index.saturating_sub(half_height);
-            } else if focused_line_index < this.scroll {
-                scroll = focused_line_index;
-            } else if focused_line_index >= this.scroll + height + half_height {
-                scroll = focused_line_index + 1 - half_height;
-            } else if focused_line_index >= this.scroll + height {
-                scroll = focused_line_index + 1 - height;
+            if focused_column_byte_index < scroll_x {
+                scroll_x = focused_column_byte_index;
+            } else if focused_column_byte_index >= scroll_x + width {
+                scroll_x = focused_column_byte_index + 1 - width;
             }
 
-            let mut extra_line_count = 0;
-            for line in buffer
-                .content()
-                .lines()
-                .skip(scroll)
-                .take(focused_line_index - scroll)
-            {
-                extra_line_count += line.char_count() / this.viewport_size.0 as usize;
+            if focused_line_index < scroll_y.saturating_sub(half_height) {
+                scroll_y = focused_line_index.saturating_sub(half_height);
+            } else if focused_line_index < scroll_y {
+                scroll_y = focused_line_index;
+            } else if focused_line_index >= scroll_y + height + half_height {
+                scroll_y = focused_line_index + 1 - half_height;
+            } else if focused_line_index >= scroll_y + height {
+                scroll_y = focused_line_index + 1 - height;
             }
 
-            let focused_line_index = focused_line_index + extra_line_count;
-            if focused_line_index >= scroll + height + half_height {
-                scroll = focused_line_index + 1 - half_height;
-            } else if focused_line_index >= scroll + height {
-                scroll = focused_line_index + 1 - height;
-            }
-
-            Some(scroll)
+            Some((scroll_x, scroll_y))
         }
 
         self.height = self.viewport_size.1.saturating_sub(1 + picker_height);
