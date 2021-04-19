@@ -1383,6 +1383,21 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
+        name: "lsp-stop-all",
+        alias: "",
+        help: "stops all lsp servers\nlsp-stop-all",
+        hidden: false,
+        completions: &[],
+        func: |ctx| {
+            ctx.args.assert_no_bang()?;
+            ctx.args.get_flags(&mut [])?;
+            ctx.args.assert_empty()?;
+
+            ctx.editor.lsp.stop_all(ctx.platform);
+            Ok(None)
+        },
+    },
+    BuiltinCommand {
         name: "lsp-hover",
         alias: "",
         help: "performs a lsp hover action at the current buffer's main cursor position\nlsp-hover",

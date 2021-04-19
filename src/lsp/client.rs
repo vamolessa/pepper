@@ -2465,6 +2465,12 @@ impl ClientManager {
     pub fn stop(&mut self, platform: &mut Platform, handle: ClientHandle) {
         if let ClientEntry::Occupied(client) = &mut self.entries[handle.0 as usize] {
             let _ = client.notify(platform, "exit", JsonObject::default());
+            if let Some(process_handle) = client.protocol.process_handle() {
+                platform.enqueue_request(PlatformRequest::KillProcess {
+                    handle: process_handle,
+                });
+            }
+
             self.entries[handle.0 as usize] = ClientEntry::Vacant;
 
             for recipe in &mut self.recipes {

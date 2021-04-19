@@ -923,6 +923,10 @@ impl Protocol {
         }
     }
 
+    pub fn process_handle(&self) -> Option<ProcessHandle> {
+        self.process_handle
+    }
+
     pub fn set_process_handle(&mut self, handle: ProcessHandle) {
         self.process_handle = Some(handle);
     }
