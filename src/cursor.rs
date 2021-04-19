@@ -1,6 +1,12 @@
-use std::ops::{Bound, Drop, Index, IndexMut, RangeBounds, RangeFrom, RangeFull};
+use std::{
+    num::NonZeroU8,
+    ops::{Bound, Drop, Index, IndexMut, RangeBounds, RangeFrom, RangeFull},
+};
 
-use crate::buffer_position::{BufferPosition, BufferRange};
+use crate::{
+    buffer::{calculate_display_len, BufferContent},
+    buffer_position::{BufferPosition, BufferRange},
+};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Cursor {
@@ -176,13 +182,16 @@ impl<'a> CursorCollectionMutGuard<'a> {
         self.inner.len -= len;
     }
 
-    pub fn save_display_distances(&mut self) {
+    pub fn save_display_distances(&mut self, buffer: &BufferContent, tab_size: NonZeroU8) {
         self.clear_display_distances = false;
         if self.inner.saved_display_distances_len == 0 {
             for c in &self.inner.cursors[..self.inner.len as usize] {
+                let line =
+                    &buffer.line_at(c.position.line_index).as_str()[..c.position.column_byte_index];
+                let distance = calculate_display_len(line, tab_size);
+
                 self.inner.saved_display_distances
-                    [self.inner.saved_display_distances_len as usize] =
-                    c.position.column_byte_index; // TODO: calculate display distance
+                    [self.inner.saved_display_distances_len as usize] = distance;
                 self.inner.saved_display_distances_len += 1;
             }
         }

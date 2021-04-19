@@ -2,6 +2,7 @@ use std::{
     fmt,
     fs::File,
     io,
+    num::NonZeroU8,
     ops::RangeBounds,
     path::{Path, PathBuf},
     process::{Command, Stdio},
@@ -16,6 +17,21 @@ use crate::{
     syntax::{HighlightResult, HighlightedBuffer, SyntaxCollection, SyntaxHandle},
     word_database::{WordDatabase, WordIter, WordKind},
 };
+
+pub fn calculate_display_len(text: &str, tab_size: NonZeroU8) -> usize {
+    let tab_size = tab_size.get() as usize;
+    let mut len = 0;
+    for c in text.chars() {
+        match c {
+            '\t' => {
+                let next_tab_stop = (tab_size - 1) - len % tab_size;
+                len += next_tab_stop + 1;
+            }
+            _ => len += 1,
+        }
+    }
+    len
+}
 
 pub fn find_delimiter_pair_at(text: &str, index: usize, delimiter: char) -> Option<(usize, usize)> {
     let mut is_right_delim = false;
@@ -1435,6 +1451,19 @@ impl BufferCollection {
 mod tests {
     use super::*;
     use crate::buffer_position::BufferPosition;
+
+    #[test]
+    fn test_calculate_display_len() {
+        let tab_size = NonZeroU8::new(4).unwrap();
+        assert_eq!(0, calculate_display_len("", tab_size));
+        assert_eq!(1, calculate_display_len("a", tab_size));
+        assert_eq!(1, calculate_display_len("é", tab_size));
+        assert_eq!(4, calculate_display_len("    ", tab_size));
+        assert_eq!(4, calculate_display_len("\t", tab_size));
+        assert_eq!(8, calculate_display_len("\t\t", tab_size));
+        assert_eq!(8, calculate_display_len("    \t", tab_size));
+        assert_eq!(4, calculate_display_len("x\t", tab_size));
+    }
 
     #[test]
     fn test_find_delimiter_pair_at() {

@@ -1,4 +1,4 @@
-use std::{fmt, str::FromStr};
+use std::{fmt, num::NonZeroU8, str::FromStr};
 
 use crate::{
     buffer::{BufferCollection, BufferHandle},
@@ -50,6 +50,7 @@ impl BufferView {
         buffers: &BufferCollection,
         movement: CursorMovement,
         movement_kind: CursorMovementKind,
+        tab_size: NonZeroU8,
     ) {
         fn try_nth<I, E>(iter: I, mut n: usize) -> Result<E, usize>
         where
@@ -159,7 +160,7 @@ impl BufferView {
                 }
             }
             CursorMovement::LinesForward(n) => {
-                cursors.save_display_distances();
+                cursors.save_display_distances(buffer, tab_size);
                 for i in 0..cursors[..].len() {
                     let saved_column_byte_index = cursors.get_saved_display_distance(i);
                     let c = &mut cursors[i];
@@ -174,7 +175,7 @@ impl BufferView {
                 }
             }
             CursorMovement::LinesBackward(n) => {
-                cursors.save_display_distances();
+                cursors.save_display_distances(buffer, tab_size);
                 for i in 0..cursors[..].len() {
                     let saved_column_byte_index = cursors.get_saved_display_distance(i);
                     let c = &mut cursors[i];
@@ -654,6 +655,7 @@ mod tests {
                     &ctx.buffers,
                     movement,
                     CursorMovementKind::PositionAndAnchor,
+                    NonZeroU8::new(4).unwrap(),
                 );
             assert_eq!(
                 BufferPosition::line_col(to.0, to.1),

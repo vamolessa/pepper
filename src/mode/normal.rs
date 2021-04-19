@@ -183,31 +183,37 @@ impl State {
                 &ctx.editor.buffers,
                 CursorMovement::ColumnsBackward(state.count.max(1) as _),
                 state.movement_kind,
+                ctx.editor.config.tab_size,
             ),
             Key::Char('j') => ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
                 &ctx.editor.buffers,
                 CursorMovement::LinesForward(state.count.max(1) as _),
                 state.movement_kind,
+                ctx.editor.config.tab_size,
             ),
             Key::Char('k') => ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
                 &ctx.editor.buffers,
                 CursorMovement::LinesBackward(state.count.max(1) as _),
                 state.movement_kind,
+                ctx.editor.config.tab_size,
             ),
             Key::Char('l') => ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
                 &ctx.editor.buffers,
                 CursorMovement::ColumnsForward(state.count.max(1) as _),
                 state.movement_kind,
+                ctx.editor.config.tab_size,
             ),
             Key::Char('w') => ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
                 &ctx.editor.buffers,
                 CursorMovement::WordsForward(state.count.max(1) as _),
                 state.movement_kind,
+                ctx.editor.config.tab_size,
             ),
             Key::Char('b') => ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
                 &ctx.editor.buffers,
                 CursorMovement::WordsBackward(state.count.max(1) as _),
                 state.movement_kind,
+                ctx.editor.config.tab_size,
             ),
             Key::Char('n') => {
                 let count = state.count.max(1);
@@ -455,26 +461,47 @@ impl State {
                             &ctx.editor.buffers,
                             CursorMovement::Home,
                             state.movement_kind,
+                            ctx.editor.config.tab_size,
                         ),
-                        Key::Char('j') => buffer_view.move_cursors(
-                            &ctx.editor.buffers,
-                            CursorMovement::LastLine,
-                            state.movement_kind,
-                        ),
-                        Key::Char('k') => buffer_view.move_cursors(
-                            &ctx.editor.buffers,
-                            CursorMovement::FirstLine,
-                            state.movement_kind,
-                        ),
+                        Key::Char('j') => {
+                            NavigationHistory::save_client_snapshot(
+                                ctx.clients,
+                                ctx.client_handle,
+                                &ctx.editor.buffer_views,
+                            );
+                            let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                            buffer_view.move_cursors(
+                                &ctx.editor.buffers,
+                                CursorMovement::LastLine,
+                                state.movement_kind,
+                                ctx.editor.config.tab_size,
+                            );
+                        }
+                        Key::Char('k') => {
+                            NavigationHistory::save_client_snapshot(
+                                ctx.clients,
+                                ctx.client_handle,
+                                &ctx.editor.buffer_views,
+                            );
+                            let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                            buffer_view.move_cursors(
+                                &ctx.editor.buffers,
+                                CursorMovement::FirstLine,
+                                state.movement_kind,
+                                ctx.editor.config.tab_size,
+                            );
+                        }
                         Key::Char('l') => buffer_view.move_cursors(
                             &ctx.editor.buffers,
                             CursorMovement::End,
                             state.movement_kind,
+                            ctx.editor.config.tab_size,
                         ),
                         Key::Char('i') => buffer_view.move_cursors(
                             &ctx.editor.buffers,
                             CursorMovement::HomeNonWhitespace,
                             state.movement_kind,
+                            ctx.editor.config.tab_size,
                         ),
                         Key::Char('m') => {
                             let buffer =
@@ -577,6 +604,14 @@ impl State {
                                     continue;
                                 }
 
+                                if !jumped {
+                                    NavigationHistory::save_client_snapshot(
+                                        ctx.clients,
+                                        ctx.client_handle,
+                                        &ctx.editor.buffer_views,
+                                    );
+                                }
+
                                 let handle = ctx
                                     .editor
                                     .buffer_view_handle_from_path(ctx.client_handle, path);
@@ -594,11 +629,6 @@ impl State {
                                 }
                                 jumped = true;
 
-                                NavigationHistory::save_client_snapshot(
-                                    ctx.clients,
-                                    ctx.client_handle,
-                                    &ctx.editor.buffer_views,
-                                );
                                 if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
                                     client.set_buffer_view_handle(
                                         Some(handle),
@@ -722,17 +752,25 @@ impl State {
                 let mut cursors = buffer_view.cursors.mut_guard();
 
                 for cursor in &mut cursors[..] {
-                    cursor.position.line_index = match buffer
+                    let position = match buffer
                         .lines()
                         .enumerate()
                         .skip(cursor.position.line_index + 1)
                         .filter(|(_, l)| l.as_str().chars().all(|c| c.is_whitespace()))
                         .nth(state.count.max(1).saturating_sub(1) as _)
                     {
-                        Some((i, _)) => i,
-                        None => buffer.line_count() - 1,
+                        Some((i, line)) => BufferPosition::line_col(i, line.as_str().len()),
+                        None => {
+                            let line_index = buffer.line_count() - 1;
+                            let column_byte_index = buffer
+                                .line_at(line_index)
+                                .as_str()
+                                .find(|c: char| !c.is_whitespace())
+                                .unwrap_or(0);
+                            BufferPosition::line_col(line_index, column_byte_index)
+                        }
                     };
-                    cursor.position.column_byte_index = 0;
+                    cursor.position = position;
                     if let CursorMovementKind::PositionAndAnchor = state.movement_kind {
                         cursor.anchor = cursor.position;
                     }
@@ -744,7 +782,7 @@ impl State {
                 let mut cursors = buffer_view.cursors.mut_guard();
 
                 for cursor in &mut cursors[..] {
-                    cursor.position.line_index = match buffer
+                    let position = match buffer
                         .lines()
                         .enumerate()
                         .rev()
@@ -752,10 +790,17 @@ impl State {
                         .filter(|(_, l)| l.as_str().chars().all(|c| c.is_whitespace()))
                         .nth(state.count.max(1).saturating_sub(1) as _)
                     {
-                        Some((i, _)) => i,
-                        None => 0,
+                        Some((i, line)) => BufferPosition::line_col(i, line.as_str().len()),
+                        None => {
+                            let column_byte_index = buffer
+                                .line_at(0)
+                                .as_str()
+                                .find(|c: char| !c.is_whitespace())
+                                .unwrap_or(0);
+                            BufferPosition::line_col(0, column_byte_index)
+                        }
                     };
-                    cursor.position.column_byte_index = 0;
+                    cursor.position = position;
                     if let CursorMovementKind::PositionAndAnchor = state.movement_kind {
                         cursor.anchor = cursor.position;
                     }
@@ -774,6 +819,7 @@ impl State {
                         half_height as usize * state.count.max(1) as usize,
                     ),
                     state.movement_kind,
+                    ctx.editor.config.tab_size,
                 );
             }
             Key::Ctrl('u') => {
@@ -789,6 +835,7 @@ impl State {
                         half_height as usize * state.count.max(1) as usize,
                     ),
                     state.movement_kind,
+                    ctx.editor.config.tab_size,
                 );
             }
             Key::Char('d') => {
