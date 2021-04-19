@@ -35,8 +35,8 @@ impl Cursor {
 pub struct CursorCollection {
     cursors: Box<[Cursor; Self::capacity()]>,
     len: u8,
-    saved_column_byte_indices: Box<[usize; Self::capacity()]>,
-    saved_column_byte_indices_len: u8,
+    saved_display_distances: Box<[usize; Self::capacity()]>,
+    saved_display_distances_len: u8,
     main_cursor_index: u8,
 }
 
@@ -49,8 +49,8 @@ impl CursorCollection {
         Self {
             cursors: Box::new([Cursor::zero(); Self::capacity()]),
             len: 1,
-            saved_column_byte_indices: Box::new([0; Self::capacity()]),
-            saved_column_byte_indices_len: 0,
+            saved_display_distances: Box::new([0; Self::capacity()]),
+            saved_display_distances_len: 0,
             main_cursor_index: 0,
         }
     }
@@ -66,7 +66,7 @@ impl CursorCollection {
     pub fn mut_guard(&mut self) -> CursorCollectionMutGuard {
         CursorCollectionMutGuard {
             inner: self,
-            clear_column_byte_indices: true,
+            clear_display_distances: true,
         }
     }
 
@@ -134,7 +134,7 @@ impl Index<RangeFrom<usize>> for CursorCollection {
 
 pub struct CursorCollectionMutGuard<'a> {
     inner: &'a mut CursorCollection,
-    clear_column_byte_indices: bool,
+    clear_display_distances: bool,
 }
 
 impl<'a> CursorCollectionMutGuard<'a> {
@@ -176,21 +176,21 @@ impl<'a> CursorCollectionMutGuard<'a> {
         self.inner.len -= len;
     }
 
-    pub fn save_column_byte_indices(&mut self) {
-        self.clear_column_byte_indices = false;
-        if self.inner.saved_column_byte_indices_len == 0 {
+    pub fn save_display_distances(&mut self) {
+        self.clear_display_distances = false;
+        if self.inner.saved_display_distances_len == 0 {
             for c in &self.inner.cursors[..self.inner.len as usize] {
-                self.inner.saved_column_byte_indices
-                    [self.inner.saved_column_byte_indices_len as usize] =
-                    c.position.column_byte_index;
-                self.inner.saved_column_byte_indices_len += 1;
+                self.inner.saved_display_distances
+                    [self.inner.saved_display_distances_len as usize] =
+                    c.position.column_byte_index; // TODO: calculate display distance
+                self.inner.saved_display_distances_len += 1;
             }
         }
     }
 
-    pub fn get_saved_column_byte_index(&self, index: usize) -> Option<usize> {
-        if index < self.inner.saved_column_byte_indices_len as usize {
-            Some(self.inner.saved_column_byte_indices[index])
+    pub fn get_saved_display_distance(&self, index: usize) -> Option<usize> {
+        if index < self.inner.saved_display_distances_len as usize {
+            Some(self.inner.saved_display_distances[index])
         } else {
             None
         }
@@ -250,8 +250,8 @@ impl<'a> Drop for CursorCollectionMutGuard<'a> {
 
         self.inner.sort_and_merge();
 
-        if self.clear_column_byte_indices {
-            self.inner.saved_column_byte_indices_len = 0;
+        if self.clear_display_distances {
+            self.inner.saved_display_distances_len = 0;
         }
     }
 }

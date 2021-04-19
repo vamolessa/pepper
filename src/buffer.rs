@@ -1120,13 +1120,14 @@ impl Buffer {
     ) -> Result<(), BufferError> {
         let new_path = match new_path {
             Some(path) => {
+                self.capabilities.can_save = true;
                 self.set_path(path);
                 true
             }
             None => false,
         };
 
-        if !self.capabilities.can_save && !new_path {
+        if !self.capabilities.can_save {
             return Ok(());
         }
 

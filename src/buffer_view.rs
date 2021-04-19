@@ -159,9 +159,9 @@ impl BufferView {
                 }
             }
             CursorMovement::LinesForward(n) => {
-                cursors.save_column_byte_indices();
+                cursors.save_display_distances();
                 for i in 0..cursors[..].len() {
-                    let saved_column_byte_index = cursors.get_saved_column_byte_index(i);
+                    let saved_column_byte_index = cursors.get_saved_display_distance(i);
                     let c = &mut cursors[i];
                     c.position.line_index = buffer
                         .line_count()
@@ -174,9 +174,9 @@ impl BufferView {
                 }
             }
             CursorMovement::LinesBackward(n) => {
-                cursors.save_column_byte_indices();
+                cursors.save_display_distances();
                 for i in 0..cursors[..].len() {
-                    let saved_column_byte_index = cursors.get_saved_column_byte_index(i);
+                    let saved_column_byte_index = cursors.get_saved_display_distance(i);
                     let c = &mut cursors[i];
                     c.position.line_index = c.position.line_index.saturating_sub(n);
                     if let Some(index) = saved_column_byte_index {

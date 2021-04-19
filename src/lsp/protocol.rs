@@ -594,20 +594,25 @@ impl WorkspaceEdit {
                     let buffer_handle = editor
                         .buffers
                         .find_with_path(&editor.current_directory, path);
-                    let is_temp = buffer_handle.is_none();
-                    let buffer_handle = match buffer_handle {
-                        Some(handle) => handle,
+
+                    let (is_temp, buffer_handle) = match buffer_handle {
+                        Some(handle) => (false, handle),
                         None => {
                             let buffer = editor.buffers.add_new();
                             buffer.set_path(path);
                             buffer.capabilities = BufferCapabilities::log();
-                            buffer.handle()
+                            buffer.capabilities.can_save = true;
+                            (true, buffer.handle())
                         }
                     };
 
                     TextEdit::apply_edits(editor, buffer_handle, temp_edits, edit.edits, json);
 
                     if is_temp {
+                        if let Some(buffer) = editor.buffers.get_mut(buffer_handle) {
+                            let _ = buffer.save_to_file(None, &mut editor.events);
+                        }
+
                         editor
                             .buffers
                             .defer_remove(buffer_handle, &mut editor.events);

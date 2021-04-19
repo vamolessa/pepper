@@ -826,10 +826,6 @@ impl Client {
         );
         params.set("newName".into(), new_name.into(), &mut self.json);
 
-        self.request_state = RequestState::FinishRename {
-            buffer_handle,
-            buffer_position,
-        };
         self.request(platform, "textDocument/rename", params);
     }
 

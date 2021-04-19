@@ -726,7 +726,7 @@ impl State {
                         .lines()
                         .enumerate()
                         .skip(cursor.position.line_index + 1)
-                        .filter(|(_, l)| l.as_str().is_empty())
+                        .filter(|(_, l)| l.as_str().chars().all(|c| c.is_whitespace()))
                         .nth(state.count.max(1).saturating_sub(1) as _)
                     {
                         Some((i, _)) => i,
@@ -749,7 +749,7 @@ impl State {
                         .enumerate()
                         .rev()
                         .skip(buffer.line_count() - cursor.position.line_index)
-                        .filter(|(_, l)| l.as_str().is_empty())
+                        .filter(|(_, l)| l.as_str().chars().all(|c| c.is_whitespace()))
                         .nth(state.count.max(1).saturating_sub(1) as _)
                     {
                         Some((i, _)) => i,
@@ -770,7 +770,9 @@ impl State {
                     / 2;
                 ctx.editor.buffer_views.get_mut(handle)?.move_cursors(
                     &ctx.editor.buffers,
-                    CursorMovement::LinesForward(half_height as usize * state.count.max(1) as usize),
+                    CursorMovement::LinesForward(
+                        half_height as usize * state.count.max(1) as usize,
+                    ),
                     state.movement_kind,
                 );
             }
