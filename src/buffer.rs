@@ -1463,6 +1463,9 @@ mod tests {
         assert_eq!(8, calculate_display_len("\t\t", tab_size));
         assert_eq!(8, calculate_display_len("    \t", tab_size));
         assert_eq!(4, calculate_display_len("x\t", tab_size));
+        assert_eq!(4, calculate_display_len("xx\t", tab_size));
+        assert_eq!(4, calculate_display_len("xxx\t", tab_size));
+        assert_eq!(8, calculate_display_len("xxxx\t", tab_size));
     }
 
     #[test]
