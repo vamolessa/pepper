@@ -439,7 +439,8 @@ impl State {
                     );
                     let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
                     let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle)?;
-                    let mut position = BufferPosition::line_col(state.count as _, 0);
+                    let line_index = state.count - 1;
+                    let mut position = BufferPosition::line_col(line_index as _, 0);
                     let (first_word, _, mut right_words) = buffer.content().words_from(position);
                     if first_word.kind == WordKind::Whitespace {
                         if let Some(word) = right_words.next() {
