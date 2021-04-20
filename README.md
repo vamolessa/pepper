@@ -119,7 +119,6 @@ It's possible to kinda follow Pepper's development history in this [twitter thre
 # big features todo
 - linux platform layer
 - mac/bsd platform layer
-- language server protocol (in progress)
 - debug adapter protocol
 
 # support pepper development
