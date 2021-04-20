@@ -600,9 +600,7 @@ impl WorkspaceEdit {
                         Some(handle) => (false, handle),
                         None => {
                             let buffer = editor.buffers.add_new();
-                            buffer.set_path(path);
                             buffer.capabilities = BufferCapabilities::log();
-                            buffer.capabilities.can_save = true;
                             (true, buffer.handle())
                         }
                     };
@@ -611,7 +609,7 @@ impl WorkspaceEdit {
 
                     if is_temp {
                         if let Some(buffer) = editor.buffers.get_mut(buffer_handle) {
-                            let _ = buffer.save_to_file(None, &mut editor.events);
+                            let _ = buffer.save_to_file(Some(path), &mut editor.events);
                         }
 
                         editor
