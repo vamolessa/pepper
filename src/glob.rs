@@ -419,6 +419,7 @@ mod tests {
         assert_glob(&mut glob, true, b"**/*.{a,b,cd}", b"m/n.a");
         assert_glob(&mut glob, true, b"**/*.{a,b,cd}", b"m/n.b");
         assert_glob(&mut glob, true, b"**/*.{a,b,cd}", b"m/n.cd");
+        assert_glob(&mut glob, false, b"**/*.{a,b,cd}", b"n.x");
         assert_glob(&mut glob, false, b"**/*.{a,b,cd}", b"m/n.x");
     }
 }

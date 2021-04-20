@@ -431,221 +431,214 @@ impl State {
                 state.movement_kind = CursorMovementKind::PositionOnly;
             }
             Key::Char('g') => {
-                if state.count > 0 {
-                    NavigationHistory::save_client_snapshot(
-                        ctx.clients,
-                        ctx.client_handle,
-                        &mut ctx.editor.buffer_views,
-                    );
-                    let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
-                    let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle)?;
-                    let line_index = state.count - 1;
-                    let mut position = BufferPosition::line_col(line_index as _, 0);
-                    let (first_word, _, mut right_words) = buffer.content().words_from(position);
-                    if first_word.kind == WordKind::Whitespace {
-                        if let Some(word) = right_words.next() {
-                            position = word.position;
+                let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                match keys.next(&ctx.editor.buffered_keys) {
+                    Key::None => return Some(ModeOperation::Pending),
+                    Key::Char('g') => read_line::goto::enter_mode(ctx),
+                    Key::Char('h') => buffer_view.move_cursors(
+                        &ctx.editor.buffers,
+                        CursorMovement::Home,
+                        state.movement_kind,
+                        ctx.editor.config.tab_size,
+                    ),
+                    Key::Char('j') => {
+                        NavigationHistory::save_client_snapshot(
+                            ctx.clients,
+                            ctx.client_handle,
+                            &ctx.editor.buffer_views,
+                        );
+                        let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                        buffer_view.move_cursors(
+                            &ctx.editor.buffers,
+                            CursorMovement::LastLine,
+                            state.movement_kind,
+                            ctx.editor.config.tab_size,
+                        );
+                    }
+                    Key::Char('k') => {
+                        NavigationHistory::save_client_snapshot(
+                            ctx.clients,
+                            ctx.client_handle,
+                            &ctx.editor.buffer_views,
+                        );
+                        let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                        buffer_view.move_cursors(
+                            &ctx.editor.buffers,
+                            CursorMovement::FirstLine,
+                            state.movement_kind,
+                            ctx.editor.config.tab_size,
+                        );
+                    }
+                    Key::Char('l') => buffer_view.move_cursors(
+                        &ctx.editor.buffers,
+                        CursorMovement::End,
+                        state.movement_kind,
+                        ctx.editor.config.tab_size,
+                    ),
+                    Key::Char('i') => buffer_view.move_cursors(
+                        &ctx.editor.buffers,
+                        CursorMovement::HomeNonWhitespace,
+                        state.movement_kind,
+                        ctx.editor.config.tab_size,
+                    ),
+                    Key::Char('m') => {
+                        let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle)?.content();
+                        for cursor in &mut buffer_view.cursors.mut_guard()[..] {
+                            let mut position = cursor.position;
+
+                            let line = buffer.line_at(position.line_index).as_str();
+                            let cursor_char = if position.column_byte_index < line.len() {
+                                match line[position.column_byte_index..].chars().next() {
+                                    Some(c) => c,
+                                    None => continue,
+                                }
+                            } else {
+                                match line.char_indices().next_back() {
+                                    Some((i, c)) => {
+                                        position.column_byte_index = i;
+                                        c
+                                    }
+                                    None => continue,
+                                }
+                            };
+
+                            let range = match cursor_char {
+                                '(' | ')' => buffer.find_balanced_chars_at(position, '(', ')'),
+                                '[' | ']' => buffer.find_balanced_chars_at(position, '[', ']'),
+                                '{' | '}' => buffer.find_balanced_chars_at(position, '{', '}'),
+                                '<' | '>' => buffer.find_balanced_chars_at(position, '<', '>'),
+                                d @ '|' | d @ '"' | d @ '\'' => {
+                                    buffer.find_delimiter_pair_at(position, d)
+                                }
+                                _ => continue,
+                            };
+
+                            if let Some(range) = range {
+                                let from = BufferPosition::line_col(
+                                    range.from.line_index,
+                                    range.from.column_byte_index - 1,
+                                );
+                                let to = range.to;
+
+                                if position == from {
+                                    cursor.position = to;
+                                } else if position == to {
+                                    cursor.position = from;
+                                }
+
+                                if let CursorMovementKind::PositionAndAnchor = state.movement_kind {
+                                    cursor.anchor = cursor.position;
+                                }
+                            }
                         }
                     }
-                    let mut cursors = buffer_view.cursors.mut_guard();
-                    cursors.clear();
-                    cursors.add(Cursor {
-                        anchor: position,
-                        position,
-                    });
-                } else {
-                    let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
-                    match keys.next(&ctx.editor.buffered_keys) {
-                        Key::None => return Some(ModeOperation::Pending),
-                        Key::Char('g') => read_line::goto::enter_mode(ctx),
-                        Key::Char('h') => buffer_view.move_cursors(
-                            &ctx.editor.buffers,
-                            CursorMovement::Home,
-                            state.movement_kind,
-                            ctx.editor.config.tab_size,
-                        ),
-                        Key::Char('j') => {
-                            NavigationHistory::save_client_snapshot(
-                                ctx.clients,
-                                ctx.client_handle,
-                                &ctx.editor.buffer_views,
-                            );
-                            let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
-                            buffer_view.move_cursors(
-                                &ctx.editor.buffers,
-                                CursorMovement::LastLine,
-                                state.movement_kind,
-                                ctx.editor.config.tab_size,
-                            );
+                    Key::Char('f') => {
+                        let buffer_handle = buffer_view.buffer_handle;
+
+                        let mut len = 0;
+                        let mut ranges = [BufferRange::zero(); CursorCollection::capacity()];
+                        for cursor in &buffer_view.cursors[..] {
+                            ranges[len] = cursor.to_range();
+                            len += 1;
                         }
-                        Key::Char('k') => {
-                            NavigationHistory::save_client_snapshot(
-                                ctx.clients,
-                                ctx.client_handle,
-                                &ctx.editor.buffer_views,
-                            );
-                            let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
-                            buffer_view.move_cursors(
-                                &ctx.editor.buffers,
-                                CursorMovement::FirstLine,
-                                state.movement_kind,
-                                ctx.editor.config.tab_size,
-                            );
-                        }
-                        Key::Char('l') => buffer_view.move_cursors(
-                            &ctx.editor.buffers,
-                            CursorMovement::End,
-                            state.movement_kind,
-                            ctx.editor.config.tab_size,
-                        ),
-                        Key::Char('i') => buffer_view.move_cursors(
-                            &ctx.editor.buffers,
-                            CursorMovement::HomeNonWhitespace,
-                            state.movement_kind,
-                            ctx.editor.config.tab_size,
-                        ),
-                        Key::Char('m') => {
-                            let buffer =
-                                ctx.editor.buffers.get(buffer_view.buffer_handle)?.content();
-                            for cursor in &mut buffer_view.cursors.mut_guard()[..] {
-                                let mut position = cursor.position;
 
-                                let line = buffer.line_at(position.line_index).as_str();
-                                let cursor_char = if position.column_byte_index < line.len() {
-                                    match line[position.column_byte_index..].chars().next() {
-                                        Some(c) => c,
-                                        None => continue,
-                                    }
-                                } else {
-                                    match line.char_indices().next_back() {
-                                        Some((i, c)) => {
-                                            position.column_byte_index = i;
-                                            c
-                                        }
-                                        None => continue,
-                                    }
-                                };
-
-                                let range = match cursor_char {
-                                    '(' | ')' => buffer.find_balanced_chars_at(position, '(', ')'),
-                                    '[' | ']' => buffer.find_balanced_chars_at(position, '[', ']'),
-                                    '{' | '}' => buffer.find_balanced_chars_at(position, '{', '}'),
-                                    '<' | '>' => buffer.find_balanced_chars_at(position, '<', '>'),
-                                    d @ '|' | d @ '"' | d @ '\'' => {
-                                        buffer.find_delimiter_pair_at(position, d)
-                                    }
-                                    _ => continue,
-                                };
-
-                                if let Some(range) = range {
-                                    let from = BufferPosition::line_col(
-                                        range.from.line_index,
-                                        range.from.column_byte_index - 1,
-                                    );
-                                    let to = range.to;
-
-                                    if position == from {
-                                        cursor.position = to;
-                                    } else if position == to {
-                                        cursor.position = from;
-                                    }
-
-                                    if let CursorMovementKind::PositionAndAnchor =
-                                        state.movement_kind
-                                    {
-                                        cursor.anchor = cursor.position;
-                                    }
-                                }
-                            }
-                        }
-                        Key::Char('f') => {
-                            let buffer_handle = buffer_view.buffer_handle;
-
-                            let mut len = 0;
-                            let mut ranges = [BufferRange::zero(); CursorCollection::capacity()];
-                            for cursor in &buffer_view.cursors[..] {
-                                ranges[len] = cursor.to_range();
-                                len += 1;
+                        let mut jumped = false;
+                        let mut path_buf = ctx.editor.string_pool.acquire();
+                        let fallback_line_index = state.count.saturating_sub(1) as _;
+                        for range in &ranges[..len] {
+                            let line_index = range.from.line_index;
+                            if range.to.line_index != line_index {
+                                continue;
                             }
 
-                            let mut jumped = false;
-                            let mut path_buf = ctx.editor.string_pool.acquire();
-                            let fallback_line_index = state.count.saturating_sub(1) as _;
-                            for range in &ranges[..len] {
-                                let line_index = range.from.line_index;
-                                if range.to.line_index != line_index {
-                                    continue;
-                                }
+                            let line = ctx
+                                .editor
+                                .buffers
+                                .get(buffer_handle)?
+                                .content()
+                                .line_at(line_index)
+                                .as_str();
 
-                                let line = ctx
-                                    .editor
-                                    .buffers
-                                    .get(buffer_handle)?
-                                    .content()
-                                    .line_at(line_index)
-                                    .as_str();
+                            let from = range.from.column_byte_index;
+                            let to = range.to.column_byte_index;
 
-                                let from = range.from.column_byte_index;
-                                let to = range.to.column_byte_index;
+                            let (path, position) = if from < to {
+                                parse_path_and_position(&line[from..to])
+                            } else {
+                                find_path_and_position_at(line, from)
+                            };
+                            let position = match position {
+                                Some(position) => position,
+                                None => BufferPosition::line_col(fallback_line_index, 0),
+                            };
 
-                                let (path, position) = if from < to {
-                                    parse_path_and_position(&line[from..to])
-                                } else {
-                                    find_path_and_position_at(line, from)
-                                };
-                                let position = match position {
-                                    Some(position) => position,
-                                    None => BufferPosition::line_col(fallback_line_index, 0),
-                                };
-
-                                path_buf.clear();
-                                path_buf.push_str(path);
-                                let path = Path::new(&path_buf);
-                                if !path.exists() {
-                                    continue;
-                                }
-
-                                if !jumped {
-                                    NavigationHistory::save_client_snapshot(
-                                        ctx.clients,
-                                        ctx.client_handle,
-                                        &ctx.editor.buffer_views,
-                                    );
-                                }
-
-                                let handle = ctx
-                                    .editor
-                                    .buffer_view_handle_from_path(ctx.client_handle, path);
-                                if let Some(buffer_view) = ctx.editor.buffer_views.get_mut(handle) {
-                                    let mut cursors = buffer_view.cursors.mut_guard();
-                                    cursors.clear();
-                                    cursors.add(Cursor {
-                                        anchor: position,
-                                        position,
-                                    });
-                                }
-
-                                if jumped {
-                                    continue;
-                                }
-                                jumped = true;
-
-                                if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
-                                    client.set_buffer_view_handle(
-                                        Some(handle),
-                                        &mut ctx.editor.events,
-                                    );
-                                }
+                            path_buf.clear();
+                            path_buf.push_str(path);
+                            let path = Path::new(&path_buf);
+                            if !path.exists() {
+                                continue;
                             }
-                            ctx.editor.string_pool.release(path_buf);
+
+                            if !jumped {
+                                NavigationHistory::save_client_snapshot(
+                                    ctx.clients,
+                                    ctx.client_handle,
+                                    &ctx.editor.buffer_views,
+                                );
+                            }
+
+                            let handle = ctx
+                                .editor
+                                .buffer_view_handle_from_path(ctx.client_handle, path);
+                            if let Some(buffer_view) = ctx.editor.buffer_views.get_mut(handle) {
+                                let mut cursors = buffer_view.cursors.mut_guard();
+                                cursors.clear();
+                                cursors.add(Cursor {
+                                    anchor: position,
+                                    position,
+                                });
+                            }
+
+                            if jumped {
+                                continue;
+                            }
+                            jumped = true;
+
+                            if let Some(client) = ctx.clients.get_mut(ctx.client_handle) {
+                                client.set_buffer_view_handle(Some(handle), &mut ctx.editor.events);
+                            }
                         }
-                        _ => {
-                            keys.put_back();
-                            keys.put_back();
-                            return Self::on_event_no_buffer(ctx, keys);
-                        }
+                        ctx.editor.string_pool.release(path_buf);
+                    }
+                    _ => {
+                        keys.put_back();
+                        keys.put_back();
+                        return Self::on_event_no_buffer(ctx, keys);
                     }
                 }
+            }
+            Key::Char('G') => {
+                NavigationHistory::save_client_snapshot(
+                    ctx.clients,
+                    ctx.client_handle,
+                    &mut ctx.editor.buffer_views,
+                );
+                let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle)?;
+                let line_index = state.count.saturating_sub(1);
+                let mut position = BufferPosition::line_col(line_index as _, 0);
+                let (first_word, _, mut right_words) = buffer.content().words_from(position);
+                if first_word.kind == WordKind::Whitespace {
+                    if let Some(word) = right_words.next() {
+                        position = word.position;
+                    }
+                }
+                let mut cursors = buffer_view.cursors.mut_guard();
+                cursors.clear();
+                cursors.add(Cursor {
+                    anchor: position,
+                    position,
+                });
             }
             Key::Char('f') => match keys.next(&ctx.editor.buffered_keys) {
                 Key::None => return Some(ModeOperation::Pending),
@@ -735,13 +728,16 @@ impl State {
             }
             Key::Char('z') => {
                 let buffer_view = ctx.editor.buffer_views.get(handle)?;
-                let focused_line_index = buffer_view.cursors.main_cursor().position.line_index as u32;
+                let focused_line_index =
+                    buffer_view.cursors.main_cursor().position.line_index as u32;
                 let client = ctx.clients.get_mut(ctx.client_handle)?;
                 let height = client.height as u32;
 
                 match keys.next(&ctx.editor.buffered_keys) {
                     Key::None => return Some(ModeOperation::Pending),
-                    Key::Char('z') => client.scroll.1 = focused_line_index.saturating_sub(height / 2),
+                    Key::Char('z') => {
+                        client.scroll.1 = focused_line_index.saturating_sub(height / 2)
+                    }
                     Key::Char('j') => client.scroll.1 = focused_line_index.saturating_sub(height),
                     Key::Char('k') => client.scroll.1 = focused_line_index,
                     _ => (),
