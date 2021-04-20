@@ -1,7 +1,7 @@
 use crate::{
     command::{replace_to_between_text_markers, CommandManager},
     editor::KeysIterator,
-    editor_utils::ReadLinePoll,
+    editor_utils::{MessageKind, ReadLinePoll},
     lsp,
     mode::{Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     picker::EntrySource,
@@ -159,6 +159,11 @@ pub mod buffer {
         if ctx.editor.picker.len() > 0 {
             ctx.editor.mode.picker_state.on_client_keys = on_client_keys;
             Mode::change_to(ctx, ModeKind::Picker);
+        } else {
+            ctx.editor
+                .status_bar
+                .write(MessageKind::Error)
+                .str("no buffer opened");
         }
     }
 }
@@ -204,17 +209,16 @@ pub mod lsp_code_action {
         ctx.editor.picker.filter(WordIndicesIter::empty(), "");
         ctx.editor.picker.move_cursor(0);
 
-        if ctx.editor.picker.len() == 0 {
+        if ctx.editor.picker.len() > 0 {
+            let state = &mut ctx.editor.mode.picker_state;
+            state.on_client_keys = on_client_keys;
+            state.lsp_client_handle = Some(client_handle);
+            Mode::change_to(ctx, ModeKind::Picker);
+        } else {
             lsp::ClientManager::access(ctx.editor, client_handle, |_, c| {
                 c.cancel_current_request();
             });
-            return;
         }
-
-        let state = &mut ctx.editor.mode.picker_state;
-        state.on_client_keys = on_client_keys;
-        state.lsp_client_handle = Some(client_handle);
-        Mode::change_to(ctx, ModeKind::Picker);
     }
 }
 
@@ -261,17 +265,16 @@ pub mod lsp_document_symbol {
         ctx.editor.picker.filter(WordIndicesIter::empty(), "");
         ctx.editor.picker.move_cursor(0);
 
-        if ctx.editor.picker.len() == 0 {
+        if ctx.editor.picker.len() > 0 {
+            let state = &mut ctx.editor.mode.picker_state;
+            state.on_client_keys = on_client_keys;
+            state.lsp_client_handle = Some(client_handle);
+            Mode::change_to(ctx, ModeKind::Picker);
+        } else {
             lsp::ClientManager::access(ctx.editor, client_handle, |_, c| {
                 c.cancel_current_request();
             });
-            return;
         }
-
-        let state = &mut ctx.editor.mode.picker_state;
-        state.on_client_keys = on_client_keys;
-        state.lsp_client_handle = Some(client_handle);
-        Mode::change_to(ctx, ModeKind::Picker);
     }
 }
 

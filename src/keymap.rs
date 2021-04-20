@@ -126,13 +126,20 @@ impl Default for KeyMapCollection {
         this.parse_and_map(ModeKind::Insert, "<c-h>", "<backspace>")
             .unwrap();
 
-        this.parse_and_map(ModeKind::Normal, "K", ":lsp-hover<enter>").unwrap();
-        this.parse_and_map(ModeKind::Normal, "gd", ":lsp-definition<enter>").unwrap();
-        this.parse_and_map(ModeKind::Normal, "gr", ":lsp-references -context=2<enter>").unwrap();
-        this.parse_and_map(ModeKind::Normal, "gs", ":lsp-document-symbols<enter>").unwrap();
-        this.parse_and_map(ModeKind::Normal, "rr", ":lsp-rename<enter>").unwrap();
-        this.parse_and_map(ModeKind::Normal, "ra", ":lsp-code-action<enter>").unwrap();
-        this.parse_and_map(ModeKind::Normal, "rf", ":lsp-format<enter>").unwrap();
+        this.parse_and_map(ModeKind::Normal, "K", ":lsp-hover<enter>")
+            .unwrap();
+        this.parse_and_map(ModeKind::Normal, "gd", ":lsp-definition<enter>")
+            .unwrap();
+        this.parse_and_map(ModeKind::Normal, "gr", ":lsp-references -context=2<enter>")
+            .unwrap();
+        this.parse_and_map(ModeKind::Normal, "gs", ":lsp-document-symbols<enter>")
+            .unwrap();
+        this.parse_and_map(ModeKind::Normal, "rr", ":lsp-rename<enter>")
+            .unwrap();
+        this.parse_and_map(ModeKind::Normal, "ra", ":lsp-code-action<enter>")
+            .unwrap();
+        this.parse_and_map(ModeKind::Normal, "rf", ":lsp-format<enter>")
+            .unwrap();
 
         this
     }
