@@ -206,7 +206,7 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
     let mut current_cursor_range = BufferRange::default();
     for (i, cursor) in cursors.iter().enumerate() {
         let range = cursor.to_range();
-        if display_position_offset <= range.from {
+        if display_position_offset <= range.to {
             current_cursor_index = i;
             current_cursor_position = cursor.position;
             current_cursor_range = range;
@@ -217,7 +217,7 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
     let mut current_search_range_index = search_ranges.len();
     let mut current_search_range = BufferRange::default();
     for (i, &range) in search_ranges.iter().enumerate() {
-        if display_position_offset <= range.from {
+        if display_position_offset < range.to {
             current_search_range_index = i;
             current_search_range = range;
             break;
@@ -227,7 +227,7 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
     let mut current_diagnostic_index = diagnostics.len();
     let mut current_diagnostic_range = BufferRange::default();
     for (i, diagnostic) in diagnostics.iter().enumerate() {
-        if display_position_offset <= diagnostic.range.from {
+        if display_position_offset < diagnostic.range.to {
             current_diagnostic_index = i;
             current_diagnostic_range = diagnostic.range;
             break;

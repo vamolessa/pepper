@@ -167,7 +167,13 @@ impl Client {
             if column_index < scroll_x {
                 scroll_x = column_index
             } else {
-            /*
+                let distances =
+                    CharDisplayLen::new(&line[..column_index as usize], editor.config.tab_size);
+                for d in distances {
+                //
+                }
+                
+                /*
                 if let Some(distance) =
                     CharDisplayLen::new(&line[scroll_x as usize..], editor.config.tab_size)
                         .find(|d| d.distance >= width as usize)

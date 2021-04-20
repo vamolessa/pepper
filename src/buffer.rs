@@ -84,7 +84,7 @@ pub fn find_path_and_position_at(text: &str, index: usize) -> (&str, Option<Buff
     }
 }
 
-pub struct DisplayDistance {
+pub struct CharDisplayDistance {
     pub distance: usize,
     pub char_index: usize,
 }
@@ -103,20 +103,20 @@ impl<'a> CharDisplayLen<'a> {
     }
 }
 impl<'a> CharDisplayLen<'a> {
-    fn calc_next(&mut self, char_index: usize, c: char) -> DisplayDistance {
+    fn calc_next(&mut self, char_index: usize, c: char) -> CharDisplayDistance {
         match c {
             '\t' => {
                 let tab_size = self.tab_size.get() as usize;
                 let next_tab_stop = (tab_size - 1) - self.len % tab_size;
                 self.len += next_tab_stop + 1;
-                DisplayDistance {
+                CharDisplayDistance {
                     distance: self.len,
                     char_index,
                 }
             }
             _ => {
                 self.len += 1;
-                DisplayDistance {
+                CharDisplayDistance {
                     distance: self.len,
                     char_index,
                 }
@@ -125,7 +125,7 @@ impl<'a> CharDisplayLen<'a> {
     }
 }
 impl<'a> Iterator for CharDisplayLen<'a> {
-    type Item = DisplayDistance;
+    type Item = CharDisplayDistance;
     fn next(&mut self) -> Option<Self::Item> {
         let (i, c) = self.char_indices.next()?;
         Some(self.calc_next(i, c))
