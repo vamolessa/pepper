@@ -32,6 +32,7 @@ use crate::{
         },
     },
     mode::{picker, read_line, ModeContext, ModeKind},
+    navigation_history::NavigationHistory,
     platform::{Platform, PlatformRequest, ProcessHandle, ProcessTag},
     word_database::{WordIndicesIter, WordKind},
 };
@@ -938,7 +939,13 @@ impl Client {
         self.request(platform, "textDocument/documentSymbol", params);
     }
 
-    pub fn finish_document_symbols(&mut self, editor: &mut Editor, index: usize) {
+    pub fn finish_document_symbols(
+        &mut self,
+        editor: &mut Editor,
+        clients: &mut client::ClientManager,
+        client_handle: client::ClientHandle,
+        index: usize,
+    ) {
         if !self.server_capabilities.documentSymbolProvider.0 {
             return;
         }
@@ -948,23 +955,28 @@ impl Client {
         };
         self.request_state = RequestState::Idle;
 
-        let buffer_view = match editor.buffer_views.get_mut(buffer_view_handle) {
-            Some(buffer_view) => buffer_view,
-            None => return,
-        };
-
         let mut reader = io::Cursor::new(&self.request_raw_json);
         let symbols = match self.json.read(&mut reader) {
             Ok(symbols) => symbols,
             Err(_) => return,
         };
+
         if let Some(position) = symbols
             .elements(&self.json)
             .filter_map(|s| DocumentSymbolInformation::from_json(s, &self.json).ok())
             .map(|s| s.location.range.start.into())
             .nth(index)
         {
-            // TODO: add navigation history jump here
+            NavigationHistory::save_client_snapshot(
+                clients,
+                client_handle,
+                &mut editor.buffer_views,
+            );
+
+            let buffer_view = match editor.buffer_views.get_mut(buffer_view_handle) {
+                Some(buffer_view) => buffer_view,
+                None => return,
+            };
             let mut cursors = buffer_view.cursors.mut_guard();
             cursors.clear();
             cursors.add(Cursor {
@@ -1478,17 +1490,18 @@ impl Client {
                     Ok(location) => location,
                     Err(_) => return,
                 };
-
-                let client = match clients.get_mut(client_handle) {
-                    Some(client) => client,
-                    None => return,
-                };
                 let path = match Uri::parse(&self.root, location.uri.as_str(&self.json)) {
                     Some(Uri::Path(path)) => path,
                     None => return,
                 };
-                let buffer_view_handle = editor.buffer_view_handle_from_path(client.handle(), path);
-                // TODO: add navigation history jump here
+
+                let buffer_view_handle = editor.buffer_view_handle_from_path(client_handle, path);
+                NavigationHistory::save_client_snapshot(
+                    clients,
+                    client_handle,
+                    &mut editor.buffer_views,
+                );
+
                 if let Some(buffer_view) = editor.buffer_views.get_mut(buffer_view_handle) {
                     let position = location.range.start.into();
                     let mut cursors = buffer_view.cursors.mut_guard();
@@ -1498,7 +1511,10 @@ impl Client {
                         position,
                     });
                 }
-                client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
+
+                if let Some(client) = clients.get_mut(client_handle) {
+                    client.set_buffer_view_handle(Some(buffer_view_handle), &mut editor.events);
+                }
             }
             "textDocument/references" => {
                 let (client_handle, auto_close_buffer, context_len) = match self.request_state {

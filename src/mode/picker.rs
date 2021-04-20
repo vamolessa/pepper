@@ -236,8 +236,10 @@ pub mod lsp_document_symbol {
                             Some((EntrySource::Custom(i), _)) => i,
                             _ => 0,
                         };
+                        let clients = &mut *ctx.clients;
+                        let client_handle = ctx.client_handle;
                         lsp::ClientManager::access(ctx.editor, handle, |e, c| {
-                            c.finish_document_symbols(e, index);
+                            c.finish_document_symbols(e, clients, client_handle, index);
                         });
                     }
                     Mode::change_to(ctx, ModeKind::default());
