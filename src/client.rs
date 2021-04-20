@@ -169,10 +169,10 @@ impl Client {
             } else if let Some(d) =
                 CharDisplayDistances::new(&line[..column_index as usize], editor.config.tab_size)
                     .rev()
-                    .filter(|d| d.distance < width as _)
+                    .take_while(|d| d.distance < width as _)
                     .last()
             {
-                scroll_x = d.char_index as _;
+                scroll_x = scroll_x.max(d.char_index as _);
             }
 
             if line_index < scroll_y.saturating_sub(half_height) {
