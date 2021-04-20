@@ -9,7 +9,8 @@ impl fmt::Display for InvalidGlobError {
 }
 impl Error for InvalidGlobError {}
 
-enum Op {
+#[derive(Debug)]
+pub enum Op {
     Slice { from: u16, to: u16 },
     Separator,
     Skip { len: u16 },
@@ -23,8 +24,8 @@ enum Op {
 
 #[derive(Default)]
 pub struct Glob {
-    bytes: Vec<u8>,
-    ops: Vec<Op>,
+    pub bytes: Vec<u8>,
+    pub ops: Vec<Op>,
 }
 
 impl Glob {
@@ -224,8 +225,8 @@ fn matches_recursive<'data, 'cont>(
         };
 
         match op {
-            Op::Slice { from, to } => {
-                let prefix = &bytes[(*from as usize)..(*to as usize)];
+            &Op::Slice { from, to } => {
+                let prefix = &bytes[(from as usize)..(to as usize)];
                 if !path.starts_with(prefix) {
                     return false;
                 }
@@ -237,8 +238,8 @@ fn matches_recursive<'data, 'cont>(
                 }
                 path = &path[1..];
             }
-            Op::Skip { len } => {
-                let len = *len as usize;
+            &Op::Skip { len } => {
+                let len = len as usize;
                 if path.len() < len || path[..len].iter().any(is_path_separator) {
                     return false;
                 }
@@ -265,13 +266,13 @@ fn matches_recursive<'data, 'cont>(
                     None => return false,
                 }
             },
-            Op::AnyWithinRanges { start, count } => {
+            &Op::AnyWithinRanges { start, count } => {
                 if path.is_empty() {
                     return false;
                 }
                 let b = path[0];
                 path = &path[1..];
-                for range in bytes[(*start as usize)..].chunks(2).take(*count as _) {
+                for range in bytes[(start as usize)..].chunks(2).take(count as _) {
                     let start = range[0];
                     let end = range[1];
                     if start <= b && b <= end {
@@ -280,13 +281,13 @@ fn matches_recursive<'data, 'cont>(
                 }
                 return false;
             }
-            Op::ExceptWithinRanges { start, count } => {
+            &Op::ExceptWithinRanges { start, count } => {
                 if path.is_empty() {
                     return false;
                 }
                 let b = path[0];
                 path = &path[1..];
-                for range in bytes[(*start as usize)..].chunks(2).take(*count as _) {
+                for range in bytes[(start as usize)..].chunks(2).take(count as _) {
                     let start = range[0];
                     let end = range[1];
                     if b < start || end < b {
@@ -295,12 +296,12 @@ fn matches_recursive<'data, 'cont>(
                 }
                 return false;
             }
-            Op::SubPatternGroup { len } => {
-                let jump = &ops[(*len as usize)..];
-                loop {
+            &Op::SubPatternGroup { len } => {
+                let (mut ops, jump) = ops.split_at(len as _);
+                while !ops.is_empty() {
                     let len = match ops[0] {
                         Op::SubPattern { len } => len as usize,
-                        _ => return false,
+                        _ => unreachable!(),
                     };
                     ops = &ops[1..];
                     let continuation = Continuation::Next(jump, continuation);
@@ -309,6 +310,7 @@ fn matches_recursive<'data, 'cont>(
                     }
                     ops = &ops[len..];
                 }
+                return false;
             }
             Op::SubPattern { .. } => unreachable!(),
         }
@@ -419,7 +421,11 @@ mod tests {
         assert_glob(&mut glob, true, b"**/*.{a,b,cd}", b"m/n.a");
         assert_glob(&mut glob, true, b"**/*.{a,b,cd}", b"m/n.b");
         assert_glob(&mut glob, true, b"**/*.{a,b,cd}", b"m/n.cd");
+        assert_glob(&mut glob, true, b"**/*.{a,b,cd}", b"m/n/p.a");
+        assert_glob(&mut glob, true, b"**/*.{a,b,cd}", b"m/n/p.b");
+        assert_glob(&mut glob, true, b"**/*.{a,b,cd}", b"m/n/p.cd");
         assert_glob(&mut glob, false, b"**/*.{a,b,cd}", b"n.x");
         assert_glob(&mut glob, false, b"**/*.{a,b,cd}", b"m/n.x");
+        assert_glob(&mut glob, false, b"**/*.{a,b,cd}", b"m/n/p.x");
     }
 }
