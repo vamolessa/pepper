@@ -88,12 +88,12 @@ pub struct CharDisplayDistance {
     pub distance: usize,
     pub char_index: usize,
 }
-pub struct CharDisplayLen<'a> {
+pub struct CharDisplayDistances<'a> {
     char_indices: CharIndices<'a>,
     len: usize,
     tab_size: NonZeroU8,
 }
-impl<'a> CharDisplayLen<'a> {
+impl<'a> CharDisplayDistances<'a> {
     pub fn new(text: &'a str, tab_size: NonZeroU8) -> Self {
         Self {
             char_indices: text.char_indices(),
@@ -102,7 +102,7 @@ impl<'a> CharDisplayLen<'a> {
         }
     }
 }
-impl<'a> CharDisplayLen<'a> {
+impl<'a> CharDisplayDistances<'a> {
     fn calc_next(&mut self, char_index: usize, c: char) -> CharDisplayDistance {
         match c {
             '\t' => {
@@ -124,14 +124,14 @@ impl<'a> CharDisplayLen<'a> {
         }
     }
 }
-impl<'a> Iterator for CharDisplayLen<'a> {
+impl<'a> Iterator for CharDisplayDistances<'a> {
     type Item = CharDisplayDistance;
     fn next(&mut self) -> Option<Self::Item> {
         let (i, c) = self.char_indices.next()?;
         Some(self.calc_next(i, c))
     }
 }
-impl<'a> DoubleEndedIterator for CharDisplayLen<'a> {
+impl<'a> DoubleEndedIterator for CharDisplayDistances<'a> {
     fn next_back(&mut self) -> Option<Self::Item> {
         let (i, c) = self.char_indices.next_back()?;
         Some(self.calc_next(i, c))
@@ -1627,7 +1627,7 @@ mod tests {
     fn display_distance() {
         fn display_len(text: &str) -> usize {
             let tab_size = NonZeroU8::new(4).unwrap();
-            CharDisplayLen::new(text, tab_size)
+            CharDisplayDistances::new(text, tab_size)
                 .last()
                 .map(|d| d.distance)
                 .unwrap_or(0)

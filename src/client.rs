@@ -1,7 +1,7 @@
 use std::{fmt, str::FromStr};
 
 use crate::{
-    buffer::{BufferHandle, CharDisplayLen},
+    buffer::{BufferHandle, CharDisplayDistances},
     buffer_view::{BufferViewCollection, BufferViewHandle},
     editor::Editor,
     events::{EditorEvent, EditorEventQueue},
@@ -168,7 +168,7 @@ impl Client {
                 scroll_x = column_index
             } else {
                 let distances =
-                    CharDisplayLen::new(&line[..column_index as usize], editor.config.tab_size);
+                    CharDisplayDistances::new(&line[..column_index as usize], editor.config.tab_size);
                 for d in distances {
                 //
                 }
