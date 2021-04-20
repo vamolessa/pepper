@@ -1,7 +1,7 @@
 use std::{fmt, str::FromStr};
 
 use crate::{
-    buffer::{BufferHandle, DisplayLenIter},
+    buffer::{BufferHandle, CharDisplayLen},
     buffer_view::{BufferViewCollection, BufferViewHandle},
     editor::Editor,
     events::{EditorEvent, EditorEventQueue},
@@ -167,12 +167,14 @@ impl Client {
             if column_index < scroll_x {
                 scroll_x = column_index
             } else {
+            /*
                 if let Some(distance) =
-                    DisplayLenIter::new(&line[scroll_x as usize..], editor.config.tab_size)
-                        .find(|d| d.distance >= width)
+                    CharDisplayLen::new(&line[scroll_x as usize..], editor.config.tab_size)
+                        .find(|d| d.distance >= width as usize)
                 {
                     scroll_x = distance.char_index;
                 }
+                */
             }
 
             if line_index < scroll_y.saturating_sub(half_height) {

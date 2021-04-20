@@ -19,49 +19,6 @@ use crate::{
     word_database::{WordDatabase, WordIter, WordKind},
 };
 
-pub struct DisplayLenIter<'a> {
-    chars: CharIndices<'a>,
-    len: usize,
-    tab_size: usize,
-}
-impl<'a> DisplayLenIter<'a> {
-    pub fn new(text: &'a str, tab_size: NonZeroU8) -> Self {
-        let tab_size = tab_size.get() as _;
-        Self {
-            chars: text.char_indices(),
-            len: 0,
-            tab_size,
-        }
-    }
-}
-pub struct DisplayDistance {
-    pub distance: usize,
-    pub char_index: usize,
-}
-impl<'a> Iterator for DisplayLenIter<'a> {
-    type Item = DisplayDistance;
-    fn next(&mut self) -> Option<Self::Item> {
-        match self.chars.next() {
-            Some((i, '\t')) => {
-                let next_tab_stop = (self.tab_size - 1) - self.len % self.tab_size;
-                self.len += next_tab_stop + 1;
-                Some(DisplayDistance {
-                    distance: self.len,
-                    char_index: i,
-                })
-            }
-            Some((i, _)) => {
-                self.len += 1;
-                Some(DisplayDistance {
-                    distance: self.len,
-                    char_index: i,
-                })
-            }
-            None => None,
-        }
-    }
-}
-
 pub fn find_delimiter_pair_at(text: &str, index: usize, delimiter: char) -> Option<(usize, usize)> {
     let mut is_right_delim = false;
     let mut last_i = 0;
@@ -124,6 +81,60 @@ pub fn find_path_and_position_at(text: &str, index: usize) -> (&str, Option<Buff
             let position = BufferPosition::parse(&path[i + 1..]);
             (&path[..i], position)
         }
+    }
+}
+
+pub struct DisplayDistance {
+    pub distance: usize,
+    pub char_index: usize,
+}
+pub struct CharDisplayLen<'a> {
+    char_indices: CharIndices<'a>,
+    len: usize,
+    tab_size: NonZeroU8,
+}
+impl<'a> CharDisplayLen<'a> {
+    pub fn new(text: &'a str, tab_size: NonZeroU8) -> Self {
+        Self {
+            char_indices: text.char_indices(),
+            len: 0,
+            tab_size,
+        }
+    }
+}
+impl<'a> CharDisplayLen<'a> {
+    fn calc_next(&mut self, char_index: usize, c: char) -> DisplayDistance {
+        match c {
+            '\t' => {
+                let tab_size = self.tab_size.get() as usize;
+                let next_tab_stop = (tab_size - 1) - self.len % tab_size;
+                self.len += next_tab_stop + 1;
+                DisplayDistance {
+                    distance: self.len,
+                    char_index,
+                }
+            }
+            _ => {
+                self.len += 1;
+                DisplayDistance {
+                    distance: self.len,
+                    char_index,
+                }
+            }
+        }
+    }
+}
+impl<'a> Iterator for CharDisplayLen<'a> {
+    type Item = DisplayDistance;
+    fn next(&mut self) -> Option<Self::Item> {
+        let (i, c) = self.char_indices.next()?;
+        Some(self.calc_next(i, c))
+    }
+}
+impl<'a> DoubleEndedIterator for CharDisplayLen<'a> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        let (i, c) = self.char_indices.next_back()?;
+        Some(self.calc_next(i, c))
     }
 }
 
@@ -1470,29 +1481,6 @@ mod tests {
     use crate::buffer_position::BufferPosition;
 
     #[test]
-    fn display_distance() {
-        fn display_len(text: &str) -> usize {
-            let tab_size = NonZeroU8::new(4).unwrap();
-            DisplayLenIter::new(text, tab_size)
-                .last()
-                .map(|d| d.distance)
-                .unwrap_or(0)
-        }
-
-        assert_eq!(0, display_len(""));
-        assert_eq!(1, display_len("a"));
-        assert_eq!(1, display_len("é"));
-        assert_eq!(4, display_len("    "));
-        assert_eq!(4, display_len("\t"));
-        assert_eq!(8, display_len("\t\t"));
-        assert_eq!(8, display_len("    \t"));
-        assert_eq!(4, display_len("x\t"));
-        assert_eq!(4, display_len("xx\t"));
-        assert_eq!(4, display_len("xxx\t"));
-        assert_eq!(8, display_len("xxxx\t"));
-    }
-
-    #[test]
     fn test_find_delimiter_pair_at() {
         let text = "|a|bcd|efg|";
         assert_eq!(Some((1, 2)), find_delimiter_pair_at(text, 0, '|'));
@@ -1633,6 +1621,29 @@ mod tests {
             (path, Some(BufferPosition::line_col(3, 4))),
             find_path_and_position_at(text, 27)
         );
+    }
+
+    #[test]
+    fn display_distance() {
+        fn display_len(text: &str) -> usize {
+            let tab_size = NonZeroU8::new(4).unwrap();
+            CharDisplayLen::new(text, tab_size)
+                .last()
+                .map(|d| d.distance)
+                .unwrap_or(0)
+        }
+
+        assert_eq!(0, display_len(""));
+        assert_eq!(1, display_len("a"));
+        assert_eq!(1, display_len("é"));
+        assert_eq!(4, display_len("    "));
+        assert_eq!(4, display_len("\t"));
+        assert_eq!(8, display_len("\t\t"));
+        assert_eq!(8, display_len("    \t"));
+        assert_eq!(4, display_len("x\t"));
+        assert_eq!(4, display_len("xx\t"));
+        assert_eq!(4, display_len("xxx\t"));
+        assert_eq!(8, display_len("xxxx\t"));
     }
 
     fn buffer_from_str(text: &str) -> BufferContent {
