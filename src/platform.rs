@@ -21,7 +21,7 @@ pub enum Key {
     Tab,
     Delete,
     F(u8),
-    Char(char), // TODO: change char to u8?
+    Char(char),
     Ctrl(char),
     Alt(char),
     Esc,
