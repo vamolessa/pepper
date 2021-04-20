@@ -392,6 +392,7 @@ mod tests {
         assert_glob(&mut glob, false, b"a*c", b"a/c");
         assert_glob(&mut glob, true, b"a*bx*cy*d", b"a00bx000cy0000d");
 
+        assert_glob(&mut glob, false, b"a/**/c", b"");
         assert_glob(&mut glob, true, b"a/**/c", b"a/c");
         assert_glob(&mut glob, true, b"a/**/c", b"a/b/c");
         assert_glob(&mut glob, true, b"a/**/c", b"a/bb/bbb/c");
@@ -410,5 +411,14 @@ mod tests {
         assert_glob(&mut glob, true, b"a*{b*,c}d", b"acdbbczzcd");
         assert_glob(&mut glob, true, b"a{b,c*}d", b"aczd");
         assert_glob(&mut glob, true, b"a*{b,c*}d", b"acdbczzzd");
+
+        assert_glob(&mut glob, false, b"**/*.{a,b,cd}", b"");
+        assert_glob(&mut glob, true, b"**/*.{a,b,cd}", b"n.a");
+        assert_glob(&mut glob, true, b"**/*.{a,b,cd}", b"n.b");
+        assert_glob(&mut glob, true, b"**/*.{a,b,cd}", b"n.cd");
+        assert_glob(&mut glob, true, b"**/*.{a,b,cd}", b"m/n.a");
+        assert_glob(&mut glob, true, b"**/*.{a,b,cd}", b"m/n.b");
+        assert_glob(&mut glob, true, b"**/*.{a,b,cd}", b"m/n.cd");
+        assert_glob(&mut glob, false, b"**/*.{a,b,cd}", b"m/n.x");
     }
 }
