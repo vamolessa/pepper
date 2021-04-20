@@ -166,21 +166,13 @@ impl Client {
 
             if column_index < scroll_x {
                 scroll_x = column_index
-            } else {
-                let distances =
-                    CharDisplayDistances::new(&line[..column_index as usize], editor.config.tab_size);
-                for d in distances {
-                //
-                }
-                
-                /*
-                if let Some(distance) =
-                    CharDisplayLen::new(&line[scroll_x as usize..], editor.config.tab_size)
-                        .find(|d| d.distance >= width as usize)
-                {
-                    scroll_x = distance.char_index;
-                }
-                */
+            } else if let Some(d) =
+                CharDisplayDistances::new(&line[..column_index as usize], editor.config.tab_size)
+                    .rev()
+                    .filter(|d| d.distance < width as _)
+                    .last()
+            {
+                scroll_x = d.char_index as _;
             }
 
             if line_index < scroll_y.saturating_sub(half_height) {

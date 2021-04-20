@@ -964,6 +964,7 @@ impl Client {
             .map(|s| s.location.range.start.into())
             .nth(index)
         {
+            // TODO: add navigation history jump here
             let mut cursors = buffer_view.cursors.mut_guard();
             cursors.clear();
             cursors.add(Cursor {
@@ -1487,6 +1488,7 @@ impl Client {
                     None => return,
                 };
                 let buffer_view_handle = editor.buffer_view_handle_from_path(client.handle(), path);
+                // TODO: add navigation history jump here
                 if let Some(buffer_view) = editor.buffer_views.get_mut(buffer_view_handle) {
                     let position = location.range.start.into();
                     let mut cursors = buffer_view.cursors.mut_guard();
