@@ -1,7 +1,7 @@
 use std::{fmt, str::FromStr};
 
 use crate::{
-    buffer::BufferHandle,
+    buffer::{BufferHandle, DisplayLenIter},
     buffer_view::{BufferViewCollection, BufferViewHandle},
     editor::Editor,
     events::{EditorEvent, EditorEventQueue},
@@ -151,9 +151,12 @@ impl Client {
     pub fn update_view(&mut self, editor: &Editor, picker_height: u16) {
         fn calculate_scroll(this: &Client, editor: &Editor) -> Option<(u32, u32)> {
             let buffer_view = editor.buffer_views.get(this.buffer_view_handle?)?;
-            let focused_position = buffer_view.cursors.main_cursor().position;
-            let focused_line_index = focused_position.line_index as u32;
-            let focused_column_byte_index = focused_position.column_byte_index as u32;
+            let buffer = editor.buffers.get(buffer_view.buffer_handle)?.content();
+
+            let position = buffer_view.cursors.main_cursor().position;
+            let line_index = position.line_index as u32;
+            let line = buffer.line_at(line_index as _).as_str();
+            let column_index = position.column_byte_index as u32;
 
             let width = this.viewport_size.0 as u32;
             let height = this.height as u32;
@@ -161,20 +164,25 @@ impl Client {
 
             let (mut scroll_x, mut scroll_y) = this.scroll;
 
-            if focused_column_byte_index < scroll_x {
-                scroll_x = focused_column_byte_index;
-            } else if focused_column_byte_index >= scroll_x + width {
-                scroll_x = focused_column_byte_index + 1 - width;
+            if column_index < scroll_x {
+                scroll_x = column_index
+            } else {
+                if let Some(distance) =
+                    DisplayLenIter::new(&line[scroll_x as usize..], editor.config.tab_size)
+                        .find(|d| d.distance >= width)
+                {
+                    scroll_x = distance.char_index;
+                }
             }
 
-            if focused_line_index < scroll_y.saturating_sub(half_height) {
-                scroll_y = focused_line_index.saturating_sub(half_height);
-            } else if focused_line_index < scroll_y {
-                scroll_y = focused_line_index;
-            } else if focused_line_index >= scroll_y + height + half_height {
-                scroll_y = focused_line_index + 1 - half_height;
-            } else if focused_line_index >= scroll_y + height {
-                scroll_y = focused_line_index + 1 - height;
+            if line_index < scroll_y.saturating_sub(half_height) {
+                scroll_y = line_index.saturating_sub(half_height);
+            } else if line_index < scroll_y {
+                scroll_y = line_index;
+            } else if line_index >= scroll_y + height + half_height {
+                scroll_y = line_index + 1 - half_height;
+            } else if line_index >= scroll_y + height {
+                scroll_y = line_index + 1 - height;
             }
 
             Some((scroll_x, scroll_y))

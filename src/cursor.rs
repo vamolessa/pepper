@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    buffer::{calculate_display_len, BufferContent},
+    buffer::{BufferContent, DisplayLenIter},
     buffer_position::{BufferPosition, BufferRange},
 };
 
@@ -188,7 +188,10 @@ impl<'a> CursorCollectionMutGuard<'a> {
             for c in &self.inner.cursors[..self.inner.len as usize] {
                 let line =
                     &buffer.line_at(c.position.line_index).as_str()[..c.position.column_byte_index];
-                let distance = calculate_display_len(line, tab_size);
+                let distance = DisplayLenIter::new(line, tab_size)
+                    .last()
+                    .map(|d| d.distance)
+                    .unwrap_or(0);
 
                 self.inner.saved_display_distances
                     [self.inner.saved_display_distances_len as usize] = distance;
