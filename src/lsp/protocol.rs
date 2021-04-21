@@ -601,6 +601,11 @@ impl WorkspaceEdit {
                         None => {
                             let buffer = editor.buffers.add_new();
                             buffer.capabilities = BufferCapabilities::log();
+                            buffer.set_path(path);
+                            let _ = buffer.discard_and_reload_from_file(
+                                &mut editor.word_database,
+                                &mut editor.events,
+                            );
                             (true, buffer.handle())
                         }
                     };
