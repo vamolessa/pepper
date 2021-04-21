@@ -192,7 +192,7 @@ impl ServerApplication {
                 ui::render(
                     &editor,
                     c.buffer_view_handle(),
-                    c.viewport_size,
+                    (c.viewport_size.0, c.height),
                     c.scroll as _,
                     has_focus,
                     write,

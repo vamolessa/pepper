@@ -403,10 +403,6 @@ fn draw_picker(buf: &mut Vec<u8>, editor: &Editor, view: &View) {
     let background_selected_color = editor.theme.statusbar_active_background;
     let foreground_color = editor.theme.token_text;
 
-    if height > 0 {
-        move_cursor_up(buf, height);
-    }
-
     set_background_color(buf, background_normal_color);
     set_foreground_color(buf, foreground_color);
 
