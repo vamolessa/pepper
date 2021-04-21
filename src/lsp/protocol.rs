@@ -573,7 +573,6 @@ pub struct WorkspaceEdit {
     document_changes: JsonArray,
 }
 impl WorkspaceEdit {
-    // TODO: it seems that edits involving not opened buffers is bugged
     pub fn apply(
         &self,
         editor: &mut Editor,
