@@ -1,7 +1,7 @@
 use std::{fmt, num::NonZeroU8, str::FromStr};
 
 use crate::{
-    buffer::{BufferCollection, BufferHandle},
+    buffer::{BufferCollection, BufferHandle, CharDisplayDistances},
     buffer_position::{BufferPosition, BufferRange},
     client::ClientHandle,
     cursor::{Cursor, CursorCollection},
@@ -162,14 +162,19 @@ impl BufferView {
             CursorMovement::LinesForward(n) => {
                 cursors.save_display_distances(buffer, tab_size);
                 for i in 0..cursors[..].len() {
-                    let saved_column_byte_index = cursors.get_saved_display_distance(i);
+                    let saved_display_distance = cursors.get_saved_display_distance(i);
                     let c = &mut cursors[i];
                     c.position.line_index = buffer
                         .line_count()
                         .saturating_sub(1)
                         .min(c.position.line_index + n);
-                    if let Some(index) = saved_column_byte_index {
-                        c.position.column_byte_index = index;
+                    if let Some(distance) = saved_display_distance {
+                        let line = buffer.line_at(c.position.line_index).as_str();
+                        c.position.column_byte_index = CharDisplayDistances::new(line, tab_size)
+                            .skip_while(|d| d.distance <= distance as _)
+                            .next()
+                            .map(|d| d.char_index)
+                            .unwrap_or(line.len());
                     }
                     c.position = buffer.saturate_position(c.position);
                 }
@@ -177,11 +182,16 @@ impl BufferView {
             CursorMovement::LinesBackward(n) => {
                 cursors.save_display_distances(buffer, tab_size);
                 for i in 0..cursors[..].len() {
-                    let saved_column_byte_index = cursors.get_saved_display_distance(i);
+                    let saved_display_distance = cursors.get_saved_display_distance(i);
                     let c = &mut cursors[i];
                     c.position.line_index = c.position.line_index.saturating_sub(n);
-                    if let Some(index) = saved_column_byte_index {
-                        c.position.column_byte_index = index;
+                    if let Some(distance) = saved_display_distance {
+                        let line = buffer.line_at(c.position.line_index).as_str();
+                        c.position.column_byte_index = CharDisplayDistances::new(line, tab_size)
+                            .skip_while(|d| d.distance <= distance as _)
+                            .next()
+                            .map(|d| d.char_index)
+                            .unwrap_or(line.len());
                     }
                     c.position = buffer.saturate_position(c.position);
                 }

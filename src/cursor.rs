@@ -41,7 +41,7 @@ impl Cursor {
 pub struct CursorCollection {
     cursors: Box<[Cursor; Self::capacity()]>,
     len: u8,
-    saved_display_distances: Box<[usize; Self::capacity()]>,
+    saved_display_distances: Box<[u32; Self::capacity()]>,
     saved_display_distances_len: u8,
     main_cursor_index: u8,
 }
@@ -194,13 +194,13 @@ impl<'a> CursorCollectionMutGuard<'a> {
                     .unwrap_or(0);
 
                 self.inner.saved_display_distances
-                    [self.inner.saved_display_distances_len as usize] = distance;
+                    [self.inner.saved_display_distances_len as usize] = distance as _;
                 self.inner.saved_display_distances_len += 1;
             }
         }
     }
 
-    pub fn get_saved_display_distance(&self, index: usize) -> Option<usize> {
+    pub fn get_saved_display_distance(&self, index: usize) -> Option<u32> {
         if index < self.inner.saved_display_distances_len as usize {
             Some(self.inner.saved_display_distances[index])
         } else {
