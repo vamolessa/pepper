@@ -601,6 +601,7 @@ impl WorkspaceEdit {
                         None => {
                             let buffer = editor.buffers.add_new();
                             buffer.capabilities = BufferCapabilities::log();
+                            buffer.capabilities.can_save = true;
                             buffer.set_path(path);
                             let _ = buffer.discard_and_reload_from_file(
                                 &mut editor.word_database,
@@ -614,7 +615,7 @@ impl WorkspaceEdit {
 
                     if is_temp {
                         if let Some(buffer) = editor.buffers.get_mut(buffer_handle) {
-                            let _ = buffer.save_to_file(Some(path), &mut editor.events);
+                            let _ = buffer.save_to_file(None, &mut editor.events);
                         }
 
                         editor
