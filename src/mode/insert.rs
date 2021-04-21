@@ -1,7 +1,6 @@
 use std::{fmt::Write, path::Path};
 
 use crate::{
-    buffer::Buffer,
     buffer_position::BufferPosition,
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     editor::{Editor, KeysIterator},
@@ -364,31 +363,35 @@ fn apply_completion(
         Some((_, entry)) => entry,
         None => {
             let buffer_handle = buffer_view.buffer_handle;
-            let buffer_path = match ctx.editor.buffers.get(buffer_handle).map(Buffer::path) {
-                Some(path) => path,
+            let buffer = match ctx.editor.buffers.get(buffer_handle) {
+                Some(buffer) => buffer,
                 None => return,
             };
-            let lsp_client_handle = match ctx
-                .editor
-                .mode
-                .insert_state
-                .get_lsp_client_handle(&ctx.editor.lsp, buffer_path)
-            {
-                Some(handle) => handle,
-                None => return,
-            };
+            let state = &mut ctx.editor.mode.insert_state;
+            let lsp_client_handle =
+                match state.get_lsp_client_handle(&ctx.editor.lsp, buffer.path()) {
+                    Some(handle) => handle,
+                    None => return,
+                };
+
+            let content = buffer.content();
+            state.completion_positions.clear();
+            for cursor in &buffer_view.cursors[..] {
+                let word = content.word_at(content.position_before(cursor.position));
+                let position = match word.kind {
+                    WordKind::Identifier => word.position,
+                    _ => cursor.position,
+                };
+                state.completion_positions.push(position);
+            }
+
             let platform = &mut *ctx.platform;
             let client_handle = ctx.client_handle;
             let buffer_position = buffer_view.cursors.main_cursor().position;
             lsp::ClientManager::access(ctx.editor, lsp_client_handle, |e, c| {
-                c.completion(
-                    e,
-                    platform,
-                    client_handle,
-                    buffer_handle,
-                    buffer_position,
-                )
+                c.completion(e, platform, client_handle, buffer_handle, buffer_position)
             });
+
             return;
         }
     };
