@@ -148,6 +148,13 @@ impl NavigationHistory {
         for cursor in history.cursors[snapshot.cursor_range.0..snapshot.cursor_range.1].iter() {
             cursors.add(*cursor);
         }
+        if let Some(buffer) = editor.buffers.get(snapshot.buffer_handle) {
+            let buffer = buffer.content();
+            for cursor in &mut cursors[..] {
+                cursor.anchor = buffer.saturate_position(cursor.anchor);
+                cursor.position = buffer.saturate_position(cursor.position);
+            }
+        }
         drop(cursors);
 
         if let Some(client) = clients.get_mut(client_handle) {

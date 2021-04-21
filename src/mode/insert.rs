@@ -1,6 +1,7 @@
 use std::{fmt::Write, path::Path};
 
 use crate::{
+    buffer::Buffer,
     buffer_position::BufferPosition,
     buffer_view::{BufferViewHandle, CursorMovement, CursorMovementKind},
     editor::{Editor, KeysIterator},
@@ -362,7 +363,32 @@ fn apply_completion(
     let entry = match ctx.editor.picker.current_entry(&ctx.editor.word_database) {
         Some((_, entry)) => entry,
         None => {
-            // TODO: if there's an lsp server running, ask it for completion!
+            let buffer_handle = buffer_view.buffer_handle;
+            let buffer_path = match ctx.editor.buffers.get(buffer_handle).map(Buffer::path) {
+                Some(path) => path,
+                None => return,
+            };
+            let lsp_client_handle = match ctx
+                .editor
+                .mode
+                .insert_state
+                .get_lsp_client_handle(&ctx.editor.lsp, buffer_path)
+            {
+                Some(handle) => handle,
+                None => return,
+            };
+            let platform = &mut *ctx.platform;
+            let client_handle = ctx.client_handle;
+            let buffer_position = buffer_view.cursors.main_cursor().position;
+            lsp::ClientManager::access(ctx.editor, lsp_client_handle, |e, c| {
+                c.completion(
+                    e,
+                    platform,
+                    client_handle,
+                    buffer_handle,
+                    buffer_position,
+                )
+            });
             return;
         }
     };
