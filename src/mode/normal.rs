@@ -641,43 +641,51 @@ impl State {
                     position,
                 });
             }
-            Key::Char('f') => match keys.next(&ctx.editor.buffered_keys) {
+            Key::Char('[') => match keys.next(&ctx.editor.buffered_keys) {
                 Key::None => return Some(ModeOperation::Pending),
-                Key::Char(ch) => {
-                    state.last_char_jump = CharJump::Inclusive(ch);
-                    find_char(ctx, true);
-                }
+                Key::Char('[') => match keys.next(&ctx.editor.buffered_keys) {
+                    Key::None => return Some(ModeOperation::Pending),
+                    Key::Char(ch) => {
+                        state.last_char_jump = CharJump::Inclusive(ch);
+                        find_char(ctx, false);
+                    }
+                    _ => (),
+                },
+                Key::Char(']') => match keys.next(&ctx.editor.buffered_keys) {
+                    Key::None => return Some(ModeOperation::Pending),
+                    Key::Char(ch) => {
+                        state.last_char_jump = CharJump::Exclusive(ch);
+                        find_char(ctx, false);
+                    }
+                    _ => (),
+                },
                 _ => (),
             },
-            Key::Char('F') => match keys.next(&ctx.editor.buffered_keys) {
+            Key::Char(']') => match keys.next(&ctx.editor.buffered_keys) {
                 Key::None => return Some(ModeOperation::Pending),
-                Key::Char(ch) => {
-                    state.last_char_jump = CharJump::Inclusive(ch);
-                    find_char(ctx, false);
-                }
+                Key::Char('[') => match keys.next(&ctx.editor.buffered_keys) {
+                    Key::None => return Some(ModeOperation::Pending),
+                    Key::Char(ch) => {
+                        state.last_char_jump = CharJump::Exclusive(ch);
+                        find_char(ctx, true);
+                    }
+                    _ => (),
+                },
+                Key::Char(']') => match keys.next(&ctx.editor.buffered_keys) {
+                    Key::None => return Some(ModeOperation::Pending),
+                    Key::Char(ch) => {
+                        state.last_char_jump = CharJump::Inclusive(ch);
+                        find_char(ctx, true);
+                    }
+                    _ => (),
+                },
                 _ => (),
             },
-            Key::Char('t') => match keys.next(&ctx.editor.buffered_keys) {
-                Key::None => return Some(ModeOperation::Pending),
-                Key::Char(ch) => {
-                    state.last_char_jump = CharJump::Exclusive(ch);
-                    find_char(ctx, true);
-                }
-                _ => (),
-            },
-            Key::Char('T') => match keys.next(&ctx.editor.buffered_keys) {
-                Key::None => return Some(ModeOperation::Pending),
-                Key::Char(ch) => {
-                    state.last_char_jump = CharJump::Exclusive(ch);
-                    find_char(ctx, false);
-                }
-                _ => (),
-            },
-            Key::Char(';') => {
-                find_char(ctx, true);
-            }
-            Key::Char(',') => {
+            Key::Char('{') => {
                 find_char(ctx, false);
+            }
+            Key::Char('}') => {
+                find_char(ctx, true);
             }
             Key::Char('v') => {
                 let mut had_selection = false;

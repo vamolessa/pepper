@@ -686,25 +686,36 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         name: "source",
         alias: "",
-        help: "loads a source file and execute its commands\nsource <path>",
+        help: concat!(
+            "loads a source file and execute its commands\n",
+            "source [<flags>] <path>\n",
+            " -relative-to-current-dir : interprets <path> as relative to the editor's current directory",
+        ),
         hidden: false,
         completions: &[CompletionSource::Files],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
-            ctx.args.get_flags(&mut [])?;
+
+            let mut flags = [("relative-to-current-dir", None)];
+            ctx.args.get_flags(&mut flags)?;
+            let relative_to_current_dir = flags[0].1.is_some();
+
             let path = Path::new(ctx.args.next()?);
             ctx.args.assert_empty()?;
 
             let mut path_buf = PathBuf::new();
-            let path = match ctx.source_path {
-                Some(source_path) if path.is_relative() => {
-                    if let Some(parent) = source_path.parent() {
+            let path = if path.is_relative() {
+                if relative_to_current_dir {
+                    path_buf.push(&ctx.editor.current_directory);
+                } else {
+                    if let Some(parent) = ctx.source_path.and_then(Path::parent) {
                         path_buf.push(parent);
                     }
-                    path_buf.push(path);
-                    path_buf.as_path()
-                },
-                _ => path,
+                }
+                path_buf.push(path);
+                path_buf.as_path()
+            } else {
+                path
             };
 
             let op = ctx.editor.load_config(ctx.platform, ctx.clients, path);

@@ -1,4 +1,6 @@
 use crate::{
+    buffer_view::CursorMovementKind,
+    client::Client,
     command::{replace_to_between_text_markers, CommandManager},
     editor::KeysIterator,
     editor_utils::ReadLinePoll,
@@ -60,6 +62,24 @@ pub mod search {
                     update_search(ctx);
                 }
                 ReadLinePoll::Submitted => {
+                    if ctx
+                        .clients
+                        .get(ctx.client_handle)
+                        .and_then(Client::buffer_view_handle)
+                        .and_then(|h| ctx.editor.buffer_views.get(h))
+                        .map(|v| v.buffer_handle)
+                        .and_then(|h| ctx.editor.buffers.get(h))
+                        .map(|b| b.search_ranges().is_empty())
+                        .unwrap_or(true)
+                    {
+                        NavigationHistory::move_in_history(
+                            ctx.editor,
+                            ctx.clients,
+                            ctx.client_handle,
+                            NavigationDirection::Backward,
+                        );
+                    }
+
                     let register = ctx.editor.registers.get_mut(SEARCH_REGISTER);
                     register.clear();
                     register.push_str(ctx.editor.read_line.input());
@@ -129,7 +149,10 @@ pub mod search {
             }
         }
 
-        main_cursor.anchor = main_cursor.position;
+        if let CursorMovementKind::PositionAndAnchor = ctx.editor.mode.normal_state.movement_kind {
+            main_cursor.anchor = main_cursor.position;
+        }
+
         None
     }
 }
