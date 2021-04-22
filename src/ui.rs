@@ -515,7 +515,7 @@ fn draw_statusbar(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bo
                     None
                 }
             }
-        } else {
+        } else if matches!(editor.mode.kind(), ModeKind::Normal | ModeKind::Insert) {
             fn print_line(buf: &mut Vec<u8>, line: &str) -> usize {
                 let mut char_buf = [0; std::mem::size_of::<char>()];
                 let mut len = 0;
@@ -573,6 +573,8 @@ fn draw_statusbar(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bo
                 print_line(buf, message);
             }
 
+            None
+        } else {
             None
         }
     } else {
