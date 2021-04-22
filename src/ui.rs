@@ -1,7 +1,7 @@
 use std::{io, iter};
 
 use crate::{
-    buffer::{Buffer, BufferContent, BufferHandle},
+    buffer::{Buffer, BufferContent},
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::{BufferViewHandle, CursorMovementKind},
     cursor::Cursor,
@@ -90,7 +90,6 @@ pub fn render(
 }
 
 struct View<'a> {
-    buffer_handle: Option<BufferHandle>,
     buffer: Option<&'a Buffer>,
     main_cursor_position: BufferPosition,
     cursors: &'a [Cursor],
@@ -124,7 +123,6 @@ impl<'a> View<'a> {
         };
 
         View {
-            buffer_handle,
             buffer,
             main_cursor_position,
             cursors,
@@ -184,11 +182,11 @@ fn draw_buffer(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool)
     }
     let search_ranges_end_index = search_ranges.len().saturating_sub(1);
 
-    let diagnostics = match view.buffer_handle {
-        Some(handle) => {
+    let diagnostics = match view.buffer {
+        Some(buffer) => {
             let mut diagnostics: &[_] = &[];
             for client in editor.lsp.clients() {
-                diagnostics = client.diagnostics().buffer_diagnostics(handle);
+                diagnostics = client.diagnostics().buffer_diagnostics(buffer.handle());
                 if !diagnostics.is_empty() {
                     break;
                 }
@@ -459,6 +457,8 @@ fn draw_picker(buf: &mut Vec<u8>, editor: &Editor, view: &View) {
 }
 
 fn draw_statusbar(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bool) {
+    use io::Write;
+
     let background_active_color = editor.theme.statusbar_active_background;
     let background_innactive_color = editor.theme.statusbar_inactive_background;
     let foreground_color = editor.theme.token_text;
@@ -485,7 +485,15 @@ fn draw_statusbar(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bo
                         buf.push(key);
                         Some(text.len() + 1)
                     }
-                    None => Some(0),
+                    None => match view.buffer.map(Buffer::search_ranges) {
+                        Some(&[]) | None => Some(0),
+                        Some(search_ranges) => {
+                            let previous_len = buf.len();
+                            let search_index = editor.mode.normal_state.search_index + 1;
+                            let _ = write!(buf, " [{}/{}]", search_index, search_ranges.len());
+                            Some(buf.len() - previous_len)
+                        }
+                    },
                 },
                 ModeKind::Insert => {
                     let text = b"-- INSERT --";
@@ -599,8 +607,6 @@ fn draw_statusbar(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bo
                 None => (0, s),
             }
         }
-
-        use io::Write;
 
         let available_width = view.size.0 as usize - x;
         let half_available_width = available_width / 2;

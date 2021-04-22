@@ -24,7 +24,7 @@ enum CharJump {
 
 pub struct State {
     pub movement_kind: CursorMovementKind,
-    pub search_index: Option<u32>,
+    pub search_index: usize,
     last_char_jump: CharJump,
     is_recording_auto_macro: bool,
     pub count: u32,
@@ -1217,7 +1217,7 @@ impl Default for State {
     fn default() -> Self {
         Self {
             movement_kind: CursorMovementKind::PositionAndAnchor,
-            search_index: None,
+            search_index: 0,
             last_char_jump: CharJump::None,
             is_recording_auto_macro: false,
             count: 0,
@@ -1377,15 +1377,16 @@ where
         }
     }
 
+    let state = &mut ctx.editor.mode.normal_state;
     let cursors = &mut buffer_view.cursors;
 
     let main_position = cursors.main_cursor().position;
     let search_result = search_ranges.binary_search_by_key(&main_position, |r| r.from);
-    let next_index = index_selector(search_ranges.len(), search_result);
+    state.search_index = index_selector(search_ranges.len(), search_result);
 
     let mut cursors = cursors.mut_guard();
     let main_cursor = cursors.main_cursor();
-    main_cursor.position = search_ranges[next_index].from;
+    main_cursor.position = search_ranges[state.search_index].from;
 
     if let CursorMovementKind::PositionAndAnchor = ctx.editor.mode.normal_state.movement_kind {
         main_cursor.anchor = main_cursor.position;
@@ -1398,6 +1399,7 @@ fn search_word_or_move_to_it(
     ctx: &mut ModeContext,
     index_selector: fn(usize, Result<usize, usize>) -> usize,
 ) -> Option<()> {
+    let state = &mut ctx.editor.mode.normal_state;
     let handle = ctx.clients.get(ctx.client_handle)?.buffer_view_handle()?;
     let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
     let buffer = ctx.editor.buffers.get_mut(buffer_view.buffer_handle)?;
@@ -1420,6 +1422,16 @@ fn search_word_or_move_to_it(
         register.push_str(word.text);
 
         buffer.set_search(register);
+
+        drop(cursors);
+        let main_position = buffer_view.cursors.main_cursor().position;
+        state.search_index = match buffer
+            .search_ranges()
+            .binary_search_by_key(&main_position, |r| r.from)
+        {
+            Ok(i) => i,
+            Err(i) => i,
+        };
     } else {
         NavigationHistory::save_client_snapshot(
             ctx.clients,
@@ -1430,12 +1442,13 @@ fn search_word_or_move_to_it(
         let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
         let mut range_index = current_range_index;
 
-        for _ in 0..ctx.editor.mode.normal_state.count.max(1) {
+        let mut cursors = buffer_view.cursors.mut_guard();
+        for _ in 0..state.count.max(1) {
             let i = index_selector(search_ranges.len(), range_index);
             let range = search_ranges[i];
             range_index = Ok(i);
 
-            buffer_view.cursors.mut_guard().add(Cursor {
+            cursors.add(Cursor {
                 anchor: range.from,
                 position: range.from,
             });
