@@ -1241,7 +1241,6 @@ impl ModeState for State {
     fn on_enter(ctx: &mut ModeContext) {
         let state = &mut ctx.editor.mode.normal_state;
         state.movement_kind = CursorMovementKind::PositionAndAnchor;
-        state.last_char_jump = CharJump::None;
         state.is_recording_auto_macro = false;
         state.count = 0;
     }

@@ -105,7 +105,7 @@ impl Args {
                                 "invalid session name '{}'. it can only contain alphanumeric characters", arg
                             ));
                         }
-                        parsed.configs.push(arg.into());
+                        parsed.session = Some(arg.into());
                     }
                     None => error(format_args!("expected session after {}", arg)),
                 },
