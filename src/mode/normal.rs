@@ -435,7 +435,34 @@ impl State {
                 let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
                 match keys.next(&ctx.editor.buffered_keys) {
                     Key::None => return Some(ModeOperation::Pending),
-                    Key::Char('g') => read_line::goto::enter_mode(ctx),
+                    Key::Char('g') => {
+                        if state.count > 0 {
+                            NavigationHistory::save_client_snapshot(
+                                ctx.clients,
+                                ctx.client_handle,
+                                &mut ctx.editor.buffer_views,
+                            );
+                            let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                            let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle)?;
+                            let line_index = state.count - 1;
+                            let mut position = BufferPosition::line_col(line_index as _, 0);
+                            let (first_word, _, mut right_words) =
+                                buffer.content().words_from(position);
+                            if first_word.kind == WordKind::Whitespace {
+                                if let Some(word) = right_words.next() {
+                                    position = word.position;
+                                }
+                            }
+                            let mut cursors = buffer_view.cursors.mut_guard();
+                            cursors.clear();
+                            cursors.add(Cursor {
+                                anchor: position,
+                                position,
+                            });
+                        } else {
+                            read_line::goto::enter_mode(ctx);
+                        }
+                    }
                     Key::Char('h') => buffer_view.move_cursors(
                         &ctx.editor.buffers,
                         CursorMovement::Home,
@@ -617,29 +644,6 @@ impl State {
                         return Self::on_event_no_buffer(ctx, keys);
                     }
                 }
-            }
-            Key::Char('G') => {
-                NavigationHistory::save_client_snapshot(
-                    ctx.clients,
-                    ctx.client_handle,
-                    &mut ctx.editor.buffer_views,
-                );
-                let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
-                let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle)?;
-                let line_index = state.count.saturating_sub(1);
-                let mut position = BufferPosition::line_col(line_index as _, 0);
-                let (first_word, _, mut right_words) = buffer.content().words_from(position);
-                if first_word.kind == WordKind::Whitespace {
-                    if let Some(word) = right_words.next() {
-                        position = word.position;
-                    }
-                }
-                let mut cursors = buffer_view.cursors.mut_guard();
-                cursors.clear();
-                cursors.add(Cursor {
-                    anchor: position,
-                    position,
-                });
             }
             Key::Char('[') => match keys.next(&ctx.editor.buffered_keys) {
                 Key::None => return Some(ModeOperation::Pending),

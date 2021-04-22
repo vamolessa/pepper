@@ -20,29 +20,6 @@ where
     }
 }
 
-impl Args {
-    pub fn parse() -> Option<Self> {
-        let args: Args = argh::from_env();
-        if args.version {
-            let name = env!("CARGO_PKG_NAME");
-            let version = env!("CARGO_PKG_VERSION");
-            println!("{} version {}", name, version);
-            return None;
-        }
-
-        if let Some(ref session) = args.session {
-            if !session.chars().all(char::is_alphanumeric) {
-                panic!(
-                    "invalid session name '{}'. it can only contain alphanumeric characters",
-                    session
-                );
-            }
-        }
-
-        Some(args)
-    }
-}
-
 pub enum ApplicationEvent {
     Idle,
     Redraw,

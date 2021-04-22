@@ -30,6 +30,21 @@ pub mod word_database;
 
 use argh::FromArgs;
 
+/*
+Usage: pepper [<files...>] [-v] [-c <config>] [-s <session>] [--print-session] [--as-client <as-client>]
+
+Pepper An opinionated modal editor to simplify code editing from the terminal
+
+Options:
+  -v, --version     print version and quit
+  -c, --config      load config file at path (repeatable)
+  -s, --session     session name
+  --print-session   print the computed session name and exits
+  --as-client       displays no ui and send events on behalf of the client at
+                    index
+  --help            display usage information
+*/
+
 /// Pepper
 /// An opinionated modal editor to simplify code editing from the terminal
 #[derive(FromArgs)]
@@ -58,4 +73,27 @@ pub struct Args {
     /// you can append ':<line-number>' to a path to open it at that line
     #[argh(positional)]
     pub files: Vec<String>,
+}
+
+impl Args {
+    pub fn parse() -> Option<Self> {
+        let args: Args = argh::from_env();
+        if args.version {
+            let name = env!("CARGO_PKG_NAME");
+            let version = env!("CARGO_PKG_VERSION");
+            println!("{} version {}", name, version);
+            return None;
+        }
+
+        if let Some(ref session) = args.session {
+            if !session.chars().all(char::is_alphanumeric) {
+                panic!(
+                    "invalid session name '{}'. it can only contain alphanumeric characters",
+                    session
+                );
+            }
+        }
+
+        Some(args)
+    }
 }
