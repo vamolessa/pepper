@@ -36,7 +36,7 @@ use winapi::{
             GlobalAlloc, GlobalFree, GlobalLock, GlobalUnlock, FILE_FLAG_OVERLAPPED,
             FILE_TYPE_CHAR, GMEM_MOVEABLE, INFINITE, NORMAL_PRIORITY_CLASS, PIPE_ACCESS_DUPLEX,
             PIPE_READMODE_BYTE, PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES, STARTF_USESTDHANDLES,
-            STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, WAIT_OBJECT_0,
+            STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE, WAIT_OBJECT_0,
         },
         wincon::{
             GetConsoleScreenBufferInfo, ENABLE_PROCESSED_OUTPUT,
@@ -351,7 +351,7 @@ fn fork() {
     startup_info.dwFlags = STARTF_USESTDHANDLES;
     startup_info.hStdInput = INVALID_HANDLE_VALUE;
     startup_info.hStdOutput = INVALID_HANDLE_VALUE;
-    startup_info.hStdError = INVALID_HANDLE_VALUE;
+    startup_info.hStdError = unsafe { GetStdHandle(STD_ERROR_HANDLE) };
 
     let mut process_info = unsafe { std::mem::zeroed::<PROCESS_INFORMATION>() };
 
@@ -361,7 +361,7 @@ fn fork() {
             GetCommandLineW(),
             std::ptr::null_mut(),
             std::ptr::null_mut(),
-            FALSE,
+            TRUE,
             NORMAL_PRIORITY_CLASS,
             NULL,
             std::ptr::null_mut(),
