@@ -584,7 +584,7 @@ fn draw_statusbar(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bo
     match view.buffer {
         Some(buffer) => {
             buffer_needs_save = buffer.needs_save();
-            buffer_path = buffer.path().to_str().unwrap_or("");
+            buffer_path = buffer.path().to_str().unwrap_or("<no path>");
         }
         None => {
             buffer_needs_save = false;
@@ -594,16 +594,8 @@ fn draw_statusbar(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bo
 
     if let Some(x) = x {
         fn take_chars(s: &str, char_count: usize) -> (usize, &str) {
-            match s.char_indices().enumerate().take(char_count).last() {
-                Some((char_index, (byte_index, c))) => {
-                    let count = char_index + 1;
-                    if count < char_count {
-                        (count, s)
-                    } else {
-                        let len = byte_index + c.len_utf8();
-                        (count, &s[..len])
-                    }
-                }
+            match s.char_indices().rev().enumerate().take(char_count).last() {
+                Some((char_index, (byte_index, _))) => (char_index + 1, &s[byte_index..]),
                 None => (0, s),
             }
         }
@@ -664,7 +656,11 @@ fn draw_statusbar(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bo
         }
         if char_count == available_width_minus_prefix {
             let start_index = buf_len - status_len - TOO_LONG_PREFIX.len();
-            buf[start_index..start_index + TOO_LONG_PREFIX.len()].copy_from_slice(TOO_LONG_PREFIX);
+            let (prefix, rest) = buf[start_index..].split_at_mut(TOO_LONG_PREFIX.len());
+            prefix.copy_from_slice(TOO_LONG_PREFIX);
+            for b in rest.iter_mut().take_while(|b| !b.is_ascii()) {
+                *b = b'.';
+            }
         }
     }
 
