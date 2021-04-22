@@ -736,10 +736,17 @@ impl State {
                 match keys.next(&ctx.editor.buffered_keys) {
                     Key::None => return Some(ModeOperation::Pending),
                     Key::Char('z') => {
-                        client.scroll.1 = focused_line_index.saturating_sub(height / 2)
+                        client.scroll.0 = 0;
+                        client.scroll.1 = focused_line_index.saturating_sub(height / 2);
                     }
-                    Key::Char('j') => client.scroll.1 = focused_line_index.saturating_sub(height),
-                    Key::Char('k') => client.scroll.1 = focused_line_index,
+                    Key::Char('j') => {
+                        client.scroll.0 = 0;
+                        client.scroll.1 = focused_line_index.saturating_sub(height);
+                    }
+                    Key::Char('k') => {
+                        client.scroll.0 = 0;
+                        client.scroll.1 = focused_line_index;
+                    }
                     _ => (),
                 }
             }
