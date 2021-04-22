@@ -192,22 +192,64 @@ impl<'json> FromJson<'json> for TextDocumentSyncCapability {
     }
 }
 
-declare_json_object! {
-    #[derive(Default)]
-    struct ServerCapabilities {
-        textDocumentSync: TextDocumentSyncCapability,
-        completionProvider: TriggerCharactersCapability,
-        hoverProvider: GenericCapability,
-        signatureHelpProvider: TriggerCharactersCapability,
-        declarationProvider: GenericCapability,
-        definitionProvider: GenericCapability,
-        implementationProvider: GenericCapability,
-        referencesProvider: GenericCapability,
-        documentSymbolProvider: GenericCapability,
-        codeActionProvider: GenericCapability,
-        documentFormattingProvider: GenericCapability,
-        renameProvider: RenameCapability,
-        workspaceSymbolProvider: GenericCapability,
+#[derive(Default)]
+struct ServerCapabilities {
+    text_document_sync: TextDocumentSyncCapability,
+    completion_provider: TriggerCharactersCapability,
+    hover_provider: GenericCapability,
+    signature_help_provider: TriggerCharactersCapability,
+    declaration_provider: GenericCapability,
+    definition_provider: GenericCapability,
+    implementation_provider: GenericCapability,
+    references_provider: GenericCapability,
+    document_symbol_provider: GenericCapability,
+    code_action_provider: GenericCapability,
+    document_formatting_provider: GenericCapability,
+    rename_provider: RenameCapability,
+    workspace_symbol_provider: GenericCapability,
+}
+impl<'json> FromJson<'json> for ServerCapabilities {
+    fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
+        let mut this = Self::default();
+        for (key, value) in value.members(json) {
+            match key {
+                "textDocumentSync" => this.text_document_sync = FromJson::from_json(value, json)?,
+                "completionProvider" => {
+                    this.completion_provider = FromJson::from_json(value, json)?
+                }
+                "hoverProvider" => this.hover_provider = FromJson::from_json(value, json)?,
+                "signatureHelpProvider" => {
+                    this.signature_help_provider = FromJson::from_json(value, json)?
+                }
+                "declarationProvider" => {
+                    this.declaration_provider = FromJson::from_json(value, json)?
+                }
+                "definitionProvider" => {
+                    this.definition_provider = FromJson::from_json(value, json)?
+                }
+                "implementationProvider" => {
+                    this.implementation_provider = FromJson::from_json(value, json)?
+                }
+                "referencesProvider" => {
+                    this.references_provider = FromJson::from_json(value, json)?
+                }
+                "documentSymbolProvider" => {
+                    this.document_symbol_provider = FromJson::from_json(value, json)?
+                }
+                "codeActionProvider" => {
+                    this.code_action_provider = FromJson::from_json(value, json)?
+                }
+                "documentFormattingProvider" => {
+                    this.document_formatting_provider = FromJson::from_json(value, json)?
+                }
+                "renameProvider" => this.rename_provider = FromJson::from_json(value, json)?,
+                "workspaceSymbolProvider" => {
+                    this.workspace_symbol_provider = FromJson::from_json(value, json)?
+                }
+                _ => (),
+            }
+        }
+        Ok(this)
     }
 }
 
@@ -584,14 +626,14 @@ impl Client {
     pub fn signature_help_triggers(&self) -> &str {
         &self
             .server_capabilities
-            .signatureHelpProvider
+            .signature_help_provider
             .trigger_characters
     }
 
     pub fn completion_triggers(&self) -> &str {
         &self
             .server_capabilities
-            .completionProvider
+            .completion_provider
             .trigger_characters
     }
 
@@ -606,7 +648,7 @@ impl Client {
         buffer_handle: BufferHandle,
         buffer_position: BufferPosition,
     ) {
-        if !self.server_capabilities.hoverProvider.0 {
+        if !self.server_capabilities.hover_provider.0 {
             return;
         }
 
@@ -638,7 +680,7 @@ impl Client {
         buffer_handle: BufferHandle,
         buffer_position: BufferPosition,
     ) {
-        if !self.server_capabilities.signatureHelpProvider.on {
+        if !self.server_capabilities.signature_help_provider.on {
             return;
         }
 
@@ -671,7 +713,7 @@ impl Client {
         buffer_position: BufferPosition,
         client_handle: client::ClientHandle,
     ) {
-        if !self.server_capabilities.definitionProvider.0 || !self.request_state.is_idle() {
+        if !self.server_capabilities.definition_provider.0 || !self.request_state.is_idle() {
             return;
         }
 
@@ -707,7 +749,7 @@ impl Client {
         auto_close_buffer: bool,
         client_handle: client::ClientHandle,
     ) {
-        if !self.server_capabilities.referencesProvider.0 || !self.request_state.is_idle() {
+        if !self.server_capabilities.references_provider.0 || !self.request_state.is_idle() {
             return;
         }
 
@@ -750,7 +792,7 @@ impl Client {
         buffer_handle: BufferHandle,
         buffer_position: BufferPosition,
     ) {
-        if !self.server_capabilities.renameProvider.on || !self.request_state.is_idle() {
+        if !self.server_capabilities.rename_provider.on || !self.request_state.is_idle() {
             return;
         }
 
@@ -772,7 +814,7 @@ impl Client {
             &mut self.json,
         );
 
-        if self.server_capabilities.renameProvider.prepare_provider {
+        if self.server_capabilities.rename_provider.prepare_provider {
             self.request_state = RequestState::Rename {
                 client_handle,
                 buffer_handle,
@@ -795,7 +837,7 @@ impl Client {
     }
 
     pub fn finish_rename(&mut self, editor: &Editor, platform: &mut Platform) {
-        if !self.server_capabilities.renameProvider.on {
+        if !self.server_capabilities.rename_provider.on {
             return;
         }
         let (buffer_handle, buffer_position) = match self.request_state {
@@ -838,7 +880,7 @@ impl Client {
         buffer_handle: BufferHandle,
         range: BufferRange,
     ) {
-        if !self.server_capabilities.codeActionProvider.0 || !self.request_state.is_idle() {
+        if !self.server_capabilities.code_action_provider.0 || !self.request_state.is_idle() {
             return;
         }
 
@@ -878,7 +920,7 @@ impl Client {
     }
 
     pub fn finish_code_action(&mut self, editor: &mut Editor, index: usize) {
-        if !self.server_capabilities.codeActionProvider.0 {
+        if !self.server_capabilities.code_action_provider.0 {
             return;
         }
         match self.request_state {
@@ -910,7 +952,7 @@ impl Client {
         client_handle: client::ClientHandle,
         buffer_view_handle: BufferViewHandle,
     ) {
-        if !self.server_capabilities.documentSymbolProvider.0 || !self.request_state.is_idle() {
+        if !self.server_capabilities.document_symbol_provider.0 || !self.request_state.is_idle() {
             return;
         }
 
@@ -946,7 +988,7 @@ impl Client {
         client_handle: client::ClientHandle,
         index: usize,
     ) {
-        if !self.server_capabilities.documentSymbolProvider.0 {
+        if !self.server_capabilities.document_symbol_provider.0 {
             return;
         }
         let buffer_view_handle = match self.request_state {
@@ -994,7 +1036,7 @@ impl Client {
         query: &str,
         auto_close_buffer: bool,
     ) {
-        if !self.server_capabilities.workspaceSymbolProvider.0 || !self.request_state.is_idle() {
+        if !self.server_capabilities.workspace_symbol_provider.0 || !self.request_state.is_idle() {
             return;
         }
 
@@ -1017,7 +1059,8 @@ impl Client {
         platform: &mut Platform,
         buffer_handle: BufferHandle,
     ) {
-        if !self.server_capabilities.documentFormattingProvider.0 || !self.request_state.is_idle() {
+        if !self.server_capabilities.document_formatting_provider.0 || !self.request_state.is_idle()
+        {
             return;
         }
 
@@ -1059,7 +1102,7 @@ impl Client {
         buffer_handle: BufferHandle,
         buffer_position: BufferPosition,
     ) {
-        if !self.server_capabilities.completionProvider.on || !self.request_state.is_idle() {
+        if !self.server_capabilities.completion_provider.on || !self.request_state.is_idle() {
             return;
         }
 
@@ -1152,10 +1195,42 @@ impl Client {
                     .get("registrations", &self.json)
                     .elements(&self.json)
                 {
-                    declare_json_object! {
-                        struct Registration {
-                            method: JsonString,
-                            registerOptions: JsonObject,
+                    #[derive(Default)]
+                    struct Registration {
+                        method: JsonString,
+                        register_options: JsonObject,
+                    }
+                    impl<'json> FromJson<'json> for Registration {
+                        fn from_json(
+                            value: JsonValue,
+                            json: &'json Json,
+                        ) -> Result<Self, JsonConvertError> {
+                            let mut this = Self::default();
+                            for (key, value) in value.members(json) {
+                                match key {
+                                    "method" => this.method = JsonString::from_json(value, json)?,
+                                    "registerOptions" => {
+                                        this.register_options = JsonObject::from_json(value, json)?
+                                    }
+                                    _ => (),
+                                }
+                            }
+                            Ok(this)
+                        }
+                    }
+
+                    struct Filter {
+                        pattern: Option<JsonString>,
+                    }
+                    impl<'json> FromJson<'json> for Filter {
+                        fn from_json(
+                            value: JsonValue,
+                            json: &'json Json,
+                        ) -> Result<Self, JsonConvertError> {
+                            let pattern = value.get("pattern", json);
+                            Ok(Self {
+                                pattern: FromJson::from_json(pattern, json)?,
+                            })
                         }
                     }
 
@@ -1164,15 +1239,10 @@ impl Client {
                         "textDocument/didSave" => {
                             self.document_selectors.clear();
                             for filter in registration
-                                .registerOptions
+                                .register_options
                                 .get("documentSelector", &self.json)
                                 .elements(&self.json)
                             {
-                                declare_json_object! {
-                                    struct Filter {
-                                        pattern: Option<JsonString>,
-                                    }
-                                }
                                 let filter: Filter = deserialize!(filter);
                                 let pattern = match filter.pattern {
                                     Some(pattern) => pattern.as_str(&self.json),
@@ -1241,12 +1311,29 @@ impl Client {
                 self.respond(platform, request.id, Ok(JsonValue::Null));
             }
             "window/showDocument" => {
-                declare_json_object! {
-                    struct ShowDocumentParams {
-                        uri: JsonString,
-                        external: Option<bool>,
-                        takeFocus: Option<bool>,
-                        selection: Option<DocumentRange>,
+                #[derive(Default)]
+                struct ShowDocumentParams {
+                    uri: JsonString,
+                    external: Option<bool>,
+                    take_focus: Option<bool>,
+                    selection: Option<DocumentRange>,
+                }
+                impl<'json> FromJson<'json> for ShowDocumentParams {
+                    fn from_json(
+                        value: JsonValue,
+                        json: &'json Json,
+                    ) -> Result<Self, JsonConvertError> {
+                        let mut this = Self::default();
+                        for (key, value) in value.members(json) {
+                            match key {
+                                "key" => this.uri = JsonString::from_json(value, json)?,
+                                "external" => this.external = FromJson::from_json(value, json)?,
+                                "takeFocus" => this.take_focus = FromJson::from_json(value, json)?,
+                                "selection" => this.selection = FromJson::from_json(value, json)?,
+                                _ => (),
+                            }
+                        }
+                        Ok(this)
                     }
                 }
 
@@ -1273,7 +1360,7 @@ impl Client {
                                 position: range.end.into(),
                             });
                         }
-                        if let Some(true) = params.takeFocus {
+                        if let Some(true) = params.take_focus {
                             client.set_buffer_view_handle(
                                 Some(buffer_view_handle),
                                 &mut editor.events,
@@ -1339,10 +1426,27 @@ impl Client {
                 }
             }
             "textDocument/publishDiagnostics" => {
-                declare_json_object! {
-                    struct Params {
-                        uri: JsonString,
-                        diagnostics: JsonArray,
+                #[derive(Default)]
+                struct Params {
+                    uri: JsonString,
+                    diagnostics: JsonArray,
+                }
+                impl<'json> FromJson<'json> for Params {
+                    fn from_json(
+                        value: JsonValue,
+                        json: &'json Json,
+                    ) -> Result<Self, JsonConvertError> {
+                        let mut this = Self::default();
+                        for (key, value) in value.members(json) {
+                            match key {
+                                "uri" => this.uri = JsonString::from_json(value, json)?,
+                                "diagnostics" => {
+                                    this.diagnostics = JsonArray::from_json(value, json)?
+                                }
+                                _ => (),
+                            }
+                        }
+                        Ok(this)
                     }
                 }
 
@@ -1437,38 +1541,73 @@ impl Client {
                 editor.status_bar.write(MessageKind::Info).str(info);
             }
             "textDocument/signatureHelp" => {
-                declare_json_object! {
-                    struct SignatureHelp {
-                        activeSignature: usize,
-                        signatures: JsonArray,
+                #[derive(Default)]
+                struct SignatureHelp {
+                    active_signature: usize,
+                    signatures: JsonArray,
+                }
+                impl<'json> FromJson<'json> for SignatureHelp {
+                    fn from_json(
+                        value: JsonValue,
+                        json: &'json Json,
+                    ) -> Result<Self, JsonConvertError> {
+                        let mut this = Self::default();
+                        for (key, value) in value.members(json) {
+                            match key {
+                                "activeSignature" => {
+                                    this.active_signature = usize::from_json(value, json)?;
+                                }
+                                "signatures" => {
+                                    this.signatures = JsonArray::from_json(value, json)?;
+                                }
+                                _ => (),
+                            }
+                        }
+                        Ok(this)
                     }
                 }
-                declare_json_object! {
-                    struct SignatureInformation {
-                        label: JsonString,
-                        documentation: JsonValue,
+
+                #[derive(Default)]
+                struct SignatureInformation<'a> {
+                    label: JsonString,
+                    documentation: &'a str,
+                }
+                impl<'json> FromJson<'json> for SignatureInformation<'json> {
+                    fn from_json(
+                        value: JsonValue,
+                        json: &'json Json,
+                    ) -> Result<Self, JsonConvertError> {
+                        let mut this = Self::default();
+                        for (key, value) in value.members(json) {
+                            match key {
+                                "label" => this.label = JsonString::from_json(value, json)?,
+                                "documentation" => {
+                                    this.documentation = helper::extract_markup_content(value, json);
+                                }
+                                _ => (),
+                            }
+                        }
+                        Ok(this)
                     }
                 }
 
                 let signature_help: Option<SignatureHelp> = deserialize!(result);
                 let signature = match signature_help
-                    .and_then(|sh| sh.signatures.elements(&self.json).nth(sh.activeSignature))
+                    .and_then(|sh| sh.signatures.elements(&self.json).nth(sh.active_signature))
                 {
                     Some(signature) => signature,
                     None => return,
                 };
                 let signature: SignatureInformation = deserialize!(signature);
                 let label = signature.label.as_str(&self.json);
-                let documentation =
-                    helper::extract_markup_content(signature.documentation, &self.json);
 
-                if documentation.is_empty() {
+                if signature.documentation.is_empty() {
                     editor.status_bar.write(MessageKind::Info).str(label);
                 } else {
                     editor
                         .status_bar
                         .write(MessageKind::Info)
-                        .fmt(format_args!("{}\n{}", documentation, label));
+                        .fmt(format_args!("{}\n{}", signature.documentation, label));
                 }
             }
             "textDocument/definition" => {
@@ -2188,7 +2327,7 @@ mod helper {
         platform: &mut Platform,
         buffer_handle: BufferHandle,
     ) {
-        if !client.server_capabilities.textDocumentSync.open_close {
+        if !client.server_capabilities.text_document_sync.open_close {
             return;
         }
 
@@ -2221,7 +2360,7 @@ mod helper {
     }
 
     pub fn send_pending_did_change(client: &mut Client, editor: &Editor, platform: &mut Platform) {
-        if let TextDocumentSyncKind::None = client.server_capabilities.textDocumentSync.change {
+        if let TextDocumentSyncKind::None = client.server_capabilities.text_document_sync.change {
             return;
         }
 
@@ -2251,7 +2390,7 @@ mod helper {
             );
 
             let mut content_changes = JsonArray::default();
-            match client.server_capabilities.textDocumentSync.save {
+            match client.server_capabilities.text_document_sync.save {
                 TextDocumentSyncKind::None => (),
                 TextDocumentSyncKind::Full => {
                     let text = client.json.fmt_string(format_args!("{}", buffer.content()));
@@ -2294,7 +2433,7 @@ mod helper {
         platform: &mut Platform,
         buffer_handle: BufferHandle,
     ) {
-        if let TextDocumentSyncKind::None = client.server_capabilities.textDocumentSync.save {
+        if let TextDocumentSyncKind::None = client.server_capabilities.text_document_sync.save {
             return;
         }
 
@@ -2314,7 +2453,7 @@ mod helper {
             &mut client.json,
         );
 
-        if let TextDocumentSyncKind::Full = client.server_capabilities.textDocumentSync.save {
+        if let TextDocumentSyncKind::Full = client.server_capabilities.text_document_sync.save {
             let text = client.json.fmt_string(format_args!("{}", buffer.content()));
             params.set("text".into(), text.into(), &mut client.json);
         }
@@ -2328,7 +2467,7 @@ mod helper {
         platform: &mut Platform,
         buffer_handle: BufferHandle,
     ) {
-        if !client.server_capabilities.textDocumentSync.open_close {
+        if !client.server_capabilities.text_document_sync.open_close {
             return;
         }
 

@@ -519,6 +519,7 @@ pub mod lsp_rename {
             }
         }
 
+        ctx.editor.read_line.set_prompt("rename:");
         let state = &mut ctx.editor.mode.read_line_state;
         state.on_client_keys = on_client_keys;
         state.lsp_client_handle = Some(client_handle);

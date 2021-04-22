@@ -1,5 +1,3 @@
-mod macros;
-
 pub mod application;
 pub mod buffer;
 pub mod buffer_position;

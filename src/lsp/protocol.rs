@@ -836,13 +836,32 @@ fn try_get_content_range(buf: &[u8]) -> Option<Range<usize>> {
 }
 
 fn parse_server_event(json: &Json, body: JsonValue) -> ServerEvent {
-    declare_json_object! {
-        struct Body {
-            id: JsonValue,
-            method: JsonValue,
-            params: JsonValue,
-            result: JsonValue,
-            error: Option<ResponseError>,
+    #[derive(Default)]
+    struct Body {
+        id: JsonValue,
+        method: JsonValue,
+        params: JsonValue,
+        result: JsonValue,
+        error: Option<ResponseError>,
+    }
+    impl<'json> FromJson<'json> for Body {
+        fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
+            let value = match value {
+                JsonValue::Object(value) => value,
+                _ => return Err(JsonConvertError),
+            };
+            let mut this = Self::default();
+            for (key, value) in value.members(json) {
+                match key {
+                    "id" => this.id = value,
+                    "method" => this.method = value,
+                    "params" => this.params = value,
+                    "result" => this.result = value,
+                    "error" => this.error = FromJson::from_json(value, json)?,
+                    _ => (),
+                }
+            }
+            Ok(this)
         }
     }
 
