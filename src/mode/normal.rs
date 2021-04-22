@@ -24,6 +24,7 @@ enum CharJump {
 
 pub struct State {
     pub movement_kind: CursorMovementKind,
+    pub search_index: Option<u32>,
     last_char_jump: CharJump,
     is_recording_auto_macro: bool,
     pub count: u32,
@@ -1216,6 +1217,7 @@ impl Default for State {
     fn default() -> Self {
         Self {
             movement_kind: CursorMovementKind::PositionAndAnchor,
+            search_index: None,
             last_char_jump: CharJump::None,
             is_recording_auto_macro: false,
             count: 0,
@@ -1405,22 +1407,19 @@ fn search_word_or_move_to_it(
     let current_range_index = search_ranges.binary_search_by_key(&main_position, |r| r.from);
 
     if search_ranges.is_empty() || current_range_index.is_err() {
-        let search_word = buffer.set_search_with(|c| {
-            let word = c.word_at(main_position);
-
-            let mut cursors = buffer_view.cursors.mut_guard();
-            cursors.clear();
-            cursors.add(Cursor {
-                anchor: word.position,
-                position: word.position,
-            });
-
-            word.text
+        let word = buffer.content().word_at(main_position);
+        let mut cursors = buffer_view.cursors.mut_guard();
+        cursors.clear();
+        cursors.add(Cursor {
+            anchor: word.position,
+            position: word.position,
         });
 
         let register = ctx.editor.registers.get_mut(SEARCH_REGISTER);
         register.clear();
-        register.push_str(search_word);
+        register.push_str(word.text);
+
+        buffer.set_search(register);
     } else {
         NavigationHistory::save_client_snapshot(
             ctx.clients,
