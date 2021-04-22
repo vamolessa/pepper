@@ -75,10 +75,7 @@ const CLIENT_CONSOLE_EVENT_BUFFER_LEN: usize = 32;
 const PIPE_PREFIX: &str = r#"\\.\pipe\"#;
 
 pub fn main() {
-    let args = match Args::parse() {
-        Some(args) => args,
-        None => return,
-    };
+    let args = Args::parse();
 
     let mut pipe_path = Vec::new();
     let mut hash_buf = [0u8; 16];

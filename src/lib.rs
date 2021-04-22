@@ -28,72 +28,119 @@ pub mod theme;
 pub mod ui;
 pub mod word_database;
 
-use argh::FromArgs;
-
-/*
-Usage: pepper [<files...>] [-v] [-c <config>] [-s <session>] [--print-session] [--as-client <as-client>]
-
-Pepper An opinionated modal editor to simplify code editing from the terminal
-
-Options:
-  -v, --version     print version and quit
-  -c, --config      load config file at path (repeatable)
-  -s, --session     session name
-  --print-session   print the computed session name and exits
-  --as-client       displays no ui and send events on behalf of the client at
-                    index
-  --help            display usage information
-*/
-
-/// Pepper
-/// An opinionated modal editor to simplify code editing from the terminal
-#[derive(FromArgs)]
+#[derive(Default)]
 pub struct Args {
-    /// print version and quit
-    #[argh(switch, short = 'v')]
     pub version: bool,
-
-    /// load config file at path (repeatable)
-    #[argh(option, short = 'c')]
-    pub config: Vec<String>,
-
-    /// session name
-    #[argh(option, short = 's')]
+    pub configs: Vec<String>,
     pub session: Option<String>,
-
-    /// print the computed session name and exits
-    #[argh(switch)]
     pub print_session: bool,
-
-    /// displays no ui and send events on behalf of the client at index
-    #[argh(option)]
     pub as_client: Option<client::ClientHandle>,
-
-    /// open files at paths
-    /// you can append ':<line-number>' to a path to open it at that line
-    #[argh(positional)]
     pub files: Vec<String>,
 }
 
+fn print_version() {
+    let name = env!("CARGO_PKG_NAME");
+    let version = env!("CARGO_PKG_VERSION");
+    println!("{} version {}", name, version);
+}
+
+fn print_help() {
+    print_version();
+    println!("{}", env!("CARGO_PKG_DESCRIPTION"));
+    println!();
+    println!("usage: pepper [<options...>] [<files...>]");
+    println!();
+    println!("  files: files to open as a buffer");
+    println!("         you can append ':<line>[,<column>]' to open it at that position");
+    println!();
+    println!("options:");
+    println!();
+    println!("  -h, --help                prints help and quits");
+    println!("  -v, --version             prints version and quits");
+    println!("  -c, --config:             loads config file at path (repeatable)");
+    println!("  -s, --session:            session name to connect to");
+    println!("  --print-session:          print the computed session name and quits");
+    println!("  --as-client <client-id>   sends events as if it was client with id <client-id>");
+}
+
 impl Args {
-    pub fn parse() -> Option<Self> {
-        let args: Args = argh::from_env();
-        if args.version {
-            let name = env!("CARGO_PKG_NAME");
-            let version = env!("CARGO_PKG_VERSION");
-            println!("{} version {}", name, version);
-            return None;
+    pub fn parse() -> Self {
+        fn error(message: std::fmt::Arguments) -> ! {
+            println!("{}", message);
+            std::process::exit(0);
         }
 
-        if let Some(ref session) = args.session {
-            if !session.chars().all(char::is_alphanumeric) {
-                panic!(
-                    "invalid session name '{}'. it can only contain alphanumeric characters",
-                    session
-                );
+        fn arg_to_str(arg: &std::ffi::OsString) -> &str {
+            match arg.to_str() {
+                Some(arg) => arg,
+                None => error(format_args!("could not parse arg {:?}", arg)),
             }
         }
 
-        Some(args)
+        let mut args = std::env::args_os();
+        args.next();
+
+        let mut parsed = Args::default();
+        while let Some(arg) = args.next() {
+            let arg = arg_to_str(&arg);
+            match arg {
+                "-h" | "--help" => {
+                    print_help();
+                    std::process::exit(0);
+                }
+                "-v" | "--version" => {
+                    print_version();
+                    std::process::exit(0);
+                }
+                "-c" | "--config" => match args.next() {
+                    Some(arg) => {
+                        let arg = arg_to_str(&arg);
+                        parsed.configs.push(arg.into());
+                    }
+                    None => error(format_args!("expected config path after {}", arg)),
+                },
+                "-s" | "--session" => match args.next() {
+                    Some(arg) => {
+                        let arg = arg_to_str(&arg);
+                        if !arg.chars().all(char::is_alphanumeric) {
+                            error(format_args!(
+                                "invalid session name '{}'. it can only contain alphanumeric characters", arg
+                            ));
+                        }
+                        parsed.configs.push(arg.into());
+                    }
+                    None => error(format_args!("expected session after {}", arg)),
+                },
+                "--print-session" => parsed.print_session = true,
+                "--as-client" => match args.next() {
+                    Some(arg) => {
+                        let arg = arg_to_str(&arg);
+                        let client_handle: client::ClientHandle = match arg.parse() {
+                            Ok(handle) => handle,
+                            Err(_) => {
+                                error(format_args!("could not parse '{}' into a client id", arg))
+                            }
+                        };
+                        parsed.as_client = Some(client_handle);
+                    }
+                    None => error(format_args!("expected client id after {}", arg)),
+                },
+                "--" => {
+                    while let Some(arg) = args.next() {
+                        let arg = arg_to_str(&arg);
+                        parsed.files.push(arg.into());
+                    }
+                }
+                _ => {
+                    if arg.starts_with('-') {
+                        error(format_args!("invalid option '{}'", arg));
+                    } else {
+                        parsed.files.push(arg.into());
+                    }
+                }
+            }
+        }
+
+        parsed
     }
 }

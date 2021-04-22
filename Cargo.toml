@@ -22,7 +22,6 @@ name = "pepper"
 path = "src/main.rs"
 
 [dependencies]
-argh = "0.1"
 fuzzy-matcher = "0.3"
 
 [target.'cfg(windows)'.dependencies]

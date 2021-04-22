@@ -30,9 +30,6 @@ pepper development!
 ## using [`cargo`](https://doc.rust-lang.org/cargo/)
 Simply running `cargo install pepper` should get you up and running.
 
-**NOTE**: for x11 users, you'll need to have both `libxcb-shape0-dev` and `libxcb-xfixes0-dev` in your system due
-to dependencies in the [`copypasta`](https://crates.io/crates/copypasta) crate.
-
 ## from source
 ```
 git clone git@github.com:vamolessa/pepper.git
@@ -81,8 +78,7 @@ Please [open an issue](https://github.com/vamolessa/pepper/issues)
 # philosophy
 
 In the spirit of [Handmade](https://handmade.network/), almost all features are coded from scratch using simple stable Rust code.
-These are the only external crates being used in the project (mainly because of crossplatform):
-- `argh`: provides good cli interface
+These are the only external crates being used in the project:
 - `fuzzy-matcher`: fuzzy matching for the picker ui. it could be replaced, however it's implementation does not get in the way and has minimal dependencies
 - `winapi` (windows-only): needed to implement windows platform layer
 

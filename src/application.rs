@@ -225,7 +225,7 @@ impl<'stdout> ClientApplication<'stdout> {
         }
 
         let mut commands = String::new();
-        for config in &args.config {
+        for config in &args.configs {
             use fmt::Write;
             writeln!(commands, "source '{}'", config).unwrap();
         }
