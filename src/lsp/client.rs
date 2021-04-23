@@ -1506,22 +1506,23 @@ impl Client {
 
         match method {
             "initialize" => {
-                self.server_capabilities = ServerCapabilities::from_json(
-                    result.clone().get("capabilities", &self.json),
-                    &self.json,
-                )?;
-                self.initialized = true;
-                self.notify(platform, "initialized", JsonObject::default());
-
-                for buffer in editor.buffers.iter() {
-                    helper::send_did_open(self, editor, platform, buffer.handle());
+                let mut server_name = "";
+                for (key, value) in result.members(&self.json) {
+                    match key {
+                        "capabilities" => {
+                            self.server_capabilities =
+                                ServerCapabilities::from_json(value, &self.json)?
+                        }
+                        "serverInfo" => {
+                            if let JsonValue::String(name) = value.get("name", &self.json) {
+                                server_name = name.as_str(&self.json);
+                            }
+                        }
+                        _ => (),
+                    }
                 }
 
-                let name = match result.get("serverInfo", &self.json).get("name", &self.json) {
-                    JsonValue::String(s) => s.as_str(&self.json),
-                    _ => "",
-                };
-                match name {
+                match server_name {
                     "" => editor
                         .status_bar
                         .write(MessageKind::Info)
@@ -1529,7 +1530,14 @@ impl Client {
                     _ => editor
                         .status_bar
                         .write(MessageKind::Info)
-                        .fmt(format_args!("lsp server '{}' started", name)),
+                        .fmt(format_args!("lsp server '{}' started", server_name)),
+                }
+
+                self.initialized = true;
+                self.notify(platform, "initialized", JsonObject::default());
+
+                for buffer in editor.buffers.iter() {
+                    helper::send_did_open(self, editor, platform, buffer.handle());
                 }
 
                 Ok(())
