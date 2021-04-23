@@ -1636,6 +1636,36 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             Ok(None)
         },
     },
+    BuiltinCommand {
+        name: "lsp-debug",
+        alias: "",
+        help: concat!(
+            "prints debug information abount running lsp servers running\n",
+            "lsp-debug",
+        ),
+        hidden: false,
+        completions: &[],
+        func: |ctx| {
+            ctx.args.assert_no_bang()?;
+            ctx.args.get_flags(&mut [])?;
+            ctx.args.assert_empty()?;
+
+            use fmt::Write;
+            let mut message = ctx.editor.string_pool.acquire();
+            for client in ctx.editor.lsp.clients() {
+                let _ = writeln!(
+                    message,
+                    "handle [{}] log buffer handle: {:?}",
+                    client.handle(),
+                    client.log_buffer_handle,
+               );
+            }
+            let _ = writeln!(message, "\n buffer count: {}", ctx.editor.buffers.iter().count());
+            ctx.editor.status_bar.write(MessageKind::Info).str(&message);
+            ctx.editor.string_pool.release(message);
+            Ok(None)
+        },
+    },
 ];
 
 fn current_buffer_and_main_cursor<'state, 'command>(

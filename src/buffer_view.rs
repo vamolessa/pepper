@@ -6,7 +6,6 @@ use crate::{
     client::ClientHandle,
     cursor::{Cursor, CursorCollection},
     events::EditorEventQueue,
-    history::EditKind,
     word_database::{WordDatabase, WordIter, WordKind},
 };
 
@@ -425,31 +424,10 @@ impl BufferView {
             Some(buffer) => buffer.undo(word_database, events),
             None => return,
         };
-        if edits.len() == 0 {
-            return;
-        }
 
-        let mut cursors = self.cursors.mut_guard();
-        cursors.clear();
-
-        let mut ignore_kind = None;
-        let mut previous_kind = None;
-        for edit in edits {
-            match ignore_kind {
-                Some(ignore_kind) => {
-                    if ignore_kind == edit.kind {
-                        continue;
-                    }
-                }
-                None => {
-                    if previous_kind != Some(edit.kind) {
-                        ignore_kind = previous_kind;
-                        cursors.clear();
-                    }
-                    previous_kind = Some(edit.kind);
-                }
-            }
-
+        if let Some(edit) = edits.last() {
+            let mut cursors = self.cursors.mut_guard();
+            cursors.clear();
             cursors.add(Cursor {
                 anchor: edit.range.from,
                 position: edit.range.from,
@@ -467,27 +445,10 @@ impl BufferView {
             Some(buffer) => buffer.redo(word_database, events),
             None => return,
         };
-        if edits.len() == 0 {
-            return;
-        }
 
-        let mut cursors = self.cursors.mut_guard();
-        cursors.clear();
-
-        for edit in edits.rev() {
-            match edit.kind {
-                EditKind::Insert => {
-                    for cursor in &mut cursors[..] {
-                        cursor.delete(edit.range);
-                    }
-                }
-                EditKind::Delete => {
-                    for cursor in &mut cursors[..] {
-                        cursor.insert(edit.range);
-                    }
-                }
-            }
-
+        if let Some(edit) = edits.last() {
+            let mut cursors = self.cursors.mut_guard();
+            cursors.clear();
             cursors.add(Cursor {
                 anchor: edit.range.from,
                 position: edit.range.from,

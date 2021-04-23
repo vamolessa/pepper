@@ -572,7 +572,7 @@ pub struct Client {
     initialized: bool,
     server_capabilities: ServerCapabilities,
     log_write_buf: Vec<u8>,
-    log_buffer_handle: Option<BufferHandle>,
+    pub log_buffer_handle: Option<BufferHandle>,
     document_selectors: Vec<Glob>,
     versioned_buffers: VersionedBufferCollection,
     diagnostics: DiagnosticCollection,
