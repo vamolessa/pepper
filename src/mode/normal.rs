@@ -1164,7 +1164,7 @@ impl State {
                         if let Some(buffer) = ctx.editor.buffers.get_mut(buffer_view.buffer_handle)
                         {
                             for (range, cursor) in ranges.iter().zip(cursors.iter()).rev() {
-                                let text = &buf[range.0 as usize..range.0 as usize];
+                                let text = &buf[range.0 as usize..range.1 as usize];
                                 buffer.insert_text(
                                     &mut ctx.editor.word_database,
                                     cursor.position,
