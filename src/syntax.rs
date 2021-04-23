@@ -117,26 +117,17 @@ impl Syntax {
             let mut best_pattern_kind = TokenKind::Text;
             let mut max_len = 0;
 
-            macro_rules! for_each_non_whitespace_token_kind {
-                ($token_kind:ident => $body:block) => {{
-                    let $token_kind = TokenKind::Keyword;
-                    $body;
-                    let $token_kind = TokenKind::Type;
-                    $body;
-                    let $token_kind = TokenKind::Symbol;
-                    $body;
-                    let $token_kind = TokenKind::Literal;
-                    $body;
-                    let $token_kind = TokenKind::String;
-                    $body;
-                    let $token_kind = TokenKind::Comment;
-                    $body;
-                    let $token_kind = TokenKind::Text;
-                    $body;
-                }};
-            }
-
-            for_each_non_whitespace_token_kind!(kind => {
+            const ALL_NON_WHITESPACE_TOKEN_KINDS: [TokenKind; 7] = [
+                TokenKind::Keyword,
+                TokenKind::Type,
+                TokenKind::Symbol,
+                TokenKind::Literal,
+                TokenKind::String,
+                TokenKind::Comment,
+                TokenKind::Text,
+            ];
+            
+            for &kind in ALL_NON_WHITESPACE_TOKEN_KINDS.iter() {
                 let pattern = &self.rules[kind as usize];
                 match pattern.matches(line_slice) {
                     MatchResult::Ok(len) => {
@@ -154,7 +145,7 @@ impl Syntax {
                         return LineParseState::Unfinished(kind, state);
                     }
                 }
-            });
+            };
 
             let mut kind = best_pattern_kind;
 

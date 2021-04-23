@@ -5,7 +5,7 @@ pub trait FromJson<'json>: Sized {
     fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError>;
 }
 
-macro_rules! impl_try_from_json_value {
+macro_rules! impl_from_json {
     ($type:ty, $pattern:pat => $ok:expr) => {
         impl<'json> FromJson<'json> for $type {
             fn from_json(value: JsonValue, _: &'json Json) -> Result<Self, JsonConvertError> {
@@ -17,14 +17,14 @@ macro_rules! impl_try_from_json_value {
         }
     };
 }
-impl_try_from_json_value!(bool, JsonValue::Boolean(b) => b);
-impl_try_from_json_value!(JsonInteger, JsonValue::Integer(i) => i);
-impl_try_from_json_value!(usize, JsonValue::Integer(i) => { if i < 0 { return Err(JsonConvertError); } i as _ });
-impl_try_from_json_value!(u32, JsonValue::Integer(i) => { if i < 0 { return Err(JsonConvertError); } i as _ });
-impl_try_from_json_value!(JsonNumber, JsonValue::Number(n) => n);
-impl_try_from_json_value!(JsonString, JsonValue::String(s) => s);
-impl_try_from_json_value!(JsonArray, JsonValue::Array(a) => a);
-impl_try_from_json_value!(JsonObject, JsonValue::Object(o) => o);
+impl_from_json!(bool, JsonValue::Boolean(b) => b);
+impl_from_json!(JsonInteger, JsonValue::Integer(i) => i);
+impl_from_json!(usize, JsonValue::Integer(i) => { if i < 0 { return Err(JsonConvertError); } i as _ });
+impl_from_json!(u32, JsonValue::Integer(i) => { if i < 0 { return Err(JsonConvertError); } i as _ });
+impl_from_json!(JsonNumber, JsonValue::Number(n) => n);
+impl_from_json!(JsonString, JsonValue::String(s) => s);
+impl_from_json!(JsonArray, JsonValue::Array(a) => a);
+impl_from_json!(JsonObject, JsonValue::Object(o) => o);
 
 impl<'json> FromJson<'json> for &'json str {
     fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
@@ -412,17 +412,20 @@ impl Json {
             }
         }
 
-        macro_rules! consume_bytes {
-            ($reader:expr, $bytes:expr) => {{
-                let mut buf = [0; $bytes.len()];
-                if $reader.read(&mut buf)? == buf.len() {
-                    if &buf != $bytes {
-                        return Err(invalid_data_error());
-                    }
+        fn consume_bytes<R, const LEN: usize>(reader: &mut R, bytes: &[u8; LEN]) -> io::Result<()>
+        where
+            R: io::BufRead,
+        {
+            let mut buf = [0; LEN];
+            if reader.read(&mut buf)? == buf.len() {
+                if &buf == bytes {
+                    Ok(())
                 } else {
-                    return Err(io::Error::from(io::ErrorKind::UnexpectedEof));
+                    Err(invalid_data_error())
                 }
-            }};
+            } else {
+                Err(io::Error::from(io::ErrorKind::UnexpectedEof))
+            }
         }
 
         fn consume_string<R>(json: &mut Json, reader: &mut R) -> io::Result<JsonString>
@@ -489,17 +492,17 @@ impl Json {
             skip_whitespace(reader)?;
             match next_byte(reader)? {
                 b'n' => {
-                    consume_bytes!(reader, b"ull");
+                    consume_bytes(reader, b"ull")?;
                     skip_whitespace(reader)?;
                     Ok(JsonValue::Null)
                 }
                 b'f' => {
-                    consume_bytes!(reader, b"alse");
+                    consume_bytes(reader, b"alse")?;
                     skip_whitespace(reader)?;
                     Ok(JsonValue::Boolean(false))
                 }
                 b't' => {
-                    consume_bytes!(reader, b"rue");
+                    consume_bytes(reader, b"rue")?;
                     skip_whitespace(reader)?;
                     Ok(JsonValue::Boolean(true))
                 }
@@ -513,7 +516,7 @@ impl Json {
                             if match_byte(reader, b']')? {
                                 break;
                             }
-                            consume_bytes!(reader, b",");
+                            consume_bytes(reader, b",")?;
                         }
                     }
                     skip_whitespace(reader)?;
@@ -525,14 +528,14 @@ impl Json {
                     if !match_byte(reader, b'}')? {
                         loop {
                             skip_whitespace(reader)?;
-                            consume_bytes!(reader, b"\"");
+                            consume_bytes(reader, b"\"")?;
                             let key = consume_string(json, reader)?;
-                            consume_bytes!(reader, b":");
+                            consume_bytes(reader, b":")?;
                             object.set(JsonKey::String(key), read_value(json, reader)?, json);
                             if match_byte(reader, b'}')? {
                                 break;
                             }
-                            consume_bytes!(reader, b",");
+                            consume_bytes(reader, b",")?;
                         }
                     }
                     skip_whitespace(reader)?;
