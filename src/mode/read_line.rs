@@ -292,15 +292,11 @@ pub mod split_cursors {
             start_position: BufferPosition,
         ) {
             for (index, s) in line.match_indices(pattern) {
-                let mut from = start_position;
-                from.column_byte_index += index;
-                let mut to = from;
-                to.column_byte_index += s.len();
-
-                cursors.add(Cursor {
-                    anchor: from,
-                    position: to,
-                });
+                let mut anchor = start_position;
+                anchor.column_byte_index += index;
+                let mut position = anchor;
+                position.column_byte_index += s.len();
+                cursors.add(Cursor { anchor, position });
             }
         }
 
@@ -321,23 +317,29 @@ pub mod split_cursors {
             pattern: &str,
             start_position: BufferPosition,
         ) {
-            let mut index = start_position.column_byte_index;
+            let mut index = 0;
             for (i, s) in line.match_indices(pattern) {
-                let i = i + start_position.column_byte_index;
                 if index != i {
-                    cursors.add(Cursor {
-                        anchor: BufferPosition::line_col(start_position.line_index, index),
-                        position: BufferPosition::line_col(start_position.line_index, i),
-                    });
+                    let mut anchor = start_position;
+                    anchor.column_byte_index += index;
+                    let mut position = start_position;
+                    position.column_byte_index += i;
+                    cursors.add(Cursor { anchor, position });
                 }
 
                 index = i + s.len();
             }
 
-            if index != start_position.column_byte_index + line.len() {
+            if index < line.len() {
                 cursors.add(Cursor {
-                    anchor: BufferPosition::line_col(start_position.line_index, index),
-                    position: BufferPosition::line_col(start_position.line_index, line.len()),
+                    anchor: BufferPosition::line_col(
+                        start_position.line_index,
+                        start_position.column_byte_index + index,
+                    ),
+                    position: BufferPosition::line_col(
+                        start_position.line_index,
+                        start_position.column_byte_index + line.len(),
+                    ),
                 });
             }
         }
@@ -378,6 +380,7 @@ pub mod split_cursors {
         for i in 0..cursor_count {
             let cursor = cursors[i];
             let range = cursor.to_range();
+            let new_cursors_start_index = cursors[..].len();
 
             if range.from.line_index == range.to.line_index {
                 let line = &buffer.line_at(range.from.line_index).as_str()
@@ -409,7 +412,7 @@ pub mod split_cursors {
             }
 
             if cursor.position == range.from {
-                for cursor in &mut cursors[cursor_count..] {
+                for cursor in &mut cursors[new_cursors_start_index..] {
                     std::mem::swap(&mut cursor.anchor, &mut cursor.position);
                 }
             }
