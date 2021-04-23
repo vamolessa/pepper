@@ -6,6 +6,7 @@ use std::{
 };
 
 use crate::{
+    glob::InvalidGlobError,
     buffer::{BufferCapabilities, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
     editor::Editor,
@@ -19,15 +20,16 @@ use crate::{
 
 pub const BUFFER_LEN: usize = 4 * 1024;
 
+pub struct UriParseError;
 pub enum Uri<'a> {
     Path(&'a Path),
 }
 impl<'a> Uri<'a> {
-    pub fn parse(root: &'a Path, uri: &'a str) -> Option<Self> {
-        let uri = uri.strip_prefix("file:///")?;
+    pub fn parse(root: &'a Path, uri: &'a str) -> Result<Self, UriParseError> {
+        let uri = uri.strip_prefix("file:///").ok_or(UriParseError)?;
         let path = Path::new(uri);
         let path = path.strip_prefix(root).unwrap_or(path);
-        Some(Self::Path(path))
+        Ok(Self::Path(path))
     }
 }
 impl<'a> fmt::Display for Uri<'a> {
@@ -222,6 +224,26 @@ impl<'json> FromJson<'json> for ResponseError {
             }
         }
         Ok(this)
+    }
+}
+
+pub enum ProtocolError {
+    ParseError,
+    MethodNotFound,
+}
+impl From<UriParseError> for ProtocolError {
+    fn from(_: UriParseError) -> Self {
+        Self::ParseError
+    }
+}
+impl From<JsonConvertError> for ProtocolError {
+    fn from(_: JsonConvertError) -> Self {
+        Self::ParseError
+    }
+}
+impl From<InvalidGlobError> for ProtocolError {
+    fn from(_: InvalidGlobError) -> Self {
+        Self::ParseError
     }
 }
 
@@ -588,8 +610,8 @@ impl WorkspaceEdit {
             match change {
                 WorkspaceEditChange::DocumentEdit(edit) => {
                     let path = match Uri::parse(&root, edit.uri.as_str(json)) {
-                        Some(Uri::Path(path)) => path,
-                        None => return,
+                        Ok(Uri::Path(path)) => path,
+                        Err(_) => return,
                     };
                     let buffer_handle = editor
                         .buffers
@@ -624,8 +646,8 @@ impl WorkspaceEdit {
                 }
                 WorkspaceEditChange::CreateFile(op) => {
                     let path = match Uri::parse(&root, op.uri.as_str(json)) {
-                        Some(Uri::Path(path)) => path,
-                        None => return,
+                        Ok(Uri::Path(path)) => path,
+                        Err(_) => return,
                     };
 
                     let mut open_options = fs::OpenOptions::new();
@@ -644,12 +666,12 @@ impl WorkspaceEdit {
                 }
                 WorkspaceEditChange::RenameFile(op) => {
                     let old_path = match Uri::parse(&root, op.old_uri.as_str(json)) {
-                        Some(Uri::Path(path)) => path,
-                        None => return,
+                        Ok(Uri::Path(path)) => path,
+                        Err(_) => return,
                     };
                     let new_path = match Uri::parse(&root, op.new_uri.as_str(json)) {
-                        Some(Uri::Path(path)) => path,
-                        None => return,
+                        Ok(Uri::Path(path)) => path,
+                        Err(_) => return,
                     };
 
                     if op.overwrite || !new_path.exists() || !op.ignore_if_exists {
@@ -658,8 +680,8 @@ impl WorkspaceEdit {
                 }
                 WorkspaceEditChange::DeleteFile(op) => {
                     let path = match Uri::parse(&root, op.uri.as_str(json)) {
-                        Some(Uri::Path(path)) => path,
-                        None => return,
+                        Ok(Uri::Path(path)) => path,
+                        Err(_) => return,
                     };
 
                     if op.recursive {
