@@ -724,31 +724,45 @@ mod tests {
 
     #[test]
     fn write_value() {
+        fn assert_json(buf: &mut Vec<u8>, expected: &str, value: JsonValue, json: &mut Json) {
+            buf.clear();
+            json.write(buf, &value);
+            assert_eq!(expected, std::str::from_utf8(buf).unwrap());
+        }
+
         let mut json = Json::new();
         let mut buf = Vec::new();
 
-        macro_rules! assert_json {
-            ($expected:expr, $value:expr) => {
-                buf.clear();
-                let value = $value;
-                json.write(&mut buf, &value);
-                assert_eq!($expected, std::str::from_utf8(&buf).unwrap());
-            };
-        }
-
-        assert_json!("null", JsonValue::Null);
-        assert_json!("false", JsonValue::Boolean(false));
-        assert_json!("true", JsonValue::Boolean(true));
-        assert_json!("0", JsonValue::Integer(0));
-        assert_json!("1", JsonValue::Integer(1));
-        assert_json!("-1", JsonValue::Integer(-1));
-        assert_json!("0.5", JsonValue::Number(0.5));
-        assert_json!("\"string\"", json.create_string("string").into());
-        assert_json!("\"\\u00e1\"", json.create_string("\u{00e1}").into());
-        assert_json!("\"\\ufa09\"", json.create_string("\u{fa09}").into());
-        assert_json!(
+        assert_json(&mut buf, "null", JsonValue::Null, &mut json);
+        assert_json(&mut buf, "false", JsonValue::Boolean(false), &mut json);
+        assert_json(&mut buf, "true", JsonValue::Boolean(true), &mut json);
+        assert_json(&mut buf, "0", JsonValue::Integer(0), &mut json);
+        assert_json(&mut buf, "1", JsonValue::Integer(1), &mut json);
+        assert_json(&mut buf, "-1", JsonValue::Integer(-1), &mut json);
+        assert_json(&mut buf, "0.5", JsonValue::Number(0.5), &mut json);
+        assert_json(
+            &mut buf,
+            "\"string\"",
+            json.create_string("string").into(),
+            &mut json,
+        );
+        assert_json(
+            &mut buf,
+            "\"\\u00e1\"",
+            json.create_string("\u{00e1}").into(),
+            &mut json,
+        );
+        assert_json(
+            &mut buf,
+            "\"\\ufa09\"",
+            json.create_string("\u{fa09}").into(),
+            &mut json,
+        );
+        assert_json(
+            &mut buf,
             "\"\\\"\\\\/\\b\\f\\n\\r\\t\"",
-            json.create_string("\"\\/\x08\x0c\n\r\t").into()
+            json.create_string("\"\\/\x08\x0c\n\r\t").into(),
+            &mut json,
         );
     }
 
