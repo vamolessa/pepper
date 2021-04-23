@@ -23,8 +23,12 @@ impl State {
         lsp_clients: &lsp::ClientManager,
         buffer_path: &Path,
     ) -> Option<lsp::ClientHandle> {
-        if let Some(handle) = self.lsp_client_handle {
-            return Some(handle);
+        if self
+            .lsp_client_handle
+            .and_then(|h| lsp_clients.get(h))
+            .is_some()
+        {
+            return self.lsp_client_handle;
         }
 
         let buffer_path = buffer_path.to_str()?.as_bytes();
@@ -66,6 +70,16 @@ impl ModeState for State {
         let _ = write!(register, "{}", key);
 
         match key {
+            Key::Ctrl('t') => {
+                ctx.editor
+                    .status_bar
+                    .write(crate::editor_utils::MessageKind::Info)
+                    .fmt(format_args!(
+                        "lsp_client_handle: {:?}",
+                        ctx.editor.mode.insert_state.lsp_client_handle
+                    ));
+                return None;
+            }
             Key::Esc => {
                 let buffer_view = ctx.editor.buffer_views.get(handle)?;
                 ctx.editor

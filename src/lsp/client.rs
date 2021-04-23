@@ -2491,7 +2491,8 @@ mod helper {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+// TODO: remove Debug
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ClientHandle(u8);
 impl fmt::Display for ClientHandle {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
