@@ -7,7 +7,7 @@ use crate::{
     client::Client,
     cursor::{Cursor, CursorCollection},
     editor::{Editor, EditorControlFlow, KeysIterator},
-    editor_utils::MessageKind,
+    editor_utils::{hash_bytes, MessageKind},
     lsp,
     mode::{picker, read_line, Mode, ModeContext, ModeKind, ModeOperation, ModeState},
     navigation_history::{NavigationDirection, NavigationHistory},
@@ -28,6 +28,8 @@ pub struct State {
     last_char_jump: CharJump,
     is_recording_auto_macro: bool,
     pub count: u32,
+    last_copy_hash: u64,
+    last_copy_ranges: Vec<(u32, u32)>,
 }
 
 impl State {
@@ -856,7 +858,7 @@ impl State {
                 );
             }
             Key::Char('d') => {
-                let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                let buffer_view = ctx.editor.buffer_views.get(handle)?;
                 buffer_view.delete_text_in_cursor_ranges(
                     &mut ctx.editor.buffers,
                     &mut ctx.editor.word_database,
@@ -872,7 +874,7 @@ impl State {
                 return None;
             }
             Key::Char('i') => {
-                let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                let buffer_view = ctx.editor.buffer_views.get(handle)?;
                 buffer_view.delete_text_in_cursor_ranges(
                     &mut ctx.editor.buffers,
                     &mut ctx.editor.word_database,
@@ -1118,17 +1120,23 @@ impl State {
             },
             Key::Char('s') => read_line::search::enter_mode(ctx),
             Key::Char('y') => {
+                let state = &mut ctx.editor.mode.normal_state;
                 let buffer_view = ctx.editor.buffer_views.get(handle)?;
                 let mut buf = ctx.editor.string_pool.acquire();
-                buffer_view.get_selection_text(&ctx.editor.buffers, &mut buf);
+                buffer_view.append_selection_text(
+                    &ctx.editor.buffers,
+                    &mut buf,
+                    &mut state.last_copy_ranges,
+                );
                 if !buf.is_empty() {
                     ctx.platform.write_to_clipboard(&buf);
+                    state.last_copy_hash = hash_bytes(buf.bytes());
                 }
                 ctx.editor.string_pool.release(buf);
                 state.movement_kind = CursorMovementKind::PositionAndAnchor;
             }
             Key::Char('Y') => {
-                let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                let buffer_view = ctx.editor.buffer_views.get(handle)?;
                 buffer_view.delete_text_in_cursor_ranges(
                     &mut ctx.editor.buffers,
                     &mut ctx.editor.word_database,
@@ -1141,14 +1149,38 @@ impl State {
                 ctx.editor.trigger_event_handlers(ctx.platform, ctx.clients);
 
                 let mut buf = ctx.editor.string_pool.acquire();
-                let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                let buffer_view = ctx.editor.buffer_views.get(handle)?;
                 if ctx.platform.read_from_clipboard(&mut buf) {
-                    buffer_view.insert_text_at_cursor_positions(
-                        &mut ctx.editor.buffers,
-                        &mut ctx.editor.word_database,
-                        &buf,
-                        &mut ctx.editor.events,
-                    );
+                    let hash = ctx.editor.mode.normal_state.last_copy_hash;
+                    let ranges = &ctx.editor.mode.normal_state.last_copy_ranges[..];
+                    let cursors = &buffer_view.cursors[..];
+                    if hash == hash_bytes(buf.bytes())
+                        && ranges.len() == cursors.len()
+                        && ranges
+                            .last()
+                            .map(|&(_, e)| e == buf.len() as _)
+                            .unwrap_or(false)
+                    {
+                        if let Some(buffer) = ctx.editor.buffers.get_mut(buffer_view.buffer_handle)
+                        {
+                            for (range, cursor) in ranges.iter().zip(cursors.iter()).rev() {
+                                let text = &buf[range.0 as usize..range.0 as usize];
+                                buffer.insert_text(
+                                    &mut ctx.editor.word_database,
+                                    cursor.position,
+                                    text,
+                                    &mut ctx.editor.events,
+                                );
+                            }
+                        }
+                    } else {
+                        buffer_view.insert_text_at_cursor_positions(
+                            &mut ctx.editor.buffers,
+                            &mut ctx.editor.word_database,
+                            &buf,
+                            &mut ctx.editor.events,
+                        );
+                    }
                 }
                 ctx.editor.string_pool.release(buf);
 
@@ -1162,7 +1194,7 @@ impl State {
             Key::Ctrl('y') => match keys.next(&ctx.editor.buffered_keys) {
                 Key::None => return Some(ModeOperation::Pending),
                 Key::Char(c) => {
-                    let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                    let buffer_view = ctx.editor.buffer_views.get(handle)?;
                     buffer_view.delete_text_in_cursor_ranges(
                         &mut ctx.editor.buffers,
                         &mut ctx.editor.word_database,
@@ -1174,7 +1206,7 @@ impl State {
 
                     ctx.editor.trigger_event_handlers(ctx.platform, ctx.clients);
 
-                    let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                    let buffer_view = ctx.editor.buffer_views.get(handle)?;
                     if let Some(key) = RegisterKey::from_char(c) {
                         let register = ctx.editor.registers.get(key);
                         buffer_view.insert_text_at_cursor_positions(
@@ -1233,6 +1265,8 @@ impl Default for State {
             last_char_jump: CharJump::None,
             is_recording_auto_macro: false,
             count: 0,
+            last_copy_hash: 0,
+            last_copy_ranges: Vec::new(),
         }
     }
 }

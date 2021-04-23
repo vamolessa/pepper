@@ -126,7 +126,7 @@ impl ModeState for State {
 
                 ctx.editor
                     .buffer_views
-                    .get_mut(handle)?
+                    .get(handle)?
                     .insert_text_at_cursor_positions(
                         &mut ctx.editor.buffers,
                         &mut ctx.editor.word_database,
@@ -166,7 +166,7 @@ impl ModeState for State {
             Key::Char(c) => {
                 let mut buf = [0; std::mem::size_of::<char>()];
                 let s = c.encode_utf8(&mut buf);
-                let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                let buffer_view = ctx.editor.buffer_views.get(handle)?;
                 buffer_view.insert_text_at_cursor_positions(
                     &mut ctx.editor.buffers,
                     &mut ctx.editor.word_database,
@@ -353,7 +353,7 @@ fn apply_completion(
     buffer_view_handle: BufferViewHandle,
     cursor_movement: isize,
 ) {
-    let buffer_view = match ctx.editor.buffer_views.get_mut(buffer_view_handle) {
+    let buffer_view = match ctx.editor.buffer_views.get(buffer_view_handle) {
         Some(view) => view,
         None => return,
     };

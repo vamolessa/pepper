@@ -604,11 +604,13 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             let name = ctx.args.next()?;
             ctx.args.assert_empty()?;
 
-            ctx.editor.picker.add_custom_entry_filtered(
-                name,
-                ctx.editor.read_line.input()
-            );
-            ctx.editor.picker.move_cursor(0);
+            if ModeKind::Picker == ctx.editor.mode.kind() {
+                ctx.editor.picker.add_custom_entry_filtered(
+                    name,
+                    ctx.editor.read_line.input()
+                );
+                ctx.editor.picker.move_cursor(0);
+            }
 
             Ok(None)
         },

@@ -315,8 +315,13 @@ impl BufferView {
         }
     }
 
-    pub fn get_selection_text(&self, buffers: &BufferCollection, text: &mut String) {
-        text.clear();
+    pub fn append_selection_text(
+        &self,
+        buffers: &BufferCollection,
+        text: &mut String,
+        ranges: &mut Vec<(u32, u32)>,
+    ) {
+        ranges.clear();
 
         let buffer = match buffers.get(self.buffer_handle) {
             Some(buffer) => buffer.content(),
@@ -326,20 +331,24 @@ impl BufferView {
         let mut iter = self.cursors[..].iter();
         if let Some(cursor) = iter.next() {
             let mut last_range = cursor.to_range();
+            let from = text.len() as _;
             buffer.append_range_text_to_string(last_range, text);
+            ranges.push((from, text.len() as _));
             for cursor in iter {
                 let range = cursor.to_range();
                 if range.from.line_index > last_range.to.line_index {
                     text.push('\n');
                 }
+                let from = text.len() as _;
                 buffer.append_range_text_to_string(range, text);
+                ranges.push((from, text.len() as _));
                 last_range = range;
             }
         }
     }
 
     pub fn insert_text_at_cursor_positions(
-        &mut self,
+        &self,
         buffers: &mut BufferCollection,
         word_database: &mut WordDatabase,
         text: &str,
@@ -353,7 +362,7 @@ impl BufferView {
     }
 
     pub fn delete_text_in_cursor_ranges(
-        &mut self,
+        &self,
         buffers: &mut BufferCollection,
         word_database: &mut WordDatabase,
         events: &mut EditorEventQueue,
@@ -387,7 +396,7 @@ impl BufferView {
     }
 
     pub fn apply_completion(
-        &mut self,
+        &self,
         buffers: &mut BufferCollection,
         word_database: &mut WordDatabase,
         completion: &str,

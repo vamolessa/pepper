@@ -402,7 +402,7 @@ impl BufferContent {
     {
         let end_index = self.lines.len() - 1;
         for line in &self.lines[..end_index] {
-            writeln!(write, "{}", line.as_str())?;
+            write!(write, "{}\n", line.as_str())?;
         }
         write!(write, "{}", self.lines[end_index].as_str())?;
         Ok(())
