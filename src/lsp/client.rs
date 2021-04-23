@@ -1709,6 +1709,7 @@ impl Client {
                     editor.buffer_view_handle_from_path(client.handle(), Path::new(&buffer_name));
                 editor.string_pool.release(buffer_name);
 
+                let mut count = 0;
                 let mut context_buffer = BufferContent::new();
                 let buffers = &mut editor.buffers;
                 if let Some(buffer) = editor
@@ -1716,6 +1717,8 @@ impl Client {
                     .get(buffer_view_handle)
                     .and_then(|v| buffers.get_mut(v.buffer_handle))
                 {
+                    use fmt::Write;
+
                     buffer.capabilities = BufferCapabilities::log();
                     buffer.capabilities.auto_close = auto_close_buffer;
 
@@ -1740,7 +1743,6 @@ impl Client {
                         };
 
                         let position: BufferPosition = location.range.start.into();
-                        use fmt::Write;
                         let _ = writeln!(
                             text,
                             "{}:{},{}",
@@ -1786,7 +1788,16 @@ impl Client {
                         text.clear();
 
                         last_path = path;
+                        count += 1;
                     }
+
+                    let _ = writeln!(text, "{} references found\n", count,);
+                    buffer.insert_text(
+                        &mut editor.word_database,
+                        BufferPosition::zero(),
+                        &text,
+                        &mut editor.events,
+                    );
                     editor.string_pool.release(text);
                 }
 
