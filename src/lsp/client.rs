@@ -1517,14 +1517,19 @@ impl Client {
                     helper::send_did_open(self, editor, platform, buffer.handle());
                 }
 
-                if let JsonValue::String(name) =
-                    result.get("clientInfo", &self.json).get("name", &self.json)
-                {
-                    let name = name.as_str(&self.json);
-                    editor
+                let name = match result.get("serverInfo", &self.json).get("name", &self.json) {
+                    JsonValue::String(s) => s.as_str(&self.json),
+                    _ => "",
+                };
+                match name {
+                    "" => editor
                         .status_bar
                         .write(MessageKind::Info)
-                        .fmt(format_args!("lsp server '{}' started", name));
+                        .str("lsp server started"),
+                    _ => editor
+                        .status_bar
+                        .write(MessageKind::Info)
+                        .fmt(format_args!("lsp server '{}' started", name)),
                 }
 
                 Ok(())

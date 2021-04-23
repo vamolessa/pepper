@@ -253,7 +253,6 @@ impl History {
                             let fix_text_start = other_edit.text_range.start;
                             self.texts.drain(other_edit.text_range.clone());
 
-                            eprintln!("remove edit entirely [{}] range: {:?}", i, edit_range);
                             fix_other_edits(
                                 group_edits,
                                 i,
