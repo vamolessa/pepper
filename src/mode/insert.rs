@@ -70,16 +70,6 @@ impl ModeState for State {
         let _ = write!(register, "{}", key);
 
         match key {
-            Key::Ctrl('t') => {
-                ctx.editor
-                    .status_bar
-                    .write(crate::editor_utils::MessageKind::Info)
-                    .fmt(format_args!(
-                        "lsp_client_handle: {:?}",
-                        ctx.editor.mode.insert_state.lsp_client_handle
-                    ));
-                return None;
-            }
             Key::Esc => {
                 let buffer_view = ctx.editor.buffer_views.get(handle)?;
                 ctx.editor

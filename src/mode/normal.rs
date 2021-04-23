@@ -1089,6 +1089,11 @@ impl State {
                     let cursor_count = cursors[..].len();
                     let offset = state.count.max(1) as usize;
                     cursors.set_main_cursor_index((index + offset) % cursor_count);
+                    ctx.editor
+                        .mode
+                        .normal_state
+                        .last_copy_ranges
+                        .rotate_right(offset);
                 }
                 Key::Char('p') => {
                     let cursors = &mut ctx.editor.buffer_views.get_mut(handle)?.cursors;
@@ -1097,6 +1102,11 @@ impl State {
                     let cursor_count = cursors[..].len();
                     let offset = state.count.max(1) as usize % cursor_count;
                     cursors.set_main_cursor_index((index + cursor_count - offset) % cursor_count);
+                    ctx.editor
+                        .mode
+                        .normal_state
+                        .last_copy_ranges
+                        .rotate_left(offset);
                 }
                 Key::Char('f') => read_line::filter_cursors::enter_filter_mode(ctx),
                 Key::Char('F') => read_line::filter_cursors::enter_except_mode(ctx),
@@ -1150,13 +1160,7 @@ impl State {
                     let hash = ctx.editor.mode.normal_state.last_copy_hash;
                     let ranges = &ctx.editor.mode.normal_state.last_copy_ranges[..];
                     let cursors = &buffer_view.cursors[..];
-                    if hash == hash_bytes(buf.bytes())
-                        && ranges.len() == cursors.len()
-                        && ranges
-                            .last()
-                            .map(|&(_, e)| e == buf.len() as _)
-                            .unwrap_or(false)
-                    {
+                    if hash == hash_bytes(buf.bytes()) && ranges.len() == cursors.len() {
                         if let Some(buffer) = ctx.editor.buffers.get_mut(buffer_view.buffer_handle)
                         {
                             for (range, cursor) in ranges.iter().zip(cursors.iter()).rev() {
