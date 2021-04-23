@@ -694,19 +694,15 @@ impl State {
                 find_char(ctx, true);
             }
             Key::Char('v') => {
-                let mut had_selection = false;
-                for cursor in &mut ctx.editor.buffer_views.get_mut(handle)?.cursors.mut_guard()[..]
-                {
-                    if cursor.anchor != cursor.position {
-                        cursor.anchor = cursor.position;
-                        had_selection = true;
+                state.movement_kind = match state.movement_kind {
+                    CursorMovementKind::PositionAndAnchor => CursorMovementKind::PositionOnly,
+                    CursorMovementKind::PositionOnly => {
+                        let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
+                        for cursor in &mut buffer_view.cursors.mut_guard()[..] {
+                            cursor.anchor = cursor.position;
+                        }
+                        CursorMovementKind::PositionAndAnchor
                     }
-                }
-
-                state.movement_kind = if had_selection {
-                    CursorMovementKind::PositionAndAnchor
-                } else {
-                    CursorMovementKind::PositionOnly
                 };
             }
             Key::Char('V') => {

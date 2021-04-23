@@ -475,107 +475,105 @@ fn draw_statusbar(buf: &mut Vec<u8>, editor: &Editor, view: &View, has_focus: bo
         let (message_target, message) = editor.status_bar.message();
         let message = message.trim_end();
 
-        if message.trim_start().is_empty() {
-            match editor.mode.kind() {
-                ModeKind::Normal => match editor.recording_macro {
-                    Some(key) => {
-                        let text = b"recording macro ";
-                        let key = key.as_u8();
-                        buf.extend_from_slice(text);
-                        buf.push(key);
-                        Some(text.len() + 1)
-                    }
-                    None => match view.buffer.map(Buffer::search_ranges) {
-                        Some(&[]) | None => Some(0),
-                        Some(search_ranges) => {
-                            let previous_len = buf.len();
-                            let search_index = editor.mode.normal_state.search_index + 1;
-                            let _ = write!(buf, " [{}/{}]", search_index, search_ranges.len());
-                            Some(buf.len() - previous_len)
-                        }
-                    },
-                },
-                ModeKind::Insert => {
-                    let text = b"-- INSERT --";
+        let message_is_empty = message.trim_start().is_empty();
+        match editor.mode.kind() {
+            ModeKind::Normal if message_is_empty => match editor.recording_macro {
+                Some(key) => {
+                    let text = b"recording macro ";
+                    let key = key.as_u8();
                     buf.extend_from_slice(text);
-                    Some(text.len())
+                    buf.push(key);
+                    Some(text.len() + 1)
                 }
-                ModeKind::Command | ModeKind::Picker | ModeKind::ReadLine => {
-                    let read_line = &editor.read_line;
-
-                    set_background_color(buf, background_innactive_color);
-                    set_foreground_color(buf, foreground_color);
-                    buf.extend_from_slice(read_line.prompt().as_bytes());
-                    set_background_color(buf, background_active_color);
-                    set_foreground_color(buf, foreground_color);
-                    buf.extend_from_slice(read_line.input().as_bytes());
-                    set_background_color(buf, cursor_color);
-                    buf.push(b' ');
-                    set_background_color(buf, background_active_color);
-                    None
-                }
+                None => match view.buffer.map(Buffer::search_ranges) {
+                    Some(&[]) | None => Some(0),
+                    Some(search_ranges) => {
+                        let previous_len = buf.len();
+                        let search_index = editor.mode.normal_state.search_index + 1;
+                        let _ = write!(buf, " [{}/{}]", search_index, search_ranges.len());
+                        Some(buf.len() - previous_len)
+                    }
+                },
+            },
+            ModeKind::Insert if message_is_empty => {
+                let text = b"-- INSERT --";
+                buf.extend_from_slice(text);
+                Some(text.len())
             }
-        } else if matches!(editor.mode.kind(), ModeKind::Normal | ModeKind::Insert) {
-            fn print_line(buf: &mut Vec<u8>, line: &str) -> usize {
-                let mut char_buf = [0; std::mem::size_of::<char>()];
-                let mut len = 0;
-                for c in line.chars() {
-                    match c {
-                        '\t' => {
-                            buf.extend_from_slice(b"  ");
-                            len += 2;
-                        }
-                        c => {
-                            buf.extend_from_slice(c.encode_utf8(&mut char_buf).as_bytes());
-                            len += 1;
-                        }
-                    };
-                }
-                len
+            ModeKind::Command | ModeKind::Picker | ModeKind::ReadLine => {
+                let read_line = &editor.read_line;
+
+                set_background_color(buf, background_innactive_color);
+                set_foreground_color(buf, foreground_color);
+                buf.extend_from_slice(read_line.prompt().as_bytes());
+                set_background_color(buf, background_active_color);
+                set_foreground_color(buf, foreground_color);
+                buf.extend_from_slice(read_line.input().as_bytes());
+                set_background_color(buf, cursor_color);
+                buf.push(b' ');
+                set_background_color(buf, background_active_color);
+                None
             }
+            _ => {
+                fn print_line(buf: &mut Vec<u8>, line: &str) -> usize {
+                    let mut char_buf = [0; std::mem::size_of::<char>()];
+                    let mut len = 0;
+                    for c in line.chars() {
+                        match c {
+                            '\t' => {
+                                buf.extend_from_slice(b"  ");
+                                len += 2;
+                            }
+                            c => {
+                                buf.extend_from_slice(c.encode_utf8(&mut char_buf).as_bytes());
+                                len += 1;
+                            }
+                        };
+                    }
+                    len
+                }
 
-            let prefix = match message_target {
-                MessageKind::Info => &[],
-                MessageKind::Error => &b"error:"[..],
-            };
+                let prefix = match message_target {
+                    MessageKind::Info => &[],
+                    MessageKind::Error => &b"error:"[..],
+                };
 
-            let line_count = message.lines().count();
-            if line_count > 1 {
-                if prefix.is_empty() {
-                    move_cursor_up(buf, line_count - 1);
+                let line_count = message.lines().count();
+                if line_count > 1 {
+                    if prefix.is_empty() {
+                        move_cursor_up(buf, line_count - 1);
+                    } else {
+                        move_cursor_up(buf, line_count);
+                        set_background_color(buf, background_innactive_color);
+                        set_foreground_color(buf, foreground_color);
+                        buf.extend_from_slice(prefix);
+                        clear_until_new_line(buf);
+                        move_cursor_to_next_line(buf);
+                        set_background_color(buf, background_active_color);
+                        set_foreground_color(buf, foreground_color);
+                    }
+
+                    for (i, line) in message.lines().enumerate() {
+                        let len = print_line(buf, line);
+                        if i < line_count - 1 {
+                            if len < view.size.0 as _ {
+                                clear_until_new_line(buf);
+                            }
+                            move_cursor_to_next_line(buf);
+                        }
+                    }
                 } else {
-                    move_cursor_up(buf, line_count);
+                    clear_line(buf);
                     set_background_color(buf, background_innactive_color);
                     set_foreground_color(buf, foreground_color);
                     buf.extend_from_slice(prefix);
-                    clear_until_new_line(buf);
-                    move_cursor_to_next_line(buf);
                     set_background_color(buf, background_active_color);
                     set_foreground_color(buf, foreground_color);
+                    print_line(buf, message);
                 }
 
-                for (i, line) in message.lines().enumerate() {
-                    let len = print_line(buf, line);
-                    if i < line_count - 1 {
-                        if len < view.size.0 as _ {
-                            clear_until_new_line(buf);
-                        }
-                        move_cursor_to_next_line(buf);
-                    }
-                }
-            } else {
-                clear_line(buf);
-                set_background_color(buf, background_innactive_color);
-                set_foreground_color(buf, foreground_color);
-                buf.extend_from_slice(prefix);
-                set_background_color(buf, background_active_color);
-                set_foreground_color(buf, foreground_color);
-                print_line(buf, message);
+                None
             }
-
-            None
-        } else {
-            None
         }
     } else {
         Some(0)

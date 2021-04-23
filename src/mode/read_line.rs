@@ -62,22 +62,31 @@ pub mod search {
                     update_search(ctx);
                 }
                 ReadLinePoll::Submitted => {
-                    if ctx
+                    if let Some(buffer_view) = ctx
                         .clients
                         .get(ctx.client_handle)
                         .and_then(Client::buffer_view_handle)
                         .and_then(|h| ctx.editor.buffer_views.get(h))
-                        .map(|v| v.buffer_handle)
-                        .and_then(|h| ctx.editor.buffers.get(h))
-                        .map(|b| b.search_ranges().is_empty())
-                        .unwrap_or(true)
                     {
-                        NavigationHistory::move_in_history(
-                            ctx.editor,
-                            ctx.clients,
-                            ctx.client_handle,
-                            NavigationDirection::Backward,
-                        );
+                        if let Some(buffer) = ctx.editor.buffers.get(buffer_view.buffer_handle) {
+                            let search_ranges = buffer.search_ranges();
+                            if search_ranges.is_empty() {
+                                NavigationHistory::move_in_history(
+                                    ctx.editor,
+                                    ctx.clients,
+                                    ctx.client_handle,
+                                    NavigationDirection::Backward,
+                                );
+                            } else {
+                                let position = buffer_view.cursors.main_cursor().position;
+                                ctx.editor.mode.normal_state.search_index = match search_ranges
+                                    .binary_search_by_key(&position, |r| r.from)
+                                {
+                                    Ok(i) => i,
+                                    Err(i) => i,
+                                };
+                            }
+                        }
                     }
 
                     let register = ctx.editor.registers.get_mut(SEARCH_REGISTER);
