@@ -33,6 +33,7 @@ use crate::{
     },
     mode::{picker, read_line, ModeContext, ModeKind},
     navigation_history::NavigationHistory,
+    picker::Picker,
     platform::{Platform, PlatformRequest, ProcessHandle, ProcessTag},
     word_database::{WordIndicesIter, WordKind},
 };
@@ -999,16 +1000,36 @@ impl Client {
 
         let mut reader = io::Cursor::new(&self.request_raw_json);
         let symbols = match self.json.read(&mut reader) {
-            Ok(symbols) => symbols,
+            Ok(symbols) => match symbols {
+                JsonValue::Array(symbols) => symbols,
+                _ => return,
+            },
             Err(_) => return,
         };
 
-        if let Some(position) = symbols
-            .elements(&self.json)
-            .filter_map(|s| DocumentSymbolInformation::from_json(s, &self.json).ok())
-            .map(|s| s.location.range.start.into())
-            .nth(index)
-        {
+        fn find_symbol_position(
+            symbols: JsonArray,
+            json: &Json,
+            mut index: usize,
+        ) -> Result<DocumentPosition, usize> {
+            for symbol in symbols
+                .elements(json)
+                .filter_map(|s| DocumentSymbolInformation::from_json(s, json).ok())
+            {
+                if index == 0 {
+                    return Ok(symbol.range.start);
+                } else {
+                    match find_symbol_position(symbol.children.clone(), json, index - 1) {
+                        Ok(position) => return Ok(position),
+                        Err(i) => index = i,
+                    }
+                }
+            }
+            Err(index)
+        }
+
+        if let Ok(position) = find_symbol_position(symbols, &self.json, index) {
+            let position = position.into();
             NavigationHistory::save_client_snapshot(
                 clients,
                 client_handle,
@@ -1486,7 +1507,7 @@ impl Client {
         match method {
             "initialize" => {
                 self.server_capabilities = ServerCapabilities::from_json(
-                    result.get("capabilities", &self.json),
+                    result.clone().get("capabilities", &self.json),
                     &self.json,
                 )?;
                 self.initialized = true;
@@ -1495,6 +1516,17 @@ impl Client {
                 for buffer in editor.buffers.iter() {
                     helper::send_did_open(self, editor, platform, buffer.handle());
                 }
+
+                if let JsonValue::String(name) =
+                    result.get("clientInfo", &self.json).get("name", &self.json)
+                {
+                    let name = name.as_str(&self.json);
+                    editor
+                        .status_bar
+                        .write(MessageKind::Info)
+                        .fmt(format_args!("lsp server '{}' started", name));
+                }
+
                 Ok(())
             }
             "textDocument/hover" => {
@@ -1788,7 +1820,9 @@ impl Client {
                         "end" => range.end = DocumentPosition::from_json(value, &self.json)?,
                         "range" => range = DocumentRange::from_json(value, &self.json)?,
                         "placeholder" => placeholder = FromJson::from_json(value, &self.json)?,
-                        "defaultBehavior" => default_behaviour = FromJson::from_json(value, &self.json)?,
+                        "defaultBehavior" => {
+                            default_behaviour = FromJson::from_json(value, &self.json)?
+                        }
                         _ => (),
                     }
                 }
@@ -1883,28 +1917,29 @@ impl Client {
                     _ => return Ok(()),
                 };
 
-                editor.picker.clear();
-                for symbol in symbols
-                    .clone()
-                    .elements(&self.json)
-                    .filter_map(|s| DocumentSymbolInformation::from_json(s, &self.json).ok())
-                {
-                    match symbol.container_name {
-                        Some(container_name) => {
-                            let name = symbol.name.as_str(&self.json);
-                            let container_name = container_name.as_str(&self.json);
-                            editor.picker.add_custom_entry_fmt(format_args!(
-                                "{} ({})",
-                                name, container_name
-                            ));
+                fn add_symbols(picker: &mut Picker, symbols: JsonArray, json: &Json) {
+                    for symbol in symbols
+                        .elements(json)
+                        .filter_map(|s| DocumentSymbolInformation::from_json(s, json).ok())
+                    {
+                        match symbol.container_name {
+                            Some(container_name) => {
+                                let name = symbol.name.as_str(json);
+                                let container_name = container_name.as_str(json);
+                                picker.add_custom_entry_fmt(format_args!(
+                                    "{} ({})",
+                                    name, container_name
+                                ));
+                            }
+                            None => picker.add_custom_entry(symbol.name.as_str(json)),
                         }
-                        None => {
-                            editor
-                                .picker
-                                .add_custom_entry(symbol.name.as_str(&self.json));
-                        }
+
+                        add_symbols(picker, symbol.children.clone(), json);
                     }
                 }
+
+                editor.picker.clear();
+                add_symbols(&mut editor.picker, symbols.clone(), &self.json);
 
                 let mut ctx = ModeContext {
                     editor,
@@ -1963,17 +1998,16 @@ impl Client {
                             Ok(symbol) => symbol,
                             Err(_) => continue,
                         };
-                        let path =
-                            match Uri::parse(&self.root, symbol.location.uri.as_str(&self.json)) {
-                                Ok(Uri::Path(path)) => path,
-                                Err(_) => continue,
-                            };
+                        let path = match Uri::parse(&self.root, symbol.uri.as_str(&self.json)) {
+                            Ok(Uri::Path(path)) => path,
+                            Err(_) => continue,
+                        };
                         let path = match path.to_str() {
                             Some(path) => path,
                             None => continue,
                         };
 
-                        let position: BufferPosition = symbol.location.range.start.into();
+                        let position: BufferPosition = symbol.range.start.into();
                         use fmt::Write;
                         let _ = write!(
                             text,

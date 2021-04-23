@@ -224,7 +224,7 @@ pub fn client_capabilities(json: &mut Json) -> JsonValue {
             document_symbol.set("symbolKind".into(), symbol_kind(json).into(), json);
             document_symbol.set(
                 "hierarchicalDocumentSymbolSupport".into(),
-                false.into(),
+                true.into(),
                 json,
             );
             document_symbol.set("labelSupport".into(), false.into(), json);

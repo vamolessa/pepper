@@ -6,11 +6,11 @@ use std::{
 };
 
 use crate::{
-    glob::InvalidGlobError,
     buffer::{BufferCapabilities, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
     editor::Editor,
     editor_utils::MessageKind,
+    glob::InvalidGlobError,
     json::{
         FromJson, Json, JsonArray, JsonConvertError, JsonInteger, JsonKey, JsonObject, JsonString,
         JsonValue,
@@ -779,8 +779,10 @@ impl<'json> FromJson<'json> for DocumentCodeAction {
 #[derive(Default)]
 pub struct DocumentSymbolInformation {
     pub name: JsonString,
-    pub location: DocumentLocation,
+    pub uri: JsonString,
+    pub range: DocumentRange,
     pub container_name: Option<JsonString>,
+    pub children: JsonArray,
 }
 impl<'json> FromJson<'json> for DocumentSymbolInformation {
     fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
@@ -792,8 +794,14 @@ impl<'json> FromJson<'json> for DocumentSymbolInformation {
         for (key, value) in value.members(json) {
             match key {
                 "name" => this.name = JsonString::from_json(value, json)?,
-                "location" => this.location = DocumentLocation::from_json(value, json)?,
+                "location" => {
+                    let location = DocumentLocation::from_json(value, json)?;
+                    this.uri = location.uri;
+                    this.range = location.range;
+                }
+                "selectionRange" => this.range = DocumentRange::from_json(value, json)?,
                 "containerName" => this.container_name = FromJson::from_json(value, json)?,
+                "children" => this.children = JsonArray::from_json(value, json)?,
                 _ => (),
             }
         }
