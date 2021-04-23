@@ -866,55 +866,43 @@ fn try_get_content_range(buf: &[u8]) -> Option<Range<usize>> {
 }
 
 fn parse_server_event(json: &Json, body: JsonValue) -> ServerEvent {
-    #[derive(Default)]
-    struct Body {
-        id: JsonValue,
-        method: JsonValue,
-        params: JsonValue,
-        result: JsonValue,
-        error: Option<ResponseError>,
-    }
-    impl<'json> FromJson<'json> for Body {
-        fn from_json(value: JsonValue, json: &'json Json) -> Result<Self, JsonConvertError> {
-            let value = match value {
-                JsonValue::Object(value) => value,
-                _ => return Err(JsonConvertError),
-            };
-            let mut this = Self::default();
-            for (key, value) in value.members(json) {
-                match key {
-                    "id" => this.id = value,
-                    "method" => this.method = value,
-                    "params" => this.params = value,
-                    "result" => this.result = value,
-                    "error" => this.error = FromJson::from_json(value, json)?,
-                    _ => (),
-                }
-            }
-            Ok(this)
-        }
-    }
-
-    let body = match Body::from_json(body, json) {
-        Ok(body) => body,
-        Err(_) => return ServerEvent::ParseError,
+    let body = match body {
+        JsonValue::Object(body) => body,
+        _ => return ServerEvent::ParseError,
     };
 
-    if let JsonValue::String(method) = body.method {
-        match body.id {
-            JsonValue::Integer(_) | JsonValue::String(_) => ServerEvent::Request(ServerRequest {
-                id: body.id,
-                method,
-                params: body.params,
-            }),
-            JsonValue::Null => ServerEvent::Notification(ServerNotification {
-                method,
-                params: body.params,
-            }),
+    let mut id = JsonValue::Null;
+    let mut method = JsonValue::Null;
+    let mut params = JsonValue::Null;
+    let mut result = JsonValue::Null;
+    let mut error: Option<ResponseError> = None;
+
+    for (key, value) in body.members(json) {
+        match key {
+            "id" => id = value,
+            "method" => method = value,
+            "params" => params = value,
+            "result" => result = value,
+            "error" => {
+                error = match FromJson::from_json(value, json) {
+                    Ok(error) => error,
+                    Err(_) => return ServerEvent::ParseError,
+                }
+            }
+            _ => (),
+        }
+    }
+
+    if let JsonValue::String(method) = method {
+        match id {
+            JsonValue::Integer(_) | JsonValue::String(_) => {
+                ServerEvent::Request(ServerRequest { id, method, params })
+            }
+            JsonValue::Null => ServerEvent::Notification(ServerNotification { method, params }),
             _ => return ServerEvent::ParseError,
         }
-    } else if let Some(error) = body.error {
-        let id = match body.id {
+    } else if let Some(error) = error {
+        let id = match id {
             JsonValue::Integer(n) if n > 0 => n as _,
             _ => return ServerEvent::ParseError,
         };
@@ -923,13 +911,13 @@ fn parse_server_event(json: &Json, body: JsonValue) -> ServerEvent {
             result: Err(error),
         })
     } else {
-        let id = match body.id {
+        let id = match id {
             JsonValue::Integer(n) if n > 0 => n as _,
             _ => return ServerEvent::ParseError,
         };
         ServerEvent::Response(ServerResponse {
             id: RequestId(id),
-            result: Ok(body.result),
+            result: Ok(result),
         })
     }
 }
