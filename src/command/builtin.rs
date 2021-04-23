@@ -1660,7 +1660,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                     client.log_buffer_handle,
                );
             }
-            let _ = writeln!(message, "\n buffer count: {}", ctx.editor.buffers.iter().count());
+            let _ = writeln!(message, "\nbuffer count: {}", ctx.editor.buffers.iter().count());
             ctx.editor.status_bar.write(MessageKind::Info).str(&message);
             ctx.editor.string_pool.release(message);
             Ok(None)
