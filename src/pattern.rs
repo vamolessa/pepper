@@ -96,9 +96,9 @@ impl Pattern {
         loop {
             match ops[op_index] {
                 Op::Ok => {
-                    return MatchResult::Ok(unsafe {
-                        bytes.as_ptr().offset_from(text.as_bytes().as_ptr())
-                    } as usize)
+                    return MatchResult::Ok(
+                        bytes.as_ptr() as usize - text.as_bytes().as_ptr() as usize,
+                    )
                 }
                 Op::Error => return MatchResult::Err,
                 Op::Reset(jump) => {
@@ -118,9 +118,9 @@ impl Pattern {
                     if bytes.is_empty() {
                         op_index = okj.0 as _;
                         return match ops[op_index] {
-                            Op::Ok => MatchResult::Ok(unsafe {
-                                bytes.as_ptr().offset_from(text.as_bytes().as_ptr())
-                            } as usize),
+                            Op::Ok => MatchResult::Ok(
+                                bytes.as_ptr() as usize - text.as_bytes().as_ptr() as usize,
+                            ),
                             _ => MatchResult::Pending(PatternState { op_index }),
                         };
                     } else {

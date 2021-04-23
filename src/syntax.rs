@@ -126,7 +126,7 @@ impl Syntax {
                 TokenKind::Comment,
                 TokenKind::Text,
             ];
-            
+
             for &kind in ALL_NON_WHITESPACE_TOKEN_KINDS.iter() {
                 let pattern = &self.rules[kind as usize];
                 match pattern.matches(line_slice) {
@@ -145,7 +145,7 @@ impl Syntax {
                         return LineParseState::Unfinished(kind, state);
                     }
                 }
-            };
+            }
 
             let mut kind = best_pattern_kind;
 

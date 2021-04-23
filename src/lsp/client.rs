@@ -1582,7 +1582,8 @@ impl Client {
                             match key {
                                 "label" => this.label = JsonString::from_json(value, json)?,
                                 "documentation" => {
-                                    this.documentation = helper::extract_markup_content(value, json);
+                                    this.documentation =
+                                        helper::extract_markup_content(value, json);
                                 }
                                 _ => (),
                             }
@@ -2138,15 +2139,6 @@ impl Client {
         }
     }
 
-    fn on_parse_error(&mut self, platform: &mut Platform, request_id: JsonValue) {
-        self.write_to_log_buffer(|buf, json| {
-            use io::Write;
-            let _ = write!(buf, "send parse error\nrequest_id: ");
-            json.write(buf, &request_id);
-        });
-        self.respond(platform, request_id, Err(ResponseError::parse_error()))
-    }
-
     fn on_editor_events(&mut self, editor: &Editor, platform: &mut Platform) {
         if !self.initialized {
             return;
@@ -2697,7 +2689,15 @@ impl ClientManager {
         while let Some(event) = events.next(&mut client.protocol, &mut client.json) {
             match event {
                 ServerEvent::Closed => editor.lsp.stop(platform, handle),
-                ServerEvent::ParseError => client.on_parse_error(platform, JsonValue::Null),
+                ServerEvent::ParseError => {
+                    let request_id = JsonValue::Null;
+                    client.write_to_log_buffer(|buf, json| {
+                        use io::Write;
+                        let _ = write!(buf, "send parse error\nrequest_id: ");
+                        json.write(buf, &request_id);
+                    });
+                    client.respond(platform, request_id, Err(ResponseError::parse_error()));
+                }
                 ServerEvent::Request(request) => {
                     client.on_request(editor, platform, clients, request)
                 }
