@@ -65,15 +65,14 @@ Please [open an issue](https://github.com/vamolessa/pepper/issues)
 # features
 
 - everything is reachable through the keyboard
-- modal editing (normal mode also selects text)
+- modal editing
 - multiple cursors
 - caret style cursors (like most text editors, cursors can move past last line character and text is always inserted to its left)
-- text-objects
-- macros
-- lua scripting
+- text-object selection
+- keyboard macros
 - client/server architecture
 - simple syntax highlighting
-- support for language server protocol
+- language server protocol
 
 # philosophy
 
