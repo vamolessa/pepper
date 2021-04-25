@@ -107,9 +107,9 @@ impl Default for KeyMapCollection {
             this.parse_and_map(mode, "<c-m>", "<enter>").unwrap();
         }
 
-        this.parse_and_map(ModeKind::Normal, "<esc>", "<esc>cdcVs<esc>")
+        this.parse_and_map(ModeKind::Normal, "<esc>", "cdcVs<esc>")
             .unwrap();
-        this.parse_and_map(ModeKind::Normal, "<c-c>", "<esc>cdcVs<esc>")
+        this.parse_and_map(ModeKind::Normal, "<c-c>", "cdcVs<esc>")
             .unwrap();
         this.parse_and_map(ModeKind::Normal, ".", "Qa").unwrap();
 
