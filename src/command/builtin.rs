@@ -44,7 +44,12 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         name: "help",
         alias: "h",
-        help: "prints help about command\nhelp [<command-name>]",
+        help: concat!(
+            "Prints help about <command-name>.\n",
+            "If <command-name> is not present, prints the name of all commands available.\n",
+            "\n",
+            "help [<command-name>]",
+        ),
         hidden: false,
         completions: &[CompletionSource::Commands],
         func: |ctx| {
@@ -112,8 +117,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "try",
         alias: "",
         help: concat!(
-            "try executing commands without propagating errors\n",
-            "and optionally execute commands if there was an error\n",
+            "Try executing commands without propagating errors.\n",
+            "Then optionally executes commands if there was an error.\n",
+            "\n",
             "try { <commands...> } [catch { <commands...> }]",
         ),
         hidden: false,
@@ -169,11 +175,11 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "macro",
         alias: "",
         help: concat!(
-            "define a new macro command\n",
+            "Defines a new macro command.\n",
+            "\n",
             "macro [<flags>] <name> <param-names...> <commands>\n",
             " -help=<help-text> : the help text that shows when using `help` with this command\n",
-            " -hidden : whether this command is shown in completions or not\n",
-            " -param-count=<number> : if defined, the number of parameters this command expects, 0 otherwise",
+            " -hidden : whether this command is shown in completions or not",
         ),
         hidden: false,
         completions: &[],
@@ -221,6 +227,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         alias: "",
         help: concat!(
             "define a new request command\n",
+            "\n",
             "request [<flags>] <name>\n",
             " -help=<help-text> : the help text that shows when using `help` with this command\n",
             " -hidden : whether this command is shown in completions or not\n",
@@ -266,10 +273,11 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "spawn",
         alias: "",
         help: concat!(
-            "spawns a new process and then optionally executes commands on its output\n",
-            "those commands will be executed on every splitted output if `-split-on-byte` is given\n",
-            "or on its etirety when the process exits otherwise\n",
-            "`<output-var-name>` will be replaced in `<commands-on-output>` with the process' output\n",
+            "Spawns a new process and then optionally executes commands on its output.\n",
+            "those commands will be executed on every splitted output if `-split-on-byte` is set\n",
+            "or on its etirety when the process exits otherwise.\n",
+            "`<output-var-name>` will be text replaced in `<commands-on-output>` with the process' output.\n",
+            "\n",
             "spawn [<flags>] <spawn-command> [<output-var-name> <commands-on-output>]\n",
             " -input=<text> : sends <text> to the stdin\n",
             " -env=<vars> : sets environment variables in the form VAR=<value> VAR=<value>...\n",
@@ -318,8 +326,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "replace-with-text",
         alias: "",
         help: concat!(
-            "replace each cursor selection with text\n",
-            "replace-with-text [<flags>] <text>",
+            "Replace each cursor selection with text.\n",
+            "\n",
+            "replace-with-text <text>",
         ),
         hidden: false,
         completions: &[],
@@ -359,7 +368,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "replace-with-output",
         alias: "",
         help: concat!(
-            "replace each cursor selection with command output\n",
+            "Replace each cursor selection with command output.\n",
+            "\n",
             "replace-with-output [<flags>] <command>\n",
             " -pipe : also pipes selected text to command's input\n",
             " -env=<vars> : sets environment variables in the form VAR=<value> VAR=<value>...\n",
@@ -456,9 +466,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "execute-keys",
         alias: "",
         help: concat!(
-            "executes keys as if they were inputted manually\n",
-            "execute-keys <keys>\n",
-            " -client=<client-id> : if specified, send keys on behalf of client <client-id>",
+            "Executes keys as if they were inputted manually.\n",
+            "\n",
+            "execute-keys [<flags>] <keys>\n",
+            " -client=<client-id> : send keys on behalf of client <client-id>",
         ),
         hidden: false,
         completions: &[],
@@ -512,8 +523,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "read-line",
         alias: "",
         help: concat!(
-            "prompts for a line read and then executes commands\n",
-            "`<line-var-name>` will be replaced in `<commands>` with the line read value\n",
+            "Prompts for a line read and then executes commands.\n",
+            "<line-var-name> will be text replaced in `<commands>` with the line read value.\n",
+            "\n",
             "read-line [<flags>] <line-var-name> <commands>\n",
             " -prompt=<prompt-text> : the prompt text that shows just before user input (default: `read-line:`)",
         ),
@@ -552,10 +564,11 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "pick",
         alias: "",
         help: concat!(
-            "opens up a menu from where an entry can be picked and then executes commands\n",
-            "entries can be added with the `add-picker-entry` command\n",
-            "`<entry-var-name>` will be replaced in `<commands>` with the picked entry value\n",
-            "pick [<flags>] <entry-var-name> <commands>\n",
+            "Opens up a menu from where an option can be picked and then executes commands.\n",
+            "Options can be added with the `add-picker-entry` command.\n",
+            "`<option-var-name>` will be text replaced in `<commands>` with the picked option value.\n",
+            "\n",
+            "pick [<flags>] <option-var-name> <commands>\n",
             " -prompt=<prompt-text> : the prompt text that shows just before user input (default: `pick:`)",
         ),
         hidden: false,
@@ -567,7 +580,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             let prompt = flags[0].1.unwrap_or("pick:");
             ctx.args.get_flags(&mut flags)?;
 
-            let entry_var_name = ctx.args.next()?;
+            let option_var_name = ctx.args.next()?;
             let commands = ctx.args.next()?;
             ctx.args.assert_empty()?;
 
@@ -584,17 +597,18 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 clients: ctx.clients,
                 client_handle,
             };
-            picker::custom::enter_mode(&mut mode_ctx, commands, entry_var_name);
+            picker::custom::enter_mode(&mut mode_ctx, commands, option_var_name);
 
             Ok(None)
         },
     },
     BuiltinCommand {
-        name: "add-picker-entry",
+        name: "add-picker-option",
         alias: "",
         help: concat!(
-            "adds a new picker entry that will then be shown in the next call to the `pick` command\n",
-            "add-picker-entry [<flags>] <name>",
+            "Adds a new picker option that will then be shown in the next call to the `pick` command.\n",
+            "\n",
+            "add-picker-option <name>",
         ),
         hidden: false,
         completions: &[],
@@ -618,7 +632,12 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         name: "quit",
         alias: "q",
-        help: "quits this client\nquit[!]\nwith '!' will discard any unsaved changes",
+        help: concat!(
+            "Quits this client.\n",
+            "With '!' will discard any unsaved changes.\n",
+            "\n",
+            "quit[!]",
+        ),
         hidden: false,
         completions: &[],
         func: |ctx| {
@@ -634,7 +653,12 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         name: "quit-all",
         alias: "qa",
-        help: "quits all clients\nquit-all[!]\nwith '!' will discard any unsaved changes",
+        help: concat!(
+            "Quits all clients.\n",
+            "With '!' will discard any unsaved changes.\n",
+            "\n",
+            "quit-all[!]",
+        ),
         hidden: false,
         completions: &[],
         func: |ctx| {
@@ -649,9 +673,11 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "print",
         alias: "",
         help: concat!(
-            "prints arguments to the status bar\nprint <values...>\n",
-            " -error : will print the message as an error",
-            " -dbg : will also print the message to the stderr",
+            "Prints arguments to the status bar\n",
+            "\n",
+            "print [<flags>] <values...>\n",
+            " -error : will print as an error",
+            " -dbg : will also print to the stderr",
         ),
         hidden: false,
         completions: &[],
@@ -689,7 +715,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "source",
         alias: "",
         help: concat!(
-            "loads a source file and execute its commands\n",
+            "Loads a source file and execute its commands.\n",
+            "\n",
             "source [<flags>] <path>\n",
             " -relative-to-current-dir : interprets <path> as relative to the editor's current directory",
         ),
@@ -728,7 +755,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "open",
         alias: "o",
         help: concat!(
-            "opens a buffer for editting\n",
+            "Opens a buffer up for editting.\n",
+            "\n",
             "open [<flags>] <path>\n",
             " -line=<number> : set cursor at line\n",
             " -column=<number> : set cursor at column\n",
@@ -829,7 +857,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "save",
         alias: "s",
         help: concat!(
-            "save buffer\nsave [<flags>] [<path>]\n",
+            "Save buffer to file.\n",
+            "\n",
+            "save [<flags>] [<path>]\n",
             " -buffer=<buffer-id> : if not specified, the current buffer is used",
         ),
         hidden: false,
@@ -869,7 +899,11 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         name: "save-all",
         alias: "sa",
-        help: "save all buffers\nsave-all",
+        help: concat!(
+            "Save all buffers to file.\n",
+            "\n",
+            "save-all",
+        ),
         hidden: false,
         completions: &[],
         func: |ctx| {
@@ -897,9 +931,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "reload",
         alias: "r",
         help: concat!(
-            "reload buffer from file\n",
+            "Reload buffer from file.\n",
+            "With '!' will discard any unsaved changes.\n",
+            "\n",
             "reload[!] [<flags>]\n",
-            "with '!' will discard any unsaved changes",
             " -buffer=<buffer-id> : if not specified, the current buffer is used",
         ),
         hidden: false,
@@ -937,8 +972,12 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         name: "reload-all",
         alias: "ra",
-        help:
-            "reload all buffers from file\nreload-all[!]\nwith '!' will discard any unsaved changes",
+        help: concat!(
+            "Reload all buffers from file.\n",
+            "With '!' will discard any unsaved changes\n",
+            "\n",
+            "reload-all[!]",
+        ),
         hidden: false,
         completions: &[],
         func: |ctx| {
@@ -967,9 +1006,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "close",
         alias: "c",
         help: concat!(
-            "close buffer and opens previous buffer in view if any\n",
+            "Close buffer and opens previous buffer in view if any.\n",
+            "With '!' will discard any unsaved changes\n",
+            "\n",
             "close[!] [<flags>]\n",
-            "with '!' will discard any unsaved changes",
             " -buffer=<buffer-id> : if not specified, the current buffer is used\n",
             " -no-previous-buffer : does not try to open previous buffer",
         ),
@@ -1009,7 +1049,12 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         name: "close-all",
         alias: "ca",
-        help: "close all buffers\nclose-all[!]\nwith '!' will discard any unsaved changes",
+        help: concat!(
+            "Close all buffers.\n",
+            "With '!' will discard any unsaved changes.\n",
+            "\n",
+            "close-all[!]\n",
+        ),
         hidden: false,
         completions: &[],
         func: |ctx| {
@@ -1033,7 +1078,11 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         name: "config",
         alias: "",
-        help: "accesses an editor config\nconfig <key> [<value>]",
+        help: concat!(
+            "Accesses an editor config.\n",
+            "\n",
+            "config <key> [<value>]",
+        ),
         hidden: false,
         completions: &[(CompletionSource::Custom(CONFIG_NAMES))],
         func: |ctx| {
@@ -1067,7 +1116,11 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         name: "color",
         alias: "",
-        help: "accesses an editor theme color\ncolor <key> [<value>]",
+        help: concat!(
+            "Accesses an editor theme color.\n",
+            "\n",
+            "color <key> [<value>]",
+        ),
         hidden: false,
         completions: &[CompletionSource::Custom(THEME_COLOR_NAMES)],
         func: |ctx| {
@@ -1104,11 +1157,10 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "syntax",
         alias: "",
         help: concat!(
-            "creates a syntax definition with patterns for files that match a glob\n",
-            "syntax <glob> <definition>\n",
-            "every line in <definition> should be of the form:\n",
+            "Creates a syntax definition from patterns for files that match a glob.\n",
+            "Every line in <definition> should be of the form:\n",
             "<token-kind> = <pattern>\n",
-            "where <token-kind> is one of:\n",
+            "Where <token-kind> is one of:\n",
             " keywords\n",
             " types\n",
             " symbols\n",
@@ -1116,7 +1168,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             " strings\n",
             " comments\n",
             " texts\n",
-            "and <pattern> is the pattern that matches that kind of token",
+            "And <pattern> is the pattern that matches that kind of token.\n",
+            "\n",
+            "syntax <glob> { <definition> }",
         ),
         hidden: true,
         completions: &[],
@@ -1200,7 +1254,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "map",
         alias: "",
         help: concat!(
-            "creates a keyboard mapping for an editor mode\n",
+            "Creates a keyboard mapping for an editor mode.\n",
+            "\n",
             "map [<flags>] <from> <to>\n",
             " -normal : set mapping for normal mode\n",
             " -insert : set mapping for insert mode\n",
@@ -1264,7 +1319,11 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         name: "register",
         alias: "",
-        help: "accesses an editor register\nregister <key> [<value>]",
+        help: concat!(
+            "Accesses an editor register.\n",
+            "\n",
+            "register <key> [<value>]",
+        ),
         hidden: false,
         completions: &[],
         func: |ctx| {
@@ -1297,8 +1356,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "lsp",
         alias: "",
         help: concat!(
-            "automatically starts a lsp server when a buffer matching a glob is opened\n",
-            "the lsp command only runs if the server is not already running\n",
+            "Automatically starts a lsp server when a buffer matching a glob is opened.\n",
+            "The lsp command only runs if the server is not already running.\n",
+            "\n",
             "lsp [<flags>] <glob> <lsp-command>\n",
             " -log=<buffer-name> : redirects the lsp server output to this buffer\n",
             " -env=<vars> : sets environment variables in the form VAR=<value> VAR=<value>...",
@@ -1329,7 +1389,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "lsp-start",
         alias: "",
         help: concat!(
-            "starts a lsp server\n",
+            "Manually starts a lsp server.\n",
+            "\n",
             "lsp-start [<flags>] <lsp-command>\n",
             " -root=<path> : the root path from where the lsp server will execute\n",
             " -log=<buffer-name> : redirects the lsp server output to this buffer\n",
@@ -1379,7 +1440,11 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         name: "lsp-stop",
         alias: "",
-        help: "stops the lsp server associated with the current buffer\nlsp-stop",
+        help: concat!(
+            "Stops the lsp server associated with the current buffer.\n",
+            "\n",
+            "lsp-stop",
+        ),
         hidden: false,
         completions: &[],
         func: |ctx| {
@@ -1398,7 +1463,11 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         name: "lsp-stop-all",
         alias: "",
-        help: "stops all lsp servers\nlsp-stop-all",
+        help: concat!(
+            "Stops all lsp servers.\n",
+            "\n",
+            "lsp-stop-all",
+        ),
         hidden: false,
         completions: &[],
         func: |ctx| {
@@ -1413,7 +1482,11 @@ pub const COMMANDS: &[BuiltinCommand] = &[
     BuiltinCommand {
         name: "lsp-hover",
         alias: "",
-        help: "performs a lsp hover action at the current buffer's main cursor position\nlsp-hover",
+        help: concat!(
+            "Displays lsp hover information for the current buffer's main cursor position.\n",
+            "\n",
+            "lsp-hover",
+        ),
         hidden: false,
         completions: &[],
         func: |mut ctx| {
@@ -1432,7 +1505,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "lsp-definition",
         alias: "",
         help: concat!(
-            "jumps to the location of the definition of the item under the main cursor found by the lsp server\n",
+            "Jumps to the location of the definition of the item under the main cursor found by the lsp server.\n",
+            "\n",
             "lsp-definition",
         ),
         hidden: false,
@@ -1457,7 +1531,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "lsp-references",
         alias: "",
         help: concat!(
-            "opens up a buffer with all references of the item under the main cursor found by the lsp server\n",
+            "Opens up a buffer with all references of the item under the main cursor found by the lsp server.\n",
+            "\n",
             "lsp-references [<flags>]\n",
             " -context=<number> : how many lines of context to show. 0 means no context is shown\n",
             " -auto-close : automatically closes buffer when no other client has it in focus",
@@ -1497,7 +1572,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "lsp-rename",
         alias: "",
         help: concat!(
-            "renames the item under the main cursor through the lsp server",
+            "Renames the item under the main cursor through the lsp server.\n",
+            "\n",
             "lsp-rename",
         ),
         hidden: false,
@@ -1529,7 +1605,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "lsp-code-action",
         alias: "",
         help: concat!(
-            "lists and then performs a code action based on the main cursor context\n",
+            "Lists and then performs a code action based on the main cursor context.\n",
+            "\n",
             "lsp-code-action",
         ),
         hidden: false,
@@ -1560,7 +1637,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "lsp-document-symbols",
         alias: "",
         help: concat!(
-            "pick and jump to a symbol in the current buffer listed by the lsp server\n",
+            "Pick and jump to a symbol in the current buffer listed by the lsp server.\n",
+            "\n",
             "lsp-document-symbols",
         ),
         hidden: false,
@@ -1587,8 +1665,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "lsp-workspace-symbols",
         alias: "",
         help: concat!(
-            "opens up a buffer with all symbols in the workspace found by the lsp server\n",
+            "Opens up a buffer with all symbols in the workspace found by the lsp server\n",
             "optionally filtered by a query\n",
+            "\n",
             "lsp-workspace-symbols [<flags>] [<query>]\n",
             " -auto-close : automatically closes buffer when no other client has it in focus",
         ),
@@ -1619,7 +1698,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "lsp-format",
         alias: "",
         help: concat!(
-            "format a buffer using the lsp server\n",
+            "Format a buffer using the lsp server.\n",
+            "\n",
             "lsp-format",
         ),
         hidden: false,
@@ -1640,7 +1720,8 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "lsp-debug",
         alias: "",
         help: concat!(
-            "prints debug information abount running lsp servers running\n",
+            "Prints debug information abount running lsp servers running.\n",
+            "\n",
             "lsp-debug",
         ),
         hidden: false,
