@@ -43,8 +43,8 @@ theme_colors! {
     statusbar_active_background,
     statusbar_inactive_background,
     normal_cursor,
-    insert_cursor,
     select_cursor,
+    insert_cursor,
     inactive_cursor,
 
     token_whitespace,
