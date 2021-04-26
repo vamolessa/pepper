@@ -718,7 +718,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             "Loads a source file and execute its commands.\n",
             "\n",
             "source [<flags>] <path>\n",
-            " -relative-to-current-dir : interprets <path> as relative to the editor's current directory",
+            " -project : interprets <path> as relative to the editor's current directory",
         ),
         hidden: false,
         completions: &[CompletionSource::Files],
