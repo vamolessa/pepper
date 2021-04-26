@@ -718,23 +718,23 @@ pub const COMMANDS: &[BuiltinCommand] = &[
             "Loads a source file and execute its commands.\n",
             "\n",
             "source [<flags>] <path>\n",
-            " -project : interprets <path> as relative to the editor's current directory",
+            " -project : interprets <path> as relative to the editor's current directory (usually a project folder)",
         ),
         hidden: false,
         completions: &[CompletionSource::Files],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
 
-            let mut flags = [("relative-to-current-dir", None)];
+            let mut flags = [("project", None)];
             ctx.args.get_flags(&mut flags)?;
-            let relative_to_current_dir = flags[0].1.is_some();
+            let relative_to_project_folder = flags[0].1.is_some();
 
             let path = Path::new(ctx.args.next()?);
             ctx.args.assert_empty()?;
 
             let mut path_buf = PathBuf::new();
             let path = if path.is_relative() {
-                if relative_to_current_dir {
+                if relative_to_project_folder {
                     path_buf.push(&ctx.editor.current_directory);
                 } else {
                     if let Some(parent) = ctx.source_path.and_then(Path::parent) {
