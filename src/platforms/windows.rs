@@ -1,6 +1,6 @@
 use std::{
-    io,
-    os::windows::io::IntoRawHandle,
+    env, io,
+    os::windows::{ffi::OsStrExt, io::IntoRawHandle},
     process::{Child, ChildStdin},
     ptr::NonNull,
     sync::{
@@ -28,7 +28,7 @@ use winapi::{
         namedpipeapi::{
             ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, SetNamedPipeHandleState,
         },
-        processenv::{GetCommandLineW, GetCurrentDirectoryW, GetStdHandle},
+        processenv::{GetCommandLineW, GetStdHandle},
         processthreadsapi::{CreateProcessW, PROCESS_INFORMATION, STARTUPINFOW},
         stringapiset::{MultiByteToWideChar, WideCharToMultiByte},
         synchapi::{CreateEventW, SetEvent, WaitForMultipleObjects},
@@ -83,15 +83,17 @@ pub fn main() {
         Some(ref name) => name.as_str(),
         None => {
             use io::Write;
-            get_current_directory(&mut pipe_path);
-            let bytes = pipe_path
-                .iter()
+
+            let current_dir = env::current_dir().expect("could not retrieve the current directory");
+            let current_dir_bytes = current_dir
+                .as_os_str()
+                .encode_wide()
                 .map(|s| {
                     let bytes = s.to_le_bytes();
                     std::iter::once(bytes[0]).chain(std::iter::once(bytes[1]))
                 })
                 .flatten();
-            let current_directory_hash = hash_bytes(bytes);
+            let current_directory_hash = hash_bytes(current_dir_bytes);
             let mut cursor = io::Cursor::new(&mut hash_buf[..]);
             write!(&mut cursor, "{:x}", current_directory_hash).unwrap();
             let len = cursor.position() as usize;
@@ -129,23 +131,13 @@ fn get_last_error() -> DWORD {
 }
 
 fn set_ctrlc_handler() {
-    unsafe extern "system" fn ctrl_handler(_ctrl_type: DWORD) -> BOOL {
+    unsafe extern "system" fn handler(_ctrl_type: DWORD) -> BOOL {
         FALSE
     }
 
-    if unsafe { SetConsoleCtrlHandler(Some(ctrl_handler), TRUE) } == FALSE {
+    if unsafe { SetConsoleCtrlHandler(Some(handler), TRUE) } == FALSE {
         panic!("could not set ctrl handler");
     }
-}
-
-fn get_current_directory(buf: &mut Vec<u16>) {
-    let len = unsafe { GetCurrentDirectoryW(0, std::ptr::null_mut()) } as usize;
-    buf.resize(len, 0);
-    let len = unsafe { GetCurrentDirectoryW(buf.len() as _, buf.as_mut_ptr()) } as usize;
-    if len == 0 {
-        panic!("could not get current directory");
-    }
-    unsafe { buf.set_len(len) }
 }
 
 fn pipe_exists(path: &[u16]) -> bool {
