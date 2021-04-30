@@ -47,11 +47,8 @@ pub fn main() {
     };
 
     let mut stream_path = String::new();
-    // TODO: rest of usd path here
+    stream_path.push_str("/tmp/pepper/");
     stream_path.push_str(session_name);
-    //stream_path.push('\0');
-    //let stream_path_c = &stream_path[..];
-    let stream_path = &stream_path[..];
 
     if args.print_session {
         print!("{}", stream_path);
@@ -59,6 +56,8 @@ pub fn main() {
     }
 
     set_ctrlc_handler();
+
+    let stream_path = Path::new(&stream_path);
 
     if args.force_server {
         run_server(stream_path);
@@ -105,7 +104,13 @@ fn set_ctrlc_handler() {
     }
 }
 
-fn run_server(stream_path: &str) {
+fn run_server(stream_path: &Path) {
+    if let Some(dir) = stream_path.parent() {
+        if !dir.exists() {
+            let _ = fs::create_dir(dir);
+        }
+    }
+
     let listener = match UnixListener::bind(stream_path) {
         Ok(listener) => listener,
         Err(_) => {
