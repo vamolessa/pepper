@@ -16,8 +16,9 @@ use std::{
 
 use libc::{
     c_int, c_void, close, epoll_create1, eventfd, fork, read, sigaction, sigemptyset, siginfo_t,
-    tcflag_t, tcgetattr, tcsetattr, termios, write, ECHO, EFD_NONBLOCK, ICANON, ICRNL, IEXTEN, OPOST,
-    ISIG, IXON, SA_SIGINFO, SIGINT, STDIN_FILENO, TCSAFLUSH,
+    tcflag_t, tcgetattr, tcsetattr, termios, write, BRKINT, CS8, ECHO, EFD_NONBLOCK, ICANON, ICRNL,
+    IEXTEN, INPCK, ISIG, ISTRIP, IXON, OPOST, SA_SIGINFO, SIGINT, STDIN_FILENO, TCSAFLUSH, VMIN,
+    VTIME,
 };
 
 use pepper::{
@@ -31,8 +32,6 @@ use pepper::{
 };
 
 pub fn main() {
-    println!("hello from linux");
-
     let args = Args::parse();
 
     let mut hash_buf = [0u8; 16];
@@ -129,9 +128,12 @@ impl RawMode {
             let mut original = std::mem::zeroed();
             tcgetattr(STDIN_FILENO, &mut original);
             let mut new = original.clone();
-            new.c_iflag &= !(ICRNL | IXON);
-            new.c_oflag &= !(OPOST);
+            new.c_iflag &= !(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
+            new.c_oflag &= !OPOST;
+            new.c_cflag |= CS8;
             new.c_lflag &= !(ECHO | ICANON | ISIG | IEXTEN);
+            new.c_cc[VMIN] = 0;
+            new.c_cc[VTIME] = 1;
             tcsetattr(STDIN_FILENO, TCSAFLUSH, &new);
             original
         };
@@ -241,24 +243,27 @@ fn run_client(args: Args, stream: UnixStream) -> Result<(), AnyError> {
     set_ctrlc_handler();
 
     print!("client\r\n");
-    
+
     let stdin = io::stdin();
     let mut stdin = stdin.lock();
-    
+
     let raw_mode = RawMode::enter();
 
-    let mut buf = [0];
-    loop {
-        use io::Read;
+    let mut keys = Vec::new();
 
-        let len = stdin.read(&mut buf)?;
-        if len == 0 {
+    let mut buf = [0];
+    'main_loop: loop {
+        keys.clear();
+        parse_console_events(&mut stdin, &mut keys)?;
+        if keys.is_empty() {
+            print!("cabo keys\r\n");
             break;
         }
-
-        print!("{}\r\n", buf[0]);
-        if buf[0] == b'q' {
-            break;
+        for &key in &keys {
+            print!("key: {}\r\n", key);
+            if key == Key::Esc {
+                break 'main_loop;
+            }
         }
     }
 
@@ -266,9 +271,58 @@ fn run_client(args: Args, stream: UnixStream) -> Result<(), AnyError> {
     Ok(())
 }
 
-fn read_console_events<R>(reader: R, keys: &mut Vec<Key>) -> Key
+fn parse_console_events<R>(reader: &mut R, keys: &mut Vec<Key>) -> io::Result<()>
 where
     R: io::Read,
 {
-    Key::None
+    let mut buf = [0; 64];
+    let len = reader.read(&mut buf)?;
+    let mut buf = &buf[..len];
+
+    loop {
+        let (key, rest) = match buf {
+            &[] => break,
+            &[0x1b, b'[', b'5', b'~', ref rest @ ..] => (Key::PageUp, rest),
+            &[0x1b, b'[', b'6', b'~', ref rest @ ..] => (Key::PageDown, rest),
+            &[0x1b, b'[', b'A', ref rest @ ..] => (Key::Up, rest),
+            &[0x1b, b'[', b'B', ref rest @ ..] => (Key::Down, rest),
+            &[0x1b, b'[', b'C', ref rest @ ..] => (Key::Right, rest),
+            &[0x1b, b'[', b'D', ref rest @ ..] => (Key::Left, rest),
+            &[0x1b, b'[', b'1', b'~', ref rest @ ..]
+            | &[0x1b, b'[', b'7', b'~', ref rest @ ..]
+            | &[0x1b, b'[', b'H', ref rest @ ..]
+            | &[0x1b, b'O', b'H', ref rest @ ..] => (Key::Home, rest),
+            &[0x1b, b'[', b'4', b'~', ref rest @ ..]
+            | &[0x1b, b'[', b'8', b'~', ref rest @ ..]
+            | &[0x1b, b'[', b'F', ref rest @ ..]
+            | &[0x1b, b'O', b'F', ref rest @ ..] => (Key::End, rest),
+            &[0x1b, b'[', b'3', b'~', ref rest @ ..] => (Key::Delete, rest),
+            &[0x1b, ref rest @ ..] => (Key::Esc, rest),
+            &[0x8, ref rest @ ..] => (Key::Backspace, rest),
+            &[b'\n', ref rest @ ..] => (Key::Enter, rest),
+            &[b'\t', ref rest @ ..] => (Key::Tab, rest),
+            &[0x7f, ref rest @ ..] => (Key::Delete, rest),
+            &[b @ 0b0..=0b11111, ref rest @ ..] => {
+                let byte = b | 0b01100000;
+                (Key::Ctrl(byte as _), rest)
+            }
+            _ => match buf.iter().position(|b| b.is_ascii()).unwrap_or(buf.len()) {
+                0 => (Key::Char(buf[0] as _), &buf[1..]),
+                len => {
+                    let (c, rest) = buf.split_at(len);
+                    match std::str::from_utf8(c) {
+                        Ok(s) => match s.chars().next() {
+                            Some(c) => (Key::Char(c), rest),
+                            None => (Key::None, rest),
+                        },
+                        Err(_) => (Key::None, rest),
+                    }
+                }
+            },
+        };
+        buf = rest;
+        keys.push(key);
+    }
+
+    Ok(())
 }
