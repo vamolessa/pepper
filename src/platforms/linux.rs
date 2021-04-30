@@ -1,17 +1,18 @@
 use std::{
-    env, io,
-    os::unix::{ffi::OsStrExt, io::IntoRawFd},
-    process::{Child, ChildStdin},
-    ptr::NonNull,
-    sync::{
-        atomic::{AtomicPtr, Ordering},
-        mpsc,
+    env, fs, io,
+    os::unix::{
+        ffi::OsStrExt,
+        io::IntoRawFd,
+        net::{UnixListener, UnixStream},
     },
+    path::Path,
+    process::{Child, ChildStdin},
+    sync::mpsc,
     time::Duration,
 };
 
 use libc::{
-    c_int, c_void, epoll_create1, sigaction, sigemptyset, siginfo_t, SA_SIGINFO, SIGINT,
+    c_int, c_void, epoll_create1, fork, sigaction, sigemptyset, siginfo_t, SA_SIGINFO, SIGINT,
 };
 
 use pepper::{
@@ -45,20 +46,41 @@ pub fn main() {
         }
     };
 
-    let mut uds_path = String::new();
+    let mut stream_path = String::new();
     // TODO: rest of usd path here
-    uds_path.push_str(session_name);
+    stream_path.push_str(session_name);
+    //stream_path.push('\0');
+    //let stream_path_c = &stream_path[..];
+    let stream_path = &stream_path[..];
 
     if args.print_session {
-        print!("{}", uds_path);
+        print!("{}", stream_path);
         return;
     }
 
     set_ctrlc_handler();
 
-    for i in 0..5 {
-        println!("contando {}", i);
-        std::thread::sleep(Duration::from_secs(1))
+    if args.force_server {
+        run_server(stream_path);
+        return;
+    }
+    return;
+
+    match UnixStream::connect(stream_path) {
+        Ok(stream) => run_client(args, stream),
+        Err(_) => match unsafe { fork() } {
+            -1 => panic!("could not start server"),
+            0 => loop {
+                match UnixStream::connect(stream_path) {
+                    Ok(stream) => {
+                        run_client(args, stream);
+                        break;
+                    }
+                    Err(_) => std::thread::sleep(Duration::from_millis(100)),
+                }
+            },
+            _ => run_server(stream_path),
+        },
     }
 }
 
@@ -81,4 +103,25 @@ fn set_ctrlc_handler() {
     if result != 0 {
         panic!("could not set ctrl handler");
     }
+}
+
+fn run_server(stream_path: &str) {
+    let listener = match UnixListener::bind(stream_path) {
+        Ok(listener) => listener,
+        Err(_) => {
+            let _ = fs::remove_file(stream_path);
+            UnixListener::bind(stream_path).expect("could not start unix domain socket server")
+        }
+    };
+
+    println!("begin server");
+    std::thread::sleep(Duration::from_secs(3));
+    println!("end server");
+    // TODO
+    
+    fs::remove_file(stream_path);
+}
+
+fn run_client(args: Args, stream: UnixStream) {
+    // TODO
 }

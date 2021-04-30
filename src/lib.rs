@@ -31,8 +31,9 @@ pub struct Args {
     pub version: bool,
     pub configs: Vec<String>,
     pub session: Option<String>,
-    pub print_session: bool,
     pub as_client: Option<client::ClientHandle>,
+    pub print_session: bool,
+    pub force_server: bool,
     pub files: Vec<String>,
 }
 
@@ -55,10 +56,11 @@ fn print_help() {
     println!();
     println!("  -h, --help                prints help and quits");
     println!("  -v, --version             prints version and quits");
-    println!("  -c, --config:             loads config file at path (repeatable)");
-    println!("  -s, --session:            session name to connect to");
-    println!("  --print-session:          print the computed session name and quits");
+    println!("  -c, --config              loads config file at path (repeatable)");
+    println!("  -s, --session             session name to connect to");
     println!("  --as-client <client-id>   sends events as if it was client with id <client-id>");
+    println!("  --print-session           print the computed session name and quits");
+    println!("  --force-server            try starting a server and never spawns a client");
 }
 
 impl Args {
@@ -109,7 +111,6 @@ impl Args {
                     }
                     None => error(format_args!("expected session after {}", arg)),
                 },
-                "--print-session" => parsed.print_session = true,
                 "--as-client" => match args.next() {
                     Some(arg) => {
                         let arg = arg_to_str(&arg);
@@ -123,6 +124,8 @@ impl Args {
                     }
                     None => error(format_args!("expected client id after {}", arg)),
                 },
+                "--print-session" => parsed.print_session = true,
+                "--force-server" => parsed.force_server = true,
                 "--" => {
                     while let Some(arg) = args.next() {
                         let arg = arg_to_str(&arg);

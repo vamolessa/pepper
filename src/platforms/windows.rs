@@ -118,7 +118,11 @@ pub fn main() {
 
     match (input_handle, output_handle) {
         (Some(input_handle), Some(output_handle)) => {
-            run_client(args, &pipe_path, input_handle, output_handle);
+            if args.force_server {
+                let _ = run_server(&pipe_path);
+            } else {
+                run_client(args, &pipe_path, input_handle, output_handle);
+            }
         }
         _ => {
             let _ = run_server(&pipe_path);
@@ -344,10 +348,24 @@ fn fork() {
 
     let mut process_info = unsafe { std::mem::zeroed::<PROCESS_INFORMATION>() };
 
+    let mut client_command_line = unsafe { GetCommandLineW() };
+    let mut command_line = Vec::new();
+    loop {
+        unsafe {
+            let short = std::ptr::read(client_command_line);
+            if short == 0 {
+                break;
+            }
+            client_command_line = client_command_line.offset(1);
+            command_line.push(short);
+        }
+    }
+    command_line.push(0);
+
     let result = unsafe {
         CreateProcessW(
             std::ptr::null(),
-            GetCommandLineW(),
+            command_line.as_mut_ptr(),
             std::ptr::null_mut(),
             std::ptr::null_mut(),
             TRUE,
