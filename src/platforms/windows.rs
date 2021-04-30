@@ -111,8 +111,6 @@ pub fn main() {
         return;
     }
 
-    set_ctrlc_handler();
-
     let input_handle = get_std_handle(STD_INPUT_HANDLE);
     let output_handle = get_std_handle(STD_OUTPUT_HANDLE);
 
@@ -1176,6 +1174,8 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle
             std::thread::sleep(Duration::from_millis(100));
         }
     }
+    
+    set_ctrlc_handler();
 
     let mut connection = ConnectionToServer::connect(pipe_path);
 

@@ -15,9 +15,9 @@ use std::{
 };
 
 use libc::{
-    c_int, c_void, close, epoll_create1, eventfd, fork, read, sigaction, sigemptyset,
-    siginfo_t, tcflag_t, tcgetattr, tcsetattr, termios, write, ECHO, EFD_NONBLOCK, SA_SIGINFO,
-    SIGINT, STDIN_FILENO, TCSAFLUSH, ICANON,
+    c_int, c_void, close, epoll_create1, eventfd, fork, read, sigaction, sigemptyset, siginfo_t,
+    tcflag_t, tcgetattr, tcsetattr, termios, write, ECHO, EFD_NONBLOCK, ICANON, ICRNL, IEXTEN, OPOST,
+    ISIG, IXON, SA_SIGINFO, SIGINT, STDIN_FILENO, TCSAFLUSH,
 };
 
 use pepper::{
@@ -61,8 +61,6 @@ pub fn main() {
         print!("{}", stream_path);
         return;
     }
-
-    set_ctrlc_handler();
 
     let stream_path = Path::new(&stream_path);
 
@@ -131,7 +129,9 @@ impl RawMode {
             let mut original = std::mem::zeroed();
             tcgetattr(STDIN_FILENO, &mut original);
             let mut new = original.clone();
-            new.c_lflag &= !(ECHO | ICANON);
+            new.c_iflag &= !(ICRNL | IXON);
+            new.c_oflag &= !(OPOST);
+            new.c_lflag &= !(ECHO | ICANON | ISIG | IEXTEN);
             tcsetattr(STDIN_FILENO, TCSAFLUSH, &new);
             original
         };
@@ -238,26 +238,37 @@ fn run_server(stream_path: &Path) -> Result<(), AnyError> {
 }
 
 fn run_client(args: Args, stream: UnixStream) -> Result<(), AnyError> {
-    println!("client");
+    set_ctrlc_handler();
+
+    print!("client\r\n");
     
     let stdin = io::stdin();
     let mut stdin = stdin.lock();
+    
     let raw_mode = RawMode::enter();
 
     let mut buf = [0];
     loop {
         use io::Read;
-    
+
         let len = stdin.read(&mut buf)?;
         if len == 0 {
             break;
         }
-        println!("{}", buf[0]);
+
+        print!("{}\r\n", buf[0]);
         if buf[0] == b'q' {
             break;
         }
     }
-    
+
     drop(raw_mode);
     Ok(())
+}
+
+fn read_console_events<R>(reader: R, keys: &mut Vec<Key>) -> Key
+where
+    R: io::Read,
+{
+    Key::None
 }
