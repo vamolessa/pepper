@@ -168,7 +168,7 @@ fn get_console_size(output_handle: &Handle) -> (usize, usize) {
     let mut console_info = unsafe { std::mem::zeroed() };
     let result = unsafe { GetConsoleScreenBufferInfo(output_handle.0, &mut console_info) };
     if result == FALSE {
-        panic!("could not get console info");
+        panic!("could not get console size");
     }
     (console_info.dwSize.X as _, console_info.dwSize.Y as _)
 }

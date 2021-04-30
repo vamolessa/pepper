@@ -2,7 +2,7 @@ use std::{
     env, fs, io,
     os::unix::{
         ffi::OsStrExt,
-        io::IntoRawFd,
+        io::{IntoRawFd},
         net::{UnixListener, UnixStream},
     },
     path::Path,
@@ -15,10 +15,10 @@ use std::{
 };
 
 use libc::{
-    c_int, c_void, close, epoll_create1, eventfd, fork, read, sigaction, sigemptyset, siginfo_t,
-    tcflag_t, tcgetattr, tcsetattr, termios, write, BRKINT, CS8, ECHO, EFD_NONBLOCK, ICANON, ICRNL,
-    IEXTEN, INPCK, ISIG, ISTRIP, IXON, OPOST, SA_SIGINFO, SIGINT, SIGWINCH, STDIN_FILENO,
-    TCSAFLUSH, VMIN, VTIME,
+    c_int, c_void, close, epoll_create1, eventfd, fork, ioctl, read, sigaction, sigemptyset,
+    siginfo_t, tcflag_t, tcgetattr, tcsetattr, termios, winsize, write, BRKINT, CS8, ECHO,
+    EFD_NONBLOCK, ICANON, ICRNL, IEXTEN, INPCK, ISIG, ISTRIP, IXON, OPOST, SA_SIGINFO, SIGINT,
+    SIGWINCH, STDIN_FILENO, STDOUT_FILENO, TCSAFLUSH, TIOCGWINSZ, VMIN, VTIME,
 };
 
 use pepper::{
@@ -266,19 +266,20 @@ fn run_client(args: Args, stream: UnixStream) {
     set_ctrlc_handler();
     set_window_size_changed_handler();
 
-    print!("client\r\n");
-
     let stdin = io::stdin();
     let mut stdin = stdin.lock();
+    
+    print!("client\r\n");
 
     let raw_mode = RawMode::enter();
+    let (width, height) = get_console_size();
+    print!("console size: {}, {}\r\n", width, height);
 
     let mut keys = Vec::new();
 
-    let mut buf = [0];
     'main_loop: loop {
         keys.clear();
-        if !parse_console_events(&mut stdin, &mut keys) {
+        if !read_console_keys(&mut stdin, &mut keys) {
             print!("cabo keys\r\n");
             break;
         }
@@ -293,15 +294,23 @@ fn run_client(args: Args, stream: UnixStream) {
     drop(raw_mode);
 }
 
-fn get_console_size(stdin: &mut io::StdinLock) -> (usize, usize) {
-    (0, 0)
+fn get_console_size() -> (usize, usize) {
+    let mut size: winsize = unsafe { std::mem::zeroed() };
+    let result = unsafe { ioctl(STDOUT_FILENO, TIOCGWINSZ, &mut size as *mut winsize) };
+    if result == -1 || size.ws_col == 0 {
+        panic!("could not get console size");
+    }
+
+    (size.ws_col as _, size.ws_row as _)
 }
 
-fn parse_console_events(stdin: &mut io::StdinLock, keys: &mut Vec<Key>) -> bool {
-    use io::Read;
-
+fn read_console_keys<R>(reader: &mut R, keys: &mut Vec<Key>) -> bool
+where
+    R: io::Read,
+{
     let mut buf = [0; 64];
-    let len = match stdin.read(&mut buf) {
+    let len = match reader.read(&mut buf) {
+        Ok(0) => return false,
         Ok(len) => len,
         Err(error) => match error.kind() {
             io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted => return true,
