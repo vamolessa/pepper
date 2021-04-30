@@ -7,12 +7,16 @@ use std::{
     },
     path::Path,
     process::{Child, ChildStdin},
-    sync::mpsc,
+    sync::{
+        atomic::{AtomicI32, Ordering},
+        mpsc,
+    },
     time::Duration,
 };
 
 use libc::{
-    c_int, c_void, epoll_create1, fork, sigaction, sigemptyset, siginfo_t, SA_SIGINFO, SIGINT,
+    c_int, c_void, close, epoll_create1, eventfd, fork, sigaction, sigemptyset, siginfo_t,
+    SA_SIGINFO, SIGINT,
 };
 
 use pepper::{
@@ -20,7 +24,8 @@ use pepper::{
     client::ClientHandle,
     editor_utils::hash_bytes,
     platform::{
-        BufPool, ExclusiveBuf, Key, Platform, PlatformRequest, ProcessHandle, ProcessTag, SharedBuf,
+        BufPool, ExclusiveBuf, Key, Platform, PlatformRequest, ProcessHandle, ProcessTag,
+        SharedBuf,
     },
     Args,
 };
@@ -62,7 +67,8 @@ pub fn main() {
     let stream_path = Path::new(&stream_path);
 
     if args.force_server {
-        run_server(stream_path);
+        let _ = run_server(stream_path);
+        fs::remove_file(stream_path);
         return;
     }
     return;
@@ -80,7 +86,10 @@ pub fn main() {
                     Err(_) => std::thread::sleep(Duration::from_millis(100)),
                 }
             },
-            _ => run_server(stream_path),
+            _ => {
+                let _ = run_server(stream_path);
+                fs::remove_file(stream_path);
+            }
         },
     }
 }
@@ -106,27 +115,66 @@ fn set_ctrlc_handler() {
     }
 }
 
-fn run_server(stream_path: &Path) {
+struct Event(c_int);
+impl Event {
+    pub fn new() -> Self {
+        Self(0)
+    }
+
+    pub fn notify(&self) {
+        // TODO
+    }
+}
+impl Drop for Event {
+    fn drop(&mut self) {
+        unsafe { close(self.0) };
+    }
+}
+
+fn read_from_clipboard(text: &mut String) -> bool {
+    todo!()
+}
+
+fn write_to_clipboard(text: &str) {
+    todo!()
+}
+
+fn run_server(stream_path: &Path) -> Result<(), AnyError> {
+    static NEW_REQUEST_FD: AtomicI32 = AtomicI32::new(-1);
+
     if let Some(dir) = stream_path.parent() {
         if !dir.exists() {
             let _ = fs::create_dir(dir);
         }
     }
 
-    let listener = match UnixListener::bind(stream_path) {
-        Ok(listener) => listener,
-        Err(_) => {
-            let _ = fs::remove_file(stream_path);
-            UnixListener::bind(stream_path).expect("could not start unix domain socket server")
-        }
+    let _ = fs::remove_file(stream_path);
+    let listener =
+        UnixListener::bind(stream_path).expect("could not start unix domain socket server");
+
+    let mut buf_pool = BufPool::default();
+
+    let new_request_event = Event::new();
+    NEW_REQUEST_FD.store(new_request_event.0 as _, Ordering::Relaxed);
+
+    let (request_sender, request_receiver) = mpsc::channel();
+    let platform = Platform::new(
+        read_from_clipboard,
+        write_to_clipboard,
+        || (), // TODO: write to NEW_REQUEST_FD
+        request_sender,
+    );
+
+    let event_sender = match ServerApplication::run(platform) {
+        Some(sender) => sender,
+        None => return Ok(()),
     };
 
-    println!("begin server");
-    std::thread::sleep(Duration::from_secs(3));
-    println!("end server");
-    // TODO
-    
-    fs::remove_file(stream_path);
+    let mut timeout = Some(ServerApplication::idle_duration());
+
+    loop {
+        // TODO: main loop
+    }
 }
 
 fn run_client(args: Args, stream: UnixStream) {
