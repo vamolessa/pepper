@@ -2,7 +2,7 @@ use std::{
     env, fs, io,
     os::unix::{
         ffi::OsStrExt,
-        io::{IntoRawFd},
+        io::{IntoRawFd, RawFd},
         net::{UnixListener, UnixStream},
     },
     path::Path,
@@ -12,13 +12,6 @@ use std::{
         mpsc,
     },
     time::Duration,
-};
-
-use libc::{
-    c_int, c_void, close, epoll_create1, eventfd, fork, ioctl, read, sigaction, sigemptyset,
-    siginfo_t, tcflag_t, tcgetattr, tcsetattr, termios, winsize, write, BRKINT, CS8, ECHO,
-    EFD_NONBLOCK, ICANON, ICRNL, IEXTEN, INPCK, ISIG, ISTRIP, IXON, OPOST, SA_SIGINFO, SIGINT,
-    SIGWINCH, STDIN_FILENO, STDOUT_FILENO, TCSAFLUSH, TIOCGWINSZ, VMIN, VTIME,
 };
 
 use pepper::{
@@ -79,7 +72,7 @@ pub fn main() {
         Ok(stream) => {
             let _ = run_client(args, stream);
         }
-        Err(_) => match unsafe { fork() } {
+        Err(_) => match unsafe { libc::fork() } {
             -1 => panic!("could not start server"),
             0 => loop {
                 match UnixStream::connect(stream_path) {
@@ -98,10 +91,10 @@ pub fn main() {
     }
 }
 
-fn write_to_event_fd(fd: c_int) {
+fn write_to_event_fd(fd: RawFd) {
     let mut buf = 1u64.to_ne_bytes();
     loop {
-        let result = unsafe { write(fd, buf.as_mut_ptr() as _, buf.len() as _) };
+        let result = unsafe { libc::write(fd, buf.as_mut_ptr() as _, buf.len() as _) };
         if result == -1 {
             if let io::ErrorKind::WouldBlock = io::Error::last_os_error().kind() {
                 std::thread::yield_now();
@@ -114,11 +107,10 @@ fn write_to_event_fd(fd: c_int) {
     }
 }
 
-struct EventFd(c_int);
+struct EventFd(RawFd);
 impl EventFd {
     pub fn new() -> Self {
-        // TODO: maybe no need for NONBLOCK if we use epoll level triggered
-        let fd = unsafe { eventfd(0, EFD_NONBLOCK) };
+        let fd = unsafe { libc::eventfd(0, 0) };
         if fd == -1 {
             panic!("could not create event");
         }
@@ -131,7 +123,7 @@ impl EventFd {
 
     pub fn read(&self) {
         let mut buf = [0; 8];
-        let result = unsafe { read(self.0, buf.as_mut_ptr() as _, buf.len() as _) };
+        let result = unsafe { libc::read(self.0, buf.as_mut_ptr() as _, buf.len() as _) };
         if result != buf.len() as _ {
             panic!("could not read from event fd");
         }
@@ -139,7 +131,7 @@ impl EventFd {
 }
 impl Drop for EventFd {
     fn drop(&mut self) {
-        unsafe { close(self.0) };
+        unsafe { libc::close(self.0) };
     }
 }
 
@@ -192,22 +184,22 @@ fn run_server(stream_path: &Path) -> Result<(), AnyError> {
 }
 
 fn set_signal_handler(
-    signal: c_int,
-    handler: unsafe extern "system" fn(c_int, *const siginfo_t, *const c_void),
+    signal: libc::c_int,
+    handler: unsafe extern "system" fn(libc::c_int, *const libc::siginfo_t, *const libc::c_void),
 ) -> bool {
-    let mut action = sigaction {
+    let mut action = libc::sigaction {
         sa_sigaction: handler as _,
         sa_mask: unsafe { std::mem::zeroed() },
-        sa_flags: SA_SIGINFO,
+        sa_flags: libc::SA_SIGINFO,
         sa_restorer: None,
     };
 
-    let result = unsafe { sigemptyset(&mut action.sa_mask) };
+    let result = unsafe { libc::sigemptyset(&mut action.sa_mask) };
     if result != 0 {
         return false;
     }
 
-    let result = unsafe { sigaction(signal, &action, std::ptr::null_mut()) };
+    let result = unsafe { libc::sigaction(signal, &action, std::ptr::null_mut()) };
     if result != 0 {
         return false;
     }
@@ -216,8 +208,13 @@ fn set_signal_handler(
 }
 
 fn set_ctrlc_handler() {
-    unsafe extern "system" fn handler(_: c_int, _: *const siginfo_t, _: *const c_void) {}
-    if !set_signal_handler(SIGINT, handler) {
+    unsafe extern "system" fn handler(
+        _: libc::c_int,
+        _: *const libc::siginfo_t,
+        _: *const libc::c_void,
+    ) {
+    }
+    if !set_signal_handler(libc::SIGINT, handler) {
         panic!("could not set ctrl handler");
     }
 }
@@ -225,32 +222,36 @@ fn set_ctrlc_handler() {
 static RESIZE_EVENT_FD: AtomicIsize = AtomicIsize::new(-1);
 
 fn set_window_size_changed_handler() {
-    unsafe extern "system" fn handler(signal: c_int, _: *const siginfo_t, _: *const c_void) {
-        if signal == SIGWINCH {
+    unsafe extern "system" fn handler(
+        signal: libc::c_int,
+        _: *const libc::siginfo_t,
+        _: *const libc::c_void,
+    ) {
+        if signal == libc::SIGWINCH {
             write_to_event_fd(RESIZE_EVENT_FD.load(Ordering::Relaxed) as _);
         }
     }
-    if !set_signal_handler(SIGWINCH, handler) {
+    if !set_signal_handler(libc::SIGWINCH, handler) {
         panic!("could not set window size changed handler");
     }
 }
 
 struct RawMode {
-    original: termios,
+    original: libc::termios,
 }
 impl RawMode {
     pub fn enter() -> Self {
         let original = unsafe {
             let mut original = std::mem::zeroed();
-            tcgetattr(STDIN_FILENO, &mut original);
+            libc::tcgetattr(libc::STDIN_FILENO, &mut original);
             let mut new = original.clone();
-            new.c_iflag &= !(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
-            new.c_oflag &= !OPOST;
-            new.c_cflag |= CS8;
-            new.c_lflag &= !(ECHO | ICANON | ISIG | IEXTEN);
-            new.c_cc[VMIN] = 0;
-            new.c_cc[VTIME] = 1;
-            tcsetattr(STDIN_FILENO, TCSAFLUSH, &new);
+            new.c_iflag &= !(libc::BRKINT | libc::ICRNL | libc::INPCK | libc::ISTRIP | libc::IXON);
+            new.c_oflag &= !libc::OPOST;
+            new.c_cflag |= libc::CS8;
+            new.c_lflag &= !(libc::ECHO | libc::ICANON | libc::ISIG | libc::IEXTEN);
+            new.c_cc[libc::VMIN] = 0;
+            new.c_cc[libc::VTIME] = 1;
+            libc::tcsetattr(libc::STDIN_FILENO, libc::TCSAFLUSH, &new);
             original
         };
         Self { original }
@@ -258,7 +259,34 @@ impl RawMode {
 }
 impl Drop for RawMode {
     fn drop(&mut self) {
-        unsafe { tcsetattr(STDIN_FILENO, TCSAFLUSH, &self.original) };
+        unsafe { libc::tcsetattr(libc::STDIN_FILENO, libc::TCSAFLUSH, &self.original) };
+    }
+}
+
+fn epoll_event_from_fd(fd: RawFd) -> libc::epoll_event {
+    libc::epoll_event {
+        events: libc::EPOLLIN as _,
+        u64: fd as _,
+    }
+}
+
+struct Epoll(RawFd);
+impl Epoll {
+    pub fn new() -> Self {
+        let fd = unsafe { libc::epoll_create1(0) };
+        if fd == -1 {
+            panic!("could not create epoll");
+        }
+        Self(fd)
+    }
+
+    pub fn track(&self, fd: RawFd, event: &mut libc::epoll_event) {
+        //
+    }
+}
+impl Drop for Epoll {
+    fn drop(&mut self) {
+        unsafe { libc::close(self.0) };
     }
 }
 
@@ -268,7 +296,7 @@ fn run_client(args: Args, stream: UnixStream) {
 
     let stdin = io::stdin();
     let mut stdin = stdin.lock();
-    
+
     print!("client\r\n");
 
     let raw_mode = RawMode::enter();
@@ -295,8 +323,14 @@ fn run_client(args: Args, stream: UnixStream) {
 }
 
 fn get_console_size() -> (usize, usize) {
-    let mut size: winsize = unsafe { std::mem::zeroed() };
-    let result = unsafe { ioctl(STDOUT_FILENO, TIOCGWINSZ, &mut size as *mut winsize) };
+    let mut size: libc::winsize = unsafe { std::mem::zeroed() };
+    let result = unsafe {
+        libc::ioctl(
+            libc::STDOUT_FILENO,
+            libc::TIOCGWINSZ,
+            &mut size as *mut libc::winsize,
+        )
+    };
     if result == -1 || size.ws_col == 0 {
         panic!("could not get console size");
     }
