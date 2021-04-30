@@ -8,15 +8,16 @@ use std::{
     path::Path,
     process::{Child, ChildStdin},
     sync::{
-        atomic::{AtomicI32, Ordering},
+        atomic::{AtomicIsize, Ordering},
         mpsc,
     },
     time::Duration,
 };
 
 use libc::{
-    c_int, c_void, close, epoll_create1, eventfd, fork, sigaction, sigemptyset, siginfo_t,
-    SA_SIGINFO, SIGINT, EFD_CLOEXEC, EFD_NONBLOCK, read, write,
+    c_int, c_void, close, epoll_create1, eventfd, fork, read, sigaction, sigemptyset,
+    siginfo_t, tcflag_t, tcgetattr, tcsetattr, termios, write, ECHO, EFD_NONBLOCK, SA_SIGINFO,
+    SIGINT, STDIN_FILENO, TCSAFLUSH, ICANON,
 };
 
 use pepper::{
@@ -24,8 +25,7 @@ use pepper::{
     client::ClientHandle,
     editor_utils::hash_bytes,
     platform::{
-        BufPool, ExclusiveBuf, Key, Platform, PlatformRequest, ProcessHandle, ProcessTag,
-        SharedBuf,
+        BufPool, ExclusiveBuf, Key, Platform, PlatformRequest, ProcessHandle, ProcessTag, SharedBuf,
     },
     Args,
 };
@@ -66,12 +66,17 @@ pub fn main() {
 
     let stream_path = Path::new(&stream_path);
 
+    // temp
+    let (stream, _) = UnixStream::pair().unwrap();
+    run_client(args, stream);
+    return;
+    // temp
+
     if args.force_server {
         let _ = run_server(stream_path);
-        fs::remove_file(stream_path);
+        let _ = fs::remove_file(stream_path);
         return;
     }
-    return;
 
     match UnixStream::connect(stream_path) {
         Ok(stream) => run_client(args, stream),
@@ -88,7 +93,7 @@ pub fn main() {
             },
             _ => {
                 let _ = run_server(stream_path);
-                fs::remove_file(stream_path);
+                let _ = fs::remove_file(stream_path);
             }
         },
     }
@@ -104,48 +109,79 @@ fn set_ctrlc_handler() {
         sa_restorer: None,
     };
 
-    let result = unsafe { sigemptyset(&mut action.sa_mask as _) };
+    let result = unsafe { sigemptyset(&mut action.sa_mask) };
     if result != 0 {
         panic!("could not set ctrl handler");
     }
 
-    let result = unsafe { sigaction(SIGINT, &action as _, std::ptr::null_mut()) };
+    let result = unsafe { sigaction(SIGINT, &action, std::ptr::null_mut()) };
     if result != 0 {
         panic!("could not set ctrl handler");
     }
 }
 
-fn notify_event(fd: c_int) {
+struct RawMode {
+    original: termios,
+}
+impl RawMode {
+    pub fn enter() -> Self {
+        let original = unsafe {
+            let mut original = std::mem::zeroed();
+            tcgetattr(STDIN_FILENO, &mut original);
+            let mut new = original.clone();
+            new.c_lflag &= !(ECHO | ICANON);
+            tcsetattr(STDIN_FILENO, TCSAFLUSH, &new);
+            original
+        };
+        Self { original }
+    }
+}
+impl Drop for RawMode {
+    fn drop(&mut self) {
+        unsafe { tcsetattr(STDIN_FILENO, TCSAFLUSH, &self.original) };
+    }
+}
+
+fn write_to_event_fd(fd: c_int) {
     let mut buf = 1u64.to_ne_bytes();
-    let result = unsafe { write(fd, buf.as_mut_ptr() as _, buf.len() as _) };
-    if result != buf.len() as _ {
-        panic!("could not read event");
+    loop {
+        let result = unsafe { write(fd, buf.as_mut_ptr() as _, buf.len() as _) };
+        if result == -1 {
+            if let io::ErrorKind::WouldBlock = io::Error::last_os_error().kind() {
+                std::thread::yield_now();
+                continue;
+            }
+        }
+        if result != buf.len() as _ {
+            panic!("could not write to event fd");
+        }
     }
 }
 
-struct Event(c_int);
-impl Event {
+struct EventFd(c_int);
+impl EventFd {
     pub fn new() -> Self {
-        let fd = unsafe { eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK) };
+        // TODO: maybe no need for NONBLOCK if we use epoll level triggered
+        let fd = unsafe { eventfd(0, EFD_NONBLOCK) };
         if fd == -1 {
             panic!("could not create event");
         }
         Self(fd)
     }
 
-    pub fn notify(&self) {
-        notify_event(self.0);
+    pub fn write(&self) {
+        write_to_event_fd(self.0);
     }
-    
+
     pub fn read(&self) {
-        let mut buf = 1u64.to_ne_bytes();
+        let mut buf = [0; 8];
         let result = unsafe { read(self.0, buf.as_mut_ptr() as _, buf.len() as _) };
         if result != buf.len() as _ {
-            panic!("could not notify event");
+            panic!("could not read from event fd");
         }
     }
 }
-impl Drop for Event {
+impl Drop for EventFd {
     fn drop(&mut self) {
         unsafe { close(self.0) };
     }
@@ -162,7 +198,7 @@ fn write_to_clipboard(text: &str) {
 }
 
 fn run_server(stream_path: &Path) -> Result<(), AnyError> {
-    static NEW_REQUEST_FD: AtomicI32 = AtomicI32::new(-1);
+    static NEW_REQUEST_FD: AtomicIsize = AtomicIsize::new(-1);
 
     if let Some(dir) = stream_path.parent() {
         if !dir.exists() {
@@ -176,7 +212,7 @@ fn run_server(stream_path: &Path) -> Result<(), AnyError> {
 
     let mut buf_pool = BufPool::default();
 
-    let new_request_event = Event::new();
+    let new_request_event = EventFd::new();
     NEW_REQUEST_FD.store(new_request_event.0 as _, Ordering::Relaxed);
 
     let (request_sender, request_receiver) = mpsc::channel();
@@ -200,5 +236,21 @@ fn run_server(stream_path: &Path) -> Result<(), AnyError> {
 }
 
 fn run_client(args: Args, stream: UnixStream) {
-    // TODO
+    println!("client");
+    
+    let raw_mode = RawMode::enter();
+
+    let mut buf = [0];
+    loop {
+        let result = unsafe { read(STDIN_FILENO, buf.as_mut_ptr() as _, buf.len() as _) };
+        if result != 1 {
+            break;
+        }
+        println!("{}", buf[0]);
+        if buf[0] == b'q' {
+            break;
+        }
+    }
+    
+    drop(raw_mode);
 }
