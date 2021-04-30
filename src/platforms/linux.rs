@@ -47,7 +47,9 @@ pub fn main() {
     };
 
     let mut stream_path = String::new();
-    stream_path.push_str("/tmp/pepper/");
+    stream_path.push_str("/tmp/");
+    stream_path.push_str(env!("CARGO_PKG_NAME"));
+    stream_path.push('/');
     stream_path.push_str(session_name);
 
     if args.print_session {
