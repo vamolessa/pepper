@@ -65,6 +65,7 @@ impl ReadLine {
                 ReadLinePoll::Pending
             }
             Key::Ctrl('y') => {
+                // TODO: use string_pool here
                 let mut text = String::new();
                 if platform.read_from_clipboard(&mut text) {
                     self.input.push_str(&text);

@@ -88,6 +88,7 @@ impl Platform {
         }
     }
 
+    // TODO: maybe no need for return bool
     pub fn read_from_clipboard(&self, text: &mut String) -> bool {
         (self.read_from_clipboard)(text)
     }

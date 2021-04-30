@@ -16,7 +16,7 @@ use std::{
 
 use libc::{
     c_int, c_void, close, epoll_create1, eventfd, fork, sigaction, sigemptyset, siginfo_t,
-    SA_SIGINFO, SIGINT,
+    SA_SIGINFO, SIGINT, EFD_CLOEXEC, EFD_NONBLOCK, read, write,
 };
 
 use pepper::{
@@ -115,14 +115,34 @@ fn set_ctrlc_handler() {
     }
 }
 
+fn notify_event(fd: c_int) {
+    let mut buf = 1u64.to_ne_bytes();
+    let result = unsafe { write(fd, buf.as_mut_ptr() as _, buf.len() as _) };
+    if result != buf.len() as _ {
+        panic!("could not read event");
+    }
+}
+
 struct Event(c_int);
 impl Event {
     pub fn new() -> Self {
-        Self(0)
+        let fd = unsafe { eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK) };
+        if fd == -1 {
+            panic!("could not create event");
+        }
+        Self(fd)
     }
 
     pub fn notify(&self) {
-        // TODO
+        notify_event(self.0);
+    }
+    
+    pub fn read(&self) {
+        let mut buf = 1u64.to_ne_bytes();
+        let result = unsafe { read(self.0, buf.as_mut_ptr() as _, buf.len() as _) };
+        if result != buf.len() as _ {
+            panic!("could not notify event");
+        }
     }
 }
 impl Drop for Event {
@@ -132,11 +152,13 @@ impl Drop for Event {
 }
 
 fn read_from_clipboard(text: &mut String) -> bool {
-    todo!()
+    // TODO: read from clipboard
+    text.clear();
+    true
 }
 
 fn write_to_clipboard(text: &str) {
-    todo!()
+    // TODO write to clipboard
 }
 
 fn run_server(stream_path: &Path) -> Result<(), AnyError> {
