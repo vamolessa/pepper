@@ -17,8 +17,8 @@ use std::{
 use libc::{
     c_int, c_void, close, epoll_create1, eventfd, fork, read, sigaction, sigemptyset, siginfo_t,
     tcflag_t, tcgetattr, tcsetattr, termios, write, BRKINT, CS8, ECHO, EFD_NONBLOCK, ICANON, ICRNL,
-    IEXTEN, INPCK, ISIG, ISTRIP, IXON, OPOST, SA_SIGINFO, SIGINT, STDIN_FILENO, TCSAFLUSH, VMIN,
-    VTIME,
+    IEXTEN, INPCK, ISIG, ISTRIP, IXON, OPOST, SA_SIGINFO, SIGINT, SIGWINCH, STDIN_FILENO,
+    TCSAFLUSH, VMIN, VTIME,
 };
 
 use pepper::{
@@ -98,54 +98,6 @@ pub fn main() {
     }
 }
 
-fn set_ctrlc_handler() {
-    unsafe extern "system" fn handler(_: c_int, _: *const siginfo_t, _: *const c_void) {}
-
-    let mut action = sigaction {
-        sa_sigaction: handler as _,
-        sa_mask: unsafe { std::mem::zeroed() },
-        sa_flags: SA_SIGINFO,
-        sa_restorer: None,
-    };
-
-    let result = unsafe { sigemptyset(&mut action.sa_mask) };
-    if result != 0 {
-        panic!("could not set ctrl handler");
-    }
-
-    let result = unsafe { sigaction(SIGINT, &action, std::ptr::null_mut()) };
-    if result != 0 {
-        panic!("could not set ctrl handler");
-    }
-}
-
-struct RawMode {
-    original: termios,
-}
-impl RawMode {
-    pub fn enter() -> Self {
-        let original = unsafe {
-            let mut original = std::mem::zeroed();
-            tcgetattr(STDIN_FILENO, &mut original);
-            let mut new = original.clone();
-            new.c_iflag &= !(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
-            new.c_oflag &= !OPOST;
-            new.c_cflag |= CS8;
-            new.c_lflag &= !(ECHO | ICANON | ISIG | IEXTEN);
-            new.c_cc[VMIN] = 0;
-            new.c_cc[VTIME] = 1;
-            tcsetattr(STDIN_FILENO, TCSAFLUSH, &new);
-            original
-        };
-        Self { original }
-    }
-}
-impl Drop for RawMode {
-    fn drop(&mut self) {
-        unsafe { tcsetattr(STDIN_FILENO, TCSAFLUSH, &self.original) };
-    }
-}
-
 fn write_to_event_fd(fd: c_int) {
     let mut buf = 1u64.to_ne_bytes();
     loop {
@@ -202,7 +154,7 @@ fn write_to_clipboard(text: &str) {
 }
 
 fn run_server(stream_path: &Path) -> Result<(), AnyError> {
-    static NEW_REQUEST_FD: AtomicIsize = AtomicIsize::new(-1);
+    static NEW_REQUEST_EVENT_FD: AtomicIsize = AtomicIsize::new(-1);
 
     if let Some(dir) = stream_path.parent() {
         if !dir.exists() {
@@ -217,13 +169,13 @@ fn run_server(stream_path: &Path) -> Result<(), AnyError> {
     let mut buf_pool = BufPool::default();
 
     let new_request_event = EventFd::new();
-    NEW_REQUEST_FD.store(new_request_event.0 as _, Ordering::Relaxed);
+    NEW_REQUEST_EVENT_FD.store(new_request_event.0 as _, Ordering::Relaxed);
 
     let (request_sender, request_receiver) = mpsc::channel();
     let platform = Platform::new(
         read_from_clipboard,
         write_to_clipboard,
-        || (), // TODO: write to NEW_REQUEST_FD
+        || write_to_event_fd(NEW_REQUEST_EVENT_FD.load(Ordering::Relaxed) as _),
         request_sender,
     );
 
@@ -239,8 +191,80 @@ fn run_server(stream_path: &Path) -> Result<(), AnyError> {
     }
 }
 
-fn run_client(args: Args, stream: UnixStream) -> Result<(), AnyError> {
+fn set_signal_handler(
+    signal: c_int,
+    handler: unsafe extern "system" fn(c_int, *const siginfo_t, *const c_void),
+) -> bool {
+    let mut action = sigaction {
+        sa_sigaction: handler as _,
+        sa_mask: unsafe { std::mem::zeroed() },
+        sa_flags: SA_SIGINFO,
+        sa_restorer: None,
+    };
+
+    let result = unsafe { sigemptyset(&mut action.sa_mask) };
+    if result != 0 {
+        return false;
+    }
+
+    let result = unsafe { sigaction(signal, &action, std::ptr::null_mut()) };
+    if result != 0 {
+        return false;
+    }
+
+    true
+}
+
+fn set_ctrlc_handler() {
+    unsafe extern "system" fn handler(_: c_int, _: *const siginfo_t, _: *const c_void) {}
+    if !set_signal_handler(SIGINT, handler) {
+        panic!("could not set ctrl handler");
+    }
+}
+
+static RESIZE_EVENT_FD: AtomicIsize = AtomicIsize::new(-1);
+
+fn set_window_size_changed_handler() {
+    unsafe extern "system" fn handler(signal: c_int, _: *const siginfo_t, _: *const c_void) {
+        if signal == SIGWINCH {
+            write_to_event_fd(RESIZE_EVENT_FD.load(Ordering::Relaxed) as _);
+        }
+    }
+    if !set_signal_handler(SIGWINCH, handler) {
+        panic!("could not set window size changed handler");
+    }
+}
+
+struct RawMode {
+    original: termios,
+}
+impl RawMode {
+    pub fn enter() -> Self {
+        let original = unsafe {
+            let mut original = std::mem::zeroed();
+            tcgetattr(STDIN_FILENO, &mut original);
+            let mut new = original.clone();
+            new.c_iflag &= !(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
+            new.c_oflag &= !OPOST;
+            new.c_cflag |= CS8;
+            new.c_lflag &= !(ECHO | ICANON | ISIG | IEXTEN);
+            new.c_cc[VMIN] = 0;
+            new.c_cc[VTIME] = 1;
+            tcsetattr(STDIN_FILENO, TCSAFLUSH, &new);
+            original
+        };
+        Self { original }
+    }
+}
+impl Drop for RawMode {
+    fn drop(&mut self) {
+        unsafe { tcsetattr(STDIN_FILENO, TCSAFLUSH, &self.original) };
+    }
+}
+
+fn run_client(args: Args, stream: UnixStream) {
     set_ctrlc_handler();
+    set_window_size_changed_handler();
 
     print!("client\r\n");
 
@@ -254,8 +278,7 @@ fn run_client(args: Args, stream: UnixStream) -> Result<(), AnyError> {
     let mut buf = [0];
     'main_loop: loop {
         keys.clear();
-        parse_console_events(&mut stdin, &mut keys)?;
-        if keys.is_empty() {
+        if !parse_console_events(&mut stdin, &mut keys) {
             print!("cabo keys\r\n");
             break;
         }
@@ -268,20 +291,28 @@ fn run_client(args: Args, stream: UnixStream) -> Result<(), AnyError> {
     }
 
     drop(raw_mode);
-    Ok(())
 }
 
-fn parse_console_events<R>(reader: &mut R, keys: &mut Vec<Key>) -> io::Result<()>
-where
-    R: io::Read,
-{
+fn get_console_size(stdin: &mut io::StdinLock) -> (usize, usize) {
+    (0, 0)
+}
+
+fn parse_console_events(stdin: &mut io::StdinLock, keys: &mut Vec<Key>) -> bool {
+    use io::Read;
+
     let mut buf = [0; 64];
-    let len = reader.read(&mut buf)?;
+    let len = match stdin.read(&mut buf) {
+        Ok(len) => len,
+        Err(error) => match error.kind() {
+            io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted => return true,
+            _ => return false,
+        },
+    };
     let mut buf = &buf[..len];
 
     loop {
         let (key, rest) = match buf {
-            &[] => break,
+            &[] => break true,
             &[0x1b, b'[', b'5', b'~', ref rest @ ..] => (Key::PageUp, rest),
             &[0x1b, b'[', b'6', b'~', ref rest @ ..] => (Key::PageDown, rest),
             &[0x1b, b'[', b'A', ref rest @ ..] => (Key::Up, rest),
@@ -323,6 +354,4 @@ where
         buf = rest;
         keys.push(key);
     }
-
-    Ok(())
 }
