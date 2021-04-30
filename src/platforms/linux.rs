@@ -68,7 +68,7 @@ pub fn main() {
 
     // temp
     let (stream, _) = UnixStream::pair().unwrap();
-    run_client(args, stream);
+    let _ = run_client(args, stream);
     return;
     // temp
 
@@ -79,13 +79,15 @@ pub fn main() {
     }
 
     match UnixStream::connect(stream_path) {
-        Ok(stream) => run_client(args, stream),
+        Ok(stream) => {
+            let _ = run_client(args, stream);
+        }
         Err(_) => match unsafe { fork() } {
             -1 => panic!("could not start server"),
             0 => loop {
                 match UnixStream::connect(stream_path) {
                     Ok(stream) => {
-                        run_client(args, stream);
+                        let _ = run_client(args, stream);
                         break;
                     }
                     Err(_) => std::thread::sleep(Duration::from_millis(100)),
@@ -235,15 +237,19 @@ fn run_server(stream_path: &Path) -> Result<(), AnyError> {
     }
 }
 
-fn run_client(args: Args, stream: UnixStream) {
+fn run_client(args: Args, stream: UnixStream) -> Result<(), AnyError> {
     println!("client");
     
+    let stdin = io::stdin();
+    let mut stdin = stdin.lock();
     let raw_mode = RawMode::enter();
 
     let mut buf = [0];
     loop {
-        let result = unsafe { read(STDIN_FILENO, buf.as_mut_ptr() as _, buf.len() as _) };
-        if result != 1 {
+        use io::Read;
+    
+        let len = stdin.read(&mut buf)?;
+        if len == 0 {
             break;
         }
         println!("{}", buf[0]);
@@ -253,4 +259,5 @@ fn run_client(args: Args, stream: UnixStream) {
     }
     
     drop(raw_mode);
+    Ok(())
 }
