@@ -446,7 +446,6 @@ fn draw_picker(buf: &mut Vec<u8>, editor: &Editor, view: &View) {
         for _ in x..width {
             buf.push(b' ');
         }
-        buf.push(b'|');
         x = 0;
 
         if x < width {
