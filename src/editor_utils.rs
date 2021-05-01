@@ -39,6 +39,7 @@ impl ReadLine {
     pub fn poll(
         &mut self,
         platform: &mut Platform,
+        string_pool: &mut StringPool,
         buffered_keys: &BufferedKeys,
         keys_iter: &mut KeysIterator,
     ) -> ReadLinePoll {
@@ -65,11 +66,11 @@ impl ReadLine {
                 ReadLinePoll::Pending
             }
             Key::Ctrl('y') => {
-                // TODO: use string_pool here
-                let mut text = String::new();
+                let mut text = string_pool.acquire();
                 if platform.read_from_clipboard(&mut text) {
                     self.input.push_str(&text);
                 }
+                string_pool.release(text);
                 ReadLinePoll::Pending
             }
             Key::Char(c) => {

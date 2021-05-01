@@ -40,10 +40,12 @@ impl ModeState for State {
 
     fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> Option<ModeOperation> {
         let this = &mut ctx.editor.mode.picker_state;
-        let poll = ctx
-            .editor
-            .read_line
-            .poll(ctx.platform, &ctx.editor.buffered_keys, keys);
+        let poll = ctx.editor.read_line.poll(
+            ctx.platform,
+            &mut ctx.editor.string_pool,
+            &ctx.editor.buffered_keys,
+            keys,
+        );
         if let ReadLinePoll::Pending = poll {
             keys.put_back();
             match keys.next(&ctx.editor.buffered_keys) {
@@ -337,3 +339,4 @@ pub mod custom {
         Mode::change_to(ctx, ModeKind::Picker);
     }
 }
+

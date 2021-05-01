@@ -53,11 +53,12 @@ impl ModeState for State {
 
     fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> Option<ModeOperation> {
         let state = &mut ctx.editor.mode.command_state;
-        match ctx
-            .editor
-            .read_line
-            .poll(ctx.platform, &ctx.editor.buffered_keys, keys)
-        {
+        match ctx.editor.read_line.poll(
+            ctx.platform,
+            &mut ctx.editor.string_pool,
+            &ctx.editor.buffered_keys,
+            keys,
+        ) {
             ReadLinePoll::Pending => {
                 keys.put_back();
                 match keys.next(&ctx.editor.buffered_keys) {
@@ -280,3 +281,4 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
     state.completion_source = completion_source;
     ctx.editor.picker.filter(WordIndicesIter::empty(), pattern);
 }
+

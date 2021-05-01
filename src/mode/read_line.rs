@@ -37,10 +37,12 @@ impl ModeState for State {
     }
 
     fn on_client_keys(ctx: &mut ModeContext, keys: &mut KeysIterator) -> Option<ModeOperation> {
-        let poll = ctx
-            .editor
-            .read_line
-            .poll(ctx.platform, &ctx.editor.buffered_keys, keys);
+        let poll = ctx.editor.read_line.poll(
+            ctx.platform,
+            &mut ctx.editor.string_pool,
+            &ctx.editor.buffered_keys,
+            keys,
+        );
         let func = ctx.editor.mode.read_line_state.on_client_keys;
         func(ctx, keys, poll)
     }
@@ -594,3 +596,4 @@ pub mod custom {
         Mode::change_to(ctx, ModeKind::ReadLine);
     }
 }
+
