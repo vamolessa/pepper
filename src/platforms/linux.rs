@@ -322,8 +322,6 @@ fn run_client(args: Args, mut stream: UnixStream) {
     let stdin = io::stdin();
     let mut stdin = stdin.lock();
 
-    print!("client\r\n");
-
     let mut client_index = 0;
     match stream.read(std::slice::from_mut(&mut client_index)) {
         Ok(1) => (),
@@ -368,6 +366,7 @@ fn run_client(args: Args, mut stream: UnixStream) {
     let mut stream_buf = [0; ClientApplication::connection_buffer_len()];
     let mut stdin_buf = [0; ClientApplication::stdin_buffer_len()];
 
+    print!("main loop\r\n");
     'main_loop: loop {
         for event_index in epoll.wait(&mut epoll_events, None) {
             let mut resize = None;
