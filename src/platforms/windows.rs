@@ -115,8 +115,17 @@ pub fn main() {
     let output_handle = get_std_handle(STD_OUTPUT_HANDLE);
 
     if args.as_server {
-        let _ = run_server(&pipe_path);
+        if !pipe_exists(&pipe_path) {
+            let _ = run_server(&pipe_path);
+        }
     } else if let Some(input_handle) = input_handle {
+        if !pipe_exists(&pipe_path) {
+            fork();
+            while !pipe_exists(&pipe_path) {
+                std::thread::sleep(Duration::from_millis(100));
+            }
+        }
+
         run_client(args, &pipe_path, input_handle, output_handle);
     }
 }
@@ -871,10 +880,6 @@ fn run_server(pipe_path: &[u16]) -> Result<(), AnyError> {
     const NONE_ASYNC_PROCESS: Option<AsyncProcess> = None;
     static NEW_REQUEST_EVENT_HANDLE: AtomicPtr<()> = AtomicPtr::new(std::ptr::null_mut());
 
-    if pipe_exists(pipe_path) {
-        return Ok(());
-    }
-
     let mut events = Events::new();
     let mut listener =
         ConnectionToClientListener::new(pipe_path, ServerApplication::connection_buffer_len());
@@ -1162,13 +1167,6 @@ impl ConnectionToServer {
 }
 
 fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle: Option<Handle>) {
-    if !pipe_exists(pipe_path) {
-        fork();
-        while !pipe_exists(pipe_path) {
-            std::thread::sleep(Duration::from_millis(100));
-        }
-    }
-
     let mut connection = ConnectionToServer::connect(pipe_path);
 
     let mut client_index = 0;

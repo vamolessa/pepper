@@ -24,6 +24,8 @@ use pepper::{
     Args,
 };
 
+const MAX_CLIENT_COUNT: usize = 20;
+const MAX_PROCESS_COUNT: usize = 42;
 const CLIENT_EVENT_BUFFER_LEN: usize = 32;
 
 pub fn main() {
@@ -57,12 +59,6 @@ pub fn main() {
     }
 
     let stream_path = Path::new(&stream_path);
-
-    // temp
-    let (stream, _) = UnixStream::pair().unwrap();
-    run_client(args, stream);
-    return;
-    // temp
 
     if args.as_server {
         let _ = run_server(stream_path);
@@ -183,81 +179,6 @@ impl Drop for SignalFd {
     }
 }
 
-fn read_from_clipboard(text: &mut String) -> bool {
-    // TODO: read from clipboard
-    text.clear();
-    true
-}
-
-fn write_to_clipboard(text: &str) {
-    // TODO write to clipboard
-}
-
-fn run_server(stream_path: &Path) -> Result<(), AnyError> {
-    static NEW_REQUEST_EVENT_FD: AtomicIsize = AtomicIsize::new(-1);
-
-    if let Some(dir) = stream_path.parent() {
-        if !dir.exists() {
-            let _ = fs::create_dir(dir);
-        }
-    }
-
-    let _ = fs::remove_file(stream_path);
-    let listener =
-        UnixListener::bind(stream_path).expect("could not start unix domain socket server");
-
-    let mut buf_pool = BufPool::default();
-
-    let new_request_event = EventFd::new();
-    NEW_REQUEST_EVENT_FD.store(new_request_event.as_raw_fd() as _, Ordering::Relaxed);
-
-    let (request_sender, request_receiver) = mpsc::channel();
-    let platform = Platform::new(
-        read_from_clipboard,
-        write_to_clipboard,
-        || write_to_event_fd(NEW_REQUEST_EVENT_FD.load(Ordering::Relaxed) as _),
-        request_sender,
-    );
-
-    let event_sender = match ServerApplication::run(platform) {
-        Some(sender) => sender,
-        None => return Ok(()),
-    };
-
-    let mut timeout = Some(ServerApplication::idle_duration());
-
-    loop {
-        // TODO: main loop
-    }
-}
-
-struct RawMode {
-    original: libc::termios,
-}
-impl RawMode {
-    pub fn enter() -> Self {
-        let original = unsafe {
-            let mut original = std::mem::zeroed();
-            libc::tcgetattr(libc::STDIN_FILENO, &mut original);
-            let mut new = original.clone();
-            new.c_iflag &= !(libc::BRKINT | libc::ICRNL | libc::INPCK | libc::ISTRIP | libc::IXON);
-            new.c_oflag &= !libc::OPOST;
-            new.c_cflag |= libc::CS8;
-            new.c_lflag &= !(libc::ECHO | libc::ICANON | libc::ISIG | libc::IEXTEN);
-            new.c_cc[libc::VMIN] = 0;
-            new.c_cc[libc::VTIME] = 1;
-            libc::tcsetattr(libc::STDIN_FILENO, libc::TCSAFLUSH, &new);
-            original
-        };
-        Self { original }
-    }
-}
-impl Drop for RawMode {
-    fn drop(&mut self) {
-        unsafe { libc::tcsetattr(libc::STDIN_FILENO, libc::TCSAFLUSH, &self.original) };
-    }
-}
-
 struct EpollEvents([libc::epoll_event; CLIENT_EVENT_BUFFER_LEN]);
 impl EpollEvents {
     pub fn new() -> Self {
@@ -295,7 +216,7 @@ impl Epoll {
         &self,
         events: &'a mut EpollEvents,
         timeout: Option<Duration>,
-    ) -> impl 'a + Iterator<Item = usize> {
+    ) -> impl 'a + ExactSizeIterator<Item = usize> {
         let timeout = match timeout {
             Some(timeout) => -1,
             None => -1,
@@ -316,14 +237,247 @@ impl Drop for Epoll {
     }
 }
 
-fn run_client(args: Args, mut stream: UnixStream) {
+fn read_from_clipboard(text: &mut String) -> bool {
+    // TODO: read from clipboard
+    text.clear();
+    true
+}
+
+fn write_to_clipboard(text: &str) {
+    // TODO write to clipboard
+}
+
+fn run_server(stream_path: &Path) -> Result<(), AnyError> {
+    use io::{Read, Write};
+
+    static NEW_REQUEST_EVENT_FD: AtomicIsize = AtomicIsize::new(-1);
+
+    if let Some(dir) = stream_path.parent() {
+        if !dir.exists() {
+            let _ = fs::create_dir(dir);
+        }
+    }
+
+    let _ = fs::remove_file(stream_path);
+    let mut listener =
+        UnixListener::bind(stream_path).expect("could not start unix domain socket server");
+
+    let mut client_connections: [Option<UnixStream>; MAX_CLIENT_COUNT] = Default::default();
+    //let mut processes = [NONE_ASYNC_PROCESS; MAX_PROCESS_COUNT];
+    let mut buf_pool = BufPool::default();
+
+    let new_request_event = EventFd::new();
+    NEW_REQUEST_EVENT_FD.store(new_request_event.as_raw_fd() as _, Ordering::Relaxed);
+
+    let (request_sender, request_receiver) = mpsc::channel();
+    let platform = Platform::new(
+        read_from_clipboard,
+        write_to_clipboard,
+        || write_to_event_fd(NEW_REQUEST_EVENT_FD.load(Ordering::Relaxed) as _),
+        request_sender,
+    );
+
+    let event_sender = match ServerApplication::run(platform) {
+        Some(sender) => sender,
+        None => return Ok(()),
+    };
+
+    let mut timeout = Some(ServerApplication::idle_duration());
+
+    const CLIENTS_START_INDEX: usize = 1 + 1;
+    const CLIENTS_LAST_INDEX: usize = CLIENTS_START_INDEX + MAX_CLIENT_COUNT - 1;
+    const PROCESSES_START_INDEX: usize = CLIENTS_LAST_INDEX + 1;
+    const PROCESSES_LAST_INDEX: usize = PROCESSES_START_INDEX + MAX_PROCESS_COUNT - 1;
+
+    let epoll = Epoll::new();
+    epoll.add(new_request_event.as_raw_fd(), 0);
+    epoll.add(listener.as_raw_fd(), 1);
+    let mut epoll_events = EpollEvents::new();
+
+    loop {
+        let events = epoll.wait(&mut epoll_events, None);
+        if events.len() == 0 {
+            timeout = None;
+            event_sender.send(ApplicationEvent::Idle)?;
+            continue;
+        }
+        
+        for event_index in events {
+            match event_index {
+                0 => {
+                    for request in request_receiver.try_iter() {
+                        match request {
+                            PlatformRequest::Exit => return Ok(()),
+                            PlatformRequest::WriteToClient { handle, buf } => {
+                                let index = handle.into_index();
+                                if let Some(ref mut connection) = client_connections[index] {
+                                    if connection.write_all(buf.as_bytes()).is_err() {
+                                        epoll.remove(connection.as_raw_fd());
+                                        client_connections[index] = None;
+                                        event_sender
+                                            .send(ApplicationEvent::ConnectionClose { handle })?;
+                                    }
+                                }
+                            }
+                            PlatformRequest::CloseClient { handle } => {
+                                let index = handle.into_index();
+                                if let Some(connection) = client_connections[index].take() {
+                                    epoll.remove(connection.as_raw_fd());
+                                }
+                                event_sender.send(ApplicationEvent::ConnectionClose { handle })?;
+                            }
+                            PlatformRequest::SpawnProcess {
+                                tag,
+                                mut command,
+                                buf_len,
+                            } => {
+                                /*
+                                for (i, p) in processes.iter_mut().enumerate() {
+                                    if p.is_some() {
+                                        continue;
+                                    }
+
+                                    let handle = ProcessHandle(i);
+                                    match command.spawn() {
+                                        Ok(child) => {
+                                            *p = Some(AsyncProcess::new(child, tag, buf_len));
+                                            event_sender.send(
+                                                ApplicationEvent::ProcessSpawned { tag, handle },
+                                            )?;
+                                        }
+                                        Err(_) => {
+                                            event_sender.send(ApplicationEvent::ProcessExit {
+                                                tag,
+                                                success: false,
+                                            })?
+                                        }
+                                    }
+                                    break;
+                                }
+                                */
+                            }
+                            PlatformRequest::WriteToProcess { handle, buf } => {
+                                /*
+                                if let Some(ref mut process) = processes[handle.0] {
+                                    if let Some(pipe) = process.stdin() {
+                                        use io::Write;
+                                        if pipe.write_all(buf.as_bytes()).is_err() {
+                                            let tag = process.tag;
+                                            process.kill();
+                                            processes[handle.0] = None;
+                                            event_sender.send(ApplicationEvent::ProcessExit {
+                                                tag,
+                                                success: false,
+                                            })?;
+                                        }
+                                    }
+                                }
+                                */
+                            }
+                            PlatformRequest::CloseProcessInput { handle } => {
+                                /*
+                                if let Some(ref mut process) = processes[handle.0] {
+                                    process.take_stdin().take();
+                                }
+                                */
+                            }
+                            PlatformRequest::KillProcess { handle } => {
+                                /*
+                                if let Some(ref mut process) = processes[handle.0] {
+                                    let tag = process.tag;
+                                    process.kill();
+                                    processes[handle.0] = None;
+                                    event_sender.send(ApplicationEvent::ProcessExit {
+                                        tag,
+                                        success: false,
+                                    })?;
+                                }
+                                */
+                            }
+                        }
+                    }
+                }
+                1 => match listener.accept() {
+                    Ok((connection, _)) => {
+                        for (i, c) in client_connections.iter_mut().enumerate() {
+                            if c.is_none() {
+                                epoll.add(connection.as_raw_fd(), CLIENTS_START_INDEX + i);
+                                *c = Some(connection);
+                                let handle = ClientHandle::from_index(i).unwrap();
+                                event_sender.send(ApplicationEvent::ConnectionOpen { handle })?;
+                                break;
+                            }
+                        }
+                    }
+                    Err(error) => panic!("could not accept connection {}", error),
+                },
+                CLIENTS_START_INDEX..=CLIENTS_LAST_INDEX => {
+                    let index = event_index - CLIENTS_START_INDEX;
+                    if let Some(ref mut connection) = client_connections[index] {
+                        let handle = ClientHandle::from_index(index).unwrap();
+                        let mut buf = buf_pool.acquire();
+                        let write = buf.write_with_len(ServerApplication::connection_buffer_len());
+                        match connection.read(write) {
+                            Ok(0) | Err(_) => {
+                                epoll.remove(connection.as_raw_fd());
+                                client_connections[index] = None;
+                                event_sender.send(ApplicationEvent::ConnectionClose { handle })?;
+                            }
+                            Ok(len) => {
+                                write.truncate(len);
+                                let buf = buf.share();
+                                event_sender
+                                    .send(ApplicationEvent::ConnectionOutput { handle, buf })?;
+                            }
+                        }
+                    }
+
+                    timeout = Some(ServerApplication::idle_duration());
+                }
+                PROCESSES_START_INDEX..=PROCESSES_LAST_INDEX => {
+                    let index = event_index - PROCESSES_START_INDEX;
+                }
+                _ => unreachable!(),
+            }
+        }
+    }
+}
+
+struct RawMode {
+    original: libc::termios,
+}
+impl RawMode {
+    pub fn enter() -> Self {
+        let original = unsafe {
+            let mut original = std::mem::zeroed();
+            libc::tcgetattr(libc::STDIN_FILENO, &mut original);
+            let mut new = original.clone();
+            new.c_iflag &= !(libc::BRKINT | libc::ICRNL | libc::INPCK | libc::ISTRIP | libc::IXON);
+            new.c_oflag &= !libc::OPOST;
+            new.c_cflag |= libc::CS8;
+            new.c_lflag &= !(libc::ECHO | libc::ICANON | libc::ISIG | libc::IEXTEN);
+            new.c_cc[libc::VMIN] = 0;
+            new.c_cc[libc::VTIME] = 1;
+            libc::tcsetattr(libc::STDIN_FILENO, libc::TCSAFLUSH, &new);
+            original
+        };
+        Self { original }
+    }
+}
+impl Drop for RawMode {
+    fn drop(&mut self) {
+        unsafe { libc::tcsetattr(libc::STDIN_FILENO, libc::TCSAFLUSH, &self.original) };
+    }
+}
+
+fn run_client(args: Args, mut connection: UnixStream) {
     use io::{Read, Write};
 
     let stdin = io::stdin();
     let mut stdin = stdin.lock();
 
     let mut client_index = 0;
-    match stream.read(std::slice::from_mut(&mut client_index)) {
+    match connection.read(std::slice::from_mut(&mut client_index)) {
         Ok(1) => (),
         _ => return,
     }
@@ -334,7 +488,7 @@ fn run_client(args: Args, mut stream: UnixStream) {
     let stdout = io::stdout();
     let mut application = ClientApplication::new(client_handle, stdout.lock(), is_pipped);
     let bytes = application.init(args);
-    if stream.write(bytes).is_err() {
+    if connection.write(bytes).is_err() {
         return;
     }
 
@@ -342,7 +496,7 @@ fn run_client(args: Args, mut stream: UnixStream) {
     let resize_signal;
 
     let epoll = Epoll::new();
-    epoll.add(stream.as_raw_fd(), 0);
+    epoll.add(connection.as_raw_fd(), 0);
     epoll.add(stdin.as_raw_fd(), 1);
     let mut epoll_events = EpollEvents::new();
 
@@ -357,7 +511,7 @@ fn run_client(args: Args, mut stream: UnixStream) {
 
         let size = get_console_size();
         let bytes = application.update(Some(size), &[], &[], &[]);
-        if stream.write(bytes).is_err() {
+        if connection.write(bytes).is_err() {
             return;
         }
     }
@@ -366,7 +520,6 @@ fn run_client(args: Args, mut stream: UnixStream) {
     let mut stream_buf = [0; ClientApplication::connection_buffer_len()];
     let mut stdin_buf = [0; ClientApplication::stdin_buffer_len()];
 
-    print!("main loop\r\n");
     'main_loop: loop {
         for event_index in epoll.wait(&mut epoll_events, None) {
             let mut resize = None;
@@ -378,35 +531,29 @@ fn run_client(args: Args, mut stream: UnixStream) {
             match event_index {
                 0 => {
                     print!("stream ready?\r\n");
-                    match stream.read(&mut stream_buf) {
+                    match connection.read(&mut stream_buf) {
                         Ok(0) => {
                             print!("read nothing\r\n");
-                            epoll.remove(stream.as_raw_fd());
+                            epoll.remove(connection.as_raw_fd());
                         }
                         Ok(len) => server_bytes = &stream_buf[..len],
                         Err(e) => break 'main_loop,
                     }
                 }
-                1 => {
-                    let bytes = match stdin.read(&mut stdin_buf) {
-                        Ok(0) | Err(_) => {
-                            epoll.remove(stdin.as_raw_fd());
-                            continue;
-                        }
-                        Ok(len) => &stdin_buf[..len],
-                    };
-                    if is_pipped {
-                        stdin_bytes = bytes;
-                    } else {
-                        parse_terminal_keys(&bytes, &mut keys);
-                        for &key in &keys {
-                            print!("key: {}\r\n", key);
-                            if let Key::Esc = key {
-                                break 'main_loop;
-                            }
+                1 => match stdin.read(&mut stdin_buf) {
+                    Ok(0) | Err(_) => {
+                        epoll.remove(stdin.as_raw_fd());
+                        continue;
+                    }
+                    Ok(len) => {
+                        let bytes = &stdin_buf[..len];
+                        if is_pipped {
+                            stdin_bytes = bytes;
+                        } else {
+                            parse_terminal_keys(&bytes, &mut keys);
                         }
                     }
-                }
+                },
                 2 => {
                     if let Some(ref signal) = resize_signal {
                         signal.read();
@@ -417,7 +564,7 @@ fn run_client(args: Args, mut stream: UnixStream) {
             }
 
             let bytes = application.update(resize, &keys, stdin_bytes, server_bytes);
-            if stream.write(bytes).is_err() {
+            if connection.write(bytes).is_err() {
                 break;
             }
         }
