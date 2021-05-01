@@ -1,7 +1,7 @@
 use std::{
     env, io,
     os::windows::{ffi::OsStrExt, io::IntoRawHandle},
-    process::{Child, ChildStdin},
+    process::Child,
     ptr::NonNull,
     sync::{
         atomic::{AtomicPtr, Ordering},
