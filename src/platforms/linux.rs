@@ -615,9 +615,8 @@ fn run_client(args: Args, mut connection: UnixStream) {
 
             match event_index {
                 0 => match connection.read(&mut stream_buf) {
-                    Ok(0) => epoll.remove(connection.as_raw_fd()),
+                    Ok(0) | Err(_) => break 'main_loop,
                     Ok(len) => server_bytes = &stream_buf[..len],
-                    Err(_) => break 'main_loop,
                 },
                 1 => match stdin.read(&mut stdin_buf) {
                     Ok(0) | Err(_) => {
