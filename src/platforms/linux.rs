@@ -86,17 +86,9 @@ pub fn main() {
 
 fn write_to_event_fd(fd: RawFd) {
     let mut buf = 1u64.to_ne_bytes();
-    loop {
-        let result = unsafe { libc::write(fd, buf.as_mut_ptr() as _, buf.len() as _) };
-        if result == -1 {
-            if let io::ErrorKind::WouldBlock = io::Error::last_os_error().kind() {
-                std::thread::yield_now();
-                continue;
-            }
-        }
-        if result != buf.len() as _ {
-            panic!("could not write to event fd");
-        }
+    let result = unsafe { libc::write(fd, buf.as_mut_ptr() as _, buf.len() as _) };
+    if result != buf.len() as _ {
+        panic!("could not write to event fd");
     }
 }
 
@@ -192,7 +184,7 @@ impl Epoll {
 
     pub fn add(&self, fd: RawFd, index: usize) {
         let mut event = libc::epoll_event {
-            events: (libc::EPOLLIN | libc::EPOLLERR | libc::EPOLLRDHUP) as _,
+            events: (libc::EPOLLIN | libc::EPOLLERR | libc::EPOLLRDHUP | libc::EPOLLHUP) as _,
             u64: index as _,
         };
         let result = unsafe { libc::epoll_ctl(self.0, libc::EPOLL_CTL_ADD, fd, &mut event) };
@@ -722,3 +714,4 @@ fn parse_terminal_keys(mut buf: &[u8], keys: &mut Vec<Key>) {
         keys.push(key);
     }
 }
+

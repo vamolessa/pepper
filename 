@@ -1,0 +1,283 @@
+EPOLL(7)                                     Linux Programmer's Manual                                    EPOLL(7)
+
+NNAAMMEE
+       epoll - I/O event notification facility
+
+SSYYNNOOPPSSIISS
+       ##iinncclluuddee <<ssyyss//eeppoollll..hh>>
+
+DDEESSCCRRIIPPTTIIOONN
+       The  eeppoollll  API  performs  a similar task to ppoollll(2): monitoring multiple file descriptors to see if I/O is
+       possible on any of them.  The eeppoollll API can be used either as an edge-triggered or a level-triggered inter‐
+       face and scales well to large numbers of watched file descriptors.
+
+       The central concept of the eeppoollll API is the eeppoollll _i_n_s_t_a_n_c_e, an in-kernel data structure which, from a user-
+       space perspective, can be considered as a container for two lists:
+
+       *   The _i_n_t_e_r_e_s_t list (sometimes also called the eeppoollll set): the set of file descriptors that  the  process
+           has registered an interest in monitoring.
+
+       *   The  _r_e_a_d_y  list:  the set of file descriptors that are "ready" for I/O.  The ready list is a subset of
+           (or, more precisely, a set of references to) the file descriptors in the interest list that is  dynami‐
+           cally populated by the kernel as a result of I/O activity on those file descriptors.
+
+       The following system calls are provided to create and manage an eeppoollll instance:
+
+       *  eeppoollll__ccrreeaattee(2)  creates  a new eeppoollll instance and returns a file descriptor referring to that instance.
+          (The more recent eeppoollll__ccrreeaattee11(2) extends the functionality of eeppoollll__ccrreeaattee(2).)
+
+       *  Interest in particular file descriptors is then registered via eeppoollll__ccttll(2), which adds items to the in‐
+          terest list of the eeppoollll instance.
+
+       *  eeppoollll__wwaaiitt(2)  waits  for  I/O events, blocking the calling thread if no events are currently available.
+          (This system call can be thought of as fetching items from the ready list of the eeppoollll instance.)
+
+   LLeevveell--ttrriiggggeerreedd aanndd eeddggee--ttrriiggggeerreedd
+       The eeppoollll event distribution interface is able to behave both as edge-triggered (ET) and as level-triggered
+       (LT).   The  difference between the two mechanisms can be described as follows.  Suppose that this scenario
+       happens:
+
+       1. The file descriptor that represents the read side of a pipe (_r_f_d) is registered on the eeppoollll instance.
+
+       2. A pipe writer writes 2 kB of data on the write side of the pipe.
+
+       3. A call to eeppoollll__wwaaiitt(2) is done that will return _r_f_d as a ready file descriptor.
+
+       4. The pipe reader reads 1 kB of data from _r_f_d.
+
+       5. A call to eeppoollll__wwaaiitt(2) is done.
+
+       If the _r_f_d file descriptor has been added to the eeppoollll interface using the EEPPOOLLLLEETT  (edge-triggered)  flag,
+       the call to eeppoollll__wwaaiitt(2) done in step 55 will probably hang despite the available data still present in the
+       file input buffer; meanwhile the remote peer might be expecting a response based on  the  data  it  already
+       sent.  The reason for this is that edge-triggered mode delivers events only when changes occur on the moni‐
+       tored file descriptor.  So, in step 55 the caller might end up waiting for some data that is already present
+       inside the input buffer.  In the above example, an event on _r_f_d will be generated because of the write done
+       in 22 and the event is consumed in 33.  Since the read operation done in 44 does not consume the whole  buffer
+       data, the call to eeppoollll__wwaaiitt(2) done in step 55 might block indefinitely.
+
+       An  application  that  employs  the  EEPPOOLLLLEETT flag should use nonblocking file descriptors to avoid having a
+       blocking read or write starve a task that is handling multiple file descriptors.  The suggested way to  use
+       eeppoollll as an edge-triggered (EEPPOOLLLLEETT) interface is as follows:
+
+              ii   with nonblocking file descriptors; and
+
+              iiii  by waiting for an event only after rreeaadd(2) or wwrriittee(2) return EEAAGGAAIINN.
+
+       By  contrast,  when used as a level-triggered interface (the default, when EEPPOOLLLLEETT is not specified), eeppoollll
+       is simply a faster ppoollll(2), and can be used wherever the latter is used since it shares the same semantics.
+
+       Since even with edge-triggered eeppoollll, multiple events can be generated upon receipt of multiple  chunks  of
+       data,  the  caller has the option to specify the EEPPOOLLLLOONNEESSHHOOTT flag, to tell eeppoollll to disable the associated
+       file descriptor after the receipt of an event with eeppoollll__wwaaiitt(2).  When the EEPPOOLLLLOONNEESSHHOOTT flag is specified,
+       it is the caller's responsibility to rearm the file descriptor using eeppoollll__ccttll(2) with EEPPOOLLLL__CCTTLL__MMOODD.
+
+       If  multiple  threads  (or  processes,  if  child processes have inherited the eeppoollll file descriptor across
+       ffoorrkk(2)) are blocked in eeppoollll__wwaaiitt(2) waiting on the same epoll file descriptor and a  file  descriptor  in
+       the  interest  list that is marked for edge-triggered (EEPPOOLLLLEETT) notification becomes ready, just one of the
+       threads (or processes) is awoken from eeppoollll__wwaaiitt(2).  This provides  a  useful  optimization  for  avoiding
+       "thundering herd" wake-ups in some scenarios.
+
+   IInntteerraaccttiioonn wwiitthh aauuttoosslleeeepp
+       If  the  system  is  in aauuttoosslleeeepp mode via _/_s_y_s_/_p_o_w_e_r_/_a_u_t_o_s_l_e_e_p and an event happens which wakes the device
+       from sleep, the device driver will keep the device awake only until that event is queued.  To keep the  de‐
+       vice awake until the event has been processed, it is necessary to use the eeppoollll__ccttll(2) EEPPOOLLLLWWAAKKEEUUPP flag.
+
+       When  the  EEPPOOLLLLWWAAKKEEUUPP  flag  is  set in the eevveennttss field for a _s_t_r_u_c_t _e_p_o_l_l___e_v_e_n_t, the system will be kept
+       awake from the moment the event is queued, through the eeppoollll__wwaaiitt(2) call which returns the event until the
+       subsequent eeppoollll__wwaaiitt(2) call.  If the event should keep the system awake beyond that time, then a separate
+       _w_a_k_e___l_o_c_k should be taken before the second eeppoollll__wwaaiitt(2) call.
+
+   //pprroocc iinntteerrffaacceess
+       The following interfaces can be used to limit the amount of kernel memory consumed by epoll:
+
+       _/_p_r_o_c_/_s_y_s_/_f_s_/_e_p_o_l_l_/_m_a_x___u_s_e_r___w_a_t_c_h_e_s (since Linux 2.6.28)
+              This specifies a limit on the total number of file descriptors that a user can register  across  all
+              epoll  instances  on  the  system.   The limit is per real user ID.  Each registered file descriptor
+              costs roughly 90 bytes on a 32-bit kernel, and roughly 160 bytes on a 64-bit kernel.  Currently, the
+              default  value  for _m_a_x___u_s_e_r___w_a_t_c_h_e_s is 1/25 (4%) of the available low memory, divided by the regis‐
+              tration cost in bytes.
+
+   EExxaammppllee ffoorr ssuuggggeesstteedd uussaaggee
+       While the usage of eeppoollll when employed as a level-triggered interface  does  have  the  same  semantics  as
+       ppoollll(2),  the  edge-triggered  usage  requires  more clarification to avoid stalls in the application event
+       loop.  In this example, listener is a nonblocking socket on which lliisstteenn(2) has been called.  The  function
+       _d_o___u_s_e___f_d_(_)  uses the new ready file descriptor until EEAAGGAAIINN is returned by either rreeaadd(2) or wwrriittee(2).  An
+       event-driven state machine application should, after having received EEAAGGAAIINN, record its  current  state  so
+       that at the next call to _d_o___u_s_e___f_d_(_) it will continue to rreeaadd(2) or wwrriittee(2) from where it stopped before.
+
+           #define MAX_EVENTS 10
+           struct epoll_event ev, events[MAX_EVENTS];
+           int listen_sock, conn_sock, nfds, epollfd;
+
+           /* Code to set up listening socket, 'listen_sock',
+              (socket(), bind(), listen()) omitted */
+
+           epollfd = epoll_create1(0);
+           if (epollfd == -1) {
+               perror("epoll_create1");
+               exit(EXIT_FAILURE);
+           }
+
+           ev.events = EPOLLIN;
+           ev.data.fd = listen_sock;
+           if (epoll_ctl(epollfd, EPOLL_CTL_ADD, listen_sock, &ev) == -1) {
+               perror("epoll_ctl: listen_sock");
+               exit(EXIT_FAILURE);
+           }
+
+           for (;;) {
+               nfds = epoll_wait(epollfd, events, MAX_EVENTS, -1);
+               if (nfds == -1) {
+                   perror("epoll_wait");
+                   exit(EXIT_FAILURE);
+               }
+
+               for (n = 0; n < nfds; ++n) {
+                   if (events[n].data.fd == listen_sock) {
+                       conn_sock = accept(listen_sock,
+                                          (struct sockaddr *) &addr, &addrlen);
+                       if (conn_sock == -1) {
+                           perror("accept");
+                           exit(EXIT_FAILURE);
+                       }
+                       setnonblocking(conn_sock);
+                       ev.events = EPOLLIN | EPOLLET;
+                       ev.data.fd = conn_sock;
+                       if (epoll_ctl(epollfd, EPOLL_CTL_ADD, conn_sock,
+                                   &ev) == -1) {
+                           perror("epoll_ctl: conn_sock");
+                           exit(EXIT_FAILURE);
+                       }
+                   } else {
+                       do_use_fd(events[n].data.fd);
+                   }
+               }
+           }
+
+       When  used as an edge-triggered interface, for performance reasons, it is possible to add the file descrip‐
+       tor inside the eeppoollll interface (EEPPOOLLLL__CCTTLL__AADDDD) once by specifying (EEPPOOLLLLIINN|EEPPOOLLLLOOUUTT).  This allows  you  to
+       avoid continuously switching between EEPPOOLLLLIINN and EEPPOOLLLLOOUUTT calling eeppoollll__ccttll(2) with EEPPOOLLLL__CCTTLL__MMOODD.
+
+   QQuueessttiioonnss aanndd aannsswweerrss
+       0.  What is the key used to distinguish the file descriptors registered in an interest list?
+
+           The  key  is the combination of the file descriptor number and the open file description (also known as
+           an "open file handle", the kernel's internal representation of an open file).
+
+       1.  What happens if you register the same file descriptor on an eeppoollll instance twice?
+
+           You will probably get EEEEXXIISSTT.  However, it is possible to add a duplicate  (dduupp(2),  dduupp22(2),  ffccnnttll(2)
+           FF__DDUUPPFFDD)  file  descriptor  to  the  same eeppoollll instance.  This can be a useful technique for filtering
+           events, if the duplicate file descriptors are registered with different _e_v_e_n_t_s masks.
+
+       2.  Can two eeppoollll instances wait for the same file descriptor?  If so, are events reported  to  both  eeppoollll
+           file descriptors?
+
+           Yes,  and events would be reported to both.  However, careful programming may be needed to do this cor‐
+           rectly.
+
+       3.  Is the eeppoollll file descriptor itself poll/epoll/selectable?
+
+           Yes.  If an eeppoollll file descriptor has events waiting, then it will indicate as being readable.
+
+       4.  What happens if one attempts to put an eeppoollll file descriptor into its own file descriptor set?
+
+           The eeppoollll__ccttll(2) call fails (EEIINNVVAALL).  However, you can add an eeppoollll  file  descriptor  inside  another
+           eeppoollll file descriptor set.
+
+       5.  Can I send an eeppoollll file descriptor over a UNIX domain socket to another process?
+
+           Yes,  but  it  does not make sense to do this, since the receiving process would not have copies of the
+           file descriptors in the interest list.
+
+       6.  Will closing a file descriptor cause it to be removed from all eeppoollll interest lists?
+
+           Yes, but be aware of the following point.  A file descriptor is a reference to an open file description
+           (see  ooppeenn(2)).   Whenever  a  file  descriptor is duplicated via dduupp(2), dduupp22(2), ffccnnttll(2) FF__DDUUPPFFDD, or
+           ffoorrkk(2), a new file descriptor referring to the same open file description is created.   An  open  file
+           description continues to exist until all file descriptors referring to it have been closed.
+
+           A file descriptor is removed from an interest list only after all the file descriptors referring to the
+           underlying open file description have been closed.  This means that even after a file  descriptor  that
+           is  part  of an interest list has been closed, events may be reported for that file descriptor if other
+           file descriptors referring to the same underlying file description remain open.  To prevent  this  hap‐
+           pening,  the  file  descriptor  must  be  explicitly removed from the interest list (using eeppoollll__ccttll(2)
+           EEPPOOLLLL__CCTTLL__DDEELL) before it is duplicated.  Alternatively, the application must ensure that all  file  de‐
+           scriptors  are  closed (which may be difficult if file descriptors were duplicated behind the scenes by
+           library functions that used dduupp(2) or ffoorrkk(2)).
+
+       7.  If more than one event occurs between eeppoollll__wwaaiitt(2) calls, are they combined or reported separately?
+
+           They will be combined.
+
+       8.  Does an operation on a file descriptor affect the already collected but not yet reported events?
+
+           You can do two operations on an existing file descriptor.  Remove would be meaningless for  this  case.
+           Modify will reread available I/O.
+
+       9.  Do  I need to continuously read/write a file descriptor until EEAAGGAAIINN when using the EEPPOOLLLLEETT flag (edge-
+           triggered behavior)?
+
+           Receiving an event from eeppoollll__wwaaiitt(2) should suggest to you that such file descriptor is ready for  the
+           requested I/O operation.  You must consider it ready until the next (nonblocking) read/write yields EEAA‐‐
+           GGAAIINN.  When and how you will use the file descriptor is entirely up to you.
+
+           For packet/token-oriented files (e.g., datagram socket, terminal in canonical mode), the  only  way  to
+           detect the end of the read/write I/O space is to continue to read/write until EEAAGGAAIINN.
+
+           For  stream-oriented  files  (e.g.,  pipe,  FIFO, stream socket), the condition that the read/write I/O
+           space is exhausted can also be detected by checking the amount of data read from / written to the  tar‐
+           get  file  descriptor.  For example, if you call rreeaadd(2) by asking to read a certain amount of data and
+           rreeaadd(2) returns a lower number of bytes, you can be sure of having exhausted the read I/O space for the
+           file  descriptor.   The  same is true when writing using wwrriittee(2).  (Avoid this latter technique if you
+           cannot guarantee that the monitored file descriptor always refers to a stream-oriented file.)
+
+   PPoossssiibbllee ppiittffaallllss aanndd wwaayyss ttoo aavvooiidd tthheemm
+       oo SSttaarrvvaattiioonn ((eeddggee--ttrriiggggeerreedd))
+
+       If there is a large amount of I/O space, it is possible that by trying to drain it the other files will not
+       get processed causing starvation.  (This problem is not specific to eeppoollll.)
+
+       The  solution  is  to  maintain  a  ready list and mark the file descriptor as ready in its associated data
+       structure, thereby allowing the application to remember which files need to be processed  but  still  round
+       robin  amongst all the ready files.  This also supports ignoring subsequent events you receive for file de‐
+       scriptors that are already ready.
+
+       oo IIff uussiinngg aann eevveenntt ccaacchhee......
+
+       If you use an event cache or store all the file descriptors returned from eeppoollll__wwaaiitt(2), then make sure  to
+       provide a way to mark its closure dynamically (i.e., caused by a previous event's processing).  Suppose you
+       receive 100 events from eeppoollll__wwaaiitt(2), and in event #47 a condition causes event #13 to be closed.  If  you
+       remove  the structure and cclloossee(2) the file descriptor for event #13, then your event cache might still say
+       there are events waiting for that file descriptor causing confusion.
+
+       One solution for this is to call, during the processing of event  47,  eeppoollll__ccttll(EEPPOOLLLL__CCTTLL__DDEELL)  to  delete
+       file  descriptor  13  and  cclloossee(2),  then  mark  its associated data structure as removed and link it to a
+       cleanup list.  If you find another event for file descriptor 13 in your batch processing, you will discover
+       the file descriptor had been previously removed and there will be no confusion.
+
+VVEERRSSIIOONNSS
+       The eeppoollll API was introduced in Linux kernel 2.5.44.  Support was added to glibc in version 2.3.2.
+
+CCOONNFFOORRMMIINNGG TTOO
+       The  eeppoollll  API is Linux-specific.  Some other systems provide similar mechanisms, for example, FreeBSD has
+       _k_q_u_e_u_e, and Solaris has _/_d_e_v_/_p_o_l_l.
+
+NNOOTTEESS
+       The set of file descriptors that is being monitored via an epoll file descriptor can be viewed via the  en‐
+       try  for  the epoll file descriptor in the process's _/_p_r_o_c_/_[_p_i_d_]_/_f_d_i_n_f_o directory.  See pprroocc(5) for further
+       details.
+
+       The kkccmmpp(2) KKCCMMPP__EEPPOOLLLL__TTFFDD operation can be used to test whether a file descriptor is present in  an  epoll
+       instance.
+
+SSEEEE AALLSSOO
+       eeppoollll__ccrreeaattee(2), eeppoollll__ccrreeaattee11(2), eeppoollll__ccttll(2), eeppoollll__wwaaiitt(2), ppoollll(2), sseelleecctt(2)
+
+CCOOLLOOPPHHOONN
+       This  page  is part of release 5.05 of the Linux _m_a_n_-_p_a_g_e_s project.  A description of the project, informa‐
+       tion   about   reporting   bugs,   and   the   latest   version   of   this   page,   can   be   found   at
+       https://www.kernel.org/doc/man-pages/.
+
+Linux                                               2019-03-06                                            EPOLL(7)
