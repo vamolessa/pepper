@@ -24,6 +24,8 @@ use pepper::{
     Args,
 };
 
+const CLIENT_EVENT_BUFFER_LEN: usize = 32;
+
 pub fn main() {
     let args = Args::parse();
 
@@ -117,6 +119,10 @@ impl EventFd {
         Self(fd)
     }
 
+    pub fn fd(&self) -> RawFd {
+        self.0
+    }
+
     pub fn write(&self) {
         write_to_event_fd(self.0);
     }
@@ -161,7 +167,7 @@ fn run_server(stream_path: &Path) -> Result<(), AnyError> {
     let mut buf_pool = BufPool::default();
 
     let new_request_event = EventFd::new();
-    NEW_REQUEST_EVENT_FD.store(new_request_event.0 as _, Ordering::Relaxed);
+    NEW_REQUEST_EVENT_FD.store(new_request_event.fd() as _, Ordering::Relaxed);
 
     let (request_sender, request_receiver) = mpsc::channel();
     let platform = Platform::new(
@@ -263,58 +269,115 @@ impl Drop for RawMode {
     }
 }
 
-fn epoll_event_from_fd(fd: RawFd) -> libc::epoll_event {
-    libc::epoll_event {
-        events: libc::EPOLLIN as _,
-        u64: fd as _,
-    }
+const DEFAULT_EPOLL_EVENT: libc::epoll_event = libc::epoll_event { events: 0, u64: 0 };
+struct Epoll {
+    fd: RawFd,
+    events: [libc::epoll_event; CLIENT_EVENT_BUFFER_LEN],
 }
-
-struct Epoll(RawFd);
 impl Epoll {
     pub fn new() -> Self {
         let fd = unsafe { libc::epoll_create1(0) };
         if fd == -1 {
             panic!("could not create epoll");
         }
-        Self(fd)
+
+        Self {
+            fd,
+            events: [DEFAULT_EPOLL_EVENT; CLIENT_EVENT_BUFFER_LEN],
+        }
     }
 
-    pub fn track(&self, fd: RawFd, event: &mut libc::epoll_event) {
-        //
+    pub fn add(&self, fd: RawFd, index: usize) {
+        let mut event = libc::epoll_event {
+            events: (libc::EPOLLIN | libc::EPOLLERR | libc::EPOLLRDHUP) as _,
+            u64: index as _,
+        };
+        let result = unsafe { libc::epoll_ctl(self.fd, libc::EPOLL_CTL_ADD, fd, &mut event) };
+        if result == -1 {
+            panic!("could not add event");
+        }
+    }
+
+    pub fn remove(&self, fd: RawFd) {
+        let mut event = DEFAULT_EPOLL_EVENT;
+        let result = unsafe { libc::epoll_ctl(self.fd, libc::EPOLL_CTL_DEL, fd, &mut event) };
+        if result == -1 {
+            panic!("could not remove event");
+        }
+    }
+
+    pub fn wait<'a>(&'a mut self, timeout: Option<Duration>) -> impl 'a + Iterator<Item = usize> {
+        let timeout = match timeout {
+            Some(timeout) => -1,
+            None => -1,
+        };
+        let len = unsafe {
+            libc::epoll_wait(
+                self.fd,
+                self.events.as_mut_ptr(),
+                self.events.len() as _,
+                timeout,
+            )
+        };
+        if len == -1 {
+            panic!("could not wait for events");
+        }
+
+        self.events[..len as usize].iter().map(|e| e.u64 as _)
     }
 }
 impl Drop for Epoll {
     fn drop(&mut self) {
-        unsafe { libc::close(self.0) };
+        unsafe { libc::close(self.fd) };
     }
 }
 
 fn run_client(args: Args, stream: UnixStream) {
     set_ctrlc_handler();
-    set_window_size_changed_handler();
 
     let stdin = io::stdin();
     let mut stdin = stdin.lock();
 
     print!("client\r\n");
 
+    // TODO: handle !isatty
     let raw_mode = RawMode::enter();
     let (width, height) = get_console_size();
     print!("console size: {}, {}\r\n", width, height);
 
+    let resize_event = EventFd::new();
+    RESIZE_EVENT_FD.store(resize_event.fd() as _, Ordering::Relaxed);
+    set_window_size_changed_handler();
+
     let mut keys = Vec::new();
+    let mut epoll = Epoll::new();
+    epoll.add(libc::STDIN_FILENO, 0);
+    epoll.add(resize_event.fd(), 1);
 
     'main_loop: loop {
         keys.clear();
-        if !read_console_keys(&mut stdin, &mut keys) {
-            print!("cabo keys\r\n");
-            break;
-        }
-        for &key in &keys {
-            print!("key: {}\r\n", key);
-            if key == Key::Esc {
-                break 'main_loop;
+        for event_index in epoll.wait(None) {
+            match event_index {
+                0 => {
+                    if !read_console_keys(&mut stdin, &mut keys) {
+                        print!("cabo keys\r\n");
+                        break 'main_loop;
+                    }
+                    if !keys.is_empty() {
+                        print!("key: {}\r\n", keys[0]);
+                    }
+                    for &key in &keys {
+                        if let Key::Esc = key {
+                            break 'main_loop;
+                        }
+                    }
+                }
+                1 => {
+                    resize_event.read();
+                    let (width, height) = get_console_size();
+                    print!("console resized: {}, {}\r\n", width, height);
+                },
+                _ => unreachable!(),
             }
         }
     }

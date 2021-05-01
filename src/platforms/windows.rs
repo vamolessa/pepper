@@ -71,7 +71,7 @@ const MAX_PROCESS_COUNT: usize = 42;
 const MAX_EVENT_COUNT: usize = 1 + 1 + MAX_CLIENT_COUNT + MAX_PROCESS_COUNT;
 const _ASSERT_MAX_EVENT_COUNT_IS_64: [(); 64] = [(); MAX_EVENT_COUNT];
 
-const CLIENT_CONSOLE_EVENT_BUFFER_LEN: usize = 32;
+const CLIENT_EVENT_BUFFER_LEN: usize = 32;
 const PIPE_PREFIX: &str = r#"\\.\pipe\"#;
 
 pub fn main() {
@@ -1217,8 +1217,8 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle
         }
     }
 
-    let mut console_event_buf = [unsafe { std::mem::zeroed() }; CLIENT_CONSOLE_EVENT_BUFFER_LEN];
-    let mut keys = Vec::with_capacity(CLIENT_CONSOLE_EVENT_BUFFER_LEN);
+    let mut console_event_buf = [unsafe { std::mem::zeroed() }; CLIENT_EVENT_BUFFER_LEN];
+    let mut keys = Vec::with_capacity(CLIENT_EVENT_BUFFER_LEN);
 
     let mut input = if is_pipped {
         Input::Stdin(Stdin::new(AsyncReader::new(input_handle)))
