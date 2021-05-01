@@ -60,36 +60,33 @@ pub fn main() {
 
     // temp
     let (stream, _) = UnixStream::pair().unwrap();
-    let _ = run_client(args, stream);
+    run_client(args, stream);
     return;
     // temp
 
     if args.as_server {
         let _ = run_server(stream_path);
         let _ = fs::remove_file(stream_path);
-        return;
-    }
-
-    match UnixStream::connect(stream_path) {
-        Ok(stream) => {
-            let _ = run_client(args, stream);
-        }
-        Err(_) => match unsafe { libc::fork() } {
-            -1 => panic!("could not start server"),
-            0 => loop {
-                match UnixStream::connect(stream_path) {
-                    Ok(stream) => {
-                        let _ = run_client(args, stream);
-                        break;
+    } else {
+        match UnixStream::connect(stream_path) {
+            Ok(stream) => run_client(args, stream),
+            Err(_) => match unsafe { libc::fork() } {
+                -1 => panic!("could not start server"),
+                0 => loop {
+                    match UnixStream::connect(stream_path) {
+                        Ok(stream) => {
+                            run_client(args, stream);
+                            break;
+                        }
+                        Err(_) => std::thread::sleep(Duration::from_millis(100)),
                     }
-                    Err(_) => std::thread::sleep(Duration::from_millis(100)),
+                },
+                _ => {
+                    let _ = run_server(stream_path);
+                    let _ = fs::remove_file(stream_path);
                 }
             },
-            _ => {
-                let _ = run_server(stream_path);
-                let _ = fs::remove_file(stream_path);
-            }
-        },
+        }
     }
 }
 
@@ -114,7 +111,7 @@ impl EventFd {
     pub fn new() -> Self {
         let fd = unsafe { libc::eventfd(0, 0) };
         if fd == -1 {
-            panic!("could not create event");
+            panic!("could not create event fd");
         }
         Self(fd)
     }
@@ -136,6 +133,45 @@ impl EventFd {
     }
 }
 impl Drop for EventFd {
+    fn drop(&mut self) {
+        unsafe { libc::close(self.0) };
+    }
+}
+
+struct SignalFd(RawFd);
+impl SignalFd {
+    pub fn new(signal: libc::c_int) -> Self {
+        unsafe {
+            let mut signals = std::mem::zeroed();
+            let result = libc::sigemptyset(&mut signals);
+            if result == -1 {
+                panic!("could not create signal fd");
+            }
+            let result = libc::sigaddset(&mut signals, signal);
+            if result == -1 {
+                panic!("could not create signal fd");
+            }
+            let fd = libc::signalfd(-1, &signals, 0);
+            if fd == -1 {
+                panic!("could not create signal fd");
+            }
+            Self(fd)
+        }
+    }
+    
+    pub fn fd(&self) -> RawFd {
+        self.0
+    }
+
+    pub fn read(&self) {
+        let mut buf = [0; std::mem::size_of::<libc::signalfd_siginfo>()];
+        let result = unsafe { libc::read(self.0, buf.as_mut_ptr() as _, buf.len() as _) };
+        if result != buf.len() as _ {
+            panic!("could not read from signal fd");
+        }
+    }
+}
+impl Drop for SignalFd {
     fn drop(&mut self) {
         unsafe { libc::close(self.0) };
     }
@@ -186,59 +222,6 @@ fn run_server(stream_path: &Path) -> Result<(), AnyError> {
 
     loop {
         // TODO: main loop
-    }
-}
-
-fn set_signal_handler(
-    signal: libc::c_int,
-    handler: unsafe extern "system" fn(libc::c_int, *const libc::siginfo_t, *const libc::c_void),
-) -> bool {
-    let mut action = libc::sigaction {
-        sa_sigaction: handler as _,
-        sa_mask: unsafe { std::mem::zeroed() },
-        sa_flags: libc::SA_SIGINFO,
-        sa_restorer: None,
-    };
-
-    let result = unsafe { libc::sigemptyset(&mut action.sa_mask) };
-    if result != 0 {
-        return false;
-    }
-
-    let result = unsafe { libc::sigaction(signal, &action, std::ptr::null_mut()) };
-    if result != 0 {
-        return false;
-    }
-
-    true
-}
-
-fn set_ctrlc_handler() {
-    unsafe extern "system" fn handler(
-        _: libc::c_int,
-        _: *const libc::siginfo_t,
-        _: *const libc::c_void,
-    ) {
-    }
-    if !set_signal_handler(libc::SIGINT, handler) {
-        panic!("could not set ctrl handler");
-    }
-}
-
-static RESIZE_EVENT_FD: AtomicIsize = AtomicIsize::new(-1);
-
-fn set_window_size_changed_handler() {
-    unsafe extern "system" fn handler(
-        signal: libc::c_int,
-        _: *const libc::siginfo_t,
-        _: *const libc::c_void,
-    ) {
-        if signal == libc::SIGWINCH {
-            write_to_event_fd(RESIZE_EVENT_FD.load(Ordering::Relaxed) as _);
-        }
-    }
-    if !set_signal_handler(libc::SIGWINCH, handler) {
-        panic!("could not set window size changed handler");
     }
 }
 
@@ -333,8 +316,6 @@ impl Drop for Epoll {
 }
 
 fn run_client(args: Args, stream: UnixStream) {
-    set_ctrlc_handler();
-
     let stdin = io::stdin();
     let mut stdin = stdin.lock();
 
@@ -345,14 +326,12 @@ fn run_client(args: Args, stream: UnixStream) {
     let (width, height) = get_console_size();
     print!("console size: {}, {}\r\n", width, height);
 
-    let resize_event = EventFd::new();
-    RESIZE_EVENT_FD.store(resize_event.fd() as _, Ordering::Relaxed);
-    set_window_size_changed_handler();
+    let resize_signal = SignalFd::new(libc::SIGWINCH);
 
     let mut keys = Vec::new();
     let mut epoll = Epoll::new();
     epoll.add(libc::STDIN_FILENO, 0);
-    epoll.add(resize_event.fd(), 1);
+    epoll.add(resize_signal.fd(), 1);
 
     'main_loop: loop {
         keys.clear();
@@ -373,10 +352,10 @@ fn run_client(args: Args, stream: UnixStream) {
                     }
                 }
                 1 => {
-                    resize_event.read();
+                    resize_signal.read();
                     let (width, height) = get_console_size();
                     print!("console resized: {}, {}\r\n", width, height);
-                },
+                }
                 _ => unreachable!(),
             }
         }
