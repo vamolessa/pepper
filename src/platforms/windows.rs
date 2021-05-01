@@ -1206,8 +1206,8 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle
                 output_mode.set(ENABLE_PROCESSED_OUTPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
                 console_output_mode = Some(output_mode);
 
-                let (width, height) = get_console_size(output_handle);
-                let bytes = application.update(Some((width, height)), &[], &[], &[]);
+                let size = get_console_size(output_handle);
+                let bytes = application.update(Some(size), &[], &[], &[]);
                 if !connection.write(bytes) {
                     return;
                 }

@@ -288,16 +288,13 @@ impl Epoll {
 
     pub fn remove(&self, fd: RawFd) {
         let mut event = libc::epoll_event { events: 0, u64: 0 };
-        let result = unsafe { libc::epoll_ctl(self.0, libc::EPOLL_CTL_DEL, fd, &mut event) };
-        if result == -1 {
-            panic!("could not remove event");
-        }
+        unsafe { libc::epoll_ctl(self.0, libc::EPOLL_CTL_DEL, fd, &mut event) };
     }
 
     pub fn wait<'a>(
         &self,
-        timeout: Option<Duration>,
         events: &'a mut EpollEvents,
+        timeout: Option<Duration>,
     ) -> impl 'a + Iterator<Item = usize> {
         let timeout = match timeout {
             Some(timeout) => -1,
@@ -320,36 +317,64 @@ impl Drop for Epoll {
 }
 
 fn run_client(args: Args, mut stream: UnixStream) {
+    use io::{Read, Write};
+
     let stdin = io::stdin();
     let mut stdin = stdin.lock();
 
     print!("client\r\n");
 
-    // TODO: handle !isatty
-    let raw_mode = RawMode::enter();
-    let (width, height) = get_console_size();
-    print!("console size: {}, {}\r\n", width, height);
+    let mut client_index = 0;
+    match stream.read(std::slice::from_mut(&mut client_index)) {
+        Ok(1) => (),
+        _ => return,
+    }
 
-    let resize_signal = SignalFd::new(libc::SIGWINCH);
+    let client_handle = ClientHandle::from_index(client_index as _).unwrap();
+    let is_pipped = unsafe { libc::isatty(stdin.as_raw_fd()) == 0 };
 
-    let mut keys = Vec::new();
-    let mut stream_buf = [0; ClientApplication::connection_buffer_len()];
+    let stdout = io::stdout();
+    let mut application = ClientApplication::new(client_handle, stdout.lock(), is_pipped);
+    let bytes = application.init(args);
+    if stream.write(bytes).is_err() {
+        return;
+    }
+
+    let raw_mode;
+    let resize_signal;
 
     let epoll = Epoll::new();
     epoll.add(stream.as_raw_fd(), 0);
-    epoll.add(resize_signal.as_raw_fd(), 1);
-    epoll.add(libc::STDIN_FILENO, 2);
+    epoll.add(stdin.as_raw_fd(), 1);
     let mut epoll_events = EpollEvents::new();
 
+    if is_pipped {
+        raw_mode = None;
+        resize_signal = None;
+    } else {
+        raw_mode = Some(RawMode::enter());
+        let signal = SignalFd::new(libc::SIGWINCH);
+        epoll.add(signal.as_raw_fd(), 2);
+        resize_signal = Some(signal);
+
+        let size = get_console_size();
+        let bytes = application.update(Some(size), &[], &[], &[]);
+        if stream.write(bytes).is_err() {
+            return;
+        }
+    }
+
+    let mut keys = Vec::new();
+    let mut stream_buf = [0; ClientApplication::connection_buffer_len()];
+    let mut stdin_buf = [0; ClientApplication::stdin_buffer_len()];
+
     'main_loop: loop {
-        let mut resize = None;
-        //let mut stdin_bytes = &[][..];
-        let mut server_bytes = &[][..];
+        for event_index in epoll.wait(&mut epoll_events, None) {
+            let mut resize = None;
+            let mut stdin_bytes = &[][..];
+            let mut server_bytes = &[][..];
 
-        keys.clear();
-
-        for event_index in epoll.wait(None, &mut epoll_events) {
-            use io::Read;
+            keys.clear();
 
             match event_index {
                 0 => {
@@ -359,32 +384,42 @@ fn run_client(args: Args, mut stream: UnixStream) {
                             print!("read nothing\r\n");
                             epoll.remove(stream.as_raw_fd());
                         }
-                        Err(e) => {
-                            print!("error {}\r\n", e);
-                            break 'main_loop;
-                        }
                         Ok(len) => server_bytes = &stream_buf[..len],
+                        Err(e) => break 'main_loop,
                     }
                 }
                 1 => {
-                    resize_signal.read();
-                    resize = Some(get_console_size());
-                }
-                2 => {
-                    if !read_console_keys(&mut stdin, &mut keys) {
-                        print!("cabo keys\r\n");
-                        break 'main_loop;
-                    }
-                    if !keys.is_empty() {
-                        print!("key: {}\r\n", keys[0]);
-                    }
-                    for &key in &keys {
-                        if let Key::Esc = key {
-                            break 'main_loop;
+                    let bytes = match stdin.read(&mut stdin_buf) {
+                        Ok(0) | Err(_) => {
+                            epoll.remove(stdin.as_raw_fd());
+                            continue;
+                        }
+                        Ok(len) => &stdin_buf[..len],
+                    };
+                    if is_pipped {
+                        stdin_bytes = bytes;
+                    } else {
+                        parse_terminal_keys(&bytes, &mut keys);
+                        for &key in &keys {
+                            print!("key: {}\r\n", key);
+                            if let Key::Esc = key {
+                                break 'main_loop;
+                            }
                         }
                     }
                 }
+                2 => {
+                    if let Some(ref signal) = resize_signal {
+                        signal.read();
+                        resize = Some(get_console_size());
+                    }
+                }
                 _ => unreachable!(),
+            }
+
+            let bytes = application.update(resize, &keys, stdin_bytes, server_bytes);
+            if stream.write(bytes).is_err() {
+                break;
             }
         }
     }
@@ -408,24 +443,10 @@ fn get_console_size() -> (usize, usize) {
     (size.ws_col as _, size.ws_row as _)
 }
 
-fn read_console_keys<R>(reader: &mut R, keys: &mut Vec<Key>) -> bool
-where
-    R: io::Read,
-{
-    let mut buf = [0; 64];
-    let len = match reader.read(&mut buf) {
-        Ok(0) => return false,
-        Ok(len) => len,
-        Err(error) => match error.kind() {
-            io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted => return true,
-            _ => return false,
-        },
-    };
-    let mut buf = &buf[..len];
-
+fn parse_terminal_keys(mut buf: &[u8], keys: &mut Vec<Key>) {
     loop {
         let (key, rest) = match buf {
-            &[] => break true,
+            &[] => break,
             &[0x1b, b'[', b'5', b'~', ref rest @ ..] => (Key::PageUp, rest),
             &[0x1b, b'[', b'6', b'~', ref rest @ ..] => (Key::PageDown, rest),
             &[0x1b, b'[', b'A', ref rest @ ..] => (Key::Up, rest),
