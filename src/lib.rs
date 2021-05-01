@@ -33,7 +33,7 @@ pub struct Args {
     pub session: Option<String>,
     pub as_client: Option<client::ClientHandle>,
     pub print_session: bool,
-    pub force_server: bool,
+    pub as_server: bool,
     pub files: Vec<String>,
 }
 
@@ -60,7 +60,7 @@ fn print_help() {
     println!("  -s, --session             session name to connect to");
     println!("  --as-client <client-id>   sends events as if it was client with id <client-id>");
     println!("  --print-session           print the computed session name and quits");
-    println!("  --force-server            try starting a server and never spawns a client");
+    println!("  --as-server               ignore all other options and only run as server");
 }
 
 impl Args {
@@ -125,7 +125,7 @@ impl Args {
                     None => error(format_args!("expected client id after {}", arg)),
                 },
                 "--print-session" => parsed.print_session = true,
-                "--force-server" => parsed.force_server = true,
+                "--as-server" => parsed.as_server = true,
                 "--" => {
                     while let Some(arg) = args.next() {
                         let arg = arg_to_str(&arg);

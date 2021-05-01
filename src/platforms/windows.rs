@@ -114,17 +114,10 @@ pub fn main() {
     let input_handle = get_std_handle(STD_INPUT_HANDLE);
     let output_handle = get_std_handle(STD_OUTPUT_HANDLE);
 
-    match (input_handle, output_handle) {
-        (Some(input_handle), Some(output_handle)) => {
-            if args.force_server {
-                let _ = run_server(&pipe_path);
-            } else {
-                run_client(args, &pipe_path, input_handle, output_handle);
-            }
-        }
-        _ => {
-            let _ = run_server(&pipe_path);
-        }
+    if args.as_server {
+        let _ = run_server(&pipe_path);
+    } else if let Some(input_handle) = input_handle {
+        run_client(args, &pipe_path, input_handle, output_handle);
     }
 }
 
@@ -358,6 +351,7 @@ fn fork() {
             command_line.push(short);
         }
     }
+    command_line.extend(b" --as-server".iter().map(|&b| b as u16));
     command_line.push(0);
 
     let result = unsafe {
@@ -1167,15 +1161,13 @@ impl ConnectionToServer {
     }
 }
 
-fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle: Handle) {
+fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle: Option<Handle>) {
     if !pipe_exists(pipe_path) {
         fork();
         while !pipe_exists(pipe_path) {
             std::thread::sleep(Duration::from_millis(100));
         }
     }
-    
-    set_ctrlc_handler();
 
     let mut connection = ConnectionToServer::connect(pipe_path);
 
@@ -1202,18 +1194,25 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle
         console_input_mode = None;
         console_output_mode = None;
     } else {
+        set_ctrlc_handler();
+
         let input_mode = ConsoleMode::new(&input_handle);
         input_mode.set(ENABLE_WINDOW_INPUT);
         console_input_mode = Some(input_mode);
 
-        let output_mode = ConsoleMode::new(&output_handle);
-        output_mode.set(ENABLE_PROCESSED_OUTPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
-        console_output_mode = Some(output_mode);
+        match output_handle {
+            Some(ref output_handle) => {
+                let output_mode = ConsoleMode::new(output_handle);
+                output_mode.set(ENABLE_PROCESSED_OUTPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+                console_output_mode = Some(output_mode);
 
-        let (width, height) = get_console_size(&output_handle);
-        let bytes = application.update(Some((width, height)), &[], &[], &[]);
-        if !connection.write(bytes) {
-            return;
+                let (width, height) = get_console_size(output_handle);
+                let bytes = application.update(Some((width, height)), &[], &[], &[]);
+                if !connection.write(bytes) {
+                    return;
+                }
+            }
+            None => console_output_mode = None,
         }
     }
 

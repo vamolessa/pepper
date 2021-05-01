@@ -64,7 +64,7 @@ pub fn main() {
     return;
     // temp
 
-    if args.force_server {
+    if args.as_server {
         let _ = run_server(stream_path);
         let _ = fs::remove_file(stream_path);
         return;
