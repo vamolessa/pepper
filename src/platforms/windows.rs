@@ -797,25 +797,16 @@ impl AsyncProcess {
         }
     }
 
-    pub fn stdin(&mut self) -> Option<&mut ChildStdin> {
-        self.child.stdin.as_mut()
+    pub fn write(&mut self, buf: &[u8]) -> bool {
+        use io::Write;
+        match self.child.stdin {
+            Some(ref mut stdin) => stdin.write_all(buf).is_ok(),
+            None => true,
+        }
     }
 
-    pub fn take_stdin(&mut self) -> Option<ChildStdin> {
-        self.child.stdin.take()
-    }
-
-    pub fn wait(&mut self) -> bool {
-        if !self.alive {
-            return false;
-        }
-
-        self.alive = false;
-        self.stdout = None;
-        match self.child.wait() {
-            Ok(status) => status.success(),
-            Err(_) => false,
-        }
+    pub fn close_input(&mut self) {
+        self.child.stdin = None;
     }
 
     pub fn kill(&mut self) {
@@ -971,23 +962,20 @@ fn run_server(pipe_path: &[u16]) -> Result<(), AnyError> {
                         }
                         PlatformRequest::WriteToProcess { handle, buf } => {
                             if let Some(ref mut process) = processes[handle.0] {
-                                if let Some(pipe) = process.stdin() {
-                                    use io::Write;
-                                    if pipe.write_all(buf.as_bytes()).is_err() {
-                                        let tag = process.tag;
-                                        process.kill();
-                                        processes[handle.0] = None;
-                                        event_sender.send(ApplicationEvent::ProcessExit {
-                                            tag,
-                                            success: false,
-                                        })?;
-                                    }
+                                if !process.write(buf.as_bytes()) {
+                                    let tag = process.tag;
+                                    process.kill();
+                                    processes[handle.0] = None;
+                                    event_sender.send(ApplicationEvent::ProcessExit {
+                                        tag,
+                                        success: false,
+                                    })?;
                                 }
                             }
                         }
                         PlatformRequest::CloseProcessInput { handle } => {
                             if let Some(ref mut process) = processes[handle.0] {
-                                process.take_stdin().take();
+                                process.close_input();
                             }
                         }
                         PlatformRequest::KillProcess { handle } => {
@@ -1038,21 +1026,28 @@ fn run_server(pipe_path: &[u16]) -> Result<(), AnyError> {
             Some(EventSource::Process(i)) => {
                 if let Some(ref mut process) = processes[i] {
                     if let Some(ref mut pipe) = process.stdout {
+                        let tag = process.tag;
                         match pipe.read_async(&mut buf_pool) {
                             Ok(None) => (),
                             Ok(Some(buf)) => {
-                                event_sender.send(ApplicationEvent::ProcessOutput {
-                                    tag: process.tag,
-                                    buf,
-                                })?
+                                if buf.as_bytes().is_empty() {
+                                    event_sender.send(ApplicationEvent::ProcessExit {
+                                        tag,
+                                        success: true,
+                                    })?;
+                                } else {
+                                    event_sender
+                                        .send(ApplicationEvent::ProcessOutput { tag, buf })?;
+                                }
                             }
                             Err(()) => {
                                 process.stdout = None;
-                                let tag = process.tag;
-                                let success = process.wait();
+                                process.kill();
                                 processes[i] = None;
-                                event_sender
-                                    .send(ApplicationEvent::ProcessExit { tag, success })?;
+                                event_sender.send(ApplicationEvent::ProcessExit {
+                                    tag,
+                                    success: false,
+                                })?;
                             }
                         }
                     }
