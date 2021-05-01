@@ -1238,9 +1238,10 @@ fn run_client(args: Args, pipe_path: &[u16], input_handle: Handle, output_handle
         };
 
         let mut resize = None;
-        keys.clear();
         let mut stdin_bytes = &[][..];
         let mut server_bytes = &[][..];
+
+        keys.clear();
 
         match wait_handle_index {
             0 => match connection.read_async() {

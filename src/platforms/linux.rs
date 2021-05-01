@@ -2,7 +2,7 @@ use std::{
     env, fs, io,
     os::unix::{
         ffi::OsStrExt,
-        io::{IntoRawFd, RawFd},
+        io::{AsRawFd, RawFd},
         net::{UnixListener, UnixStream},
     },
     path::Path,
@@ -116,10 +116,6 @@ impl EventFd {
         Self(fd)
     }
 
-    pub fn fd(&self) -> RawFd {
-        self.0
-    }
-
     pub fn write(&self) {
         write_to_event_fd(self.0);
     }
@@ -130,6 +126,11 @@ impl EventFd {
         if result != buf.len() as _ {
             panic!("could not read from event fd");
         }
+    }
+}
+impl AsRawFd for EventFd {
+    fn as_raw_fd(&self) -> RawFd {
+        self.0
     }
 }
 impl Drop for EventFd {
@@ -162,17 +163,18 @@ impl SignalFd {
             Self(fd)
         }
     }
-    
-    pub fn fd(&self) -> RawFd {
-        self.0
-    }
 
     pub fn read(&self) {
-        let mut buf = [0; std::mem::size_of::<libc::signalfd_siginfo>()];
+        let mut buf = [0u8; std::mem::size_of::<libc::signalfd_siginfo>()];
         let result = unsafe { libc::read(self.0, buf.as_mut_ptr() as _, buf.len() as _) };
         if result != buf.len() as _ {
             panic!("could not read from signal fd");
         }
+    }
+}
+impl AsRawFd for SignalFd {
+    fn as_raw_fd(&self) -> RawFd {
+        self.0
     }
 }
 impl Drop for SignalFd {
@@ -207,7 +209,7 @@ fn run_server(stream_path: &Path) -> Result<(), AnyError> {
     let mut buf_pool = BufPool::default();
 
     let new_request_event = EventFd::new();
-    NEW_REQUEST_EVENT_FD.store(new_request_event.fd() as _, Ordering::Relaxed);
+    NEW_REQUEST_EVENT_FD.store(new_request_event.as_raw_fd() as _, Ordering::Relaxed);
 
     let (request_sender, request_receiver) = mpsc::channel();
     let platform = Platform::new(
@@ -256,22 +258,21 @@ impl Drop for RawMode {
     }
 }
 
-const DEFAULT_EPOLL_EVENT: libc::epoll_event = libc::epoll_event { events: 0, u64: 0 };
-struct Epoll {
-    fd: RawFd,
-    events: [libc::epoll_event; CLIENT_EVENT_BUFFER_LEN],
+struct EpollEvents([libc::epoll_event; CLIENT_EVENT_BUFFER_LEN]);
+impl EpollEvents {
+    pub fn new() -> Self {
+        const DEFAULT_EPOLL_EVENT: libc::epoll_event = libc::epoll_event { events: 0, u64: 0 };
+        Self([DEFAULT_EPOLL_EVENT; CLIENT_EVENT_BUFFER_LEN])
+    }
 }
+struct Epoll(RawFd);
 impl Epoll {
     pub fn new() -> Self {
         let fd = unsafe { libc::epoll_create1(0) };
         if fd == -1 {
             panic!("could not create epoll");
         }
-
-        Self {
-            fd,
-            events: [DEFAULT_EPOLL_EVENT; CLIENT_EVENT_BUFFER_LEN],
-        }
+        Self(fd)
     }
 
     pub fn add(&self, fd: RawFd, index: usize) {
@@ -279,47 +280,46 @@ impl Epoll {
             events: (libc::EPOLLIN | libc::EPOLLERR | libc::EPOLLRDHUP) as _,
             u64: index as _,
         };
-        let result = unsafe { libc::epoll_ctl(self.fd, libc::EPOLL_CTL_ADD, fd, &mut event) };
+        let result = unsafe { libc::epoll_ctl(self.0, libc::EPOLL_CTL_ADD, fd, &mut event) };
         if result == -1 {
             panic!("could not add event");
         }
     }
 
     pub fn remove(&self, fd: RawFd) {
-        let mut event = DEFAULT_EPOLL_EVENT;
-        let result = unsafe { libc::epoll_ctl(self.fd, libc::EPOLL_CTL_DEL, fd, &mut event) };
+        let mut event = libc::epoll_event { events: 0, u64: 0 };
+        let result = unsafe { libc::epoll_ctl(self.0, libc::EPOLL_CTL_DEL, fd, &mut event) };
         if result == -1 {
             panic!("could not remove event");
         }
     }
 
-    pub fn wait<'a>(&'a mut self, timeout: Option<Duration>) -> impl 'a + Iterator<Item = usize> {
+    pub fn wait<'a>(
+        &self,
+        timeout: Option<Duration>,
+        events: &'a mut EpollEvents,
+    ) -> impl 'a + Iterator<Item = usize> {
         let timeout = match timeout {
             Some(timeout) => -1,
             None => -1,
         };
         let len = unsafe {
-            libc::epoll_wait(
-                self.fd,
-                self.events.as_mut_ptr(),
-                self.events.len() as _,
-                timeout,
-            )
+            libc::epoll_wait(self.0, events.0.as_mut_ptr(), events.0.len() as _, timeout)
         };
         if len == -1 {
             panic!("could not wait for events");
         }
 
-        self.events[..len as usize].iter().map(|e| e.u64 as _)
+        events.0[..len as usize].iter().map(|e| e.u64 as _)
     }
 }
 impl Drop for Epoll {
     fn drop(&mut self) {
-        unsafe { libc::close(self.fd) };
+        unsafe { libc::close(self.0) };
     }
 }
 
-fn run_client(args: Args, stream: UnixStream) {
+fn run_client(args: Args, mut stream: UnixStream) {
     let stdin = io::stdin();
     let mut stdin = stdin.lock();
 
@@ -333,15 +333,44 @@ fn run_client(args: Args, stream: UnixStream) {
     let resize_signal = SignalFd::new(libc::SIGWINCH);
 
     let mut keys = Vec::new();
-    let mut epoll = Epoll::new();
-    epoll.add(libc::STDIN_FILENO, 0);
-    epoll.add(resize_signal.fd(), 1);
+    let mut stream_buf = [0; ClientApplication::connection_buffer_len()];
+
+    let epoll = Epoll::new();
+    epoll.add(stream.as_raw_fd(), 0);
+    epoll.add(resize_signal.as_raw_fd(), 1);
+    epoll.add(libc::STDIN_FILENO, 2);
+    let mut epoll_events = EpollEvents::new();
 
     'main_loop: loop {
+        let mut resize = None;
+        //let mut stdin_bytes = &[][..];
+        let mut server_bytes = &[][..];
+
         keys.clear();
-        for event_index in epoll.wait(None) {
+
+        for event_index in epoll.wait(None, &mut epoll_events) {
+            use io::Read;
+
             match event_index {
                 0 => {
+                    print!("stream ready?\r\n");
+                    match stream.read(&mut stream_buf) {
+                        Ok(0) => {
+                            print!("read nothing\r\n");
+                            epoll.remove(stream.as_raw_fd());
+                        }
+                        Err(e) => {
+                            print!("error {}\r\n", e);
+                            break 'main_loop;
+                        }
+                        Ok(len) => server_bytes = &stream_buf[..len],
+                    }
+                }
+                1 => {
+                    resize_signal.read();
+                    resize = Some(get_console_size());
+                }
+                2 => {
                     if !read_console_keys(&mut stdin, &mut keys) {
                         print!("cabo keys\r\n");
                         break 'main_loop;
@@ -354,11 +383,6 @@ fn run_client(args: Args, stream: UnixStream) {
                             break 'main_loop;
                         }
                     }
-                }
-                1 => {
-                    resize_signal.read();
-                    let (width, height) = get_console_size();
-                    print!("console resized: {}, {}\r\n", width, height);
                 }
                 _ => unreachable!(),
             }
