@@ -151,6 +151,10 @@ impl SignalFd {
             if result == -1 {
                 panic!("could not create signal fd");
             }
+            let result = libc::sigprocmask(libc::SIG_BLOCK, &signals, std::ptr::null_mut());
+            if result == -1 {
+                panic!("could not create signal fd");
+            }
             let fd = libc::signalfd(-1, &signals, 0);
             if fd == -1 {
                 panic!("could not create signal fd");
