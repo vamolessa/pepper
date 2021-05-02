@@ -41,6 +41,7 @@ impl Default for LineParseState {
 }
 
 pub struct Syntax {
+    raw_glob: Vec<u8>,
     glob: Glob,
     rules: [Pattern; 7],
 }
@@ -50,6 +51,7 @@ impl Syntax {
         let mut text_pattern = Pattern::new();
         let _ = text_pattern.compile("%a{%w_}|_{%w_}");
         Self {
+            raw_glob: Vec::new(),
             glob: Glob::default(),
             rules: [
                 Pattern::new(),
@@ -64,6 +66,8 @@ impl Syntax {
     }
 
     pub fn set_glob(&mut self, pattern: &[u8]) -> Result<(), InvalidGlobError> {
+        self.raw_glob.clear();
+        self.raw_glob.extend_from_slice(pattern);
         self.glob.compile(pattern)
     }
 
@@ -204,6 +208,12 @@ impl SyntaxCollection {
     }
 
     pub fn add(&mut self, syntax: Syntax) {
+        for s in &mut self.syntaxes {
+            if s.raw_glob == syntax.raw_glob {
+                *s = syntax;
+                return;
+            }
+        }
         self.syntaxes.push(syntax);
     }
 
@@ -665,3 +675,4 @@ mod tests {
         }
     }
 }
+

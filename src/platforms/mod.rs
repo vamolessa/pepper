@@ -10,7 +10,7 @@ mod linux;
     target_os = "netbsd",
     target_os = "openbsd",
     target_os = "dragonfly",
-))
+))]
 mod bsd;
 
 pub fn main() {
@@ -19,7 +19,8 @@ pub fn main() {
 
     #[cfg(target_os = "linux")]
     linux::main();
-    
+
     #[cfg(target_os = "bsd")]
     bsd::main();
 }
+

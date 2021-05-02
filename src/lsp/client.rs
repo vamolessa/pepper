@@ -2518,6 +2518,7 @@ impl FromStr for ClientHandle {
 }
 
 struct ClientRecipe {
+    raw_glob: Vec<u8>,
     glob: Glob,
     command: String,
     environment: String,
@@ -2564,8 +2565,9 @@ impl ClientManager {
         log_buffer_name: Option<&str>,
     ) -> Result<(), InvalidGlobError> {
         for recipe in &mut self.recipes {
-            if recipe.command == command {
-                recipe.glob.compile(glob)?;
+            if recipe.raw_glob == glob {
+                recipe.command.clear();
+                recipe.command.push_str(command);
                 recipe.environment.clear();
                 recipe.environment.push_str(environment);
                 recipe.root.clear();
@@ -2584,6 +2586,7 @@ impl ClientManager {
         let mut recipe_glob = Glob::default();
         recipe_glob.compile(glob)?;
         self.recipes.push(ClientRecipe {
+            raw_glob: glob.into(),
             glob: recipe_glob,
             command: command.into(),
             environment: environment.into(),
