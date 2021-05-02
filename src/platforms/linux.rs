@@ -1,12 +1,10 @@
 use std::{
-    env, fs, io,
+    fs, io,
     os::unix::{
-        ffi::OsStrExt,
         io::{AsRawFd, RawFd},
         net::{UnixListener, UnixStream},
     },
     path::Path,
-    process::Child,
     sync::{
         atomic::{AtomicIsize, Ordering},
         mpsc,
@@ -17,79 +15,19 @@ use std::{
 use pepper::{
     application::{AnyError, ApplicationEvent, ClientApplication, ServerApplication},
     client::ClientHandle,
-    editor_utils::hash_bytes,
-    platform::{BufPool, Key, Platform, PlatformRequest, ProcessHandle, ProcessTag, SharedBuf},
+    platform::{BufPool, Key, Platform, PlatformRequest, ProcessHandle},
     Args,
 };
+
+mod unix_utils;
+use unix_utils::{run, RawMode, Process};
 
 const MAX_CLIENT_COUNT: usize = 20;
 const MAX_PROCESS_COUNT: usize = 42;
 const CLIENT_EVENT_BUFFER_LEN: usize = 32;
 
 pub fn main() {
-    let args = Args::parse();
-
-    let mut hash_buf = [0u8; 16];
-    let session_name = match args.session {
-        Some(ref name) => name.as_str(),
-        None => {
-            use io::Write;
-
-            let current_dir = env::current_dir().expect("could not retrieve the current directory");
-            let current_dir_bytes = current_dir.as_os_str().as_bytes().iter().cloned();
-            let current_directory_hash = hash_bytes(current_dir_bytes);
-            let mut cursor = io::Cursor::new(&mut hash_buf[..]);
-            write!(&mut cursor, "{:x}", current_directory_hash).unwrap();
-            let len = cursor.position() as usize;
-            std::str::from_utf8(&hash_buf[..len]).unwrap()
-        }
-    };
-
-    let mut stream_path = String::new();
-    stream_path.push_str("/tmp/");
-    stream_path.push_str(env!("CARGO_PKG_NAME"));
-    stream_path.push('/');
-    stream_path.push_str(session_name);
-
-    if args.print_session {
-        print!("{}", stream_path);
-        return;
-    }
-
-    let stream_path = Path::new(&stream_path);
-
-    if args.as_server {
-        let _ = run_server(stream_path);
-        let _ = fs::remove_file(stream_path);
-    } else {
-        match UnixStream::connect(stream_path) {
-            Ok(stream) => run_client(args, stream),
-            Err(_) => match unsafe { libc::fork() } {
-                -1 => panic!("could not start server"),
-                0 => loop {
-                    match UnixStream::connect(stream_path) {
-                        Ok(stream) => {
-                            run_client(args, stream);
-                            break;
-                        }
-                        Err(_) => std::thread::sleep(Duration::from_millis(100)),
-                    }
-                },
-                _ => {
-                    let _ = run_server(stream_path);
-                    let _ = fs::remove_file(stream_path);
-                }
-            },
-        }
-    }
-}
-
-fn write_to_event_fd(fd: RawFd) {
-    let mut buf = 1u64.to_ne_bytes();
-    let result = unsafe { libc::write(fd, buf.as_mut_ptr() as _, buf.len() as _) };
-    if result != buf.len() as _ {
-        panic!("could not write to event fd");
-    }
+    run(run_server, run_client);
 }
 
 struct EventFd(RawFd);
@@ -100,6 +38,14 @@ impl EventFd {
             panic!("could not create event fd");
         }
         Self(fd)
+    }
+
+    pub fn write(fd: RawFd) {
+        let mut buf = 1u64.to_ne_bytes();
+        let result = unsafe { libc::write(fd, buf.as_mut_ptr() as _, buf.len() as _) };
+        if result != buf.len() as _ {
+            panic!("could not write to event fd");
+        }
     }
 
     pub fn read(&self) {
@@ -223,73 +169,6 @@ impl Drop for Epoll {
     }
 }
 
-struct Process {
-    alive: bool,
-    child: Child,
-    tag: ProcessTag,
-    buf_len: usize,
-}
-impl Process {
-    pub fn new(child: Child, tag: ProcessTag, buf_len: usize) -> Self {
-        Self {
-            alive: true,
-            child,
-            tag,
-            buf_len,
-        }
-    }
-
-    pub fn try_as_raw_fd(&self) -> Option<RawFd> {
-        self.child.stdout.as_ref().map(|s| s.as_raw_fd())
-    }
-
-    pub fn read(&mut self, buf_pool: &mut BufPool) -> Result<Option<SharedBuf>, ()> {
-        use io::Read;
-        match self.child.stdout {
-            Some(ref mut stdout) => {
-                let mut buf = buf_pool.acquire();
-                let write = buf.write_with_len(self.buf_len);
-                match stdout.read(write) {
-                    Ok(len) => {
-                        write.truncate(len);
-                        Ok(Some(buf.share()))
-                    }
-                    Err(_) => Err(()),
-                }
-            }
-            None => Ok(None),
-        }
-    }
-
-    pub fn write(&mut self, buf: &[u8]) -> bool {
-        use io::Write;
-        match self.child.stdin {
-            Some(ref mut stdin) => stdin.write_all(buf).is_ok(),
-            None => true,
-        }
-    }
-
-    pub fn close_input(&mut self) {
-        self.child.stdin = None;
-    }
-
-    pub fn kill(&mut self) {
-        if !self.alive {
-            return;
-        }
-
-        self.alive = false;
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-    }
-}
-impl Drop for Process {
-    fn drop(&mut self) {
-        self.kill();
-        self.alive = false;
-    }
-}
-
 fn run_server(stream_path: &Path) -> Result<(), AnyError> {
     use io::{Read, Write};
 
@@ -315,7 +194,7 @@ fn run_server(stream_path: &Path) -> Result<(), AnyError> {
 
     let (request_sender, request_receiver) = mpsc::channel();
     let platform = Platform::new(
-        || write_to_event_fd(NEW_REQUEST_EVENT_FD.load(Ordering::Relaxed) as _),
+        || EventFd::write(NEW_REQUEST_EVENT_FD.load(Ordering::Relaxed) as _),
         request_sender,
     );
 
@@ -408,7 +287,7 @@ fn run_server(stream_path: &Path) -> Result<(), AnyError> {
                                         if let Some(fd) = process.try_as_raw_fd() {
                                             epoll.remove(fd);
                                         }
-                                        let tag = process.tag;
+                                        let tag = process.tag();
                                         process.kill();
                                         processes[index] = None;
                                         event_sender.send(ApplicationEvent::ProcessExit {
@@ -429,7 +308,7 @@ fn run_server(stream_path: &Path) -> Result<(), AnyError> {
                                     if let Some(fd) = process.try_as_raw_fd() {
                                         epoll.remove(fd);
                                     }
-                                    let tag = process.tag;
+                                    let tag = process.tag();
                                     process.kill();
                                     processes[index] = None;
                                     event_sender.send(ApplicationEvent::ProcessExit {
@@ -481,7 +360,7 @@ fn run_server(stream_path: &Path) -> Result<(), AnyError> {
                 PROCESSES_START_INDEX..=PROCESSES_LAST_INDEX => {
                     let index = event_index - PROCESSES_START_INDEX;
                     if let Some(ref mut process) = processes[index] {
-                        let tag = process.tag;
+                        let tag = process.tag();
                         match process.read(&mut buf_pool) {
                             Ok(None) => (),
                             Ok(Some(buf)) => {
@@ -512,33 +391,6 @@ fn run_server(stream_path: &Path) -> Result<(), AnyError> {
                 _ => unreachable!(),
             }
         }
-    }
-}
-
-struct RawMode {
-    original: libc::termios,
-}
-impl RawMode {
-    pub fn enter() -> Self {
-        let original = unsafe {
-            let mut original = std::mem::zeroed();
-            libc::tcgetattr(libc::STDIN_FILENO, &mut original);
-            let mut new = original.clone();
-            new.c_iflag &= !(libc::BRKINT | libc::ICRNL | libc::INPCK | libc::ISTRIP | libc::IXON);
-            new.c_oflag &= !libc::OPOST;
-            new.c_cflag |= libc::CS8;
-            new.c_lflag &= !(libc::ECHO | libc::ICANON | libc::ISIG | libc::IEXTEN);
-            new.c_cc[libc::VMIN] = 0;
-            new.c_cc[libc::VTIME] = 1;
-            libc::tcsetattr(libc::STDIN_FILENO, libc::TCSAFLUSH, &new);
-            original
-        };
-        Self { original }
-    }
-}
-impl Drop for RawMode {
-    fn drop(&mut self) {
-        unsafe { libc::tcsetattr(libc::STDIN_FILENO, libc::TCSAFLUSH, &self.original) };
     }
 }
 
