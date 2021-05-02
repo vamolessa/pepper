@@ -110,7 +110,6 @@ That is, the cursor is not a one-char selection but only a visual cue to indicat
 It's possible to kinda follow Pepper's development history in this [twitter thread](https://twitter.com/ahvamolessa/status/1276978064166182913)
 
 # big features todo
-- linux platform layer
 - mac/bsd platform layer
 - debug adapter protocol
 
