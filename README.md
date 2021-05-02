@@ -10,7 +10,7 @@ Pepper is an experiment of mine to simplify code editing from the terminal.
 It's mission is to be a minimal and fast code editor with an orthogonal set of both editing and navigation features.
 
 ## [default keybindings](https://github.com/vamolessa/pepper/wiki/bindings)
-## [scripting api](https://github.com/vamolessa/pepper/wiki/scripting-api-reference)
+## [command reference](https://github.com/vamolessa/pepper/wiki/command-reference)
 ## [defining language syntaxes](https://github.com/vamolessa/pepper/wiki/language-syntax-definitions)
 ## [config recipes](https://github.com/vamolessa/pepper/wiki/config-recipes)
 
@@ -26,13 +26,13 @@ This will not only keep you updated with the latest features/fixes but also supp
 pepper development!
 
 ## using [`cargo`](https://doc.rust-lang.org/cargo/)
-Simply running `cargo install pepper` should get you up and running.
+Simply running `cargo install pepper` will get you up and running.
 
 ## from source
 ```
 git clone git@github.com:vamolessa/pepper.git
 cd pepper
-cargo install --path .
+cargo install --path . --force
 ```
 
 **NOTE**: installing from source still requires `cargo` (at least it's easier this way).
@@ -44,7 +44,7 @@ Please [open an issue](https://github.com/vamolessa/pepper/issues)
 
 - small, but orthogonal, set of editing primitives
 - mnemonic and easy to reach default keybindings (assuming a qwerty keyboard)
-- cross-plaftorm (Linux, Windows, Mac)
+- cross-plaftorm (Windows, Linux; Mac, BSD comming)
 - customizable through scripting
 - extensible through external cli tools
 - be as fast and reponsive as possible
