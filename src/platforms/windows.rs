@@ -402,7 +402,7 @@ fn wait_for_multiple_objects(handles: &[HANDLE], timeout: Option<Duration>) -> O
     }
 }
 
-fn read_from_clipboard(text: &mut String) {
+fn read_from_clipboard(_: &str, text: &mut String) {
     let clipboard = Clipboard::open();
     let handle = unsafe { GetClipboardData(CF_UNICODETEXT) };
     if handle == NULL {
@@ -453,7 +453,7 @@ fn read_from_clipboard(text: &mut String) {
     drop(clipboard);
 }
 
-fn write_to_clipboard(text: &str) {
+fn write_to_clipboard(_: &mut String, text: &str) {
     let clipboard = Clipboard::open();
     let len = unsafe {
         MultiByteToWideChar(
@@ -881,12 +881,11 @@ fn run_server(pipe_path: &[u16]) -> Result<(), AnyError> {
     NEW_REQUEST_EVENT_HANDLE.store(new_request_event.0 as _, Ordering::Relaxed);
 
     let (request_sender, request_receiver) = mpsc::channel();
-    let platform = Platform::new(
-        read_from_clipboard,
-        write_to_clipboard,
+    let mut platform = Platform::new(
         || set_event(NEW_REQUEST_EVENT_HANDLE.load(Ordering::Relaxed) as _),
         request_sender,
     );
+    platform.set_clipboard_api(read_from_clipboard, write_to_clipboard);
 
     let event_sender = match ServerApplication::run(platform) {
         Some(sender) => sender,

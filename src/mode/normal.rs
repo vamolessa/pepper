@@ -447,10 +447,11 @@ impl State {
                             );
                             let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
                             let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle)?;
+                            let buffer = buffer.content();
                             let line_index = state.count - 1;
                             let mut position = BufferPosition::line_col(line_index as _, 0);
-                            let (first_word, _, mut right_words) =
-                                buffer.content().words_from(position);
+                            position = buffer.saturate_position(position);
+                            let (first_word, _, mut right_words) = buffer.words_from(position);
                             if first_word.kind == WordKind::Whitespace {
                                 if let Some(word) = right_words.next() {
                                     position = word.position;
@@ -1090,11 +1091,10 @@ impl State {
                     let cursor_count = cursors[..].len();
                     let offset = state.count.max(1) as usize;
                     cursors.set_main_cursor_index((index + offset) % cursor_count);
-                    ctx.editor
-                        .mode
-                        .normal_state
-                        .last_copy_ranges
-                        .rotate_right(offset);
+                    let ranges = &mut ctx.editor.mode.normal_state.last_copy_ranges;
+                    if offset < ranges.len() {
+                        ranges.rotate_right(offset);
+                    }
                 }
                 Key::Char('p') => {
                     let cursors = &mut ctx.editor.buffer_views.get_mut(handle)?.cursors;
@@ -1103,11 +1103,10 @@ impl State {
                     let cursor_count = cursors[..].len();
                     let offset = state.count.max(1) as usize % cursor_count;
                     cursors.set_main_cursor_index((index + cursor_count - offset) % cursor_count);
-                    ctx.editor
-                        .mode
-                        .normal_state
-                        .last_copy_ranges
-                        .rotate_left(offset);
+                    let ranges = &mut ctx.editor.mode.normal_state.last_copy_ranges;
+                    if offset < ranges.len() {
+                        ranges.rotate_left(offset);
+                    }
                 }
                 Key::Char('f') => read_line::filter_cursors::enter_filter_mode(ctx),
                 Key::Char('F') => read_line::filter_cursors::enter_except_mode(ctx),

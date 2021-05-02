@@ -313,13 +313,8 @@ fn run_server(stream_path: &Path) -> Result<(), AnyError> {
     let new_request_event = EventFd::new();
     NEW_REQUEST_EVENT_FD.store(new_request_event.as_raw_fd() as _, Ordering::Relaxed);
 
-    fn read_from_clipboard(_: &mut String) {}
-    fn write_to_clipboard(_: &str) {}
-
     let (request_sender, request_receiver) = mpsc::channel();
     let platform = Platform::new(
-        read_from_clipboard,
-        write_to_clipboard,
         || write_to_event_fd(NEW_REQUEST_EVENT_FD.load(Ordering::Relaxed) as _),
         request_sender,
     );
