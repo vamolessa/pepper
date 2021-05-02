@@ -77,19 +77,20 @@ impl State {
         let state = &mut ctx.editor.mode.normal_state;
         state.is_recording_auto_macro = false;
         match keys.next(&ctx.editor.buffered_keys) {
-            Key::Char('q') => match ctx.editor.recording_macro.take() {
-                Some(_) => ctx.editor.recording_macro = None,
-                None => match keys.next(&ctx.editor.buffered_keys) {
-                    Key::None => return Some(ModeOperation::Pending),
-                    Key::Char(c) => {
-                        if let Some(key) = RegisterKey::from_char(c) {
-                            ctx.editor.registers.get_mut(key).clear();
-                            ctx.editor.recording_macro = Some(key);
+            Key::Char('q') => {
+                if ctx.editor.recording_macro.take().is_none() {
+                    match keys.next(&ctx.editor.buffered_keys) {
+                        Key::None => return Some(ModeOperation::Pending),
+                        Key::Char(c) => {
+                            if let Some(key) = RegisterKey::from_char(c) {
+                                ctx.editor.registers.get_mut(key).clear();
+                                ctx.editor.recording_macro = Some(key);
+                            }
                         }
+                        _ => (),
                     }
-                    _ => (),
-                },
-            },
+                }
+            }
             Key::Char('Q') => {
                 ctx.editor.recording_macro = None;
                 match keys.next(&ctx.editor.buffered_keys) {
