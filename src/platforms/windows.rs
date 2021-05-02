@@ -404,7 +404,6 @@ fn wait_for_multiple_objects(handles: &[HANDLE], timeout: Option<Duration>) -> O
 
 fn read_from_clipboard(text: &mut String) {
     let clipboard = Clipboard::open();
-    text.clear();
     let handle = unsafe { GetClipboardData(CF_UNICODETEXT) };
     if handle == NULL {
         return;

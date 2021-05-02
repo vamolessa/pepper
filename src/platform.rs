@@ -1,9 +1,10 @@
 use std::{
-    process::Command,
+    io,
+    process::{Command, Stdio},
     sync::{mpsc, Arc},
 };
 
-use crate::{client::ClientHandle, lsp};
+use crate::{client::ClientHandle, command::parse_process_command, lsp};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
@@ -70,6 +71,9 @@ pub struct Platform {
     request_sender: mpsc::Sender<PlatformRequest>,
     needs_flushing: bool,
     pub buf_pool: BufPool,
+
+    pub copy_command: String,
+    pub paste_command: String,
 }
 impl Platform {
     pub fn new(
@@ -85,15 +89,43 @@ impl Platform {
             request_sender,
             needs_flushing: false,
             buf_pool: BufPool::default(),
+            copy_command: String::new(),
+            paste_command: String::new(),
         }
     }
 
     pub fn read_from_clipboard(&self, text: &mut String) {
-        (self.read_from_clipboard)(text);
+        text.clear();
+        if self.paste_command.is_empty() {
+            (self.read_from_clipboard)(text);
+        } else if let Ok(mut command) = parse_process_command(&self.paste_command, "") {
+            command.stdin(Stdio::null());
+            command.stdout(Stdio::piped());
+            command.stderr(Stdio::null());
+            if let Ok(output) = command.output() {
+                if let Ok(output) = String::from_utf8(output.stdout) {
+                    text.clear();
+                    text.push_str(&output);
+                }
+            }
+        }
     }
 
     pub fn write_to_clipboard(&self, text: &str) {
-        (self.write_to_clipboard)(text);
+        if self.copy_command.is_empty() {
+            (self.write_to_clipboard)(text);
+        } else if let Ok(mut command) = parse_process_command(&self.copy_command, "") {
+            command.stdin(Stdio::piped());
+            command.stdout(Stdio::null());
+            command.stderr(Stdio::null());
+            if let Ok(mut child) = command.spawn() {
+                if let Some(mut stdin) = child.stdin.take() {
+                    use io::Write;
+                    let _ = stdin.write_all(text.as_bytes());
+                }
+                let _ = child.wait();
+            }
+        }
     }
 
     pub fn enqueue_request(&mut self, request: PlatformRequest) {
@@ -156,3 +188,4 @@ impl BufPool {
         self.pool.push(buf);
     }
 }
+

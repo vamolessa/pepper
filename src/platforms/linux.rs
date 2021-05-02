@@ -290,16 +290,6 @@ impl Drop for Process {
     }
 }
 
-fn read_from_clipboard(text: &mut String) {
-    // TODO: read from clipboard
-    text.clear();
-}
-
-fn write_to_clipboard(text: &str) {
-    // TODO write to clipboard
-    let _ = text;
-}
-
 fn run_server(stream_path: &Path) -> Result<(), AnyError> {
     use io::{Read, Write};
 
@@ -325,8 +315,8 @@ fn run_server(stream_path: &Path) -> Result<(), AnyError> {
 
     let (request_sender, request_receiver) = mpsc::channel();
     let platform = Platform::new(
-        read_from_clipboard,
-        write_to_clipboard,
+        read_from_clipboard: |_| (),
+        write_to_clipboard: |_| (),
         || write_to_event_fd(NEW_REQUEST_EVENT_FD.load(Ordering::Relaxed) as _),
         request_sender,
     );

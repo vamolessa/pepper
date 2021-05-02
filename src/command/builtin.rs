@@ -270,6 +270,42 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         },
     },
     BuiltinCommand {
+        name: "copy-command",
+        alias: "",
+        help: concat!(
+            "\n",
+            "copy-command <command>\n",
+        ),
+        hidden: false,
+        completions: &[],
+        func: |ctx| {
+            ctx.args.assert_no_bang()?;
+            ctx.args.get_flags(&mut [])?;
+            let command = ctx.args.next()?;
+            ctx.platform.copy_command.clear();
+            ctx.platform.copy_command.push_str(command);
+            Ok(None)
+        },
+    },
+    BuiltinCommand {
+        name: "paste-command",
+        alias: "",
+        help: concat!(
+            "\n",
+            "paste-command <command>\n",
+        ),
+        hidden: false,
+        completions: &[],
+        func: |ctx| {
+            ctx.args.assert_no_bang()?;
+            ctx.args.get_flags(&mut [])?;
+            let command = ctx.args.next()?;
+            ctx.platform.paste_command.clear();
+            ctx.platform.paste_command.push_str(command);
+            Ok(None)
+        },
+    },
+    BuiltinCommand {
         name: "spawn",
         alias: "",
         help: concat!(
