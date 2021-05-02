@@ -1127,100 +1127,44 @@ impl State {
             },
             Key::Char('s') => read_line::search::enter_mode(ctx),
             Key::Char('y') => {
-                let state = &mut ctx.editor.mode.normal_state;
-                let buffer_view = ctx.editor.buffer_views.get(handle)?;
-                let mut buf = ctx.editor.string_pool.acquire();
-                buffer_view.append_selection_text(
-                    &ctx.editor.buffers,
-                    &mut buf,
-                    &mut state.last_copy_ranges,
-                );
-                if !buf.is_empty() {
-                    ctx.platform.write_to_clipboard(&buf);
-                    state.last_copy_hash = hash_bytes(buf.bytes());
+                let mut text = ctx.editor.string_pool.acquire();
+                copy_text(ctx, handle, &mut text);
+                if !text.is_empty() {
+                    ctx.platform.write_to_clipboard(&text);
                 }
-                ctx.editor.string_pool.release(buf);
-                state.movement_kind = CursorMovementKind::PositionAndAnchor;
+                ctx.editor.string_pool.release(text);
             }
             Key::Char('Y') => {
-                let buffer_view = ctx.editor.buffer_views.get(handle)?;
-                buffer_view.delete_text_in_cursor_ranges(
-                    &mut ctx.editor.buffers,
-                    &mut ctx.editor.word_database,
-                    &mut ctx.editor.events,
-                );
-
-                state.movement_kind = CursorMovementKind::PositionAndAnchor;
-                state.is_recording_auto_macro = false;
-
-                ctx.editor.trigger_event_handlers(ctx.platform, ctx.clients);
-
-                let mut buf = ctx.editor.string_pool.acquire();
-                let buffer_view = ctx.editor.buffer_views.get(handle)?;
-                ctx.platform.read_from_clipboard(&mut buf);
-                let hash = ctx.editor.mode.normal_state.last_copy_hash;
-                let ranges = &ctx.editor.mode.normal_state.last_copy_ranges[..];
-                let cursors = &buffer_view.cursors[..];
-                if hash == hash_bytes(buf.bytes()) && ranges.len() == cursors.len() {
-                    if let Some(buffer) = ctx.editor.buffers.get_mut(buffer_view.buffer_handle) {
-                        for (range, cursor) in ranges.iter().zip(cursors.iter()).rev() {
-                            let text = &buf[range.0 as usize..range.1 as usize];
-                            buffer.insert_text(
-                                &mut ctx.editor.word_database,
-                                cursor.position,
-                                text,
-                                &mut ctx.editor.events,
-                            );
-                        }
-                    }
-                } else {
-                    buffer_view.insert_text_at_cursor_positions(
-                        &mut ctx.editor.buffers,
-                        &mut ctx.editor.word_database,
-                        &buf,
-                        &mut ctx.editor.events,
-                    );
-                }
-                ctx.editor.string_pool.release(buf);
-
-                let buffer_view = ctx.editor.buffer_views.get(handle)?;
-                ctx.editor
-                    .buffers
-                    .get_mut(buffer_view.buffer_handle)?
-                    .commit_edits();
+                let mut text = ctx.editor.string_pool.acquire();
+                ctx.platform.read_from_clipboard(&mut text);
+                paste_text(ctx, handle, &text);
+                ctx.editor.string_pool.release(text);
                 return None;
             }
             Key::Ctrl('y') => match keys.next(&ctx.editor.buffered_keys) {
                 Key::None => return Some(ModeOperation::Pending),
                 Key::Char(c) => {
-                    let buffer_view = ctx.editor.buffer_views.get(handle)?;
-                    buffer_view.delete_text_in_cursor_ranges(
-                        &mut ctx.editor.buffers,
-                        &mut ctx.editor.word_database,
-                        &mut ctx.editor.events,
-                    );
-
-                    state.movement_kind = CursorMovementKind::PositionAndAnchor;
-                    state.is_recording_auto_macro = false;
-
-                    ctx.editor.trigger_event_handlers(ctx.platform, ctx.clients);
-
-                    let buffer_view = ctx.editor.buffer_views.get(handle)?;
-                    if let Some(key) = RegisterKey::from_char(c) {
-                        let register = ctx.editor.registers.get(key);
-                        buffer_view.insert_text_at_cursor_positions(
-                            &mut ctx.editor.buffers,
-                            &mut ctx.editor.word_database,
-                            register,
-                            &mut ctx.editor.events,
-                        );
+                    let key = c.to_ascii_lowercase();
+                    if key == c {
+                        if let Some(key) = RegisterKey::from_char(key) {
+                            let mut text = ctx.editor.string_pool.acquire();
+                            copy_text(ctx, handle, &mut text);
+                            if !text.is_empty() {
+                                let register = ctx.editor.registers.get_mut(key);
+                                register.clear();
+                                register.push_str(&text);
+                            }
+                            ctx.editor.string_pool.release(text);
+                        }
+                    } else {
+                        if let Some(key) = RegisterKey::from_char(key) {
+                            let register = ctx.editor.registers.get(key);
+                            let text = ctx.editor.string_pool.acquire_with(register);
+                            paste_text(ctx, handle, &text);
+                            ctx.editor.string_pool.release(text);
+                            return None;
+                        }
                     }
-                    let buffer_view = ctx.editor.buffer_views.get(handle)?;
-                    ctx.editor
-                        .buffers
-                        .get_mut(buffer_view.buffer_handle)?
-                        .commit_edits();
-                    return None;
                 }
                 _ => (),
             },
@@ -1330,6 +1274,72 @@ impl ModeState for State {
             None => Self::on_event_no_buffer(ctx, keys),
         }
     }
+}
+
+fn copy_text(
+    ctx: &mut ModeContext,
+    buffer_view_handle: BufferViewHandle,
+    text: &mut String,
+) -> Option<()> {
+    let state = &mut ctx.editor.mode.normal_state;
+    let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle)?;
+    buffer_view.append_selection_text(&ctx.editor.buffers, text, &mut state.last_copy_ranges);
+    if !text.is_empty() {
+        state.last_copy_hash = hash_bytes(text.bytes());
+    }
+    state.movement_kind = CursorMovementKind::PositionAndAnchor;
+    None
+}
+
+fn paste_text(
+    ctx: &mut ModeContext,
+    buffer_view_handle: BufferViewHandle,
+    text: &str,
+) -> Option<()> {
+    let state = &mut ctx.editor.mode.normal_state;
+    let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle)?;
+    buffer_view.delete_text_in_cursor_ranges(
+        &mut ctx.editor.buffers,
+        &mut ctx.editor.word_database,
+        &mut ctx.editor.events,
+    );
+
+    state.movement_kind = CursorMovementKind::PositionAndAnchor;
+    state.is_recording_auto_macro = false;
+
+    ctx.editor.trigger_event_handlers(ctx.platform, ctx.clients);
+
+    let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle)?;
+    let hash = ctx.editor.mode.normal_state.last_copy_hash;
+    let ranges = &ctx.editor.mode.normal_state.last_copy_ranges[..];
+    let cursors = &buffer_view.cursors[..];
+    if hash == hash_bytes(text.bytes()) && ranges.len() == cursors.len() {
+        if let Some(buffer) = ctx.editor.buffers.get_mut(buffer_view.buffer_handle) {
+            for (range, cursor) in ranges.iter().zip(cursors.iter()).rev() {
+                let text = &text[range.0 as usize..range.1 as usize];
+                buffer.insert_text(
+                    &mut ctx.editor.word_database,
+                    cursor.position,
+                    text,
+                    &mut ctx.editor.events,
+                );
+            }
+        }
+    } else {
+        buffer_view.insert_text_at_cursor_positions(
+            &mut ctx.editor.buffers,
+            &mut ctx.editor.word_database,
+            &text,
+            &mut ctx.editor.events,
+        );
+    }
+
+    let buffer_view = ctx.editor.buffer_views.get(buffer_view_handle)?;
+    ctx.editor
+        .buffers
+        .get_mut(buffer_view.buffer_handle)?
+        .commit_edits();
+    None
 }
 
 fn find_char(ctx: &mut ModeContext, forward: bool) -> Option<()> {
