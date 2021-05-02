@@ -104,7 +104,7 @@ jobs:
       if: env.upload_to_itch != ''
       uses: josephbmanley/butler-publish-itchio-action@master
       env:
-        BUTLER_CREDENTIALS: ${{ env.BUTLER_APIKEY }}
+        BUTLER_CREDENTIALS: ${{ secrets.BUTLER_CREDENTIALS }}
         CHANNEL: ${{ env[format('{0}_channel', matrix.os)] }}
         ITCH_GAME: ${{ steps.crate-name.outputs.name }}
         ITCH_USER: matheuslessarodrigues
