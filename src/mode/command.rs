@@ -246,6 +246,11 @@ fn update_autocomplete_entries(ctx: &mut ModeContext) {
         CompletionSource::Files => {
             fn set_files_in_path_as_entries(picker: &mut Picker, path: &str) {
                 picker.clear();
+                let path = if path.is_empty() {
+                    "."
+                } else {
+                    path
+                };
                 let read_dir = match fs::read_dir(path) {
                     Ok(iter) => iter,
                     Err(_) => return,
