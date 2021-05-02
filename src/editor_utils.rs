@@ -67,9 +67,8 @@ impl ReadLine {
             }
             Key::Ctrl('y') => {
                 let mut text = string_pool.acquire();
-                if platform.read_from_clipboard(&mut text) {
-                    self.input.push_str(&text);
-                }
+                platform.read_from_clipboard(&mut text);
+                self.input.push_str(&text);
                 string_pool.release(text);
                 ReadLinePoll::Pending
             }
@@ -165,3 +164,4 @@ where
     }
     return hash;
 }
+

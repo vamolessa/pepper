@@ -1156,31 +1156,29 @@ impl State {
 
                 let mut buf = ctx.editor.string_pool.acquire();
                 let buffer_view = ctx.editor.buffer_views.get(handle)?;
-                if ctx.platform.read_from_clipboard(&mut buf) {
-                    let hash = ctx.editor.mode.normal_state.last_copy_hash;
-                    let ranges = &ctx.editor.mode.normal_state.last_copy_ranges[..];
-                    let cursors = &buffer_view.cursors[..];
-                    if hash == hash_bytes(buf.bytes()) && ranges.len() == cursors.len() {
-                        if let Some(buffer) = ctx.editor.buffers.get_mut(buffer_view.buffer_handle)
-                        {
-                            for (range, cursor) in ranges.iter().zip(cursors.iter()).rev() {
-                                let text = &buf[range.0 as usize..range.1 as usize];
-                                buffer.insert_text(
-                                    &mut ctx.editor.word_database,
-                                    cursor.position,
-                                    text,
-                                    &mut ctx.editor.events,
-                                );
-                            }
+                ctx.platform.read_from_clipboard(&mut buf);
+                let hash = ctx.editor.mode.normal_state.last_copy_hash;
+                let ranges = &ctx.editor.mode.normal_state.last_copy_ranges[..];
+                let cursors = &buffer_view.cursors[..];
+                if hash == hash_bytes(buf.bytes()) && ranges.len() == cursors.len() {
+                    if let Some(buffer) = ctx.editor.buffers.get_mut(buffer_view.buffer_handle) {
+                        for (range, cursor) in ranges.iter().zip(cursors.iter()).rev() {
+                            let text = &buf[range.0 as usize..range.1 as usize];
+                            buffer.insert_text(
+                                &mut ctx.editor.word_database,
+                                cursor.position,
+                                text,
+                                &mut ctx.editor.events,
+                            );
                         }
-                    } else {
-                        buffer_view.insert_text_at_cursor_positions(
-                            &mut ctx.editor.buffers,
-                            &mut ctx.editor.word_database,
-                            &buf,
-                            &mut ctx.editor.events,
-                        );
                     }
+                } else {
+                    buffer_view.insert_text_at_cursor_positions(
+                        &mut ctx.editor.buffers,
+                        &mut ctx.editor.word_database,
+                        &buf,
+                        &mut ctx.editor.events,
+                    );
                 }
                 ctx.editor.string_pool.release(buf);
 
@@ -1643,3 +1641,4 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) -> Option<()> {
 
     None
 }
+

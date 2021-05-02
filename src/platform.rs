@@ -64,7 +64,7 @@ pub enum ProcessTag {
 pub struct ProcessHandle(pub usize);
 
 pub struct Platform {
-    read_from_clipboard: fn(&mut String) -> bool,
+    read_from_clipboard: fn(&mut String),
     write_to_clipboard: fn(&str),
     flush_requests: fn(),
     request_sender: mpsc::Sender<PlatformRequest>,
@@ -73,7 +73,7 @@ pub struct Platform {
 }
 impl Platform {
     pub fn new(
-        read_from_clipboard: fn(&mut String) -> bool,
+        read_from_clipboard: fn(&mut String),
         write_to_clipboard: fn(&str),
         flush_requests: fn(),
         request_sender: mpsc::Sender<PlatformRequest>,
@@ -88,13 +88,12 @@ impl Platform {
         }
     }
 
-    // TODO: maybe no need for return bool
-    pub fn read_from_clipboard(&self, text: &mut String) -> bool {
-        (self.read_from_clipboard)(text)
+    pub fn read_from_clipboard(&self, text: &mut String) {
+        (self.read_from_clipboard)(text);
     }
 
     pub fn write_to_clipboard(&self, text: &str) {
-        (self.write_to_clipboard)(text)
+        (self.write_to_clipboard)(text);
     }
 
     pub fn enqueue_request(&mut self, request: PlatformRequest) {

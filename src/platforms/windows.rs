@@ -402,16 +402,16 @@ fn wait_for_multiple_objects(handles: &[HANDLE], timeout: Option<Duration>) -> O
     }
 }
 
-fn read_from_clipboard(text: &mut String) -> bool {
+fn read_from_clipboard(text: &mut String) {
     let clipboard = Clipboard::open();
     text.clear();
     let handle = unsafe { GetClipboardData(CF_UNICODETEXT) };
     if handle == NULL {
-        return false;
+        return;
     }
     let data = match global_lock::<u16>(handle) {
         Some(data) => data,
-        None => return false,
+        None => return,
     };
     let data = data.as_ptr();
     let len = unsafe {
@@ -452,7 +452,6 @@ fn read_from_clipboard(text: &mut String) -> bool {
     }
     global_unlock(handle);
     drop(clipboard);
-    true
 }
 
 fn write_to_clipboard(text: &str) {

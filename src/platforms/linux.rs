@@ -290,10 +290,9 @@ impl Drop for Process {
     }
 }
 
-fn read_from_clipboard(text: &mut String) -> bool {
+fn read_from_clipboard(text: &mut String) {
     // TODO: read from clipboard
     text.clear();
-    true
 }
 
 fn write_to_clipboard(text: &str) {
