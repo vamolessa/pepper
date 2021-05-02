@@ -1,14 +1,10 @@
 #[cfg(windows)]
-mod platform {
-    #[path = "../windows.rs"]
-    pub mod sys;
-}
+#[path = "windows.rs"]
+mod sys;
 
 #[cfg(target_os = "linux")]
-mod platform {
-    #[path = "../linux.rs"]
-    pub mod sys;
-}
+#[path = "linux.rs"]
+mod sys;
 
 #[cfg(any(
     target_os = "macos",
@@ -17,12 +13,10 @@ mod platform {
     target_os = "openbsd",
     target_os = "dragonfly",
 ))]
-mod platform {
-    #[path = "../bsd.rs"]
-    pub mod sys;
-}
+#[path = "bsd.rs"]
+mod sys;
 
 pub fn main() {
-    platform::sys::main();
+    sys::main();
 }
 
