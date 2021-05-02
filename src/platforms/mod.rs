@@ -20,7 +20,13 @@ pub fn main() {
     #[cfg(target_os = "linux")]
     linux::main();
 
-    #[cfg(target_os = "bsd")]
+    #[cfg(any(
+        target_os = "macos",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd",
+        target_os = "dragonfly",
+    ))]
     bsd::main();
 }
 
