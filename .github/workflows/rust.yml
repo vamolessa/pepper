@@ -107,6 +107,6 @@ jobs:
         BUTLER_CREDENTIALS: ${{ secrets.BUTLER_CREDENTIALS }}
         CHANNEL: ${{ env[format('{0}_channel', matrix.os)] }}
         ITCH_GAME: ${{ steps.crate-name.outputs.name }}
-        ITCH_USER: matheuslessarodrigues
+        ITCH_USER: vamolessa
         PACKAGE: dist/${{ steps.crate-name.outputs.name }}-${{ env[format('{0}_channel', matrix.os)] }}${{ env[format('{0}_extension', matrix.os)] }}
         VERSION: ${{ fromJSON(steps.crate-metadata.outputs.metadata).packages[0].version }}
