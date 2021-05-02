@@ -273,6 +273,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "copy-command",
         alias: "",
         help: concat!(
+            "Sets the command to be used when copying text to clipboard.\n",
+            "The copied text is written to stdin utf8 encoded.\n",
+            "If <command> is empty, no command is used.\n",
             "\n",
             "copy-command <command>\n",
         ),
@@ -291,6 +294,9 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         name: "paste-command",
         alias: "",
         help: concat!(
+            "Sets the command to be used when pasting text from clipboard.\n",
+            "The pasted text is read from stdout and needs to be utf8 encoded.\n",
+            "If <command> is empty, no command is used.\n",
             "\n",
             "paste-command <command>\n",
         ),
@@ -310,7 +316,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         alias: "",
         help: concat!(
             "Spawns a new process and then optionally executes commands on its output.\n",
-            "those commands will be executed on every splitted output if `-split-on-byte` is set\n",
+            "Those commands will be executed on every splitted output if `-split-on-byte` is set\n",
             "or on its etirety when the process exits otherwise.\n",
             "`<output-var-name>` will be text replaced in `<commands-on-output>` with the process' output.\n",
             "\n",
