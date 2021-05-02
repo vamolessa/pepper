@@ -78,6 +78,7 @@ In the spirit of [Handmade](https://handmade.network/), almost all features are 
 These are the only external crates being used in the project:
 - `fuzzy-matcher`: fuzzy matching for the picker ui. it could be replaced, however it's implementation does not get in the way and has minimal dependencies
 - `winapi` (windows-only): needed to implement windows platform layer
+- `libc` (unix-only): needed to implement unix platform layer
 
 # modal editing
 
