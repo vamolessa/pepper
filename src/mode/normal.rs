@@ -1092,7 +1092,8 @@ impl State {
                     let offset = state.count.max(1) as usize;
                     cursors.set_main_cursor_index((index + offset) % cursor_count);
                     let ranges = &mut ctx.editor.mode.normal_state.last_copy_ranges;
-                    if offset < ranges.len() {
+                    if !ranges.is_empty() {
+                        let offset = offset % ranges.len();
                         ranges.rotate_right(offset);
                     }
                 }
@@ -1104,7 +1105,8 @@ impl State {
                     let offset = state.count.max(1) as usize % cursor_count;
                     cursors.set_main_cursor_index((index + cursor_count - offset) % cursor_count);
                     let ranges = &mut ctx.editor.mode.normal_state.last_copy_ranges;
-                    if offset < ranges.len() {
+                    if !ranges.is_empty() {
+                        let offset = offset % ranges.len();
                         ranges.rotate_left(offset);
                     }
                 }
