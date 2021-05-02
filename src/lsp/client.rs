@@ -2537,8 +2537,12 @@ impl ClientEntry {
         let mut entry = ClientEntry::Reserved;
         std::mem::swap(self, &mut entry);
         match entry {
+            ClientEntry::Vacant => {
+                *self = ClientEntry::Vacant;
+                None
+            }
             ClientEntry::Occupied(client) => Some(client),
-            _ => None,
+            ClientEntry::Reserved => None,
         }
     }
 }
