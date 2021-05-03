@@ -1,6 +1,6 @@
 use std::{
     collections::VecDeque,
-    fmt,
+    fmt, io,
     path::{Path, PathBuf},
     process::{Command, Stdio},
 };
@@ -24,6 +24,7 @@ pub const HISTORY_CAPACITY: usize = 10;
 const START_OF_TEXT_BYTE: u8 = b'\x02';
 const END_OF_TEXT_BYTE: u8 = b'\x03';
 
+#[derive(Clone, Copy)]
 pub struct CommandToken {
     location: usize,
     len: usize,
@@ -60,6 +61,10 @@ pub enum CommandError {
     ParseArgError {
         arg: CommandToken,
         type_name: &'static str,
+    },
+    OpenFileError {
+        path: CommandToken,
+        error: io::Error,
     },
     BufferError(BufferHandle, BufferError),
     BufferedKeysParseError(CommandToken),
@@ -217,6 +222,12 @@ impl<'command, 'error> fmt::Display for CommandErrorDisplay<'command, 'error> {
                 f,
                 arg,
                 format_args!("could not parse '{}' as {}", arg.as_str_at(c, l), type_name),
+            ),
+            CommandError::OpenFileError { path, error } => write(
+                self,
+                f,
+                path,
+                format_args!("could not open file '{}': {}", path.as_str_at(c, l), error),
             ),
             CommandError::BufferError(handle, error) => match self.buffers.get(*handle) {
                 Some(buffer) => write!(f, "{}", error.display(buffer)),
@@ -1559,3 +1570,4 @@ mod tests {
         assert_eq!(None, commands.next());
     }
 }
+

@@ -227,7 +227,11 @@ impl<'stdout> ClientApplication<'stdout> {
         let mut commands = String::new();
         for config in &args.configs {
             use fmt::Write;
-            writeln!(commands, "source '{}'", config).unwrap();
+            if config.throw_error {
+                writeln!(commands, "source '{}'", &config.path).unwrap();
+            } else {
+                writeln!(commands, "try {{ source '{}' }}", &config.path).unwrap();
+            }
         }
         for path in &args.files {
             use fmt::Write;

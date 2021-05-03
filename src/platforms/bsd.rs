@@ -40,6 +40,10 @@ impl Kqueue {
         }
         Self(fd)
     }
+    
+    pub fn wait(&self) {
+        //
+    }
 }
 impl Drop for Kqueue {
     fn drop(&mut self) {

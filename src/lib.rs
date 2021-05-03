@@ -26,10 +26,15 @@ pub mod theme;
 pub mod ui;
 pub mod word_database;
 
+pub struct ArgsConfig {
+    path: String,
+    throw_error: bool,
+}
+
 #[derive(Default)]
 pub struct Args {
     pub version: bool,
-    pub configs: Vec<String>,
+    pub configs: Vec<ArgsConfig>,
     pub session: Option<String>,
     pub as_client: Option<client::ClientHandle>,
     pub print_session: bool,
@@ -57,6 +62,7 @@ fn print_help() {
     println!("  -h, --help                prints help and quits");
     println!("  -v, --version             prints version and quits");
     println!("  -c, --config              loads config file at path (repeatable)");
+    println!("  -C, --try-config          tries loading a config file at path, throws no error if fails (repeatable)");
     println!("  -s, --session             session name to connect to");
     println!("  --as-client <client-id>   sends events as if it was client with id <client-id>");
     println!("  --print-session           print the computed session name and quits");
@@ -95,7 +101,20 @@ impl Args {
                 "-c" | "--config" => match args.next() {
                     Some(arg) => {
                         let arg = arg_to_str(&arg);
-                        parsed.configs.push(arg.into());
+                        parsed.configs.push(ArgsConfig {
+                            path: arg.into(),
+                            throw_error: true,
+                        });
+                    }
+                    None => error(format_args!("expected config path after {}", arg)),
+                },
+                "-C" | "--try-config" => match args.next() {
+                    Some(arg) => {
+                        let arg = arg_to_str(&arg);
+                        parsed.configs.push(ArgsConfig {
+                            path: arg.into(),
+                            throw_error: false,
+                        });
                     }
                     None => error(format_args!("expected config path after {}", arg)),
                 },

@@ -1,6 +1,5 @@
 use std::{
     fmt,
-    fs::File,
     path::{Path, PathBuf},
 };
 
@@ -11,7 +10,7 @@ use crate::{
     client::{ClientHandle, ClientManager},
     command::{CommandManager, CommandOperation},
     config::Config,
-    editor_utils::{MessageKind, ReadLine, StatusBar, StringPool},
+    editor_utils::{ReadLine, StatusBar, StringPool},
     events::{
         ClientEvent, EditorEvent, EditorEventIter, EditorEventQueue, KeyParseAllError, KeyParser,
     },
@@ -150,43 +149,6 @@ impl Editor {
             commands: CommandManager::new(),
             lsp: lsp::ClientManager::new(),
             events: EditorEventQueue::default(),
-        }
-    }
-
-    pub fn load_config(
-        &mut self,
-        platform: &mut Platform,
-        clients: &mut ClientManager,
-        path: &Path,
-    ) -> Option<CommandOperation> {
-        use std::io::Read;
-
-        let mut file = match File::open(path) {
-            Ok(file) => file,
-            Err(_) => {
-                self.status_bar
-                    .write(MessageKind::Error)
-                    .fmt(format_args!("could not open config file '{:?}'", path));
-                return None;
-            }
-        };
-
-        let mut source = String::new();
-        match file.read_to_string(&mut source) {
-            Ok(_) => CommandManager::eval_commands_then_output(
-                self,
-                platform,
-                clients,
-                None,
-                &source,
-                Some(path),
-            ),
-            Err(_) => {
-                self.status_bar
-                    .write(MessageKind::Error)
-                    .fmt(format_args!("could not read config file '{:?}'", path));
-                None
-            }
         }
     }
 
@@ -497,3 +459,4 @@ impl Editor {
         }
     }
 }
+

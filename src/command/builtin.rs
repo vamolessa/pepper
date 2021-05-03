@@ -1,5 +1,7 @@
 use std::{
+    io,
     any, fmt,
+    fs::File,
     path::{Path, PathBuf},
     str::FromStr,
 };
@@ -762,29 +764,23 @@ pub const COMMANDS: &[BuiltinCommand] = &[
         help: concat!(
             "Loads a source file and execute its commands.\n",
             "\n",
-            "source [<flags>] <path>\n",
-            " -project : interprets <path> as relative to the editor's current directory (usually a project folder)",
+            "source <path>",
         ),
         hidden: false,
         completions: &[CompletionSource::Files],
         func: |ctx| {
             ctx.args.assert_no_bang()?;
+            ctx.args.get_flags(&mut [])?;
 
-            let mut flags = [("project", None)];
-            ctx.args.get_flags(&mut flags)?;
-            let relative_to_project_folder = flags[0].1.is_some();
-
-            let path = Path::new(ctx.args.next()?);
+            let path = ctx.args.next()?;
+            let path_token = path.into();
+            let path = Path::new(path);
             ctx.args.assert_empty()?;
 
             let mut path_buf = PathBuf::new();
             let path = if path.is_relative() {
-                if relative_to_project_folder {
-                    path_buf.push(&ctx.editor.current_directory);
-                } else {
-                    if let Some(parent) = ctx.source_path.and_then(Path::parent) {
-                        path_buf.push(parent);
-                    }
+                if let Some(parent) = ctx.source_path.and_then(Path::parent) {
+                    path_buf.push(parent);
                 }
                 path_buf.push(path);
                 path_buf.as_path()
@@ -792,7 +788,23 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 path
             };
 
-            let op = ctx.editor.load_config(ctx.platform, ctx.clients, path);
+            use io::Read;
+            let mut file = File::open(path)
+                .map_err(|e| CommandError::OpenFileError { path: path_token, error: e })?;
+            let mut source = String::new();
+            file.read_to_string(&mut source).map_err(|e| CommandError::OpenFileError {
+                path: path_token,
+                error: e,
+            })?;
+
+            let op = CommandManager::eval_commands_then_output(
+                ctx.editor,
+                ctx.platform,
+                ctx.clients,
+                None,
+                &source,
+                Some(path),
+            );
             Ok(op)
         },
     },
