@@ -105,7 +105,7 @@ impl Event {
             Self::Resize => libc::kevent {
                 ident: libc::SIGWINCH as _,
                 filter: libc::EVFILT_SIGNAL,
-                flags: libc::EV_ADD | libc::EV_ENABLE,
+                flags: libc::EV_ADD,
                 fflags: 0,
                 data: 0,
                 udata: index as _,
@@ -113,7 +113,7 @@ impl Event {
             Self::FlushRequests => libc::kevent {
                 ident: 0,
                 filter: libc::EVFILT_USER,
-                flags: libc::EV_ADD,
+                flags: libc::EV_ADD | libc::EV_ONESHOT,
                 fflags: 0,
                 data: 0,
                 udata: index as _,
@@ -121,7 +121,7 @@ impl Event {
             Self::Fd(fd) => libc::kevent {
                 ident: fd as _,
                 filter: libc::EVFILT_READ,
-                flags: libc::EV_ADD,
+                flags: libc::EV_ADD | libc::EV_ONESHOT,
                 fflags: 0,
                 data: 0,
                 udata: index as _,
