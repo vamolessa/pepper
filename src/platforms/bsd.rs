@@ -36,7 +36,8 @@ pub fn main() {
     let stdin = io::stdin();
     let mut stdin = stdin.lock();
 
-    let mut buf = [0; 64];
+    //let mut buf = [0; 64];
+    let mut buf = [0; 1];
     let mut keys = Vec::new();
 
     let mut kqueue = Kqueue::new();
@@ -54,7 +55,8 @@ pub fn main() {
     let (width, height) = get_terminal_size();
     print!("terminal size: {}, {}\r\n", width, height);
 
-    'main_loop: loop {
+    //'main_loop: loop {
+    for _ in 0..30 {
         kqueue.track(Event::FlushRequests, 0);
         kqueue.track(Event::Fd(stdin.as_raw_fd()), 1);
         kqueue.track(Event::Resize, 2);
@@ -73,7 +75,7 @@ pub fn main() {
                     parse_terminal_keys(&buf[..len], &mut keys);
                     for &key in &keys {
                         print!("{}\r\n", key);
-                        if key == Key::Esc {
+                        if key == Key::Char('q') {
                             break 'main_loop;
                         }
                     }
