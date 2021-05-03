@@ -135,8 +135,8 @@ impl Kqueue {
     }
 
     pub fn wait(&self) {
-        let len = self.len;
-        self.len = 0;
+        let len = self.tracked_len;
+        self.tracked_len = 0;
 
         todo!();
     }
