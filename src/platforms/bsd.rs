@@ -41,6 +41,7 @@ pub fn main() {
             Ok(len) => len,
             Err(_) => return,
         };
+        keys.clear();
         parse_terminal_keys(&buf[..len], &mut keys);
         for &key in &keys {
             print!("{}\r\n", key);
