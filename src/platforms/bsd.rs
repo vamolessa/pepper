@@ -46,7 +46,7 @@ pub fn main() {
         for _ in 0..10 {
             print!("sending flush request\r\n");
             let fd = KQUEUE_FD.load(Ordering::Relaxed) as _;
-            Kqueue::notify_flush_requests(fd);
+            Kqueue::notify_flush_requests(fd, 0);
             std::thread::sleep(Duration::from_secs(1));
         }
     });
