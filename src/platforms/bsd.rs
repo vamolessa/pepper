@@ -167,7 +167,8 @@ impl Kqueue {
     }
 
     pub fn notify_flush_requests(fd: RawFd) {
-        let event = Event::FlushRequests.into_kevent(0);
+        let mut event = Event::FlushRequests.into_kevent(0);
+        event.fflags |= libc::NOTE_TRIGGER;
         let len = unsafe {
             libc::kevent(
                 fd,
