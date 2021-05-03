@@ -143,7 +143,7 @@ impl Kqueue {
 }
 impl Drop for Kqueue {
     fn drop(&mut self) {
-        unsafe { libc::close(self.0) };
+        unsafe { libc::close(self.fd) };
     }
 }
 
