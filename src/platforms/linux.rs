@@ -15,12 +15,12 @@ use std::{
 use pepper::{
     application::{AnyError, ApplicationEvent, ClientApplication, ServerApplication},
     client::ClientHandle,
-    platform::{BufPool, Key, Platform, PlatformRequest, ProcessHandle},
+    platform::{BufPool, Platform, PlatformRequest, ProcessHandle},
     Args,
 };
 
 mod unix_utils;
-use unix_utils::{run, RawMode, Process};
+use unix_utils::{get_terminal_size, parse_terminal_keys, run, Process, RawMode};
 
 const MAX_CLIENT_COUNT: usize = 20;
 const MAX_PROCESS_COUNT: usize = 42;
@@ -433,7 +433,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
         epoll.add(signal.as_raw_fd(), 2);
         resize_signal = Some(signal);
 
-        let size = get_console_size();
+        let size = get_terminal_size();
         let bytes = application.update(Some(size), &[], &[], &[]);
         if connection.write(bytes).is_err() {
             return;
@@ -474,7 +474,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
                 2 => {
                     if let Some(ref signal) = resize_signal {
                         signal.read();
-                        resize = Some(get_console_size());
+                        resize = Some(get_terminal_size());
                     }
                 }
                 _ => unreachable!(),
@@ -488,68 +488,5 @@ fn run_client(args: Args, mut connection: UnixStream) {
     }
 
     drop(raw_mode);
-}
-
-fn get_console_size() -> (usize, usize) {
-    let mut size: libc::winsize = unsafe { std::mem::zeroed() };
-    let result = unsafe {
-        libc::ioctl(
-            libc::STDOUT_FILENO,
-            libc::TIOCGWINSZ,
-            &mut size as *mut libc::winsize,
-        )
-    };
-    if result == -1 || size.ws_col == 0 {
-        panic!("could not get console size");
-    }
-
-    (size.ws_col as _, size.ws_row as _)
-}
-
-fn parse_terminal_keys(mut buf: &[u8], keys: &mut Vec<Key>) {
-    loop {
-        let (key, rest) = match buf {
-            &[] => break,
-            &[0x1b, b'[', b'5', b'~', ref rest @ ..] => (Key::PageUp, rest),
-            &[0x1b, b'[', b'6', b'~', ref rest @ ..] => (Key::PageDown, rest),
-            &[0x1b, b'[', b'A', ref rest @ ..] => (Key::Up, rest),
-            &[0x1b, b'[', b'B', ref rest @ ..] => (Key::Down, rest),
-            &[0x1b, b'[', b'C', ref rest @ ..] => (Key::Right, rest),
-            &[0x1b, b'[', b'D', ref rest @ ..] => (Key::Left, rest),
-            &[0x1b, b'[', b'1', b'~', ref rest @ ..]
-            | &[0x1b, b'[', b'7', b'~', ref rest @ ..]
-            | &[0x1b, b'[', b'H', ref rest @ ..]
-            | &[0x1b, b'O', b'H', ref rest @ ..] => (Key::Home, rest),
-            &[0x1b, b'[', b'4', b'~', ref rest @ ..]
-            | &[0x1b, b'[', b'8', b'~', ref rest @ ..]
-            | &[0x1b, b'[', b'F', ref rest @ ..]
-            | &[0x1b, b'O', b'F', ref rest @ ..] => (Key::End, rest),
-            &[0x1b, b'[', b'3', b'~', ref rest @ ..] => (Key::Delete, rest),
-            &[0x1b, ref rest @ ..] => (Key::Esc, rest),
-            &[0x8, ref rest @ ..] => (Key::Backspace, rest),
-            &[b'\n', ref rest @ ..] => (Key::Enter, rest),
-            &[b'\t', ref rest @ ..] => (Key::Tab, rest),
-            &[0x7f, ref rest @ ..] => (Key::Delete, rest),
-            &[b @ 0b0..=0b11111, ref rest @ ..] => {
-                let byte = b | 0b01100000;
-                (Key::Ctrl(byte as _), rest)
-            }
-            _ => match buf.iter().position(|b| b.is_ascii()).unwrap_or(buf.len()) {
-                0 => (Key::Char(buf[0] as _), &buf[1..]),
-                len => {
-                    let (c, rest) = buf.split_at(len);
-                    match std::str::from_utf8(c) {
-                        Ok(s) => match s.chars().next() {
-                            Some(c) => (Key::Char(c), rest),
-                            None => (Key::None, rest),
-                        },
-                        Err(_) => (Key::None, rest),
-                    }
-                }
-            },
-        };
-        buf = rest;
-        keys.push(key);
-    }
 }
 

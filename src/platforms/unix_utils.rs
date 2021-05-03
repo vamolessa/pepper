@@ -1,19 +1,19 @@
 use std::{
     env, fs, io,
-    process::Child,
     os::unix::{
         ffi::OsStrExt,
         io::{AsRawFd, RawFd},
         net::UnixStream,
     },
     path::Path,
+    process::Child,
     time::Duration,
 };
 
 use pepper::{
     application::AnyError,
     editor_utils::hash_bytes,
-    platform::{BufPool, ProcessTag, SharedBuf},
+    platform::{BufPool, ProcessTag, SharedBuf, Key},
     Args,
 };
 
@@ -174,6 +174,69 @@ impl Drop for Process {
     fn drop(&mut self) {
         self.kill();
         self.alive = false;
+    }
+}
+
+pub fn get_terminal_size() -> (usize, usize) {
+    let mut size: libc::winsize = unsafe { std::mem::zeroed() };
+    let result = unsafe {
+        libc::ioctl(
+            libc::STDOUT_FILENO,
+            libc::TIOCGWINSZ,
+            &mut size as *mut libc::winsize,
+        )
+    };
+    if result == -1 || size.ws_col == 0 {
+        panic!("could not get terminal size");
+    }
+
+    (size.ws_col as _, size.ws_row as _)
+}
+
+pub fn parse_terminal_keys(mut buf: &[u8], keys: &mut Vec<Key>) {
+    loop {
+        let (key, rest) = match buf {
+            &[] => break,
+            &[0x1b, b'[', b'5', b'~', ref rest @ ..] => (Key::PageUp, rest),
+            &[0x1b, b'[', b'6', b'~', ref rest @ ..] => (Key::PageDown, rest),
+            &[0x1b, b'[', b'A', ref rest @ ..] => (Key::Up, rest),
+            &[0x1b, b'[', b'B', ref rest @ ..] => (Key::Down, rest),
+            &[0x1b, b'[', b'C', ref rest @ ..] => (Key::Right, rest),
+            &[0x1b, b'[', b'D', ref rest @ ..] => (Key::Left, rest),
+            &[0x1b, b'[', b'1', b'~', ref rest @ ..]
+            | &[0x1b, b'[', b'7', b'~', ref rest @ ..]
+            | &[0x1b, b'[', b'H', ref rest @ ..]
+            | &[0x1b, b'O', b'H', ref rest @ ..] => (Key::Home, rest),
+            &[0x1b, b'[', b'4', b'~', ref rest @ ..]
+            | &[0x1b, b'[', b'8', b'~', ref rest @ ..]
+            | &[0x1b, b'[', b'F', ref rest @ ..]
+            | &[0x1b, b'O', b'F', ref rest @ ..] => (Key::End, rest),
+            &[0x1b, b'[', b'3', b'~', ref rest @ ..] => (Key::Delete, rest),
+            &[0x1b, ref rest @ ..] => (Key::Esc, rest),
+            &[0x8, ref rest @ ..] => (Key::Backspace, rest),
+            &[b'\n', ref rest @ ..] => (Key::Enter, rest),
+            &[b'\t', ref rest @ ..] => (Key::Tab, rest),
+            &[0x7f, ref rest @ ..] => (Key::Delete, rest),
+            &[b @ 0b0..=0b11111, ref rest @ ..] => {
+                let byte = b | 0b01100000;
+                (Key::Ctrl(byte as _), rest)
+            }
+            _ => match buf.iter().position(|b| b.is_ascii()).unwrap_or(buf.len()) {
+                0 => (Key::Char(buf[0] as _), &buf[1..]),
+                len => {
+                    let (c, rest) = buf.split_at(len);
+                    match std::str::from_utf8(c) {
+                        Ok(s) => match s.chars().next() {
+                            Some(c) => (Key::Char(c), rest),
+                            None => (Key::None, rest),
+                        },
+                        Err(_) => (Key::None, rest),
+                    }
+                }
+            },
+        };
+        buf = rest;
+        keys.push(key);
     }
 }
 
