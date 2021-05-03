@@ -29,7 +29,7 @@ const MAX_PROCESS_COUNT: usize = 42;
 
 pub fn main() {
     let stdin = io::stdin();
-    let stdin = stdin.lock();
+    let mut stdin = stdin.lock();
     
     let mut buf = [0; 64];
     let mut keys = Vec::new();
