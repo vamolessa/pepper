@@ -139,9 +139,16 @@ impl Kqueue {
         events: &'a mut KqueueEvents,
         timeout: Option<Duration>,
     ) -> impl 'a + ExactSizeIterator<Item = Result<usize, ()>>  {
+        let mut timespec = libc::timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        };
         let timeout = match timeout {
-            Some(duration) => duration.as_nanos() as _,
-            None => -1,
+            Some(duration) => {
+                timespec.tvnsec = duration.as_nanos() as _;
+                *timespec
+            },
+            None => std::ptr::null(),
         };
 
         let tracked = &self.tracked[..self.tracked_len];
@@ -150,7 +157,7 @@ impl Kqueue {
         let len = unsafe {
             libc::kevent(
                 self.fd,
-                tracked,
+                tracked as _,
                 tracked.len() as _,
                 events.0.as_mut_ptr(),
                 events.0.len() as _,
