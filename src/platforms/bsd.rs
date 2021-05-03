@@ -142,10 +142,10 @@ impl Kqueue {
         self.tracked_len += 1;
     }
 
-    pub fn wait(
-        &mut self,
+    pub fn wait<'a>(
+        &'a mut self,
         timeout: Option<Duration>,
-    ) -> impl ExactSizeIterator<Item = Result<usize, ()>> {
+    ) -> impl 'a + ExactSizeIterator<Item = Result<usize, ()>> {
         let mut timespec = libc::timespec {
             tv_sec: 0,
             tv_nsec: 0,
