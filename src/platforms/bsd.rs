@@ -31,6 +31,22 @@ pub fn main() {
     run(run_server, run_client);
 }
 
+struct Kqueue(RawFd);
+impl Kqueue {
+    pub fn new() -> Self {
+        let fd = unsafe { libc::kqueue() };
+        if fd == -1 {
+            panic!("could not create kqueue");
+        }
+        Self(fd)
+    }
+}
+impl Drop for Kqueue {
+    fn drop(&mut self) {
+        unsafe { libc::close(self.0) };
+    }
+}
+
 fn run_server(listener: UnixListener) -> Result<(), AnyError> {
     use io::{Read, Write};
 
