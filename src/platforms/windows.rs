@@ -294,7 +294,7 @@ fn read(handle: &Handle, buf: &mut [u8]) -> Result<usize, usize> {
     let result = unsafe {
         ReadFile(
             handle.0,
-            buf.as_ptr() as _,
+            buf.as_mut_ptr() as _,
             buf.len() as _,
             &mut read_len,
             std::ptr::null_mut(),

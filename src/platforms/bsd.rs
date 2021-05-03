@@ -157,7 +157,7 @@ impl Kqueue {
         let len = unsafe {
             libc::kevent(
                 self.fd,
-                tracked as _,
+                tracked.as_ptr(),
                 tracked.len() as _,
                 events.0.as_mut_ptr(),
                 events.0.len() as _,
