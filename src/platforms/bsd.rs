@@ -40,14 +40,23 @@ pub fn main() {
     let mut buf = [0; 1];
     let mut keys = Vec::new();
 
-    let mut kqueue = Kqueue::new();
-    KQUEUE_FD.store(kqueue.as_raw_fd() as _, Ordering::Relaxed);
+    let kqueue = Kqueue::new();
+    kqueue.add(Event::FlushRequests(false), 0);
+    kqueue.add(Event::Fd(stdin.as_raw_fd()), 1);
+    kqueue.add(Event::Resize, 2);
+    let mut kqueue_events = KqueueEvents::new();
 
+    KQUEUE_FD.store(kqueue.as_raw_fd() as _, Ordering::Relaxed);
+    
     std::thread::spawn(|| {
         for _ in 0..10 {
             print!("sending flush request\r\n");
             let fd = KQUEUE_FD.load(Ordering::Relaxed) as _;
-            Kqueue::notify_flush_requests(fd, 0);
+            let event = Event::FlushRequests(true).into_kevent(libc::EV_ADD, 0);
+            if !modify_kqueue(fd, &event) {
+                print!("error trigerring flush events\r\n");
+                return;
+            }
             std::thread::sleep(Duration::from_secs(1));
         }
     });
@@ -57,14 +66,10 @@ pub fn main() {
 
     //'main_loop: loop {
     'main_loop: for _ in 0..30 {
-        kqueue.track(Event::FlushRequests, 0);
-        kqueue.track(Event::Fd(stdin.as_raw_fd()), 1);
-        kqueue.track(Event::Resize, 2);
-
         print!("waiting for events...\r\n");
-        let events = kqueue.wait(None);
-        for event_index in events {
-            match event_index {
+        let events = kqueue.wait(&mut kqueue_events, None);
+        for event in events {
+            match event.index {
                 Ok(0) => {
                     print!("received flush request\r\n");
                 }
@@ -98,32 +103,32 @@ pub fn main() {
 
 enum Event {
     Resize,
-    FlushRequests,
+    FlushRequests(bool),
     Fd(RawFd),
 }
 impl Event {
-    pub fn into_kevent(self, index: usize) -> libc::kevent {
+    pub fn into_kevent(self, flags: u16, index: usize) -> libc::kevent {
         match self {
             Self::Resize => libc::kevent {
                 ident: libc::SIGWINCH as _,
                 filter: libc::EVFILT_SIGNAL,
-                flags: libc::EV_ADD,
+                flags,
                 fflags: 0,
                 data: 0,
                 udata: index as _,
             },
-            Self::FlushRequests => libc::kevent {
+            Self::FlushRequests(triggered) => libc::kevent {
                 ident: 0,
                 filter: libc::EVFILT_USER,
-                flags: libc::EV_ADD | libc::EV_ONESHOT,
-                fflags: 0,
+                flags: flags | libc::EV_ONESHOT,
+                fflags: if triggered { libc::NOTE_TRIGGER } else { 0 },
                 data: 0,
                 udata: index as _,
             },
             Self::Fd(fd) => libc::kevent {
                 ident: fd as _,
                 filter: libc::EVFILT_READ,
-                flags: libc::EV_ADD | libc::EV_ENABLE,
+                flags,
                 fflags: 0,
                 data: 0,
                 udata: index as _,
@@ -132,13 +137,13 @@ impl Event {
     }
 }
 
-struct Kqueue {
-    fd: RawFd,
-    tracked: [libc::kevent; MAX_EVENT_COUNT],
-    tracked_len: usize,
-    triggered: [libc::kevent; MAX_TRIGGERED_EVENT_COUNT],
+struct TriggeredEvent {
+    pub index: usize,
+    pub data: isize,
 }
-impl Kqueue {
+
+struct KqueueEvents([libc::kevent; MAX_TRIGGERED_EVENT_COUNT]);
+impl KqueueEvents {
     pub fn new() -> Self {
         const DEFAULT_KEVENT: libc::kevent = libc::kevent {
             ident: 0,
@@ -148,16 +153,35 @@ impl Kqueue {
             data: 0,
             udata: std::ptr::null_mut(),
         };
+        Self([DEFAULT_KEVENT; MAX_TRIGGERED_EVENT_COUNT])
+    }
+}
 
+fn modify_kqueue(fd: RawFd, event: &libc::kevent) -> bool {
+    unsafe { libc::kevent(fd, event as _, 1, std::ptr::null_mut(), 0, std::ptr::null()) == 0 }
+}
+
+struct Kqueue(RawFd);
+impl Kqueue {
+    pub fn new() -> Self {
         let fd = unsafe { libc::kqueue() };
         if fd == -1 {
             panic!("could not create kqueue");
         }
-        Self {
-            fd,
-            tracked: [DEFAULT_KEVENT; MAX_EVENT_COUNT],
-            tracked_len: 0,
-            triggered: [DEFAULT_KEVENT; MAX_TRIGGERED_EVENT_COUNT],
+        Self(fd)
+    }
+
+    pub fn add(&self, event: Event, index: usize) {
+        let event = event.into_kevent(libc::EV_ADD, index);
+        if !modify_kqueue(self.0, &event) {
+            panic!("could not add event");
+        }
+    }
+
+    pub fn remove(&self, event: Event) {
+        let event = event.into_kevent(libc::EV_ADD, index);
+        if !modify_kqueue(self.0, &event) {
+            panic!("could not remove event");
         }
     }
 
@@ -168,31 +192,11 @@ impl Kqueue {
         self.tracked_len += 1;
     }
 
-    pub fn notify_flush_requests(fd: RawFd, index: usize) {
-        let event = libc::kevent {
-            ident: 0,
-            filter: libc::EVFILT_USER,
-            flags: libc::EV_ADD | libc::EV_ONESHOT,
-            fflags: libc::NOTE_TRIGGER,
-            data: 0,
-            udata: index as _,
-        };
-        let len = unsafe {
-            libc::kevent(
-                fd,
-                &event as _,
-                1,
-                std::ptr::null_mut(),
-                0,
-                std::ptr::null(),
-            )
-        };
-    }
-
     pub fn wait<'a>(
-        &'a mut self,
+        &self,
+        events: &'a mut KqueueEvents,
         timeout: Option<Duration>,
-    ) -> impl 'a + ExactSizeIterator<Item = Result<usize, ()>> {
+    ) -> impl 'a + ExactSizeIterator<Item = Result<TriggeredEvent, ()>> {
         let mut timespec = libc::timespec {
             tv_sec: 0,
             tv_nsec: 0,
@@ -206,16 +210,13 @@ impl Kqueue {
             None => std::ptr::null(),
         };
 
-        let tracked = &self.tracked[..self.tracked_len];
-        self.tracked_len = 0;
-
         let len = unsafe {
             libc::kevent(
                 self.fd,
-                tracked.as_ptr(),
-                tracked.len() as _,
-                self.triggered.as_mut_ptr(),
-                self.triggered.len() as _,
+                [].as_ptr(),
+                0,
+                events.0.as_mut_ptr(),
+                events.0.len() as _,
                 timeout,
             )
         };
@@ -223,23 +224,26 @@ impl Kqueue {
             panic!("could not wait for events");
         }
 
-        self.triggered[..len as usize].iter().map(|e| {
+        events.0[..len as usize].iter().map(|e| {
             if e.flags & libc::EV_ERROR != 0 {
                 Err(())
             } else {
-                Ok(e.udata as _)
+                Ok(TriggeredEvent {
+                    index: e.udata as _,
+                    data: e.data as _,
+                })
             }
         })
     }
 }
 impl AsRawFd for Kqueue {
     fn as_raw_fd(&self) -> RawFd {
-        self.fd
+        self.0
     }
 }
 impl Drop for Kqueue {
     fn drop(&mut self) {
-        unsafe { libc::close(self.fd) };
+        unsafe { libc::close(self.0) };
     }
 }
 
