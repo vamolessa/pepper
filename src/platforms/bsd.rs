@@ -30,6 +30,8 @@ const _ASSERT_MAX_EVENT_COUNT_IS_64: [(); 64] = [(); MAX_EVENT_COUNT];
 const MAX_TRIGGERED_EVENT_COUNT: usize = 32;
 
 pub fn main() {
+    static KQUEUE_FD: AtomicIsize = AtomicIsize::new(-1);
+
     let raw_mode = RawMode::enter();
     let stdin = io::stdin();
     let mut stdin = stdin.lock();
@@ -38,19 +40,33 @@ pub fn main() {
     let mut keys = Vec::new();
 
     let mut kqueue = Kqueue::new();
-    
+    KQUEUE_FD.store(kqueue.as_raw_fd() as _, Ordering::Relaxed);
+
+    std::thread::spawn(|| {
+        for _ in 0..10 {
+            print!("sending flush request\r\n");
+            let fd = KQUEUE_FD.load(Ordering::Relaxed) as _;
+            Kqueue::notify_flush_requests(fd);
+            std::thread::sleep(Duration::from_secs(1));
+        }
+    });
+
     let (width, height) = get_terminal_size();
     print!("terminal size: {}, {}\r\n", width, height);
 
     'main_loop: loop {
-        kqueue.track(Event::Fd(stdin.as_raw_fd()), 0);
-        kqueue.track(Event::Resize, 1);
+        kqueue.track(Event::FlushRequests, 0);
+        kqueue.track(Event::Fd(stdin.as_raw_fd()), 1);
+        kqueue.track(Event::Resize, 2);
 
         print!("waiting for events...\r\n");
         let events = kqueue.wait(None);
         for event_index in events {
             match event_index {
                 Ok(0) => {
+                    print!("received flush request\r\n");
+                }
+                Ok(1) => {
                     use io::Read;
                     let len = stdin.read(&mut buf).unwrap();
                     keys.clear();
@@ -62,7 +78,7 @@ pub fn main() {
                         }
                     }
                 }
-                Ok(1) => {
+                Ok(2) => {
                     let (width, height) = get_terminal_size();
                     print!("terminal size: {}, {}\r\n", width, height);
                 }
@@ -80,7 +96,7 @@ pub fn main() {
 
 enum Event {
     Resize,
-    FlushRequest,
+    FlushRequests,
     Fd(RawFd),
 }
 impl Event {
@@ -94,7 +110,7 @@ impl Event {
                 data: 0,
                 udata: index as _,
             },
-            Self::FlushRequest => libc::kevent {
+            Self::FlushRequests => libc::kevent {
                 ident: 0,
                 filter: libc::EVFILT_USER,
                 flags: libc::EV_ADD,
@@ -150,6 +166,20 @@ impl Kqueue {
         self.tracked_len += 1;
     }
 
+    pub fn notify_flush_requests(fd: RawFd) {
+        let event = Event::FlushRequests.into_kevent(0);
+        let len = unsafe {
+            libc::kevent(
+                fd,
+                &event as _,
+                1,
+                std::ptr::null_mut(),
+                0,
+                std::ptr::null(),
+            )
+        };
+    }
+
     pub fn wait<'a>(
         &'a mut self,
         timeout: Option<Duration>,
@@ -161,7 +191,7 @@ impl Kqueue {
         let timeout = match timeout {
             Some(duration) => {
                 timespec.tv_nsec = duration.as_nanos() as _;
-                &timespec as *const _
+                &timespec as _
             }
             None => std::ptr::null(),
         };
@@ -190,6 +220,11 @@ impl Kqueue {
                 Ok(e.udata as _)
             }
         })
+    }
+}
+impl AsRawFd for Kqueue {
+    fn as_raw_fd(&self) -> RawFd {
+        self.fd
     }
 }
 impl Drop for Kqueue {
@@ -268,3 +303,4 @@ fn run_client(args: Args, mut connection: UnixStream) {
 
     drop(raw_mode);
 }
+
