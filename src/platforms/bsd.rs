@@ -179,17 +179,10 @@ impl Kqueue {
     }
 
     pub fn remove(&self, event: Event) {
-        let event = event.into_kevent(libc::EV_ADD, index);
+        let event = event.into_kevent(libc::EV_DELETE, 0);
         if !modify_kqueue(self.0, &event) {
             panic!("could not remove event");
         }
-    }
-
-    pub fn track(&mut self, event: Event, index: usize) {
-        let insert_index = self.tracked_len;
-        debug_assert!(insert_index < self.tracked.len());
-        self.tracked[insert_index] = event.into_kevent(index);
-        self.tracked_len += 1;
     }
 
     pub fn wait<'a>(
