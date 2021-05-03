@@ -47,7 +47,7 @@ pub fn main() {
     let mut kqueue_events = KqueueEvents::new();
 
     KQUEUE_FD.store(kqueue.as_raw_fd() as _, Ordering::Relaxed);
-    
+
     std::thread::spawn(|| {
         for _ in 0..10 {
             print!("sending flush request\r\n");
@@ -69,11 +69,13 @@ pub fn main() {
         print!("waiting for events...\r\n");
         let events = kqueue.wait(&mut kqueue_events, None);
         for event in events {
+            let event = match event {
+                Ok(event) => event,
+                Err(()) => panic!("ops something bad happened"),
+            };
             match event.index {
-                Ok(0) => {
-                    print!("received flush request\r\n");
-                }
-                Ok(1) => {
+                0 => print!("received flush request\r\n"),
+                1 => {
                     use io::Read;
                     let len = stdin.read(&mut buf).unwrap();
                     keys.clear();
@@ -85,14 +87,11 @@ pub fn main() {
                         }
                     }
                 }
-                Ok(2) => {
+                2 => {
                     let (width, height) = get_terminal_size();
                     print!("terminal size: {}, {}\r\n", width, height);
                 }
-                Ok(_) => unreachable!(),
-                Err(()) => {
-                    panic!("ops something bad happened")
-                }
+                _ => unreachable!(),
             };
         }
     }
@@ -205,7 +204,7 @@ impl Kqueue {
 
         let len = unsafe {
             libc::kevent(
-                self.fd,
+                self.0,
                 [].as_ptr(),
                 0,
                 events.0.as_mut_ptr(),
