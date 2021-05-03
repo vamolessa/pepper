@@ -247,4 +247,3 @@ pub fn parse_terminal_keys(mut buf: &[u8], keys: &mut Vec<Key>) {
         keys.push(key);
     }
 }
-

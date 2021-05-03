@@ -64,7 +64,9 @@ fn print_help() {
     println!("  -s, --session             overrides the session name to connect to");
     println!("  --print-session           prints the computed session name and quits");
     println!("  --as-client <client-id>   sends events as if it was client with id <client-id>");
-    println!("  --as-server               only run as server (ignores files and configs arguments)");
+    println!(
+        "  --as-server               only run as server (ignores files and configs arguments)"
+    );
     println!("  -c, --config              sources config file at path (repeatable)");
     println!("  -C, --try-config          tries to source a config file at path, throws no error if fails (repeatable)");
 }

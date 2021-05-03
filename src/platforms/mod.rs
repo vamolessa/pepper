@@ -19,4 +19,3 @@ mod sys;
 pub fn main() {
     sys::main();
 }
-

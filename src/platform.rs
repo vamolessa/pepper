@@ -195,4 +195,3 @@ impl BufPool {
         self.pool.push(buf);
     }
 }
-

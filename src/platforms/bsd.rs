@@ -38,33 +38,38 @@ pub fn main() {
     let mut buf = [0; 64];
     let mut keys = Vec::new();
 
+    let mut kqueue = Kqueue::new();
+
     loop {
-        use io::Read;
-        let len = match stdin.read(&mut buf) {
-            Ok(len) => len,
-            Err(_) => return,
-        };
-        keys.clear();
-        parse_terminal_keys(&buf[..len], &mut keys);
-        for &key in &keys {
-            print!("{}\r\n", key);
-            if key == Key::Esc {
-                return;
-            }
+        kqueue.track(Event::Fd(stdin.as_raw_fd()), 0);
+
+        print!("waiting for events...\r\n");
+        let events = kqueue.wait(None);
+        for event_index in events {
+            match event_index {
+                Ok(0) => {
+                    use io::Read;
+                    let len = stdin.read(&mut buf).unwrap();
+                    keys.clear();
+                    parse_terminal_keys(&buf[..len], &mut keys);
+                    for &key in &keys {
+                        print!("{}\r\n", key);
+                        if key == Key::Esc {
+                            return;
+                        }
+                    }
+                }
+                Ok(_) => unreachable!(),
+                Err(()) => {
+                    panic!("ops something bad happened")
+                }
+            };
         }
     }
+
     drop(raw_mode);
     //run(run_server, run_client);
 }
-
-const DEFAULT_KEVENT: libc::kevent = libc::kevent {
-    ident: 0,
-    filter: 0,
-    flags: 0,
-    fflags: 0,
-    data: 0,
-    udata: std::ptr::null_mut(),
-};
 
 enum Event {
     Resize,
@@ -77,7 +82,7 @@ impl Event {
             Self::Resize => libc::kevent {
                 ident: libc::SIGWINCH as _,
                 filter: libc::EVFILT_SIGNAL,
-                flags: libc::EV_ADD,
+                flags: libc::EV_ADD | libc::EV_ENABLE,
                 fflags: 0,
                 data: 0,
                 udata: index as _,
@@ -102,20 +107,23 @@ impl Event {
     }
 }
 
-struct KqueueEvents([libc::kevent; MAX_TRIGGERED_EVENT_COUNT]);
-impl KqueueEvents {
-    pub fn new() -> Self {
-        Self([DEFAULT_KEVENT; MAX_TRIGGERED_EVENT_COUNT])
-    }
-}
-
 struct Kqueue {
     fd: RawFd,
     tracked: [libc::kevent; MAX_EVENT_COUNT],
     tracked_len: usize,
+    triggered: [libc::kevent; MAX_TRIGGERED_EVENT_COUNT],
 }
 impl Kqueue {
     pub fn new() -> Self {
+        const DEFAULT_KEVENT: libc::kevent = libc::kevent {
+            ident: 0,
+            filter: 0,
+            flags: 0,
+            fflags: 0,
+            data: 0,
+            udata: std::ptr::null_mut(),
+        };
+
         let fd = unsafe { libc::kqueue() };
         if fd == -1 {
             panic!("could not create kqueue");
@@ -124,6 +132,7 @@ impl Kqueue {
             fd,
             tracked: [DEFAULT_KEVENT; MAX_EVENT_COUNT],
             tracked_len: 0,
+            triggered: [DEFAULT_KEVENT; MAX_TRIGGERED_EVENT_COUNT],
         }
     }
 
@@ -134,11 +143,10 @@ impl Kqueue {
         self.tracked_len += 1;
     }
 
-    pub fn wait<'a>(
+    pub fn wait(
         &mut self,
-        events: &'a mut KqueueEvents,
         timeout: Option<Duration>,
-    ) -> impl 'a + ExactSizeIterator<Item = Result<usize, ()>>  {
+    ) -> impl ExactSizeIterator<Item = Result<usize, ()>> {
         let mut timespec = libc::timespec {
             tv_sec: 0,
             tv_nsec: 0,
@@ -147,7 +155,7 @@ impl Kqueue {
             Some(duration) => {
                 timespec.tv_nsec = duration.as_nanos() as _;
                 &timespec as *const _
-            },
+            }
             None => std::ptr::null(),
         };
 
@@ -159,8 +167,8 @@ impl Kqueue {
                 self.fd,
                 tracked.as_ptr(),
                 tracked.len() as _,
-                events.0.as_mut_ptr(),
-                events.0.len() as _,
+                self.triggered.as_mut_ptr(),
+                self.triggered.len() as _,
                 timeout,
             )
         };
@@ -168,7 +176,7 @@ impl Kqueue {
             panic!("could not wait for events");
         }
 
-        events.0[..len as usize].iter().map(|e| {
+        self.triggered.0[..len as usize].iter().map(|e| {
             if e.flags & libc::EV_ERROR != 0 {
                 Err(())
             } else {
@@ -253,4 +261,3 @@ fn run_client(args: Args, mut connection: UnixStream) {
 
     drop(raw_mode);
 }
-
