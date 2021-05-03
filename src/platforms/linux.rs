@@ -1,10 +1,9 @@
 use std::{
-    fs, io,
+    io,
     os::unix::{
         io::{AsRawFd, RawFd},
         net::{UnixListener, UnixStream},
     },
-    path::Path,
     sync::{
         atomic::{AtomicIsize, Ordering},
         mpsc,
@@ -169,21 +168,18 @@ impl Drop for Epoll {
     }
 }
 
-fn run_server(stream_path: &Path) -> Result<(), AnyError> {
+fn run_server(listener: UnixListener) -> Result<(), AnyError> {
     use io::{Read, Write};
 
     const NONE_PROCESS: Option<Process> = None;
     static NEW_REQUEST_EVENT_FD: AtomicIsize = AtomicIsize::new(-1);
 
-    if let Some(dir) = stream_path.parent() {
-        if !dir.exists() {
-            let _ = fs::create_dir(dir);
-        }
-    }
-
-    let _ = fs::remove_file(stream_path);
-    let listener =
-        UnixListener::bind(stream_path).expect("could not start unix domain socket server");
+    let (request_sender, request_receiver) = mpsc::channel();
+    let platform = Platform::new(
+        || EventFd::write(NEW_REQUEST_EVENT_FD.load(Ordering::Relaxed) as _),
+        request_sender,
+    );
+    let event_sender = ServerApplication::run(platform);
 
     let mut client_connections: [Option<UnixStream>; MAX_CLIENT_COUNT] = Default::default();
     let mut processes = [NONE_PROCESS; MAX_PROCESS_COUNT];
@@ -191,17 +187,6 @@ fn run_server(stream_path: &Path) -> Result<(), AnyError> {
 
     let new_request_event = EventFd::new();
     NEW_REQUEST_EVENT_FD.store(new_request_event.as_raw_fd() as _, Ordering::Relaxed);
-
-    let (request_sender, request_receiver) = mpsc::channel();
-    let platform = Platform::new(
-        || EventFd::write(NEW_REQUEST_EVENT_FD.load(Ordering::Relaxed) as _),
-        request_sender,
-    );
-
-    let event_sender = match ServerApplication::run(platform) {
-        Some(sender) => sender,
-        None => return Ok(()),
-    };
 
     let mut timeout = Some(ServerApplication::idle_duration());
 

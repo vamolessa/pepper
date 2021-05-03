@@ -3,7 +3,7 @@ use std::{
     os::unix::{
         ffi::OsStrExt,
         io::{AsRawFd, RawFd},
-        net::UnixStream,
+        net::{UnixListener, UnixStream},
     },
     path::Path,
     process::Child,
@@ -13,14 +13,11 @@ use std::{
 use pepper::{
     application::AnyError,
     editor_utils::hash_bytes,
-    platform::{BufPool, ProcessTag, SharedBuf, Key},
+    platform::{BufPool, Key, ProcessTag, SharedBuf},
     Args,
 };
 
-pub fn run(
-    server_fn: fn(stream_path: &Path) -> Result<(), AnyError>,
-    client_fn: fn(args: Args, connection: UnixStream),
-) {
+pub fn run(server_fn: fn(UnixListener) -> Result<(), AnyError>, client_fn: fn(Args, UnixStream)) {
     let args = Args::parse();
 
     let mut session_path = String::new();
@@ -53,8 +50,19 @@ pub fn run(
 
     let session_path = Path::new(&session_path);
 
+    fn start_server(session_path: &Path) -> UnixListener {
+        if let Some(dir) = session_path.parent() {
+            if !dir.exists() {
+                let _ = fs::create_dir(dir);
+            }
+        }
+
+        let _ = fs::remove_file(session_path);
+        UnixListener::bind(session_path).expect("could not start unix domain socket server")
+    }
+
     if args.as_server {
-        let _ = server_fn(session_path);
+        let _ = server_fn(start_server(session_path));
         let _ = fs::remove_file(session_path);
     } else {
         match UnixStream::connect(session_path) {
@@ -71,7 +79,7 @@ pub fn run(
                     }
                 },
                 _ => {
-                    let _ = server_fn(session_path);
+                    let _ = server_fn(start_server(session_path));
                     let _ = fs::remove_file(session_path);
                 }
             },

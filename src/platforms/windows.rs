@@ -886,11 +886,7 @@ fn run_server(pipe_path: &[u16]) -> Result<(), AnyError> {
         request_sender,
     );
     platform.set_clipboard_api(read_from_clipboard, write_to_clipboard);
-
-    let event_sender = match ServerApplication::run(platform) {
-        Some(sender) => sender,
-        None => return Ok(()),
-    };
+    let event_sender = ServerApplication::run(platform);
 
     let mut timeout = Some(ServerApplication::idle_duration());
 
@@ -1334,3 +1330,4 @@ fn parse_console_events(
         }
     }
 }
+

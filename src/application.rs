@@ -65,7 +65,7 @@ impl ServerApplication {
         Duration::from_secs(1)
     }
 
-    pub fn run(mut platform: Platform) -> Option<mpsc::Sender<ApplicationEvent>> {
+    pub fn run(mut platform: Platform) -> mpsc::Sender<ApplicationEvent> {
         let current_dir = env::current_dir().expect("could not retrieve the current directory");
         let editor = Editor::new(current_dir);
         let clients = ClientManager::new();
@@ -84,7 +84,7 @@ impl ServerApplication {
             platform.flush_requests();
         });
 
-        Some(event_sender)
+        event_sender
     }
 
     fn run_application(
