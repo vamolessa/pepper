@@ -1791,7 +1791,12 @@ impl Client {
                         count += 1;
                     }
 
-                    let _ = writeln!(text, "{} references found\n", count,);
+                    if count == 1 {
+                        let _ = writeln!(text, "1 reference found\n");
+                    } else {
+                        let _ = writeln!(text, "{} references found\n", count);
+                    }
+
                     buffer.insert_text(
                         &mut editor.word_database,
                         BufferPosition::zero(),
@@ -2711,7 +2716,6 @@ impl ClientManager {
         let mut events = client.protocol.parse_events(bytes);
         while let Some(event) = events.next(&mut client.protocol, &mut client.json) {
             match event {
-                ServerEvent::Closed => editor.lsp.stop(platform, handle),
                 ServerEvent::ParseError => {
                     client.write_to_log_buffer(|buf, json| {
                         use io::Write;
@@ -2749,7 +2753,14 @@ impl ClientManager {
     }
 
     pub fn on_process_exit(editor: &mut Editor, handle: ClientHandle) {
-        editor.lsp.entries[handle.0 as usize] = ClientEntry::Vacant;
+        let index = handle.0 as usize;
+        if let ClientEntry::Occupied(ref mut client) = editor.lsp.entries[index] {
+            client.write_to_log_buffer(|buf, _| {
+                use io::Write;
+                let _ = write!(buf, "lsp server stopped");
+            });
+        }
+        editor.lsp.entries[index] = ClientEntry::Vacant;
         for recipe in &mut editor.lsp.recipes {
             if recipe.running_client == Some(handle) {
                 recipe.running_client = None;
@@ -2823,3 +2834,4 @@ impl ClientManager {
         }
     }
 }
+

@@ -154,7 +154,6 @@ pub fn path_to_language_id(path: &Path) -> &str {
 }
 
 pub enum ServerEvent {
-    Closed,
     ParseError,
     Request(ServerRequest),
     Notification(ServerNotification),
