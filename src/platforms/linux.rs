@@ -19,7 +19,9 @@ use pepper::{
 };
 
 mod unix_utils;
-use unix_utils::{get_terminal_size, parse_terminal_keys, run, Process, RawMode};
+use unix_utils::{
+    get_terminal_size, parse_terminal_keys, read_from_connection, run, Process, RawMode,
+};
 
 const MAX_CLIENT_COUNT: usize = 20;
 const MAX_PROCESS_COUNT: usize = 42;
@@ -169,7 +171,7 @@ impl Drop for Epoll {
 }
 
 fn run_server(listener: UnixListener) -> Result<(), AnyError> {
-    use io::{Read, Write};
+    use io::Write;
 
     const NONE_PROCESS: Option<Process> = None;
     static NEW_REQUEST_EVENT_FD: AtomicIsize = AtomicIsize::new(-1);
@@ -323,19 +325,19 @@ fn run_server(listener: UnixListener) -> Result<(), AnyError> {
                     let index = event_index - CLIENTS_START_INDEX;
                     if let Some(ref mut connection) = client_connections[index] {
                         let handle = ClientHandle::from_index(index).unwrap();
-                        let mut buf = buf_pool.acquire();
-                        let write = buf.write_with_len(ServerApplication::connection_buffer_len());
-                        match connection.read(write) {
-                            Ok(0) | Err(_) => {
+                        match read_from_connection(
+                            connection,
+                            &mut buf_pool,
+                            ServerApplication::connection_buffer_len(),
+                        ) {
+                            Ok(buf) if !buf.as_bytes().is_empty() => {
+                                event_sender
+                                    .send(ApplicationEvent::ConnectionOutput { handle, buf })?;
+                            }
+                            _ => {
                                 epoll.remove(connection.as_raw_fd());
                                 client_connections[index] = None;
                                 event_sender.send(ApplicationEvent::ConnectionClose { handle })?;
-                            }
-                            Ok(len) => {
-                                write.truncate(len);
-                                let buf = buf.share();
-                                event_sender
-                                    .send(ApplicationEvent::ConnectionOutput { handle, buf })?;
                             }
                         }
                     }
@@ -474,3 +476,4 @@ fn run_client(args: Args, mut connection: UnixStream) {
 
     drop(raw_mode);
 }
+

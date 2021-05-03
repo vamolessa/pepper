@@ -612,13 +612,13 @@ impl Drop for ConsoleMode {
 
 struct ConnectionToClient {
     reader: AsyncReader,
-    read_buf: Option<ExclusiveBuf>,
+    current_buf: Option<ExclusiveBuf>,
 }
 impl ConnectionToClient {
     pub fn new(reader: AsyncReader) -> Self {
         Self {
             reader,
-            read_buf: None,
+            current_buf: None,
         }
     }
 
@@ -631,22 +631,27 @@ impl ConnectionToClient {
         buf_len: usize,
         buf_pool: &mut BufPool,
     ) -> Result<Option<SharedBuf>, ()> {
-        let mut read_buf = match self.read_buf.take() {
+        let mut buf = match self.current_buf.take() {
             Some(buf) => buf,
             None => buf_pool.acquire(),
         };
-        let buf = read_buf.write_with_len(buf_len);
+        let write = buf.write_with_len(buf_len);
 
-        match self.reader.read_async(buf) {
+        match self.reader.read_async(write) {
             ReadResult::Waiting => {
-                self.read_buf = Some(read_buf);
+                self.current_buf = Some(buf);
                 Ok(None)
             }
             ReadResult::Ok(len) => {
-                buf.truncate(len);
-                Ok(Some(read_buf.share()))
+                write.truncate(len);
+                let buf = buf.share();
+                buf_pool.release(buf.clone());
+                Ok(Some(buf))
             }
-            ReadResult::Err => Err(()),
+            ReadResult::Err => {
+                buf_pool.release(buf.share());
+                Err(())
+            }
         }
     }
 
@@ -732,7 +737,7 @@ impl ConnectionToClientListener {
 struct ProcessPipe {
     reader: AsyncReader,
     buf_len: usize,
-    current_read_buf: Option<ExclusiveBuf>,
+    current_buf: Option<ExclusiveBuf>,
 }
 impl ProcessPipe {
     pub fn new(reader: AsyncReader, buf_len: usize) -> Self {
@@ -741,7 +746,7 @@ impl ProcessPipe {
         Self {
             reader,
             buf_len,
-            current_read_buf: None,
+            current_buf: None,
         }
     }
 
@@ -750,22 +755,27 @@ impl ProcessPipe {
     }
 
     pub fn read_async(&mut self, buf_pool: &mut BufPool) -> Result<Option<SharedBuf>, ()> {
-        let mut read_buf = match self.current_read_buf.take() {
+        let mut buf = match self.current_buf.take() {
             Some(buf) => buf,
             None => buf_pool.acquire(),
         };
-        let buf = read_buf.write_with_len(self.buf_len);
+        let write = buf.write_with_len(self.buf_len);
 
-        match self.reader.read_async(buf) {
+        match self.reader.read_async(write) {
             ReadResult::Waiting => {
-                self.current_read_buf = Some(read_buf);
+                self.current_buf = Some(buf);
                 Ok(None)
             }
             ReadResult::Ok(len) => {
-                buf.truncate(len);
-                Ok(Some(read_buf.share()))
+                write.truncate(len);
+                let buf = buf.share();
+                buf_pool.release(buf.clone());
+                Ok(Some(buf))
             }
-            ReadResult::Err => Err(()),
+            ReadResult::Err => {
+                buf_pool.release(buf.share());
+                Err(())
+            }
         }
     }
 }
@@ -1330,3 +1340,4 @@ fn parse_console_events(
         }
     }
 }
+

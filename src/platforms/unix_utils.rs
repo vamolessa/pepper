@@ -114,6 +114,28 @@ impl Drop for RawMode {
     }
 }
 
+pub fn read_from_connection(
+    connection: &mut UnixStream,
+    buf_pool: &mut BufPool,
+    len: usize,
+) -> Result<SharedBuf, ()> {
+    use io::Read;
+    let mut buf = buf_pool.acquire();
+    let write = buf.write_with_len(len);
+    match connection.read(write) {
+        Ok(len) => {
+            write.truncate(len);
+            let buf = buf.share();
+            buf_pool.release(buf.clone());
+            Ok(buf)
+        }
+        Err(_) => {
+            buf_pool.release(buf.share());
+            Err(())
+        }
+    }
+}
+
 pub struct Process {
     alive: bool,
     child: Child,
@@ -147,9 +169,14 @@ impl Process {
                 match stdout.read(write) {
                     Ok(len) => {
                         write.truncate(len);
-                        Ok(Some(buf.share()))
+                        let buf = buf.share();
+                        buf_pool.release(buf.clone());
+                        Ok(Some(buf))
                     }
-                    Err(_) => Err(()),
+                    Err(_) => {
+                        buf_pool.release(buf.share());
+                        Err(())
+                    }
                 }
             }
             None => Ok(None),
@@ -247,3 +274,4 @@ pub fn parse_terminal_keys(mut buf: &[u8], keys: &mut Vec<Key>) {
         keys.push(key);
     }
 }
+
