@@ -65,7 +65,6 @@ pub fn main() {
     print!("terminal size: {}, {}\r\n", width, height);
 
     'main_loop: loop {
-        print!("waiting for events...\r\n");
         let events = kqueue.wait(&mut kqueue_events, None);
         for event in events {
             let event = match event {
