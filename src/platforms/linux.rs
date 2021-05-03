@@ -113,8 +113,8 @@ impl Drop for SignalFd {
 struct EpollEvents([libc::epoll_event; CLIENT_EVENT_BUFFER_LEN]);
 impl EpollEvents {
     pub fn new() -> Self {
-        const DEFAULT_EPOLL_EVENT: libc::epoll_event = libc::epoll_event { events: 0, u64: 0 };
-        Self([DEFAULT_EPOLL_EVENT; CLIENT_EVENT_BUFFER_LEN])
+        const DEFAULT_EVENT: libc::epoll_event = libc::epoll_event { events: 0, u64: 0 };
+        Self([DEFAULT_EVENT; CLIENT_EVENT_BUFFER_LEN])
     }
 }
 struct Epoll(RawFd);

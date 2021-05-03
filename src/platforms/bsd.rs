@@ -26,6 +26,7 @@ use unix_utils::{get_terminal_size, parse_terminal_keys, run, Process, RawMode};
 
 const MAX_CLIENT_COUNT: usize = 20;
 const MAX_PROCESS_COUNT: usize = 42;
+const CLIENT_EVENT_BUFFER_LEN: usize = 32;
 
 pub fn main() {
     let raw_mode = RawMode::enter();
@@ -52,6 +53,21 @@ pub fn main() {
     }
     drop(raw_mode);
     //run(run_server, run_client);
+}
+
+struct KqueueEvents([libc::kevent; CLIENT_EVENT_BUFFER_LEN]);
+impl KqueueEvents {
+    pub fn new() -> Self {
+        const DEFAULT_EVENT: libc::kevent = libc::kevent {
+            ident: 0,
+            filter: 0,
+            flags: 0,
+            fflags: 0,
+            data: 0,
+            udata: std::ptr::null_mut(),
+        };
+        Self([DEFAULT_EVENT; CLIENT_EVENT_BUFFER_LEN])
+    }
 }
 
 struct Kqueue(RawFd);
