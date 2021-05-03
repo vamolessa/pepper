@@ -166,9 +166,15 @@ impl Kqueue {
         self.tracked_len += 1;
     }
 
-    pub fn notify_flush_requests(fd: RawFd) {
-        let mut event = Event::FlushRequests.into_kevent(0);
-        event.fflags |= libc::NOTE_TRIGGER;
+    pub fn notify_flush_requests(fd: RawFd, index: usize) {
+        let event = libc::kevent {
+            ident: 0,
+            filter: libc::EVFILT_USER,
+            flags: libc::EV_ADD | libc::EV_ONESHOT,
+            fflags: libc::NOTE_TRIGGER,
+            data: 0,
+            udata: index as _,
+        };
         let len = unsafe {
             libc::kevent(
                 fd,
