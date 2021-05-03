@@ -64,8 +64,7 @@ pub fn main() {
     let (width, height) = get_terminal_size();
     print!("terminal size: {}, {}\r\n", width, height);
 
-    //'main_loop: loop {
-    'main_loop: for _ in 0..30 {
+    'main_loop: loop {
         print!("waiting for events...\r\n");
         let events = kqueue.wait(&mut kqueue_events, None);
         for event in events {
@@ -90,6 +89,7 @@ pub fn main() {
                 2 => {
                     let (width, height) = get_terminal_size();
                     print!("terminal size: {}, {}\r\n", width, height);
+                    kqueue.remove(Event::Resize);
                 }
                 _ => unreachable!(),
             };
