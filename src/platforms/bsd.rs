@@ -145,8 +145,8 @@ impl Kqueue {
         };
         let timeout = match timeout {
             Some(duration) => {
-                timespec.tvnsec = duration.as_nanos() as _;
-                *timespec
+                timespec.tv_nsec = duration.as_nanos() as _;
+                &timespec as *const _
             },
             None => std::ptr::null(),
         };
