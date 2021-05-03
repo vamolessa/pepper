@@ -52,11 +52,7 @@ fn run_server(listener: UnixListener) -> Result<(), AnyError> {
         || EventFd::write(NEW_REQUEST_EVENT_FD.load(Ordering::Relaxed) as _),
         request_sender,
     );
-
-    let event_sender = match ServerApplication::run(platform) {
-        Some(sender) => sender,
-        None => return Ok(()),
-    };
+    let event_sender = ServerApplication::run(platform);
 
     let mut timeout = Some(ServerApplication::idle_duration());
 
@@ -101,7 +97,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
         }
     }
 
-    let mut keys = Vec::new();
+    //let mut keys = Vec::new();
     let mut stream_buf = [0; ClientApplication::connection_buffer_len()];
     let mut stdin_buf = [0; ClientApplication::stdin_buffer_len()];
 

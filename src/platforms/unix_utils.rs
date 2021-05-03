@@ -190,7 +190,7 @@ pub fn get_terminal_size() -> (usize, usize) {
     let result = unsafe {
         libc::ioctl(
             libc::STDOUT_FILENO,
-            libc::TIOCGWINSZ,
+            libc::TIOCGWINSZ as _,
             &mut size as *mut libc::winsize,
         )
     };
