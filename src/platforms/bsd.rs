@@ -16,7 +16,6 @@ use std::{
 use pepper::{
     application::{AnyError, ApplicationEvent, ClientApplication, ServerApplication},
     client::ClientHandle,
-    editor_utils::hash_bytes,
     platform::{BufPool, Key, Platform, PlatformRequest, ProcessHandle, ProcessTag, SharedBuf},
     Args,
 };
@@ -40,7 +39,7 @@ pub fn main() {
 
     let mut kqueue = Kqueue::new();
 
-    loop {
+    'main_loop: loop {
         kqueue.track(Event::Fd(stdin.as_raw_fd()), 0);
 
         print!("waiting for events...\r\n");
@@ -55,7 +54,7 @@ pub fn main() {
                     for &key in &keys {
                         print!("{}\r\n", key);
                         if key == Key::Esc {
-                            return;
+                            break 'main_loop;
                         }
                     }
                 }
@@ -176,7 +175,7 @@ impl Kqueue {
             panic!("could not wait for events");
         }
 
-        self.triggered.0[..len as usize].iter().map(|e| {
+        self.triggered[..len as usize].iter().map(|e| {
             if e.flags & libc::EV_ERROR != 0 {
                 Err(())
             } else {
