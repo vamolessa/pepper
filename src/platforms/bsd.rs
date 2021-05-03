@@ -81,7 +81,7 @@ pub fn main() {
                     keys.clear();
                     parse_terminal_keys(&buf[..len], &mut keys);
                     for &key in &keys {
-                        print!("{}\r\n", key);
+                        print!("{} bytes: {}\r\n", key, event.data);
                         if key == Key::Char('q') {
                             break 'main_loop;
                         }
