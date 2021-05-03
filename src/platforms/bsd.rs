@@ -28,7 +28,27 @@ const MAX_CLIENT_COUNT: usize = 20;
 const MAX_PROCESS_COUNT: usize = 42;
 
 pub fn main() {
-    run(run_server, run_client);
+    let stdin = io::stdin();
+    let stdin = stdin.lock();
+    
+    let mut buf = [0; 64];
+    let mut keys = Vec::new();
+    
+    loop {
+        use io::Read;
+        let len = match stdin.read(&mut buf) {
+            Ok(len) => len,
+            Err(_) => return,
+        };
+        parse_terminal_keys(&buf[..len], &mut keys);
+        for key in &keys {
+            println!("{}", key);
+            if let Key::Esc = key {
+                return,
+            }
+        }
+    }
+    //run(run_server, run_client);
 }
 
 struct Kqueue(RawFd);
