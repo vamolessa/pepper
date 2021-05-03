@@ -54,19 +54,19 @@ fn print_help() {
     println!();
     println!("usage: pepper [<options...>] [<files...>]");
     println!();
-    println!("  files: files to open as a buffer");
+    println!("  files: file paths to open as a buffer");
     println!("         you can append ':<line>[,<column>]' to open it at that position");
     println!();
     println!("options:");
     println!();
     println!("  -h, --help                prints help and quits");
     println!("  -v, --version             prints version and quits");
-    println!("  -c, --config              loads config file at path (repeatable)");
-    println!("  -C, --try-config          tries loading a config file at path, throws no error if fails (repeatable)");
-    println!("  -s, --session             session name to connect to");
+    println!("  -s, --session             overrides the session name to connect to");
+    println!("  --print-session           prints the computed session name and quits");
     println!("  --as-client <client-id>   sends events as if it was client with id <client-id>");
-    println!("  --print-session           print the computed session name and quits");
-    println!("  --as-server               ignore all other options and only run as server");
+    println!("  --as-server               only run as server (ignores files and configs arguments)");
+    println!("  -c, --config              sources config file at path (repeatable)");
+    println!("  -C, --try-config          tries to source a config file at path, throws no error if fails (repeatable)");
 }
 
 impl Args {
@@ -98,6 +98,33 @@ impl Args {
                     print_version();
                     std::process::exit(0);
                 }
+                "-s" | "--session" => match args.next() {
+                    Some(arg) => {
+                        let arg = arg_to_str(&arg);
+                        if !arg.chars().all(char::is_alphanumeric) {
+                            error(format_args!(
+                                "invalid session name '{}'. it can only contain alphanumeric characters", arg
+                            ));
+                        }
+                        parsed.session = Some(arg.into());
+                    }
+                    None => error(format_args!("expected session after {}", arg)),
+                },
+                "--print-session" => parsed.print_session = true,
+                "--as-client" => match args.next() {
+                    Some(arg) => {
+                        let arg = arg_to_str(&arg);
+                        let client_handle: client::ClientHandle = match arg.parse() {
+                            Ok(handle) => handle,
+                            Err(_) => {
+                                error(format_args!("could not parse '{}' into a client id", arg))
+                            }
+                        };
+                        parsed.as_client = Some(client_handle);
+                    }
+                    None => error(format_args!("expected client id after {}", arg)),
+                },
+                "--as-server" => parsed.as_server = true,
                 "-c" | "--config" => match args.next() {
                     Some(arg) => {
                         let arg = arg_to_str(&arg);
@@ -118,33 +145,6 @@ impl Args {
                     }
                     None => error(format_args!("expected config path after {}", arg)),
                 },
-                "-s" | "--session" => match args.next() {
-                    Some(arg) => {
-                        let arg = arg_to_str(&arg);
-                        if !arg.chars().all(char::is_alphanumeric) {
-                            error(format_args!(
-                                "invalid session name '{}'. it can only contain alphanumeric characters", arg
-                            ));
-                        }
-                        parsed.session = Some(arg.into());
-                    }
-                    None => error(format_args!("expected session after {}", arg)),
-                },
-                "--as-client" => match args.next() {
-                    Some(arg) => {
-                        let arg = arg_to_str(&arg);
-                        let client_handle: client::ClientHandle = match arg.parse() {
-                            Ok(handle) => handle,
-                            Err(_) => {
-                                error(format_args!("could not parse '{}' into a client id", arg))
-                            }
-                        };
-                        parsed.as_client = Some(client_handle);
-                    }
-                    None => error(format_args!("expected client id after {}", arg)),
-                },
-                "--print-session" => parsed.print_session = true,
-                "--as-server" => parsed.as_server = true,
                 "--" => {
                     while let Some(arg) = args.next() {
                         let arg = arg_to_str(&arg);
