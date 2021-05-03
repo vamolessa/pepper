@@ -49,7 +49,7 @@ fn run_server(listener: UnixListener) -> Result<(), AnyError> {
 
     let (request_sender, request_receiver) = mpsc::channel();
     let platform = Platform::new(
-        || EventFd::write(NEW_REQUEST_EVENT_FD.load(Ordering::Relaxed) as _),
+        || (),
         request_sender,
     );
     let event_sender = ServerApplication::run(platform);
