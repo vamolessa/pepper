@@ -123,7 +123,7 @@ impl Event {
             Self::Fd(fd) => libc::kevent {
                 ident: fd as _,
                 filter: libc::EVFILT_READ,
-                flags: libc::EV_ADD | libc::EV_ONESHOT,
+                flags: libc::EV_ADD,
                 fflags: 0,
                 data: 0,
                 udata: index as _,
