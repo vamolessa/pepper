@@ -74,8 +74,16 @@ pub fn main() {
             match event.index {
                 0 => print!("received flush request\r\n"),
                 1 => {
-                    use io::Read;
-                    let len = stdin.read(&mut buf).unwrap();
+                    //use io::Read;
+                    //let len = stdin.read(&mut buf).unwrap();
+                    let result = unsafe {
+                        libc::read(stdin.as_raw_fd(), buf.as_mut_ptr() as _, buf.len() as _)
+                    };
+                    if result == -1 {
+                        panic!("something wrong reading from stdin");
+                    }
+                    let len = result as usize;
+
                     keys.clear();
                     parse_terminal_keys(&buf[..len], &mut keys);
                     for &key in &keys {
