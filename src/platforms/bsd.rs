@@ -43,7 +43,7 @@ pub fn main() {
         };
         parse_terminal_keys(&buf[..len], &mut keys);
         for &key in &keys {
-            println!("{}", key);
+            print!("{}\r\n", key);
             if key == Key::Esc {
                 return;
             }
