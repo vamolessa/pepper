@@ -56,7 +56,7 @@ pub fn main() {
     print!("terminal size: {}, {}\r\n", width, height);
 
     //'main_loop: loop {
-    for _ in 0..30 {
+    'main_loop: for _ in 0..30 {
         kqueue.track(Event::FlushRequests, 0);
         kqueue.track(Event::Fd(stdin.as_raw_fd()), 1);
         kqueue.track(Event::Resize, 2);
@@ -199,7 +199,8 @@ impl Kqueue {
         };
         let timeout = match timeout {
             Some(duration) => {
-                timespec.tv_nsec = duration.as_nanos() as _;
+                timespec.tv_sec = duration.as_secs() as _;
+                timespec.tv_nsec = duration.subsec_nanos() as _;
                 &timespec as _
             }
             None => std::ptr::null(),
