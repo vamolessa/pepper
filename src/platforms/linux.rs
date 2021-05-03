@@ -20,7 +20,8 @@ use pepper::{
 
 mod unix_utils;
 use unix_utils::{
-    get_terminal_size, parse_terminal_keys, read_from_connection, run, Process, RawMode,
+    get_terminal_size, is_pipped, parse_terminal_keys, read, read_from_connection, run, Process,
+    RawMode,
 };
 
 const MAX_CLIENT_COUNT: usize = 20;
@@ -51,8 +52,7 @@ impl EventFd {
 
     pub fn read(&self) {
         let mut buf = [0; 8];
-        let result = unsafe { libc::read(self.0, buf.as_mut_ptr() as _, buf.len() as _) };
-        if result != buf.len() as _ {
+        if read(self.0, &mut buf) != Ok(buf.len()) {
             panic!("could not read from event fd");
         }
     }
@@ -95,8 +95,7 @@ impl SignalFd {
 
     pub fn read(&self) {
         let mut buf = [0u8; std::mem::size_of::<libc::signalfd_siginfo>()];
-        let result = unsafe { libc::read(self.0, buf.as_mut_ptr() as _, buf.len() as _) };
-        if result != buf.len() as _ {
+        if read(self.0, &mut buf) != Ok(buf.len()) {
             panic!("could not read from signal fd");
         }
     }
@@ -384,9 +383,6 @@ fn run_server(listener: UnixListener) -> Result<(), AnyError> {
 fn run_client(args: Args, mut connection: UnixStream) {
     use io::{Read, Write};
 
-    let stdin = io::stdin();
-    let mut stdin = stdin.lock();
-
     let mut client_index = 0;
     match connection.read(std::slice::from_mut(&mut client_index)) {
         Ok(1) => (),
@@ -394,7 +390,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
     }
 
     let client_handle = ClientHandle::from_index(client_index as _).unwrap();
-    let is_pipped = unsafe { libc::isatty(stdin.as_raw_fd()) == 0 };
+    let is_pipped = is_pipped();
 
     let stdout = io::stdout();
     let mut application = ClientApplication::new(client_handle, stdout.lock(), is_pipped);
@@ -408,7 +404,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
 
     let epoll = Epoll::new();
     epoll.add(connection.as_raw_fd(), 0);
-    epoll.add(stdin.as_raw_fd(), 1);
+    epoll.add(libc::STDIN_FILENO, 1);
     let mut epoll_events = EpollEvents::new();
 
     if is_pipped {
@@ -444,9 +440,9 @@ fn run_client(args: Args, mut connection: UnixStream) {
                     Ok(0) | Err(_) => break 'main_loop,
                     Ok(len) => server_bytes = &stream_buf[..len],
                 },
-                1 => match stdin.read(&mut stdin_buf) {
-                    Ok(0) | Err(_) => {
-                        epoll.remove(stdin.as_raw_fd());
+                1 => match read(libc::STDIN_FILENO, &mut stdin_buf) {
+                    Ok(0) | Err(()) => {
+                        epoll.remove(libc::STDIN_FILENO);
                         continue;
                     }
                     Ok(len) => {

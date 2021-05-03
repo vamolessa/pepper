@@ -114,6 +114,19 @@ impl Drop for RawMode {
     }
 }
 
+pub fn is_pipped() -> bool {
+    unsafe { libc::isatty(libc::STDIN_FILENO) == 0 }
+}
+
+pub fn read(fd: RawFd, buf: &mut [u8]) -> Result<usize, ()> {
+    let len = unsafe { libc::read(fd, buf.as_mut_ptr() as _, buf.len() as _) };
+    if len >= 0 {
+        Ok(len as _)
+    } else {
+        Err(())
+    }
+}
+
 pub fn read_from_connection(
     connection: &mut UnixStream,
     buf_pool: &mut BufPool,
