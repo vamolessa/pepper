@@ -41,7 +41,7 @@ pub fn main() {
             Err(_) => return,
         };
         parse_terminal_keys(&buf[..len], &mut keys);
-        for key in &keys {
+        for &key in &keys {
             println!("{}", key);
             if key == Key::Esc {
                 return;
