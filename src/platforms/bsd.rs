@@ -43,8 +43,8 @@ pub fn main() {
         parse_terminal_keys(&buf[..len], &mut keys);
         for key in &keys {
             println!("{}", key);
-            if let Key::Esc = key {
-                return,
+            if key == Key::Esc {
+                return;
             }
         }
     }
