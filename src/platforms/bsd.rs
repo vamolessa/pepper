@@ -38,9 +38,13 @@ pub fn main() {
     let mut keys = Vec::new();
 
     let mut kqueue = Kqueue::new();
+    
+    let (width, height) = get_terminal_size();
+    print!("terminal size: {}, {}\r\n", width, height);
 
     'main_loop: loop {
         kqueue.track(Event::Fd(stdin.as_raw_fd()), 0);
+        kqueue.track(Event::Resize, 1);
 
         print!("waiting for events...\r\n");
         let events = kqueue.wait(None);
@@ -57,6 +61,10 @@ pub fn main() {
                             break 'main_loop;
                         }
                     }
+                }
+                Ok(1) => {
+                    let (width, height) = get_terminal_size();
+                    print!("terminal size: {}, {}\r\n", width, height);
                 }
                 Ok(_) => unreachable!(),
                 Err(()) => {
