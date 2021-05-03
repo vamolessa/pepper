@@ -26,16 +26,18 @@ use unix_utils::{get_terminal_size, parse_terminal_keys, run, Process, RawMode};
 
 const MAX_CLIENT_COUNT: usize = 20;
 const MAX_PROCESS_COUNT: usize = 42;
-const CLIENT_EVENT_BUFFER_LEN: usize = 32;
+const MAX_EVENT_COUNT: usize = 1 + 1 + MAX_CLIENT_COUNT + MAX_PROCESS_COUNT;
+const _ASSERT_MAX_EVENT_COUNT_IS_64: [(); 64] = [(); MAX_EVENT_COUNT];
+const MAX_TRIGGERED_EVENT_COUNT: usize = 32;
 
 pub fn main() {
     let raw_mode = RawMode::enter();
     let stdin = io::stdin();
     let mut stdin = stdin.lock();
-    
+
     let mut buf = [0; 64];
     let mut keys = Vec::new();
-    
+
     loop {
         use io::Read;
         let len = match stdin.read(&mut buf) {
@@ -55,33 +57,88 @@ pub fn main() {
     //run(run_server, run_client);
 }
 
-struct KqueueEvents([libc::kevent; CLIENT_EVENT_BUFFER_LEN]);
-impl KqueueEvents {
-    pub fn new() -> Self {
-        const DEFAULT_EVENT: libc::kevent = libc::kevent {
-            ident: 0,
-            filter: 0,
-            flags: 0,
-            fflags: 0,
-            data: 0,
-            udata: std::ptr::null_mut(),
-        };
-        Self([DEFAULT_EVENT; CLIENT_EVENT_BUFFER_LEN])
+const DEFAULT_KEVENT: libc::kevent = libc::kevent {
+    ident: 0,
+    filter: 0,
+    flags: 0,
+    fflags: 0,
+    data: 0,
+    udata: std::ptr::null_mut(),
+};
+
+enum Event {
+    Resize,
+    FlushRequest,
+    Fd(RawFd),
+}
+impl Event {
+    pub fn into_kevent(self, index: usize) -> libc::kevent {
+        match self {
+            Self::Resize => libc::kevent {
+                ident: libc::SIGWINCH as _,
+                filter: libc::EVFILT_SIGNAL,
+                flags: libc::EV_ADD,
+                fflags: 0,
+                data: 0,
+                udata: index as _,
+            },
+            Self::FlushRequest => libc::kevent {
+                ident: 0,
+                filter: libc::EVFILT_USER,
+                flags: libc::EV_ADD,
+                fflags: 0,
+                data: 0,
+                udata: index as _,
+            },
+            Self::Fd(fd) => libc::kevent {
+                ident: fd as _,
+                filter: libc::EVFILT_READ,
+                flags: libc::EV_ADD,
+                fflags: 0,
+                data: 0,
+                udata: index as _,
+            },
+        }
     }
 }
 
-struct Kqueue(RawFd);
+struct KqueueEvents([libc::kevent; MAX_TRIGGERED_EVENT_COUNT]);
+impl KqueueEvents {
+    pub fn new() -> Self {
+        Self([DEFAULT_KEVENT; MAX_TRIGGERED_EVENT_COUNT])
+    }
+}
+
+struct Kqueue {
+    fd: RawFd,
+    tracked: [libc::kevent; MAX_EVENT_COUNT],
+    tracked_len: usize,
+}
 impl Kqueue {
     pub fn new() -> Self {
         let fd = unsafe { libc::kqueue() };
         if fd == -1 {
             panic!("could not create kqueue");
         }
-        Self(fd)
+        Self {
+            fd,
+            tracked: [DEFAULT_KEVENT; MAX_EVENT_COUNT],
+            tracked_len: 0,
+        }
     }
-    
+
+    pub fn track(&mut self, event: &Event, index: usize) {
+        let insert_index = self.len;
+        debug_assert!(insert_index < self.events.len());
+        self.events[insert_index] = event.into_kevent(index);
+        self.len += 1;
+    }
+
     pub fn wait(&self) {
-        //
+        let len = self.len;
+        self.len = 0;
+
+        todo!();
     }
 }
 impl Drop for Kqueue {
@@ -96,10 +153,7 @@ fn run_server(listener: UnixListener) -> Result<(), AnyError> {
     const NONE_PROCESS: Option<Process> = None;
 
     let (request_sender, request_receiver) = mpsc::channel();
-    let platform = Platform::new(
-        || (),
-        request_sender,
-    );
+    let platform = Platform::new(|| (), request_sender);
     let event_sender = ServerApplication::run(platform);
 
     let mut client_connections: [Option<UnixStream>; MAX_CLIENT_COUNT] = Default::default();
@@ -107,10 +161,7 @@ fn run_server(listener: UnixListener) -> Result<(), AnyError> {
     let mut buf_pool = BufPool::default();
 
     let (request_sender, request_receiver) = mpsc::channel();
-    let platform = Platform::new(
-        || (),
-        request_sender,
-    );
+    let platform = Platform::new(|| (), request_sender);
     let event_sender = ServerApplication::run(platform);
 
     let mut timeout = Some(ServerApplication::idle_duration());

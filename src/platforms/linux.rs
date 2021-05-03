@@ -23,7 +23,7 @@ use unix_utils::{get_terminal_size, parse_terminal_keys, run, Process, RawMode};
 
 const MAX_CLIENT_COUNT: usize = 20;
 const MAX_PROCESS_COUNT: usize = 42;
-const CLIENT_EVENT_BUFFER_LEN: usize = 32;
+const MAX_TRIGGERED_EVENT_COUNT: usize = 32;
 
 pub fn main() {
     run(run_server, run_client);
@@ -110,11 +110,11 @@ impl Drop for SignalFd {
     }
 }
 
-struct EpollEvents([libc::epoll_event; CLIENT_EVENT_BUFFER_LEN]);
+struct EpollEvents([libc::epoll_event; MAX_TRIGGERED_EVENT_COUNT]);
 impl EpollEvents {
     pub fn new() -> Self {
         const DEFAULT_EVENT: libc::epoll_event = libc::epoll_event { events: 0, u64: 0 };
-        Self([DEFAULT_EVENT; CLIENT_EVENT_BUFFER_LEN])
+        Self([DEFAULT_EVENT; MAX_TRIGGERED_EVENT_COUNT])
     }
 }
 struct Epoll(RawFd);

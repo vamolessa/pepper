@@ -849,7 +849,7 @@ impl Events {
 
     pub fn track(&mut self, event: &Event, source: EventSource) {
         let index = self.len;
-        debug_assert!(index < MAX_EVENT_COUNT);
+        debug_assert!(index < self.wait_handles.len());
         self.wait_handles[index] = event.handle();
         self.sources[index] = source;
         self.len += 1;
