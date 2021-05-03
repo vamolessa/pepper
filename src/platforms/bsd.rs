@@ -28,6 +28,7 @@ const MAX_CLIENT_COUNT: usize = 20;
 const MAX_PROCESS_COUNT: usize = 42;
 
 pub fn main() {
+    let raw_mode = RawMode::enter();
     let stdin = io::stdin();
     let mut stdin = stdin.lock();
     
@@ -48,6 +49,7 @@ pub fn main() {
             }
         }
     }
+    drop(raw_mode);
     //run(run_server, run_client);
 }
 
