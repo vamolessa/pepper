@@ -134,11 +134,40 @@ impl Kqueue {
         self.tracked_len += 1;
     }
 
-    pub fn wait(&mut self) {
-        let len = self.tracked_len;
+    pub fn wait<'a>(
+        &mut self,
+        events: &'a mut KqueueEvents,
+        timeout: Option<Duration>,
+    ) -> impl 'a + ExactSizeIterator<Item = Result<usize, ()>>  {
+        let timeout = match timeout {
+            Some(duration) => duration.as_nanos() as _,
+            None => -1,
+        };
+
+        let tracked = &self.tracked[..self.tracked_len];
         self.tracked_len = 0;
 
-        todo!();
+        let len = unsafe {
+            libc::kevent(
+                self.fd,
+                tracked,
+                tracked.len() as _,
+                events.0.as_mut_ptr(),
+                events.0.len() as _,
+                timeout,
+            )
+        };
+        if len == -1 {
+            panic!("could not wait for events");
+        }
+
+        events.0[..len as usize].iter().map(|e| {
+            if e.flags & libc::EV_ERROR != 0 {
+                Err(())
+            } else {
+                Ok(e.udata as _)
+            }
+        })
     }
 }
 impl Drop for Kqueue {
