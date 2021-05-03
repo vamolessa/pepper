@@ -127,7 +127,7 @@ impl Kqueue {
         }
     }
 
-    pub fn track(&mut self, event: &Event, index: usize) {
+    pub fn track(&mut self, event: Event, index: usize) {
         let insert_index = self.tracked_len;
         debug_assert!(insert_index < self.tracked.len());
         self.tracked[insert_index] = event.into_kevent(index);
