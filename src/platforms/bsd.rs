@@ -521,14 +521,14 @@ fn run_client(args: Args, mut connection: UnixStream) {
 
             match event {
                 Ok(TriggeredEvent { index: 0, data }) => {
-                    buf.resize(data, 0);
+                    buf.resize(data as _, 0);
                     match connection.read(&mut buf) {
                         Ok(0) | Err(_) => break 'main_loop,
                         Ok(len) => server_bytes = &buf[..len],
                     }
                 }
                 Ok(TriggeredEvent { index: 1, data }) => {
-                    buf.resize(data, 0);
+                    buf.resize(data as _, 0);
                     match read(libc::STDIN_FILENO, &mut buf) {
                         Ok(0) | Err(()) => {
                             kqueue.remove(Event::Fd(libc::STDIN_FILENO));
@@ -548,11 +548,11 @@ fn run_client(args: Args, mut connection: UnixStream) {
                 Ok(_) => unreachable!(),
                 Err(()) => break 'main_loop,
             }
-        }
 
-        let bytes = application.update(resize, &keys, stdin_bytes, server_bytes);
-        if connection.write(bytes).is_err() {
-            break;
+            let bytes = application.update(resize, &keys, stdin_bytes, server_bytes);
+            if connection.write(bytes).is_err() {
+                break;
+            }
         }
     }
 
