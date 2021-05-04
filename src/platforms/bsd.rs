@@ -60,9 +60,6 @@ pub fn main() {
         }
     });
 
-    let (width, height) = get_terminal_size();
-    print!("terminal size: {}, {}\r\n", width, height);
-
     'main_loop: loop {
         let events = kqueue.wait(&mut kqueue_events, None);
         for event in events {
