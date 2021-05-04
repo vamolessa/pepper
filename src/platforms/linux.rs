@@ -424,8 +424,14 @@ fn run_client(args: Args, mut connection: UnixStream) {
     }
 
     let mut keys = Vec::new();
-    let mut stream_buf = [0; ClientApplication::connection_buffer_len()];
-    let mut stdin_buf = [0; ClientApplication::stdin_buffer_len()];
+
+    const BUF_LEN: usize =
+        if ClientApplication::connection_buffer_len() > ClientApplication::stdin_buffer_len() {
+            ClientApplication::connection_buffer_len()
+        } else {
+            ClientApplication::stdin_buffer_len()
+        };
+    let mut buf = [0; BUF_LEN];
 
     'main_loop: loop {
         for event_index in epoll.wait(&mut epoll_events, None) {
@@ -436,17 +442,17 @@ fn run_client(args: Args, mut connection: UnixStream) {
             keys.clear();
 
             match event_index {
-                0 => match connection.read(&mut stream_buf) {
+                0 => match connection.read(&mut buf) {
                     Ok(0) | Err(_) => break 'main_loop,
-                    Ok(len) => server_bytes = &stream_buf[..len],
+                    Ok(len) => server_bytes = &buf[..len],
                 },
-                1 => match read(libc::STDIN_FILENO, &mut stdin_buf) {
+                1 => match read(libc::STDIN_FILENO, &mut buf) {
                     Ok(0) | Err(()) => {
                         epoll.remove(libc::STDIN_FILENO);
                         continue;
                     }
                     Ok(len) => {
-                        let bytes = &stdin_buf[..len];
+                        let bytes = &buf[..len];
                         if is_pipped {
                             stdin_bytes = bytes;
                         } else {
