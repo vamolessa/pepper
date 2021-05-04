@@ -29,81 +29,7 @@ const MAX_PROCESS_COUNT: usize = 42;
 const MAX_TRIGGERED_EVENT_COUNT: usize = 32;
 
 pub fn main() {
-    /*
-    static KQUEUE_FD: AtomicIsize = AtomicIsize::new(-1);
-
-    let raw_mode = RawMode::enter();
-    let stdin = io::stdin();
-    let mut stdin = stdin.lock();
-
-    let mut buf = [0; 64];
-    let mut keys = Vec::new();
-
-    let kqueue = Kqueue::new();
-    kqueue.add(Event::FlushRequests(false), 0);
-    kqueue.add(Event::Fd(stdin.as_raw_fd()), 1);
-    kqueue.add(Event::Resize, 2);
-    let mut kqueue_events = KqueueEvents::new();
-
-    KQUEUE_FD.store(kqueue.as_raw_fd() as _, Ordering::Relaxed);
-
-    std::thread::spawn(|| {
-        for _ in 0..10 {
-            print!("sending flush request\r\n");
-            let fd = KQUEUE_FD.load(Ordering::Relaxed) as _;
-            let event = Event::FlushRequests(true).into_kevent(libc::EV_ADD, 0);
-            if !modify_kqueue(fd, &event) {
-                print!("error trigerring flush events\r\n");
-                return;
-            }
-            std::thread::sleep(Duration::from_secs(1));
-        }
-    });
-
-    'main_loop: loop {
-        let events = kqueue.wait(&mut kqueue_events, None);
-        for event in events {
-            let event = match event {
-                Ok(event) => event,
-                Err(()) => panic!("ops something bad happened"),
-            };
-            match event.index {
-                0 => {
-                    kqueue.add(Event::FlushRequests(false), 0);
-                    print!("received flush request\r\n");
-                }
-                1 => {
-                    let result = unsafe {
-                        libc::read(stdin.as_raw_fd(), buf.as_mut_ptr() as _, buf.len() as _)
-                    };
-                    if result == -1 {
-                        panic!("something wrong reading from stdin");
-                    }
-                    let len = result as usize;
-
-                    keys.clear();
-                    parse_terminal_keys(&buf[..len], &mut keys);
-                    for &key in &keys {
-                        print!("{} bytes: {}\r\n", key, event.data);
-                        if key == pepper::platform::Key::Char('q') {
-                            break 'main_loop;
-                        }
-                    }
-                }
-                2 => {
-                    let (width, height) = get_terminal_size();
-                    print!("terminal size: {}, {}\r\n", width, height);
-                    kqueue.remove(Event::Resize);
-                }
-                _ => unreachable!(),
-            };
-        }
-    }
-
-    drop(raw_mode);
-    / */
     run(run_server, run_client);
-    // */
 }
 
 enum Event {
@@ -259,7 +185,6 @@ fn run_server(listener: UnixListener) -> Result<(), AnyError> {
     KQUEUE_FD.store(kqueue.as_raw_fd() as _, Ordering::Relaxed);
 
     fn flush_requests() {
-        print!("flush requests from application\r\n");
         let fd = KQUEUE_FD.load(Ordering::Relaxed) as _;
         let event = Event::FlushRequests(true).into_kevent(libc::EV_ADD, 0);
         if !modify_kqueue(fd, &event) {
@@ -285,7 +210,6 @@ fn run_server(listener: UnixListener) -> Result<(), AnyError> {
     loop {
         let events = kqueue.wait(&mut kqueue_events, timeout);
         if events.len() == 0 {
-            eprint!("idle time\r\n");
             timeout = None;
             event_sender.send(ApplicationEvent::Idle)?;
             continue;
@@ -296,12 +220,10 @@ fn run_server(listener: UnixListener) -> Result<(), AnyError> {
                 Ok(event) => (event.index, event.data),
                 Err(()) => return Ok(()),
             };
-            eprintln!("new event: {}", event_index);
             match event_index {
                 0 => {
                     kqueue.add(Event::FlushRequests(false), 0);
                     for request in request_receiver.try_iter() {
-                        eprintln!("new request: {:?}", std::mem::discriminant(&request));
                         match request {
                             PlatformRequest::Exit => return Ok(()),
                             PlatformRequest::WriteToClient { handle, buf } => {
@@ -396,7 +318,6 @@ fn run_server(listener: UnixListener) -> Result<(), AnyError> {
                     }
                 }
                 1 => {
-                    eprint!("new connections available event_data: {}\r\n", event_data);
                     for _ in 0..event_data {
                         match listener.accept() {
                             Ok((connection, _)) => {
