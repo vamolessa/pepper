@@ -296,6 +296,7 @@ fn run_server(listener: UnixListener) -> Result<(), AnyError> {
                 Ok(event) => (event.index, event.data),
                 Err(()) => return Ok(()),
             };
+            eprintln!("new event: {}", event_index);
             match event_index {
                 0 => {
                     for request in request_receiver.try_iter() {
@@ -393,6 +394,7 @@ fn run_server(listener: UnixListener) -> Result<(), AnyError> {
                     }
                 }
                 1 => {
+                    eprint!("new connections available event_data: {}\r\n", event_data);
                     for _ in 0..event_data {
                         match listener.accept() {
                             Ok((connection, _)) => {
