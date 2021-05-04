@@ -261,6 +261,7 @@ fn run_server(listener: UnixListener) -> Result<(), AnyError> {
     KQUEUE_FD.store(kqueue.as_raw_fd() as _, Ordering::Relaxed);
 
     fn flush_requests() {
+        print!("flush requests from application\r\n");
         let fd = KQUEUE_FD.load(Ordering::Relaxed) as _;
         let event = Event::FlushRequests(true).into_kevent(libc::EV_ADD, 0);
         if !modify_kqueue(fd, &event) {
@@ -286,7 +287,7 @@ fn run_server(listener: UnixListener) -> Result<(), AnyError> {
     loop {
         let events = kqueue.wait(&mut kqueue_events, timeout);
         if events.len() == 0 {
-            eprintln!("idle time\r\n");
+            eprint!("idle time\r\n");
             timeout = None;
             event_sender.send(ApplicationEvent::Idle)?;
             continue;
