@@ -82,7 +82,7 @@ pub fn main() {
                     parse_terminal_keys(&buf[..len], &mut keys);
                     for &key in &keys {
                         print!("{} bytes: {}\r\n", key, event.data);
-                        if key == Key::Char('q') {
+                        if key == pepper::platform::Key::Char('q') {
                             break 'main_loop;
                         }
                     }
