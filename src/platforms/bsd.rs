@@ -270,13 +270,6 @@ fn run_server(listener: UnixListener) -> Result<(), AnyError> {
     let mut processes = [NONE_PROCESS; MAX_PROCESS_COUNT];
     let mut buf_pool = BufPool::default();
 
-    let (request_sender, request_receiver) = mpsc::channel();
-    let platform = Platform::new(|| Ok(TriggeredEvent { index: 0, .. })), request_sender);
-    let event_sender = ServerApplication::run(platform);Ok(TriggeredEvent { index: 1, data })
-    let mut timeout = Some(ServerApplication::idle_duration());
-        for _ in 0..data {
-
-}
     const CLIENTS_START_INDEX: usize = 1 + 1;
     const CLIENTS_LAST_INDEX: usize = CLIENTS_START_INDEX + MAX_CLIENT_COUNT - 1;
     const PROCESSES_START_INDEX: usize = CLIENTS_LAST_INDEX + 1;
@@ -426,8 +419,8 @@ fn run_server(listener: UnixListener) -> Result<(), AnyError> {
                                     .send(ApplicationEvent::ConnectionOutput { handle, buf })?;
                             }
                             _ => {
-                                kqueue.remove(Event::Fd(connection.as_raw_fdkqueue
-                                client_connectionsEvent::Fd([i)kqueue] = NoneEvent::Fd();
+                                kqueue.remove(Event::Fd(connection.as_raw_fd()));
+                                client_connections[i] = None;
                                 event_sender.send(ApplicationEvent::ConnectionClose { handle })?;
                             }
                         }
