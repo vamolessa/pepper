@@ -68,7 +68,10 @@ pub fn main() {
                 Err(()) => panic!("ops something bad happened"),
             };
             match event.index {
-                0 => print!("received flush request\r\n"),
+                0 => {
+                    kqueue.add(Event::FlushRequests(false), 0);
+                    print!("received flush request\r\n");
+                }
                 1 => {
                     let result = unsafe {
                         libc::read(stdin.as_raw_fd(), buf.as_mut_ptr() as _, buf.len() as _)
