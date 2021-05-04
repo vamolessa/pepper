@@ -21,7 +21,9 @@ use pepper::{
 };
 
 mod unix_utils;
-use unix_utils::{get_terminal_size, parse_terminal_keys, run, Process, RawMode, CLIENT_BUF_LEN};
+use unix_utils::{
+    get_terminal_size, is_pipped, parse_terminal_keys, run, Process, RawMode, CLIENT_BUF_LEN,
+};
 
 const MAX_CLIENT_COUNT: usize = 20;
 const MAX_PROCESS_COUNT: usize = 42;
@@ -270,6 +272,8 @@ fn run_server(listener: UnixListener) -> Result<(), AnyError> {
     let mut processes = [NONE_PROCESS; MAX_PROCESS_COUNT];
     let mut buf_pool = BufPool::default();
 
+    let mut timeout = Some(ServerApplication::idle_duration());
+
     const CLIENTS_START_INDEX: usize = 1 + 1;
     const CLIENTS_LAST_INDEX: usize = CLIENTS_START_INDEX + MAX_CLIENT_COUNT - 1;
     const PROCESSES_START_INDEX: usize = CLIENTS_LAST_INDEX + 1;
@@ -289,21 +293,20 @@ fn run_server(listener: UnixListener) -> Result<(), AnyError> {
         }
 
         for event in events {
-            let (index, data) = match event {
+            let (event_index, event_data) = match event {
                 Ok(event) => (event.index, event.data),
                 Err(()) => return Ok(()),
             };
-            match index {
+            match event_index {
                 0 => {
-                    new_request_event.read();
                     for request in request_receiver.try_iter() {
                         match request {
                             PlatformRequest::Exit => return Ok(()),
                             PlatformRequest::WriteToClient { handle, buf } => {
                                 let index = handle.into_index();
                                 if let Some(ref mut connection) = client_connections[index] {
-                                    if connection.write_all(buf.as_bytes()).is_err() {kqueue
-                                        kEvent::Fd(queue.remove(Event::Fd(connection.as_raw_fd())));
+                                    if connection.write_all(buf.as_bytes()).is_err() {
+                                        kqueue.remove(Event::Fd(connection.as_raw_fd()));
                                         client_connections[index] = None;
                                         event_sender
                                             .send(ApplicationEvent::ConnectionClose { handle })?;
@@ -332,7 +335,8 @@ fn run_server(listener: UnixListener) -> Result<(), AnyError> {
                                         Ok(child) => {
                                             let process = Process::new(child, tag, buf_len);
                                             if let Some(fd) = process.try_as_raw_fd() {
-                                                kqueue.add(Event::Fd(fd), PROCESSES_START_INDEX + i);
+                                                kqueue
+                                                    .add(Event::Fd(fd), PROCESSES_START_INDEX + i);
                                             }
                                             *p = Some(process);
                                             event_sender.send(
@@ -391,13 +395,17 @@ fn run_server(listener: UnixListener) -> Result<(), AnyError> {
                 }
                 1 => match listener.accept() {
                     Ok((connection, _)) => {
-                        for _ in 0..data {
+                        for _ in 0..event_data {
                             for (i, c) in client_connections.iter_mut().enumerate() {
                                 if c.is_none() {
-                                    kqueue.add(Event::Fd(connection.as_raw_fd()), CLIENTS_START_INDEX + i);
+                                    kqueue.add(
+                                        Event::Fd(connection.as_raw_fd()),
+                                        CLIENTS_START_INDEX + i,
+                                    );
                                     *c = Some(connection);
                                     let handle = ClientHandle::from_index(i).unwrap();
-                                    event_sender.send(ApplicationEvent::ConnectionOpen { handle })?;
+                                    event_sender
+                                        .send(ApplicationEvent::ConnectionOpen { handle })?;
                                     break;
                                 }
                             }
@@ -409,11 +417,7 @@ fn run_server(listener: UnixListener) -> Result<(), AnyError> {
                     let index = event_index - CLIENTS_START_INDEX;
                     if let Some(ref mut connection) = client_connections[index] {
                         let handle = ClientHandle::from_index(index).unwrap();
-                        match read_from_connection(
-                            connection,
-                            &mut buf_pool,
-                            ServerApplication::connection_buffer_len(),
-                        ) {
+                        match read_from_connection(connection, &mut buf_pool, event_data) {
                             Ok(buf) if !buf.as_bytes().is_empty() => {
                                 event_sender
                                     .send(ApplicationEvent::ConnectionOutput { handle, buf })?;
