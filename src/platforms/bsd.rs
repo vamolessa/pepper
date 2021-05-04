@@ -301,7 +301,7 @@ fn run_server(listener: UnixListener) -> Result<(), AnyError> {
             match event_index {
                 0 => {
                     for request in request_receiver.try_iter() {
-                        eprintln!("new request: {}", std::mem::discriminant(&request));
+                        eprintln!("new request: {:?}", std::mem::discriminant(&request));
                         match request {
                             PlatformRequest::Exit => return Ok(()),
                             PlatformRequest::WriteToClient { handle, buf } => {
