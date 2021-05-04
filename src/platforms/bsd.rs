@@ -286,6 +286,7 @@ fn run_server(listener: UnixListener) -> Result<(), AnyError> {
     loop {
         let events = kqueue.wait(&mut kqueue_events, timeout);
         if events.len() == 0 {
+            eprintln!("idle time\r\n");
             timeout = None;
             event_sender.send(ApplicationEvent::Idle)?;
             continue;
