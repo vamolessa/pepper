@@ -394,26 +394,28 @@ fn run_server(listener: UnixListener) -> Result<(), AnyError> {
                         }
                     }
                 }
-                1 => match listener.accept() {
-                    Ok((connection, _)) => {
-                        for _ in 0..event_data {
-                            for (i, c) in client_connections.iter_mut().enumerate() {
-                                if c.is_none() {
-                                    kqueue.add(
-                                        Event::Fd(connection.as_raw_fd()),
-                                        CLIENTS_START_INDEX + i,
-                                    );
-                                    *c = Some(connection);
-                                    let handle = ClientHandle::from_index(i).unwrap();
-                                    event_sender
-                                        .send(ApplicationEvent::ConnectionOpen { handle })?;
-                                    break;
+                1 => {
+                    for _ in 0..event_data {
+                        match listener.accept() {
+                            Ok((connection, _)) => {
+                                for (i, c) in client_connections.iter_mut().enumerate() {
+                                    if c.is_none() {
+                                        kqueue.add(
+                                            Event::Fd(connection.as_raw_fd()),
+                                            CLIENTS_START_INDEX + i,
+                                        );
+                                        *c = Some(connection);
+                                        let handle = ClientHandle::from_index(i).unwrap();
+                                        event_sender
+                                            .send(ApplicationEvent::ConnectionOpen { handle })?;
+                                        break;
+                                    }
                                 }
                             }
+                            Err(error) => panic!("could not accept connection {}", error),
                         }
                     }
-                    Err(error) => panic!("could not accept connection {}", error),
-                },
+                }
                 CLIENTS_START_INDEX..=CLIENTS_LAST_INDEX => {
                     let index = event_index - CLIENTS_START_INDEX;
                     if let Some(ref mut connection) = client_connections[index] {
