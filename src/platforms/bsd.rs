@@ -22,7 +22,8 @@ use pepper::{
 
 mod unix_utils;
 use unix_utils::{
-    get_terminal_size, is_pipped, parse_terminal_keys, run, Process, RawMode, CLIENT_BUF_LEN,
+    get_terminal_size, is_pipped, parse_terminal_keys, read, read_from_connection, run, Process,
+    RawMode,
 };
 
 const MAX_CLIENT_COUNT: usize = 20;
@@ -285,7 +286,7 @@ fn run_server(listener: UnixListener) -> Result<(), AnyError> {
     let mut kqueue_events = KqueueEvents::new();
 
     loop {
-        let events = kqueue.wait(&mut kqeueue_events, timeout);
+        let events = kqueue.wait(&mut kqueue_events, timeout);
         if events.len() == 0 {
             timeout = None;
             event_sender.send(ApplicationEvent::Idle)?;
@@ -424,7 +425,7 @@ fn run_server(listener: UnixListener) -> Result<(), AnyError> {
                             }
                             _ => {
                                 kqueue.remove(Event::Fd(connection.as_raw_fd()));
-                                client_connections[i] = None;
+                                client_connections[index] = None;
                                 event_sender.send(ApplicationEvent::ConnectionClose { handle })?;
                             }
                         }
