@@ -29,7 +29,7 @@ const MAX_PROCESS_COUNT: usize = 42;
 const MAX_TRIGGERED_EVENT_COUNT: usize = 32;
 
 pub fn main() {
-    //*
+    /*
     static KQUEUE_FD: AtomicIsize = AtomicIsize::new(-1);
 
     let raw_mode = RawMode::enter();
@@ -69,7 +69,7 @@ pub fn main() {
             };
             match event.index {
                 0 => {
-                    //kqueue.add(Event::FlushRequests(false), 0);
+                    kqueue.add(Event::FlushRequests(false), 0);
                     print!("received flush request\r\n");
                 }
                 1 => {
@@ -101,7 +101,7 @@ pub fn main() {
     }
 
     drop(raw_mode);
-    /*/
+    / */
     run(run_server, run_client);
     // */
 }
@@ -125,7 +125,7 @@ impl Event {
             Self::FlushRequests(triggered) => libc::kevent {
                 ident: 0,
                 filter: libc::EVFILT_USER,
-                flags: flags,
+                flags: flags | libc::EV_ONESHOT,
                 fflags: if triggered { libc::NOTE_TRIGGER } else { 0 },
                 data: 0,
                 udata: index as _,
@@ -299,6 +299,7 @@ fn run_server(listener: UnixListener) -> Result<(), AnyError> {
             eprintln!("new event: {}", event_index);
             match event_index {
                 0 => {
+                    kqueue.add(Event::FlushRequests(false), 0);
                     for request in request_receiver.try_iter() {
                         eprintln!("new request: {:?}", std::mem::discriminant(&request));
                         match request {
