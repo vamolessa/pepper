@@ -69,7 +69,11 @@ pub fn run(server_fn: fn(UnixListener) -> Result<(), AnyError>, client_fn: fn(Ar
             Ok(stream) => client_fn(args, stream),
             Err(_) => match unsafe { libc::fork() } {
                 -1 => panic!("could not start server"),
-                0 => loop {
+                0 => {
+                    let _ = server_fn(start_server(session_path));
+                    let _ = fs::remove_file(session_path);
+                }
+                _ => loop {
                     match UnixStream::connect(session_path) {
                         Ok(stream) => {
                             client_fn(args, stream);
@@ -78,10 +82,6 @@ pub fn run(server_fn: fn(UnixListener) -> Result<(), AnyError>, client_fn: fn(Ar
                         Err(_) => std::thread::sleep(Duration::from_millis(100)),
                     }
                 },
-                _ => {
-                    let _ = server_fn(start_server(session_path));
-                    let _ = fs::remove_file(session_path);
-                }
             },
         }
     }
