@@ -417,7 +417,7 @@ fn run_server(listener: UnixListener) -> Result<(), AnyError> {
                     let index = event_index - CLIENTS_START_INDEX;
                     if let Some(ref mut connection) = client_connections[index] {
                         let handle = ClientHandle::from_index(index).unwrap();
-                        match read_from_connection(connection, &mut buf_pool, event_data) {
+                        match read_from_connection(connection, &mut buf_pool, event_data as _) {
                             Ok(buf) if !buf.as_bytes().is_empty() => {
                                 event_sender
                                     .send(ApplicationEvent::ConnectionOutput { handle, buf })?;
