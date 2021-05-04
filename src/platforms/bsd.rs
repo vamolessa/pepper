@@ -258,6 +258,8 @@ fn run_server(listener: UnixListener) -> Result<(), AnyError> {
     kqueue.add(Event::Fd(listener.as_raw_fd()), 1);
     let mut kqueue_events = KqueueEvents::new();
 
+    KQUEUE_FD.store(kqueue.as_raw_fd() as _, Ordering::Relaxed);
+
     fn flush_requests() {
         let fd = KQUEUE_FD.load(Ordering::Relaxed) as _;
         let event = Event::FlushRequests(true).into_kevent(libc::EV_ADD, 0);
