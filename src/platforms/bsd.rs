@@ -1,11 +1,9 @@
 use std::{
-    env, fs, io,
+    io,
     os::unix::{
-        ffi::OsStrExt,
         io::{AsRawFd, RawFd},
         net::{UnixListener, UnixStream},
     },
-    process::Child,
     sync::{
         atomic::{AtomicIsize, Ordering},
         mpsc,
@@ -16,7 +14,7 @@ use std::{
 use pepper::{
     application::{AnyError, ApplicationEvent, ClientApplication, ServerApplication},
     client::ClientHandle,
-    platform::{BufPool, Key, Platform, PlatformRequest, ProcessHandle, ProcessTag, SharedBuf},
+    platform::{BufPool, Platform, PlatformRequest, ProcessHandle},
     Args,
 };
 
@@ -28,8 +26,6 @@ use unix_utils::{
 
 const MAX_CLIENT_COUNT: usize = 20;
 const MAX_PROCESS_COUNT: usize = 42;
-const MAX_EVENT_COUNT: usize = 1 + 1 + MAX_CLIENT_COUNT + MAX_PROCESS_COUNT;
-const _ASSERT_MAX_EVENT_COUNT_IS_64: [(); 64] = [(); MAX_EVENT_COUNT];
 const MAX_TRIGGERED_EVENT_COUNT: usize = 32;
 
 pub fn main() {
@@ -252,7 +248,7 @@ impl Drop for Kqueue {
 }
 
 fn run_server(listener: UnixListener) -> Result<(), AnyError> {
-    use io::{Read, Write};
+    use io::Write;
 
     const NONE_PROCESS: Option<Process> = None;
     static KQUEUE_FD: AtomicIsize = AtomicIsize::new(-1);
@@ -547,7 +543,7 @@ fn run_client(args: Args, mut connection: UnixStream) {
                         }
                     }
                 }
-                Ok(TriggeredEvent { index: 2, data }) => resize = Some(get_terminal_size()),
+                Ok(TriggeredEvent { index: 2, .. }) => resize = Some(get_terminal_size()),
                 Ok(_) => unreachable!(),
                 Err(()) => break 'main_loop,
             }

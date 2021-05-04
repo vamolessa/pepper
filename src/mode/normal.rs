@@ -451,12 +451,11 @@ impl State {
                             let line_index = state.count - 1;
                             let mut position = BufferPosition::line_col(line_index as _, 0);
                             position = buffer.saturate_position(position);
-                            let (first_word, _, mut right_words) = buffer.words_from(position);
-                            if first_word.kind == WordKind::Whitespace {
-                                if let Some(word) = right_words.next() {
-                                    position = word.position;
-                                }
+                            let word = buffer.word_at(position);
+                            if word.kind == WordKind::Whitespace {
+                                position = word.end_position();
                             }
+
                             let mut cursors = buffer_view.cursors.mut_guard();
                             cursors.clear();
                             cursors.add(Cursor {
@@ -1653,3 +1652,4 @@ fn move_to_diagnostic(ctx: &mut ModeContext, forward: bool) -> Option<()> {
 
     None
 }
+

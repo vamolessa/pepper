@@ -459,13 +459,13 @@ pub mod goto {
                     let handle = ctx.clients.get(ctx.client_handle)?.buffer_view_handle()?;
                     let buffer_view = ctx.editor.buffer_views.get_mut(handle)?;
                     let buffer = ctx.editor.buffers.get(buffer_view.buffer_handle)?;
+                    let buffer = buffer.content();
 
                     let mut position = BufferPosition::line_col(line_index, 0);
-                    let (first_word, _, mut right_words) = buffer.content().words_from(position);
-                    if first_word.kind == WordKind::Whitespace {
-                        if let Some(word) = right_words.next() {
-                            position = word.position;
-                        }
+                    position = buffer.saturate_position(position);
+                    let word = buffer.word_at(position);
+                    if word.kind == WordKind::Whitespace {
+                        position = word.end_position();
                     }
 
                     let mut cursors = buffer_view.cursors.mut_guard();
@@ -596,3 +596,4 @@ pub mod custom {
         Mode::change_to(ctx, ModeKind::ReadLine);
     }
 }
+
