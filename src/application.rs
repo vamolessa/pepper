@@ -109,7 +109,6 @@ impl ServerApplication {
                         write.push(handle.into_index() as _);
                         let buf = buf.share();
                         platform.buf_pool.release(buf.clone());
-                        eprint!("write client handle to client\r\n");
                         platform.enqueue_request(PlatformRequest::WriteToClient { handle, buf });
                     }
                     ApplicationEvent::ConnectionClose { handle } => {
@@ -180,11 +179,9 @@ impl ServerApplication {
                 let handle = c.handle();
                 let buf = buf.share();
                 platform.buf_pool.release(buf.clone());
-                eprint!("write ui to client\r\n");
                 platform.enqueue_request(PlatformRequest::WriteToClient { handle, buf });
             }
 
-            eprint!("gonna flush requests\r\n");
             platform.flush_requests();
         }
 

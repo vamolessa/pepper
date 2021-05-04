@@ -29,15 +29,14 @@ const MAX_PROCESS_COUNT: usize = 42;
 const MAX_TRIGGERED_EVENT_COUNT: usize = 32;
 
 pub fn main() {
-    /*
+    //*
     static KQUEUE_FD: AtomicIsize = AtomicIsize::new(-1);
 
     let raw_mode = RawMode::enter();
     let stdin = io::stdin();
     let mut stdin = stdin.lock();
 
-    //let mut buf = [0; 64];
-    let mut buf = [0; 1];
+    let mut buf = [0; 64];
     let mut keys = Vec::new();
 
     let kqueue = Kqueue::new();
@@ -74,8 +73,6 @@ pub fn main() {
             match event.index {
                 0 => print!("received flush request\r\n"),
                 1 => {
-                    //use io::Read;
-                    //let len = stdin.read(&mut buf).unwrap();
                     let result = unsafe {
                         libc::read(stdin.as_raw_fd(), buf.as_mut_ptr() as _, buf.len() as _)
                     };
@@ -104,8 +101,9 @@ pub fn main() {
     }
 
     drop(raw_mode);
-    */
+    /*/
     run(run_server, run_client);
+    // */
 }
 
 enum Event {
