@@ -69,7 +69,7 @@ pub fn main() {
             };
             match event.index {
                 0 => {
-                    kqueue.add(Event::FlushRequests(false), 0);
+                    //kqueue.add(Event::FlushRequests(false), 0);
                     print!("received flush request\r\n");
                 }
                 1 => {
@@ -125,7 +125,7 @@ impl Event {
             Self::FlushRequests(triggered) => libc::kevent {
                 ident: 0,
                 filter: libc::EVFILT_USER,
-                flags: flags | libc::EV_ONESHOT,
+                flags: flags,
                 fflags: if triggered { libc::NOTE_TRIGGER } else { 0 },
                 data: 0,
                 udata: index as _,
