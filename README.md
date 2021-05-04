@@ -44,8 +44,7 @@ Please [open an issue](https://github.com/vamolessa/pepper/issues)
 
 - small, but orthogonal, set of editing primitives
 - mnemonic and easy to reach default keybindings (assuming a qwerty keyboard)
-- cross-plaftorm (Windows, Linux; Mac, BSD comming)
-- customizable through scripting
+- cross-plaftorm (Windows, Linux, BSD, Mac)
 - extensible through external cli tools
 - be as fast and reponsive as possible
 
