@@ -883,10 +883,6 @@ fn run_server(pipe_path: &[u16]) -> Result<(), AnyError> {
     let mut listener =
         ConnectionToClientListener::new(pipe_path, ServerApplication::connection_buffer_len());
 
-    let mut client_connections: [Option<ConnectionToClient>; MAX_CLIENT_COUNT] = Default::default();
-    let mut processes = [NONE_ASYNC_PROCESS; MAX_PROCESS_COUNT];
-    let mut buf_pool = BufPool::default();
-
     let new_request_event = Event::automatic();
     NEW_REQUEST_EVENT_HANDLE.store(new_request_event.0 as _, Ordering::Relaxed);
 
@@ -897,6 +893,10 @@ fn run_server(pipe_path: &[u16]) -> Result<(), AnyError> {
     );
     platform.set_clipboard_api(read_from_clipboard, write_to_clipboard);
     let event_sender = ServerApplication::run(platform);
+
+    let mut client_connections: [Option<ConnectionToClient>; MAX_CLIENT_COUNT] = Default::default();
+    let mut processes = [NONE_ASYNC_PROCESS; MAX_PROCESS_COUNT];
+    let mut buf_pool = BufPool::default();
 
     let mut timeout = Some(ServerApplication::idle_duration());
 

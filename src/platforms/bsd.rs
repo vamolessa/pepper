@@ -253,6 +253,11 @@ fn run_server(listener: UnixListener) -> Result<(), AnyError> {
     const NONE_PROCESS: Option<Process> = None;
     static KQUEUE_FD: AtomicIsize = AtomicIsize::new(-1);
 
+    let kqueue = Kqueue::new();
+    kqueue.add(Event::FlushRequests(false), 0);
+    kqueue.add(Event::Fd(listener.as_raw_fd()), 1);
+    let mut kqueue_events = KqueueEvents::new();
+
     fn flush_requests() {
         let fd = KQUEUE_FD.load(Ordering::Relaxed) as _;
         let event = Event::FlushRequests(true).into_kevent(libc::EV_ADD, 0);
@@ -275,11 +280,6 @@ fn run_server(listener: UnixListener) -> Result<(), AnyError> {
     const CLIENTS_LAST_INDEX: usize = CLIENTS_START_INDEX + MAX_CLIENT_COUNT - 1;
     const PROCESSES_START_INDEX: usize = CLIENTS_LAST_INDEX + 1;
     const PROCESSES_LAST_INDEX: usize = PROCESSES_START_INDEX + MAX_PROCESS_COUNT - 1;
-
-    let kqueue = Kqueue::new();
-    kqueue.add(Event::FlushRequests(false), 0);
-    kqueue.add(Event::Fd(listener.as_raw_fd()), 1);
-    let mut kqueue_events = KqueueEvents::new();
 
     loop {
         let events = kqueue.wait(&mut kqueue_events, timeout);

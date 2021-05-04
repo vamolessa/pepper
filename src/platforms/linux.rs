@@ -175,6 +175,9 @@ fn run_server(listener: UnixListener) -> Result<(), AnyError> {
     const NONE_PROCESS: Option<Process> = None;
     static NEW_REQUEST_EVENT_FD: AtomicIsize = AtomicIsize::new(-1);
 
+    let new_request_event = EventFd::new();
+    NEW_REQUEST_EVENT_FD.store(new_request_event.as_raw_fd() as _, Ordering::Relaxed);
+
     let (request_sender, request_receiver) = mpsc::channel();
     let platform = Platform::new(
         || EventFd::write(NEW_REQUEST_EVENT_FD.load(Ordering::Relaxed) as _),
@@ -185,9 +188,6 @@ fn run_server(listener: UnixListener) -> Result<(), AnyError> {
     let mut client_connections: [Option<UnixStream>; MAX_CLIENT_COUNT] = Default::default();
     let mut processes = [NONE_PROCESS; MAX_PROCESS_COUNT];
     let mut buf_pool = BufPool::default();
-
-    let new_request_event = EventFd::new();
-    NEW_REQUEST_EVENT_FD.store(new_request_event.as_raw_fd() as _, Ordering::Relaxed);
 
     let mut timeout = Some(ServerApplication::idle_duration());
 
