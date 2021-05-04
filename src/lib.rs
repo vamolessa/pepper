@@ -38,7 +38,7 @@ pub struct Args {
     pub session: Option<String>,
     pub as_client: Option<client::ClientHandle>,
     pub print_session: bool,
-    pub as_server: bool,
+    pub server: bool,
     pub files: Vec<String>,
 }
 
@@ -59,16 +59,14 @@ fn print_help() {
     println!();
     println!("options:");
     println!();
-    println!("  -h, --help                prints help and quits");
-    println!("  -v, --version             prints version and quits");
-    println!("  -s, --session             overrides the session name to connect to");
-    println!("  --print-session           prints the computed session name and quits");
-    println!("  --as-client <client-id>   sends events as if it was client with id <client-id>");
-    println!(
-        "  --as-server               only run as server (ignores files and configs arguments)"
-    );
-    println!("  -c, --config              sources config file at path (repeatable)");
-    println!("  -C, --try-config          tries to source a config file at path, throws no error if fails (repeatable)");
+    println!("  -h, --help               prints help and quits");
+    println!("  -v, --version            prints version and quits");
+    println!("  -s, --session            overrides the session name to connect to");
+    println!("  --print-session          prints the computed session name and quits");
+    println!("  --as-client <client-id>  sends events as if it was client with id <client-id>");
+    println!("  --server                 only run as server (ignores files and configs arguments)");
+    println!("  -c, --config             sources config file at path (repeatable)");
+    println!("  -C, --try-config         tries to source a config file at path, throws no error if fails (repeatable)");
 }
 
 impl Args {
@@ -126,7 +124,7 @@ impl Args {
                     }
                     None => error(format_args!("expected client id after {}", arg)),
                 },
-                "--as-server" => parsed.as_server = true,
+                "--server" => parsed.server = true,
                 "-c" | "--config" => match args.next() {
                     Some(arg) => {
                         let arg = arg_to_str(&arg);

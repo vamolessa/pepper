@@ -61,7 +61,7 @@ pub fn run(server_fn: fn(UnixListener) -> Result<(), AnyError>, client_fn: fn(Ar
         UnixListener::bind(session_path).expect("could not start unix domain socket server")
     }
 
-    if args.as_server {
+    if args.server {
         let _ = server_fn(start_server(session_path));
         let _ = fs::remove_file(session_path);
     } else {

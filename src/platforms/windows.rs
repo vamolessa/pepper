@@ -114,7 +114,7 @@ pub fn main() {
     let input_handle = get_std_handle(STD_INPUT_HANDLE);
     let output_handle = get_std_handle(STD_OUTPUT_HANDLE);
 
-    if args.as_server {
+    if args.server {
         if !pipe_exists(&pipe_path) {
             let _ = run_server(&pipe_path);
         }
@@ -360,7 +360,7 @@ fn fork() {
             command_line.push(short);
         }
     }
-    command_line.extend(b" --as-server".iter().map(|&b| b as u16));
+    command_line.extend(b" --server".iter().map(|&b| b as u16));
     command_line.push(0);
 
     let result = unsafe {
