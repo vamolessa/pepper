@@ -11,7 +11,7 @@ map -normal J djgivkgli<space><esc>
 
 map -normal K :<space>lsp-hover<enter>
 map -normal gd :<space>lsp-definition<enter>
-map -normal gr :<space>lsp-references<space>-context=2<enter>
+map -normal gr ": lsp-references -context=2<enter>"
 map -normal gs :<space>lsp-document-symbols<enter>
 map -normal rr :<space>lsp-rename<enter>
 map -normal ra :<space>lsp-code-action<enter>
@@ -35,8 +35,9 @@ syntax "**/*.refs" {
 	texts = {{%w-_}}
 }
 
+# https://doc.rust-lang.org/reference/keywords.html
 syntax "**/*.rs" {
-	keywords = {fn|let|const|static|if|else|match|loop|while|for|break|continue|return|mod|use|as|in|enum|struct|trait|type|impl|dyn|where|mut|ref|pub|unsafe|extern}
+	keywords = {as|break|const|continue|crate|else|enum|extern|false|fn|for|if|impl|in|let|loop|match|mod|move|mut|pub|ref|return|static|struct|super|trait|type|unsafe|use|where|while|async|await|dyn|abstract|become|box|do|final|macro|override|priv|typeof|unsized|virtual|yield|try|union}
 	types = {bool|u8|u16|u32|u64|usize|i8|i16|i32|i64|isize|f32|f64|str|char|%u{%w_}}
 	symbols = {%(|%)|%[|%]|%{|%}|:|;|,|=|<|>|+|-|/|*|%%|%!|?|&|%||@}
 	literals = {true|false|self|'\.{!'.}|'.'|b'\.{!'.}|b'.'|%d{%w%._}|'%a{%w_}}
@@ -44,24 +45,27 @@ syntax "**/*.rs" {
 	comments = {//{.}|/*{!(*/).$}}
 }
 
+# https://docs.microsoft.com/en-us/cpp/cpp/keywords-cpp
 syntax "**/*.{c,h,cpp,hpp}" {
-	keywords = {abstract|as|base|break|case|catch|checked|class|const|continue|default|delegate|do|else|enum|event|explicit|extern|finally|fixed|for|foreach|goto|if|implicit|in|interface|internal|is|lock|namespace|new|operator|out|override|params|private|protected|public|readonly|ref|return|sealed|sizeof|stackalloc|static|struct|switch|throw|try|typeof|unchecked|unsafe|using|virtual|volatile|while|add|alias|ascending|async|await|by|descending|dynamic|equals|from|get|global|group|into|join|let|nameof|notnull|on|orderby|partial|remove|select|set|unmanaged|value|var|when|where|yield}
-	types = {bool|byte|char|decimal|double|float|int|long|object|sbyte|short|string|uint|ulong|ushort|void|%u{%w_}}
+	keywords = {alignas|alignof|and|and_eq|asm|auto|bitand|bitor|bool|break|case|catch|class|compl|concept|const|const_cast|consteval|constexpr|constinit|continue|co_await|co_return|co_yield|decltype|default|delete|do|dynamic_cast|else|enum|explicit|export|extern|for|friend|goto|if|inline|mutable|namespace|new|noexcept|not|not_eq|operator|or|or_eq|private|protected|public|register|reinterpret_cast|requires|return|sizeof|static|static_assert|static_cast|struct|switch|template|thread_local|throw|try|typedef|typeid|typename|union|using|virtual|volatile|while|xor|xor_eq}
+	types = {char|char8_t|char16_t|char32_t|double|float|int|long|short|signed|unsigned|void|wchar_t|%u{%w_}}
 	symbols = {%(|%)|%[|%]|%{|%}|:|;|,|=|<|>|+|-|/|*|%%|%.|%!|?|&|%||@}
-	literals = "true|false|this|'\.{!'.}|'.'|%d{%w%._}|#{ }{%a}"
+	literals = "true|false|this|nullptr|'\.{!'.}|'.'|%d{%w%._}|#{ }{%a}"
 	strings = {"{(\")!".}}
 	comments = {//{.}|/*{!(*/).$}}
 }
 
+# https://docs.microsoft.com/en-us/dotnet/csharp/language-reference/keywords/
 syntax "**/*.cs" {
-	keywords = {abstract|as|base|break|case|catch|checked|class|const|continue|default|delegate|do|else|enum|event|explicit|extern|finally|fixed|for|foreach|goto|if|implicit|in|interface|internal|is|lock|namespace|new|operator|out|override|params|private|protected|public|readonly|ref|return|sealed|sizeof|stackalloc|static|struct|switch|throw|try|typeof|unchecked|unsafe|using|virtual|volatile|while|add|alias|ascending|async|await|by|descending|dynamic|equals|from|get|global|group|into|join|let|nameof|not|null|on|orderby|partial|remove|select|set|unmanaged|value|var|when|where|yield}
+	keywords = {abstract|as|base|break|case|catch|checked|class|const|continue|default|delegate|do|else|enum|event|explicit|extern|finally|fixed|for|foreach|goto|if|implicit|in|interface|internal|is|lock|namespace|new|operator|out|override|params|private|protected|public|readonly|ref|return|sealed|sizeof|stackalloc|static|struct|switch|throw|try|typeof|unchecked|unsafe|using|virtual|volatile|while|add|alias|ascending|async|await|by|descending|dynamic|equals|from|get|global|group|into|join|let|nameof|not|on|orderby|partial|remove|select|set|unmanaged|value|var|when|where|yield}
 	types = {bool|byte|char|decimal|double|float|int|long|object|sbyte|short|string|uint|ulong|ushort|void|%u{%w_}}
 	symbols = {%(|%)|%[|%]|%{|%}|:|;|,|=|<|>|+|-|/|*|%%|%.|%!|?|&|%||@}
-	literals = "true|false|this|'\.{!'.}|'.'|%d{%w%._}|#{%a}"
+	literals = "true|false|this|null|'\.{!'.}|'.'|%d{%w%._}|#{%a}"
 	strings = {"{(\")!".}}
 	comments = {//{.}|/*{!(*/).$}}
 }
 
+# https://www.lua.org/manual/5.1/manual.html#2
 syntax "**/*.lua" {
 	keywords = {and|break|do|else|elseif|end|for|function|if|in|local|not|or|repeat|return|then|until|while}
 	symbols = {+|-|*|/|%%|^|#|<|>|=|~|%(|%)|%{|%}|%[|%]|;|:|,|%.|%.%.|%.%.%.}
@@ -87,8 +91,9 @@ syntax "**/*.html" {
 	texts = {{%w-_}}
 }
 
-syntax "**/*.js" {
-	keywords = {break|export|super|case|extends|switch|catch|finally|class|for|throw|const|function|try|continue|if|typeof|debugger|import|var|default|in|of|void|delete|instanceof|while|do|new|with|else|return|yield|enum|implements|package|public|interface|private|static|let|protected|yield|async|await|abstract|float|synchronized|boolean|goto|throws|byte|int|transient|char|long|volatile|double|native|final|short|arguments|get|set}
+# https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar#keywords
+syntax "**/*.{js,ts}" {
+	keywords = {break|case|catch|class|const|continue|debugger|default|delete|do|else|export|extends|finally|for|function|if|import|in|instanceof|new|return|super|switch|this|throw|try|typeof|var|void|while|witch|yield|enum|implements|interface|let|package|private|protected|public|static|yield|await}
 	types = {%u{%w_}}
 	symbols = {%(|%)|%[|%]|%{|%}|:|;|,|=|<|>|+|-|/|*|%%|%.|%!|?|&|%||@}
 	literals = {null|undefined|this|true|false|%d{%w%._}}
