@@ -125,7 +125,7 @@ impl ServerApplication {
                     ApplicationEvent::ConnectionOpen { handle } => {
                         clients.on_client_joined(handle);
                         let mut buf = platform.buf_pool.acquire();
-                        let write = buf.write_with_len(2);
+                        let write = buf.write();
                         write.push(is_first_client as _);
                         write.push(handle.into_index() as _);
                         let buf = buf.share();
