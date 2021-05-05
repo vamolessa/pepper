@@ -66,15 +66,17 @@ impl ServerApplication {
         Duration::from_secs(1)
     }
 
-    pub fn run(mut platform: Platform) -> mpsc::Sender<ApplicationEvent> {
+    pub fn run(args: Args, mut platform: Platform) -> mpsc::Sender<ApplicationEvent> {
         let current_dir = env::current_dir().expect("could not retrieve the current directory");
         let editor = Editor::new(current_dir);
         let clients = ClientManager::new();
 
+        let source_default_config = !args.no_default_config;
         let (event_sender, event_receiver) = mpsc::channel();
         let event_sender_clone = event_sender.clone();
         std::thread::spawn(move || {
             let _ = Self::run_application(
+                source_default_config,
                 editor,
                 clients,
                 &mut platform,
@@ -89,6 +91,7 @@ impl ServerApplication {
     }
 
     fn run_application(
+        source_default_config: bool,
         mut editor: Editor,
         mut clients: ClientManager,
         platform: &mut Platform,
@@ -97,7 +100,7 @@ impl ServerApplication {
     ) -> Result<(), AnyError> {
         let mut client_event_receiver = ClientEventReceiver::default();
 
-        if true {
+        if source_default_config {
             let source = include_str!("default_config.pp");
             match CommandManager::eval_commands_then_output(
                 &mut editor,

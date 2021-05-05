@@ -169,7 +169,7 @@ impl Drop for Epoll {
     }
 }
 
-fn run_server(listener: UnixListener) -> Result<(), AnyError> {
+fn run_server(args: Args, listener: UnixListener) -> Result<(), AnyError> {
     use io::Write;
 
     const NONE_PROCESS: Option<Process> = None;
@@ -183,7 +183,7 @@ fn run_server(listener: UnixListener) -> Result<(), AnyError> {
         || EventFd::write(NEW_REQUEST_EVENT_FD.load(Ordering::Relaxed) as _),
         request_sender,
     );
-    let event_sender = ServerApplication::run(platform);
+    let event_sender = ServerApplication::run(args, platform);
 
     let mut client_connections: [Option<UnixStream>; MAX_CLIENT_COUNT] = Default::default();
     let mut processes = [NONE_PROCESS; MAX_PROCESS_COUNT];

@@ -171,7 +171,7 @@ impl Drop for Kqueue {
     }
 }
 
-fn run_server(listener: UnixListener) -> Result<(), AnyError> {
+fn run_server(args: Args, listener: UnixListener) -> Result<(), AnyError> {
     use io::Write;
 
     const NONE_PROCESS: Option<Process> = None;

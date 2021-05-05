@@ -34,11 +34,12 @@ pub struct ArgsConfig {
 #[derive(Default)]
 pub struct Args {
     pub version: bool,
-    pub configs: Vec<ArgsConfig>,
     pub session: Option<String>,
-    pub as_client: Option<client::ClientHandle>,
     pub print_session: bool,
+    pub as_client: Option<client::ClientHandle>,
     pub server: bool,
+    pub configs: Vec<ArgsConfig>,
+    pub no_default_config: bool,
     pub files: Vec<String>,
 }
 
@@ -66,7 +67,8 @@ fn print_help() {
     println!("  --as-client <client-id>  sends events as if it was client with id <client-id>");
     println!("  --server                 only run as server (ignores files and configs arguments)");
     println!("  -c, --config             sources config file at path (repeatable)");
-    println!("  -C, --try-config         tries to source a config file at path, throws no error if fails (repeatable)");
+    println!("  --try-config             tries to source a config file at path, throws no error if fails (repeatable)");
+    println!("  --no-default-config      does not source the default config included in the editor");
 }
 
 impl Args {
@@ -135,7 +137,7 @@ impl Args {
                     }
                     None => error(format_args!("expected config path after {}", arg)),
                 },
-                "-C" | "--try-config" => match args.next() {
+                "--try-config" => match args.next() {
                     Some(arg) => {
                         let arg = arg_to_str(&arg);
                         parsed.configs.push(ArgsConfig {
@@ -145,6 +147,7 @@ impl Args {
                     }
                     None => error(format_args!("expected config path after {}", arg)),
                 },
+                "--no-default-config" => parsed.no_default_config = true,
                 "--" => {
                     while let Some(arg) = args.next() {
                         let arg = arg_to_str(&arg);

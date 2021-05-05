@@ -116,7 +116,7 @@ pub fn main() {
 
     if args.server {
         if !pipe_exists(&pipe_path) {
-            let _ = run_server(&pipe_path);
+            let _ = run_server(args, &pipe_path);
         }
     } else if let Some(input_handle) = input_handle {
         if !pipe_exists(&pipe_path) {
@@ -875,7 +875,7 @@ impl Events {
     }
 }
 
-fn run_server(pipe_path: &[u16]) -> Result<(), AnyError> {
+fn run_server(args: Args, pipe_path: &[u16]) -> Result<(), AnyError> {
     const NONE_ASYNC_PROCESS: Option<AsyncProcess> = None;
     static NEW_REQUEST_EVENT_HANDLE: AtomicPtr<()> = AtomicPtr::new(std::ptr::null_mut());
 
@@ -892,7 +892,7 @@ fn run_server(pipe_path: &[u16]) -> Result<(), AnyError> {
         request_sender,
     );
     platform.set_clipboard_api(read_from_clipboard, write_to_clipboard);
-    let event_sender = ServerApplication::run(platform);
+    let event_sender = ServerApplication::run(args, platform);
 
     let mut client_connections: [Option<ConnectionToClient>; MAX_CLIENT_COUNT] = Default::default();
     let mut processes = [NONE_ASYNC_PROCESS; MAX_PROCESS_COUNT];

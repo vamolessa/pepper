@@ -17,7 +17,7 @@ use pepper::{
     Args,
 };
 
-pub fn run(server_fn: fn(UnixListener) -> Result<(), AnyError>, client_fn: fn(Args, UnixStream)) {
+pub fn run(server_fn: fn(Args, UnixListener) -> Result<(), AnyError>, client_fn: fn(Args, UnixStream)) {
     let args = Args::parse();
 
     let mut session_path = String::new();
@@ -62,7 +62,7 @@ pub fn run(server_fn: fn(UnixListener) -> Result<(), AnyError>, client_fn: fn(Ar
     }
 
     if args.server {
-        let _ = server_fn(start_server(session_path));
+        let _ = server_fn(args, start_server(session_path));
         let _ = fs::remove_file(session_path);
     } else {
         match UnixStream::connect(session_path) {
@@ -70,7 +70,7 @@ pub fn run(server_fn: fn(UnixListener) -> Result<(), AnyError>, client_fn: fn(Ar
             Err(_) => match unsafe { libc::fork() } {
                 -1 => panic!("could not start server"),
                 0 => {
-                    let _ = server_fn(start_server(session_path));
+                    let _ = server_fn(args, start_server(session_path));
                     let _ = fs::remove_file(session_path);
                 }
                 _ => loop {
