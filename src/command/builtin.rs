@@ -1,12 +1,13 @@
 use std::{
-    io, fs::File,
     any, fmt,
+    fs::File,
+    io,
     path::{Path, PathBuf},
     str::FromStr,
 };
 
 use crate::{
-    buffer::{BufferCapabilities, BufferHandle},
+    buffer::BufferHandle,
     buffer_position::BufferPosition,
     client::ClientManager,
     command::{
@@ -1471,25 +1472,7 @@ pub const COMMANDS: &[BuiltinCommand] = &[
                 None => ctx.editor.current_directory.clone(),
             };
 
-            let log_buffer_handle = log_buffer.map(|path| {
-                let mut buffer = ctx.editor.buffers.add_new();
-                buffer.capabilities = BufferCapabilities::log();
-                let buffer_handle = buffer.handle();
-                buffer.set_path(Path::new(path));
-
-                if let Some(client_handle) = ctx.client_handle {
-                    let buffer_view_handle = ctx.editor
-                        .buffer_views
-                        .buffer_view_handle_from_buffer_handle(client_handle, buffer_handle);
-                    if let Some(client) = ctx.clients.get_mut(client_handle) {
-                        client.set_buffer_view_handle(Some(buffer_view_handle), &mut ctx.editor.events);
-                    }
-                }
-
-                buffer_handle
-            });
-
-            ctx.editor.lsp.start(ctx.platform, command, root, log_buffer_handle);
+            ctx.editor.lsp.start(ctx.platform, &mut ctx.editor.buffers, command, root, log_buffer);
             Ok(None)
         },
     },
@@ -1855,3 +1838,4 @@ where
         None => Err(CommandError::LspServerNotRunning),
     }
 }
+

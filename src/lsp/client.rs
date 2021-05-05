@@ -9,7 +9,7 @@ use std::{
 };
 
 use crate::{
-    buffer::{Buffer, BufferCapabilities, BufferContent, BufferHandle},
+    buffer::{Buffer, BufferCapabilities, BufferCollection, BufferContent, BufferHandle},
     buffer_position::{BufferPosition, BufferRange},
     buffer_view::BufferViewHandle,
     client,
@@ -2609,9 +2609,10 @@ impl ClientManager {
     pub fn start(
         &mut self,
         platform: &mut Platform,
+        buffers: &mut BufferCollection,
         mut command: Command,
         root: PathBuf,
-        log_buffer_handle: Option<BufferHandle>,
+        log_buffer_name: Option<&str>,
     ) -> ClientHandle {
         fn find_free_slot(this: &mut ClientManager) -> ClientHandle {
             for (i, slot) in this.entries.iter_mut().enumerate() {
@@ -2626,6 +2627,17 @@ impl ClientManager {
         }
 
         let handle = find_free_slot(self);
+
+        let log_buffer_handle = log_buffer_name.map(|name| {
+            use fmt::Write;
+            let buffer = buffers.add_new();
+            buffer.capabilities = BufferCapabilities::log();
+            let mut path = String::new();
+            let _ = write!(path, "{}.{}", name, handle);
+            buffer.set_path(Path::new(&path));
+            buffer.handle()
+        });
+
         command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -2641,7 +2653,10 @@ impl ClientManager {
     }
 
     pub fn stop(&mut self, platform: &mut Platform, handle: ClientHandle) {
+        eprintln!("stop lsp {}", handle);
         if let ClientEntry::Occupied(client) = &mut self.entries[handle.0 as usize] {
+            eprintln!("stopping lsp {} was occupied", handle);
+
             let _ = client.notify(platform, "exit", JsonObject::default());
             if let Some(process_handle) = client.protocol.process_handle() {
                 platform.enqueue_request(PlatformRequest::KillProcess {
@@ -2650,7 +2665,6 @@ impl ClientManager {
             }
 
             self.entries[handle.0 as usize] = ClientEntry::Vacant;
-
             for recipe in &mut self.recipes {
                 if recipe.running_client == Some(handle) {
                     recipe.running_client = None;
@@ -2660,6 +2674,7 @@ impl ClientManager {
     }
 
     pub fn stop_all(&mut self, platform: &mut Platform) {
+        eprintln!("stop all lsp");
         for i in 0..self.entries.len() {
             self.stop(platform, ClientHandle(i as _));
         }
@@ -2695,7 +2710,7 @@ impl ClientManager {
         handle: ClientHandle,
         process_handle: ProcessHandle,
     ) {
-        eprintln!("on lsp spawned");
+        eprintln!("on lsp spawned {}", handle);
         if let ClientEntry::Occupied(ref mut client) = editor.lsp.entries[handle.0 as usize] {
             client.protocol.set_process_handle(process_handle);
             client.initialize(platform);
@@ -2754,7 +2769,7 @@ impl ClientManager {
     }
 
     pub fn on_process_exit(editor: &mut Editor, handle: ClientHandle) {
-        eprintln!("on lsp exit");
+        eprintln!("on lsp process exit {}", handle);
 
         let index = handle.0 as usize;
         if let ClientEntry::Occupied(ref mut client) = editor.lsp.entries[index] {
@@ -2763,6 +2778,7 @@ impl ClientManager {
                 let _ = write!(buf, "lsp server stopped");
             });
         }
+
         editor.lsp.entries[index] = ClientEntry::Vacant;
         for recipe in &mut editor.lsp.recipes {
             if recipe.running_client == Some(handle) {
@@ -2815,26 +2831,24 @@ impl ClientManager {
                     recipe.root.clone()
                 };
 
-                let log_buffer_name = editor.string_pool.acquire_with(&recipe.log_buffer_name);
-                let log_buffer_handle = if !log_buffer_name.is_empty() {
-                    let mut buffer = editor.buffers.add_new();
-                    buffer.capabilities = BufferCapabilities::log();
-                    Some(buffer.handle())
-                } else {
+                let recipe_log_buffer_name =
+                    editor.string_pool.acquire_with(&recipe.log_buffer_name);
+                let log_buffer_name = if recipe_log_buffer_name.is_empty() {
                     None
+                } else {
+                    Some(&recipe_log_buffer_name[..])
                 };
 
-                let client_handle = editor.lsp.start(platform, command, root, log_buffer_handle);
-                editor.lsp.recipes[index].running_client = Some(client_handle);
+                let client_handle = editor.lsp.start(
+                    platform,
+                    &mut editor.buffers,
+                    command,
+                    root,
+                    log_buffer_name,
+                );
 
-                let mut path = editor.string_pool.acquire();
-                if let Some(buffer) = log_buffer_handle.and_then(|h| editor.buffers.get_mut(h)) {
-                    use fmt::Write;
-                    let _ = write!(path, "{}.{}", log_buffer_name, client_handle);
-                    buffer.set_path(Path::new(&path));
-                }
-                editor.string_pool.release(path);
-                editor.string_pool.release(log_buffer_name);
+                editor.lsp.recipes[index].running_client = Some(client_handle);
+                editor.string_pool.release(recipe_log_buffer_name);
             }
         }
 
